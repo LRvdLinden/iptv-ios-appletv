@@ -42,7 +42,7 @@ final class PlaylistService: ObservableObject {
 
         if !forceRefresh, let cached = Self.readCache(s) {
             setRaw(cached)
-            if let age = cacheAge(s), age < 12 * 3600, s.kind != .stremio { return }
+            if !RefreshPolicy.current.isDue(age: cacheAge(s)) { return }
             Task { await refresh(s, showSpinner: false) }
             return
         }
@@ -77,7 +77,7 @@ final class PlaylistService: ObservableObject {
                 if let epg { loadingText = L("Loading TV guide…"); lib.epg = await loadEPG(epg) }
             case .stalker:
                 loadingText = L("Connecting to portal…")
-                guard let st = stalker else { return }
+                let st = (source?.id == s.id ? stalker : nil) ?? StalkerClient(source: s)
                 try await st.connect()
                 loadingText = L("Fetching channels and videos…")
                 lib = try await st.library()
@@ -99,20 +99,39 @@ final class PlaylistService: ObservableObject {
                 }
             case .stremio:
                 loadingText = L("Loading Stremio add-ons…")
-                stremioAddons = await Self.stremioAddons(s)
+                let addons = await Self.stremioAddons(s)
+                if source?.id == s.id { stremioAddons = addons }
                 loadingText = L("Fetching catalogs…")
-                lib = await StremioClient(addons: stremioAddons).library()
+                lib = await StremioClient(addons: addons).library()
             }
             if source?.id == s.id {
                 setRaw(lib)
                 writeCache(s, lib)
                 SplashPosters.save(from: lib)
+            } else {
+                writeCache(s, lib)     // andere afspeellijst op de achtergrond ververst
             }
         } catch {
+            guard source?.id == s.id else { return }
             if rawLibrary.channels.isEmpty && rawLibrary.movies.isEmpty && rawLibrary.series.isEmpty {
                 self.error = error.localizedDescription
             }
         }
+    }
+
+    /// Bij terugkeren in de app: verversen als het volgens de instelling tijd is.
+    func refreshIfDue() async {
+        guard let s = source, !isLoading, RefreshPolicy.current.isDue(age: cacheAge(s)),
+              RefreshPolicy.current != .manual else { return }
+        await refresh(s, showSpinner: false)
+    }
+
+    /// Alle afspeellijsten op de achtergrond verversen.
+    @Published private(set) var refreshingAll = false
+    func refreshAll() async {
+        refreshingAll = true
+        defer { refreshingAll = false }
+        for p in CloudStore.shared.playlists { await refresh(p, showSpinner: false) }
     }
 
     private func loadEPG(_ url: URL) async -> [String: [EPGProgram]] {
@@ -357,4 +376,35 @@ final class PlaylistService: ObservableObject {
         }
     }
     func clearCache(_ s: PlaylistSource) { try? FileManager.default.removeItem(at: Self.cacheURL(s)) }
+}
+
+/// Hoe vaak afspeellijsten (incl. gids) automatisch ververst worden.
+enum RefreshPolicy: String, CaseIterable, Identifiable {
+    case manual, launch, sixHours, daily, weekly
+    var id: String { rawValue }
+
+    static var current: RefreshPolicy {
+        RefreshPolicy(rawValue: UserDefaults.standard.string(forKey: "playlist.refresh") ?? "") ?? .daily
+    }
+
+    var title: String {
+        switch self {
+        case .manual: return L("Manually")
+        case .launch: return L("Every time the app opens")
+        case .sixHours: return L("Every 6 hours")
+        case .daily: return L("Daily")
+        case .weekly: return L("Weekly")
+        }
+    }
+
+    func isDue(age: TimeInterval?) -> Bool {
+        guard let age else { return true }
+        switch self {
+        case .manual: return false
+        case .launch: return age > 60
+        case .sixHours: return age > 6 * 3600
+        case .daily: return age > 24 * 3600
+        case .weekly: return age > 7 * 24 * 3600
+        }
+    }
 }

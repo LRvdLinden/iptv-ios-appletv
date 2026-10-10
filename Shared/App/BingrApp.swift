@@ -41,6 +41,7 @@ struct BingrApp: App {
                 Secrets.reload()
                 store.load(mergeProgress: true)
                 Task { await trakt.refresh() }
+                Task { await app.playlists.refreshIfDue() }
             }
         }
     }

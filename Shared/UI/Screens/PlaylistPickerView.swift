@@ -91,10 +91,10 @@ struct AvatarTile: View {
     var body: some View {
         VStack(spacing: tvScaled(8)) {
             ZStack {
-                RoundedRectangle(cornerRadius: tvScaled(8)).fill(avatar.gradient)
+                Circle().fill(avatar.gradient)
                 if let photo, let img = UIImage(data: photo) {
                     Color.clear.overlay(Image(uiImage: img).resizable().scaledToFill())
-                        .clipShape(RoundedRectangle(cornerRadius: tvScaled(8)))
+                        .clipShape(Circle())
                 } else {
                     Image(systemName: avatar.symbol)
                         .font(.system(size: tvScaled(44), weight: .semibold))
@@ -102,7 +102,7 @@ struct AvatarTile: View {
                         .shadow(color: .black.opacity(0.25), radius: 4, y: 2)
                 }
                 if editing {
-                    RoundedRectangle(cornerRadius: tvScaled(8)).fill(.black.opacity(0.55))
+                    Circle().fill(.black.opacity(0.55))
                     Image(systemName: "pencil").font(.system(size: tvScaled(30), weight: .bold)).foregroundStyle(.white)
                 }
             }
@@ -121,10 +121,10 @@ struct MiniAvatar: View {
     @EnvironmentObject var store: CloudStore
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: size * 0.18).fill(playlist.avatar.gradient)
+            Circle().fill(playlist.avatar.gradient)
             if let d = store.photos[playlist.id], let img = UIImage(data: d) {
                 Color.clear.overlay(Image(uiImage: img).resizable().scaledToFill())
-                    .clipShape(RoundedRectangle(cornerRadius: size * 0.18))
+                    .clipShape(Circle())
             } else {
                 Image(systemName: playlist.avatar.symbol).font(.system(size: size * 0.45, weight: .bold)).foregroundStyle(.white)
             }
@@ -137,7 +137,7 @@ private struct AddTile: View {
     var body: some View {
         VStack(spacing: tvScaled(8)) {
             ZStack {
-                RoundedRectangle(cornerRadius: tvScaled(8)).strokeBorder(Theme.secondary.opacity(0.5), lineWidth: 2)
+                Circle().strokeBorder(Theme.secondary.opacity(0.5), lineWidth: 2)
                 Image(systemName: "plus").font(.system(size: tvScaled(40), weight: .regular)).foregroundStyle(Theme.secondary)
             }
             .aspectRatio(1, contentMode: .fit)

@@ -16,6 +16,11 @@ final class TraktSync: ObservableObject {
     @Published private(set) var playback: [PlaybackItem] = []
     @Published private(set) var lastRefresh: Date?
     @Published var lastError: String?
+    @Published private(set) var displayName: String?
+    @Published private(set) var avatar: URL?
+
+    static var scrobbleEnabled: Bool { UserDefaults.standard.object(forKey: "trakt.scrobble") as? Bool ?? true }
+    static var askRating: Bool { UserDefaults.standard.object(forKey: "trakt.askRating") as? Bool ?? true }
     /// Titel(+jaar) → IMDb-ID, zodat vinkjes direct op IPTV-titels passen zonder per titel op te zoeken.
     @Published private(set) var titleIndex = TitleIndex()
 
@@ -68,7 +73,7 @@ final class TraktSync: ObservableObject {
         isLoggedIn = await client.isLoggedIn
         username = await client.tokens?.username
         loadCache()
-        if isLoggedIn { await refresh() }
+        if isLoggedIn { await refresh(); await loadProfile() }
     }
 
     // MARK: inloggen
@@ -79,6 +84,7 @@ final class TraktSync: ObservableObject {
         let t = try await client.pollForToken(code)
         isLoggedIn = true; username = t.username
         await refresh(force: true)
+        await loadProfile()
     }
 
     func logout() async {
@@ -217,7 +223,7 @@ final class TraktSync: ObservableObject {
 
     /// Scrobble: Trakt markeert automatisch als bekeken bij stop ≥ 80%.
     func scrobble(_ action: ScrobbleAction, item: PlayableItem, progress: Double) async {
-        guard isLoggedIn, let imdb = item.imdbID, item.type != .live else { return }
+        guard isLoggedIn, Self.scrobbleEnabled, let imdb = item.imdbID, item.type != .live else { return }
         var body: [String: Any] = ["progress": min(max(progress * 100, 0), 100), "app_version": "1.0.0"]
         if item.type == .episode, let s = item.season, let e = item.episode {
             body["show"] = ["ids": ["imdb": imdb]]
@@ -252,6 +258,55 @@ final class TraktSync: ObservableObject {
     func lookup(imdb: String) async -> TraktMedia? {
         let hits: [SearchHit]? = try? await client.get("/search/imdb/\(imdb)", query: ["extended": "full"], auth: false)
         return hits?.first.flatMap { $0.movie ?? $0.show }
+    }
+
+    /// Profiel (naam + avatar) voor het Trakt-scherm.
+    func loadProfile() async {
+        struct S: Decodable {
+            struct U: Decodable {
+                struct Img: Decodable { struct A: Decodable { let full: String? }; let avatar: A? }
+                let username: String?; let name: String?; let images: Img?
+            }
+            let user: U?
+        }
+        guard isLoggedIn, let s: S = try? await client.get("/users/settings", query: ["extended": "full"]) else { return }
+        displayName = s.user?.name.flatMap { $0.isEmpty ? nil : $0 } ?? s.user?.username
+        username = s.user?.username ?? username
+        avatar = s.user?.images?.avatar?.full.flatMap(URL.init(string:))
+    }
+
+    /// Waardering 1–10 naar Trakt sturen.
+    func rate(_ item: PlayableItem, _ rating: Int) async {
+        guard isLoggedIn, let imdb = item.imdbID else { return }
+        let body: [String: Any]
+        if item.type == .episode, let s = item.season, let e = item.episode {
+            body = ["shows": [["ids": ["imdb": imdb], "seasons": [["number": s, "episodes": [["number": e, "rating": rating]]]]]]]
+        } else {
+            body = ["movies": [["ids": ["imdb": imdb], "rating": rating]]]
+        }
+        _ = try? await client.postRaw("/sync/ratings", body: body)
+    }
+
+    /// Verwijder een half-gekeken item uit Trakt's "verder kijken".
+    func removePlayback(_ id: Int) async {
+        playback.removeAll { $0.id == id }
+        try? await client.delete("/sync/playback/\(id)")
+    }
+
+    /// Titels die lijken op een film/serie (werkt ook zonder inloggen).
+    func related(imdb: String, shows: Bool) async -> [TraktMedia] {
+        guard Secrets.isSet(Secrets.traktClientID) else { return [] }
+        let r: [TraktMedia]? = try? await client.get("/\(shows ? "shows" : "movies")/\(imdb)/related",
+                                                      query: ["limit": "20"], auth: false)
+        return r ?? []
+    }
+
+    /// Persoonlijke aanbevelingen van Trakt (alleen ingelogd).
+    func recommendations(shows: Bool) async -> [TraktMedia] {
+        guard isLoggedIn else { return [] }
+        let r: [TraktMedia]? = try? await client.get(shows ? "/recommendations/shows" : "/recommendations/movies",
+                                                      query: ["limit": "50", "ignore_collected": "false"])
+        return r ?? []
     }
 
     struct TrendingEntry: Decodable { let movie: TraktMedia?; let show: TraktMedia? }

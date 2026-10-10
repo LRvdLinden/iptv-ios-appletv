@@ -14,6 +14,7 @@ struct HomeView: View {
     @State private var hero: DetailTarget?
     @State private var trendingMovies: [Movie] = []
     @State private var trendingSeries: [Series] = []
+    @State private var forYou: [DetailTarget] = []
     @State private var scrollOffset: CGFloat = 0
 
     private var lib: Library { playlists.library }
@@ -23,10 +24,16 @@ struct HomeView: View {
         ZStack(alignment: .top) {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: tvScaled(26)) {
+                    #if os(iOS)
+                    Color.clear.frame(height: 100)
+                    #else
+                    Color.clear.frame(height: 20)
+                    #endif
+                    // bovenaan in elk tabblad: Verder kijken, daaronder Voor jou
+                    continueRow
+                    forYouRow
                     if let hero {
                         HeroBanner(target: hero, onPlay: { play(hero) }, onInfo: { detail = hero })
-                    } else {
-                        Color.clear.frame(height: tvScaled(90))
                     }
                     rows
                 }
@@ -55,22 +62,6 @@ struct HomeView: View {
     // MARK: rijen
 
     @ViewBuilder private var rows: some View {
-        let continueItems = continueWatching
-        if !continueItems.isEmpty {
-            MediaRow(title: L("Continue watching")) {
-                ForEach(continueItems) { c in
-                    let entry = c.entry
-                    Button { resume(c.id) } label: {
-                        VStack(alignment: .leading, spacing: 4) {
-                            PosterCard(title: entry.title, poster: entry.artwork, progress: entry.fraction)
-                            Text(PlayerController.format(entry.position)).font(.system(size: tvScaled(10)))
-                                .foregroundStyle(Theme.secondary)
-                        }
-                    }.cardButton()
-                }
-            }
-        }
-
         if filter != .series {
             let mine = lib.movies.filter { m in pid.map { store.inMyList($0, m.id) } ?? false }
             if !mine.isEmpty { movieRow(L("My List"), mine) }
@@ -115,6 +106,53 @@ struct HomeView: View {
                     .foregroundStyle(Theme.secondary)
             }
             .frame(maxWidth: .infinity).padding(.top, 60)
+        }
+    }
+
+    @ViewBuilder private var continueRow: some View {
+        let items = continueWatching
+        if !items.isEmpty {
+            MediaRow(title: L("Continue watching")) {
+                ForEach(items) { c in
+                    Button { resume(c) } label: {
+                        VStack(alignment: .leading, spacing: 4) {
+                            PosterCard(title: c.title, poster: c.artwork, progress: c.fraction)
+                            Text(c.subtitle).font(.system(size: tvScaled(10))).foregroundStyle(Theme.secondary).lineLimit(1)
+                                .frame(width: Theme.posterWidth, alignment: .leading)
+                        }
+                    }
+                    .cardButton()
+                    .contextMenu {
+                        Button(role: .destructive) { removeFromContinue(c) } label: {
+                            Label(L("Remove from Continue watching"), systemImage: "xmark.circle")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private var forYouRow: some View {
+        let items = forYou.filter { t in
+            switch (filter, t) {
+            case (.movies, .series), (.series, .movie): return false
+            default: return true
+            }
+        }
+        if !items.isEmpty {
+            MediaRow(title: L("For you")) {
+                ForEach(items) { t in
+                    Button { detail = t } label: {
+                        switch t {
+                        case .movie(let m):
+                            PosterCard(title: m.title, poster: m.poster, badge: L("MOVIE"))
+                        case .series(let s):
+                            PosterCard(title: s.title, poster: s.poster, badge: L("SERIES"))
+                        }
+                    }
+                    .cardButton()
+                }
+            }
         }
     }
 
@@ -177,24 +215,51 @@ struct HomeView: View {
 
     // MARK: data
 
-    struct ContinueItem: Identifiable { let id: String; let entry: ProgressEntry }
-
-    private var continueWatching: [ContinueItem] {
-        guard filter != .series else { return [] }
-        let ids = Set(lib.movies.map(\.id)).union(lib.series.flatMap { $0.episodes.map(\.id) })
-        return store.progress
-            .filter { ids.contains($0.key) || $0.key.hasPrefix("xe") }
-            .sorted { $0.value.updated > $1.value.updated }
-            .prefix(20).map { ContinueItem(id: $0.key, entry: $0.value) }
+    struct ContinueItem: Identifiable {
+        let id: String; let title: String; let subtitle: String; let artwork: URL?; let fraction: Double
+        let updated: Date; let isMovie: Bool
+        var traktPlaybackID: Int? = nil
     }
 
-    private func resume(_ key: String) {
+    private var continueWatching: [ContinueItem] {
+        let movieIDs = Set(lib.movies.map(\.id))
+        var out: [ContinueItem] = store.progress.compactMap { key, e in
+            let isMovie = movieIDs.contains(key)
+            if !isMovie && !key.hasPrefix("xe") && !key.hasPrefix("jfe") && !key.hasPrefix("pxe") && !key.hasPrefix("se")
+                && !lib.series.contains(where: { s in s.episodes.contains { $0.id == key } }) { return nil }
+            if filter == .movies && !isMovie { return nil }
+            if filter == .series && isMovie { return nil }
+            let left = max(0, e.position / max(e.fraction, 0.01) - e.position)
+            return ContinueItem(id: key, title: e.title, subtitle: L("%d min left", Int(left / 60)),
+                                artwork: e.artwork, fraction: e.fraction, updated: e.updated, isMovie: isMovie)
+        }
+        // films die je in een andere app (via Trakt) half hebt gekeken
+        if filter != .series && !trakt.playback.isEmpty {
+            let known = Set(out.map(\.id))
+            for p in trakt.playback where p.type == "movie" {
+                guard let imdb = p.imdb, let m = lib.movies.first(where: { trakt.imdb(for: $0) == imdb }), !known.contains(m.id) else { continue }
+                out.append(ContinueItem(id: m.id, title: m.title, subtitle: "Trakt · \(Int(p.progress))%", artwork: m.poster,
+                                        fraction: p.progress / 100, updated: .distantPast, isMovie: true, traktPlaybackID: p.id))
+            }
+        }
+        return Array(out.sorted { $0.updated > $1.updated }.prefix(20))
+    }
+
+    private func removeFromContinue(_ c: ContinueItem) {
+        withAnimation {
+            store.clearProgress(c.id)
+            if let id = c.traktPlaybackID { Task { await trakt.removePlayback(id) } }
+        }
+    }
+
+    private func resume(_ c: ContinueItem) {
+        let key = c.id
         if let m = lib.movies.first(where: { $0.id == key }) { app.play(Playables.movie(m, imdb: trakt.imdb(for: m))); return }
         for s in lib.series {
             if let e = s.episodes.first(where: { $0.id == key }) { app.play(Playables.episode(e, of: s, imdb: trakt.imdb(for: s))); return }
         }
-        // Xtream-aflevering: episodes worden lazy geladen → open de serie via de opgeslagen titel
-        if let entry = store.progress[key], let s = lib.series.first(where: { $0.title == entry.title }) { detail = .series(s) }
+        // aflevering die pas bij openen geladen wordt → open de serie
+        if let s = lib.series.first(where: { $0.title == c.title }) { detail = .series(s) }
     }
 
     private func play(_ t: DetailTarget) {
@@ -215,6 +280,7 @@ struct HomeView: View {
             let t = await trakt.trending(shows: true)
             trendingSeries = match(t, in: lib.series, title: \.title, year: \.year)
         }
+        forYou = await buildForYou()
         // hero: liefst iets trending, anders willekeurig met een poster
         let candidate: DetailTarget? = {
             switch filter {
@@ -227,6 +293,67 @@ struct HomeView: View {
             }
         }()
         withAnimation(.easeInOut(duration: 0.5)) { hero = candidate }
+    }
+
+    /// "Voor jou": Trakt-aanbevelingen die in je lijst staan, aangevuld met
+    /// onbekeken titels uit de groepen waar je het meest kijkt, en trending.
+    private func buildForYou() async -> [DetailTarget] {
+        var out: [DetailTarget] = []
+        var seen = Set<String>()
+        func add(_ t: DetailTarget) {
+            guard !seen.contains(t.id), store.progress[t.id] == nil else { return }
+            if filter == .movies, t.isSeries { return }
+            if filter == .series, !t.isSeries { return }
+            if case .movie(let m) = t, Playables.isWatched(movie: m, imdb: trakt.imdb(for: m)) { return }
+            if case .series(let s) = t, trakt.watchedCount(show: trakt.imdb(for: s)) > 0 { return }
+            seen.insert(t.id); out.append(t)
+        }
+        // 1. vergelijkbaar met wat je (half) gekeken hebt
+        var seeds: [(imdb: String, show: Bool)] = []
+        let recentKeys = store.progress.sorted { $0.value.updated > $1.value.updated }.map(\.key)
+        for k in recentKeys {
+            if let m = lib.movies.first(where: { $0.id == k }), let i = trakt.imdb(for: m) { seeds.append((i, false)) }
+            else if let se = lib.series.first(where: { $0.title == store.progress[k]?.title }), let i = trakt.imdb(for: se) { seeds.append((i, true)) }
+            if seeds.count >= 4 { break }
+        }
+        for i in trakt.watchedEpisodes.keys.shuffled().prefix(2) { seeds.append((i, true)) }
+        for i in trakt.watchedMovies.shuffled().prefix(2) { seeds.append((i, false)) }
+        if filter == .movies { seeds.removeAll { $0.show } }
+        if filter == .series { seeds.removeAll { !$0.show } }
+        var seenSeeds = Set<String>()
+        for seed in seeds where seenSeeds.insert(seed.imdb).inserted {
+            let rel = await trakt.related(imdb: seed.imdb, shows: seed.show)
+            if seed.show { match(rel, in: lib.series, title: \.title, year: \.year).prefix(6).forEach { add(.series($0)) } }
+            else { match(rel, in: lib.movies, title: \.title, year: \.year).prefix(6).forEach { add(.movie($0)) } }
+        }
+
+        // 2. persoonlijke Trakt-aanbevelingen
+        async let rm = trakt.recommendations(shows: false)
+        async let rs = trakt.recommendations(shows: true)
+        let recMovies = match(await rm, in: lib.movies, title: \.title, year: \.year)
+        let recSeries = match(await rs, in: lib.series, title: \.title, year: \.year)
+        for (a, b) in zip(recMovies.prefix(15), recSeries.prefix(15)) { add(.movie(a)); add(.series(b)) }
+        recMovies.dropFirst(15).prefix(5).forEach { add(.movie($0)) }
+        recSeries.dropFirst(15).prefix(5).forEach { add(.series($0)) }
+
+        // groepen waar je in kijkt (voortgang, Mijn lijst, bekeken)
+        var groupScore: [String: Int] = [:]
+        for m in lib.movies where store.progress[m.id] != nil || Playables.isWatched(movie: m, imdb: trakt.imdb(for: m))
+            || (pid.map { store.inMyList($0, m.id) } ?? false) { groupScore[m.group, default: 0] += 1 }
+        for s in lib.series where trakt.watchedCount(show: trakt.imdb(for: s)) > 0
+            || (pid.map { store.inMyList($0, s.id) } ?? false) { groupScore[s.group, default: 0] += 2 }
+        let topGroups = groupScore.sorted { $0.value > $1.value }.prefix(4).map(\.key)
+        for g in topGroups {
+            lib.movies.filter { $0.group == g }.shuffled().prefix(5).forEach { add(.movie($0)) }
+            lib.series.filter { $0.group == g }.shuffled().prefix(5).forEach { add(.series($0)) }
+        }
+        // aanvullen met trending
+        for (a, b) in zip(trendingMovies.prefix(8), trendingSeries.prefix(8)) { add(.movie(a)); add(.series(b)) }
+        if out.count < 8 {
+            lib.movies.filter { $0.poster != nil }.shuffled().prefix(6).forEach { add(.movie($0)) }
+            lib.series.filter { $0.poster != nil }.shuffled().prefix(6).forEach { add(.series($0)) }
+        }
+        return Array(out.prefix(30))
     }
 
     private func match<T>(_ trending: [TraktSync.TraktMedia], in items: [T], title: KeyPath<T, String>, year: KeyPath<T, Int?>) -> [T] {

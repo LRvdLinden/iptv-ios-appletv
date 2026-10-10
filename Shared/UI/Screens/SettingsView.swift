@@ -10,6 +10,9 @@ struct SettingsView: View {
     @EnvironmentObject var localizer: Localizer
     @EnvironmentObject var parental: ParentalControl
     @AppStorage("autoSubtitles") private var autoSubtitles = false
+    @AppStorage("trakt.scrobble") private var traktScrobble = true
+    @AppStorage("trakt.askRating") private var traktAskRating = true
+    @AppStorage("playlist.refresh") private var refreshPolicy = RefreshPolicy.daily.rawValue
     @AppStorage("player.engine") private var engine = PlayerController.EngineChoice.auto.rawValue
     @State private var showTraktLogin = false
     @State private var showOSLogin = false
@@ -25,6 +28,7 @@ struct SettingsView: View {
         NavigationStack {
             List {
                 playlistSection
+                refreshSection
                 traktSection
                 openSubtitlesSection
                 playerSection
@@ -111,7 +115,20 @@ struct SettingsView: View {
     private var traktSection: some View {
         Section {
             if trakt.isLoggedIn {
-                LabeledContent(L("Signed in as"), value: trakt.username ?? "Trakt")
+                HStack(spacing: 14) {
+                    ZStack {
+                        Circle().fill(Theme.elevated)
+                        if let a = trakt.avatar { RemoteImage(url: a).clipShape(Circle()) }
+                        else { Image(systemName: "person.fill").foregroundStyle(Theme.secondary) }
+                    }
+                    .frame(width: tvScaled(52), height: tvScaled(52))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(trakt.displayName ?? trakt.username ?? "Trakt").font(.headline)
+                        if let u = trakt.username { Text(u).font(.subheadline).foregroundStyle(Theme.secondary) }
+                    }
+                }
+                Toggle(isOn: $traktScrobble) { Label(L("Sync playback progress"), systemImage: "playpause") }
+                Toggle(isOn: $traktAskRating) { Label(L("Ask for ratings"), systemImage: "star") }
                 LabeledContent(L("Watched"), value: L("%d movies · %d episodes", trakt.watchedMovies.count,
                                                       trakt.watchedEpisodes.values.reduce(0) { $0 + $1.count }))
                 if let d = trakt.lastRefresh {
@@ -143,6 +160,25 @@ struct SettingsView: View {
             }
             Toggle(L("Search subtitles automatically when playing"), isOn: $autoSubtitles)
             NavigationLink(L("Languages: %@", subs.preferredLanguages.joined(separator: ", "))) { LanguagePicker() }
+        }
+    }
+
+    private var refreshSection: some View {
+        Section {
+            Picker(L("Update playlists"), selection: $refreshPolicy) {
+                ForEach(RefreshPolicy.allCases) { Text($0.title).tag($0.rawValue) }
+            }
+            Button {
+                Task { await playlists.refreshAll() }
+            } label: {
+                HStack {
+                    Label(L("Refresh all playlists now"), systemImage: "arrow.clockwise.circle")
+                    if playlists.refreshingAll { Spacer(); ProgressView() }
+                }
+            }
+            .disabled(playlists.refreshingAll)
+        } header: { Text(L("Update playlists")) } footer: {
+            Text(L("Channels, movies, series and the TV guide are refreshed in the background at this interval."))
         }
     }
 

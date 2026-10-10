@@ -29,7 +29,7 @@ final class PlayerController: ObservableObject {
     /// Echte afspeel-URL (na Stalker/Stremio-resolutie)
     private(set) var url: URL?
     var catchupProvider: (@MainActor (Date, Date) -> URL?)?
-    var onFinished: (() -> Void)?
+    var onFinished: (@MainActor () -> Void)?
     /// Multiview-tegels: geen voortgang/scrobble
     var isPreview = false
 
@@ -224,7 +224,7 @@ final class PlayerController: ObservableObject {
 
     private func saveProgress() {
         lastSaved = Date()
-        guard !isPreview, item.type != .live, duration > 60 else { return }
+        guard !isPreview, item.type != .live, item.channelID == nil, !item.id.contains("-cu-"), duration > 60 else { return }
         let store = CloudStore.shared
         if position >= 0.9 {
             store.clearProgress(item.id)

@@ -27,6 +27,16 @@ jobs:
       - name: Vertalingen controleren
         run: python3 tools/extract_strings.py
 
+      - name: App-sleutels inbouwen (alleen bij een privé-repo)
+        if: github.event.repository.private == true
+        env:
+          TRAKT_CLIENT_ID: ${{ secrets.TRAKT_CLIENT_ID }}
+          TRAKT_CLIENT_SECRET: ${{ secrets.TRAKT_CLIENT_SECRET }}
+          OPENSUBTITLES_API_KEY: ${{ secrets.OPENSUBTITLES_API_KEY }}
+          OMDB_API_KEY: ${{ secrets.OMDB_API_KEY }}
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+        run: python3 tools/inject_keys.py
+
       - name: Project genereren
         run: |
           brew install xcodegen

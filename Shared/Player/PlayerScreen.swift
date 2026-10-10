@@ -20,7 +20,7 @@ struct PlayerScreen: View {
     @StateObject private var cast = CastManager.shared
     #endif
 
-    enum Panel: String, Identifiable { case audioSubs, opensubs, options, cast, sources; var id: String { rawValue } }
+    enum Panel: String, Identifiable { case audioSubs, opensubs, options, cast, sources, rate; var id: String { rawValue } }
 
     init(item: PlayableItem) {
         self.item = item
@@ -108,6 +108,8 @@ struct PlayerScreen: View {
             case .audioSubs: TracksPanel(player: player)
             case .opensubs: OpenSubtitlesPanel(player: player)
             case .options: OptionsPanel(player: player)
+            case .rate:
+                RatingPanel(item: player.item) { close() }
             case .sources: StremioSourcesPanel(streams: stremioChoices) { s in
                     panel = nil
                     player.start(url: s.url)
@@ -269,6 +271,13 @@ struct PlayerScreen: View {
 
     private func start(_ it: PlayableItem) async {
         player.item = it
+        player.onFinished = {
+            if TraktSync.askRating, TraktSync.shared.isLoggedIn, it.imdbID != nil, it.type != .live {
+                panel = .rate
+            } else {
+                close()
+            }
+        }
         if it.type == .live, let cid = it.channelID {
             let pl = playlists
             player.catchupProvider = { from, to in pl.catchupURL(channelID: cid, start: from, end: to) }
@@ -352,5 +361,47 @@ struct StremioSourcesPanel: View {
             .navigationTitle(L("Sources"))
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button(L("Close")) { dismiss() } } }
         }
+    }
+}
+
+/// Na afloop: waardering (1–10) naar Trakt.
+struct RatingPanel: View {
+    let item: PlayableItem
+    let onDone: () -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var rating = 0
+
+    var body: some View {
+        VStack(spacing: tvScaled(18)) {
+            Text(L("What did you think?")).font(.system(size: tvScaled(22), weight: .bold))
+            Text(item.title + (item.subtitle.map { " · \($0)" } ?? "")).foregroundStyle(Theme.secondary).lineLimit(2)
+                .multilineTextAlignment(.center)
+            HStack(spacing: tvScaled(6)) {
+                ForEach(1...10, id: \.self) { n in
+                    Button { rating = n } label: {
+                        Image(systemName: n <= rating ? "heart.fill" : "heart")
+                            .font(.system(size: tvScaled(24)))
+                            .foregroundStyle(n <= rating ? Theme.red : Theme.secondary)
+                    }
+                    .plainTVButton()
+                }
+            }
+            if rating > 0 { Text("\(rating)/10").font(.headline) }
+            HStack(spacing: tvScaled(14)) {
+                NetflixButton(title: L("Skip"), icon: "xmark", kind: .secondary) { dismiss(); onDone() }
+                NetflixButton(title: L("Rate on Trakt"), icon: "checkmark", kind: .accent) {
+                    let r = rating, it = item
+                    Task { await TraktSync.shared.rate(it, r) }
+                    dismiss(); onDone()
+                }
+                .disabled(rating == 0)
+            }
+        }
+        .padding(Theme.edge)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(hex: 0x141414).ignoresSafeArea())
+        #if os(iOS)
+        .presentationDetents([.medium])
+        #endif
     }
 }

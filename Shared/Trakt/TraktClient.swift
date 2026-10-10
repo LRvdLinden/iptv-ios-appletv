@@ -140,6 +140,14 @@ actor TraktClient {
         return d
     }
 
+    func delete(_ path: String) async throws {
+        var r = URLRequest(url: base.appendingPathComponent(path))
+        r.httpMethod = "DELETE"
+        let token = try await validToken()
+        headers(token).forEach { r.setValue($1, forHTTPHeaderField: $0) }
+        _ = try await HTTP.data(r)
+    }
+
     func post<T: Decodable>(_ path: String, body: Any, auth: Bool = true) async throws -> T {
         let d = try await postRaw(path, body: body, auth: auth)
         return try JSONDecoder.lenient.decode(T.self, from: d)
