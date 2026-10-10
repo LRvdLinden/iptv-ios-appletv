@@ -205,6 +205,12 @@ final class AVEngine: PlaybackEngine {
         ]
         player.replaceCurrentItem(with: item)
         player.playImmediately(atRate: rate)
+        #if os(tvOS)
+        // Apple TV: schakel het scherm naar het juiste dynamisch bereik (HDR/Dolby Vision) en framerate
+        if let dm = layerView.window?.avDisplayManager, dm.isDisplayCriteriaMatchingEnabled {
+            dm.preferredDisplayCriteria = asset.preferredDisplayCriteria
+        }
+        #endif
         if let s = startFraction, s > 0.01 {
             Task { @MainActor in
                 for _ in 0..<40 {
@@ -216,7 +222,12 @@ final class AVEngine: PlaybackEngine {
     }
     func play() { player.playImmediately(atRate: rate) }
     func pause() { player.pause() }
-    func stop() { player.pause(); player.replaceCurrentItem(with: nil) }
+    func stop() {
+        player.pause(); player.replaceCurrentItem(with: nil)
+        #if os(tvOS)
+        layerView.window?.avDisplayManager.preferredDisplayCriteria = nil
+        #endif
+    }
     func seek(toFraction f: Double) {
         guard duration > 0 else { return }
         player.seek(to: CMTime(seconds: duration * min(max(f, 0), 1), preferredTimescale: 600))

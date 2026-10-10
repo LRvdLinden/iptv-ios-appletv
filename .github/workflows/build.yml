@@ -24,6 +24,9 @@ jobs:
           sudo xcode-select -s "$(ls -d /Applications/Xcode_16*.app | sort -V | tail -1)"
           xcodebuild -version
 
+      - name: Vertalingen controleren
+        run: python3 tools/extract_strings.py
+
       - name: Project genereren
         run: |
           brew install xcodegen
