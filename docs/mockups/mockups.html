@@ -51,9 +51,14 @@ const CH=[["Nieuws 24","#ff6d00","Avondjournaal","20:00","20:30",.6],["Actua","#
 
 const screens = {
  // ---------- iOS ----------
- ios_splash:()=>`<div class="screen" style="display:grid;place-items:center;background:radial-gradient(circle at 50% 50%,#e5091466,#000 60%)">
-   <div style="position:relative"><div class="logo" style="font-size:96px">BINGR</div>
-   ${Array.from({length:24},(_,i)=>{const c=["#E50914","#FF4D6D","#B517FF","#2E6BFF","#FF8A00","#FF2E93"][i%6];return `<div style="position:absolute;left:${-20+i*13.5}px;top:${-40+(i*37)%30}px;width:${2+(i*7)%5}px;height:${120+(i*13)%60}px;border-radius:4px;background:linear-gradient(transparent,${c},transparent);opacity:.75;mix-blend-mode:screen"></div>`}).join('')}</div></div>`,
+ ios_splash:()=>`<div class="screen" style="background:#000">
+   ${Array.from({length:15},(_,k)=>{const c=Math.floor(k/3),r=k%3;const w=86*(0.85+((k*37)%25)/100);const x=86*(c+0.5)+((k*53)%20-10);const y=[80,420,760][r]+((k*71)%120)-60;const rot=((k*29)%30)-15;const p=P[k%P.length];
+     return `<div class="poster" style="position:absolute;left:${x-w/2}px;top:${y}px;width:${w}px;height:${w*1.5}px;border-radius:8px;transform:rotate(${rot}deg);background:linear-gradient(160deg,${p[2]},${p[1]} 70%);font-size:${w*.13}px;box-shadow:0 6px 14px #0009"><span>${p[0]}</span></div>`}).join('')}
+   <div style="position:absolute;inset:0;background:linear-gradient(#0003,#000f 50%,#0003)"></div>
+   <div style="position:absolute;top:50%;left:0;right:0;transform:translateY(-50%);text-align:center">
+     <div style="font-family:ui-rounded,'SF Pro Rounded',system-ui;font-weight:900;font-size:78px;letter-spacing:2px;text-shadow:0 0 30px #000">BINGR</div>
+     <div style="margin:6px auto 0;width:240px;height:6px;border-radius:6px;background:var(--red)"></div>
+   </div></div>`,
  ios_picker:()=>`<div class="screen"><div class="status"><span>20:41</span><span>●●● 5G ▮</span></div>
    <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px"><div class="logo" style="font-size:26px">BINGR</div><span style="font-weight:600">Beheren</span></div>
    <div style="text-align:center;margin-top:120px;font-size:26px;font-weight:500">Wat wil je kijken?</div>
