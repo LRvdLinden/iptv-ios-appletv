@@ -1,0 +1,82 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Xcode-versie kiezen
+        run: |
+          sudo xcode-select -s "$(ls -d /Applications/Xcode_16*.app | sort -V | tail -1)"
+          xcodebuild -version
+
+      - name: Project genereren
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Packages ophalen
+        run: xcodebuild -resolvePackageDependencies -project Bingr.xcodeproj -scheme Bingr
+
+      - name: Build iOS (simulator, zonder signing)
+        id: ios
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          xcodebuild build -project Bingr.xcodeproj -scheme Bingr \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO 2>&1 | tee ios.log
+
+      - name: Build tvOS (simulator, zonder signing)
+        id: tvos
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          xcodebuild build -project Bingr.xcodeproj -scheme BingrTV \
+            -destination 'generic/platform=tvOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO 2>&1 | tee tvos.log
+
+      - name: Build-rapport publiceren (branch ci-logs)
+        if: always()
+        run: |
+          mkdir -p report
+          {
+            echo "commit: $GITHUB_SHA"
+            echo "ios: ${{ steps.ios.outcome }}"
+            echo "tvos: ${{ steps.tvos.outcome }}"
+            echo
+            echo "=== iOS errors ==="
+            grep -E "error:|warning: .*(unavailable|deprecated in)" ios.log | sort -u | head -300 || true
+            echo
+            echo "=== tvOS errors ==="
+            grep -E "error:" tvos.log | sort -u | head -300 || true
+          } > report/latest.txt
+          tail -n 200 ios.log > report/ios-tail.txt || true
+          tail -n 200 tvos.log > report/tvos-tail.txt || true
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git fetch origin ci-logs || true
+          git switch --orphan ci-logs-tmp
+          git rm -rf --quiet . || true
+          cp report/*.txt .
+          git add latest.txt ios-tail.txt tvos-tail.txt
+          git commit -m "build $GITHUB_SHA ios=${{ steps.ios.outcome }} tvos=${{ steps.tvos.outcome }}"
+          git push -f origin HEAD:ci-logs
+
+      - name: Status
+        if: steps.ios.outcome != 'success' || steps.tvos.outcome != 'success'
+        run: exit 1
