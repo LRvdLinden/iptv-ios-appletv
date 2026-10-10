@@ -26,16 +26,22 @@ enum Theme {
 }
 
 /// Netflix-achtige "N"-wordmark voor Bingr.
+/// Bingr-logo (zelfde als in de intro): witte afgeronde letters met een rode streep eronder.
 struct BingrLogo: View {
     var size: CGFloat = 34
     var body: some View {
-        Text("BINGR")
-            .font(.system(size: size, weight: .black, design: .default))
-            .kerning(-size * 0.04)
-            .foregroundStyle(LinearGradient(colors: [Color(hex: 0xFF2A2A), Theme.red, Color(hex: 0xB20710)],
-                                            startPoint: .top, endPoint: .bottom))
-            .scaleEffect(x: 0.92, y: 1.12)
-            .shadow(color: Theme.red.opacity(0.4), radius: size * 0.2)
+        VStack(alignment: .center, spacing: size * 0.1) {
+            Text("BINGR")
+                .font(.system(size: size, weight: .heavy, design: .rounded))
+                .kerning(size * 0.02)
+                .foregroundStyle(.white)
+            Capsule().fill(Theme.red)
+                .frame(height: max(2, size * 0.09))
+                .padding(.horizontal, size * 0.04)
+        }
+        .fixedSize()
+        .shadow(color: .black.opacity(0.5), radius: size * 0.15)
+        .accessibilityLabel("Bingr")
     }
 }
 

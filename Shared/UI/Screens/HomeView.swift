@@ -271,6 +271,8 @@ struct HomeView: View {
 
     private func prepare() async {
         guard !lib.movies.isEmpty || !lib.series.isEmpty else { hero = nil; return }
+        // meteen een eerste "Voor jou" uit je eigen kijkgedrag, daarna verfijnen via Trakt
+        if forYou.isEmpty { forYou = await buildForYou(useNetwork: false) }
         // Trending op Trakt koppelen aan wat in jouw afspeellijst zit
         if filter != .series, trendingMovies.isEmpty {
             let t = await trakt.trending(shows: false)
@@ -297,7 +299,7 @@ struct HomeView: View {
 
     /// "Voor jou": Trakt-aanbevelingen die in je lijst staan, aangevuld met
     /// onbekeken titels uit de groepen waar je het meest kijkt, en trending.
-    private func buildForYou() async -> [DetailTarget] {
+    private func buildForYou(useNetwork: Bool = true) async -> [DetailTarget] {
         var out: [DetailTarget] = []
         var seen = Set<String>()
         func add(_ t: DetailTarget) {
@@ -321,17 +323,17 @@ struct HomeView: View {
         if filter == .movies { seeds.removeAll { $0.show } }
         if filter == .series { seeds.removeAll { !$0.show } }
         var seenSeeds = Set<String>()
-        for seed in seeds where seenSeeds.insert(seed.imdb).inserted {
+        for seed in seeds where useNetwork && seenSeeds.insert(seed.imdb).inserted {
             let rel = await trakt.related(imdb: seed.imdb, shows: seed.show)
             if seed.show { match(rel, in: lib.series, title: \.title, year: \.year).prefix(6).forEach { add(.series($0)) } }
             else { match(rel, in: lib.movies, title: \.title, year: \.year).prefix(6).forEach { add(.movie($0)) } }
         }
 
         // 2. persoonlijke Trakt-aanbevelingen
-        async let rm = trakt.recommendations(shows: false)
-        async let rs = trakt.recommendations(shows: true)
-        let recMovies = match(await rm, in: lib.movies, title: \.title, year: \.year)
-        let recSeries = match(await rs, in: lib.series, title: \.title, year: \.year)
+        let rmList = useNetwork ? await trakt.recommendations(shows: false) : []
+        let rsList = useNetwork ? await trakt.recommendations(shows: true) : []
+        let recMovies = match(rmList, in: lib.movies, title: \.title, year: \.year)
+        let recSeries = match(rsList, in: lib.series, title: \.title, year: \.year)
         for (a, b) in zip(recMovies.prefix(15), recSeries.prefix(15)) { add(.movie(a)); add(.series(b)) }
         recMovies.dropFirst(15).prefix(5).forEach { add(.movie($0)) }
         recSeries.dropFirst(15).prefix(5).forEach { add(.series($0)) }
