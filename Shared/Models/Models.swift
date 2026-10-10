@@ -7,7 +7,33 @@ enum PlaylistKind: String, Codable, CaseIterable, Identifiable {
     case m3u = "M3U / M3U8"
     case xtream = "Xtream Codes"
     case stalker = "Stalker / MAC-portal"
+    case plex = "Plex"
+    case jellyfin = "Jellyfin"
+    case emby = "Emby"
+    case stremio = "Stremio"
     var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .m3u: return "M3U"
+        case .xtream: return "Xtream"
+        case .stalker: return L("MAC portal")
+        default: return rawValue
+        }
+    }
+    var symbol: String {
+        switch self {
+        case .m3u: return "list.bullet.rectangle"
+        case .xtream: return "server.rack"
+        case .stalker: return "tv"
+        case .plex: return "play.rectangle.on.rectangle"
+        case .jellyfin: return "drop"
+        case .emby: return "e.square"
+        case .stremio: return "puzzlepiece.extension"
+        }
+    }
+    /// Bronnen die vooral films/series leveren (geen live TV)
+    var isMediaServer: Bool { [.plex, .jellyfin, .emby, .stremio].contains(self) }
 }
 
 /// Avatar van een afspeellijst: een SF Symbol op een kleurverloop (Netflix-profielstijl).
@@ -103,6 +129,8 @@ struct Series: Identifiable, Hashable, Codable {
     var imdbID: String?
     var plot: String?
     var rating: Double?
+    /// ID bij Plex/Jellyfin/Emby/Stremio (afleveringen worden later opgehaald)
+    var remoteID: String? = nil
     var xtreamSeriesID: Int?
     /// Bij M3U zitten afleveringen al in de lijst
     var episodes: [Episode] = []
@@ -176,6 +204,10 @@ struct PlayableItem: Identifiable, Hashable {
     var artwork: URL?
     var stalkerCmd: String?
     var resumeAt: Double = 0     // 0...1
+    /// Stremio: "movie|tt123" of "series|tt123:1:2" — stream wordt bij afspelen opgezocht
+    var stremio: String? = nil
+    /// Kanaal (voor catch-up/timeshift en zappen)
+    var channelID: String? = nil
 }
 
 // MARK: - Metadata -----------------------------------------------------------

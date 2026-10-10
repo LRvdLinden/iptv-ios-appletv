@@ -23,6 +23,10 @@ final class CloudStore: ObservableObject {
     @Published private(set) var localWatched: Set<String> = []       // fallback zonder Trakt
     @Published private(set) var recentChannels: [String] = []
     @Published var lastSync: Date?
+    /// Per afspeellijst: hernoemd, verborgen, volgorde, samengevoegd
+    @Published private(set) var customizations: [UUID: Customization] = [:]
+    @Published private(set) var parental = ParentalSettings()
+    @Published private(set) var reminders: [ProgramReminder] = []
 
     private let kv = NSUbiquitousKeyValueStore.default
     private let local = UserDefaults.standard
@@ -30,7 +34,8 @@ final class CloudStore: ObservableObject {
 
     private enum K {
         static let playlists = "playlists.v1", favorites = "favorites.v1", myList = "mylist.v1",
-                   progress = "progress.v1", watched = "watched.v1", recent = "recent.v1"
+                   progress = "progress.v1", watched = "watched.v1", recent = "recent.v1",
+                   custom = "custom.v1", parental = "parental.v1", reminders = "reminders.v1"
     }
 
     private init() {
@@ -66,6 +71,9 @@ final class CloudStore: ObservableObject {
         myList = decode(Set<String>.self, K.myList) ?? []
         localWatched = decode(Set<String>.self, K.watched) ?? []
         recentChannels = decode([String].self, K.recent) ?? []
+        customizations = decode([UUID: Customization].self, K.custom) ?? [:]
+        parental = decode(ParentalSettings.self, K.parental) ?? ParentalSettings()
+        reminders = (decode([ProgramReminder].self, K.reminders) ?? []).filter { $0.start > Date().addingTimeInterval(-3600) }
         let remote = decode([String: ProgressEntry].self, K.progress) ?? [:]
         if mergeProgress {
             var merged = progress
@@ -135,4 +143,61 @@ final class CloudStore: ObservableObject {
         recentChannels = Array(recentChannels.prefix(20))
         write(recentChannels, K.recent)
     }
+
+    // MARK: beheren (hernoemen / verbergen / volgorde / samenvoegen)
+
+    func customization(_ playlist: UUID) -> Customization { customizations[playlist] ?? Customization() }
+
+    func updateCustomization(_ playlist: UUID, _ change: (inout Customization) -> Void) {
+        var c = customization(playlist)
+        change(&c)
+        customizations[playlist] = c
+        write(customizations, K.custom)
+    }
+
+    // MARK: kinderslot
+
+    func updateParental(_ change: (inout ParentalSettings) -> Void) {
+        change(&parental)
+        write(parental, K.parental)
+    }
+
+    // MARK: herinneringen
+
+    func addReminder(_ r: ProgramReminder) {
+        reminders.removeAll { $0.id == r.id }
+        reminders.append(r)
+        write(reminders, K.reminders)
+    }
+    func removeReminder(_ id: String) {
+        reminders.removeAll { $0.id == id }
+        write(reminders, K.reminders)
+    }
+    func hasReminder(_ id: String) -> Bool { reminders.contains { $0.id == id } }
+}
+
+/// Aanpassingen van de gebruiker op een afspeellijst (gesynchroniseerd via iCloud).
+struct Customization: Codable, Hashable {
+    var renamed: [String: String] = [:]        // item-id of "group:<naam>" → nieuwe naam
+    var hidden: Set<String> = []               // item-id of "group:<naam>"
+    var groupOrder: [String] = []              // groepen in eigen volgorde (live)
+    var channelOrder: [String: [String]] = [:] // groep → kanaal-id's
+    var merged: [String: String] = [:]         // groep → doelgroep
+
+    static func groupKey(_ g: String) -> String { "group:\(g)" }
+}
+
+struct ParentalSettings: Codable, Hashable {
+    var enabled = false
+    var lockedGroups: Set<String> = []          // "<playlistID>|<groep>"
+    var autoLockAdult = true                    // groepen met "adult", "xxx", "18+" automatisch op slot
+}
+
+struct ProgramReminder: Codable, Hashable, Identifiable {
+    var id: String               // channelID + start
+    var playlistID: UUID
+    var channelID: String
+    var channelName: String
+    var title: String
+    var start: Date
 }

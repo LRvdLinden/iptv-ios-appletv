@@ -44,7 +44,7 @@ struct SearchView: View {
             .onChange(of: query) { _, q in
                 Task {
                     try? await Task.sleep(nanoseconds: 250_000_000)
-                    if q == query { results = playlists.search(q) }
+                    if q == query { results = await playlists.search(q) }
                 }
             }
         }
