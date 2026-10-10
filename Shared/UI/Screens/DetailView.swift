@@ -525,10 +525,7 @@ struct DetailView: View {
                         if h.playlist.id == pid { openLocal(h.itemID) } else { dismiss(); app.open(h.playlist, thenShow: h.itemID) }
                     } label: {
                         HStack(spacing: 12) {
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 6).fill(h.playlist.avatar.gradient)
-                                Image(systemName: h.playlist.avatar.symbol).font(.system(size: 14, weight: .bold))
-                            }.frame(width: 34, height: 34)
+                            MiniAvatar(playlist: h.playlist, size: 34)
                             VStack(alignment: .leading) {
                                 Text(h.playlist.name)
                                 Text(h.subtitle).font(.caption).foregroundStyle(Theme.secondary)

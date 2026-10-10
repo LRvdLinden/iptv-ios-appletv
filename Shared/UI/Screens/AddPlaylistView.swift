@@ -1,4 +1,7 @@
 import SwiftUI
+#if os(iOS)
+import PhotosUI
+#endif
 
 /// Afspeellijst toevoegen/bewerken — naam, avatar (icoon + kleur) en verbindingsgegevens.
 struct AddPlaylistView: View {
@@ -24,6 +27,11 @@ struct AddPlaylistView: View {
     @State private var plexPin: PlexClient.Pin?
     @State private var plexToken: String?
     @State private var plexTask: Task<Void, Never>?
+    // profielfoto
+    @State private var photo: Data?
+    #if os(iOS)
+    @State private var photoItem: PhotosPickerItem?
+    #endif
 
     private var kindColumns: [GridItem] {
         #if os(tvOS)
@@ -37,7 +45,7 @@ struct AddPlaylistView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: tvScaled(18)) {
-                    HStack { Spacer(); AvatarTile(name: name.isEmpty ? L("New playlist") : name, avatar: avatar)
+                    HStack { Spacer(); AvatarTile(name: name.isEmpty ? L("New playlist") : name, avatar: avatar, photo: photo)
                         .frame(width: tvScaled(110)); Spacer() }
 
                     section(L("Choose the playlist type")) {
@@ -87,6 +95,8 @@ struct AddPlaylistView: View {
                             }
                         }
                     }
+
+                    section(L("Profile photo")) { photoControls }
 
                     kindFields
 
@@ -222,6 +232,56 @@ struct AddPlaylistView: View {
         }
     }
 
+    // MARK: profielfoto
+
+    @ViewBuilder private var photoControls: some View {
+        #if os(iOS)
+        HStack(spacing: 12) {
+            PhotosPicker(selection: $photoItem, matching: .images) {
+                Label(photo == nil ? L("Choose from Photos") : L("Change photo"), systemImage: "photo.on.rectangle")
+                    .font(.system(size: 15, weight: .semibold))
+                    .padding(.horizontal, 16).padding(.vertical, 11)
+                    .background(Theme.elevated, in: Capsule())
+            }
+            if photo != nil {
+                Button(role: .destructive) { withAnimation { photo = nil; photoItem = nil } } label: {
+                    Label(L("Remove photo"), systemImage: "trash").font(.system(size: 15))
+                }
+            }
+        }
+        .onChange(of: photoItem) { _, item in
+            guard let item else { return }
+            Task {
+                if let data = try? await item.loadTransferable(type: Data.self), let small = Self.thumbnail(data) {
+                    withAnimation { photo = small }
+                }
+            }
+        }
+        Text(L("A photo replaces the icon.")).font(.caption).foregroundStyle(Theme.secondary)
+        #else
+        Text(photo == nil ? L("Choose a profile photo on your iPhone or iPad; it appears here automatically via iCloud.")
+                          : L("Profile photo set on your iPhone or iPad."))
+            .font(.system(size: 22)).foregroundStyle(Theme.secondary)
+        #endif
+    }
+
+    #if os(iOS)
+    /// Vierkant uitsnijden en verkleinen tot 320 px JPEG (±20 KB) zodat het via iCloud past.
+    static func thumbnail(_ data: Data) -> Data? {
+        guard let img = UIImage(data: data) else { return nil }
+        let side = min(img.size.width, img.size.height)
+        let crop = CGRect(x: (img.size.width - side) / 2, y: (img.size.height - side) / 2, width: side, height: side)
+        let target = CGSize(width: 320, height: 320)
+        let renderer = UIGraphicsImageRenderer(size: target)
+        let out = renderer.image { _ in
+            let scale = target.width / side
+            img.draw(in: CGRect(x: -crop.minX * scale, y: -crop.minY * scale,
+                                width: img.size.width * scale, height: img.size.height * scale))
+        }
+        return out.jpegData(compressionQuality: 0.72)
+    }
+    #endif
+
     // MARK: helpers
 
     private var canSave: Bool {
@@ -241,6 +301,7 @@ struct AddPlaylistView: View {
         kind = p.kind; name = p.name; avatar = p.avatar; m3uURL = p.m3uURL; epgURL = p.epgURL
         server = p.serverURL; username = p.username; mac = p.macAddress; preferHLS = p.preferHLS
         if p.kind != .plex && p.kind != .stremio { password = Keychain.get(p.passwordKey) ?? "" }
+        photo = store.photos[p.id]
     }
 
     private func save() {
@@ -284,6 +345,7 @@ struct AddPlaylistView: View {
                     }
                 }
                 store.upsert(p)
+                if photo != store.photos[p.id] { store.setPhoto(photo, for: p.id) }
                 app.playlists.clearCache(p)
                 dismiss()
             } catch {

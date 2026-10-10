@@ -252,10 +252,7 @@ struct HomeView: View {
             Spacer()
             if let s = playlists.source {
                 Button { app.switchPlaylist() } label: {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 5).fill(s.avatar.gradient)
-                        Image(systemName: s.avatar.symbol).font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
-                    }.frame(width: 30, height: 30)
+                    MiniAvatar(playlist: s, size: 30)
                 }
             }
         }

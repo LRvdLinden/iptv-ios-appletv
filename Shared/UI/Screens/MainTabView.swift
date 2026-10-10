@@ -77,7 +77,7 @@ private struct LoadingOverlay: View {
             Color.black.ignoresSafeArea()
             VStack(spacing: tvScaled(22)) {
                 if let source {
-                    AvatarTile(name: source.name, avatar: source.avatar)
+                    AvatarTile(name: source.name, avatar: source.avatar, photo: CloudStore.shared.photos[source.id])
                         .frame(width: tvScaled(110))
                         .scaleEffect(pulse ? 1.05 : 0.97)
                         .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: pulse)

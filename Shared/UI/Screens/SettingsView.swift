@@ -88,7 +88,7 @@ struct SettingsView: View {
         Section(L("Playlist")) {
             if let s = playlists.source {
                 HStack(spacing: 14) {
-                    AvatarTile(name: "", avatar: s.avatar).frame(width: tvScaled(44))
+                    AvatarTile(name: "", avatar: s.avatar, photo: store.photos[s.id]).frame(width: tvScaled(44))
                     VStack(alignment: .leading) {
                         Text(s.name).font(.headline)
                         Text(L("%@ · %d channels · %d movies · %d series", s.kind.title,

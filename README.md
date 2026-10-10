@@ -39,7 +39,7 @@ SwiftUI · iOS 17+ · tvOS 17+ · Apple- én VLC-engine · 11 talen.
 - M3U/M3U8 + XMLTV-EPG, **Xtream Codes** (incl. catch-up), **Stalker/MAC-portal**
 - **Plex** (inloggen met code op plex.tv/link), **Jellyfin**, **Emby** (films, series, live TV + gids)
 - **Stremio**: inloggen met je Stremio-account of eigen add-on-URL's (Cinemeta-catalogi, directe streams)
-- Afspeellijst-kiezer in Netflix-profielstijl met eigen **naam en avatar** per lijst
+- Afspeellijst-kiezer in Netflix-profielstijl met eigen **naam en avatar of profielfoto** (uit je fotobibliotheek) per lijst
 - **Zoeken in al je afspeellijsten** tegelijk
 
 **Kijken**

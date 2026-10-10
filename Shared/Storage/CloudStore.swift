@@ -27,6 +27,8 @@ final class CloudStore: ObservableObject {
     @Published private(set) var customizations: [UUID: Customization] = [:]
     @Published private(set) var parental = ParentalSettings()
     @Published private(set) var reminders: [ProgramReminder] = []
+    /// Eigen profielfoto's per afspeellijst (klein JPEG, ±15 KB, via iCloud gedeeld)
+    @Published private(set) var photos: [UUID: Data] = [:]
 
     private let kv = NSUbiquitousKeyValueStore.default
     private let local = UserDefaults.standard
@@ -35,7 +37,8 @@ final class CloudStore: ObservableObject {
     private enum K {
         static let playlists = "playlists.v1", favorites = "favorites.v1", myList = "mylist.v1",
                    progress = "progress.v1", watched = "watched.v1", recent = "recent.v1",
-                   custom = "custom.v1", parental = "parental.v1", reminders = "reminders.v1"
+                   custom = "custom.v1", parental = "parental.v1", reminders = "reminders.v1",
+                   photos = "photos.v1"
     }
 
     private init() {
@@ -73,6 +76,7 @@ final class CloudStore: ObservableObject {
         recentChannels = decode([String].self, K.recent) ?? []
         customizations = decode([UUID: Customization].self, K.custom) ?? [:]
         parental = decode(ParentalSettings.self, K.parental) ?? ParentalSettings()
+        photos = decode([UUID: Data].self, K.photos) ?? [:]
         reminders = (decode([ProgramReminder].self, K.reminders) ?? []).filter { $0.start > Date().addingTimeInterval(-3600) }
         let remote = decode([String: ProgressEntry].self, K.progress) ?? [:]
         if mergeProgress {
@@ -93,8 +97,14 @@ final class CloudStore: ObservableObject {
         write(playlists, K.playlists)
     }
 
+    func setPhoto(_ data: Data?, for playlist: UUID) {
+        photos[playlist] = data
+        write(photos, K.photos)
+    }
+
     func delete(_ p: PlaylistSource) {
         playlists.removeAll { $0.id == p.id }
+        if photos[p.id] != nil { setPhoto(nil, for: p.id) }
         Keychain.set(nil, for: p.passwordKey)
         write(playlists, K.playlists)
     }

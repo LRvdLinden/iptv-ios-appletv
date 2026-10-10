@@ -52,7 +52,7 @@ struct PlaylistPickerView: View {
                         Button {
                             if managing { editing = p } else { app.open(p) }
                         } label: {
-                            AvatarTile(name: p.name, avatar: p.avatar, editing: managing)
+                            AvatarTile(name: p.name, avatar: p.avatar, photo: store.photos[p.id], editing: managing)
                         }
                         .cardButton()
                         .opacity(appeared ? 1 : 0)
@@ -86,23 +86,50 @@ struct PlaylistPickerView: View {
 struct AvatarTile: View {
     let name: String
     let avatar: PlaylistAvatar
+    var photo: Data? = nil
     var editing = false
     var body: some View {
         VStack(spacing: tvScaled(8)) {
             ZStack {
                 RoundedRectangle(cornerRadius: tvScaled(8)).fill(avatar.gradient)
-                Image(systemName: avatar.symbol)
-                    .font(.system(size: tvScaled(44), weight: .semibold))
-                    .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.25), radius: 4, y: 2)
+                if let photo, let img = UIImage(data: photo) {
+                    Color.clear.overlay(Image(uiImage: img).resizable().scaledToFill())
+                        .clipShape(RoundedRectangle(cornerRadius: tvScaled(8)))
+                } else {
+                    Image(systemName: avatar.symbol)
+                        .font(.system(size: tvScaled(44), weight: .semibold))
+                        .foregroundStyle(.white)
+                        .shadow(color: .black.opacity(0.25), radius: 4, y: 2)
+                }
                 if editing {
                     RoundedRectangle(cornerRadius: tvScaled(8)).fill(.black.opacity(0.55))
                     Image(systemName: "pencil").font(.system(size: tvScaled(30), weight: .bold)).foregroundStyle(.white)
                 }
             }
             .aspectRatio(1, contentMode: .fit)
-            Text(name).font(.system(size: tvScaled(14))).foregroundStyle(Theme.secondary).lineLimit(1)
+            if !name.isEmpty {
+                Text(name).font(.system(size: tvScaled(14))).foregroundStyle(Theme.secondary).lineLimit(1)
+            }
         }
+    }
+}
+
+/// Klein avatartje (foto of icoon) voor lijsten en kopbalken.
+struct MiniAvatar: View {
+    let playlist: PlaylistSource
+    let size: CGFloat
+    @EnvironmentObject var store: CloudStore
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: size * 0.18).fill(playlist.avatar.gradient)
+            if let d = store.photos[playlist.id], let img = UIImage(data: d) {
+                Color.clear.overlay(Image(uiImage: img).resizable().scaledToFill())
+                    .clipShape(RoundedRectangle(cornerRadius: size * 0.18))
+            } else {
+                Image(systemName: playlist.avatar.symbol).font(.system(size: size * 0.45, weight: .bold)).foregroundStyle(.white)
+            }
+        }
+        .frame(width: size, height: size)
     }
 }
 

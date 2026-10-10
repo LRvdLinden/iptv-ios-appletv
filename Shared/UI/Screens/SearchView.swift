@@ -99,10 +99,7 @@ struct SearchView: View {
                             }
                             Spacer()
                             HStack(spacing: 6) {
-                                ZStack {
-                                    RoundedRectangle(cornerRadius: 4).fill(h.playlist.avatar.gradient)
-                                    Image(systemName: h.playlist.avatar.symbol).font(.system(size: tvScaled(11), weight: .bold))
-                                }.frame(width: tvScaled(22), height: tvScaled(22))
+                                MiniAvatar(playlist: h.playlist, size: tvScaled(22))
                                 Text(h.playlist.name).font(.system(size: tvScaled(11))).foregroundStyle(Theme.secondary)
                             }
                         }
