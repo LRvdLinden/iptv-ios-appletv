@@ -1,7 +1,9 @@
 # Bingr
 
-Native IPTV-app voor **iPhone, iPad en Apple TV** met de look & feel van Netflix.
-SwiftUI · iOS 17+ · tvOS 17+ · VLC-engine.
+[![Build](https://github.com/LRvdLinden/iptv-ios-appletv/actions/workflows/build.yml/badge.svg)](https://github.com/LRvdLinden/iptv-ios-appletv/actions/workflows/build.yml)
+
+Native IPTV- en mediaspeler voor **iPhone, iPad, Mac en Apple TV** met de look & feel van Netflix.
+SwiftUI · iOS 17+ · tvOS 17+ · Apple- én VLC-engine · 11 talen.
 
 ## Screenshots
 
@@ -12,8 +14,10 @@ SwiftUI · iOS 17+ · tvOS 17+ · VLC-engine.
 | Splash | Afspeellijst kiezen | Home |
 |:---:|:---:|:---:|
 | <img src="docs/screenshots/ios_splash.png" width="240"> | <img src="docs/screenshots/ios_picker.png" width="240"> | <img src="docs/screenshots/ios_home.png" width="240"> |
-| **Serie + Trakt-vinkjes** | **Live TV** | **Afspeellijst toevoegen** |
-| <img src="docs/screenshots/ios_detail.png" width="240"> | <img src="docs/screenshots/ios_live.png" width="240"> | <img src="docs/screenshots/ios_add.png" width="240"> |
+| **Serie + Trakt-vinkjes** | **Live TV** | **Tv-gids** |
+| <img src="docs/screenshots/ios_detail.png" width="240"> | <img src="docs/screenshots/ios_live.png" width="240"> | <img src="docs/screenshots/ios_guide.png" width="240"> |
+| **Afspeellijst toevoegen** | **Instellingen** | |
+| <img src="docs/screenshots/ios_add.png" width="240"> | <img src="docs/screenshots/ios_settings.png" width="240"> | |
 
 ### Apple TV
 
@@ -22,27 +26,42 @@ SwiftUI · iOS 17+ · tvOS 17+ · VLC-engine.
 | <img src="docs/screenshots/tv_home.png" width="420"> | <img src="docs/screenshots/tv_picker.png" width="420"> |
 | **Serie + afleveringen** | **Live TV** |
 | <img src="docs/screenshots/tv_detail.png" width="420"> | <img src="docs/screenshots/tv_live.png" width="420"> |
+| **Tv-gids** | **Multiview** |
+| <img src="docs/screenshots/tv_guide.png" width="420"> | <img src="docs/screenshots/tv_multiview.png" width="420"> |
 | **Trakt koppelen** | |
 | <img src="docs/screenshots/tv_trakt.png" width="420"> | |
 
 ## Functies
 
-- **Geanimeerde splash** ("tudum"-stijl: vallende letters, rode gloed, lichtlinten, zoom-in)
-- **Afspeellijst-kiezer** in Netflix-profielstijl: elke afspeellijst heeft een eigen **naam en avatar** (icoon + kleur)
-- Bronnen: **M3U/M3U8 + XMLTV-EPG**, **Xtream Codes** (incl. catch-up/terugkijken), **Stalker/MAC-portal**
-- **iCloud-sync** tussen iPhone, iPad en Apple TV: afspeellijsten, avatars, favorieten, Mijn lijst, kijkvoortgang (iCloud Key-Value Store) en wachtwoorden + Trakt/OpenSubtitles-login (iCloud-sleutelhanger)
-- **Netflix-UI**: billboard, rijen per categorie, Top 10, Verder kijken, Mijn lijst, detailpagina met seizoenen/afleveringen
-- **IMDb**: score, plot, cast, regie, genres (via OMDb, op IMDb-ID) + link naar IMDb
-- **Trailers** (YouTube, via Trakt): in-app op iOS, YouTube-app op Apple TV
-- **Trakt, 2 kanten op**
-  - inloggen met koppelcode + QR (werkt ook op Apple TV)
-  - wat je op Trakt/elders hebt gezien → **vinkjes in Bingr**
-  - afvinken in Bingr (film, aflevering, heel seizoen) → **Trakt-history**
-  - automatisch **scrobblen** tijdens afspelen, Trakt-voortgang = hervatten
-  - Mijn lijst ↔ Trakt-watchlist, Top 10 = Trakt trending in jouw afspeellijst
-- **OpenSubtitles**: inloggen met je account, zoeken op IMDb-ID (+ seizoen/aflevering), taalvoorkeur, automatisch ondertitels laden
-- **Player (VLC)**: .ts / .mkv / HLS, audio- en ondertitelsporen, snelheid, beeldverhouding, slaaptimer, zappen ↑↓ bij live TV
-- **Live TV** (UHF/IPTV+-stijl): groepen, favorieten, recent, nu/straks uit de EPG, gids per zender met terugkijken
+**Bronnen**
+- M3U/M3U8 + XMLTV-EPG, **Xtream Codes** (incl. catch-up), **Stalker/MAC-portal**
+- **Plex** (inloggen met code op plex.tv/link), **Jellyfin**, **Emby** (films, series, live TV + gids)
+- **Stremio**: inloggen met je Stremio-account of eigen add-on-URL's (Cinemeta-catalogi, directe streams)
+- Afspeellijst-kiezer in Netflix-profielstijl met eigen **naam en avatar** per lijst
+- **Zoeken in al je afspeellijsten** tegelijk
+
+**Kijken**
+- Twee engines: **Apple (AVPlayer)** voor HLS/MP4 met **HDR, Dolby Vision, Dolby Atmos** en automatisch juiste schermmodus op Apple TV; **VLC** voor .ts, .mkv, AC3/DTS en de rest. Automatisch kiezen of zelf instellen
+- **AirPlay** en **Chromecast** (zonder extra SDK)
+- **Automatisch herverbinden** bij haperende of weggevallen streams (met terugval naar de andere engine)
+- **Timeshift**: live tv pauzeren en terugspoelen (HLS-venster of catch-up), knop "terug naar live"
+- **Multiview**: tot 4 streams tegelijk, geluid van het geselecteerde beeld
+- Audio- en ondertitelsporen, **OpenSubtitles** (inloggen, zoeken op IMDb-ID, automatisch laden), snelheid, beeldverhouding, slaaptimer, zappen ↑↓
+
+**Gids & beheer**
+- **Tv-gids als raster** met nu-lijn, programma-details, **terugkijken** en **herinneringen** (melding op iPhone/iPad, banner op Apple TV)
+- **Beheren**: groepen en zenders hernoemen, herschikken, samenvoegen en verbergen
+- **Kinderslot** met pincode: groepen op slot, volwassenengroepen automatisch, 30 min ontgrendelen
+
+**Netflix-ervaring**
+- Geanimeerde splash, billboard, rijen, Top 10 (Trakt trending in jouw lijst), Verder kijken, Mijn lijst
+- **IMDb**-score, plot, cast (via OMDb) en **trailers** (via Trakt)
+- **Trakt, 2 kanten op**: koppelcode + QR, vinkjes uit Trakt in de app, afvinken in de app → Trakt, scrobblen, watchlist
+
+**Overal hetzelfde**
+- **iCloud-sync** tussen iPhone, iPad, Mac en Apple TV: afspeellijsten, avatars, favorieten, Mijn lijst, kijkvoortgang, herinneringen, aanpassingen en kinderslot; logins via de iCloud-sleutelhanger
+- **11 talen**: Engels, Nederlands, Duits, Frans, Spaans, Italiaans, Portugees, Turks, Pools, Arabisch (rechts-naar-links) en Chinees. Volgt de systeemtaal of kies zelf in Mijn Bingr
+- **Mac**: draait als iPad-app op Apple-silicon-Macs
 
 ## Installeren
 
@@ -59,25 +78,36 @@ SwiftUI · iOS 17+ · tvOS 17+ · VLC-engine.
    | OpenSubtitles | https://www.opensubtitles.com/consumers | "API consumer" aanmaken |
    | IMDb-gegevens (OMDb) | https://www.omdbapi.com/apikey.aspx | gratis: 1000 verzoeken/dag; titels worden gecachet |
 3. **Signing**: kies in Xcode je Team voor beide targets (`Bingr` en `BingrTV`).
-4. **iCloud**: zet bij beide targets de capability *iCloud → Key-value storage* aan (staat al in de entitlements) en houd dezelfde Team-ID aan, dan delen iOS en tvOS automatisch dezelfde data.
+4. **iCloud**: zet bij beide targets de capability *iCloud → Key-value storage* aan (staat al in de entitlements) en houd dezelfde Team-ID aan.
+
+Elke push naar `main` wordt door GitHub Actions gebouwd voor iOS en tvOS (simulator, zonder signing). Het build-rapport staat op de branch `ci-logs`.
+
+## Vertalingen
+
+Alle teksten staan in de code in het Engels (`L("Play")`) en worden vertaald via `Shared/Resources/Translations.json`.
+`python3 tools/extract_strings.py` controleert of elke tekst in elke taal vertaald is en of de `%@`/`%d`-codes kloppen (draait ook in CI).
 
 ## Structuur
 
 ```
 Shared/
-  App/            app-start, AppState (splash → kiezer → app)
+  App/            app-start, AppState (splash → kiezer → app), herinneringsbanner
   Models/         playlist, zender, film, serie, EPG
-  Providers/      M3U-, XMLTV-, Xtream- en Stalker-clients + cache
+  Providers/      M3U, XMLTV, Xtream, Stalker, Plex, Jellyfin/Emby, Stremio + cache en aanpassingen
   Metadata/       IMDb (OMDb) + titels opschonen
   Trakt/          login, sync, scrobble, trending
   OpenSubtitles/  login, zoeken, downloaden
-  Player/         VLC-player + bedieningspanelen
-  Storage/        iCloud KV-store + iCloud-sleutelhanger
-  UI/             Netflix-thema, kaarten, schermen
+  Player/         Apple/VLC-engines, Chromecast, AirPlay, multiview, panelen
+  Storage/        iCloud KV-store, iCloud-sleutelhanger, kinderslot, herinneringen
+  Localization/   taalsysteem (L())
+  Resources/      Translations.json
+  UI/             Netflix-thema, kaarten, schermen (home, live, gids, beheren, zoeken, instellingen)
 iOS/  tvOS/       iconen, Info.plist & entitlements (gegenereerd door XcodeGen)
+tools/            vertaalcontrole
 ```
 
 ## Opmerkingen
 
 - IMDb heeft geen gratis publieke API; daarom IMDb-gegevens via OMDb en trailers/IMDb-ID's via Trakt.
-- Bingr is een speler: je gebruikt je eigen, legale afspeellijsten.
+- Niet overgenomen van UHF: **VPN-koppeling** (vereist afspraken met VPN-aanbieders en een speciale Apple-toestemming — gebruik gewoon je eigen VPN-app) en **opnemen (DVR)** (vereist een aparte server-app thuis; catch-up dekt veel daarvan).
+- Bingr is een speler: je gebruikt je eigen, legale afspeellijsten en mediaservers.
