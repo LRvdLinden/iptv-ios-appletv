@@ -9,7 +9,7 @@ settings:
   base:
     SWIFT_VERSION: "5.9"
     MARKETING_VERSION: "1.0.0"
-    CURRENT_PROJECT_VERSION: "2"
+    CURRENT_PROJECT_VERSION: "4"
     DEVELOPMENT_TEAM: ""   # vul je eigen Team ID in (of kies in Xcode)
 
 packages:
@@ -83,6 +83,6 @@ targets:
         keychain-access-groups: [$(AppIdentifierPrefix)nl.lrvdlinden.bingr.shared]
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: nl.lrvdlinden.bingr.tv
+        PRODUCT_BUNDLE_IDENTIFIER: nl.lrvdlinden.bingr
         TARGETED_DEVICE_FAMILY: "3"
         ASSETCATALOG_COMPILER_APPICON_NAME: "App Icon & Top Shelf Image"

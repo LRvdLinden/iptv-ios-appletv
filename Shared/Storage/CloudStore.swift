@@ -77,6 +77,12 @@ final class CloudStore: ObservableObject {
         customizations = decode([UUID: Customization].self, K.custom) ?? [:]
         parental = decode(ParentalSettings.self, K.parental) ?? ParentalSettings()
         photos = decode([UUID: Data].self, K.photos) ?? [:]
+        // wachtwoorden/tokens ook via iCloud KV delen (Apple TV krijgt ze anders niet)
+        Keychain.syncFromCloud()
+        Keychain.pushToCloud(keys: playlists.flatMap { [$0.passwordKey, "playlist.\($0.id.uuidString).session"] }
+                             + ["trakt.tokens", "opensubtitles.session", "parental.pin"]
+                             + Secrets.Key.allCases.map { "apikey.\($0.rawValue)" })
+        Secrets.reload()
         reminders = (decode([ProgramReminder].self, K.reminders) ?? []).filter { $0.start > Date().addingTimeInterval(-3600) }
         let remote = decode([String: ProgressEntry].self, K.progress) ?? [:]
         if mergeProgress {

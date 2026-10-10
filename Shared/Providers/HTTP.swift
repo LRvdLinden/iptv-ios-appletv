@@ -5,6 +5,8 @@ enum HTTPError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .badURL: return L("Invalid URL")
+        case .status(let c, _) where [401, 403, 511].contains(c):
+            return L("Sign-in failed (%d). Check the username and password of this playlist.", c)
         case .status(let c, let b): return L("Server error %d: %@", c, String(b.prefix(200)))
         case .decoding(let m): return L("Couldn't read the response: %@", m)
         }
