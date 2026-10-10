@@ -1,169 +1,262 @@
 import Foundation
 import SwiftUI
-#if os(tvOS)
-import TVVLCKit
-#else
-import MobileVLCKit
-#endif
 
-/// VLC-engine: speelt ook .ts, .mkv, AC3/DTS en externe ondertitels af (net als UHF).
+/// Stuurt één afspeelsessie aan: kiest de engine (Apple of VLC), herverbindt
+/// automatisch, doet timeshift bij live, bewaart voortgang en scrobblet naar Trakt.
 @MainActor
 final class PlayerController: ObservableObject {
-    let player = VLCMediaPlayer()
+    enum EngineChoice: String, CaseIterable { case auto, apple, vlc }
+    enum Aspect: String, CaseIterable { case fit, fill, r169, r43 }
 
     @Published var item: PlayableItem
+    @Published private(set) var engine: PlaybackEngine
+    @Published private(set) var usingApple = false
     @Published private(set) var isPlaying = false
     @Published private(set) var isBuffering = true
-    @Published private(set) var position: Double = 0       // 0...1
-    @Published private(set) var currentTime: Double = 0    // sec
-    @Published private(set) var duration: Double = 0       // sec (0 = live)
+    @Published private(set) var position: Double = 0
+    @Published private(set) var currentTime: Double = 0
+    @Published private(set) var duration: Double = 0
     @Published private(set) var errorText: String?
-    @Published var rate: Float = 1 { didSet { player.rate = rate } }
+    @Published private(set) var reconnecting = false
+    /// Hoeveel seconden achter live (timeshift)
+    @Published private(set) var behindLive: Double = 0
+    @Published private(set) var subtitleText: String?
+    @Published var rate: Float = 1 { didSet { engine.rate = rate } }
     @Published var sleepAt: Date?
-    @Published var aspect: Aspect = .fit { didSet { applyAspect() } }
+    @Published var aspect: Aspect = .fit { didSet { engine.setAspect(aspect) } }
+    @Published var muted = false { didSet { engine.muted = muted } }
 
-    enum Aspect: String, CaseIterable { case fit = "Passend", fill = "Vullen", r169 = "16:9", r43 = "4:3" }
+    /// Echte afspeel-URL (na Stalker/Stremio-resolutie)
+    private(set) var url: URL?
+    var catchupProvider: (@MainActor (Date, Date) -> URL?)?
+    var onFinished: (() -> Void)?
+    /// Multiview-tegels: geen voortgang/scrobble
+    var isPreview = false
 
     private var timer: Timer?
     private var lastSaved = Date.distantPast
-    private var didResume = false
     private var didScrobbleStart = false
-    var onFinished: (() -> Void)?
+    private var stallSince: Date?
+    private var attempts = 0
+    private var pausedAt: Date?
+    private var timeshiftStart: Date?        // begin van de catch-up-stream die nu speelt
+    private var externalCues: [SubtitleCue] = []
 
-    init(item: PlayableItem) { self.item = item }
+    static var choice: EngineChoice {
+        EngineChoice(rawValue: UserDefaults.standard.string(forKey: "player.engine") ?? "") ?? .auto
+    }
 
-    var isLive: Bool { item.type == .live || duration <= 0 }
+    init(item: PlayableItem) {
+        self.item = item
+        engine = VLCEngine()
+    }
+
+    var isLive: Bool { item.type == .live }
+    var canTimeshift: Bool { isLive && (catchupProvider != nil || ((engine as? AVEngine)?.liveWindow ?? 0) > 30) }
+
+    // MARK: engine kiezen
+
+    private static func prefersApple(_ url: URL) -> Bool {
+        switch choice {
+        case .apple: return true
+        case .vlc: return false
+        case .auto:
+            let ext = url.pathExtension.lowercased()
+            let s = url.absoluteString.lowercased()
+            return ["m3u8", "mp4", "m4v", "mov"].contains(ext) || s.contains(".m3u8") || s.contains("/master.m3u8")
+        }
+    }
+
+    private func makeEngine(apple: Bool) {
+        engine.stop()
+        engine = apple ? AVEngine() : VLCEngine()
+        usingApple = apple
+        engine.rate = rate
+        engine.muted = muted
+        engine.setAspect(aspect)
+    }
 
     // MARK: afspelen
 
-    func start(url: URL) {
-        errorText = nil; didResume = false; didScrobbleStart = false
-        let media = VLCMedia(url: url)
-        media.addOption(":network-caching=\(item.type == .live ? 1500 : 3000)")
-        media.addOption(":http-user-agent=\(Secrets.userAgent)")
-        player.media = media
-        player.play()
+    func start(url: URL, forceApple: Bool? = nil) {
+        self.url = url
+        errorText = nil; didScrobbleStart = false; stallSince = nil
+        let apple = forceApple ?? Self.prefersApple(url)
+        if apple != usingApple || timer == nil { makeEngine(apple: apple) }
+        engine.load(url, live: isLive && timeshiftStart == nil, startFraction: isLive ? nil : item.resumeAt)
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in self?.tick() }
         }
     }
 
-    private func tick() {
-        let state = player.state
-        isPlaying = player.isPlaying
-        isBuffering = state == .buffering || state == .opening
-        if state == .error { errorText = "Deze stream kan niet worden afgespeeld." }
-        let len = Double(player.media?.length.intValue ?? 0) / 1000
-        duration = len
-        currentTime = Double(player.time.intValue) / 1000
-        position = len > 0 ? Double(player.position) : 0
+    /// Wisselt naar de Apple-engine (voor AirPlay) op dezelfde positie.
+    func switchToApple() {
+        guard !usingApple, let url else { return }
+        item.resumeAt = position
+        start(url: url, forceApple: true)
+    }
 
-        if isPlaying && !didResume {
-            didResume = true
-            if item.resumeAt > 0.01 && item.resumeAt < 0.95 && len > 0 { player.position = Float(item.resumeAt) }
+    private func tick() {
+        let st = engine.state
+        isPlaying = engine.isPlaying
+        isBuffering = st == .buffering || st == .opening
+        duration = engine.duration
+        currentTime = engine.time
+        position = engine.position
+        if let av = engine as? AVEngine, isLive, timeshiftStart == nil { behindLive = av.behindLive > 8 ? av.behindLive : 0 }
+
+        if !externalCues.isEmpty {
+            let t = currentTime
+            subtitleText = externalCues.last(where: { $0.start <= t })
+                .flatMap { $0.end >= t ? $0.text : nil }
         }
-        if isPlaying && !didScrobbleStart && len > 0 {
+
+        // automatisch herverbinden
+        if st == .error || (isLive && st == .ended) {
+            reconnect(reason: st == .error ? L("Stream lost") : nil)
+        } else if isBuffering && isLive {
+            if stallSince == nil { stallSince = Date() }
+            if let s = stallSince, Date().timeIntervalSince(s) > 15 { reconnect(reason: nil) }
+        } else if st == .playing {
+            stallSince = nil; attempts = 0; reconnecting = false
+        }
+
+        if isPlaying && !didScrobbleStart && duration > 0 && !isPreview {
             didScrobbleStart = true
-            Task { await TraktSync.shared.scrobble(.start, item: item, progress: position) }
+            let it = item, p = position
+            Task { await TraktSync.shared.scrobble(.start, item: it, progress: p) }
         }
         if let s = sleepAt, Date() >= s { sleepAt = nil; pause() }
         if Date().timeIntervalSince(lastSaved) > 15 { saveProgress() }
-        if state == .ended || (state == .stopped && position > 0.98) { finish() }
+        if !isLive && st == .ended { finish() }
     }
 
-    func togglePlay() { player.isPlaying ? pause() : resume() }
+    private func reconnect(reason: String?) {
+        guard let url, attempts < 6 else {
+            if attempts >= 6 { errorText = L("This stream can't be played right now."); reconnecting = false }
+            return
+        }
+        // Apple-engine faalt → eerst VLC proberen (kan meer formaten aan)
+        if usingApple && attempts == 0 && engine.state == .error {
+            attempts += 1
+            start(url: url, forceApple: false)
+            return
+        }
+        attempts += 1
+        reconnecting = true
+        stallSince = Date().addingTimeInterval(Double(attempts) * 2)  // backoff
+        let resume = position
+        let delay = UInt64(min(pow(2.0, Double(attempts - 1)), 8) * 1_000_000_000)
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: delay)
+            if !self.isLive { self.item.resumeAt = resume }
+            self.engine.load(url, live: self.isLive && self.timeshiftStart == nil, startFraction: self.isLive ? nil : resume)
+        }
+    }
+
+    func togglePlay() { engine.isPlaying ? pause() : resume() }
 
     func pause() {
-        player.pause()
+        engine.pause()
+        if isLive { pausedAt = Date() }
         saveProgress()
-        Task { await TraktSync.shared.scrobble(.pause, item: item, progress: position) }
+        if !isPreview { let it = item, p = position; Task { await TraktSync.shared.scrobble(.pause, item: it, progress: p) } }
     }
 
     func resume() {
-        player.play()
-        Task { await TraktSync.shared.scrobble(.start, item: item, progress: position) }
+        // Live gepauzeerd met catch-up: verder kijken waar je was (timeshift)
+        if isLive, let p = pausedAt, Date().timeIntervalSince(p) > 10, !usingApple, let provider = catchupProvider {
+            let from = timeshiftStart.map { $0.addingTimeInterval(currentTime) } ?? p
+            if let u = provider(from, Date().addingTimeInterval(3 * 3600)) {
+                timeshiftStart = from
+                behindLive = Date().timeIntervalSince(from)
+                pausedAt = nil
+                start(url: u)
+                return
+            }
+        }
+        pausedAt = nil
+        engine.play()
+        if !isPreview { let it = item, p = position; Task { await TraktSync.shared.scrobble(.start, item: it, progress: p) } }
     }
 
-    func seek(by seconds: Int) {
-        guard !isLive else { return }
-        if seconds >= 0 { player.jumpForward(Int32(seconds)) } else { player.jumpBackward(Int32(-seconds)) }
+    /// Spoelen. Bij live: binnen het HLS-venster, of via catch-up (timeshift).
+    func seek(by seconds: Double) {
+        if !isLive { engine.jump(seconds); return }
+        if let av = engine as? AVEngine, av.liveWindow > 30 { av.jump(seconds); return }
+        guard let provider = catchupProvider else { return }
+        let currentWall = timeshiftStart.map { $0.addingTimeInterval(currentTime) } ?? Date()
+        let target = min(currentWall.addingTimeInterval(seconds), Date())
+        if Date().timeIntervalSince(target) < 10 { goLive(); return }
+        if let u = provider(target, Date().addingTimeInterval(3 * 3600)) {
+            timeshiftStart = target
+            behindLive = Date().timeIntervalSince(target)
+            start(url: u)
+        }
     }
 
-    func seek(to fraction: Double) {
-        guard !isLive else { return }
-        player.position = Float(min(max(fraction, 0), 1))
+    func goLive() {
+        if let av = engine as? AVEngine, timeshiftStart == nil { av.goLive(); behindLive = 0; return }
+        guard timeshiftStart != nil, let u = liveURL ?? item.url else { return }
+        timeshiftStart = nil; behindLive = 0
+        start(url: u)
     }
+    /// De gewone live-URL (om na timeshift terug te keren)
+    var liveURL: URL?
+
+    func seek(to fraction: Double) { guard !isLive else { return }; engine.seek(toFraction: fraction) }
 
     func stop() {
         timer?.invalidate(); timer = nil
         saveProgress()
-        let p = position, it = item
-        Task { await TraktSync.shared.scrobble(.stop, item: it, progress: p) }
-        player.stop()
+        if !isPreview { let p = position, it = item; Task { await TraktSync.shared.scrobble(.stop, item: it, progress: p) } }
+        engine.stop()
     }
 
     private func finish() {
         timer?.invalidate(); timer = nil
         position = 1
         saveProgress()
-        let it = item
-        Task { await TraktSync.shared.scrobble(.stop, item: it, progress: 1) }
+        if !isPreview { let it = item; Task { await TraktSync.shared.scrobble(.stop, item: it, progress: 1) } }
         onFinished?()
     }
 
     private func saveProgress() {
         lastSaved = Date()
-        guard item.type != .live, duration > 60 else { return }
+        guard !isPreview, item.type != .live, duration > 60 else { return }
         let store = CloudStore.shared
         if position >= 0.9 {
             store.clearProgress(item.id)
             store.setLocalWatched(item.id, true)
         } else if position > 0.02 {
             store.setProgress(item.id, ProgressEntry(fraction: position, position: currentTime, updated: Date(),
-                                                     title: item.title, artwork: item.artwork,
-                                                     playlistID: nil))
+                                                     title: item.title, artwork: item.artwork, playlistID: nil))
         }
     }
 
-    // MARK: sporen
+    // MARK: sporen & ondertitels
 
-    struct Track: Identifiable, Hashable { var id: Int32; var name: String }
+    var audioTracks: [MediaTrack] { engine.audioTracks }
+    var subtitleTracks: [MediaTrack] { engine.subtitleTracks }
+    var currentAudio: String? { engine.currentAudio }
+    var currentSubtitle: String? { externalCues.isEmpty ? engine.currentSubtitle : "ext" }
+    var hasExternalSubtitle: Bool { !externalCues.isEmpty }
 
-    var audioTracks: [Track] { tracks(player.audioTrackNames, player.audioTrackIndexes) }
-    var subtitleTracks: [Track] { tracks(player.videoSubTitlesNames, player.videoSubTitlesIndexes) }
-    var currentAudio: Int32 { player.currentAudioTrackIndex }
-    var currentSubtitle: Int32 { player.currentVideoSubTitleIndex }
-
-    func selectAudio(_ t: Track) { player.currentAudioTrackIndex = t.id; objectWillChange.send() }
-    func selectSubtitle(_ t: Track) { player.currentVideoSubTitleIndex = t.id; objectWillChange.send() }
+    func selectAudio(_ t: MediaTrack) { engine.selectAudio(t); objectWillChange.send() }
+    func selectSubtitle(_ t: MediaTrack?) {
+        externalCues = []; subtitleText = nil
+        engine.selectSubtitle(t); objectWillChange.send()
+    }
 
     func addSubtitle(file: URL) {
-        player.addPlaybackSlave(file, type: .subtitle, enforce: true)
-        objectWillChange.send()
-    }
-
-    private func tracks(_ names: [Any]?, _ idx: [Any]?) -> [Track] {
-        let n = names?.compactMap { $0 as? String } ?? []
-        let i = idx?.compactMap { ($0 as? NSNumber)?.int32Value } ?? []
-        return zip(i, n).map { Track(id: $0, name: $1) }
-    }
-
-    private func applyAspect() {
-        switch aspect {
-        case .fit: player.videoAspectRatio = nil; player.scaleFactor = 0
-        case .fill:
-            player.videoAspectRatio = nil
-            #if os(tvOS)
-            let b = UIScreen.main.bounds
-            #else
-            let b = UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.screen.bounds }.first ?? .zero
-            #endif
-            let ratio = "\(Int(b.width)):\(Int(b.height))"
-            ratio.withCString { player.videoAspectRatio = UnsafeMutablePointer(mutating: $0) }
-        case .r169: "16:9".withCString { player.videoAspectRatio = UnsafeMutablePointer(mutating: $0) }
-        case .r43: "4:3".withCString { player.videoAspectRatio = UnsafeMutablePointer(mutating: $0) }
+        if engine.supportsExternalSubtitles {
+            engine.addSubtitle(file)
+        } else if let d = try? Data(contentsOf: file) {
+            engine.selectSubtitle(nil)
+            externalCues = SRT.parse(d)
         }
+        objectWillChange.send()
     }
 
     static func format(_ s: Double) -> String {
@@ -173,13 +266,39 @@ final class PlayerController: ObservableObject {
     }
 }
 
-/// UIView waarin VLC tekent.
-struct VLCVideoView: UIViewRepresentable {
-    let controller: PlayerController
-    func makeUIView(context: Context) -> UIView {
-        let v = UIView(); v.backgroundColor = .black
-        controller.player.drawable = v
-        return v
+extension PlayerController.Aspect {
+    var title: String {
+        switch self { case .fit: return L("Fit"); case .fill: return L("Fill"); case .r169: return "16:9"; case .r43: return "4:3" }
     }
-    func updateUIView(_ uiView: UIView, context: Context) {}
+}
+
+extension PlayerController.EngineChoice {
+    var title: String {
+        switch self {
+        case .auto: return L("Automatic")
+        case .apple: return L("Apple (HDR, AirPlay)")
+        case .vlc: return L("VLC (all formats)")
+        }
+    }
+}
+
+/// Toont de video van de actieve engine.
+struct EngineView: UIViewRepresentable {
+    @ObservedObject var controller: PlayerController
+    func makeUIView(context: Context) -> UIView {
+        let host = UIView(); host.backgroundColor = .black
+        attach(controller.engine.view, to: host)
+        return host
+    }
+    func updateUIView(_ host: UIView, context: Context) {
+        if controller.engine.view.superview !== host {
+            host.subviews.forEach { $0.removeFromSuperview() }
+            attach(controller.engine.view, to: host)
+        }
+    }
+    private func attach(_ v: UIView, to host: UIView) {
+        v.frame = host.bounds
+        v.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        host.addSubview(v)
+    }
 }

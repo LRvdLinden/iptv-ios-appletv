@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Audio- en ondertitelsporen die in de stream zitten (VLC).
+/// Audio- en ondertitelsporen die in de stream zitten.
 struct TracksPanel: View {
     @ObservedObject var player: PlayerController
     @Environment(\.dismiss) private var dismiss
@@ -8,19 +8,22 @@ struct TracksPanel: View {
     var body: some View {
         NavigationStack {
             List {
-                Section("Audio") {
+                Section(L("Audio")) {
+                    if player.audioTracks.isEmpty { Text(L("No alternative audio tracks")).foregroundStyle(Theme.secondary) }
                     ForEach(player.audioTracks) { t in
                         row(t.name, selected: t.id == player.currentAudio) { player.selectAudio(t) }
                     }
                 }
-                Section("Ondertitels") {
+                Section(L("Subtitles")) {
+                    row(L("Off"), selected: player.currentSubtitle == nil) { player.selectSubtitle(nil) }
+                    if player.hasExternalSubtitle { row("OpenSubtitles", selected: true) {} }
                     ForEach(player.subtitleTracks) { t in
-                        row(t.id == -1 ? "Uit" : t.name, selected: t.id == player.currentSubtitle) { player.selectSubtitle(t) }
+                        row(t.name, selected: t.id == player.currentSubtitle) { player.selectSubtitle(t) }
                     }
                 }
             }
-            .navigationTitle("Audio & ondertitels")
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Klaar") { dismiss() } } }
+            .navigationTitle(L("Audio & subtitles"))
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button(L("Done")) { dismiss() } } }
         }
     }
 
@@ -45,7 +48,7 @@ struct OpenSubtitlesPanel: View {
         NavigationStack {
             List {
                 if !subs.isLoggedIn {
-                    Text("Log in bij OpenSubtitles via Mijn Bingr → OpenSubtitles om ondertitels te downloaden.")
+                    Text(L("Sign in to OpenSubtitles under My Bingr → OpenSubtitles to download subtitles."))
                         .foregroundStyle(Theme.secondary)
                 }
                 if loading { ProgressView().frame(maxWidth: .infinity) }
@@ -83,20 +86,20 @@ struct OpenSubtitlesPanel: View {
                 }
             }
             .navigationTitle("OpenSubtitles")
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Sluit") { dismiss() } } }
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button(L("Close")) { dismiss() } } }
             .task {
                 defer { loading = false }
-                guard let imdb = player.item.imdbID else { error = "Geen IMDb-ID bekend voor deze titel."; return }
+                guard let imdb = player.item.imdbID else { error = L("No IMDb ID known for this title."); return }
                 do {
                     results = try await subs.search(imdbID: imdb, season: player.item.season, episode: player.item.episode)
-                    if results.isEmpty { error = "Geen ondertitels gevonden in \(subs.preferredLanguages.joined(separator: ", "))." }
+                    if results.isEmpty { error = L("No subtitles found in %@.", subs.preferredLanguages.joined(separator: ", ")) }
                 } catch { self.error = error.localizedDescription }
             }
         }
     }
 }
 
-/// Snelheid, beeldverhouding en slaaptimer.
+/// Snelheid, beeld, engine en slaaptimer.
 struct OptionsPanel: View {
     @ObservedObject var player: PlayerController
     @Environment(\.dismiss) private var dismiss
@@ -105,33 +108,40 @@ struct OptionsPanel: View {
         NavigationStack {
             List {
                 if !player.isLive {
-                    Section("Snelheid") {
+                    Section(L("Speed")) {
                         ForEach([Float(0.75), 1, 1.25, 1.5, 2], id: \.self) { r in
-                            Button { player.rate = r } label: {
-                                HStack { Text(r == 1 ? "Normaal" : "\(r.formatted())×"); Spacer()
-                                    if player.rate == r { Image(systemName: "checkmark").foregroundStyle(Theme.red) } }
-                            }
+                            check(r == 1 ? L("Normal") : "\(r.formatted())×", player.rate == r) { player.rate = r }
                         }
                     }
                 }
-                Section("Beeld") {
+                Section(L("Picture")) {
                     ForEach(PlayerController.Aspect.allCases, id: \.self) { a in
-                        Button { player.aspect = a } label: {
-                            HStack { Text(a.rawValue); Spacer()
-                                if player.aspect == a { Image(systemName: "checkmark").foregroundStyle(Theme.red) } }
-                        }
+                        check(a.title, player.aspect == a) { player.aspect = a }
                     }
                 }
-                Section("Slaaptimer") {
+                Section {
+                    Text(player.usingApple ? L("Now playing with: Apple") : L("Now playing with: VLC"))
+                        .foregroundStyle(Theme.secondary)
+                    if !player.usingApple {
+                        Button(L("Try Apple player (HDR, Dolby Vision, AirPlay)")) { player.switchToApple(); dismiss() }
+                    }
+                } header: { Text(L("Player engine")) }
+                Section(L("Sleep timer")) {
                     ForEach([0, 15, 30, 45, 60, 90], id: \.self) { m in
                         Button {
                             player.sleepAt = m == 0 ? nil : Date().addingTimeInterval(Double(m) * 60)
-                        } label: { Text(m == 0 ? "Uit" : "Over \(m) minuten") }
+                        } label: { Text(m == 0 ? L("Off") : L("In %d minutes", m)) }
                     }
                 }
             }
-            .navigationTitle("Opties")
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Klaar") { dismiss() } } }
+            .navigationTitle(L("Options"))
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button(L("Done")) { dismiss() } } }
+        }
+    }
+
+    private func check(_ title: String, _ on: Bool, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack { Text(title); Spacer(); if on { Image(systemName: "checkmark").foregroundStyle(Theme.red) } }
         }
     }
 }
