@@ -15,6 +15,7 @@ struct HomeView: View {
     @State private var trendingMovies: [Movie] = []
     @State private var trendingSeries: [Series] = []
     @State private var forYou: [DetailTarget] = []
+    @State private var category: CategoryTarget?
     @State private var scrollOffset: CGFloat = 0
 
     private var lib: Library { playlists.library }
@@ -46,6 +47,7 @@ struct HomeView: View {
         }
         .background(Color.black)
         .task(id: "\(pid?.uuidString ?? "")-\(lib.movies.count)-\(lib.series.count)") { await prepare() }
+        .fullScreenCover(item: $category) { CategoryView(target: $0) }
         #if os(iOS)
         .sheet(item: $detail) { DetailView(target: $0).presentationDragIndicator(.visible) }
         #else
@@ -58,17 +60,19 @@ struct HomeView: View {
     @ViewBuilder private var rows: some View {
         if filter != .series {
             let mine = lib.movies.filter { m in pid.map { store.inMyList($0, m.id) } ?? false }
-            if !mine.isEmpty { movieRow(L("My List"), mine) }
+            if !mine.isEmpty { movieRow(L("My List"), mine, all: mine) }
             if !trendingMovies.isEmpty { top10Row(L("Top 10 movies today"), movies: Array(trendingMovies.prefix(10))) }
             let recent = lib.movies.filter { $0.addedAt != nil }.sorted { $0.addedAt! > $1.addedAt! }.prefix(30)
-            if !recent.isEmpty { movieRow(L("Recently added"), Array(recent)) }
+            if !recent.isEmpty {
+                movieRow(L("Recently added"), Array(recent), all: lib.movies.filter { $0.addedAt != nil }.sorted { $0.addedAt! > $1.addedAt! })
+            }
             // onder Onlangs toegevoegd: Verder kijken, daaronder Voor jou
             continueRow
             forYouRow
         }
         if filter != .movies {
             let mine = lib.series.filter { s in pid.map { store.inMyList($0, s.id) } ?? false }
-            if !mine.isEmpty && filter == .series { seriesRow(L("My List"), mine) }
+            if !mine.isEmpty && filter == .series { seriesRow(L("My List"), mine, all: mine) }
             if !trendingSeries.isEmpty { top10Row(L("Top 10 series today"), series: Array(trendingSeries.prefix(10))) }
             if filter == .series {
                 continueRow
@@ -91,12 +95,14 @@ struct HomeView: View {
 
         if filter != .series {
             ForEach(lib.movieGroups.prefix(filter == .all ? 8 : 40), id: \.self) { g in
-                movieRow(g, Array(lib.movies.lazy.filter { $0.group == g }.prefix(40)))
+                let all = lib.movies.filter { $0.group == g }
+                movieRow(g, Array(all.prefix(40)), all: all)
             }
         }
         if filter != .movies {
             ForEach(lib.seriesGroups.prefix(filter == .all ? 8 : 40), id: \.self) { g in
-                seriesRow(g, Array(lib.series.lazy.filter { $0.group == g }.prefix(40)))
+                let all = lib.series.filter { $0.group == g }
+                seriesRow(g, Array(all.prefix(40)), all: all)
             }
         }
 
@@ -141,7 +147,7 @@ struct HomeView: View {
             }
         }
         if !items.isEmpty {
-            MediaRow(title: L("For you")) {
+            MediaRow(title: L("For you"), onSeeAll: { category = CategoryTarget(title: L("For you"), items: items) }) {
                 ForEach(items) { t in
                     Button { detail = t } label: {
                         switch t {
@@ -157,8 +163,8 @@ struct HomeView: View {
         }
     }
 
-    private func movieRow(_ title: String, _ items: [Movie]) -> some View {
-        MediaRow(title: title) {
+    private func movieRow(_ title: String, _ items: [Movie], all: [Movie]? = nil) -> some View {
+        MediaRow(title: title, onSeeAll: all.map { list in { category = CategoryTarget(title: title, items: list.map { .movie($0) }) } }) {
             ForEach(items) { m in
                 let imdb = trakt.imdb(for: m)
                 Button { detail = .movie(m) } label: {
@@ -172,8 +178,8 @@ struct HomeView: View {
         }
     }
 
-    private func seriesRow(_ title: String, _ items: [Series]) -> some View {
-        MediaRow(title: title) {
+    private func seriesRow(_ title: String, _ items: [Series], all: [Series]? = nil) -> some View {
+        MediaRow(title: title, onSeeAll: all.map { list in { category = CategoryTarget(title: title, items: list.map { .series($0) }) } }) {
             ForEach(items) { s in
                 let imdb = trakt.imdb(for: s)
                 let count = trakt.watchedCount(show: imdb)
@@ -187,7 +193,9 @@ struct HomeView: View {
     }
 
     private func top10Row(_ title: String, movies: [Movie] = [], series: [Series] = []) -> some View {
-        MediaRow(title: title) {
+        MediaRow(title: title, onSeeAll: {
+            category = CategoryTarget(title: title, items: series.isEmpty ? trendingMovies.map { .movie($0) } : trendingSeries.map { .series($0) })
+        }) {
             ForEach(Array(movies.enumerated()), id: \.element.id) { i, m in
                 Button { detail = .movie(m) } label: {
                     Top10Card(rank: i + 1, title: m.title, poster: m.poster,

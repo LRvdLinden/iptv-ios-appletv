@@ -110,11 +110,26 @@ struct Top10Card: View {
 /// Horizontale rij met titel (Netflix "rij").
 struct MediaRow<Content: View>: View {
     let title: String
-    @ViewBuilder let content: () -> Content
+    var onSeeAll: (() -> Void)?
+    let content: () -> Content
+
+    init(title: String, onSeeAll: (() -> Void)? = nil, @ViewBuilder content: @escaping () -> Content) {
+        self.title = title; self.onSeeAll = onSeeAll; self.content = content
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: tvScaled(8)) {
-            Text(title).font(Theme.titleFont).foregroundStyle(.white).padding(.leading, Theme.edge)
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                Text(title).font(Theme.titleFont).foregroundStyle(.white).lineLimit(1)
+                Spacer(minLength: 8)
+                if let onSeeAll {
+                    Button(action: onSeeAll) {
+                        Text(L("See all")).font(.system(size: tvScaled(15), weight: .semibold)).foregroundStyle(.white)
+                    }
+                    .plainTVButton()
+                }
+            }
+            .padding(.horizontal, Theme.edge)
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(alignment: .top, spacing: Theme.rowSpacing) { content() }
                     .padding(.horizontal, Theme.edge)
