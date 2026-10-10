@@ -106,6 +106,7 @@ final class PlaylistService: ObservableObject {
             if source?.id == s.id {
                 setRaw(lib)
                 writeCache(s, lib)
+                SplashPosters.save(from: lib)
             }
         } catch {
             if rawLibrary.channels.isEmpty && rawLibrary.movies.isEmpty && rawLibrary.series.isEmpty {

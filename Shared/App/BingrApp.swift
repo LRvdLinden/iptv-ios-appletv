@@ -12,6 +12,11 @@ struct BingrApp: App {
     @StateObject private var reminders = ReminderCenter.shared
     @Environment(\.scenePhase) private var phase
 
+    init() {
+        // grotere beeldcache: posters (ook in de intro) laden direct
+        URLCache.shared = URLCache(memoryCapacity: 64 * 1024 * 1024, diskCapacity: 400 * 1024 * 1024)
+    }
+
     var body: some Scene {
         WindowGroup {
             RootView()
