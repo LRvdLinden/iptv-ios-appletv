@@ -14,6 +14,10 @@ enum Secrets {
     /// https://www.omdbapi.com/apikey.aspx  — IMDb-gegevens (score, poster, plot, cast)
     static let omdbAPIKey = "VUL_OMDB_API_KEY_IN"
 
+    /// Optioneel — https://www.themoviedb.org/settings/api (API-sleutel of "API Read Access Token")
+    /// Geeft foto's van de cast, titel-logo's, achtergronden, afleveringsfoto's en teksten in jouw taal.
+    static let tmdbAPIKey = "VUL_TMDB_API_KEY_IN"
+
     static let userAgent = "Bingr v1.0.0"
 
     static func isSet(_ v: String) -> Bool { !v.hasPrefix("VUL_") && !v.isEmpty }

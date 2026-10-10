@@ -209,6 +209,11 @@ final class PlaylistService: ObservableObject {
         return eps
     }
 
+    func xtreamSeriesInfo(_ series: Series) async -> XtreamClient.SeriesInfo? {
+        guard let s = source, s.kind == .xtream, let id = series.xtreamSeriesID else { return nil }
+        return await XtreamClient(source: s, password: Keychain.get(s.passwordKey) ?? "").seriesInfo(id)
+    }
+
     func xtreamVodInfo(_ m: Movie) async -> XtreamClient.VodInfo.Info? {
         guard let s = source, s.kind == .xtream, let id = m.xtreamVodID else { return nil }
         return await XtreamClient(source: s, password: Keychain.get(s.passwordKey) ?? "").vodInfo(id)
@@ -272,6 +277,7 @@ final class PlaylistService: ObservableObject {
         var artwork: URL?
     }
 
+    nonisolated static func normTitle(_ t: String) -> String { fold(t).filter { $0.isLetter || $0.isNumber } }
     nonisolated static func fold(_ s: String) -> String { s.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: nil) }
 
     func search(_ q: String, allPlaylists: Bool = true) async -> SearchResults {
@@ -302,6 +308,31 @@ final class PlaylistService: ObservableObject {
             return Array(hits.prefix(120))
         }.value
         return r
+    }
+
+    /// Dezelfde titel in andere groepen of andere afspeellijsten ("Andere bronnen").
+    func otherSources(title: String, year: Int?, isShow: Bool, excluding id: String) async -> [OtherHit] {
+        let norm = Self.normTitle(title)
+        guard !norm.isEmpty else { return [] }
+        let current = source
+        let currentLib = rawLibrary
+        let all = CloudStore.shared.playlists
+        return await Task.detached(priority: .userInitiated) {
+            var hits: [OtherHit] = []
+            for p in all {
+                let lib = (p.id == current?.id) ? currentLib : (Self.readCache(p) ?? Library())
+                if isShow {
+                    for s in lib.series where s.id != id && Self.normTitle(s.title) == norm && (year == nil || s.year == nil || s.year == year) {
+                        hits.append(OtherHit(playlist: p, itemID: s.id, title: s.title, subtitle: s.group, artwork: s.poster))
+                    }
+                } else {
+                    for m in lib.movies where m.id != id && Self.normTitle(m.title) == norm && (year == nil || m.year == nil || m.year == year) {
+                        hits.append(OtherHit(playlist: p, itemID: m.id, title: m.title, subtitle: m.group, artwork: m.poster))
+                    }
+                }
+            }
+            return hits
+        }.value
     }
 
     // MARK: cache

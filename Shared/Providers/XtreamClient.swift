@@ -43,14 +43,29 @@ struct XtreamClient {
     }
     struct SeriesInfo: Decodable {
         struct Ep: Decodable {
-            struct Info: Decodable { let movie_image: String?; let plot: String?; let duration_secs: Flex? }
+            struct Info: Decodable {
+                let movie_image: String?; let plot: String?; let duration_secs: Flex?
+                let releasedate: String?; let air_date: String?; let rating: Flex?
+            }
             let id: Flex; let episode_num: Flex?; let title: String?; let container_extension: String?
             let season: Flex?; let info: Info?
         }
+        struct SInfo: Decodable {
+            let name: String?; let cover: String?; let plot: String?; let cast: String?; let director: String?
+            let genre: String?; let releaseDate: String?; let rating: Flex?; let backdrop_path: StringOrArray?
+            let youtube_trailer: String?; let tmdb: Flex?; let episode_run_time: Flex?
+        }
         let episodes: [String: [Ep]]?
+        let info: SInfo?
     }
     struct VodInfo: Decodable {
-        struct Info: Decodable { let imdb_id: String?; let plot: String?; let rating: Flex?; let youtube_trailer: String? }
+        struct Info: Decodable {
+            let imdb_id: String?; let plot: String?; let rating: Flex?; let youtube_trailer: String?
+            let tmdb_id: Flex?; let name: String?; let cover_big: String?; let movie_image: String?
+            let backdrop_path: StringOrArray?; let director: String?; let cast: String?; let actors: String?
+            let genre: String?; let releasedate: String?; let duration: String?; let duration_secs: Flex?
+            let description: String?; let country: String?
+        }
         let info: Info?
     }
     struct ShortEPG: Decodable {
@@ -133,6 +148,11 @@ struct XtreamClient {
             }
         }
         return out.sorted { ($0.season, $0.number) < ($1.season, $1.number) }
+    }
+
+    func seriesInfo(_ seriesID: Int) async -> SeriesInfo? {
+        guard let u = api("get_series_info", ["series_id": String(seriesID)]) else { return nil }
+        return try? await HTTP.json(SeriesInfo.self, u)
     }
 
     func vodInfo(_ vodID: Int) async -> VodInfo.Info? {

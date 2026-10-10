@@ -89,3 +89,15 @@ extension String {
     }
     var trimmedSlash: String { var s = trimmingCharacters(in: .whitespaces); while s.hasSuffix("/") { s.removeLast() }; return s }
 }
+
+/// Veld dat soms een string en soms een lijst met strings is (bijv. Xtream backdrop_path).
+struct StringOrArray: Decodable, Hashable {
+    let values: [String]
+    init(from decoder: Decoder) throws {
+        let c = try decoder.singleValueContainer()
+        if let a = try? c.decode([String].self) { values = a }
+        else if let s = try? c.decode(String.self) { values = s.isEmpty ? [] : [s] }
+        else { values = [] }
+    }
+    var first: String? { values.first { !$0.isEmpty } }
+}

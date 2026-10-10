@@ -1,5 +1,7 @@
 import SwiftUI
 
+/// Detailpagina in UHF/Netflix-stijl: grote afbeelding met logo, score, afspeelknop,
+/// Mijn lijst + Andere bronnen, beschrijving, afleveringen, beoordelingen, cast en aanbevelingen.
 struct DetailView: View {
     let target: DetailTarget
 
@@ -7,252 +9,540 @@ struct DetailView: View {
     @EnvironmentObject var playlists: PlaylistService
     @EnvironmentObject var store: CloudStore
     @EnvironmentObject var trakt: TraktSync
-    @EnvironmentObject var meta: MetadataService
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
 
-    @State private var info: TitleMetadata?
+    @State private var d: TitleDetails?
     @State private var episodes: [Episode] = []
     @State private var season = 1
-    @State private var loadingEpisodes = false
+    @State private var seasonInfo: [String: TitleDetails.EpisodeInfo] = [:]
+    @State private var loading = true
     @State private var showTrailer = false
-    @State private var xtreamTrailer: String?
+    @State private var showSources = false
+    @State private var sources: [PlaylistService.OtherHit] = []
+    @State private var nested: DetailTarget?
+    @State private var toast: String?
+    @State private var scrollY: CGFloat = 0
 
     private var pid: UUID? { playlists.source?.id }
-    private var title: String { switch target { case .movie(let m): return m.title; case .series(let s): return s.title } }
-    private var poster: URL? {
-        switch target { case .movie(let m): return m.poster ?? info?.poster; case .series(let s): return s.poster ?? info?.poster }
-    }
+    private var baseTitle: String { switch target { case .movie(let m): return m.title; case .series(let s): return s.title } }
+    private var title: String { d?.title ?? baseTitle }
     private var imdb: String? {
-        switch target { case .movie(let m): return trakt.imdb(for: m) ?? info?.imdbID; case .series(let s): return trakt.imdb(for: s) ?? info?.imdbID }
+        switch target {
+        case .movie(let m): return trakt.imdb(for: m) ?? d?.imdbID
+        case .series(let s): return trakt.imdb(for: s) ?? d?.imdbID
+        }
     }
-    private var trailerID: String? { info?.trailerYouTubeID ?? xtreamTrailer }
+    private var heroImage: URL? {
+        #if os(tvOS)
+        return d?.backdrop ?? d?.poster ?? basePoster
+        #else
+        return d?.poster ?? basePoster ?? d?.backdrop
+        #endif
+    }
+    private var basePoster: URL? { switch target { case .movie(let m): return m.poster; case .series(let s): return s.poster } }
     private var seasons: [Int] { orderedUnique(episodes.map(\.season)).sorted() }
+    private var isMovie: Bool { if case .movie = target { return true }; return false }
+    private var headerHeight: CGFloat {
+        #if os(tvOS)
+        return 760
+        #else
+        return 560
+        #endif
+    }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: tvScaled(14)) {
-                header
-                VStack(alignment: .leading, spacing: tvScaled(14)) {
-                    Text(title).font(.system(size: tvScaled(26), weight: .heavy))
-                    metaLine
-                    primaryButtons
-                    if let plot = info?.plot ?? plotFallback {
-                        Text(plot).font(.system(size: tvScaled(14))).foregroundStyle(.white.opacity(0.9))
-                            .fixedSize(horizontal: false, vertical: true)
+        ZStack(alignment: .top) {
+            Color.black.ignoresSafeArea()
+            ScrollView {
+                VStack(alignment: .leading, spacing: tvScaled(22)) {
+                    header
+                    VStack(alignment: .leading, spacing: tvScaled(22)) {
+                        metaRow
+                        actions
+                        if let o = d?.overview, !o.isEmpty {
+                            Text(o).font(.system(size: tvScaled(16))).foregroundStyle(.white.opacity(0.92))
+                                .fixedSize(horizontal: false, vertical: true)
+                                .frame(maxWidth: tvScaled(700), alignment: .leading)
+                        } else if loading {
+                            ProgressView().tint(.white).frame(maxWidth: .infinity)
+                        }
+                        if !(d?.genres.isEmpty ?? true) || d?.director != nil { creditsBlock }
                     }
-                    credits
-                    actionBar
+                    .padding(.horizontal, Theme.edge)
+
                     if case .series(let s) = target { episodesSection(s) }
+                    if let r = d?.ratings, !r.isEmpty { ratingsSection(r) }
+                    if let c = d?.cast, !c.isEmpty { castSection(c) }
+                    if let rec = d?.recommendations, !rec.isEmpty { recommendationsSection(rec) }
+                    Color.clear.frame(height: 40)
                 }
-                .padding(.horizontal, Theme.edge)
+                .background(GeometryReader { g in
+                    Color.clear.preference(key: DetailOffsetKey.self, value: g.frame(in: .named("detail")).minY)
+                })
             }
-            .padding(.bottom, 40)
-            #if os(tvOS)
-            .frame(maxWidth: 1500).frame(maxWidth: .infinity)
+            .coordinateSpace(name: "detail")
+            .onPreferenceChange(DetailOffsetKey.self) { scrollY = $0 }
+            .ignoresSafeArea(edges: .top)
+
+            #if os(iOS)
+            stickyBar
             #endif
+
+            if let toast {
+                Text(toast).font(.system(size: tvScaled(13), weight: .semibold))
+                    .padding(.horizontal, 16).padding(.vertical, 10)
+                    .background(.black.opacity(0.8), in: Capsule())
+                    .frame(maxHeight: .infinity, alignment: .bottom).padding(.bottom, 40)
+                    .transition(.opacity)
+            }
         }
-        .background(Color(hex: 0x141414).ignoresSafeArea())
         .task(id: target.id) { await load() }
+        .sheet(isPresented: $showSources) { sourcesSheet }
         #if os(iOS)
         .sheet(isPresented: $showTrailer) {
-            if let t = trailerID { TrailerSheet(youtubeID: t, title: title) }
+            if let t = d?.trailerYouTubeID { TrailerSheet(youtubeID: t, title: title) }
         }
+        .sheet(item: $nested) { DetailView(target: $0) }
+        #else
+        .fullScreenCover(item: $nested) { DetailView(target: $0) }
         #endif
     }
 
-    // MARK: onderdelen
+    // MARK: kop
 
     private var header: some View {
-        ZStack(alignment: .bottomLeading) {
-            RemoteImage(url: poster).frame(height: tvScaled(240)).frame(maxWidth: .infinity).blur(radius: 26).clipped().opacity(0.8)
-            LinearGradient(colors: [.clear, Color(hex: 0x141414)], startPoint: .top, endPoint: .bottom)
-            HStack(alignment: .bottom, spacing: tvScaled(16)) {
-                RemoteImage(url: poster, placeholder: title)
-                    .frame(width: tvScaled(120), height: tvScaled(180)).clipShape(RoundedRectangle(cornerRadius: 6))
-                    .shadow(radius: 14)
-                Spacer()
-                #if os(iOS)
-                Button { dismiss() } label: {
-                    Image(systemName: "xmark").font(.system(size: 14, weight: .bold)).padding(10)
-                        .background(.black.opacity(0.7), in: Circle())
-                }
-                .frame(maxHeight: .infinity, alignment: .top).padding(.top, 14)
-                #endif
-            }
-            .padding(.horizontal, Theme.edge)
-        }
-        .frame(height: tvScaled(240))
-    }
-
-    private var metaLine: some View {
-        HStack(spacing: tvScaled(10)) {
-            if let r = info?.imdbRating { IMDbBadge(rating: r) }
-            if let y = info?.year ?? yearFallback { Text(y) }
-            if let rated = info?.rated {
-                Text(rated).font(.system(size: tvScaled(11), weight: .semibold))
-                    .padding(.horizontal, 5).padding(.vertical, 1)
-                    .overlay(RoundedRectangle(cornerRadius: 3).stroke(Theme.secondary))
-            }
-            if let rt = info?.runtime { Text(rt) }
-            if case .series = target, !seasons.isEmpty { Text(seasons.count == 1 ? L("1 season") : L("%d seasons", seasons.count)) }
-            if isWatchedTitle { Label(L("Watched"), systemImage: "checkmark.circle.fill").foregroundStyle(Theme.green) }
-        }
-        .font(.system(size: tvScaled(13))).foregroundStyle(Theme.secondary)
-    }
-
-    @ViewBuilder private var primaryButtons: some View {
-        let stack = Group {
-            switch target {
-            case .movie(let m):
-                let resume = Playables.resume(m.id, imdb: imdb)
-                NetflixButton(title: resume > 0.02 ? L("Resume") : L("Play"), icon: "play.fill") {
-                    app.play(Playables.movie(m, imdb: imdb))
-                }
+        ZStack(alignment: .bottom) {
+            RemoteImage(url: heroImage, placeholder: "")
+                .frame(height: headerHeight + max(scrollY, 0))
                 .frame(maxWidth: .infinity)
-                if resume > 0.02 { ProgressBar(value: resume).frame(height: 3) }
-            case .series(let s):
-                if let next = nextEpisode {
-                    NetflixButton(title: L("Play S%d:E%d", next.season, next.number), icon: "play.fill") {
-                        app.play(Playables.episode(next, of: s, imdb: imdb))
-                    }
-                    .frame(maxWidth: .infinity)
-                }
+                .clipped()
+                .offset(y: scrollY > 0 ? -scrollY / 2 : 0)
+            LinearGradient(stops: [.init(color: .clear, location: 0.35), .init(color: .black.opacity(0.65), location: 0.75),
+                                   .init(color: .black, location: 1)], startPoint: .top, endPoint: .bottom)
+            #if os(tvOS)
+            LinearGradient(colors: [.black.opacity(0.85), .clear], startPoint: .leading, endPoint: .center)
+            #endif
+            titleArt
+                .padding(.horizontal, Theme.edge).padding(.bottom, tvScaled(8))
+            #if os(iOS)
+            Button { dismiss() } label: {
+                Image(systemName: "xmark").font(.system(size: 17, weight: .semibold)).foregroundStyle(.white)
+                    .frame(width: 44, height: 44).background(.ultraThinMaterial, in: Circle())
             }
-            if trailerID != nil {
-                NetflixButton(title: "Trailer", icon: "film", kind: .secondary) { openTrailer() }
-                    .frame(maxWidth: .infinity)
-            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+            .padding(.top, 58).padding(.trailing, 16)
+            #endif
         }
+        .frame(height: headerHeight)
+    }
+
+    @ViewBuilder private var titleArt: some View {
+        let align = alignLeadingOnTV
+        if let logo = d?.logo {
+            AsyncImage(url: logo) { img in img.resizable().scaledToFit() } placeholder: { titleText }
+                .frame(maxWidth: tvScaled(300), maxHeight: tvScaled(110))
+                .frame(maxWidth: .infinity, alignment: align)
+                .shadow(color: .black.opacity(0.6), radius: 10)
+        } else {
+            titleText.frame(maxWidth: .infinity, alignment: align)
+        }
+    }
+
+    private var titleText: some View {
+        Text(title.uppercased())
+            .font(.system(size: tvScaled(38), weight: .black)).kerning(1)
+            .lineLimit(2).minimumScaleFactor(0.5)
+            #if os(iOS)
+            .multilineTextAlignment(.center)
+            #endif
+            .shadow(color: .black.opacity(0.7), radius: 10)
+    }
+
+    private var metaRow: some View {
+        HStack(spacing: tvScaled(14)) {
+            let main = d?.ratings.first { $0.source == "IMDb" } ?? d?.ratings.first
+            Text("★ \(main?.value ?? "–")")
+                .font(.system(size: tvScaled(15), weight: .bold))
+                .padding(.horizontal, 12).padding(.vertical, 6)
+                .background(Color.white.opacity(0.15), in: RoundedRectangle(cornerRadius: 10))
+            if let y = d?.year { Text(String(y.prefix(4))) }
+            if let c = d?.certification { Text(c).font(.system(size: tvScaled(12), weight: .semibold))
+                .padding(.horizontal, 5).padding(.vertical, 1).overlay(RoundedRectangle(cornerRadius: 3).stroke(Theme.secondary)) }
+            if !isMovie, !seasons.isEmpty {
+                Text(seasons.count == 1 ? L("1 season") : L("%d seasons", seasons.count))
+            } else if let rt = d?.runtime { Text(rt) }
+            if isWatchedTitle { Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.green) }
+        }
+        .font(.system(size: tvScaled(16)))
+        .foregroundStyle(.white)
+        .frame(maxWidth: .infinity, alignment: alignLeadingOnTV)
+    }
+
+    private var alignLeadingOnTV: Alignment {
         #if os(tvOS)
-        HStack(spacing: 30) { stack }.frame(maxWidth: 900, alignment: .leading)
+        return .leading
         #else
-        VStack(spacing: 8) { stack }
+        return .center
         #endif
     }
 
-    @ViewBuilder private var credits: some View {
+    // MARK: knoppen
+
+    @ViewBuilder private var actions: some View {
+        VStack(spacing: tvScaled(12)) {
+            playButton
+            HStack(spacing: tvScaled(12)) {
+                circleButton(inMyList ? "heart.fill" : "heart") { toggleMyList() }
+                if let _ = d?.trailerYouTubeID { circleButton("film") { openTrailer() } }
+                if isMovie { circleButton(isWatchedTitle ? "checkmark.circle.fill" : "checkmark.circle") { toggleWatchedMovie() } }
+                Button { Task { await openSources() } } label: {
+                    Text(L("Other sources")).font(.system(size: tvScaled(15), weight: .medium))
+                        .frame(maxWidth: .infinity).frame(height: tvScaled(50))
+                        .background(Color.white.opacity(0.12), in: Capsule())
+                        .overlay(Capsule().stroke(.white.opacity(0.12)))
+                }
+                .plainTVButton()
+            }
+        }
+        .frame(maxWidth: tvScaled(700))
+        .frame(maxWidth: .infinity, alignment: alignLeadingOnTV)
+    }
+
+    private var playButton: some View {
+        Button { play() } label: {
+            Label(playTitle, systemImage: "play.fill")
+                .font(.system(size: tvScaled(16), weight: .semibold))
+                .foregroundStyle(.black)
+                .frame(maxWidth: .infinity).frame(height: tvScaled(52))
+                .background(.white, in: Capsule())
+                .overlay(alignment: .bottom) {
+                    if let p = resumeFraction, p > 0.02 {
+                        GeometryReader { g in
+                            Capsule().fill(Theme.red).frame(width: g.size.width * p, height: 3)
+                        }.frame(height: 3).padding(.horizontal, 24).padding(.bottom, 6)
+                    }
+                }
+        }
+        .plainTVButton()
+        .disabled(isMovie ? false : episodes.isEmpty && !loading)
+    }
+
+    private func circleButton(_ icon: String, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon).font(.system(size: tvScaled(19), weight: .semibold))
+                .foregroundStyle(icon.hasPrefix("heart.fill") ? Theme.red : .white)
+                .frame(width: tvScaled(50), height: tvScaled(50))
+                .background(Color.white.opacity(0.12), in: Circle())
+                .overlay(Circle().stroke(.white.opacity(0.12)))
+        }
+        .plainTVButton()
+    }
+
+    private var playTitle: String {
+        switch target {
+        case .movie: return (resumeFraction ?? 0) > 0.02 ? L("Resume") : L("Play")
+        case .series:
+            guard let n = nextEpisode else { return L("Play") }
+            return L("Play Season %d: Episode %d", n.season, n.number)
+        }
+    }
+
+    private var resumeFraction: Double? {
+        switch target {
+        case .movie(let m): return Playables.resume(m.id, imdb: imdb)
+        case .series: return nextEpisode.flatMap { store.progress[$0.id]?.fraction }
+        }
+    }
+
+    // MARK: blokken
+
+    private var creditsBlock: some View {
         VStack(alignment: .leading, spacing: 4) {
-            if let a = info?.actors { creditLine(L("Cast"), a) }
-            if let d = info?.director { creditLine(L("Director"), d) }
-            if let g = info?.genre { creditLine(L("Genres"), g) }
+            if let g = d?.genres, !g.isEmpty { creditLine(L("Genres"), g.joined(separator: ", ")) }
+            if let dir = d?.director { creditLine(L("Director"), dir) }
         }
     }
 
     private func creditLine(_ k: String, _ v: String) -> some View {
         (Text("\(k): ").foregroundStyle(Theme.secondary) + Text(v).foregroundStyle(.white.opacity(0.85)))
-            .font(.system(size: tvScaled(12))).lineLimit(2)
+            .font(.system(size: tvScaled(13))).lineLimit(2)
     }
 
-    private var actionBar: some View {
-        HStack(spacing: tvScaled(36)) {
-            actionButton(inMyList ? "checkmark" : "plus", L("My List")) {
-                guard let pid else { return }
-                store.toggleMyList(pid, target.id)
-                if let imdb { Task { await trakt.toggleWatchlist(imdb: imdb, isShow: target.isSeries) } }
-            }
-            if case .movie(let m) = target {
-                let w = Playables.isWatched(movie: m, imdb: imdb)
-                actionButton(w ? "checkmark.circle.fill" : "checkmark.circle", w ? L("Watched") : L("Mark watched")) {
-                    store.setLocalWatched(m.id, !w)
-                    Task { await trakt.setWatched(Playables.movie(m, imdb: imdb), !w) }
-                }
-            }
-            if let imdb {
-                actionButton("star.circle", "IMDb") { openURL(URL(string: "https://www.imdb.com/title/\(imdb)/")!) }
-            }
-            if let slug = info?.traktSlug {
-                actionButton("arrow.triangle.2.circlepath", "Trakt") {
-                    openURL(URL(string: "https://trakt.tv/\(target.isSeries ? "shows" : "movies")/\(slug)")!)
-                }
-            }
-        }
-        .padding(.vertical, tvScaled(6))
+    private func sectionTitle(_ t: String) -> some View {
+        Text(t.uppercased()).font(.system(size: tvScaled(14), weight: .semibold)).kerning(0.5)
+            .foregroundStyle(Theme.secondary).padding(.horizontal, Theme.edge)
     }
-
-    private func actionButton(_ icon: String, _ label: String, _ action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(spacing: 5) {
-                Image(systemName: icon).font(.system(size: tvScaled(22)))
-                Text(label).font(.system(size: tvScaled(10))).foregroundStyle(Theme.secondary)
-            }
-            .frame(minWidth: tvScaled(52))
-        }
-        .plainTVButton()
-    }
-
-    // MARK: afleveringen
 
     @ViewBuilder private func episodesSection(_ s: Series) -> some View {
-        Divider().background(Theme.elevated)
-        HStack {
-            Text(L("Episodes")).font(.system(size: tvScaled(18), weight: .bold))
-            Spacer()
-            if seasons.count > 1 {
-                Menu {
-                    ForEach(seasons, id: \.self) { n in Button(L("Season %d", n)) { season = n } }
-                } label: {
-                    Label(L("Season %d", season), systemImage: "chevron.down")
-                        .font(.system(size: tvScaled(14), weight: .semibold))
-                        .padding(.horizontal, 12).padding(.vertical, 7)
-                        .background(Theme.elevated, in: RoundedRectangle(cornerRadius: 4))
+        VStack(alignment: .leading, spacing: tvScaled(14)) {
+            sectionTitle(L("Episodes"))
+            HStack(spacing: 12) {
+                if seasons.count > 1 {
+                    Menu {
+                        ForEach(seasons, id: \.self) { n in Button(L("Season %d", n)) { season = n } }
+                    } label: { seasonPill(chevron: true) }
+                } else if !seasons.isEmpty {
+                    seasonPill(chevron: false)
+                }
+                Spacer()
+                let list = episodes.filter { $0.season == season }
+                if !list.isEmpty {
+                    let all = list.allSatisfy { Playables.isWatched($0, imdb: imdb) }
+                    Button {
+                        for e in list { store.setLocalWatched(e.id, !all) }
+                        if let imdb { Task { await trakt.setWatched(show: imdb, episodes: list, !all) } }
+                    } label: {
+                        Image(systemName: all ? "checkmark.circle.fill" : "checkmark.circle")
+                            .font(.system(size: tvScaled(22))).foregroundStyle(all ? Theme.red : Theme.secondary)
+                    }
+                    .plainTVButton()
                 }
             }
-        }
-        if loadingEpisodes { ProgressView().frame(maxWidth: .infinity).padding() }
-        let list = episodes.filter { $0.season == season }
-        if !list.isEmpty, imdb != nil {
-            let allWatched = list.allSatisfy { Playables.isWatched($0, imdb: imdb) }
-            Button {
-                for e in list { store.setLocalWatched(e.id, !allWatched) }
-                if let imdb { Task { await trakt.setWatched(show: imdb, episodes: list, !allWatched) } }
-            } label: {
-                Label(allWatched ? L("Mark season as unwatched") : L("Mark whole season watched"),
-                      systemImage: allWatched ? "eye.slash" : "checkmark.circle")
-                    .font(.system(size: tvScaled(12))).foregroundStyle(Theme.secondary)
+            .padding(.horizontal, Theme.edge)
+
+            if loading && episodes.isEmpty { ProgressView().tint(.white).frame(maxWidth: .infinity) }
+            let list = episodes.filter { $0.season == season }
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(alignment: .top, spacing: tvScaled(14)) {
+                        ForEach(list) { e in episodeCard(e, s).id(e.id) }
+                    }
+                    .padding(.horizontal, Theme.edge)
+                    #if os(tvOS)
+                    .padding(.vertical, 30)
+                    #endif
+                }
+                #if os(tvOS)
+                .scrollClipDisabled()
+                #endif
+                .onAppear { if let n = nextEpisode, n.season == season { proxy.scrollTo(n.id, anchor: .leading) } }
             }
-            .plainTVButton()
         }
-        ForEach(list) { e in episodeRow(e, s) }
+        .task(id: season) {
+            guard let d else { return }
+            let info = await DetailsService.shared.seasonInfo(d, season: season)
+            if !info.isEmpty { seasonInfo.merge(info) { _, new in new } }
+        }
     }
 
-    private func episodeRow(_ e: Episode, _ s: Series) -> some View {
+    private func seasonPill(chevron: Bool) -> some View {
+        HStack(spacing: 6) {
+            Text(L("Season %d", season)).font(.system(size: tvScaled(16), weight: .semibold))
+            if chevron { Image(systemName: "chevron.down").font(.system(size: tvScaled(11), weight: .bold)) }
+        }
+        .padding(.horizontal, 16).padding(.vertical, 10)
+        .background(Color.white.opacity(0.12), in: Capsule())
+        .foregroundStyle(.white)
+    }
+
+    private func info(_ e: Episode) -> TitleDetails.EpisodeInfo? {
+        seasonInfo["\(e.season)-\(e.number)"] ?? d?.episodeInfo["\(e.season)-\(e.number)"]
+    }
+
+    private func episodeCard(_ e: Episode, _ s: Series) -> some View {
+        let i = info(e)
         let watched = Playables.isWatched(e, imdb: imdb)
         let progress = store.progress[e.id]?.fraction
-        return HStack(spacing: tvScaled(12)) {
-            Button { app.play(Playables.episode(e, of: s, imdb: imdb)) } label: {
-                HStack(spacing: tvScaled(12)) {
-                    ZStack {
-                        RemoteImage(url: e.still ?? s.poster).frame(width: tvScaled(124), height: tvScaled(70)).clipped()
-                        Image(systemName: "play.circle").font(.system(size: tvScaled(26))).foregroundStyle(.white).shadow(radius: 4)
-                        if let progress { VStack { Spacer(); ProgressBar(value: progress).frame(height: 3) } }
+        let w = tvScaled(290)
+        return Button { app.play(Playables.episode(e, of: s, imdb: imdb)) } label: {
+            VStack(alignment: .leading, spacing: 6) {
+                ZStack(alignment: .bottom) {
+                    RemoteImage(url: i?.still ?? e.still ?? d?.backdrop ?? s.poster, placeholder: "")
+                        .frame(width: w, height: w * 9 / 16).clipped()
+                    if let progress, progress > 0 {
+                        Capsule().fill(Color.white.opacity(0.3)).frame(height: 5)
+                            .overlay(alignment: .leading) { Capsule().fill(.white).frame(width: (w - 32) * progress, height: 5) }
+                            .padding(.horizontal, 16).padding(.bottom, 12)
                     }
-                    .frame(width: tvScaled(124), height: tvScaled(70))
-                    .clipShape(RoundedRectangle(cornerRadius: 4))
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("\(e.number). \(Playables.cleanEpisodeTitle(e))").font(.system(size: tvScaled(14), weight: .semibold)).lineLimit(2)
-                        if let d = e.durationSeconds { Text(L("%d min", d / 60)).font(.system(size: tvScaled(11))).foregroundStyle(Theme.secondary) }
-                        if let p = e.plot { Text(p).font(.system(size: tvScaled(11))).foregroundStyle(Theme.secondary).lineLimit(2) }
+                    if watched {
+                        WatchedBadge().frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing).padding(8)
                     }
-                    Spacer(minLength: 0)
                 }
-                .contentShape(Rectangle())
+                .frame(width: w, height: w * 9 / 16)
+                .clipShape(RoundedRectangle(cornerRadius: tvScaled(12)))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(String(format: "S%02dE%02d", e.season, e.number)).font(.system(size: tvScaled(13))).foregroundStyle(Theme.secondary)
+                    Text(i?.title.flatMap { $0.isEmpty ? nil : $0 } ?? Playables.cleanEpisodeTitle(e))
+                        .font(.system(size: tvScaled(16), weight: .semibold)).lineLimit(1)
+                    if let o = i?.overview ?? e.plot, !o.isEmpty {
+                        Text(o).font(.system(size: tvScaled(13))).foregroundStyle(Theme.secondary).lineLimit(3)
+                            .multilineTextAlignment(.leading)
+                    }
+                    HStack(spacing: 8) {
+                        if let a = i?.airDate { Text(a.formatted(date: .long, time: .omitted)) }
+                        if let rt = i?.runtime ?? e.durationSeconds.map({ $0 / 60 }), rt > 0 { Text(L("%d min", rt)) }
+                    }
+                    .font(.system(size: tvScaled(12))).foregroundStyle(.white.opacity(0.8))
+                }
+                .padding(.horizontal, 4)
             }
-            .plainTVButton()
+            .frame(width: w, alignment: .leading)
+            .padding(.bottom, 8)
+            .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: tvScaled(14)))
+        }
+        .plainTVButton()
+        .contextMenu {
             Button {
                 store.setLocalWatched(e.id, !watched)
                 Task { await trakt.setWatched(Playables.episode(e, of: s, imdb: imdb), !watched) }
-            } label: {
-                Image(systemName: watched ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: tvScaled(24)))
-                    .foregroundStyle(watched ? Theme.red : Theme.secondary)
-            }
-            .plainTVButton()
+            } label: { Label(watched ? L("Mark as unwatched") : L("Mark as watched"), systemImage: watched ? "eye.slash" : "checkmark.circle") }
         }
-        .padding(.vertical, 4)
     }
 
-    // MARK: logica
+    private func ratingsSection(_ r: [TitleDetails.Rating]) -> some View {
+        VStack(alignment: .leading, spacing: tvScaled(12)) {
+            sectionTitle(L("Ratings"))
+            HStack(alignment: .top, spacing: tvScaled(40)) {
+                ForEach(r) { x in
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 6) {
+                            ratingLogo(x.source)
+                            Text(x.source).font(.system(size: tvScaled(16))).foregroundStyle(Theme.secondary)
+                        }
+                        Text(x.value).font(.system(size: tvScaled(22), weight: .bold))
+                    }
+                }
+            }
+            .padding(.horizontal, Theme.edge)
+        }
+    }
+
+    @ViewBuilder private func ratingLogo(_ source: String) -> some View {
+        switch source {
+        case "IMDb":
+            Text("IMDb").font(.system(size: tvScaled(9), weight: .black)).foregroundStyle(.black)
+                .padding(.horizontal, 4).padding(.vertical, 2).background(Theme.imdb, in: RoundedRectangle(cornerRadius: 3))
+        case "Trakt":
+            Image(systemName: "checkmark.square.fill").foregroundStyle(Color(hex: 0xED1C24)).font(.system(size: tvScaled(16)))
+        default:
+            Image(systemName: "star.fill").foregroundStyle(Theme.secondary).font(.system(size: tvScaled(13)))
+        }
+    }
+
+    private func castSection(_ cast: [TitleDetails.CastMember]) -> some View {
+        VStack(alignment: .leading, spacing: tvScaled(12)) {
+            sectionTitle(L("Cast"))
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHGrid(rows: [GridItem(.fixed(tvScaled(76)), spacing: tvScaled(14)),
+                                 GridItem(.fixed(tvScaled(76)), spacing: tvScaled(14))], spacing: tvScaled(26)) {
+                    ForEach(cast) { c in
+                        HStack(spacing: 12) {
+                            ZStack {
+                                Circle().fill(Theme.elevated)
+                                if let p = c.photo { RemoteImage(url: p).clipShape(Circle()) }
+                                else { Text(initials(c.name)).font(.system(size: tvScaled(18), weight: .bold)).foregroundStyle(Theme.secondary) }
+                            }
+                            .frame(width: tvScaled(70), height: tvScaled(70))
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(c.name).font(.system(size: tvScaled(16), weight: .medium)).lineLimit(1)
+                                if let ch = c.character, !ch.isEmpty {
+                                    Text(ch).font(.system(size: tvScaled(14))).foregroundStyle(Theme.secondary).lineLimit(1)
+                                }
+                            }
+                            .frame(width: tvScaled(170), alignment: .leading)
+                        }
+                    }
+                }
+                .padding(.horizontal, Theme.edge)
+            }
+        }
+    }
+
+    private func initials(_ n: String) -> String {
+        n.split(separator: " ").prefix(2).compactMap { $0.first.map(String.init) }.joined()
+    }
+
+    private func recommendationsSection(_ rec: [TitleDetails.Recommendation]) -> some View {
+        VStack(alignment: .leading, spacing: tvScaled(12)) {
+            sectionTitle(L("Recommendations"))
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(alignment: .top, spacing: tvScaled(14)) {
+                    ForEach(rec) { r in
+                        Button { openRecommendation(r) } label: {
+                            VStack(alignment: .leading, spacing: 6) {
+                                RemoteImage(url: r.poster, placeholder: r.title)
+                                    .frame(width: tvScaled(160), height: tvScaled(240)).clipped()
+                                    .clipShape(RoundedRectangle(cornerRadius: tvScaled(12)))
+                                    .overlay(alignment: .topTrailing) {
+                                        if findInLibrary(r) != nil {
+                                            Image(systemName: "play.circle.fill").font(.system(size: tvScaled(20)))
+                                                .foregroundStyle(.white, Theme.red).padding(6)
+                                        }
+                                    }
+                                Text(r.title).font(.system(size: tvScaled(14))).lineLimit(1)
+                                    .frame(width: tvScaled(160), alignment: .leading)
+                            }
+                        }
+                        .cardButton()
+                    }
+                }
+                .padding(.horizontal, Theme.edge)
+                #if os(tvOS)
+                .padding(.vertical, 30)
+                #endif
+            }
+            #if os(tvOS)
+            .scrollClipDisabled()
+            #endif
+        }
+    }
+
+    #if os(iOS)
+    private var stickyBar: some View {
+        let show = scrollY < -(headerHeight - 120)
+        return HStack {
+            Spacer()
+            Text(title).font(.headline).lineLimit(1).opacity(show ? 1 : 0)
+            Spacer()
+        }
+        .overlay(alignment: .trailing) {
+            if show {
+                Button { dismiss() } label: {
+                    Image(systemName: "xmark").font(.system(size: 17, weight: .semibold)).foregroundStyle(.white)
+                        .frame(width: 44, height: 44).background(.ultraThinMaterial, in: Circle())
+                }.padding(.trailing, 16)
+            }
+        }
+        .frame(height: 56)
+        .padding(.top, 50)
+        .background(.ultraThinMaterial.opacity(show ? 1 : 0))
+        .animation(.easeInOut(duration: 0.2), value: show)
+        .ignoresSafeArea(edges: .top)
+        .allowsHitTesting(show)
+    }
+    #endif
+
+    private var sourcesSheet: some View {
+        NavigationStack {
+            List {
+                if sources.isEmpty {
+                    Text(L("This title isn't available in your other groups or playlists.")).foregroundStyle(Theme.secondary)
+                }
+                ForEach(sources) { h in
+                    Button {
+                        showSources = false
+                        if h.playlist.id == pid { openLocal(h.itemID) } else { dismiss(); app.open(h.playlist, thenShow: h.itemID) }
+                    } label: {
+                        HStack(spacing: 12) {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 6).fill(h.playlist.avatar.gradient)
+                                Image(systemName: h.playlist.avatar.symbol).font(.system(size: 14, weight: .bold))
+                            }.frame(width: 34, height: 34)
+                            VStack(alignment: .leading) {
+                                Text(h.playlist.name)
+                                Text(h.subtitle).font(.caption).foregroundStyle(Theme.secondary)
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle(L("Other sources"))
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button(L("Close")) { showSources = false } } }
+        }
+    }
+
+    // MARK: acties
 
     private var isWatchedTitle: Bool {
         if case .movie(let m) = target { return Playables.isWatched(movie: m, imdb: imdb) }
@@ -269,40 +559,92 @@ struct DetailView: View {
         return episodes.first { !Playables.isWatched($0, imdb: imdb) } ?? episodes.first
     }
 
-    private var plotFallback: String? {
-        switch target { case .movie(let m): return m.plot; case .series(let s): return s.plot }
+    private func play() {
+        switch target {
+        case .movie(let m):
+            if m.streamURL == nil && m.stalkerCmd == nil && m.imdbID == nil && imdb == nil {
+                Task { await openSources() }; return
+            }
+            app.play(Playables.movie(m, imdb: imdb))
+        case .series(let s):
+            if let n = nextEpisode { app.play(Playables.episode(n, of: s, imdb: imdb)) }
+            else { Task { await openSources() } }
+        }
     }
-    private var yearFallback: String? {
-        switch target { case .movie(let m): return m.year.map(String.init); case .series(let s): return s.year.map(String.init) }
+
+    private func toggleMyList() {
+        guard let pid else { return }
+        store.toggleMyList(pid, target.id)
+        if let imdb { Task { await trakt.toggleWatchlist(imdb: imdb, isShow: target.isSeries) } }
+        flash(inMyList ? L("Added to My List") : L("Removed from My List"))
+    }
+
+    private func toggleWatchedMovie() {
+        guard case .movie(let m) = target else { return }
+        let w = isWatchedTitle
+        store.setLocalWatched(m.id, !w)
+        Task { await trakt.setWatched(Playables.movie(m, imdb: imdb), !w) }
     }
 
     private func openTrailer() {
-        guard let t = trailerID else { return }
+        guard let t = d?.trailerYouTubeID else { return }
         #if os(iOS)
         showTrailer = true
         #else
-        if let u = Trailer.appURL(t) {
-            openURL(u) { ok in if !ok, let w = Trailer.webURL(t) { openURL(w) } }
-        }
+        if let u = Trailer.appURL(t) { openURL(u) { ok in if !ok, let w = Trailer.webURL(t) { openURL(w) } } }
         #endif
     }
 
-    private func load() async {
-        switch target {
-        case .movie(let m):
-            async let x = playlists.xtreamVodInfo(m)
-            info = await meta.metadata(m, knownIMDb: trakt.imdb(for: m))
-            if let vi = await x {
-                if info == nil, let i = vi.imdb_id, !i.isEmpty { info = await meta.fetch(title: m.title, year: m.year, isShow: false, imdb: i) }
-                if let yt = vi.youtube_trailer, !yt.isEmpty { xtreamTrailer = yt }
-            }
-        case .series(let s):
-            loadingEpisodes = true
-            async let eps = playlists.episodes(for: s)
-            info = await meta.metadata(s)
-            episodes = await eps
-            loadingEpisodes = false
-            season = nextEpisode?.season ?? seasons.first ?? 1
+    private func openSources() async {
+        let year = d?.year.flatMap { Int($0.prefix(4)) }
+        sources = await playlists.otherSources(title: title, year: year, isShow: target.isSeries, excluding: target.id)
+        showSources = true
+    }
+
+    private func openLocal(_ id: String) {
+        if let m = playlists.library.movies.first(where: { $0.id == id }) { nested = .movie(m) }
+        else if let s = playlists.library.series.first(where: { $0.id == id }) { nested = .series(s) }
+    }
+
+    private func findInLibrary(_ r: TitleDetails.Recommendation) -> DetailTarget? {
+        let n = PlaylistService.normTitle(r.title)
+        if r.isShow {
+            return playlists.library.series.first { PlaylistService.normTitle($0.title) == n }.map { .series($0) }
+        }
+        return playlists.library.movies.first { PlaylistService.normTitle($0.title) == n && (r.year == nil || $0.year == nil || $0.year == r.year) }
+            .map { .movie($0) }
+    }
+
+    private func openRecommendation(_ r: TitleDetails.Recommendation) {
+        if let t = findInLibrary(r) { nested = t; return }
+        // niet in deze afspeellijst: toon de details (afspelen zoekt in andere bronnen / Stremio)
+        if r.isShow {
+            nested = .series(Series(id: "rec-\(r.id)", title: r.title, year: r.year, poster: r.poster, group: "", imdbID: r.imdbID))
+        } else {
+            nested = .movie(Movie(id: "rec-\(r.id)", title: r.title, year: r.year, poster: r.poster, group: "", imdbID: r.imdbID))
         }
     }
+
+    private func flash(_ t: String) {
+        withAnimation { toast = t }
+        Task { try? await Task.sleep(nanoseconds: 1_600_000_000); withAnimation { if toast == t { toast = nil } } }
+    }
+
+    private func load() async {
+        loading = true
+        var epsTask: Task<[Episode], Never>?
+        if case .series(let s) = target {
+            let pl = playlists
+            epsTask = Task { await pl.episodes(for: s) }
+        }
+        d = await DetailsService.shared.details(for: target, playlists: playlists, knownIMDb: imdb)
+        episodes = await epsTask?.value ?? []
+        if let n = nextEpisode { season = n.season } else if let f = seasons.first { season = f }
+        loading = false
+    }
+}
+
+private struct DetailOffsetKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
