@@ -3,6 +3,28 @@
 Native IPTV-app voor **iPhone, iPad en Apple TV** met de look & feel van Netflix.
 SwiftUI · iOS 17+ · tvOS 17+ · VLC-engine.
 
+## Screenshots
+
+> Ontwerp-previews van de schermen (gerenderd vanuit `docs/mockups/mockups.html`, met fictieve titels en zenders). Worden vervangen door echte simulator-screenshots zodra de app draait.
+
+### iPhone
+
+| Splash | Afspeellijst kiezen | Home |
+|:---:|:---:|:---:|
+| <img src="docs/screenshots/ios_splash.png" width="240"> | <img src="docs/screenshots/ios_picker.png" width="240"> | <img src="docs/screenshots/ios_home.png" width="240"> |
+| **Serie + Trakt-vinkjes** | **Live TV** | **Afspeellijst toevoegen** |
+| <img src="docs/screenshots/ios_detail.png" width="240"> | <img src="docs/screenshots/ios_live.png" width="240"> | <img src="docs/screenshots/ios_add.png" width="240"> |
+
+### Apple TV
+
+| Home | Afspeellijst kiezen |
+|:---:|:---:|
+| <img src="docs/screenshots/tv_home.png" width="420"> | <img src="docs/screenshots/tv_picker.png" width="420"> |
+| **Serie + afleveringen** | **Live TV** |
+| <img src="docs/screenshots/tv_detail.png" width="420"> | <img src="docs/screenshots/tv_live.png" width="420"> |
+| **Trakt koppelen** | |
+| <img src="docs/screenshots/tv_trakt.png" width="420"> | |
+
 ## Functies
 
 - **Geanimeerde splash** ("tudum"-stijl: vallende letters, rode gloed, lichtlinten, zoom-in)

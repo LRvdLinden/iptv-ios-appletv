@@ -1,0 +1,175 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+:root{--red:#E50914;--bg:#000;--card:#181818;--el:#232323;--sec:#B3B3B3;--imdb:#F5C518;--green:#46D369}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#000;color:#fff;font-family:-apple-system,"SF Pro Display","Helvetica Neue",Inter,Arial,sans-serif;overflow:hidden}
+.screen{position:relative;width:100vw;height:100vh;overflow:hidden;background:#000}
+.logo{font-weight:900;letter-spacing:-.04em;background:linear-gradient(#FF3B3B,#E50914 55%,#8F050C);-webkit-background-clip:text;color:transparent;transform:scaleY(1.12);display:inline-block;filter:drop-shadow(0 0 12px rgba(229,9,20,.45))}
+.status{height:54px;display:flex;justify-content:space-between;align-items:flex-end;padding:0 32px 6px;font-weight:600;font-size:17px}
+.poster{position:relative;border-radius:4px;overflow:hidden;flex:none;display:flex;align-items:flex-end;justify-content:center;text-align:center;font-weight:900;text-transform:uppercase;line-height:1;padding:8px}
+.poster span{position:relative;z-index:1;text-shadow:0 2px 8px rgba(0,0,0,.6)}
+.poster::after{content:"";position:absolute;inset:0;background:linear-gradient(transparent 45%,rgba(0,0,0,.7))}
+.check{position:absolute;top:6px;right:6px;z-index:2;width:20px;height:20px;border-radius:50%;background:var(--red);display:grid;place-items:center;font-size:12px;font-weight:900;color:#fff;box-shadow:0 1px 4px #0008}
+.bar{position:absolute;left:0;right:0;bottom:0;height:3px;background:#ffffff4d;z-index:2}.bar i{display:block;height:100%;background:var(--red)}
+.row{margin-top:18px}.row h3{font-size:19px;font-weight:700;margin:0 0 8px 16px}
+.scroller{display:flex;gap:8px;padding:0 16px;overflow:hidden}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-weight:700;border-radius:6px}
+.btn.w{background:#fff;color:#000}.btn.g{background:#ffffff38;color:#fff}.btn.r{background:var(--red);color:#fff}
+.tabbar{position:absolute;left:0;right:0;bottom:0;height:88px;background:#000;display:flex;justify-content:space-around;padding-top:10px;font-size:10px;color:#8c8c8c;border-top:1px solid #222}
+.tabbar div{display:flex;flex-direction:column;align-items:center;gap:4px}.tabbar .on{color:#fff}
+.ico{width:24px;height:24px;border-radius:5px;background:currentColor;opacity:.9;-webkit-mask-size:contain}
+.imdb{display:inline-flex;align-items:center;gap:5px;font-weight:600}.imdb b{background:var(--imdb);color:#000;font-weight:900;font-size:.72em;padding:1px 4px;border-radius:3px}
+.avatar{border-radius:8px;display:grid;place-items:center;font-size:44px}
+.pill{padding:7px 14px;border-radius:999px;font-size:13px;font-weight:600;border:1px solid #ffffff40}
+.pill.on{background:#fff;color:#000;border-color:#fff}
+.live{display:inline-flex;align-items:center;gap:4px;background:#0009;border-radius:999px;padding:3px 7px;font-size:9px;font-weight:900}
+.live::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--red)}
+.prog{height:2px;background:#ffffff4d;border-radius:2px;overflow:hidden}.prog i{display:block;height:100%;background:var(--red)}
+.caption{position:absolute;left:0;right:0;text-align:center;font-weight:800}
+</style></head>
+<body>
+<div id="app"></div>
+<script>
+const P = [ // fictieve titels + kleuren
+ ["Night Harbor","#0f2027","#2c5364"],["The Last Signal","#3a0a0a","#c0392b"],["Ember Road","#4b1d06","#f39c12"],
+ ["Glass Kingdom","#0b3d3a","#16a085"],["Polar Line","#1c2541","#5bc0be"],["Midnight Docket","#1a1a2e","#6c3483"],
+ ["Wildfire Season","#421b04","#e67e22"],["Echo Valley","#13311f","#27ae60"],["Paper Moons","#2d1e3e","#a569bd"],
+ ["Neon Saints","#2b0233","#ff2e93"],["Cold Harbor","#0d1b2a","#415a77"],["Silent Orbit","#000814","#003566"],
+ ["Rust & Bone","#3c1414","#a04000"],["Northbound","#102a43","#486581"],["Kingsgate","#2a1a05","#d4a017"],
+ ["Deep Current","#002b36","#268bd2"],["Velvet Hour","#3d0b1f","#c0392b"],["The Orchard","#1e3d14","#7dbb3a"]];
+const sym = {play:"▶",info:"ⓘ",plus:"+",check:"✓"};
+function poster(i,w,opt={}){const p=P[i%P.length];const h=w*1.5;
+ return `<div class="poster" style="width:${w}px;height:${h}px;background:radial-gradient(circle at 30% 20%,${p[2]}cc,transparent 60%),linear-gradient(160deg,${p[2]},${p[1]} 70%);font-size:${w*.13}px">
+ <span>${p[0]}</span>${opt.check?'<div class="check">✓</div>':''}${opt.prog?`<div class="bar"><i style="width:${opt.prog}%"></i></div>`:''}${opt.badge?`<div style="position:absolute;bottom:10px;z-index:2;background:var(--red);font-size:9px;padding:2px 5px;border-radius:2px">${opt.badge}</div>`:''}</div>`}
+const AV=[["#E50914","#7A0008","📺"],["#2563EB","#1E1B4B","🌐"],["#10B981","#064E3B","⚽"],["#A855F7","#3B0764","👑"],["#F59E0B","#9A3412","🔥"]];
+function av(i,s,name,color="#B3B3B3"){const a=AV[i];return `<div style="display:flex;flex-direction:column;align-items:center;gap:${s*.07}px"><div class="avatar" style="width:${s}px;height:${s}px;background:linear-gradient(135deg,${a[0]},${a[1]});font-size:${s*.42}px">${a[2]}</div><div style="color:${color};font-size:${s*.13}px">${name}</div></div>`}
+function chlogo(t,c){return `<div style="display:grid;place-items:center;font-weight:900;color:${c};font-size:13px;letter-spacing:-.02em">${t}</div>`}
+const CH=[["Nieuws 24","#ff6d00","Avondjournaal","20:00","20:30",.6],["Actua","#00a0e9","Achter het nieuws","21:30","22:15",.2],["Prime One","#e3001b","Showbizz vandaag","20:30","21:30",.35],
+ ["Family+","#d50000","Ons dorp","19:30","20:30",.8],["Motor TV","#6a1b9a","Formule 1 · Kwalificatie","20:00","22:00",.4],["Sport 1","#ff7f00","Voetbal Live","20:00","22:00",.45],
+ ["Explore","#1565c0","Goudzoekers","20:00","21:00",.55],["Planet","#fbc02d","Wilde natuur","20:30","21:30",.3]];
+
+const screens = {
+ // ---------- iOS ----------
+ ios_splash:()=>`<div class="screen" style="display:grid;place-items:center;background:radial-gradient(circle at 50% 50%,#e5091466,#000 60%)">
+   <div style="position:relative"><div class="logo" style="font-size:96px">BINGR</div>
+   ${Array.from({length:24},(_,i)=>{const c=["#E50914","#FF4D6D","#B517FF","#2E6BFF","#FF8A00","#FF2E93"][i%6];return `<div style="position:absolute;left:${-20+i*13.5}px;top:${-40+(i*37)%30}px;width:${2+(i*7)%5}px;height:${120+(i*13)%60}px;border-radius:4px;background:linear-gradient(transparent,${c},transparent);opacity:.75;mix-blend-mode:screen"></div>`}).join('')}</div></div>`,
+ ios_picker:()=>`<div class="screen"><div class="status"><span>20:41</span><span>●●● 5G ▮</span></div>
+   <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px"><div class="logo" style="font-size:26px">BINGR</div><span style="font-weight:600">Beheren</span></div>
+   <div style="text-align:center;margin-top:120px;font-size:26px;font-weight:500">Wat wil je kijken?</div>
+   <div style="display:grid;grid-template-columns:repeat(2,130px);gap:28px 28px;justify-content:center;margin-top:36px">
+   ${av(0,130,"Thuis TV")}${av(1,130,"Xtream Premium")}${av(2,130,"Sport")}${av(3,130,"Films 4K")}
+   <div style="display:flex;flex-direction:column;align-items:center;gap:9px"><div style="width:130px;height:130px;border:2px solid #b3b3b380;border-radius:8px;display:grid;place-items:center;font-size:48px;color:#b3b3b3;font-weight:200">+</div><div style="color:#b3b3b3;font-size:17px">Toevoegen</div></div></div>
+   <div style="position:absolute;bottom:40px;width:100%;text-align:center;color:#b3b3b3aa;font-size:12px">☁︎ iCloud gesynchroniseerd · 20:41</div></div>`,
+ ios_home:()=>`<div class="screen"><div style="position:absolute;inset:0 0 auto 0;height:640px;background:radial-gradient(circle at 50% 40%,#c0392b88,#000 75%)"></div>
+   <div style="position:relative"><div class="status"><span>20:42</span><span>●●● 5G ▮</span></div>
+   <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 16px"><div class="logo" style="font-size:26px">BINGR</div><div class="avatar" style="width:30px;height:30px;font-size:15px;border-radius:5px;background:linear-gradient(135deg,#E50914,#7A0008)">📺</div></div>
+   <div style="display:flex;gap:8px;padding:8px 16px"><span class="pill">Series</span><span class="pill">Films</span><span class="pill">Categorieën ⌄</span></div>
+   <div style="margin:14px auto 0;width:300px;height:400px;border-radius:12px;overflow:hidden;position:relative;box-shadow:0 10px 40px #000a;border:1px solid #ffffff20;background:radial-gradient(circle at 35% 25%,#ff5a3c,transparent 55%),linear-gradient(170deg,#c0392b,#3a0a0a 75%)">
+     <div style="position:absolute;inset:0;background:linear-gradient(transparent 40%,#000d)"></div>
+     <div style="position:absolute;bottom:16px;left:16px;right:16px;text-align:center">
+       <div style="font-weight:900;font-size:34px;letter-spacing:1px">THE LAST SIGNAL</div>
+       <div style="font-size:12px;opacity:.85;margin:8px 0 12px">2026 • Thriller • Sci-Fi • 2u 4m</div>
+       <div style="display:flex;gap:10px"><div class="btn w" style="flex:1;padding:10px">▶ Afspelen</div><div class="btn g" style="flex:1;padding:10px">ⓘ Info</div></div></div></div>
+   <div class="row"><h3>Verder kijken</h3><div class="scroller">${[4,8,2,11].map((i,k)=>poster(i,112,{prog:[62,25,80,40][k]})).join('')}</div></div>
+   <div class="row"><h3>Top 10 films vandaag</h3><div class="scroller">${[0,1,2].map((i,k)=>`<div style="display:flex;align-items:center;flex:none"><div style="font-size:150px;font-weight:900;line-height:1;background:linear-gradient(#4a4a4a,#111);-webkit-background-clip:text;color:transparent;-webkit-text-stroke:2px #888;margin-right:-22px">${k+1}</div>${poster(i+5,112,{check:k==1})}</div>`).join('')}</div></div>
+   </div>
+   <div class="tabbar">${["Home","Live TV","Films","Series","Zoeken","Mijn Bingr"].map((t,i)=>`<div class="${i==0?'on':''}"><span style="font-size:22px">${["⌂","◉","▤","▦","⌕","◯"][i]}</span>${t}</div>`).join('')}</div></div>`,
+ ios_detail:()=>`<div class="screen" style="background:#141414"><div style="height:250px;background:radial-gradient(circle at 30% 30%,#16a085,transparent 60%),linear-gradient(160deg,#0b3d3a,#141414);position:relative;filter:saturate(1.1)">
+   <div class="status" style="position:relative"><span>20:43</span><span>●●● 5G ▮</span></div>
+   <div style="position:absolute;bottom:0;left:16px;right:16px;display:flex;justify-content:space-between;align-items:flex-end">${poster(3,120)}<div style="width:34px;height:34px;border-radius:50%;background:#000b;display:grid;place-items:center;align-self:flex-start;font-weight:700">✕</div></div></div>
+   <div style="padding:14px 16px">
+   <div style="font-size:26px;font-weight:800">Glass Kingdom</div>
+   <div style="display:flex;gap:10px;align-items:center;color:#b3b3b3;font-size:13px;margin:8px 0 12px"><span class="imdb"><b>IMDb</b><span style="color:#fff">8.4</span></span><span>2024</span><span style="border:1px solid #b3b3b3;border-radius:3px;padding:0 4px;font-size:11px">16</span><span>3 seizoenen</span></div>
+   <div class="btn w" style="width:100%;padding:11px;font-size:16px">▶ Afspelen S2:A4</div>
+   <div class="btn g" style="width:100%;padding:11px;font-size:16px;margin-top:8px">🎬 Trailer</div>
+   <p style="font-size:14px;line-height:1.4;margin:12px 0;opacity:.9">Een architect ontdekt dat de glazen stad die ze ontwierp een geheim verbergt dat haar familie al generaties bewaakt.</p>
+   <div style="font-size:12px;color:#b3b3b3">Cast: <span style="color:#ddd">Mara Ellis, Tom Verhaeg, Ines Kole</span></div>
+   <div style="display:flex;gap:36px;margin:16px 0 10px;text-align:center;font-size:10px;color:#b3b3b3">${[["✓","Mijn lijst"],["★","IMDb"],["⟲","Trakt"]].map(a=>`<div><div style="font-size:22px;color:#fff">${a[0]}</div>${a[1]}</div>`).join('')}</div>
+   <div style="border-top:1px solid #232323;padding-top:12px;display:flex;justify-content:space-between;align-items:center"><b style="font-size:18px">Afleveringen</b><span style="background:#232323;padding:6px 12px;border-radius:4px;font-weight:600;font-size:14px">Seizoen 2 ⌄</span></div>
+   <div style="font-size:12px;color:#b3b3b3;margin:8px 0">✓ Heel seizoen afvinken</div>
+   ${[["De fundering",1],["Breuklijnen",1],["Spiegels",1],["Het archief",0],["Onder het glas",0]].map((e,i)=>`<div style="display:flex;align-items:center;gap:12px;padding:6px 0">
+     <div style="width:124px;height:70px;border-radius:4px;flex:none;position:relative;background:linear-gradient(135deg,${P[(i+3)%18][2]},${P[(i+3)%18][1]});display:grid;place-items:center;font-size:24px">▷${i==3?'<div class="bar"><i style="width:35%"></i></div>':''}</div>
+     <div style="flex:1"><div style="font-weight:600;font-size:14px">${i+1}. ${e[0]}</div><div style="font-size:11px;color:#b3b3b3">${48+i*3} min</div></div>
+     ${e[1]?'<div style="width:24px;height:24px;border-radius:50%;background:var(--red);display:grid;place-items:center;font-size:14px;font-weight:900">✓</div>':'<div style="width:24px;height:24px;border-radius:50%;border:2px solid #b3b3b3"></div>'}</div>`).join('')}
+   </div></div>`,
+ ios_live:()=>`<div class="screen"><div class="status"><span>20:44</span><span>●●● 5G ▮</span></div>
+   <div style="font-size:34px;font-weight:800;padding:8px 16px">Live TV</div>
+   <div style="margin:4px 16px;background:#1c1c1e;border-radius:10px;padding:9px 12px;color:#8e8e93;font-size:16px">⌕ Zender zoeken</div>
+   <div style="display:flex;gap:8px;padding:10px 16px;overflow:hidden">${["★ Favorieten","◷ Recent","Alle zenders","NL","Sport","Docu"].map((g,i)=>`<span class="pill ${i==0?'on':''}" style="${i?'background:#232323':''};white-space:nowrap">${g}</span>`).join('')}</div>
+   ${CH.slice(0,7).map((c,i)=>`<div style="display:flex;align-items:center;gap:12px;padding:10px 16px">
+     <div style="width:34px;text-align:right;color:#b3b3b3;font-size:12px;font-weight:600">${i+1}</div>
+     <div style="width:64px;height:40px;border-radius:4px;background:#181818;display:grid;place-items:center">${chlogo(c[0],c[1])}</div>
+     <div style="flex:1;min-width:0"><div style="font-weight:600;font-size:15px">${c[0]} <span style="color:var(--imdb);font-size:10px">★</span></div>
+     <div style="font-size:12px;opacity:.8;margin:2px 0 3px">${c[3]}  ${c[2]}</div><div class="prog" style="width:220px"><i style="width:${c[5]*100}%"></i></div>
+     <div style="font-size:11px;color:#b3b3b3;margin-top:3px">Straks ${c[4]}  ${["Sportjournaal","Talkshow","Soap","Showbizz","Nieuws","Studio Voetbal","IJszee"][i]}</div></div></div>`).join('')}
+   <div class="tabbar">${["Home","Live TV","Films","Series","Zoeken","Mijn Bingr"].map((t,i)=>`<div class="${i==1?'on':''}"><span style="font-size:22px">${["⌂","◉","▤","▦","⌕","◯"][i]}</span>${t}</div>`).join('')}</div></div>`,
+ ios_add:()=>`<div class="screen" style="background:#000"><div style="position:absolute;inset:60px 0 0 0;background:#141414;border-radius:14px 14px 0 0">
+   <div style="display:flex;justify-content:space-between;padding:16px;font-size:17px"><span style="color:var(--red)">Annuleer</span><b>Afspeellijst toevoegen</b><span style="width:60px"></span></div>
+   <div style="display:flex;justify-content:center;margin:6px 0 14px">${av(3,96,"Films 4K","#B3B3B3")}</div>
+   <div style="padding:0 16px">
+   <div style="color:#b3b3b3;font-weight:600;font-size:14px;margin:0 0 8px 14px">Kies het type afspeellijst</div>
+   <div style="display:flex;background:#232323;border-radius:9px;padding:2px;font-size:13px;font-weight:600">${["M3U / M3U8","Xtream Codes","Stalker / MAC"].map((t,i)=>`<div style="flex:1;text-align:center;padding:7px;border-radius:7px;${i==1?'background:#5a5a5e':''}">${t}</div>`).join('')}</div>
+   ${[["Noem deze afspeellijst","Films 4K",1]].map(f=>`<div style="color:#b3b3b3;font-weight:600;font-size:14px;margin:16px 0 8px 14px">${f[0]}</div><div style="background:#232323;border-radius:999px;padding:14px 18px;font-size:16px">${f[1]}</div>`).join('')}
+   <div style="color:#b3b3b3;font-weight:600;font-size:14px;margin:16px 0 8px 14px">Identificeer met een icoon</div>
+   <div style="display:flex;gap:10px;overflow:hidden">${["🔗","💬","🌐","🐇","📈","⚽","📶","👑","🔥"].map((s,i)=>`<div style="width:44px;height:44px;flex:none;border-radius:12px;display:grid;place-items:center;font-size:20px;background:${i==7?'linear-gradient(135deg,#A855F7,#3B0764)':'#232323'}">${s}</div>`).join('')}</div>
+   <div style="display:flex;gap:12px;margin-top:12px">${["#E50914","#2563EB","#10B981","#F59E0B","#A855F7","#EC4899","#14B8A6","#64748B"].map((c,i)=>`<div style="width:28px;height:28px;border-radius:50%;background:${c};${i==4?'outline:3px solid #fff;outline-offset:-3px':''}"></div>`).join('')}</div>
+   ${[["Server","http://mijn-server.nl:8080"],["Gebruikersnaam","leon"],["Wachtwoord","••••••••••"]].map(f=>`<div style="color:#b3b3b3;font-weight:600;font-size:14px;margin:16px 0 8px 14px">${f[0]}</div><div style="background:#232323;border-radius:999px;padding:14px 18px;font-size:16px">${f[1]}</div>`).join('')}
+   <div class="btn r" style="width:100%;padding:15px;border-radius:999px;font-size:17px;margin-top:24px">Opslaan</div></div></div></div>`,
+
+ // ---------- tvOS ----------
+ tv_home:()=>`<div class="screen">
+   <div style="position:absolute;inset:0;height:820px;background:radial-gradient(circle at 75% 35%,#c0392b,transparent 55%),linear-gradient(90deg,#000 25%,#3a0a0a)"></div>
+   <div style="position:absolute;right:120px;top:20px;width:520px;height:780px;background:radial-gradient(circle at 35% 25%,#ff5a3c,transparent 55%),linear-gradient(170deg,#c0392b,#3a0a0a 75%);-webkit-mask:linear-gradient(90deg,transparent,#000 40%);display:flex;align-items:flex-end;justify-content:center;padding:40px;font-weight:900;font-size:56px">THE LAST SIGNAL</div>
+   <div style="position:absolute;inset:0;height:820px;background:linear-gradient(transparent 55%,#000)"></div>
+   <div style="position:absolute;top:40px;left:0;right:0;display:flex;justify-content:center;gap:12px;font-size:29px;font-weight:600">${["Home","Live TV","Films","Series","Zoeken","Mijn Bingr"].map((t,i)=>`<span style="padding:10px 26px;border-radius:999px;${i==0?'background:#fff;color:#000':'color:#ccc'}">${t}</span>`).join('')}</div>
+   <div style="position:absolute;left:80px;top:250px">
+     <div style="font-size:84px;font-weight:900;line-height:1">The Last Signal</div>
+     <div style="display:flex;gap:18px;align-items:center;margin:22px 0;font-size:26px;color:#b3b3b3"><span class="imdb" style="font-size:26px"><b>IMDb</b><span style="color:#fff">7.9</span></span>2026  •  Thriller • Sci-Fi  •  2u 4m</div>
+     <p style="font-size:26px;max-width:900px;line-height:1.35;opacity:.9">Een radioamateur vangt een noodsignaal op dat afkomstig lijkt van een schip dat dertig jaar geleden verdween.</p>
+     <div style="display:flex;gap:24px;margin-top:30px"><div class="btn w" style="padding:19px 42px;font-size:30px;transform:scale(1.08);box-shadow:0 12px 30px #0009">▶ Afspelen</div><div class="btn g" style="padding:19px 42px;font-size:30px">ⓘ Meer info</div></div></div>
+   <div style="position:absolute;left:0;right:0;top:740px">
+     <div style="font-size:38px;font-weight:700;margin-left:80px">Verder kijken</div>
+     <div style="display:flex;gap:40px;padding:24px 80px">${[4,8,2,11,6,13].map((i,k)=>poster(i,230,{prog:[62,25,80,40,10,55][k]})).join('')}</div></div></div>`,
+ tv_picker:()=>`<div class="screen" style="display:flex;flex-direction:column;align-items:center;justify-content:center">
+   <div class="logo" style="position:absolute;top:50px;left:80px;font-size:50px">BINGR</div>
+   <div style="font-size:52px;font-weight:500;margin-bottom:60px">Wat wil je kijken?</div>
+   <div style="display:flex;gap:60px">${av(0,230,"Thuis TV")}${av(1,230,"Xtream Premium")}<div style="transform:scale(1.12);filter:drop-shadow(0 20px 30px #000)">${av(2,230,"Sport","#fff")}</div>${av(3,230,"Films 4K")}
+   <div style="display:flex;flex-direction:column;align-items:center;gap:16px"><div style="width:230px;height:230px;border:3px solid #b3b3b380;border-radius:8px;display:grid;place-items:center;font-size:90px;color:#b3b3b3;font-weight:200">+</div><div style="color:#b3b3b3;font-size:30px">Toevoegen</div></div></div>
+   <div style="position:absolute;bottom:50px;color:#b3b3b3aa;font-size:22px">☁︎ iCloud gesynchroniseerd met je iPhone</div></div>`,
+ tv_detail:()=>`<div class="screen" style="background:#141414">
+   <div style="position:absolute;inset:0;height:460px;background:radial-gradient(circle at 30% 30%,#16a085,transparent 60%),linear-gradient(160deg,#0b3d3a,#141414)"></div>
+   <div style="position:absolute;left:210px;top:120px;display:flex;gap:50px;align-items:flex-end">${poster(3,230)}
+     <div><div style="font-size:64px;font-weight:800">Glass Kingdom</div>
+     <div style="display:flex;gap:20px;align-items:center;font-size:25px;color:#b3b3b3;margin:16px 0"><span class="imdb" style="font-size:25px"><b>IMDb</b><span style="color:#fff">8.4</span></span>2024<span style="border:2px solid #b3b3b3;border-radius:4px;padding:0 6px">16</span>3 seizoenen</div>
+     <div style="display:flex;gap:30px"><div class="btn w" style="padding:18px 40px;font-size:29px;transform:scale(1.08)">▶ Afspelen S2:A4</div><div class="btn g" style="padding:18px 40px;font-size:29px">🎬 Trailer</div><div class="btn g" style="padding:18px 34px;font-size:29px">✓ Mijn lijst</div></div></div></div>
+   <div style="position:absolute;left:210px;right:210px;top:560px">
+     <div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:36px">Afleveringen</b><span style="background:#232323;padding:12px 24px;border-radius:6px;font-size:26px;font-weight:600">Seizoen 2 ⌄</span></div>
+     <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px 60px;margin-top:26px">
+     ${[["De fundering",1],["Breuklijnen",1],["Spiegels",1],["Het archief",0],["Onder het glas",0],["Kristal",0]].map((e,i)=>`<div style="display:flex;align-items:center;gap:24px">
+       <div style="width:236px;height:133px;border-radius:8px;flex:none;position:relative;background:linear-gradient(135deg,${P[(i+3)%18][2]},${P[(i+3)%18][1]});display:grid;place-items:center;font-size:46px">▷${i==3?'<div class="bar" style="height:6px"><i style="width:35%"></i></div>':''}</div>
+       <div style="flex:1"><div style="font-weight:600;font-size:27px">${i+1}. ${e[0]}</div><div style="font-size:21px;color:#b3b3b3;margin-top:4px">${48+i*3} min</div></div>
+       ${e[1]?'<div style="width:44px;height:44px;border-radius:50%;background:var(--red);display:grid;place-items:center;font-size:26px;font-weight:900">✓</div>':'<div style="width:44px;height:44px;border-radius:50%;border:3px solid #777"></div>'}</div>`).join('')}</div></div></div>`,
+ tv_live:()=>`<div class="screen">
+   <div style="position:absolute;top:40px;left:0;right:0;display:flex;justify-content:center;gap:12px;font-size:29px;font-weight:600">${["Home","Live TV","Films","Series","Zoeken","Mijn Bingr"].map((t,i)=>`<span style="padding:10px 26px;border-radius:999px;${i==1?'background:#fff;color:#000':'color:#ccc'}">${t}</span>`).join('')}</div>
+   <div style="position:absolute;top:150px;left:60px;width:420px;display:flex;flex-direction:column;gap:22px;font-size:28px;color:#b3b3b3">${["★ Favorieten","◷ Recent","Alle zenders","Nederland","Sport","Documentaire","Kids","Muziek"].map((g,i)=>`<div style="${i==4?'color:#fff;font-weight:700':''}">${g}</div>`).join('')}</div>
+   <div style="position:absolute;top:140px;left:520px;right:60px;display:flex;flex-direction:column;gap:6px">
+   ${CH.map((c,i)=>`<div style="display:flex;align-items:center;gap:26px;padding:16px 22px;border-radius:12px;${i==1?'background:#2a2a2a;transform:scale(1.03);box-shadow:0 10px 30px #000':''}">
+     <div style="width:60px;text-align:right;color:#b3b3b3;font-size:22px;font-weight:600">${i+1}</div>
+     <div style="width:150px;height:84px;border-radius:8px;background:#181818;display:grid;place-items:center;font-size:26px;font-weight:900;color:${c[1]}">${c[0]}</div>
+     <div style="flex:1"><div style="font-weight:600;font-size:29px">${c[0]}</div>
+     <div style="font-size:23px;opacity:.85;margin:4px 0 6px">${c[3]}  ${c[2]}</div><div class="prog" style="width:420px;height:4px"><i style="width:${c[5]*100}%"></i></div></div>
+     <div style="font-size:21px;color:#b3b3b3">Straks ${c[4]}</div></div>`).join('')}</div></div>`,
+ tv_trakt:()=>`<div class="screen" style="background:#141414;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:26px">
+   <div style="width:100px;height:100px;border-radius:50%;background:var(--red);display:grid;place-items:center;font-size:56px">⟲</div>
+   <div style="font-size:46px;font-weight:700">Koppel je Trakt-account</div>
+   <div style="font-size:28px;color:#b3b3b3">Ga op je telefoon of computer naar</div>
+   <div style="font-size:36px;font-weight:600">https://trakt.tv/activate</div>
+   <div style="font-size:28px;color:#b3b3b3">en voer deze code in:</div>
+   <div style="font-family:Menlo,monospace;font-size:78px;font-weight:800;letter-spacing:12px;background:#232323;padding:14px 46px;border-radius:16px">7B2F 9KQD</div>
+   <div style="width:250px;height:250px;background:#fff;border-radius:14px;padding:16px;display:grid;grid-template-columns:repeat(21,1fr)">${Array.from({length:441},(_,i)=>{const x=i%21,y=Math.floor(i/21);const f=(a,b)=>x>=a&&x<a+7&&y>=b&&y<b+7&&!(x>a&&x<a+6&&y>b&&y<b+6&&!(x>a+1&&x<a+5&&y>b+1&&y<b+5));const on=f(0,0)||f(14,0)||f(0,14)||(((x*7+y*13+x*y)%5)<2&&!(x<8&&y<8)&&!(x>12&&y<8)&&!(x<8&&y>12));return `<i style="background:${on?'#000':'#fff'}"></i>`}).join('')}</div>
+   <div style="font-size:26px;color:#b3b3b3">◌ Wachten op bevestiging…</div></div>`,
+};
+const k = new URLSearchParams(location.search).get('s');
+document.getElementById('app').innerHTML = screens[k]();
+</script></body></html>
