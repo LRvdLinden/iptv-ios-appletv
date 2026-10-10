@@ -24,16 +24,10 @@ struct HomeView: View {
         ZStack(alignment: .top) {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: tvScaled(26)) {
-                    #if os(iOS)
-                    Color.clear.frame(height: 100)
-                    #else
-                    Color.clear.frame(height: 20)
-                    #endif
-                    // bovenaan in elk tabblad: Verder kijken, daaronder Voor jou
-                    continueRow
-                    forYouRow
                     if let hero {
                         HeroBanner(target: hero, onPlay: { play(hero) }, onInfo: { detail = hero })
+                    } else {
+                        Color.clear.frame(height: tvScaled(90))
                     }
                     rows
                 }
@@ -68,11 +62,18 @@ struct HomeView: View {
             if !trendingMovies.isEmpty { top10Row(L("Top 10 movies today"), movies: Array(trendingMovies.prefix(10))) }
             let recent = lib.movies.filter { $0.addedAt != nil }.sorted { $0.addedAt! > $1.addedAt! }.prefix(30)
             if !recent.isEmpty { movieRow(L("Recently added"), Array(recent)) }
+            // onder Onlangs toegevoegd: Verder kijken, daaronder Voor jou
+            continueRow
+            forYouRow
         }
         if filter != .movies {
             let mine = lib.series.filter { s in pid.map { store.inMyList($0, s.id) } ?? false }
             if !mine.isEmpty && filter == .series { seriesRow(L("My List"), mine) }
             if !trendingSeries.isEmpty { top10Row(L("Top 10 series today"), series: Array(trendingSeries.prefix(10))) }
+            if filter == .series {
+                continueRow
+                forYouRow
+            }
         }
 
         if filter == .all {
