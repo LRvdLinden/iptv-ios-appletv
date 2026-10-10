@@ -287,6 +287,7 @@ struct EngineView: UIViewRepresentable {
     @ObservedObject var controller: PlayerController
     func makeUIView(context: Context) -> UIView {
         let host = UIView(); host.backgroundColor = .black
+        host.isUserInteractionEnabled = false   // tikken gaan naar de SwiftUI-bediening, niet naar VLC/AVPlayer
         attach(controller.engine.view, to: host)
         return host
     }
@@ -297,6 +298,7 @@ struct EngineView: UIViewRepresentable {
         }
     }
     private func attach(_ v: UIView, to host: UIView) {
+        v.isUserInteractionEnabled = false
         v.frame = host.bounds
         v.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         host.addSubview(v)

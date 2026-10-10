@@ -30,7 +30,10 @@ struct PlayerScreen: View {
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            EngineView(controller: player).ignoresSafeArea()
+            EngineView(controller: player).ignoresSafeArea().allowsHitTesting(false)
+            #if os(iOS)
+            tapLayer
+            #endif
 
             if let s = player.subtitleText {
                 Text(s)
@@ -84,7 +87,6 @@ struct PlayerScreen: View {
         #if os(iOS)
         .statusBarHidden()
         .persistentSystemOverlays(.hidden)
-        .onTapGesture { toggleControls() }
         #else
         .onPlayPauseCommand { player.togglePlay(); poke() }
         .onMoveCommand { dir in
@@ -125,6 +127,27 @@ struct PlayerScreen: View {
     }
 
     // MARK: bediening
+
+    #if os(iOS)
+    /// Tik = bediening tonen/verbergen; dubbeltik links/rechts = 10 s terug/vooruit.
+    private var tapLayer: some View {
+        GeometryReader { geo in
+            HStack(spacing: 0) {
+                Color.clear.contentShape(Rectangle())
+                    .onTapGesture(count: 2) { if !player.isLive || player.canTimeshift { player.seek(by: -10); flash("−10 s"); poke() } }
+                    .onTapGesture { toggleControls() }
+                    .frame(width: geo.size.width * 0.35)
+                Color.clear.contentShape(Rectangle())
+                    .onTapGesture { toggleControls() }
+                Color.clear.contentShape(Rectangle())
+                    .onTapGesture(count: 2) { if !player.isLive || player.canTimeshift { player.seek(by: 10); flash("+10 s"); poke() } }
+                    .onTapGesture { toggleControls() }
+                    .frame(width: geo.size.width * 0.35)
+            }
+        }
+        .ignoresSafeArea()
+    }
+    #endif
 
     private var controls: some View {
         ZStack {
