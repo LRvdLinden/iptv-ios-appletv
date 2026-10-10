@@ -33,6 +33,7 @@ struct BingrApp: App {
         }
         .onChange(of: phase) { _, p in
             if p == .active {
+                Secrets.reload()
                 store.load(mergeProgress: true)
                 Task { await trakt.refresh() }
             }

@@ -81,7 +81,7 @@ SwiftUI · iOS 17+ · tvOS 17+ · Apple- én VLC-engine · 11 talen.
    xcodegen
    open Bingr.xcodeproj
    ```
-2. **API-sleutels** invullen in `Shared/Config/Secrets.swift` (allemaal gratis):
+2. **Koppelingen instellen** in de app: *Mijn Bingr → Koppelingen instellen* (eenmalig, gratis). Trakt en OpenSubtitles eisen dat elke app zich één keer registreert; daarna log je gewoon in met je eigen account. De sleutels staan in de iCloud-sleutelhanger, dus je Apple TV heeft ze ook, en ze komen niet in deze openbare repo:
    | Dienst | Waar aanmaken | Let op |
    |---|---|---|
    | Trakt | https://trakt.tv/oauth/applications/new | Redirect URI: `urn:ietf:wg:oauth:2.0:oob` |

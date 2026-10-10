@@ -15,6 +15,9 @@ struct SettingsView: View {
     @State private var showOSLogin = false
     @State private var editing: PlaylistSource?
     @State private var pinMode: PinMode?
+    @State private var setup: SetupTarget?
+
+    enum SetupTarget: String, Identifiable { case trakt, openSubtitles, all; var id: String { rawValue } }
 
     enum PinMode: String, Identifiable { case set, unlock, disable; var id: String { rawValue } }
 
@@ -34,8 +37,13 @@ struct SettingsView: View {
                 } header: { Text("iCloud") } footer: {
                     Text(L("Playlists, avatars, favorites, My List, watch progress, reminders, your changes and your Trakt/OpenSubtitles sign-in are shared via iCloud between iPhone, iPad, Mac and Apple TV."))
                 }
+                Section {
+                    Button { setup = .all } label: { Label(L("Set up connections"), systemImage: "key.horizontal") }
+                } footer: {
+                    Text(L("Trakt and OpenSubtitles require a one-time app registration. Saved in iCloud Keychain, so your other devices have it too."))
+                }
                 Section(L("About")) {
-                    LabeledContent(L("Version"), value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.1")
+                    LabeledContent(L("Version"), value: "\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0") (\(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"))")
                     LabeledContent(L("IMDb data"), value: Secrets.isSet(Secrets.omdbAPIKey) ? L("Active (OMDb)") : L("No OMDb key"))
                 }
             }
@@ -44,6 +52,20 @@ struct SettingsView: View {
         .sheet(isPresented: $showTraktLogin) { TraktLoginView() }
         .sheet(isPresented: $showOSLogin) { OpenSubtitlesLoginView() }
         .sheet(item: $editing) { AddPlaylistView(existing: $0) }
+        .sheet(item: $setup) { t in
+            switch t {
+            case .trakt:
+                ConnectionsSetupView(focus: .trakt) {
+                    if Secrets.traktReady { Task { try? await Task.sleep(nanoseconds: 500_000_000); showTraktLogin = true } }
+                }
+            case .openSubtitles:
+                ConnectionsSetupView(focus: .openSubtitles) {
+                    if Secrets.openSubtitlesReady { Task { try? await Task.sleep(nanoseconds: 500_000_000); showOSLogin = true } }
+                }
+            case .all:
+                ConnectionsSetupView(focus: .all)
+            }
+        }
         .sheet(item: $pinMode) { mode in
             switch mode {
             case .set:
@@ -98,10 +120,8 @@ struct SettingsView: View {
                 Button { Task { await trakt.refresh(force: true) } } label: { Label(L("Sync now"), systemImage: "arrow.triangle.2.circlepath") }
                 Button(role: .destructive) { Task { await trakt.logout() } } label: { Label(L("Sign out of Trakt"), systemImage: "rectangle.portrait.and.arrow.right") }
             } else {
-                Button { showTraktLogin = true } label: { Label(L("Connect Trakt"), systemImage: "link") }
-                    .disabled(!Secrets.isSet(Secrets.traktClientID))
-                if !Secrets.isSet(Secrets.traktClientID) {
-                    Text(L("First fill in your Trakt Client ID in Secrets.swift.")).font(.caption).foregroundStyle(Theme.secondary)
+                Button { if Secrets.traktReady { showTraktLogin = true } else { setup = .trakt } } label: {
+                    Label(L("Connect Trakt"), systemImage: "link")
                 }
             }
             if let e = trakt.lastError { Text(e).font(.caption).foregroundStyle(Theme.red) }
@@ -117,8 +137,9 @@ struct SettingsView: View {
                 if let r = subs.remainingDownloads { LabeledContent(L("Downloads left today"), value: "\(r)") }
                 Button(role: .destructive) { Task { await subs.logout() } } label: { Label(L("Sign out"), systemImage: "rectangle.portrait.and.arrow.right") }
             } else {
-                Button { showOSLogin = true } label: { Label(L("Sign in to OpenSubtitles"), systemImage: "captions.bubble") }
-                    .disabled(!Secrets.isSet(Secrets.openSubtitlesAPIKey))
+                Button { if Secrets.openSubtitlesReady { showOSLogin = true } else { setup = .openSubtitles } } label: {
+                    Label(L("Sign in to OpenSubtitles"), systemImage: "captions.bubble")
+                }
             }
             Toggle(L("Search subtitles automatically when playing"), isOn: $autoSubtitles)
             NavigationLink(L("Languages: %@", subs.preferredLanguages.joined(separator: ", "))) { LanguagePicker() }

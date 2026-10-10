@@ -1,24 +1,56 @@
 import Foundation
 
-/// Vul hier je eigen developer-sleutels in (zie README.md, stap 2).
-/// Dit zijn app-sleutels, géén persoonlijke inloggegevens: inloggen bij Trakt en
-/// OpenSubtitles gebeurt in de app zelf.
+/// App-sleutels voor Trakt, OpenSubtitles, OMDb en TMDB.
+///
+/// Trakt en OpenSubtitles eisen dat elke app zich één keer registreert (zo doet UHF
+/// dat ook). Die sleutels vul je in de app in: **Mijn Bingr → Koppelingen instellen**.
+/// Ze worden in de iCloud-sleutelhanger bewaard, dus ook je Apple TV heeft ze meteen,
+/// en ze komen nooit in de (openbare) GitHub-repo te staan.
+///
+/// Wil je ze toch vast in de app bakken, vul ze dan hieronder in `builtIn` in.
 enum Secrets {
-    /// https://trakt.tv/oauth/applications/new  — Redirect URI: urn:ietf:wg:oauth:2.0:oob
-    static let traktClientID = "VUL_TRAKT_CLIENT_ID_IN"
-    static let traktClientSecret = "VUL_TRAKT_CLIENT_SECRET_IN"
+    enum Key: String, CaseIterable {
+        case traktClientID, traktClientSecret, openSubtitlesAPIKey, omdbAPIKey, tmdbAPIKey
+    }
 
-    /// https://www.opensubtitles.com/consumers  — maak een "API consumer" aan
-    static let openSubtitlesAPIKey = "VUL_OPENSUBTITLES_API_KEY_IN"
+    private static let builtIn: [Key: String] = [
+        .traktClientID: "",
+        .traktClientSecret: "",
+        .openSubtitlesAPIKey: "",
+        .omdbAPIKey: "",
+        .tmdbAPIKey: ""
+    ]
 
-    /// https://www.omdbapi.com/apikey.aspx  — IMDb-gegevens (score, poster, plot, cast)
-    static let omdbAPIKey = "VUL_OMDB_API_KEY_IN"
+    private static let lock = NSLock()
+    private static var cache: [Key: String] = [:]
 
-    /// Optioneel — https://www.themoviedb.org/settings/api (API-sleutel of "API Read Access Token")
-    /// Geeft foto's van de cast, titel-logo's, achtergronden, afleveringsfoto's en teksten in jouw taal.
-    static let tmdbAPIKey = "VUL_TMDB_API_KEY_IN"
+    static func value(_ k: Key) -> String {
+        lock.lock(); defer { lock.unlock() }
+        if let v = cache[k] { return v }
+        let v = Keychain.get("apikey.\(k.rawValue)") ?? builtIn[k] ?? ""
+        cache[k] = v
+        return v
+    }
+
+    static func set(_ k: Key, _ value: String) {
+        let v = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        Keychain.set(v.isEmpty ? nil : v, for: "apikey.\(k.rawValue)")
+        lock.lock(); cache[k] = v.isEmpty ? (builtIn[k] ?? "") : v; lock.unlock()
+    }
+
+    /// Opnieuw inlezen (bijv. na wijziging op een ander apparaat via iCloud).
+    static func reload() { lock.lock(); cache = [:]; lock.unlock() }
+
+    static var traktClientID: String { value(.traktClientID) }
+    static var traktClientSecret: String { value(.traktClientSecret) }
+    static var openSubtitlesAPIKey: String { value(.openSubtitlesAPIKey) }
+    static var omdbAPIKey: String { value(.omdbAPIKey) }
+    static var tmdbAPIKey: String { value(.tmdbAPIKey) }
+
+    static var traktReady: Bool { isSet(traktClientID) && isSet(traktClientSecret) }
+    static var openSubtitlesReady: Bool { isSet(openSubtitlesAPIKey) }
 
     static let userAgent = "Bingr v1.0.0"
 
-    static func isSet(_ v: String) -> Bool { !v.hasPrefix("VUL_") && !v.isEmpty }
+    static func isSet(_ v: String) -> Bool { !v.isEmpty && !v.hasPrefix("VUL_") }
 }
