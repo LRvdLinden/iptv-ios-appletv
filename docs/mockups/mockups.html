@@ -75,23 +75,33 @@ const screens = {
    <div class="row"><h3>Top 10 films vandaag</h3><div class="scroller">${[0,1,2].map((i,k)=>`<div style="display:flex;align-items:center;flex:none"><div style="font-size:150px;font-weight:900;line-height:1;background:linear-gradient(#4a4a4a,#111);-webkit-background-clip:text;color:transparent;-webkit-text-stroke:2px #888;margin-right:-22px">${k+1}</div>${poster(i+5,112,{check:k==1})}</div>`).join('')}</div></div>
    </div>
    <div class="tabbar">${["Home","Live TV","Films","Series","Zoeken","Mijn Bingr"].map((t,i)=>`<div class="${i==0?'on':''}"><span style="font-size:22px">${["⌂","◉","▤","▦","⌕","◯"][i]}</span>${t}</div>`).join('')}</div></div>`,
- ios_detail:()=>`<div class="screen" style="background:#141414"><div style="height:250px;background:radial-gradient(circle at 30% 30%,#16a085,transparent 60%),linear-gradient(160deg,#0b3d3a,#141414);position:relative;filter:saturate(1.1)">
-   <div class="status" style="position:relative"><span>20:43</span><span>●●● 5G ▮</span></div>
-   <div style="position:absolute;bottom:0;left:16px;right:16px;display:flex;justify-content:space-between;align-items:flex-end">${poster(3,120)}<div style="width:34px;height:34px;border-radius:50%;background:#000b;display:grid;place-items:center;align-self:flex-start;font-weight:700">✕</div></div></div>
-   <div style="padding:14px 16px">
-   <div style="font-size:26px;font-weight:800">Glass Kingdom</div>
-   <div style="display:flex;gap:10px;align-items:center;color:#b3b3b3;font-size:13px;margin:8px 0 12px"><span class="imdb"><b>IMDb</b><span style="color:#fff">8.4</span></span><span>2024</span><span style="border:1px solid #b3b3b3;border-radius:3px;padding:0 4px;font-size:11px">16</span><span>3 seizoenen</span></div>
-   <div class="btn w" style="width:100%;padding:11px;font-size:16px">▶ Afspelen S2:A4</div>
-   <div class="btn g" style="width:100%;padding:11px;font-size:16px;margin-top:8px">🎬 Trailer</div>
-   <p style="font-size:14px;line-height:1.4;margin:12px 0;opacity:.9">Een architect ontdekt dat de glazen stad die ze ontwierp een geheim verbergt dat haar familie al generaties bewaakt.</p>
-   <div style="font-size:12px;color:#b3b3b3">Cast: <span style="color:#ddd">Mara Ellis, Tom Verhaeg, Ines Kole</span></div>
-   <div style="display:flex;gap:36px;margin:16px 0 10px;text-align:center;font-size:10px;color:#b3b3b3">${[["✓","Mijn lijst"],["★","IMDb"],["⟲","Trakt"]].map(a=>`<div><div style="font-size:22px;color:#fff">${a[0]}</div>${a[1]}</div>`).join('')}</div>
-   <div style="border-top:1px solid #232323;padding-top:12px;display:flex;justify-content:space-between;align-items:center"><b style="font-size:18px">Afleveringen</b><span style="background:#232323;padding:6px 12px;border-radius:4px;font-weight:600;font-size:14px">Seizoen 2 ⌄</span></div>
-   <div style="font-size:12px;color:#b3b3b3;margin:8px 0">✓ Heel seizoen afvinken</div>
-   ${[["De fundering",1],["Breuklijnen",1],["Spiegels",1],["Het archief",0],["Onder het glas",0]].map((e,i)=>`<div style="display:flex;align-items:center;gap:12px;padding:6px 0">
-     <div style="width:124px;height:70px;border-radius:4px;flex:none;position:relative;background:linear-gradient(135deg,${P[(i+3)%18][2]},${P[(i+3)%18][1]});display:grid;place-items:center;font-size:24px">▷${i==3?'<div class="bar"><i style="width:35%"></i></div>':''}</div>
-     <div style="flex:1"><div style="font-weight:600;font-size:14px">${i+1}. ${e[0]}</div><div style="font-size:11px;color:#b3b3b3">${48+i*3} min</div></div>
-     ${e[1]?'<div style="width:24px;height:24px;border-radius:50%;background:var(--red);display:grid;place-items:center;font-size:14px;font-weight:900">✓</div>':'<div style="width:24px;height:24px;border-radius:50%;border:2px solid #b3b3b3"></div>'}</div>`).join('')}
+ ios_detail:()=>`<div class="screen" style="background:#000;overflow:hidden">
+   <div style="position:relative;height:560px;background:radial-gradient(circle at 50% 30%,#1abc9c,transparent 60%),linear-gradient(170deg,#16a085,#0b3d3a 70%)">
+     <div style="position:absolute;inset:0;background:linear-gradient(transparent 35%,#000a 75%,#000)"></div>
+     <div class="status" style="position:relative"><span>20:43</span><span>●●● 5G ▮</span></div>
+     <div style="position:absolute;top:58px;right:16px;width:44px;height:44px;border-radius:50%;background:#ffffff26;backdrop-filter:blur(10px);display:grid;place-items:center;font-size:18px">✕</div>
+     <div style="position:absolute;bottom:14px;left:0;right:0;text-align:center;font-weight:900;font-size:46px;letter-spacing:1px">GLASS<br>KINGDOM</div>
+   </div>
+   <div style="padding:6px 16px 0">
+     <div style="display:flex;justify-content:center;gap:14px;align-items:center;font-size:16px"><span style="background:#ffffff26;border-radius:10px;padding:6px 12px;font-weight:700">★ 8.4</span>2024<span>3 seizoenen</span></div>
+     <div style="margin-top:18px;background:#fff;color:#000;border-radius:999px;height:52px;display:grid;place-items:center;font-weight:600;font-size:16px">▶ Speel seizoen 2: aflevering 4</div>
+     <div style="display:flex;gap:12px;margin-top:12px">${["♥","🎬"].map(x=>`<div style="width:50px;height:50px;border-radius:50%;background:#ffffff1f;display:grid;place-items:center;font-size:19px;${x=='♥'?'color:var(--red)':''}">${x}</div>`).join('')}<div style="flex:1;height:50px;border-radius:999px;background:#ffffff1f;display:grid;place-items:center;font-size:15px">Andere bronnen</div></div>
+     <p style="font-size:16px;line-height:1.4;margin:20px 0;opacity:.92">Een architect ontdekt dat de glazen stad die ze ontwierp een geheim verbergt dat haar familie al generaties bewaakt.</p>
+     <div style="color:#b3b3b3;font-size:14px;font-weight:600;letter-spacing:.5px">AFLEVERINGEN</div>
+     <div style="display:inline-block;margin:12px 0;background:#ffffff1f;border-radius:999px;padding:10px 16px;font-weight:600">Seizoen 2 ⌄</div>
+     <div style="display:flex;gap:14px">${[["De fundering","Mara keert terug naar de stad en vindt een verborgen kamer onder het atrium."],["Breuklijnen","Het eerste glas barst. Tom ontdekt wie de bouw sabo..."]].map((e,i)=>`<div style="width:290px;flex:none;background:#ffffff0f;border-radius:14px;padding-bottom:8px">
+       <div style="height:163px;border-radius:12px;position:relative;background:linear-gradient(135deg,${P[i+3][2]},${P[i+3][1]})">${i==0?'<div class="check" style="width:22px;height:22px;top:8px;right:8px">✓</div><div style="position:absolute;left:16px;right:16px;bottom:12px;height:5px;border-radius:5px;background:#fff"></div>':'<div style="position:absolute;left:16px;right:16px;bottom:12px;height:5px;border-radius:5px;background:#ffffff4d"><div style="width:35%;height:100%;background:#fff;border-radius:5px"></div></div>'}</div>
+       <div style="padding:6px 4px 0"><div style="color:#b3b3b3;font-size:13px">S02E0${i+1}</div><div style="font-weight:600">${e[0]}</div><div style="color:#b3b3b3;font-size:13px;line-height:1.3;margin-top:2px">${e[1]}</div><div style="font-size:12px;opacity:.8;margin-top:4px">${3+i*7} februari 2026 · 4${8+i} min</div></div></div>`).join('')}</div>
+   </div></div>`,
+ ios_detail2:()=>`<div class="screen" style="background:#000">
+   <div style="height:106px;background:#1e1e1ecc;backdrop-filter:blur(20px);display:flex;align-items:flex-end;justify-content:center;padding-bottom:16px;font-weight:600;font-size:17px;position:relative">Glass Kingdom<div style="position:absolute;right:16px;bottom:6px;width:44px;height:44px;border-radius:50%;background:#ffffff26;display:grid;place-items:center">✕</div></div>
+   <div style="padding:22px 16px 0">
+     <div style="color:#b3b3b3;font-size:14px;font-weight:600;letter-spacing:.5px">BEOORDELINGEN</div>
+     <div style="display:flex;gap:40px;margin-top:12px">${[["<b style='background:var(--imdb);color:#000;font-size:9px;padding:2px 4px;border-radius:3px'>IMDb</b>","IMDb","8.4"],["<span style='color:#ED1C24'>☑</span>","Trakt","84%"]].map(r=>`<div><div style="display:flex;gap:6px;align-items:center;color:#b3b3b3">${r[0]} ${r[1]}</div><div style="font-size:22px;font-weight:700;margin-top:4px">${r[2]}</div></div>`).join('')}</div>
+     <div style="color:#b3b3b3;font-size:14px;font-weight:600;letter-spacing:.5px;margin-top:34px">CAST</div>
+     <div style="display:grid;grid-template-rows:76px 76px;grid-auto-flow:column;gap:14px 26px;margin-top:12px">${[["Mara Ellis","Ilse Verbeek"],["Tom Verhaeg","Joris Smit"],["Ines Kole","Lotte de Wit"],["Ruud Bos","Commissaris"]].map((c,i)=>`<div style="display:flex;align-items:center;gap:12px;width:250px"><div style="width:70px;height:70px;border-radius:50%;background:linear-gradient(135deg,${P[i+5][2]},${P[i+5][1]});display:grid;place-items:center;font-weight:700;color:#fff8">${c[0].split(' ').map(x=>x[0]).join('')}</div><div><div style="font-size:16px">${c[0]}</div><div style="color:#b3b3b3;font-size:14px">${c[1]}</div></div></div>`).join('')}</div>
+     <div style="color:#b3b3b3;font-size:14px;font-weight:600;letter-spacing:.5px;margin-top:34px">AANBEVELINGEN</div>
+     <div style="display:flex;gap:14px;margin-top:12px">${[0,4,10].map(i=>`<div><div class="poster" style="width:160px;height:240px;border-radius:12px;background:linear-gradient(160deg,${P[i][2]},${P[i][1]} 70%);font-size:20px"><span>${P[i][0]}</span></div><div style="margin-top:6px;font-size:14px">${P[i][0]}</div></div>`).join('')}</div>
    </div></div>`,
  ios_live:()=>`<div class="screen"><div class="status"><span>20:44</span><span>●●● 5G ▮</span></div>
    <div style="font-size:34px;font-weight:800;padding:8px 16px">Live TV</div>

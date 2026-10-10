@@ -14,8 +14,10 @@ SwiftUI · iOS 17+ · tvOS 17+ · Apple- én VLC-engine · 11 talen.
 | Splash | Afspeellijst kiezen | Home |
 |:---:|:---:|:---:|
 | <img src="docs/screenshots/ios_splash.png" width="240"> | <img src="docs/screenshots/ios_picker.png" width="240"> | <img src="docs/screenshots/ios_home.png" width="240"> |
-| **Serie + Trakt-vinkjes** | **Live TV** | **Tv-gids** |
-| <img src="docs/screenshots/ios_detail.png" width="240"> | <img src="docs/screenshots/ios_live.png" width="240"> | <img src="docs/screenshots/ios_guide.png" width="240"> |
+| **Details** | **Details: scores, cast, aanbevelingen** | **Live TV** |
+| <img src="docs/screenshots/ios_detail.png" width="240"> | <img src="docs/screenshots/ios_detail2.png" width="240"> | <img src="docs/screenshots/ios_live.png" width="240"> |
+| **Tv-gids** | | |
+| <img src="docs/screenshots/ios_guide.png" width="240"> | | |
 | **Afspeellijst toevoegen** | **Instellingen** | |
 | <img src="docs/screenshots/ios_add.png" width="240"> | <img src="docs/screenshots/ios_settings.png" width="240"> | |
 
@@ -53,6 +55,14 @@ SwiftUI · iOS 17+ · tvOS 17+ · Apple- én VLC-engine · 11 talen.
 - **Beheren**: groepen en zenders hernoemen, herschikken, samenvoegen en verbergen
 - **Kinderslot** met pincode: groepen op slot, volwassenengroepen automatisch, 30 min ontgrendelen
 
+**Detailpagina (UHF-stijl)**
+- Grote afbeelding met titel-logo, score, jaar en speelduur/seizoenen
+- Eén knop "Speel seizoen 2: aflevering 4" (gaat verder waar je was), Mijn lijst, trailer, afvinken
+- **Andere bronnen**: dezelfde titel in andere groepen of afspeellijsten
+- Afleveringen als kaarten met foto, voortgang, vinkje, beschrijving en uitzenddatum
+- Beoordelingen (IMDb, Trakt), cast met foto's en rol, aanbevelingen (direct afspelen als ze in je lijst staan)
+- Werkt zonder sleutels met de info van je Xtream-server; IMDb, Trakt en TMDB vullen aan
+
 **Netflix-ervaring**
 - Geanimeerde splash, billboard, rijen, Top 10 (Trakt trending in jouw lijst), Verder kijken, Mijn lijst
 - **IMDb**-score, plot, cast (via OMDb) en **trailers** (via Trakt)
@@ -77,6 +87,7 @@ SwiftUI · iOS 17+ · tvOS 17+ · Apple- én VLC-engine · 11 talen.
    | Trakt | https://trakt.tv/oauth/applications/new | Redirect URI: `urn:ietf:wg:oauth:2.0:oob` |
    | OpenSubtitles | https://www.opensubtitles.com/consumers | "API consumer" aanmaken |
    | IMDb-gegevens (OMDb) | https://www.omdbapi.com/apikey.aspx | gratis: 1000 verzoeken/dag; titels worden gecachet |
+   | TMDB (optioneel) | https://www.themoviedb.org/settings/api | foto's van cast, titel-logo's, afleveringsfoto's, teksten in jouw taal |
 3. **Signing**: kies in Xcode je Team voor beide targets (`Bingr` en `BingrTV`).
 4. **iCloud**: zet bij beide targets de capability *iCloud → Key-value storage* aan (staat al in de entitlements) en houd dezelfde Team-ID aan.
 
