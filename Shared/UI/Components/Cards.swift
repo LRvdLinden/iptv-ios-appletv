@@ -76,7 +76,7 @@ struct ChannelCard: View {
             .clipped()
             VStack(alignment: .leading, spacing: 3) {
                 Text(channel.name).font(.system(size: tvScaled(13), weight: .semibold)).lineLimit(1)
-                Text(now?.title ?? "Geen gids-informatie").font(.system(size: tvScaled(11)))
+                Text(now?.title ?? L("No guide information")).font(.system(size: tvScaled(11)))
                     .foregroundStyle(Theme.secondary).lineLimit(1)
                 if let now { ProgressBar(value: now.progress).frame(height: 2).padding(.top, 2) }
             }

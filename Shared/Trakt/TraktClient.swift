@@ -150,9 +150,9 @@ enum TraktError: LocalizedError {
     case notLoggedIn, expired, denied(Int)
     var errorDescription: String? {
         switch self {
-        case .notLoggedIn: return "Niet ingelogd bij Trakt."
-        case .expired: return "De koppelcode is verlopen. Probeer opnieuw."
-        case .denied(let c): return "Trakt weigerde de koppeling (\(c))."
+        case .notLoggedIn: return L("Not signed in to Trakt.")
+        case .expired: return L("The code has expired. Please try again.")
+        case .denied(let c): return L("Trakt refused the connection (%d).", c)
         }
     }
 }

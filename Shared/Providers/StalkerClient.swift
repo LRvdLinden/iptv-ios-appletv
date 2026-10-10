@@ -67,12 +67,12 @@ actor StalkerClient {
         if let g = url(["type": "itv", "action": "get_genres"]),
            let c = url(["type": "itv", "action": "get_all_channels"]) {
             let genres = (try? await HTTP.json(JS<[Genre]>.self, g, headers: headers).js) ?? []
-            let gMap = Dictionary(genres.compactMap { x in x.id.string.map { ($0, x.title ?? "Overig") } }, uniquingKeysWith: { a, _ in a })
+            let gMap = Dictionary(genres.compactMap { x in x.id.string.map { ($0, x.title ?? L("Other")) } }, uniquingKeysWith: { a, _ in a })
             let chans = (try? await HTTP.json(JS<Paged<ChannelDTO>>.self, c, headers: headers).js.data) ?? []
             lib.channels = chans.compactMap { ch in
                 guard let id = ch.id.string else { return nil }
-                return Channel(id: "st\(id)", name: ch.name ?? "Kanaal", logo: ch.logo?.urlValue,
-                               group: gMap[ch.tv_genre_id?.string ?? ""] ?? "Overig",
+                return Channel(id: "st\(id)", name: ch.name ?? "Channel", logo: ch.logo?.urlValue,
+                               group: gMap[ch.tv_genre_id?.string ?? ""] ?? L("Other"),
                                streamURL: directURL(ch.cmd), epgID: ch.xmltv_id, number: ch.number?.int,
                                catchupDays: (ch.tv_archive_duration?.int ?? 0) / 24, stalkerCmd: ch.cmd)
             }
@@ -92,11 +92,11 @@ actor StalkerClient {
                         let p = TitleCleaner.parse(v.name ?? "")
                         if v.is_series?.int == 1 {
                             lib.series.append(Series(id: "sts\(id)", title: p.title, year: v.year?.int ?? p.year,
-                                                     poster: v.screenshot_uri?.urlValue, group: cat.title ?? "Series",
+                                                     poster: v.screenshot_uri?.urlValue, group: cat.title ?? L("Series"),
                                                      plot: v.description, rating: v.rating_imdb?.double))
                         } else {
                             lib.movies.append(Movie(id: "stv\(id)", title: p.title, year: v.year?.int ?? p.year,
-                                                    poster: v.screenshot_uri?.urlValue, group: cat.title ?? "Films",
+                                                    poster: v.screenshot_uri?.urlValue, group: cat.title ?? L("Movies"),
                                                     rating: v.rating_imdb?.double, plot: v.description, stalkerCmd: v.cmd))
                         }
                     }
@@ -137,5 +137,5 @@ actor StalkerClient {
 
 enum StalkerError: LocalizedError {
     case handshake
-    var errorDescription: String? { "Kon geen verbinding maken met het portal. Controleer de portal-URL en het MAC-adres." }
+    var errorDescription: String? { L("Couldn't connect to the portal. Check the portal URL and MAC address.") }
 }

@@ -31,7 +31,7 @@ enum M3UParser {
                     attrs[ns.substring(with: m.range(at: 1)).lowercased()] = ns.substring(with: m.range(at: 2))
                 }
                 let durStr = header.replacingOccurrences(of: "#EXTINF:", with: "").split(separator: " ").first ?? "-1"
-                pending = (name.isEmpty ? (attrs["tvg-name"] ?? "Onbekend") : name, attrs, Int(durStr) ?? -1)
+                pending = (name.isEmpty ? (attrs["tvg-name"] ?? "?") : name, attrs, Int(durStr) ?? -1)
             } else if line.hasPrefix("#EXTGRP:") {
                 groupOverride = String(line.dropFirst(8))
             } else if line.hasPrefix("#") {
@@ -64,7 +64,7 @@ enum M3UParser {
         var number = 0
 
         for e in entries(from: text) {
-            let group = e.attrs["group-title"].flatMap { $0.isEmpty ? nil : $0 } ?? "Overig"
+            let group = e.attrs["group-title"].flatMap { $0.isEmpty ? nil : $0 } ?? L("Other")
             let logo = e.attrs["tvg-logo"]?.urlValue
             let lowerURL = e.url.lowercased()
             let parsed = TitleCleaner.parse(e.name)

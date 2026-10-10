@@ -25,7 +25,7 @@ struct PlaylistPickerView: View {
                     BingrLogo(size: tvScaled(26))
                     Spacer()
                     if !store.playlists.isEmpty {
-                        Button(managing ? "Klaar" : "Beheren") {
+                        Button(managing ? L("Done") : L("Manage")) {
                             withAnimation(.spring(response: 0.35)) { managing.toggle() }
                         }
                         .font(.system(size: tvScaled(15), weight: .semibold))
@@ -37,11 +37,11 @@ struct PlaylistPickerView: View {
 
                 Spacer(minLength: 0)
 
-                Text(store.playlists.isEmpty ? "Welkom bij Bingr" : (managing ? "Afspeellijsten beheren" : "Wat wil je kijken?"))
+                Text(store.playlists.isEmpty ? L("Welcome to Bingr") : (managing ? L("Manage playlists") : L("What do you want to watch?")))
                     .font(.system(size: tvScaled(26), weight: .medium))
                     .foregroundStyle(.white)
                 if store.playlists.isEmpty {
-                    Text("Voeg je eerste afspeellijst toe: M3U, Xtream Codes of een MAC-portal.\nJe afspeellijsten worden via iCloud gedeeld met je Apple TV, iPhone en iPad.")
+                    Text(L("Add your first playlist: M3U, Xtream Codes, a MAC portal, Plex, Jellyfin, Emby or Stremio.\nYour playlists are shared via iCloud with your Apple TV, iPhone, iPad and Mac."))
                         .font(.system(size: tvScaled(14)))
                         .foregroundStyle(Theme.secondary).multilineTextAlignment(.center)
                         .padding(.horizontal, Theme.edge)
@@ -71,7 +71,7 @@ struct PlaylistPickerView: View {
 
                 HStack(spacing: 6) {
                     Image(systemName: "icloud")
-                    Text(store.lastSync.map { "iCloud gesynchroniseerd · \($0.formatted(date: .omitted, time: .shortened))" } ?? "iCloud-synchronisatie")
+                    Text(store.lastSync.map { L("iCloud synced · %@", $0.formatted(date: .omitted, time: .shortened)) } ?? L("iCloud sync"))
                 }
                 .font(.system(size: tvScaled(11))).foregroundStyle(Theme.secondary.opacity(0.7))
                 .padding(.bottom, tvScaled(10))
@@ -114,7 +114,7 @@ private struct AddTile: View {
                 Image(systemName: "plus").font(.system(size: tvScaled(40), weight: .regular)).foregroundStyle(Theme.secondary)
             }
             .aspectRatio(1, contentMode: .fit)
-            Text("Toevoegen").font(.system(size: tvScaled(14))).foregroundStyle(Theme.secondary)
+            Text(L("Add")).font(.system(size: tvScaled(14))).foregroundStyle(Theme.secondary)
         }
     }
 }

@@ -96,7 +96,7 @@ final class OpenSubtitles: ObservableObject {
         let subs = r.data.compactMap { i -> Subtitle? in
             guard let f = i.attributes.files.first else { return nil }
             return Subtitle(id: f.file_id, language: i.attributes.language ?? "?",
-                            release: i.attributes.release ?? f.file_name ?? "Ondertitel",
+                            release: i.attributes.release ?? f.file_name ?? "Subtitle",
                             downloads: i.attributes.download_count ?? 0,
                             hearingImpaired: i.attributes.hearing_impaired ?? false,
                             fromTrusted: i.attributes.from_trusted ?? false)
@@ -123,12 +123,12 @@ final class OpenSubtitles: ObservableObject {
     }
 
     static let languages: [(code: String, name: String)] = [
-        ("nl", "Nederlands"), ("en", "Engels"), ("de", "Duits"), ("fr", "Frans"), ("es", "Spaans"),
-        ("it", "Italiaans"), ("pt-PT", "Portugees"), ("tr", "Turks"), ("ar", "Arabisch"), ("pl", "Pools")
+        ("nl", "Nederlands"), ("en", "English"), ("de", "Deutsch"), ("fr", "Français"), ("es", "Español"),
+        ("it", "Italiano"), ("pt-PT", "Português"), ("tr", "Türkçe"), ("ar", "العربية"), ("pl", "Polski"), ("zh-CN", "简体中文")
     ]
 }
 
 enum OSError: LocalizedError {
     case notLoggedIn
-    var errorDescription: String? { "Log eerst in bij OpenSubtitles (Instellingen)." }
+    var errorDescription: String? { L("Sign in to OpenSubtitles first (My Bingr).") }
 }

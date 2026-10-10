@@ -95,8 +95,8 @@ struct DetailView: View {
                     .overlay(RoundedRectangle(cornerRadius: 3).stroke(Theme.secondary))
             }
             if let rt = info?.runtime { Text(rt) }
-            if case .series = target, !seasons.isEmpty { Text("\(seasons.count) seizoen\(seasons.count == 1 ? "" : "en")") }
-            if isWatchedTitle { Label("Bekeken", systemImage: "checkmark.circle.fill").foregroundStyle(Theme.green) }
+            if case .series = target, !seasons.isEmpty { Text(seasons.count == 1 ? L("1 season") : L("%d seasons", seasons.count)) }
+            if isWatchedTitle { Label(L("Watched"), systemImage: "checkmark.circle.fill").foregroundStyle(Theme.green) }
         }
         .font(.system(size: tvScaled(13))).foregroundStyle(Theme.secondary)
     }
@@ -106,14 +106,14 @@ struct DetailView: View {
             switch target {
             case .movie(let m):
                 let resume = Playables.resume(m.id, imdb: imdb)
-                NetflixButton(title: resume > 0.02 ? "Hervatten" : "Afspelen", icon: "play.fill") {
+                NetflixButton(title: resume > 0.02 ? L("Resume") : L("Play"), icon: "play.fill") {
                     app.play(Playables.movie(m, imdb: imdb))
                 }
                 .frame(maxWidth: .infinity)
                 if resume > 0.02 { ProgressBar(value: resume).frame(height: 3) }
             case .series(let s):
                 if let next = nextEpisode {
-                    NetflixButton(title: "Afspelen S\(next.season):A\(next.number)", icon: "play.fill") {
+                    NetflixButton(title: L("Play S%d:E%d", next.season, next.number), icon: "play.fill") {
                         app.play(Playables.episode(next, of: s, imdb: imdb))
                     }
                     .frame(maxWidth: .infinity)
@@ -133,9 +133,9 @@ struct DetailView: View {
 
     @ViewBuilder private var credits: some View {
         VStack(alignment: .leading, spacing: 4) {
-            if let a = info?.actors { creditLine("Cast", a) }
-            if let d = info?.director { creditLine("Regie", d) }
-            if let g = info?.genre { creditLine("Genres", g) }
+            if let a = info?.actors { creditLine(L("Cast"), a) }
+            if let d = info?.director { creditLine(L("Director"), d) }
+            if let g = info?.genre { creditLine(L("Genres"), g) }
         }
     }
 
@@ -146,14 +146,14 @@ struct DetailView: View {
 
     private var actionBar: some View {
         HStack(spacing: tvScaled(36)) {
-            actionButton(inMyList ? "checkmark" : "plus", "Mijn lijst") {
+            actionButton(inMyList ? "checkmark" : "plus", L("My List")) {
                 guard let pid else { return }
                 store.toggleMyList(pid, target.id)
                 if let imdb { Task { await trakt.toggleWatchlist(imdb: imdb, isShow: target.isSeries) } }
             }
             if case .movie(let m) = target {
                 let w = Playables.isWatched(movie: m, imdb: imdb)
-                actionButton(w ? "checkmark.circle.fill" : "checkmark.circle", w ? "Bekeken" : "Afvinken") {
+                actionButton(w ? "checkmark.circle.fill" : "checkmark.circle", w ? L("Watched") : L("Mark watched")) {
                     store.setLocalWatched(m.id, !w)
                     Task { await trakt.setWatched(Playables.movie(m, imdb: imdb), !w) }
                 }
@@ -186,13 +186,13 @@ struct DetailView: View {
     @ViewBuilder private func episodesSection(_ s: Series) -> some View {
         Divider().background(Theme.elevated)
         HStack {
-            Text("Afleveringen").font(.system(size: tvScaled(18), weight: .bold))
+            Text(L("Episodes")).font(.system(size: tvScaled(18), weight: .bold))
             Spacer()
             if seasons.count > 1 {
                 Menu {
-                    ForEach(seasons, id: \.self) { n in Button("Seizoen \(n)") { season = n } }
+                    ForEach(seasons, id: \.self) { n in Button(L("Season %d", n)) { season = n } }
                 } label: {
-                    Label("Seizoen \(season)", systemImage: "chevron.down")
+                    Label(L("Season %d", season), systemImage: "chevron.down")
                         .font(.system(size: tvScaled(14), weight: .semibold))
                         .padding(.horizontal, 12).padding(.vertical, 7)
                         .background(Theme.elevated, in: RoundedRectangle(cornerRadius: 4))
@@ -207,7 +207,7 @@ struct DetailView: View {
                 for e in list { store.setLocalWatched(e.id, !allWatched) }
                 if let imdb { Task { await trakt.setWatched(show: imdb, episodes: list, !allWatched) } }
             } label: {
-                Label(allWatched ? "Seizoen als niet bekeken markeren" : "Heel seizoen afvinken",
+                Label(allWatched ? L("Mark season as unwatched") : L("Mark whole season watched"),
                       systemImage: allWatched ? "eye.slash" : "checkmark.circle")
                     .font(.system(size: tvScaled(12))).foregroundStyle(Theme.secondary)
             }
@@ -231,7 +231,7 @@ struct DetailView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 4))
                     VStack(alignment: .leading, spacing: 3) {
                         Text("\(e.number). \(Playables.cleanEpisodeTitle(e))").font(.system(size: tvScaled(14), weight: .semibold)).lineLimit(2)
-                        if let d = e.durationSeconds { Text("\(d / 60) min").font(.system(size: tvScaled(11))).foregroundStyle(Theme.secondary) }
+                        if let d = e.durationSeconds { Text(L("%d min", d / 60)).font(.system(size: tvScaled(11))).foregroundStyle(Theme.secondary) }
                         if let p = e.plot { Text(p).font(.system(size: tvScaled(11))).foregroundStyle(Theme.secondary).lineLimit(2) }
                     }
                     Spacer(minLength: 0)

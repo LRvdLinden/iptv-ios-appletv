@@ -4,9 +4,9 @@ enum HTTPError: LocalizedError {
     case badURL, status(Int, String), decoding(String)
     var errorDescription: String? {
         switch self {
-        case .badURL: return "Ongeldige URL"
-        case .status(let c, let b): return "Serverfout \(c): \(b.prefix(200))"
-        case .decoding(let m): return "Kon antwoord niet lezen: \(m)"
+        case .badURL: return L("Invalid URL")
+        case .status(let c, let b): return L("Server error %d: %@", c, String(b.prefix(200)))
+        case .decoding(let m): return L("Couldn't read the response: %@", m)
         }
     }
 }

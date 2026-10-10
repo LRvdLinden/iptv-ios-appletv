@@ -57,7 +57,7 @@ struct HomeView: View {
     @ViewBuilder private var rows: some View {
         let continueItems = continueWatching
         if !continueItems.isEmpty {
-            MediaRow(title: "Verder kijken") {
+            MediaRow(title: L("Continue watching")) {
                 ForEach(continueItems) { c in
                     let entry = c.entry
                     Button { resume(c.id) } label: {
@@ -73,21 +73,21 @@ struct HomeView: View {
 
         if filter != .series {
             let mine = lib.movies.filter { m in pid.map { store.inMyList($0, m.id) } ?? false }
-            if !mine.isEmpty { movieRow("Mijn lijst", mine) }
-            if !trendingMovies.isEmpty { top10Row("Top 10 films vandaag", movies: Array(trendingMovies.prefix(10))) }
+            if !mine.isEmpty { movieRow(L("My List"), mine) }
+            if !trendingMovies.isEmpty { top10Row(L("Top 10 movies today"), movies: Array(trendingMovies.prefix(10))) }
             let recent = lib.movies.filter { $0.addedAt != nil }.sorted { $0.addedAt! > $1.addedAt! }.prefix(30)
-            if !recent.isEmpty { movieRow("Nieuw toegevoegd", Array(recent)) }
+            if !recent.isEmpty { movieRow(L("Recently added"), Array(recent)) }
         }
         if filter != .movies {
             let mine = lib.series.filter { s in pid.map { store.inMyList($0, s.id) } ?? false }
-            if !mine.isEmpty && filter == .series { seriesRow("Mijn lijst", mine) }
-            if !trendingSeries.isEmpty { top10Row("Top 10 series vandaag", series: Array(trendingSeries.prefix(10))) }
+            if !mine.isEmpty && filter == .series { seriesRow(L("My List"), mine) }
+            if !trendingSeries.isEmpty { top10Row(L("Top 10 series today"), series: Array(trendingSeries.prefix(10))) }
         }
 
         if filter == .all {
             let favs = lib.channels.filter { c in pid.map { store.isFavorite($0, c.id) } ?? false }
             if !favs.isEmpty {
-                MediaRow(title: "Favoriete zenders") {
+                MediaRow(title: L("Favorite channels")) {
                     ForEach(favs) { c in
                         Button { app.play(Playables.channel(c, now: lib.nowPlaying(c)), zap: favs) } label: {
                             ChannelCard(channel: c, now: lib.nowPlaying(c), favorite: true)
@@ -111,7 +111,7 @@ struct HomeView: View {
         if lib.movies.isEmpty && lib.series.isEmpty && !playlists.isLoading {
             VStack(spacing: 10) {
                 Image(systemName: "film").font(.system(size: tvScaled(40))).foregroundStyle(Theme.secondary)
-                Text(filter == .all ? "Deze afspeellijst bevat alleen live TV." : "Geen titels gevonden in deze afspeellijst.")
+                Text(filter == .all ? L("This playlist only contains live TV.") : L("No titles found in this playlist."))
                     .foregroundStyle(Theme.secondary)
             }
             .frame(maxWidth: .infinity).padding(.top, 60)
@@ -140,7 +140,7 @@ struct HomeView: View {
                 let count = trakt.watchedCount(show: imdb)
                 Button { detail = .series(s) } label: {
                     PosterCard(title: s.title, poster: s.poster, imdbID: imdb,
-                               badge: count > 0 ? "\(count) BEKEKEN" : nil)
+                               badge: count > 0 ? L("%d WATCHED", count) : nil)
                 }
                 .cardButton()
             }
@@ -162,15 +162,15 @@ struct HomeView: View {
     }
 
     @ViewBuilder private func movieMenu(_ m: Movie, imdb: String?) -> some View {
-        Button { app.play(Playables.movie(m, imdb: imdb)) } label: { Label("Afspelen", systemImage: "play.fill") }
+        Button { app.play(Playables.movie(m, imdb: imdb)) } label: { Label(L("Play"), systemImage: "play.fill") }
         let watched = Playables.isWatched(movie: m, imdb: imdb)
         Button {
             store.setLocalWatched(m.id, !watched)
             Task { await trakt.setWatched(Playables.movie(m, imdb: imdb), !watched) }
-        } label: { Label(watched ? "Markeer als niet bekeken" : "Markeer als bekeken", systemImage: watched ? "eye.slash" : "checkmark.circle") }
+        } label: { Label(watched ? L("Mark as unwatched") : L("Mark as watched"), systemImage: watched ? "eye.slash" : "checkmark.circle") }
         if let pid {
             Button { store.toggleMyList(pid, m.id) } label: {
-                Label(store.inMyList(pid, m.id) ? "Uit Mijn lijst" : "Aan Mijn lijst toevoegen", systemImage: "plus")
+                Label(store.inMyList(pid, m.id) ? L("Remove from My List") : L("Add to My List"), systemImage: "plus")
             }
         }
     }

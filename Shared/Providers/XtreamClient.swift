@@ -79,7 +79,7 @@ struct XtreamClient {
         async let ser = (try? HTTP.json([SeriesDTO].self, ss)) ?? []
 
         func map(_ cats: [Cat]) -> [String: String] {
-            Dictionary(cats.compactMap { c in c.category_id.string.map { ($0, c.category_name ?? "Overig") } },
+            Dictionary(cats.compactMap { c in c.category_id.string.map { ($0, c.category_name ?? L("Other")) } },
                        uniquingKeysWith: { a, _ in a })
         }
         let lcMap = map(await liveCats), vcMap = map(await vodCats), scMap = map(await serCats)
@@ -88,8 +88,8 @@ struct XtreamClient {
         var lib = Library()
         lib.channels = await live.compactMap { l in
             guard let sid = l.stream_id.string else { return nil }
-            return Channel(id: "x\(sid)", name: l.name ?? "Kanaal", logo: l.stream_icon?.urlValue,
-                           group: lcMap[l.category_id?.string ?? ""] ?? "Overig",
+            return Channel(id: "x\(sid)", name: l.name ?? "Channel", logo: l.stream_icon?.urlValue,
+                           group: lcMap[l.category_id?.string ?? ""] ?? L("Other"),
                            streamURL: URL(string: "\(server)/live/\(username)/\(password)/\(sid).\(liveExt)"),
                            epgID: l.epg_channel_id.flatMap { $0.isEmpty ? nil : $0 },
                            number: l.num?.int,
@@ -99,7 +99,7 @@ struct XtreamClient {
             guard let sid = v.stream_id.string else { return nil }
             let p = TitleCleaner.parse(v.name ?? "")
             return Movie(id: "xv\(sid)", title: p.title, year: v.year?.int ?? p.year, poster: v.stream_icon?.urlValue,
-                         group: vcMap[v.category_id?.string ?? ""] ?? "Overig",
+                         group: vcMap[v.category_id?.string ?? ""] ?? L("Other"),
                          streamURL: URL(string: "\(server)/movie/\(username)/\(password)/\(sid).\(v.container_extension ?? "mp4")"),
                          rating: v.rating?.double,
                          addedAt: v.added?.double.map { Date(timeIntervalSince1970: $0) },
@@ -110,7 +110,7 @@ struct XtreamClient {
             let p = TitleCleaner.parse(s.name ?? "")
             let y = s.year?.int ?? s.releaseDate.flatMap { Int($0.prefix(4)) } ?? p.year
             return Series(id: "xs\(sid)", title: p.title, year: y, poster: s.cover?.urlValue,
-                          group: scMap[s.category_id?.string ?? ""] ?? "Overig",
+                          group: scMap[s.category_id?.string ?? ""] ?? L("Other"),
                           plot: s.plot, rating: s.rating?.double, xtreamSeriesID: sid)
         }
         return lib
@@ -126,7 +126,7 @@ struct XtreamClient {
                 out.append(Episode(id: "xe\(eid)", seriesID: series.id,
                                    season: e.season?.int ?? Int(seasonKey) ?? 1,
                                    number: e.episode_num?.int ?? 0,
-                                   title: e.title ?? "Aflevering",
+                                   title: e.title ?? L("Episode"),
                                    streamURL: URL(string: "\(server)/series/\(username)/\(password)/\(eid).\(e.container_extension ?? "mp4")"),
                                    still: e.info?.movie_image?.urlValue, plot: e.info?.plot,
                                    durationSeconds: e.info?.duration_secs?.int))
@@ -158,5 +158,5 @@ struct XtreamClient {
 
 enum XtreamError: LocalizedError {
     case auth
-    var errorDescription: String? { "Inloggen bij de Xtream-server mislukt. Controleer server, gebruikersnaam en wachtwoord." }
+    var errorDescription: String? { L("Couldn't sign in to the server. Check the server, username and password.") }
 }
