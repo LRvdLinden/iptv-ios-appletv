@@ -1,0 +1,10 @@
+# Xcode / XcodeGen
+*.xcodeproj
+*.xcworkspace
+xcuserdata/
+DerivedData/
+.build/
+.swiftpm/
+*.ipa
+*.dSYM.zip
+.DS_Store

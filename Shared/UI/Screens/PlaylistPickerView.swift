@@ -1,0 +1,120 @@
+import SwiftUI
+
+/// "Wie kijkt er?" — maar dan voor afspeellijsten. Gesynchroniseerd via iCloud.
+struct PlaylistPickerView: View {
+    @EnvironmentObject var app: AppState
+    @EnvironmentObject var store: CloudStore
+    @State private var managing = false
+    @State private var editing: PlaylistSource?
+    @State private var adding = false
+    @State private var appeared = false
+
+    private var columns: [GridItem] {
+        #if os(tvOS)
+        [GridItem(.adaptive(minimum: 220, maximum: 260), spacing: 60)]
+        #else
+        [GridItem(.adaptive(minimum: 110, maximum: 140), spacing: 22)]
+        #endif
+    }
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            VStack(spacing: tvScaled(26)) {
+                HStack {
+                    BingrLogo(size: tvScaled(26))
+                    Spacer()
+                    if !store.playlists.isEmpty {
+                        Button(managing ? "Klaar" : "Beheren") {
+                            withAnimation(.spring(response: 0.35)) { managing.toggle() }
+                        }
+                        .font(.system(size: tvScaled(15), weight: .semibold))
+                        .foregroundStyle(.white)
+                        .plainTVButton()
+                    }
+                }
+                .padding(.horizontal, Theme.edge).padding(.top, tvScaled(8))
+
+                Spacer(minLength: 0)
+
+                Text(store.playlists.isEmpty ? "Welkom bij Bingr" : (managing ? "Afspeellijsten beheren" : "Wat wil je kijken?"))
+                    .font(.system(size: tvScaled(26), weight: .medium))
+                    .foregroundStyle(.white)
+                if store.playlists.isEmpty {
+                    Text("Voeg je eerste afspeellijst toe: M3U, Xtream Codes of een MAC-portal.\nJe afspeellijsten worden via iCloud gedeeld met je Apple TV, iPhone en iPad.")
+                        .font(.system(size: tvScaled(14)))
+                        .foregroundStyle(Theme.secondary).multilineTextAlignment(.center)
+                        .padding(.horizontal, Theme.edge)
+                }
+
+                LazyVGrid(columns: columns, spacing: tvScaled(26)) {
+                    ForEach(Array(store.playlists.enumerated()), id: \.element.id) { i, p in
+                        Button {
+                            if managing { editing = p } else { app.open(p) }
+                        } label: {
+                            AvatarTile(name: p.name, avatar: p.avatar, editing: managing)
+                        }
+                        .cardButton()
+                        .opacity(appeared ? 1 : 0)
+                        .offset(y: appeared ? 0 : 24)
+                        .animation(.spring(response: 0.5, dampingFraction: 0.8).delay(Double(i) * 0.06), value: appeared)
+                    }
+                    Button { adding = true } label: { AddTile() }
+                        .cardButton()
+                        .opacity(appeared ? 1 : 0)
+                        .animation(.easeOut(duration: 0.4).delay(Double(store.playlists.count) * 0.06), value: appeared)
+                }
+                .padding(.horizontal, Theme.edge)
+                .frame(maxWidth: tvScaled(620))
+
+                Spacer(minLength: 0)
+
+                HStack(spacing: 6) {
+                    Image(systemName: "icloud")
+                    Text(store.lastSync.map { "iCloud gesynchroniseerd · \($0.formatted(date: .omitted, time: .shortened))" } ?? "iCloud-synchronisatie")
+                }
+                .font(.system(size: tvScaled(11))).foregroundStyle(Theme.secondary.opacity(0.7))
+                .padding(.bottom, tvScaled(10))
+            }
+        }
+        .onAppear { appeared = true; store.load(mergeProgress: true) }
+        .sheet(isPresented: $adding) { AddPlaylistView(existing: nil) }
+        .sheet(item: $editing) { p in AddPlaylistView(existing: p) }
+    }
+}
+
+struct AvatarTile: View {
+    let name: String
+    let avatar: PlaylistAvatar
+    var editing = false
+    var body: some View {
+        VStack(spacing: tvScaled(8)) {
+            ZStack {
+                RoundedRectangle(cornerRadius: tvScaled(8)).fill(avatar.gradient)
+                Image(systemName: avatar.symbol)
+                    .font(.system(size: tvScaled(44), weight: .semibold))
+                    .foregroundStyle(.white)
+                    .shadow(color: .black.opacity(0.25), radius: 4, y: 2)
+                if editing {
+                    RoundedRectangle(cornerRadius: tvScaled(8)).fill(.black.opacity(0.55))
+                    Image(systemName: "pencil").font(.system(size: tvScaled(30), weight: .bold)).foregroundStyle(.white)
+                }
+            }
+            .aspectRatio(1, contentMode: .fit)
+            Text(name).font(.system(size: tvScaled(14))).foregroundStyle(Theme.secondary).lineLimit(1)
+        }
+    }
+}
+
+private struct AddTile: View {
+    var body: some View {
+        VStack(spacing: tvScaled(8)) {
+            ZStack {
+                RoundedRectangle(cornerRadius: tvScaled(8)).strokeBorder(Theme.secondary.opacity(0.5), lineWidth: 2)
+                Image(systemName: "plus").font(.system(size: tvScaled(40), weight: .regular)).foregroundStyle(Theme.secondary)
+            }
+            .aspectRatio(1, contentMode: .fit)
+            Text("Toevoegen").font(.system(size: tvScaled(14))).foregroundStyle(Theme.secondary)
+        }
+    }
+}

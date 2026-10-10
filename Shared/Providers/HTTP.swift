@@ -1,0 +1,91 @@
+import Foundation
+
+enum HTTPError: LocalizedError {
+    case badURL, status(Int, String), decoding(String)
+    var errorDescription: String? {
+        switch self {
+        case .badURL: return "Ongeldige URL"
+        case .status(let c, let b): return "Serverfout \(c): \(b.prefix(200))"
+        case .decoding(let m): return "Kon antwoord niet lezen: \(m)"
+        }
+    }
+}
+
+enum HTTP {
+    static let session: URLSession = {
+        let c = URLSessionConfiguration.default
+        c.timeoutIntervalForRequest = 30
+        c.timeoutIntervalForResource = 300
+        c.httpAdditionalHeaders = ["User-Agent": Secrets.userAgent]
+        c.requestCachePolicy = .reloadIgnoringLocalCacheData
+        return URLSession(configuration: c)
+    }()
+
+    static func data(_ req: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let (d, r) = try await session.data(for: req)
+        guard let h = r as? HTTPURLResponse else { throw HTTPError.status(0, "") }
+        return (d, h)
+    }
+
+    static func get(_ url: URL, headers: [String: String] = [:]) async throws -> Data {
+        var r = URLRequest(url: url)
+        headers.forEach { r.setValue($1, forHTTPHeaderField: $0) }
+        let (d, h) = try await data(r)
+        guard (200..<300).contains(h.statusCode) else {
+            throw HTTPError.status(h.statusCode, String(data: d, encoding: .utf8) ?? "")
+        }
+        return d
+    }
+
+    static func json<T: Decodable>(_ t: T.Type, _ url: URL, headers: [String: String] = [:]) async throws -> T {
+        let d = try await get(url, headers: headers)
+        do { return try JSONDecoder.lenient.decode(T.self, from: d) }
+        catch { throw HTTPError.decoding(String(describing: error)) }
+    }
+}
+
+extension JSONDecoder {
+    static let lenient: JSONDecoder = {
+        let d = JSONDecoder()
+        d.dateDecodingStrategy = .custom { dec in
+            let c = try dec.singleValueContainer()
+            let s = try c.decode(String.self)
+            for f in [ISO8601DateFormatter.withFraction, ISO8601DateFormatter.plain] {
+                if let date = f.date(from: s) { return date }
+            }
+            throw DecodingError.dataCorruptedError(in: c, debugDescription: "datum \(s)")
+        }
+        return d
+    }()
+}
+
+extension ISO8601DateFormatter {
+    static let withFraction: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]; return f
+    }()
+    static let plain = ISO8601DateFormatter()
+}
+
+/// IPTV-API's geven getallen vaak als string of als getal terug. Dit leest beide.
+struct Flex: Decodable, Hashable {
+    let string: String?
+    init(from decoder: Decoder) throws {
+        let c = try decoder.singleValueContainer()
+        if let s = try? c.decode(String.self) { string = s }
+        else if let i = try? c.decode(Int.self) { string = String(i) }
+        else if let d = try? c.decode(Double.self) { string = String(d) }
+        else if let b = try? c.decode(Bool.self) { string = b ? "1" : "0" }
+        else { string = nil }
+    }
+    var int: Int? { string.flatMap { Int($0) ?? Double($0).map { Int($0) } } }
+    var double: Double? { string.flatMap(Double.init) }
+}
+
+extension String {
+    var urlValue: URL? {
+        let t = trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { return nil }
+        return URL(string: t) ?? URL(string: t.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")
+    }
+    var trimmedSlash: String { var s = trimmingCharacters(in: .whitespaces); while s.hasSuffix("/") { s.removeLast() }; return s }
+}
