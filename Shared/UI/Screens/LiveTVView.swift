@@ -4,24 +4,37 @@ struct LiveTVView: View {
     @EnvironmentObject var app: AppState
     @EnvironmentObject var playlists: PlaylistService
     @EnvironmentObject var store: CloudStore
-    @State private var group: String = "★ Favorieten"
+    @State private var group: String = Self.favKey
+    @State private var mode: Mode = .list
     @State private var guideFor: Channel?
+    @State private var program: ProgramTarget?
     @State private var filterText = ""
 
-    private let favKey = "★ Favorieten", recentKey = "◷ Recent", allKey = "Alle zenders"
+    enum Mode: String { case list, grid }
+    struct ProgramTarget: Identifiable { var id: String { channel.id + p.id }; let channel: Channel; let p: EPGProgram }
+
+    static let favKey = "★", recentKey = "◷", allKey = "*"
     private var lib: Library { playlists.library }
     private var pid: UUID { playlists.source?.id ?? UUID() }
 
-    private var groups: [String] { [favKey, recentKey, allKey] + lib.channelGroups }
+    private var groups: [String] { [Self.favKey, Self.recentKey, Self.allKey] + lib.channelGroups }
+
+    private func title(_ g: String) -> String {
+        switch g {
+        case Self.favKey: return "★ " + L("Favorites")
+        case Self.recentKey: return "◷ " + L("Recent")
+        case Self.allKey: return L("All channels")
+        default: return g
+        }
+    }
 
     private var channels: [Channel] {
         var list: [Channel]
         switch group {
-        case favKey: list = lib.channels.filter { store.isFavorite(pid, $0.id) }
-        case recentKey:
-            let keys = store.recentChannels
-            list = keys.compactMap { k in lib.channels.first { store.key(pid, $0.id) == k } }
-        case allKey: list = lib.channels
+        case Self.favKey: list = lib.channels.filter { store.isFavorite(pid, $0.id) }
+        case Self.recentKey:
+            list = store.recentChannels.compactMap { k in lib.channels.first { store.key(pid, $0.id) == k } }
+        case Self.allKey: list = lib.channels
         default: list = lib.channels.filter { $0.group == group }
         }
         if !filterText.isEmpty { list = list.filter { $0.name.localizedCaseInsensitiveContains(filterText) } }
@@ -32,14 +45,27 @@ struct LiveTVView: View {
         NavigationStack {
             content
                 .background(Color.black)
-                .navigationTitle("Live TV")
+                .navigationTitle(L("Live TV"))
+                .toolbar {
+                    ToolbarItemGroup(placement: .primaryAction) {
+                        Button { withAnimation { mode = mode == .list ? .grid : .list } } label: {
+                            Label(mode == .list ? L("TV guide") : L("List"),
+                                  systemImage: mode == .list ? "calendar.day.timeline.left" : "list.bullet")
+                        }
+                        Button { app.openMultiview(start: Array(channels.prefix(1)), candidates: channels) } label: {
+                            Label("Multiview", systemImage: "square.grid.2x2")
+                        }
+                        .disabled(lib.channels.isEmpty)
+                    }
+                }
                 .onAppear {
-                    if group == favKey && lib.channels.allSatisfy({ !store.isFavorite(pid, $0.id) }) {
-                        group = lib.channelGroups.first ?? allKey
+                    if group == Self.favKey && lib.channels.allSatisfy({ !store.isFavorite(pid, $0.id) }) {
+                        group = lib.channelGroups.first ?? Self.allKey
                     }
                 }
         }
         .sheet(item: $guideFor) { c in GuideSheet(channel: c) }
+        .sheet(item: $program) { t in ProgramSheet(channel: t.channel, program: t.p) }
     }
 
     @ViewBuilder private var content: some View {
@@ -49,7 +75,7 @@ struct LiveTVView: View {
                 LazyVStack(alignment: .leading, spacing: 8) {
                     ForEach(groups, id: \.self) { g in
                         Button { group = g } label: {
-                            Text(g).font(.system(size: 26, weight: group == g ? .bold : .regular))
+                            Text(title(g)).font(.system(size: 26, weight: group == g ? .bold : .regular))
                                 .foregroundStyle(group == g ? .white : Theme.secondary)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
@@ -58,7 +84,7 @@ struct LiveTVView: View {
                 }.padding(.vertical, 20)
             }
             .frame(width: 420)
-            channelList
+            channelArea
         }
         .padding(.horizontal, 60)
         #else
@@ -67,19 +93,33 @@ struct LiveTVView: View {
                 HStack(spacing: 8) {
                     ForEach(groups, id: \.self) { g in
                         Button { withAnimation { group = g } } label: {
-                            Text(g).font(.system(size: 13, weight: .semibold))
+                            Text(title(g)).font(.system(size: 13, weight: .semibold))
                                 .padding(.horizontal, 14).padding(.vertical, 7)
                                 .foregroundStyle(group == g ? .black : .white)
                                 .background(group == g ? Color.white : Theme.elevated, in: Capsule())
-                                .overlay(Capsule().stroke(.white.opacity(0.25), lineWidth: group == g ? 0 : 1))
                         }
                     }
                 }.padding(.horizontal, 16).padding(.vertical, 10)
             }
+            channelArea
+        }
+        .searchable(text: $filterText, prompt: L("Search channel"))
+        #endif
+    }
+
+    @ViewBuilder private var channelArea: some View {
+        if mode == .grid {
+            GuideGridView(channels: channels,
+                          onPlay: { c in play(c) },
+                          onProgram: { c, p in program = ProgramTarget(channel: c, p: p) })
+        } else {
             channelList
         }
-        .searchable(text: $filterText, prompt: "Zender zoeken")
-        #endif
+    }
+
+    private func play(_ c: Channel) {
+        store.pushRecentChannel(pid, c.id)
+        app.play(Playables.channel(c, now: lib.nowPlaying(c)), zap: channels)
     }
 
     private var channelList: some View {
@@ -87,21 +127,25 @@ struct LiveTVView: View {
         return ScrollView {
             LazyVStack(spacing: tvScaled(2)) {
                 if list.isEmpty {
-                    Text(group == favKey ? "Nog geen favorieten. Houd een zender ingedrukt om hem toe te voegen." : "Geen zenders.")
+                    Text(group == Self.favKey ? L("No favorites yet. Hold a channel to add it.") : L("No channels."))
                         .foregroundStyle(Theme.secondary).padding(.top, 40)
                 }
                 ForEach(list) { c in
-                    Button {
-                        store.pushRecentChannel(pid, c.id)
-                        app.play(Playables.channel(c, now: lib.nowPlaying(c)), zap: list)
-                    } label: { ChannelRow(channel: c, now: lib.nowPlaying(c), next: lib.upcoming(c, count: 2).dropFirst().first,
-                                          favorite: store.isFavorite(pid, c.id)) }
+                    Button { play(c) } label: {
+                        ChannelRow(channel: c, now: lib.nowPlaying(c), next: lib.upcoming(c, count: 2).dropFirst().first,
+                                   favorite: store.isFavorite(pid, c.id))
+                    }
                     .plainTVButton()
                     .contextMenu {
                         Button { store.toggleFavorite(pid, c.id) } label: {
-                            Label(store.isFavorite(pid, c.id) ? "Verwijder uit favorieten" : "Voeg toe aan favorieten", systemImage: "star")
+                            Label(store.isFavorite(pid, c.id) ? L("Remove from favorites") : L("Add to favorites"), systemImage: "star")
                         }
-                        Button { guideFor = c } label: { Label(c.catchupDays > 0 ? "Gids & terugkijken" : "Gids", systemImage: "list.bullet.rectangle") }
+                        Button { guideFor = c } label: {
+                            Label(c.catchupDays > 0 ? L("Guide & catch-up") : L("Guide"), systemImage: "list.bullet.rectangle")
+                        }
+                        Button { app.openMultiview(start: [c], candidates: list) } label: {
+                            Label(L("Open in Multiview"), systemImage: "square.grid.2x2")
+                        }
                     }
                 }
             }
@@ -137,7 +181,7 @@ private struct ChannelRow: View {
                     ProgressBar(value: now.progress).frame(height: 2).frame(maxWidth: tvScaled(220))
                 }
                 if let next {
-                    Text("Straks \(next.start.formatted(date: .omitted, time: .shortened))  \(next.title)")
+                    Text(L("Next %@  %@", next.start.formatted(date: .omitted, time: .shortened), next.title))
                         .font(.system(size: tvScaled(11))).foregroundStyle(Theme.secondary).lineLimit(1)
                 }
             }
@@ -148,35 +192,31 @@ private struct ChannelRow: View {
     }
 }
 
-/// EPG van één zender, met terugkijken (Xtream catch-up).
+/// EPG van één zender: kijken, terugkijken of herinnering zetten.
 struct GuideSheet: View {
     let channel: Channel
-    @EnvironmentObject var app: AppState
     @EnvironmentObject var playlists: PlaylistService
-    @Environment(\.dismiss) private var dismiss
     @State private var programs: [EPGProgram] = []
+    @State private var selected: EPGProgram?
 
     var body: some View {
         NavigationStack {
             List {
+                if programs.isEmpty { Text(L("No guide information")).foregroundStyle(Theme.secondary) }
                 ForEach(programs) { p in
-                    let past = p.end < Date()
-                    let canCatchup = past && channel.catchupDays > 0 && p.start > Date().addingTimeInterval(-Double(channel.catchupDays) * 86400)
-                    Button {
-                        if p.isNow { dismiss(); app.play(Playables.channel(channel, now: p)) }
-                        else if canCatchup, let u = playlists.catchupURL(channel, p) {
-                            dismiss()
-                            app.play(PlayableItem(id: "\(channel.id)-cu-\(Int(p.start.timeIntervalSince1970))", title: p.title,
-                                                  subtitle: channel.name, url: u, type: .live, artwork: channel.logo))
-                        }
-                    } label: {
+                    Button { selected = p } label: {
                         VStack(alignment: .leading, spacing: 4) {
                             HStack {
                                 Text(p.start.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(Theme.secondary)
-                                if p.isNow { Text("NU").font(.caption2.bold()).foregroundStyle(Theme.red) }
-                                if canCatchup { Image(systemName: "clock.arrow.circlepath").font(.caption).foregroundStyle(Theme.secondary) }
+                                if p.isNow { Text(L("NOW")).font(.caption2.bold()).foregroundStyle(Theme.red) }
+                                if p.end < Date() && channel.catchupDays > 0 {
+                                    Image(systemName: "clock.arrow.circlepath").font(.caption).foregroundStyle(Theme.secondary)
+                                }
+                                if CloudStore.shared.hasReminder("\(channel.id)-\(Int(p.start.timeIntervalSince1970))") {
+                                    Image(systemName: "bell.fill").font(.caption).foregroundStyle(Theme.imdb)
+                                }
                             }
-                            Text(p.title).font(.headline).foregroundStyle(past && !canCatchup ? Theme.secondary : .white)
+                            Text(p.title).font(.headline)
                             if let d = p.description { Text(d).font(.caption).foregroundStyle(Theme.secondary).lineLimit(3) }
                         }
                     }
@@ -185,8 +225,10 @@ struct GuideSheet: View {
             .navigationTitle(channel.name)
             .task {
                 let all = playlists.library.epg[channel.epgID ?? channel.id] ?? []
-                if all.isEmpty { programs = await playlists.shortEPG(channel) } else { programs = all }
+                let from = Date().addingTimeInterval(-Double(max(channel.catchupDays, 0)) * 86400)
+                programs = all.isEmpty ? await playlists.shortEPG(channel) : all.filter { $0.end > from }
             }
+            .sheet(item: $selected) { p in ProgramSheet(channel: channel, program: p) }
         }
     }
 }

@@ -7,84 +7,189 @@ struct SettingsView: View {
     @EnvironmentObject var store: CloudStore
     @EnvironmentObject var trakt: TraktSync
     @EnvironmentObject var subs: OpenSubtitles
+    @EnvironmentObject var localizer: Localizer
+    @EnvironmentObject var parental: ParentalControl
     @AppStorage("autoSubtitles") private var autoSubtitles = false
+    @AppStorage("player.engine") private var engine = PlayerController.EngineChoice.auto.rawValue
     @State private var showTraktLogin = false
     @State private var showOSLogin = false
     @State private var editing: PlaylistSource?
+    @State private var pinMode: PinMode?
+
+    enum PinMode: String, Identifiable { case set, unlock, disable; var id: String { rawValue } }
 
     var body: some View {
         NavigationStack {
             List {
-                Section("Afspeellijst") {
-                    if let s = playlists.source {
-                        HStack(spacing: 14) {
-                            AvatarTile(name: "", avatar: s.avatar).frame(width: tvScaled(44))
-                            VStack(alignment: .leading) {
-                                Text(s.name).font(.headline)
-                                Text("\(s.kind.rawValue) · \(playlists.library.channels.count) zenders · \(playlists.library.movies.count) films · \(playlists.library.series.count) series")
-                                    .font(.caption).foregroundStyle(Theme.secondary)
-                            }
-                        }
-                        Button { editing = s } label: { Label("Bewerken (naam, avatar, gegevens)", systemImage: "pencil") }
-                        Button { Task { await playlists.select(s, forceRefresh: true) } } label: {
-                            Label("Nu verversen", systemImage: "arrow.clockwise")
-                        }
-                    }
-                    Button { app.switchPlaylist() } label: { Label("Andere afspeellijst kiezen", systemImage: "rectangle.stack.person.crop") }
-                }
-
+                playlistSection
+                traktSection
+                openSubtitlesSection
+                playerSection
+                parentalSection
+                languageSection
                 Section {
-                    if trakt.isLoggedIn {
-                        LabeledContent("Ingelogd als", value: trakt.username ?? "Trakt-gebruiker")
-                        LabeledContent("Bekeken", value: "\(trakt.watchedMovies.count) films · \(trakt.watchedEpisodes.values.reduce(0) { $0 + $1.count }) afleveringen")
-                        if let d = trakt.lastRefresh {
-                            LabeledContent("Laatst gesynchroniseerd", value: d.formatted(date: .omitted, time: .shortened))
-                        }
-                        Button { Task { await trakt.refresh(force: true) } } label: { Label("Nu synchroniseren", systemImage: "arrow.triangle.2.circlepath") }
-                        Button(role: .destructive) { Task { await trakt.logout() } } label: { Label("Uitloggen bij Trakt", systemImage: "rectangle.portrait.and.arrow.right") }
-                    } else {
-                        Button { showTraktLogin = true } label: { Label("Koppel Trakt", systemImage: "link") }
-                            .disabled(!Secrets.isSet(Secrets.traktClientID))
-                        if !Secrets.isSet(Secrets.traktClientID) {
-                            Text("Vul eerst je Trakt Client ID in Secrets.swift in.").font(.caption).foregroundStyle(Theme.secondary)
-                        }
-                    }
-                    if let e = trakt.lastError { Text(e).font(.caption).foregroundStyle(Theme.red) }
-                } header: { Text("Trakt") } footer: {
-                    Text("Wat je in Bingr kijkt wordt automatisch gescrobbeld. Wat je op Trakt (of in een andere app) hebt gezien wordt hier afgevinkt.")
-                }
-
-                Section {
-                    if subs.isLoggedIn {
-                        LabeledContent("Ingelogd als", value: subs.username ?? "")
-                        if let r = subs.remainingDownloads { LabeledContent("Downloads over vandaag", value: "\(r)") }
-                        Button(role: .destructive) { Task { await subs.logout() } } label: { Label("Uitloggen", systemImage: "rectangle.portrait.and.arrow.right") }
-                    } else {
-                        Button { showOSLogin = true } label: { Label("Inloggen bij OpenSubtitles", systemImage: "captions.bubble") }
-                            .disabled(!Secrets.isSet(Secrets.openSubtitlesAPIKey))
-                    }
-                    Toggle("Automatisch ondertitels zoeken bij afspelen", isOn: $autoSubtitles)
-                    NavigationLink("Talen: \(subs.preferredLanguages.joined(separator: ", "))") { LanguagePicker() }
-                } header: { Text("OpenSubtitles") }
-
-                Section {
-                    LabeledContent("Afspeellijsten", value: "\(store.playlists.count)")
-                    LabeledContent("Kijkvoortgang", value: "\(store.progress.count) titels")
-                    if let d = store.lastSync { LabeledContent("Laatste sync", value: d.formatted(date: .omitted, time: .shortened)) }
+                    LabeledContent(L("Playlists"), value: "\(store.playlists.count)")
+                    LabeledContent(L("Watch progress"), value: L("%d titles", store.progress.count))
+                    if let d = store.lastSync { LabeledContent(L("Last sync"), value: d.formatted(date: .omitted, time: .shortened)) }
                 } header: { Text("iCloud") } footer: {
-                    Text("Afspeellijsten, avatars, favorieten, Mijn lijst, kijkvoortgang en je Trakt/OpenSubtitles-login worden via iCloud gedeeld tussen iPhone, iPad en Apple TV.")
+                    Text(L("Playlists, avatars, favorites, My List, watch progress, reminders, your changes and your Trakt/OpenSubtitles sign-in are shared via iCloud between iPhone, iPad, Mac and Apple TV."))
                 }
-
-                Section("Over") {
-                    LabeledContent("Versie", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")
-                    LabeledContent("IMDb-gegevens", value: Secrets.isSet(Secrets.omdbAPIKey) ? "Actief (OMDb)" : "Geen OMDb-sleutel")
+                Section(L("About")) {
+                    LabeledContent(L("Version"), value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.1")
+                    LabeledContent(L("IMDb data"), value: Secrets.isSet(Secrets.omdbAPIKey) ? L("Active (OMDb)") : L("No OMDb key"))
                 }
             }
-            .navigationTitle("Mijn Bingr")
+            .navigationTitle(L("My Bingr"))
         }
         .sheet(isPresented: $showTraktLogin) { TraktLoginView() }
         .sheet(isPresented: $showOSLogin) { OpenSubtitlesLoginView() }
         .sheet(item: $editing) { AddPlaylistView(existing: $0) }
+        .sheet(item: $pinMode) { mode in
+            switch mode {
+            case .set:
+                PINSetupView()
+            case .unlock:
+                PINPad(title: L("Enter PIN")) { parental.verify($0) }
+            case .disable:
+                PINPad(title: L("Enter PIN to turn off")) { pin in
+                    guard parental.verify(pin) else { return false }
+                    store.updateParental { $0.enabled = false }
+                    return true
+                }
+            }
+        }
+    }
+
+    // MARK: secties
+
+    private var playlistSection: some View {
+        Section(L("Playlist")) {
+            if let s = playlists.source {
+                HStack(spacing: 14) {
+                    AvatarTile(name: "", avatar: s.avatar).frame(width: tvScaled(44))
+                    VStack(alignment: .leading) {
+                        Text(s.name).font(.headline)
+                        Text(L("%@ · %d channels · %d movies · %d series", s.kind.title,
+                               playlists.library.channels.count, playlists.library.movies.count, playlists.library.series.count))
+                            .font(.caption).foregroundStyle(Theme.secondary)
+                    }
+                }
+                Button { editing = s } label: { Label(L("Edit (name, avatar, details)"), systemImage: "pencil") }
+                NavigationLink { ManageView() } label: {
+                    Label(L("Manage groups and channels"), systemImage: "slider.horizontal.below.rectangle")
+                }
+                Button { Task { await playlists.select(s, forceRefresh: true) } } label: {
+                    Label(L("Refresh now"), systemImage: "arrow.clockwise")
+                }
+            }
+            Button { app.switchPlaylist() } label: { Label(L("Choose another playlist"), systemImage: "rectangle.stack.person.crop") }
+        }
+    }
+
+    private var traktSection: some View {
+        Section {
+            if trakt.isLoggedIn {
+                LabeledContent(L("Signed in as"), value: trakt.username ?? "Trakt")
+                LabeledContent(L("Watched"), value: L("%d movies · %d episodes", trakt.watchedMovies.count,
+                                                      trakt.watchedEpisodes.values.reduce(0) { $0 + $1.count }))
+                if let d = trakt.lastRefresh {
+                    LabeledContent(L("Last synced"), value: d.formatted(date: .omitted, time: .shortened))
+                }
+                Button { Task { await trakt.refresh(force: true) } } label: { Label(L("Sync now"), systemImage: "arrow.triangle.2.circlepath") }
+                Button(role: .destructive) { Task { await trakt.logout() } } label: { Label(L("Sign out of Trakt"), systemImage: "rectangle.portrait.and.arrow.right") }
+            } else {
+                Button { showTraktLogin = true } label: { Label(L("Connect Trakt"), systemImage: "link") }
+                    .disabled(!Secrets.isSet(Secrets.traktClientID))
+                if !Secrets.isSet(Secrets.traktClientID) {
+                    Text(L("First fill in your Trakt Client ID in Secrets.swift.")).font(.caption).foregroundStyle(Theme.secondary)
+                }
+            }
+            if let e = trakt.lastError { Text(e).font(.caption).foregroundStyle(Theme.red) }
+        } header: { Text("Trakt") } footer: {
+            Text(L("What you watch in Bingr is scrobbled automatically. What you've watched on Trakt (or in another app) is checked off here."))
+        }
+    }
+
+    private var openSubtitlesSection: some View {
+        Section("OpenSubtitles") {
+            if subs.isLoggedIn {
+                LabeledContent(L("Signed in as"), value: subs.username ?? "")
+                if let r = subs.remainingDownloads { LabeledContent(L("Downloads left today"), value: "\(r)") }
+                Button(role: .destructive) { Task { await subs.logout() } } label: { Label(L("Sign out"), systemImage: "rectangle.portrait.and.arrow.right") }
+            } else {
+                Button { showOSLogin = true } label: { Label(L("Sign in to OpenSubtitles"), systemImage: "captions.bubble") }
+                    .disabled(!Secrets.isSet(Secrets.openSubtitlesAPIKey))
+            }
+            Toggle(L("Search subtitles automatically when playing"), isOn: $autoSubtitles)
+            NavigationLink(L("Languages: %@", subs.preferredLanguages.joined(separator: ", "))) { LanguagePicker() }
+        }
+    }
+
+    private var playerSection: some View {
+        Section {
+            Picker(L("Player engine"), selection: $engine) {
+                ForEach(PlayerController.EngineChoice.allCases, id: \.rawValue) { Text($0.title).tag($0.rawValue) }
+            }
+        } header: { Text(L("Player")) } footer: {
+            Text(L("Automatic uses the Apple player for HLS and MP4 (HDR, Dolby Vision, Atmos, AirPlay) and VLC for everything else. If a stream fails, Bingr switches over and reconnects automatically."))
+        }
+    }
+
+    private var parentalSection: some View {
+        Section {
+            if store.parental.enabled {
+                Label(parental.isUnlocked ? L("Unlocked for 30 minutes") : L("Locked"), systemImage: parental.isUnlocked ? "lock.open.fill" : "lock.fill")
+                    .foregroundStyle(parental.isUnlocked ? Theme.imdb : Theme.green)
+                if parental.isUnlocked {
+                    Button(L("Lock now")) { parental.lock() }
+                } else {
+                    Button(L("Unlock with PIN")) { pinMode = .unlock }
+                }
+                Toggle(L("Lock adult groups automatically"), isOn: Binding(
+                    get: { store.parental.autoLockAdult },
+                    set: { v in store.updateParental { $0.autoLockAdult = v } }))
+                Text(L("Lock individual groups under Manage groups and channels (hold a group)."))
+                    .font(.caption).foregroundStyle(Theme.secondary)
+                Button(L("Change PIN")) { pinMode = .set }
+                Button(L("Turn off parental lock"), role: .destructive) { pinMode = .disable }
+            } else {
+                Button { pinMode = .set } label: { Label(L("Turn on parental lock"), systemImage: "lock") }
+            }
+        } header: { Text(L("Parental lock")) }
+    }
+
+    private var languageSection: some View {
+        Section(L("Language")) {
+            Picker(L("App language"), selection: $localizer.override) {
+                Text(L("System")).tag("")
+                ForEach(Localizer.supported, id: \.code) { Text($0.name).tag($0.code) }
+            }
+        }
+    }
+}
+
+/// Nieuwe pincode instellen (2× invoeren).
+struct PINSetupView: View {
+    @EnvironmentObject var store: CloudStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var first: String?
+    @State private var step = 0
+
+    var body: some View {
+        if step == 0 {
+            PINPad(title: L("Choose a 4-digit PIN")) { pin in first = pin; step = 1; return false }
+                .id("a")
+        } else {
+            PINPad(title: L("Enter the PIN again")) { pin in
+                guard pin == first else { step = 0; return false }
+                ParentalControl.shared.setPIN(pin)
+                store.updateParental { $0.enabled = true }
+                ParentalControl.shared.lock()
+                dismiss()
+                return true
+            }
+            .id("b")
+        }
     }
 }
 
@@ -98,11 +203,11 @@ struct TraktLoginView: View {
     var body: some View {
         VStack(spacing: tvScaled(20)) {
             Image(systemName: "arrow.triangle.2.circlepath.circle.fill").font(.system(size: tvScaled(54))).foregroundStyle(Theme.red)
-            Text("Koppel je Trakt-account").font(.system(size: tvScaled(22), weight: .bold))
+            Text(L("Connect your Trakt account")).font(.system(size: tvScaled(22), weight: .bold))
             if let code {
-                Text("Ga op je telefoon of computer naar").foregroundStyle(Theme.secondary)
+                Text(L("On your phone or computer, go to")).foregroundStyle(Theme.secondary)
                 Text(code.verification_url).font(.system(size: tvScaled(18), weight: .semibold))
-                Text("en voer deze code in:").foregroundStyle(Theme.secondary)
+                Text(L("and enter this code:")).foregroundStyle(Theme.secondary)
                 Text(code.user_code).font(.system(size: tvScaled(40), weight: .heavy, design: .monospaced)).kerning(6)
                     .padding(.horizontal, 24).padding(.vertical, 10)
                     .background(Theme.elevated, in: RoundedRectangle(cornerRadius: 10))
@@ -111,18 +216,18 @@ struct TraktLoginView: View {
                         .padding(8).background(.white, in: RoundedRectangle(cornerRadius: 8))
                 }
                 #if os(iOS)
-                Button("Open trakt.tv/activate") {
+                Button(L("Open trakt.tv/activate")) {
                     UIPasteboard.general.string = code.user_code
                     if let u = URL(string: code.verification_url) { openURL(u) }
                 }
-                Text("De code staat al op je klembord.").font(.caption).foregroundStyle(Theme.secondary)
+                Text(L("The code is already on your clipboard.")).font(.caption).foregroundStyle(Theme.secondary)
                 #endif
-                ProgressView("Wachten op bevestiging…").tint(Theme.red)
+                ProgressView(L("Waiting for confirmation…")).tint(Theme.red)
             } else if error == nil {
                 ProgressView()
             }
             if let error { Text(error).foregroundStyle(Theme.red).multilineTextAlignment(.center) }
-            Button("Annuleer") { dismiss() }.padding(.top)
+            Button(L("Cancel")) { dismiss() }.padding(.top)
         }
         .padding(Theme.edge)
         .task {
@@ -149,9 +254,9 @@ struct OpenSubtitlesLoginView: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("Gebruikersnaam", text: $user).textInputAutocapitalization(.never).autocorrectionDisabled()
-                    SecureField("Wachtwoord", text: $pass)
-                } footer: { Text("Nog geen account? Maak er gratis een aan op opensubtitles.com.") }
+                    TextField(L("Username"), text: $user).textInputAutocapitalization(.never).autocorrectionDisabled()
+                    SecureField(L("Password"), text: $pass)
+                } footer: { Text(L("No account yet? Create one for free at opensubtitles.com.")) }
                 if let error { Text(error).foregroundStyle(Theme.red) }
                 Button {
                     busy = true
@@ -160,11 +265,11 @@ struct OpenSubtitlesLoginView: View {
                         do { try await subs.login(username: user, password: pass); dismiss() }
                         catch { self.error = error.localizedDescription }
                     }
-                } label: { if busy { ProgressView() } else { Text("Inloggen") } }
+                } label: { if busy { ProgressView() } else { Text(L("Sign in")) } }
                 .disabled(user.isEmpty || pass.isEmpty || busy)
             }
             .navigationTitle("OpenSubtitles")
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Annuleer") { dismiss() } } }
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button(L("Cancel")) { dismiss() } } }
         }
     }
 }
@@ -186,7 +291,7 @@ private struct LanguagePicker: View {
                 }
             }
         }
-        .navigationTitle("Ondertiteltalen")
+        .navigationTitle(L("Subtitle languages"))
     }
 }
 
