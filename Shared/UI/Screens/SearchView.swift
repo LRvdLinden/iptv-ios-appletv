@@ -50,7 +50,7 @@ struct SearchView: View {
                     if !programs.isEmpty { programList }
                     if !results.movies.isEmpty { grid(L("Movies"), results.movies.map { .movie($0) }) }
                     if !results.series.isEmpty { grid(L("Series"), results.series.map { .series($0) }) }
-                    if !results.other.isEmpty { otherPlaylists }
+                    if !results.other.isEmpty && CloudStore.shared.isMainActive { otherPlaylists }
                 }
                 .padding(.vertical)
             }

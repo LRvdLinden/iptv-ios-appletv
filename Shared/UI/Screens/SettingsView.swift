@@ -25,6 +25,7 @@ struct SettingsView: View {
     @State private var editing: PlaylistSource?
     @State private var editingProfile: ViewerProfile?
     @State private var addingServer = false
+    @State private var addingProfile = false
     @State private var pinMode: PinMode?
     @State private var setup: SetupTarget?
 
@@ -36,26 +37,21 @@ struct SettingsView: View {
         NavigationStack {
             List {
                 playlistSection
+                if isMain {
+                    serverSection
+                    profilesSection
+                }
                 librarySection
-                refreshSection
-                traktSection
+                if isMain {
+                    refreshSection
+                    traktSection
+                }
                 openSubtitlesSection
                 playerSection
-                parentalSection
+                if isMain { parentalSection }
                 interfaceSection
                 languageSection
-                Section {
-                    LabeledContent(L("Playlists"), value: "\(store.playlists.count)")
-                    LabeledContent(L("Watch progress"), value: L("%d titles", store.progress.count))
-                    if let d = store.lastSync { LabeledContent(L("Last sync"), value: d.formatted(date: .omitted, time: .shortened)) }
-                } header: { Text("iCloud") } footer: {
-                    Text(L("Playlists, avatars, favorites, My List, watch progress, reminders, your changes and your Trakt/OpenSubtitles sign-in are shared via iCloud between iPhone, iPad, Mac and Apple TV."))
-                }
-                Section {
-                    Button { setup = .all } label: { Label(L("Set up connections"), systemImage: "key.horizontal") }
-                } footer: {
-                    Text(L("Trakt and OpenSubtitles require a one-time app registration. Saved in iCloud Keychain, so your other devices have it too."))
-                }
+                if isMain { adminFooterSections }
                 Section(L("About")) {
                     LabeledContent(L("Version"), value: "\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0") (\(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"))")
                     LabeledContent(L("IMDb data"), value: Secrets.isSet(Secrets.omdbAPIKey) ? L("Active (OMDb)") : L("No OMDb key"))
@@ -63,11 +59,13 @@ struct SettingsView: View {
             }
             .navigationTitle(store.activeProfile?.name ?? L("My Bingr"))
         }
+
         .sheet(isPresented: $showTraktLogin) { TraktLoginView() }
         .sheet(isPresented: $showOSLogin) { OpenSubtitlesLoginView() }
         .sheet(item: $editing) { AddPlaylistView(existing: $0) }
         .sheet(item: $editingProfile) { ProfileEditView(existing: $0) }
         .sheet(isPresented: $addingServer) { AddPlaylistView(existing: nil) }
+        .sheet(isPresented: $addingProfile) { ProfileEditView(existing: nil) }
         .sheet(item: $setup) { t in
             switch t {
             case .trakt:
@@ -98,12 +96,30 @@ struct SettingsView: View {
         }
     }
 
+    /// Hoofdaccount (of nog geen profielen): mag de server en alles instellen.
+    private var isMain: Bool { store.isMainActive || store.profiles.isEmpty || store.activeProfileID == nil }
+
+    @ViewBuilder private var adminFooterSections: some View {
+                Section {
+                    LabeledContent(L("Playlists"), value: "\(store.playlists.count)")
+                    LabeledContent(L("Watch progress"), value: L("%d titles", store.progress.count))
+                    if let d = store.lastSync { LabeledContent(L("Last sync"), value: d.formatted(date: .omitted, time: .shortened)) }
+                } header: { Text("iCloud") } footer: {
+                    Text(L("Playlists, avatars, favorites, My List, watch progress, reminders, your changes and your Trakt/OpenSubtitles sign-in are shared via iCloud between iPhone, iPad, Mac and Apple TV."))
+                }
+                Section {
+                    Button { setup = .all } label: { Label(L("Set up connections"), systemImage: "key.horizontal") }
+                } footer: {
+                    Text(L("Trakt and OpenSubtitles require a one-time app registration. Saved in iCloud Keychain, so your other devices have it too."))
+                }
+    }
+
     // MARK: secties
 
     /// Kijkprofiel (per persoon) en de server van het hoofdaccount (voor iedereen).
     private var playlistSection: some View {
         Group {
-            Section(L("Profile")) {
+            Section {
                 if let p = store.activeProfile {
                     HStack(spacing: 14) {
                         ProfileAvatar(size: tvScaled(44))
@@ -115,7 +131,39 @@ struct SettingsView: View {
                     Button { editingProfile = p } label: { Label(L("Edit profile"), systemImage: "pencil") }
                 }
                 Button { app.switchPlaylist() } label: { Label(L("Switch profile"), systemImage: "person.2.circle") }
+            } header: { Text(L("Profile")) } footer: {
+                if !isMain { Text(L("The server and all settings are managed in the main account.")) }
             }
+        }
+    }
+
+    /// Alle kijkprofielen (alleen het hoofdaccount maakt ze aan en beheert ze).
+    private var profilesSection: some View {
+        Section {
+            ForEach(store.profiles) { p in
+                Button { editingProfile = p } label: {
+                    HStack(spacing: 12) {
+                        AvatarTile(name: "", avatar: p.avatar, photo: store.photos[p.id]).frame(width: tvScaled(34))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(p.name).foregroundStyle(.white)
+                            Text(store.isMain(p) ? L("Main account") : (p.ageLimit.map { L("Up to %d years", $0) } ?? L("Profile")))
+                                .font(.caption).foregroundStyle(Theme.secondary)
+                        }
+                        Spacer()
+                        Image(systemName: "pencil").foregroundStyle(Theme.secondary)
+                    }
+                }
+            }
+            if store.profiles.count < 8 {
+                Button { addingProfile = true } label: { Label(L("Add profile"), systemImage: "person.badge.plus") }
+            }
+        } header: { Text(L("Profiles")) } footer: {
+            Text(L("Each profile uses the same server, with its own My List, Continue watching, favorites, history and age limit."))
+        }
+    }
+
+    private var serverSection: some View {
+        Group {
             Section {
                 ForEach(store.playlists) { src in
                     Button {
@@ -193,8 +241,10 @@ struct SettingsView: View {
             if subs.isLoggedIn {
                 LabeledContent(L("Signed in as"), value: subs.username ?? "")
                 if let r = subs.remainingDownloads { LabeledContent(L("Downloads left today"), value: "\(r)") }
-                Button(role: .destructive) { Task { await subs.logout() } } label: { Label(L("Sign out"), systemImage: "rectangle.portrait.and.arrow.right") }
-            } else {
+                if isMain {
+                    Button(role: .destructive) { Task { await subs.logout() } } label: { Label(L("Sign out"), systemImage: "rectangle.portrait.and.arrow.right") }
+                }
+            } else if isMain {
                 Button { if Secrets.openSubtitlesReady { showOSLogin = true } else { setup = .openSubtitles } } label: {
                     Label(L("Sign in to OpenSubtitles"), systemImage: "captions.bubble")
                 }
@@ -293,8 +343,10 @@ struct SettingsView: View {
     private var librarySection: some View {
         Section {
             NavigationLink { HistoryView() } label: { Label(L("Watch history"), systemImage: "clock.arrow.circlepath") }
-            NavigationLink { NetworkBrowserView() } label: {
-                Label(L("NAS & network (SMB/DLNA)"), systemImage: "externaldrive.connected.to.line.below")
+            if isMain {
+                NavigationLink { NetworkBrowserView() } label: {
+                    Label(L("NAS & network (SMB/DLNA)"), systemImage: "externaldrive.connected.to.line.below")
+                }
             }
         } header: { Text(L("Library")) } footer: {
             Text(L("Watch history is kept per profile. Plex, Jellyfin and Emby can be added as a playlist."))
@@ -310,15 +362,19 @@ struct SettingsView: View {
                 Text(L("Series")).tag(3)
             }
             .pickerStyle(.menu)
-            NavigationLink { CategoriesView() } label: {
-                Label(L("Categories on/off (NL, BE, DE…)"), systemImage: "line.3.horizontal.decrease.circle")
+            if isMain {
+                NavigationLink { CategoriesView() } label: {
+                    Label(L("Categories on/off (NL, BE, DE…)"), systemImage: "line.3.horizontal.decrease.circle")
+                }
             }
             Toggle(L("Intro sound"), isOn: Binding(get: { SplashTune.enabled }, set: { SplashTune.enabled = $0 }))
             Toggle(L("Show Live TV"), isOn: $showLive)
             Toggle(L("Show Movies"), isOn: $showMovies)
             Toggle(L("Show Series"), isOn: $showSeries)
-            NavigationLink { ManageView() } label: {
-                Label(L("Rename, hide and reorder"), systemImage: "slider.horizontal.below.rectangle")
+            if isMain {
+                NavigationLink { ManageView() } label: {
+                    Label(L("Rename, hide and reorder"), systemImage: "slider.horizontal.below.rectangle")
+                }
             }
         } header: { Text(L("Interface")) }
     }

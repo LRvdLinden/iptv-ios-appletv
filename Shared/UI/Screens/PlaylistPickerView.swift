@@ -10,6 +10,7 @@ struct PlaylistPickerView: View {
     @State private var addingProfile = false
     @State private var addingServer = false
     @State private var appeared = false
+    @State private var pinFor: ViewerProfile?
     @FocusState private var focus: FocusTarget?
 
     enum FocusTarget: Hashable { case profile(UUID), add, manage, server }
@@ -31,15 +32,7 @@ struct PlaylistPickerView: View {
                 HStack {
                     BingrLogo(size: tvScaled(26))
                     Spacer()
-                    if !noServer {
-                        Button(managing ? L("Done") : L("Manage")) {
-                            withAnimation(.spring(response: 0.35)) { managing.toggle() }
-                        }
-                        .font(.system(size: tvScaled(15), weight: .semibold))
-                        .foregroundStyle(.white)
-                        .plainTVButton()
-                        .focused($focus, equals: .manage)
-                    }
+                    // profielen beheren gebeurt in het hoofdaccount (Mijn Bingr → Profielen)
                 }
                 .padding(.horizontal, Theme.edge).padding(.top, tvScaled(8))
                 #if os(tvOS)
@@ -51,29 +44,26 @@ struct PlaylistPickerView: View {
                 if noServer {
                     welcome
                 } else {
-                    Text(managing ? L("Manage profiles") : L("Who's watching?"))
+                    Text(L("Who's watching?"))
                         .font(.system(size: tvScaled(26), weight: .medium))
                         .foregroundStyle(.white)
 
                     LazyVGrid(columns: columns, spacing: tvScaled(26)) {
                         ForEach(Array(store.profiles.enumerated()), id: \.element.id) { i, p in
                             Button {
-                                if managing { editing = p } else { app.open(profile: p) }
+                                // hoofdaccount op slot met de pincode als het kinderslot aan staat
+                                if store.isMain(p) && store.parental.enabled && ParentalControl.shared.hasPIN && !ParentalControl.shared.isUnlocked {
+                                    pinFor = p
+                                } else { app.open(profile: p) }
                             } label: {
-                                AvatarTile(name: p.name, avatar: p.avatar, photo: store.photos[p.id], editing: managing)
+                                AvatarTile(name: p.name, avatar: p.avatar, photo: store.photos[p.id],
+                                           badge: store.isMain(p) && store.profiles.count > 1 ? "key.fill" : nil)
                             }
                             .profileButton()
                             .focused($focus, equals: .profile(p.id))
                             .opacity(appeared ? 1 : 0)
                             .offset(y: appeared ? 0 : 24)
                             .animation(.spring(response: 0.5, dampingFraction: 0.8).delay(Double(i) * 0.06), value: appeared)
-                        }
-                        if store.profiles.count < 8 {
-                            Button { addingProfile = true } label: { AddTile() }
-                                .profileButton()
-                                .focused($focus, equals: .add)
-                                .opacity(appeared ? 1 : 0)
-                                .animation(.easeOut(duration: 0.4).delay(Double(store.profiles.count) * 0.06), value: appeared)
                         }
                     }
                     .padding(.horizontal, Theme.edge)
@@ -107,6 +97,13 @@ struct PlaylistPickerView: View {
         .sheet(isPresented: $addingServer) { AddPlaylistView(existing: nil) }
         .sheet(isPresented: $addingProfile) { ProfileEditView(existing: nil) }
         .sheet(item: $editing) { p in ProfileEditView(existing: p) }
+        .sheet(item: $pinFor) { p in
+            PINPad(title: L("Enter PIN")) { pin in
+                guard ParentalControl.shared.verify(pin) else { return false }
+                Task { @MainActor in try? await Task.sleep(nanoseconds: 300_000_000); app.open(profile: p) }
+                return true
+            }
+        }
     }
 
     /// Nog geen server: eerst het hoofdaccount instellen.
@@ -139,6 +136,8 @@ struct ProfileEditView: View {
     #endif
 
     private var locked: Bool { store.parental.enabled && !parental.isUnlocked }
+    /// Leeftijdsgrens en verwijderen: alleen vanuit het hoofdaccount
+    private var canAdmin: Bool { store.isMainActive || store.activeProfileID == nil }
 
     var body: some View {
         NavigationStack {
@@ -184,7 +183,7 @@ struct ProfileEditView: View {
                     Task { if let d = try? await item.loadTransferable(type: Data.self) { photo = AddPlaylistView.thumbnail(d) } }
                 }
                 #endif
-                Section {
+                if canAdmin { Section {
                     Picker(L("Age limit for this profile"), selection: $ageLimit) {
                         Text(L("None")).tag(0)
                         ForEach(ParentalControl.ageChoices, id: \.self) { Text(L("Up to %d years", $0)).tag($0) }
@@ -196,8 +195,8 @@ struct ProfileEditView: View {
                     Text(store.parental.enabled
                          ? L("Titles above this age (IMDb rating) and adult groups are hidden on this profile. With the PIN you can still watch them.")
                          : L("Turn on the parental lock (My Bingr) to protect the age limit with a PIN."))
-                }
-                if let existing, store.profiles.count > 1 {
+                } }
+                if canAdmin, let existing, !store.isMain(existing) {
                     Section { Button(L("Delete profile"), role: .destructive) { confirmDelete = true } }
                     .confirmationDialog(L("Delete profile"), isPresented: $confirmDelete) {
                         Button(L("Delete"), role: .destructive) { store.deleteProfile(existing); dismiss() }
@@ -234,6 +233,8 @@ struct AvatarTile: View {
     let avatar: PlaylistAvatar
     var photo: Data? = nil
     var editing = false
+    /// klein symbooltje rechtsonder (bijv. sleutel voor het hoofdaccount)
+    var badge: String? = nil
     @Environment(\.profileFocused) private var focused
     var body: some View {
         VStack(spacing: tvScaled(10)) {
@@ -256,6 +257,12 @@ struct AvatarTile: View {
                 }
                 .clipShape(Circle())
                 .overlay(Circle().strokeBorder(.white, lineWidth: focused ? tvScaled(3) : 0))
+                .overlay(alignment: .bottomTrailing) {
+                    if let badge {
+                        Image(systemName: badge).font(.system(size: tvScaled(11), weight: .bold)).foregroundStyle(.black)
+                            .padding(tvScaled(6)).background(Theme.imdb, in: Circle())
+                    }
+                }
                 .aspectRatio(1, contentMode: .fit)
             if !name.isEmpty {
                 Text(name).font(.system(size: tvScaled(14), weight: focused ? .semibold : .regular))

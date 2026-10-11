@@ -47,6 +47,16 @@ final class CloudStore: ObservableObject {
     @Published private(set) var activeProfileID: UUID? = UserDefaults.standard.string(forKey: "activeProfileID").flatMap(UUID.init)
 
     var activeProfile: ViewerProfile? { profiles.first { $0.id == activeProfileID } }
+
+    /// Het hoofdaccount: alleen dat profiel stelt de server, Trakt, OpenSubtitles, kinderslot,
+    /// categorieën en profielen in. Standaard het eerste profiel.
+    @Published private(set) var mainProfileIDStored: UUID?
+    var mainProfileID: UUID? {
+        if let m = mainProfileIDStored, profiles.contains(where: { $0.id == m }) { return m }
+        return profiles.first?.id
+    }
+    var isMainActive: Bool { activeProfileID != nil && activeProfileID == mainProfileID }
+    func isMain(_ p: ViewerProfile) -> Bool { p.id == mainProfileID }
     var mainSource: PlaylistSource? { playlists.first { $0.id == mainSourceID } ?? playlists.first }
 
     /// Sleutel per profiel ("favorites.v1.<profiel>")
@@ -74,6 +84,8 @@ final class CloudStore: ObservableObject {
         photos = photosCopy
         write(photos, K.photos)
         write(profiles, K.profiles)
+        mainProfileIDStored = profiles.first?.id
+        write(mainProfileIDStored, K.mainProfile)
         let last = UserDefaults.standard.string(forKey: "lastPlaylistID").flatMap(UUID.init)
         mainSourceID = playlists.first { $0.id == last }?.id ?? playlists.first?.id
         write(mainSourceID, K.mainSource)
@@ -92,6 +104,7 @@ final class CloudStore: ObservableObject {
     }
 
     func deleteProfile(_ p: ViewerProfile) {
+        guard !isMain(p) else { return }   // het hoofdaccount blijft altijd bestaan
         profiles.removeAll { $0.id == p.id }
         write(profiles, K.profiles)
         setPhoto(nil, for: p.id)
@@ -112,7 +125,7 @@ final class CloudStore: ObservableObject {
                    progress = "progress.v1", watched = "watched.v1", recent = "recent.v1",
                    custom = "custom.v1", parental = "parental.v1", reminders = "reminders.v1",
                    photos = "photos.v1", history = "history.v1",
-                   profiles = "profiles.v1", mainSource = "mainsource.v1"
+                   profiles = "profiles.v1", mainSource = "mainsource.v1", mainProfile = "mainprofile.v1"
     }
 
     private init() {
@@ -146,6 +159,7 @@ final class CloudStore: ObservableObject {
         playlists = decode([PlaylistSource].self, K.playlists) ?? []
         profiles = decode([ViewerProfile].self, K.profiles) ?? []
         mainSourceID = decode(UUID.self, K.mainSource)
+        mainProfileIDStored = decode(UUID.self, K.mainProfile)
         migrateToProfiles()
         loadProfileData()
         customizations = decode([UUID: Customization].self, K.custom) ?? [:]
@@ -177,7 +191,13 @@ final class CloudStore: ObservableObject {
         write(playlists, K.playlists)
         // eerste server: meteen hoofdserver, en een eerste profiel als er nog geen is
         if mainSourceID == nil || !playlists.contains(where: { $0.id == mainSourceID }) { setMainSource(p.id) }
-        if profiles.isEmpty { upsertProfile(ViewerProfile(name: p.name, avatar: p.avatar)) }
+        if profiles.isEmpty {
+            let main = ViewerProfile(name: p.name, avatar: p.avatar)
+            upsertProfile(main)
+            mainProfileIDStored = main.id
+            write(mainProfileIDStored, K.mainProfile)
+            if activeProfileID == nil { selectProfile(main) }
+        }
     }
 
     func setPhoto(_ data: Data?, for playlist: UUID) {
