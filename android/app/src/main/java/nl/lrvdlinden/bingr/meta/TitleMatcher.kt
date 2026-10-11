@@ -91,41 +91,49 @@ object MatcherCache {
     }
 }
 
-/** Trending vandaag (TMDB in de app-taal + Trakt), 6 uur bewaard en gedeeld door alle tabbladen. */
+/**
+ * Trending vandaag (TMDB in de app-taal + Trakt), 6 uur bewaard en gedeeld door alle tabbladen.
+ * [kids] = populaire animatie/familie-titels (TMDB discover), voor kinderprofielen; aparte cache.
+ */
 object TrendingStore {
     @Serializable
     private data class Saved(val date: Long, val items: List<ExternalTitle>)
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val inFlight = HashMap<Boolean, Deferred<List<ExternalTitle>>>()
+    private val inFlight = HashMap<String, Deferred<List<ExternalTitle>>>()
 
-    private fun key(shows: Boolean) = "trending.${if (shows) "tv" else "movie"}.${Localizer.language}"
+    private fun key(shows: Boolean, kids: Boolean = false) =
+        "trending.${if (kids) "kids." else ""}${if (shows) "tv" else "movie"}.${Localizer.language}"
 
-    private fun saved(shows: Boolean): Saved? =
-        Prefs.string(key(shows))?.let { runCatching { Http.json.decodeFromString(Saved.serializer(), it) }.getOrNull() }
+    private fun saved(shows: Boolean, kids: Boolean): Saved? =
+        Prefs.string(key(shows, kids))?.let { runCatching { Http.json.decodeFromString(Saved.serializer(), it) }.getOrNull() }
 
     /** Direct uit de cache (ook als die verlopen is), zonder netwerk. */
-    fun cached(shows: Boolean): List<ExternalTitle> = saved(shows)?.items ?: emptyList()
+    fun cached(shows: Boolean, kids: Boolean = false): List<ExternalTitle> = saved(shows, kids)?.items ?: emptyList()
 
-    fun isFresh(shows: Boolean): Boolean {
-        val s = saved(shows) ?: return false
+    fun isFresh(shows: Boolean, kids: Boolean = false): Boolean {
+        val s = saved(shows, kids) ?: return false
         return System.currentTimeMillis() - s.date < 6 * 3_600_000L && s.items.isNotEmpty()
     }
 
-    suspend fun get(shows: Boolean): List<ExternalTitle> {
-        if (isFresh(shows)) return cached(shows)
+    suspend fun get(shows: Boolean, kids: Boolean = false): List<ExternalTitle> {
+        if (isFresh(shows, kids)) return cached(shows, kids)
+        val k = key(shows, kids)
         val t = synchronized(inFlight) {
-            inFlight.getOrPut(shows) {
-                scope.async { TMDB.trending(shows) + Trakt.trending(shows) }
+            inFlight.getOrPut(k) {
+                scope.async {
+                    if (kids) TMDB.kidsTrending(shows)
+                    else TMDB.trending(shows) + Trakt.trending(shows)
+                }
             }
         }
         val items = try { t.await() } catch (e: CancellationException) { throw e } catch (e: Exception) { emptyList() } finally {
-            synchronized(inFlight) { if (inFlight[shows] === t) inFlight.remove(shows) }
+            synchronized(inFlight) { if (inFlight[k] === t) inFlight.remove(k) }
         }
         if (items.isNotEmpty()) {
-            Prefs.put(key(shows), Http.json.encodeToString(Saved.serializer(), Saved(System.currentTimeMillis(), items)))
+            Prefs.put(k, Http.json.encodeToString(Saved.serializer(), Saved(System.currentTimeMillis(), items)))
             return items
         }
-        return cached(shows)
+        return cached(shows, kids)
     }
 }

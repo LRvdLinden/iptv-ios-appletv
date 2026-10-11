@@ -50,6 +50,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -60,7 +61,9 @@ import kotlinx.coroutines.flow.first
 import java.util.Calendar
 
 private const val S2_HALF_HOUR = 1_800_000L
-private const val S2_GUIDE_HOURS = 26
+private const val S2_GUIDE_HOURS = 14
+/** Het raster toont maximaal zoveel zenders (anders wordt het op een tv-box te zwaar). */
+private const val S2_GUIDE_LIMIT = 150
 
 /** Begin van het raster: een uur geleden, afgerond op een half uur. */
 private fun s2GuideStart(now: Long): Long = Calendar.getInstance().apply {
@@ -72,9 +75,10 @@ private fun s2GuideStart(now: Long): Long = Calendar.getInstance().apply {
 
 private fun s2ReminderID(channel: Channel, p: EPGProgram) = "${channel.id}-${p.start / 1000}"
 
-/** TV-gids als raster: zenders verticaal, tijd horizontaal, rode "nu"-lijn. */
+/** TV-gids als raster: zenders verticaal, tijd horizontaal (14 uur), rode "nu"-lijn; maximaal 150 zenders. */
 @Composable
 fun GuideGrid(channels: List<Channel>, onPlay: (Channel) -> Unit, onProgram: (Channel, EPGProgram) -> Unit) {
+    val shown = if (channels.size > S2_GUIDE_LIMIT) channels.take(S2_GUIDE_LIMIT) else channels
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) { while (true) { delay(60_000); now = System.currentTimeMillis() } }
     val start = remember(now / S2_HALF_HOUR) { s2GuideStart(now) }
@@ -82,6 +86,7 @@ fun GuideGrid(channels: List<Channel>, onPlay: (Channel) -> Unit, onProgram: (Ch
     val rowHeight: Dp = tvs(62)
     val channelWidth: Dp = tvs(130)
     val totalWidth: Dp = pxPerMinute * (S2_GUIDE_HOURS * 60).toFloat()
+    val end = start + S2_GUIDE_HOURS * 3_600_000L
     fun x(t: Long): Dp = pxPerMinute * ((t - start) / 60_000f)
 
     val scroll = rememberScrollState()
@@ -113,8 +118,10 @@ fun GuideGrid(channels: List<Channel>, onPlay: (Channel) -> Unit, onProgram: (Ch
             }
         }
         LazyColumn(Modifier.fillMaxSize()) {
-            itemsIndexed(channels) { _, c ->
-                val progs = remember(epg, c.id, start) { (epg[c.epgID ?: c.id] ?: emptyList()).filter { it.end > start } }
+            itemsIndexed(shown) { _, c ->
+                val progs = remember(epg, c.id, start) {
+                    (epg[c.epgID ?: c.id] ?: emptyList()).filter { it.end > start && it.start < end }
+                }
                 Row(Modifier.fillMaxWidth().height(rowHeight)) {
                     S2GuideChannelCell(c, channelWidth, rowHeight) { onPlay(c) }
                     Box(Modifier.weight(1f).fillMaxHeight().horizontalScroll(scroll)) {
@@ -135,6 +142,13 @@ fun GuideGrid(channels: List<Channel>, onPlay: (Channel) -> Unit, onProgram: (Ch
                     }
                 }
                 Box(Modifier.fillMaxWidth().height(1.dp).background(Color.Black))
+            }
+            if (channels.size > S2_GUIDE_LIMIT) {
+                item {
+                    Text(L("Showing %d of %d channels. Choose a group or search to see the rest.", S2_GUIDE_LIMIT, channels.size),
+                        color = Theme.secondary, fontSize = tsp(12), textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth().padding(tvs(16)))
+                }
             }
         }
     }

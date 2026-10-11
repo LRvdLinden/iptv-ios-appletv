@@ -97,7 +97,8 @@ fun MultiviewScreen(onClose: () -> Unit) {
         if (active == null) active = t.id else ctrl.muted = true
         scope.launch {
             val u = runCatching { Playlists.resolve(ctrl.item) }.getOrNull()
-            if (u != null && t in tiles) ctrl.start(u)
+            if (t !in tiles) return@launch   // intussen weggehaald of multiview gesloten
+            if (u != null) ctrl.start(u) else ctrl.fail(L("No stream address available."))
             ctrl.muted = active != t.id
         }
     }

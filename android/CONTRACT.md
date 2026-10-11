@@ -119,3 +119,42 @@ object SRT { fun decode(bytes): String; fun parse(text): List<SubtitleCue> }   /
 `@Composable fun BingrRoot()` — splash → profielkeuze → hoofdscherm; spelerscherm (`AppState.playing`) en multiview als volledig scherm erboven; terug-knop logisch afhandelen.
 
 Schermen (zelfde gedrag als de Swift-schermen met dezelfde naam): `SplashScreen` (vallende covers + BINGR met rode streep), `PlaylistPickerScreen` ("Wat wil je kijken?", ronde avatars, bij focus groter met witte rand, Toevoegen, Beheren, iCloud-regel vervangen door "Op dit apparaat"), `AddPlaylistScreen` (alle bronsoorten, naam, avatar-emoji+kleur, foto uit galerij via PhotoPicker, testen), `MainScreen` (telefoon: onderbalk Home/Live TV/Films/Series/Zoeken/Mijn Bingr; TV: bovenbalk met dezelfde tabs; startscherm/verbergen uit Prefs "ui.startTab"/"ui.showLive"/…), `HomeScreen(filter)` (billboard, Mijn lijst, Onlangs toegevoegd, Verder kijken (verwijderbaar, geen live), Voor jou, Top 10 series/films (Netflix-stijl), favoriete zenders, categorierijen met "Bekijk allemaal"; vergrootglas rechtsboven op telefoon), `CategoryScreen` (terug, titel in hoofdletters, sorteren, raster met score), `DetailScreen` (UHF-stijl: achtergrond, logo/titel, score, jaar, duur, Afspelen/verder kijken, Mijn lijst, trailer (YouTube-app/web), bekeken, seizoenen + afleveringen met foto/voortgang, cast, aanbevelingen, andere bronnen, leeftijdsfilter-pincode), `LiveTVScreen` (standaard "Alle zenders", favorieten, recent, groepen; lijst + tv-gids-raster; zenders hernoemen/favoriet via lang indrukken; multiview), `GuideSheet`/`ProgramSheet` (kijken, terugkijken, herinnering), `SearchScreen` (alles: films, series, zenders, categorieën, tv-gids, andere playlists), `SettingsScreen` ("Mijn Bingr": profiel, bibliotheek (kijkgeschiedenis, NAS), updaten, Trakt, OpenSubtitles, speler (engine, standaard audio/ondertitel), kinderslot (pincode, leeftijdsgrens), weergave (categorieën aan/uit, startscherm, tabs), taal, delen tussen apparaten (export/import JSON i.p.v. iCloud), koppelingen instellen, over), plus `CategoriesScreen` (aan/uit met landcodes NL/BE/DE…), `ManageScreen`, `HistoryScreen`, `NetworkBrowserScreen` (SMB/UPnP via LibVLC `MediaBrowser`), `ConnectionsSetupScreen`, `TraktLoginScreen` (code + QR), `OpenSubtitlesLoginScreen`, `PinPad`.
+
+## Kijkprofielen ("Wie kijkt er?") — zoals iOS (CloudStore / ViewerProfile)
+
+Eén hoofdaccount bezit de server(s) (`Store.playlists`, `Store.mainSource`) en maakt kijkprofielen (`ViewerProfile`) aan.
+Alle profielen gebruiken de hoofdserver, maar hebben elk hun eigen gegevens (bestanden in `store/profile-<id>/`).
+Bestaande Store-API's werken altijd op het **actieve** profiel.
+
+```kotlin
+@Serializable data class ViewerProfile(id, name, avatar: PlaylistAvatar, ageLimit: Int?, createdAt, autoSubtitles: Boolean?,
+    subtitleLanguage: String?, audioLanguage: String?, streamSubtitleLanguage: String?, isKids: Boolean?) {
+  val kids: Boolean; val effectiveAgeLimit: Int? /* kids zonder grens = 12 */; val strictAgeFilter: Boolean /* kids || grens <= 12 */ }
+PlaylistAvatar: symbol "kid01".."kid16" = getekend figuurtje (res/drawable-nodpi); val isIllustration; PlaylistAvatar.illustrations; randomIllustration()
+fun avatarDrawable(symbol): Int?; val PlaylistAvatar.drawableRes: Int?          // ui/Cards.kt
+@Composable AvatarView(avatar, photo: Bitmap?, size, ring, editing, badge)       // badge = rood rondje met poppetje (hoofdaccount)
+@Composable ProfileAvatar(profile = Store.activeProfile, size, ring, editing, badge)
+@Composable AvatarCircle(playlist, size, ring, editing)                          // avatar van een server
+
+Store.profiles; Store.activeProfileID; Store.activeProfile; Store.mainProfileID; Store.mainProfile
+Store.isMain(p) / isMain(id); Store.isMainActive; Store.canManage /* hoofdaccount of nog geen profiel */
+Store.mainSourceID; Store.mainSource; Store.setMainSource(id)
+Store.selectProfile(p)            // laadt eigen lijsten + kijkvoorkeuren; liever AppState.open(profile)
+Store.upsertProfile(p); Store.deleteProfile(p) /* hoofdaccount kan niet */; Store.updateActivePreferences { it.copy(...) }
+Store.belongsToActive(profileID); ProgressEntry.profileID / HistoryEntry.profileID (automatisch gezet)
+Store.episodeKey(series, season, episode); Store.setEpisodeWatched(e, watched); Store.isEpisodeWatched(e); Store.localWatchedCount(seriesID)
+Store.setMyList(playlist, item, on); Store.photo(profileID) / setPhoto(profileID, jpeg)
+Store.upsert(server)               // eerste server → hoofdserver + automatisch hoofdprofiel
+
+AppState.open(profile)            // selecteren, kinderslot dicht als niet-hoofd, Trakt alleen hoofdaccount, hoofdserver openen
+Trakt.profileAllowed; Trakt.applyProfile(isMain)
+
+ParentalControl: hasPIN (hoofdaccount) / hasPIN(profile|id); setPIN(pin) / setPIN(pin, profile|id); pinKey(id)
+  verify(pin) / verify(pin, profile|id)   // hoofdaccount: 30 min ontgrendeld, daarna vanzelf dicht
+  check(pin)                              // alleen één titel toestaan (pincode hoofdaccount), niet ontgrendelen
+  allowed(rated, group, limit, genre, strict); allowedFor(...) (pure, achtergrond); isAdultGroup; isKidsGroup; minimumAge; lock()
+Playlists.isFiltering             // grote lijst wordt op de achtergrond gefilterd; bij leeftijdsgrens is library dan leeg
+Playlists.context(source): FilterContext; Playlists.apply(raw, ctx)   // filter met leeftijdsgrens van het actieve profiel
+@Composable ProfileEditScreen(existing: ViewerProfile?, onClose)     // ui/screens/Picker.kt
+@Composable PinPad(title, onDismiss, onSubmit); PinSetupScreen(profileID = null, enableParental = false, onClose)
+```

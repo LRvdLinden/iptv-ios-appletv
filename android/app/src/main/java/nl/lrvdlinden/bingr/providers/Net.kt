@@ -1,5 +1,7 @@
 package nl.lrvdlinden.bingr
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -48,8 +50,11 @@ object Net {
         return r.body
     }
 
-    /** GET → JSON-boom. */
-    suspend fun json(url: String, headers: Map<String, String> = emptyMap()): JsonElement = parse(text(url, headers))
+    /** GET → JSON-boom (geparst op Dispatchers.Default: Xtream-/Trakt-lijsten kunnen tientallen MB zijn). */
+    suspend fun json(url: String, headers: Map<String, String> = emptyMap()): JsonElement {
+        val t = text(url, headers)
+        return withContext(Dispatchers.Default) { parse(t) }
+    }
 
     fun parse(text: String): JsonElement =
         try { Http.json.parseToJsonElement(text) } catch (e: Exception) { throw decoding(e.message ?: "") }

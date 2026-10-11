@@ -112,7 +112,7 @@ object M3UParser {
     }
 
     fun epgURL(fromHeader: String): String? {
-        val first = fromHeader.lineSequence().firstOrNull() ?: return null
+        val first = fromHeader.lineSequence().firstOrNull()?.trimStart('\uFEFF')?.trim() ?: return null
         if (!first.startsWith("#EXTM3U")) return null
         for (key in listOf("url-tvg", "x-tvg-url", "tvg-url")) {
             val start = first.indexOf("$key=\"")

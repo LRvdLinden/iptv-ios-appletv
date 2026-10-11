@@ -58,7 +58,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 private const val S2_FAV_KEY = "★"
 private const val S2_RECENT_KEY = "◷"
@@ -71,85 +73,123 @@ private fun s2LiveGroupTitle(g: String): String = when (g) {
     else -> g
 }
 
-/** Live TV: groepen (Alle zenders, Favorieten, Recent, …), zenderlijst of tv-gids-raster, multiview. */
+/**
+ * Zoeken gaat altijd door álle zenders (los van de gekozen groep): eerst op naam/nummer,
+ * dan op groep en wat er nu speelt (= visibleChannels in LiveTVView.swift).
+ */
+private fun s2SearchChannels(lib: Library, q: String): List<Channel> {
+    val byName = lib.channels.filter { it.name.contains(q, ignoreCase = true) || (it.number?.toString() == q) }
+    val nameIDs = byName.mapTo(HashSet()) { it.id }
+    val byOther = lib.channels.filter { c ->
+        c.id !in nameIDs && (c.group.contains(q, ignoreCase = true) ||
+            (lib.nowPlaying(c)?.title?.contains(q, ignoreCase = true) ?: false))
+    }
+    return byName + byOther
+}
+
+/** Live TV: groepen (Alle zenders, Favorieten, Recent, …), zoeken door alle zenders, zenderlijst of tv-gids-raster, multiview. */
 @Composable
 fun LiveTVScreen() {
     val lib = Playlists.library
+    val libKey = System.identityHashCode(lib)
     val pid = Playlists.source?.id ?: ""
     var group by rememberSaveable { mutableStateOf(S2_ALL_KEY) }
     var gridMode by rememberSaveable { mutableStateOf(false) }
     var filter by rememberSaveable { mutableStateOf("") }
-    var searching by remember { mutableStateOf(false) }
     var guideFor by remember { mutableStateOf<Channel?>(null) }
     var program by remember { mutableStateOf<Pair<Channel, EPGProgram>?>(null) }
     var menuFor by remember { mutableStateOf<Channel?>(null) }
     var tick by remember { mutableIntStateOf(0) }
     LaunchedEffect(Unit) { while (true) { delay(30_000); tick++ } }
 
-    val groups = remember(lib) { listOf(S2_ALL_KEY, S2_FAV_KEY, S2_RECENT_KEY) + lib.channelGroups }
+    val groups = remember(libKey) { listOf(S2_ALL_KEY, S2_FAV_KEY, S2_RECENT_KEY) + lib.channelGroups }
     val current = if (group in groups) group else S2_ALL_KEY
     val favorites = Store.favorites
     val recents = Store.recentChannels
-    val channels: List<Channel> = remember(lib, current, filter, favorites, recents, pid) {
-        var list = when (current) {
+    val channels: List<Channel> = remember(libKey, current, favorites, recents, pid) {
+        when (current) {
             S2_FAV_KEY -> lib.channels.filter { Store.key(pid, it.id) in favorites }
             S2_RECENT_KEY -> {
-                val byKey = lib.channels.associateBy { Store.key(pid, it.id) }
+                val byKey = HashMap<String, Channel>()
+                lib.channels.forEach { byKey.putIfAbsent(Store.key(pid, it.id), it) }
                 recents.mapNotNull { byKey[it] }
             }
             S2_ALL_KEY -> lib.channels
             else -> lib.channels.filter { it.group == current }
         }
-        if (filter.isNotBlank()) list = list.filter { it.name.contains(filter.trim(), ignoreCase = true) }
-        list
     }
+    val query = filter.trim()
+    val searching = query.isNotEmpty()
+    // zoeken door alle zenders op de achtergrond (grote lijsten), oude resultaten niet tonen
+    var found by remember { mutableStateOf<Pair<String, List<Channel>>?>(null) }
+    LaunchedEffect(query, libKey) {
+        if (query.isEmpty()) { found = null; return@LaunchedEffect }
+        delay(150)
+        val q = query
+        val list = withContext(Dispatchers.Default) { s2SearchChannels(lib, q) }
+        found = q to list
+    }
+    val visible: List<Channel> = if (searching) found?.takeIf { it.first == query }?.second ?: emptyList() else channels
+    val searchPending = searching && found?.first != query
 
     fun play(c: Channel) {
         Store.pushRecentChannel(pid, c.id)
-        AppState.play(Playables.channel(c, Playlists.library.nowPlaying(c)), zap = channels)
+        AppState.play(Playables.channel(c, Playlists.library.nowPlaying(c)), zap = visible)
     }
+    fun pickGroup(g: String) { group = g; filter = "" }
 
     val tv = AppState.isTV
     Column(Modifier.fillMaxSize().background(Theme.bg).then(if (tv) Modifier else Modifier.statusBarsPadding())) {
-        // kop: titel + tv-gids/lijst + multiview (+ zoeken op telefoon)
+        // kop: titel + tv-gids/lijst + multiview
         Row(Modifier.fillMaxWidth().padding(horizontal = Theme.edge - 4.dp, vertical = tvs(8)),
             verticalAlignment = Alignment.CenterVertically) {
             Text(L("Live TV"), color = Color.White, fontSize = tsp(if (tv) 22 else 26), fontWeight = FontWeight.Bold,
                 modifier = Modifier.weight(1f).padding(start = 4.dp))
-            if (!tv) {
-                S2IconButton(if (searching) Icons.Default.Close else Icons.Default.Search, L("Search channel")) {
-                    if (searching) filter = ""
-                    searching = !searching
-                }
-            }
             S2LiveHeaderButton(if (gridMode) L("List") else L("TV guide"),
                 if (gridMode) Icons.AutoMirrored.Filled.List else Icons.Default.CalendarViewDay) { gridMode = !gridMode }
             Spacer(Modifier.width(tvs(8)))
             S2LiveHeaderButton("Multiview", Icons.Default.GridView, enabled = lib.channels.isNotEmpty()) {
-                AppState.openMultiview(channels.take(1), channels)
+                AppState.openMultiview(visible.take(1), visible)
             }
         }
-        if (!tv && searching) {
-            S2TextField(filter, { filter = it }, L("Search channel"),
+        // telefoon: zoekbalk altijd zichtbaar bovenaan (zoals .searchable op iOS)
+        if (!tv) {
+            S2TextField(filter, { filter = it }, L("Search channel or program"),
                 modifier = Modifier.padding(horizontal = Theme.edge, vertical = 4.dp),
-                leading = { Icon(Icons.Default.Search, null, tint = Theme.secondary) })
+                plain = false,
+                leading = { Icon(Icons.Default.Search, null, tint = Theme.secondary) },
+                trailing = {
+                    if (filter.isNotEmpty()) {
+                        S2IconButton(Icons.Default.Close, L("Clear search"), tint = Theme.secondary, size = 18.dp) { filter = "" }
+                    }
+                })
         }
 
         val area: @Composable (Modifier) -> Unit = { m ->
             Box(m) {
                 if (gridMode) {
-                    GuideGrid(channels, onPlay = { play(it) }, onProgram = { c, p -> program = c to p })
+                    GuideGrid(visible, onPlay = { play(it) }, onProgram = { c, p -> program = c to p })
                 } else {
-                    S2ChannelList(channels, current, pid, tick, onPlay = { play(it) }, onMenu = { menuFor = it })
+                    S2ChannelList(visible, current, pid, tick, searching = searching, query = query, pending = searchPending,
+                        onPlay = { play(it) }, onMenu = { menuFor = it })
                 }
             }
         }
 
         if (tv) {
             Row(Modifier.fillMaxSize().padding(start = Theme.edge)) {
-                LazyColumn(Modifier.width(260.dp).fillMaxHeight(), contentPadding = PaddingValues(vertical = 12.dp),
+                LazyColumn(Modifier.width(280.dp).fillMaxHeight(), contentPadding = PaddingValues(vertical = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    items(groups) { g -> S2TVGroupItem(s2LiveGroupTitle(g), g == current) { group = g } }
+                    // zoekveld bovenaan de groepenkolom
+                    item {
+                        S2TextField(filter, { filter = it }, L("Search channel"),
+                            plain = false, leading = { Icon(Icons.Default.Search, null, tint = Theme.secondary) })
+                    }
+                    if (searching) item {
+                        S2TVGroupItem("✕  " + L("Clear search"), selected = false) { filter = "" }
+                    }
+                    item { Box(Modifier.fillMaxWidth().padding(vertical = 6.dp).height(1.dp).background(Color.White.copy(alpha = 0.12f))) }
+                    items(groups) { g -> S2TVGroupItem(s2LiveGroupTitle(g), g == current && !searching) { pickGroup(g) } }
                 }
                 Spacer(Modifier.width(28.dp))
                 area(Modifier.weight(1f).fillMaxHeight())
@@ -158,10 +198,10 @@ fun LiveTVScreen() {
             LazyRow(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(groups) { g ->
-                    val sel = g == current
+                    val sel = g == current && !searching
                     Text(s2LiveGroupTitle(g), color = if (sel) Color.Black else Color.White, fontSize = tsp(13),
                         fontWeight = FontWeight.SemiBold, maxLines = 1,
-                        modifier = Modifier.focusLift(1.05f) { group = g }.clip(RoundedCornerShape(50))
+                        modifier = Modifier.focusLift(1.05f) { pickGroup(g) }.clip(RoundedCornerShape(50))
                             .background(if (sel) Color.White else Theme.elevated)
                             .padding(horizontal = 14.dp, vertical = 7.dp))
                 }
@@ -177,7 +217,7 @@ fun LiveTVScreen() {
                 Store.toggleFavorite(pid, c.id)
             },
             S2Action(if (c.catchupDays > 0) L("Guide & catch-up") else L("Guide"), Icons.Default.Schedule) { guideFor = c },
-            S2Action(L("Open in Multiview"), Icons.Default.GridView) { AppState.openMultiview(listOf(c), channels) },
+            S2Action(L("Open in Multiview"), Icons.Default.GridView) { AppState.openMultiview(listOf(c), visible) },
         ), onDismiss = { menuFor = null })
     }
     guideFor?.let { c -> GuideSheet(c, onDismiss = { guideFor = null }) }
@@ -232,20 +272,32 @@ private fun S2ChannelList(
     group: String,
     pid: String,
     tick: Int,
+    searching: Boolean,
+    query: String,
+    pending: Boolean,
     onPlay: (Channel) -> Unit,
     onMenu: (Channel) -> Unit,
 ) {
     val state = rememberLazyListState()
-    LaunchedEffect(group) { runCatching { state.scrollToItem(0) } }
+    LaunchedEffect(group, query) { runCatching { state.scrollToItem(0) } }
     val lib = Playlists.library
     val favorites = Store.favorites
     LazyColumn(Modifier.fillMaxSize(), state = state,
         contentPadding = PaddingValues(horizontal = tvs(8), vertical = 4.dp),
         verticalArrangement = Arrangement.spacedBy(tvs(2))) {
-        if (channels.isEmpty()) {
+        if (searching && !pending) {
             item {
-                Text(if (group == S2_FAV_KEY) L("No favorites yet. Hold a channel to add it.") else L("No channels."),
-                    color = Theme.secondary, textAlign = TextAlign.Center, fontSize = tsp(14),
+                Text(L("%d channels for “%@”", channels.size, query), color = Theme.secondary, fontSize = tsp(13),
+                    fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = tvs(8)).padding(top = tvs(6)))
+            }
+        }
+        if (channels.isEmpty() && !pending) {
+            item {
+                Text(when {
+                    searching -> L("No channels found.")
+                    group == S2_FAV_KEY -> L("No favorites yet. Hold a channel to add it.")
+                    else -> L("No channels.")
+                }, color = Theme.secondary, textAlign = TextAlign.Center, fontSize = tsp(14),
                     modifier = Modifier.fillMaxWidth().padding(top = 40.dp))
             }
         }

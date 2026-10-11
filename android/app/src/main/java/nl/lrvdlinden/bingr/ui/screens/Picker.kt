@@ -11,6 +11,12 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
+import kotlinx.coroutines.delay
+import androidx.compose.ui.res.painterResource
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.material.icons.filled.LockOpen
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -99,21 +105,41 @@ import java.io.ByteArrayOutputStream
 
 // MARK: profielkeuze ("Wie kijkt er?")
 
-/** "Wat wil je kijken?" — ronde avatars, Toevoegen en Beheren (= PlaylistPickerView.swift). */
+/**
+ * "Wie kijkt er?" — ronde avatars van de kijkprofielen van het hoofdaccount (= PlaylistPickerView.swift).
+ * Alle profielen gebruiken dezelfde server. Nog geen server: welkomstscherm met "Server instellen";
+ * daarna wordt automatisch het hoofdprofiel aangemaakt (Store.upsert).
+ * Profielen beheren (toevoegen/bewerken) kan alleen vanuit het hoofdaccount.
+ */
 @Composable
 fun PlaylistPickerScreen() {
     val tv = AppState.isTV
-    val playlists = Store.playlists
+    val profiles = Store.profiles
+    val noServer = Store.playlists.isEmpty()
+    val scope = rememberCoroutineScope()
     var managing by remember { mutableStateOf(false) }
-    var editing by remember { mutableStateOf<PlaylistSource?>(null) }
-    var adding by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf<ViewerProfile?>(null) }
+    var addingProfile by remember { mutableStateOf(false) }
+    var addingServer by remember { mutableStateOf(false) }
+    var pinFor by remember { mutableStateOf<ViewerProfile?>(null) }
+    var askManagePIN by remember { mutableStateOf(false) }
     var appeared by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { appeared = true }
-    val overlay = adding || editing != null
-    val firstFocus = rememberInitialFocus(enabled = tv && !overlay, key = overlay)
+    val overlay = addingServer || addingProfile || editing != null
+    val dialog = pinFor != null || askManagePIN
+    val firstFocus = rememberInitialFocus(enabled = tv && !overlay && !dialog, key = Triple(overlay, noServer, managing))
+    // beheren alleen vanuit het hoofdaccount (of als er nog maar één profiel is)
+    val canManage = !noServer && (Store.canManage || profiles.size <= 1)
+    val focusID = Store.activeProfileID?.takeIf { id -> profiles.any { it.id == id } } ?: profiles.firstOrNull()?.id
 
-    if (playlists.isEmpty() && managing) managing = false
+    if ((noServer || !canManage) && managing) managing = false
     BackHandler(enabled = managing && !overlay) { managing = false }
+
+    fun startManaging() {
+        val main = Store.mainProfile
+        if (!managing && main != null && ParentalControl.hasPIN(main) && !ParentalControl.isUnlocked) askManagePIN = true
+        else managing = !managing
+    }
 
     Box(Modifier.fillMaxSize().background(Theme.bg)) {
         Column(
@@ -126,19 +152,19 @@ fun PlaylistPickerScreen() {
             ) {
                 BingrLogo(tsp(26))
                 Spacer(Modifier.weight(1f))
-                if (playlists.isNotEmpty()) {
+                if (canManage) {
                     Text(
-                        if (managing) L("Done") else L("Manage"), color = Color.White, fontSize = tsp(15),
+                        if (managing) L("Done") else L("Manage profiles"), color = Color.White, fontSize = tsp(15),
                         fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.focusLift(1.08f, dimWhenIdle = true) { managing = !managing }.padding(8.dp)
+                        modifier = Modifier.focusLift(1.08f, dimWhenIdle = true) { startManaging() }.padding(8.dp)
                     )
                 }
             }
 
             BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
                 val minH = maxHeight
-                val avatarSize: Dp = if (tv) 150.dp else 104.dp
-                val gap: Dp = if (tv) 48.dp else 22.dp
+                val avatarSize: Dp = if (tv) 132.dp else 100.dp
+                val gap: Dp = if (tv) 44.dp else 22.dp
                 val usable = (maxWidth - Theme.edge * 2).coerceAtMost(if (tv) 900.dp else 620.dp)
                 val perRow = ((usable + gap) / (avatarSize + 16.dp + gap)).toInt().coerceIn(1, 6)
                 Column(
@@ -147,49 +173,56 @@ fun PlaylistPickerScreen() {
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    Text(
-                        when {
-                            playlists.isEmpty() -> L("Welcome to Bingr")
-                            managing -> L("Manage playlists")
-                            else -> L("What do you want to watch?")
-                        },
-                        color = Color.White, fontSize = tsp(26), fontWeight = FontWeight.Medium, textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(horizontal = Theme.edge)
-                    )
-                    if (playlists.isEmpty()) {
-                        Spacer(Modifier.height(10.dp))
+                    if (noServer) {
+                        Text(L("Welcome to Bingr"), color = Color.White, fontSize = tsp(26), fontWeight = FontWeight.Medium,
+                            textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = Theme.edge))
+                        Spacer(Modifier.height(tvs(14)))
                         Text(
-                            L("Add your first playlist: M3U, Xtream Codes, a MAC portal, Plex, Jellyfin, Emby or Stremio."),
+                            L("Set up your server once (M3U, Xtream Codes, a MAC portal, Plex, Jellyfin, Emby or Stremio). After that, everyone gets their own profile on that server."),
                             color = Theme.secondary, fontSize = tsp(14), textAlign = TextAlign.Center,
+                            modifier = Modifier.widthIn(max = 560.dp).padding(horizontal = Theme.edge)
+                        )
+                        Spacer(Modifier.height(tvs(22)))
+                        NetflixButton(L("Set up server"), Icons.Default.Dns, NetflixKind.ACCENT,
+                            modifier = Modifier.focusRequester(firstFocus)) { addingServer = true }
+                    } else {
+                        Text(
+                            if (managing) L("Manage profiles") else L("Who's watching?"),
+                            color = Color.White, fontSize = tsp(26), fontWeight = FontWeight.Medium, textAlign = TextAlign.Center,
                             modifier = Modifier.padding(horizontal = Theme.edge)
                         )
-                    }
-                    Spacer(Modifier.height(tvs(26)))
+                        Spacer(Modifier.height(tvs(26)))
 
-                    // profielen + "Toevoegen" in rijen
-                    val tiles: List<PlaylistSource?> = playlists + listOf<PlaylistSource?>(null)
-                    tiles.chunked(perRow).forEachIndexed { rowIndex, row ->
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(gap, Alignment.CenterHorizontally),
-                            modifier = Modifier.fillMaxWidth().padding(bottom = tvs(22))
-                        ) {
-                            row.forEachIndexed { col, p ->
-                                val index = rowIndex * perRow + col
-                                ProfileTile(
-                                    playlist = p,
-                                    size = avatarSize,
-                                    editing = managing && p != null,
-                                    index = index,
-                                    appeared = appeared,
-                                    requester = if (index == 0) firstFocus else null,
-                                    onClick = {
-                                        when {
-                                            p == null -> adding = true
-                                            managing -> editing = p
-                                            else -> AppState.open(p)
+                        // profielen (+ "Toevoegen" bij beheren) in rijen
+                        val tiles: List<ViewerProfile?> =
+                            if (managing && profiles.size < 8) profiles + listOf<ViewerProfile?>(null) else profiles
+                        tiles.chunked(perRow).forEachIndexed { rowIndex, row ->
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(gap, Alignment.CenterHorizontally),
+                                modifier = Modifier.fillMaxWidth().padding(bottom = tvs(22))
+                            ) {
+                                row.forEachIndexed { col, p ->
+                                    val index = rowIndex * perRow + col
+                                    val isFocusTarget = if (p == null) focusID == null else p.id == focusID
+                                    ProfileTile(
+                                        profile = p,
+                                        size = avatarSize,
+                                        editing = managing && p != null,
+                                        badge = p != null && Store.isMain(p) && profiles.size > 1,
+                                        locked = p != null && ParentalControl.hasPIN(p),
+                                        index = index,
+                                        appeared = appeared,
+                                        requester = if (isFocusTarget) firstFocus else null,
+                                        onClick = {
+                                            when {
+                                                p == null -> addingProfile = true
+                                                managing -> editing = p
+                                                ParentalControl.hasPIN(p) -> pinFor = p
+                                                else -> AppState.open(p)
+                                            }
                                         }
-                                    }
-                                )
+                                    )
+                                }
                             }
                         }
                     }
@@ -207,20 +240,42 @@ fun PlaylistPickerScreen() {
             }
         }
 
-        if (adding) {
-            FullLayer { AddPlaylistScreen(existing = null, onClose = { adding = false }) }
+        if (addingServer) {
+            FullLayer { AddPlaylistScreen(existing = null, onClose = { addingServer = false }) }
+        }
+        if (addingProfile) {
+            FullLayer { ProfileEditScreen(existing = null, onClose = { addingProfile = false }) }
         }
         editing?.let { p ->
-            FullLayer { AddPlaylistScreen(existing = p, onClose = { editing = null }) }
+            FullLayer { ProfileEditScreen(existing = p, onClose = { editing = null }) }
+        }
+    }
+
+    pinFor?.let { p ->
+        PinPad(L("PIN for %@", p.name), onDismiss = { pinFor = null }) { pin ->
+            if (ParentalControl.verify(pin, p)) {
+                scope.launch { delay(80); AppState.open(p) }
+                true
+            } else false
+        }
+    }
+    if (askManagePIN) {
+        PinPad(L("Enter PIN"), onDismiss = { askManagePIN = false }) { pin ->
+            val main = Store.mainProfile
+            val ok = if (main != null) ParentalControl.verify(pin, main) else ParentalControl.verify(pin)
+            if (ok) managing = true
+            ok
         }
     }
 }
 
 @Composable
 private fun ProfileTile(
-    playlist: PlaylistSource?,
+    profile: ViewerProfile?,
     size: Dp,
     editing: Boolean,
+    badge: Boolean,
+    locked: Boolean,
     index: Int,
     appeared: Boolean,
     requester: FocusRequester?,
@@ -239,8 +294,8 @@ private fun ProfileTile(
             .focusLift(if (tv) 1.12f else 1.04f, onClick = onClick),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        if (playlist != null) {
-            AvatarCircle(playlist, size, ring = lit, editing = editing)
+        if (profile != null) {
+            ProfileAvatar(profile, size, ring = lit, editing = editing, badge = badge)
         } else {
             Box(
                 Modifier.size(size).clip(CircleShape)
@@ -252,12 +307,20 @@ private fun ProfileTile(
             }
         }
         Spacer(Modifier.height(tvs(10)))
-        Text(
-            playlist?.name ?: L("Add"),
-            color = if (lit) Color.White else Theme.secondary,
-            fontWeight = if (lit) FontWeight.Bold else FontWeight.Normal,
-            fontSize = tsp(14), maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center
-        )
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+            val color = if (lit) Color.White else Theme.secondary
+            Text(
+                profile?.name ?: L("Add"),
+                color = color,
+                fontWeight = if (lit) FontWeight.Bold else FontWeight.Normal,
+                fontSize = tsp(14), maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,
+                modifier = Modifier.weight(1f, fill = false)
+            )
+            if (locked) {
+                Spacer(Modifier.width(4.dp))
+                Icon(Icons.Default.Lock, null, tint = color, modifier = Modifier.size(tvs(11)))
+            }
+        }
     }
 }
 
@@ -626,6 +689,297 @@ fun AddPlaylistScreen(existing: PlaylistSource?, onClose: () -> Unit) {
             dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text(L("Cancel"), color = Color.White) } },
             containerColor = Theme.elevated,
         )
+    }
+}
+
+// MARK: kijkprofiel toevoegen / bewerken
+
+/**
+ * Kijkprofiel toevoegen/bewerken (= ProfileEditView in PlaylistPickerView.swift): naam, figuurtje, emoji + kleur,
+ * foto (niet op TV), en — alleen vanuit het hoofdaccount — kinderprofiel, leeftijdsgrens, pincode en verwijderen.
+ * Te tonen als volledig scherm (bijv. in `FullLayer { }`).
+ */
+@Composable
+fun ProfileEditScreen(existing: ViewerProfile?, onClose: () -> Unit) {
+    val tv = AppState.isTV
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    var name by remember { mutableStateOf(existing?.name ?: "") }
+    var avatar by remember { mutableStateOf(existing?.avatar ?: PlaylistAvatar.random()) }
+    var ageLimit by remember { mutableIntStateOf(existing?.ageLimit ?: 0) }
+    var isKids by remember { mutableStateOf(existing?.kids ?: false) }
+    var confirmDelete by remember { mutableStateOf(false) }
+    var askUnlock by remember { mutableStateOf(false) }
+    var settingPIN by remember { mutableStateOf(false) }
+    var removingPIN by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val originalPhoto = remember { existing?.let { p -> runCatching { Store.photoFile(p.id).takeIf { it.exists() }?.readBytes() }.getOrNull() } }
+    var photo by remember { mutableStateOf(originalPhoto) }
+    val photoBitmap = remember(photo) { photo?.let { runCatching { BitmapFactory.decodeByteArray(it, 0, it.size) }.getOrNull() } }
+
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) scope.launch {
+            val bytes = withContext(Dispatchers.IO) { thumbnail(ctx, uri) }
+            if (bytes != null) photo = bytes
+        }
+    }
+
+    val locked = Store.parental.enabled && !ParentalControl.isUnlocked
+    // kinderprofiel, leeftijdsgrens en verwijderen: alleen vanuit het hoofdaccount
+    val canAdmin = Store.canManage
+    // pincode: het hoofdaccount voor elk profiel, anders alleen voor het eigen profiel
+    val canPIN = existing != null && (canAdmin || existing.id == Store.activeProfileID)
+    val hasPIN = existing != null && ParentalControl.hasPIN(existing)
+
+    BackHandler(enabled = !confirmDelete) { onClose() }
+    val firstFocus = rememberInitialFocus()
+
+    fun save() {
+        val n = name.trim()
+        if (n.isEmpty()) return
+        val base = existing ?: ViewerProfile(name = n, avatar = avatar)
+        val p = base.copy(
+            name = n, avatar = avatar,
+            ageLimit = if (canAdmin) (if (ageLimit == 0) null else ageLimit) else base.ageLimit,
+            isKids = if (canAdmin) (if (isKids) true else null) else base.isKids,
+        )
+        Store.upsertProfile(p)
+        if (!(photo contentEquals originalPhoto)) Store.setPhoto(p.id, photo)
+        onClose()
+    }
+
+    Column(Modifier.fillMaxSize().background(Color(0xFF141414)).statusBarsPadding()) {
+        // kopbalk
+        Box(Modifier.fillMaxWidth().padding(horizontal = Theme.edge, vertical = tvs(10))) {
+            Text(
+                L("Cancel"), color = Color.White, fontSize = tsp(16),
+                modifier = Modifier.align(Alignment.CenterStart).focusLift(1.08f, dimWhenIdle = true) { onClose() }.padding(6.dp)
+            )
+            Text(
+                if (existing == null) L("Add profile") else L("Edit profile"),
+                color = Color.White, fontSize = tsp(17), fontWeight = FontWeight.Bold,
+                modifier = Modifier.align(Alignment.Center)
+            )
+            Text(
+                L("Save"), color = if (name.isNotBlank()) Theme.red else Theme.secondary, fontSize = tsp(16),
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.align(Alignment.CenterEnd).focusLift(1.08f, dimWhenIdle = true) { save() }.padding(6.dp)
+            )
+        }
+
+        Column(
+            Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).navigationBarsPadding(),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Column(
+                Modifier.widthIn(max = if (tv) 720.dp else 640.dp).fillMaxWidth().padding(Theme.edge),
+                verticalArrangement = Arrangement.spacedBy(tvs(18))
+            ) {
+                // voorbeeld
+                Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                    AvatarView(avatar, photoBitmap, tvs(104))
+                }
+
+                FormSection(L("Name")) {
+                    FormField(name, { name = it }, L("Name"))
+                }
+
+                FormSection(L("Choose a character")) {
+                    val perRow = if (tv) 8 else 6
+                    Column(verticalArrangement = Arrangement.spacedBy(tvs(10))) {
+                        PlaylistAvatar.illustrations.chunked(perRow).forEachIndexed { r, row ->
+                            Row(horizontalArrangement = Arrangement.spacedBy(tvs(10))) {
+                                row.forEachIndexed { c, k ->
+                                    val selected = avatar.symbol == k && photo == null
+                                    Box(
+                                        Modifier.weight(1f).aspectRatio(1f)
+                                            .then(if (r == 0 && c == 0) Modifier.focusRequester(firstFocus) else Modifier)
+                                            .focusLift(1.12f) { avatar = avatar.copy(symbol = k); photo = null }
+                                            .clip(CircleShape).background(Theme.elevated)
+                                            .then(if (selected) Modifier.border(3.dp, Color.White, CircleShape) else Modifier)
+                                    ) {
+                                        val res = avatarDrawable(k)
+                                        if (res != null) {
+                                            Image(painterResource(res), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                                        }
+                                    }
+                                }
+                                repeat(perRow - row.size) { Spacer(Modifier.weight(1f)) }
+                            }
+                        }
+                    }
+                }
+
+                FormSection(L("Identify with an icon")) {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(tvs(10)), contentPadding = PaddingValues(vertical = 6.dp)) {
+                        items(PlaylistAvatar.symbols) { s ->
+                            val pal = PlaylistAvatar.palettes[avatar.colorIndex % PlaylistAvatar.palettes.size]
+                            val selected = avatar.symbol == s && photo == null
+                            Box(
+                                Modifier.size(tvs(44)).focusLift(1.1f) { avatar = avatar.copy(symbol = s); photo = null }
+                                    .clip(CircleShape)
+                                    .background(
+                                        if (selected) Brush.linearGradient(listOf(Color(pal.first), Color(pal.second)))
+                                        else Brush.linearGradient(listOf(Theme.elevated, Theme.elevated))
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) { Text(s, fontSize = tsp(20)) }
+                        }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(tvs(12))) {
+                        PlaylistAvatar.palettes.forEachIndexed { i, pal ->
+                            Box(
+                                Modifier.size(tvs(28)).focusLift(1.15f) { avatar = avatar.copy(colorIndex = i) }
+                                    .clip(CircleShape)
+                                    .background(Brush.linearGradient(listOf(Color(pal.first), Color(pal.second))))
+                                    .then(if (avatar.colorIndex == i) Modifier.border(3.dp, Color.White, CircleShape) else Modifier)
+                            )
+                        }
+                    }
+                }
+
+                if (!tv) {
+                    FormSection(L("Profile photo")) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Row(
+                                Modifier.focusLift(1.05f) {
+                                    runCatching {
+                                        picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                                    }.onFailure { error = it.localizedMessage }
+                                }
+                                    .clip(RoundedCornerShape(50)).background(Theme.elevated)
+                                    .padding(horizontal = 16.dp, vertical = 11.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.PhotoLibrary, null, tint = Color.White, modifier = Modifier.size(tvs(18)))
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    if (photo == null) L("Choose from Photos") else L("Change photo"),
+                                    color = Color.White, fontSize = tsp(15), fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                            if (photo != null) {
+                                Row(
+                                    Modifier.focusLift(1.05f) { photo = null }.padding(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.Delete, null, tint = Theme.red, modifier = Modifier.size(tvs(18)))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(L("Remove photo"), color = Theme.red, fontSize = tsp(15))
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // kinderprofiel en leeftijdsgrens (alleen hoofdaccount)
+                if (canAdmin) {
+                    Column {
+                        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Theme.card)) {
+                            S2Toggle(L("Kids profile"), isKids, enabled = !locked) { v ->
+                                isKids = v
+                                if (v && (ageLimit == 0 || ageLimit > 12)) ageLimit = 12
+                                // kinderprofiel zonder eigen foto: meteen een vrolijk figuurtje
+                                if (v && photo == null && !avatar.isIllustration) {
+                                    avatar = avatar.copy(symbol = PlaylistAvatar.illustrations.random())
+                                }
+                            }
+                            S2Dropdown(L("Age limit for this profile"),
+                                listOf(0 to L("None")) + ParentalControl.ageChoices.map { it to L("Up to %d years", it) },
+                                ageLimit, enabled = !locked) { ageLimit = it }
+                            if (locked) S2Row(L("Unlock with PIN"), icon = Icons.Default.LockOpen, onClick = { askUnlock = true })
+                        }
+                        val footer = (if (isKids) L("Kids profile: only kids channels, cartoons/family titles and titles with a known age rating within the limit, plus its own Top 10 for kids.") + " " else "") +
+                            (if (Store.parental.enabled) L("Titles above this age (IMDb rating) and adult groups are hidden on this profile. With the PIN you can still watch them.")
+                            else L("Set a PIN on the main account and turn on “Lock adult content with this PIN” (My Bingr → PIN code) to protect the age limit."))
+                        Text(footer, color = Theme.secondary, fontSize = tsp(12), modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 6.dp))
+                    }
+                }
+
+                // pincode van dit profiel
+                if (canPIN && existing != null) {
+                    Column {
+                        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Theme.card)) {
+                            S2Row(if (hasPIN) L("This profile is protected with a PIN") else L("No PIN on this profile"),
+                                icon = if (hasPIN) Icons.Default.Lock else Icons.Default.LockOpen,
+                                tint = if (hasPIN) Theme.green else Theme.secondary)
+                            if (hasPIN) {
+                                S2Row(L("Change PIN"), onClick = { settingPIN = true })
+                                S2Row(L("Remove PIN"), tint = Theme.red, onClick = { removingPIN = true })
+                            } else {
+                                S2Row(L("Set PIN"), icon = Icons.Default.Lock, onClick = { settingPIN = true })
+                            }
+                        }
+                        Text(L("With a PIN, the profile asks for the code when it is chosen in “Who's watching?”."),
+                            color = Theme.secondary, fontSize = tsp(12), modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 6.dp))
+                    }
+                }
+
+                error?.let {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Warning, null, tint = Theme.red, modifier = Modifier.size(tvs(16)))
+                        Spacer(Modifier.width(6.dp))
+                        Text(it, color = Theme.red, fontSize = tsp(13))
+                    }
+                }
+
+                Row(
+                    Modifier.fillMaxWidth().focusLift(1.03f) { save() }
+                        .clip(RoundedCornerShape(50))
+                        .background(if (name.isNotBlank()) Theme.red else Theme.elevated)
+                        .padding(vertical = tvs(14)),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(L("Save"), color = if (name.isNotBlank()) Color.White else Theme.secondary, fontSize = tsp(17), fontWeight = FontWeight.Bold)
+                }
+
+                if (canAdmin && existing != null && !Store.isMain(existing)) {
+                    Text(
+                        L("Delete profile"), color = Theme.red, fontSize = tsp(15), textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth().focusLift(1.03f) { confirmDelete = true }.padding(10.dp)
+                    )
+                }
+                Spacer(Modifier.height(20.dp))
+            }
+        }
+    }
+
+    if (confirmDelete && existing != null) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text(L("Delete profile")) },
+            text = { Text(existing.name) },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmDelete = false
+                    Store.deleteProfile(existing)
+                    onClose()
+                }) { Text(L("Delete"), color = Theme.red) }
+            },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text(L("Cancel"), color = Color.White) } },
+            containerColor = Theme.elevated,
+        )
+    }
+    if (askUnlock) {
+        PinPad(L("Enter PIN"), onDismiss = { askUnlock = false }) { pin ->
+            val main = Store.mainProfileID
+            if (main != null) ParentalControl.verify(pin, main) else ParentalControl.verify(pin)
+        }
+    }
+    if (settingPIN && existing != null) {
+        PinSetupScreen(profileID = existing.id) { settingPIN = false }
+    }
+    if (removingPIN && existing != null) {
+        PinPad(L("Enter PIN to turn off"), onDismiss = { removingPIN = false }) { pin ->
+            // eigen pincode, of die van het hoofdaccount
+            if (ParentalControl.verify(pin, existing) || ParentalControl.check(pin)) {
+                ParentalControl.setPIN(null, existing)
+                if (Store.isMain(existing)) Store.updateParental { it.copy(enabled = false) }
+                true
+            } else false
+        }
     }
 }
 

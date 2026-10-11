@@ -1,7 +1,9 @@
 package nl.lrvdlinden.bingr
 
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonElement
 import java.util.TimeZone
 
@@ -61,7 +63,10 @@ class StalkerClient(source: PlaylistSource) {
         throw handshakeError
     }
 
-    suspend fun library(): Library {
+    /** Bibliotheek ophalen; omzetten van (grote) lijsten op Dispatchers.Default. */
+    suspend fun library(): Library = withContext(Dispatchers.Default) { loadLibrary() }
+
+    private suspend fun loadLibrary(): Library {
         if (token == null) connect()
         val other = L("Other")
         var channels = emptyList<Channel>()
@@ -125,7 +130,7 @@ class StalkerClient(source: PlaylistSource) {
 
     suspend fun shortEPG(channelID: String): List<EPGProgram> {
         if (token == null) runCatching { connect() }
-        val id = channelID.replace("st", "")
+        val id = channelID.removePrefix("st")
         val u = url(listOf("type" to "itv", "action" to "get_short_epg", "ch_id" to id, "size" to "10")) ?: return emptyList()
         val items = runCatching { js(u).jItems }.getOrDefault(emptyList())
         return items.mapNotNull { i ->

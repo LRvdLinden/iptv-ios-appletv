@@ -18,17 +18,59 @@ enum class PlaylistKind(val raw: String) {
     val isMediaServer: Boolean get() = this in setOf(PLEX, JELLYFIN, EMBY, STREMIO)
 }
 
-/** Avatar van een profiel: emoji/symbool op een kleurverloop (Netflix-stijl). */
+/**
+ * Avatar van een profiel/bron: emoji op een kleurverloop (Netflix-stijl), of een getekend figuurtje
+ * ([symbol] begint met "kid": res/drawable-nodpi/kid01.png … kid16.png, zie [avatarDrawable]).
+ */
 @Serializable
 data class PlaylistAvatar(val symbol: String = "📺", val colorIndex: Int = 0) {
+    /** Getekend figuurtje (kid01…kid16) in plaats van een emoji */
+    val isIllustration: Boolean get() = symbol.startsWith("kid")
+
     companion object {
+        /** Getekende figuurtjes (res/drawable-nodpi/kid01.png …), te kiezen als profielafbeelding. */
+        val illustrations: List<String> = (1..16).map { String.format(java.util.Locale.ROOT, "kid%02d", it) }
         val symbols = listOf("📺", "🌐", "⚽", "👑", "🔥", "🎬", "🍿", "⭐", "🎮", "🌙", "⚡", "❤️", "🎵", "🏆", "🐰", "🦁", "🚀", "🌈", "🎭", "🧸", "🦄", "🐼", "☕", "🎧")
         val palettes: List<Pair<Long, Long>> = listOf(
             0xFFE50914 to 0xFF7A0008, 0xFF2563EB to 0xFF1E1B4B, 0xFF10B981 to 0xFF064E3B, 0xFFF59E0B to 0xFF9A3412,
             0xFFA855F7 to 0xFF3B0764, 0xFFEC4899 to 0xFF831843, 0xFF14B8A6 to 0xFF0C4A6E, 0xFF64748B to 0xFF0F172A
         )
         fun random() = PlaylistAvatar(symbols.random(), palettes.indices.random())
+        /** Willekeurig getekend figuurtje (kinderprofiel). */
+        fun randomIllustration() = PlaylistAvatar(illustrations.random(), palettes.indices.random())
     }
+}
+
+/**
+ * Kijkprofiel ("Wie kijkt er?"). Alle profielen gebruiken dezelfde server(s) van het hoofdaccount,
+ * maar hebben elk hun eigen Mijn lijst, favorieten, voortgang, bekeken, recente zenders, geschiedenis,
+ * kijkvoorkeuren, pincode en leeftijdsgrens (= ViewerProfile in Models.swift).
+ * Foto: [Store.photo] met [id]. Pincode: [ParentalControl.hasPIN] (profiel).
+ */
+@Serializable
+data class ViewerProfile(
+    val id: String = UUID.randomUUID().toString(),
+    val name: String,
+    val avatar: PlaylistAvatar = PlaylistAvatar.random(),
+    /** Leeftijdsfilter (null = geen), bijv. 12 voor een kinderprofiel */
+    val ageLimit: Int? = null,
+    val createdAt: Long = System.currentTimeMillis(),
+    // Persoonlijke kijkvoorkeuren (null = nog niet ingesteld)
+    val autoSubtitles: Boolean? = null,
+    /** OpenSubtitles-standaardtaal ("" = alle talen) */
+    val subtitleLanguage: String? = null,
+    /** standaard audiotaal in de stream ("" = zoals de stream) */
+    val audioLanguage: String? = null,
+    /** standaard ondertitelspoor in de stream ("" / "off" / code) */
+    val streamSubtitleLanguage: String? = null,
+    /** Kinderprofiel: alleen kinderinhoud (standaard t/m 12 jaar) */
+    val isKids: Boolean? = null,
+) {
+    val kids: Boolean get() = isKids ?: false
+    /** Leeftijdsgrens die echt geldt (kinderprofiel zonder grens = t/m 12) */
+    val effectiveAgeLimit: Int? get() = ageLimit ?: if (kids) 12 else null
+    /** Streng filteren (alleen zeker geschikte titels): kinderprofiel of grens t/m 12 */
+    val strictAgeFilter: Boolean get() = kids || (effectiveAgeLimit ?: 99) <= 12
 }
 
 /** Een bron/profiel. Wachtwoord staat apart in [Store.secret] onder [passwordKey]. */
@@ -44,7 +86,7 @@ data class PlaylistSource(
     val username: String = "",
     val macAddress: String = "",
     val preferHLS: Boolean = false,
-    /** Leeftijdsfilter (null = geen) */
+    /** Verouderd (van vóór de kijkprofielen): leeftijdsfilter staat nu op [ViewerProfile.ageLimit]. Alleen nog voor migratie. */
     val ageLimit: Int? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
@@ -170,6 +212,8 @@ data class PlayableItem(
     val stremio: String? = null,
     /** Kanaal (catch-up/timeshift en zappen) */
     val channelID: String? = null,
+    /** Afleveringen: id van de serie (voor "aflevering bekeken" per profiel en de volgende aflevering) */
+    val seriesID: String? = null,
 )
 
 /** Wat op een detailpagina getoond wordt. */
@@ -215,6 +259,8 @@ data class ProgressEntry(
     val title: String,
     val artwork: String? = null,
     val playlistID: String? = null,
+    /** Van welk kijkprofiel (null = van vóór de profielen → hoort bij het hoofdaccount) */
+    val profileID: String? = null,
 )
 
 /** Aanpassingen van de gebruiker op een afspeellijst. */
@@ -262,6 +308,8 @@ data class HistoryEntry(
     val type: MediaType,
     val channelID: String? = null,
     val date: Long,
+    /** Van welk kijkprofiel (null = van vóór de profielen → hoort bij het hoofdaccount) */
+    val profileID: String? = null,
 ) {
     val id: String get() = "${playlistID ?: "-"}|$itemID"
 }

@@ -96,7 +96,7 @@ object Casting {
 
     @Suppress("DEPRECATION")
     fun castContext(ctx: Context): CastContext? =
-        runCatching { CastContext.getSharedInstance() ?: CastContext.getSharedInstance(ctx.applicationContext) }.getOrNull()
+        runCatching { CastContext.getSharedInstance(ctx.applicationContext) }.getOrNull()
 
     /** Chromecast mogelijk? (telefoon/tablet met Google Play-services; niet op TV/Fire TV) */
     fun isAvailable(ctx: Context): Boolean {
@@ -214,7 +214,7 @@ fun CastDevicesDialog(onDismiss: () -> Unit) {
 
     DisposableEffect(Unit) {
         fun refresh() {
-            routes = router.routes.filter { !it.isDefaultOrBluetooth && it.isEnabled && it.matchesSelector(selector) }
+            routes = router.routes.filter { !it.isDefault && it.isEnabled && it.matchesSelector(selector) }
                 .sortedBy { it.name.lowercase() }
         }
         val cb = object : MediaRouter.Callback() {

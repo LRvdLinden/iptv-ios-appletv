@@ -6,6 +6,7 @@ import android.os.Build
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -81,6 +82,8 @@ class PlayerController(item: PlayableItem) {
 
     private var stopped = false
     val isStopped: Boolean get() = stopped
+    /** Spelerscherm is gesloten: een stream die daarna pas klaar is met laden niet meer starten. */
+    var dismissed = false
 
     /** Echte afspeel-URL (na Stalker/Stremio-resolutie) */
     var url: String? = null; private set
@@ -123,7 +126,26 @@ class PlayerController(item: PlayableItem) {
 
     // MARK: afspelen
 
+    /** Nieuwe titel/zender: niets meenemen van de vorige (timeshift, pauze, herverbind-pogingen, fout). */
+    fun prepareNew() {
+        timeshiftStart = null; behindLive = 0.0; pausedAt = null
+        attempts = 0; triedOtherEngine = false; reconnecting = false; errorText = null; isBuffering = true
+        stallSince = null
+    }
+
+    /** Kan niet afspelen (geen stream gevonden): foutmelding met "Try again" in plaats van een eindeloze spinner. */
+    fun fail(message: String) {
+        errorText = message; isBuffering = false; reconnecting = false
+    }
+
+    /** Nieuwe ondertitelgrootte meteen toepassen (Opties tijdens het afspelen). */
+    fun applySubtitleSize() {
+        engine.setSubtitleSize(SubtitleSize.current)
+        tracksVersion++
+    }
+
     fun start(url: String, forceExo: Boolean? = null) {
+        if (dismissed) return
         this.url = url
         errorText = null; didScrobbleStart = false; stallSince = null
         tracksApplied = false; playingTicks = 0
@@ -131,7 +153,7 @@ class PlayerController(item: PlayableItem) {
         stopped = false
         val exo = forceExo ?: prefersExo(url)
         if (exo != usingExo || timer == null) makeEngine(exo)
-        engine.load(url, live = isLive && timeshiftStart == null, startFraction = if (isLive) null else item.resumeAt)
+        engine.load(url, live = isLive && timeshiftStart == null, startFraction = startFraction())
         timer?.cancel()
         timer = scope.launch {
             while (isActive) {
@@ -139,6 +161,13 @@ class PlayerController(item: PlayableItem) {
                 tick()
             }
         }
+    }
+
+    /** Hervatpunt (0 = vanaf het begin; bijna uitgekeken = ook vanaf het begin). */
+    private fun startFraction(): Double? {
+        if (isLive) return null
+        val r = item.resumeAt
+        return if (r > 0.01 && r < 0.97) r else null
     }
 
     /** Wisselt naar ExoPlayer op dezelfde positie. */
@@ -186,7 +215,7 @@ class PlayerController(item: PlayableItem) {
 
         if (isPlaying && !didScrobbleStart && duration > 0 && !isPreview) {
             didScrobbleStart = true
-            scrobble(Trakt.Scrobble.START, position)
+            scrobble(Trakt.Scrobble.START, position, announce = true)
         }
         if (st == EngineState.PLAYING) watchedSeconds += 0.5
         if (!tracksApplied && st == EngineState.PLAYING) {
@@ -224,7 +253,7 @@ class PlayerController(item: PlayableItem) {
         val delayMs = (min(2.0.pow(attempts - 1), 8.0) * 1000).toLong()
         scope.launch {
             delay(delayMs)
-            if (stopped) return@launch
+            if (stopped || dismissed) return@launch
             if (!isLive) item = item.copy(resumeAt = resume)
             engine.load(u, live = isLive && timeshiftStart == null, startFraction = if (isLive) null else resume)
         }
@@ -315,11 +344,31 @@ class PlayerController(item: PlayableItem) {
         onFinished?.invoke()
     }
 
-    private fun scrobble(action: Trakt.Scrobble, progress: Double) {
+    /**
+     * Scrobble naar Trakt. Bij [announce] kort laten zien dat Trakt meekijkt (of waarom niet), als
+     * `Trakt.scrobble` een resultaat teruggeeft (enum OK / NOT_FOUND / FAILED / SKIPPED, zoals ScrobbleResult op iOS).
+     * Geeft het Unit terug, dan wordt er niets getoond.
+     */
+    private fun scrobble(action: Trakt.Scrobble, progress: Double, announce: Boolean = false) {
         if (isPreview) return
         val itm = item
         AppScope.launch {
-            runCatching { if (Trakt.isLoggedIn && Trakt.scrobbleEnabled) Trakt.scrobble(action, itm, progress) }
+            if (!(Trakt.isLoggedIn && Trakt.scrobbleEnabled)) return@launch
+            val result: Any? = try {
+                Trakt.scrobble(action, itm, progress)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                null
+            }
+            if (!announce || stopped || item.id != itm.id) return@launch
+            val key = result?.toString()?.lowercase(Locale.ROOT)?.replace("_", "") ?: return@launch
+            when (key) {
+                "ok" -> notice = L("Trakt: watching %@", itm.subtitle?.let { "${itm.title} · $it" } ?: itm.title)
+                "notfound" -> notice = L("Trakt: title not found, not synced")
+                "failed" -> notice = L("Trakt: could not connect")
+                else -> {}
+            }
         }
     }
 
@@ -332,7 +381,8 @@ class PlayerController(item: PlayableItem) {
             HistoryEntry(
                 itemID = it.channelID ?: it.id, playlistID = Store.activePlaylistID,
                 title = it.title, subtitle = it.subtitle, artwork = it.artwork,
-                type = it.type, channelID = it.channelID, date = System.currentTimeMillis()
+                type = it.type, channelID = it.channelID, date = System.currentTimeMillis(),
+                profileID = Store.activeProfileID
             )
         )
     }
@@ -341,18 +391,33 @@ class PlayerController(item: PlayableItem) {
         lastSaved = System.currentTimeMillis()
         val it = item
         if (isPreview || it.type == MediaType.LIVE || it.channelID != null || it.id.contains("-cu-") || duration <= 60) return
-        if (position >= 0.9) {
+        // gezien: bijna uitgekeken, of alleen de aftiteling nog over — per profiel, ook zonder Trakt
+        val left = duration - currentTime
+        if (position >= 0.85 || (duration > 600 && left < 180 && position > 0.7)) {
             Store.clearProgress(it.id)
             Store.setLocalWatched(it.id, true)
+            val s = it.season; val e = it.episode
+            if (it.type == MediaType.EPISODE && s != null && e != null) {
+                seriesID(it)?.let { sid -> Store.setLocalWatched(Store.episodeKey(sid, s, e), true) }
+            }
         } else if (position > 0.02) {
             Store.setProgress(
                 it.id,
                 ProgressEntry(
                     fraction = position, position = currentTime, updated = System.currentTimeMillis(),
-                    title = it.title, artwork = it.artwork, playlistID = Store.activePlaylistID
+                    title = it.title, artwork = it.artwork, playlistID = Store.activePlaylistID,
+                    profileID = Store.activeProfileID
                 )
             )
         }
+    }
+
+    /** Serie van een aflevering: uit het item, anders opzoeken in de bibliotheek. */
+    private fun seriesID(p: PlayableItem): String? {
+        p.seriesID?.let { sid -> return sid }
+        val lib = Playlists.library
+        return lib.series.firstOrNull { s -> s.episodes.any { e -> e.id == p.id } }?.id
+            ?: lib.series.firstOrNull { s -> s.title == p.title }?.id
     }
 
     // MARK: beeld-in-beeld
@@ -483,4 +548,5 @@ private class IdleEngine : PlaybackEngine {
     override fun addSubtitle(file: File) {}
     override fun setAspect(a: PlayerController.Aspect) {}
     override fun setSubtitleDelay(seconds: Double) {}
+    override fun setSubtitleSize(size: SubtitleSize) {}
 }

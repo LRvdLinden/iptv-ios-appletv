@@ -26,8 +26,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.SwapVert
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -120,20 +118,11 @@ fun CategoryScreen(target: CategoryTarget, onClose: () -> Unit) {
                 ) {
                     Icon(Icons.Default.SwapVert, L("Sort"), tint = Color.White, modifier = Modifier.size(tvs(22)))
                 }
-                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    CategorySort.entries.forEach { s ->
-                        DropdownMenuItem(
-                            text = { Text(s.title) },
-                            leadingIcon = {
-                                if (s == sort) Icon(Icons.Default.Check, null) else Spacer(Modifier.size(24.dp))
-                            },
-                            onClick = {
-                                menu = false
-                                sortRaw = s.raw
-                                Prefs.put("category.sort", s.raw)
-                            }
-                        )
-                    }
+                // keuzemenu: het gekozen item krijgt focus (afstandsbediening)
+                S2Menu(menu, CategorySort.entries.map { it to it.title }, sort, onDismiss = { menu = false }) { s ->
+                    menu = false
+                    sortRaw = s.raw
+                    Prefs.put("category.sort", s.raw)
                 }
             }
         }

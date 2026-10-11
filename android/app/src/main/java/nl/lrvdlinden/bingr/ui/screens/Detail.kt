@@ -43,12 +43,11 @@ import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Theaters
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -74,6 +73,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -111,7 +111,8 @@ fun DetailScreen(target: DetailTarget, onClose: () -> Unit) {
     var ageGate by remember { mutableStateOf(false) }
     var afterPIN by remember { mutableStateOf<(() -> Unit)?>(null) }
     var seasonMenu by remember { mutableStateOf(false) }
-    var recMatches by remember(target.id) { mutableStateOf(mapOf<Int, DetailTarget>()) }
+    var recMatches by remember(target.id) { mutableStateOf(mapOf<String, DetailTarget>()) }
+    var shareQR by remember { mutableStateOf(false) }
 
     val pid = Playlists.source?.id
     val lib = Playlists.library
@@ -127,10 +128,10 @@ fun DetailScreen(target: DetailTarget, onClose: () -> Unit) {
     val isMovie = target is DetailTarget.MovieT
     val seasons = remember(episodes) { episodes.map { it.season }.distinct().sorted() }
     val progress = Store.progress
-    val nextEpisode: Episode? = episodes.firstOrNull { (progress[it.id]?.fraction ?: 0.0) > 0.02 }
-        ?: episodes.firstOrNull { !Playables.isWatched(it, imdb) } ?: episodes.firstOrNull()
+    val nextEpisode: Episode? = nextEpisodeOf(episodes, imdb)
     val isWatchedTitle = (target as? DetailTarget.MovieT)?.let { Playables.isWatched(it.movie, imdb) } ?: false
-    val inMyList = (imdb != null && imdb in Trakt.watchlist) || (pid != null && Store.inMyList(pid, target.id))
+    // Mijn lijst van dít profiel (de Trakt-watchlist volgt mee, maar bepaalt niet wat er in je lijst staat)
+    val inMyList = pid != null && Store.inMyList(pid, target.id)
     val resumeFraction: Double? = when (target) {
         is DetailTarget.MovieT -> Playables.resume(target.movie.id, imdb)
         is DetailTarget.SeriesT -> nextEpisode?.let { progress[it.id]?.fraction }
@@ -139,6 +140,19 @@ fun DetailScreen(target: DetailTarget, onClose: () -> Unit) {
         is DetailTarget.MovieT -> if ((resumeFraction ?: 0.0) > 0.02) L("Resume") else L("Play")
         is DetailTarget.SeriesT -> nextEpisode?.let { L("Play Season %d: Episode %d", it.season, it.number) } ?: L("Play")
     }
+
+    // MARK: delen
+    /** Titel zonder IPTV-rommel ("NL | Reacher (2022) 4K" → "Reacher"). */
+    val shareTitle = details?.title?.takeIf { it.isNotBlank() } ?: TitleCleaner.parse(target.title).title.ifBlank { target.title }
+    val shareYear = screensText(details?.year)?.take(4) ?: target.year?.toString()
+    /** Openbare link: IMDb (mooie preview in WhatsApp), anders Trakt of TMDB. */
+    val shareURL: String? = when {
+        imdb != null -> "https://www.imdb.com/title/$imdb/"
+        screensText(details?.traktSlug) != null -> "https://trakt.tv/${if (isMovie) "movies" else "shows"}/${screensText(details?.traktSlug)}"
+        details?.tmdbID != null -> "https://www.themoviedb.org/${if (isMovie) "movie" else "tv"}/${details.tmdbID}"
+        else -> null
+    }
+    val shareText = L(if (isMovie) "Movie tip: %@" else "Series tip: %@", shareYear?.let { "$shareTitle ($it)" } ?: shareTitle)
 
     fun flash(t: String) {
         toast = t
@@ -158,7 +172,7 @@ fun DetailScreen(target: DetailTarget, onClose: () -> Unit) {
             is DetailTarget.SeriesT -> Trakt.imdb(target.series)
         } ?: screensText(d?.imdbID)
         val n = nextEpisodeOf(episodes, id)
-        season = n?.season ?: episodes.map { it.season }.minOrNull() ?: 1
+        season = n?.season ?: episodes.minOfOrNull { it.season } ?: 1
         loading = false
         if (screensText(d?.trailerYouTubeID) == null && id != null) {
             fetchedTrailer = screensSafe { Trakt.trailer(id, target.isSeries) }
@@ -171,21 +185,25 @@ fun DetailScreen(target: DetailTarget, onClose: () -> Unit) {
         if (info.isNotEmpty()) seasonInfo = seasonInfo + info
     }
     // aanbevelingen die in deze afspeellijst staan
-    LaunchedEffect(details, lib) {
-        val recs = details?.recommendations ?: return@LaunchedEffect
+    val recKey = details?.recommendations?.map { it.id }
+    LaunchedEffect(recKey, System.identityHashCode(lib)) {
+        val recs = details?.recommendations
+        if (recs.isNullOrEmpty()) { recMatches = emptyMap(); return@LaunchedEffect }
         recMatches = withContext(Dispatchers.Default) {
+            // alleen de gezochte titels normaliseren/bewaren (één keer, niet bij elke schermverversing)
+            val wanted = recs.mapTo(HashSet()) { screensNormTitle(it.title) }
             val movies = HashMap<String, MutableList<Movie>>()
-            lib.movies.forEach { movies.getOrPut(screensNormTitle(it.title)) { ArrayList() }.add(it) }
+            for (m in lib.movies) { val n = screensNormTitle(m.title); if (n in wanted) movies.getOrPut(n) { ArrayList() }.add(m) }
             val series = HashMap<String, Series>()
-            lib.series.forEach { series.putIfAbsent(screensNormTitle(it.title), it) }
-            val out = HashMap<Int, DetailTarget>()
-            recs.forEachIndexed { i, r ->
+            for (x in lib.series) { val n = screensNormTitle(x.title); if (n in wanted) series.putIfAbsent(n, x) }
+            val out = HashMap<String, DetailTarget>()
+            for (r in recs) {
                 val n = screensNormTitle(r.title)
                 if (r.isShow) {
-                    series[n]?.let { out[i] = DetailTarget.SeriesT(it) }
+                    series[n]?.let { out[r.id] = DetailTarget.SeriesT(it) }
                 } else {
-                    val y = screensInt(r.year)
-                    movies[n]?.firstOrNull { y == null || it.year == null || it.year == y }?.let { out[i] = DetailTarget.MovieT(it) }
+                    val y = r.year
+                    movies[n]?.firstOrNull { y == null || it.year == null || it.year == y }?.let { out[r.id] = DetailTarget.MovieT(it) }
                 }
             }
             out
@@ -195,12 +213,15 @@ fun DetailScreen(target: DetailTarget, onClose: () -> Unit) {
     // MARK: acties
 
     fun ageChecked(action: () -> Unit) {
-        val limit = Playlists.source?.ageLimit
-        val rated = screensText(details?.certification) ?: when (target) {
-            is DetailTarget.MovieT -> Metadata.cached(target.movie)?.rated
-            is DetailTarget.SeriesT -> Metadata.cached(target.series)?.rated
+        val prof = Store.activeProfile
+        val limit = prof?.effectiveAgeLimit
+        val cached = when (target) {
+            is DetailTarget.MovieT -> Metadata.cached(target.movie)
+            is DetailTarget.SeriesT -> Metadata.cached(target.series)
         }
-        if (ParentalControl.allowed(rated, target.group, limit)) { action(); return }
+        val rated = screensText(details?.certification) ?: cached?.rated
+        val genre = cached?.genre ?: details?.genres?.takeIf { it.isNotEmpty() }?.joinToString(",")
+        if (ParentalControl.allowed(rated, target.group, limit, genre, prof?.strictAgeFilter ?: false)) { action(); return }
         if (ParentalControl.hasPIN) { afterPIN = action; ageGate = true }
         else flash(L("Not available on this profile (age limit)."))
     }
@@ -232,10 +253,18 @@ fun DetailScreen(target: DetailTarget, onClose: () -> Unit) {
 
     fun toggleMyList() {
         val p = pid ?: return
-        Store.toggleMyList(p, target.id)
-        val nowIn = Store.inMyList(p, target.id)
-        if (imdb != null) AppScope.launch { screensSafe { Trakt.toggleWatchlist(imdb, target.isSeries) } }
-        flash(if (nowIn) L("Added to My List") else L("Removed from My List"))
+        val on = !Store.inMyList(p, target.id)
+        Store.setMyList(p, target.id, on)
+        // de Trakt-watchlist volgt alleen voor het hoofdaccount
+        if (imdb != null && Store.isMainActive && Trakt.isLoggedIn && (imdb in Trakt.watchlist) != on) {
+            AppScope.launch { screensSafe { Trakt.toggleWatchlist(imdb, target.isSeries) } }
+        }
+        flash(if (on) L("Added to My List") else L("Removed from My List"))
+    }
+
+    fun share() {
+        if (tv) { if (shareURL != null) shareQR = true; return }
+        ShareSheet.share(ctx, shareTitle, shareText, shareURL)
     }
 
     fun toggleWatchedMovie() {
@@ -250,7 +279,7 @@ fun DetailScreen(target: DetailTarget, onClose: () -> Unit) {
         lib.series.firstOrNull { it.id == id }?.let { ScreensNav.detail(DetailTarget.SeriesT(it)) }
     }
 
-    BackHandler(enabled = !showSources && !ageGate) { onClose() }
+    BackHandler(enabled = !showSources && !ageGate && !shareQR) { onClose() }
     BackHandler(enabled = showSources) { showSources = false }
 
     val playFocus = rememberInitialFocus(key = target.id)
@@ -259,7 +288,7 @@ fun DetailScreen(target: DetailTarget, onClose: () -> Unit) {
 
     Box(Modifier.fillMaxSize().background(Theme.bg)) {
         Column(
-            Modifier.fillMaxSize().blockFocus(showSources || ageGate).verticalScroll(rememberScrollState()),
+            Modifier.fillMaxSize().blockFocus(showSources || ageGate || shareQR).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(tvs(22))
         ) {
             // MARK: kop
@@ -361,6 +390,8 @@ fun DetailScreen(target: DetailTarget, onClose: () -> Unit) {
                         ) { toggleMyList() }
                         if (trailerID != null) DetailCircleButton(Icons.Default.Theaters) { Trailer.open(ctx, trailerID) }
                         if (isMovie) DetailCircleButton(if (isWatchedTitle) Icons.Default.CheckCircle else Icons.Default.Check) { toggleWatchedMovie() }
+                        // Android TV kan niet delen: QR-code om met je telefoon te scannen
+                        if (!tv || shareURL != null) DetailCircleButton(Icons.Default.Share) { share() }
                         DetailCapsule(L("Other sources"), Modifier.weight(1f), busy = sourcesLoading) { openSources() }
                     }
                 }
@@ -411,14 +442,8 @@ fun DetailScreen(target: DetailTarget, onClose: () -> Unit) {
                                         Icon(Icons.Default.KeyboardArrowDown, null, tint = Color.White, modifier = Modifier.size(tvs(18)))
                                     }
                                 }
-                                DropdownMenu(expanded = seasonMenu, onDismissRequest = { seasonMenu = false }) {
-                                    seasons.forEach { n ->
-                                        DropdownMenuItem(
-                                            text = { Text(L("Season %d", n)) },
-                                            onClick = { seasonMenu = false; season = n }
-                                        )
-                                    }
-                                }
+                                S2Menu(seasonMenu, seasons.map { it to L("Season %d", it) }, season,
+                                    onDismiss = { seasonMenu = false }, onSelect = { seasonMenu = false; season = it })
                             }
                         }
                         Spacer(Modifier.weight(1f))
@@ -426,10 +451,8 @@ fun DetailScreen(target: DetailTarget, onClose: () -> Unit) {
                             val all = list.all { Playables.isWatched(it, imdb) }
                             Box(
                                 Modifier.size(tvs(40)).focusLift(1.12f) {
-                                    list.forEach { Store.setLocalWatched(it.id, !all) }
-                                    if (imdb != null) AppScope.launch {
-                                        list.forEach { e -> screensSafe { Trakt.setWatched(Playables.episode(e, s, imdb), !all) } }
-                                    }
+                                    list.forEach { Store.setEpisodeWatched(it, !all) }
+                                    if (imdb != null) AppScope.launch { screensSafe { Trakt.setWatched(imdb, list, !all) } }
                                 },
                                 contentAlignment = Alignment.Center
                             ) {
@@ -535,7 +558,9 @@ fun DetailScreen(target: DetailTarget, onClose: () -> Unit) {
             }
 
             // MARK: aanbevelingen
-            val recs = details?.recommendations.orEmpty()
+            // profielen met een leeftijdsgrens zien alleen aanbevelingen die (gefilterd) in hun lijst staan
+            val allRecs = details?.recommendations.orEmpty()
+            val recs = if (Store.activeProfile?.effectiveAgeLimit != null) allRecs.filter { recMatches[it.id] != null } else allRecs
             if (recs.isNotEmpty()) {
                 Column(verticalArrangement = Arrangement.spacedBy(tvs(12))) {
                     DetailSectionTitle(L("Recommendations"))
@@ -543,20 +568,20 @@ fun DetailScreen(target: DetailTarget, onClose: () -> Unit) {
                         contentPadding = PaddingValues(horizontal = Theme.edge, vertical = if (tv) 14.dp else 0.dp),
                         horizontalArrangement = Arrangement.spacedBy(tvs(14))
                     ) {
-                        itemsIndexed(recs) { i, r ->
-                            val match = recMatches[i]
+                        items(recs) { r ->
+                            val match = recMatches[r.id]
                             Column(
                                 Modifier.width(tvs(140)).focusLift {
                                     if (match != null) {
                                         ScreensNav.detail(match)
                                     } else {
                                         // niet in deze afspeellijst: toon de details (afspelen zoekt in andere bronnen / Stremio)
-                                        val y = screensInt(r.year)
+                                        val y = r.year
                                         val poster = screensText(r.poster)
                                         val rid = screensText(r.imdbID)
                                         ScreensNav.detail(
-                                            if (r.isShow) DetailTarget.SeriesT(Series(id = "rec-${r.title}", title = r.title, year = y, poster = poster, imdbID = rid))
-                                            else DetailTarget.MovieT(Movie(id = "rec-${r.title}", title = r.title, year = y, poster = poster, imdbID = rid))
+                                            if (r.isShow) DetailTarget.SeriesT(Series(id = "rec-${r.id}", title = r.title, year = y, poster = poster, imdbID = rid))
+                                            else DetailTarget.MovieT(Movie(id = "rec-${r.id}", title = r.title, year = y, poster = poster, imdbID = rid))
                                         )
                                     }
                                 },
@@ -612,12 +637,35 @@ fun DetailScreen(target: DetailTarget, onClose: () -> Unit) {
             )
         }
 
+        if (shareQR) {
+            val url = shareURL
+            S2FullDialog(onDismiss = { shareQR = false }) {
+                Column(
+                    Modifier.fillMaxSize().padding(40.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(tvs(16), Alignment.CenterVertically)
+                ) {
+                    Text(L("Share"), color = Color.White, fontSize = tsp(30), fontWeight = FontWeight.Bold)
+                    Text(shareText, color = Theme.secondary, fontSize = tsp(18), textAlign = TextAlign.Center)
+                    if (url != null) {
+                        QrCodeImage(url, tvs(240))
+                        Text(L("Scan with your phone to share via WhatsApp, iMessage and more."),
+                            color = Theme.secondary, fontSize = tsp(15), textAlign = TextAlign.Center)
+                        Text(url, color = Color.White, fontSize = tsp(14), fontFamily = FontFamily.Monospace)
+                    }
+                    val closeFocus = rememberInitialFocus(enabled = true)
+                    NetflixButton(L("Close"), kind = NetflixKind.SECONDARY, modifier = Modifier.focusRequester(closeFocus)) { shareQR = false }
+                }
+            }
+        }
+
         if (ageGate) {
             PinPad(
                 title = L("This title is above the age limit of this profile. Enter PIN"),
                 onDismiss = { ageGate = false; afterPIN = null },
                 onSubmit = { pin ->
-                    if (ParentalControl.verify(pin)) {
+                    // alleen deze titel toestaan, niet de hele bibliotheek ontgrendelen
+                    if (ParentalControl.check(pin)) {
                         val run = afterPIN
                         afterPIN = null
                         ageGate = false
@@ -630,10 +678,17 @@ fun DetailScreen(target: DetailTarget, onClose: () -> Unit) {
     }
 }
 
-/** Zelfde volgorde als [DetailScreen]: eerst een half gekeken aflevering, anders de eerste onbekeken. */
-private fun nextEpisodeOf(episodes: List<Episode>, imdb: String?): Episode? =
-    episodes.firstOrNull { (Store.progress[it.id]?.fraction ?: 0.0) > 0.02 }
-        ?: episodes.firstOrNull { !Playables.isWatched(it, imdb) } ?: episodes.firstOrNull()
+/**
+ * Volgende aflevering: de laatst bekeken aflevering met voortgang (op tijd, niet zomaar de eerste in de lijst),
+ * anders de eerste onbekeken, anders de eerste.
+ */
+private fun nextEpisodeOf(episodes: List<Episode>, imdb: String?): Episode? {
+    val progress = Store.progress
+    val resumed = episodes.mapNotNull { e ->
+        progress[e.id]?.takeIf { it.fraction > 0.02 && it.fraction < 0.95 }?.let { e to it.updated }
+    }.maxByOrNull { it.second }?.first
+    return resumed ?: episodes.firstOrNull { !Playables.isWatched(it, imdb) } ?: episodes.firstOrNull()
+}
 
 @Composable
 private fun DetailSectionTitle(t: String) {
@@ -746,21 +801,15 @@ private fun EpisodeCard(
                 }
             }
         }
-        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-            DropdownMenuItem(
-                text = { Text(L("Play")) },
-                leadingIcon = { Icon(Icons.Default.PlayArrow, null) },
-                onClick = { menu = false; onPlay() }
-            )
-            DropdownMenuItem(
-                text = { Text(if (watched) L("Mark as unwatched") else L("Mark as watched")) },
-                leadingIcon = { Icon(if (watched) Icons.Default.VisibilityOff else Icons.Default.CheckCircle, null) },
-                onClick = {
-                    menu = false
-                    Store.setLocalWatched(e.id, !watched)
+        if (menu) {
+            S2ActionDialog(Playables.cleanEpisodeTitle(e), listOf(
+                S2Action(L("Play"), Icons.Default.PlayArrow) { onPlay() },
+                S2Action(if (watched) L("Mark as unwatched") else L("Mark as watched"),
+                    if (watched) Icons.Default.VisibilityOff else Icons.Default.CheckCircle) {
+                    Store.setEpisodeWatched(e, !watched)
                     AppScope.launch { screensSafe { Trakt.setWatched(Playables.episode(e, s, imdb), !watched) } }
-                }
-            )
+                },
+            ), onDismiss = { menu = false })
         }
     }
 }

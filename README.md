@@ -145,7 +145,7 @@ Shared/
   UI/             Netflix-thema, kaarten, schermen (profielen, home, live, gids, detail, categorie, beheren, zoeken, instellingen)
   Platform/       Mac-ondersteuning (AppKit-vertalingen van UIKit)
 iOS/ tvOS/ macOS/ iconen, Info.plist & entitlements (gegenereerd door XcodeGen)
-android/          Android-versie (in opbouw, zie hieronder)
+android/          Android-versie (telefoon, tablet, Android TV)
 tools/            vertaalcontrole, sleutels inbouwen (CI), intro-tune (make_tune.py), profielfiguurtjes (make_avatars.py), screenshots (make_screenshots.py)
 docs/             mockups en screenshots
 website/          bingr.online (statische site)
@@ -158,9 +158,24 @@ Covers op de site en in de screenshots komen van TMDB (workflow `Covers`, elke m
 
 **Automatisch online zetten (FTPS):** de workflow `Website` uploadt `website/` bij elke wijziging naar de webserver. Zet hiervoor bij *Settings → Secrets and variables → Actions* de secrets `FTP_SERVER`, `FTP_USERNAME`, `FTP_PASSWORD` (en eventueel `FTP_USERNAME_ALT` en `FTP_DIR` voor een vaste doelmap; anders zoekt de workflow zelf `public_html`, `httpdocs`, `www` enz.). Wachtwoorden staan nooit in de repo.
 
-## Android (in opbouw)
+## Android
 
-In `android/` staat de basis van een native Android-versie (Kotlin + Jetpack Compose, ExoPlayer/VLC) voor telefoon, tablet en Android TV / Google TV / Fire TV, met dezelfde vertalingen (`Shared/Resources/Translations.json`). Nog niet bouwbaar; `android/CONTRACT.md` beschrijft de opzet.
+In `android/` staat de native Android-versie (Kotlin + Jetpack Compose, Media3/ExoPlayer en VLC) voor telefoon, tablet en Android TV / Google TV / Fire TV, met dezelfde functies als iOS: profielen (met kinderprofiel en pincode per profiel), Verder kijken, Mijn lijst, Live TV met gids en zoeken, Trakt (hoofdprofiel), ondertitels (OpenSubtitles, instelbare grootte), Chromecast, delen en multiview. De vertalingen komen uit `Shared/Resources/Translations.json`.
+
+**Bouwen in Android Studio**
+1. *File → Open* en kies de map `android/`. Laat Gradle synchroniseren (Gradle 8.10.2, AGP 8.7.3, JDK 17).
+2. Zet je sleutels in `android/local.properties` (staat niet in git):
+   ```
+   TRAKT_CLIENT_ID=...
+   TRAKT_CLIENT_SECRET=...
+   TMDB_API_KEY=...
+   TMDB_ACCESS_TOKEN=...
+   OMDB_API_KEY=...
+   OPENSUBTITLES_API_KEY=...
+   ```
+3. *Build → Build App Bundle(s) / APK(s) → Build APK(s)*, of start direct op een toestel of Android TV-emulator.
+
+`android/CONTRACT.md` beschrijft de opzet.
 
 ## Opmerkingen
 

@@ -59,8 +59,23 @@ object Localizer {
     val isRTL: Boolean get() = language == "ar"
 }
 
-private fun iosToJava(f: String): String = f.replace("%@", "%s").replace("%ld", "%d")
+/** iOS-formaat → Java: %@ → %s, %1$@ → %1$s, %ld/%lld/%lu/%i/%u → %d (positie-argumenten blijven staan). */
+private val iosSpec = Regex("%(\\d+\\$)?(ll|l|q|z|t|j|h)?([@dDiIuUxXofeEgGcs%])")
+private fun iosToJava(f: String): String = iosSpec.replace(f) { m ->
+    val pos = m.groupValues[1]
+    when (val conv = m.groupValues[3]) {
+        "%" -> "%%"
+        "@" -> "%${pos}s"
+        "d", "D", "i", "I", "u", "U" -> "%${pos}d"
+        else -> "%$pos$conv"
+    }
+}
 
 fun L(key: String): String = iosToJava(Localizer.text(key)).replace("%%", "%")
-fun L(key: String, vararg args: Any?): String =
-    runCatching { String.format(Localizer.locale, iosToJava(Localizer.text(key)), *args) }.getOrElse { key }
+fun L(key: String, vararg args: Any?): String {
+    val loc = Localizer.locale
+    // vertaling kapot (verkeerde of te weinig %-tekens)? dan de Engelse tekst, en anders de sleutel zelf
+    return runCatching { String.format(loc, iosToJava(Localizer.text(key)), *args) }
+        .recoverCatching { String.format(loc, iosToJava(key), *args) }
+        .getOrElse { key }
+}

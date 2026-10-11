@@ -10,6 +10,9 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -69,6 +72,8 @@ private data class MainTab(val id: Int, val title: String, val icon: ImageVector
 @Composable
 fun MainScreen() {
     val tv = AppState.isTV
+    // telefoon: max. 5 tabbladen; zoeken zit daar al als vergrootglas op Home/Films/Series (zoals iOS)
+    val isPhone = !tv && LocalConfiguration.current.smallestScreenWidthDp < 600
     val source = Playlists.source
     val lib = Playlists.library
 
@@ -81,8 +86,8 @@ fun MainScreen() {
         if (hasLive && showLive) add(MainTab(1, L("Live TV"), Icons.Default.LiveTv))
         if (showMovies) add(MainTab(2, L("Movies"), Icons.Default.Movie))
         if (showSeries) add(MainTab(3, L("Series"), Icons.Default.VideoLibrary))
-        add(MainTab(4, L("Search"), Icons.Default.Search))
-        add(MainTab(5, L("My Bingr"), Icons.Default.AccountCircle))
+        if (!isPhone) add(MainTab(4, L("Search"), Icons.Default.Search))
+        add(MainTab(5, if (tv) Store.activeProfile?.name ?: L("My Bingr") else L("My Bingr"), Icons.Default.AccountCircle))
     }
     var tab by rememberSaveable {
         val start = Prefs.int("ui.startTab", 0)
@@ -133,7 +138,16 @@ fun MainScreen() {
                         NavigationBarItem(
                             selected = t.id == current,
                             onClick = { tab = t.id },
-                            icon = { Icon(t.icon, contentDescription = t.title) },
+                            icon = {
+                                // Mijn Bingr: de profielfoto (rond), zoals bij Netflix
+                                if (t.id == 5 && Store.activeProfile != null) {
+                                    Box(
+                                        Modifier.size(26.dp).then(
+                                            if (t.id == current) Modifier.border(1.5.dp, Color.White, CircleShape) else Modifier
+                                        )
+                                    ) { ProfileAvatar(size = 26.dp) }
+                                } else Icon(t.icon, contentDescription = t.title)
+                            },
                             label = { Text(t.title, maxLines = 1, fontSize = tsp(10)) },
                             colors = NavigationBarItemDefaults.colors(
                                 selectedIconColor = Color.White, selectedTextColor = Color.White,
@@ -146,7 +160,8 @@ fun MainScreen() {
             }
         }
 
-        AnimatedVisibility(Playlists.isLoading, enter = fadeIn(), exit = fadeOut()) {
+        // ook tijdens het filteren voor een profiel met leeftijdsgrens (dan is de lijst nog leeg)
+        AnimatedVisibility(Playlists.isLoading || (Playlists.isFiltering && Playlists.library.isEmpty), enter = fadeIn(), exit = fadeOut()) {
             FullLayer { LoadingOverlay(Playlists.loadingText, source) }
         }
 
@@ -211,9 +226,7 @@ private fun TvTabBar(tabs: List<MainTab>, current: Int, focusEnabled: Boolean, o
             }
         }
         Spacer(Modifier.weight(1f))
-        Playlists.source?.let { s ->
-            Box(Modifier.focusLift(1.12f) { AppState.switchPlaylist() }) { AvatarCircle(s, 30.dp) }
-        }
+        Box(Modifier.focusLift(1.12f) { AppState.switchPlaylist() }) { ProfileAvatar(size = 30.dp) }
     }
 }
 
@@ -232,9 +245,10 @@ private fun LoadingOverlay(text: String, source: PlaylistSource?) {
                 Modifier.graphicsLayer { scaleX = s; scaleY = s },
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                AvatarCircle(source, tvs(110))
+                val prof = Store.activeProfile
+                if (prof != null) ProfileAvatar(prof, tvs(110)) else AvatarCircle(source, tvs(110))
                 Spacer(Modifier.height(10.dp))
-                Text(source.name, color = Theme.secondary, fontSize = tsp(14), maxLines = 1)
+                Text(prof?.name ?: source.name, color = Theme.secondary, fontSize = tsp(14), maxLines = 1)
             }
             Spacer(Modifier.height(tvs(22)))
         }

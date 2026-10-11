@@ -7,6 +7,7 @@ import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
@@ -60,6 +61,13 @@ object Playlists {
     var error by mutableStateOf<String?>(null)
     var refreshingAll by mutableStateOf(false); private set
     var episodeCache by mutableStateOf(mapOf<String, List<Episode>>()); private set
+    /**
+     * Bezig met filteren op de achtergrond (grote lijsten). Bij een profiel met leeftijdsgrens is [library]
+     * dan leeg (niets ongefilterds tonen): laat geen "lege lijst"-melding zien zolang dit true is.
+     */
+    var isFiltering by mutableStateOf(false); private set
+    private var filterGeneration = 0
+    private var filterJob: Job? = null
 
     private var stalker: StalkerClient? = null
     private var stremioAddons: List<StremioClient.Addon> = emptyList()
@@ -72,21 +80,23 @@ object Playlists {
         AppScope.launch {
             snapshotFlow { ParentalControl.unlockedUntil }.drop(1).collect { applyCustomizations() }
         }
-        // profiel aangepast (bijv. leeftijdsfilter) → bijwerken
+        // server aangepast (naam, gegevens) → bijwerken
         AppScope.launch {
             snapshotFlow { Store.playlists }.drop(1).collect { list ->
                 val s = source ?: return@collect
                 val u = list.firstOrNull { it.id == s.id } ?: return@collect
-                if (u == s) return@collect
-                val refilter = u.ageLimit != s.ageLimit
-                source = u
-                if (refilter) applyCustomizations()
+                if (u != s) source = u
             }
+        }
+        // ander kijkprofiel gekozen of leeftijdsgrens/kinderprofiel gewijzigd → opnieuw filteren
+        AppScope.launch {
+            snapshotFlow { Store.activeProfile?.let { "${it.effectiveAgeLimit ?: 0}-${it.strictAgeFilter}" } ?: "" }
+                .drop(1).collect { applyCustomizations() }
         }
         // nieuwe IMDb-classificaties binnen → leeftijdsfilter opnieuw toepassen
         AppScope.launch {
             snapshotFlow { Metadata.version }.drop(1).debounce(3_000).collect {
-                if (source?.ageLimit != null) applyCustomizations()
+                if (Store.activeProfile?.effectiveAgeLimit != null) applyCustomizations()
             }
         }
     }
@@ -102,7 +112,9 @@ object Playlists {
         error = null
 
         if (!forceRefresh) {
-            val cached = withContext(Dispatchers.IO) { readCache(p) }
+            // grote lijsten (tienduizenden titels) op de achtergrond inlezen
+            isLoading = true
+            val cached = try { withContext(Dispatchers.IO) { readCache(p) } } finally { isLoading = false }
             if (source?.id != p.id) return
             if (cached != null) {
                 setRaw(cached)
@@ -225,32 +237,104 @@ object Playlists {
         applyCustomizations()
     }
 
-    fun applyCustomizations() {
-        val s = source
-        library = if (s == null) rawLibrary else apply(rawLibrary, Store.customization(s.id), s.id, s.ageLimit)
+    /** Alles wat het filteren nodig heeft, als losse waarden — zodat het op de achtergrond kan (grote lijsten). */
+    data class FilterContext(
+        val custom: Customization,
+        val playlist: String,
+        val ageLimit: Int?,
+        val strict: Boolean,
+        val parentalEnabled: Boolean,
+        val lockedGroups: Set<String>,
+        val autoLockAdult: Boolean,
+        val unlocked: Boolean,
+    )
+
+    /** Filtercontext voor deze bron en het actieve profiel (op de main thread aanroepen: leest Compose-state). */
+    fun context(p: PlaylistSource): FilterContext {
+        val prof = Store.activeProfile
+        val pc = Store.parental
+        return FilterContext(
+            custom = Store.customization(p.id), playlist = p.id,
+            ageLimit = prof?.effectiveAgeLimit, strict = prof?.strictAgeFilter ?: false,
+            parentalEnabled = pc.enabled, lockedGroups = pc.lockedGroups, autoLockAdult = pc.autoLockAdult,
+            unlocked = ParentalControl.isUnlocked,
+        )
     }
 
-    fun apply(raw: Library, c: Customization, playlist: String, ageLimit: Int? = null): Library {
-        val parental = ParentalControl
+    /**
+     * Past aanpassingen, kinderslot en de leeftijdsgrens van het actieve profiel toe op [rawLibrary] → [library].
+     * Grote lijsten worden op Dispatchers.Default gefilterd; bij een profiel met leeftijdsgrens is [library]
+     * intussen leeg en [isFiltering] true.
+     */
+    fun applyCustomizations() {
+        val s = source
+        if (s == null) { filterJob?.cancel(); isFiltering = false; library = rawLibrary; return }
+        val ctx = context(s)
+        val raw = rawLibrary
+        val gen = ++filterGeneration
+        filterJob?.cancel()
+        // kleine lijsten: meteen; grote lijsten: op de achtergrond
+        if (raw.channels.size + raw.movies.size + raw.series.size < 3000) {
+            library = apply(raw, ctx)
+            isFiltering = false
+            return
+        }
+        // kinderprofiel/leeftijdsgrens: niets ongefilterds laten zien terwijl er gefilterd wordt
+        if (ctx.ageLimit != null) library = Library()
+        isFiltering = true
+        filterJob = AppScope.launch {
+            val lib = withContext(Dispatchers.Default) { apply(raw, ctx) }
+            if (gen != filterGeneration) return@launch   // intussen opnieuw gefilterd
+            library = lib
+            isFiltering = false
+        }
+    }
+
+    /** Oude aanroep: filteren met de huidige kinderslot-instellingen (op de main thread). */
+    fun apply(raw: Library, c: Customization, playlist: String, ageLimit: Int? = null, strict: Boolean = false): Library {
+        val pc = Store.parental
+        return apply(raw, FilterContext(c, playlist, ageLimit, strict, pc.enabled, pc.lockedGroups, pc.autoLockAdult,
+            ParentalControl.isUnlocked))
+    }
+
+    /** Pure filterfunctie (veilig op de achtergrond; leest alleen de thread-veilige Metadata-cache). */
+    fun apply(raw: Library, ctx: FilterContext): Library {
+        val c = ctx.custom
+        val playlist = ctx.playlist
+        val ageLimit = ctx.ageLimit
+        fun isLocked(g: String): Boolean {
+            if (!ctx.parentalEnabled || ctx.unlocked) return false
+            if ("$playlist|$g" in ctx.lockedGroups) return true
+            return ctx.autoLockAdult && ParentalControl.isAdultGroup(g)
+        }
+        fun allowed(rated: String?, group: String, genre: String? = null): Boolean =
+            ctx.unlocked || ParentalControl.allowedFor(rated, group, ageLimit, genre, ctx.strict)
         fun group(g: String): String {
             val merged = c.merged[g] ?: g
             return c.renamed[Customization.groupKey(merged)] ?: merged
         }
-        fun visible(id: String, g: String): Boolean =
-            id !in c.hidden && Customization.groupKey(g) !in c.hidden &&
-                Customization.groupKey(c.merged[g] ?: g) !in c.hidden &&
-                !parental.isLocked(playlist, g) && !parental.isLocked(playlist, c.merged[g] ?: g)
+        // per groep één keer uitrekenen (tienduizenden titels delen maar een paar honderd groepen)
+        val groupOK = HashMap<String, Boolean>()
+        fun visible(id: String, g: String): Boolean {
+            if (id in c.hidden) return false
+            groupOK[g]?.let { return it }
+            val m = c.merged[g] ?: g
+            val ok = Customization.groupKey(g) !in c.hidden && Customization.groupKey(m) !in c.hidden &&
+                !isLocked(g) && !isLocked(m)
+            groupOK[g] = ok
+            return ok
+        }
+        fun ageOK(md: TitleMetadata?, g: String): Boolean = ageLimit == null || allowed(md?.rated, g, md?.genre)
 
         var channels = raw.channels.filter { visible(it.id, it.group) }
             .map { ch -> ch.copy(group = group(ch.group), name = c.renamed[ch.id] ?: ch.name) }
-        if (ageLimit != null) channels = channels.filter { parental.allowed(null, it.group, ageLimit) }
+        // kinderprofiel / leeftijdsgrens: geen volwassenen-zenders (streng: alleen kinderzenders)
+        if (ageLimit != null) channels = channels.filter { allowed(null, it.group) }
         val movies = raw.movies.filter {
-            visible(it.id, it.group) &&
-                parental.allowed(if (ageLimit == null) null else Metadata.cached(it)?.rated, it.group, ageLimit)
+            visible(it.id, it.group) && (ageLimit == null || ageOK(Metadata.cached(it), it.group))
         }.map { m -> m.copy(group = group(m.group), title = c.renamed[m.id] ?: m.title) }
         val series = raw.series.filter {
-            visible(it.id, it.group) &&
-                parental.allowed(if (ageLimit == null) null else Metadata.cached(it)?.rated, it.group, ageLimit)
+            visible(it.id, it.group) && (ageLimit == null || ageOK(Metadata.cached(it), it.group))
         }.map { se -> se.copy(group = group(se.group), title = c.renamed[se.id] ?: se.title) }
 
         // eigen volgorde: groepen, dan kanalen binnen een groep
@@ -370,6 +454,8 @@ object Playlists {
         val lib = library
         val currentID = source?.id
         val others = Store.playlists.filter { it.id != currentID }
+        // andere afspeellijsten: zelfde verbergen/kinderslot/leeftijdsgrens als het actieve profiel
+        val contexts = others.associate { it.id to context(it) }
         return withContext(Dispatchers.Default) {
             fun m(s: String) = Net.fold(s).contains(t)
             // films én series én zenders, uit álle categorieën
@@ -382,7 +468,9 @@ object Playlists {
             // zoeken in de cache van alle andere afspeellijsten
             val hits = ArrayList<OtherHit>()
             for (p in others) {
-                val olib = withContext(Dispatchers.IO) { readCache(p) } ?: continue
+                val olib = withContext(Dispatchers.IO) { readCache(p) }?.let { raw ->
+                    contexts[p.id]?.let { apply(raw, it) } ?: raw
+                } ?: continue
                 for (c in olib.channels) {
                     if (!m(c.name)) continue
                     hits.add(OtherHit(p, c.id, c.name, "Live TV", c.logo))
@@ -400,12 +488,16 @@ object Playlists {
         val norm = Net.normTitle(title)
         if (norm.isEmpty()) return emptyList()
         val current = source
-        val currentLib = rawLibrary
+        val currentLib = library
         val all = Store.playlists
+        val contexts = all.filter { it.id != current?.id }.associate { it.id to context(it) }
         return withContext(Dispatchers.Default) {
             val hits = ArrayList<OtherHit>()
             for (p in all) {
-                val lib = if (p.id == current?.id) currentLib else (withContext(Dispatchers.IO) { readCache(p) } ?: Library())
+                val lib = if (p.id == current?.id) currentLib else {
+                    val raw = withContext(Dispatchers.IO) { readCache(p) } ?: Library()
+                    contexts[p.id]?.let { apply(raw, it) } ?: raw
+                }
                 if (isShow) {
                     for (s in lib.series) if (s.id != excludingID && Net.normTitle(s.title) == norm && (year == null || s.year == null || s.year == year))
                         hits.add(OtherHit(p, s.id, s.title, s.group, s.poster))

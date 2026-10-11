@@ -130,6 +130,23 @@ object TMDB {
         return out
     }
 
+    /** Populair bij kids: animatie/familie (films, t/m PG) en kids/animatie/familie (series), zonder volwassen titels. */
+    suspend fun kidsTrending(shows: Boolean): List<ExternalTitle> {
+        val base = mutableListOf("language" to language, "sort_by" to "popularity.desc", "include_adult" to "false",
+            "with_genres" to if (shows) "10762|16|10751" else "16|10751")
+        if (!shows) { base.add("certification_country" to "US"); base.add("certification.lte" to "PG") }
+        val out = ArrayList<ExternalTitle>()
+        for (page in listOf("1", "2")) {
+            val r = get(if (shows) "/discover/tv" else "/discover/movie", base + ("page" to page)) ?: break
+            for (i in r.jList("results")) {
+                val t = listOf("title", "name", "original_title", "original_name").mapNotNull { i.jS(it) }.filter { it.isNotEmpty() }
+                val y = yearOf(i.jS("release_date") ?: i.jS("first_air_date"))
+                if (t.isNotEmpty()) out.add(ExternalTitle(t, y))
+            }
+        }
+        return out
+    }
+
     suspend fun details(imdb: String?, tmdbID: Int?, title: String, year: Int?, isShow: Boolean): Result? {
         if (!Secrets.isSet(Secrets.tmdbAPIKey)) return null
         var id = tmdbID

@@ -336,6 +336,7 @@ fun S2TextField(
     password: Boolean = false,
     plain: Boolean = true,
     leading: (@Composable () -> Unit)? = null,
+    trailing: (@Composable () -> Unit)? = null,
 ) {
     OutlinedTextField(
         value = value,
@@ -343,6 +344,7 @@ fun S2TextField(
         label = { Text(label) },
         singleLine = true,
         leadingIcon = leading,
+        trailingIcon = trailing,
         visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None,
         keyboardOptions = KeyboardOptions(
             capitalization = if (plain) KeyboardCapitalization.None else KeyboardCapitalization.Sentences,

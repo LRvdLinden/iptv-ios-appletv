@@ -6,6 +6,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -24,6 +25,7 @@ import kotlinx.serialization.json.addJsonObject
 import java.io.File
 import java.security.MessageDigest
 import java.security.SecureRandom
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Trakt API v2 (= TraktClient.swift + TraktSync.swift).
@@ -90,6 +92,21 @@ object Trakt {
     var lastRefresh by mutableStateOf<Long?>(null); private set
     var lastError by mutableStateOf<String?>(null)
     var titleIndex by mutableStateOf(TitleIndex()); private set
+    /** Bezig met synchroniseren (draaiende pijltjes in Mijn Bingr); minstens ~0,8 s zichtbaar. */
+    var isSyncing by mutableStateOf(false); private set
+    /** Kort (2,5 s) true na een geslaagde sync ("Bijgewerkt ✓"). */
+    var justSynced by mutableStateOf(false); private set
+    /** Laatste melding over doorgeven aan Trakt ("Gezien op Trakt: …"). */
+    var lastScrobble by mutableStateOf<String?>(null); private set
+    /** Tijdstip (epoch-ms) van [lastScrobble]. */
+    var lastScrobbleDate by mutableStateOf<Long?>(null); private set
+
+    /** Uitkomst van een scrobble (voor een melding in de speler en de status in Mijn Bingr). */
+    enum class ScrobbleResult { OK, NOT_FOUND, FAILED, SKIPPED }
+
+    private var justSyncedJob: Job? = null
+    /** Opgeschoonde IPTV-titels ("NL | Reacher (2022) 4K" → "Reacher", 2022), zodat dat niet bij elk scrollen opnieuw hoeft. */
+    private val cleanCache = ConcurrentHashMap<String, TitleCleaner.Parsed>()
 
     private var scrobbleState = mutableStateOf(Prefs.bool("trakt.scrobble", true))
     var scrobbleEnabled: Boolean
@@ -113,12 +130,37 @@ object Trakt {
         get() = Prefs.string("trakt.oauthHost") ?: "https://api.trakt.tv"
         set(v) = Prefs.put("trakt.oauthHost", v)
 
+    /**
+     * Trakt hoort bij het hoofdaccount: andere kijkprofielen zien geen Trakt-vinkjes, -voortgang of -aanbevelingen
+     * en scrobblen niet naar het Trakt-account van het hoofdaccount. Gezet via [applyProfile] (AppState.open(profile)).
+     */
+    var profileAllowed by mutableStateOf(true); private set
+
     init {
-        val t = tokens
-        isLoggedIn = t != null
-        username = t?.username
-        loadCache()
-        if (isLoggedIn) AppScope.launch { refresh(); loadProfile() }
+        profileAllowed = Store.isMainActive || Store.profiles.size <= 1
+        if (profileAllowed) {
+            val t = tokens
+            isLoggedIn = t != null
+            username = t?.username
+            loadCache()
+            if (isLoggedIn) AppScope.launch { refresh(); loadProfile() }
+        }
+    }
+
+    /** Ander kijkprofiel gekozen: Trakt alleen actief voor het hoofdaccount. */
+    fun applyProfile(isMain: Boolean) {
+        if (isMain == profileAllowed) return
+        profileAllowed = isMain
+        if (isMain) {
+            val t = tokens
+            isLoggedIn = t != null
+            username = t?.username
+            loadCache()
+            if (isLoggedIn) AppScope.launch { runCatching { refresh() } }
+        } else {
+            isLoggedIn = false
+            watchedMovies = emptySet(); watchedEpisodes = emptyMap(); watchlist = emptySet(); playback = emptyList()
+        }
     }
 
     // MARK: inloggen (device flow + PKCE)
@@ -208,6 +250,7 @@ object Trakt {
         watchedMovies = emptySet(); watchedEpisodes = emptyMap(); watchlist = emptySet(); playback = emptyList()
         titleIndex = TitleIndex()
         lastActivity = null
+        lastRefresh = null; lastError = null; lastScrobble = null; lastScrobbleDate = null; justSynced = false
         saveCache()
     }
 
@@ -270,7 +313,8 @@ object Trakt {
         val token = if (auth) validToken() else null
         val r = Http.request(u, headers = headers(token))
         if (!r.ok) throw Net.statusError(r.code, r.body)
-        return Net.parse(r.body)
+        // grote lijsten (bekeken series) niet op de main thread parsen
+        return withContext(Dispatchers.Default) { Net.parse(r.body) }
     }
 
     /** POST (409 = al gedaan, telt als gelukt). */
@@ -297,79 +341,153 @@ object Trakt {
         return TraktMedia(title = e.jS("title"), year = e.jI("year"), ids = ids(e), trailer = e.jS("trailer"))
     }
 
-    suspend fun refresh(force: Boolean = false) {
-        if (!isLoggedIn) return
+    /**
+     * Haalt bekeken films/afleveringen, voortgang en watchlist op. Zonder [force] wordt eerst /sync/last_activities
+     * gecontroleerd: niets veranderd → niets opnieuw ophalen. [isSyncing] blijft minstens ~0,8 s zichtbaar,
+     * daarna kort [justSynced] als het gelukt is.
+     */
+    suspend fun refresh(force: Boolean = false): Unit = withContext(Dispatchers.Main.immediate) {
+        if (!isLoggedIn) {
+            if (force) lastError = L("Not signed in to Trakt.")
+            return@withContext
+        }
+        if (isSyncing) return@withContext
+        isSyncing = true
+        justSyncedJob?.cancel(); justSynced = false
+        val started = System.currentTimeMillis()
         try {
             val act = get("/sync/last_activities").jS("all")
             if (!force && act != null && act == lastActivity && (watchedMovies.isNotEmpty() || watchedEpisodes.isNotEmpty())) {
-                lastRefresh = System.currentTimeMillis(); return
+                lastRefresh = System.currentTimeMillis()
+                lastError = null
+                return@withContext
             }
-            coroutineScope {
+            val fetched = coroutineScope {
                 val m = async { get("/sync/watched/movies") }
                 val s = async { get("/sync/watched/shows") }
                 val p = async { get("/sync/playback") }
                 val w = async { get("/sync/watchlist") }
-
-                val idx = IndexBuilder(titleIndex)
-                val movies = m.await().jItems
-                val wm = HashSet<String>()
-                for (x in movies) {
-                    val mv = x.jO("movie")
-                    val i = ids(mv).imdb ?: continue
-                    wm.add(i); idx.add(mv.jS("title"), mv.jI("year"), i, false)
-                }
-                val eps = HashMap<String, Set<String>>()
-                for (show in s.await().jItems) {
-                    val sh = show.jO("show")
-                    val imdb = ids(sh).imdb ?: continue
-                    idx.add(sh.jS("title"), sh.jI("year"), imdb, true)
-                    val set = HashSet<String>()
-                    for (season in show.jList("seasons")) {
-                        val sn = season.jI("number") ?: continue
-                        for (e in season.jList("episodes")) e.jI("number")?.let { set.add("$sn-$it") }
-                    }
-                    eps[imdb] = set
-                }
-                val pb = p.await().jItems.mapNotNull { x ->
-                    val id = x.jL("id") ?: return@mapNotNull null
-                    val progress = x.jD("progress") ?: 0.0
-                    val type = x.jS("type") ?: "movie"
-                    if (type == "episode") {
-                        val ep = x.jO("episode")
-                        PlaybackItem(id, progress, type, ids(x.jO("show")).imdb, x.jO("show").jS("title") ?: "",
-                            ep.jI("season"), ep.jI("number"))
-                    } else PlaybackItem(id, progress, type, ids(x.jO("movie")).imdb, x.jO("movie").jS("title") ?: "")
-                }
-                val wl = w.await().jItems
-                val wset = HashSet<String>()
-                for (x in wl) {
-                    val mm = x.jO("movie"); val ss = x.jO("show")
-                    (ids(mm).imdb ?: ids(ss).imdb)?.let { wset.add(it) }
-                    if (mm != null) ids(mm).imdb?.let { idx.add(mm.jS("title"), mm.jI("year"), it, false) }
-                    if (ss != null) ids(ss).imdb?.let { idx.add(ss.jS("title"), ss.jI("year"), it, true) }
-                }
-                withContext(Dispatchers.Main) {
-                    watchedMovies = wm; watchedEpisodes = eps; playback = pb; watchlist = wset
-                    titleIndex = idx.build()
-                    lastActivity = act
-                    lastRefresh = System.currentTimeMillis()
-                    lastError = null
-                }
+                Fetched(m.await(), s.await(), p.await(), w.await())
             }
+            val base = titleIndex
+            val r = withContext(Dispatchers.Default) { build(fetched, base) }
+            watchedMovies = r.movies; watchedEpisodes = r.episodes; playback = r.playback; watchlist = r.watchlist
+            titleIndex = r.index
+            lastActivity = act
+            lastRefresh = System.currentTimeMillis()
+            lastError = null
             saveCache()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             lastError = Net.message(e)
             if (e is NotLoggedIn) isLoggedIn = false
+        } finally {
+            // spinner minstens even laten zien, en daarna kort "Bijgewerkt ✓"
+            val wait = (800L - (System.currentTimeMillis() - started)).coerceAtLeast(0L)
+            justSyncedJob = AppScope.launch {
+                delay(wait)
+                isSyncing = false
+                if (lastError == null) {
+                    justSynced = true
+                    delay(2_500)
+                    justSynced = false
+                }
+            }
         }
+        Unit
+    }
+
+    private class Fetched(val movies: JsonElement, val shows: JsonElement, val playback: JsonElement, val watchlist: JsonElement)
+    private class Built(val movies: Set<String>, val episodes: Map<String, Set<String>>, val playback: List<PlaybackItem>,
+                        val watchlist: Set<String>, val index: TitleIndex)
+
+    /** Antwoorden van Trakt omzetten (op de achtergrond: bij veel bekeken series zijn dit grote lijsten). */
+    private fun build(f: Fetched, base: TitleIndex): Built {
+        val idx = IndexBuilder(base)
+        val wm = HashSet<String>()
+        for (x in f.movies.jItems) {
+            val mv = x.jO("movie")
+            val i = ids(mv).imdb ?: continue
+            wm.add(i); idx.add(mv.jS("title"), mv.jI("year"), i, false)
+        }
+        val eps = HashMap<String, Set<String>>()
+        for (show in f.shows.jItems) {
+            val sh = show.jO("show")
+            val imdb = ids(sh).imdb ?: continue
+            idx.add(sh.jS("title"), sh.jI("year"), imdb, true)
+            val set = HashSet<String>()
+            for (season in show.jList("seasons")) {
+                val sn = season.jI("number") ?: continue
+                for (e in season.jList("episodes")) e.jI("number")?.let { set.add("$sn-$it") }
+            }
+            eps[imdb] = set
+        }
+        val pb = f.playback.jItems.mapNotNull { x ->
+            val id = x.jL("id") ?: return@mapNotNull null
+            val progress = x.jD("progress") ?: 0.0
+            val type = x.jS("type") ?: "movie"
+            if (type == "episode") {
+                val ep = x.jO("episode")
+                PlaybackItem(id, progress, type, ids(x.jO("show")).imdb, x.jO("show").jS("title") ?: "",
+                    ep.jI("season"), ep.jI("number"))
+            } else PlaybackItem(id, progress, type, ids(x.jO("movie")).imdb, x.jO("movie").jS("title") ?: "")
+        }
+        val wset = HashSet<String>()
+        for (x in f.watchlist.jItems) {
+            val mm = x.jO("movie"); val ss = x.jO("show")
+            (ids(mm).imdb ?: ids(ss).imdb)?.let { wset.add(it) }
+            if (mm != null) ids(mm).imdb?.let { idx.add(mm.jS("title"), mm.jI("year"), it, false) }
+            if (ss != null) ids(ss).imdb?.let { idx.add(ss.jS("title"), ss.jI("year"), it, true) }
+        }
+        return Built(wm, eps, pb, wset, idx.build())
     }
 
     // MARK: status in de UI
 
-    /** IMDb-ID van een IPTV-titel: eerst uit de Trakt-index, dan uit de metadata-cache. */
-    fun imdb(m: Movie): String? = m.imdbID ?: titleIndex.imdb(m.title, m.year, false) ?: Metadata.cached(m)?.imdbID
-    fun imdb(s: Series): String? = s.imdbID ?: titleIndex.imdb(s.title, s.year, true) ?: Metadata.cached(s)?.imdbID
+    /**
+     * IMDb-ID van een IPTV-titel: eerst uit de Trakt-index, dan uit de metadata-cache.
+     * Ook de schone titel proberen ("NL | Reacher (2022) 4K" → "Reacher", 2022), anders vinden we je Trakt-vinkjes niet.
+     */
+    fun imdb(m: Movie): String? = m.imdbID ?: indexed(m.title, m.year, false) ?: Metadata.cached(m)?.imdbID
+    fun imdb(s: Series): String? = s.imdbID ?: indexed(s.title, s.year, true) ?: Metadata.cached(s)?.imdbID
+
+    private fun indexed(raw: String, year: Int?, show: Boolean): String? {
+        val idx = titleIndex
+        // niets in de index (niet ingelogd / ander profiel)? dan ook niet elke titel opschonen — scheelt rekenwerk bij scrollen
+        if (if (show) idx.shows.isEmpty() else idx.movies.isEmpty()) return null
+        idx.imdb(raw, year, show)?.let { return it }
+        val c = cleaned(raw)
+        return idx.imdb(c.title, year ?: c.year, show)
+    }
+
+    private fun cleaned(raw: String): TitleCleaner.Parsed {
+        cleanCache[raw]?.let { return it }
+        val p = TitleCleaner.parse(raw)
+        if (cleanCache.size > 20_000) cleanCache.clear()
+        cleanCache[raw] = p
+        return p
+    }
+
+    /** IMDb-ID opzoeken bij Trakt als de titel er nog geen heeft (zodat kijken toch als "gezien" wordt doorgegeven). */
+    private suspend fun resolveIMDb(item: PlayableItem): String? {
+        item.imdbID?.let { return it }
+        val show = item.type == MediaType.EPISODE
+        val c = cleaned(item.title)
+        titleIndex.imdb(item.title, null, show)?.let { return it }
+        titleIndex.imdb(c.title, c.year, show)?.let { return it }
+        val year = if (show) c.year else (c.year ?: item.subtitle?.trim()?.toIntOrNull())
+        val hit = lookup(c.title, year, show) ?: return null
+        val i = hit.ids.imdb ?: return null
+        withContext(Dispatchers.Main.immediate) {
+            val b = IndexBuilder(titleIndex)
+            b.add(item.title, null, i, show)
+            b.add(hit.title, hit.year, i, show)
+            titleIndex = b.build()
+            saveCache()
+        }
+        return i
+    }
 
     fun isWatched(movieImdb: String?): Boolean = movieImdb != null && movieImdb in watchedMovies
     fun isWatched(showImdb: String?, season: Int, episode: Int): Boolean =
@@ -383,35 +501,39 @@ object Trakt {
 
     // MARK: schrijven
 
-    suspend fun setWatched(item: PlayableItem, watched: Boolean) {
-        val imdb = item.imdbID
-        if (!isLoggedIn || imdb == null) return
-        val s = item.season; val e = item.episode
-        val body: JsonObject
-        if (item.type == MediaType.EPISODE && s != null && e != null) {
-            body = buildJsonObject {
-                putJsonArray("shows") { addJsonObject {
-                    putJsonObject("ids") { put("imdb", imdb) }
-                    putJsonArray("seasons") { addJsonObject {
-                        put("number", s)
-                        putJsonArray("episodes") { addJsonObject { put("number", e) } }
-                    } }
+    private fun historyBody(imdb: String, season: Int?, episode: Int?): JsonObject =
+        if (season != null && episode != null) buildJsonObject {
+            putJsonArray("shows") { addJsonObject {
+                putJsonObject("ids") { put("imdb", imdb) }
+                putJsonArray("seasons") { addJsonObject {
+                    put("number", season)
+                    putJsonArray("episodes") { addJsonObject { put("number", episode) } }
                 } }
-            }
+            } }
+        } else buildJsonObject { putJsonArray("movies") { addJsonObject { putJsonObject("ids") { put("imdb", imdb) } } } }
+
+    /** Film of aflevering (af)vinken; zoekt de IMDb-ID zo nodig op bij Trakt. */
+    suspend fun setWatched(item: PlayableItem, watched: Boolean): Unit = withContext(Dispatchers.Main.immediate) {
+        if (!isLoggedIn) return@withContext
+        val imdb = resolveIMDb(item) ?: return@withContext
+        val s = item.season; val e = item.episode
+        val isEpisode = item.type == MediaType.EPISODE && s != null && e != null
+        if (isEpisode) {
             val set = watchedEpisodes[imdb] ?: emptySet()
             watchedEpisodes = watchedEpisodes + (imdb to if (watched) set + "$s-$e" else set - "$s-$e")
         } else {
-            body = buildJsonObject { putJsonArray("movies") { addJsonObject { putJsonObject("ids") { put("imdb", imdb) } } } }
             watchedMovies = if (watched) watchedMovies + imdb else watchedMovies - imdb
         }
         saveCache()
+        val body = if (isEpisode) historyBody(imdb, s, e) else historyBody(imdb, null, null)
         try { post(if (watched) "/sync/history" else "/sync/history/remove", body) }
         catch (ex: CancellationException) { throw ex } catch (ex: Exception) { lastError = Net.message(ex) }
+        Unit
     }
 
     /** Hele seizoen of serie in één keer afvinken. */
-    suspend fun setWatched(showImdb: String, episodes: List<Episode>, watched: Boolean) {
-        if (!isLoggedIn) return
+    suspend fun setWatched(showImdb: String, episodes: List<Episode>, watched: Boolean): Unit = withContext(Dispatchers.Main.immediate) {
+        if (!isLoggedIn) return@withContext
         val bySeason = episodes.groupBy { it.season }
         var set = watchedEpisodes[showImdb] ?: emptySet()
         for (e in episodes) set = if (watched) set + "${e.season}-${e.number}" else set - "${e.season}-${e.number}"
@@ -432,23 +554,41 @@ object Trakt {
         }
         try { post(if (watched) "/sync/history" else "/sync/history/remove", body) }
         catch (ex: CancellationException) { throw ex } catch (ex: Exception) { lastError = Net.message(ex) }
+        Unit
     }
 
-    suspend fun toggleWatchlist(imdb: String, isShow: Boolean) {
-        if (!isLoggedIn) return
+    /** Zet een titel op of van de Trakt-watchlist (spiegelt Mijn lijst van het hoofdaccount). */
+    suspend fun setWatchlist(imdb: String, isShow: Boolean, on: Boolean) {
+        if (!isLoggedIn || (imdb in watchlist) == on) return
+        toggleWatchlist(imdb, isShow)
+    }
+
+    suspend fun toggleWatchlist(imdb: String, isShow: Boolean): Unit = withContext(Dispatchers.Main.immediate) {
+        if (!isLoggedIn) return@withContext
         val add = imdb !in watchlist
         watchlist = if (add) watchlist + imdb else watchlist - imdb
+        saveCache()
         val body = buildJsonObject {
             putJsonArray(if (isShow) "shows" else "movies") { addJsonObject { putJsonObject("ids") { put("imdb", imdb) } } }
         }
         try { post(if (add) "/sync/watchlist" else "/sync/watchlist/remove", body) }
         catch (ex: CancellationException) { throw ex } catch (ex: Exception) { lastError = Net.message(ex) }
+        Unit
     }
 
-    /** Scrobble: Trakt markeert automatisch als bekeken bij stop ≥ 80%. [progress] 0…1 */
-    suspend fun scrobble(a: Scrobble, item: PlayableItem, progress: Double) {
-        val imdb = item.imdbID
-        if (!isLoggedIn || !scrobbleEnabled || imdb == null || item.type == MediaType.LIVE) return
+    /**
+     * Scrobble: Trakt markeert automatisch als bekeken bij stop ≥ 80%. [progress] 0…1.
+     * Zonder IMDb-ID wordt die eerst bij Trakt opgezocht. Mislukt de scrobble bij stop ≥ 80%, dan gaat het
+     * via /sync/history alsnog als gezien naar Trakt. Na stop worden de vinkjes opnieuw opgehaald.
+     */
+    suspend fun scrobble(a: Scrobble, item: PlayableItem, progress: Double): ScrobbleResult = withContext(Dispatchers.Main.immediate) {
+        if (!isLoggedIn || !scrobbleEnabled || item.type == MediaType.LIVE) return@withContext ScrobbleResult.SKIPPED
+        val imdb = resolveIMDb(item)
+        if (imdb == null) {
+            lastScrobble = L("Not found on Trakt: %@", item.title)
+            lastScrobbleDate = System.currentTimeMillis()
+            return@withContext ScrobbleResult.NOT_FOUND
+        }
         val s = item.season; val e = item.episode
         val isEpisode = item.type == MediaType.EPISODE && s != null && e != null
         val body = buildJsonObject {
@@ -461,18 +601,53 @@ object Trakt {
                 putJsonObject("movie") { putJsonObject("ids") { put("imdb", imdb) } }
             }
         }
-        runCatching { post("/scrobble/${a.name.lowercase()}", body) }
-        if (a == Scrobble.STOP && progress >= 0.8) {
-            if (isEpisode) watchedEpisodes = watchedEpisodes + (imdb to ((watchedEpisodes[imdb] ?: emptySet()) + "$s-$e"))
-            else watchedMovies = watchedMovies + imdb
-            saveCache()
+        val name = if (isEpisode) "${item.title} S${s}E${e}" else item.title
+        var result = ScrobbleResult.OK
+        try {
+            post("/scrobble/${a.name.lowercase()}", body)
+        } catch (ex: CancellationException) {
+            throw ex
+        } catch (ex: Exception) {
+            result = ScrobbleResult.FAILED
+            lastError = Net.message(ex)
         }
+        val watched = a == Scrobble.STOP && progress >= 0.8
+        if (watched) {
+            // scrobble mislukt? dan direct in je Trakt-geschiedenis zetten, zodat het toch als gezien staat
+            if (result == ScrobbleResult.FAILED) {
+                val hist = if (isEpisode) historyBody(imdb, s, e) else historyBody(imdb, null, null)
+                val ok = try { post("/sync/history", hist); true }
+                    catch (ex: CancellationException) { throw ex } catch (ex: Exception) { false }
+                if (ok) { result = ScrobbleResult.OK; lastError = null }
+            }
+            if (result == ScrobbleResult.OK) {
+                if (isEpisode) watchedEpisodes = watchedEpisodes + (imdb to ((watchedEpisodes[imdb] ?: emptySet()) + "$s-$e"))
+                else watchedMovies = watchedMovies + imdb
+                saveCache()
+            }
+        }
+        when {
+            result == ScrobbleResult.FAILED -> lastScrobble = L("Could not reach Trakt for %@", name)
+            a == Scrobble.STOP -> lastScrobble =
+                if (watched) L("Marked as watched on Trakt: %@", name) else L("Progress saved on Trakt: %@", name)
+            a == Scrobble.START -> lastScrobble = L("Watching on Trakt: %@", name)
+            else -> {}
+        }
+        lastScrobbleDate = System.currentTimeMillis()
+        // na het kijken de vinkjes van Trakt ophalen (ook wat je intussen elders keek); niet wachten op het resultaat
+        if (a == Scrobble.STOP) {
+            AppScope.launch {
+                delay(3_000)
+                runCatching { refresh(force = true) }
+            }
+        }
+        result
     }
 
     /** Waardering 1–10 naar Trakt sturen. */
     suspend fun rate(item: PlayableItem, rating: Int) {
-        val imdb = item.imdbID
-        if (!isLoggedIn || imdb == null) return
+        if (!isLoggedIn) return
+        val imdb = resolveIMDb(item) ?: return
         val s = item.season; val e = item.episode
         val body = if (item.type == MediaType.EPISODE && s != null && e != null) buildJsonObject {
             putJsonArray("shows") { addJsonObject {

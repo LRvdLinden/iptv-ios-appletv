@@ -69,7 +69,10 @@ class JellyfinClient(source: PlaylistSource, session: ServerSession?) {
 
     private suspend fun fetchItems(u: String): List<JsonElement> = Net.parse(Net.send(u, headers = authHeader)).jList("Items")
 
-    suspend fun library(): Library {
+    /** Bibliotheek ophalen; omzetten van (grote) lijsten op Dispatchers.Default. */
+    suspend fun library(): Library = withContext(Dispatchers.Default) { loadLibrary() }
+
+    private suspend fun loadLibrary(): Library {
         val uid = userID ?: throw notLoggedIn
         suspend fun items(type: String): List<JsonElement> {
             val u = url("/Users/$uid/Items", mapOf("IncludeItemTypes" to type, "Recursive" to "true",
@@ -201,7 +204,10 @@ class PlexClient(val session: ServerSession) {
     private fun stream(m: JsonElement): String? =
         m.jList("Media").firstOrNull().jList("Part").firstOrNull().jS("key")?.let { url(it) }
 
-    suspend fun library(): Library {
+    /** Bibliotheek ophalen; omzetten van (grote) lijsten op Dispatchers.Default. */
+    suspend fun library(): Library = withContext(Dispatchers.Default) { loadLibrary() }
+
+    private suspend fun loadLibrary(): Library {
         val movies = ArrayList<Movie>()
         val series = ArrayList<Series>()
         for (dir in get("/library/sections").jList("Directory")) {
@@ -309,7 +315,10 @@ class StremioClient(val addons: List<Addon>) {
         }
     }
 
-    suspend fun library(): Library = coroutineScope {
+    /** Bibliotheek ophalen; omzetten van (grote) lijsten op Dispatchers.Default. */
+    suspend fun library(): Library = withContext(Dispatchers.Default) { loadLibrary() }
+
+    private suspend fun loadLibrary(): Library = coroutineScope {
         val jobs = addons.filter { "catalog" in it.resources }.flatMap { a ->
             a.catalogs.take(10).filter { it.type == "movie" || it.type == "series" }.map { c ->
                 async {

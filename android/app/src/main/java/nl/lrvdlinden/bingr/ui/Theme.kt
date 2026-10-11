@@ -149,30 +149,12 @@ fun RemoteImage(
     }
 }
 
-/** Ronde profielavatar: foto of emoji op kleurverloop. */
+/** Ronde avatar van een server (bron): foto, figuurtje of emoji op kleurverloop. Voor profielen: [ProfileAvatar]. */
 @Composable
 fun AvatarCircle(playlist: PlaylistSource, size: Dp, ring: Boolean = false, editing: Boolean = false) {
     val v = Store.photoVersion
     val photo = remember(playlist.id, v) { Store.photo(playlist.id) }
-    val pal = PlaylistAvatar.palettes[playlist.avatar.colorIndex % PlaylistAvatar.palettes.size]
-    Box(
-        Modifier.size(size).clip(CircleShape)
-            .background(Brush.linearGradient(listOf(Color(pal.first), Color(pal.second))))
-            .then(if (ring) Modifier.border(3.dp, Color.White, CircleShape) else Modifier),
-        contentAlignment = Alignment.Center
-    ) {
-        if (photo != null) {
-            androidx.compose.foundation.Image(photo.asImageBitmap(), null, Modifier.matchParentSize(),
-                contentScale = androidx.compose.ui.layout.ContentScale.Crop)
-        } else {
-            Text(playlist.avatar.symbol, fontSize = (size.value * 0.42f).sp)
-        }
-        if (editing) {
-            Box(Modifier.matchParentSize().background(Color.Black.copy(alpha = 0.55f)), contentAlignment = Alignment.Center) {
-                Icon(androidx.compose.material.icons.Icons.Default.Edit, null, tint = Color.White, modifier = Modifier.size(size * 0.3f))
-            }
-        }
-    }
+    AvatarView(playlist.avatar, photo, size, ring = ring, editing = editing)
 }
 
 

@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -233,16 +234,20 @@ fun ManageScreen(onClose: () -> Unit) {
                     tint = if (hidden) Theme.secondary else Color.White,
                     strike = hidden,
                     onLongClick = { menuFor = g },
-                    onClick = { if (kind == S2Kind.LIVE) channelsOf = g else menuFor = g },
+                    // TV (afstandsbediening): tik = actiemenu (met "Zenders" bij Live TV); telefoon: tik = zenders
+                    onClick = { if (kind == S2Kind.LIVE && !AppState.isTV) channelsOf = g else menuFor = g },
                     trailing = {
                         if (locked) Icon(Icons.Default.Lock, null, tint = Theme.imdb, modifier = Modifier.size(tvs(16)))
                         if (hidden) Icon(Icons.Default.VisibilityOff, null, tint = Theme.secondary, modifier = Modifier.size(tvs(16)))
-                        S2MoreButton { menuFor = g }
+                        if (!AppState.isTV) S2MoreButton { menuFor = g }
                     }
                 )
             }
         }
-        item { S2Footer(L("Hidden groups and channels don't appear anywhere in the app. Merged groups are shown as one.")) }
+        item {
+            S2Footer(L("Hidden groups and channels don't appear anywhere in the app. Merged groups are shown as one.") +
+                if (kind == S2Kind.LIVE) " " + L("Press and hold a group for more options.") else "")
+        }
         if (merged.isNotEmpty()) {
             item { S2Header(L("Merged")) }
             itemsIndexed(merged) { i, g ->
@@ -265,6 +270,7 @@ fun ManageScreen(onClose: () -> Unit) {
         val hidden = key in c.hidden
         val locked = pid != null && "$pid|$g" in Store.parental.lockedGroups
         val actions = buildList {
+            if (kind == S2Kind.LIVE) add(S2Action(L("Channels"), Icons.AutoMirrored.Filled.List) { channelsOf = g })
             add(S2Action(L("Rename"), Icons.Default.Edit) { renaming = key to display(g) })
             add(S2Action(if (hidden) L("Show") else L("Hide"), if (hidden) Icons.Default.Visibility else Icons.Default.VisibilityOff) {
                 update { it.copy(hidden = if (hidden) it.hidden - key else it.hidden + key) }

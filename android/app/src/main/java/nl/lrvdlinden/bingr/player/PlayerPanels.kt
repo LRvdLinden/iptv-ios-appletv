@@ -352,6 +352,17 @@ fun OptionsPanel(player: PlayerController, onDismiss: () -> Unit) {
                 }
             }
         }
+        item { PlayerSheetHeader(L("Subtitle size")) }
+        for (sz in SubtitleSize.entries) {
+            item {
+                PlayerSheetRow(sz.title, selected = SubtitleSize.current == sz) {
+                    if (SubtitleSize.current != sz) {
+                        SubtitleSize.current = sz
+                        player.applySubtitleSize()
+                    }
+                }
+            }
+        }
         item { PlayerSheetHeader(L("Picture")) }
         for (a in PlayerController.Aspect.entries) {
             item { PlayerSheetRow(a.title, selected = player.aspect == a) { player.aspect = a } }

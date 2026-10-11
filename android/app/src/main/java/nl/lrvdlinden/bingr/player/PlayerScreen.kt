@@ -44,6 +44,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.Sensors
+import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.VideoLibrary
@@ -116,21 +117,34 @@ fun PlayerScreen(item: PlayableItem, onClose: () -> Unit) {
     var toastID by remember { mutableIntStateOf(0) }
     var pokeID by remember { mutableIntStateOf(0) }
     var stremioChoices by remember { mutableStateOf(listOf<StremioStream>()) }
+    /** Volgende aflevering (series): knop aan het eind en automatisch verder kijken */
+    var nextUp by remember { mutableStateOf<PlayableItem?>(null) }
     val rootFocus = remember { FocusRequester() }
     val firstButton = remember { FocusRequester() }
+    val retryButton = remember { FocusRequester() }
+    /** Heeft het spelerscherm zelf de focus (bediening verborgen), of een knop erin? */
+    var rootFocused by remember { mutableStateOf(false) }
     val swallowUp = remember { mutableSetOf<Int>() }
     val castAvailable = remember { Casting.isAvailable(ctx) }
 
     fun flash(text: String) { toast = text; toastID++ }
     fun poke() { showControls = true; pokeID++ }
     fun toggleControls() { showControls = !showControls; if (showControls) poke() }
-    fun close() { player.stop(); onClose() }
+    fun close() { player.dismissed = true; player.stop(); onClose() }
+
+    // vooruit gedeclareerd: bind() verwijst naar playNext(), dat start() aanroept
+    var playNextRef: (PlayableItem) -> Unit = {}
 
     fun bind() {
         player.onFinished = {
             val cur = player.item
-            if (Trakt.askRating && Trakt.isLoggedIn && cur.imdbID != null && cur.type != MediaType.LIVE) panel = PlayerPanel.RATE
-            else close()
+            val n = nextUp
+            when {
+                n != null -> playNextRef(n)   // zoals Netflix: gewoon door naar de volgende aflevering
+                Trakt.askRating && Trakt.isLoggedIn && cur.imdbID != null && cur.type != MediaType.LIVE -> { panel = PlayerPanel.RATE }
+                else -> close()
+            }
+            Unit
         }
     }
 
@@ -140,7 +154,7 @@ fun PlayerScreen(item: PlayableItem, onClose: () -> Unit) {
         if (lang.isEmpty()) return
         for (i in 0 until 40) { if (player.isPlaying) break; delay(500) }
         delay(2500)   // sporen laten binnenkomen
-        if (player.item.id != itm.id || player.hasExternalSubtitle || player.isStopped) return
+        if (player.item.id != itm.id || player.hasExternalSubtitle || player.isStopped || player.dismissed) return
         val t = player.subtitleTracks.firstOrNull { tr -> TrackPreferences.matches(tr, lang) }
         if (t != null) {
             player.selectSubtitle(t)
@@ -161,27 +175,61 @@ fun PlayerScreen(item: PlayableItem, onClose: () -> Unit) {
         } catch (e: Exception) {}
     }
 
+    /** Zoekt de aflevering na deze (ook over seizoenen heen). */
+    suspend fun findNext(itm: PlayableItem) {
+        nextUp = null
+        if (itm.type != MediaType.EPISODE) return
+        val lib = Playlists.library
+        val series = itm.seriesID?.let { sid -> lib.series.firstOrNull { it.id == sid } }
+            ?: lib.series.firstOrNull { s -> s.episodes.any { it.id == itm.id } }
+            ?: lib.series.firstOrNull { it.title == itm.title }
+            ?: return
+        val eps = runCatching { Playlists.episodes(series) }.getOrDefault(emptyList())
+            .sortedWith(compareBy<Episode>({ it.season }, { it.number }))
+        if (player.dismissed || player.item.id != itm.id) return
+        val i = eps.indexOfFirst { it.id == itm.id }
+        if (i < 0 || i + 1 >= eps.size) return
+        nextUp = Playables.episode(eps[i + 1], series, itm.imdbID).copy(seriesID = series.id)
+    }
+
     suspend fun start(itm: PlayableItem) {
+        if (player.dismissed) return
+        player.prepareNew()
         player.item = itm
         PlayerController.current = player
         bind()
+        nextUp = null
         val cid = itm.channelID
         player.catchupProvider =
             if (itm.type == MediaType.LIVE && cid != null) ({ from: Long, to: Long -> Playlists.catchupURL(cid, from, to) }) else null
         if (itm.stremio != null) {
-            stremioChoices = runCatching { Playlists.stremioStreams(itm) }.getOrDefault(emptyList())
-            val first = stremioChoices.firstOrNull()
-            if (first == null) { flash(L("No playable streams found for this title.")); return }
+            val found = runCatching { Playlists.stremioStreams(itm) }.getOrDefault(emptyList())
+            // intussen gesloten of al naar een andere zender/aflevering → niet meer starten
+            if (player.dismissed || player.item.id != itm.id) return
+            stremioChoices = found
+            val first = found.firstOrNull()
+            if (first == null) { player.fail(L("No playable streams found for this title.")); return }
             player.start(first.url)
         } else {
+            stremioChoices = emptyList()
             val url = runCatching { Playlists.resolve(itm) }.getOrNull()
-            if (url == null) { flash(L("No stream address available.")); return }
+            if (player.dismissed || player.item.id != itm.id) return
+            if (url == null) { player.fail(L("No stream address available.")); return }
             player.liveURL = url
             player.start(url)
         }
         poke()
         if (Prefs.bool("autoSubtitles") && itm.type != MediaType.LIVE) scope.launch { autoLoadSubtitles(itm) }
+        findNext(itm)
     }
+
+    fun playNext(n: PlayableItem) {
+        nextUp = null
+        panel = null
+        flash(n.subtitle ?: n.title)
+        scope.launch { player.stop(); start(n) }
+    }
+    playNextRef = { n -> playNext(n) }
 
     fun zap(step: Int) {
         val list = AppState.liveZapList
@@ -207,7 +255,7 @@ fun PlayerScreen(item: PlayableItem, onClose: () -> Unit) {
     }
 
     fun seekBy(s: Double) {
-        if (player.isLive && !player.canTimeshift) return
+        if (player.isLive && !player.canTimeshift) { poke(); return }
         player.seek(s)
         flash(if (s < 0) "−${(-s).toInt()} s" else "+${s.toInt()} s")
     }
@@ -227,6 +275,7 @@ fun PlayerScreen(item: PlayableItem, onClose: () -> Unit) {
         lc.addObserver(obs)
         onDispose {
             lc.removeObserver(obs)
+            player.dismissed = true
             player.stop()
             if (PlayerController.current === player) PlayerController.current = null
             MainActivity.current?.keepScreenOn(false)
@@ -235,7 +284,7 @@ fun PlayerScreen(item: PlayableItem, onClose: () -> Unit) {
     LaunchedEffect(player.isPlaying) { MainActivity.current?.keepScreenOn(player.isPlaying) }
     LaunchedEffect(pokeID, panel, player.isPlaying, showControls) {
         if (showControls) {
-            delay(5000)
+            delay(6000)   // 6 s niets gedaan → bediening weg (rondkijken met de D-pad houdt hem zichtbaar)
             if (panel == null && player.isPlaying && scrubbing == null) showControls = false
         }
     }
@@ -245,10 +294,19 @@ fun PlayerScreen(item: PlayableItem, onClose: () -> Unit) {
     LaunchedEffect(player.notice) {
         player.notice?.let { flash(it); player.notice = null }
     }
-    LaunchedEffect(showControls, panel, inPiP) {
+    // bediening tevoorschijn → focus op afspelen/pauze; weg → focus terug naar het scherm zelf (vangt de D-pad op).
+    // Fout zonder bediening (TV) → focus op "Try again".
+    val hasError = player.errorText != null
+    LaunchedEffect(showControls, panel, inPiP, hasError) {
         if (panel != null || inPiP) return@LaunchedEffect
         delay(60)
-        runCatching { if (isTV && showControls) firstButton.requestFocus() else rootFocus.requestFocus() }
+        runCatching {
+            when {
+                isTV && showControls -> firstButton.requestFocus()
+                isTV && hasError -> retryButton.requestFocus()
+                else -> rootFocus.requestFocus()
+            }
+        }
     }
 
     BackHandler {
@@ -273,10 +331,16 @@ fun PlayerScreen(item: PlayableItem, onClose: () -> Unit) {
             AndroidKeyEvent.KEYCODE_MEDIA_REWIND -> seekBy(-10.0)
             AndroidKeyEvent.KEYCODE_CHANNEL_UP -> zap(-1)
             AndroidKeyEvent.KEYCODE_CHANNEL_DOWN -> zap(1)
+            AndroidKeyEvent.KEYCODE_MEDIA_NEXT -> { val n = nextUp; if (n != null) playNext(n) else if (player.isLive) zap(1) else handled = false }
+            AndroidKeyEvent.KEYCODE_MEDIA_PREVIOUS -> { if (player.isLive) zap(-1) else handled = false }
             else -> handled = false
         }
         if (handled) { swallowUp += code; return true }
+        // bediening zichtbaar: de D-pad navigeert door de balk (focus-systeem), elke toets houdt hem zichtbaar
         if (showControls) { poke(); return false }
+        // een knop buiten de balk heeft de focus (bijv. "Try again"): die handelt de toets zelf af
+        if (!rootFocused) return false
+        // bediening verborgen: OK = tonen · ←/→ = 10 s spoelen · ↑/↓ = zappen (live) of tonen
         when (code) {
             AndroidKeyEvent.KEYCODE_DPAD_LEFT -> seekBy(-10.0)
             AndroidKeyEvent.KEYCODE_DPAD_RIGHT -> seekBy(10.0)
@@ -291,6 +355,9 @@ fun PlayerScreen(item: PlayableItem, onClose: () -> Unit) {
 
     // MARK: opbouw
 
+    val showNext = nextUp != null && player.errorText == null && player.duration > 120 &&
+        player.duration - player.currentTime < 45
+
     Box(
         Modifier
             .fillMaxSize()
@@ -300,6 +367,7 @@ fun PlayerScreen(item: PlayableItem, onClose: () -> Unit) {
                 if (!down && ev.type != KeyEventType.KeyUp) return@onPreviewKeyEvent false
                 handleKey(ev.nativeKeyEvent.keyCode, down, ev.nativeKeyEvent.repeatCount)
             }
+            .onFocusChanged { rootFocused = it.isFocused }
             .focusRequester(rootFocus)
             .focusable()
     ) {
@@ -332,7 +400,8 @@ fun PlayerScreen(item: PlayableItem, onClose: () -> Unit) {
                 contentAlignment = Alignment.BottomCenter
             ) {
                 Text(
-                    s, color = Color.White, fontSize = if (inPiP) tsp(11) else tsp(20), fontWeight = FontWeight.SemiBold,
+                    s, color = Color.White, fontSize = (if (inPiP) tsp(11) else tsp(20)) * SubtitleSize.current.overlayFactor,
+                    fontWeight = FontWeight.SemiBold,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(Color.Black.copy(alpha = 0.55f))
                         .padding(horizontal = 10.dp, vertical = 4.dp)
@@ -355,7 +424,9 @@ fun PlayerScreen(item: PlayableItem, onClose: () -> Unit) {
                     verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Icon(Icons.Filled.Warning, null, tint = Theme.red, modifier = Modifier.size(tvs(40)))
                     Text(e, color = Color.White, fontSize = tsp(16), textAlign = TextAlign.Center)
-                    NetflixButton(L("Try again"), Icons.Filled.Refresh) { scope.launch { start(player.item) } }
+                    NetflixButton(L("Try again"), Icons.Filled.Refresh, modifier = Modifier.focusRequester(retryButton)) {
+                        scope.launch { start(player.item) }
+                    }
                 }
             }
             if (Casting.connected) {
@@ -370,6 +441,8 @@ fun PlayerScreen(item: PlayableItem, onClose: () -> Unit) {
                     firstButton = firstButton,
                     scrubbing = scrubbing,
                     hasSources = stremioChoices.isNotEmpty(),
+                    showNext = showNext,
+                    onNext = { nextUp?.let { playNext(it) } },
                     onScrub = { scrubbing = it; poke() },
                     onScrubEnd = { scrubbing?.let { player.seekTo(it.toDouble()) }; scrubbing = null; poke() },
                     onClose = { close() },
@@ -379,6 +452,15 @@ fun PlayerScreen(item: PlayableItem, onClose: () -> Unit) {
                     onPanel = { panel = it },
                     onMultiview = { openMultiview() },
                 )
+            }
+
+            // volgende aflevering: in de laatste 45 s (op TV ook in de balk)
+            AnimatedVisibility(
+                showNext && !(isTV && showControls), enter = fadeIn(), exit = fadeOut(),
+                modifier = Modifier.align(Alignment.BottomEnd)
+                    .padding(end = tvs(40), bottom = if (showControls) tvs(130) else tvs(50))
+            ) {
+                NetflixButton(L("Next episode"), Icons.Filled.SkipNext) { nextUp?.let { playNext(it) } }
             }
 
             AnimatedVisibility(
@@ -420,6 +502,8 @@ private fun PlayerControls(
     firstButton: FocusRequester,
     scrubbing: Float?,
     hasSources: Boolean,
+    showNext: Boolean,
+    onNext: () -> Unit,
     onScrub: (Float) -> Unit,
     onScrubEnd: () -> Unit,
     onClose: () -> Unit,
@@ -520,6 +604,7 @@ private fun PlayerControls(
                     if (isTV) {
                         buttons.add(Triple(if (player.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                             if (player.isPlaying) L("Pause") else L("Play")) { player.togglePlay() })
+                        if (showNext) buttons.add(Triple(Icons.Filled.SkipNext, L("Next episode")) { onNext() })
                         if (canSeek) {
                             buttons.add(Triple(Icons.Filled.Replay10, "−10") { onSeek(-10.0) })
                             buttons.add(Triple(Icons.Filled.Forward30, "+30") { onSeek(30.0) })

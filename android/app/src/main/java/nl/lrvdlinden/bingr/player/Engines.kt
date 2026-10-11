@@ -23,6 +23,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import androidx.media3.ui.SubtitleView
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -77,6 +78,8 @@ interface PlaybackEngine {
     fun setAspect(a: PlayerController.Aspect)
     /** Ondertitels verschuiven (seconden); bij ExoPlayer gaat dit via de eigen overlay. */
     fun setSubtitleDelay(seconds: Double)
+    /** Ondertitelgrootte toepassen (VLC laadt de stream op dezelfde plek opnieuw). */
+    fun setSubtitleSize(size: SubtitleSize)
 }
 
 // MARK: - ExoPlayer -------------------------------------------------------------------
@@ -93,7 +96,10 @@ class ExoEngine(ctx: Context) : PlaybackEngine {
     var resizeMode: Int = AspectRatioFrameLayout.RESIZE_MODE_FIT
         private set
     var view: PlayerView? = null
-        set(v) { field = v; v?.resizeMode = resizeMode }
+        set(v) {
+            field = v
+            if (v != null) { v.resizeMode = resizeMode; applySubtitleSize(v, SubtitleSize.current) }
+        }
 
     init {
         val client = Http.client.newBuilder().readTimeout(30, TimeUnit.SECONDS).build()
@@ -251,6 +257,14 @@ class ExoEngine(ctx: Context) : PlaybackEngine {
     }
     override fun addSubtitle(file: File) {}
     override fun setSubtitleDelay(seconds: Double) {}   // externe ondertitels: via de eigen overlay
+    override fun setSubtitleSize(size: SubtitleSize) { view?.let { applySubtitleSize(it, size) } }
+
+    /** Ondertitels uit de stream: vaste grootte (ingebedde lettergroottes negeren), als deel van de beeldhoogte. */
+    private fun applySubtitleSize(v: PlayerView, size: SubtitleSize) {
+        val sv: SubtitleView = v.subtitleView ?: return
+        sv.setApplyEmbeddedFontSizes(false)
+        sv.setFractionalTextSize(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * size.exoFactor)
+    }
 
     override fun setAspect(a: PlayerController.Aspect) {
         resizeMode = when (a) {
@@ -280,6 +294,10 @@ class VlcEngine(ctx: Context) : PlaybackEngine {
     private var pendingPlay = false
     private var released = false
     private var aspect = PlayerController.Aspect.FIT
+    private var lastURL: String? = null
+    private var lastLive = false
+    /** Ingeladen ondertitelbestanden (opnieuw toevoegen als de stream herladen wordt voor een andere grootte) */
+    private val slaves = mutableListOf<File>()
 
     init {
         player.setEventListener(MediaPlayer.EventListener { ev ->
@@ -328,7 +346,13 @@ class VlcEngine(ctx: Context) : PlaybackEngine {
 
     override fun load(url: String, live: Boolean, startFraction: Double?) {
         if (released) return
+        if (url != lastURL) slaves.clear()
+        lastURL = url; lastLive = live
         val media = Media(lib, Uri.parse(url))
+        // ondertitels: VLC tekent ze standaard erg groot (zeker op een tv)
+        val size = SubtitleSize.current
+        media.addOption(":sub-text-scale=${size.vlcScale}")
+        media.addOption(":freetype-rel-fontsize=${size.vlcRelFontSize}")
         media.addOption(":network-caching=${if (live) 1500 else 3000}")
         media.addOption(":http-user-agent=${Http.USER_AGENT}")
         media.addOption(":http-reconnect")
@@ -338,6 +362,7 @@ class VlcEngine(ctx: Context) : PlaybackEngine {
         player.setRate(rate)
         if (layout != null) player.play() else pendingPlay = true
         player.setVolume(if (muted) 0 else 100)
+        for (f in slaves) runCatching { player.addSlave(SLAVE_SUBTITLE, Uri.fromFile(f), true) }
         if (startFraction != null && startFraction > 0.01) {
             scope.launch {
                 repeat(40) {   // wachten tot de lengte bekend is
@@ -381,9 +406,41 @@ class VlcEngine(ctx: Context) : PlaybackEngine {
     override fun selectSubtitle(t: MediaTrack?) { if (!released) player.setSpuTrack(t?.id?.toIntOrNull() ?: -1) }
     override fun addSubtitle(file: File) {
         // 0 = IMedia.Slave.Type.Subtitle
-        if (!released) player.addSlave(SLAVE_SUBTITLE, Uri.fromFile(file), true)
+        if (released) return
+        player.addSlave(SLAVE_SUBTITLE, Uri.fromFile(file), true)
+        slaves.remove(file); slaves.add(file)
     }
-    override fun setSubtitleDelay(seconds: Double) { if (!released) player.setSpuDelay((seconds * 1_000_000).toLong()) }
+    private var spuDelayUs = 0L
+    override fun setSubtitleDelay(seconds: Double) {
+        spuDelayUs = (seconds * 1_000_000).toLong()
+        if (!released) player.setSpuDelay(spuDelayUs)
+    }
+
+    /** VLC kan de grootte niet live wijzigen: de stream op dezelfde plek opnieuw laden (sporen en vertraging terugzetten). */
+    override fun setSubtitleSize(size: SubtitleSize) {
+        val u = lastURL ?: return
+        if (released) return
+        val st = state
+        if (st != EngineState.PLAYING && st != EngineState.PAUSED && st != EngineState.BUFFERING) return
+        val audio = player.getAudioTrack()
+        val spu = player.getSpuTrack()
+        val hadSlaves = slaves.isNotEmpty()
+        load(u, lastLive, if (lastLive) null else position)
+        scope.launch {
+            repeat(40) {
+                delay(250)
+                if (released || lastURL != u) return@launch
+                if (player.isPlaying) {
+                    delay(800)   // sporen laten binnenkomen
+                    if (released || lastURL != u) return@launch
+                    if (audio >= 0) player.setAudioTrack(audio)
+                    if (!hadSlaves) player.setSpuTrack(spu)
+                    if (spuDelayUs != 0L) player.setSpuDelay(spuDelayUs)
+                    return@launch
+                }
+            }
+        }
+    }
 
     override fun setAspect(a: PlayerController.Aspect) {
         aspect = a

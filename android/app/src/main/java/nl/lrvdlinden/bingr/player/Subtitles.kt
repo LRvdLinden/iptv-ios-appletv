@@ -1,9 +1,56 @@
 package nl.lrvdlinden.bingr
 
+import androidx.compose.runtime.mutableIntStateOf
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.charset.Charset
 import java.nio.charset.CodingErrorAction
+
+/**
+ * Grootte van ondertitels (Mijn Bingr → Speler, en tijdens het afspelen bij Opties) — zoals SubtitleSize in Engines.swift.
+ * Prefs-sleutel "subtitle.size": 0 = klein (standaard), 1 = middel, 2 = groot.
+ *
+ * Voor een keuzelijst in Instellingen:
+ * ```
+ * for (s in SubtitleSize.entries) Row(s.title, selected = SubtitleSize.current == s) { SubtitleSize.current = s }
+ * ```
+ * `SubtitleSize.current` is Compose-state (tekent opnieuw bij wijziging). Tijdens het afspelen past
+ * `PlayerController.applySubtitleSize()` de nieuwe grootte meteen toe (VLC laadt dan op dezelfde plek opnieuw).
+ */
+enum class SubtitleSize(val raw: Int) {
+    SMALL(0), MEDIUM(1), LARGE(2);
+
+    val title: String
+        get() = when (this) { SMALL -> L("Small"); MEDIUM -> L("Medium"); LARGE -> L("Large") }
+
+    /** VLC `:sub-text-scale` — percentage van de standaardgrootte (die op een tv erg groot is). */
+    val vlcScale: Int
+        get() = when (this) { SMALL -> 55; MEDIUM -> 75; LARGE -> 100 }
+
+    /** VLC `:freetype-rel-fontsize` — hoger getal = kleiner. */
+    val vlcRelFontSize: Int
+        get() = when (this) { SMALL -> 20; MEDIUM -> 18; LARGE -> 16 }
+
+    /** ExoPlayer (Media3 SubtitleView): factor op de standaard tekstgrootte (5,33 % van de beeldhoogte). */
+    val exoFactor: Float
+        get() = when (this) { SMALL -> 0.8f; MEDIUM -> 1.0f; LARGE -> 1.25f }
+
+    /** Eigen overlay (OpenSubtitles-bestanden bij ExoPlayer). */
+    val overlayFactor: Float
+        get() = when (this) { SMALL -> 0.75f; MEDIUM -> 0.95f; LARGE -> 1.2f }
+
+    companion object {
+        const val key = "subtitle.size"
+        private val version = mutableIntStateOf(0)
+
+        fun from(raw: Int): SubtitleSize = entries.firstOrNull { it.raw == raw } ?: SMALL
+
+        /** De gekozen grootte (Compose-state). */
+        var current: SubtitleSize
+            get() { version.intValue; return from(Prefs.int(key, 0)) }
+            set(v) { Prefs.put(key, v.raw); version.intValue++ }
+    }
+}
 
 /** Eén regel ondertitel (seconden). */
 data class SubtitleCue(val start: Double, val end: Double, val text: String)
@@ -50,10 +97,10 @@ object SRT {
         var cur = mutableListOf<String>()
         for (line in clean.split("\n")) {
             if (line.isBlank()) {
-                if (cur.isNotEmpty()) { blocks += cur; cur = mutableListOf() }
-            } else cur += line
+                if (cur.isNotEmpty()) { blocks.add(cur); cur = mutableListOf() }
+            } else cur.add(line)
         }
-        if (cur.isNotEmpty()) blocks += cur
+        if (cur.isNotEmpty()) blocks.add(cur)
         val cues = mutableListOf<SubtitleCue>()
         for (lines in blocks) {
             val ti = lines.indexOfFirst { it.contains("-->") }

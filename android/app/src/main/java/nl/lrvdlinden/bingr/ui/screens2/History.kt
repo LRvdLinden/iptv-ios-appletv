@@ -52,7 +52,7 @@ fun HistoryScreen(onClose: () -> Unit) {
     }
 
     val pid = Playlists.source?.id
-    val entries = Store.history.filter { it.playlistID == pid }
+    val entries = Store.history(pid)
     val days = entries.groupBy { s2StartOfDay(it.date) }.entries.sortedByDescending { it.key }
         .map { en -> en.key to en.value.sortedByDescending { it.date } }
 
@@ -98,7 +98,8 @@ fun HistoryScreen(onClose: () -> Unit) {
                                 }, null, tint = Theme.secondary, modifier = Modifier.size(tvs(16)))
                                 Text(s2Time(e.date), color = Theme.secondary, fontSize = tsp(11))
                             }
-                            S2MoreButton { menuFor = e }
+                            // TV: geen los knopje in de rij (afstandsbediening); lang indrukken of menuknop opent het menu
+                            if (!AppState.isTV) S2MoreButton { menuFor = e }
                         }
                     )
                 }

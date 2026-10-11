@@ -19,27 +19,81 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
-/** Kinderslot: pincode (in Store.secret), groepen op slot, sessie-ontgrendeling, leeftijdsfilter per profiel. */
+/**
+ * Kinderslot en pincodes (= ParentalControl in ParentalAndReminders.swift).
+ *
+ * - Pincode per profiel: het hoofdaccount gebruikt de kinderslot-pincode ("parental.pin"), elk ander profiel
+ *   een eigen pincode ("profile.<id>.pin"), allemaal in [Store.secret].
+ * - [verify] met de pincode van het hoofdaccount ontgrendelt 30 minuten (daarna gaat het slot vanzelf dicht);
+ *   [check] controleert alleen (één titel toestaan) zonder te ontgrendelen.
+ * - Leeftijdsfilter: [allowed] / [allowedFor] (pure functie, ook op de achtergrond), [isAdultGroup], [isKidsGroup].
+ */
 object ParentalControl {
     /** Ontgrendeld tot (epoch-ms) */
     var unlockedUntil by mutableStateOf<Long?>(null); private set
+    /** Verhoogt als een pincode wijzigt (zodat schermen die [hasPIN] lezen opnieuw tekenen). */
+    var pinVersion by mutableStateOf(0); private set
+    private var relockJob: Job? = null
 
     private const val PIN_KEY = "parental.pin"
     private val adultWords = listOf("adult", "xxx", "18+", "+18", "porn", "erotic", "erotiek", "for adults")
 
-    val hasPIN: Boolean get() = Store.secret(PIN_KEY) != null
+    /** Heeft het hoofdaccount (kinderslot) een pincode? */
+    val hasPIN: Boolean get() { pinVersion; return Store.secret(PIN_KEY) != null }
     val isUnlocked: Boolean get() = (unlockedUntil ?: 0L) > System.currentTimeMillis()
 
-    fun setPIN(pin: String?) = Store.setSecret(PIN_KEY, pin)
+    /** Pincode van het hoofdaccount/kinderslot zetten (null = wissen). */
+    fun setPIN(pin: String?) { Store.setSecret(PIN_KEY, pin); pinVersion++ }
 
+    /** Juiste pincode van het hoofdaccount? Dan 30 min ontgrendelen. */
     fun verify(pin: String): Boolean {
         val stored = Store.secret(PIN_KEY) ?: return false
         if (stored != pin) return false
-        unlockedUntil = System.currentTimeMillis() + 30 * 60_000L   // 30 min ontgrendeld
+        unlock()
         return true
     }
 
-    fun lock() { unlockedUntil = null }
+    /** Alleen controleren (één titel toestaan), zónder de hele bibliotheek te ontgrendelen. */
+    fun check(pin: String): Boolean {
+        val stored = Store.secret(PIN_KEY) ?: return false
+        return stored == pin
+    }
+
+    /** 30 min ontgrendelen; daarna gaat het slot vanzelf weer dicht (en wordt de bibliotheek opnieuw gefilterd). */
+    private fun unlock() {
+        val until = System.currentTimeMillis() + 30 * 60_000L
+        unlockedUntil = until
+        relockJob?.cancel()
+        relockJob = AppScope.launch {
+            delay(30 * 60_000L)
+            if (unlockedUntil == until) unlockedUntil = null
+        }
+    }
+
+    fun lock() { relockJob?.cancel(); relockJob = null; unlockedUntil = null }
+
+    // MARK: pincode per profiel
+
+    /** Sleutel van de pincode van dit profiel (hoofdaccount: "parental.pin"). */
+    fun pinKey(profileID: String): String =
+        if (Store.mainProfileID == profileID) PIN_KEY else "profile.$profileID.pin"
+
+    fun hasPIN(profile: ViewerProfile): Boolean = hasPIN(profile.id)
+    fun hasPIN(profileID: String): Boolean { pinVersion; return Store.secret(pinKey(profileID)) != null }
+
+    fun setPIN(pin: String?, profile: ViewerProfile) = setPIN(pin, profile.id)
+    fun setPIN(pin: String?, profileID: String) { Store.setSecret(pinKey(profileID), pin); pinVersion++ }
+
+    /** Juiste pincode voor dit profiel? (Bij het hoofdaccount ook meteen 30 min ontgrendelen.) */
+    fun verify(pin: String, profile: ViewerProfile): Boolean = verify(pin, profile.id)
+    fun verify(pin: String, profileID: String): Boolean {
+        val stored = Store.secret(pinKey(profileID)) ?: return false
+        if (stored != pin) return false
+        if (Store.mainProfileID == profileID) unlock()
+        return true
+    }
+
+    // MARK: groepen op slot
 
     /** Is deze groep op slot (en dus verborgen tot ontgrendeling)? */
     fun isLocked(playlist: String, group: String): Boolean {
@@ -59,12 +113,24 @@ object ParentalControl {
 
     // MARK: leeftijdsfilter per profiel
 
+    /** Keuzes voor de leeftijdsgrens (naast "Geen") */
     val ageChoices = listOf(6, 9, 12, 16)
 
     /** Is deze groepsnaam duidelijk voor volwassenen? */
     fun isAdultGroup(g: String): Boolean {
         val l = g.lowercase()
         return adultWords.any { l.contains(it) }
+    }
+
+    private val kidsWords = listOf("kid", "kinder", "kinderen", "child", "junior", "jeugd", "cartoon", "anim", "disney",
+        "nick", "pixar", "dreamworks", "family", "familie", "enfant", "jeunesse", "niños", "infantil",
+        "bambini", "ragazzi", "çocuk", "cocuk", "dzieci", "bajki", "kika", "zapp", "baby", "boomerang",
+        "cbeebies", "pbs kids", "toon", "أطفال", "儿童", "动画")
+
+    /** Groep met kinderinhoud? */
+    fun isKidsGroup(g: String): Boolean {
+        val l = g.lowercase()
+        return !isAdultGroup(g) && kidsWords.any { l.contains(it) }
     }
 
     private val ageTable = mapOf(
@@ -83,13 +149,28 @@ object ParentalControl {
         return if (n <= 21) n else null
     }
 
-    /** Mag dit profiel dit zien? (Onbekende classificatie = toegestaan, behalve in volwassenengroepen.) */
-    fun allowed(rated: String?, group: String, limit: Int?): Boolean {
-        if (limit == null || isUnlocked) return true
+    /**
+     * Mag dit profiel dit zien? (Onbekende classificatie = toegestaan, behalve in volwassenengroepen;
+     * bij [strict] (kinderprofiel / t/m 12) alleen wat zeker geschikt is.) Ontgrendeld = alles.
+     */
+    fun allowed(rated: String?, group: String, limit: Int?, genre: String? = null, strict: Boolean = false): Boolean {
+        if (isUnlocked) return true
+        return allowedFor(rated, group, limit, genre, strict)
+    }
+
+    /** Dezelfde regel zonder app-status (veilig op de achtergrond, bijv. Dispatchers.Default). */
+    fun allowedFor(rated: String?, group: String, limit: Int?, genre: String? = null, strict: Boolean = false): Boolean {
+        if (limit == null) return true
         if (isAdultGroup(group)) return false
         val age = minimumAge(rated)
         if (age != null && age > limit) return false
-        return true
+        if (!strict) return true
+        // Kinderprofiel / t/m 12 jaar: alleen bekende leeftijd binnen de grens, een kindergroep of genre animatie/familie.
+        if (age != null) return true
+        if (isKidsGroup(group)) return true
+        val g = genre?.lowercase()
+        if (g != null && (g.contains("animation") || g.contains("family"))) return true
+        return false
     }
 }
 

@@ -3,6 +3,8 @@ package nl.lrvdlinden.bingr
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
@@ -184,9 +186,13 @@ object OpenSubtitles {
         remainingDownloads = r.jI("remaining")
         val link = r.jS("link") ?: throw Net.badURL()
         val data = Http.bytes(link)
-        val file = File(AppState.appContext.cacheDir, "sub-${s.id}.srt")
-        file.writeBytes(data)
-        return file
+        // tekenset herkennen (UTF-8/UTF-16/Windows-1252) en als UTF-8 opslaan, zodat ExoPlayer, VLC en de eigen overlay het goed lezen
+        return withContext(Dispatchers.IO) {
+            val dir = File(AppState.appContext.cacheDir, "subtitles").apply { mkdirs() }
+            val file = File(dir, "sub-${s.id}.srt")
+            file.writeText(SRT.decode(data), Charsets.UTF_8)
+            file
+        }
     }
 
     /** Talen voor de keuzelijst. */

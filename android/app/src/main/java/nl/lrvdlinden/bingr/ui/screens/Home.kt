@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -29,11 +30,10 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -64,8 +64,94 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.max
+import kotlin.math.roundToInt
 
 enum class Filter { ALL, MOVIES, SERIES }
+
+// MARK: vooraf berekende rijen (= HomeIndex in HomeView.swift)
+
+/** Vooraf berekende rijen voor Home/Films/Series: één keer per lijst, op de achtergrond (Dispatchers.Default). */
+class HomeIndex(
+    val movieGroups: List<Pair<String, List<Movie>>> = emptyList(),
+    val seriesGroups: List<Pair<String, List<Series>>> = emptyList(),
+    val recent: List<Movie> = emptyList(),
+    val movieByID: Map<String, Movie> = emptyMap(),
+    val seriesByID: Map<String, Series> = emptyMap(),
+    val channelByID: Map<String, Channel> = emptyMap(),
+    val movieByIMDb: Map<String, Movie> = emptyMap(),
+    val seriesByTitle: Map<String, Series> = emptyMap(),
+) {
+    val seriesTitles: Set<String> get() = seriesByTitle.keys
+
+    private fun itemID(key: String, playlist: String): String? =
+        if (key.length > playlist.length + 1 && key.startsWith("$playlist|")) key.substring(playlist.length + 1) else null
+
+    fun movie(forKey: String, playlist: String): Movie? = itemID(forKey, playlist)?.let { movieByID[it] }
+    fun series(forKey: String, playlist: String): Series? = itemID(forKey, playlist)?.let { seriesByID[it] }
+    fun channel(forKey: String, playlist: String): Channel? = itemID(forKey, playlist)?.let { channelByID[it] }
+
+    /** Staat deze titel (nog) in de gefilterde lijst? */
+    fun contains(t: DetailTarget): Boolean = if (t.isSeries) t.id in seriesByID else t.id in movieByID
+
+    companion object {
+        fun build(lib: Library): HomeIndex {
+            val mGroups = LinkedHashMap<String, MutableList<Movie>>()
+            val movieByID = HashMap<String, Movie>(lib.movies.size * 2)
+            val movieByIMDb = HashMap<String, Movie>()
+            for (m in lib.movies) {
+                mGroups.getOrPut(m.group) { ArrayList() }.add(m)
+                movieByID.putIfAbsent(m.id, m)
+                val i = m.imdbID
+                if (!i.isNullOrEmpty()) movieByIMDb.putIfAbsent(i, m)
+            }
+            val sGroups = LinkedHashMap<String, MutableList<Series>>()
+            val seriesByID = HashMap<String, Series>(lib.series.size * 2)
+            val seriesByTitle = HashMap<String, Series>()
+            for (s in lib.series) {
+                sGroups.getOrPut(s.group) { ArrayList() }.add(s)
+                seriesByID.putIfAbsent(s.id, s)
+                seriesByTitle.putIfAbsent(s.title, s)
+            }
+            val channelByID = HashMap<String, Channel>(lib.channels.size * 2)
+            for (c in lib.channels) channelByID.putIfAbsent(c.id, c)
+            val recent = lib.movies.filter { it.addedAt != null }.sortedByDescending { it.addedAt ?: 0L }
+            return HomeIndex(
+                movieGroups = mGroups.map { e -> Pair<String, List<Movie>>(e.key, e.value) },
+                seriesGroups = sGroups.map { e -> Pair<String, List<Series>>(e.key, e.value) },
+                recent = recent, movieByID = movieByID, seriesByID = seriesByID, channelByID = channelByID,
+                movieByIMDb = movieByIMDb, seriesByTitle = seriesByTitle,
+            )
+        }
+    }
+}
+
+/** Eén [HomeIndex] per geladen lijst, gedeeld door Home/Films/Series en Mijn Bingr (niet opnieuw bij wisselen van tab). */
+object HomeIndexCache {
+    private var lib: Library? = null
+    private var index: HomeIndex? = null
+
+    /** Al klaar voor deze lijst? (alleen op de main thread) */
+    fun peek(l: Library): HomeIndex? = if (lib === l) index else null
+
+    /** Bouwt (op Dispatchers.Default) of geeft de bestaande index voor deze lijst. Aanroepen vanaf de main thread. */
+    suspend fun get(l: Library): HomeIndex {
+        peek(l)?.let { return it }
+        val built = withContext(Dispatchers.Default) { HomeIndex.build(l) }
+        lib = l; index = built
+        return built
+    }
+}
+
+/** De index van de huidige lijst als Compose-state: eerst wat er al is, dan na het (achtergrond)bouwen. */
+@Composable
+fun rememberHomeIndex(lib: Library): HomeIndex {
+    val libKey = System.identityHashCode(lib)
+    var index by remember(libKey) { mutableStateOf(HomeIndexCache.peek(lib) ?: HomeIndex()) }
+    LaunchedEffect(libKey) { index = HomeIndexCache.get(lib) }
+    return index
+}
+
+// MARK: Billboard, Top 10, Voor jou
 
 /** Gegevens van één Home-tab (billboard, Top 10, Voor jou) — eerst uit de cache, daarna het netwerk. */
 private class HomeModel(val filter: Filter) {
@@ -74,24 +160,41 @@ private class HomeModel(val filter: Filter) {
     var trendingSeries by mutableStateOf(emptyList<Series>())
     var forYou by mutableStateOf(emptyList<DetailTarget>())
 
+    /** Wat niet (meer) in de gefilterde lijst staat weghalen (ander profiel, leeftijdsgrens, verborgen groep). */
+    fun prune(lib: Library) {
+        val movieIDs = lib.movies.mapTo(HashSet()) { it.id }
+        val seriesIDs = lib.series.mapTo(HashSet()) { it.id }
+        fun ok(t: DetailTarget) = if (t.isSeries) t.id in seriesIDs else t.id in movieIDs
+        hero?.let { if (!ok(it)) hero = null }
+        if (trendingMovies.any { it.id !in movieIDs }) trendingMovies = trendingMovies.filter { it.id in movieIDs }
+        if (trendingSeries.any { it.id !in seriesIDs }) trendingSeries = trendingSeries.filter { it.id in seriesIDs }
+        if (forYou.any { !ok(it) }) forYou = forYou.filter { ok(it) }
+    }
+
     suspend fun prepare(key: String) {
         val lib = Playlists.library
-        if (lib.movies.isEmpty() && lib.series.isEmpty()) { hero = null; return }
+        if (lib.movies.isEmpty() && lib.series.isEmpty()) {
+            hero = null; trendingMovies = emptyList(); trendingSeries = emptyList(); forYou = emptyList()
+            return
+        }
+        // 0. wat niet (meer) in de gefilterde lijst staat weghalen
+        prune(lib)
         // 1. meteen iets laten zien: billboard en Top 10 uit de cache van vandaag (of je eigen lijst)
         if (hero == null) hero = quickHero(lib)
         val matcher = screensSafe { MatcherCache.matcher(lib, key) }
-        applyTrending(lib, matcher, TrendingStore.cached(false), TrendingStore.cached(true))
+        applyTrending(lib, matcher, TrendingStore.cached(false, kidsProfile()), TrendingStore.cached(true, kidsProfile()))
         if (forYou.isEmpty()) forYou = buildForYou(lib, false, matcher)
         if (hero == null) hero = quickHero(lib)
 
         // 2. daarna pas het netwerk (gedeeld door alle tabbladen)
         val (m, s) = coroutineScope {
-            val a = async { screensSafe { TrendingStore.get(false) } ?: emptyList() }
-            val b = async { screensSafe { TrendingStore.get(true) } ?: emptyList() }
+            val a = async { screensSafe { TrendingStore.get(false, kidsProfile()) } ?: emptyList() }
+            val b = async { screensSafe { TrendingStore.get(true, kidsProfile()) } ?: emptyList() }
             a.await() to b.await()
         }
         applyTrending(lib, matcher, m, s)
         forYou = buildForYou(lib, true, matcher)
+        prune(Playlists.library)
     }
 
     /** Billboard zonder te wachten: iets uit de Top 10, anders willekeurig met poster. */
@@ -148,22 +251,29 @@ private class HomeModel(val filter: Filter) {
      * "Voor jou": vergelijkbaar met wat je keek, Trakt-aanbevelingen die in je lijst staan,
      * onbekeken titels uit de groepen waar je het meest kijkt, en trending.
      */
-    private suspend fun buildForYou(lib: Library, useNetwork: Boolean, matcher: TitleMatcher?): List<DetailTarget> =
-        withContext(Dispatchers.Default) {
+    private suspend fun buildForYou(lib: Library, useNetwork: Boolean, matcher: TitleMatcher?): List<DetailTarget> {
+        // Compose-state op de main thread lezen, daarna op de achtergrond rekenen
+        val progress = Store.progress
+        val localWatched = Store.localWatched
+        val myList = Store.myList
+        val pid = Playlists.source?.id
+        val tm = trendingMovies
+        val ts = trendingSeries
+        return withContext(Dispatchers.Default) {
             val out = ArrayList<DetailTarget>()
             val seen = HashSet<String>()
-            val progress = Store.progress
             fun add(t: DetailTarget) {
                 if (t.id in seen || progress[t.id] != null) return
                 if (filter == Filter.MOVIES && t.isSeries) return
                 if (filter == Filter.SERIES && !t.isSeries) return
                 when (t) {
-                    is DetailTarget.MovieT -> if (Playables.isWatched(t.movie, Trakt.imdb(t.movie))) return
+                    is DetailTarget.MovieT -> if (Trakt.isWatched(Trakt.imdb(t.movie)) || t.movie.id in localWatched) return
                     is DetailTarget.SeriesT -> if (Trakt.watchedCount(Trakt.imdb(t.series)) > 0) return
                 }
                 seen.add(t.id); out.add(t)
             }
-            val movieByID = lib.movies.associateBy { it.id }
+            val movieByID = HashMap<String, Movie>(lib.movies.size * 2).apply { lib.movies.forEach { putIfAbsent(it.id, it) } }
+            val seriesByTitle = HashMap<String, Series>().apply { lib.series.forEach { putIfAbsent(it.title, it) } }
 
             // 1. vergelijkbaar met wat je (half) gekeken hebt
             if (matcher != null) {
@@ -173,8 +283,7 @@ private class HomeModel(val filter: Filter) {
                     if (m != null) {
                         Trakt.imdb(m)?.let { seeds.add(Seed(it, false)) }
                     } else {
-                        val title = progress[k]?.title
-                        lib.series.firstOrNull { it.title == title }?.let { Trakt.imdb(it) }?.let { seeds.add(Seed(it, true)) }
+                        progress[k]?.title?.let { seriesByTitle[it] }?.let { Trakt.imdb(it) }?.let { seeds.add(Seed(it, true)) }
                     }
                     if (seeds.size >= 4) break
                 }
@@ -203,40 +312,177 @@ private class HomeModel(val filter: Filter) {
                 }
             }
 
-            // 3. groepen waar je in kijkt (voortgang, Mijn lijst, bekeken)
+            // 3. groepen waar je in kijkt (voortgang, Mijn lijst, bekeken) — via sleutels, niet de hele lijst
             val groupScore = HashMap<String, Int>()
-            for (k in progress.keys + Store.localWatched) {
+            for (k in progress.keys + localWatched) {
                 movieByID[k]?.let { groupScore[it.group] = (groupScore[it.group] ?: 0) + 1 }
             }
-            val pid = Playlists.source?.id
             if (pid != null) {
-                for (m in lib.movies) if (Store.inMyList(pid, m.id)) groupScore[m.group] = (groupScore[m.group] ?: 0) + 1
-                for (s in lib.series) if (Store.inMyList(pid, s.id)) groupScore[s.group] = (groupScore[s.group] ?: 0) + 2
+                val seriesByID = HashMap<String, Series>().apply { lib.series.forEach { putIfAbsent(it.id, it) } }
+                val prefix = "$pid|"
+                for (k in myList) {
+                    if (!k.startsWith(prefix)) continue
+                    val id = k.substring(prefix.length)
+                    movieByID[id]?.let { groupScore[it.group] = (groupScore[it.group] ?: 0) + 1 }
+                    seriesByID[id]?.let { groupScore[it.group] = (groupScore[it.group] ?: 0) + 2 }
+                }
             }
-            val topGroups = groupScore.entries.sortedByDescending { it.value }.take(4).map { it.key }
-            for (g in topGroups) {
-                lib.movies.filter { it.group == g }.shuffled().take(5).forEach { add(DetailTarget.MovieT(it)) }
-                lib.series.filter { it.group == g }.shuffled().take(5).forEach { add(DetailTarget.SeriesT(it)) }
+            val topGroups = groupScore.entries.sortedByDescending { it.value }.take(4).map { it.key }.toSet()
+            if (topGroups.isNotEmpty()) {
+                val gm = lib.movies.filter { it.group in topGroups }.groupBy { it.group }
+                val gs = lib.series.filter { it.group in topGroups }.groupBy { it.group }
+                for (g in topGroups) {
+                    gm[g].orEmpty().shuffled().take(5).forEach { add(DetailTarget.MovieT(it)) }
+                    gs[g].orEmpty().shuffled().take(5).forEach { add(DetailTarget.SeriesT(it)) }
+                }
             }
             // 4. aanvullen met trending
-            trendingMovies.take(8).zip(trendingSeries.take(8)).forEach { (a, b) -> add(DetailTarget.MovieT(a)); add(DetailTarget.SeriesT(b)) }
-            if (filter == Filter.MOVIES) trendingMovies.take(8).forEach { add(DetailTarget.MovieT(it)) }
-            if (filter == Filter.SERIES) trendingSeries.take(8).forEach { add(DetailTarget.SeriesT(it)) }
+            tm.take(8).zip(ts.take(8)).forEach { (a, b) -> add(DetailTarget.MovieT(a)); add(DetailTarget.SeriesT(b)) }
+            if (filter == Filter.MOVIES) tm.take(8).forEach { add(DetailTarget.MovieT(it)) }
+            if (filter == Filter.SERIES) ts.take(8).forEach { add(DetailTarget.SeriesT(it)) }
             if (out.size < 8) {
                 lib.movies.filter { it.poster != null }.shuffled().take(6).forEach { add(DetailTarget.MovieT(it)) }
                 lib.series.filter { it.poster != null }.shuffled().take(6).forEach { add(DetailTarget.SeriesT(it)) }
             }
             out.take(30)
         }
+    }
 }
 
-private class ContinueItem(
+// MARK: Verder kijken (= ContinueWatching.swift)
+
+class ContinueItem(
     val id: String, val title: String, val subtitle: String, val artwork: String?,
     val fraction: Double, val updated: Long, val isMovie: Boolean,
+    val position: Double? = null, val traktPlaybackID: Long? = null,
 )
+
+/**
+ * Verder kijken van het actieve profiel op deze server (nieuwste eerst). Afleveringen alleen als de serie (nog)
+ * zichtbaar is voor dit profiel. [trakt] = films die je in een andere app (via Trakt) half keek.
+ */
+fun continueItems(filter: Filter, index: HomeIndex, pid: String?, progress: Map<String, ProgressEntry>,
+                  trakt: List<ContinueItem> = emptyList()): List<ContinueItem> {
+    val out = ArrayList<ContinueItem>()
+    for ((key, e) in progress) {
+        if (!Store.belongsToActive(e.profileID)) continue                    // alleen van dit profiel
+        if (e.playlistID != null && e.playlistID != pid) continue           // alleen van deze server
+        val isMovie = key in index.movieByID
+        if (!isMovie && e.title !in index.seriesTitles) continue
+        if (filter == Filter.MOVIES && !isMovie) continue
+        if (filter == Filter.SERIES && isMovie) continue
+        val left = max(0.0, e.position / max(e.fraction, 0.01) - e.position)
+        val art = e.artwork ?: if (isMovie) index.movieByID[key]?.poster else index.seriesByTitle[e.title]?.poster
+        out.add(ContinueItem(key, e.title, L("%d min left", (left / 60).toInt()), art, e.fraction, e.updated, isMovie,
+            position = if (e.position > 0) e.position else null))
+    }
+    if (filter != Filter.SERIES && trakt.isNotEmpty()) {
+        val known = out.mapTo(HashSet()) { it.id }
+        out.addAll(trakt.filter { it.id !in known })
+    }
+    return out.sortedByDescending { it.updated }.take(20)
+}
+
+/** Films die je in een andere app (via Trakt) half keek, gekoppeld aan je lijst (op de achtergrond). */
+@Composable
+fun rememberTraktContinue(index: HomeIndex): List<ContinueItem> {
+    val playback = Trakt.playback
+    var list by remember { mutableStateOf(emptyList<ContinueItem>()) }
+    LaunchedEffect(index, playback) {
+        if (playback.isEmpty()) { list = emptyList(); return@LaunchedEffect }
+        val movies = index.movieByID.values
+        list = withContext(Dispatchers.Default) {
+            playback.filter { it.type == "movie" }.mapNotNull { p ->
+                val imdb = p.imdb ?: return@mapNotNull null
+                val m = index.movieByIMDb[imdb] ?: movies.firstOrNull { Trakt.imdb(it) == imdb } ?: return@mapNotNull null
+                ContinueItem(m.id, m.title, "Trakt · ${p.progress.toInt()}%", m.poster, p.progress / 100.0, 0L, true,
+                    traktPlaybackID = p.id)
+            }
+        }
+    }
+    return list
+}
+
+fun ContinueItem.choice(index: HomeIndex): ResumeChoice {
+    val d: DetailTarget? = if (isMovie) index.movieByID[id]?.let { DetailTarget.MovieT(it) }
+    else index.seriesByTitle[title]?.let { DetailTarget.SeriesT(it) }
+    return ResumeChoice(id, title, fraction, position, d)
+}
+
+fun removeFromContinue(c: ContinueItem) {
+    Store.clearProgress(c.id)
+    c.traktPlaybackID?.let { id -> AppScope.launch { screensSafe { Trakt.removePlayback(id) } } }
+}
+
+/** Kaart voor "Verder kijken": poster met afspeelicoon, daaronder een duidelijke voortgangsbalk en de resterende tijd. */
+@Composable
+fun ContinueCard(title: String, poster: String?, fraction: Double, caption: String?, modifier: Modifier = Modifier) {
+    Column(modifier.width(Theme.posterWidth), verticalArrangement = Arrangement.spacedBy(tvs(5))) {
+        Box(contentAlignment = Alignment.Center) {
+            PosterCard(title, poster)
+            Box(
+                Modifier.size(tvs(38)).clip(CircleShape).background(Color.Black.copy(alpha = 0.55f))
+                    .border(1.5.dp, Color.White.copy(alpha = 0.9f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) { Icon(Icons.Default.PlayArrow, null, tint = Color.White, modifier = Modifier.size(tvs(20))) }
+        }
+        ProgressBar(max(fraction, 0.03), Modifier.width(Theme.posterWidth).height(tvs(4)).clip(RoundedCornerShape(50)))
+        if (caption != null) {
+            Text(caption, color = Theme.secondary, fontSize = tsp(10), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.width(Theme.posterWidth))
+        }
+    }
+}
+
+/** "Hervatten vanaf … / Vanaf het begin kijken / Meer info" voor een titel uit Verder kijken. */
+@Composable
+fun ResumeDialog(choice: ResumeChoice, onDismiss: () -> Unit) {
+    val pct = (choice.fraction * 100).roundToInt()
+    val actions = buildList {
+        add(S2Action(choice.position?.let { L("Resume from %@", Playables.formatPosition(it)) } ?: L("Resume"), Icons.Default.PlayArrow) {
+            AppScope.launch { ResumePlayer.play(choice.id, choice.title, restart = false)?.let { ScreensNav.detail(it) } }
+        })
+        add(S2Action(L("Watch from the beginning"), Icons.Default.Replay) {
+            AppScope.launch { ResumePlayer.play(choice.id, choice.title, restart = true)?.let { ScreensNav.detail(it) } }
+        })
+        choice.detail?.let { d -> add(S2Action(L("More info"), Icons.Outlined.Info) { ScreensNav.detail(d) }) }
+    }
+    S2ActionDialog("${choice.title} · ${L("%d%% watched", pct)}", actions, onDismiss = onDismiss)
+}
+
+/** Rij "Verder kijken": tik = kiezen (hervatten/opnieuw/meer info), lang indrukken = verwijderen. */
+@Composable
+fun ContinueRow(items: List<ContinueItem>, index: HomeIndex) {
+    if (items.isEmpty()) return
+    var choice by remember { mutableStateOf<ResumeChoice?>(null) }
+    var removing by remember { mutableStateOf<ContinueItem?>(null) }
+    MediaRow(L("Continue watching")) {
+        items(items) { c ->
+            ContinueCard(
+                c.title, c.artwork, c.fraction, c.subtitle,
+                Modifier.focusLift(onLongClick = { removing = c }) { choice = c.choice(index) }
+            )
+        }
+    }
+    choice?.let { ResumeDialog(it) { choice = null } }
+    removing?.let { c ->
+        S2ActionDialog(c.title, listOf(
+            S2Action(L("Remove from Continue watching"), Icons.Default.Close, destructive = true) { removeFromContinue(c) }
+        ), onDismiss = { removing = null })
+    }
+}
 
 private fun openDetail(t: DetailTarget) = ScreensNav.detail(t)
 private fun openCategory(title: String, items: List<DetailTarget>) = ScreensNav.category(CategoryTarget(title, items))
+
+/** Profielen met een leeftijdsgrens gaan via de detailpagina (die controleert de classificatie). */
+private fun homePlay(t: DetailTarget) {
+    val ageLimited = Store.activeProfile?.effectiveAgeLimit != null
+    when {
+        t is DetailTarget.MovieT && !ageLimited -> AppState.play(Playables.movie(t.movie, Trakt.imdb(t.movie)))
+        else -> openDetail(t)
+    }
+}
 
 /** Home / Films / Series in Netflix-stijl (= HomeView.swift). */
 @Composable
@@ -246,12 +492,30 @@ fun HomeScreen(filter: Filter) {
     val pid = Playlists.source?.id
     val model = remember(filter) { HomeModel(filter) }
     val listState = rememberLazyListState()
-    val prepKey = "${pid ?: ""}-${lib.movies.size}-${lib.series.size}"
-    LaunchedEffect(prepKey) { model.prepare(prepKey) }
+    val index = rememberHomeIndex(lib)
+    val prepKey = "${Store.activeProfileID ?: ""}-${pid ?: ""}-${lib.movies.size}-${lib.series.size}"
+    LaunchedEffect(prepKey) { model.prepare("${pid ?: ""}-${lib.movies.size}-${lib.series.size}") }
 
-    val movieGroups = remember(lib) { lib.movieGroups }
-    val seriesGroups = remember(lib) { lib.seriesGroups }
+    val kids = Store.activeProfile?.kids ?: false
     val groupLimit = if (filter == Filter.ALL) 8 else 40
+
+    // Verder kijken, Mijn lijst en favorieten via sleutels (snel), niet door de hele bibliotheek te lopen
+    val progress = Store.progress
+    val traktContinue = rememberTraktContinue(index)
+    val continueList = remember(progress, index, pid, filter, traktContinue, Store.activeProfileID) {
+        continueItems(filter, index, pid, progress, traktContinue)
+    }
+    val myList = Store.myList
+    val myMovies = remember(myList, index, pid) {
+        if (pid == null) emptyList<Movie>() else myList.mapNotNull { index.movie(it, pid) }.sortedBy { it.title }
+    }
+    val mySeries = remember(myList, index, pid) {
+        if (pid == null) emptyList<Series>() else myList.mapNotNull { index.series(it, pid) }.sortedBy { it.title }
+    }
+    val favorites = Store.favorites
+    val favChannels = remember(favorites, index, pid) {
+        if (pid == null) emptyList<Channel>() else favorites.mapNotNull { index.channel(it, pid) }
+    }
 
     Box(Modifier.fillMaxSize().background(Theme.bg)) {
         LazyColumn(
@@ -260,80 +524,72 @@ fun HomeScreen(filter: Filter) {
             verticalArrangement = Arrangement.spacedBy(tvs(26)),
             modifier = Modifier.fillMaxSize()
         ) {
-            item {
+            item(key = "hero") {
                 val h = model.hero
                 if (h != null) {
-                    HeroBanner(
-                        target = h,
-                        onPlay = {
-                            when (h) {
-                                is DetailTarget.MovieT -> AppState.play(Playables.movie(h.movie, Trakt.imdb(h.movie)))
-                                is DetailTarget.SeriesT -> openDetail(h)
-                            }
-                        },
-                        onInfo = { openDetail(h) }
-                    )
+                    HeroBanner(target = h, onPlay = { homePlay(h) }, onInfo = { openDetail(h) })
                 } else {
                     Spacer(Modifier.then(if (tv) Modifier else Modifier.statusBarsPadding()).height(tvs(90)))
                 }
             }
 
+            // Verder kijken
+            item(key = "continue") { ContinueRow(continueList, index) }
+
             // Mijn lijst
-            item {
-                if (filter != Filter.SERIES) {
-                    val mine = remember(lib, pid, Store.myList) { lib.movies.filter { m -> pid != null && Store.inMyList(pid, m.id) } }
-                    if (mine.isNotEmpty()) MovieRow(L("My List"), mine, mine, pid)
-                } else {
-                    val mine = remember(lib, pid, Store.myList) { lib.series.filter { s -> pid != null && Store.inMyList(pid, s.id) } }
-                    if (mine.isNotEmpty()) SeriesRow(L("My List"), mine, mine)
+            item(key = "mylist") {
+                when (filter) {
+                    Filter.ALL -> {
+                        val mine = remember(myMovies, mySeries) {
+                            val a: List<DetailTarget> = myMovies.map { DetailTarget.MovieT(it) }
+                            val b: List<DetailTarget> = mySeries.map { DetailTarget.SeriesT(it) }
+                            a + b
+                        }
+                        if (mine.isNotEmpty()) TargetRow(L("My List"), mine, pid)
+                    }
+                    Filter.MOVIES -> if (myMovies.isNotEmpty()) MovieRow(L("My List"), myMovies, myMovies, pid)
+                    Filter.SERIES -> if (mySeries.isNotEmpty()) SeriesRow(L("My List"), mySeries, mySeries)
                 }
             }
             // Onlangs toegevoegd
-            if (filter != Filter.SERIES) item {
-                val all = remember(lib) { lib.movies.filter { it.addedAt != null }.sortedByDescending { it.addedAt ?: 0L } }
+            if (filter != Filter.SERIES) item(key = "recent") {
+                val all = index.recent
                 if (all.isNotEmpty()) MovieRow(L("Recently added"), all.take(30), all, pid)
             }
-            // Verder kijken
-            item { ContinueRow(filter, lib) }
             // Voor jou
-            item { ForYouRow(filter, model.forYou) }
+            item(key = "foryou") { ForYouRow(filter, model.forYou) }
             // Top 10 (Home: eerst series, dan films)
-            if (filter != Filter.MOVIES) item {
+            if (filter != Filter.MOVIES) item(key = "top10s") {
                 val list = model.trendingSeries
-                if (list.isNotEmpty()) Top10SeriesRow(L("Top 10 series today"), list)
+                if (list.isNotEmpty()) Top10SeriesRow(if (kids) L("Top 10 kids series") else L("Top 10 series today"), list)
             }
-            if (filter != Filter.SERIES) item {
+            if (filter != Filter.SERIES) item(key = "top10m") {
                 val list = model.trendingMovies
-                if (list.isNotEmpty()) Top10MoviesRow(L("Top 10 movies today"), list)
+                if (list.isNotEmpty()) Top10MoviesRow(if (kids) L("Top 10 kids movies") else L("Top 10 movies today"), list)
             }
 
             // favoriete zenders
-            if (filter == Filter.ALL) item {
-                val favs = remember(lib, pid, Store.favorites) { lib.channels.filter { c -> pid != null && Store.isFavorite(pid, c.id) } }
-                if (favs.isNotEmpty()) {
-                    MediaRow(L("Favorite channels")) {
-                        items(favs) { c ->
-                            val now = lib.nowPlaying(c)
-                            ChannelCard(
-                                c, now, favorite = true,
-                                modifier = Modifier.focusLift { AppState.play(Playables.channel(c, now), favs) }
-                            )
-                        }
+            if (filter == Filter.ALL && favChannels.isNotEmpty()) item(key = "favs") {
+                MediaRow(L("Favorite channels")) {
+                    items(favChannels) { c ->
+                        val now = lib.nowPlaying(c)
+                        ChannelCard(
+                            c, now, favorite = true,
+                            modifier = Modifier.focusLift { AppState.play(Playables.channel(c, now), favChannels) }
+                        )
                     }
                 }
             }
 
             // categorieën
-            if (filter != Filter.SERIES) items(movieGroups.take(groupLimit)) { g ->
-                val all = remember(lib, g) { lib.movies.filter { it.group == g } }
+            if (filter != Filter.SERIES) items(index.movieGroups.take(groupLimit), key = { "m|" + it.first }) { (g, all) ->
                 if (all.isNotEmpty()) MovieRow(g, all.take(40), all, pid)
             }
-            if (filter != Filter.MOVIES) items(seriesGroups.take(groupLimit)) { g ->
-                val all = remember(lib, g) { lib.series.filter { it.group == g } }
+            if (filter != Filter.MOVIES) items(index.seriesGroups.take(groupLimit), key = { "s|" + it.first }) { (g, all) ->
                 if (all.isNotEmpty()) SeriesRow(g, all.take(40), all)
             }
 
-            if (lib.movies.isEmpty() && lib.series.isEmpty() && !Playlists.isLoading) item {
+            if (lib.movies.isEmpty() && lib.series.isEmpty() && !Playlists.isLoading && !Playlists.isFiltering) item(key = "empty") {
                 Column(
                     Modifier.fillMaxWidth().padding(top = 60.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
@@ -368,9 +624,7 @@ fun HomeScreen(filter: Filter) {
                 Box(Modifier.size(34.dp).focusLift { ScreensNav.search() }, contentAlignment = Alignment.Center) {
                     Icon(Icons.Default.Search, L("Search"), tint = Color.White, modifier = Modifier.size(25.dp))
                 }
-                Playlists.source?.let { s ->
-                    Box(Modifier.focusLift { AppState.switchPlaylist() }) { AvatarCircle(s, 30.dp) }
-                }
+                Box(Modifier.focusLift { AppState.switchPlaylist() }) { ProfileAvatar(size = 30.dp) }
             }
         }
     }
@@ -385,16 +639,38 @@ private fun MovieRow(title: String, items: List<Movie>, all: List<Movie>?, pid: 
     }
 }
 
+/** Aantal bekeken afleveringen van een serie: Trakt, of lokaal (per profiel). */
+private fun watchedEpisodeCount(s: Series): Int {
+    val lw = Store.localWatched
+    return maxOf(Trakt.watchedCount(Trakt.imdb(s)), Store.localWatchedCount(s.id), s.episodes.count { it.id in lw })
+}
+
 @Composable
 private fun SeriesRow(title: String, items: List<Series>, all: List<Series>?) {
     MediaRow(title, onSeeAll = all?.let { list -> { openCategory(title, list.map { DetailTarget.SeriesT(it) }) } }) {
-        items(items) { s ->
-            val count = Trakt.watchedCount(Trakt.imdb(s))
-            PosterCard(
-                s.title, s.poster,
-                modifier = Modifier.focusLift { openDetail(DetailTarget.SeriesT(s)) },
-                badge = if (count > 0) L("%d WATCHED", count) else null
-            )
+        items(items) { s -> SeriesPoster(s) }
+    }
+}
+
+@Composable
+private fun SeriesPoster(s: Series) {
+    val count = watchedEpisodeCount(s)
+    PosterCard(
+        s.title, s.poster,
+        modifier = Modifier.focusLift { openDetail(DetailTarget.SeriesT(s)) },
+        badge = if (count > 0) L("%d WATCHED", count) else null
+    )
+}
+
+/** Films én series in één rij (Mijn lijst op Home). */
+@Composable
+private fun TargetRow(title: String, items: List<DetailTarget>, pid: String?) {
+    MediaRow(title, onSeeAll = { openCategory(title, items) }) {
+        items(items) { t ->
+            when (t) {
+                is DetailTarget.MovieT -> MoviePoster(t.movie, pid)
+                is DetailTarget.SeriesT -> SeriesPoster(t.series)
+            }
         }
     }
 }
@@ -405,91 +681,28 @@ private fun MoviePoster(m: Movie, pid: String?) {
     var menu by remember { mutableStateOf(false) }
     val imdb = Trakt.imdb(m)
     val watched = Playables.isWatched(m, imdb)
-    Box {
-        PosterCard(
-            m.title, m.poster,
-            modifier = Modifier.focusLift(onLongClick = { menu = true }) { openDetail(DetailTarget.MovieT(m)) },
-            watched = watched,
-            progress = Store.progress[m.id]?.fraction
-        )
-        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-            DropdownMenuItem(
-                text = { Text(L("Play")) },
-                leadingIcon = { Icon(Icons.Default.PlayArrow, null) },
-                onClick = { menu = false; AppState.play(Playables.movie(m, imdb)) }
-            )
-            DropdownMenuItem(
-                text = { Text(if (watched) L("Mark as unwatched") else L("Mark as watched")) },
-                leadingIcon = { Icon(if (watched) Icons.Default.VisibilityOff else Icons.Default.CheckCircle, null) },
-                onClick = {
-                    menu = false
-                    Store.setLocalWatched(m.id, !watched)
-                    AppScope.launch { screensSafe { Trakt.setWatched(Playables.movie(m, imdb), !watched) } }
-                }
-            )
+    PosterCard(
+        m.title, m.poster,
+        modifier = Modifier.focusLift(onLongClick = { menu = true }) { openDetail(DetailTarget.MovieT(m)) },
+        watched = watched,
+        progress = Store.progress[m.id]?.fraction
+    )
+    if (menu) {
+        val actions = buildList {
+            add(S2Action(L("Play"), Icons.Default.PlayArrow) { homePlay(DetailTarget.MovieT(m)) })
+            add(S2Action(if (watched) L("Mark as unwatched") else L("Mark as watched"),
+                if (watched) Icons.Default.VisibilityOff else Icons.Default.CheckCircle) {
+                Store.setLocalWatched(m.id, !watched)
+                AppScope.launch { screensSafe { Trakt.setWatched(Playables.movie(m, imdb), !watched) } }
+            })
             if (pid != null) {
                 val inList = Store.inMyList(pid, m.id)
-                DropdownMenuItem(
-                    text = { Text(if (inList) L("Remove from My List") else L("Add to My List")) },
-                    leadingIcon = { Icon(if (inList) Icons.Default.Close else Icons.Default.Add, null) },
-                    onClick = { menu = false; Store.toggleMyList(pid, m.id) }
-                )
+                add(S2Action(if (inList) L("Remove from My List") else L("Add to My List"),
+                    if (inList) Icons.Default.Close else Icons.Default.Add) { Store.setMyList(pid, m.id, !inList) })
             }
         }
+        S2ActionDialog(m.title, actions, onDismiss = { menu = false })
     }
-}
-
-@Composable
-private fun ContinueRow(filter: Filter, lib: Library) {
-    val progress = Store.progress
-    val items = remember(progress, lib, filter) {
-        val movieIDs = lib.movies.mapTo(HashSet()) { it.id }
-        val m3uEpisodes = HashSet<String>().apply { lib.series.forEach { s -> s.episodes.forEach { add(it.id) } } }
-        progress.mapNotNull { (key, e) ->
-            val isMovie = key in movieIDs
-            if (!isMovie && !key.startsWith("xe") && !key.startsWith("jfe") && !key.startsWith("pxe") && !key.startsWith("se")
-                && key !in m3uEpisodes) return@mapNotNull null
-            if (filter == Filter.MOVIES && !isMovie) return@mapNotNull null
-            if (filter == Filter.SERIES && isMovie) return@mapNotNull null
-            val left = max(0.0, e.position / max(e.fraction, 0.01) - e.position)
-            ContinueItem(key, e.title, L("%d min left", (left / 60).toInt()), e.artwork, e.fraction, e.updated, isMovie)
-        }.sortedByDescending { it.updated }.take(20)
-    }
-    if (items.isEmpty()) return
-    MediaRow(L("Continue watching")) {
-        items(items) { c -> ContinueCard(c, lib) }
-    }
-}
-
-@Composable
-private fun ContinueCard(c: ContinueItem, lib: Library) {
-    var menu by remember { mutableStateOf(false) }
-    Box {
-        Column(
-            Modifier.width(Theme.posterWidth).focusLift(onLongClick = { menu = true }) { resume(c, lib) }
-        ) {
-            PosterCard(c.title, c.artwork, progress = c.fraction)
-            Spacer(Modifier.height(4.dp))
-            Text(c.subtitle, color = Theme.secondary, fontSize = tsp(10), maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-            DropdownMenuItem(
-                text = { Text(L("Remove from Continue watching")) },
-                leadingIcon = { Icon(Icons.Default.Close, null) },
-                onClick = { menu = false; Store.clearProgress(c.id) }
-            )
-        }
-    }
-}
-
-private fun resume(c: ContinueItem, lib: Library) {
-    lib.movies.firstOrNull { it.id == c.id }?.let { m -> AppState.play(Playables.movie(m, Trakt.imdb(m))); return }
-    for (s in lib.series) {
-        val e = s.episodes.firstOrNull { it.id == c.id }
-        if (e != null) { AppState.play(Playables.episode(e, s, Trakt.imdb(s))); return }
-    }
-    // aflevering die pas bij openen geladen wordt → open de serie
-    lib.series.firstOrNull { it.title == c.title }?.let { openDetail(DetailTarget.SeriesT(it)) }
 }
 
 @Composable
@@ -644,3 +857,7 @@ fun ImdbBadge(rating: String) {
         Text(rating, color = Color.White, fontSize = tsp(14), fontWeight = FontWeight.Bold)
     }
 }
+
+
+/** Kinderprofiel: eigen Top 10 met kids-titels. */
+private fun kidsProfile(): Boolean = Store.activeProfile?.kids == true

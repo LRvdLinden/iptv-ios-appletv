@@ -1,6 +1,9 @@
 package nl.lrvdlinden.bingr
 
+import android.graphics.Bitmap
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.LazyListScope
@@ -8,16 +11,23 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
@@ -75,8 +85,8 @@ fun Top10Card(rank: Int, title: String, poster: String?, watched: Boolean = fals
             val x = size.width - layout.size.width + size.width * 0.12f
             val y = size.height - layout.size.height * 0.92f
             drawText(layout, color = Color.Black, topLeft = androidx.compose.ui.geometry.Offset(x, y))
-            drawText(measurer, "$rank", topLeft = androidx.compose.ui.geometry.Offset(x, y),
-                style = style.copy(color = Color(0xFF8C8C8C)), drawStyle = Stroke(width = (h.value / 45f).coerceAtLeast(3f)))
+            drawText(layout, color = Color(0xFF8C8C8C), topLeft = androidx.compose.ui.geometry.Offset(x, y),
+                drawStyle = Stroke(width = (h.value / 45f).coerceAtLeast(3f)))
         })
         Box(Modifier.offset(x = -(h * 0.16f))) {
             PosterCard(title, poster, width = w, watched = watched, badge = badge)
@@ -136,4 +146,88 @@ fun ChannelCard(channel: Channel, now: EPGProgram?, favorite: Boolean = false, m
 fun SectionHeader(text: String) {
     Text(text.uppercase(), color = Color(0xFF8E8E93), fontSize = tsp(12),
         modifier = Modifier.padding(start = Theme.edge + 16.dp, top = 18.dp, bottom = 6.dp), textAlign = TextAlign.Start)
+}
+
+// MARK: avatars (profielen en servers)
+
+/** Drawable-id van een getekend figuurtje ("kid01" … "kid16", res/drawable-nodpi), of null. */
+fun avatarDrawable(symbol: String): Int? = when (symbol) {
+    "kid01" -> R.drawable.kid01; "kid02" -> R.drawable.kid02; "kid03" -> R.drawable.kid03; "kid04" -> R.drawable.kid04
+    "kid05" -> R.drawable.kid05; "kid06" -> R.drawable.kid06; "kid07" -> R.drawable.kid07; "kid08" -> R.drawable.kid08
+    "kid09" -> R.drawable.kid09; "kid10" -> R.drawable.kid10; "kid11" -> R.drawable.kid11; "kid12" -> R.drawable.kid12
+    "kid13" -> R.drawable.kid13; "kid14" -> R.drawable.kid14; "kid15" -> R.drawable.kid15; "kid16" -> R.drawable.kid16
+    else -> null
+}
+
+/** Drawable-id van het figuurtje van deze avatar (null = emoji). */
+val PlaylistAvatar.drawableRes: Int? get() = if (isIllustration) avatarDrawable(symbol) else null
+
+/**
+ * Ronde avatar: foto, getekend figuurtje of emoji op kleurverloop.
+ * [ring] = witte rand (focus op TV), [editing] = potloodje erover, [badge] = rood rondje met poppetje rechtsonder
+ * (hoofdaccount).
+ */
+@Composable
+fun AvatarView(
+    avatar: PlaylistAvatar,
+    photo: Bitmap?,
+    size: Dp,
+    ring: Boolean = false,
+    editing: Boolean = false,
+    badge: Boolean = false,
+) {
+    val pal = PlaylistAvatar.palettes[Math.floorMod(avatar.colorIndex, PlaylistAvatar.palettes.size)]
+    val image = remember(photo) { photo?.asImageBitmap() }
+    Box(Modifier.size(size)) {
+        Box(
+            Modifier.matchParentSize().clip(CircleShape)
+                .background(Brush.linearGradient(listOf(Color(pal.first), Color(pal.second)))),
+            contentAlignment = Alignment.Center
+        ) {
+            val res = avatar.drawableRes
+            when {
+                image != null -> Image(image, null, Modifier.matchParentSize(), contentScale = ContentScale.Crop)
+                res != null -> Image(painterResource(res), null, Modifier.matchParentSize(), contentScale = ContentScale.Crop)
+                else -> Text(avatar.symbol, fontSize = (size.value * 0.42f).sp)
+            }
+            if (editing) {
+                Box(Modifier.matchParentSize().background(Color.Black.copy(alpha = 0.55f)), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.Edit, null, tint = Color.White, modifier = Modifier.size(size * 0.3f))
+                }
+            }
+        }
+        if (ring) Box(Modifier.matchParentSize().border(tvs(3), Color.White, CircleShape))
+        if (badge) {
+            val b = (size * 0.24f).coerceIn(16.dp, 36.dp)
+            Box(
+                Modifier.align(Alignment.BottomEnd).size(b).clip(CircleShape).background(Theme.red)
+                    .border(2.dp, Color.Black, CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.Person, null, tint = Color.White, modifier = Modifier.size(b * 0.6f))
+            }
+        }
+    }
+}
+
+/**
+ * Avatar van een kijkprofiel (standaard het actieve profiel): foto, figuurtje of emoji.
+ * Zonder profiel een donkere cirkel.
+ */
+@Composable
+fun ProfileAvatar(
+    profile: ViewerProfile? = Store.activeProfile,
+    size: Dp,
+    ring: Boolean = false,
+    editing: Boolean = false,
+    badge: Boolean = false,
+) {
+    if (profile == null) {
+        Box(Modifier.size(size).clip(CircleShape).background(Theme.elevated)
+            .then(if (ring) Modifier.border(tvs(3), Color.White, CircleShape) else Modifier))
+        return
+    }
+    val v = Store.photoVersion
+    val photo = remember(profile.id, v) { Store.photo(profile.id) }
+    AvatarView(profile.avatar, photo, size, ring = ring, editing = editing, badge = badge)
 }

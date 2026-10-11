@@ -45,11 +45,21 @@ object Metadata {
         }
     }
 
+    /**
+     * Cache-sleutel "m|title|year" / "s|title|year". Pure functie: veilig vanaf elke thread
+     * (bijv. bij het filteren van de bibliotheek op Dispatchers.Default).
+     */
+    @JvmStatic
     fun key(title: String, year: Int?, isShow: Boolean): String =
         "${if (isShow) "s" else "m"}|${title.lowercase()}|${year?.toString() ?: ""}"
 
+    /** Thread-safe (ConcurrentHashMap): ook vanaf de achtergrond te gebruiken. */
     fun cached(m: Movie): TitleMetadata? = cache[key(m.title, m.year, false)]
     fun cached(s: Series): TitleMetadata? = cache[key(s.title, s.year, true)]
+    fun cached(title: String, year: Int?, isShow: Boolean): TitleMetadata? = cache[key(title, year, isShow)]
+
+    /** Kopie van de cache (voor filteren op de achtergrond). */
+    fun snapshot(): Map<String, TitleMetadata> = HashMap(cache)
 
     suspend fun metadata(m: Movie, knownIMDb: String? = null): TitleMetadata? =
         fetch(m.title, m.year, false, knownIMDb ?: m.imdbID)

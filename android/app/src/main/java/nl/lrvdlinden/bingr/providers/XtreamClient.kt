@@ -1,7 +1,9 @@
 package nl.lrvdlinden.bingr
 
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -53,7 +55,8 @@ class XtreamClient(source: PlaylistSource, val password: String) {
         return runCatching { Net.json(u).jItems }.getOrDefault(emptyList())
     }
 
-    suspend fun library(): Library = coroutineScope {
+    /** Live, films en series in één keer (parallel); omzetten op Dispatchers.Default. Series-info pas bij openen ([episodes]). */
+    suspend fun library(): Library = withContext(Dispatchers.Default) { coroutineScope {
         val liveCats = async { list("get_live_categories") }
         val live = async { list("get_live_streams") }
         val vodCats = async { list("get_vod_categories") }
@@ -98,7 +101,7 @@ class XtreamClient(source: PlaylistSource, val password: String) {
                 plot = s.jS("plot"), rating = s.jD("rating"), xtreamSeriesID = sid)
         }
         Library(channels = channels, movies = movies, series = series)
-    }
+    } }
 
     suspend fun episodes(series: Series): List<Episode> {
         val sid = series.xtreamSeriesID ?: return emptyList()

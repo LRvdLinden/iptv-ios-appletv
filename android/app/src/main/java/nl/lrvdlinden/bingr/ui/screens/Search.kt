@@ -85,8 +85,16 @@ private fun searchGuide(q: String, lib: Library): List<ProgramHit> {
 private fun categoryHits(q: String, lib: Library): List<GroupHit> {
     val t = screensFold(q.trim())
     val out = ArrayList<GroupHit>()
-    for (g in lib.movieGroups) if (screensFold(g).contains(t)) out.add(GroupHit(g, lib.movies.filter { it.group == g }.map { DetailTarget.MovieT(it) }))
-    for (g in lib.seriesGroups) if (screensFold(g).contains(t)) out.add(GroupHit(g, lib.series.filter { it.group == g }.map { DetailTarget.SeriesT(it) }))
+    val mg = lib.movieGroups.filter { screensFold(it).contains(t) }.take(30).toSet()
+    val sg = lib.seriesGroups.filter { screensFold(it).contains(t) }.take(30).toSet()
+    if (mg.isNotEmpty()) {
+        val by = lib.movies.filter { it.group in mg }.groupBy { it.group }
+        for (g in lib.movieGroups) if (g in mg) out.add(GroupHit(g, by[g].orEmpty().map { DetailTarget.MovieT(it) }))
+    }
+    if (sg.isNotEmpty()) {
+        val by = lib.series.filter { it.group in sg }.groupBy { it.group }
+        for (g in lib.seriesGroups) if (g in sg) out.add(GroupHit(g, by[g].orEmpty().map { DetailTarget.SeriesT(it) }))
+    }
     return out.take(30)
 }
 
@@ -128,9 +136,14 @@ fun SearchScreen(modal: Boolean, onClose: () -> Unit) {
         }
         searching = true
         val lib = Playlists.library
-        results = screensSafe { Playlists.search(q) } ?: SearchResults()
-        programs = withContext(Dispatchers.Default) { searchGuide(q, lib) }
-        groupHits = withContext(Dispatchers.Default) { categoryHits(q, lib) }
+        val r = screensSafe { Playlists.search(q) } ?: SearchResults()
+        val p = withContext(Dispatchers.Default) { searchGuide(q, lib) }
+        val g = withContext(Dispatchers.Default) { categoryHits(q, lib) }
+        // intussen verder getypt → deze (oude) resultaten niet meer tonen
+        if (q != query.trim()) return@LaunchedEffect
+        results = r
+        programs = p
+        groupHits = g
         searching = false
     }
 
@@ -201,7 +214,8 @@ fun SearchScreen(modal: Boolean, onClose: () -> Unit) {
                             )
                         }
                     }
-                } else if (results.isEmpty && programs.isEmpty() && groupHits.isEmpty() && !searching) {
+                } else if (results.channels.isEmpty() && results.movies.isEmpty() && results.series.isEmpty() &&
+                    (results.other.isEmpty() || !Store.isMainActive) && programs.isEmpty() && groupHits.isEmpty() && !searching) {
                     full {
                         Text(
                             L("Nothing found for “%@”.", q), color = Theme.secondary, fontSize = tsp(15), textAlign = TextAlign.Center,
@@ -310,7 +324,7 @@ fun SearchScreen(modal: Boolean, onClose: () -> Unit) {
                 }
 
                 // andere afspeellijsten: tik → wissel van afspeellijst en open het item
-                if (results.other.isNotEmpty()) {
+                if (results.other.isNotEmpty() && Store.isMainActive) {
                     full { SearchSectionTitle(L("In your other playlists")) }
                     items(results.other, span = { GridItemSpan(maxLineSpan) }) { h ->
                         Row(
