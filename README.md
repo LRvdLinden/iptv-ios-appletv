@@ -3,7 +3,7 @@
 [![Build](https://github.com/LRvdLinden/iptv-ios-appletv/actions/workflows/build.yml/badge.svg)](https://github.com/LRvdLinden/iptv-ios-appletv/actions/workflows/build.yml)
 
 Native IPTV- en mediaspeler voor **iPhone, iPad, Mac en Apple TV** met de look & feel van Netflix.
-SwiftUI · iOS 17+ · tvOS 17+ · macOS 14+ · Apple- én VLC-engine · 11 talen · versie 1.0.0 (build 31).
+SwiftUI · iOS 17+ · tvOS 17+ · macOS 14+ · Apple- én VLC-engine · 11 talen · versie 1.0.0 (build 32).
 
 ## Screenshots
 
@@ -64,7 +64,7 @@ SwiftUI · iOS 17+ · tvOS 17+ · macOS 14+ · Apple- én VLC-engine · 11 talen
 - **Categorieën aan/uit** per Live TV, Films en Series, met snelknoppen per land/taal (NL, BE, DE, TK …)
 - **Servers** toevoegen, wisselen, wijzigen en verwijderen (hoofdaccount)
 - **Beheren**: groepen en zenders hernoemen, herschikken, samenvoegen en verbergen (op Apple TV via selecteren of vasthouden)
-- **Pincode** per profiel, en met de pincode van het hoofdaccount het kinderslot: groepen op slot, volwassenengroepen automatisch, **leeftijdsgrens per profiel** (IMDb-classificatie), 30 min ontgrendelen (daarna automatisch weer op slot). Een titel boven de grens met pincode afspelen ontgrendelt alleen díe titel, niet de hele bibliotheek
+- **Pincode** per profiel (op Apple TV een compacte rij cijfers die op elk scherm past), en met de pincode van het hoofdaccount het kinderslot: groepen op slot, volwassenengroepen automatisch, **leeftijdsgrens per profiel** (IMDb-classificatie), 30 min ontgrendelen (daarna automatisch weer op slot). Een titel boven de grens met pincode afspelen ontgrendelt alleen díe titel, niet de hele bibliotheek
 - **Kinderprofiel** (krijgt meteen een vrolijk figuurtje, zonder "Kids"-label bij de naam): alleen kinderzenders, tekenfilms/familie en titels met een bekende leeftijd binnen de grens (standaard t/m 12), met een eigen **Top 10 voor kids**. Bij grenzen t/m 12 jaar wordt streng gefilterd (onbekend = verborgen)
 - **Kijkgeschiedenis per profiel**, per dag, met verwijderen en wissen
 - **Mijn Bingr** zoals "Mijn Netflix": je profiel bovenaan (tik om te wisselen), met Verder kijken en Mijn lijst; op iPhone je profielfoto als tabbladicoon
@@ -92,6 +92,7 @@ SwiftUI · iOS 17+ · tvOS 17+ · macOS 14+ · Apple- én VLC-engine · 11 talen
 **Overal hetzelfde**
 - **iCloud-sync** tussen iPhone, iPad, Mac en Apple TV: server(s), profielen met foto, per profiel favorieten, Mijn lijst en kijkvoortgang, herinneringen, aanpassingen en kinderslot; logins via de iCloud-sleutelhanger
 - **11 talen**: Engels, Nederlands, Duits, Frans, Spaans, Italiaans, Portugees, Turks, Pools, Arabisch (rechts-naar-links) en Chinees. Volgt de systeemtaal of kies zelf in Mijn Bingr
+- **Alle Apple TV's met apps**: Apple TV HD (4e generatie) en alle Apple TV 4K-modellen (tvOS 17+); schermen passen binnen de veilige marge van elke tv (ook bij overscan)
 - **Meerdere Apple TV-gebruikers**: wissel je van gebruiker op de Apple TV, dan zie je de Bingr (playlists, voortgang, Trakt) van díe gebruiker via zijn eigen iCloud
 - **Eigen Mac-app** (macOS 14+, Apple silicon én Intel): zelfde functies en iCloud-sync, met VLC voor .ts/.mkv, AirPlay, Chromecast en beeld-in-beeld. Bediening met het toetsenbord: spatie = pauze, ←/→ = 10 s, ↑/↓ = zappen, Esc = sluiten
 

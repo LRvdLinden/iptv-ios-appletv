@@ -135,34 +135,69 @@ struct PINPad: View {
     @State private var shake = false
 
     var body: some View {
-        VStack(spacing: tvScaled(22)) {
-            Image(systemName: "lock.fill").font(.system(size: tvScaled(36))).foregroundStyle(Theme.red)
-            Text(title).font(.system(size: tvScaled(20), weight: .bold))
-            HStack(spacing: tvScaled(14)) {
-                ForEach(0..<4, id: \.self) { i in
-                    Circle().fill(i < pin.count ? Color.white : Color.white.opacity(0.2))
-                        .frame(width: tvScaled(16), height: tvScaled(16))
-                }
-            }
-            .offset(x: shake ? -10 : 0)
-            .animation(.default.repeatCount(3, autoreverses: true).speed(4), value: shake)
-            LazyVGrid(columns: Array(repeating: GridItem(.fixed(tvScaled(70)), spacing: tvScaled(14)), count: 3), spacing: tvScaled(14)) {
-                ForEach(["1","2","3","4","5","6","7","8","9","","0","⌫"], id: \.self) { k in
-                    if k.isEmpty { Color.clear.frame(height: tvScaled(70)) } else {
-                        Button { tap(k) } label: {
-                            Text(k).font(.system(size: tvScaled(26), weight: .semibold))
-                                .frame(width: tvScaled(70), height: tvScaled(70))
-                                .background(Theme.elevated, in: Circle())
+        #if os(tvOS)
+        // Apple TV: compact, één rij cijfers (zoals op tv gebruikelijk) — past op elk scherm, ook met overscan
+        VStack(spacing: 34) {
+            Image(systemName: "lock.fill").font(.system(size: 44)).foregroundStyle(Theme.red)
+            Text(title).font(.system(size: 34, weight: .bold)).multilineTextAlignment(.center)
+                .lineLimit(2).minimumScaleFactor(0.7).frame(maxWidth: 1100)
+            dots(size: 22, spacing: 22)
+            HStack(spacing: 14) {
+                ForEach(["1","2","3","4","5","6","7","8","9","0","⌫"], id: \.self) { k in
+                    Button { tap(k) } label: {
+                        Group {
+                            if k == "⌫" { Image(systemName: "delete.left") } else { Text(k) }
                         }
-                        .plainTVButton()
+                        .font(.system(size: 34, weight: .semibold))
+                        .frame(width: 84, height: 84)
+                        .background(Theme.elevated, in: Circle())
                     }
+                    .plainTVButton()
                 }
             }
-            Button(L("Cancel")) { dismiss() }.foregroundStyle(Theme.secondary)
+            .focusSection()
+            Button(L("Cancel")) { dismiss() }
         }
-        .padding(Theme.edge)
+        .padding(.vertical, 50).padding(.horizontal, 60)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(hex: 0x141414).ignoresSafeArea())
+        #else
+        ScrollView {
+            VStack(spacing: 22) {
+                Image(systemName: "lock.fill").font(.system(size: 36)).foregroundStyle(Theme.red)
+                Text(title).font(.system(size: 20, weight: .bold)).multilineTextAlignment(.center)
+                dots(size: 16, spacing: 14)
+                LazyVGrid(columns: Array(repeating: GridItem(.fixed(70), spacing: 14), count: 3), spacing: 14) {
+                    ForEach(["1","2","3","4","5","6","7","8","9","","0","⌫"], id: \.self) { k in
+                        if k.isEmpty { Color.clear.frame(height: 70) } else {
+                            Button { tap(k) } label: {
+                                Text(k).font(.system(size: 26, weight: .semibold))
+                                    .frame(width: 70, height: 70)
+                                    .background(Theme.elevated, in: Circle())
+                            }
+                            .plainTVButton()
+                        }
+                    }
+                }
+                Button(L("Cancel")) { dismiss() }.foregroundStyle(Theme.secondary)
+            }
+            .padding(Theme.edge)
+            .padding(.top, 30)
+            .frame(maxWidth: .infinity)
+        }
+        .background(Color(hex: 0x141414).ignoresSafeArea())
+        #endif
+    }
+
+    private func dots(size: CGFloat, spacing: CGFloat) -> some View {
+        HStack(spacing: spacing) {
+            ForEach(0..<4, id: \.self) { i in
+                Circle().fill(i < pin.count ? Color.white : Color.white.opacity(0.2))
+                    .frame(width: size, height: size)
+            }
+        }
+        .offset(x: shake ? -10 : 0)
+        .animation(.default.repeatCount(3, autoreverses: true).speed(4), value: shake)
     }
 
     private func tap(_ k: String) {

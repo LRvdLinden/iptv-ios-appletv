@@ -27,6 +27,7 @@ struct DetailView: View {
     @State private var recMatches: [String: DetailTarget] = [:]
     @State private var ageGate = false
     @State private var afterPIN: (() -> Void)?
+    @State private var pinOK = false
     @State private var showShareQR = false
 
     private var pid: UUID? { playlists.source?.id }
@@ -108,11 +109,15 @@ struct DetailView: View {
         #if os(tvOS)
         .sheet(isPresented: $showShareQR) { shareQRSheet }
         #endif
-        .sheet(isPresented: $ageGate) {
+        .sheet(isPresented: $ageGate, onDismiss: {
+            // pas afspelen als het pincodescherm helemaal weg is (anders opent de speler niet, vooral op Apple TV)
+            let run = pinOK ? afterPIN : nil
+            afterPIN = nil; pinOK = false
+            if let run { Task { @MainActor in try? await Task.sleep(nanoseconds: 150_000_000); run() } }
+        }) {
             PINPad(title: L("This title is above the age limit of this profile. Enter PIN")) { pin in
                 guard ParentalControl.shared.check(pin) else { return false }   // alleen deze titel, niet alles ontgrendelen
-                let run = afterPIN; afterPIN = nil
-                Task { @MainActor in try? await Task.sleep(nanoseconds: 300_000_000); run?() }
+                pinOK = true
                 return true
             }
         }
