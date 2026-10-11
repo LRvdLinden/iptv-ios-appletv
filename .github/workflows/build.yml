@@ -94,6 +94,8 @@ jobs:
           } > report/latest.txt
           # kant-en-klaar Xcode-project (met gegenereerd .xcodeproj en vastgelegde package-versies)
           zip -qr report/Bingr-xcode.zip . -x '.git/*' 'report/*' '*.log' 'build/*'
+          # website (bingr.com) als losse zip
+          (cd website && zip -qr ../report/Bingr-website.zip .)
           tail -n 200 ios.log > report/ios-tail.txt || true
           tail -n 200 tvos.log > report/tvos-tail.txt || true
           tail -n 200 macos.log > report/macos-tail.txt || true
@@ -104,8 +106,8 @@ jobs:
           git reset --hard -q
           git switch --orphan ci-logs-tmp
           git rm -rf --quiet . || true
-          cp report/*.txt report/Bingr-xcode.zip .
-          git add latest.txt ios-tail.txt tvos-tail.txt macos-tail.txt Bingr-xcode.zip
+          cp report/*.txt report/Bingr-xcode.zip report/Bingr-website.zip .
+          git add latest.txt ios-tail.txt tvos-tail.txt macos-tail.txt Bingr-xcode.zip Bingr-website.zip
           git commit -m "build $GITHUB_SHA ios=${{ steps.ios.outcome }} tvos=${{ steps.tvos.outcome }} macos=${{ steps.macos.outcome }}"
           git push -f origin HEAD:ci-logs
 

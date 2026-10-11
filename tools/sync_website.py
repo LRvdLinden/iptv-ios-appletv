@@ -1,0 +1,41 @@
+"""Werkt de website bij met de nieuwste screenshots, figuurtjes en het buildnummer.
+Gebruik: python3 tools/sync_website.py [--zip]   (draait ook in CI)"""
+import re, sys, pathlib, zipfile
+from PIL import Image
+
+root = pathlib.Path(__file__).resolve().parent.parent
+site = root / "website"
+img = site / "assets" / "img"
+img.mkdir(parents=True, exist_ok=True)
+
+build = re.search(r'CURRENT_PROJECT_VERSION:\s*"(\d+)"', (root / "project.yml").read_text()).group(1)
+version = re.search(r'MARKETING_VERSION:\s*"([\d.]+)"', (root / "project.yml").read_text()).group(1)
+
+shots = {"ios_home": 600, "ios_live": 600, "ios_detail": 600, "ios_top10": 600, "ios_picker": 600,
+         "tv_home": 1400, "tv_detail": 1400, "tv_guide": 1400, "tv_multiview": 1400, "tv_live": 1400,
+         "tv_picker": 1400, "tv_trakt": 1400, "mac_home": 1440}
+for name, w in shots.items():
+    im = Image.open(root / "docs/screenshots" / f"{name}.png").convert("RGB")
+    im = im.resize((w, round(im.height * w / im.width)), Image.LANCZOS)
+    im.save(img / f"{name}.jpg", quality=84, optimize=True, progressive=True)
+
+for p in sorted((root / "Shared/Resources/Avatars").glob("kid*.png")):
+    Image.open(p).resize((160, 160), Image.LANCZOS).save(img / p.name, optimize=True)
+
+icon = Image.open(root / "macOS/Assets.xcassets/AppIcon.appiconset/icon_512x512@1x.png")
+icon.resize((180, 180), Image.LANCZOS).save(site / "apple-touch-icon.png")
+icon.resize((64, 64), Image.LANCZOS).save(site / "favicon.png")
+
+for page in site.glob("*.html"):
+    t = page.read_text()
+    t = re.sub(r'(<span data-build>)[^<]*(</span>)', rf'\g<1>{version} (build {build})\g<2>', t)
+    page.write_text(t)
+
+if "--zip" in sys.argv:
+    out = pathlib.Path(sys.argv[sys.argv.index("--zip") + 1]) if len(sys.argv) > sys.argv.index("--zip") + 1 else root / f"Bingr-website-build{build}.zip"
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+        for f in sorted(site.rglob("*")):
+            if f.is_file() and f.name != ".DS_Store":
+                z.write(f, pathlib.Path("bingr.com") / f.relative_to(site))
+    print(out)
+print(f"website bijgewerkt: {version} (build {build})")
