@@ -153,6 +153,8 @@ website/          bingr.com (statische site)
 De website staat in `website/` (statische HTML, Nederlands en Engels, zonder build-stap): `index.html`, `privacy.html` en `support.html`.
 `python3 tools/sync_website.py` zet de nieuwste screenshots, profielfiguurtjes, het icoon en het buildnummer erin; met `--zip <pad>` maak je er meteen een uploadklare zip van. De CI zet bij elke build ook `Bingr-website.zip` op de branch `ci-logs`.
 
+**Automatisch online zetten (FTPS):** de workflow `Website` uploadt `website/` bij elke wijziging naar de webserver. Zet hiervoor bij *Settings → Secrets and variables → Actions* de secrets `FTP_SERVER`, `FTP_USERNAME`, `FTP_PASSWORD` (en eventueel `FTP_USERNAME_ALT` en `FTP_DIR` voor een vaste doelmap; anders zoekt de workflow zelf `public_html`, `httpdocs`, `www` enz.). Wachtwoorden staan nooit in de repo.
+
 ## Android (in opbouw)
 
 In `android/` staat de basis van een native Android-versie (Kotlin + Jetpack Compose, ExoPlayer/VLC) voor telefoon, tablet en Android TV / Google TV / Fire TV, met dezelfde vertalingen (`Shared/Resources/Translations.json`). Nog niet bouwbaar; `android/CONTRACT.md` beschrijft de opzet.

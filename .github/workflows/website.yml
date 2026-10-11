@@ -1,0 +1,69 @@
+name: Website
+
+# Zet website/ via FTPS op de webserver, bij elke wijziging in website/ op main (of met de hand).
+# Benodigde repository-secrets: FTP_SERVER, FTP_USERNAME, FTP_PASSWORD
+# Optioneel: FTP_USERNAME_ALT (tweede gebruikersnaam om te proberen) en FTP_DIR (doelmap, anders automatisch).
+
+on:
+  push:
+    branches: [main]
+    paths: ['website/**', '.github/workflows/website.yml']
+  workflow_dispatch:
+
+concurrency:
+  group: website-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: lftp installeren
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq lftp
+
+      - name: Uploaden via FTPS
+        env:
+          FTP_SERVER: ${{ secrets.FTP_SERVER }}
+          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+          FTP_USERNAME_ALT: ${{ secrets.FTP_USERNAME_ALT }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          FTP_DIR: ${{ secrets.FTP_DIR }}
+        run: |
+          set -euo pipefail
+          if [ -z "${FTP_SERVER:-}" ] || [ -z "${FTP_PASSWORD:-}" ]; then
+            echo "::warning::FTP-secrets ontbreken (FTP_SERVER, FTP_USERNAME, FTP_PASSWORD) — website niet geüpload."
+            exit 0
+          fi
+          base="set ftp:ssl-force true; set ftp:ssl-protect-data true; set ssl:verify-certificate no; set net:max-retries 2; set net:timeout 20"
+
+          # werkende gebruikersnaam vinden
+          USER_OK=""
+          for u in "$FTP_USERNAME" "${FTP_USERNAME_ALT:-}"; do
+            [ -z "$u" ] && continue
+            if lftp -e "$base; open -u \"$u\",\"$FTP_PASSWORD\" \"$FTP_SERVER\"; cls -1 / > /tmp/root.txt; bye" >/dev/null 2>&1; then
+              USER_OK="$u"; break
+            fi
+          done
+          [ -n "$USER_OK" ] || { echo "::error::Inloggen op $FTP_SERVER mislukt met de opgegeven gebruikersnamen."; exit 1; }
+          echo "Ingelogd. Inhoud van de hoofdmap:"; cat /tmp/root.txt
+
+          # doelmap: FTP_DIR, anders de gebruikelijke webmappen, anders de hoofdmap
+          TARGET="${FTP_DIR:-}"
+          if [ -z "$TARGET" ]; then
+            for d in public_html httpdocs www htdocs web domains/bingr.online/public_html domains/bingr.com/public_html; do
+              top="${d%%/*}"
+              if grep -qx "/\?$top/\?" /tmp/root.txt; then
+                if [ "$d" = "$top" ] || lftp -e "$base; open -u \"$USER_OK\",\"$FTP_PASSWORD\" \"$FTP_SERVER\"; cls -1 /$d/ ; bye" >/dev/null 2>&1; then
+                  TARGET="/$d"; break
+                fi
+              fi
+            done
+          fi
+          TARGET="${TARGET:-/}"
+          echo "Uploaden naar: $TARGET"
+
+          lftp -e "$base; open -u \"$USER_OK\",\"$FTP_PASSWORD\" \"$FTP_SERVER\"; mirror -R --verbose --parallel=4 --only-newer --exclude-glob .DS_Store website/ \"$TARGET\"; bye"
+          echo "Website bijgewerkt."
