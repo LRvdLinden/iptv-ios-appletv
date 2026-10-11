@@ -78,39 +78,45 @@ final class MatcherCache {
 /// Trending vandaag (TMDB in de app-taal + Trakt), 6 uur bewaard en gedeeld door alle tabbladen.
 actor TrendingStore {
     static let shared = TrendingStore()
-    private var inFlight: [Bool: Task<[ExternalTitle], Never>] = [:]
+    private var inFlight: [String: Task<[ExternalTitle], Never>] = [:]
     private struct Saved: Codable { var date: Date; var items: [ExternalTitle] }
 
-    private static func key(_ shows: Bool) -> String { "trending.\(shows ? "tv" : "movie").\(Localizer.shared.language)" }
+    private static func key(_ shows: Bool, kids: Bool = false) -> String {
+        "trending.\(kids ? "kids." : "")\(shows ? "tv" : "movie").\(Localizer.shared.language)"
+    }
 
     /// Direct uit de cache (ook als die verlopen is), zonder netwerk.
-    nonisolated static func cached(shows: Bool) -> [ExternalTitle] {
-        guard let d = UserDefaults.standard.data(forKey: key(shows)),
+    nonisolated static func cached(shows: Bool, kids: Bool = false) -> [ExternalTitle] {
+        guard let d = UserDefaults.standard.data(forKey: key(shows, kids: kids)),
               let s = try? JSONDecoder().decode(Saved.self, from: d) else { return [] }
         return s.items
     }
-    nonisolated static func isFresh(shows: Bool) -> Bool {
-        guard let d = UserDefaults.standard.data(forKey: key(shows)),
+    nonisolated static func isFresh(shows: Bool, kids: Bool = false) -> Bool {
+        guard let d = UserDefaults.standard.data(forKey: key(shows, kids: kids)),
               let s = try? JSONDecoder().decode(Saved.self, from: d) else { return false }
         return Date().timeIntervalSince(s.date) < 6 * 3600 && !s.items.isEmpty
     }
 
-    func get(shows: Bool) async -> [ExternalTitle] {
-        if Self.isFresh(shows: shows) { return Self.cached(shows: shows) }
-        if let t = inFlight[shows] { return await t.value }
+    func get(shows: Bool, kids: Bool = false) async -> [ExternalTitle] {
+        if Self.isFresh(shows: shows, kids: kids) { return Self.cached(shows: shows, kids: kids) }
+        let k = Self.key(shows, kids: kids)
+        if let t = inFlight[k] { return await t.value }
         let t = Task<[ExternalTitle], Never> {
+            if kids {   // kids: populaire animatie/familie-titels (TMDB)
+                return await TMDB.kidsTrending(shows: shows).map { ExternalTitle(titles: $0.titles, year: $0.year) }
+            }
             let tmdb = await TMDB.trending(shows: shows).map { ExternalTitle(titles: $0.titles, year: $0.year) }
             let trakt = await TraktSync.shared.trending(shows: shows).compactMap { m in
                 m.title.map { ExternalTitle(titles: [$0], year: m.year) }
             }
             return tmdb + trakt
         }
-        inFlight[shows] = t
+        inFlight[k] = t
         let items = await t.value
-        inFlight[shows] = nil
+        inFlight[k] = nil
         if !items.isEmpty, let d = try? JSONEncoder().encode(Saved(date: Date(), items: items)) {
-            UserDefaults.standard.set(d, forKey: Self.key(shows))
+            UserDefaults.standard.set(d, forKey: k)
         }
-        return items.isEmpty ? Self.cached(shows: shows) : items
+        return items.isEmpty ? Self.cached(shows: shows, kids: kids) : items
     }
 }

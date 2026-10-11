@@ -140,6 +140,31 @@ enum TMDB {
         return out
     }
 
+    /// Populair bij kids vandaag: animatie/familie (films) en kids/animatie (series), zonder volwassen titels.
+    static func kidsTrending(shows: Bool) async -> [(titles: [String], year: Int?)] {
+        struct R: Decodable {
+            struct I: Decodable {
+                let title: String?, name: String?, original_title: String?, original_name: String?
+                let release_date: String?, first_air_date: String?
+            }
+            let results: [I]?
+        }
+        var q = ["language": language, "sort_by": "popularity.desc", "include_adult": "false",
+                 "with_genres": shows ? "10762|16|10751" : "16|10751"]
+        if !shows { q["certification_country"] = "US"; q["certification.lte"] = "PG" }
+        var out: [(titles: [String], year: Int?)] = []
+        for page in ["1", "2"] {
+            q["page"] = page
+            guard let r: R = await get(shows ? "/discover/tv" : "/discover/movie", q) else { break }
+            for i in r.results ?? [] {
+                let t = [i.title, i.name, i.original_title, i.original_name].compactMap { $0 }.filter { !$0.isEmpty }
+                let y = (i.release_date ?? i.first_air_date).flatMap { Int($0.prefix(4)) }
+                if !t.isEmpty { out.append((t, y)) }
+            }
+        }
+        return out
+    }
+
     private struct Find: Decodable { struct R: Decodable { let id: Int }; let movie_results: [R]?; let tv_results: [R]? }
     private struct Search: Decodable { struct R: Decodable { let id: Int }; let results: [R]? }
     private struct Full: Decodable {

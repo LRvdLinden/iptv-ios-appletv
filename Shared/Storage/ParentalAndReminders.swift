@@ -78,11 +78,28 @@ final class ParentalControl: ObservableObject {
     }
 
     /// Mag dit profiel dit zien? (Onbekende classificatie = toegestaan, behalve in volwassenengroepen.)
-    func allowed(rated: String?, group: String, limit: Int?) -> Bool {
+    func allowed(rated: String?, group: String, limit: Int?, genre: String? = nil, strict: Bool = false) -> Bool {
         guard let limit, !isUnlocked else { return true }
         if Self.isAdultGroup(group) { return false }
-        if let age = Self.minimumAge(rated), age > limit { return false }
-        return true
+        let age = Self.minimumAge(rated)
+        if let age, age > limit { return false }
+        guard strict else { return true }
+        // Kinderprofiel / t/m 12 jaar: alleen wat zeker geschikt is — bekende leeftijd binnen de grens,
+        // een kindergroep (Kids, Kinderen, Cartoon, Disney…) of genre animatie/familie.
+        if age != nil { return true }
+        if Self.isKidsGroup(group) { return true }
+        if let g = genre?.lowercased(), g.contains("animation") || g.contains("family") { return true }
+        return false
+    }
+
+    private static let kidsWords = ["kid", "kinder", "kinderen", "child", "junior", "jeugd", "cartoon", "anim", "disney",
+                                    "nick", "pixar", "dreamworks", "family", "familie", "enfant", "jeunesse", "niños", "infantil",
+                                    "bambini", "ragazzi", "çocuk", "cocuk", "dzieci", "bajki", "kika", "zapp", "baby", "boomerang",
+                                    "cbeebies", "pbs kids", "toon", "أطفال", "儿童", "动画"]
+    /// Groep met kinderinhoud?
+    static func isKidsGroup(_ g: String) -> Bool {
+        let l = g.lowercased()
+        return !isAdultGroup(g) && kidsWords.contains { l.contains($0) }
     }
 
     func toggleLock(playlist: UUID, group: String) {

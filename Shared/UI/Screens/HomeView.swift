@@ -60,8 +60,9 @@ struct HomeView: View {
     // MARK: rijen
 
     @ViewBuilder private var rows: some View {
-        let top10Movies = trendingMovies.isEmpty ? nil : top10Row(L("Top 10 movies today"), movies: Array(trendingMovies.prefix(10)))
-        let top10Series = trendingSeries.isEmpty ? nil : top10Row(L("Top 10 series today"), series: Array(trendingSeries.prefix(10)))
+        let kids = store.activeProfile?.kids ?? false
+        let top10Movies = trendingMovies.isEmpty ? nil : top10Row(kids ? L("Top 10 kids movies") : L("Top 10 movies today"), movies: Array(trendingMovies.prefix(10)))
+        let top10Series = trendingSeries.isEmpty ? nil : top10Row(kids ? L("Top 10 kids series") : L("Top 10 series today"), series: Array(trendingSeries.prefix(10)))
         switch filter {
         case .all:
             myListRows
@@ -306,12 +307,13 @@ struct HomeView: View {
         // 1. meteen iets laten zien: billboard en Top 10 uit de cache van vandaag (of je eigen lijst)
         if hero == nil { withAnimation(.easeInOut(duration: 0.4)) { hero = quickHero() } }
         let matcher = await MatcherCache.shared.matcher(for: lib, key: key)   // op de achtergrond gebouwd
-        applyTrending(matcher, movies: TrendingStore.cached(shows: false), series: TrendingStore.cached(shows: true))
+        let kids = store.activeProfile?.kids ?? false
+        applyTrending(matcher, movies: TrendingStore.cached(shows: false, kids: kids), series: TrendingStore.cached(shows: true, kids: kids))
         if forYou.isEmpty { forYou = await buildForYou(useNetwork: false, matcher: matcher) }
 
         // 2. daarna pas het netwerk (gedeeld door alle tabbladen, 6 uur bewaard)
-        async let mv = TrendingStore.shared.get(shows: false)
-        async let sv = TrendingStore.shared.get(shows: true)
+        async let mv = TrendingStore.shared.get(shows: false, kids: kids)
+        async let sv = TrendingStore.shared.get(shows: true, kids: kids)
         let (m, s) = await (mv, sv)
         applyTrending(matcher, movies: m, series: s)
         forYou = await buildForYou(useNetwork: true, matcher: matcher)

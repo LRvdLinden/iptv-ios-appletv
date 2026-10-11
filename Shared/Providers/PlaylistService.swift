@@ -41,7 +41,7 @@ final class PlaylistService: ObservableObject {
             .store(in: &bag)
         // ander profiel gekozen of leeftijdsgrens van het profiel gewijzigd → opnieuw filteren
         CloudStore.shared.$profiles.combineLatest(CloudStore.shared.$activeProfileID)
-            .map { list, id in list.first { $0.id == id }?.ageLimit }
+            .map { list, id in list.first { $0.id == id }.map { "\($0.effectiveAgeLimit ?? 0)-\($0.strictAgeFilter)" } }
             .removeDuplicates()
             .dropFirst()
             .receive(on: RunLoop.main)
@@ -52,7 +52,7 @@ final class PlaylistService: ObservableObject {
             .dropFirst()
             .debounce(for: .seconds(3), scheduler: RunLoop.main)
             .sink { [weak self] _ in
-                if CloudStore.shared.activeProfile?.ageLimit != nil { self?.applyCustomizations() }
+                if CloudStore.shared.activeProfile?.effectiveAgeLimit != nil { self?.applyCustomizations() }
             }
             .store(in: &bag)
     }
@@ -189,10 +189,11 @@ final class PlaylistService: ObservableObject {
 
     func applyCustomizations() {
         guard let s = source else { library = rawLibrary; return }
-        library = Self.apply(rawLibrary, CloudStore.shared.customization(s.id), playlist: s.id, ageLimit: CloudStore.shared.activeProfile?.ageLimit)
+        library = Self.apply(rawLibrary, CloudStore.shared.customization(s.id), playlist: s.id, ageLimit: CloudStore.shared.activeProfile?.effectiveAgeLimit,
+                             strict: CloudStore.shared.activeProfile?.strictAgeFilter ?? false)
     }
 
-    static func apply(_ raw: Library, _ c: Customization, playlist: UUID, ageLimit: Int? = nil) -> Library {
+    static func apply(_ raw: Library, _ c: Customization, playlist: UUID, ageLimit: Int? = nil, strict: Bool = false) -> Library {
         let parental = ParentalControl.shared
         let meta = MetadataService.shared
         func group(_ g: String) -> String {
@@ -210,14 +211,17 @@ final class PlaylistService: ObservableObject {
             var x = ch; x.group = group(ch.group); x.name = c.renamed[ch.id] ?? ch.name; return x
         }
         if ageLimit != nil {
-            lib.channels = lib.channels.filter { parental.allowed(rated: nil, group: $0.group, limit: ageLimit) }
+            // kinderprofiel: alleen kinderzenders
+            lib.channels = lib.channels.filter { parental.allowed(rated: nil, group: $0.group, limit: ageLimit, strict: strict) }
         }
         lib.movies = raw.movies.filter { visible($0.id, $0.group)
-            && parental.allowed(rated: ageLimit == nil ? nil : meta.cached($0)?.rated, group: $0.group, limit: ageLimit) }.map { m in
+            && (ageLimit == nil || parental.allowed(rated: meta.cached($0)?.rated, group: $0.group, limit: ageLimit,
+                                                    genre: meta.cached($0)?.genre, strict: strict)) }.map { m in
             var x = m; x.group = group(m.group); x.title = c.renamed[m.id] ?? m.title; return x
         }
         lib.series = raw.series.filter { visible($0.id, $0.group)
-            && parental.allowed(rated: ageLimit == nil ? nil : meta.cached($0)?.rated, group: $0.group, limit: ageLimit) }.map { se in
+            && (ageLimit == nil || parental.allowed(rated: meta.cached($0)?.rated, group: $0.group, limit: ageLimit,
+                                                    genre: meta.cached($0)?.genre, strict: strict)) }.map { se in
             var x = se; x.group = group(se.group); x.title = c.renamed[se.id] ?? se.title; return x
         }
         // eigen volgorde: groepen, dan kanalen binnen een groep

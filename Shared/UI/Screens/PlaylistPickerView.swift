@@ -54,7 +54,7 @@ struct PlaylistPickerView: View {
                                 // profiel met pincode: eerst de pincode vragen
                                 if ParentalControl.shared.hasPIN(profile: p.id) { pinFor = p } else { app.open(profile: p) }
                             } label: {
-                                AvatarTile(name: p.name, avatar: p.avatar, photo: store.photos[p.id],
+                                AvatarTile(name: p.kids ? "\(p.name) · Kids" : p.name, avatar: p.avatar, photo: store.photos[p.id],
                                            badge: store.isMain(p) && store.profiles.count > 1 ? "person.fill" : nil,
                                            locked: ParentalControl.shared.hasPIN(profile: p.id))
                             }
@@ -127,6 +127,7 @@ struct ProfileEditView: View {
     @State private var avatar = PlaylistAvatar.random()
     @State private var photo: Data?
     @State private var ageLimit = 0
+    @State private var isKids = false
     @State private var confirmDelete = false
     @State private var askPIN = false
     #if os(iOS)
@@ -182,6 +183,9 @@ struct ProfileEditView: View {
                 }
                 #endif
                 if canAdmin { Section {
+                    Toggle(L("Kids profile"), isOn: $isKids)
+                        .disabled(locked)
+                        .onChange(of: isKids) { _, v in if v && (ageLimit == 0 || ageLimit > 12) { ageLimit = 12 } }
                     Picker(L("Age limit for this profile"), selection: $ageLimit) {
                         Text(L("None")).tag(0)
                         ForEach(ParentalControl.ageChoices, id: \.self) { Text(L("Up to %d years", $0)).tag($0) }
@@ -190,7 +194,8 @@ struct ProfileEditView: View {
                     .disabled(locked)
                     if locked { Button(L("Unlock with PIN")) { askPIN = true } }
                 } footer: {
-                    Text(store.parental.enabled
+                    Text(isKids ? L("Kids profile: only kids channels, cartoons/family titles and titles with a known age rating within the limit, plus its own Top 10 for kids.") + " " :
+                         "") + Text(store.parental.enabled
                          ? L("Titles above this age (IMDb rating) and adult groups are hidden on this profile. With the PIN you can still watch them.")
                          : L("Set a PIN on the main account and turn on “Lock adult content with this PIN” (My Bingr → PIN code) to protect the age limit."))
                 } }
@@ -209,7 +214,7 @@ struct ProfileEditView: View {
                 }
             }
             .onAppear {
-                if let e = existing { name = e.name; avatar = e.avatar; ageLimit = e.ageLimit ?? 0; photo = store.photos[e.id] }
+                if let e = existing { name = e.name; avatar = e.avatar; ageLimit = e.ageLimit ?? 0; photo = store.photos[e.id]; isKids = e.kids }
             }
             .sheet(isPresented: $askPIN) {
                 PINPad(title: L("Enter PIN")) { pin in store.mainProfileID.map { parental.verify(pin, profile: $0) } ?? parental.verify(pin) }
@@ -222,6 +227,7 @@ struct ProfileEditView: View {
         p.name = name.trimmingCharacters(in: .whitespaces)
         p.avatar = avatar
         p.ageLimit = ageLimit == 0 ? nil : ageLimit
+        p.isKids = isKids ? true : nil
         store.upsertProfile(p)
         if photo != store.photos[p.id] { store.setPhoto(photo, for: p.id) }
         dismiss()

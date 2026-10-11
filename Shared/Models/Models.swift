@@ -103,6 +103,14 @@ struct ViewerProfile: Codable, Identifiable, Hashable {
     var subtitleLanguage: String? = nil       // OpenSubtitles-standaardtaal
     var audioLanguage: String? = nil          // standaard audiotaal in de stream
     var streamSubtitleLanguage: String? = nil // standaard ondertitelspoor in de stream ("" / "off" / code)
+    /// Kinderprofiel: alleen kinderinhoud (standaard t/m 12 jaar) en een eigen Top 10 voor kids
+    var isKids: Bool? = nil
+
+    var kids: Bool { isKids ?? false }
+    /// Leeftijdsgrens die echt geldt (kinderprofiel zonder grens = t/m 12)
+    var effectiveAgeLimit: Int? { ageLimit ?? (kids ? 12 : nil) }
+    /// Streng filteren (alleen zeker geschikte titels): kinderprofiel of grens t/m 12
+    var strictAgeFilter: Bool { kids || (effectiveAgeLimit ?? 99) <= 12 }
 }
 
 // MARK: - Content ------------------------------------------------------------
