@@ -126,7 +126,7 @@ struct PlayerScreen: View {
             // bediening tevoorschijn → focus op afspelen/pauze; weg → focus terug naar de vanger
             tvFocus = shown ? .bar("play") : .catcher
         }
-        .onChange(of: tvFocus) { _, f in if case .bar = f { poke() } }   // rondkijken in de balk houdt hem zichtbaar
+        .onChange(of: tvFocus) { _, f in if case .some(.bar(_)) = f { poke() } }   // rondkijken in de balk houdt hem zichtbaar
         .onAppear { tvFocus = showControls ? .bar("play") : .catcher }
         .onExitCommand {
             if panel != nil { panel = nil } else if showControls { showControls = false } else { close() }
