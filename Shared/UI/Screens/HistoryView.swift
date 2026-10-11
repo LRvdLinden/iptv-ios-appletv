@@ -32,7 +32,7 @@ struct HistoryView: View {
                                     Label(L("Remove from history"), systemImage: "trash")
                                 }
                             }
-                            #if os(iOS)
+                            #if !os(tvOS)
                             .swipeActions {
                                 Button(role: .destructive) { store.removeHistory(e) } label: { Label(L("Remove"), systemImage: "trash") }
                             }
@@ -51,7 +51,7 @@ struct HistoryView: View {
             Button(L("Clear watch history"), role: .destructive) { store.clearHistory(playlist: pid) }
             Button(L("Cancel"), role: .cancel) {}
         }
-        #if os(iOS)
+        #if !os(tvOS)
         .sheet(item: $detail) { DetailView(target: $0).presentationDragIndicator(.visible) }
         #else
         .fullScreenCover(item: $detail) { DetailView(target: $0) }

@@ -90,7 +90,7 @@ struct DetailView: View {
             .onPreferenceChange(DetailOffsetKey.self) { scrollY = $0 }
             .ignoresSafeArea(edges: .top)
 
-            #if os(iOS)
+            #if !os(tvOS)
             stickyBar
             #endif
 
@@ -116,7 +116,7 @@ struct DetailView: View {
                 return true
             }
         }
-        #if os(iOS)
+        #if !os(tvOS)
         .sheet(isPresented: $showTrailer) {
             if let t = d?.trailerYouTubeID { TrailerSheet(youtubeID: t, title: title) }
         }
@@ -142,7 +142,7 @@ struct DetailView: View {
             #endif
             titleArt
                 .padding(.horizontal, Theme.edge).padding(.bottom, tvScaled(8))
-            #if os(iOS)
+            #if !os(tvOS)
             Button { dismiss() } label: {
                 Image(systemName: "xmark").font(.system(size: 17, weight: .semibold)).foregroundStyle(.white)
                     .frame(width: 44, height: 44).background(.ultraThinMaterial, in: Circle())
@@ -170,7 +170,7 @@ struct DetailView: View {
         Text(title.uppercased())
             .font(.system(size: tvScaled(38), weight: .black)).kerning(1)
             .lineLimit(2).minimumScaleFactor(0.5)
-            #if os(iOS)
+            #if !os(tvOS)
             .multilineTextAlignment(.center)
             #endif
             .shadow(color: .black.opacity(0.7), radius: 10)
@@ -270,7 +270,7 @@ struct DetailView: View {
     }
 
     @ViewBuilder private var shareButton: some View {
-        #if os(iOS)
+        #if !os(tvOS)
         Group {
             if let url = shareURL {
                 ShareLink(item: url, subject: Text(shareTitle), message: Text(shareText),
@@ -577,7 +577,7 @@ struct DetailView: View {
         }
     }
 
-    #if os(iOS)
+    #if !os(tvOS)
     private var stickyBar: some View {
         let show = scrollY < -(headerHeight - 120)
         return HStack {
@@ -695,7 +695,7 @@ struct DetailView: View {
 
     private func openTrailer() {
         guard let t = d?.trailerYouTubeID else { return }
-        #if os(iOS)
+        #if !os(tvOS)
         showTrailer = true
         #else
         if let u = Trailer.appURL(t) { openURL(u) { ok in if !ok, let w = Trailer.webURL(t) { openURL(w) } } }

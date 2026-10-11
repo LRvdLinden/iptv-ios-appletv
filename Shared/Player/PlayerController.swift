@@ -435,6 +435,29 @@ final class PiPCenter {
 }
 
 /// Toont de video van de actieve engine.
+#if os(macOS)
+struct EngineView: NSViewRepresentable {
+    @ObservedObject var controller: PlayerController
+    /// Klikken gaan naar de SwiftUI-bediening, niet naar VLC/AVPlayer.
+    final class Host: NSView { override func hitTest(_ point: NSPoint) -> NSView? { nil } }
+    func makeNSView(context: Context) -> NSView {
+        let host = Host(); host.wantsLayer = true; host.layer?.backgroundColor = NSColor.black.cgColor
+        attach(controller.engine.view, to: host)
+        return host
+    }
+    func updateNSView(_ host: NSView, context: Context) {
+        if controller.engine.view.superview !== host {
+            host.subviews.forEach { $0.removeFromSuperview() }
+            attach(controller.engine.view, to: host)
+        }
+    }
+    private func attach(_ v: NSView, to host: NSView) {
+        v.frame = host.bounds
+        v.autoresizingMask = [.width, .height]
+        host.addSubview(v)
+    }
+}
+#else
 struct EngineView: UIViewRepresentable {
     @ObservedObject var controller: PlayerController
     func makeUIView(context: Context) -> UIView {
@@ -456,3 +479,4 @@ struct EngineView: UIViewRepresentable {
         host.addSubview(v)
     }
 }
+#endif

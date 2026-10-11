@@ -1,4 +1,4 @@
-#if os(iOS)
+#if !os(tvOS)
 import Foundation
 import Network
 import SwiftUI
@@ -275,6 +275,25 @@ struct CastPicker: View {
 }
 
 /// AirPlay-knop.
+#if os(macOS)
+struct AirPlayButton: NSViewRepresentable {
+    var onWillPresent: () -> Void = {}
+    func makeCoordinator() -> Coordinator { Coordinator(onWillPresent) }
+    func makeNSView(context: Context) -> AVRoutePickerView {
+        let v = AVRoutePickerView()
+        v.isRoutePickerButtonBordered = false
+        v.setRoutePickerButtonColor(.white, for: .normal)
+        v.delegate = context.coordinator
+        return v
+    }
+    func updateNSView(_ v: AVRoutePickerView, context: Context) {}
+    final class Coordinator: NSObject, AVRoutePickerViewDelegate {
+        let f: () -> Void
+        init(_ f: @escaping () -> Void) { self.f = f }
+        func routePickerViewWillBeginPresentingRoutes(_ routePickerView: AVRoutePickerView) { f() }
+    }
+}
+#else
 struct AirPlayButton: UIViewRepresentable {
     var onWillPresent: () -> Void = {}
     func makeCoordinator() -> Coordinator { Coordinator(onWillPresent) }
@@ -293,4 +312,5 @@ struct AirPlayButton: UIViewRepresentable {
         func routePickerViewWillBeginPresentingRoutes(_ routePickerView: AVRoutePickerView) { f() }
     }
 }
+#endif
 #endif

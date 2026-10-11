@@ -32,7 +32,7 @@ struct MultiviewScreen: View {
             .ignoresSafeArea()
 
             HStack(spacing: 14) {
-                #if os(iOS)
+                #if !os(tvOS)
                 Button { closeAll() } label: { Image(systemName: "xmark").font(.system(size: 18, weight: .bold)).padding(10) }
                 #endif
                 Text("Multiview").font(.system(size: tvScaled(15), weight: .bold))

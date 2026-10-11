@@ -194,9 +194,11 @@ enum SplashTune {
     static func play() {
         guard enabled, let url = Bundle.main.url(forResource: "bingr_tune", withExtension: "m4a") else { return }
         // .playback: ook hoorbaar met de stil-schakelaar aan (zoals de Netflix-intro); mengt met andere audio
+        #if !os(macOS)
         let session = AVAudioSession.sharedInstance()
         try? session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
         try? session.setActive(true)
+        #endif
         guard let p = try? AVAudioPlayer(contentsOf: url) else { return }
         p.volume = 1.0
         p.prepareToPlay()

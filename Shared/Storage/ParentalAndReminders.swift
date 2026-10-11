@@ -202,7 +202,7 @@ final class ReminderCenter: ObservableObject {
         let r = ProgramReminder(id: "\(channel.id)-\(Int(program.start.timeIntervalSince1970))", playlistID: playlist,
                                 channelID: channel.id, channelName: channel.name, title: program.title, start: program.start)
         CloudStore.shared.addReminder(r)
-        #if os(iOS)
+        #if !os(tvOS)
         let center = UNUserNotificationCenter.current()
         let granted = (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false
         guard granted else { return }
@@ -220,7 +220,7 @@ final class ReminderCenter: ObservableObject {
 
     func remove(_ id: String) {
         CloudStore.shared.removeReminder(id)
-        #if os(iOS)
+        #if !os(tvOS)
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [id])
         #endif
     }

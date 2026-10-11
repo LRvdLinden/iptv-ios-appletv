@@ -98,7 +98,7 @@ struct CategoriesView: View {
                     Spacer()
                     Button(L("All off")) { set(groups, on: false) }
                 }
-                #if os(iOS)
+                #if !os(tvOS)
                 .buttonStyle(.borderless)
                 #endif
                 ForEach(groups, id: \.self) { g in
@@ -114,7 +114,7 @@ struct CategoriesView: View {
             }
         }
         .navigationTitle(L("Categories"))
-        #if os(iOS)
+        #if !os(tvOS)
         .searchable(text: $filter, prompt: L("Search category"))
         #endif
         .onChange(of: kind) { _, _ in filter = "" }

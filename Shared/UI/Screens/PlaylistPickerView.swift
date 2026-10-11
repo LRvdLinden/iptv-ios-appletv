@@ -130,7 +130,7 @@ struct ProfileEditView: View {
     @State private var isKids = false
     @State private var confirmDelete = false
     @State private var askPIN = false
-    #if os(iOS)
+    #if !os(tvOS)
     @State private var photoItem: PhotosPickerItem?
     #endif
 
@@ -187,7 +187,7 @@ struct ProfileEditView: View {
                         }
                     }
                 }
-                #if os(iOS)
+                #if !os(tvOS)
                 Section(L("Profile photo")) {
                     PhotosPicker(selection: $photoItem, matching: .images) {
                         Label(photo == nil ? L("Choose from Photos") : L("Change photo"), systemImage: "photo.on.rectangle")

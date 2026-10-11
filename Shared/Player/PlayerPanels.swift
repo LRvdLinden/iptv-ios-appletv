@@ -33,7 +33,7 @@ struct TracksPanel: View {
                         Button { player.subtitleDelay += 0.5 } label: { Image(systemName: "plus.circle.fill") }
                     }
                     .font(.system(size: tvScaled(20)))
-                    #if os(iOS)
+                    #if !os(tvOS)
                     .buttonStyle(.borderless)
                     #endif
                     if player.subtitleDelay != 0 { Button(L("Reset")) { player.subtitleDelay = 0 } }

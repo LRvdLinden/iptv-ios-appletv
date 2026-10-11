@@ -4,6 +4,7 @@ options:
   deploymentTarget:
     iOS: "17.0"
     tvOS: "17.0"
+    macOS: "14.0"
   createIntermediateGroups: true
 settings:
   base:
@@ -56,7 +57,7 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2"
         INFOPLIST_KEY_CFBundleDisplayName: Bingr
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.entertainment
-        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: YES
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO   # de Mac heeft een eigen app (BingrMac)
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
 
   BingrTV:
@@ -94,3 +95,46 @@ targets:
         INFOPLIST_KEY_CFBundleDisplayName: Bingr
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.entertainment
         ASSETCATALOG_COMPILER_APPICON_NAME: "App Icon & Top Shelf Image"
+
+  BingrMac:
+    type: application
+    platform: macOS
+    sources:
+      - path: Shared
+      - path: macOS
+    dependencies:
+      - package: VLCKitSPM
+    info:
+      path: macOS/Info.plist
+      properties:
+        CFBundleDisplayName: Bingr
+        CFBundleName: Bingr
+        LSApplicationCategoryType: public.app-category.entertainment
+        LSMinimumSystemVersion: "14.0"
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true          # IPTV-servers draaien vaak op http://
+        NSLocalNetworkUsageDescription: Bingr gebruikt het lokale netwerk om streams van je eigen server af te spelen.
+        NSBonjourServices: [_googlecast._tcp, _CC1AD845._googlecast._tcp, _smb._tcp]
+        CFBundleLocalizations: [en, nl, de, fr, es, it, pt, tr, pl, ar, zh-Hans]
+        CFBundleDevelopmentRegion: en
+        NSHumanReadableCopyright: © Léon van der Linden
+    entitlements:
+      path: macOS/BingrMac.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.network.client: true
+        com.apple.security.network.server: true
+        com.apple.security.files.user-selected.read-only: true
+        com.apple.security.personal-information.photos-library: true
+        # zelfde iCloud-opslag als iPhone, iPad en Apple TV
+        com.apple.developer.ubiquity-kvstore-identifier: $(TeamIdentifierPrefix)nl.lrvdlinden.bingr
+        keychain-access-groups: [$(AppIdentifierPrefix)nl.lrvdlinden.bingr.shared]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: nl.lrvdlinden.bingr
+        PRODUCT_NAME: Bingr
+        INFOPLIST_KEY_CFBundleDisplayName: Bingr
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.entertainment
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ENABLE_HARDENED_RUNTIME: YES
+        COMBINE_HIDPI_IMAGES: YES

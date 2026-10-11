@@ -12,6 +12,8 @@ enum DeviceInfo {
     static var name: String {
         #if os(tvOS)
         return "Apple TV"
+        #elseif os(macOS)
+        return "Mac"
         #else
         return "iPhone"
         #endif

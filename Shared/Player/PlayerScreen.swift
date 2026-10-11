@@ -18,7 +18,7 @@ struct PlayerScreen: View {
     @State private var stremioChoices: [StremioClient.Stream] = []
     /// Volgende aflevering (series): knop aan het eind en automatisch verder kijken
     @State private var nextUp: PlayableItem?
-    #if os(iOS)
+    #if !os(tvOS)
     @StateObject private var cast = CastManager.shared
     #endif
 
@@ -37,7 +37,7 @@ struct PlayerScreen: View {
         ZStack {
             Color.black.ignoresSafeArea()
             EngineView(controller: player).ignoresSafeArea().allowsHitTesting(false)
-            #if os(iOS)
+            #if !os(tvOS)
             tapLayer
             #endif
 
@@ -65,7 +65,7 @@ struct PlayerScreen: View {
                     NetflixButton(title: L("Try again"), icon: "arrow.clockwise") { Task { await start(player.item) } }
                 }
             }
-            #if os(iOS)
+            #if !os(tvOS)
             if cast.connected != nil {
                 VStack(spacing: 12) {
                     Image(systemName: "tv.and.mediabox").font(.system(size: 48))
@@ -98,9 +98,20 @@ struct PlayerScreen: View {
             }
         }
         .animation(.easeInOut(duration: 0.25), value: showControls)
-        #if os(iOS)
+        #if !os(tvOS)
         .statusBarHidden()
         .persistentSystemOverlays(.hidden)
+        #if os(macOS)
+        // Mac-toetsenbord: spatie = pauze, ←/→ = 10 s, ↑/↓ = zappen, Esc = sluiten
+        .focusable()
+        .focusEffectDisabled()
+        .onKeyPress(.space) { player.togglePlay(); poke(); return .handled }
+        .onKeyPress(.leftArrow) { player.seek(by: -10); flash("−10 s"); return .handled }
+        .onKeyPress(.rightArrow) { player.seek(by: 10); flash("+10 s"); return .handled }
+        .onKeyPress(.upArrow) { zap(-1); return .handled }
+        .onKeyPress(.downArrow) { zap(1); return .handled }
+        .onExitCommand { if panel != nil { panel = nil } else { close() } }
+        #endif
         #else
         .onPlayPauseCommand { player.togglePlay(); poke() }
         .onMoveCommand { dir in
@@ -129,7 +140,7 @@ struct PlayerScreen: View {
                     player.start(url: s.url)
                 }
             case .cast:
-                #if os(iOS)
+                #if !os(tvOS)
                 if let u = player.url {
                     CastPicker(item: player.item, url: u, position: player.currentTime) { player.pause() }
                 }
@@ -149,7 +160,7 @@ struct PlayerScreen: View {
 
     // MARK: bediening
 
-    #if os(iOS)
+    #if !os(tvOS)
     /// Tik = bediening tonen/verbergen; dubbeltik links/rechts = 10 s terug/vooruit.
     private var tapLayer: some View {
         GeometryReader { geo in
@@ -176,7 +187,7 @@ struct PlayerScreen: View {
                 .ignoresSafeArea().allowsHitTesting(false)
             VStack {
                 HStack(alignment: .top, spacing: 14) {
-                    #if os(iOS)
+                    #if !os(tvOS)
                     Button(action: close) { Image(systemName: "xmark").font(.system(size: 20, weight: .bold)).padding(10) }
                     #endif
                     VStack(alignment: .leading, spacing: 2) {
@@ -184,7 +195,7 @@ struct PlayerScreen: View {
                         if let s = player.item.subtitle { Text(s).font(.system(size: tvScaled(13))).foregroundStyle(Theme.secondary) }
                     }
                     Spacer()
-                    #if os(iOS)
+                    #if !os(tvOS)
                     if PlayerController.pipSupported {
                         Button { player.startPiP() } label: { Image(systemName: "pip.enter").font(.system(size: 20)) }
                             .accessibilityLabel(L("Picture in Picture"))
@@ -208,7 +219,7 @@ struct PlayerScreen: View {
 
                 Spacer()
 
-                #if os(iOS)
+                #if !os(tvOS)
                 HStack(spacing: 56) {
                     if player.isLive && !player.canTimeshift { roundButton("chevron.up", size: 24) { zap(-1) } }
                     else { roundButton("gobackward.10", size: 30) { player.seek(by: -10); poke() } }
@@ -265,7 +276,7 @@ struct PlayerScreen: View {
         HStack(spacing: tvScaled(12)) {
             Text(PlayerController.format(player.duration * (scrubbing ?? player.position)))
                 .font(.system(size: tvScaled(12)).monospacedDigit()).foregroundStyle(Theme.secondary)
-            #if os(iOS)
+            #if !os(tvOS)
             Slider(value: Binding(get: { scrubbing ?? player.position },
                                   set: { scrubbing = $0; poke() }),
                    in: 0...1, onEditingChanged: { editing in
@@ -478,7 +489,7 @@ struct RatingPanel: View {
         .padding(Theme.edge)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(hex: 0x141414).ignoresSafeArea())
-        #if os(iOS)
+        #if !os(tvOS)
         .presentationDetents([.medium])
         #endif
     }

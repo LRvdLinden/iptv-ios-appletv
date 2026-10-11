@@ -1,10 +1,14 @@
 import Foundation
 import AVFoundation
 import AVKit
-import UIKit
 #if os(tvOS)
+import UIKit
 import TVVLCKit
+#elseif os(macOS)
+import AppKit
+import VLCKit
 #else
+import UIKit
 import MobileVLCKit
 #endif
 
@@ -17,7 +21,7 @@ struct MediaTrack: Identifiable, Hashable { var id: String; var name: String; va
 /// - **VLC**: alles daarbuiten (.ts, .mkv, AC3/DTS, MAC-portals)
 @MainActor
 protocol PlaybackEngine: AnyObject {
-    var view: UIView { get }
+    var view: PlatformView { get }
     var state: EngineState { get }
     var isPlaying: Bool { get }
     var position: Double { get }      // 0...1 (0 bij live)
@@ -51,14 +55,16 @@ protocol PlaybackEngine: AnyObject {
 @MainActor
 final class VLCEngine: PlaybackEngine {
     private let player = VLCMediaPlayer()
-    let view: UIView = { let v = UIView(); v.backgroundColor = .black; return v }()
+    let view: PlatformView = makeBlackView()
     private var pendingStart: Double?
 
     init() {
         player.drawable = view
+        #if !os(macOS)
         // na de intro-tune (ambient) weer echte afspeel-audio, ook met de stil-schakelaar aan
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
         try? AVAudioSession.sharedInstance().setActive(true)
+        #endif
     }
 
     var state: EngineState {
@@ -137,16 +143,30 @@ final class VLCEngine: PlaybackEngine {
 
 // MARK: - AVPlayer ----------------------------------------------------------------
 
+#if os(macOS)
+/// Mac: view met een AVPlayerLayer als eigen laag.
+final class PlayerLayerView: NSView {
+    let playerLayer = AVPlayerLayer()
+    var backgroundColor: NSColor? { didSet { playerLayer.backgroundColor = backgroundColor?.cgColor } }
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        layer = playerLayer
+        wantsLayer = true
+    }
+    required init?(coder: NSCoder) { fatalError() }
+}
+#else
 final class PlayerLayerView: UIView {
     override class var layerClass: AnyClass { AVPlayerLayer.self }
     var playerLayer: AVPlayerLayer { layer as! AVPlayerLayer }
 }
+#endif
 
 @MainActor
 final class AVEngine: PlaybackEngine {
     let player = AVPlayer()
     private let layerView = PlayerLayerView()
-    var view: UIView { layerView }
+    var view: PlatformView { layerView }
     private var failed = false
     private var ended = false
     private var observers: [NSObjectProtocol] = []
@@ -171,7 +191,7 @@ final class AVEngine: PlaybackEngine {
         player.usesExternalPlaybackWhileExternalScreenIsActive = true
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback, policy: .longFormVideo, options: [])
         try? AVAudioSession.sharedInstance().setActive(true)
-        #else
+        #elseif os(tvOS)
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
         #endif
     }

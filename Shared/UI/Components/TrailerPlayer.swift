@@ -1,5 +1,5 @@
 import SwiftUI
-#if os(iOS)
+#if !os(tvOS)
 import WebKit
 #endif
 
@@ -9,7 +9,7 @@ enum Trailer {
     static func webURL(_ id: String) -> URL? { URL(string: "https://www.youtube.com/watch?v=\(id)") }
 }
 
-#if os(iOS)
+#if !os(tvOS)
 struct TrailerSheet: View {
     let youtubeID: String
     let title: String
@@ -29,6 +29,26 @@ struct TrailerSheet: View {
     }
 }
 
+#if os(macOS)
+struct YouTubeEmbed: NSViewRepresentable {
+    let id: String
+    func makeNSView(context: Context) -> WKWebView {
+        let c = WKWebViewConfiguration()
+        c.mediaTypesRequiringUserActionForPlayback = []
+        let w = WKWebView(frame: .zero, configuration: c)
+        w.setValue(false, forKey: "drawsBackground")
+        let html = """
+        <html><head><style>body{margin:0;background:#000}</style></head>
+        <body><iframe width="100%" height="100%" style="position:absolute;inset:0;border:0"
+        src="https://www.youtube-nocookie.com/embed/\(id)?autoplay=1&rel=0&modestbranding=1"
+        allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe></body></html>
+        """
+        w.loadHTMLString(html, baseURL: URL(string: "https://www.youtube-nocookie.com"))
+        return w
+    }
+    func updateNSView(_ nsView: WKWebView, context: Context) {}
+}
+#else
 struct YouTubeEmbed: UIViewRepresentable {
     let id: String
     func makeUIView(context: Context) -> WKWebView {
@@ -48,4 +68,5 @@ struct YouTubeEmbed: UIViewRepresentable {
     }
     func updateUIView(_ uiView: WKWebView, context: Context) {}
 }
+#endif
 #endif

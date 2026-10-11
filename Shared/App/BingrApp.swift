@@ -35,7 +35,13 @@ struct BingrApp: App {
                 .preferredColorScheme(.dark)
                 .tint(Theme.red)
                 .onAppear { reminders.start() }
+                #if os(macOS)
+                .frame(minWidth: 900, minHeight: 600)
+                #endif
         }
+        #if os(macOS)
+        .defaultSize(width: 1280, height: 820)
+        #endif
         .onChange(of: phase) { _, p in
             if p == .active {
                 Secrets.reload()

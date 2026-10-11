@@ -81,7 +81,7 @@ struct ConnectionsSetupView: View {
     }
 
     @ViewBuilder private func link(_ url: String) -> some View {
-        #if os(iOS)
+        #if !os(tvOS)
         Button { if let u = URL(string: url) { openURL(u) } } label: {
             Label(url.replacingOccurrences(of: "https://", with: ""), systemImage: "safari")
         }
@@ -100,7 +100,7 @@ struct ConnectionsSetupView: View {
         HStack {
             Text(text).font(.system(.body, design: .monospaced))
             Spacer()
-            #if os(iOS)
+            #if !os(tvOS)
             Button { UIPasteboard.general.string = text } label: { Image(systemName: "doc.on.doc") }
             #endif
         }

@@ -64,6 +64,15 @@ jobs:
             -destination 'generic/platform=tvOS Simulator' \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO 2>&1 | tee tvos.log
 
+      - name: Build macOS (zonder signing)
+        id: macos
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          xcodebuild build -project Bingr.xcodeproj -scheme BingrMac \
+            -destination 'generic/platform=macOS' \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO 2>&1 | tee macos.log
+
       - name: Build-rapport publiceren (branch ci-logs)
         if: always()
         run: |
@@ -72,17 +81,22 @@ jobs:
             echo "commit: $GITHUB_SHA"
             echo "ios: ${{ steps.ios.outcome }}"
             echo "tvos: ${{ steps.tvos.outcome }}"
+            echo "macos: ${{ steps.macos.outcome }}"
             echo
             echo "=== iOS errors ==="
             grep -E "error:|warning: .*(unavailable|deprecated in)" ios.log | sort -u | head -300 || true
             echo
             echo "=== tvOS errors ==="
             grep -E "error:" tvos.log | sort -u | head -300 || true
+            echo
+            echo "=== macOS errors ==="
+            grep -E "error:" macos.log | sort -u | head -300 || true
           } > report/latest.txt
           # kant-en-klaar Xcode-project (met gegenereerd .xcodeproj en vastgelegde package-versies)
           zip -qr report/Bingr-xcode.zip . -x '.git/*' 'report/*' '*.log' 'build/*'
           tail -n 200 ios.log > report/ios-tail.txt || true
           tail -n 200 tvos.log > report/tvos-tail.txt || true
+          tail -n 200 macos.log > report/macos-tail.txt || true
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git fetch origin ci-logs || true
@@ -91,10 +105,10 @@ jobs:
           git switch --orphan ci-logs-tmp
           git rm -rf --quiet . || true
           cp report/*.txt report/Bingr-xcode.zip .
-          git add latest.txt ios-tail.txt tvos-tail.txt Bingr-xcode.zip
-          git commit -m "build $GITHUB_SHA ios=${{ steps.ios.outcome }} tvos=${{ steps.tvos.outcome }}"
+          git add latest.txt ios-tail.txt tvos-tail.txt macos-tail.txt Bingr-xcode.zip
+          git commit -m "build $GITHUB_SHA ios=${{ steps.ios.outcome }} tvos=${{ steps.tvos.outcome }} macos=${{ steps.macos.outcome }}"
           git push -f origin HEAD:ci-logs
 
       - name: Status
-        if: steps.ios.outcome != 'success' || steps.tvos.outcome != 'success'
+        if: steps.ios.outcome != 'success' || steps.tvos.outcome != 'success' || steps.macos.outcome != 'success'
         run: exit 1

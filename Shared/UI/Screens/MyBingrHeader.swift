@@ -66,7 +66,7 @@ struct MyBingrHeader: View {
         }
         .resumeDialog($resumeChoice) { detail = $0 }
         .padding(.vertical, tvScaled(8))
-        #if os(iOS)
+        #if !os(tvOS)
         .sheet(item: $detail) { DetailView(target: $0).presentationDragIndicator(.visible) }
         #else
         .fullScreenCover(item: $detail) { DetailView(target: $0) }

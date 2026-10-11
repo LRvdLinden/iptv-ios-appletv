@@ -75,7 +75,7 @@ struct SearchView: View {
         }
         .sheet(item: $program) { h in ProgramSheet(channel: h.channel, program: h.p) }
         .fullScreenCover(item: $category) { CategoryView(target: $0) }
-        #if os(iOS)
+        #if !os(tvOS)
         .sheet(item: $detail) { DetailView(target: $0) }
         #else
         .fullScreenCover(item: $detail) { DetailView(target: $0) }
@@ -237,7 +237,7 @@ private struct SearchField: ViewModifier {
     let close: () -> Void
 
     func body(content: Content) -> some View {
-        #if os(iOS)
+        #if !os(tvOS)
         content
             .searchable(text: $query, isPresented: $active, prompt: Text(L("Titles, channels, categories…")))
             .toolbar {

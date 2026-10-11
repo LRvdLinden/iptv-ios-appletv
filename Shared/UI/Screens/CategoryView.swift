@@ -56,7 +56,7 @@ struct CategoryView: View {
         }
         .background(Theme.bg.ignoresSafeArea())
         .preferredColorScheme(.dark)
-        #if os(iOS)
+        #if !os(tvOS)
         .sheet(item: $detail) { DetailView(target: $0).presentationDragIndicator(.visible) }
         #else
         .fullScreenCover(item: $detail) { DetailView(target: $0) }
@@ -65,7 +65,7 @@ struct CategoryView: View {
 
     private var header: some View {
         HStack(spacing: tvScaled(12)) {
-            #if os(iOS)
+            #if !os(tvOS)
             Button { dismiss() } label: {
                 Image(systemName: "chevron.left").font(.system(size: 20, weight: .semibold))
                     .frame(width: 40, height: 40)

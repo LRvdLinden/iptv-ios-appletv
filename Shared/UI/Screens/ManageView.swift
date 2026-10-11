@@ -123,7 +123,7 @@ struct ManageView: View {
                     .contextMenu { groupActions(g) }
             }
         }
-        #if os(iOS)
+        #if !os(tvOS)
         .swipeActions {
             Button { update { if hidden { $0.hidden.remove(key) } else { $0.hidden.insert(key) } } } label: {
                 Label(hidden ? L("Show") : L("Hide"), systemImage: hidden ? "eye" : "eye.slash")
@@ -207,7 +207,7 @@ struct ChannelsManageView: View {
                     .contentShape(Rectangle())
                 }
                 .contextMenu { channelActions(ch) }
-                #if os(iOS)
+                #if !os(tvOS)
                 .swipeActions {
                     Button { toggleHidden(ch.id) } label: { Label(hidden ? L("Show") : L("Hide"), systemImage: "eye.slash") }.tint(.gray)
                     Button { renaming = .init(id: ch.id, current: c.renamed[ch.id] ?? ch.name) } label: { Label(L("Rename"), systemImage: "pencil") }.tint(.blue)

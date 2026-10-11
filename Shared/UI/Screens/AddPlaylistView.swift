@@ -1,5 +1,5 @@
 import SwiftUI
-#if os(iOS)
+#if !os(tvOS)
 import PhotosUI
 #endif
 
@@ -29,7 +29,7 @@ struct AddPlaylistView: View {
     @State private var plexTask: Task<Void, Never>?
     // profielfoto
     @State private var photo: Data?
-    #if os(iOS)
+    #if !os(tvOS)
     @State private var photoItem: PhotosPickerItem?
     #endif
 
@@ -100,7 +100,7 @@ struct AddPlaylistView: View {
             }
             .background(Color(hex: 0x141414).ignoresSafeArea())
             .navigationTitle(existing == nil ? L("Add server") : L("Edit server"))
-            #if os(iOS)
+            #if !os(tvOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
             .toolbar {
@@ -154,7 +154,7 @@ struct AddPlaylistView: View {
                     .lineLimit(3...6)
                     .font(.system(size: tvScaled(14)))
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
-                    #if os(iOS)
+                    #if !os(tvOS)
                     .padding(14).background(Theme.elevated, in: RoundedRectangle(cornerRadius: 18))
                     #endif
             }
@@ -204,7 +204,7 @@ struct AddPlaylistView: View {
     // MARK: profielfoto
 
     @ViewBuilder private var photoControls: some View {
-        #if os(iOS)
+        #if !os(tvOS)
         HStack(spacing: 12) {
             PhotosPicker(selection: $photoItem, matching: .images) {
                 Label(photo == nil ? L("Choose from Photos") : L("Change photo"), systemImage: "photo.on.rectangle")
@@ -234,8 +234,21 @@ struct AddPlaylistView: View {
         #endif
     }
 
-    #if os(iOS)
+    #if !os(tvOS)
     /// Vierkant uitsnijden en verkleinen tot 320 px JPEG (±20 KB) zodat het via iCloud past.
+    #if os(macOS)
+    static func thumbnail(_ data: Data) -> Data? {
+        guard let src = NSImage(data: data), let cg = src.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
+        let side = min(cg.width, cg.height)
+        guard let crop = cg.cropping(to: CGRect(x: (cg.width - side) / 2, y: (cg.height - side) / 2, width: side, height: side)),
+              let ctx = CGContext(data: nil, width: 320, height: 320, bitsPerComponent: 8, bytesPerRow: 0,
+                                  space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else { return nil }
+        ctx.interpolationQuality = .high
+        ctx.draw(crop, in: CGRect(x: 0, y: 0, width: 320, height: 320))
+        guard let out = ctx.makeImage() else { return nil }
+        return NSBitmapImageRep(cgImage: out).representation(using: .jpeg, properties: [.compressionFactor: 0.72])
+    }
+    #else
     static func thumbnail(_ data: Data) -> Data? {
         guard let img = UIImage(data: data) else { return nil }
         let side = min(img.size.width, img.size.height)
@@ -249,6 +262,7 @@ struct AddPlaylistView: View {
         }
         return out.jpegData(compressionQuality: 0.72)
     }
+    #endif
     #endif
 
     // MARK: helpers
@@ -338,7 +352,7 @@ struct AddPlaylistView: View {
         .font(.system(size: tvScaled(16)))
         .textInputAutocapitalization(.never)
         .autocorrectionDisabled()
-        #if os(iOS)
+        #if !os(tvOS)
         .keyboardType(url ? .URL : .default)
         .padding(.horizontal, 18).padding(.vertical, 14)
         .background(Theme.elevated, in: Capsule())

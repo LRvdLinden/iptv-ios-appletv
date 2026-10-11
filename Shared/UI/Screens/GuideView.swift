@@ -195,7 +195,7 @@ struct ProgramSheet: View {
         .padding(Theme.edge)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(hex: 0x141414).ignoresSafeArea())
-        #if os(iOS)
+        #if !os(tvOS)
         .presentationDetents([.medium])
         #endif
     }

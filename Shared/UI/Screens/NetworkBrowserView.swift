@@ -1,6 +1,8 @@
 import SwiftUI
 #if os(tvOS)
 import TVVLCKit
+#elseif os(macOS)
+import VLCKit
 #else
 import MobileVLCKit
 #endif
@@ -139,7 +141,7 @@ struct NetworkBrowserView: View {
                             Button { editing = s } label: { Label(L("Edit"), systemImage: "pencil") }
                             Button(role: .destructive) { delete(s) } label: { Label(L("Delete"), systemImage: "trash") }
                         }
-                        #if os(iOS)
+                        #if !os(tvOS)
                         .swipeActions {
                             Button(role: .destructive) { delete(s) } label: { Label(L("Delete"), systemImage: "trash") }
                             Button { editing = s } label: { Label(L("Edit"), systemImage: "pencil") }

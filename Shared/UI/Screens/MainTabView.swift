@@ -85,7 +85,7 @@ struct MainTabView: View {
                 tab = allowed.contains(startTab) ? startTab : 0
             }
         }
-        #if os(iOS)
+        #if !os(tvOS)
         .sheet(item: $pendingDetail) { DetailView(target: $0) }
         #else
         .fullScreenCover(item: $pendingDetail) { DetailView(target: $0) }

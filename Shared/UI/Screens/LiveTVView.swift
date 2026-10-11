@@ -134,7 +134,11 @@ struct LiveTVView: View {
             }
             channelArea
         }
+        #if os(macOS)
+        .searchable(text: $filterText, placement: .toolbar, prompt: L("Search channel or program"))
+        #else
         .searchable(text: $filterText, placement: .navigationBarDrawer(displayMode: .always), prompt: L("Search channel or program"))
+        #endif
         #endif
     }
 

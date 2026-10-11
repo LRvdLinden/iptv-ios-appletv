@@ -46,7 +46,7 @@ struct HomeView: View {
             }
             .ignoresSafeArea(edges: .top)
 
-            #if os(iOS)
+            #if !os(tvOS)
             HomeTopBar(scroll: scroll, onSearch: { showSearch = true }, onProfile: { app.switchPlaylist() })   // op Apple TV zit Zoeken al in de menubalk
             #endif
         }
@@ -55,7 +55,7 @@ struct HomeView: View {
         .task(id: "\(store.activeProfileID?.uuidString ?? "")-\(pid?.uuidString ?? "")-\(lib.movies.count)-\(lib.series.count)") { await prepare() }
         .fullScreenCover(item: $category) { CategoryView(target: $0) }
         .resumeDialog($resumeChoice) { detail = $0 }
-        #if os(iOS)
+        #if !os(tvOS)
         .sheet(item: $detail) { DetailView(target: $0).presentationDragIndicator(.visible) }
         #else
         .fullScreenCover(item: $detail) { DetailView(target: $0) }
@@ -467,7 +467,7 @@ struct HomeView: View {
 
 @Observable final class ScrollTracker { var y: CGFloat = 0 }
 
-#if os(iOS)
+#if !os(tvOS)
 /// iOS bovenbalk (wordt donker bij scrollen, zoals Netflix).
 private struct HomeTopBar: View {
     let scroll: ScrollTracker

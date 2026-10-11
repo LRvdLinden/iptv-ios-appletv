@@ -205,7 +205,7 @@ struct SettingsView: View {
                         Button { editing = src } label: { Label(L("Edit"), systemImage: "pencil") }
                         Button(role: .destructive) { deletingServer = src } label: { Label(L("Delete"), systemImage: "trash") }
                     }
-                    #if os(iOS)
+                    #if !os(tvOS)
                     .swipeActions {
                         Button(role: .destructive) { deletingServer = src } label: { Label(L("Delete"), systemImage: "trash") }
                         Button { editing = src } label: { Label(L("Edit"), systemImage: "pencil") }.tint(.blue)
@@ -477,7 +477,7 @@ struct TraktLoginView: View {
                     Image(uiImage: qr).interpolation(.none).resizable().frame(width: tvScaled(140), height: tvScaled(140))
                         .padding(8).background(.white, in: RoundedRectangle(cornerRadius: 8))
                 }
-                #if os(iOS)
+                #if !os(tvOS)
                 Button(L("Open trakt.tv/activate")) {
                     UIPasteboard.general.string = code.user_code
                     if let u = URL(string: code.verification_url) { openURL(u) }
