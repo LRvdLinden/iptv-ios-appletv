@@ -329,9 +329,10 @@ final class PlaylistService: ObservableObject {
         let t = Self.fold(q.trimmingCharacters(in: .whitespaces))
         guard t.count >= 2 else { return SearchResults() }
         func m(_ s: String) -> Bool { Self.fold(s).contains(t) }
-        var r = SearchResults(channels: Array(library.channels.filter { m($0.name) }.prefix(40)),
-                              movies: Array(library.movies.filter { m($0.title) }.prefix(60)),
-                              series: Array(library.series.filter { m($0.title) }.prefix(60)))
+        // films én series én zenders, uit álle categorieën (ongeacht het tabblad waarin je zoekt)
+        var r = SearchResults(channels: Array(library.channels.filter { m($0.name) }.prefix(60)),
+                              movies: Array(library.movies.filter { m($0.title) }.prefix(200)),
+                              series: Array(library.series.filter { m($0.title) }.prefix(200)))
         guard allPlaylists else { return r }
         // zoeken in de cache van alle andere afspeellijsten
         let others = CloudStore.shared.playlists.filter { $0.id != source?.id }

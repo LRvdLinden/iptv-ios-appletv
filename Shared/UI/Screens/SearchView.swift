@@ -2,6 +2,12 @@ import SwiftUI
 
 /// Zoeken in de huidige afspeellijst én in alle andere afspeellijsten.
 struct SearchView: View {
+    /// Geopend via het vergrootglas op Home/Films/Series (met sluitknop en meteen typen)
+    var modal = false
+    @Environment(\.dismiss) private var dismiss
+    @State private var searchActive = false
+    @State private var category: CategoryTarget?
+    @State private var groupHits: [(title: String, items: [DetailTarget])] = []
     @EnvironmentObject var app: AppState
     @EnvironmentObject var playlists: PlaylistService
     @EnvironmentObject var trakt: TraktSync
@@ -27,7 +33,7 @@ struct SearchView: View {
                                 .multilineTextAlignment(.center)
                         }
                         .foregroundStyle(Theme.secondary).frame(maxWidth: .infinity).padding(.top, 80)
-                    } else if results.isEmpty && programs.isEmpty && !searching {
+                    } else if results.isEmpty && programs.isEmpty && groupHits.isEmpty && !searching {
                         Text(L("Nothing found for “%@”.", query)).foregroundStyle(Theme.secondary)
                             .frame(maxWidth: .infinity).padding(.top, 80)
                     }
@@ -40,6 +46,7 @@ struct SearchView: View {
                             }
                         }
                     }
+                    if !groupHits.isEmpty { categoryList }
                     if !programs.isEmpty { programList }
                     if !results.movies.isEmpty { grid(L("Movies"), results.movies.map { .movie($0) }) }
                     if !results.series.isEmpty { grid(L("Series"), results.series.map { .series($0) }) }
@@ -49,7 +56,13 @@ struct SearchView: View {
             }
             .background(Color.black)
             .navigationTitle(L("Search"))
-            .searchable(text: $query, prompt: L("Titles, channels…"))
+            .searchable(text: $query, isPresented: $searchActive, prompt: L("Titles, channels, categories…"))
+            .toolbar {
+                if modal {
+                    ToolbarItem(placement: .cancellationAction) { Button(L("Close")) { dismiss() } }
+                }
+            }
+            .onAppear { if modal { searchActive = true } }
             .onChange(of: query) { _, q in
                 Task {
                     try? await Task.sleep(nanoseconds: 300_000_000)
@@ -57,16 +70,56 @@ struct SearchView: View {
                     searching = true
                     results = await playlists.search(q)
                     programs = q.count < 2 ? [] : await Self.searchGuide(q, in: playlists.library)
+                    groupHits = q.count < 2 ? [] : categoryHits(q)
                     searching = false
                 }
             }
         }
         .sheet(item: $program) { h in ProgramSheet(channel: h.channel, program: h.p) }
+        .fullScreenCover(item: $category) { CategoryView(target: $0) }
         #if os(iOS)
         .sheet(item: $detail) { DetailView(target: $0) }
         #else
         .fullScreenCover(item: $detail) { DetailView(target: $0) }
         #endif
+    }
+
+    // MARK: categorieën doorzoeken (films en series, alle categorieën)
+
+    private func categoryHits(_ q: String) -> [(title: String, items: [DetailTarget])] {
+        let t = PlaylistService.fold(q.trimmingCharacters(in: .whitespaces))
+        let lib = playlists.library
+        var out: [(title: String, items: [DetailTarget])] = []
+        for g in lib.movieGroups where PlaylistService.fold(g).contains(t) {
+            out.append((g, lib.movies.filter { $0.group == g }.map { .movie($0) }))
+        }
+        for g in lib.seriesGroups where PlaylistService.fold(g).contains(t) {
+            out.append((g, lib.series.filter { $0.group == g }.map { .series($0) }))
+        }
+        return Array(out.prefix(30))
+    }
+
+    private var categoryList: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(L("Categories")).font(Theme.titleFont).padding(.leading, Theme.edge)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: tvScaled(10)) {
+                    ForEach(groupHits, id: \.title) { g in
+                        Button { category = CategoryTarget(title: g.title, items: g.items) } label: {
+                            HStack(spacing: 6) {
+                                Text(g.title).font(.system(size: tvScaled(14), weight: .semibold)).lineLimit(1)
+                                Text("\(g.items.count)").font(.system(size: tvScaled(12))).foregroundStyle(Theme.secondary)
+                            }
+                            .padding(.horizontal, tvScaled(14)).padding(.vertical, tvScaled(8))
+                            .background(Theme.elevated, in: Capsule())
+                            .foregroundStyle(.white)
+                        }
+                        .plainTVButton()
+                    }
+                }
+                .padding(.horizontal, Theme.edge)
+            }
+        }
     }
 
     // MARK: tv-gids doorzoeken

@@ -40,7 +40,7 @@ SwiftUI · iOS 17+ · tvOS 17+ · Apple- én VLC-engine · 11 talen.
 - **Plex** (inloggen met code op plex.tv/link), **Jellyfin**, **Emby** (films, series, live TV + gids)
 - **Stremio**: inloggen met je Stremio-account of eigen add-on-URL's (Cinemeta-catalogi, directe streams)
 - Afspeellijst-kiezer in Netflix-profielstijl met eigen **naam en avatar of profielfoto** (uit je fotobibliotheek) per lijst
-- **Zoeken in al je afspeellijsten** tegelijk, ook in de **tv-gids** (nu, straks en terugkijken)
+- **Zoeken in al je afspeellijsten** tegelijk: films, series, zenders, **categorieën** en de **tv-gids** (nu, straks en terugkijken). Ook via het vergrootglas op Home, Films en Series, en dan altijd door álle content
 - **NAS via SMB/DLNA**: servers op je netwerk worden gevonden, of voeg zelf een SMB-share toe; bladeren en afspelen
 
 **Kijken**

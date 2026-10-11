@@ -16,6 +16,7 @@ struct HomeView: View {
     @State private var trendingSeries: [Series] = []
     @State private var forYou: [DetailTarget] = []
     @State private var category: CategoryTarget?
+    @State private var showSearch = false
     @State private var scrollOffset: CGFloat = 0
 
     private var lib: Library { playlists.library }
@@ -43,8 +44,17 @@ struct HomeView: View {
 
             #if os(iOS)
             topBar
+            #else
+            HStack {
+                Spacer()
+                Button { showSearch = true } label: {
+                    Label(L("Search"), systemImage: "magnifyingglass").font(.system(size: 26, weight: .semibold))
+                }
+            }
+            .padding(.horizontal, Theme.edge).padding(.top, 10)
             #endif
         }
+        .fullScreenCover(isPresented: $showSearch) { SearchView(modal: true) }
         .background(Color.black)
         .task(id: "\(pid?.uuidString ?? "")-\(lib.movies.count)-\(lib.series.count)") { await prepare() }
         .fullScreenCover(item: $category) { CategoryView(target: $0) }
@@ -449,6 +459,11 @@ struct HomeView: View {
         HStack(spacing: 14) {
             BingrLogo(size: 26)
             Spacer()
+            Button { showSearch = true } label: {
+                Image(systemName: "magnifyingglass").font(.system(size: 21, weight: .semibold)).foregroundStyle(.white)
+                    .frame(width: 34, height: 34)
+            }
+            .accessibilityLabel(L("Search"))
             if let s = playlists.source {
                 Button { app.switchPlaylist() } label: {
                     MiniAvatar(playlist: s, size: 30)
