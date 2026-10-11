@@ -53,7 +53,7 @@ jobs:
           # doelmap: FTP_DIR, anders de gebruikelijke webmappen, anders de hoofdmap
           TARGET="${FTP_DIR:-}"
           if [ -z "$TARGET" ]; then
-            for d in public_html httpdocs www htdocs web domains/bingr.online/public_html domains/bingr.com/public_html; do
+            for d in public_html httpdocs www htdocs web domains/bingr.online/public_html domains/bingr.online/public_html; do
               top="${d%%/*}"
               if grep -qx "/\?$top/\?" /tmp/root.txt; then
                 if [ "$d" = "$top" ] || lftp -e "$base; open -u \"$USER_OK\",\"$FTP_PASSWORD\" \"$FTP_SERVER\"; cls -1 /$d/ ; bye" >/dev/null 2>&1; then

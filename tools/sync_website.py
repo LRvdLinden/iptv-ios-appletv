@@ -36,6 +36,6 @@ if "--zip" in sys.argv:
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
         for f in sorted(site.rglob("*")):
             if f.is_file() and f.name != ".DS_Store":
-                z.write(f, pathlib.Path("bingr.com") / f.relative_to(site))
+                z.write(f, pathlib.Path("bingr.online") / f.relative_to(site))
     print(out)
 print(f"website bijgewerkt: {version} (build {build})")

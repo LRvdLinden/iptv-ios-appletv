@@ -94,7 +94,7 @@ jobs:
           } > report/latest.txt
           # kant-en-klaar Xcode-project (met gegenereerd .xcodeproj en vastgelegde package-versies)
           zip -qr report/Bingr-xcode.zip . -x '.git/*' 'report/*' '*.log' 'build/*'
-          # website (bingr.com) als losse zip
+          # website (bingr.online) als losse zip
           (cd website && zip -qr ../report/Bingr-website.zip .)
           tail -n 200 ios.log > report/ios-tail.txt || true
           tail -n 200 tvos.log > report/tvos-tail.txt || true

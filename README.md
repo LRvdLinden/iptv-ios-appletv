@@ -145,10 +145,10 @@ iOS/ tvOS/ macOS/ iconen, Info.plist & entitlements (gegenereerd door XcodeGen)
 android/          Android-versie (in opbouw, zie hieronder)
 tools/            vertaalcontrole, sleutels inbouwen (CI), intro-tune (make_tune.py), profielfiguurtjes (make_avatars.py), screenshots (make_screenshots.py)
 docs/             mockups en screenshots
-website/          bingr.com (statische site)
+website/          bingr.online (statische site)
 ```
 
-## Website (bingr.com)
+## Website (bingr.online)
 
 De website staat in `website/` (statische HTML, Nederlands en Engels, zonder build-stap): `index.html`, `privacy.html` en `support.html`.
 `python3 tools/sync_website.py` zet de nieuwste screenshots, profielfiguurtjes, het icoon en het buildnummer erin; met `--zip <pad>` maak je er meteen een uploadklare zip van. De CI zet bij elke build ook `Bingr-website.zip` op de branch `ci-logs`.
