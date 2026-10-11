@@ -7,7 +7,9 @@ import Combine
 @MainActor
 final class PlaylistService: ObservableObject {
     @Published private(set) var source: PlaylistSource? { didSet { CloudStore.shared.activePlaylistID = source?.id } }
-    @Published private(set) var library = Library()
+    @Published private(set) var library = Library() { didSet { libraryVersion &+= 1 } }
+    /// Telt op bij elke nieuwe (gefilterde) lijst — schermen bouwen hun rijen dan één keer opnieuw op
+    @Published private(set) var libraryVersion = 0
     @Published private(set) var rawLibrary = Library()
     @Published private(set) var isLoading = false
     @Published private(set) var loadingText = ""

@@ -17,6 +17,10 @@ struct HomeView: View {
     @State private var category: CategoryTarget?
     @State private var showSearch = false
     @State private var resumeChoice: ResumeChoice?
+    /// Rijen één keer per lijst opbouwen (op de achtergrond), niet bij elke schermverversing
+    @State private var index = HomeIndex()
+    /// Films die je in een andere app (via Trakt) half keek — één keer gekoppeld, niet per frame
+    @State private var traktContinue: [ContinueItem] = []
     /// Scrollpositie apart bijhouden: alleen de bovenbalk leest hem, zodat Home niet bij elke scrollframe opnieuw rekent.
     @State private var scroll = ScrollTracker()
 
@@ -53,6 +57,12 @@ struct HomeView: View {
         .fullScreenCover(isPresented: $showSearch) { SearchView(modal: true) }
         .background(Color.black)
         .task(id: "\(store.activeProfileID?.uuidString ?? "")-\(pid?.uuidString ?? "")-\(lib.movies.count)-\(lib.series.count)") { await prepare() }
+        .task(id: playlists.libraryVersion) {
+            let l = lib
+            index = await Task.detached(priority: .userInitiated) { HomeIndex.build(l) }.value
+            matchTraktPlayback()
+        }
+        .onChange(of: trakt.playback.count) { _, _ in matchTraktPlayback() }
         .fullScreenCover(item: $category) { CategoryView(target: $0) }
         .resumeDialog($resumeChoice) { detail = $0 }
         #if !os(tvOS)
@@ -70,28 +80,28 @@ struct HomeView: View {
         let top10Series = trendingSeries.isEmpty ? nil : top10Row(kids ? L("Top 10 kids series") : L("Top 10 series today"), series: Array(trendingSeries.prefix(10)))
         switch filter {
         case .all:
+            continueRow
             myListRows
             recentRow
-            continueRow
             forYouRow
             // zoals Netflix: onder Voor jou de Top 10 series, daarna de films
             if let top10Series { top10Series }
             if let top10Movies { top10Movies }
         case .movies:
+            continueRow
             myListRows
             recentRow
-            continueRow
             forYouRow
             if let top10Movies { top10Movies }
         case .series:
-            myListRows
             continueRow
+            myListRows
             forYouRow
             if let top10Series { top10Series }
         }
 
         if filter == .all {
-            let favs = lib.channels.filter { c in pid.map { store.isFavorite($0, c.id) } ?? false }
+            let favs = pid.map { p in store.favorites.compactMap { k in index.channel(forKey: k, playlist: p) } } ?? []
             if !favs.isEmpty {
                 MediaRow(title: L("Favorite channels")) {
                     ForEach(favs) { c in
@@ -104,15 +114,13 @@ struct HomeView: View {
         }
 
         if filter != .series {
-            ForEach(lib.movieGroups.prefix(filter == .all ? 8 : 40), id: \.self) { g in
-                let all = lib.movies.filter { $0.group == g }
-                movieRow(g, Array(all.prefix(40)), all: all)
+            ForEach(index.movieGroups.prefix(filter == .all ? 8 : 40)) { g in
+                movieRow(g.id, Array(g.items.prefix(40)), all: g.items)
             }
         }
         if filter != .movies {
-            ForEach(lib.seriesGroups.prefix(filter == .all ? 8 : 40), id: \.self) { g in
-                let all = lib.series.filter { $0.group == g }
-                seriesRow(g, Array(all.prefix(40)), all: all)
+            ForEach(index.seriesGroups.prefix(filter == .all ? 8 : 40)) { g in
+                seriesRow(g.id, Array(g.items.prefix(40)), all: g.items)
             }
         }
 
@@ -129,10 +137,7 @@ struct HomeView: View {
     @ViewBuilder private var myListRows: some View {
         if filter == .all {
             // Home: films én series uit Mijn lijst in één rij
-            let mine: [DetailTarget] = pid.map { p in
-                lib.movies.filter { store.inMyList(p, $0.id) }.map { DetailTarget.movie($0) }
-                    + lib.series.filter { store.inMyList(p, $0.id) }.map { DetailTarget.series($0) }
-            } ?? []
+            let mine: [DetailTarget] = myListMovies.map { DetailTarget.movie($0) } + myListSeries.map { DetailTarget.series($0) }
             if !mine.isEmpty {
                 MediaRow(title: L("My List"), onSeeAll: { category = CategoryTarget(title: L("My List"), items: mine) }) {
                     ForEach(mine) { t in
@@ -151,18 +156,39 @@ struct HomeView: View {
             }
         }
         if filter == .movies {
-            let mine = lib.movies.filter { m in pid.map { store.inMyList($0, m.id) } ?? false }
+            let mine = myListMovies
             if !mine.isEmpty { movieRow(L("My List"), mine, all: mine) }
         }
         if filter == .series {
-            let mine = lib.series.filter { s in pid.map { store.inMyList($0, s.id) } ?? false }
+            let mine = myListSeries
             if !mine.isEmpty { seriesRow(L("My List"), mine, all: mine) }
         }
     }
 
     @ViewBuilder private var recentRow: some View {
-        let all = lib.movies.filter { $0.addedAt != nil }.sorted { $0.addedAt! > $1.addedAt! }
+        let all = index.recent
         if !all.isEmpty { movieRow(L("Recently added"), Array(all.prefix(30)), all: all) }
+    }
+
+    /// Mijn lijst via de opgeslagen sleutels (snel), niet door de hele bibliotheek te lopen
+    private var myListMovies: [Movie] {
+        guard let pid else { return [] }
+        return store.myList.compactMap { index.movie(forKey: $0, playlist: pid) }.sorted { $0.title < $1.title }
+    }
+    private var myListSeries: [Series] {
+        guard let pid else { return [] }
+        return store.myList.compactMap { index.series(forKey: $0, playlist: pid) }.sorted { $0.title < $1.title }
+    }
+
+    private func matchTraktPlayback() {
+        guard !trakt.playback.isEmpty else { traktContinue = []; return }
+        var out: [ContinueItem] = []
+        for p in trakt.playback where p.type == "movie" {
+            guard let imdb = p.imdb, let m = index.movie(imdb: imdb) ?? lib.movies.first(where: { trakt.imdb(for: $0) == imdb }) else { continue }
+            out.append(ContinueItem(id: m.id, title: m.title, subtitle: "Trakt · \(Int(p.progress))%", artwork: m.poster,
+                                    fraction: p.progress / 100, updated: .distantPast, isMovie: true, traktPlaybackID: p.id))
+        }
+        traktContinue = out
     }
 
     @ViewBuilder private var continueRow: some View {
@@ -279,12 +305,12 @@ struct HomeView: View {
     }
 
     private var continueWatching: [ContinueItem] {
-        let movieIDs = Set(lib.movies.map(\.id))
-        let seriesTitles = Set(lib.series.map(\.title))
+        let movieIDs = index.movieByID
+        let seriesTitles = index.seriesTitles
         var out: [ContinueItem] = store.progress.compactMap { key, e in
             guard store.belongsToActive(e.profileID) else { return nil }   // alleen van dit profiel
             guard e.playlistID == nil || e.playlistID == pid else { return nil }   // alleen van deze server
-            let isMovie = movieIDs.contains(key)
+            let isMovie = movieIDs[key] != nil
             // afleveringen alleen als de serie (nog) zichtbaar is voor dit profiel (niet verborgen/op slot/te oud)
             if !isMovie && !seriesTitles.contains(e.title) { return nil }
             if filter == .movies && !isMovie { return nil }
@@ -295,13 +321,9 @@ struct HomeView: View {
                                 position: e.position > 0 ? e.position : nil)
         }
         // films die je in een andere app (via Trakt) half hebt gekeken
-        if filter != .series && !trakt.playback.isEmpty {
+        if filter != .series && !traktContinue.isEmpty {
             let known = Set(out.map(\.id))
-            for p in trakt.playback where p.type == "movie" {
-                guard let imdb = p.imdb, let m = lib.movies.first(where: { trakt.imdb(for: $0) == imdb }), !known.contains(m.id) else { continue }
-                out.append(ContinueItem(id: m.id, title: m.title, subtitle: "Trakt · \(Int(p.progress))%", artwork: m.poster,
-                                        fraction: p.progress / 100, updated: .distantPast, isMovie: true, traktPlaybackID: p.id))
-            }
+            out += traktContinue.filter { !known.contains($0.id) }
         }
         return Array(out.sorted { $0.updated > $1.updated }.prefix(20))
     }
@@ -501,4 +523,50 @@ private struct HomeTopBar: View {
 private struct OffsetKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
+/// Vooraf berekende rijen voor Home/Films/Series: één keer per lijst, op de achtergrond.
+struct HomeIndex {
+    struct Group<T>: Identifiable { let id: String; let items: [T] }
+    var movieGroups: [Group<Movie>] = []
+    var seriesGroups: [Group<Series>] = []
+    var recent: [Movie] = []
+    var movieByID: [String: Movie] = [:]
+    var seriesByID: [String: Series] = [:]
+    var channelByID: [String: Channel] = [:]
+    var movieByIMDb: [String: Movie] = [:]
+    var seriesTitles: Set<String> = []
+
+    static func build(_ lib: Library) -> HomeIndex {
+        var x = HomeIndex()
+        var mOrder: [String] = [], mGroups: [String: [Movie]] = [:]
+        for m in lib.movies {
+            if mGroups[m.group] == nil { mOrder.append(m.group) }
+            mGroups[m.group, default: []].append(m)
+            x.movieByID[m.id] = m
+            if let i = m.imdbID, !i.isEmpty { x.movieByIMDb[i] = m }
+        }
+        x.movieGroups = mOrder.map { Group(id: $0, items: mGroups[$0] ?? []) }
+        var sOrder: [String] = [], sGroups: [String: [Series]] = [:]
+        for s in lib.series {
+            if sGroups[s.group] == nil { sOrder.append(s.group) }
+            sGroups[s.group, default: []].append(s)
+            x.seriesByID[s.id] = s
+            x.seriesTitles.insert(s.title)
+        }
+        x.seriesGroups = sOrder.map { Group(id: $0, items: sGroups[$0] ?? []) }
+        for c in lib.channels { x.channelByID[c.id] = c }
+        x.recent = lib.movies.filter { $0.addedAt != nil }.sorted { ($0.addedAt ?? .distantPast) > ($1.addedAt ?? .distantPast) }
+        return x
+    }
+
+    private func itemID(_ key: String, _ playlist: UUID) -> Substring? {
+        let p = playlist.uuidString
+        guard key.count > p.count, key.hasPrefix(p) else { return nil }
+        return key.dropFirst(p.count + 1)
+    }
+    func movie(forKey k: String, playlist: UUID) -> Movie? { itemID(k, playlist).flatMap { movieByID[String($0)] } }
+    func series(forKey k: String, playlist: UUID) -> Series? { itemID(k, playlist).flatMap { seriesByID[String($0)] } }
+    func channel(forKey k: String, playlist: UUID) -> Channel? { itemID(k, playlist).flatMap { channelByID[String($0)] } }
+    func movie(imdb: String) -> Movie? { movieByIMDb[imdb] }
 }

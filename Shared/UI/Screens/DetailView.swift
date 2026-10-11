@@ -771,7 +771,7 @@ private struct ParallaxImage: View {
     let scroll: ScrollTracker
     var body: some View {
         let y = scroll.y
-        RemoteImage(url: url, placeholder: "")
+        RemoteImage(url: url, placeholder: "", maxPixel: 1600)
             .frame(height: height + max(y, 0))
             .frame(maxWidth: .infinity)
             .clipped()

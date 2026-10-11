@@ -1,4 +1,5 @@
 import SwiftUI
+import ImageIO
 
 enum Theme {
     static let red = Color(hex: 0xE50914)
@@ -184,24 +185,93 @@ struct WatchedBadge: View {
 }
 
 /// Asynchroon geladen afbeelding met placeholder.
+/// Afbeelding van internet, snel: verkleind gedecodeerd op de achtergrond en in het geheugen bewaard,
+/// zodat terugscrollen niet opnieuw laadt of hapert (AsyncImage deed beide niet).
 struct RemoteImage: View {
     let url: URL?
     var contentMode: ContentMode = .fill
     var placeholder: String = ""
+    /// Maximale grootte in pixels (posters ~720, achtergronden groter)
+    var maxPixel: Int = 720
+    @State private var image: CGImage?
+
+    init(url: URL?, contentMode: ContentMode = .fill, placeholder: String = "", maxPixel: Int = 720) {
+        self.url = url; self.contentMode = contentMode; self.placeholder = placeholder; self.maxPixel = maxPixel
+        _image = State(initialValue: url.flatMap { ImagePipeline.shared.cached($0, maxPixel: maxPixel) })
+    }
 
     var body: some View {
-        AsyncImage(url: url, transaction: Transaction(animation: .easeIn(duration: 0.2))) { phase in
-            switch phase {
-            case .success(let img): img.resizable().aspectRatio(contentMode: contentMode)
-            default:
-                ZStack {
-                    LinearGradient(colors: [Theme.elevated, Theme.card], startPoint: .top, endPoint: .bottom)
-                    if !placeholder.isEmpty {
-                        Text(placeholder).font(.system(size: tvScaled(13), weight: .bold))
-                            .multilineTextAlignment(.center).foregroundStyle(.white.opacity(0.8)).padding(8)
-                    }
+        ZStack {
+            if let image {
+                Image(decorative: image, scale: 1).resizable().aspectRatio(contentMode: contentMode)
+                    .transition(.opacity)
+            } else {
+                LinearGradient(colors: [Theme.elevated, Theme.card], startPoint: .top, endPoint: .bottom)
+                if !placeholder.isEmpty {
+                    Text(placeholder).font(.system(size: tvScaled(13), weight: .bold))
+                        .multilineTextAlignment(.center).foregroundStyle(.white.opacity(0.8)).padding(8)
                 }
             }
         }
+        .task(id: url) {
+            guard let url else { image = nil; return }
+            if let hit = ImagePipeline.shared.cached(url, maxPixel: maxPixel) { image = hit; return }
+            let loaded = await ImagePipeline.shared.load(url, maxPixel: maxPixel)
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeIn(duration: 0.15)) { image = loaded }
+        }
+    }
+}
+
+/// Laadt en verkleint afbeeldingen buiten de hoofdthread; houdt ze in een geheugencache en op schijf (URLCache).
+final class ImagePipeline: @unchecked Sendable {
+    static let shared = ImagePipeline()
+    private final class Box { let image: CGImage; init(_ i: CGImage) { image = i } }
+    private let memory: NSCache<NSString, Box> = {
+        let c = NSCache<NSString, Box>()
+        c.totalCostLimit = 160 * 1024 * 1024
+        return c
+    }()
+    private let lock = NSLock()
+    private var inFlight: [String: Task<CGImage?, Never>] = [:]
+    private let session: URLSession = {
+        let c = URLSessionConfiguration.default
+        c.urlCache = URLCache(memoryCapacity: 16 * 1024 * 1024, diskCapacity: 400 * 1024 * 1024)
+        c.requestCachePolicy = .returnCacheDataElseLoad
+        c.httpMaximumConnectionsPerHost = 6
+        c.timeoutIntervalForRequest = 20
+        return URLSession(configuration: c)
+    }()
+
+    private func key(_ url: URL, _ px: Int) -> String { "\(px)|\(url.absoluteString)" }
+
+    func cached(_ url: URL, maxPixel: Int) -> CGImage? { memory.object(forKey: key(url, maxPixel) as NSString)?.image }
+
+    func load(_ url: URL, maxPixel: Int) async -> CGImage? {
+        let k = key(url, maxPixel)
+        if let hit = memory.object(forKey: k as NSString) { return hit.image }
+        let session = self.session
+        let task: Task<CGImage?, Never> = lock.withLock {
+            if let t = inFlight[k] { return t }
+            let t = Task.detached(priority: .utility) { () -> CGImage? in
+                guard let (data, _) = try? await session.data(from: url) else { return nil }
+                return Self.downsample(data, maxPixel: maxPixel)
+            }
+            inFlight[k] = t
+            return t
+        }
+        let img = await task.value
+        lock.withLock { inFlight[k] = nil }
+        if let img { memory.setObject(Box(img), forKey: k as NSString, cost: img.width * img.height * 4) }
+        return img
+    }
+
+    private static func downsample(_ data: Data, maxPixel: Int) -> CGImage? {
+        guard let src = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary) else { return nil }
+        let opts = [kCGImageSourceCreateThumbnailFromImageAlways: true,
+                    kCGImageSourceShouldCacheImmediately: true,
+                    kCGImageSourceCreateThumbnailWithTransform: true,
+                    kCGImageSourceThumbnailMaxPixelSize: maxPixel] as CFDictionary
+        return CGImageSourceCreateThumbnailAtIndex(src, 0, opts)
     }
 }

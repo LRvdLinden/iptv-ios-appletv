@@ -33,7 +33,7 @@ struct HeroBanner: View {
 
             VStack(spacing: 0) {
                 ZStack(alignment: .bottom) {
-                    RemoteImage(url: poster, placeholder: title)
+                    RemoteImage(url: poster, placeholder: title, maxPixel: 1100)
                         .frame(width: 330, height: 470).clipped()
                     LinearGradient(colors: [.clear, .black.opacity(0.85)], startPoint: .center, endPoint: .bottom)
                     VStack(spacing: 10) {
@@ -62,8 +62,8 @@ struct HeroBanner: View {
     // Apple TV: breed billboard met tekst links
     private var tvBody: some View {
         ZStack(alignment: .bottomLeading) {
-            RemoteImage(url: poster).frame(height: 820).frame(maxWidth: .infinity).blur(radius: 30).clipped().opacity(0.7)
-            HStack { Spacer(); RemoteImage(url: poster).frame(width: 520, height: 780).clipped()
+            RemoteImage(url: poster, maxPixel: 600).frame(height: 820).frame(maxWidth: .infinity).blur(radius: 30).clipped().opacity(0.7)
+            HStack { Spacer(); RemoteImage(url: poster, maxPixel: 1200).frame(width: 520, height: 780).clipped()
                 .mask(LinearGradient(colors: [.clear, .black, .black], startPoint: .leading, endPoint: .trailing)) }
                 .padding(.trailing, 120)
             LinearGradient(colors: [.black.opacity(0.95), .black.opacity(0.4), .clear], startPoint: .leading, endPoint: .trailing)
