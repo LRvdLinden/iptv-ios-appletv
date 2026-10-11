@@ -5,6 +5,11 @@ struct MainTabView: View {
     @EnvironmentObject var playlists: PlaylistService
     @State private var tab = 0
     @State private var pendingDetail: DetailTarget?
+    @State private var didPickStart = false
+    @AppStorage("ui.startTab") private var startTab = 0
+    @AppStorage("ui.showLive") private var showLive = true
+    @AppStorage("ui.showMovies") private var showMovies = true
+    @AppStorage("ui.showSeries") private var showSeries = true
 
     private var hasLive: Bool { !playlists.library.channels.isEmpty || !(playlists.source?.kind.isMediaServer ?? false) }
 
@@ -13,14 +18,18 @@ struct MainTabView: View {
             TabView(selection: $tab) {
                 HomeView(filter: .all).tag(0)
                     .tabItem { Label(L("Home"), systemImage: "house.fill") }
-                if hasLive {
+                if hasLive && showLive {
                     LiveTVView().tag(1)
                         .tabItem { Label(L("Live TV"), systemImage: "dot.radiowaves.left.and.right") }
                 }
-                HomeView(filter: .movies).tag(2)
-                    .tabItem { Label(L("Movies"), systemImage: "film.stack") }
-                HomeView(filter: .series).tag(3)
-                    .tabItem { Label(L("Series"), systemImage: "rectangle.stack.fill") }
+                if showMovies {
+                    HomeView(filter: .movies).tag(2)
+                        .tabItem { Label(L("Movies"), systemImage: "film.stack") }
+                }
+                if showSeries {
+                    HomeView(filter: .series).tag(3)
+                        .tabItem { Label(L("Series"), systemImage: "rectangle.stack.fill") }
+                }
                 SearchView().tag(4)
                     .tabItem { Label(L("Search"), systemImage: "magnifyingglass") }
                 SettingsView().tag(5)
@@ -45,7 +54,14 @@ struct MainTabView: View {
         .onChange(of: playlists.library.channels.count + playlists.library.movies.count + playlists.library.series.count) { _, _ in
             openPending()
         }
-        .onAppear { openPending() }
+        .onAppear {
+            openPending()
+            if !didPickStart {
+                didPickStart = true
+                let allowed = [0, hasLive && showLive ? 1 : -1, showMovies ? 2 : -1, showSeries ? 3 : -1]
+                tab = allowed.contains(startTab) ? startTab : 0
+            }
+        }
         #if os(iOS)
         .sheet(item: $pendingDetail) { DetailView(target: $0) }
         #else

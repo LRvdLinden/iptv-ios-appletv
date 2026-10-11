@@ -36,6 +36,40 @@ final class ParentalControl: ObservableObject {
         return false
     }
 
+    // MARK: leeftijdsfilter per profiel
+
+    static let ageChoices = [6, 9, 12, 16]
+
+    /// Is deze groepsnaam duidelijk voor volwassenen?
+    static func isAdultGroup(_ g: String) -> Bool {
+        let l = g.lowercased()
+        return adultWords.contains { l.contains($0) }
+    }
+
+    /// Minimumleeftijd uit een classificatie (IMDb/OMDb "Rated": PG-13, TV-MA, 16, …). nil = onbekend.
+    nonisolated static func minimumAge(_ rated: String?) -> Int? {
+        guard let r = rated?.uppercased().trimmingCharacters(in: .whitespaces), !r.isEmpty, r != "N/A",
+              r != "NOT RATED", r != "UNRATED" else { return nil }
+        let table: [String: Int] = [
+            "G": 0, "TV-Y": 0, "TV-G": 0, "AL": 0, "U": 0, "ALL": 0, "APPROVED": 0, "PASSED": 0,
+            "TV-Y7": 7, "TV-Y7-FV": 7, "PG": 9, "TV-PG": 10, "UC": 0,
+            "PG-13": 13, "TV-14": 14, "12A": 12, "M": 15, "MA15+": 15,
+            "R": 17, "TV-MA": 17, "NC-17": 18, "X": 18, "R18+": 18, "18": 18
+        ]
+        if let v = table[r] { return v }
+        let digits = r.filter(\.isNumber)
+        if let n = Int(digits), n <= 21 { return n }
+        return nil
+    }
+
+    /// Mag dit profiel dit zien? (Onbekende classificatie = toegestaan, behalve in volwassenengroepen.)
+    func allowed(rated: String?, group: String, limit: Int?) -> Bool {
+        guard let limit, !isUnlocked else { return true }
+        if Self.isAdultGroup(group) { return false }
+        if let age = Self.minimumAge(rated), age > limit { return false }
+        return true
+    }
+
     func toggleLock(playlist: UUID, group: String) {
         let k = "\(playlist.uuidString)|\(group)"
         CloudStore.shared.updateParental { s in

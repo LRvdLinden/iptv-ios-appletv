@@ -61,6 +61,10 @@ final class AppState: ObservableObject {
 
     private let lastKey = "lastPlaylistID"
 
+    init() {
+        PiPCenter.shared.present = { [weak self] item in self?.playing = item }
+    }
+
     var lastPlaylistID: UUID? {
         get { UserDefaults.standard.string(forKey: lastKey).flatMap(UUID.init) }
         set { UserDefaults.standard.set(newValue?.uuidString, forKey: lastKey) }
@@ -82,11 +86,13 @@ final class AppState: ObservableObject {
     }
 
     func play(_ item: PlayableItem, zap: [Channel] = []) {
+        PiPCenter.shared.stopActive()
         liveZapList = zap
         playing = item
     }
 
     func openMultiview(start: [Channel], candidates: [Channel]) {
+        PiPCenter.shared.stopActive()
         multiviewStart = start
         liveZapList = candidates
         showMultiview = true
@@ -117,7 +123,7 @@ struct RootView: View {
             if let r = reminders.due { reminderBanner(r) }
         }
         .fullScreenCover(item: $app.playing) { item in
-            PlayerScreen(item: item)
+            PlayerScreen(item: item, existing: PiPCenter.shared.takeReuse(for: item))
         }
     }
 

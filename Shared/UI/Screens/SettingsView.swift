@@ -14,6 +14,12 @@ struct SettingsView: View {
     @AppStorage("trakt.askRating") private var traktAskRating = true
     @AppStorage("playlist.refresh") private var refreshPolicy = RefreshPolicy.daily.rawValue
     @AppStorage("player.engine") private var engine = PlayerController.EngineChoice.auto.rawValue
+    @AppStorage(TrackPreferences.audioKey) private var audioLanguage = ""
+    @AppStorage(TrackPreferences.subtitleKey) private var subtitleLanguage = ""
+    @AppStorage("ui.startTab") private var startTab = 0
+    @AppStorage("ui.showLive") private var showLive = true
+    @AppStorage("ui.showMovies") private var showMovies = true
+    @AppStorage("ui.showSeries") private var showSeries = true
     @State private var showTraktLogin = false
     @State private var showOSLogin = false
     @State private var editing: PlaylistSource?
@@ -28,11 +34,13 @@ struct SettingsView: View {
         NavigationStack {
             List {
                 playlistSection
+                librarySection
                 refreshSection
                 traktSection
                 openSubtitlesSection
                 playerSection
                 parentalSection
+                interfaceSection
                 languageSection
                 Section {
                     LabeledContent(L("Playlists"), value: "\(store.playlists.count)")
@@ -168,6 +176,7 @@ struct SettingsView: View {
             Picker(L("Update playlists"), selection: $refreshPolicy) {
                 ForEach(RefreshPolicy.allCases) { Text($0.title).tag($0.rawValue) }
             }
+            .pickerStyle(.menu)
             Button {
                 Task { await playlists.refreshAll() }
             } label: {
@@ -187,8 +196,20 @@ struct SettingsView: View {
             Picker(L("Player engine"), selection: $engine) {
                 ForEach(PlayerController.EngineChoice.allCases, id: \.rawValue) { Text($0.title).tag($0.rawValue) }
             }
+            .pickerStyle(.menu)
+            Picker(L("Default audio language"), selection: $audioLanguage) {
+                Text(L("As in the stream")).tag("")
+                ForEach(TrackPreferences.sortedCodes, id: \.self) { Text(TrackPreferences.name($0)).tag($0) }
+            }
+            .pickerStyle(.menu)
+            Picker(L("Default subtitle language"), selection: $subtitleLanguage) {
+                Text(L("As in the stream")).tag("")
+                Text(L("Off")).tag("off")
+                ForEach(TrackPreferences.sortedCodes, id: \.self) { Text(TrackPreferences.name($0)).tag($0) }
+            }
+            .pickerStyle(.menu)
         } header: { Text(L("Player")) } footer: {
-            Text(L("Automatic uses the Apple player for HLS and MP4 (HDR, Dolby Vision, Atmos, AirPlay) and VLC for everything else. If a stream fails, Bingr switches over and reconnects automatically."))
+            Text(L("Automatic uses the Apple player for HLS and MP4 (HDR, Dolby Vision, Atmos, AirPlay, Picture in Picture) and VLC for everything else. If a stream fails, Bingr switches over and reconnects automatically. The default languages are chosen automatically when a stream has them."))
         }
     }
 
@@ -201,6 +222,20 @@ struct SettingsView: View {
                     Button(L("Lock now")) { parental.lock() }
                 } else {
                     Button(L("Unlock with PIN")) { pinMode = .unlock }
+                }
+                if let src = playlists.source {
+                    Picker(L("Age limit for this profile"), selection: Binding(
+                        get: { src.ageLimit ?? 0 },
+                        set: { v in var p = src; p.ageLimit = v == 0 ? nil : v; store.upsert(p) })) {
+                        Text(L("None")).tag(0)
+                        ForEach(ParentalControl.ageChoices, id: \.self) { Text(L("Up to %d years", $0)).tag($0) }
+                    }
+                    .pickerStyle(.menu)
+                    .disabled(!parental.isUnlocked)
+                    Text(parental.isUnlocked
+                         ? L("Titles above this age (IMDb rating) and adult groups are hidden on this profile. With the PIN you can still watch them.")
+                         : L("Unlock with your PIN to change the age limit."))
+                        .font(.caption).foregroundStyle(Theme.secondary)
                 }
                 Toggle(L("Lock adult groups automatically"), isOn: Binding(
                     get: { store.parental.autoLockAdult },
@@ -215,12 +250,42 @@ struct SettingsView: View {
         } header: { Text(L("Parental lock")) }
     }
 
+    private var librarySection: some View {
+        Section {
+            NavigationLink { HistoryView() } label: { Label(L("Watch history"), systemImage: "clock.arrow.circlepath") }
+            NavigationLink { NetworkBrowserView() } label: {
+                Label(L("NAS & network (SMB/DLNA)"), systemImage: "externaldrive.connected.to.line.below")
+            }
+        } header: { Text(L("Library")) } footer: {
+            Text(L("Watch history is kept per profile. Plex, Jellyfin and Emby can be added as a playlist."))
+        }
+    }
+
+    private var interfaceSection: some View {
+        Section {
+            Picker(L("Start screen"), selection: $startTab) {
+                Text(L("Home")).tag(0)
+                Text(L("Live TV")).tag(1)
+                Text(L("Movies")).tag(2)
+                Text(L("Series")).tag(3)
+            }
+            .pickerStyle(.menu)
+            Toggle(L("Show Live TV"), isOn: $showLive)
+            Toggle(L("Show Movies"), isOn: $showMovies)
+            Toggle(L("Show Series"), isOn: $showSeries)
+            NavigationLink { ManageView() } label: {
+                Label(L("Rename, hide and reorder"), systemImage: "slider.horizontal.below.rectangle")
+            }
+        } header: { Text(L("Interface")) }
+    }
+
     private var languageSection: some View {
         Section(L("Language")) {
             Picker(L("App language"), selection: $localizer.override) {
                 Text(L("System")).tag("")
                 ForEach(Localizer.supported, id: \.code) { Text($0.name).tag($0.code) }
             }
+            .pickerStyle(.menu)
         }
     }
 }

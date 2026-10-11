@@ -10,7 +10,7 @@ import MobileVLCKit
 
 enum EngineState { case idle, opening, buffering, playing, paused, ended, error }
 
-struct MediaTrack: Identifiable, Hashable { var id: String; var name: String }
+struct MediaTrack: Identifiable, Hashable { var id: String; var name: String; var lang: String? = nil }
 
 /// Gemeenschappelijke interface voor de twee afspeel-engines:
 /// - **Apple (AVPlayer)**: HDR/Dolby Vision, Atmos, AirPlay, beeld-in-beeld — voor HLS/MP4
@@ -143,12 +143,22 @@ final class AVEngine: PlaybackEngine {
     private var ended = false
     private var observers: [NSObjectProtocol] = []
     private var live = false
+    /// Beeld-in-beeld (iPhone, iPad en Apple TV)
+    private(set) var pip: AVPictureInPictureController?
+    private let pipDelegate = PiPDelegate()
 
     init() {
         layerView.backgroundColor = .black
         layerView.playerLayer.player = player
         layerView.playerLayer.videoGravity = .resizeAspect
         player.allowsExternalPlayback = true
+        if AVPictureInPictureController.isPictureInPictureSupported() {
+            pip = AVPictureInPictureController(playerLayer: layerView.playerLayer)
+            pip?.delegate = pipDelegate
+            #if os(iOS)
+            pip?.canStartPictureInPictureAutomaticallyFromInline = true   // naar het beginscherm = beeld-in-beeld
+            #endif
+        }
         #if os(iOS)
         player.usesExternalPlaybackWhileExternalScreenIsActive = true
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback, policy: .longFormVideo, options: [])
@@ -241,11 +251,23 @@ final class AVEngine: PlaybackEngine {
         play()
     }
 
+    var pipPossible: Bool { pip?.isPictureInPicturePossible ?? false }
+    var pipActive: Bool { pip?.isPictureInPictureActive ?? false }
+    func startPiP() { pip?.startPictureInPicture() }
+    func stopPiP() { pip?.stopPictureInPicture() }
+    /// Wordt aangeroepen bij start/stop en bij "terug naar de app" vanuit het beeld-in-beeldvenster.
+    var onPiP: ((PiPDelegate.Event) -> Void)? {
+        get { pipDelegate.handler }
+        set { pipDelegate.handler = newValue }
+    }
+
     private func group(_ c: AVMediaCharacteristic) -> AVMediaSelectionGroup? {
         player.currentItem?.asset.mediaSelectionGroup(forMediaCharacteristic: c)
     }
     private func options(_ c: AVMediaCharacteristic) -> [MediaTrack] {
-        group(c)?.options.enumerated().map { i, o in MediaTrack(id: "\(i)", name: o.displayName) } ?? []
+        group(c)?.options.enumerated().map { i, o in
+            MediaTrack(id: "\(i)", name: o.displayName, lang: o.extendedLanguageTag ?? o.locale?.language.languageCode?.identifier)
+        } ?? []
     }
     var audioTracks: [MediaTrack] { options(.audible) }
     var subtitleTracks: [MediaTrack] { options(.legible) }
@@ -269,6 +291,28 @@ final class AVEngine: PlaybackEngine {
 
     func setAspect(_ a: PlayerController.Aspect) {
         layerView.playerLayer.videoGravity = a == .fill ? .resizeAspectFill : (a == .fit ? .resizeAspect : .resize)
+    }
+}
+
+final class PiPDelegate: NSObject, AVPictureInPictureControllerDelegate {
+    enum Event { case willStart, didStop, restore(() -> Void), failed }
+    var handler: ((Event) -> Void)?
+
+    func pictureInPictureControllerWillStartPictureInPicture(_ c: AVPictureInPictureController) {
+        let h = handler; DispatchQueue.main.async { h?(.willStart) }
+    }
+    func pictureInPictureControllerDidStopPictureInPicture(_ c: AVPictureInPictureController) {
+        let h = handler; DispatchQueue.main.async { h?(.didStop) }
+    }
+    func pictureInPictureController(_ c: AVPictureInPictureController, failedToStartPictureInPictureWithError error: Error) {
+        let h = handler; DispatchQueue.main.async { h?(.failed) }
+    }
+    func pictureInPictureController(_ c: AVPictureInPictureController,
+                                    restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completion: @escaping (Bool) -> Void) {
+        let h = handler
+        DispatchQueue.main.async {
+            if let h { h(.restore { completion(true) }) } else { completion(true) }
+        }
     }
 }
 

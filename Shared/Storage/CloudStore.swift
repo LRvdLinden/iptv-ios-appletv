@@ -29,6 +29,10 @@ final class CloudStore: ObservableObject {
     @Published private(set) var reminders: [ProgramReminder] = []
     /// Eigen profielfoto's per afspeellijst (klein JPEG, ±15 KB, via iCloud gedeeld)
     @Published private(set) var photos: [UUID: Data] = [:]
+    /// Kijkgeschiedenis, per profiel (afspeellijst)
+    @Published private(set) var history: [HistoryEntry] = []
+    /// Het profiel dat nu open is (gezet door PlaylistService)
+    var activePlaylistID: UUID?
 
     private let kv = NSUbiquitousKeyValueStore.default
     private let local = UserDefaults.standard
@@ -38,7 +42,7 @@ final class CloudStore: ObservableObject {
         static let playlists = "playlists.v1", favorites = "favorites.v1", myList = "mylist.v1",
                    progress = "progress.v1", watched = "watched.v1", recent = "recent.v1",
                    custom = "custom.v1", parental = "parental.v1", reminders = "reminders.v1",
-                   photos = "photos.v1"
+                   photos = "photos.v1", history = "history.v1"
     }
 
     private init() {
@@ -77,6 +81,7 @@ final class CloudStore: ObservableObject {
         customizations = decode([UUID: Customization].self, K.custom) ?? [:]
         parental = decode(ParentalSettings.self, K.parental) ?? ParentalSettings()
         photos = decode([UUID: Data].self, K.photos) ?? [:]
+        history = decode([HistoryEntry].self, K.history) ?? []
         // wachtwoorden/tokens ook via iCloud KV delen (Apple TV krijgt ze anders niet)
         Keychain.syncFromCloud()
         Keychain.pushToCloud(keys: playlists.flatMap { [$0.passwordKey, "playlist.\($0.id.uuidString).session"] }
@@ -178,6 +183,24 @@ final class CloudStore: ObservableObject {
         write(parental, K.parental)
     }
 
+    // MARK: kijkgeschiedenis
+
+    func addHistory(_ e: HistoryEntry) {
+        history.removeAll { $0.itemID == e.itemID && $0.playlistID == e.playlistID }
+        history.insert(e, at: 0)
+        if history.count > 200 { history = Array(history.prefix(200)) }
+        write(history, K.history)
+    }
+    func removeHistory(_ e: HistoryEntry) {
+        history.removeAll { $0.id == e.id }
+        write(history, K.history)
+    }
+    func clearHistory(playlist: UUID?) {
+        history.removeAll { $0.playlistID == playlist }
+        write(history, K.history)
+    }
+    func history(for playlist: UUID?) -> [HistoryEntry] { history.filter { $0.playlistID == playlist } }
+
     // MARK: herinneringen
 
     func addReminder(_ r: ProgramReminder) {
@@ -190,6 +213,19 @@ final class CloudStore: ObservableObject {
         write(reminders, K.reminders)
     }
     func hasReminder(_ id: String) -> Bool { reminders.contains { $0.id == id } }
+}
+
+/// Eén keer kijken: film, aflevering of zender.
+struct HistoryEntry: Codable, Hashable, Identifiable {
+    var id: String { "\(playlistID?.uuidString ?? "-")|\(itemID)" }
+    var itemID: String
+    var playlistID: UUID?
+    var title: String
+    var subtitle: String?
+    var artwork: URL?
+    var type: MediaType
+    var channelID: String?
+    var date: Date
 }
 
 /// Aanpassingen van de gebruiker op een afspeellijst (gesynchroniseerd via iCloud).

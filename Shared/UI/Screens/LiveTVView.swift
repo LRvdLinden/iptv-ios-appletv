@@ -4,7 +4,7 @@ struct LiveTVView: View {
     @EnvironmentObject var app: AppState
     @EnvironmentObject var playlists: PlaylistService
     @EnvironmentObject var store: CloudStore
-    @State private var group: String = Self.favKey
+    @State private var group: String = Self.allKey
     @State private var mode: Mode = .list
     @State private var guideFor: Channel?
     @State private var program: ProgramTarget?
@@ -17,7 +17,7 @@ struct LiveTVView: View {
     private var lib: Library { playlists.library }
     private var pid: UUID { playlists.source?.id ?? UUID() }
 
-    private var groups: [String] { [Self.favKey, Self.recentKey, Self.allKey] + lib.channelGroups }
+    private var groups: [String] { [Self.allKey, Self.favKey, Self.recentKey] + lib.channelGroups }
 
     private func title(_ g: String) -> String {
         switch g {
@@ -56,11 +56,6 @@ struct LiveTVView: View {
                             Label("Multiview", systemImage: "square.grid.2x2")
                         }
                         .disabled(lib.channels.isEmpty)
-                    }
-                }
-                .onAppear {
-                    if group == Self.favKey && lib.channels.allSatisfy({ !store.isFavorite(pid, $0.id) }) {
-                        group = lib.channelGroups.first ?? Self.allKey
                     }
                 }
         }

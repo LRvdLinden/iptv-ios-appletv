@@ -23,6 +23,8 @@ struct DetailView: View {
     @State private var nested: DetailTarget?
     @State private var toast: String?
     @State private var scrollY: CGFloat = 0
+    @State private var ageGate = false
+    @State private var afterPIN: (() -> Void)?
 
     private var pid: UUID? { playlists.source?.id }
     private var baseTitle: String { switch target { case .movie(let m): return m.title; case .series(let s): return s.title } }
@@ -99,6 +101,14 @@ struct DetailView: View {
         }
         .task(id: target.id) { await load() }
         .sheet(isPresented: $showSources) { sourcesSheet }
+        .sheet(isPresented: $ageGate) {
+            PINPad(title: L("This title is above the age limit of this profile. Enter PIN")) { pin in
+                guard ParentalControl.shared.verify(pin) else { return false }
+                let run = afterPIN; afterPIN = nil
+                Task { @MainActor in try? await Task.sleep(nanoseconds: 300_000_000); run?() }
+                return true
+            }
+        }
         #if os(iOS)
         .sheet(isPresented: $showTrailer) {
             if let t = d?.trailerYouTubeID { TrailerSheet(youtubeID: t, title: title) }
@@ -345,7 +355,7 @@ struct DetailView: View {
         let watched = Playables.isWatched(e, imdb: imdb)
         let progress = store.progress[e.id]?.fraction
         let w = tvScaled(290)
-        return Button { app.play(Playables.episode(e, of: s, imdb: imdb)) } label: {
+        return Button { ageChecked { app.play(Playables.episode(e, of: s, imdb: imdb)) } } label: {
             VStack(alignment: .leading, spacing: 6) {
                 ZStack(alignment: .bottom) {
                     RemoteImage(url: i?.still ?? e.still ?? d?.backdrop ?? s.poster, placeholder: "")
@@ -556,7 +566,24 @@ struct DetailView: View {
         return episodes.first { !Playables.isWatched($0, imdb: imdb) } ?? episodes.first
     }
 
-    private func play() {
+    /// Leeftijdsfilter van dit profiel: boven de grens alleen met pincode.
+    private func ageChecked(_ action: @escaping () -> Void) {
+        let limit = playlists.source?.ageLimit
+        let group: String = { switch target { case .movie(let m): return m.group; case .series(let s): return s.group } }()
+        let rated = d?.certification ?? {
+            switch target {
+            case .movie(let m): return MetadataService.shared.cached(m)?.rated
+            case .series(let s): return MetadataService.shared.cached(s)?.rated
+            }
+        }()
+        if ParentalControl.shared.allowed(rated: rated, group: group, limit: limit) { action(); return }
+        if ParentalControl.shared.hasPIN { afterPIN = action; ageGate = true }
+        else { flash(L("Not available on this profile (age limit).")) }
+    }
+
+    private func play() { ageChecked(playNow) }
+
+    private func playNow() {
         switch target {
         case .movie(let m):
             if m.streamURL == nil && m.stalkerCmd == nil && m.imdbID == nil && imdb == nil {

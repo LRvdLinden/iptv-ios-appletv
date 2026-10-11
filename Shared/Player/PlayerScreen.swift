@@ -22,9 +22,13 @@ struct PlayerScreen: View {
 
     enum Panel: String, Identifiable { case audioSubs, opensubs, options, cast, sources, rate; var id: String { rawValue } }
 
-    init(item: PlayableItem) {
+    /// Teruggekomen uit beeld-in-beeld: de bestaande speler overnemen.
+    private let reused: Bool
+
+    init(item: PlayableItem, existing: PlayerController? = nil) {
         self.item = item
-        _player = StateObject(wrappedValue: PlayerController(item: item))
+        reused = existing != nil
+        _player = StateObject(wrappedValue: existing ?? PlayerController(item: item))
     }
 
     var body: some View {
@@ -124,8 +128,13 @@ struct PlayerScreen: View {
                 #endif
             }
         }
-        .task { await start(item) }
-        .onDisappear { player.stop() }
+        .task {
+            if reused { bind(player.item); poke() } else { await start(item) }
+        }
+        .onChange(of: player.notice) { _, n in
+            if let n { flash(n); player.notice = nil }
+        }
+        .onDisappear { if !player.inPiP { player.stop() } }
     }
 
     // MARK: bediening
@@ -166,6 +175,10 @@ struct PlayerScreen: View {
                     }
                     Spacer()
                     #if os(iOS)
+                    if PlayerController.pipSupported {
+                        Button { player.startPiP() } label: { Image(systemName: "pip.enter").font(.system(size: 20)) }
+                            .accessibilityLabel(L("Picture in Picture"))
+                    }
                     AirPlayButton { player.switchToApple() }.frame(width: 34, height: 34)
                     Button { panel = .cast } label: { Image(systemName: "tv.and.mediabox").font(.system(size: 20)) }
                     #endif
@@ -217,6 +230,11 @@ struct PlayerScreen: View {
                             if player.isLive && !playlists.library.channels.isEmpty {
                                 barButton("square.grid.2x2", "Multiview") { openMultiview() }
                             }
+                            #if os(tvOS)
+                            if PlayerController.pipSupported {
+                                barButton("pip.enter", L("Picture in Picture")) { player.startPiP() }
+                            }
+                            #endif
                             barButton("slider.horizontal.3", L("Options")) { panel = .options }
                             if let s = player.sleepAt {
                                 Label(s.formatted(date: .omitted, time: .shortened), systemImage: "moon.zzz.fill")
@@ -269,8 +287,9 @@ struct PlayerScreen: View {
 
     // MARK: logica
 
-    private func start(_ it: PlayableItem) async {
-        player.item = it
+    /// Callbacks die naar dit scherm verwijzen (ook na terugkeer uit beeld-in-beeld opnieuw zetten).
+    private func bind(_ it: PlayableItem) {
+        player.onEnterPiP = { dismiss() }
         player.onFinished = {
             if TraktSync.askRating, TraktSync.shared.isLoggedIn, it.imdbID != nil, it.type != .live {
                 panel = .rate
@@ -278,6 +297,11 @@ struct PlayerScreen: View {
                 close()
             }
         }
+    }
+
+    private func start(_ it: PlayableItem) async {
+        player.item = it
+        bind(it)
         if it.type == .live, let cid = it.channelID {
             let pl = playlists
             player.catchupProvider = { from, to in pl.catchupURL(channelID: cid, start: from, end: to) }

@@ -6,7 +6,7 @@ import Combine
 /// samengevoegd) en zonder groepen die op kinderslot staan.
 @MainActor
 final class PlaylistService: ObservableObject {
-    @Published private(set) var source: PlaylistSource?
+    @Published private(set) var source: PlaylistSource? { didSet { CloudStore.shared.activePlaylistID = source?.id } }
     @Published private(set) var library = Library()
     @Published private(set) var rawLibrary = Library()
     @Published private(set) var isLoading = false
@@ -29,6 +29,25 @@ final class PlaylistService: ObservableObject {
             .dropFirst()
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.applyCustomizations() }
+            .store(in: &bag)
+        // profiel aangepast (bijv. leeftijdsfilter) → bijwerken
+        CloudStore.shared.$playlists
+            .dropFirst()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] list in
+                guard let self, let s = self.source, let u = list.first(where: { $0.id == s.id }), u != s else { return }
+                let refilter = u.ageLimit != s.ageLimit
+                self.source = u
+                if refilter { self.applyCustomizations() }
+            }
+            .store(in: &bag)
+        // nieuwe IMDb-classificaties binnen → leeftijdsfilter opnieuw toepassen
+        MetadataService.shared.$cache
+            .dropFirst()
+            .debounce(for: .seconds(3), scheduler: RunLoop.main)
+            .sink { [weak self] _ in
+                if self?.source?.ageLimit != nil { self?.applyCustomizations() }
+            }
             .store(in: &bag)
     }
 
@@ -164,11 +183,12 @@ final class PlaylistService: ObservableObject {
 
     func applyCustomizations() {
         guard let s = source else { library = rawLibrary; return }
-        library = Self.apply(rawLibrary, CloudStore.shared.customization(s.id), playlist: s.id)
+        library = Self.apply(rawLibrary, CloudStore.shared.customization(s.id), playlist: s.id, ageLimit: s.ageLimit)
     }
 
-    static func apply(_ raw: Library, _ c: Customization, playlist: UUID) -> Library {
+    static func apply(_ raw: Library, _ c: Customization, playlist: UUID, ageLimit: Int? = nil) -> Library {
         let parental = ParentalControl.shared
+        let meta = MetadataService.shared
         func group(_ g: String) -> String {
             let merged = c.merged[g] ?? g
             return c.renamed[Customization.groupKey(merged)] ?? merged
@@ -183,10 +203,15 @@ final class PlaylistService: ObservableObject {
         lib.channels = raw.channels.filter { visible($0.id, $0.group) }.map { ch in
             var x = ch; x.group = group(ch.group); x.name = c.renamed[ch.id] ?? ch.name; return x
         }
-        lib.movies = raw.movies.filter { visible($0.id, $0.group) }.map { m in
+        if ageLimit != nil {
+            lib.channels = lib.channels.filter { parental.allowed(rated: nil, group: $0.group, limit: ageLimit) }
+        }
+        lib.movies = raw.movies.filter { visible($0.id, $0.group)
+            && parental.allowed(rated: ageLimit == nil ? nil : meta.cached($0)?.rated, group: $0.group, limit: ageLimit) }.map { m in
             var x = m; x.group = group(m.group); x.title = c.renamed[m.id] ?? m.title; return x
         }
-        lib.series = raw.series.filter { visible($0.id, $0.group) }.map { se in
+        lib.series = raw.series.filter { visible($0.id, $0.group)
+            && parental.allowed(rated: ageLimit == nil ? nil : meta.cached($0)?.rated, group: $0.group, limit: ageLimit) }.map { se in
             var x = se; x.group = group(se.group); x.title = c.renamed[se.id] ?? se.title; return x
         }
         // eigen volgorde: groepen, dan kanalen binnen een groep

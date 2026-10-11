@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import AVKit
 
 /// Stuurt één afspeelsessie aan: kiest de engine (Apple of VLC), herverbindt
 /// automatisch, doet timeshift bij live, bewaart voortgang en scrobblet naar Trakt.
@@ -25,6 +26,14 @@ final class PlayerController: ObservableObject {
     @Published var sleepAt: Date?
     @Published var aspect: Aspect = .fit { didSet { engine.setAspect(aspect) } }
     @Published var muted = false { didSet { engine.muted = muted } }
+    /// Korte melding voor in beeld (bijv. "beeld-in-beeld niet beschikbaar")
+    @Published var notice: String?
+    @Published private(set) var inPiP = false
+    /// Het spelerscherm sluit zich als beeld-in-beeld start; de speler blijft doorlopen.
+    var onEnterPiP: (@MainActor () -> Void)?
+    private var pendingPiP = 0
+    private var restoringFromPiP = false
+    private var stopped = false
 
     /// Echte afspeel-URL (na Stalker/Stremio-resolutie)
     private(set) var url: URL?
@@ -41,6 +50,9 @@ final class PlayerController: ObservableObject {
     private var pausedAt: Date?
     private var timeshiftStart: Date?        // begin van de catch-up-stream die nu speelt
     private var externalCues: [SubtitleCue] = []
+    private var tracksApplied = false
+    private var watchedSeconds: Double = 0
+    private var playingTicks = 0
 
     static var choice: EngineChoice {
         EngineChoice(rawValue: UserDefaults.standard.string(forKey: "player.engine") ?? "") ?? .auto
@@ -57,6 +69,8 @@ final class PlayerController: ObservableObject {
     // MARK: engine kiezen
 
     private static func prefersApple(_ url: URL) -> Bool {
+        // smb://, ftp://, nfs:// enz. kan alleen VLC openen
+        guard ["http", "https", "file"].contains(url.scheme?.lowercased() ?? "") else { return false }
         switch choice {
         case .apple: return true
         case .vlc: return false
@@ -71,6 +85,7 @@ final class PlayerController: ObservableObject {
         engine.stop()
         engine = apple ? AVEngine() : VLCEngine()
         usingApple = apple
+        (engine as? AVEngine)?.onPiP = { [weak self] e in self?.handlePiP(e) }
         engine.rate = rate
         engine.muted = muted
         engine.setAspect(aspect)
@@ -81,6 +96,9 @@ final class PlayerController: ObservableObject {
     func start(url: URL, forceApple: Bool? = nil) {
         self.url = url
         errorText = nil; didScrobbleStart = false; stallSince = nil
+        tracksApplied = false; playingTicks = 0
+        if stopped || timer == nil { watchedSeconds = 0; recordedHistory = false }
+        stopped = false
         let apple = forceApple ?? Self.prefersApple(url)
         if apple != usingApple || timer == nil { makeEngine(apple: apple) }
         engine.load(url, live: isLive && timeshiftStart == nil, startFraction: isLive ? nil : item.resumeAt)
@@ -126,6 +144,17 @@ final class PlayerController: ObservableObject {
             didScrobbleStart = true
             let it = item, p = position
             Task { await TraktSync.shared.scrobble(.start, item: it, progress: p) }
+        }
+        if pendingPiP > 0 {
+            pendingPiP += 1
+            if let av = engine as? AVEngine, av.pipPossible { pendingPiP = 0; av.startPiP() }
+            else if pendingPiP > 30 { pendingPiP = 0; notice = L("Picture in Picture isn't available for this stream.") }
+        }
+        if st == .playing { watchedSeconds += 0.5 }
+        if !tracksApplied && st == .playing {
+            playingTicks += 1
+            // sporen zijn er meestal na een paar tellen; daarna niet meer ingrijpen (jouw eigen keuze blijft staan)
+            if !engine.audioTracks.isEmpty || playingTicks > 12 { applyTrackPreferences() }
         }
         if let s = sleepAt, Date() >= s { sleepAt = nil; pause() }
         if Date().timeIntervalSince(lastSaved) > 15 { saveProgress() }
@@ -208,18 +237,67 @@ final class PlayerController: ObservableObject {
     func seek(to fraction: Double) { guard !isLive else { return }; engine.seek(toFraction: fraction) }
 
     func stop() {
+        guard !stopped else { return }
+        stopped = true
+        pendingPiP = 0
+        recordHistory()
         timer?.invalidate(); timer = nil
         saveProgress()
         if !isPreview { let p = position, it = item; Task { await TraktSync.shared.scrobble(.stop, item: it, progress: p) } }
         engine.stop()
     }
 
+    // MARK: beeld-in-beeld
+
+    static var pipSupported: Bool { AVPictureInPictureController.isPictureInPictureSupported() }
+
+    /// Start beeld-in-beeld. Bij VLC wordt eerst naar de Apple-speler gewisseld (alleen die kan PiP).
+    func startPiP() {
+        if let av = engine as? AVEngine {
+            if av.pipPossible { av.startPiP() } else { pendingPiP = 1 }
+        } else {
+            switchToApple()
+            pendingPiP = 1
+        }
+    }
+
+    private func handlePiP(_ e: PiPDelegate.Event) {
+        switch e {
+        case .willStart:
+            inPiP = true
+            PiPCenter.shared.active = self
+            onEnterPiP?()
+        case .restore(let done):
+            restoringFromPiP = true
+            PiPCenter.shared.restore(self)
+            Task { @MainActor in try? await Task.sleep(nanoseconds: 400_000_000); done() }
+        case .didStop:
+            inPiP = false
+            if PiPCenter.shared.active === self { PiPCenter.shared.active = nil }
+            if restoringFromPiP { restoringFromPiP = false } else { stop() }   // venster gesloten = stoppen
+        case .failed:
+            notice = L("Picture in Picture isn't available for this stream.")
+        }
+    }
+
     private func finish() {
+        recordHistory()
         timer?.invalidate(); timer = nil
         position = 1
         saveProgress()
         if !isPreview { let it = item; Task { await TraktSync.shared.scrobble(.stop, item: it, progress: 1) } }
         onFinished?()
+    }
+
+    /// Na minstens een minuut kijken komt het in de kijkgeschiedenis van dit profiel.
+    private var recordedHistory = false
+    private func recordHistory() {
+        guard !isPreview, !recordedHistory, watchedSeconds >= 60 else { return }
+        recordedHistory = true
+        let it = item
+        CloudStore.shared.addHistory(HistoryEntry(itemID: it.channelID ?? it.id, playlistID: CloudStore.shared.activePlaylistID,
+                                                  title: it.title, subtitle: it.subtitle, artwork: it.artwork,
+                                                  type: it.type, channelID: it.channelID, date: Date()))
     }
 
     private func saveProgress() {
@@ -231,11 +309,32 @@ final class PlayerController: ObservableObject {
             store.setLocalWatched(item.id, true)
         } else if position > 0.02 {
             store.setProgress(item.id, ProgressEntry(fraction: position, position: currentTime, updated: Date(),
-                                                     title: item.title, artwork: item.artwork, playlistID: nil))
+                                                     title: item.title, artwork: item.artwork, playlistID: store.activePlaylistID))
         }
     }
 
     // MARK: sporen & ondertitels
+
+    /// Standaard audio-/ondertiteltaal uit de instellingen toepassen.
+    private func applyTrackPreferences() {
+        tracksApplied = true
+        guard !isPreview else { return }
+        let audio = TrackPreferences.audio, sub = TrackPreferences.subtitle
+        if !audio.isEmpty {
+            let tracks = engine.audioTracks.filter { $0.id != "-1" }
+            if let t = tracks.first(where: { TrackPreferences.matches($0, code: audio) }), t.id != engine.currentAudio {
+                engine.selectAudio(t)
+            }
+        }
+        if sub == "off" {
+            if externalCues.isEmpty { engine.selectSubtitle(nil) }
+        } else if !sub.isEmpty, externalCues.isEmpty {
+            if let t = engine.subtitleTracks.first(where: { TrackPreferences.matches($0, code: sub) }) {
+                engine.selectSubtitle(t)
+            }
+        }
+        objectWillChange.send()
+    }
 
     var audioTracks: [MediaTrack] { engine.audioTracks }
     var subtitleTracks: [MediaTrack] { engine.subtitleTracks }
@@ -279,6 +378,33 @@ extension PlayerController.EngineChoice {
         case .apple: return L("Apple (HDR, AirPlay)")
         case .vlc: return L("VLC (all formats)")
         }
+    }
+}
+
+/// Houdt de speler vast zolang die in beeld-in-beeld speelt en zet hem terug in beeld.
+@MainActor
+final class PiPCenter {
+    static let shared = PiPCenter()
+    var active: PlayerController?
+    /// Speler die het volgende spelerscherm moet overnemen (terug uit beeld-in-beeld)
+    private var reuse: PlayerController?
+    /// Opent het spelerscherm (ingesteld door AppState)
+    var present: ((PlayableItem) -> Void)?
+
+    func restore(_ c: PlayerController) {
+        reuse = c
+        present?(c.item)
+    }
+    func takeReuse(for item: PlayableItem) -> PlayerController? {
+        defer { reuse = nil }
+        return reuse?.item.id == item.id ? reuse : nil
+    }
+    /// Iets anders gaat spelen: beeld-in-beeld stoppen.
+    func stopActive() {
+        guard let a = active else { return }
+        active = nil
+        (a.engine as? AVEngine)?.stopPiP()
+        a.stop()
     }
 }
 

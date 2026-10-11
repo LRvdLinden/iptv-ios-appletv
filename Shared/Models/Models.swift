@@ -82,6 +82,8 @@ struct PlaylistSource: Codable, Identifiable, Hashable {
     var username: String = ""
     var macAddress: String = ""
     var preferHLS: Bool = false          // Xtream live als .m3u8 i.p.v. .ts
+    /// Leeftijdsfilter voor dit profiel (nil = geen). Bijv. 12 → alleen titels t/m 12 jaar.
+    var ageLimit: Int? = nil
     var createdAt = Date()
     var updatedAt = Date()
 
