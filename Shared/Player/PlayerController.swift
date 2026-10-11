@@ -328,9 +328,14 @@ final class PlayerController: ObservableObject {
         lastSaved = Date()
         guard !isPreview, item.type != .live, item.channelID == nil, !item.id.contains("-cu-"), duration > 60 else { return }
         let store = CloudStore.shared
-        if position >= 0.9 {
+        // gezien: bijna uitgekeken, of alleen de aftiteling nog over — per profiel, ook zonder Trakt
+        let left = duration - currentTime
+        if position >= 0.85 || (duration > 600 && left < 180 && position > 0.7) {
             store.clearProgress(item.id)
             store.setLocalWatched(item.id, true)
+            if item.type == .episode, let sid = item.seriesID, let s = item.season, let e = item.episode {
+                store.setLocalWatched(CloudStore.episodeKey(series: sid, season: s, episode: e), true)
+            }
         } else if position > 0.02 {
             store.setProgress(item.id, ProgressEntry(fraction: position, position: currentTime, updated: Date(),
                                                      title: item.title, artwork: item.artwork, playlistID: store.activePlaylistID,

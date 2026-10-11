@@ -1,11 +1,14 @@
 name: Covers
 
-# Haalt vrije posters (Wikimedia Commons) op voor de mockups/website en zet ze in docs/covers.
+# Haalt echte covers (TMDB) op, maakt de screenshots (NL + EN) opnieuw en werkt de website bij.
+# De commit wijzigt alleen docs/ en website/, dus de app-build draait niet; de Website-workflow zet de site online.
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '0 5 * * 1'          # elke maandag verse covers
   push:
     branches: [main]
-    paths: ['tools/fetch_covers.py']
+    paths: ['tools/fetch_covers.py', 'docs/mockups/**', 'tools/make_screenshots.py', '.github/workflows/covers.yml']
 
 permissions:
   contents: write
@@ -13,17 +16,27 @@ permissions:
 jobs:
   covers:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - run: pip install pillow
-      - run: python3 tools/fetch_covers.py
+      - name: Benodigdheden
+        run: |
+          pip install pillow playwright
+          python3 -m playwright install --with-deps chromium
+      - name: Covers ophalen (TMDB)
+        env:
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY || secrets.TMDB_ACCESS_TOKEN }}
+        run: python3 tools/fetch_covers.py
+      - name: Screenshots en website bijwerken
+        run: |
+          python3 tools/make_screenshots.py .
+          python3 tools/sync_website.py
       - name: Vastleggen
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
-          git add docs/covers
+          git add docs website
           git diff --cached --quiet && { echo "geen wijzigingen"; exit 0; }
-          git commit -m "Covers bijgewerkt [skip ci]"
+          git commit -m "Covers, screenshots en website bijgewerkt"
           git pull --rebase -q origin main
           git push origin HEAD:main

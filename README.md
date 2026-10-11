@@ -3,7 +3,7 @@
 [![Build](https://github.com/LRvdLinden/iptv-ios-appletv/actions/workflows/build.yml/badge.svg)](https://github.com/LRvdLinden/iptv-ios-appletv/actions/workflows/build.yml)
 
 Native IPTV- en mediaspeler voor **iPhone, iPad, Mac en Apple TV** met de look & feel van Netflix.
-SwiftUI · iOS 17+ · tvOS 17+ · macOS 14+ · Apple- én VLC-engine · 11 talen · versie 1.0.0 (build 33).
+SwiftUI · iOS 17+ · tvOS 17+ · macOS 14+ · Apple- én VLC-engine · 11 talen · versie 1.0.0 (build 34).
 
 ## Screenshots
 
@@ -66,6 +66,7 @@ SwiftUI · iOS 17+ · tvOS 17+ · macOS 14+ · Apple- én VLC-engine · 11 talen
 - **Beheren**: groepen en zenders hernoemen, herschikken, samenvoegen en verbergen (op Apple TV via selecteren of vasthouden)
 - **Pincode** per profiel (op Apple TV een compacte rij cijfers die op elk scherm past), en met de pincode van het hoofdaccount het kinderslot: groepen op slot, volwassenengroepen automatisch, **leeftijdsgrens per profiel** (IMDb-classificatie), 30 min ontgrendelen (daarna automatisch weer op slot). Een titel boven de grens met pincode afspelen ontgrendelt alleen díe titel, niet de hele bibliotheek
 - **Kinderprofiel** (krijgt meteen een vrolijk figuurtje, zonder "Kids"-label bij de naam): alleen kinderzenders, tekenfilms/familie en titels met een bekende leeftijd binnen de grens (standaard t/m 12), met een eigen **Top 10 voor kids**. Bij grenzen t/m 12 jaar wordt streng gefilterd (onbekend = verborgen)
+- **Gezien per profiel, ook zonder Trakt**: Bingr houdt zelf bij wat elk profiel (hoofdaccount én subprofielen) heeft gezien — vinkjes op films en afleveringen en "X GEZIEN" op series, ook als de afleveringen pas later laden
 - **Kijkgeschiedenis per profiel**, per dag, met verwijderen en wissen
 - **Mijn Bingr** zoals "Mijn Netflix": je profiel bovenaan (tik om te wisselen), met Verder kijken en Mijn lijst; op iPhone je profielfoto als tabbladicoon
 - **Weergave**: startscherm kiezen, tabbladen verbergen, intromuziek aan/uit; alle keuzes als dropdown
@@ -152,7 +153,7 @@ website/          bingr.online (statische site)
 ## Website (bingr.online)
 
 De website staat in `website/` (statische HTML, Nederlands en Engels, zonder build-stap): `index.html`, `privacy.html` en `support.html`.
-`python3 tools/sync_website.py` zet de nieuwste screenshots, profielfiguurtjes, het icoon en het buildnummer erin; met `--zip <pad>` maak je er meteen een uploadklare zip van. De CI zet bij elke build ook `Bingr-website.zip` op de branch `ci-logs`.
+Covers op de site en in de screenshots komen van TMDB (workflow `Covers`, elke maandag vers, met de `TMDB_API_KEY`-secret). `python3 tools/sync_website.py` zet de nieuwste screenshots, profielfiguurtjes, het icoon en het buildnummer erin; met `--zip <pad>` maak je er meteen een uploadklare zip van. De CI zet bij elke build ook `Bingr-website.zip` op de branch `ci-logs`.
 
 **Automatisch online zetten (FTPS):** de workflow `Website` uploadt `website/` bij elke wijziging naar de webserver. Zet hiervoor bij *Settings → Secrets and variables → Actions* de secrets `FTP_SERVER`, `FTP_USERNAME`, `FTP_PASSWORD` (en eventueel `FTP_USERNAME_ALT` en `FTP_DIR` voor een vaste doelmap; anders zoekt de workflow zelf `public_html`, `httpdocs`, `www` enz.). Wachtwoorden staan nooit in de repo.
 

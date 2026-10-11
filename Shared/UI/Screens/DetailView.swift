@@ -384,7 +384,7 @@ struct DetailView: View {
                 if !list.isEmpty {
                     let all = list.allSatisfy { Playables.isWatched($0, imdb: imdb) }
                     Button {
-                        for e in list { store.setLocalWatched(e.id, !all) }
+                        for e in list { store.setEpisodeWatched(e, !all) }
                         if let imdb { Task { await trakt.setWatched(show: imdb, episodes: list, !all) } }
                     } label: {
                         Image(systemName: all ? "checkmark.circle.fill" : "checkmark.circle")
@@ -478,7 +478,7 @@ struct DetailView: View {
         .plainTVButton()
         .contextMenu {
             Button {
-                store.setLocalWatched(e.id, !watched)
+                store.setEpisodeWatched(e, !watched)
                 Task { await trakt.setWatched(Playables.episode(e, of: s, imdb: imdb), !watched) }
             } label: { Label(watched ? L("Mark as unwatched") : L("Mark as watched"), systemImage: watched ? "eye.slash" : "checkmark.circle") }
         }

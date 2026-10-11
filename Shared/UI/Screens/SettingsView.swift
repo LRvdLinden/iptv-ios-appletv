@@ -264,8 +264,10 @@ struct SettingsView: View {
                 }
                 Button { Task { await trakt.refresh(force: true) } } label: {
                     HStack {
-                        Label(trakt.isSyncing ? L("Syncing…") : L("Sync now"), systemImage: "arrow.triangle.2.circlepath")
-                        if trakt.isSyncing { Spacer(); ProgressView() }
+                        Label(trakt.isSyncing ? L("Syncing…") : trakt.justSynced ? L("Up to date") : L("Sync now"),
+                              systemImage: trakt.justSynced ? "checkmark.circle.fill" : "arrow.triangle.2.circlepath")
+                        Spacer()
+                        if trakt.isSyncing { ProgressView() }
                     }
                 }
                 .disabled(trakt.isSyncing)

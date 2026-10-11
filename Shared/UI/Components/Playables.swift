@@ -17,6 +17,7 @@ enum Playables {
                              url: e.streamURL, type: .episode, imdbID: imdb, season: e.season, episode: e.number,
                              artwork: e.still ?? s.poster, resumeAt: resume(e.id, imdb: nil))
         if e.streamURL == nil, e.id.hasPrefix("se") { p.stremio = "series|\(e.id.dropFirst(2))" }
+        p.seriesID = s.id
         return p
     }
 
@@ -35,7 +36,9 @@ enum Playables {
     }
 
     static func isWatched(_ e: Episode, imdb: String?) -> Bool {
-        TraktSync.shared.isWatched(show: imdb, season: e.season, episode: e.number) || CloudStore.shared.localWatched.contains(e.id)
+        TraktSync.shared.isWatched(show: imdb, season: e.season, episode: e.number)
+            || CloudStore.shared.localWatched.contains(e.id)
+            || CloudStore.shared.localWatched.contains(CloudStore.episodeKey(series: e.seriesID, season: e.season, episode: e.number))
     }
 
     static func cleanEpisodeTitle(_ e: Episode) -> String {

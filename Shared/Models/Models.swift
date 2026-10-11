@@ -238,6 +238,8 @@ struct PlayableItem: Identifiable, Hashable {
     var stremio: String? = nil
     /// Kanaal (voor catch-up/timeshift en zappen)
     var channelID: String? = nil
+    /// Serie waar deze aflevering bij hoort (voor "gezien" per profiel, ook als afleveringen later laden)
+    var seriesID: String? = nil
 }
 
 // MARK: - Metadata -----------------------------------------------------------

@@ -3,6 +3,7 @@ name: Build
 on:
   push:
     branches: [main]
+    paths-ignore: ['docs/**', 'website/**', '**/*.md', '.github/workflows/website.yml', '.github/workflows/covers.yml', 'tools/fetch_covers.py', 'tools/make_screenshots.py', 'tools/sync_website.py']
   workflow_dispatch:
 
 permissions:

@@ -81,7 +81,7 @@ struct MyBingrHeader: View {
                 if trakt.isSyncing { ProgressView().scaleEffect(0.6).frame(width: 16, height: 16) }
                 else { Image(systemName: trakt.lastError == nil ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
                         .foregroundStyle(trakt.lastError == nil ? Theme.green : Theme.red) }
-                Text(trakt.isSyncing ? L("Syncing with Trakt…")
+                Text(trakt.isSyncing ? L("Syncing with Trakt…") : trakt.justSynced ? L("Up to date")
                      : trakt.lastRefresh.map { L("Trakt synced %@", $0.formatted(date: .omitted, time: .shortened)) } ?? L("Sync now"))
             }
             .font(.system(size: tvScaled(12), weight: .medium))

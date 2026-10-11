@@ -280,6 +280,19 @@ final class CloudStore: ObservableObject {
 
     // MARK: lokaal bekeken (als Trakt niet gekoppeld is)
 
+    /// Aflevering als gezien per serie bewaren (seizoen-aflevering), zodat het vinkje en "X GEZIEN" ook kloppen
+    /// als de afleveringen pas later geladen worden. Geldt per profiel, ook zonder Trakt.
+    static func episodeKey(series: String, season: Int, episode: Int) -> String { "ep:\(series)|\(season)-\(episode)" }
+    func setEpisodeWatched(_ e: Episode, _ watched: Bool) {
+        let k = Self.episodeKey(series: e.seriesID, season: e.season, episode: e.number)
+        if watched { localWatched.insert(e.id); localWatched.insert(k) } else { localWatched.remove(e.id); localWatched.remove(k) }
+        write(localWatched, pk(K.watched))
+    }
+    func localWatchedCount(series id: String) -> Int {
+        let prefix = "ep:\(id)|"
+        return localWatched.reduce(0) { $0 + ($1.hasPrefix(prefix) ? 1 : 0) }
+    }
+
     func setLocalWatched(_ itemKey: String, _ watched: Bool) {
         if watched { localWatched.insert(itemKey) } else { localWatched.remove(itemKey) }
         write(localWatched, pk(K.watched))

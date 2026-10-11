@@ -17,6 +17,8 @@ final class TraktSync: ObservableObject {
     @Published private(set) var lastRefresh: Date?
     /// Bezig met synchroniseren (draaiende pijltjes in Mijn Bingr)
     @Published private(set) var isSyncing = false
+    /// Kort zichtbaar na een geslaagde sync ("Bijgewerkt ✓")
+    @Published private(set) var justSynced = false
     /// Laatste melding over doorgeven aan Trakt ("Gezien op Trakt: …")
     @Published private(set) var lastScrobble: String?
     @Published private(set) var lastScrobbleDate: Date?
@@ -169,9 +171,26 @@ final class TraktSync: ObservableObject {
     }
 
     func refresh(force: Bool = false) async {
-        guard isLoggedIn, !isSyncing else { return }
+        guard isLoggedIn else {
+            if force { lastError = L("Not signed in to Trakt.") }
+            return
+        }
+        guard !isSyncing else { return }
         isSyncing = true
-        defer { isSyncing = false }
+        let started = Date()
+        defer {
+            // spinner minstens even laten zien, en daarna kort "Bijgewerkt ✓"
+            let wait = max(0, 0.9 - Date().timeIntervalSince(started))
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
+                self.isSyncing = false
+                if self.lastError == nil {
+                    self.justSynced = true
+                    try? await Task.sleep(nanoseconds: 2_500_000_000)
+                    self.justSynced = false
+                }
+            }
+        }
         do {
             let act: LastActivities = try await client.get("/sync/last_activities")
             if !force, let a = act.all, a == lastActivity, !watchedMovies.isEmpty || !watchedEpisodes.isEmpty {

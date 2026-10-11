@@ -227,7 +227,8 @@ struct HomeView: View {
         MediaRow(title: title, onSeeAll: all.map { list in { category = CategoryTarget(title: title, items: list.map { .series($0) }) } }) {
             ForEach(items) { s in
                 let imdb = trakt.imdb(for: s)
-                let count = trakt.watchedCount(show: imdb)
+                let count = max(trakt.watchedCount(show: imdb), store.localWatchedCount(series: s.id),
+                                s.episodes.filter { store.localWatched.contains($0.id) }.count)
                 Button { detail = .series(s) } label: {
                     PosterCard(title: s.title, poster: s.poster, imdbID: imdb,
                                badge: count > 0 ? L("%d WATCHED", count) : nil)
