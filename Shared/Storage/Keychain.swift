@@ -15,15 +15,22 @@ enum Keychain {
     static func set(_ value: String?, for key: String) {
         setLocal(value, for: key)
         var d = cloud()
-        if let value, !value.isEmpty { d[key] = value } else { d[key] = nil }
+        // verwijderen = een lege waarde laten staan ("grafsteen"), zodat andere apparaten het ook wissen
+        // en hun oude kopie niet terugzetten (anders kwam bijv. een verwijderde pincode steeds terug)
+        if let value, !value.isEmpty { d[key] = value } else { d[key] = "" }
         kv.set(d, forKey: cloudKey)
         kv.synchronize()
     }
 
     static func get(_ key: String) -> String? {
+        let c = cloud()
+        if let v = c[key], v.isEmpty {           // elders verwijderd → hier ook weg
+            if getLocal(key) != nil { setLocal(nil, for: key) }
+            return nil
+        }
         if let v = getLocal(key) { return v }
         // nog niet lokaal (bijv. eerste keer op Apple TV): uit iCloud halen en lokaal bewaren
-        if let v = cloud()[key], !v.isEmpty {
+        if let v = c[key], !v.isEmpty {
             setLocal(v, for: key)
             return v
         }
@@ -42,7 +49,10 @@ enum Keychain {
 
     /// Na een iCloud-wijziging: nieuwe of gewijzigde geheimen lokaal overnemen.
     static func syncFromCloud() {
-        for (k, v) in cloud() where getLocal(k) != v { setLocal(v, for: k) }
+        for (k, v) in cloud() {
+            if v.isEmpty { if getLocal(k) != nil { setLocal(nil, for: k) } }
+            else if getLocal(k) != v { setLocal(v, for: k) }
+        }
     }
 
     private static func cloud() -> [String: String] {
