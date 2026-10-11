@@ -98,6 +98,11 @@ struct ViewerProfile: Codable, Identifiable, Hashable {
     /// Leeftijdsfilter (nil = geen), bijv. 12 voor een kinderprofiel
     var ageLimit: Int? = nil
     var createdAt = Date()
+    // Persoonlijke kijkvoorkeuren (nil = nog niet ingesteld)
+    var autoSubtitles: Bool? = nil
+    var subtitleLanguage: String? = nil       // OpenSubtitles-standaardtaal
+    var audioLanguage: String? = nil          // standaard audiotaal in de stream
+    var streamSubtitleLanguage: String? = nil // standaard ondertitelspoor in de stream ("" / "off" / code)
 }
 
 // MARK: - Content ------------------------------------------------------------

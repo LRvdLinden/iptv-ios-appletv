@@ -3,7 +3,7 @@
 [![Build](https://github.com/LRvdLinden/iptv-ios-appletv/actions/workflows/build.yml/badge.svg)](https://github.com/LRvdLinden/iptv-ios-appletv/actions/workflows/build.yml)
 
 Native IPTV- en mediaspeler voor **iPhone, iPad, Mac en Apple TV** met de look & feel van Netflix.
-SwiftUI · iOS 17+ · tvOS 17+ · Apple- én VLC-engine · 11 talen · versie 1.0.0 (build 22).
+SwiftUI · iOS 17+ · tvOS 17+ · Apple- én VLC-engine · 11 talen · versie 1.0.0 (build 23).
 
 ## Screenshots
 
@@ -39,7 +39,7 @@ SwiftUI · iOS 17+ · tvOS 17+ · Apple- én VLC-engine · 11 talen · versie 1.
 - M3U/M3U8 + XMLTV-EPG, **Xtream Codes** (incl. catch-up), **Stalker/MAC-portal**
 - **Plex** (inloggen met code op plex.tv/link), **Jellyfin**, **Emby** (films, series, live TV + gids)
 - **Stremio**: inloggen met je Stremio-account of eigen add-on-URL's (Cinemeta-catalogi, directe streams)
-- **Eén hoofdaccount, meerdere profielen**: alleen het hoofdaccount (rood rondje met poppetje) stelt de server, Trakt, OpenSubtitles, kinderslot en categorieën in en maakt profielen aan. Elk profiel gebruikt dezelfde server maar heeft **volledig eigen gegevens**: Mijn lijst, Verder kijken, Voor jou, favorieten, bekeken, kijkgeschiedenis en leeftijdsgrens (Trakt hoort bij het hoofdaccount). Eigen **naam, avatar of profielfoto** en een eigen **pincode** per profiel. Wisselen via je avatar of Mijn Bingr
+- **Eén hoofdaccount, meerdere profielen**: alleen het hoofdaccount (rood rondje met poppetje) stelt de server, Trakt, OpenSubtitles, kinderslot en categorieën in en maakt profielen aan. Elk profiel gebruikt dezelfde server maar heeft **volledig eigen gegevens**: Mijn lijst, Verder kijken, Voor jou, favorieten, bekeken, kijkgeschiedenis en leeftijdsgrens (Trakt hoort bij het hoofdaccount). Eigen **naam, avatar of profielfoto**, eigen **pincode** en eigen kijkvoorkeuren (automatische ondertitels, ondertitel- en audiotaal) per profiel. Wisselen via je avatar of Mijn Bingr
 - **Zoeken in al je afspeellijsten** tegelijk: films, series, zenders, **categorieën** en de **tv-gids** (nu, straks en terugkijken). Ook via het vergrootglas op Home, Films en Series, en dan altijd door álle content
 - **NAS via SMB/DLNA**: servers op je netwerk worden gevonden, of voeg zelf een SMB-share toe; bladeren en afspelen
 

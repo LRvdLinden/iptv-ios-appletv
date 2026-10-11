@@ -11,6 +11,14 @@ struct MainTabView: View {
     @AppStorage("ui.showMovies") private var showMovies = true
     @AppStorage("ui.showSeries") private var showSeries = true
 
+    private static var isPhone: Bool {
+        #if os(iOS)
+        UIDevice.current.userInterfaceIdiom == .phone
+        #else
+        false
+        #endif
+    }
+
     private var hasLive: Bool { !playlists.library.channels.isEmpty || !(playlists.source?.kind.isMediaServer ?? false) }
 
     var body: some View {
@@ -30,8 +38,11 @@ struct MainTabView: View {
                     HomeView(filter: .series).tag(3)
                         .tabItem { Label(L("Series"), systemImage: "rectangle.stack.fill") }
                 }
-                SearchView().tag(4)
-                    .tabItem { Label(L("Search"), systemImage: "magnifyingglass") }
+                // iPhone toont max. 5 tabbladen (anders "Meer"); zoeken zit daar al als vergrootglas op Home/Films/Series
+                if !Self.isPhone {
+                    SearchView().tag(4)
+                        .tabItem { Label(L("Search"), systemImage: "magnifyingglass") }
+                }
                 SettingsView().tag(5)
                     .tabItem { Label(L("My Bingr"), systemImage: "person.crop.circle") }
             }

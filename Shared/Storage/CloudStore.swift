@@ -98,8 +98,27 @@ final class CloudStore: ObservableObject {
     func selectProfile(_ p: ViewerProfile) {
         activeProfileID = p.id
         UserDefaults.standard.set(p.id.uuidString, forKey: "activeProfileID")
+        applyPreferences(of: p)
         loadProfileData()
         progress = scoped([String: ProgressEntry].self, K.progress) ?? [:]
+    }
+
+    /// Kijkvoorkeuren van dit profiel actief maken (automatische ondertitels, talen).
+    private func applyPreferences(of p: ViewerProfile) {
+        let d = UserDefaults.standard
+        let fresh = !isMain(p)   // nieuw/ander profiel zonder eigen keuze → standaardwaarden, niet die van een ander
+        if let v = p.autoSubtitles { d.set(v, forKey: "autoSubtitles") } else if fresh { d.set(false, forKey: "autoSubtitles") }
+        if let v = p.audioLanguage { d.set(v, forKey: TrackPreferences.audioKey) } else if fresh { d.set("", forKey: TrackPreferences.audioKey) }
+        if let v = p.streamSubtitleLanguage { d.set(v, forKey: TrackPreferences.subtitleKey) } else if fresh { d.set("", forKey: TrackPreferences.subtitleKey) }
+        if let v = p.subtitleLanguage { OpenSubtitles.shared.defaultLanguage = v }
+        else if fresh { OpenSubtitles.shared.defaultLanguage = String(Localizer.shared.language.prefix(2)) }
+    }
+
+    /// Kijkvoorkeur van het actieve profiel opslaan.
+    func updateActivePreferences(_ change: (inout ViewerProfile) -> Void) {
+        guard var p = activeProfile else { return }
+        change(&p)
+        upsertProfile(p)
     }
 
     func upsertProfile(_ p: ViewerProfile) {

@@ -59,6 +59,11 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle(store.activeProfile?.name ?? L("My Bingr"))
+            // persoonlijke kijkvoorkeuren horen bij het profiel
+            .onChange(of: autoSubtitles) { _, v in store.updateActivePreferences { $0.autoSubtitles = v } }
+            .onChange(of: audioLanguage) { _, v in store.updateActivePreferences { $0.audioLanguage = v } }
+            .onChange(of: subtitleLanguage) { _, v in store.updateActivePreferences { $0.streamSubtitleLanguage = v } }
+            .onChange(of: subs.defaultLanguage) { _, v in store.updateActivePreferences { $0.subtitleLanguage = v } }
         }
 
         .sheet(isPresented: $showTraktLogin) { TraktLoginView() }
@@ -284,7 +289,7 @@ struct SettingsView: View {
             .pickerStyle(.menu)
             Toggle(L("Load subtitles automatically when playing"), isOn: $autoSubtitles)
         } header: { Text("OpenSubtitles") } footer: {
-            Text(L("While playing, choose OpenSubtitles to pick another subtitle or language. Automatically uses a subtitle track in the stream first; otherwise the best match from OpenSubtitles is loaded (requires sign-in)."))
+            Text(L("While playing, choose OpenSubtitles to pick another subtitle or language. Automatically uses a subtitle track in the stream first; otherwise the best match from OpenSubtitles is loaded (requires sign-in).") + " " + L("These choices apply to this profile only."))
         }
         .task { await subs.refreshUser() }
     }
