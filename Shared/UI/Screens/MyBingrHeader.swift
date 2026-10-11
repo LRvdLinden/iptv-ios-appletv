@@ -94,6 +94,7 @@ struct MyBingrHeader: View {
 
 #if os(iOS)
 /// Tabbladicoon "Mijn Bingr": de profielfoto (rond), zoals bij Netflix.
+@MainActor
 enum ProfileTabIcon {
     static func image(_ store: CloudStore) -> UIImage? {
         guard let p = store.activeProfile, let d = store.photos[p.id], let img = UIImage(data: d) else { return nil }
