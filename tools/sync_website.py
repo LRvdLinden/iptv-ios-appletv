@@ -11,13 +11,19 @@ img.mkdir(parents=True, exist_ok=True)
 build = re.search(r'CURRENT_PROJECT_VERSION:\s*"(\d+)"', (root / "project.yml").read_text()).group(1)
 version = re.search(r'MARKETING_VERSION:\s*"([\d.]+)"', (root / "project.yml").read_text()).group(1)
 
-shots = {"ios_home": 600, "ios_live": 600, "ios_detail": 600, "ios_top10": 600, "ios_picker": 600,
+shots = {"ios_categories": 600, "ios_home": 600, "ios_live": 600, "ios_detail": 600, "ios_top10": 600, "ios_picker": 600,
          "tv_home": 1400, "tv_detail": 1400, "tv_guide": 1400, "tv_multiview": 1400, "tv_live": 1400,
          "tv_picker": 1400, "tv_trakt": 1400, "mac_home": 1440}
-for name, w in shots.items():
-    im = Image.open(root / "docs/screenshots" / f"{name}.png").convert("RGB")
-    im = im.resize((w, round(im.height * w / im.width)), Image.LANCZOS)
-    im.save(img / f"{name}.jpg", quality=84, optimize=True, progressive=True)
+# Nederlandse en Engelse screenshots (docs/screenshots en docs/screenshots/en)
+for lang, src in (("nl", root / "docs/screenshots"), ("en", root / "docs/screenshots/en")):
+    (img / lang).mkdir(exist_ok=True)
+    for name, w in shots.items():
+        im = Image.open(src / f"{name}.png").convert("RGB")
+        im = im.resize((w, round(im.height * w / im.width)), Image.LANCZOS)
+        im.save(img / lang / f"{name}.jpg", quality=84, optimize=True, progressive=True)
+# oude losse screenshots opruimen
+for old in img.glob("*.jpg"):
+    old.unlink()
 
 for p in sorted((root / "Shared/Resources/Avatars").glob("kid*.png")):
     Image.open(p).resize((160, 160), Image.LANCZOS).save(img / p.name, optimize=True)

@@ -9,6 +9,7 @@ body{background:#000;color:#fff;font-family:-apple-system,"SF Pro Display","Helv
 .status{height:54px;display:flex;justify-content:space-between;align-items:flex-end;padding:0 32px 6px;font-weight:600;font-size:17px}
 .poster{position:relative;border-radius:4px;overflow:hidden;flex:none;display:flex;align-items:flex-end;justify-content:center;text-align:center;font-weight:900;text-transform:uppercase;line-height:1;padding:8px}
 .poster span{position:relative;z-index:1;text-shadow:0 2px 8px rgba(0,0,0,.6)}
+.poster.real::after{display:none}
 .poster::after{content:"";position:absolute;inset:0;background:linear-gradient(transparent 45%,rgba(0,0,0,.7))}
 .check{position:absolute;top:6px;right:6px;z-index:2;width:20px;height:20px;border-radius:50%;background:var(--red);display:grid;place-items:center;font-size:12px;font-weight:900;color:#fff;box-shadow:0 1px 4px #0008}
 .bar{position:absolute;left:0;right:0;bottom:0;height:3px;background:#ffffff4d;z-index:2}.bar i{display:block;height:100%;background:var(--red)}
@@ -39,9 +40,11 @@ const P = [ // fictieve titels + kleuren
  ["Rust & Bone","#3c1414","#a04000"],["Northbound","#102a43","#486581"],["Kingsgate","#2a1a05","#d4a017"],
  ["Deep Current","#002b36","#268bd2"],["Velvet Hour","#3d0b1f","#c0392b"],["The Orchard","#1e3d14","#7dbb3a"]];
 const sym = {play:"▶",info:"ⓘ",plus:"+",check:"✓"};
-function poster(i,w,opt={}){const p=P[i%P.length];const h=w*1.5;
- return `<div class="poster" style="width:${w}px;height:${h}px;background:radial-gradient(circle at 30% 20%,${p[2]}cc,transparent 60%),linear-gradient(160deg,${p[2]},${p[1]} 70%);font-size:${w*.13}px">
- <span>${p[0]}</span>${opt.check?'<div class="check">✓</div>':''}${opt.prog?`<div class="bar"><i style="width:${opt.prog}%"></i></div>`:''}${opt.badge?`<div style="position:absolute;bottom:10px;z-index:2;background:var(--red);font-size:9px;padding:2px 5px;border-radius:2px">${opt.badge}</div>`:''}</div>`}
+// echte (vrije) posters uit docs/covers als die er zijn (window.COVERS wordt door tools/make_screenshots.py gezet)
+const COV = (window.COVERS || []);
+function poster(i,w,opt={}){const p=P[i%P.length];const h=w*1.5;const c=COV.length?COV[i%COV.length]:null;
+ return `<div class="poster${c?' real':''}" style="width:${w}px;height:${h}px;background:${c?`#111 url(../covers/${c.slug}.jpg) center/cover`:`radial-gradient(circle at 30% 20%,${p[2]}cc,transparent 60%),linear-gradient(160deg,${p[2]},${p[1]} 70%)`};font-size:${w*.13}px">
+ ${c?'':`<span>${p[0]}</span>`}${opt.check?'<div class="check">✓</div>':''}${opt.prog?`<div class="bar"><i style="width:${opt.prog}%"></i></div>`:''}${opt.badge?`<div style="position:absolute;bottom:10px;z-index:2;background:var(--red);font-size:9px;padding:2px 5px;border-radius:2px">${opt.badge}</div>`:''}</div>`}
 const AV=[["#E50914","#7A0008","📺"],["#2563EB","#1E1B4B","🌐"],["#10B981","#064E3B","⚽"],["#A855F7","#3B0764","👑"],["#F59E0B","#9A3412","🔥"]];
 function av(i,s,name,color="#B3B3B3"){const a=AV[i];return `<div style="display:flex;flex-direction:column;align-items:center;gap:${s*.07}px"><div class="avatar" style="border-radius:50%;width:${s}px;height:${s}px;background:linear-gradient(135deg,${a[0]},${a[1]});font-size:${s*.42}px">${a[2]}</div><div style="color:${color};font-size:${s*.13}px">${name}</div></div>`}
 function kidav(n,s,name,color="#B3B3B3"){return `<div style="display:flex;flex-direction:column;align-items:center;gap:${s*.07}px"><img src="../../Shared/Resources/Avatars/kid${n}.png" style="width:${s}px;height:${s}px;border-radius:50%"><div style="color:${color};font-size:${s*.13}px">${name}</div></div>`}
@@ -256,4 +259,59 @@ screens.mac_home=()=>`<div class="screen" style="background:radial-gradient(circ
   </div></div>`;
 const k = new URLSearchParams(location.search).get('s');
 document.getElementById('app').innerHTML = screens[k]();
+
+// Engelse screenshots: ?lang=en vertaalt alle teksten in beeld
+const EN_MOCK = {
+ "Afleveringen":"Episodes","AFLEVERINGEN":"EPISODES","AANBEVELINGEN":"RECOMMENDATIONS","BEOORDELINGEN":"RATINGS",
+ "Afspeellijst toevoegen":"Add playlist","Alle zenders":"All channels","Alles aan":"All on","Alles uit":"All off",
+ "Andere bronnen":"Other sources","Annuleer":"Cancel","App-taal":"App language","Automatisch ⌄":"Automatic ⌄",
+ "Avondjournaal":"Evening News","BE | Vlaams":"BE | Flemish","BIBLIOTHEEK":"LIBRARY","Bekijk allemaal":"See all",
+ "Breuklijnen":"Fault Lines","CATEGORIEËN (56)":"CATEGORIES (56)","Categorieën":"Categories",
+ "Categorieën aan/uit (NL, BE, DE…)":"Categories on/off (NL, BE, DE…)","Categorieën ⌄":"Categories ⌄","Commissaris":"Commissioner",
+ "De fundering":"The Foundation","Docu":"Docs","Documentaire":"Documentary",
+ "Een architect ontdekt dat de glazen stad die ze ontwierp een geheim verbergt dat haar familie al generaties bewaakt.":"An architect discovers that the glass city she designed hides a secret her family has guarded for generations.",
+ "Een radioamateur vangt een noodsignaal op dat afkomstig lijkt van een schip dat dertig jaar geleden verdween.":"A radio amateur picks up a distress signal that seems to come from a ship that vanished thirty years ago.",
+ "FILM":"MOVIE","Films":"Movies","Formule 1 · Kwalificatie":"Formula 1 · Qualifying","Ga op je telefoon of computer naar":"On your phone or computer, go to",
+ "Gast":"Guest","Gebruikersnaam":"Username","Goudzoekers":"Gold Hunters","Het eerste glas barst. Tom ontdekt wie de bouw sabo...":"The first pane cracks. Tom finds out who sabotaged...",
+ "Identificeer met een icoon":"Pick an icon","IK":"ME","Ingelogd als":"Signed in as","KINDERSLOT":"PARENTAL CONTROL","Kids":"Kids",
+ "Kies het type afspeellijst":"Choose the playlist type","Kijkgeschiedenis":"Watch history","Koppel je Trakt-account":"Link your Trakt account",
+ "LANDEN & TALEN":"COUNTRIES & LANGUAGES","Late show":"Late Show","Leeftijdsgrens voor dit profiel":"Age limit for this profile",
+ "Live-tv tonen":"Show Live TV","Mama":"Mom","Mara keert terug naar de stad en vindt een verborgen kamer onder het atrium.":"Mara returns to the city and finds a hidden room beneath the atrium.",
+ "Mijn Bingr":"My Bingr","Mijn lijst":"My List","NAS & netwerk (SMB/DLNA)":"NAS & network (SMB/DLNA)","NL | Algemeen":"NL | General",
+ "Nederland":"Netherlands","Nederlands ⌄":"Dutch ⌄","Nieuws":"News","Nieuws 24":"News 24","Noem deze afspeellijst":"Name this playlist",
+ "Ondertitels automatisch laden":"Load subtitles automatically","Onlangs toegevoegd":"Recently added","Ons dorp":"Our Village","Opslaan":"Save",
+ "SERIE":"SERIES","SPELER":"PLAYER","Seizoen 2 ⌄":"Season 2 ⌄","Showbizz vandaag":"Showbiz Today","Speler-engine":"Player engine",
+ "Standaard audiotaal":"Default audio language","Standaard ondertiteltaal":"Default subtitle language","Standaardtaal":"Default language",
+ "Startscherm":"Start screen","Systeem ⌄":"System ⌄","TAAL":"LANGUAGE","TK | Ulusal":"TK | National",
+ "Tik op een code om al die categorieën in één keer aan of uit te zetten.":"Tap a code to switch all those categories on or off at once.",
+ "Top 10 films vandaag":"Top 10 movies today","Top 10 series vandaag":"Top 10 series today","Tot en met 12 jaar ⌄":"Up to 12 years ⌄",
+ "Verder kijken":"Continue watching","Voetbal Live":"Football Live","Volgend programma":"Next programme","Voor jou":"For you","WEERGAVE":"DISPLAY",
+ "Wachtwoord":"Password","Wie kijkt er?":"Who's watching?","Wilde natuur":"Wild Nature","Zoals in de stream ⌄":"As in the stream ⌄","Zoeken":"Search",
+ "en voer deze code in:":"and enter this code:","http://mijn-server.nl:8080":"http://my-server.com:8080","‹ Mijn Bingr":"‹ My Bingr",
+ "⌕ Zoek zender":"⌕ Search channel","⌕ Zoek zender of programma":"⌕ Search channel or program","ⓘ Info":"ⓘ Info","ⓘ Meer info":"ⓘ More info",
+ "▶ Afspelen":"▶ Play","▶ Afspelen S2:A4":"▶ Play S2:E4","▶ Speel seizoen 2: aflevering 4":"▶ Play season 2: episode 4",
+ "◌ Wachten op bevestiging…":"◌ Waiting for confirmation…","◷ Recent":"◷ Recent","☁︎ iCloud gesynchroniseerd met je iPhone":"☁︎ iCloud synced with your iPhone",
+ "★ Favorieten":"★ Favorites","✓ Mijn lijst":"✓ My List","🔓 Ontgrendeld voor 30 minuten":"🔓 Unlocked for 30 minutes","Achter het nieuws":"Behind the News",
+ "Afspelen":"Play","Meer info":"More info","Info":"Info","Favorieten":"Favorites","Recent":"Recent","Afleveringen ":"Episodes"
+};
+const EN_RX = [
+ [/^(\d+)\. De fundering$/,"$1. The Foundation"],[/^(\d+)\. Breuklijnen$/,"$1. Fault Lines"],[/^(\d+)\. Spiegels$/,"$1. Mirrors"],
+ [/^(\d+)\. Het archief$/,"$1. The Archive"],[/^(\d+)\. Onder het glas$/,"$1. Under the Glass"],[/^(\d+)\. Kristal$/,"$1. Crystal"],
+ [/^(\d+) februari (\d+) · (\d+) min$/,"February $1, $2 · $3 min"],[/^(\d+) seizoenen$/,"$1 seasons"],[/^Nog (\d+) min$/,"$1 min left"],
+ [/^Straks (.*)$/,"Next $1"],[/(\d+)u (\d+)m/,"$1h $2m"],[/Avondjournaal/,"Evening News"],[/Ons dorp/,"Our Village"],[/Formule 1 · Kwalificatie/,"Formula 1 · Qualifying"],
+ [/Goudzoekers/,"Gold Hunters"],[/Voetbal Live/,"Football Live"],[/Showbizz vandaag/,"Showbiz Today"],[/Wilde natuur/,"Wild Nature"],[/Achter het nieuws/,"Behind the News"],
+ [/Sportjournaal/,"Sports News"],[/IJszee/,"Ice Sea"],[/Studio Voetbal/,"Football Studio"],[/Nieuws/,"News"],[/Onlangs toegevoegd/,"Recently added"],
+ [/iCloud gesynchroniseerd/,"iCloud synced"],[/Volgend programma/,"Next programme"]
+];
+if (new URLSearchParams(location.search).get('lang') === 'en') {
+  const w = document.createTreeWalker(document.getElementById('app'), NodeFilter.SHOW_TEXT); let n; const nodes = [];
+  while ((n = w.nextNode())) nodes.push(n);
+  for (const t of nodes) {
+    const raw = t.nodeValue, s = raw.trim(); if (!s) continue;
+    let v = EN_MOCK[s];
+    if (v === undefined) { v = s; for (const [rx, r] of EN_RX) v = v.replace(rx, r); }
+    if (v !== s) t.nodeValue = raw.replace(s, v);
+  }
+  document.documentElement.lang = 'en';
+}
 </script></body></html>
