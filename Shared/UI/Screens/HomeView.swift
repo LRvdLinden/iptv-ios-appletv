@@ -116,7 +116,7 @@ struct HomeView: View {
             }
         }
 
-        if lib.movies.isEmpty && lib.series.isEmpty && !playlists.isLoading {
+        if lib.movies.isEmpty && lib.series.isEmpty && !playlists.isLoading && !playlists.isFiltering {
             VStack(spacing: 10) {
                 Image(systemName: "film").font(.system(size: tvScaled(40))).foregroundStyle(Theme.secondary)
                 Text(filter == .all ? L("This playlist only contains live TV.") : L("No titles found in this playlist."))

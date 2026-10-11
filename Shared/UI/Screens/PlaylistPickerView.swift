@@ -98,7 +98,7 @@ struct PlaylistPickerView: View {
         .sheet(item: $pinFor) { p in
             PINPad(title: L("PIN for %@", p.name)) { pin in
                 guard ParentalControl.shared.verify(pin, profile: p.id) else { return false }
-                Task { @MainActor in try? await Task.sleep(nanoseconds: 300_000_000); app.open(profile: p) }
+                Task { @MainActor in try? await Task.sleep(nanoseconds: 80_000_000); app.open(profile: p) }
                 return true
             }
         }

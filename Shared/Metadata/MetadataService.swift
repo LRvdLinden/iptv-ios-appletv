@@ -18,7 +18,7 @@ final class MetadataService: ObservableObject {
            let c = try? JSONDecoder().decode([String: TitleMetadata].self, from: d) { cache = c }
     }
 
-    static func key(title: String, year: Int?, isShow: Bool) -> String {
+    nonisolated static func key(title: String, year: Int?, isShow: Bool) -> String {
         "\(isShow ? "s" : "m")|\(title.lowercased())|\(year.map(String.init) ?? "")"
     }
 

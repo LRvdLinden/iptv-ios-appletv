@@ -9,7 +9,7 @@ final class ParentalControl: ObservableObject {
     @Published private(set) var unlockedUntil: Date?
 
     private let pinKey = "parental.pin"
-    private static let adultWords = ["adult", "xxx", "18+", "+18", "porn", "erotic", "erotiek", "for adults"]
+    nonisolated private static let adultWords = ["adult", "xxx", "18+", "+18", "porn", "erotic", "erotiek", "for adults"]
 
     var hasPIN: Bool { Keychain.get(pinKey) != nil }
     var isUnlocked: Bool { (unlockedUntil ?? .distantPast) > Date() }
@@ -72,7 +72,7 @@ final class ParentalControl: ObservableObject {
     static let ageChoices = [6, 9, 12, 16]
 
     /// Is deze groepsnaam duidelijk voor volwassenen?
-    static func isAdultGroup(_ g: String) -> Bool {
+    nonisolated static func isAdultGroup(_ g: String) -> Bool {
         let l = g.lowercased()
         return adultWords.contains { l.contains($0) }
     }
@@ -95,7 +95,13 @@ final class ParentalControl: ObservableObject {
 
     /// Mag dit profiel dit zien? (Onbekende classificatie = toegestaan, behalve in volwassenengroepen.)
     func allowed(rated: String?, group: String, limit: Int?, genre: String? = nil, strict: Bool = false) -> Bool {
-        guard let limit, !isUnlocked else { return true }
+        guard !isUnlocked else { return true }
+        return Self.allowedFor(rated: rated, group: group, limit: limit, genre: genre, strict: strict)
+    }
+
+    /// Dezelfde regel zonder toegang tot de app-status (kan op de achtergrond draaien).
+    nonisolated static func allowedFor(rated: String?, group: String, limit: Int?, genre: String? = nil, strict: Bool = false) -> Bool {
+        guard let limit else { return true }
         if Self.isAdultGroup(group) { return false }
         let age = Self.minimumAge(rated)
         if let age, age > limit { return false }
@@ -108,12 +114,12 @@ final class ParentalControl: ObservableObject {
         return false
     }
 
-    private static let kidsWords = ["kid", "kinder", "kinderen", "child", "junior", "jeugd", "cartoon", "anim", "disney",
+    nonisolated private static let kidsWords = ["kid", "kinder", "kinderen", "child", "junior", "jeugd", "cartoon", "anim", "disney",
                                     "nick", "pixar", "dreamworks", "family", "familie", "enfant", "jeunesse", "niños", "infantil",
                                     "bambini", "ragazzi", "çocuk", "cocuk", "dzieci", "bajki", "kika", "zapp", "baby", "boomerang",
                                     "cbeebies", "pbs kids", "toon", "أطفال", "儿童", "动画"]
     /// Groep met kinderinhoud?
-    static func isKidsGroup(_ g: String) -> Bool {
+    nonisolated static func isKidsGroup(_ g: String) -> Bool {
         let l = g.lowercased()
         return !isAdultGroup(g) && kidsWords.contains { l.contains($0) }
     }

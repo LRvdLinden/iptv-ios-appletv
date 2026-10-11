@@ -65,7 +65,15 @@ final class PlaylistService: ObservableObject {
         episodeCache = [:]
         error = nil
 
-        if !forceRefresh, let cached = Self.readCache(s) {
+        // grote lijsten (tienduizenden titels) inlezen op de achtergrond, niet op het scherm wachten
+        var cached: Library? = nil
+        if !forceRefresh {
+            isLoading = true
+            cached = await Task.detached(priority: .userInitiated) { Self.readCache(s) }.value
+            isLoading = false
+        }
+        guard source?.id == s.id else { return }   // intussen een andere bron gekozen
+        if let cached {
             setRaw(cached)
             if !RefreshPolicy.current.isDue(age: cacheAge(s)) { return }
             Task { await refresh(s, showSpinner: false) }
@@ -187,15 +195,78 @@ final class PlaylistService: ObservableObject {
         applyCustomizations()
     }
 
-    func applyCustomizations() {
-        guard let s = source else { library = rawLibrary; return }
-        library = Self.apply(rawLibrary, CloudStore.shared.customization(s.id), playlist: s.id, ageLimit: CloudStore.shared.activeProfile?.effectiveAgeLimit,
-                             strict: CloudStore.shared.activeProfile?.strictAgeFilter ?? false)
+    /// Alles wat het filteren nodig heeft, als losse waarden — zodat het op de achtergrond kan (grote lijsten).
+    struct FilterContext {
+        var custom: Customization
+        var playlist: UUID
+        var ageLimit: Int?
+        var strict: Bool
+        var parentalEnabled: Bool
+        var lockedGroups: Set<String>
+        var autoLockAdult: Bool
+        var unlocked: Bool
+        var meta: [String: TitleMetadata]
     }
 
+    private func context(for s: PlaylistSource) -> FilterContext {
+        let st = CloudStore.shared
+        let pc = st.parental
+        return FilterContext(custom: st.customization(s.id), playlist: s.id,
+                             ageLimit: st.activeProfile?.effectiveAgeLimit, strict: st.activeProfile?.strictAgeFilter ?? false,
+                             parentalEnabled: pc.enabled, lockedGroups: pc.lockedGroups, autoLockAdult: pc.autoLockAdult,
+                             unlocked: ParentalControl.shared.isUnlocked,
+                             meta: (st.activeProfile?.effectiveAgeLimit != nil) ? MetadataService.shared.cache : [:])
+    }
+
+    private var filterGeneration = 0
+    /// Bezig met filteren op de achtergrond (Home toont dan nog geen "lege lijst"-melding)
+    @Published private(set) var isFiltering = false
+
+    /// Filtert de lijst (verbergen, kinderslot, leeftijd) op de achtergrond; de app blijft direct reageren.
+    func applyCustomizations() {
+        guard let s = source else { library = rawLibrary; return }
+        let ctx = context(for: s)
+        let raw = rawLibrary
+        filterGeneration += 1
+        let gen = filterGeneration
+        // kleine lijsten: meteen; grote lijsten: op de achtergrond
+        if raw.channels.count + raw.movies.count + raw.series.count < 3000 {
+            library = Self.apply(raw, ctx)
+            return
+        }
+        // kinderprofiel/leeftijdsgrens: niets ongefilterds laten zien terwijl er gefilterd wordt
+        if ctx.ageLimit != nil { library = Library() }
+        isFiltering = true
+        Task {
+            let lib = await Task.detached(priority: .userInitiated) { Self.apply(raw, ctx) }.value
+            guard gen == self.filterGeneration else { return }   // intussen opnieuw gefilterd
+            self.library = lib
+            self.isFiltering = false
+        }
+    }
+
+    /// Oude aanroepen (bijv. zoeken in andere afspeellijsten).
     static func apply(_ raw: Library, _ c: Customization, playlist: UUID, ageLimit: Int? = nil, strict: Bool = false) -> Library {
-        let parental = ParentalControl.shared
-        let meta = MetadataService.shared
+        let st = CloudStore.shared
+        let pc = st.parental
+        return apply(raw, FilterContext(custom: c, playlist: playlist, ageLimit: ageLimit, strict: strict,
+                                        parentalEnabled: pc.enabled, lockedGroups: pc.lockedGroups, autoLockAdult: pc.autoLockAdult,
+                                        unlocked: ParentalControl.shared.isUnlocked,
+                                        meta: ageLimit != nil ? MetadataService.shared.cache : [:]))
+    }
+
+    nonisolated static func apply(_ raw: Library, _ ctx: FilterContext) -> Library {
+        let c = ctx.custom, playlist = ctx.playlist, ageLimit = ctx.ageLimit, strict = ctx.strict
+        func isLocked(_ g: String) -> Bool {
+            guard ctx.parentalEnabled, !ctx.unlocked else { return false }
+            if ctx.lockedGroups.contains("\(playlist.uuidString)|\(g)") { return true }
+            return ctx.autoLockAdult && ParentalControl.isAdultGroup(g)
+        }
+        func allowed(rated: String?, group: String, genre: String? = nil) -> Bool {
+            ctx.unlocked || ParentalControl.allowedFor(rated: rated, group: group, limit: ageLimit, genre: genre, strict: strict)
+        }
+        func movieMeta(_ m: Movie) -> TitleMetadata? { ctx.meta[MetadataService.key(title: m.title, year: m.year, isShow: false)] }
+        func seriesMeta(_ s: Series) -> TitleMetadata? { ctx.meta[MetadataService.key(title: s.title, year: s.year, isShow: true)] }
         func group(_ g: String) -> String {
             let merged = c.merged[g] ?? g
             return c.renamed[Customization.groupKey(merged)] ?? merged
@@ -207,13 +278,13 @@ final class PlaylistService: ObservableObject {
             if let ok = groupOK[g] { return ok }
             let ok = !c.hidden.contains(Customization.groupKey(g))
                 && !c.hidden.contains(Customization.groupKey(c.merged[g] ?? g))
-                && !parental.isLocked(playlist: playlist, group: g)
-                && !parental.isLocked(playlist: playlist, group: c.merged[g] ?? g)
+                && !isLocked(g)
+                && !isLocked(c.merged[g] ?? g)
             groupOK[g] = ok
             return ok
         }
         func ageOK(_ md: TitleMetadata?, _ g: String) -> Bool {
-            ageLimit == nil || parental.allowed(rated: md?.rated, group: g, limit: ageLimit, genre: md?.genre, strict: strict)
+            ageLimit == nil || allowed(rated: md?.rated, group: g, genre: md?.genre)
         }
         var lib = raw
         lib.channels = raw.channels.filter { visible($0.id, $0.group) }.map { ch in
@@ -221,12 +292,12 @@ final class PlaylistService: ObservableObject {
         }
         if ageLimit != nil {
             // kinderprofiel: alleen kinderzenders
-            lib.channels = lib.channels.filter { parental.allowed(rated: nil, group: $0.group, limit: ageLimit, strict: strict) }
+            lib.channels = lib.channels.filter { allowed(rated: nil, group: $0.group) }
         }
-        lib.movies = raw.movies.filter { visible($0.id, $0.group) && (ageLimit == nil || ageOK(meta.cached($0), $0.group)) }.map { m in
+        lib.movies = raw.movies.filter { visible($0.id, $0.group) && (ageLimit == nil || ageOK(movieMeta($0), $0.group)) }.map { m in
             var x = m; x.group = group(m.group); x.title = c.renamed[m.id] ?? m.title; return x
         }
-        lib.series = raw.series.filter { visible($0.id, $0.group) && (ageLimit == nil || ageOK(meta.cached($0), $0.group)) }.map { se in
+        lib.series = raw.series.filter { visible($0.id, $0.group) && (ageLimit == nil || ageOK(seriesMeta($0), $0.group)) }.map { se in
             var x = se; x.group = group(se.group); x.title = c.renamed[se.id] ?? se.title; return x
         }
         // eigen volgorde: groepen, dan kanalen binnen een groep
