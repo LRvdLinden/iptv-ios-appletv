@@ -45,11 +45,42 @@ final class TraktSync: ObservableObject {
     }
 
     /// IMDb-ID van een IPTV-titel: eerst uit de Trakt-index, dan uit de metadata-cache.
+    /// Ook de schone titel proberen ("NL | Reacher (2022) 4K" → "Reacher", 2022), anders vinden we je Trakt-vinkjes niet.
     func imdb(for m: Movie) -> String? {
-        m.imdbID ?? titleIndex.imdb(title: m.title, year: m.year, show: false) ?? MetadataService.shared.cached(m)?.imdbID
+        m.imdbID ?? indexed(m.title, m.year, show: false) ?? MetadataService.shared.cached(m)?.imdbID
     }
     func imdb(for s: Series) -> String? {
-        s.imdbID ?? titleIndex.imdb(title: s.title, year: s.year, show: true) ?? MetadataService.shared.cached(s)?.imdbID
+        s.imdbID ?? indexed(s.title, s.year, show: true) ?? MetadataService.shared.cached(s)?.imdbID
+    }
+    private func indexed(_ raw: String, _ year: Int?, show: Bool) -> String? {
+        if let i = titleIndex.imdb(title: raw, year: year, show: show) { return i }
+        let c = cleaned(raw)
+        return titleIndex.imdb(title: c.title, year: year ?? c.year, show: show)
+    }
+    private var cleanCache: [String: (title: String, year: Int?)] = [:]
+    private func cleaned(_ raw: String) -> (title: String, year: Int?) {
+        if let c = cleanCache[raw] { return c }
+        let p = TitleCleaner.parse(raw)
+        let c = (title: p.title, year: p.year)
+        if cleanCache.count > 20_000 { cleanCache.removeAll() }
+        cleanCache[raw] = c
+        return c
+    }
+
+    /// IMDb-ID opzoeken bij Trakt als de titel er nog geen heeft (zodat kijken toch als "gezien" wordt doorgegeven).
+    private func resolveIMDb(_ item: PlayableItem) async -> String? {
+        if let i = item.imdbID { return i }
+        let show = item.type == .episode
+        let c = cleaned(item.title)
+        if let i = titleIndex.imdb(title: item.title, year: nil, show: show) ?? titleIndex.imdb(title: c.title, year: c.year, show: show) {
+            return i
+        }
+        let year = show ? c.year : (c.year ?? item.subtitle.flatMap { Int($0) })
+        guard let hit = await lookup(title: c.title, year: year, isShow: show), let i = hit.ids.imdb else { return nil }
+        titleIndex.add(title: item.title, year: nil, imdb: i, show: show)
+        titleIndex.add(title: hit.title, year: hit.year, imdb: i, show: show)
+        saveCache()
+        return i
     }
 
     private let client = TraktClient.shared
@@ -199,7 +230,7 @@ final class TraktSync: ObservableObject {
     // MARK: schrijven
 
     func setWatched(_ item: PlayableItem, _ watched: Bool) async {
-        guard isLoggedIn, let imdb = item.imdbID else { return }
+        guard isLoggedIn, let imdb = await resolveIMDb(item) else { return }
         let body: [String: Any]
         if item.type == .episode, let s = item.season, let e = item.episode {
             body = ["shows": [["ids": ["imdb": imdb], "seasons": [["number": s, "episodes": [["number": e]]]]]]]
@@ -248,7 +279,7 @@ final class TraktSync: ObservableObject {
 
     /// Scrobble: Trakt markeert automatisch als bekeken bij stop ≥ 80%.
     func scrobble(_ action: ScrobbleAction, item: PlayableItem, progress: Double) async {
-        guard isLoggedIn, Self.scrobbleEnabled, let imdb = item.imdbID, item.type != .live else { return }
+        guard isLoggedIn, Self.scrobbleEnabled, item.type != .live, let imdb = await resolveIMDb(item) else { return }
         var body: [String: Any] = ["progress": min(max(progress * 100, 0), 100), "app_version": "1.0.0"]
         if item.type == .episode, let s = item.season, let e = item.episode {
             body["show"] = ["ids": ["imdb": imdb]]
@@ -262,6 +293,11 @@ final class TraktSync: ObservableObject {
                 watchedEpisodes[imdb, default: []].insert("\(s)-\(e)")
             } else { watchedMovies.insert(imdb) }
             saveCache()
+        }
+        // na het kijken de vinkjes van Trakt ophalen (ook wat je intussen elders keek)
+        if action == .stop {
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            await refresh()
         }
     }
 
