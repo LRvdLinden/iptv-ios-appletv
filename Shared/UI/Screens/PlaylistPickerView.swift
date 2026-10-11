@@ -51,13 +51,12 @@ struct PlaylistPickerView: View {
                     LazyVGrid(columns: columns, spacing: tvScaled(26)) {
                         ForEach(Array(store.profiles.enumerated()), id: \.element.id) { i, p in
                             Button {
-                                // hoofdaccount op slot met de pincode als het kinderslot aan staat
-                                if store.isMain(p) && store.parental.enabled && ParentalControl.shared.hasPIN && !ParentalControl.shared.isUnlocked {
-                                    pinFor = p
-                                } else { app.open(profile: p) }
+                                // profiel met pincode: eerst de pincode vragen
+                                if ParentalControl.shared.hasPIN(profile: p.id) { pinFor = p } else { app.open(profile: p) }
                             } label: {
                                 AvatarTile(name: p.name, avatar: p.avatar, photo: store.photos[p.id],
-                                           badge: store.isMain(p) && store.profiles.count > 1 ? "key.fill" : nil)
+                                           badge: store.isMain(p) && store.profiles.count > 1 ? "person.fill" : nil,
+                                           locked: ParentalControl.shared.hasPIN(profile: p.id))
                             }
                             .profileButton()
                             .focused($focus, equals: .profile(p.id))
@@ -97,8 +96,8 @@ struct PlaylistPickerView: View {
         .sheet(isPresented: $addingProfile) { ProfileEditView(existing: nil) }
         .sheet(item: $editing) { p in ProfileEditView(existing: p) }
         .sheet(item: $pinFor) { p in
-            PINPad(title: L("Enter PIN")) { pin in
-                guard ParentalControl.shared.verify(pin) else { return false }
+            PINPad(title: L("PIN for %@", p.name)) { pin in
+                guard ParentalControl.shared.verify(pin, profile: p.id) else { return false }
                 Task { @MainActor in try? await Task.sleep(nanoseconds: 300_000_000); app.open(profile: p) }
                 return true
             }
@@ -193,7 +192,7 @@ struct ProfileEditView: View {
                 } footer: {
                     Text(store.parental.enabled
                          ? L("Titles above this age (IMDb rating) and adult groups are hidden on this profile. With the PIN you can still watch them.")
-                         : L("Turn on the parental lock (My Bingr) to protect the age limit with a PIN."))
+                         : L("Set a PIN on the main account and turn on “Lock adult content with this PIN” (My Bingr → PIN code) to protect the age limit."))
                 } }
                 if canAdmin, let existing, !store.isMain(existing) {
                     Section { Button(L("Delete profile"), role: .destructive) { confirmDelete = true } }
@@ -212,7 +211,9 @@ struct ProfileEditView: View {
             .onAppear {
                 if let e = existing { name = e.name; avatar = e.avatar; ageLimit = e.ageLimit ?? 0; photo = store.photos[e.id] }
             }
-            .sheet(isPresented: $askPIN) { PINPad(title: L("Enter PIN")) { parental.verify($0) } }
+            .sheet(isPresented: $askPIN) {
+                PINPad(title: L("Enter PIN")) { pin in store.mainProfileID.map { parental.verify(pin, profile: $0) } ?? parental.verify(pin) }
+            }
         }
     }
 
@@ -232,8 +233,10 @@ struct AvatarTile: View {
     let avatar: PlaylistAvatar
     var photo: Data? = nil
     var editing = false
-    /// klein symbooltje rechtsonder (bijv. sleutel voor het hoofdaccount)
+    /// klein rond symbooltje rechtsonder (poppetje = hoofdaccount)
     var badge: String? = nil
+    /// slotje onder de naam als het profiel een pincode heeft
+    var locked = false
     @Environment(\.profileFocused) private var focused
     var body: some View {
         VStack(spacing: tvScaled(10)) {
@@ -258,14 +261,19 @@ struct AvatarTile: View {
                 .overlay(Circle().strokeBorder(.white, lineWidth: focused ? tvScaled(3) : 0))
                 .overlay(alignment: .bottomTrailing) {
                     if let badge {
-                        Image(systemName: badge).font(.system(size: tvScaled(11), weight: .bold)).foregroundStyle(.black)
-                            .padding(tvScaled(6)).background(Theme.imdb, in: Circle())
+                        Image(systemName: badge).font(.system(size: tvScaled(12), weight: .bold)).foregroundStyle(.white)
+                            .frame(width: tvScaled(26), height: tvScaled(26))
+                            .background(Theme.red, in: Circle())
+                            .overlay(Circle().strokeBorder(.black, lineWidth: tvScaled(2)))
                     }
                 }
                 .aspectRatio(1, contentMode: .fit)
             if !name.isEmpty {
-                Text(name).font(.system(size: tvScaled(14), weight: focused ? .semibold : .regular))
-                    .foregroundStyle(focused ? .white : Theme.secondary).lineLimit(1)
+                HStack(spacing: 4) {
+                    Text(name).font(.system(size: tvScaled(14), weight: focused ? .semibold : .regular)).lineLimit(1)
+                    if locked { Image(systemName: "lock.fill").font(.system(size: tvScaled(10))) }
+                }
+                .foregroundStyle(focused ? .white : Theme.secondary)
             }
         }
     }

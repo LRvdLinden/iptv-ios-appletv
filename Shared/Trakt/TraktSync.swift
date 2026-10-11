@@ -69,7 +69,26 @@ final class TraktSync: ObservableObject {
         Task { await bootstrap() }
     }
 
+    /// Trakt hoort bij het hoofdaccount: andere profielen zien geen Trakt-vinkjes, -voortgang of -aanbevelingen
+    /// en scrobblen niet naar het Trakt-account van het hoofdaccount.
+    private var profileAllowed = true
+
+    func applyProfile(isMain: Bool) async {
+        profileAllowed = isMain
+        if isMain {
+            isLoggedIn = await client.isLoggedIn
+            username = await client.tokens?.username
+            loadCache()
+            if isLoggedIn { await refresh() }
+        } else {
+            isLoggedIn = false
+            watchedMovies = []; watchedEpisodes = [:]; watchlist = []; playback = []
+        }
+    }
+
     func bootstrap() async {
+        profileAllowed = CloudStore.shared.isMainActive || CloudStore.shared.profiles.count <= 1
+        guard profileAllowed else { return }
         isLoggedIn = await client.isLoggedIn
         username = await client.tokens?.username
         loadCache()

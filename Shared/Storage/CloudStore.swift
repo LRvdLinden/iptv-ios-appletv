@@ -62,7 +62,11 @@ final class CloudStore: ObservableObject {
     /// Sleutel per profiel ("favorites.v1.<profiel>")
     private func pk(_ base: String) -> String { activeProfileID.map { "\(base).\($0.uuidString)" } ?? base }
     /// Lezen per profiel; bestaat die nog niet, dan de gegevens van vóór de profielen (eenmalige overname)
-    private func scoped<T: Decodable>(_ t: T.Type, _ base: String) -> T? { decode(t, pk(base)) ?? decode(t, base) }
+    private func scoped<T: Decodable>(_ t: T.Type, _ base: String) -> T? {
+        if let v = decode(t, pk(base)) { return v }
+        // alleen het hoofdaccount neemt de gegevens van vóór de profielen over; nieuwe profielen beginnen leeg
+        return (activeProfileID == nil || activeProfileID == mainProfileID) ? decode(t, base) : nil
+    }
 
     private func loadProfileData() {
         favorites = scoped(Set<String>.self, K.favorites) ?? []
@@ -169,6 +173,7 @@ final class CloudStore: ObservableObject {
         // sleutelhanger-acties zijn traag en blokkeerden het wisselen van profiel
         let secretKeys = playlists.flatMap { [$0.passwordKey, "playlist.\($0.id.uuidString).session"] }
             + ["trakt.tokens", "opensubtitles.session", "parental.pin"]
+            + profiles.map { "profile.\($0.id.uuidString).pin" }
             + Secrets.Key.allCases.map { "apikey.\($0.rawValue)" }
         DispatchQueue.global(qos: .utility).async {
             Keychain.syncFromCloud()

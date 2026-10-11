@@ -49,7 +49,7 @@ struct SettingsView: View {
                 }
                 openSubtitlesSection
                 playerSection
-                if isMain { parentalSection }
+                parentalSection
                 interfaceSection
                 languageSection
                 if isMain { adminFooterSections }
@@ -87,16 +87,19 @@ struct SettingsView: View {
             }
         }
         .sheet(item: $pinMode) { mode in
-            switch mode {
-            case .set:
-                PINSetupView()
-            case .unlock:
-                PINPad(title: L("Enter PIN")) { parental.verify($0) }
-            case .disable:
-                PINPad(title: L("Enter PIN to turn off")) { pin in
-                    guard parental.verify(pin) else { return false }
-                    store.updateParental { $0.enabled = false }
-                    return true
+            if let prof = store.activeProfile {
+                switch mode {
+                case .set:
+                    PINSetupView(profileID: prof.id)
+                case .unlock:
+                    PINPad(title: L("Enter PIN")) { parental.verify($0, profile: prof.id) }
+                case .disable:
+                    PINPad(title: L("Enter PIN to turn off")) { pin in
+                        guard parental.verify(pin, profile: prof.id) else { return false }
+                        parental.setPIN(nil, profile: prof.id)
+                        if store.isMain(prof) { store.updateParental { $0.enabled = false } }
+                        return true
+                    }
                 }
             }
         }
@@ -328,41 +331,41 @@ struct SettingsView: View {
         }
     }
 
+    /// Pincode: elk profiel kan zich met een eigen pincode afschermen. Het hoofdaccount regelt daarnaast
+    /// met zijn pincode het kinderslot (volwassenengroepen, leeftijdsgrenzen).
     private var parentalSection: some View {
         Section {
-            if store.parental.enabled {
-                Label(parental.isUnlocked ? L("Unlocked for 30 minutes") : L("Locked"), systemImage: parental.isUnlocked ? "lock.open.fill" : "lock.fill")
-                    .foregroundStyle(parental.isUnlocked ? Theme.imdb : Theme.green)
-                if parental.isUnlocked {
-                    Button(L("Lock now")) { parental.lock() }
+            if let prof = store.activeProfile {
+                let has = parental.hasPIN(profile: prof.id)
+                Label(has ? L("This profile is protected with a PIN") : L("No PIN on this profile"),
+                      systemImage: has ? "lock.fill" : "lock.open")
+                    .foregroundStyle(has ? Theme.green : Theme.secondary)
+                if has {
+                    Button(L("Change PIN")) { pinMode = .set }
+                    Button(L("Remove PIN"), role: .destructive) { pinMode = .disable }
                 } else {
-                    Button(L("Unlock with PIN")) { pinMode = .unlock }
+                    Button { pinMode = .set } label: { Label(L("Set PIN"), systemImage: "lock") }
                 }
-                if let prof = store.activeProfile {
-                    Picker(L("Age limit for this profile"), selection: Binding(
-                        get: { prof.ageLimit ?? 0 },
-                        set: { v in var p = prof; p.ageLimit = v == 0 ? nil : v; store.upsertProfile(p) })) {
-                        Text(L("None")).tag(0)
-                        ForEach(ParentalControl.ageChoices, id: \.self) { Text(L("Up to %d years", $0)).tag($0) }
-                    }
-                    .pickerStyle(.menu)
-                    .disabled(!parental.isUnlocked)
-                    Text(parental.isUnlocked
-                         ? L("Titles above this age (IMDb rating) and adult groups are hidden on this profile. With the PIN you can still watch them.")
-                         : L("Unlock with your PIN to change the age limit."))
+            }
+            if isMain, store.activeProfile.map({ parental.hasPIN(profile: $0.id) }) ?? false {
+                Toggle(L("Lock adult content with this PIN"), isOn: Binding(
+                    get: { store.parental.enabled },
+                    set: { v in store.updateParental { $0.enabled = v } }))
+                if store.parental.enabled {
+                    Toggle(L("Lock adult groups automatically"), isOn: Binding(
+                        get: { store.parental.autoLockAdult },
+                        set: { v in store.updateParental { $0.autoLockAdult = v } }))
+                    Label(parental.isUnlocked ? L("Unlocked for 30 minutes") : L("Locked"), systemImage: parental.isUnlocked ? "lock.open.fill" : "lock.fill")
+                        .foregroundStyle(parental.isUnlocked ? Theme.imdb : Theme.green)
+                    if parental.isUnlocked { Button(L("Lock now")) { parental.lock() } }
+                    else { Button(L("Unlock with PIN")) { pinMode = .unlock } }
+                    Text(L("Lock individual groups under Manage groups and channels (hold a group). Set age limits per profile under Profiles."))
                         .font(.caption).foregroundStyle(Theme.secondary)
                 }
-                Toggle(L("Lock adult groups automatically"), isOn: Binding(
-                    get: { store.parental.autoLockAdult },
-                    set: { v in store.updateParental { $0.autoLockAdult = v } }))
-                Text(L("Lock individual groups under Manage groups and channels (hold a group)."))
-                    .font(.caption).foregroundStyle(Theme.secondary)
-                Button(L("Change PIN")) { pinMode = .set }
-                Button(L("Turn off parental lock"), role: .destructive) { pinMode = .disable }
-            } else {
-                Button { pinMode = .set } label: { Label(L("Turn on parental lock"), systemImage: "lock") }
             }
-        } header: { Text(L("Parental lock")) }
+        } header: { Text(L("PIN code")) } footer: {
+            Text(L("With a PIN, the profile asks for the code when it is chosen in “Who's watching?”."))
+        }
     }
 
     private var librarySection: some View {
@@ -417,6 +420,7 @@ struct SettingsView: View {
 
 /// Nieuwe pincode instellen (2× invoeren).
 struct PINSetupView: View {
+    var profileID: UUID? = nil
     @EnvironmentObject var store: CloudStore
     @Environment(\.dismiss) private var dismiss
     @State private var first: String?
@@ -429,8 +433,11 @@ struct PINSetupView: View {
         } else {
             PINPad(title: L("Enter the PIN again")) { pin in
                 guard pin == first else { step = 0; return false }
-                ParentalControl.shared.setPIN(pin)
-                store.updateParental { $0.enabled = true }
+                if let id = profileID ?? store.activeProfileID ?? store.mainProfileID {
+                    ParentalControl.shared.setPIN(pin, profile: id)
+                } else {
+                    ParentalControl.shared.setPIN(pin)
+                }
                 ParentalControl.shared.lock()
                 dismiss()
                 return true

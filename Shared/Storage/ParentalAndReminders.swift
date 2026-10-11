@@ -24,6 +24,21 @@ final class ParentalControl: ObservableObject {
 
     func lock() { unlockedUntil = nil }
 
+    // MARK: pincode per profiel
+    // Het hoofdaccount gebruikt de kinderslot-pincode ("parental.pin"); elk ander profiel heeft een eigen pincode.
+
+    static func pinKey(for profileID: UUID) -> String {
+        CloudStore.shared.mainProfileID == profileID ? "parental.pin" : "profile.\(profileID.uuidString).pin"
+    }
+    func hasPIN(profile: UUID) -> Bool { Keychain.get(Self.pinKey(for: profile)) != nil }
+    func setPIN(_ pin: String?, profile: UUID) { Keychain.set(pin, for: Self.pinKey(for: profile)); objectWillChange.send() }
+    /// Juiste pincode voor dit profiel? (Bij het hoofdaccount ook meteen 30 min ontgrendelen.)
+    func verify(_ pin: String, profile: UUID) -> Bool {
+        guard let stored = Keychain.get(Self.pinKey(for: profile)), stored == pin else { return false }
+        if CloudStore.shared.mainProfileID == profile { unlockedUntil = Date().addingTimeInterval(30 * 60) }
+        return true
+    }
+
     /// Is deze groep op slot (en dus verborgen tot ontgrendeling)?
     func isLocked(playlist: UUID, group: String) -> Bool {
         let s = CloudStore.shared.parental

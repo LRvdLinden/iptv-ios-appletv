@@ -78,6 +78,7 @@ final class AppState: ObservableObject {
     func open(profile: ViewerProfile) {
         let store = CloudStore.shared
         store.selectProfile(profile)
+        Task { await TraktSync.shared.applyProfile(isMain: store.isMain(profile)) }
         guard let src = store.mainSource else { return }
         if playlists.source?.id == src.id && !playlists.library.isEmptyLibrary {
             withAnimation(.easeInOut(duration: 0.4)) { stage = .main }
