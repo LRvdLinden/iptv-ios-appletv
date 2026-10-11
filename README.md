@@ -3,7 +3,7 @@
 [![Build](https://github.com/LRvdLinden/iptv-ios-appletv/actions/workflows/build.yml/badge.svg)](https://github.com/LRvdLinden/iptv-ios-appletv/actions/workflows/build.yml)
 
 Native IPTV- en mediaspeler voor **iPhone, iPad, Mac en Apple TV** met de look & feel van Netflix.
-SwiftUI · iOS 17+ · tvOS 17+ · Apple- én VLC-engine · 11 talen.
+SwiftUI · iOS 17+ · tvOS 17+ · Apple- én VLC-engine · 11 talen · versie 1.0.0 (build 20).
 
 ## Screenshots
 
@@ -11,19 +11,19 @@ SwiftUI · iOS 17+ · tvOS 17+ · Apple- én VLC-engine · 11 talen.
 
 ### iPhone
 
-| Splash | Afspeellijst kiezen | Home |
+| Splash | Wie kijkt er? | Home |
 |:---:|:---:|:---:|
 | <img src="docs/screenshots/ios_splash.png" width="240"> | <img src="docs/screenshots/ios_picker.png" width="240"> | <img src="docs/screenshots/ios_home.png" width="240"> |
 | **Details** | **Details: scores, cast, aanbevelingen** | **Live TV** |
 | <img src="docs/screenshots/ios_detail.png" width="240"> | <img src="docs/screenshots/ios_detail2.png" width="240"> | <img src="docs/screenshots/ios_live.png" width="240"> |
 | **Tv-gids** | **Top 10 (Netflix-stijl)** | **Bekijk allemaal** |
 | <img src="docs/screenshots/ios_guide.png" width="240"> | <img src="docs/screenshots/ios_top10.png" width="240"> | <img src="docs/screenshots/ios_category.png" width="240"> |
-| **Afspeellijst toevoegen** | **Mijn Bingr** | **Categorieën aan/uit** |
+| **Server toevoegen** | **Mijn Bingr** | **Categorieën aan/uit** |
 | <img src="docs/screenshots/ios_add.png" width="240"> | <img src="docs/screenshots/ios_settings.png" width="240"> | <img src="docs/screenshots/ios_categories.png" width="240"> |
 
 ### Apple TV
 
-| Home | Afspeellijst kiezen |
+| Home | Wie kijkt er? |
 |:---:|:---:|
 | <img src="docs/screenshots/tv_home.png" width="420"> | <img src="docs/screenshots/tv_picker.png" width="420"> |
 | **Serie + afleveringen** | **Live TV** |
@@ -59,7 +59,8 @@ SwiftUI · iOS 17+ · tvOS 17+ · Apple- én VLC-engine · 11 talen.
 - **Beheren**: groepen en zenders hernoemen, herschikken, samenvoegen en verbergen
 - **Kinderslot** met pincode: groepen op slot, volwassenengroepen automatisch, **leeftijdsgrens per profiel** (IMDb-classificatie), 30 min ontgrendelen
 - **Kijkgeschiedenis per profiel**, per dag, met verwijderen en wissen
-- **Weergave**: startscherm kiezen en tabbladen verbergen; alle keuzes als dropdown
+- **Weergave**: startscherm kiezen, tabbladen verbergen, intromuziek aan/uit; alle keuzes als dropdown
+- **Apple TV-bediening** zonder grijze vlakken: geselecteerde posters worden groter, knoppen wit (zoals Netflix)
 
 **Detailpagina (UHF-stijl)**
 - Grote afbeelding met titel-logo, score, jaar en speelduur/seizoenen
@@ -78,7 +79,7 @@ SwiftUI · iOS 17+ · tvOS 17+ · Apple- én VLC-engine · 11 talen.
 - **Trakt, 2 kanten op**: koppelcode + QR, vinkjes uit Trakt in de app, afvinken in de app → Trakt, scrobblen, watchlist
 
 **Overal hetzelfde**
-- **iCloud-sync** tussen iPhone, iPad, Mac en Apple TV: afspeellijsten, avatars, favorieten, Mijn lijst, kijkvoortgang, herinneringen, aanpassingen en kinderslot; logins via de iCloud-sleutelhanger
+- **iCloud-sync** tussen iPhone, iPad, Mac en Apple TV: server(s), profielen met foto, per profiel favorieten, Mijn lijst en kijkvoortgang, herinneringen, aanpassingen en kinderslot; logins via de iCloud-sleutelhanger
 - **11 talen**: Engels, Nederlands, Duits, Frans, Spaans, Italiaans, Portugees, Turks, Pools, Arabisch (rechts-naar-links) en Chinees. Volgt de systeemtaal of kies zelf in Mijn Bingr
 - **Meerdere Apple TV-gebruikers**: wissel je van gebruiker op de Apple TV, dan zie je de Bingr (playlists, voortgang, Trakt) van díe gebruiker via zijn eigen iCloud
 - **Mac**: draait als iPad-app op Apple-silicon-Macs
@@ -93,15 +94,18 @@ SwiftUI · iOS 17+ · tvOS 17+ · Apple- én VLC-engine · 11 talen.
    ```
 2. **Sleutels inbouwen (aanbevolen, privé-repo)**: zet ze als *Settings → Secrets and variables → Actions*: `OPENSUBTITLES_API_KEY`, `TMDB_API_KEY` (of `TMDB_ACCESS_TOKEN`), `OMDB_API_KEY`, `TRAKT_CLIENT_ID` (en `TRAKT_CLIENT_SECRET` alleen bij oude Trakt-apps; nieuwe apps gebruiken PKCE zonder secret). De CI bouwt ze in en de zip op `ci-logs` bevat ze; gebruikers loggen dan alleen nog met hun eigen account in.
 
-   Of **koppelingen instellen** in de app: *Mijn Bingr → Koppelingen instellen* (eenmalig, gratis). Trakt en OpenSubtitles eisen dat elke app zich één keer registreert; daarna log je gewoon in met je eigen account. De sleutels staan in de iCloud-sleutelhanger, dus je Apple TV heeft ze ook, en ze komen niet in deze openbare repo:
+   Of **koppelingen instellen** in de app: *Mijn Bingr → Koppelingen instellen* (eenmalig, gratis). Trakt en OpenSubtitles eisen dat elke app zich één keer registreert; daarna log je gewoon in met je eigen account. De sleutels staan in de iCloud-sleutelhanger, dus je Apple TV heeft ze ook:
    | Dienst | Waar aanmaken | Let op |
    |---|---|---|
    | Trakt | https://trakt.tv/oauth/applications/new | Redirect URI: `https://github.com/LRvdLinden/iptv-ios-appletv` (inloggen gaat met een code, er wordt nooit doorgestuurd) |
    | OpenSubtitles | https://www.opensubtitles.com/consumers | "API consumer" aanmaken |
    | IMDb-gegevens (OMDb) | https://www.omdbapi.com/apikey.aspx | gratis: 1000 verzoeken/dag; titels worden gecachet |
    | TMDB (optioneel) | https://www.themoviedb.org/settings/api | foto's van cast, titel-logo's, afleveringsfoto's, teksten in jouw taal |
-3. **Signing**: kies in Xcode je Team voor beide targets (`Bingr` en `BingrTV`).
+3. **Signing**: kies in Xcode je Team voor beide targets (`Bingr` en `BingrTV`). Bundle ID voor beide: `nl.lrvdlinden.bingr`, Display Name *Bingr*, categorie *Entertainment* (staat al ingesteld).
 4. **iCloud**: zet bij beide targets de capability *iCloud → Key-value storage* aan (staat al in de entitlements) en houd dezelfde Team-ID aan.
+5. **Apple TV met meerdere gebruikers**: target `BingrTV` → *User Management* → "Runs as Current User Only When User-Independent Keychain is Available" (staat al in de entitlements). Elke Apple TV-gebruiker moet in iCloud ingelogd zijn met zijn eigen Apple ID.
+
+Versie blijft 1.0.0; het buildnummer (`CURRENT_PROJECT_VERSION` in `project.yml`) gaat per build omhoog.
 
 Elke push naar `main` wordt door GitHub Actions gebouwd voor iOS en tvOS (simulator, zonder signing). Het build-rapport staat op de branch `ci-logs`.
 
@@ -123,11 +127,17 @@ Shared/
   Player/         Apple/VLC-engines, Chromecast, AirPlay, multiview, panelen
   Storage/        iCloud KV-store, iCloud-sleutelhanger, kinderslot, herinneringen
   Localization/   taalsysteem (L())
-  Resources/      Translations.json
-  UI/             Netflix-thema, kaarten, schermen (home, live, gids, beheren, zoeken, instellingen)
+  Resources/      Translations.json, bingr_tune.m4a (intro)
+  UI/             Netflix-thema, kaarten, schermen (profielen, home, live, gids, detail, categorie, beheren, zoeken, instellingen)
 iOS/  tvOS/       iconen, Info.plist & entitlements (gegenereerd door XcodeGen)
-tools/            vertaalcontrole
+android/          Android-versie (in opbouw, zie hieronder)
+tools/            vertaalcontrole, sleutels inbouwen (CI), intro-tune maken (make_tune.py)
+docs/             mockups en screenshots
 ```
+
+## Android (in opbouw)
+
+In `android/` staat de basis van een native Android-versie (Kotlin + Jetpack Compose, ExoPlayer/VLC) voor telefoon, tablet en Android TV / Google TV / Fire TV, met dezelfde vertalingen (`Shared/Resources/Translations.json`). Nog niet bouwbaar; `android/CONTRACT.md` beschrijft de opzet.
 
 ## Opmerkingen
 
