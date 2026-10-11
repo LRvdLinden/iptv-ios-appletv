@@ -43,15 +43,7 @@ struct HomeView: View {
             .ignoresSafeArea(edges: .top)
 
             #if os(iOS)
-            topBar
-            #else
-            HStack {
-                Spacer()
-                Button { showSearch = true } label: {
-                    Label(L("Search"), systemImage: "magnifyingglass").font(.system(size: 26, weight: .semibold))
-                }
-            }
-            .padding(.horizontal, Theme.edge).padding(.top, 10)
+            topBar   // op Apple TV zit Zoeken al in de menubalk
             #endif
         }
         .fullScreenCover(isPresented: $showSearch) { SearchView(modal: true) }

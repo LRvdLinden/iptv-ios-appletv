@@ -58,7 +58,7 @@ extension View {
     /// Poster/kaart-knoppen: op tvOS de systeem "card"-focus (lift + parallax), op iOS licht indrukken.
     @ViewBuilder func cardButton() -> some View {
         #if os(tvOS)
-        self.buttonStyle(.card)
+        self.buttonStyle(TVLiftStyle(scale: 1.1))
         #else
         self.buttonStyle(PressableStyle())
         #endif
@@ -66,7 +66,7 @@ extension View {
 
     @ViewBuilder func plainTVButton() -> some View {
         #if os(tvOS)
-        self.buttonStyle(.plain)
+        self.buttonStyle(TVLiftStyle(scale: 1.06, dimWhenIdle: true))
         #else
         self.buttonStyle(PressableStyle())
         #endif
@@ -74,6 +74,38 @@ extension View {
 }
 
 /// Primaire knoppen (wit "Afspelen", grijs "Meer info").
+/// Apple TV-focus zonder grijze vlakken: iets groter, schaduw, en (optioneel) gedimd als niet geselecteerd.
+struct TVLiftStyle: ButtonStyle {
+    var scale: CGFloat = 1.08
+    var dimWhenIdle = false
+    func makeBody(configuration: Configuration) -> some View { Lift(configuration: configuration, scale: scale, dim: dimWhenIdle) }
+
+    private struct Lift: View {
+        let configuration: ButtonStyleConfiguration
+        let scale: CGFloat
+        let dim: Bool
+        @Environment(\.isFocused) private var focused
+        var body: some View {
+            configuration.label
+                .environment(\.tvFocused, focused)
+                .scaleEffect(configuration.isPressed ? scale * 0.97 : (focused ? scale : 1))
+                .opacity(dim && !focused ? 0.75 : 1)
+                .shadow(color: .black.opacity(focused ? 0.7 : 0), radius: 16, y: 10)
+                .animation(.spring(response: 0.28, dampingFraction: 0.78), value: focused)
+                .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
+        }
+    }
+}
+
+private struct TVFocusedKey: EnvironmentKey { static let defaultValue = false }
+extension EnvironmentValues {
+    /// Is de knop waar dit in staat geselecteerd (Apple TV)?
+    var tvFocused: Bool {
+        get { self[TVFocusedKey.self] }
+        set { self[TVFocusedKey.self] = newValue }
+    }
+}
+
 struct NetflixButton: View {
     enum Kind { case primary, secondary, accent }
     let title: String
@@ -82,23 +114,41 @@ struct NetflixButton: View {
     let action: () -> Void
 
     var body: some View {
-        Button(action: action) {
-            Label(title, systemImage: icon)
-                .font(.system(size: tvScaled(16), weight: .bold))
-                .padding(.horizontal, tvScaled(22)).padding(.vertical, tvScaled(10))
-                .frame(minWidth: tvScaled(120))
-                .foregroundStyle(kind == .primary ? .black : .white)
-                .background(background, in: RoundedRectangle(cornerRadius: tvScaled(6)))
-        }
+        Button(action: action) { NetflixButtonLabel(title: title, icon: icon, kind: kind) }
+        #if os(tvOS)
+        .buttonStyle(TVLiftStyle(scale: 1.06))
+        #else
         .plainTVButton()
+        #endif
+    }
+}
+
+private struct NetflixButtonLabel: View {
+    let title: String
+    let icon: String
+    let kind: NetflixButton.Kind
+    @Environment(\.tvFocused) private var focused
+
+    var body: some View {
+        Label(title, systemImage: icon)
+            .font(.system(size: tvScaled(16), weight: .bold))
+            .padding(.horizontal, tvScaled(22)).padding(.vertical, tvScaled(10))
+            .frame(minWidth: tvScaled(120))
+            .foregroundStyle(isLight ? Color.black : Color.white)
+            .background(background, in: RoundedRectangle(cornerRadius: tvScaled(6)))
     }
 
+    /// Op Apple TV wordt de geselecteerde knop wit (zoals Netflix); op iPhone is Afspelen altijd wit.
+    private var isLight: Bool {
+        #if os(tvOS)
+        return kind != .accent && focused
+        #else
+        return kind == .primary
+        #endif
+    }
     private var background: Color {
-        switch kind {
-        case .primary: return .white
-        case .secondary: return Color.white.opacity(0.22)
-        case .accent: return Theme.red
-        }
+        if kind == .accent { return Theme.red }
+        return isLight ? .white : Color.white.opacity(0.22)
     }
 }
 

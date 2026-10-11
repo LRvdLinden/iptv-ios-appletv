@@ -70,11 +70,16 @@ struct LiveTVView: View {
                 LazyVStack(alignment: .leading, spacing: 8) {
                     ForEach(groups, id: \.self) { g in
                         Button { group = g } label: {
-                            Text(title(g)).font(.system(size: 26, weight: group == g ? .bold : .regular))
-                                .foregroundStyle(group == g ? .white : Theme.secondary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                            HStack(spacing: 12) {
+                                Capsule().fill(group == g ? Theme.red : .clear).frame(width: 5, height: 30)
+                                Text(title(g)).font(.system(size: 26, weight: .medium))
+                                    .foregroundStyle(group == g ? .white : Theme.secondary)
+                                    .lineLimit(1)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
                         }
-                        .buttonStyle(.plain)
+                        .plainTVButton()
                     }
                 }.padding(.vertical, 20)
             }
