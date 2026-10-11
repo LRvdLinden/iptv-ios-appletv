@@ -79,10 +79,11 @@ jobs:
         if: success()
         run: |
           sleep 5
-          code=$(curl -s -o /tmp/site.html -w '%{http_code}' https://bingr.online/ || true)
-          if grep -q 'data-build' /tmp/site.html 2>/dev/null; then
-            echo "::notice::bingr.online is live (HTTP $code), versie $(grep -o '<span data-build>[^<]*' /tmp/site.html | sed 's/<span data-build>//' | head -1)"
-          else
-            echo "::warning::bingr.online geeft HTTP $code maar nog niet de Bingr-site — mogelijk staat de webmap ergens anders (zet dan FTP_DIR)."
-            head -c 300 /tmp/site.html 2>/dev/null | tr '\n' ' '; echo
-          fi
+          for url in https://bingr.online/ http://bingr.online/ https://www.bingr.online/; do
+            code=$(curl -sL --max-time 20 -o /tmp/site.html -w '%{http_code}' "$url" || true)
+            if grep -q 'data-build' /tmp/site.html 2>/dev/null; then
+              echo "::notice::$url is live (HTTP $code), versie $(grep -o '<span data-build>[^<]*' /tmp/site.html | sed 's/<span data-build>//' | head -1)"
+            else
+              echo "::warning::$url geeft HTTP $code, nog niet de Bingr-site: $(head -c 160 /tmp/site.html 2>/dev/null | tr '\n' ' ')"
+            fi
+          done
