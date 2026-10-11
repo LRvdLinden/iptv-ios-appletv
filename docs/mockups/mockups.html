@@ -249,6 +249,11 @@ const screens = {
    <div style="width:250px;height:250px;background:#fff;border-radius:14px;padding:16px;display:grid;grid-template-columns:repeat(21,1fr)">${Array.from({length:441},(_,i)=>{const x=i%21,y=Math.floor(i/21);const f=(a,b)=>x>=a&&x<a+7&&y>=b&&y<b+7&&!(x>a&&x<a+6&&y>b&&y<b+6&&!(x>a+1&&x<a+5&&y>b+1&&y<b+5));const on=f(0,0)||f(14,0)||f(0,14)||(((x*7+y*13+x*y)%5)<2&&!(x<8&&y<8)&&!(x>12&&y<8)&&!(x<8&&y>12));return `<i style="background:${on?'#000':'#fff'}"></i>`}).join('')}</div>
    <div style="font-size:26px;color:#b3b3b3">◌ Wachten op bevestiging…</div></div>`,
 };
+screens.mac_home=()=>`<div class="screen" style="background:radial-gradient(circle at 30% 20%,#3a4a7a,#141824 70%)">
+  <style>.macwin .screen{width:1920px!important;height:1080px!important}</style><div class="macwin" style="position:absolute;left:80px;top:70px;width:1280px;height:758px;border-radius:14px;overflow:hidden;box-shadow:0 30px 80px #000c,0 0 0 1px #ffffff22">
+    <div style="height:38px;background:#1d1d1f;display:flex;align-items:center;gap:8px;padding-left:14px;border-bottom:1px solid #000">${["#ff5f57","#febc2e","#28c840"].map(c=>`<span style="width:12px;height:12px;border-radius:50%;background:${c}"></span>`).join('')}<span style="flex:1;text-align:center;margin-right:60px;color:#ddd;font-size:13px;font-weight:600">Bingr</span></div>
+    <div style="position:relative;width:1920px;height:1080px;transform:scale(.6667);transform-origin:0 0">${screens.tv_home()}</div>
+  </div></div>`;
 const k = new URLSearchParams(location.search).get('s');
 document.getElementById('app').innerHTML = screens[k]();
 </script></body></html>

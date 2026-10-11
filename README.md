@@ -3,7 +3,7 @@
 [![Build](https://github.com/LRvdLinden/iptv-ios-appletv/actions/workflows/build.yml/badge.svg)](https://github.com/LRvdLinden/iptv-ios-appletv/actions/workflows/build.yml)
 
 Native IPTV- en mediaspeler voor **iPhone, iPad, Mac en Apple TV** met de look & feel van Netflix.
-SwiftUI · iOS 17+ · tvOS 17+ · Apple- én VLC-engine · 11 talen · versie 1.0.0 (build 30).
+SwiftUI · iOS 17+ · tvOS 17+ · macOS 14+ · Apple- én VLC-engine · 11 talen · versie 1.0.0 (build 31).
 
 ## Screenshots
 
@@ -32,6 +32,10 @@ SwiftUI · iOS 17+ · tvOS 17+ · Apple- én VLC-engine · 11 talen · versie 1.
 | <img src="docs/screenshots/tv_guide.png" width="420"> | <img src="docs/screenshots/tv_multiview.png" width="420"> |
 | **Trakt koppelen** | |
 | <img src="docs/screenshots/tv_trakt.png" width="420"> | |
+
+### Mac
+
+<img src="docs/screenshots/mac_home.png" width="720">
 
 ## Functies
 
@@ -89,7 +93,7 @@ SwiftUI · iOS 17+ · tvOS 17+ · Apple- én VLC-engine · 11 talen · versie 1.
 - **iCloud-sync** tussen iPhone, iPad, Mac en Apple TV: server(s), profielen met foto, per profiel favorieten, Mijn lijst en kijkvoortgang, herinneringen, aanpassingen en kinderslot; logins via de iCloud-sleutelhanger
 - **11 talen**: Engels, Nederlands, Duits, Frans, Spaans, Italiaans, Portugees, Turks, Pools, Arabisch (rechts-naar-links) en Chinees. Volgt de systeemtaal of kies zelf in Mijn Bingr
 - **Meerdere Apple TV-gebruikers**: wissel je van gebruiker op de Apple TV, dan zie je de Bingr (playlists, voortgang, Trakt) van díe gebruiker via zijn eigen iCloud
-- **Mac**: draait als iPad-app op Apple-silicon-Macs
+- **Eigen Mac-app** (macOS 14+, Apple silicon én Intel): zelfde functies en iCloud-sync, met VLC voor .ts/.mkv, AirPlay, Chromecast en beeld-in-beeld. Bediening met het toetsenbord: spatie = pauze, ←/→ = 10 s, ↑/↓ = zappen, Esc = sluiten
 
 ## Installeren
 
@@ -108,13 +112,13 @@ SwiftUI · iOS 17+ · tvOS 17+ · Apple- én VLC-engine · 11 talen · versie 1.
    | OpenSubtitles | https://www.opensubtitles.com/consumers | "API consumer" aanmaken |
    | IMDb-gegevens (OMDb) | https://www.omdbapi.com/apikey.aspx | gratis: 1000 verzoeken/dag; titels worden gecachet |
    | TMDB (optioneel) | https://www.themoviedb.org/settings/api | foto's van cast, titel-logo's, afleveringsfoto's, teksten in jouw taal |
-3. **Signing**: kies in Xcode je Team voor beide targets (`Bingr` en `BingrTV`). Bundle ID voor beide: `nl.lrvdlinden.bingr`, Display Name *Bingr*, categorie *Entertainment* (staat al ingesteld).
-4. **iCloud**: zet bij beide targets de capability *iCloud → Key-value storage* aan (staat al in de entitlements) en houd dezelfde Team-ID aan.
+3. **Signing**: kies in Xcode je Team voor alle drie de targets (`Bingr` voor iPhone/iPad, `BingrTV` voor Apple TV, `BingrMac` voor de Mac). Bundle ID voor alle drie: `nl.lrvdlinden.bingr` (één app in de App Store voor alle apparaten), Display Name *Bingr*, categorie *Entertainment* (staat al ingesteld).
+4. **iCloud**: zet bij alle targets de capability *iCloud → Key-value storage* aan (staat al in de entitlements) en houd dezelfde Team-ID aan. De Mac-app draait in de App Sandbox met netwerktoegang.
 5. **Apple TV met meerdere gebruikers**: target `BingrTV` → *User Management* → "Runs as Current User Only When User-Independent Keychain is Available" (staat al in de entitlements). Elke Apple TV-gebruiker moet in iCloud ingelogd zijn met zijn eigen Apple ID.
 
 Versie blijft 1.0.0; het buildnummer (`CURRENT_PROJECT_VERSION` in `project.yml`) gaat per build omhoog.
 
-Elke push naar `main` wordt door GitHub Actions gebouwd voor iOS en tvOS (simulator, zonder signing). Het build-rapport staat op de branch `ci-logs`.
+Elke push naar `main` wordt door GitHub Actions gebouwd voor iOS, tvOS en macOS (zonder signing). Het build-rapport staat op de branch `ci-logs`.
 
 ## Vertalingen
 
@@ -136,9 +140,10 @@ Shared/
   Localization/   taalsysteem (L())
   Resources/      Translations.json, bingr_tune.m4a (intro)
   UI/             Netflix-thema, kaarten, schermen (profielen, home, live, gids, detail, categorie, beheren, zoeken, instellingen)
-iOS/  tvOS/       iconen, Info.plist & entitlements (gegenereerd door XcodeGen)
+  Platform/       Mac-ondersteuning (AppKit-vertalingen van UIKit)
+iOS/ tvOS/ macOS/ iconen, Info.plist & entitlements (gegenereerd door XcodeGen)
 android/          Android-versie (in opbouw, zie hieronder)
-tools/            vertaalcontrole, sleutels inbouwen (CI), intro-tune maken (make_tune.py)
+tools/            vertaalcontrole, sleutels inbouwen (CI), intro-tune (make_tune.py), profielfiguurtjes (make_avatars.py), screenshots (make_screenshots.py)
 docs/             mockups en screenshots
 ```
 
