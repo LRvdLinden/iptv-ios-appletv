@@ -74,3 +74,15 @@ jobs:
 
           lftp -e "$base; open -u \"$USER_OK\",\"$FTP_PASSWORD\" \"$SERVER_OK\"; mirror -R --verbose --parallel=4 --only-newer --exclude-glob .DS_Store website/ \"$TARGET\"; bye"
           echo "::notice::Website bijgewerkt op bingr.online"
+
+      - name: Controleren of de site online staat
+        if: success()
+        run: |
+          sleep 5
+          code=$(curl -s -o /tmp/site.html -w '%{http_code}' https://bingr.online/ || true)
+          if grep -q 'data-build' /tmp/site.html 2>/dev/null; then
+            echo "::notice::bingr.online is live (HTTP $code), versie $(grep -o '<span data-build>[^<]*' /tmp/site.html | sed 's/<span data-build>//' | head -1)"
+          else
+            echo "::warning::bingr.online geeft HTTP $code maar nog niet de Bingr-site — mogelijk staat de webmap ergens anders (zet dan FTP_DIR)."
+            head -c 300 /tmp/site.html 2>/dev/null | tr '\n' ' '; echo
+          fi
