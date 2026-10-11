@@ -1,13 +1,18 @@
 import SwiftUI
+import PhotosUI
 
-/// "Wie kijkt er?" — maar dan voor afspeellijsten. Gesynchroniseerd via iCloud.
+/// "Wie kijkt er?" — kijkprofielen van het hoofdaccount. Alle profielen gebruiken dezelfde server.
 struct PlaylistPickerView: View {
     @EnvironmentObject var app: AppState
     @EnvironmentObject var store: CloudStore
     @State private var managing = false
-    @State private var editing: PlaylistSource?
-    @State private var adding = false
+    @State private var editing: ViewerProfile?
+    @State private var addingProfile = false
+    @State private var addingServer = false
     @State private var appeared = false
+    @FocusState private var focus: FocusTarget?
+
+    enum FocusTarget: Hashable { case profile(UUID), add, manage, server }
 
     private var columns: [GridItem] {
         #if os(tvOS)
@@ -17,6 +22,8 @@ struct PlaylistPickerView: View {
         #endif
     }
 
+    private var noServer: Bool { store.playlists.isEmpty }
+
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
@@ -24,48 +31,57 @@ struct PlaylistPickerView: View {
                 HStack {
                     BingrLogo(size: tvScaled(26))
                     Spacer()
-                    if !store.playlists.isEmpty {
+                    if !noServer {
                         Button(managing ? L("Done") : L("Manage")) {
                             withAnimation(.spring(response: 0.35)) { managing.toggle() }
                         }
                         .font(.system(size: tvScaled(15), weight: .semibold))
                         .foregroundStyle(.white)
                         .plainTVButton()
+                        .focused($focus, equals: .manage)
                     }
                 }
                 .padding(.horizontal, Theme.edge).padding(.top, tvScaled(8))
+                #if os(tvOS)
+                .focusSection()
+                #endif
 
                 Spacer(minLength: 0)
 
-                Text(store.playlists.isEmpty ? L("Welcome to Bingr") : (managing ? L("Manage playlists") : L("What do you want to watch?")))
-                    .font(.system(size: tvScaled(26), weight: .medium))
-                    .foregroundStyle(.white)
-                if store.playlists.isEmpty {
-                    Text(L("Add your first playlist: M3U, Xtream Codes, a MAC portal, Plex, Jellyfin, Emby or Stremio.\nYour playlists are shared via iCloud with your Apple TV, iPhone, iPad and Mac."))
-                        .font(.system(size: tvScaled(14)))
-                        .foregroundStyle(Theme.secondary).multilineTextAlignment(.center)
-                        .padding(.horizontal, Theme.edge)
-                }
+                if noServer {
+                    welcome
+                } else {
+                    Text(managing ? L("Manage profiles") : L("Who's watching?"))
+                        .font(.system(size: tvScaled(26), weight: .medium))
+                        .foregroundStyle(.white)
 
-                LazyVGrid(columns: columns, spacing: tvScaled(26)) {
-                    ForEach(Array(store.playlists.enumerated()), id: \.element.id) { i, p in
-                        Button {
-                            if managing { editing = p } else { app.open(p) }
-                        } label: {
-                            AvatarTile(name: p.name, avatar: p.avatar, photo: store.photos[p.id], editing: managing)
+                    LazyVGrid(columns: columns, spacing: tvScaled(26)) {
+                        ForEach(Array(store.profiles.enumerated()), id: \.element.id) { i, p in
+                            Button {
+                                if managing { editing = p } else { app.open(profile: p) }
+                            } label: {
+                                AvatarTile(name: p.name, avatar: p.avatar, photo: store.photos[p.id], editing: managing)
+                            }
+                            .profileButton()
+                            .focused($focus, equals: .profile(p.id))
+                            .opacity(appeared ? 1 : 0)
+                            .offset(y: appeared ? 0 : 24)
+                            .animation(.spring(response: 0.5, dampingFraction: 0.8).delay(Double(i) * 0.06), value: appeared)
                         }
-                        .profileButton()
-                        .opacity(appeared ? 1 : 0)
-                        .offset(y: appeared ? 0 : 24)
-                        .animation(.spring(response: 0.5, dampingFraction: 0.8).delay(Double(i) * 0.06), value: appeared)
+                        if store.profiles.count < 8 {
+                            Button { addingProfile = true } label: { AddTile() }
+                                .profileButton()
+                                .focused($focus, equals: .add)
+                                .opacity(appeared ? 1 : 0)
+                                .animation(.easeOut(duration: 0.4).delay(Double(store.profiles.count) * 0.06), value: appeared)
+                        }
                     }
-                    Button { adding = true } label: { AddTile() }
-                        .profileButton()
-                        .opacity(appeared ? 1 : 0)
-                        .animation(.easeOut(duration: 0.4).delay(Double(store.playlists.count) * 0.06), value: appeared)
+                    .padding(.horizontal, Theme.edge)
+                    .frame(maxWidth: tvScaled(store.profiles.count > 3 ? 900 : 620))
+                    #if os(tvOS)
+                    .focusSection()
+                    #endif
                 }
-                .padding(.horizontal, Theme.edge)
-                .frame(maxWidth: tvScaled(620))
 
                 Spacer(minLength: 0)
 
@@ -77,9 +93,139 @@ struct PlaylistPickerView: View {
                 .padding(.bottom, tvScaled(10))
             }
         }
-        .onAppear { appeared = true; store.load(mergeProgress: true) }
-        .sheet(isPresented: $adding) { AddPlaylistView(existing: nil) }
-        .sheet(item: $editing) { p in AddPlaylistView(existing: p) }
+        .onAppear {
+            appeared = true
+            store.load(mergeProgress: true)
+            // Apple TV: meteen op het (laatst gebruikte) profiel staan, niet op Beheren
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 350_000_000)
+                if let id = store.activeProfileID ?? store.profiles.first?.id, store.profiles.contains(where: { $0.id == id }) {
+                    focus = .profile(id)
+                } else if noServer { focus = .server } else { focus = .add }
+            }
+        }
+        .sheet(isPresented: $addingServer) { AddPlaylistView(existing: nil) }
+        .sheet(isPresented: $addingProfile) { ProfileEditView(existing: nil) }
+        .sheet(item: $editing) { p in ProfileEditView(existing: p) }
+    }
+
+    /// Nog geen server: eerst het hoofdaccount instellen.
+    private var welcome: some View {
+        VStack(spacing: tvScaled(18)) {
+            Text(L("Welcome to Bingr")).font(.system(size: tvScaled(26), weight: .medium)).foregroundStyle(.white)
+            Text(L("Set up your server once (M3U, Xtream Codes, a MAC portal, Plex, Jellyfin, Emby or Stremio). After that, everyone gets their own profile on that server."))
+                .font(.system(size: tvScaled(14))).foregroundStyle(Theme.secondary).multilineTextAlignment(.center)
+                .padding(.horizontal, Theme.edge)
+            NetflixButton(title: L("Set up server"), icon: "server.rack", kind: .accent) { addingServer = true }
+                .focused($focus, equals: .server)
+        }
+    }
+}
+
+/// Kijkprofiel toevoegen/bewerken: naam, icoon of foto, leeftijdsgrens.
+struct ProfileEditView: View {
+    let existing: ViewerProfile?
+    @EnvironmentObject var store: CloudStore
+    @EnvironmentObject var parental: ParentalControl
+    @Environment(\.dismiss) private var dismiss
+    @State private var name = ""
+    @State private var avatar = PlaylistAvatar.random()
+    @State private var photo: Data?
+    @State private var ageLimit = 0
+    @State private var confirmDelete = false
+    @State private var askPIN = false
+    #if os(iOS)
+    @State private var photoItem: PhotosPickerItem?
+    #endif
+
+    private var locked: Bool { store.parental.enabled && !parental.isUnlocked }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    HStack { Spacer(); AvatarTile(name: "", avatar: avatar, photo: photo).frame(width: tvScaled(110)); Spacer() }
+                        .listRowBackground(Color.clear)
+                    TextField(L("Name"), text: $name)
+                }
+                Section(L("Identify with an icon")) {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: tvScaled(10)) {
+                            ForEach(PlaylistAvatar.symbols, id: \.self) { s in
+                                Button { avatar.symbol = s; photo = nil } label: {
+                                    Image(systemName: s).font(.system(size: tvScaled(20), weight: .semibold))
+                                        .frame(width: tvScaled(44), height: tvScaled(44)).foregroundStyle(.white)
+                                        .background(avatar.symbol == s ? AnyShapeStyle(avatar.gradient) : AnyShapeStyle(Theme.elevated), in: Circle())
+                                }
+                                .plainTVButton()
+                            }
+                        }.padding(.vertical, 4)
+                    }
+                    HStack(spacing: tvScaled(12)) {
+                        ForEach(0..<PlaylistAvatar.palettes.count, id: \.self) { i in
+                            Button { avatar.colorIndex = i } label: {
+                                Circle().fill(PlaylistAvatar(symbol: "", colorIndex: i).gradient)
+                                    .frame(width: tvScaled(28), height: tvScaled(28))
+                                    .overlay(Circle().stroke(.white, lineWidth: avatar.colorIndex == i ? 3 : 0))
+                            }
+                            .plainTVButton()
+                        }
+                    }
+                }
+                #if os(iOS)
+                Section(L("Profile photo")) {
+                    PhotosPicker(selection: $photoItem, matching: .images) {
+                        Label(photo == nil ? L("Choose from Photos") : L("Change photo"), systemImage: "photo.on.rectangle")
+                    }
+                    if photo != nil { Button(L("Remove photo"), role: .destructive) { photo = nil } }
+                }
+                .onChange(of: photoItem) { _, item in
+                    guard let item else { return }
+                    Task { if let d = try? await item.loadTransferable(type: Data.self) { photo = AddPlaylistView.thumbnail(d) } }
+                }
+                #endif
+                Section {
+                    Picker(L("Age limit for this profile"), selection: $ageLimit) {
+                        Text(L("None")).tag(0)
+                        ForEach(ParentalControl.ageChoices, id: \.self) { Text(L("Up to %d years", $0)).tag($0) }
+                    }
+                    .pickerStyle(.menu)
+                    .disabled(locked)
+                    if locked { Button(L("Unlock with PIN")) { askPIN = true } }
+                } footer: {
+                    Text(store.parental.enabled
+                         ? L("Titles above this age (IMDb rating) and adult groups are hidden on this profile. With the PIN you can still watch them.")
+                         : L("Turn on the parental lock (My Bingr) to protect the age limit with a PIN."))
+                }
+                if let existing, store.profiles.count > 1 {
+                    Section { Button(L("Delete profile"), role: .destructive) { confirmDelete = true } }
+                    .confirmationDialog(L("Delete profile"), isPresented: $confirmDelete) {
+                        Button(L("Delete"), role: .destructive) { store.deleteProfile(existing); dismiss() }
+                    }
+                }
+            }
+            .navigationTitle(existing == nil ? L("Add profile") : L("Edit profile"))
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button(L("Cancel")) { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(L("Save")) { save() }.disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+            .onAppear {
+                if let e = existing { name = e.name; avatar = e.avatar; ageLimit = e.ageLimit ?? 0; photo = store.photos[e.id] }
+            }
+            .sheet(isPresented: $askPIN) { PINPad(title: L("Enter PIN")) { parental.verify($0) } }
+        }
+    }
+
+    private func save() {
+        var p = existing ?? ViewerProfile(name: name, avatar: avatar)
+        p.name = name.trimmingCharacters(in: .whitespaces)
+        p.avatar = avatar
+        p.ageLimit = ageLimit == 0 ? nil : ageLimit
+        store.upsertProfile(p)
+        if photo != store.photos[p.id] { store.setPhoto(photo, for: p.id) }
+        dismiss()
     }
 }
 
@@ -115,6 +261,27 @@ struct AvatarTile: View {
                 Text(name).font(.system(size: tvScaled(14), weight: focused ? .semibold : .regular))
                     .foregroundStyle(focused ? .white : Theme.secondary).lineLimit(1)
             }
+        }
+    }
+}
+
+/// Avatar van het actieve kijkprofiel (kopbalk, laadscherm, Mijn Bingr).
+struct ProfileAvatar: View {
+    let size: CGFloat
+    @EnvironmentObject var store: CloudStore
+    var body: some View {
+        if let p = store.activeProfile {
+            ZStack {
+                Circle().fill(p.avatar.gradient)
+                if let d = store.photos[p.id], let img = UIImage(data: d) {
+                    Color.clear.overlay(Image(uiImage: img).resizable().scaledToFill()).clipShape(Circle())
+                } else {
+                    Image(systemName: p.avatar.symbol).font(.system(size: size * 0.45, weight: .bold)).foregroundStyle(.white)
+                }
+            }
+            .frame(width: size, height: size)
+        } else {
+            Circle().fill(Theme.elevated).frame(width: size, height: size)
         }
     }
 }

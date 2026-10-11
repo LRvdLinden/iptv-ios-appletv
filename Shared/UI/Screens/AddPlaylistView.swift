@@ -45,8 +45,6 @@ struct AddPlaylistView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: tvScaled(18)) {
-                    HStack { Spacer(); AvatarTile(name: name.isEmpty ? L("New playlist") : name, avatar: avatar, photo: photo)
-                        .frame(width: tvScaled(110)); Spacer() }
 
                     section(L("Choose the playlist type")) {
                         LazyVGrid(columns: kindColumns, spacing: tvScaled(10)) {
@@ -66,37 +64,8 @@ struct AddPlaylistView: View {
                         }
                     }
 
-                    section(L("Name this playlist")) { field(L("e.g. My playlist"), $name) }
+                    section(L("Name this server")) { field(L("e.g. My playlist"), $name) }
 
-                    section(L("Identify with an icon")) {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: tvScaled(10)) {
-                                ForEach(PlaylistAvatar.symbols, id: \.self) { s in
-                                    Button { withAnimation(.spring(response: 0.3)) { avatar.symbol = s } } label: {
-                                        Image(systemName: s)
-                                            .font(.system(size: tvScaled(20), weight: .semibold))
-                                            .frame(width: tvScaled(44), height: tvScaled(44))
-                                            .foregroundStyle(.white)
-                                            .background(avatar.symbol == s ? AnyShapeStyle(avatar.gradient) : AnyShapeStyle(Theme.elevated),
-                                                        in: RoundedRectangle(cornerRadius: tvScaled(12)))
-                                    }
-                                    .plainTVButton()
-                                }
-                            }.padding(.vertical, 4)
-                        }
-                        HStack(spacing: tvScaled(12)) {
-                            ForEach(0..<PlaylistAvatar.palettes.count, id: \.self) { i in
-                                Button { withAnimation { avatar.colorIndex = i } } label: {
-                                    Circle().fill(PlaylistAvatar(symbol: "", colorIndex: i).gradient)
-                                        .frame(width: tvScaled(28), height: tvScaled(28))
-                                        .overlay(Circle().stroke(.white, lineWidth: avatar.colorIndex == i ? 3 : 0))
-                                }
-                                .plainTVButton()
-                            }
-                        }
-                    }
-
-                    section(L("Profile photo")) { photoControls }
 
                     kindFields
 
@@ -130,7 +99,7 @@ struct AddPlaylistView: View {
                 .frame(maxWidth: .infinity)
             }
             .background(Color(hex: 0x141414).ignoresSafeArea())
-            .navigationTitle(existing == nil ? L("Add playlist") : L("Edit playlist"))
+            .navigationTitle(existing == nil ? L("Add server") : L("Edit server"))
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif

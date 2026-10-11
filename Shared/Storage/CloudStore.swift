@@ -34,6 +34,75 @@ final class CloudStore: ObservableObject {
     /// Het profiel dat nu open is (gezet door PlaylistService)
     var activePlaylistID: UUID?
 
+    // MARK: profielen ("Wie kijkt er?")
+    //
+    // Eén hoofdaccount met de server(s), Trakt en OpenSubtitles; daaronder kijkprofielen.
+    // Per profiel apart: Mijn lijst, favorieten, kijkvoortgang/Verder kijken, bekeken, recente zenders,
+    // kijkgeschiedenis, avatar/foto en leeftijdsgrens. Gedeeld: server(s), aanpassingen, Trakt, OpenSubtitles.
+
+    @Published private(set) var profiles: [ViewerProfile] = []
+    /// De server die alle profielen gebruiken
+    @Published private(set) var mainSourceID: UUID?
+    /// Gekozen profiel op dít apparaat (per Apple TV-gebruiker apart)
+    @Published private(set) var activeProfileID: UUID? = UserDefaults.standard.string(forKey: "activeProfileID").flatMap(UUID.init)
+
+    var activeProfile: ViewerProfile? { profiles.first { $0.id == activeProfileID } }
+    var mainSource: PlaylistSource? { playlists.first { $0.id == mainSourceID } ?? playlists.first }
+
+    /// Sleutel per profiel ("favorites.v1.<profiel>")
+    private func pk(_ base: String) -> String { activeProfileID.map { "\(base).\($0.uuidString)" } ?? base }
+    /// Lezen per profiel; bestaat die nog niet, dan de gegevens van vóór de profielen (eenmalige overname)
+    private func scoped<T: Decodable>(_ t: T.Type, _ base: String) -> T? { decode(t, pk(base)) ?? decode(t, base) }
+
+    private func loadProfileData() {
+        favorites = scoped(Set<String>.self, K.favorites) ?? []
+        myList = scoped(Set<String>.self, K.myList) ?? []
+        localWatched = scoped(Set<String>.self, K.watched) ?? []
+        recentChannels = scoped([String].self, K.recent) ?? []
+        history = scoped([HistoryEntry].self, K.history) ?? []
+    }
+
+    /// Bestaande afspeellijsten (vroeger = profielen) omzetten naar kijkprofielen.
+    private func migrateToProfiles() {
+        guard profiles.isEmpty, !playlists.isEmpty, data(K.profiles) == nil else { return }
+        var photosCopy = photos
+        profiles = playlists.map { p in
+            let prof = ViewerProfile(name: p.name, avatar: p.avatar, ageLimit: p.ageLimit)
+            if let ph = photos[p.id] { photosCopy[prof.id] = ph }
+            return prof
+        }
+        photos = photosCopy
+        write(photos, K.photos)
+        write(profiles, K.profiles)
+        let last = UserDefaults.standard.string(forKey: "lastPlaylistID").flatMap(UUID.init)
+        mainSourceID = playlists.first { $0.id == last }?.id ?? playlists.first?.id
+        write(mainSourceID, K.mainSource)
+    }
+
+    func selectProfile(_ p: ViewerProfile) {
+        activeProfileID = p.id
+        UserDefaults.standard.set(p.id.uuidString, forKey: "activeProfileID")
+        loadProfileData()
+        progress = scoped([String: ProgressEntry].self, K.progress) ?? [:]
+    }
+
+    func upsertProfile(_ p: ViewerProfile) {
+        if let i = profiles.firstIndex(where: { $0.id == p.id }) { profiles[i] = p } else { profiles.append(p) }
+        write(profiles, K.profiles)
+    }
+
+    func deleteProfile(_ p: ViewerProfile) {
+        profiles.removeAll { $0.id == p.id }
+        write(profiles, K.profiles)
+        setPhoto(nil, for: p.id)
+        if activeProfileID == p.id { activeProfileID = nil; UserDefaults.standard.removeObject(forKey: "activeProfileID") }
+    }
+
+    func setMainSource(_ id: UUID) {
+        mainSourceID = id
+        write(mainSourceID, K.mainSource)
+    }
+
     private let kv = NSUbiquitousKeyValueStore.default
     private let local = UserDefaults.standard
     private var observer: NSObjectProtocol?
@@ -42,7 +111,8 @@ final class CloudStore: ObservableObject {
         static let playlists = "playlists.v1", favorites = "favorites.v1", myList = "mylist.v1",
                    progress = "progress.v1", watched = "watched.v1", recent = "recent.v1",
                    custom = "custom.v1", parental = "parental.v1", reminders = "reminders.v1",
-                   photos = "photos.v1", history = "history.v1"
+                   photos = "photos.v1", history = "history.v1",
+                   profiles = "profiles.v1", mainSource = "mainsource.v1"
     }
 
     private init() {
@@ -74,14 +144,13 @@ final class CloudStore: ObservableObject {
 
     func load(mergeProgress: Bool) {
         playlists = decode([PlaylistSource].self, K.playlists) ?? []
-        favorites = decode(Set<String>.self, K.favorites) ?? []
-        myList = decode(Set<String>.self, K.myList) ?? []
-        localWatched = decode(Set<String>.self, K.watched) ?? []
-        recentChannels = decode([String].self, K.recent) ?? []
+        profiles = decode([ViewerProfile].self, K.profiles) ?? []
+        mainSourceID = decode(UUID.self, K.mainSource)
+        migrateToProfiles()
+        loadProfileData()
         customizations = decode([UUID: Customization].self, K.custom) ?? [:]
         parental = decode(ParentalSettings.self, K.parental) ?? ParentalSettings()
         photos = decode([UUID: Data].self, K.photos) ?? [:]
-        history = decode([HistoryEntry].self, K.history) ?? []
         // wachtwoorden/tokens ook via iCloud KV delen (Apple TV krijgt ze anders niet)
         Keychain.syncFromCloud()
         Keychain.pushToCloud(keys: playlists.flatMap { [$0.passwordKey, "playlist.\($0.id.uuidString).session"] }
@@ -89,7 +158,7 @@ final class CloudStore: ObservableObject {
                              + Secrets.Key.allCases.map { "apikey.\($0.rawValue)" })
         Secrets.reload()
         reminders = (decode([ProgramReminder].self, K.reminders) ?? []).filter { $0.start > Date().addingTimeInterval(-3600) }
-        let remote = decode([String: ProgressEntry].self, K.progress) ?? [:]
+        let remote = scoped([String: ProgressEntry].self, K.progress) ?? [:]
         if mergeProgress {
             var merged = progress
             for (k, v) in remote where (merged[k]?.updated ?? .distantPast) < v.updated { merged[k] = v }
@@ -106,6 +175,9 @@ final class CloudStore: ObservableObject {
         var p = p; p.updatedAt = Date()
         if let i = playlists.firstIndex(where: { $0.id == p.id }) { playlists[i] = p } else { playlists.append(p) }
         write(playlists, K.playlists)
+        // eerste server: meteen hoofdserver, en een eerste profiel als er nog geen is
+        if mainSourceID == nil || !playlists.contains(where: { $0.id == mainSourceID }) { setMainSource(p.id) }
+        if profiles.isEmpty { upsertProfile(ViewerProfile(name: p.name, avatar: p.avatar)) }
     }
 
     func setPhoto(_ data: Data?, for playlist: UUID) {
@@ -127,14 +199,14 @@ final class CloudStore: ObservableObject {
     func toggleFavorite(_ playlist: UUID, _ item: String) {
         let k = key(playlist, item)
         if favorites.contains(k) { favorites.remove(k) } else { favorites.insert(k) }
-        write(favorites, K.favorites)
+        write(favorites, pk(K.favorites))
     }
     func isFavorite(_ playlist: UUID, _ item: String) -> Bool { favorites.contains(key(playlist, item)) }
 
     func toggleMyList(_ playlist: UUID, _ item: String) {
         let k = key(playlist, item)
         if myList.contains(k) { myList.remove(k) } else { myList.insert(k) }
-        write(myList, K.myList)
+        write(myList, pk(K.myList))
     }
     func inMyList(_ playlist: UUID, _ item: String) -> Bool { myList.contains(key(playlist, item)) }
 
@@ -146,15 +218,15 @@ final class CloudStore: ObservableObject {
             let keep = progress.sorted { $0.value.updated > $1.value.updated }.prefix(250)
             progress = Dictionary(uniqueKeysWithValues: keep.map { ($0.key, $0.value) })
         }
-        write(progress, K.progress)
+        write(progress, pk(K.progress))
     }
-    func clearProgress(_ itemKey: String) { progress[itemKey] = nil; write(progress, K.progress) }
+    func clearProgress(_ itemKey: String) { progress[itemKey] = nil; write(progress, pk(K.progress)) }
 
     // MARK: lokaal bekeken (als Trakt niet gekoppeld is)
 
     func setLocalWatched(_ itemKey: String, _ watched: Bool) {
         if watched { localWatched.insert(itemKey) } else { localWatched.remove(itemKey) }
-        write(localWatched, K.watched)
+        write(localWatched, pk(K.watched))
     }
 
     func pushRecentChannel(_ playlist: UUID, _ channelID: String) {
@@ -162,7 +234,7 @@ final class CloudStore: ObservableObject {
         recentChannels.removeAll { $0 == k }
         recentChannels.insert(k, at: 0)
         recentChannels = Array(recentChannels.prefix(20))
-        write(recentChannels, K.recent)
+        write(recentChannels, pk(K.recent))
     }
 
     // MARK: beheren (hernoemen / verbergen / volgorde / samenvoegen)
@@ -189,15 +261,15 @@ final class CloudStore: ObservableObject {
         history.removeAll { $0.itemID == e.itemID && $0.playlistID == e.playlistID }
         history.insert(e, at: 0)
         if history.count > 200 { history = Array(history.prefix(200)) }
-        write(history, K.history)
+        write(history, pk(K.history))
     }
     func removeHistory(_ e: HistoryEntry) {
         history.removeAll { $0.id == e.id }
-        write(history, K.history)
+        write(history, pk(K.history))
     }
     func clearHistory(playlist: UUID?) {
         history.removeAll { $0.playlistID == playlist }
-        write(history, K.history)
+        write(history, pk(K.history))
     }
     func history(for playlist: UUID?) -> [HistoryEntry] { history.filter { $0.playlistID == playlist } }
 

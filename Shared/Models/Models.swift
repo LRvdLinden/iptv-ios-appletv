@@ -90,6 +90,16 @@ struct PlaylistSource: Codable, Identifiable, Hashable {
     var passwordKey: String { "playlist.\(id.uuidString).password" }
 }
 
+/// Kijkprofiel ("Wie kijkt er?"). Alle profielen gebruiken dezelfde server(s) van het hoofdaccount.
+struct ViewerProfile: Codable, Identifiable, Hashable {
+    var id = UUID()
+    var name: String
+    var avatar: PlaylistAvatar
+    /// Leeftijdsfilter (nil = geen), bijv. 12 voor een kinderprofiel
+    var ageLimit: Int? = nil
+    var createdAt = Date()
+}
+
 // MARK: - Content ------------------------------------------------------------
 
 enum MediaType: String, Codable { case live, movie, series, episode }
@@ -174,6 +184,7 @@ struct Library: Codable {
     var series: [Series] = []
     var epg: [String: [EPGProgram]] = [:]   // key = epgID of channel.id
 
+    var isEmptyLibrary: Bool { channels.isEmpty && movies.isEmpty && series.isEmpty }
     var channelGroups: [String] { orderedUnique(channels.map(\.group)) }
     var movieGroups: [String] { orderedUnique(movies.map(\.group)) }
     var seriesGroups: [String] { orderedUnique(series.map(\.group)) }

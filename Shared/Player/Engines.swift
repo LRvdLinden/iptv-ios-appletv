@@ -54,7 +54,12 @@ final class VLCEngine: PlaybackEngine {
     let view: UIView = { let v = UIView(); v.backgroundColor = .black; return v }()
     private var pendingStart: Double?
 
-    init() { player.drawable = view }
+    init() {
+        player.drawable = view
+        // na de intro-tune (ambient) weer echte afspeel-audio, ook met de stil-schakelaar aan
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
+        try? AVAudioSession.sharedInstance().setActive(true)
+    }
 
     var state: EngineState {
         switch player.state {

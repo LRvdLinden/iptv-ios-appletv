@@ -74,8 +74,22 @@ final class AppState: ObservableObject {
         withAnimation(.easeInOut(duration: 0.5)) { stage = .picker }
     }
 
+    /// Profiel gekozen ("Wie kijkt er?") → de server van het hoofdaccount openen.
+    func open(profile: ViewerProfile) {
+        let store = CloudStore.shared
+        store.selectProfile(profile)
+        guard let src = store.mainSource else { return }
+        if playlists.source?.id == src.id && !playlists.library.isEmptyLibrary {
+            withAnimation(.easeInOut(duration: 0.4)) { stage = .main }
+            playlists.applyCustomizations()
+            return
+        }
+        open(src)
+    }
+
     func open(_ p: PlaylistSource, thenShow itemID: String? = nil) {
         lastPlaylistID = p.id
+        if CloudStore.shared.mainSourceID != p.id { CloudStore.shared.setMainSource(p.id) }
         pendingItemID = itemID
         withAnimation(.easeInOut(duration: 0.4)) { stage = .main }
         Task { await playlists.select(p) }

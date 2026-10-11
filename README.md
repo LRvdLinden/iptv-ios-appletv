@@ -39,7 +39,7 @@ SwiftUI · iOS 17+ · tvOS 17+ · Apple- én VLC-engine · 11 talen.
 - M3U/M3U8 + XMLTV-EPG, **Xtream Codes** (incl. catch-up), **Stalker/MAC-portal**
 - **Plex** (inloggen met code op plex.tv/link), **Jellyfin**, **Emby** (films, series, live TV + gids)
 - **Stremio**: inloggen met je Stremio-account of eigen add-on-URL's (Cinemeta-catalogi, directe streams)
-- Afspeellijst-kiezer in Netflix-profielstijl met eigen **naam en avatar of profielfoto** (uit je fotobibliotheek) per lijst
+- **Eén hoofdaccount, meerdere profielen**: stel de server (en Trakt/OpenSubtitles) één keer in; daarna "Wie kijkt er?" met profielen met eigen **naam, avatar of profielfoto**, eigen Mijn lijst, Verder kijken, favorieten, kijkgeschiedenis en leeftijdsgrens. Wisselen via je avatar of Mijn Bingr
 - **Zoeken in al je afspeellijsten** tegelijk: films, series, zenders, **categorieën** en de **tv-gids** (nu, straks en terugkijken). Ook via het vergrootglas op Home, Films en Series, en dan altijd door álle content
 - **NAS via SMB/DLNA**: servers op je netwerk worden gevonden, of voeg zelf een SMB-share toe; bladeren en afspelen
 
@@ -70,7 +70,7 @@ SwiftUI · iOS 17+ · tvOS 17+ · Apple- én VLC-engine · 11 talen.
 - Werkt zonder sleutels met de info van je Xtream-server; IMDb, Trakt en TMDB vullen aan
 
 **Netflix-ervaring**
-- Geanimeerde splash, profielkeuze met ronde avatars (op Apple TV vergroot de geselecteerde), billboard, rijen
+- Geanimeerde splash met een eigen **Bingr-intro-tune** (`tools/make_tune.py`, uit te zetten), profielkeuze met ronde avatars (op Apple TV vergroot de geselecteerde), billboard, rijen
 - **Top 10 zoals Netflix** (grote omlijnde cijfers; trending vandaag via TMDB en Trakt, gekoppeld aan jouw lijst, anders je best beoordeelde titels) onder Voor jou: series en films op Home, films bij Films, series bij Series
 - **Verder kijken** (verwijderbaar, zonder live tv), **Voor jou** (vergelijkbaar met wat je keek), Mijn lijst
 - **Bekijk allemaal** bij elke rij: categoriepagina met sorteren (A–Z, nieuwste, score) en IMDb-score per poster

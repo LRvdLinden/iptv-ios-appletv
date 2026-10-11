@@ -1,4 +1,5 @@
 import SwiftUI
+import AVFoundation
 
 /// Intro: covers van films en series uit je afspeellijst regenen van boven naar beneden,
 /// daarna springen de letters van BINGR één voor één omhoog met een glanzende veeg erover.
@@ -109,6 +110,7 @@ struct SplashView: View {
     }
 
     private func run() async {
+        SplashTune.play()   // eigen Bingr-tune, loopt synchroon met de covers en de letters
         try? await Task.sleep(nanoseconds: 120_000_000)
         fall = true
         #if os(iOS)
@@ -176,5 +178,27 @@ private struct SeededRandom {
     mutating func next() -> Double {
         state = state &* 6364136223846793005 &+ 1442695040888963407
         return Double(state >> 11) / Double(1 << 53)
+    }
+}
+
+
+/// De Bingr-intro-tune (Shared/Resources/bingr_tune.m4a, gemaakt met tools/make_tune.py).
+/// Speelt mee met andere audio en respecteert de stil-schakelaar op iPhone. Uit te zetten in Mijn Bingr.
+enum SplashTune {
+    private static var player: AVAudioPlayer?
+    static var enabled: Bool {
+        get { UserDefaults.standard.object(forKey: "splash.sound") as? Bool ?? true }
+        set { UserDefaults.standard.set(newValue, forKey: "splash.sound") }
+    }
+
+    static func play() {
+        guard enabled, let url = Bundle.main.url(forResource: "bingr_tune", withExtension: "m4a") else { return }
+        try? AVAudioSession.sharedInstance().setCategory(.ambient, mode: .default, options: [.mixWithOthers])
+        try? AVAudioSession.sharedInstance().setActive(true)
+        player = try? AVAudioPlayer(contentsOf: url)
+        player?.volume = 0.9
+        player?.prepareToPlay()
+        player?.play()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { player = nil }
     }
 }

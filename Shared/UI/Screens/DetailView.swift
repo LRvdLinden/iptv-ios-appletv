@@ -568,7 +568,7 @@ struct DetailView: View {
 
     /// Leeftijdsfilter van dit profiel: boven de grens alleen met pincode.
     private func ageChecked(_ action: @escaping () -> Void) {
-        let limit = playlists.source?.ageLimit
+        let limit = store.activeProfile?.ageLimit
         let group: String = { switch target { case .movie(let m): return m.group; case .series(let s): return s.group } }()
         let rated = d?.certification ?? {
             switch target {

@@ -36,17 +36,23 @@ final class PlaylistService: ObservableObject {
             .receive(on: RunLoop.main)
             .sink { [weak self] list in
                 guard let self, let s = self.source, let u = list.first(where: { $0.id == s.id }), u != s else { return }
-                let refilter = u.ageLimit != s.ageLimit
                 self.source = u
-                if refilter { self.applyCustomizations() }
             }
+            .store(in: &bag)
+        // ander profiel gekozen of leeftijdsgrens van het profiel gewijzigd → opnieuw filteren
+        CloudStore.shared.$profiles.combineLatest(CloudStore.shared.$activeProfileID)
+            .map { list, id in list.first { $0.id == id }?.ageLimit }
+            .removeDuplicates()
+            .dropFirst()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.applyCustomizations() }
             .store(in: &bag)
         // nieuwe IMDb-classificaties binnen → leeftijdsfilter opnieuw toepassen
         MetadataService.shared.$cache
             .dropFirst()
             .debounce(for: .seconds(3), scheduler: RunLoop.main)
             .sink { [weak self] _ in
-                if self?.source?.ageLimit != nil { self?.applyCustomizations() }
+                if CloudStore.shared.activeProfile?.ageLimit != nil { self?.applyCustomizations() }
             }
             .store(in: &bag)
     }
@@ -183,7 +189,7 @@ final class PlaylistService: ObservableObject {
 
     func applyCustomizations() {
         guard let s = source else { library = rawLibrary; return }
-        library = Self.apply(rawLibrary, CloudStore.shared.customization(s.id), playlist: s.id, ageLimit: s.ageLimit)
+        library = Self.apply(rawLibrary, CloudStore.shared.customization(s.id), playlist: s.id, ageLimit: CloudStore.shared.activeProfile?.ageLimit)
     }
 
     static func apply(_ raw: Library, _ c: Customization, playlist: UUID, ageLimit: Int? = nil) -> Library {

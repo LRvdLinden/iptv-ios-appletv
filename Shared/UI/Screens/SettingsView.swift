@@ -23,6 +23,8 @@ struct SettingsView: View {
     @State private var showTraktLogin = false
     @State private var showOSLogin = false
     @State private var editing: PlaylistSource?
+    @State private var editingProfile: ViewerProfile?
+    @State private var addingServer = false
     @State private var pinMode: PinMode?
     @State private var setup: SetupTarget?
 
@@ -59,11 +61,13 @@ struct SettingsView: View {
                     LabeledContent(L("IMDb data"), value: Secrets.isSet(Secrets.omdbAPIKey) ? L("Active (OMDb)") : L("No OMDb key"))
                 }
             }
-            .navigationTitle(L("My Bingr"))
+            .navigationTitle(store.activeProfile?.name ?? L("My Bingr"))
         }
         .sheet(isPresented: $showTraktLogin) { TraktLoginView() }
         .sheet(isPresented: $showOSLogin) { OpenSubtitlesLoginView() }
         .sheet(item: $editing) { AddPlaylistView(existing: $0) }
+        .sheet(item: $editingProfile) { ProfileEditView(existing: $0) }
+        .sheet(isPresented: $addingServer) { AddPlaylistView(existing: nil) }
         .sheet(item: $setup) { t in
             switch t {
             case .trakt:
@@ -96,30 +100,56 @@ struct SettingsView: View {
 
     // MARK: secties
 
+    /// Kijkprofiel (per persoon) en de server van het hoofdaccount (voor iedereen).
     private var playlistSection: some View {
-        Section(L("Playlist")) {
-            if let s = playlists.source {
-                HStack(spacing: 14) {
-                    AvatarTile(name: "", avatar: s.avatar, photo: store.photos[s.id]).frame(width: tvScaled(44))
-                    VStack(alignment: .leading) {
-                        Text(s.name).font(.headline)
-                        Text(L("%@ · %d channels · %d movies · %d series", s.kind.title,
-                               playlists.library.channels.count, playlists.library.movies.count, playlists.library.series.count))
-                            .font(.caption).foregroundStyle(Theme.secondary)
+        Group {
+            Section(L("Profile")) {
+                if let p = store.activeProfile {
+                    HStack(spacing: 14) {
+                        ProfileAvatar(size: tvScaled(44))
+                        VStack(alignment: .leading) {
+                            Text(p.name).font(.headline)
+                            if let a = p.ageLimit { Text(L("Up to %d years", a)).font(.caption).foregroundStyle(Theme.secondary) }
+                        }
+                    }
+                    Button { editingProfile = p } label: { Label(L("Edit profile"), systemImage: "pencil") }
+                }
+                Button { app.switchPlaylist() } label: { Label(L("Switch profile"), systemImage: "person.2.circle") }
+            }
+            Section {
+                ForEach(store.playlists) { src in
+                    Button {
+                        if src.id != playlists.source?.id { app.open(src) }
+                    } label: {
+                        HStack {
+                            Label(src.name, systemImage: src.kind.symbol)
+                            Spacer()
+                            if src.id == playlists.source?.id { Image(systemName: "checkmark").foregroundStyle(Theme.red) }
+                        }
+                    }
+                    .contextMenu {
+                        Button { editing = src } label: { Label(L("Edit"), systemImage: "pencil") }
                     }
                 }
-                Button { editing = s } label: { Label(L("Edit (name, avatar, details)"), systemImage: "pencil") }
-                NavigationLink { CategoriesView() } label: {
-                    Label(L("Categories on/off (NL, BE, DE…)"), systemImage: "line.3.horizontal.decrease.circle")
+                if let s = playlists.source {
+                    Text(L("%@ · %d channels · %d movies · %d series", s.kind.title,
+                           playlists.library.channels.count, playlists.library.movies.count, playlists.library.series.count))
+                        .font(.caption).foregroundStyle(Theme.secondary)
+                    Button { editing = s } label: { Label(L("Edit server"), systemImage: "server.rack") }
+                    NavigationLink { CategoriesView() } label: {
+                        Label(L("Categories on/off (NL, BE, DE…)"), systemImage: "line.3.horizontal.decrease.circle")
+                    }
+                    NavigationLink { ManageView() } label: {
+                        Label(L("Manage groups and channels"), systemImage: "slider.horizontal.below.rectangle")
+                    }
+                    Button { Task { await playlists.select(s, forceRefresh: true) } } label: {
+                        Label(L("Refresh now"), systemImage: "arrow.clockwise")
+                    }
                 }
-                NavigationLink { ManageView() } label: {
-                    Label(L("Manage groups and channels"), systemImage: "slider.horizontal.below.rectangle")
-                }
-                Button { Task { await playlists.select(s, forceRefresh: true) } } label: {
-                    Label(L("Refresh now"), systemImage: "arrow.clockwise")
-                }
+                Button { addingServer = true } label: { Label(L("Add server"), systemImage: "plus") }
+            } header: { Text(L("Server")) } footer: {
+                Text(L("The server, Trakt and OpenSubtitles belong to the main account and are used by all profiles."))
             }
-            Button { app.switchPlaylist() } label: { Label(L("Choose another playlist"), systemImage: "rectangle.stack.person.crop") }
         }
     }
 
@@ -233,10 +263,10 @@ struct SettingsView: View {
                 } else {
                     Button(L("Unlock with PIN")) { pinMode = .unlock }
                 }
-                if let src = playlists.source {
+                if let prof = store.activeProfile {
                     Picker(L("Age limit for this profile"), selection: Binding(
-                        get: { src.ageLimit ?? 0 },
-                        set: { v in var p = src; p.ageLimit = v == 0 ? nil : v; store.upsert(p) })) {
+                        get: { prof.ageLimit ?? 0 },
+                        set: { v in var p = prof; p.ageLimit = v == 0 ? nil : v; store.upsertProfile(p) })) {
                         Text(L("None")).tag(0)
                         ForEach(ParentalControl.ageChoices, id: \.self) { Text(L("Up to %d years", $0)).tag($0) }
                     }
@@ -283,6 +313,7 @@ struct SettingsView: View {
             NavigationLink { CategoriesView() } label: {
                 Label(L("Categories on/off (NL, BE, DE…)"), systemImage: "line.3.horizontal.decrease.circle")
             }
+            Toggle(L("Intro sound"), isOn: Binding(get: { SplashTune.enabled }, set: { SplashTune.enabled = $0 }))
             Toggle(L("Show Live TV"), isOn: $showLive)
             Toggle(L("Show Movies"), isOn: $showMovies)
             Toggle(L("Show Series"), isOn: $showSeries)

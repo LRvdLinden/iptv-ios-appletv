@@ -48,7 +48,7 @@ struct HomeView: View {
         }
         .fullScreenCover(isPresented: $showSearch) { SearchView(modal: true) }
         .background(Color.black)
-        .task(id: "\(pid?.uuidString ?? "")-\(lib.movies.count)-\(lib.series.count)") { await prepare() }
+        .task(id: "\(store.activeProfileID?.uuidString ?? "")-\(pid?.uuidString ?? "")-\(lib.movies.count)-\(lib.series.count)") { await prepare() }
         .fullScreenCover(item: $category) { CategoryView(target: $0) }
         #if os(iOS)
         .sheet(item: $detail) { DetailView(target: $0).presentationDragIndicator(.visible) }
@@ -438,11 +438,8 @@ struct HomeView: View {
                     .frame(width: 34, height: 34)
             }
             .accessibilityLabel(L("Search"))
-            if let s = playlists.source {
-                Button { app.switchPlaylist() } label: {
-                    MiniAvatar(playlist: s, size: 30)
-                }
-            }
+            Button { app.switchPlaylist() } label: { ProfileAvatar(size: 30) }
+                .accessibilityLabel(L("Switch profile"))
         }
         .padding(.horizontal, 16).padding(.bottom, 10)
         .background(
