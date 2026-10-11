@@ -54,13 +54,13 @@ struct PlaylistPickerView: View {
                         } label: {
                             AvatarTile(name: p.name, avatar: p.avatar, photo: store.photos[p.id], editing: managing)
                         }
-                        .cardButton()
+                        .profileButton()
                         .opacity(appeared ? 1 : 0)
                         .offset(y: appeared ? 0 : 24)
                         .animation(.spring(response: 0.5, dampingFraction: 0.8).delay(Double(i) * 0.06), value: appeared)
                     }
                     Button { adding = true } label: { AddTile() }
-                        .cardButton()
+                        .profileButton()
                         .opacity(appeared ? 1 : 0)
                         .animation(.easeOut(duration: 0.4).delay(Double(store.playlists.count) * 0.06), value: appeared)
                 }
@@ -88,27 +88,32 @@ struct AvatarTile: View {
     let avatar: PlaylistAvatar
     var photo: Data? = nil
     var editing = false
+    @Environment(\.profileFocused) private var focused
     var body: some View {
-        VStack(spacing: tvScaled(8)) {
-            ZStack {
-                Circle().fill(avatar.gradient)
-                if let photo, let img = UIImage(data: photo) {
-                    Color.clear.overlay(Image(uiImage: img).resizable().scaledToFill())
-                        .clipShape(Circle())
-                } else {
-                    Image(systemName: avatar.symbol)
-                        .font(.system(size: tvScaled(44), weight: .semibold))
-                        .foregroundStyle(.white)
-                        .shadow(color: .black.opacity(0.25), radius: 4, y: 2)
+        VStack(spacing: tvScaled(10)) {
+            Circle().fill(avatar.gradient)
+                .overlay {
+                    if let photo, let img = UIImage(data: photo) {
+                        Image(uiImage: img).resizable().scaledToFill()
+                    } else {
+                        Image(systemName: avatar.symbol)
+                            .font(.system(size: tvScaled(44), weight: .semibold))
+                            .foregroundStyle(.white)
+                            .shadow(color: .black.opacity(0.25), radius: 4, y: 2)
+                    }
                 }
-                if editing {
-                    Circle().fill(.black.opacity(0.55))
-                    Image(systemName: "pencil").font(.system(size: tvScaled(30), weight: .bold)).foregroundStyle(.white)
+                .overlay {
+                    if editing {
+                        Color.black.opacity(0.55)
+                        Image(systemName: "pencil").font(.system(size: tvScaled(30), weight: .bold)).foregroundStyle(.white)
+                    }
                 }
-            }
-            .aspectRatio(1, contentMode: .fit)
+                .clipShape(Circle())
+                .overlay(Circle().strokeBorder(.white, lineWidth: focused ? tvScaled(3) : 0))
+                .aspectRatio(1, contentMode: .fit)
             if !name.isEmpty {
-                Text(name).font(.system(size: tvScaled(14))).foregroundStyle(Theme.secondary).lineLimit(1)
+                Text(name).font(.system(size: tvScaled(14), weight: focused ? .semibold : .regular))
+                    .foregroundStyle(focused ? .white : Theme.secondary).lineLimit(1)
             }
         }
     }
@@ -134,14 +139,56 @@ struct MiniAvatar: View {
 }
 
 private struct AddTile: View {
+    @Environment(\.profileFocused) private var focused
     var body: some View {
-        VStack(spacing: tvScaled(8)) {
+        VStack(spacing: tvScaled(10)) {
             ZStack {
-                Circle().strokeBorder(Theme.secondary.opacity(0.5), lineWidth: 2)
-                Image(systemName: "plus").font(.system(size: tvScaled(40), weight: .regular)).foregroundStyle(Theme.secondary)
+                Circle().fill(focused ? Color.white.opacity(0.12) : .clear)
+                Circle().strokeBorder(focused ? .white : Theme.secondary.opacity(0.5), lineWidth: focused ? tvScaled(3) : 2)
+                Image(systemName: "plus").font(.system(size: tvScaled(40), weight: .regular))
+                    .foregroundStyle(focused ? .white : Theme.secondary)
             }
             .aspectRatio(1, contentMode: .fit)
-            Text(L("Add")).font(.system(size: tvScaled(14))).foregroundStyle(Theme.secondary)
+            Text(L("Add")).font(.system(size: tvScaled(14), weight: focused ? .semibold : .regular))
+                .foregroundStyle(focused ? .white : Theme.secondary)
         }
+    }
+}
+
+// MARK: profielknop (zoals Netflix: alleen de avatar, bij focus iets groter)
+
+private struct ProfileFocusedKey: EnvironmentKey { static let defaultValue = false }
+extension EnvironmentValues {
+    var profileFocused: Bool {
+        get { self[ProfileFocusedKey.self] }
+        set { self[ProfileFocusedKey.self] = newValue }
+    }
+}
+
+/// Geen grijze kaart erachter: op tvOS wordt de avatar bij selectie iets groter met een witte rand.
+struct ProfileButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View { Body(configuration: configuration) }
+
+    private struct Body: View {
+        let configuration: ButtonStyleConfiguration
+        @Environment(\.isFocused) private var focused
+        var body: some View {
+            configuration.label
+                .environment(\.profileFocused, focused)
+                .scaleEffect(configuration.isPressed ? 1.04 : (focused ? 1.12 : 1))
+                .shadow(color: .black.opacity(focused ? 0.6 : 0), radius: 18, y: 10)
+                .animation(.spring(response: 0.3, dampingFraction: 0.75), value: focused)
+                .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+        }
+    }
+}
+
+extension View {
+    @ViewBuilder func profileButton() -> some View {
+        #if os(tvOS)
+        self.buttonStyle(ProfileButtonStyle())
+        #else
+        self.buttonStyle(PressableStyle())
+        #endif
     }
 }
