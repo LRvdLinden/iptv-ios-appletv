@@ -62,11 +62,10 @@ const screens = {
      <div style="margin:6px auto 0;width:240px;height:6px;border-radius:6px;background:var(--red)"></div>
    </div></div>`,
  ios_picker:()=>`<div class="screen"><div class="status"><span>20:41</span><span>●●● 5G ▮</span></div>
-   <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px"><div class="logo" style="font-size:26px">BINGR</div><span style="font-weight:600">Beheren</span></div>
+   <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px"><div class="logo" style="font-size:26px">BINGR</div><span></span></div>
    <div style="text-align:center;margin-top:120px;font-size:26px;font-weight:500">Wie kijkt er?</div>
    <div style="display:grid;grid-template-columns:repeat(2,130px);gap:28px 28px;justify-content:center;margin-top:36px">
-   ${av(0,130,"Léon")}${av(1,130,"Mama")}${av(2,130,"Kids")}${av(3,130,"Gast")}
-   <div style="display:flex;flex-direction:column;align-items:center;gap:9px"><div style="width:130px;height:130px;border:2px solid #b3b3b380;border-radius:50%;display:grid;place-items:center;font-size:48px;color:#b3b3b3;font-weight:200">+</div><div style="color:#b3b3b3;font-size:17px">Toevoegen</div></div></div>
+   ${av(0,130,"Léon")}${av(1,130,"Mama")}${av(2,130,"Kids")}${av(3,130,"Gast")}</div>
    <div style="position:absolute;bottom:40px;width:100%;text-align:center;color:#b3b3b3aa;font-size:12px">☁︎ iCloud gesynchroniseerd · 20:41</div></div>`,
  ios_home:()=>`<div class="screen"><div style="position:absolute;inset:0 0 auto 0;height:640px;background:radial-gradient(circle at 50% 40%,#c0392b88,#000 75%)"></div>
    <div style="position:relative"><div class="status"><span>20:42</span><span>●●● 5G ▮</span></div>
@@ -210,8 +209,7 @@ const screens = {
  tv_picker:()=>`<div class="screen" style="display:flex;flex-direction:column;align-items:center;justify-content:center">
    <div class="logo" style="position:absolute;top:50px;left:80px;font-size:50px">BINGR</div>
    <div style="font-size:52px;font-weight:500;margin-bottom:70px">Wie kijkt er?</div>
-   <div style="display:flex;gap:70px;align-items:flex-start">${av(0,230,"Léon")}${av(1,230,"Mama")}<div style="transform:scale(1.12);filter:drop-shadow(0 20px 30px #000)"><div style="display:flex;flex-direction:column;align-items:center;gap:16px"><div class="avatar" style="border-radius:50%;width:230px;height:230px;background:linear-gradient(135deg,${AV[2][0]},${AV[2][1]});font-size:97px;box-shadow:0 0 0 6px #fff">${AV[2][2]}</div><div style="color:#fff;font-weight:700;font-size:30px">Kids</div></div></div>${av(3,230,"Gast")}
-   <div style="display:flex;flex-direction:column;align-items:center;gap:16px"><div style="width:230px;height:230px;border:3px solid #b3b3b380;border-radius:50%;display:grid;place-items:center;font-size:90px;color:#b3b3b3;font-weight:200">+</div><div style="color:#b3b3b3;font-size:30px">Toevoegen</div></div></div>
+   <div style="display:flex;gap:70px;align-items:flex-start">${av(0,230,"Léon")}${av(1,230,"Mama")}<div style="transform:scale(1.12);filter:drop-shadow(0 20px 30px #000)"><div style="display:flex;flex-direction:column;align-items:center;gap:16px"><div class="avatar" style="border-radius:50%;width:230px;height:230px;background:linear-gradient(135deg,${AV[2][0]},${AV[2][1]});font-size:97px;box-shadow:0 0 0 6px #fff">${AV[2][2]}</div><div style="color:#fff;font-weight:700;font-size:30px">Kids</div></div></div>${av(3,230,"Gast")}</div>
    <div style="position:absolute;bottom:50px;color:#b3b3b3aa;font-size:22px">☁︎ iCloud gesynchroniseerd met je iPhone</div></div>`,
  tv_detail:()=>`<div class="screen" style="background:#141414">
    <div style="position:absolute;inset:0;height:460px;background:radial-gradient(circle at 30% 30%,#16a085,transparent 60%),linear-gradient(160deg,#0b3d3a,#141414)"></div>
