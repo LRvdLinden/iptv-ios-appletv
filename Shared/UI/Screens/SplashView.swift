@@ -183,7 +183,7 @@ private struct SeededRandom {
 
 
 /// De Bingr-intro-tune (Shared/Resources/bingr_tune.m4a, gemaakt met tools/make_tune.py).
-/// Speelt mee met andere audio en respecteert de stil-schakelaar op iPhone. Uit te zetten in Mijn Bingr.
+/// Speelt mee met andere audio. Uit te zetten in Mijn Bingr → Weergave → Intromuziek.
 enum SplashTune {
     private static var player: AVAudioPlayer?
     static var enabled: Bool {
@@ -193,12 +193,15 @@ enum SplashTune {
 
     static func play() {
         guard enabled, let url = Bundle.main.url(forResource: "bingr_tune", withExtension: "m4a") else { return }
-        try? AVAudioSession.sharedInstance().setCategory(.ambient, mode: .default, options: [.mixWithOthers])
-        try? AVAudioSession.sharedInstance().setActive(true)
-        player = try? AVAudioPlayer(contentsOf: url)
-        player?.volume = 0.9
-        player?.prepareToPlay()
-        player?.play()
+        // .playback: ook hoorbaar met de stil-schakelaar aan (zoals de Netflix-intro); mengt met andere audio
+        let session = AVAudioSession.sharedInstance()
+        try? session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
+        try? session.setActive(true)
+        guard let p = try? AVAudioPlayer(contentsOf: url) else { return }
+        p.volume = 1.0
+        p.prepareToPlay()
+        p.play(atTime: p.deviceCurrentTime + 0.02)
+        player = p
         DispatchQueue.main.asyncAfter(deadline: .now() + 4) { player = nil }
     }
 }

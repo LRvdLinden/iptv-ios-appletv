@@ -84,8 +84,7 @@ struct PlaylistPickerView: View {
             }
         }
         .onAppear {
-            appeared = true
-            store.load(mergeProgress: true)
+            appeared = true   // gegevens zijn al geladen; iCloud-wijzigingen komen vanzelf binnen
             // Apple TV: meteen op het (laatst gebruikte) profiel staan, niet op Beheren
             Task { @MainActor in
                 try? await Task.sleep(nanoseconds: 350_000_000)

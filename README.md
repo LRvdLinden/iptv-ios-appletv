@@ -3,7 +3,7 @@
 [![Build](https://github.com/LRvdLinden/iptv-ios-appletv/actions/workflows/build.yml/badge.svg)](https://github.com/LRvdLinden/iptv-ios-appletv/actions/workflows/build.yml)
 
 Native IPTV- en mediaspeler voor **iPhone, iPad, Mac en Apple TV** met de look & feel van Netflix.
-SwiftUI · iOS 17+ · tvOS 17+ · Apple- én VLC-engine · 11 talen · versie 1.0.0 (build 20).
+SwiftUI · iOS 17+ · tvOS 17+ · Apple- én VLC-engine · 11 talen · versie 1.0.0 (build 21).
 
 ## Screenshots
 
@@ -56,6 +56,7 @@ SwiftUI · iOS 17+ · tvOS 17+ · Apple- én VLC-engine · 11 talen · versie 1.
 - **Tv-gids als raster** met nu-lijn, programma-details, **terugkijken** en **herinneringen** (melding op iPhone/iPad, banner op Apple TV)
 - **Live TV** opent op "Alle zenders"; favorieten, recent en alle groepen
 - **Categorieën aan/uit** per Live TV, Films en Series, met snelknoppen per land/taal (NL, BE, DE, TK …)
+- **Servers** toevoegen, wisselen, wijzigen en verwijderen (hoofdaccount)
 - **Beheren**: groepen en zenders hernoemen, herschikken, samenvoegen en verbergen
 - **Kinderslot** met pincode: groepen op slot, volwassenengroepen automatisch, **leeftijdsgrens per profiel** (IMDb-classificatie), 30 min ontgrendelen
 - **Kijkgeschiedenis per profiel**, per dag, met verwijderen en wissen

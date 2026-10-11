@@ -26,6 +26,7 @@ struct SettingsView: View {
     @State private var editingProfile: ViewerProfile?
     @State private var addingServer = false
     @State private var addingProfile = false
+    @State private var deletingServer: PlaylistSource?
     @State private var pinMode: PinMode?
     @State private var setup: SetupTarget?
 
@@ -66,6 +67,11 @@ struct SettingsView: View {
         .sheet(item: $editingProfile) { ProfileEditView(existing: $0) }
         .sheet(isPresented: $addingServer) { AddPlaylistView(existing: nil) }
         .sheet(isPresented: $addingProfile) { ProfileEditView(existing: nil) }
+        .confirmationDialog(L("Delete server"), isPresented: Binding(get: { deletingServer != nil }, set: { if !$0 { deletingServer = nil } }),
+                            presenting: deletingServer) { src in
+            Button(L("Delete %@", src.name), role: .destructive) { deleteServer(src) }
+            Button(L("Cancel"), role: .cancel) {}
+        } message: { _ in Text(L("Profiles keep their own lists. Channels, movies and series of this server disappear from the app.")) }
         .sheet(item: $setup) { t in
             switch t {
             case .trakt:
@@ -93,6 +99,15 @@ struct SettingsView: View {
                     return true
                 }
             }
+        }
+    }
+
+    private func deleteServer(_ src: PlaylistSource) {
+        let wasActive = playlists.source?.id == src.id
+        store.delete(src)
+        deletingServer = nil
+        if wasActive {
+            if let next = store.mainSource { app.open(next) } else { app.switchPlaylist() }
         }
     }
 
@@ -177,7 +192,14 @@ struct SettingsView: View {
                     }
                     .contextMenu {
                         Button { editing = src } label: { Label(L("Edit"), systemImage: "pencil") }
+                        Button(role: .destructive) { deletingServer = src } label: { Label(L("Delete"), systemImage: "trash") }
                     }
+                    #if os(iOS)
+                    .swipeActions {
+                        Button(role: .destructive) { deletingServer = src } label: { Label(L("Delete"), systemImage: "trash") }
+                        Button { editing = src } label: { Label(L("Edit"), systemImage: "pencil") }.tint(.blue)
+                    }
+                    #endif
                 }
                 if let s = playlists.source {
                     Text(L("%@ · %d channels · %d movies · %d series", s.kind.title,
@@ -195,6 +217,9 @@ struct SettingsView: View {
                     }
                 }
                 Button { addingServer = true } label: { Label(L("Add server"), systemImage: "plus") }
+                if let s = playlists.source {
+                    Button(role: .destructive) { deletingServer = s } label: { Label(L("Delete server"), systemImage: "trash") }
+                }
             } header: { Text(L("Server")) } footer: {
                 Text(L("The server, Trakt and OpenSubtitles belong to the main account and are used by all profiles."))
             }

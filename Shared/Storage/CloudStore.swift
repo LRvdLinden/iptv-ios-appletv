@@ -165,12 +165,16 @@ final class CloudStore: ObservableObject {
         customizations = decode([UUID: Customization].self, K.custom) ?? [:]
         parental = decode(ParentalSettings.self, K.parental) ?? ParentalSettings()
         photos = decode([UUID: Data].self, K.photos) ?? [:]
-        // wachtwoorden/tokens ook via iCloud KV delen (Apple TV krijgt ze anders niet)
-        Keychain.syncFromCloud()
-        Keychain.pushToCloud(keys: playlists.flatMap { [$0.passwordKey, "playlist.\($0.id.uuidString).session"] }
-                             + ["trakt.tokens", "opensubtitles.session", "parental.pin"]
-                             + Secrets.Key.allCases.map { "apikey.\($0.rawValue)" })
-        Secrets.reload()
+        // wachtwoorden/tokens ook via iCloud KV delen (Apple TV krijgt ze anders niet) — op de achtergrond,
+        // sleutelhanger-acties zijn traag en blokkeerden het wisselen van profiel
+        let secretKeys = playlists.flatMap { [$0.passwordKey, "playlist.\($0.id.uuidString).session"] }
+            + ["trakt.tokens", "opensubtitles.session", "parental.pin"]
+            + Secrets.Key.allCases.map { "apikey.\($0.rawValue)" }
+        DispatchQueue.global(qos: .utility).async {
+            Keychain.syncFromCloud()
+            Keychain.pushToCloud(keys: secretKeys)
+            DispatchQueue.main.async { Secrets.reload() }
+        }
         reminders = (decode([ProgramReminder].self, K.reminders) ?? []).filter { $0.start > Date().addingTimeInterval(-3600) }
         let remote = scoped([String: ProgressEntry].self, K.progress) ?? [:]
         if mergeProgress {
@@ -207,6 +211,8 @@ final class CloudStore: ObservableObject {
 
     func delete(_ p: PlaylistSource) {
         playlists.removeAll { $0.id == p.id }
+        if mainSourceID == p.id { mainSourceID = playlists.first?.id; write(mainSourceID, K.mainSource) }
+        customizations[p.id] = nil; write(customizations, K.custom)
         if photos[p.id] != nil { setPhoto(nil, for: p.id) }
         Keychain.set(nil, for: p.passwordKey)
         write(playlists, K.playlists)
