@@ -84,21 +84,32 @@ actor TraktClient {
         return try JSONDecoder().decode(S.self, from: d).user?.username
     }
 
+    /// Redirect-URI's zoals ze bij de Trakt-app geregistreerd kunnen zijn.
+    static let redirectURIs = ["https://github.com/LRvdLinden/iptv-ios-appletv", "urn:ietf:wg:oauth:2.0:oob"]
+
     private func validToken() async throws -> String {
         guard var t = tokens else { throw TraktError.notLoggedIn }
         if t.expiresAt.timeIntervalSinceNow < 24 * 3600 {
-            var req = URLRequest(url: base.appendingPathComponent("/oauth/token"))
-            req.httpMethod = "POST"
-            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            req.httpBody = try JSONSerialization.data(withJSONObject: [
-                "refresh_token": t.refreshToken, "client_id": Secrets.traktClientID,
-                "client_secret": Secrets.traktClientSecret,
-                "redirect_uri": "urn:ietf:wg:oauth:2.0:oob", "grant_type": "refresh_token"])
-            let (d, r) = try await HTTP.data(req)
-            if r.statusCode == 200, let n = try? JSONDecoder().decode(TokenResponse.self, from: d) {
-                let user = t.username; t = n.tokens; t.username = user
-                Keychain.setCodable(t, for: tokenKey)
-            } else if r.statusCode == 401 {
+            // Inloggen gaat met een apparaatcode (geen redirect). Bij verversen eist Trakt wel een
+            // geregistreerde redirect-URI; we proberen de veilige https-variant en de oude "oob".
+            var refreshed = false, unauthorized = 0
+            for redirect in Self.redirectURIs {
+                var req = URLRequest(url: base.appendingPathComponent("/oauth/token"))
+                req.httpMethod = "POST"
+                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                req.httpBody = try JSONSerialization.data(withJSONObject: [
+                    "refresh_token": t.refreshToken, "client_id": Secrets.traktClientID,
+                    "client_secret": Secrets.traktClientSecret,
+                    "redirect_uri": redirect, "grant_type": "refresh_token"])
+                let (d, r) = try await HTTP.data(req)
+                if r.statusCode == 200, let n = try? JSONDecoder().decode(TokenResponse.self, from: d) {
+                    let user = t.username; t = n.tokens; t.username = user
+                    Keychain.setCodable(t, for: tokenKey)
+                    refreshed = true; break
+                }
+                if r.statusCode == 401 || r.statusCode == 400 { unauthorized += 1 }
+            }
+            if !refreshed && unauthorized == Self.redirectURIs.count && t.expiresAt < Date() {
                 Keychain.set(nil, for: tokenKey); throw TraktError.notLoggedIn
             }
         }

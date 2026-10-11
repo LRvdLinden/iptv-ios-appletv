@@ -18,7 +18,7 @@ struct ConnectionsSetupView: View {
 
     private let traktURL = "https://trakt.tv/oauth/applications/new"
     private let osURL = "https://www.opensubtitles.com/consumers"
-    private let redirect = "urn:ietf:wg:oauth:2.0:oob"
+    private let redirect = TraktClient.redirectURIs[0]
 
     var body: some View {
         NavigationStack {
