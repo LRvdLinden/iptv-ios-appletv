@@ -109,6 +109,9 @@ struct SettingsView: View {
                     }
                 }
                 Button { editing = s } label: { Label(L("Edit (name, avatar, details)"), systemImage: "pencil") }
+                NavigationLink { CategoriesView() } label: {
+                    Label(L("Categories on/off (NL, BE, DE…)"), systemImage: "line.3.horizontal.decrease.circle")
+                }
                 NavigationLink { ManageView() } label: {
                     Label(L("Manage groups and channels"), systemImage: "slider.horizontal.below.rectangle")
                 }
@@ -277,6 +280,9 @@ struct SettingsView: View {
                 Text(L("Series")).tag(3)
             }
             .pickerStyle(.menu)
+            NavigationLink { CategoriesView() } label: {
+                Label(L("Categories on/off (NL, BE, DE…)"), systemImage: "line.3.horizontal.decrease.circle")
+            }
             Toggle(L("Show Live TV"), isOn: $showLive)
             Toggle(L("Show Movies"), isOn: $showMovies)
             Toggle(L("Show Series"), isOn: $showSeries)

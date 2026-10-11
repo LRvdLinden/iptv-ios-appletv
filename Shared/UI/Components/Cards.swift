@@ -94,16 +94,57 @@ struct Top10Card: View {
     let title: String
     let poster: URL?
     var watched = false
+    /// Rood label onderaan de poster, bijv. "Onlangs toegevoegd"
+    var badge: String? = nil
+
+    private var w: CGFloat { Theme.posterWidth * 1.08 }
+    private var h: CGFloat { w * 1.5 }
+
     var body: some View {
-        HStack(spacing: -tvScaled(22)) {
-            Text("\(rank)")
-                .font(.system(size: tvScaled(150), weight: .black))
-                .foregroundStyle(LinearGradient(colors: [Color(hex: 0x4A4A4A), Color(hex: 0x111111)],
-                                                startPoint: .top, endPoint: .bottom))
-                .shadow(color: .white.opacity(0.55), radius: 0.8)
-                .frame(width: tvScaled(rank >= 10 ? 130 : 80), alignment: .trailing)
-            PosterCard(title: title, poster: poster, watched: watched)
+        HStack(alignment: .bottom, spacing: -h * 0.16) {
+            OutlinedNumber(text: "\(rank)", size: h * 0.86)
+                .frame(width: rank >= 10 ? h * 0.78 : h * 0.46, height: h, alignment: .trailing)
+            ZStack(alignment: .topLeading) {
+                PosterCard(title: title, poster: poster, watched: watched, badge: badge, width: w)
+                Top10Badge().padding(tvScaled(5))
+            }
+            .shadow(color: .black.opacity(0.6), radius: 8, x: -4)
         }
+    }
+}
+
+/// Grote zwarte cijfers met grijze rand, zoals de Netflix Top 10.
+struct OutlinedNumber: View {
+    let text: String
+    let size: CGFloat
+    var body: some View {
+        let font = Font.system(size: size, weight: .heavy, design: .default)
+        let stroke = max(1.5, size / 70)
+        ZStack {
+            ForEach(0..<16, id: \.self) { i in
+                let a = Double(i) / 16 * 2 * .pi
+                Text(text).font(font).foregroundStyle(Color(hex: 0x8C8C8C))
+                    .offset(x: cos(a) * stroke, y: sin(a) * stroke)
+            }
+            Text(text).font(font).foregroundStyle(Color.black)
+        }
+        .kerning(-size * 0.06)
+        .lineLimit(1)
+        .fixedSize()
+        .offset(y: size * 0.12)
+    }
+}
+
+/// Klein "TOP 10"-labeltje linksboven op de poster.
+struct Top10Badge: View {
+    var body: some View {
+        VStack(spacing: -tvScaled(2)) {
+            Text("TOP").font(.system(size: tvScaled(6.5), weight: .heavy))
+            Text("10").font(.system(size: tvScaled(11), weight: .black))
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, tvScaled(3)).padding(.vertical, tvScaled(2))
+        .background(Theme.red, in: RoundedRectangle(cornerRadius: 2))
     }
 }
 

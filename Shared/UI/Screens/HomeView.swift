@@ -58,26 +58,28 @@ struct HomeView: View {
     // MARK: rijen
 
     @ViewBuilder private var rows: some View {
-        if filter != .series {
-            let mine = lib.movies.filter { m in pid.map { store.inMyList($0, m.id) } ?? false }
-            if !mine.isEmpty { movieRow(L("My List"), mine, all: mine) }
-            if !trendingMovies.isEmpty { top10Row(L("Top 10 movies today"), movies: Array(trendingMovies.prefix(10))) }
-            let recent = lib.movies.filter { $0.addedAt != nil }.sorted { $0.addedAt! > $1.addedAt! }.prefix(30)
-            if !recent.isEmpty {
-                movieRow(L("Recently added"), Array(recent), all: lib.movies.filter { $0.addedAt != nil }.sorted { $0.addedAt! > $1.addedAt! })
-            }
-            // onder Onlangs toegevoegd: Verder kijken, daaronder Voor jou
+        let top10Movies = trendingMovies.isEmpty ? nil : top10Row(L("Top 10 movies today"), movies: Array(trendingMovies.prefix(10)))
+        let top10Series = trendingSeries.isEmpty ? nil : top10Row(L("Top 10 series today"), series: Array(trendingSeries.prefix(10)))
+        switch filter {
+        case .all:
+            myListRows
+            recentRow
             continueRow
             forYouRow
-        }
-        if filter != .movies {
-            let mine = lib.series.filter { s in pid.map { store.inMyList($0, s.id) } ?? false }
-            if !mine.isEmpty && filter == .series { seriesRow(L("My List"), mine, all: mine) }
-            if !trendingSeries.isEmpty { top10Row(L("Top 10 series today"), series: Array(trendingSeries.prefix(10))) }
-            if filter == .series {
-                continueRow
-                forYouRow
-            }
+            // zoals Netflix: onder Voor jou de Top 10 series, daarna de films
+            if let top10Series { top10Series }
+            if let top10Movies { top10Movies }
+        case .movies:
+            myListRows
+            recentRow
+            continueRow
+            forYouRow
+            if let top10Movies { top10Movies }
+        case .series:
+            myListRows
+            continueRow
+            forYouRow
+            if let top10Series { top10Series }
         }
 
         if filter == .all {
@@ -114,6 +116,22 @@ struct HomeView: View {
             }
             .frame(maxWidth: .infinity).padding(.top, 60)
         }
+    }
+
+    @ViewBuilder private var myListRows: some View {
+        if filter != .series {
+            let mine = lib.movies.filter { m in pid.map { store.inMyList($0, m.id) } ?? false }
+            if !mine.isEmpty { movieRow(L("My List"), mine, all: mine) }
+        }
+        if filter == .series {
+            let mine = lib.series.filter { s in pid.map { store.inMyList($0, s.id) } ?? false }
+            if !mine.isEmpty { seriesRow(L("My List"), mine, all: mine) }
+        }
+    }
+
+    @ViewBuilder private var recentRow: some View {
+        let all = lib.movies.filter { $0.addedAt != nil }.sorted { $0.addedAt! > $1.addedAt! }
+        if !all.isEmpty { movieRow(L("Recently added"), Array(all.prefix(30)), all: all) }
     }
 
     @ViewBuilder private var continueRow: some View {
@@ -199,7 +217,8 @@ struct HomeView: View {
             ForEach(Array(movies.enumerated()), id: \.element.id) { i, m in
                 Button { detail = .movie(m) } label: {
                     Top10Card(rank: i + 1, title: m.title, poster: m.poster,
-                              watched: Playables.isWatched(movie: m, imdb: trakt.imdb(for: m)))
+                              watched: Playables.isWatched(movie: m, imdb: trakt.imdb(for: m)),
+                              badge: (m.addedAt ?? .distantPast) > Date().addingTimeInterval(-14 * 86400) ? L("Recently added") : nil)
                 }.cardButton()
             }
             ForEach(Array(series.enumerated()), id: \.element.id) { i, s in
