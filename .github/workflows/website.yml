@@ -37,17 +37,21 @@ jobs:
             echo "::warning::FTP-secrets ontbreken (FTP_SERVER, FTP_USERNAME, FTP_PASSWORD) — website niet geüpload."
             exit 0
           fi
-          base="set ftp:ssl-force true; set ftp:ssl-protect-data true; set ssl:verify-certificate no; set net:max-retries 2; set net:timeout 20"
-
-          # werkende gebruikersnaam vinden
-          USER_OK=""
-          for u in "$FTP_USERNAME" "${FTP_USERNAME_ALT:-}"; do
-            [ -z "$u" ] && continue
-            if lftp -e "$base; open -u \"$u\",\"$FTP_PASSWORD\" \"$FTP_SERVER\"; cls -1 / > /tmp/root.txt; bye" >/dev/null 2>&1; then
-              USER_OK="$u"; break
-            fi
+          common="set cmd:fail-exit true; set net:max-retries 1; set net:timeout 20; set ssl:verify-certificate no; set ftp:passive-mode true"
+          # eerst expliciete FTPS (versleuteld), daarna gewone FTP als de server geen TLS kent
+          USER_OK=""; base=""
+          for mode in "set ftp:ssl-force true; set ftp:ssl-protect-data true" "set ftp:ssl-allow false"; do
+            for u in "$FTP_USERNAME" "${FTP_USERNAME_ALT:-}"; do
+              [ -z "$u" ] && continue
+              echo "Proberen: gebruiker '${u}', modus: ${mode}"
+              if lftp -e "$common; $mode; open -u \"$u\",\"$FTP_PASSWORD\" \"$FTP_SERVER\"; cls -1 > /tmp/root.txt; bye" 2>/tmp/err.txt; then
+                USER_OK="$u"; base="$common; $mode"; break 2
+              fi
+              sed 's/PASS .*/PASS ***/' /tmp/err.txt | tail -3
+            done
           done
-          [ -n "$USER_OK" ] || { echo "::error::Inloggen op $FTP_SERVER mislukt met de opgegeven gebruikersnamen."; exit 1; }
+          [ -n "$USER_OK" ] || { echo "::error::Inloggen op de FTP-server mislukt met de opgegeven gebruikersnamen."; exit 1; }
+          [[ "$base" == *"ssl-allow false"* ]] && echo "::warning::Server ondersteunt geen FTPS; upload gaat via gewone FTP."
           echo "Ingelogd. Inhoud van de hoofdmap:"; cat /tmp/root.txt
 
           # doelmap: FTP_DIR, anders de gebruikelijke webmappen, anders de hoofdmap
@@ -56,13 +60,13 @@ jobs:
             for d in public_html httpdocs www htdocs web domains/bingr.online/public_html domains/bingr.online/public_html; do
               top="${d%%/*}"
               if grep -qx "/\?$top/\?" /tmp/root.txt; then
-                if [ "$d" = "$top" ] || lftp -e "$base; open -u \"$USER_OK\",\"$FTP_PASSWORD\" \"$FTP_SERVER\"; cls -1 /$d/ ; bye" >/dev/null 2>&1; then
-                  TARGET="/$d"; break
+                if [ "$d" = "$top" ] || lftp -e "$base; open -u \"$USER_OK\",\"$FTP_PASSWORD\" \"$FTP_SERVER\"; cls -1 $d/ ; bye" >/dev/null 2>&1; then
+                  TARGET="$d"; break
                 fi
               fi
             done
           fi
-          TARGET="${TARGET:-/}"
+          TARGET="${TARGET:-.}"
           echo "Uploaden naar: $TARGET"
 
           lftp -e "$base; open -u \"$USER_OK\",\"$FTP_PASSWORD\" \"$FTP_SERVER\"; mirror -R --verbose --parallel=4 --only-newer --exclude-glob .DS_Store website/ \"$TARGET\"; bye"
