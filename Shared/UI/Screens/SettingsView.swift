@@ -37,6 +37,9 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             List {
+                Section { MyBingrHeader() }
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
                 playlistSection
                 if isMain {
                     serverSection

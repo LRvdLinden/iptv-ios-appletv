@@ -1,0 +1,108 @@
+import SwiftUI
+
+/// Bovenkant van Mijn Bingr, zoals "Mijn Netflix": je profiel, en daaronder Verder kijken en Mijn lijst.
+struct MyBingrHeader: View {
+    @EnvironmentObject var app: AppState
+    @EnvironmentObject var store: CloudStore
+    @EnvironmentObject var playlists: PlaylistService
+    @EnvironmentObject var trakt: TraktSync
+    @State private var detail: DetailTarget?
+
+    private var lib: Library { playlists.library }
+    private var pid: UUID? { playlists.source?.id }
+
+    /// Verder kijken van dít profiel (films + series met voortgang), nieuwste eerst.
+    private var continueItems: [(target: DetailTarget, fraction: Double)] {
+        let movies = Dictionary(lib.movies.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        let seriesByTitle = Dictionary(lib.series.map { ($0.title, $0) }, uniquingKeysWith: { a, _ in a })
+        var seen = Set<String>()
+        return store.progress
+            .filter { store.belongsToActive($0.value.profileID) }
+            .sorted { $0.value.updated > $1.value.updated }
+            .compactMap { key, e -> (DetailTarget, Double)? in
+                let t: DetailTarget? = movies[key].map { .movie($0) } ?? seriesByTitle[e.title].map { .series($0) }
+                guard let t, seen.insert(t.id).inserted else { return nil }
+                return (t, e.fraction)
+            }
+            .prefix(20).map { $0 }
+    }
+
+    private var myListItems: [DetailTarget] {
+        guard let pid else { return [] }
+        return lib.movies.filter { store.inMyList(pid, $0.id) }.map { .movie($0) }
+            + lib.series.filter { store.inMyList(pid, $0.id) }.map { .series($0) }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: tvScaled(18)) {
+            VStack(spacing: tvScaled(8)) {
+                ProfileAvatar(size: tvScaled(84))
+                Button { app.switchPlaylist() } label: {
+                    HStack(spacing: 6) {
+                        Text(store.activeProfile?.name ?? L("My Bingr")).font(.system(size: tvScaled(20), weight: .bold))
+                        Image(systemName: "chevron.down").font(.system(size: tvScaled(13), weight: .bold))
+                    }
+                    .foregroundStyle(.white)
+                }
+                .plainTVButton()
+                .accessibilityLabel(L("Switch profile"))
+            }
+            .frame(maxWidth: .infinity)
+
+            if !continueItems.isEmpty {
+                row(L("Continue watching"), continueItems.map { ($0.target, $0.fraction) })
+            }
+            row(L("My List"), myListItems.map { ($0, nil) }, empty: L("Add titles with + My List and they'll appear here."))
+        }
+        .padding(.vertical, tvScaled(8))
+        #if os(iOS)
+        .sheet(item: $detail) { DetailView(target: $0).presentationDragIndicator(.visible) }
+        #else
+        .fullScreenCover(item: $detail) { DetailView(target: $0) }
+        #endif
+    }
+
+    @ViewBuilder private func row(_ title: String, _ items: [(DetailTarget, Double?)], empty: String? = nil) -> some View {
+        VStack(alignment: .leading, spacing: tvScaled(8)) {
+            Text(title).font(Theme.titleFont).foregroundStyle(.white)
+            if items.isEmpty, let empty {
+                Text(empty).font(.system(size: tvScaled(13))).foregroundStyle(Theme.secondary)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(spacing: Theme.rowSpacing) {
+                        ForEach(Array(items.enumerated()), id: \.offset) { _, pair in
+                            let (t, fraction) = pair
+                            Button { detail = t } label: {
+                                switch t {
+                                case .movie(let m):
+                                    PosterCard(title: m.title, poster: m.poster, imdbID: trakt.imdb(for: m), progress: fraction)
+                                case .series(let s):
+                                    PosterCard(title: s.title, poster: s.poster, imdbID: trakt.imdb(for: s), progress: fraction)
+                                }
+                            }
+                            .cardButton()
+                        }
+                    }
+                    #if os(tvOS)
+                    .padding(.vertical, 20)
+                    #endif
+                }
+            }
+        }
+    }
+}
+
+#if os(iOS)
+/// Tabbladicoon "Mijn Bingr": de profielfoto (rond), zoals bij Netflix.
+enum ProfileTabIcon {
+    static func image(_ store: CloudStore) -> UIImage? {
+        guard let p = store.activeProfile, let d = store.photos[p.id], let img = UIImage(data: d) else { return nil }
+        let size = CGSize(width: 26, height: 26)
+        let out = UIGraphicsImageRenderer(size: size).image { _ in
+            UIBezierPath(ovalIn: CGRect(origin: .zero, size: size)).addClip()
+            img.draw(in: CGRect(origin: .zero, size: size))
+        }
+        return out.withRenderingMode(.alwaysOriginal)
+    }
+}
+#endif

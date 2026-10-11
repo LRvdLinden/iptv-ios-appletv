@@ -297,7 +297,8 @@ final class PlayerController: ObservableObject {
         let it = item
         CloudStore.shared.addHistory(HistoryEntry(itemID: it.channelID ?? it.id, playlistID: CloudStore.shared.activePlaylistID,
                                                   title: it.title, subtitle: it.subtitle, artwork: it.artwork,
-                                                  type: it.type, channelID: it.channelID, date: Date()))
+                                                  type: it.type, channelID: it.channelID, date: Date(),
+                                                  profileID: CloudStore.shared.activeProfileID))
     }
 
     private func saveProgress() {
@@ -309,7 +310,8 @@ final class PlayerController: ObservableObject {
             store.setLocalWatched(item.id, true)
         } else if position > 0.02 {
             store.setProgress(item.id, ProgressEntry(fraction: position, position: currentTime, updated: Date(),
-                                                     title: item.title, artwork: item.artwork, playlistID: store.activePlaylistID))
+                                                     title: item.title, artwork: item.artwork, playlistID: store.activePlaylistID,
+                                                     profileID: store.activeProfileID))
         }
     }
 

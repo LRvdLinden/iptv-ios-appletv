@@ -11,6 +11,18 @@ struct MainTabView: View {
     @AppStorage("ui.showMovies") private var showMovies = true
     @AppStorage("ui.showSeries") private var showSeries = true
 
+    @ViewBuilder private var myBingrTab: some View {
+        #if os(iOS)
+        if let img = ProfileTabIcon.image(CloudStore.shared) {
+            Label { Text(L("My Bingr")) } icon: { Image(uiImage: img) }
+        } else {
+            Label(L("My Bingr"), systemImage: "person.crop.circle")
+        }
+        #else
+        Label(CloudStore.shared.activeProfile?.name ?? L("My Bingr"), systemImage: "person.crop.circle")
+        #endif
+    }
+
     private static var isPhone: Bool {
         #if os(iOS)
         UIDevice.current.userInterfaceIdiom == .phone
@@ -44,7 +56,7 @@ struct MainTabView: View {
                         .tabItem { Label(L("Search"), systemImage: "magnifyingglass") }
                 }
                 SettingsView().tag(5)
-                    .tabItem { Label(L("My Bingr"), systemImage: "person.crop.circle") }
+                    .tabItem { myBingrTab }
             }
             #if os(iOS)
             .toolbarBackground(.black.opacity(0.92), for: .tabBar)

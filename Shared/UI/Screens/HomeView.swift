@@ -254,6 +254,7 @@ struct HomeView: View {
     private var continueWatching: [ContinueItem] {
         let movieIDs = Set(lib.movies.map(\.id))
         var out: [ContinueItem] = store.progress.compactMap { key, e in
+            guard store.belongsToActive(e.profileID) else { return nil }   // alleen van dit profiel
             let isMovie = movieIDs.contains(key)
             if !isMovie && !key.hasPrefix("xe") && !key.hasPrefix("jfe") && !key.hasPrefix("pxe") && !key.hasPrefix("se")
                 && !lib.series.contains(where: { s in s.episodes.contains { $0.id == key } }) { return nil }

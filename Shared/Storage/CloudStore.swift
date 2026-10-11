@@ -8,6 +8,8 @@ struct ProgressEntry: Codable, Hashable {
     var title: String
     var artwork: URL?
     var playlistID: UUID?
+    /// Van welk kijkprofiel (nil = van vóór de profielen → hoort bij het hoofdaccount)
+    var profileID: UUID? = nil
 }
 
 /// Alles wat tussen iPhone/iPad en Apple TV gedeeld wordt, via iCloud Key-Value Store.
@@ -321,7 +323,16 @@ final class CloudStore: ObservableObject {
         history.removeAll { $0.playlistID == playlist }
         write(history, pk(K.history))
     }
-    func history(for playlist: UUID?) -> [HistoryEntry] { history.filter { $0.playlistID == playlist } }
+    /// Kijkgeschiedenis van het actieve profiel (en de server).
+    func history(for playlist: UUID?) -> [HistoryEntry] {
+        history.filter { $0.playlistID == playlist && belongsToActive($0.profileID) }
+    }
+    /// Hoort een opgeslagen item bij het actieve profiel? Oude items zonder profiel horen bij het hoofdaccount.
+    func belongsToActive(_ profile: UUID?) -> Bool {
+        guard let active = activeProfileID else { return true }
+        if let profile { return profile == active }
+        return active == mainProfileID
+    }
 
     // MARK: herinneringen
 
@@ -348,6 +359,8 @@ struct HistoryEntry: Codable, Hashable, Identifiable {
     var type: MediaType
     var channelID: String?
     var date: Date
+    /// Van welk kijkprofiel (nil = van vóór de profielen → hoort bij het hoofdaccount)
+    var profileID: UUID? = nil
 }
 
 /// Aanpassingen van de gebruiker op een afspeellijst (gesynchroniseerd via iCloud).
