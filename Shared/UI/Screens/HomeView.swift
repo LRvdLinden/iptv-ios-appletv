@@ -309,39 +309,54 @@ struct HomeView: View {
 
     private func prepare() async {
         guard !lib.movies.isEmpty || !lib.series.isEmpty else { hero = nil; return }
-        // meteen een eerste "Voor jou" uit je eigen kijkgedrag, daarna verfijnen via Trakt
-        if forYou.isEmpty { forYou = await buildForYou(useNetwork: false) }
-        // Trending op Trakt koppelen aan wat in jouw afspeellijst zit
-        // Top 10: trending vandaag (TMDB in jouw taal + Trakt) gekoppeld aan je afspeellijst;
-        // lukt dat niet, dan de best beoordeelde/nieuwste titels uit je eigen lijst, zodat de rij er altijd is.
-        if filter != .series, trendingMovies.count < 5 {
-            let found = match(await trendingCandidates(shows: false), in: lib.movies, title: \.title, year: \.year)
-            trendingMovies = found.count >= 5 ? found : found + localTop(lib.movies, rating: \.rating, added: \.addedAt, poster: \.poster)
-                .filter { m in !found.contains { $0.id == m.id } }
+        let key = "\(pid?.uuidString ?? "")-\(lib.movies.count)-\(lib.series.count)"
+        // 1. meteen iets laten zien: billboard en Top 10 uit de cache van vandaag (of je eigen lijst)
+        if hero == nil { withAnimation(.easeInOut(duration: 0.4)) { hero = quickHero() } }
+        let matcher = await MatcherCache.shared.matcher(for: lib, key: key)   // op de achtergrond gebouwd
+        applyTrending(matcher, movies: TrendingStore.cached(shows: false), series: TrendingStore.cached(shows: true))
+        if forYou.isEmpty { forYou = await buildForYou(useNetwork: false, matcher: matcher) }
+
+        // 2. daarna pas het netwerk (gedeeld door alle tabbladen, 6 uur bewaard)
+        async let mv = TrendingStore.shared.get(shows: false)
+        async let sv = TrendingStore.shared.get(shows: true)
+        let (m, s) = await (mv, sv)
+        applyTrending(matcher, movies: m, series: s)
+        forYou = await buildForYou(useNetwork: true, matcher: matcher)
+    }
+
+    /// Billboard zonder te wachten: iets uit de Top 10-cache, anders willekeurig met poster.
+    private func quickHero() -> DetailTarget? {
+        switch filter {
+        case .series: return (trendingSeries.first ?? lib.series.filter { $0.poster != nil }.randomElement()).map { .series($0) }
+        case .movies: return (trendingMovies.first ?? lib.movies.filter { $0.poster != nil }.randomElement()).map { .movie($0) }
+        case .all:
+            if let m = trendingMovies.randomElement() ?? lib.movies.filter({ $0.poster != nil }).randomElement() { return .movie(m) }
+            return lib.series.randomElement().map { .series($0) }
         }
-        if filter != .movies, trendingSeries.count < 5 {
-            let found = match(await trendingCandidates(shows: true), in: lib.series, title: \.title, year: \.year)
-            trendingSeries = found.count >= 5 ? found : found + localTop(lib.series, rating: \.rating, added: nil, poster: \.poster)
-                .filter { s in !found.contains { $0.id == s.id } }
-        }
-        forYou = await buildForYou()
-        // hero: liefst iets trending, anders willekeurig met een poster
-        let candidate: DetailTarget? = {
-            switch filter {
-            case .series: return (trendingSeries.first ?? lib.series.filter { $0.poster != nil }.randomElement()).map { .series($0) }
-            case .movies: return (trendingMovies.first ?? lib.movies.filter { $0.poster != nil }.randomElement()).map { .movie($0) }
-            case .all:
-                if let m = trendingMovies.randomElement() { return .movie(m) }
-                if let m = lib.movies.filter({ $0.poster != nil }).randomElement() { return .movie(m) }
-                return lib.series.randomElement().map { .series($0) }
+    }
+
+    /// Top 10: trending gekoppeld aan je lijst; te weinig treffers → aanvullen met je best beoordeelde/nieuwste titels.
+    private func applyTrending(_ matcher: TitleMatcher, movies: [ExternalTitle], series: [ExternalTitle]) {
+        if filter != .series {
+            let found = matcher.movies(movies)
+            if found.count >= 5 || trendingMovies.isEmpty {
+                trendingMovies = found.count >= 5 ? found : found + localTop(lib.movies, rating: \.rating, added: \.addedAt, poster: \.poster)
+                    .filter { m in !found.contains { $0.id == m.id } }
             }
-        }()
-        withAnimation(.easeInOut(duration: 0.5)) { hero = candidate }
+        }
+        if filter != .movies {
+            let found = matcher.series(series)
+            if found.count >= 5 || trendingSeries.isEmpty {
+                trendingSeries = found.count >= 5 ? found : found + localTop(lib.series, rating: \.rating, added: nil, poster: \.poster)
+                    .filter { s in !found.contains { $0.id == s.id } }
+            }
+        }
     }
 
     /// "Voor jou": Trakt-aanbevelingen die in je lijst staan, aangevuld met
     /// onbekeken titels uit de groepen waar je het meest kijkt, en trending.
-    private func buildForYou(useNetwork: Bool = true) async -> [DetailTarget] {
+    private func buildForYou(useNetwork: Bool = true, matcher: TitleMatcher) async -> [DetailTarget] {
+        func ext(_ l: [TraktSync.TraktMedia]) -> [ExternalTitle] { l.compactMap { t in t.title.map { ExternalTitle(titles: [$0], year: t.year) } } }
         var out: [DetailTarget] = []
         var seen = Set<String>()
         func add(_ t: DetailTarget) {
@@ -355,8 +370,9 @@ struct HomeView: View {
         // 1. vergelijkbaar met wat je (half) gekeken hebt
         var seeds: [(imdb: String, show: Bool)] = []
         let recentKeys = store.progress.sorted { $0.value.updated > $1.value.updated }.map(\.key)
+        let movieByID = Dictionary(lib.movies.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         for k in recentKeys {
-            if let m = lib.movies.first(where: { $0.id == k }), let i = trakt.imdb(for: m) { seeds.append((i, false)) }
+            if let m = movieByID[k], let i = trakt.imdb(for: m) { seeds.append((i, false)) }
             else if let se = lib.series.first(where: { $0.title == store.progress[k]?.title }), let i = trakt.imdb(for: se) { seeds.append((i, true)) }
             if seeds.count >= 4 { break }
         }
@@ -367,25 +383,28 @@ struct HomeView: View {
         var seenSeeds = Set<String>()
         for seed in seeds where useNetwork && seenSeeds.insert(seed.imdb).inserted {
             let rel = await trakt.related(imdb: seed.imdb, shows: seed.show)
-            if seed.show { match(rel, in: lib.series, title: \.title, year: \.year).prefix(6).forEach { add(.series($0)) } }
-            else { match(rel, in: lib.movies, title: \.title, year: \.year).prefix(6).forEach { add(.movie($0)) } }
+            if seed.show { matcher.series(ext(rel), limit: 6).forEach { add(.series($0)) } }
+            else { matcher.movies(ext(rel), limit: 6).forEach { add(.movie($0)) } }
         }
 
         // 2. persoonlijke Trakt-aanbevelingen
         let rmList = useNetwork ? await trakt.recommendations(shows: false) : []
         let rsList = useNetwork ? await trakt.recommendations(shows: true) : []
-        let recMovies = match(rmList, in: lib.movies, title: \.title, year: \.year)
-        let recSeries = match(rsList, in: lib.series, title: \.title, year: \.year)
+        let recMovies = matcher.movies(ext(rmList), limit: 40)
+        let recSeries = matcher.series(ext(rsList), limit: 40)
         for (a, b) in zip(recMovies.prefix(15), recSeries.prefix(15)) { add(.movie(a)); add(.series(b)) }
         recMovies.dropFirst(15).prefix(5).forEach { add(.movie($0)) }
         recSeries.dropFirst(15).prefix(5).forEach { add(.series($0)) }
 
         // groepen waar je in kijkt (voortgang, Mijn lijst, bekeken)
         var groupScore: [String: Int] = [:]
-        for m in lib.movies where store.progress[m.id] != nil || Playables.isWatched(movie: m, imdb: trakt.imdb(for: m))
-            || (pid.map { store.inMyList($0, m.id) } ?? false) { groupScore[m.group, default: 0] += 1 }
-        for s in lib.series where trakt.watchedCount(show: trakt.imdb(for: s)) > 0
-            || (pid.map { store.inMyList($0, s.id) } ?? false) { groupScore[s.group, default: 0] += 2 }
+        // alleen titels met voortgang, in Mijn lijst of lokaal bekeken (snel, zonder de hele lijst door te lopen)
+        let keys = Set(store.progress.keys).union(store.localWatched)
+        for k in keys { if let m = movieByID[k] { groupScore[m.group, default: 0] += 1 } }
+        if let pid {
+            for m in lib.movies where store.inMyList(pid, m.id) { groupScore[m.group, default: 0] += 1 }
+            for s in lib.series where store.inMyList(pid, s.id) { groupScore[s.group, default: 0] += 2 }
+        }
         let topGroups = groupScore.sorted { $0.value > $1.value }.prefix(4).map(\.key)
         for g in topGroups {
             lib.movies.filter { $0.group == g }.shuffled().prefix(5).forEach { add(.movie($0)) }
@@ -398,43 +417,6 @@ struct HomeView: View {
             lib.series.filter { $0.poster != nil }.shuffled().prefix(6).forEach { add(.series($0)) }
         }
         return Array(out.prefix(30))
-    }
-
-    /// Trending-titels uit TMDB (eerst, in de app-taal) en Trakt.
-    private func trendingCandidates(shows: Bool) async -> [(titles: [String], year: Int?)] {
-        let a = await TMDB.trending(shows: shows)
-        let b = await trakt.trending(shows: shows)
-        return a + b.compactMap { t in t.title.map { ([$0], t.year) } }
-    }
-
-    private func match<T: Identifiable>(_ list: [TraktSync.TraktMedia], in items: [T],
-                                        title: KeyPath<T, String>, year: KeyPath<T, Int?>) -> [T] {
-        match(list.compactMap { t in t.title.map { (titles: [$0], year: t.year) } }, in: items, title: title, year: year, limit: 100)
-    }
-
-    /// Koppelt trending-titels aan je afspeellijst. Labels als "NL |", "(2024)" of "4K" tellen niet mee.
-    private func match<T: Identifiable>(_ trending: [(titles: [String], year: Int?)], in items: [T],
-                                        title: KeyPath<T, String>, year: KeyPath<T, Int?>, limit: Int = 10) -> [T] {
-        var byKey: [String: T] = [:]
-        for i in items {
-            let parsed = TitleCleaner.parse(i[keyPath: title])
-            for n in Set([TraktSync.TitleIndex.norm(parsed.title), TraktSync.TitleIndex.norm(i[keyPath: title])]) where n.count > 1 {
-                if byKey[n] == nil { byKey[n] = i }
-                if let y = i[keyPath: year] ?? parsed.year { byKey["\(n)|\(y)"] = i }
-            }
-        }
-        var out: [T] = [], seen = Set<AnyHashable>()
-        for t in trending {
-            for title in t.titles {
-                let n = TraktSync.TitleIndex.norm(title)
-                if let hit = t.year.flatMap({ byKey["\(n)|\($0)"] }) ?? byKey[n] {
-                    if seen.insert(AnyHashable(hit.id)).inserted { out.append(hit) }
-                    break
-                }
-            }
-            if out.count >= limit { break }
-        }
-        return out
     }
 
     /// Eigen Top 10 als er (nog) geen trending-gegevens zijn: hoogste score, dan nieuwste, met poster.

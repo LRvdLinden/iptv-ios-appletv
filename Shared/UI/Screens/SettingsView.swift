@@ -171,7 +171,7 @@ struct SettingsView: View {
             }
             Picker(L("Default language"), selection: $subs.defaultLanguage) {
                 Text(L("All languages")).tag("")
-                ForEach(TrackPreferences.sortedCodes, id: \.self) { Text(TrackPreferences.name($0)).tag($0) }
+                ForEach(TrackPreferences.sortedCodes, id: \.self) { Text(TrackPreferences.label($0)).tag($0) }
             }
             .pickerStyle(.menu)
             Toggle(L("Load subtitles automatically when playing"), isOn: $autoSubtitles)
@@ -209,13 +209,13 @@ struct SettingsView: View {
             .pickerStyle(.menu)
             Picker(L("Default audio language"), selection: $audioLanguage) {
                 Text(L("As in the stream")).tag("")
-                ForEach(TrackPreferences.sortedCodes, id: \.self) { Text(TrackPreferences.name($0)).tag($0) }
+                ForEach(TrackPreferences.sortedCodes, id: \.self) { Text(TrackPreferences.label($0)).tag($0) }
             }
             .pickerStyle(.menu)
             Picker(L("Default subtitle language"), selection: $subtitleLanguage) {
                 Text(L("As in the stream")).tag("")
                 Text(L("Off")).tag("off")
-                ForEach(TrackPreferences.sortedCodes, id: \.self) { Text(TrackPreferences.name($0)).tag($0) }
+                ForEach(TrackPreferences.sortedCodes, id: \.self) { Text(TrackPreferences.label($0)).tag($0) }
             }
             .pickerStyle(.menu)
         } header: { Text(L("Player")) } footer: {

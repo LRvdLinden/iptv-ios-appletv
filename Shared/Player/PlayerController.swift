@@ -125,7 +125,7 @@ final class PlayerController: ObservableObject {
         if let av = engine as? AVEngine, isLive, timeshiftStart == nil { behindLive = av.behindLive > 8 ? av.behindLive : 0 }
 
         if !externalCues.isEmpty {
-            let t = currentTime
+            let t = currentTime - subtitleDelay
             subtitleText = externalCues.last(where: { $0.start <= t })
                 .flatMap { $0.end >= t ? $0.text : nil }
         }
@@ -340,21 +340,30 @@ final class PlayerController: ObservableObject {
     var subtitleTracks: [MediaTrack] { engine.subtitleTracks }
     var currentAudio: String? { engine.currentAudio }
     var currentSubtitle: String? { externalCues.isEmpty ? engine.currentSubtitle : "ext" }
-    var hasExternalSubtitle: Bool { !externalCues.isEmpty }
+    var hasExternalSubtitle: Bool { !externalCues.isEmpty || externalSubtitleName != nil }
+    /// Naam van de laatst ingeladen OpenSubtitles-ondertitel (met vlag)
+    @Published private(set) var externalSubtitleName: String?
+    /// Verschuiving van de ondertitels in seconden (+ = later tonen)
+    @Published var subtitleDelay: Double = 0 { didSet { engine.setSubtitleDelay(subtitleDelay) } }
 
     func selectAudio(_ t: MediaTrack) { engine.selectAudio(t); objectWillChange.send() }
     func selectSubtitle(_ t: MediaTrack?) {
-        externalCues = []; subtitleText = nil
+        externalCues = []; subtitleText = nil; externalSubtitleName = nil
         engine.selectSubtitle(t); objectWillChange.send()
     }
 
-    func addSubtitle(file: URL) {
+    func addSubtitle(file: URL, name: String? = nil) {
+        // altijd als UTF-8 aanbieden (OpenSubtitles levert soms Windows-1252/Latin-1 → rare tekens)
+        let utf8 = SRT.normalizedFile(file) ?? file
         if engine.supportsExternalSubtitles {
-            engine.addSubtitle(file)
-        } else if let d = try? Data(contentsOf: file) {
+            engine.addSubtitle(utf8)
+        } else if let d = try? Data(contentsOf: utf8) {
             engine.selectSubtitle(nil)
             externalCues = SRT.parse(d)
+            subtitleText = nil
         }
+        externalSubtitleName = name ?? file.deletingPathExtension().lastPathComponent
+        engine.setSubtitleDelay(subtitleDelay)
         objectWillChange.send()
     }
 

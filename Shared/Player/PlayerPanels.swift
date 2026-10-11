@@ -11,20 +11,48 @@ struct TracksPanel: View {
                 Section(L("Audio")) {
                     if player.audioTracks.isEmpty { Text(L("No alternative audio tracks")).foregroundStyle(Theme.secondary) }
                     ForEach(player.audioTracks) { t in
-                        row(t.name, selected: t.id == player.currentAudio) { player.selectAudio(t) }
+                        row(Self.flagged(t), selected: t.id == player.currentAudio) { player.selectAudio(t) }
                     }
                 }
                 Section(L("Subtitles")) {
                     row(L("Off"), selected: player.currentSubtitle == nil) { player.selectSubtitle(nil) }
-                    if player.hasExternalSubtitle { row("OpenSubtitles", selected: true) {} }
-                    ForEach(player.subtitleTracks) { t in
-                        row(t.name, selected: t.id == player.currentSubtitle) { player.selectSubtitle(t) }
+                    if let ext = player.externalSubtitleName, player.hasExternalSubtitle {
+                        row("OpenSubtitles · \(ext)", selected: true) {}
                     }
+                    ForEach(player.subtitleTracks) { t in
+                        row(Self.flagged(t), selected: t.id == player.currentSubtitle) { player.selectSubtitle(t) }
+                    }
+                }
+                Section {
+                    HStack {
+                        Button { player.subtitleDelay -= 0.5 } label: { Image(systemName: "minus.circle.fill") }
+                        Spacer()
+                        Text(player.subtitleDelay == 0 ? L("In sync") : String(format: "%+.1f s", player.subtitleDelay))
+                            .monospacedDigit()
+                        Spacer()
+                        Button { player.subtitleDelay += 0.5 } label: { Image(systemName: "plus.circle.fill") }
+                    }
+                    .font(.system(size: tvScaled(20)))
+                    #if os(iOS)
+                    .buttonStyle(.borderless)
+                    #endif
+                    if player.subtitleDelay != 0 { Button(L("Reset")) { player.subtitleDelay = 0 } }
+                } header: { Text(L("Subtitle timing")) } footer: {
+                    Text(L("Subtitles too early or too late? Shift them in steps of half a second."))
                 }
             }
             .navigationTitle(L("Audio & subtitles"))
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button(L("Done")) { dismiss() } } }
         }
+    }
+
+    /// Spoornaam met vlag als de taal herkend wordt.
+    static func flagged(_ t: MediaTrack) -> String {
+        if let l = t.lang, !l.isEmpty { return "\(TrackPreferences.flag(l)) \(t.name)" }
+        if let code = TrackPreferences.languages.map(\.code).first(where: { TrackPreferences.matches(t, code: $0) }) {
+            return "\(TrackPreferences.flag(code)) \(t.name)"
+        }
+        return t.name
     }
 
     private func row(_ name: String, selected: Bool, _ action: @escaping () -> Void) -> some View {
@@ -53,7 +81,7 @@ struct OpenSubtitlesPanel: View {
                 Section {
                     Picker(L("Language"), selection: $language) {
                         Text(L("All languages")).tag("")
-                        ForEach(TrackPreferences.sortedCodes, id: \.self) { Text(TrackPreferences.name($0)).tag($0) }
+                        ForEach(TrackPreferences.sortedCodes, id: \.self) { Text(TrackPreferences.label($0)).tag($0) }
                     }
                     .pickerStyle(.menu)
                     if !subs.isLoggedIn {
@@ -85,9 +113,11 @@ struct OpenSubtitlesPanel: View {
 
     private func row(_ s: OpenSubtitles.Subtitle) -> some View {
         HStack(spacing: 12) {
-            Text(s.language.uppercased()).font(.caption.bold())
-                .padding(.horizontal, 6).padding(.vertical, 3)
-                .background(Theme.elevated, in: RoundedRectangle(cornerRadius: 4))
+            VStack(spacing: 1) {
+                Text(TrackPreferences.flag(s.language)).font(.system(size: tvScaled(24)))
+                Text(s.language.uppercased()).font(.system(size: tvScaled(9), weight: .bold)).foregroundStyle(Theme.secondary)
+            }
+            .frame(minWidth: tvScaled(34))
             VStack(alignment: .leading, spacing: 2) {
                 Text(s.release).font(.subheadline).lineLimit(2)
                 HStack(spacing: 8) {
@@ -124,7 +154,7 @@ struct OpenSubtitlesPanel: View {
             defer { downloading = nil }
             do {
                 let file = try await subs.download(s)
-                player.addSubtitle(file: file)
+                player.addSubtitle(file: file, name: "\(TrackPreferences.flag(s.language)) \(s.release)")
                 dismiss()
             } catch { self.error = error.localizedDescription }
         }

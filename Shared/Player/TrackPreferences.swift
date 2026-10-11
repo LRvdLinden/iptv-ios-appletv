@@ -27,6 +27,31 @@ enum TrackPreferences {
         return (loc.localizedString(forLanguageCode: code) ?? code).capitalized(with: loc)
     }
 
+    /// Vlag-emoji voor een taal of OpenSubtitles-code ("nl", "pt-BR", "zh-CN", "eng" …).
+    static func flag(_ code: String) -> String {
+        let c = code.lowercased().replacingOccurrences(of: "_", with: "-")
+        let parts = c.split(separator: "-").map(String.init)
+        var base = parts.first ?? c
+        if base.count == 3, let hit = languages.first(where: { $0.alt.contains(base) }) { base = hit.code }
+        // regio uit de code zelf (pt-BR, zh-TW, en-US)
+        if parts.count > 1, parts[1].count == 2 { return emoji(parts[1]) }
+        let region: [String: String] = [
+            "en": "GB", "nl": "NL", "de": "DE", "fr": "FR", "es": "ES", "it": "IT", "pt": "PT", "tr": "TR", "ar": "SA",
+            "pl": "PL", "zh": "CN", "ja": "JP", "ko": "KR", "ru": "RU", "uk": "UA", "hi": "IN", "sv": "SE", "da": "DK",
+            "no": "NO", "nb": "NO", "fi": "FI", "el": "GR", "he": "IL", "hu": "HU", "cs": "CZ", "ro": "RO", "bg": "BG",
+            "hr": "HR", "sr": "RS", "fa": "IR", "ur": "PK", "th": "TH", "vi": "VN", "id": "ID", "ms": "MY", "ta": "LK",
+            "pa": "IN", "bn": "BD", "sq": "AL", "ku": "IQ", "so": "SO", "sk": "SK", "sl": "SI", "et": "EE", "lv": "LV",
+            "lt": "LT", "is": "IS", "ga": "IE", "ca": "AD", "eu": "ES", "gl": "ES", "tl": "PH", "mk": "MK", "bs": "BA",
+            "ka": "GE", "hy": "AM", "az": "AZ", "kk": "KZ", "mn": "MN", "ne": "NP", "si": "LK", "af": "ZA", "sw": "KE"
+        ]
+        return region[base].map(emoji) ?? "🌐"
+    }
+    private static func emoji(_ region: String) -> String {
+        String(String.UnicodeScalarView(region.uppercased().unicodeScalars.compactMap { UnicodeScalar(127397 + $0.value) }))
+    }
+    /// "🇳🇱 Nederlands" voor keuzelijsten.
+    static func label(_ code: String) -> String { "\(flag(code)) \(name(code))" }
+
     /// Talen alfabetisch op naam.
     static var sortedCodes: [String] {
         languages.map(\.code).sorted { name($0).localizedCaseInsensitiveCompare(name($1)) == .orderedAscending }

@@ -42,6 +42,8 @@ protocol PlaybackEngine: AnyObject {
     func selectSubtitle(_ t: MediaTrack?)
     func addSubtitle(_ file: URL)
     func setAspect(_ a: PlayerController.Aspect)
+    /// Ondertitels verschuiven (seconden); AVPlayer-ondertitels uit de stream kunnen niet verschoven worden.
+    func setSubtitleDelay(_ seconds: Double)
 }
 
 // MARK: - VLC -------------------------------------------------------------------
@@ -114,6 +116,7 @@ final class VLCEngine: PlaybackEngine {
     func selectAudio(_ t: MediaTrack) { if let i = Int32(t.id) { player.currentAudioTrackIndex = i } }
     func selectSubtitle(_ t: MediaTrack?) { player.currentVideoSubTitleIndex = t.flatMap { Int32($0.id) } ?? -1 }
     func addSubtitle(_ file: URL) { _ = player.addPlaybackSlave(file, type: .subtitle, enforce: true) }
+    func setSubtitleDelay(_ seconds: Double) { player.currentVideoSubTitleDelay = Int(seconds * 1_000_000) }
 
     func setAspect(_ a: PlayerController.Aspect) {
         switch a {
@@ -288,6 +291,7 @@ final class AVEngine: PlaybackEngine {
         else { player.currentItem?.select(nil, in: g) }
     }
     func addSubtitle(_ file: URL) {}
+    func setSubtitleDelay(_ seconds: Double) {}   // externe ondertitels: via de eigen overlay
 
     func setAspect(_ a: PlayerController.Aspect) {
         layerView.playerLayer.videoGravity = a == .fill ? .resizeAspectFill : (a == .fit ? .resizeAspect : .resize)
@@ -321,16 +325,39 @@ final class PiPDelegate: NSObject, AVPictureInPictureControllerDelegate {
 struct SubtitleCue: Hashable { var start: Double; var end: Double; var text: String }
 
 enum SRT {
+    /// Tekst uit een ondertitelbestand: UTF-8 (met/zonder BOM), UTF-16, anders Windows-1252/Latin-1.
+    static func decode(_ data: Data) -> String {
+        if data.starts(with: [0xFF, 0xFE]) || data.starts(with: [0xFE, 0xFF]), let s = String(data: data, encoding: .utf16) { return s }
+        if let s = String(data: data, encoding: .utf8) { return s.replacingOccurrences(of: "\u{FEFF}", with: "") }
+        return String(data: data, encoding: .windowsCP1252) ?? String(data: data, encoding: .isoLatin1) ?? String(decoding: data, as: UTF8.self)
+    }
+
+    /// Schrijft een UTF-8-kopie naast het origineel (VLC en de eigen overlay lezen dan altijd goed).
+    static func normalizedFile(_ file: URL) -> URL? {
+        guard let d = try? Data(contentsOf: file) else { return nil }
+        if String(data: d, encoding: .utf8) != nil, !d.starts(with: [0xEF, 0xBB, 0xBF]) { return file }
+        let out = file.deletingPathExtension().appendingPathExtension("utf8.srt")
+        guard (try? Data(decode(d).utf8).write(to: out)) != nil else { return nil }
+        return out
+    }
+
     static func parse(_ data: Data) -> [SubtitleCue] {
-        let text = String(decoding: data, as: UTF8.self).replacingOccurrences(of: "\r\n", with: "\n")
+        let text = decode(data).replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
+        // blokken scheiden op lege regels (ook regels met alleen spaties)
+        var blocks: [[String]] = [], cur: [String] = []
+        for line in text.components(separatedBy: "\n") {
+            if line.trimmingCharacters(in: .whitespaces).isEmpty { if !cur.isEmpty { blocks.append(cur); cur = [] } }
+            else { cur.append(line) }
+        }
+        if !cur.isEmpty { blocks.append(cur) }
         var cues: [SubtitleCue] = []
-        for block in text.components(separatedBy: "\n\n") {
-            let lines = block.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        for lines in blocks {
             guard let timeLine = lines.firstIndex(where: { $0.contains("-->") }) else { continue }
             let parts = lines[timeLine].components(separatedBy: "-->")
             guard parts.count == 2, let s = time(parts[0]), let e = time(parts[1]) else { continue }
             let body = lines[(timeLine + 1)...].joined(separator: "\n")
                 .replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+                .replacingOccurrences(of: "\\{[^}]*\\}", with: "", options: .regularExpression)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             if !body.isEmpty { cues.append(SubtitleCue(start: s, end: e, text: body)) }
         }
@@ -338,7 +365,9 @@ enum SRT {
     }
 
     private static func time(_ s: String) -> Double? {
-        let t = s.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: ",", with: ".")
+        // "00:00:05,000 X1:100 …" → alleen de tijd
+        let first = s.trimmingCharacters(in: .whitespaces).split(separator: " ").first.map(String.init) ?? ""
+        let t = first.replacingOccurrences(of: ",", with: ".")
         let p = t.split(separator: ":")
         guard p.count == 3, let h = Double(p[0]), let m = Double(p[1]), let sec = Double(p[2].prefix(6)) else { return nil }
         return h * 3600 + m * 60 + sec

@@ -50,7 +50,7 @@ SwiftUI · iOS 17+ · tvOS 17+ · Apple- én VLC-engine · 11 talen.
 - **Automatisch herverbinden** bij haperende of weggevallen streams (met terugval naar de andere engine)
 - **Timeshift**: live tv pauzeren en terugspoelen (HLS-venster of catch-up), knop "terug naar live"
 - **Multiview**: tot 4 streams tegelijk, geluid van het geselecteerde beeld
-- Audio- en ondertitelsporen, **OpenSubtitles** (zoeken op IMDb-ID of titel, taal kiezen tijdens het kijken, standaardtaal + automatisch laden), snelheid, beeldverhouding, slaaptimer, zappen ↑↓
+- Audio- en ondertitelsporen, **OpenSubtitles** (zoeken op IMDb-ID of titel, taal kiezen tijdens het kijken met vlaggen, standaardtaal + automatisch laden, timing verschuiven, ook niet-UTF-8-bestanden), snelheid, beeldverhouding, slaaptimer, zappen ↑↓
 
 **Gids & beheer**
 - **Tv-gids als raster** met nu-lijn, programma-details, **terugkijken** en **herinneringen** (melding op iPhone/iPad, banner op Apple TV)

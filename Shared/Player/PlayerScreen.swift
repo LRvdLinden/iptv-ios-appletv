@@ -332,7 +332,7 @@ struct PlayerScreen: View {
         guard player.item.id == it.id, !player.hasExternalSubtitle else { return }
         if let t = player.subtitleTracks.first(where: { TrackPreferences.matches($0, code: lang) }) {
             player.selectSubtitle(t)
-            flash(L("Subtitles: %@", TrackPreferences.name(lang)))
+            flash(L("Subtitles: %@", TrackPreferences.label(lang)))
             return
         }
         guard subs.isLoggedIn else { return }
@@ -341,8 +341,8 @@ struct PlayerScreen: View {
                                               season: it.season, episode: it.episode, languages: [lang])
             guard let best = found.first, player.item.id == it.id else { return }
             let file = try await subs.download(best)
-            player.addSubtitle(file: file)
-            flash(L("Subtitles: %@", "\(TrackPreferences.name(lang)) · OpenSubtitles"))
+            player.addSubtitle(file: file, name: "\(TrackPreferences.flag(best.language)) \(best.release)")
+            flash(L("Subtitles: %@", "\(TrackPreferences.label(lang)) · OpenSubtitles"))
         } catch {}
     }
 
