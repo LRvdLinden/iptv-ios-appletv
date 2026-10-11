@@ -71,7 +71,7 @@ SwiftUI · iOS 17+ · tvOS 17+ · Apple- én VLC-engine · 11 talen.
 
 **Netflix-ervaring**
 - Geanimeerde splash, profielkeuze met ronde avatars (op Apple TV vergroot de geselecteerde), billboard, rijen
-- **Top 10 zoals Netflix** (grote omlijnde cijfers, Trakt trending in jouw lijst) onder Voor jou: series en films op Home, films bij Films, series bij Series
+- **Top 10 zoals Netflix** (grote omlijnde cijfers; trending vandaag via TMDB en Trakt, gekoppeld aan jouw lijst, anders je best beoordeelde titels) onder Voor jou: series en films op Home, films bij Films, series bij Series
 - **Verder kijken** (verwijderbaar, zonder live tv), **Voor jou** (vergelijkbaar met wat je keek), Mijn lijst
 - **Bekijk allemaal** bij elke rij: categoriepagina met sorteren (A–Z, nieuwste, score) en IMDb-score per poster
 - **IMDb**-score, plot, cast (via OMDb) en **trailers** (via Trakt)
@@ -80,6 +80,7 @@ SwiftUI · iOS 17+ · tvOS 17+ · Apple- én VLC-engine · 11 talen.
 **Overal hetzelfde**
 - **iCloud-sync** tussen iPhone, iPad, Mac en Apple TV: afspeellijsten, avatars, favorieten, Mijn lijst, kijkvoortgang, herinneringen, aanpassingen en kinderslot; logins via de iCloud-sleutelhanger
 - **11 talen**: Engels, Nederlands, Duits, Frans, Spaans, Italiaans, Portugees, Turks, Pools, Arabisch (rechts-naar-links) en Chinees. Volgt de systeemtaal of kies zelf in Mijn Bingr
+- **Meerdere Apple TV-gebruikers**: wissel je van gebruiker op de Apple TV, dan zie je de Bingr (playlists, voortgang, Trakt) van díe gebruiker via zijn eigen iCloud
 - **Mac**: draait als iPad-app op Apple-silicon-Macs
 
 ## Installeren

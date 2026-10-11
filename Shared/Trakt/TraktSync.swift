@@ -312,7 +312,7 @@ final class TraktSync: ObservableObject {
     struct TrendingEntry: Decodable { let movie: TraktMedia?; let show: TraktMedia? }
     func trending(shows: Bool) async -> [TraktMedia] {
         let r: [TrendingEntry]? = try? await client.get(shows ? "/shows/trending" : "/movies/trending",
-                                                         query: ["limit": "40"], auth: false)
+                                                         query: ["limit": "100"], auth: false)
         return r?.compactMap { $0.movie ?? $0.show } ?? []
     }
 

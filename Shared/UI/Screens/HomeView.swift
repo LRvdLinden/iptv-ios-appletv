@@ -302,13 +302,17 @@ struct HomeView: View {
         // meteen een eerste "Voor jou" uit je eigen kijkgedrag, daarna verfijnen via Trakt
         if forYou.isEmpty { forYou = await buildForYou(useNetwork: false) }
         // Trending op Trakt koppelen aan wat in jouw afspeellijst zit
-        if filter != .series, trendingMovies.isEmpty {
-            let t = await trakt.trending(shows: false)
-            trendingMovies = match(t, in: lib.movies, title: \.title, year: \.year)
+        // Top 10: trending vandaag (TMDB in jouw taal + Trakt) gekoppeld aan je afspeellijst;
+        // lukt dat niet, dan de best beoordeelde/nieuwste titels uit je eigen lijst, zodat de rij er altijd is.
+        if filter != .series, trendingMovies.count < 5 {
+            let found = match(await trendingCandidates(shows: false), in: lib.movies, title: \.title, year: \.year)
+            trendingMovies = found.count >= 5 ? found : found + localTop(lib.movies, rating: \.rating, added: \.addedAt, poster: \.poster)
+                .filter { m in !found.contains { $0.id == m.id } }
         }
-        if filter != .movies, trendingSeries.isEmpty {
-            let t = await trakt.trending(shows: true)
-            trendingSeries = match(t, in: lib.series, title: \.title, year: \.year)
+        if filter != .movies, trendingSeries.count < 5 {
+            let found = match(await trendingCandidates(shows: true), in: lib.series, title: \.title, year: \.year)
+            trendingSeries = found.count >= 5 ? found : found + localTop(lib.series, rating: \.rating, added: nil, poster: \.poster)
+                .filter { s in !found.contains { $0.id == s.id } }
         }
         forYou = await buildForYou()
         // hero: liefst iets trending, anders willekeurig met een poster
@@ -386,18 +390,56 @@ struct HomeView: View {
         return Array(out.prefix(30))
     }
 
-    private func match<T>(_ trending: [TraktSync.TraktMedia], in items: [T], title: KeyPath<T, String>, year: KeyPath<T, Int?>) -> [T] {
+    /// Trending-titels uit TMDB (eerst, in de app-taal) en Trakt.
+    private func trendingCandidates(shows: Bool) async -> [(titles: [String], year: Int?)] {
+        let a = await TMDB.trending(shows: shows)
+        let b = await trakt.trending(shows: shows)
+        return a + b.compactMap { t in t.title.map { ([$0], t.year) } }
+    }
+
+    private func match<T: Identifiable>(_ list: [TraktSync.TraktMedia], in items: [T],
+                                        title: KeyPath<T, String>, year: KeyPath<T, Int?>) -> [T] {
+        match(list.compactMap { t in t.title.map { (titles: [$0], year: t.year) } }, in: items, title: title, year: year, limit: 100)
+    }
+
+    /// Koppelt trending-titels aan je afspeellijst. Labels als "NL |", "(2024)" of "4K" tellen niet mee.
+    private func match<T: Identifiable>(_ trending: [(titles: [String], year: Int?)], in items: [T],
+                                        title: KeyPath<T, String>, year: KeyPath<T, Int?>, limit: Int = 10) -> [T] {
         var byKey: [String: T] = [:]
         for i in items {
-            let n = TraktSync.TitleIndex.norm(i[keyPath: title])
-            if byKey[n] == nil { byKey[n] = i }
-            if let y = i[keyPath: year] { byKey["\(n)|\(y)"] = i }
+            let parsed = TitleCleaner.parse(i[keyPath: title])
+            for n in Set([TraktSync.TitleIndex.norm(parsed.title), TraktSync.TitleIndex.norm(i[keyPath: title])]) where n.count > 1 {
+                if byKey[n] == nil { byKey[n] = i }
+                if let y = i[keyPath: year] ?? parsed.year { byKey["\(n)|\(y)"] = i }
+            }
         }
-        return trending.compactMap { t in
-            guard let title = t.title else { return nil }
-            let n = TraktSync.TitleIndex.norm(title)
-            return t.year.flatMap { byKey["\(n)|\($0)"] } ?? byKey[n]
+        var out: [T] = [], seen = Set<AnyHashable>()
+        for t in trending {
+            for title in t.titles {
+                let n = TraktSync.TitleIndex.norm(title)
+                if let hit = t.year.flatMap({ byKey["\(n)|\($0)"] }) ?? byKey[n] {
+                    if seen.insert(AnyHashable(hit.id)).inserted { out.append(hit) }
+                    break
+                }
+            }
+            if out.count >= limit { break }
         }
+        return out
+    }
+
+    /// Eigen Top 10 als er (nog) geen trending-gegevens zijn: hoogste score, dan nieuwste, met poster.
+    private func localTop<T>(_ items: [T], rating: KeyPath<T, Double?>, added: KeyPath<T, Date?>?, poster: KeyPath<T, URL?>) -> [T] {
+        let withPoster = items.filter { $0[keyPath: poster] != nil }
+        let pool = withPoster.isEmpty ? items : withPoster
+        let rated = pool.filter { ($0[keyPath: rating] ?? 0) > 0 }
+        if rated.count >= 10 {
+            return Array(rated.sorted { ($0[keyPath: rating] ?? 0) > ($1[keyPath: rating] ?? 0) }.prefix(10))
+        }
+        if let added {
+            let recent = pool.filter { $0[keyPath: added] != nil }.sorted { $0[keyPath: added]! > $1[keyPath: added]! }
+            if recent.count >= 10 { return Array(recent.prefix(10)) }
+        }
+        return Array(pool.prefix(10))
     }
 
     // MARK: iOS bovenbalk (wordt donker bij scrollen, zoals Netflix)

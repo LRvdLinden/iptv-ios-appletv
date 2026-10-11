@@ -119,6 +119,27 @@ enum TMDB {
         return try? await HTTP.json(T.self, u, headers: headers)
     }
 
+    /// Trending vandaag (Netflix-achtige Top 10): titels in de app-taal én origineel, met jaar.
+    static func trending(shows: Bool) async -> [(titles: [String], year: Int?)] {
+        struct R: Decodable {
+            struct I: Decodable {
+                let title: String?, name: String?, original_title: String?, original_name: String?
+                let release_date: String?, first_air_date: String?
+            }
+            let results: [I]?
+        }
+        var out: [(titles: [String], year: Int?)] = []
+        for page in ["1", "2"] {
+            guard let r: R = await get(shows ? "/trending/tv/day" : "/trending/movie/day", ["language": language, "page": page]) else { break }
+            for i in r.results ?? [] {
+                let t = [i.title, i.name, i.original_title, i.original_name].compactMap { $0 }.filter { !$0.isEmpty }
+                let y = (i.release_date ?? i.first_air_date).flatMap { Int($0.prefix(4)) }
+                if !t.isEmpty { out.append((t, y)) }
+            }
+        }
+        return out
+    }
+
     private struct Find: Decodable { struct R: Decodable { let id: Int }; let movie_results: [R]?; let tv_results: [R]? }
     private struct Search: Decodable { struct R: Decodable { let id: Int }; let results: [R]? }
     private struct Full: Decodable {

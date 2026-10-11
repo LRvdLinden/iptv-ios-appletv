@@ -9,7 +9,7 @@ settings:
   base:
     SWIFT_VERSION: "5.9"
     MARKETING_VERSION: "1.0.0"
-    CURRENT_PROJECT_VERSION: "13"
+    CURRENT_PROJECT_VERSION: "14"
     DEVELOPMENT_TEAM: ""   # vul je eigen Team ID in (of kies in Xcode)
 
 packages:
@@ -81,6 +81,8 @@ targets:
         # zelfde identifier als iOS => playlists, kijkvoortgang en favorieten worden via iCloud gedeeld
         com.apple.developer.ubiquity-kvstore-identifier: $(TeamIdentifierPrefix)nl.lrvdlinden.bingr
         keychain-access-groups: [$(AppIdentifierPrefix)nl.lrvdlinden.bingr.shared]
+        # elke Apple TV-gebruiker zijn eigen Bingr (eigen iCloud: playlists, voortgang, Trakt)
+        com.apple.developer.user-management: [runs-as-current-user-with-user-independent-keychain]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: nl.lrvdlinden.bingr
