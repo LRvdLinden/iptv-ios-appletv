@@ -56,13 +56,7 @@ struct SearchView: View {
             }
             .background(Color.black)
             .navigationTitle(L("Search"))
-            .searchable(text: $query, isPresented: $searchActive, prompt: L("Titles, channels, categories…"))
-            .toolbar {
-                if modal {
-                    ToolbarItem(placement: .cancellationAction) { Button(L("Close")) { dismiss() } }
-                }
-            }
-            .onAppear { if modal { searchActive = true } }
+            .modifier(SearchField(query: $query, active: $searchActive, modal: modal, close: { dismiss() }))
             .onChange(of: query) { _, q in
                 Task {
                     try? await Task.sleep(nanoseconds: 300_000_000)
@@ -228,5 +222,28 @@ struct SearchView: View {
                 }
             }
         }
+    }
+}
+
+/// Zoekveld; als los venster (vergrootglas) met sluitknop en meteen het toetsenbord open.
+private struct SearchField: ViewModifier {
+    @Binding var query: String
+    @Binding var active: Bool
+    let modal: Bool
+    let close: () -> Void
+
+    func body(content: Content) -> some View {
+        #if os(iOS)
+        content
+            .searchable(text: $query, isPresented: $active, prompt: Text(L("Titles, channels, categories…")))
+            .toolbar {
+                if modal {
+                    ToolbarItem(placement: .cancellationAction) { Button(L("Close"), action: close) }
+                }
+            }
+            .onAppear { if modal { active = true } }
+        #else
+        content.searchable(text: $query, prompt: Text(L("Titles, channels, categories…")))
+        #endif
     }
 }
