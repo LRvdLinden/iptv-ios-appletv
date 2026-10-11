@@ -261,6 +261,10 @@ final class CloudStore: ObservableObject {
         write(myList, pk(K.myList))
     }
     func inMyList(_ playlist: UUID, _ item: String) -> Bool { myList.contains(key(playlist, item)) }
+    func setMyList(_ playlist: UUID, _ item: String, _ on: Bool) {
+        guard inMyList(playlist, item) != on else { return }
+        toggleMyList(playlist, item)
+    }
 
     // MARK: voortgang
 

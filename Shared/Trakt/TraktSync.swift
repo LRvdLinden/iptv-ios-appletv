@@ -229,6 +229,12 @@ final class TraktSync: ObservableObject {
         catch { lastError = error.localizedDescription }
     }
 
+    /// Zet een titel op of van de Trakt-watchlist (spiegelt Mijn lijst van het hoofdaccount).
+    func setWatchlist(imdb: String, isShow: Bool, _ on: Bool) async {
+        guard isLoggedIn, watchlist.contains(imdb) != on else { return }
+        await toggleWatchlist(imdb: imdb, isShow: isShow)
+    }
+
     func toggleWatchlist(imdb: String, isShow: Bool) async {
         guard isLoggedIn else { return }
         let add = !watchlist.contains(imdb)

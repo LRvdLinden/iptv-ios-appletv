@@ -16,6 +16,7 @@ struct HomeView: View {
     @State private var forYou: [DetailTarget] = []
     @State private var category: CategoryTarget?
     @State private var showSearch = false
+    @State private var resumeChoice: ResumeChoice?
     /// Scrollpositie apart bijhouden: alleen de bovenbalk leest hem, zodat Home niet bij elke scrollframe opnieuw rekent.
     @State private var scroll = ScrollTracker()
 
@@ -53,6 +54,7 @@ struct HomeView: View {
         .background(Color.black)
         .task(id: "\(store.activeProfileID?.uuidString ?? "")-\(pid?.uuidString ?? "")-\(lib.movies.count)-\(lib.series.count)") { await prepare() }
         .fullScreenCover(item: $category) { CategoryView(target: $0) }
+        .resumeDialog($resumeChoice) { detail = $0 }
         #if os(iOS)
         .sheet(item: $detail) { DetailView(target: $0).presentationDragIndicator(.visible) }
         #else
@@ -125,7 +127,30 @@ struct HomeView: View {
     }
 
     @ViewBuilder private var myListRows: some View {
-        if filter != .series {
+        if filter == .all {
+            // Home: films én series uit Mijn lijst in één rij
+            let mine: [DetailTarget] = pid.map { p in
+                lib.movies.filter { store.inMyList(p, $0.id) }.map { DetailTarget.movie($0) }
+                    + lib.series.filter { store.inMyList(p, $0.id) }.map { DetailTarget.series($0) }
+            } ?? []
+            if !mine.isEmpty {
+                MediaRow(title: L("My List"), onSeeAll: { category = CategoryTarget(title: L("My List"), items: mine) }) {
+                    ForEach(mine) { t in
+                        Button { detail = t } label: {
+                            switch t {
+                            case .movie(let m):
+                                PosterCard(title: m.title, poster: m.poster, imdbID: trakt.imdb(for: m),
+                                           watched: Playables.isWatched(movie: m, imdb: trakt.imdb(for: m)), progress: store.progress[m.id]?.fraction)
+                            case .series(let se):
+                                PosterCard(title: se.title, poster: se.poster, imdbID: trakt.imdb(for: se))
+                            }
+                        }
+                        .cardButton()
+                    }
+                }
+            }
+        }
+        if filter == .movies {
             let mine = lib.movies.filter { m in pid.map { store.inMyList($0, m.id) } ?? false }
             if !mine.isEmpty { movieRow(L("My List"), mine, all: mine) }
         }
@@ -145,12 +170,8 @@ struct HomeView: View {
         if !items.isEmpty {
             MediaRow(title: L("Continue watching")) {
                 ForEach(items) { c in
-                    Button { resume(c) } label: {
-                        VStack(alignment: .leading, spacing: 4) {
-                            PosterCard(title: c.title, poster: c.artwork, progress: c.fraction)
-                            Text(c.subtitle).font(.system(size: tvScaled(10))).foregroundStyle(Theme.secondary).lineLimit(1)
-                                .frame(width: Theme.posterWidth, alignment: .leading)
-                        }
+                    Button { resumeChoice = choice(for: c) } label: {
+                        ContinueCard(title: c.title, poster: c.artwork, fraction: c.fraction, caption: c.subtitle)
                     }
                     .cardButton()
                     .contextMenu {
@@ -252,6 +273,7 @@ struct HomeView: View {
     struct ContinueItem: Identifiable {
         let id: String; let title: String; let subtitle: String; let artwork: URL?; let fraction: Double
         let updated: Date; let isMovie: Bool
+        var position: Double? = nil
         var traktPlaybackID: Int? = nil
     }
 
@@ -268,7 +290,8 @@ struct HomeView: View {
             if filter == .series && isMovie { return nil }
             let left = max(0, e.position / max(e.fraction, 0.01) - e.position)
             return ContinueItem(id: key, title: e.title, subtitle: L("%d min left", Int(left / 60)),
-                                artwork: e.artwork, fraction: e.fraction, updated: e.updated, isMovie: isMovie)
+                                artwork: e.artwork, fraction: e.fraction, updated: e.updated, isMovie: isMovie,
+                                position: e.position > 0 ? e.position : nil)
         }
         // films die je in een andere app (via Trakt) half hebt gekeken
         if filter != .series && !trakt.playback.isEmpty {
@@ -289,14 +312,11 @@ struct HomeView: View {
         }
     }
 
-    private func resume(_ c: ContinueItem) {
-        let key = c.id
-        if let m = lib.movies.first(where: { $0.id == key }) { app.play(Playables.movie(m, imdb: trakt.imdb(for: m))); return }
-        for s in lib.series {
-            if let e = s.episodes.first(where: { $0.id == key }) { app.play(Playables.episode(e, of: s, imdb: trakt.imdb(for: s))); return }
-        }
-        // aflevering die pas bij openen geladen wordt → open de serie
-        if let s = lib.series.first(where: { $0.title == c.title }) { detail = .series(s) }
+    /// Tik op Verder kijken: kiezen tussen hervatten en opnieuw kijken.
+    private func choice(for c: ContinueItem) -> ResumeChoice {
+        let d: DetailTarget? = c.isMovie ? lib.movies.first { $0.id == c.id }.map { .movie($0) }
+                                         : lib.series.first { $0.title == c.title }.map { .series($0) }
+        return ResumeChoice(id: c.id, title: c.title, fraction: c.fraction, position: c.position, detail: d)
     }
 
     /// Profielen met een leeftijdsgrens gaan via de detailpagina (die controleert de classificatie).

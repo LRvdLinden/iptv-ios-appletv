@@ -559,10 +559,8 @@ struct DetailView: View {
         return false
     }
 
-    private var inMyList: Bool {
-        if let imdb, trakt.watchlist.contains(imdb) { return true }
-        return pid.map { store.inMyList($0, target.id) } ?? false
-    }
+    /// Mijn lijst van dít profiel (de Trakt-watchlist volgt mee, maar bepaalt niet wat er in je lijst staat).
+    private var inMyList: Bool { pid.map { store.inMyList($0, target.id) } ?? false }
 
     private var nextEpisode: Episode? {
         // de laatst bekeken aflevering met voortgang (niet zomaar de eerste in de lijst)
@@ -606,9 +604,10 @@ struct DetailView: View {
 
     private func toggleMyList() {
         guard let pid else { return }
-        store.toggleMyList(pid, target.id)
-        if let imdb { Task { await trakt.toggleWatchlist(imdb: imdb, isShow: target.isSeries) } }
-        flash(inMyList ? L("Added to My List") : L("Removed from My List"))
+        let on = !inMyList
+        store.setMyList(pid, target.id, on)
+        if let imdb, store.isMainActive { Task { await trakt.setWatchlist(imdb: imdb, isShow: target.isSeries, on) } }
+        flash(on ? L("Added to My List") : L("Removed from My List"))
     }
 
     private func toggleWatchedMovie() {

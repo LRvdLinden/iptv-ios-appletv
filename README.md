@@ -3,7 +3,7 @@
 [![Build](https://github.com/LRvdLinden/iptv-ios-appletv/actions/workflows/build.yml/badge.svg)](https://github.com/LRvdLinden/iptv-ios-appletv/actions/workflows/build.yml)
 
 Native IPTV- en mediaspeler voor **iPhone, iPad, Mac en Apple TV** met de look & feel van Netflix.
-SwiftUI · iOS 17+ · tvOS 17+ · Apple- én VLC-engine · 11 talen · versie 1.0.0 (build 26).
+SwiftUI · iOS 17+ · tvOS 17+ · Apple- én VLC-engine · 11 talen · versie 1.0.0 (build 27).
 
 ## Screenshots
 
@@ -78,7 +78,8 @@ SwiftUI · iOS 17+ · tvOS 17+ · Apple- én VLC-engine · 11 talen · versie 1.
 **Netflix-ervaring**
 - Geanimeerde splash met een eigen **Bingr-intro-tune** (`tools/make_tune.py`, uit te zetten), profielkeuze met ronde avatars (op Apple TV vergroot de geselecteerde), billboard, rijen
 - **Top 10 zoals Netflix** (grote omlijnde cijfers; trending vandaag via TMDB en Trakt, gekoppeld aan jouw lijst, anders je best beoordeelde titels) onder Voor jou: series en films op Home, films bij Films, series bij Series
-- **Verder kijken** (verwijderbaar, zonder live tv), **Voor jou** (vergelijkbaar met wat je keek), Mijn lijst
+- **Verder kijken** met voortgangsbalk en resterende tijd; aantikken geeft de keuze **Hervatten (vanaf 23:14)** of **Opnieuw bekijken** (verwijderbaar, zonder live tv), **Voor jou** (vergelijkbaar met wat je keek)
+- **Mijn lijst** (hartje op de detailpagina): films én series op Home en in Mijn Bingr, per profiel; bij het hoofdaccount loopt de Trakt-watchlist mee. Favoriete zenders staan ook in Mijn Bingr
 - **Bekijk allemaal** bij elke rij: categoriepagina met sorteren (A–Z, nieuwste, score) en IMDb-score per poster
 - **IMDb**-score, plot, cast (via OMDb) en **trailers** (via Trakt)
 - **Trakt, 2 kanten op**: koppelcode + QR, vinkjes uit Trakt in de app, afvinken in de app → Trakt, scrobblen, watchlist
