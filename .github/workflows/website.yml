@@ -47,7 +47,8 @@ jobs:
               if lftp -e "$common; $mode; open -u \"$u\",\"$FTP_PASSWORD\" \"$FTP_SERVER\"; cls -1 > /tmp/root.txt; bye" 2>/tmp/err.txt; then
                 USER_OK="$u"; base="$common; $mode"; break 2
               fi
-              sed 's/PASS .*/PASS ***/' /tmp/err.txt | tail -3
+              msg=$(sed 's/PASS .*/PASS ***/' /tmp/err.txt | tr '\n' ' ' | tail -c 300)
+              echo "::warning::Mislukt (gebruiker ${u%%@*}…, ${mode%%;*}): ${msg:-geen melding}"
             done
           done
           [ -n "$USER_OK" ] || { echo "::error::Inloggen op de FTP-server mislukt met de opgegeven gebruikersnamen."; exit 1; }
