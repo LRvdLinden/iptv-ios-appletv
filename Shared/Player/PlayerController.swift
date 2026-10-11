@@ -93,6 +93,21 @@ final class PlayerController: ObservableObject {
 
     // MARK: afspelen
 
+    /// Spelerscherm is gesloten: een stream die daarna pas klaar is met laden niet meer starten.
+    var dismissed = false
+
+    /// Nieuwe titel/zender: niets meenemen van de vorige (timeshift, pauze, herverbind-pogingen, fout).
+    func prepareNew() {
+        timeshiftStart = nil; behindLive = 0; pausedAt = nil
+        attempts = 0; reconnecting = false; errorText = nil; isBuffering = true
+        dismissed = false
+    }
+
+    /// Kan niet afspelen (geen stream gevonden): foutmelding met "Opnieuw" in plaats van een eindeloze spinner.
+    func fail(_ message: String) {
+        errorText = message; isBuffering = false; reconnecting = false
+    }
+
     func start(url: URL, forceApple: Bool? = nil) {
         self.url = url
         errorText = nil; didScrobbleStart = false; stallSince = nil

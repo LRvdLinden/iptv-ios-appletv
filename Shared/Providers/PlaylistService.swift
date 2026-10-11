@@ -200,11 +200,20 @@ final class PlaylistService: ObservableObject {
             let merged = c.merged[g] ?? g
             return c.renamed[Customization.groupKey(merged)] ?? merged
         }
+        // per groep één keer uitrekenen (tienduizenden titels delen maar een paar honderd groepen)
+        var groupOK: [String: Bool] = [:]
         func visible(_ id: String, _ g: String) -> Bool {
-            !c.hidden.contains(id) && !c.hidden.contains(Customization.groupKey(g))
+            if c.hidden.contains(id) { return false }
+            if let ok = groupOK[g] { return ok }
+            let ok = !c.hidden.contains(Customization.groupKey(g))
                 && !c.hidden.contains(Customization.groupKey(c.merged[g] ?? g))
                 && !parental.isLocked(playlist: playlist, group: g)
                 && !parental.isLocked(playlist: playlist, group: c.merged[g] ?? g)
+            groupOK[g] = ok
+            return ok
+        }
+        func ageOK(_ md: TitleMetadata?, _ g: String) -> Bool {
+            ageLimit == nil || parental.allowed(rated: md?.rated, group: g, limit: ageLimit, genre: md?.genre, strict: strict)
         }
         var lib = raw
         lib.channels = raw.channels.filter { visible($0.id, $0.group) }.map { ch in
@@ -214,14 +223,10 @@ final class PlaylistService: ObservableObject {
             // kinderprofiel: alleen kinderzenders
             lib.channels = lib.channels.filter { parental.allowed(rated: nil, group: $0.group, limit: ageLimit, strict: strict) }
         }
-        lib.movies = raw.movies.filter { visible($0.id, $0.group)
-            && (ageLimit == nil || parental.allowed(rated: meta.cached($0)?.rated, group: $0.group, limit: ageLimit,
-                                                    genre: meta.cached($0)?.genre, strict: strict)) }.map { m in
+        lib.movies = raw.movies.filter { visible($0.id, $0.group) && (ageLimit == nil || ageOK(meta.cached($0), $0.group)) }.map { m in
             var x = m; x.group = group(m.group); x.title = c.renamed[m.id] ?? m.title; return x
         }
-        lib.series = raw.series.filter { visible($0.id, $0.group)
-            && (ageLimit == nil || parental.allowed(rated: meta.cached($0)?.rated, group: $0.group, limit: ageLimit,
-                                                    genre: meta.cached($0)?.genre, strict: strict)) }.map { se in
+        lib.series = raw.series.filter { visible($0.id, $0.group) && (ageLimit == nil || ageOK(meta.cached($0), $0.group)) }.map { se in
             var x = se; x.group = group(se.group); x.title = c.renamed[se.id] ?? se.title; return x
         }
         // eigen volgorde: groepen, dan kanalen binnen een groep
@@ -346,12 +351,13 @@ final class PlaylistService: ObservableObject {
         guard allPlaylists else { return r }
         // zoeken in de cache van alle andere afspeellijsten
         let others = CloudStore.shared.playlists.filter { $0.id != source?.id }
+        let liveLabel = L("Live TV")
         r.other = await Task.detached(priority: .userInitiated) {
             var hits: [OtherHit] = []
             for p in others {
                 guard let lib = Self.readCache(p) else { continue }
                 for c in lib.channels where Self.fold(c.name).contains(t) {
-                    hits.append(OtherHit(playlist: p, itemID: c.id, title: c.name, subtitle: "Live TV", artwork: c.logo))
+                    hits.append(OtherHit(playlist: p, itemID: c.id, title: c.name, subtitle: liveLabel, artwork: c.logo))
                     if hits.count > 80 { break }
                 }
                 for mv in lib.movies where Self.fold(mv.title).contains(t) {
@@ -371,8 +377,9 @@ final class PlaylistService: ObservableObject {
         let norm = Self.normTitle(title)
         guard !norm.isEmpty else { return [] }
         let current = source
-        let currentLib = rawLibrary
-        let all = CloudStore.shared.playlists
+        let currentLib = library   // gefilterd: geen verborgen/vergrendelde of te oude titels
+        // andere servers alleen voor het hoofdaccount (subprofielen mogen de server niet wisselen)
+        let all = CloudStore.shared.isMainActive ? CloudStore.shared.playlists : CloudStore.shared.playlists.filter { $0.id == current?.id }
         return await Task.detached(priority: .userInitiated) {
             var hits: [OtherHit] = []
             for p in all {

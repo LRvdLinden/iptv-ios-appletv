@@ -2,7 +2,10 @@ import SwiftUI
 
 /// TV-gids als raster: zenders verticaal, tijd horizontaal, rode "nu"-lijn.
 struct GuideGridView: View {
+    /// Alle zenders van de gekozen groep; het raster toont er maximaal `limit` (anders wordt het op Apple TV te zwaar).
     let channels: [Channel]
+    private static let limit = 150
+    private var shown: [Channel] { Array(channels.prefix(Self.limit)) }
     var onPlay: (Channel) -> Void
     var onProgram: (Channel, EPGProgram) -> Void
 
@@ -18,16 +21,17 @@ struct GuideGridView: View {
         let m = cal.component(.minute, from: d)
         return cal.date(byAdding: .minute, value: -(m % 30), to: d)?.zeroSeconds ?? d
     }
-    private var hours: Double { 26 }
+    /// 1 uur terug t/m ruim 12 uur vooruit (meer knoppen maakt het raster traag)
+    private var hours: Double { 14 }
     private var totalWidth: CGFloat { CGFloat(hours * 60) * pxPerMinute }
 
     var body: some View {
         ScrollView(.vertical) {
             HStack(alignment: .top, spacing: 0) {
                 // vaste zenderkolom
-                VStack(spacing: 0) {
+                LazyVStack(spacing: 0) {
                     Color.clear.frame(height: tvScaled(30))
-                    ForEach(channels) { c in
+                    ForEach(shown) { c in
                         Button { onPlay(c) } label: {
                             HStack(spacing: 8) {
                                 RemoteImage(url: c.logo, contentMode: .fit, placeholder: String(c.name.prefix(3)))
@@ -48,13 +52,13 @@ struct GuideGridView: View {
                 ScrollViewReader { proxy in
                     ScrollView(.horizontal, showsIndicators: false) {
                         ZStack(alignment: .topLeading) {
-                            VStack(alignment: .leading, spacing: 0) {
+                            LazyVStack(alignment: .leading, spacing: 0) {
                                 timeline
-                                ForEach(channels) { c in row(c) }
+                                ForEach(shown) { c in row(c) }
                             }
                             // "nu"-lijn
                             Rectangle().fill(Theme.red).frame(width: 2)
-                                .frame(height: tvScaled(30) + rowHeight * CGFloat(channels.count))
+                                .frame(height: tvScaled(30) + rowHeight * CGFloat(shown.count))
                                 .offset(x: x(now))
                                 .allowsHitTesting(false)
                             Color.clear.frame(width: 1, height: 1).offset(x: max(0, x(now) - tvScaled(120))).id("now")
@@ -63,6 +67,11 @@ struct GuideGridView: View {
                     }
                     .onAppear { proxy.scrollTo("now", anchor: .leading) }
                 }
+            }
+            if channels.count > Self.limit {
+                Text(L("Showing %d of %d channels. Choose a group or search to see the rest.", Self.limit, channels.count))
+                    .font(.system(size: tvScaled(12))).foregroundStyle(Theme.secondary)
+                    .frame(maxWidth: .infinity).padding(tvScaled(16))
             }
         }
         .background(Color.black)
@@ -88,7 +97,8 @@ struct GuideGridView: View {
     }
 
     private func row(_ c: Channel) -> some View {
-        let progs = (playlists.library.epg[c.epgID ?? c.id] ?? []).filter { $0.end > start }
+        let end = start.addingTimeInterval(hours * 3600)
+        let progs = (playlists.library.epg[c.epgID ?? c.id] ?? []).filter { $0.end > start && $0.start < end }
         return ZStack(alignment: .leading) {
             Rectangle().fill(Color(hex: 0x101010))
             if progs.isEmpty {

@@ -9,6 +9,8 @@ struct ManageView: View {
     @State private var section: Kind = .live
     @State private var renaming: RenameTarget?
     @State private var merging: String?
+    /// Groep waarvan het actiemenu open is (tik op een film-/seriegroep, of op Apple TV)
+    @State private var groupMenu: String?
 
     enum Kind: String, CaseIterable { case live, movies, series }
     struct RenameTarget: Identifiable { var id: String; var current: String }
@@ -51,7 +53,12 @@ struct ManageView: View {
             } header: {
                 Text(L("Groups"))
             } footer: {
-                Text(L("Hidden groups and channels don't appear anywhere in the app. Merged groups are shown as one."))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(L("Hidden groups and channels don't appear anywhere in the app. Merged groups are shown as one."))
+                    #if os(tvOS)
+                    if section == .live { Text(L("Press and hold a group for more options.")) }
+                    #endif
+                }
             }
 
             let merged = rawGroups.filter { c.merged[$0] != nil }
@@ -80,6 +87,10 @@ struct ManageView: View {
         .toolbar { EditButton() }
         #endif
         .sheet(item: $renaming) { t in RenameSheet(title: t.current) { new in update { $0.renamed[t.id] = new.isEmpty ? nil : new } } }
+        .confirmationDialog(groupMenu.map(display) ?? "", isPresented: Binding(get: { groupMenu != nil }, set: { if !$0 { groupMenu = nil } }),
+                            titleVisibility: .visible) {
+            if let g = groupMenu { groupActions(g) }
+        }
         .confirmationDialog(L("Merge into…"), isPresented: Binding(get: { merging != nil }, set: { if !$0 { merging = nil } })) {
             ForEach(groups.filter { $0 != merging }, id: \.self) { target in
                 Button(display(target)) { if let m = merging { update { $0.merged[m] = target } } }
@@ -93,33 +104,23 @@ struct ManageView: View {
         let key = Customization.groupKey(g)
         let hidden = c.hidden.contains(key)
         let locked = pid.map { CloudStore.shared.parental.lockedGroups.contains("\($0.uuidString)|\(g)") } ?? false
-        NavigationLink {
-            if section == .live { ChannelsManageView(group: g) } else { Text(L("Rename, hide or merge this group with the buttons.")).padding() }
-        } label: {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(display(g)).foregroundStyle(hidden ? Theme.secondary : .white).strikethrough(hidden)
-                    if display(g) != g { Text(g).font(.caption).foregroundStyle(Theme.secondary) }
-                }
-                Spacer()
-                if locked { Image(systemName: "lock.fill").foregroundStyle(Theme.imdb) }
-                if hidden { Image(systemName: "eye.slash").foregroundStyle(Theme.secondary) }
+        let label = HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(display(g)).foregroundStyle(hidden ? Theme.secondary : .white).strikethrough(hidden)
+                if display(g) != g { Text(g).font(.caption).foregroundStyle(Theme.secondary) }
             }
+            Spacer()
+            if locked { Image(systemName: "lock.fill").foregroundStyle(Theme.imdb) }
+            if hidden { Image(systemName: "eye.slash").foregroundStyle(Theme.secondary) }
         }
-        .contextMenu {
-            Button { renaming = RenameTarget(id: key, current: display(g)) } label: { Label(L("Rename"), systemImage: "pencil") }
-            Button { update { if hidden { $0.hidden.remove(key) } else { $0.hidden.insert(key) } } } label: {
-                Label(hidden ? L("Show") : L("Hide"), systemImage: hidden ? "eye" : "eye.slash")
-            }
-            Button { merging = g } label: { Label(L("Merge into…"), systemImage: "arrow.triangle.merge") }
-            if CloudStore.shared.parental.enabled, let pid {
-                Button { parental.toggleLock(playlist: pid, group: g) } label: {
-                    Label(locked ? L("Unlock") : L("Lock with PIN"), systemImage: locked ? "lock.open" : "lock")
-                }
-            }
+        Group {
             if section == .live {
-                Button { moveGroup(g, by: -1) } label: { Label(L("Move up"), systemImage: "arrow.up") }
-                Button { moveGroup(g, by: 1) } label: { Label(L("Move down"), systemImage: "arrow.down") }
+                NavigationLink { ChannelsManageView(group: g) } label: { label }
+                    .contextMenu { groupActions(g) }
+            } else {
+                // films/series: tik = acties (er is geen zenderlijst om te openen)
+                Button { groupMenu = g } label: { label.contentShape(Rectangle()) }
+                    .contextMenu { groupActions(g) }
             }
         }
         #if os(iOS)
@@ -130,6 +131,26 @@ struct ManageView: View {
             Button { renaming = RenameTarget(id: key, current: display(g)) } label: { Label(L("Rename"), systemImage: "pencil") }.tint(.blue)
         }
         #endif
+    }
+
+    @ViewBuilder private func groupActions(_ g: String) -> some View {
+        let key = Customization.groupKey(g)
+        let hidden = c.hidden.contains(key)
+        let locked = pid.map { CloudStore.shared.parental.lockedGroups.contains("\($0.uuidString)|\(g)") } ?? false
+        Button { renaming = RenameTarget(id: key, current: display(g)) } label: { Label(L("Rename"), systemImage: "pencil") }
+        Button { update { if hidden { $0.hidden.remove(key) } else { $0.hidden.insert(key) } } } label: {
+            Label(hidden ? L("Show") : L("Hide"), systemImage: hidden ? "eye" : "eye.slash")
+        }
+        Button { merging = g } label: { Label(L("Merge into…"), systemImage: "arrow.triangle.merge") }
+        if CloudStore.shared.parental.enabled, let pid {
+            Button { parental.toggleLock(playlist: pid, group: g) } label: {
+                Label(locked ? L("Unlock") : L("Lock with PIN"), systemImage: locked ? "lock.open" : "lock")
+            }
+        }
+        if section == .live {
+            Button { moveGroup(g, by: -1) } label: { Label(L("Move up"), systemImage: "arrow.up") }
+            Button { moveGroup(g, by: 1) } label: { Label(L("Move down"), systemImage: "arrow.down") }
+        }
     }
 
     private func update(_ change: (inout Customization) -> Void) {
@@ -158,6 +179,7 @@ struct ChannelsManageView: View {
     @EnvironmentObject var playlists: PlaylistService
     @EnvironmentObject var store: CloudStore
     @State private var renaming: ManageView.RenameTarget?
+    @State private var menuFor: Channel?
 
     private var pid: UUID? { playlists.source?.id }
     private var c: Customization { pid.map { store.customization($0) } ?? Customization() }
@@ -173,19 +195,18 @@ struct ChannelsManageView: View {
         List {
             ForEach(channels) { ch in
                 let hidden = c.hidden.contains(ch.id)
-                HStack(spacing: 12) {
-                    RemoteImage(url: ch.logo, contentMode: .fit, placeholder: String(ch.name.prefix(3)))
-                        .frame(width: tvScaled(44), height: tvScaled(28))
-                    Text(c.renamed[ch.id] ?? ch.name).strikethrough(hidden).foregroundStyle(hidden ? Theme.secondary : .white)
-                    Spacer()
-                    if hidden { Image(systemName: "eye.slash").foregroundStyle(Theme.secondary) }
+                // tikken (of op Apple TV: selecteren) opent de acties; vasthouden geeft hetzelfde menu
+                Button { menuFor = ch } label: {
+                    HStack(spacing: 12) {
+                        RemoteImage(url: ch.logo, contentMode: .fit, placeholder: String(ch.name.prefix(3)))
+                            .frame(width: tvScaled(44), height: tvScaled(28))
+                        Text(c.renamed[ch.id] ?? ch.name).strikethrough(hidden).foregroundStyle(hidden ? Theme.secondary : .white)
+                        Spacer()
+                        if hidden { Image(systemName: "eye.slash").foregroundStyle(Theme.secondary) }
+                    }
+                    .contentShape(Rectangle())
                 }
-                .contextMenu {
-                    Button { renaming = .init(id: ch.id, current: c.renamed[ch.id] ?? ch.name) } label: { Label(L("Rename"), systemImage: "pencil") }
-                    Button { toggleHidden(ch.id) } label: { Label(hidden ? L("Show") : L("Hide"), systemImage: hidden ? "eye" : "eye.slash") }
-                    Button { moveChannel(ch.id, by: -1) } label: { Label(L("Move up"), systemImage: "arrow.up") }
-                    Button { moveChannel(ch.id, by: 1) } label: { Label(L("Move down"), systemImage: "arrow.down") }
-                }
+                .contextMenu { channelActions(ch) }
                 #if os(iOS)
                 .swipeActions {
                     Button { toggleHidden(ch.id) } label: { Label(hidden ? L("Show") : L("Hide"), systemImage: "eye.slash") }.tint(.gray)
@@ -199,12 +220,25 @@ struct ChannelsManageView: View {
         #if os(iOS)
         .toolbar { EditButton() }
         #endif
+        .confirmationDialog(menuFor.map { c.renamed[$0.id] ?? $0.name } ?? "",
+                            isPresented: Binding(get: { menuFor != nil }, set: { if !$0 { menuFor = nil } }),
+                            titleVisibility: .visible) {
+            if let ch = menuFor { channelActions(ch) }
+        }
         .sheet(item: $renaming) { t in
             RenameSheet(title: t.current) { new in
                 guard let pid else { return }
                 store.updateCustomization(pid) { $0.renamed[t.id] = new.isEmpty ? nil : new }
             }
         }
+    }
+
+    @ViewBuilder private func channelActions(_ ch: Channel) -> some View {
+        let hidden = c.hidden.contains(ch.id)
+        Button { renaming = .init(id: ch.id, current: c.renamed[ch.id] ?? ch.name) } label: { Label(L("Rename"), systemImage: "pencil") }
+        Button { toggleHidden(ch.id) } label: { Label(hidden ? L("Show") : L("Hide"), systemImage: hidden ? "eye" : "eye.slash") }
+        Button { moveChannel(ch.id, by: -1) } label: { Label(L("Move up"), systemImage: "arrow.up") }
+        Button { moveChannel(ch.id, by: 1) } label: { Label(L("Move down"), systemImage: "arrow.down") }
     }
 
     private func toggleHidden(_ id: String) {

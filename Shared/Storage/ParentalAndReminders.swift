@@ -18,11 +18,27 @@ final class ParentalControl: ObservableObject {
 
     func verify(_ pin: String) -> Bool {
         guard let stored = Keychain.get(pinKey), stored == pin else { return false }
-        unlockedUntil = Date().addingTimeInterval(30 * 60)   // 30 min ontgrendeld
+        unlock()
         return true
     }
 
-    func lock() { unlockedUntil = nil }
+    /// Alleen controleren (één titel toestaan), zónder de hele bibliotheek te ontgrendelen.
+    func check(_ pin: String) -> Bool { Keychain.get(pinKey) == pin }
+
+    /// 30 min ontgrendelen; daarna gaat het slot vanzelf weer dicht (en wordt de bibliotheek opnieuw gefilterd).
+    private func unlock() {
+        let until = Date().addingTimeInterval(30 * 60)
+        unlockedUntil = until
+        relockTask?.cancel()
+        relockTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(30 * 60))
+            guard !Task.isCancelled, let self, self.unlockedUntil == until else { return }
+            self.unlockedUntil = nil
+        }
+    }
+    private var relockTask: Task<Void, Never>?
+
+    func lock() { relockTask?.cancel(); unlockedUntil = nil }
 
     // MARK: pincode per profiel
     // Het hoofdaccount gebruikt de kinderslot-pincode ("parental.pin"); elk ander profiel heeft een eigen pincode.
@@ -35,7 +51,7 @@ final class ParentalControl: ObservableObject {
     /// Juiste pincode voor dit profiel? (Bij het hoofdaccount ook meteen 30 min ontgrendelen.)
     func verify(_ pin: String, profile: UUID) -> Bool {
         guard let stored = Keychain.get(Self.pinKey(for: profile)), stored == pin else { return false }
-        if CloudStore.shared.mainProfileID == profile { unlockedUntil = Date().addingTimeInterval(30 * 60) }
+        if CloudStore.shared.mainProfileID == profile { unlock() }
         return true
     }
 

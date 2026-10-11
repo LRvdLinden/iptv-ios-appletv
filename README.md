@@ -3,7 +3,7 @@
 [![Build](https://github.com/LRvdLinden/iptv-ios-appletv/actions/workflows/build.yml/badge.svg)](https://github.com/LRvdLinden/iptv-ios-appletv/actions/workflows/build.yml)
 
 Native IPTV- en mediaspeler voor **iPhone, iPad, Mac en Apple TV** met de look & feel van Netflix.
-SwiftUI · iOS 17+ · tvOS 17+ · Apple- én VLC-engine · 11 talen · versie 1.0.0 (build 25).
+SwiftUI · iOS 17+ · tvOS 17+ · Apple- én VLC-engine · 11 talen · versie 1.0.0 (build 26).
 
 ## Screenshots
 
@@ -47,18 +47,20 @@ SwiftUI · iOS 17+ · tvOS 17+ · Apple- én VLC-engine · 11 talen · versie 1.
 - Twee engines: **Apple (AVPlayer)** voor HLS/MP4 met **HDR, Dolby Vision, Dolby Atmos** en automatisch juiste schermmodus op Apple TV; **VLC** voor .ts, .mkv, AC3/DTS en de rest. Automatisch kiezen of zelf instellen
 - **AirPlay** en **Chromecast** (zonder extra SDK), **beeld-in-beeld** op iPhone, iPad en Apple TV
 - **Standaard audio- en ondertiteltaal** (automatisch gekozen als de stream ze heeft)
-- **Automatisch herverbinden** bij haperende of weggevallen streams (met terugval naar de andere engine)
+- **Automatisch herverbinden** bij haperende of weggevallen streams (met terugval naar de andere engine); geen stream gevonden → duidelijke melding met "Opnieuw" in plaats van een eindeloze spinner
+- **Volgende aflevering** zoals Netflix: knop in de laatste 45 seconden en automatisch door naar de volgende (ook over seizoenen heen); "Verder kijken" pakt de laatst bekeken aflevering
 - **Timeshift**: live tv pauzeren en terugspoelen (HLS-venster of catch-up), knop "terug naar live"
 - **Multiview**: tot 4 streams tegelijk, geluid van het geselecteerde beeld
 - Audio- en ondertitelsporen, **OpenSubtitles** (zoeken op IMDb-ID of titel, taal kiezen tijdens het kijken met vlaggen, standaardtaal + automatisch laden, timing verschuiven, ook niet-UTF-8-bestanden), snelheid, beeldverhouding, slaaptimer, zappen ↑↓
 
 **Gids & beheer**
 - **Tv-gids als raster** met nu-lijn, programma-details, **terugkijken** en **herinneringen** (melding op iPhone/iPad, banner op Apple TV)
-- **Live TV** opent op "Alle zenders"; favorieten, recent en alle groepen
+- **Live TV** opent op "Alle zenders"; favorieten, recent en alle groepen. **Zoeken op Live TV** (iPhone, iPad én Apple TV) zoekt altijd door álle zenders: op naam, zendernummer, groep en wat er nu speelt
+- Tv-gids-raster blijft vlot bij duizenden zenders (toont de eerste 150 van een groep, 1 uur terug t/m 13 uur vooruit)
 - **Categorieën aan/uit** per Live TV, Films en Series, met snelknoppen per land/taal (NL, BE, DE, TK …)
 - **Servers** toevoegen, wisselen, wijzigen en verwijderen (hoofdaccount)
-- **Beheren**: groepen en zenders hernoemen, herschikken, samenvoegen en verbergen
-- **Pincode** per profiel, en met de pincode van het hoofdaccount het kinderslot: groepen op slot, volwassenengroepen automatisch, **leeftijdsgrens per profiel** (IMDb-classificatie), 30 min ontgrendelen
+- **Beheren**: groepen en zenders hernoemen, herschikken, samenvoegen en verbergen (op Apple TV via selecteren of vasthouden)
+- **Pincode** per profiel, en met de pincode van het hoofdaccount het kinderslot: groepen op slot, volwassenengroepen automatisch, **leeftijdsgrens per profiel** (IMDb-classificatie), 30 min ontgrendelen (daarna automatisch weer op slot). Een titel boven de grens met pincode afspelen ontgrendelt alleen díe titel, niet de hele bibliotheek
 - **Kinderprofiel**: alleen kinderzenders, tekenfilms/familie en titels met een bekende leeftijd binnen de grens (standaard t/m 12), met een eigen **Top 10 voor kids**. Bij grenzen t/m 12 jaar wordt streng gefilterd (onbekend = verborgen)
 - **Kijkgeschiedenis per profiel**, per dag, met verwijderen en wissen
 - **Mijn Bingr** zoals "Mijn Netflix": je profiel bovenaan (tik om te wisselen), met Verder kijken en Mijn lijst; op iPhone je profielfoto als tabbladicoon

@@ -92,7 +92,10 @@ struct MultiviewScreen: View {
         let t = Tile(channel: c, controller: ctrl)
         tiles.append(t)
         Task {
-            if let u = await playlists.resolve(ctrl.item) { ctrl.start(url: u) }
+            let u = await playlists.resolve(ctrl.item)
+            // tegel intussen weggehaald of Multiview gesloten → niet alsnog starten
+            guard tiles.contains(where: { $0.id == t.id }) else { return }
+            if let u { ctrl.start(url: u) }
             if active == nil { focus(t) } else { t.controller.muted = true }
         }
     }

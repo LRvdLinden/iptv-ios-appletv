@@ -37,8 +37,24 @@ struct LiveTVView: View {
         case Self.allKey: list = lib.channels
         default: list = lib.channels.filter { $0.group == group }
         }
-        if !filterText.isEmpty { list = list.filter { $0.name.localizedCaseInsensitiveContains(filterText) } }
         return list
+    }
+
+    /// Zoeken gaat altijd door álle zenders (los van de gekozen groep): naam, nummer, groep en wat er nu speelt.
+    private var searching: Bool { !query.isEmpty }
+    private var query: String { filterText.trimmingCharacters(in: .whitespaces) }
+    private var visibleChannels: [Channel] {
+        guard searching else { return channels }
+        let q = query
+        let byName = lib.channels.filter {
+            $0.name.localizedCaseInsensitiveContains(q) || ($0.number.map { "\($0)" == q } ?? false)
+        }
+        let nameIDs = Set(byName.map(\.id))
+        let byOther = lib.channels.filter { c in
+            !nameIDs.contains(c.id) && (c.group.localizedCaseInsensitiveContains(q)
+                || (lib.nowPlaying(c)?.title.localizedCaseInsensitiveContains(q) ?? false))
+        }
+        return byName + byOther
     }
 
     var body: some View {
@@ -52,7 +68,7 @@ struct LiveTVView: View {
                             Label(mode == .list ? L("TV guide") : L("List"),
                                   systemImage: mode == .list ? "calendar.day.timeline.left" : "list.bullet")
                         }
-                        Button { app.openMultiview(start: Array(channels.prefix(1)), candidates: channels) } label: {
+                        Button { app.openMultiview(start: Array(visibleChannels.prefix(1)), candidates: visibleChannels) } label: {
                             Label("Multiview", systemImage: "square.grid.2x2")
                         }
                         .disabled(lib.channels.isEmpty)
@@ -68,10 +84,25 @@ struct LiveTVView: View {
         HStack(alignment: .top, spacing: 40) {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "magnifyingglass").font(.system(size: 24, weight: .semibold))
+                            .foregroundStyle(Theme.secondary)
+                        TextField(L("Search channel"), text: $filterText)
+                            .font(.system(size: 26))
+                    }
+                    if searching {
+                        Button { filterText = "" } label: {
+                            Label(L("Clear search"), systemImage: "xmark.circle.fill")
+                                .font(.system(size: 22, weight: .medium)).foregroundStyle(Theme.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+                        }
+                        .plainTVButton()
+                    }
+                    Divider().padding(.vertical, 6)
                     ForEach(groups, id: \.self) { g in
-                        Button { group = g } label: {
+                        Button { group = g; filterText = "" } label: {
                             HStack(spacing: 12) {
-                                Capsule().fill(group == g ? Theme.red : .clear).frame(width: 5, height: 30)
+                                Capsule().fill(group == g && !searching ? Theme.red : .clear).frame(width: 5, height: 30)
                                 Text(title(g)).font(.system(size: 26, weight: .medium))
                                     .foregroundStyle(group == g ? .white : Theme.secondary)
                                     .lineLimit(1)
@@ -92,24 +123,24 @@ struct LiveTVView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     ForEach(groups, id: \.self) { g in
-                        Button { withAnimation { group = g } } label: {
+                        Button { withAnimation { group = g; filterText = "" } } label: {
                             Text(title(g)).font(.system(size: 13, weight: .semibold))
                                 .padding(.horizontal, 14).padding(.vertical, 7)
-                                .foregroundStyle(group == g ? .black : .white)
-                                .background(group == g ? Color.white : Theme.elevated, in: Capsule())
+                                .foregroundStyle(group == g && !searching ? .black : .white)
+                                .background(group == g && !searching ? Color.white : Theme.elevated, in: Capsule())
                         }
                     }
                 }.padding(.horizontal, 16).padding(.vertical, 10)
             }
             channelArea
         }
-        .searchable(text: $filterText, prompt: L("Search channel"))
+        .searchable(text: $filterText, placement: .navigationBarDrawer(displayMode: .always), prompt: L("Search channel or program"))
         #endif
     }
 
     @ViewBuilder private var channelArea: some View {
         if mode == .grid {
-            GuideGridView(channels: channels,
+            GuideGridView(channels: visibleChannels,
                           onPlay: { c in play(c) },
                           onProgram: { c, p in program = ProgramTarget(channel: c, p: p) })
         } else {
@@ -119,16 +150,23 @@ struct LiveTVView: View {
 
     private func play(_ c: Channel) {
         store.pushRecentChannel(pid, c.id)
-        app.play(Playables.channel(c, now: lib.nowPlaying(c)), zap: channels)
+        app.play(Playables.channel(c, now: lib.nowPlaying(c)), zap: visibleChannels)
     }
 
     private var channelList: some View {
-        let list = channels
+        let list = visibleChannels
         return ScrollView {
-            LazyVStack(spacing: tvScaled(2)) {
+            LazyVStack(alignment: .leading, spacing: tvScaled(2)) {
+                if searching {
+                    Text(L("%d channels for “%@”", list.count, query))
+                        .font(.system(size: tvScaled(13), weight: .semibold)).foregroundStyle(Theme.secondary)
+                        .padding(.horizontal, tvScaled(8)).padding(.top, tvScaled(6))
+                }
                 if list.isEmpty {
-                    Text(group == Self.favKey ? L("No favorites yet. Hold a channel to add it.") : L("No channels."))
+                    Text(searching ? L("No channels found.") :
+                         group == Self.favKey ? L("No favorites yet. Hold a channel to add it.") : L("No channels."))
                         .foregroundStyle(Theme.secondary).padding(.top, 40)
+                        .frame(maxWidth: .infinity)
                 }
                 ForEach(list) { c in
                     Button { play(c) } label: {

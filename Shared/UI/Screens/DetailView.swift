@@ -23,6 +23,8 @@ struct DetailView: View {
     @State private var nested: DetailTarget?
     @State private var toast: String?
     @State private var scrollY: CGFloat = 0
+    /// Aanbevelingen die in je lijst staan (één keer opgezocht, niet bij elke scrollframe)
+    @State private var recMatches: [String: DetailTarget] = [:]
     @State private var ageGate = false
     @State private var afterPIN: (() -> Void)?
 
@@ -76,7 +78,7 @@ struct DetailView: View {
                     if case .series(let s) = target { episodesSection(s) }
                     if let r = d?.ratings, !r.isEmpty { ratingsSection(r) }
                     if let c = d?.cast, !c.isEmpty { castSection(c) }
-                    if let rec = d?.recommendations, !rec.isEmpty { recommendationsSection(rec) }
+                    if let rec = visibleRecommendations, !rec.isEmpty { recommendationsSection(rec) }
                     Color.clear.frame(height: 40)
                 }
                 .background(GeometryReader { g in
@@ -100,10 +102,11 @@ struct DetailView: View {
             }
         }
         .task(id: target.id) { await load() }
+        .task(id: d?.recommendations.map(\.id) ?? []) { await matchRecommendations() }
         .sheet(isPresented: $showSources) { sourcesSheet }
         .sheet(isPresented: $ageGate) {
             PINPad(title: L("This title is above the age limit of this profile. Enter PIN")) { pin in
-                guard ParentalControl.shared.verify(pin) else { return false }
+                guard ParentalControl.shared.check(pin) else { return false }   // alleen deze titel, niet alles ontgrendelen
                 let run = afterPIN; afterPIN = nil
                 Task { @MainActor in try? await Task.sleep(nanoseconds: 300_000_000); run?() }
                 return true
@@ -562,7 +565,9 @@ struct DetailView: View {
     }
 
     private var nextEpisode: Episode? {
-        if let resumed = episodes.first(where: { (store.progress[$0.id]?.fraction ?? 0) > 0.02 }) { return resumed }
+        // de laatst bekeken aflevering met voortgang (niet zomaar de eerste in de lijst)
+        let started = episodes.compactMap { e in store.progress[e.id].flatMap { $0.fraction > 0.02 && $0.fraction < 0.95 ? (e, $0.updated) : nil } }
+        if let resumed = started.max(by: { $0.1 < $1.1 })?.0 { return resumed }
         return episodes.first { !Playables.isWatched($0, imdb: imdb) } ?? episodes.first
     }
 
@@ -570,13 +575,16 @@ struct DetailView: View {
     private func ageChecked(_ action: @escaping () -> Void) {
         let limit = store.activeProfile?.effectiveAgeLimit
         let group: String = { switch target { case .movie(let m): return m.group; case .series(let s): return s.group } }()
-        let rated = d?.certification ?? {
+        let cached: TitleMetadata? = {
             switch target {
-            case .movie(let m): return MetadataService.shared.cached(m)?.rated
-            case .series(let s): return MetadataService.shared.cached(s)?.rated
+            case .movie(let m): return MetadataService.shared.cached(m)
+            case .series(let s): return MetadataService.shared.cached(s)
             }
         }()
-        if ParentalControl.shared.allowed(rated: rated, group: group, limit: limit) { action(); return }
+        let rated = d?.certification ?? cached?.rated
+        let genre = cached?.genre ?? d.map { $0.genres.joined(separator: ",") }
+        if ParentalControl.shared.allowed(rated: rated, group: group, limit: limit, genre: genre,
+                                          strict: store.activeProfile?.strictAgeFilter ?? false) { action(); return }
         if ParentalControl.shared.hasPIN { afterPIN = action; ageGate = true }
         else { flash(L("Not available on this profile (age limit).")) }
     }
@@ -630,13 +638,31 @@ struct DetailView: View {
         else if let s = playlists.library.series.first(where: { $0.id == id }) { nested = .series(s) }
     }
 
-    private func findInLibrary(_ r: TitleDetails.Recommendation) -> DetailTarget? {
-        let n = PlaylistService.normTitle(r.title)
-        if r.isShow {
-            return playlists.library.series.first { PlaylistService.normTitle($0.title) == n }.map { .series($0) }
-        }
-        return playlists.library.movies.first { PlaylistService.normTitle($0.title) == n && (r.year == nil || $0.year == nil || $0.year == r.year) }
-            .map { .movie($0) }
+    private func findInLibrary(_ r: TitleDetails.Recommendation) -> DetailTarget? { recMatches[r.id] }
+
+    /// Profielen met een leeftijdsgrens zien alleen aanbevelingen die (gefilterd) in hun lijst staan.
+    private var visibleRecommendations: [TitleDetails.Recommendation]? {
+        guard let rec = d?.recommendations else { return nil }
+        guard store.activeProfile?.effectiveAgeLimit != nil else { return rec }
+        return rec.filter { recMatches[$0.id] != nil }
+    }
+
+    private func matchRecommendations() async {
+        guard let rec = d?.recommendations, !rec.isEmpty else { recMatches = [:]; return }
+        let movies = playlists.library.movies, series = playlists.library.series
+        recMatches = await Task.detached(priority: .userInitiated) {
+            let wanted = Set(rec.map { PlaylistService.normTitle($0.title) })
+            var mv: [String: [Movie]] = [:], sv: [String: Series] = [:]
+            for m in movies { let n = PlaylistService.normTitle(m.title); if wanted.contains(n) { mv[n, default: []].append(m) } }
+            for x in series { let n = PlaylistService.normTitle(x.title); if wanted.contains(n), sv[n] == nil { sv[n] = x } }
+            var out: [String: DetailTarget] = [:]
+            for r in rec {
+                let n = PlaylistService.normTitle(r.title)
+                if r.isShow { if let x = sv[n] { out[r.id] = .series(x) } }
+                else if let m = mv[n]?.first(where: { r.year == nil || $0.year == nil || $0.year == r.year }) { out[r.id] = .movie(m) }
+            }
+            return out
+        }.value
     }
 
     private func openRecommendation(_ r: TitleDetails.Recommendation) {

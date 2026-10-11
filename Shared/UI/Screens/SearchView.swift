@@ -62,8 +62,12 @@ struct SearchView: View {
                     try? await Task.sleep(nanoseconds: 300_000_000)
                     guard q == query else { return }
                     searching = true
-                    results = await playlists.search(q)
-                    programs = q.count < 2 ? [] : await Self.searchGuide(q, in: playlists.library)
+                    let r = await playlists.search(q)
+                    let p = q.count < 2 ? [] : await Self.searchGuide(q, in: playlists.library)
+                    // intussen verder getypt → deze (oude) resultaten niet meer tonen
+                    guard q == query else { return }
+                    results = r
+                    programs = p
                     groupHits = q.count < 2 ? [] : categoryHits(q)
                     searching = false
                 }

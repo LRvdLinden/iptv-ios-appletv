@@ -16,6 +16,8 @@ struct PlayerScreen: View {
     @State private var scrubbing: Double?
     @State private var toast: String?
     @State private var stremioChoices: [StremioClient.Stream] = []
+    /// Volgende aflevering (series): knop aan het eind en automatisch verder kijken
+    @State private var nextUp: PlayableItem?
     #if os(iOS)
     @StateObject private var cast = CastManager.shared
     #endif
@@ -79,6 +81,14 @@ struct PlayerScreen: View {
 
             if showControls { controls.transition(.opacity) }
 
+            if let n = nextUp, player.errorText == nil, player.duration > 120, player.duration - player.currentTime < 45 {
+                NetflixButton(title: L("Next episode"), icon: "forward.end.fill") { playNext(n) }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                    .padding(.trailing, tvScaled(40))
+                    .padding(.bottom, showControls ? tvScaled(130) : tvScaled(50))
+                    .transition(.opacity)
+            }
+
             if let toast {
                 Text(toast).font(.system(size: tvScaled(14), weight: .semibold))
                     .padding(.horizontal, 16).padding(.vertical, 10)
@@ -134,7 +144,7 @@ struct PlayerScreen: View {
         .onChange(of: player.notice) { _, n in
             if let n { flash(n); player.notice = nil }
         }
-        .onDisappear { if !player.inPiP { player.stop() } }
+        .onDisappear { if !player.inPiP { player.dismissed = true; player.stop() } }
     }
 
     // MARK: bediening
@@ -291,6 +301,7 @@ struct PlayerScreen: View {
     private func bind(_ it: PlayableItem) {
         player.onEnterPiP = { dismiss() }
         player.onFinished = {
+            if let n = nextUp { playNext(n); return }   // zoals Netflix: gewoon door naar de volgende aflevering
             if TraktSync.askRating, TraktSync.shared.isLoggedIn, it.imdbID != nil, it.type != .live {
                 panel = .rate
             } else {
@@ -300,6 +311,7 @@ struct PlayerScreen: View {
     }
 
     private func start(_ it: PlayableItem) async {
+        player.prepareNew()
         player.item = it
         bind(it)
         if it.type == .live, let cid = it.channelID {
@@ -309,18 +321,42 @@ struct PlayerScreen: View {
             player.catchupProvider = nil
         }
         if it.stremio != nil {
-            stremioChoices = await playlists.stremioStreams(it)
+            let found = await playlists.stremioStreams(it)
+            // intussen gesloten of al naar een andere zender gezapt → niet meer starten
+            guard !player.dismissed, player.item.id == it.id else { return }
+            stremioChoices = found
             guard let first = stremioChoices.first else {
-                flash(L("No playable streams found for this title.")); return
+                player.fail(L("No playable streams found for this title.")); return
             }
             player.start(url: first.url)
         } else {
-            guard let url = await playlists.resolve(it) else { flash(L("No stream address available.")); return }
+            let resolved = await playlists.resolve(it)
+            guard !player.dismissed, player.item.id == it.id else { return }
+            guard let url = resolved else { player.fail(L("No stream address available.")); return }
             player.liveURL = url
             player.start(url: url)
         }
         poke()
         if autoSubtitles, it.type != .live { Task { await autoLoadSubtitles(it) } }
+        await findNext(it)
+    }
+
+    /// Zoekt de aflevering na deze (ook over seizoenen heen).
+    private func findNext(_ it: PlayableItem) async {
+        nextUp = nil
+        guard it.type == .episode else { return }
+        let lib = playlists.library
+        guard let s = lib.series.first(where: { $0.episodes.contains { $0.id == it.id } })
+                ?? lib.series.first(where: { $0.title == it.title }) else { return }
+        let eps = await playlists.episodes(for: s).sorted { ($0.season, $0.number) < ($1.season, $1.number) }
+        guard player.item.id == it.id, let i = eps.firstIndex(where: { $0.id == it.id }), i + 1 < eps.count else { return }
+        nextUp = Playables.episode(eps[i + 1], of: s, imdb: it.imdbID)
+    }
+
+    private func playNext(_ n: PlayableItem) {
+        nextUp = nil
+        flash(n.subtitle ?? n.title)
+        Task { player.stop(); await start(n) }
     }
 
     /// Standaard ondertitels: eerst een spoor in de stream in je standaardtaal, anders de beste van OpenSubtitles.

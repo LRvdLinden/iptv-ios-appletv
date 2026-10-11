@@ -8,7 +8,6 @@ struct HomeView: View {
     @EnvironmentObject var playlists: PlaylistService
     @EnvironmentObject var store: CloudStore
     @EnvironmentObject var trakt: TraktSync
-    @EnvironmentObject var meta: MetadataService
 
     @State private var detail: DetailTarget?
     @State private var hero: DetailTarget?
@@ -17,7 +16,8 @@ struct HomeView: View {
     @State private var forYou: [DetailTarget] = []
     @State private var category: CategoryTarget?
     @State private var showSearch = false
-    @State private var scrollOffset: CGFloat = 0
+    /// Scrollpositie apart bijhouden: alleen de bovenbalk leest hem, zodat Home niet bij elke scrollframe opnieuw rekent.
+    @State private var scroll = ScrollTracker()
 
     private var lib: Library { playlists.library }
     private var pid: UUID? { playlists.source?.id }
@@ -39,11 +39,14 @@ struct HomeView: View {
                 })
             }
             .coordinateSpace(name: "scroll")
-            .onPreferenceChange(OffsetKey.self) { scrollOffset = $0 }
+            .onPreferenceChange(OffsetKey.self) { y in
+                let v = max(-400, min(0, y))   // alleen het stuk waar de balk van kleur verandert
+                if abs(v - scroll.y) >= 2 || (v == 0) != (scroll.y == 0) { scroll.y = v }
+            }
             .ignoresSafeArea(edges: .top)
 
             #if os(iOS)
-            topBar   // op Apple TV zit Zoeken al in de menubalk
+            HomeTopBar(scroll: scroll, onSearch: { showSearch = true }, onProfile: { app.switchPlaylist() })   // op Apple TV zit Zoeken al in de menubalk
             #endif
         }
         .fullScreenCover(isPresented: $showSearch) { SearchView(modal: true) }
@@ -231,7 +234,7 @@ struct HomeView: View {
     }
 
     @ViewBuilder private func movieMenu(_ m: Movie, imdb: String?) -> some View {
-        Button { app.play(Playables.movie(m, imdb: imdb)) } label: { Label(L("Play"), systemImage: "play.fill") }
+        Button { play(.movie(m)) } label: { Label(L("Play"), systemImage: "play.fill") }
         let watched = Playables.isWatched(movie: m, imdb: imdb)
         Button {
             store.setLocalWatched(m.id, !watched)
@@ -254,11 +257,13 @@ struct HomeView: View {
 
     private var continueWatching: [ContinueItem] {
         let movieIDs = Set(lib.movies.map(\.id))
+        let seriesTitles = Set(lib.series.map(\.title))
         var out: [ContinueItem] = store.progress.compactMap { key, e in
             guard store.belongsToActive(e.profileID) else { return nil }   // alleen van dit profiel
+            guard e.playlistID == nil || e.playlistID == pid else { return nil }   // alleen van deze server
             let isMovie = movieIDs.contains(key)
-            if !isMovie && !key.hasPrefix("xe") && !key.hasPrefix("jfe") && !key.hasPrefix("pxe") && !key.hasPrefix("se")
-                && !lib.series.contains(where: { s in s.episodes.contains { $0.id == key } }) { return nil }
+            // afleveringen alleen als de serie (nog) zichtbaar is voor dit profiel (niet verborgen/op slot/te oud)
+            if !isMovie && !seriesTitles.contains(e.title) { return nil }
             if filter == .movies && !isMovie { return nil }
             if filter == .series && isMovie { return nil }
             let left = max(0, e.position / max(e.fraction, 0.01) - e.position)
@@ -294,16 +299,25 @@ struct HomeView: View {
         if let s = lib.series.first(where: { $0.title == c.title }) { detail = .series(s) }
     }
 
+    /// Profielen met een leeftijdsgrens gaan via de detailpagina (die controleert de classificatie).
+    private var ageLimited: Bool { store.activeProfile?.effectiveAgeLimit != nil }
+
     private func play(_ t: DetailTarget) {
         switch t {
-        case .movie(let m): app.play(Playables.movie(m, imdb: trakt.imdb(for: m)))
-        case .series: detail = t
+        case .movie(let m) where !ageLimited: app.play(Playables.movie(m, imdb: trakt.imdb(for: m)))
+        default: detail = t
         }
     }
 
     private func prepare() async {
         guard !lib.movies.isEmpty || !lib.series.isEmpty else { hero = nil; return }
         let key = "\(pid?.uuidString ?? "")-\(lib.movies.count)-\(lib.series.count)"
+        // 0. wat niet (meer) in de gefilterde lijst staat weghalen (ander profiel, leeftijdsgrens, verborgen groep)
+        let movieIDs = Set(lib.movies.map(\.id)), seriesIDs = Set(lib.series.map(\.id))
+        if let h = hero, !(h.isSeries ? seriesIDs : movieIDs).contains(h.id) { hero = nil }
+        trendingMovies.removeAll { !movieIDs.contains($0.id) }
+        trendingSeries.removeAll { !seriesIDs.contains($0.id) }
+        forYou.removeAll { !($0.isSeries ? seriesIDs : movieIDs).contains($0.id) }
         // 1. meteen iets laten zien: billboard en Top 10 uit de cache van vandaag (of je eigen lijst)
         if hero == nil { withAnimation(.easeInOut(duration: 0.4)) { hero = quickHero() } }
         let matcher = await MatcherCache.shared.matcher(for: lib, key: key)   // op de achtergrond gebouwd
@@ -429,30 +443,39 @@ struct HomeView: View {
         return Array(pool.prefix(10))
     }
 
-    // MARK: iOS bovenbalk (wordt donker bij scrollen, zoals Netflix)
+}
 
-    #if os(iOS)
-    private var topBar: some View {
+@Observable final class ScrollTracker { var y: CGFloat = 0 }
+
+#if os(iOS)
+/// iOS bovenbalk (wordt donker bij scrollen, zoals Netflix).
+private struct HomeTopBar: View {
+    let scroll: ScrollTracker
+    let onSearch: () -> Void
+    let onProfile: () -> Void
+
+    var body: some View {
+        let off = Double(-scroll.y)
         HStack(spacing: 14) {
             BingrLogo(size: 26)
             Spacer()
-            Button { showSearch = true } label: {
+            Button(action: onSearch) {
                 Image(systemName: "magnifyingglass").font(.system(size: 21, weight: .semibold)).foregroundStyle(.white)
                     .frame(width: 34, height: 34)
             }
             .accessibilityLabel(L("Search"))
-            Button { app.switchPlaylist() } label: { ProfileAvatar(size: 30) }
+            Button(action: onProfile) { ProfileAvatar(size: 30) }
                 .accessibilityLabel(L("Switch profile"))
         }
         .padding(.horizontal, 16).padding(.bottom, 10)
         .background(
-            LinearGradient(colors: [.black.opacity(min(0.95, 0.55 + Double(-scrollOffset) / 300)), .black.opacity(min(0.9, Double(-scrollOffset) / 300))],
+            LinearGradient(colors: [.black.opacity(min(0.95, 0.55 + off / 300)), .black.opacity(min(0.9, off / 300))],
                            startPoint: .top, endPoint: .bottom)
                 .ignoresSafeArea(edges: .top)
         )
     }
-    #endif
 }
+#endif
 
 private struct OffsetKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
