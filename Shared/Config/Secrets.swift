@@ -47,7 +47,8 @@ enum Secrets {
     static var omdbAPIKey: String { value(.omdbAPIKey) }
     static var tmdbAPIKey: String { value(.tmdbAPIKey) }
 
-    static var traktReady: Bool { isSet(traktClientID) && isSet(traktClientSecret) }
+    /// Nieuwe Trakt-apps (sinds okt. 2026) hebben alleen een Client ID (PKCE); het secret is optioneel.
+    static var traktReady: Bool { isSet(traktClientID) }
     static var openSubtitlesReady: Bool { isSet(openSubtitlesAPIKey) }
 
     static let userAgent = "Bingr v1.0.0"

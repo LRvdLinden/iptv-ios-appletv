@@ -31,7 +31,7 @@ struct ConnectionsSetupView: View {
                         copyRow(redirect)
                         step(3, L("Copy the Client ID and Client Secret into the fields below."))
                         TextField("Client ID", text: $traktID).textInputAutocapitalization(.never).autocorrectionDisabled()
-                        TextField("Client Secret", text: $traktSecret).textInputAutocapitalization(.never).autocorrectionDisabled()
+                        TextField(L("Client Secret (optional)"), text: $traktSecret).textInputAutocapitalization(.never).autocorrectionDisabled()
                     } header: { Text("Trakt") } footer: {
                         Text(L("Trakt requires every app to register once. After that you simply sign in with your Trakt account."))
                     }

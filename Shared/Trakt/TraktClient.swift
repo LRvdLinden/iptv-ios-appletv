@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 struct TraktTokens: Codable {
     var accessToken: String
@@ -28,8 +29,58 @@ actor TraktClient {
 
     // MARK: inloggen (device flow)
 
+    /// Host voor /oauth: Trakt verhuist dit naar auth.trakt.tv; api.trakt.tv blijft als terugval.
+    private var oauthBase: URL {
+        get { URL(string: UserDefaults.standard.string(forKey: "trakt.oauthHost") ?? "https://api.trakt.tv")! }
+        set { UserDefaults.standard.set(newValue.absoluteString, forKey: "trakt.oauthHost") }
+    }
+    private static let oauthHosts = ["https://api.trakt.tv", "https://auth.trakt.tv"]
+    /// PKCE-verifier voor deze koppelpoging (nieuwe Trakt-apps hebben geen client secret meer).
+    private var verifier = ""
+
+    /// Body met client_secret alleen als de app er (nog) een heeft.
+    private func oauthBody(_ b: [String: Any]) -> [String: Any] {
+        var b = b
+        b["client_id"] = Secrets.traktClientID
+        if Secrets.isSet(Secrets.traktClientSecret) { b["client_secret"] = Secrets.traktClientSecret }
+        return b
+    }
+
+    private func oauthRequest(_ path: String, _ body: [String: Any], host: URL? = nil) throws -> URLRequest {
+        var req = URLRequest(url: (host ?? oauthBase).appendingPathComponent(path))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("2", forHTTPHeaderField: "trakt-api-version")
+        req.setValue(Secrets.traktClientID, forHTTPHeaderField: "trakt-api-key")
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        return req
+    }
+
+    private static func randomVerifier() -> String {
+        let chars = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
+        return String((0..<64).map { _ in chars.randomElement()! })
+    }
+    private static func challenge(_ v: String) -> String {
+        Data(SHA256.hash(data: Data(v.utf8))).base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+    }
+
     func startDeviceLogin() async throws -> TraktDeviceCode {
-        try await post("/oauth/device/code", body: ["client_id": Secrets.traktClientID], auth: false)
+        verifier = Self.randomVerifier()
+        let body: [String: Any] = ["client_id": Secrets.traktClientID,
+                                   "code_challenge": Self.challenge(verifier), "code_challenge_method": "S256"]
+        var lastStatus = 0
+        for h in Self.oauthHosts {
+            guard let host = URL(string: h) else { continue }
+            let (d, r) = try await HTTP.data(try oauthRequest("/oauth/device/code", body, host: host))
+            if (200..<300).contains(r.statusCode), let c = try? JSONDecoder().decode(TraktDeviceCode.self, from: d) {
+                oauthBase = host
+                return c
+            }
+            lastStatus = r.statusCode
+        }
+        throw HTTPError.status(lastStatus, "Trakt")
     }
 
     /// Pollt tot de gebruiker de code heeft bevestigd op trakt.tv/activate.
@@ -38,11 +89,7 @@ actor TraktClient {
         var interval = UInt64(max(code.interval, 5))
         while Date() < deadline {
             try await Task.sleep(nanoseconds: interval * 1_000_000_000)
-            var req = URLRequest(url: base.appendingPathComponent("/oauth/device/token"))
-            req.httpMethod = "POST"
-            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            req.httpBody = try JSONSerialization.data(withJSONObject: [
-                "code": code.device_code, "client_id": Secrets.traktClientID, "client_secret": Secrets.traktClientSecret])
+            let req = try oauthRequest("/oauth/device/token", oauthBody(["code": code.device_code, "code_verifier": verifier]))
             let (d, r) = try await HTTP.data(req)
             switch r.statusCode {
             case 200:
@@ -62,8 +109,11 @@ actor TraktClient {
 
     func logout() {
         if let t = tokens {
-            Task { _ = try? await self.postRaw("/oauth/revoke", body: ["token": t.accessToken,
-                "client_id": Secrets.traktClientID, "client_secret": Secrets.traktClientSecret], auth: false) }
+            Task {
+                if let req = try? await self.oauthRequest("/oauth/revoke", self.oauthBody(["token": t.accessToken])) {
+                    _ = try? await HTTP.data(req)
+                }
+            }
         }
         Keychain.set(nil, for: tokenKey)
     }
@@ -94,13 +144,8 @@ actor TraktClient {
             // geregistreerde redirect-URI; we proberen de veilige https-variant en de oude "oob".
             var refreshed = false, unauthorized = 0
             for redirect in Self.redirectURIs {
-                var req = URLRequest(url: base.appendingPathComponent("/oauth/token"))
-                req.httpMethod = "POST"
-                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                req.httpBody = try JSONSerialization.data(withJSONObject: [
-                    "refresh_token": t.refreshToken, "client_id": Secrets.traktClientID,
-                    "client_secret": Secrets.traktClientSecret,
-                    "redirect_uri": redirect, "grant_type": "refresh_token"])
+                let req = try oauthRequest("/oauth/token", oauthBody([
+                    "refresh_token": t.refreshToken, "redirect_uri": redirect, "grant_type": "refresh_token"]))
                 let (d, r) = try await HTTP.data(req)
                 if r.statusCode == 200, let n = try? JSONDecoder().decode(TokenResponse.self, from: d) {
                     let user = t.username; t = n.tokens; t.username = user
