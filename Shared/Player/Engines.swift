@@ -12,6 +12,20 @@ import UIKit
 import MobileVLCKit
 #endif
 
+/// Grootte van ondertitels (Mijn Bingr → Speler, en tijdens het afspelen bij Opties).
+enum SubtitleSize: Int, CaseIterable {
+    case small, medium, large
+    static let key = "subtitle.size"
+    static var current: SubtitleSize { SubtitleSize(rawValue: UserDefaults.standard.integer(forKey: key)) ?? .small }
+    var title: String { switch self { case .small: return L("Small"); case .medium: return L("Medium"); case .large: return L("Large") } }
+    /// VLC: percentage van de standaardgrootte (die op een tv erg groot is)
+    var vlcScale: Int { switch self { case .small: return 55; case .medium: return 75; case .large: return 100 } }
+    /// Apple-speler: relatieve lettergrootte in procenten
+    var applePercent: Int { switch self { case .small: return 65; case .medium: return 85; case .large: return 110 } }
+    /// Eigen overlay (OpenSubtitles-bestanden bij de Apple-speler)
+    var overlayFactor: Double { switch self { case .small: return 0.75; case .medium: return 0.95; case .large: return 1.2 } }
+}
+
 enum EngineState { case idle, opening, buffering, playing, paused, ended, error }
 
 struct MediaTrack: Identifiable, Hashable { var id: String; var name: String; var lang: String? = nil }
@@ -48,6 +62,8 @@ protocol PlaybackEngine: AnyObject {
     func setAspect(_ a: PlayerController.Aspect)
     /// Ondertitels verschuiven (seconden); AVPlayer-ondertitels uit de stream kunnen niet verschoven worden.
     func setSubtitleDelay(_ seconds: Double)
+    /// Ondertitelgrootte toepassen (VLC laadt de stream op dezelfde plek opnieuw)
+    func setSubtitleSize(_ size: SubtitleSize)
 }
 
 // MARK: - VLC -------------------------------------------------------------------
@@ -90,11 +106,28 @@ final class VLCEngine: PlaybackEngine {
     }
     var supportsExternalSubtitles: Bool { true }
 
+    private var lastURL: URL?
+    private var lastLive = false
+
+    func setSubtitleSize(_ size: SubtitleSize) {
+        guard let url = lastURL, state == .playing || state == .paused || state == .buffering else { return }
+        load(url, live: lastLive, startFraction: lastLive ? nil : position)
+    }
+
     func load(_ url: URL, live: Bool, startFraction: Double?) {
+        lastURL = url; lastLive = live
         let media = VLCMedia(url: url)
+        // ondertitels: VLC tekent ze standaard erg groot (zeker op een tv)
+        media.addOption(":sub-text-scale=\(SubtitleSize.current.vlcScale)")
+        media.addOption(":freetype-rel-fontsize=\(SubtitleSize.current == .large ? 16 : SubtitleSize.current == .medium ? 18 : 20)")
         media.addOption(":network-caching=\(live ? 1500 : 3000)")
         media.addOption(":http-user-agent=\(Secrets.userAgent)")
         media.addOption(":http-reconnect")
+        // ook de tekstweergave van VLC zelf (iOS/tvOS); hoger getal = kleiner
+        let sel = NSSelectorFromString("setTextRendererFontSize:")
+        if player.responds(to: sel) {
+            player.perform(sel, with: NSNumber(value: SubtitleSize.current == .large ? 16 : SubtitleSize.current == .medium ? 18 : 20))
+        }
         player.media = media
         pendingStart = startFraction
         player.play()
@@ -233,6 +266,7 @@ final class AVEngine: PlaybackEngine {
         let asset = AVURLAsset(url: url, options: ["AVURLAssetHTTPHeaderFieldsKey": ["User-Agent": Secrets.userAgent]])
         let item = AVPlayerItem(asset: asset)
         item.preferredForwardBufferDuration = live ? 4 : 0
+        item.textStyleRules = Self.textRules(SubtitleSize.current)
         observers = [
             NotificationCenter.default.addObserver(forName: .AVPlayerItemFailedToPlayToEndTime, object: item, queue: .main) { [weak self] _ in
                 Task { @MainActor in self?.failed = true }
@@ -317,6 +351,10 @@ final class AVEngine: PlaybackEngine {
     }
     func addSubtitle(_ file: URL) {}
     func setSubtitleDelay(_ seconds: Double) {}   // externe ondertitels: via de eigen overlay
+    func setSubtitleSize(_ size: SubtitleSize) { player.currentItem?.textStyleRules = Self.textRules(size) }
+    static func textRules(_ size: SubtitleSize) -> [AVTextStyleRule] {
+        AVTextStyleRule(textMarkupAttributes: [kCMTextMarkupAttribute_RelativeFontSize as String: size.applePercent]).map { [$0] } ?? []
+    }
 
     func setAspect(_ a: PlayerController.Aspect) {
         layerView.playerLayer.videoGravity = a == .fill ? .resizeAspectFill : (a == .fit ? .resizeAspect : .resize)

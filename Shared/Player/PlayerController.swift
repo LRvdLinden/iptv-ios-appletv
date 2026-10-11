@@ -93,6 +93,12 @@ final class PlayerController: ObservableObject {
 
     // MARK: afspelen
 
+    /// Nieuwe ondertitelgrootte meteen toepassen (Opties tijdens het afspelen).
+    func applySubtitleSize() {
+        engine.setSubtitleSize(SubtitleSize.current)
+        objectWillChange.send()
+    }
+
     /// Spelerscherm is gesloten: een stream die daarna pas klaar is met laden niet meer starten.
     var dismissed = false
 

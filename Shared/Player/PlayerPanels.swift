@@ -176,6 +176,14 @@ struct OptionsPanel: View {
                         }
                     }
                 }
+                Section(L("Subtitle size")) {
+                    ForEach(SubtitleSize.allCases, id: \.self) { sz in
+                        check(sz.title, SubtitleSize.current == sz) {
+                            UserDefaults.standard.set(sz.rawValue, forKey: SubtitleSize.key)
+                            player.applySubtitleSize()
+                        }
+                    }
+                }
                 Section(L("Picture")) {
                     ForEach(PlayerController.Aspect.allCases, id: \.self) { a in
                         check(a.title, player.aspect == a) { player.aspect = a }

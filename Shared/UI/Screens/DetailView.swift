@@ -22,7 +22,8 @@ struct DetailView: View {
     @State private var sources: [PlaylistService.OtherHit] = []
     @State private var nested: DetailTarget?
     @State private var toast: String?
-    @State private var scrollY: CGFloat = 0
+    /// Scrollpositie apart: alleen de kopafbeelding en de balk lezen hem (anders rekent de hele pagina per frame opnieuw)
+    @State private var scroll = ScrollTracker()
     /// Aanbevelingen die in je lijst staan (één keer opgezocht, niet bij elke scrollframe)
     @State private var recMatches: [String: DetailTarget] = [:]
     @State private var ageGate = false
@@ -83,12 +84,19 @@ struct DetailView: View {
                     if let rec = visibleRecommendations, !rec.isEmpty { recommendationsSection(rec) }
                     Color.clear.frame(height: 40)
                 }
+                #if !os(tvOS)
                 .background(GeometryReader { g in
                     Color.clear.preference(key: DetailOffsetKey.self, value: g.frame(in: .named("detail")).minY)
                 })
+                #endif
             }
             .coordinateSpace(name: "detail")
-            .onPreferenceChange(DetailOffsetKey.self) { scrollY = $0 }
+            #if !os(tvOS)
+            .onPreferenceChange(DetailOffsetKey.self) { y in
+                let v = max(-800, min(400, y))
+                if abs(v - scroll.y) >= 2 { scroll.y = v }
+            }
+            #endif
             .ignoresSafeArea(edges: .top)
 
             #if !os(tvOS)
@@ -135,11 +143,7 @@ struct DetailView: View {
 
     private var header: some View {
         ZStack(alignment: .bottom) {
-            RemoteImage(url: heroImage, placeholder: "")
-                .frame(height: headerHeight + max(scrollY, 0))
-                .frame(maxWidth: .infinity)
-                .clipped()
-                .offset(y: scrollY > 0 ? -scrollY / 2 : 0)
+            ParallaxImage(url: heroImage, height: headerHeight, scroll: scroll)
             LinearGradient(stops: [.init(color: .clear, location: 0.35), .init(color: .black.opacity(0.65), location: 0.75),
                                    .init(color: .black, location: 1)], startPoint: .top, endPoint: .bottom)
             #if os(tvOS)
@@ -584,26 +588,7 @@ struct DetailView: View {
 
     #if !os(tvOS)
     private var stickyBar: some View {
-        let show = scrollY < -(headerHeight - 120)
-        return HStack {
-            Spacer()
-            Text(title).font(.headline).lineLimit(1).opacity(show ? 1 : 0)
-            Spacer()
-        }
-        .overlay(alignment: .trailing) {
-            if show {
-                Button { dismiss() } label: {
-                    Image(systemName: "xmark").font(.system(size: 17, weight: .semibold)).foregroundStyle(.white)
-                        .frame(width: 44, height: 44).background(.ultraThinMaterial, in: Circle())
-                }.padding(.trailing, 16)
-            }
-        }
-        .frame(height: 56)
-        .padding(.top, 50)
-        .background(.ultraThinMaterial.opacity(show ? 1 : 0))
-        .animation(.easeInOut(duration: 0.2), value: show)
-        .ignoresSafeArea(edges: .top)
-        .allowsHitTesting(show)
+        DetailStickyBar(title: title, threshold: -(headerHeight - 120), scroll: scroll) { dismiss() }
     }
     #endif
 
@@ -778,3 +763,50 @@ private struct DetailOffsetKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
+
+/// Kopafbeelding met parallax: leest als enige de scrollpositie.
+private struct ParallaxImage: View {
+    let url: URL?
+    let height: CGFloat
+    let scroll: ScrollTracker
+    var body: some View {
+        let y = scroll.y
+        RemoteImage(url: url, placeholder: "")
+            .frame(height: height + max(y, 0))
+            .frame(maxWidth: .infinity)
+            .clipped()
+            .offset(y: y > 0 ? -y / 2 : 0)
+    }
+}
+
+#if !os(tvOS)
+/// Balk met titel die verschijnt als je voorbij de kop scrolt.
+private struct DetailStickyBar: View {
+    let title: String
+    let threshold: CGFloat
+    let scroll: ScrollTracker
+    let onClose: () -> Void
+    var body: some View {
+        let show = scroll.y < threshold
+        HStack {
+            Spacer()
+            Text(title).font(.headline).lineLimit(1).opacity(show ? 1 : 0)
+            Spacer()
+        }
+        .overlay(alignment: .trailing) {
+            if show {
+                Button(action: onClose) {
+                    Image(systemName: "xmark").font(.system(size: 17, weight: .semibold)).foregroundStyle(.white)
+                        .frame(width: 44, height: 44).background(.ultraThinMaterial, in: Circle())
+                }.padding(.trailing, 16)
+            }
+        }
+        .frame(height: 56)
+        .padding(.top, 50)
+        .background(.ultraThinMaterial.opacity(show ? 1 : 0))
+        .animation(.easeInOut(duration: 0.2), value: show)
+        .ignoresSafeArea(edges: .top)
+        .allowsHitTesting(show)
+    }
+}
+#endif

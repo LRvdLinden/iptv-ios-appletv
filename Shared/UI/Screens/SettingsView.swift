@@ -14,6 +14,7 @@ struct SettingsView: View {
     @AppStorage("trakt.askRating") private var traktAskRating = true
     @AppStorage("playlist.refresh") private var refreshPolicy = RefreshPolicy.daily.rawValue
     @AppStorage("player.engine") private var engine = PlayerController.EngineChoice.auto.rawValue
+    @AppStorage(SubtitleSize.key) private var subtitleSize = SubtitleSize.small.rawValue
     @AppStorage(TrackPreferences.audioKey) private var audioLanguage = ""
     @AppStorage(TrackPreferences.subtitleKey) private var subtitleLanguage = ""
     @AppStorage("ui.startTab") private var startTab = 0
@@ -332,6 +333,10 @@ struct SettingsView: View {
         Section {
             Picker(L("Player engine"), selection: $engine) {
                 ForEach(PlayerController.EngineChoice.allCases, id: \.rawValue) { Text($0.title).tag($0.rawValue) }
+            }
+            .pickerStyle(.menu)
+            Picker(L("Subtitle size"), selection: $subtitleSize) {
+                ForEach(SubtitleSize.allCases, id: \.rawValue) { Text($0.title).tag($0.rawValue) }
             }
             .pickerStyle(.menu)
             Picker(L("Default audio language"), selection: $audioLanguage) {

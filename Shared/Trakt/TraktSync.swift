@@ -60,6 +60,8 @@ final class TraktSync: ObservableObject {
         s.imdbID ?? indexed(s.title, s.year, show: true) ?? MetadataService.shared.cached(s)?.imdbID
     }
     private func indexed(_ raw: String, _ year: Int?, show: Bool) -> String? {
+        // niets in de index (niet ingelogd / subprofiel)? dan ook niet elke titel opschonen — scheelt veel rekenwerk bij scrollen
+        guard !(show ? titleIndex.shows.isEmpty : titleIndex.movies.isEmpty) else { return nil }
         if let i = titleIndex.imdb(title: raw, year: year, show: show) { return i }
         let c = cleaned(raw)
         return titleIndex.imdb(title: c.title, year: year ?? c.year, show: show)

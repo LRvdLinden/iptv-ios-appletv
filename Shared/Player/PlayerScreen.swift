@@ -18,6 +18,11 @@ struct PlayerScreen: View {
     @State private var stremioChoices: [StremioClient.Stream] = []
     /// Volgende aflevering (series): knop aan het eind en automatisch verder kijken
     @State private var nextUp: PlayableItem?
+    #if os(tvOS)
+    /// Apple TV: wat de focus heeft — de onzichtbare "vanger" (bediening verborgen) of een knop in de balk
+    enum TVField: Hashable { case catcher, bar(String) }
+    @FocusState private var tvFocus: TVField?
+    #endif
     #if !os(tvOS)
     @StateObject private var cast = CastManager.shared
     #endif
@@ -43,7 +48,7 @@ struct PlayerScreen: View {
 
             if let s = player.subtitleText {
                 Text(s)
-                    .font(.system(size: tvScaled(20), weight: .semibold))
+                    .font(.system(size: tvScaled(20) * SubtitleSize.current.overlayFactor, weight: .semibold))
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 10).padding(.vertical, 4)
                     .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 6))
@@ -79,6 +84,9 @@ struct PlayerScreen: View {
             }
             #endif
 
+            #if os(tvOS)
+            if !showControls { tvCatcher }
+            #endif
             if showControls { controls.transition(.opacity) }
 
             if let n = nextUp, player.errorText == nil, player.duration > 120, player.duration - player.currentTime < 45 {
@@ -114,16 +122,12 @@ struct PlayerScreen: View {
         #endif
         #else
         .onPlayPauseCommand { player.togglePlay(); poke() }
-        .onMoveCommand { dir in
-            if showControls { poke(); return }
-            switch dir {
-            case .left: player.seek(by: -10); flash("−10 s")
-            case .right: player.seek(by: 10); flash("+10 s")
-            case .up: zap(-1)
-            case .down: zap(1)
-            default: break
-            }
+        .onChange(of: showControls) { _, shown in
+            // bediening tevoorschijn → focus op afspelen/pauze; weg → focus terug naar de vanger
+            tvFocus = shown ? .bar("play") : .catcher
         }
+        .onChange(of: tvFocus) { _, f in if case .bar = f { poke() } }   // rondkijken in de balk houdt hem zichtbaar
+        .onAppear { tvFocus = showControls ? .bar("play") : .catcher }
         .onExitCommand {
             if panel != nil { panel = nil } else if showControls { showControls = false } else { close() }
         }
@@ -235,7 +239,7 @@ struct PlayerScreen: View {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: tvScaled(26)) {
                             #if os(tvOS)
-                            barButton(player.isPlaying ? "pause.fill" : "play.fill", player.isPlaying ? L("Pause") : L("Play")) { player.togglePlay() }
+                            barButton(player.isPlaying ? "pause.fill" : "play.fill", player.isPlaying ? L("Pause") : L("Play"), id: "play") { player.togglePlay() }
                             if !player.isLive || player.canTimeshift {
                                 barButton("gobackward.10", "−10") { player.seek(by: -10) }
                                 barButton("goforward.30", "+30") { player.seek(by: 30) }
@@ -295,16 +299,42 @@ struct PlayerScreen: View {
         Button(action: action) { Image(systemName: icon).font(.system(size: size, weight: .semibold)).foregroundStyle(.white).frame(width: 64, height: 64) }
     }
 
-    private func barButton(_ icon: String, _ label: String, _ action: @escaping () -> Void) -> some View {
+    @ViewBuilder
+    private func barButton(_ icon: String, _ label: String, id: String? = nil, _ action: @escaping () -> Void) -> some View {
+        #if os(tvOS)
         Button { action(); poke() } label: {
-            #if os(tvOS)
             Label(label, systemImage: icon).font(.system(size: 24, weight: .semibold))
-            #else
-            Label(label, systemImage: icon).labelStyle(.iconOnly).font(.system(size: 20)).padding(6)
-            #endif
         }
         .foregroundStyle(.white)
+        .focused($tvFocus, equals: .bar(id ?? label))
+        #else
+        Button { action(); poke() } label: {
+            Label(label, systemImage: icon).labelStyle(.iconOnly).font(.system(size: 20)).padding(6)
+        }
+        .foregroundStyle(.white)
+        #endif
     }
+
+    #if os(tvOS)
+    /// Bediening verborgen: een onzichtbare knop over het hele beeld.
+    /// Klik = bediening tonen · ←/→ = 10 s spoelen · ↑/↓ = zappen (live) of bediening tonen.
+    private var tvCatcher: some View {
+        Button { poke() } label: { Color.clear.contentShape(Rectangle()) }
+            .buttonStyle(InvisibleTVButtonStyle())
+            .focused($tvFocus, equals: .catcher)
+            .onMoveCommand { dir in
+                let canSeek = !player.isLive || player.canTimeshift
+                switch dir {
+                case .left: if canSeek { player.seek(by: -10); flash("−10 s") } else { poke() }
+                case .right: if canSeek { player.seek(by: 10); flash("+10 s") } else { poke() }
+                case .up: if player.isLive { zap(-1) } else { poke() }
+                case .down: if player.isLive { zap(1) } else { poke() }
+                default: break
+                }
+            }
+            .ignoresSafeArea()
+    }
+    #endif
 
     // MARK: logica
 
@@ -421,7 +451,7 @@ struct PlayerScreen: View {
         showControls = true
         hideTask?.cancel()
         hideTask = Task {
-            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            try? await Task.sleep(nanoseconds: 6_000_000_000)
             if !Task.isCancelled && panel == nil && player.isPlaying { showControls = false }
         }
     }
@@ -494,3 +524,10 @@ struct RatingPanel: View {
         #endif
     }
 }
+
+#if os(tvOS)
+/// Knop zonder zichtbaar focus-effect (voor de onzichtbare vanger in de speler).
+struct InvisibleTVButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View { configuration.label }
+}
+#endif
