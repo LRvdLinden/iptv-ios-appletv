@@ -3,7 +3,7 @@
 [![Build](https://github.com/LRvdLinden/iptv-ios-appletv/actions/workflows/build.yml/badge.svg)](https://github.com/LRvdLinden/iptv-ios-appletv/actions/workflows/build.yml)
 
 Native IPTV- en mediaspeler voor **iPhone, iPad, Mac en Apple TV** met de look & feel van Netflix.
-SwiftUI · iOS 17+ · tvOS 17+ · Apple- én VLC-engine · 11 talen · versie 1.0.0 (build 28).
+SwiftUI · iOS 17+ · tvOS 17+ · Apple- én VLC-engine · 11 talen · versie 1.0.0 (build 29).
 
 ## Screenshots
 
@@ -71,6 +71,7 @@ SwiftUI · iOS 17+ · tvOS 17+ · Apple- én VLC-engine · 11 talen · versie 1.
 - Grote afbeelding met titel-logo, score, jaar en speelduur/seizoenen
 - Eén knop "Speel seizoen 2: aflevering 4" (gaat verder waar je was), Mijn lijst, trailer, afvinken
 - **Andere bronnen**: dezelfde titel in andere groepen of afspeellijsten
+- **Delen**: deelknop bij films en series (WhatsApp, iMessage, Instagram, Facebook, Mail …) met een link naar IMDb (of Trakt/TMDB) en een tekst als "Serietip: Reacher (2022)"; vasthouden = link kopiëren. Op Apple TV een QR-code om met je telefoon te scannen
 - Afleveringen als kaarten met foto, voortgang, vinkje, beschrijving en uitzenddatum
 - Beoordelingen (IMDb, Trakt), cast met foto's en rol, aanbevelingen (direct afspelen als ze in je lijst staan)
 - Werkt zonder sleutels met de info van je Xtream-server; IMDb, Trakt en TMDB vullen aan

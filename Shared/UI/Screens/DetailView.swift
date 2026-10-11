@@ -27,6 +27,7 @@ struct DetailView: View {
     @State private var recMatches: [String: DetailTarget] = [:]
     @State private var ageGate = false
     @State private var afterPIN: (() -> Void)?
+    @State private var showShareQR = false
 
     private var pid: UUID? { playlists.source?.id }
     private var baseTitle: String { switch target { case .movie(let m): return m.title; case .series(let s): return s.title } }
@@ -104,6 +105,9 @@ struct DetailView: View {
         .task(id: target.id) { await load() }
         .task(id: d?.recommendations.map(\.id) ?? []) { await matchRecommendations() }
         .sheet(isPresented: $showSources) { sourcesSheet }
+        #if os(tvOS)
+        .sheet(isPresented: $showShareQR) { shareQRSheet }
+        #endif
         .sheet(isPresented: $ageGate) {
             PINPad(title: L("This title is above the age limit of this profile. Enter PIN")) { pin in
                 guard ParentalControl.shared.check(pin) else { return false }   // alleen deze titel, niet alles ontgrendelen
@@ -209,6 +213,7 @@ struct DetailView: View {
                 circleButton(inMyList ? "heart.fill" : "heart") { toggleMyList() }
                 if let _ = d?.trailerYouTubeID { circleButton("film") { openTrailer() } }
                 if isMovie { circleButton(isWatchedTitle ? "checkmark.circle.fill" : "checkmark.circle") { toggleWatchedMovie() } }
+                shareButton
                 Button { Task { await openSources() } } label: {
                     Text(L("Other sources")).font(.system(size: tvScaled(15), weight: .medium))
                         .frame(maxWidth: .infinity).frame(height: tvScaled(50))
@@ -240,6 +245,77 @@ struct DetailView: View {
         .plainTVButton()
         .disabled(isMovie ? false : episodes.isEmpty && !loading)
     }
+
+    // MARK: delen
+
+    /// Titel zonder IPTV-rommel ("NL | Reacher (2022) 4K" → "Reacher").
+    private var shareTitle: String {
+        if let t = d?.title { return t }
+        return TitleCleaner.parse(baseTitle).title
+    }
+    private var shareYear: String? {
+        if let y = d?.year { return y }
+        switch target { case .movie(let m): return m.year.map(String.init); case .series(let s): return s.year.map(String.init) }
+    }
+    /// Openbare link: IMDb (mooie preview in WhatsApp/iMessage), anders Trakt of TMDB.
+    private var shareURL: URL? {
+        if let i = imdb { return URL(string: "https://www.imdb.com/title/\(i)/") }
+        if let slug = d?.traktSlug { return URL(string: "https://trakt.tv/\(isMovie ? "movies" : "shows")/\(slug)") }
+        if let t = d?.tmdbID { return URL(string: "https://www.themoviedb.org/\(isMovie ? "movie" : "tv")/\(t)") }
+        return nil
+    }
+    private var shareText: String {
+        let name = shareYear.map { "\(shareTitle) (\($0))" } ?? shareTitle
+        return L(isMovie ? "Movie tip: %@" : "Series tip: %@", name)
+    }
+
+    @ViewBuilder private var shareButton: some View {
+        #if os(iOS)
+        Group {
+            if let url = shareURL {
+                ShareLink(item: url, subject: Text(shareTitle), message: Text(shareText),
+                          preview: SharePreview(shareTitle)) { shareIcon }
+            } else {
+                ShareLink(item: shareText, subject: Text(shareTitle), preview: SharePreview(shareTitle)) { shareIcon }
+            }
+        }
+        .contextMenu {
+            Button {
+                UIPasteboard.general.string = shareURL?.absoluteString ?? shareText
+                flash(L("Link copied"))
+            } label: { Label(L("Copy link"), systemImage: "doc.on.doc") }
+        }
+        .accessibilityLabel(L("Share"))
+        #else
+        // Apple TV kan niet delen: QR-code om met je telefoon te scannen
+        if shareURL != nil { circleButton("square.and.arrow.up") { showShareQR = true } }
+        #endif
+    }
+
+    private var shareIcon: some View {
+        Image(systemName: "square.and.arrow.up").font(.system(size: tvScaled(19), weight: .semibold))
+            .foregroundStyle(.white)
+            .frame(width: tvScaled(50), height: tvScaled(50))
+            .background(Color.white.opacity(0.12), in: Circle())
+            .overlay(Circle().stroke(.white.opacity(0.12)))
+    }
+
+    #if os(tvOS)
+    private var shareQRSheet: some View {
+        VStack(spacing: 30) {
+            Text(L("Share")).font(.system(size: 46, weight: .bold))
+            Text(shareText).font(.system(size: 28)).foregroundStyle(Theme.secondary)
+            if let u = shareURL, let img = QRCode.image(u.absoluteString) {
+                Image(uiImage: img).interpolation(.none).resizable().frame(width: 360, height: 360)
+                    .padding(20).background(.white, in: RoundedRectangle(cornerRadius: 20))
+                Text(L("Scan with your phone to share via WhatsApp, iMessage and more."))
+                    .font(.system(size: 26)).foregroundStyle(Theme.secondary)
+                Text(u.absoluteString).font(.system(size: 24, design: .monospaced))
+            }
+        }
+        .padding(60)
+    }
+    #endif
 
     private func circleButton(_ icon: String, _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
