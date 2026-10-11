@@ -82,7 +82,7 @@ const screens = {
    <div class="row">${rowh('Voor jou')}<div class="scroller">${[3,9,12,6].map((i,k)=>poster(i,112,{badge:k%2?'SERIE':'FILM'})).join('')}</div></div>
    <div class="row">${rowh('Top 10 series vandaag')}<div class="scroller">${[7,10,1].map((i,k)=>top10(i,k,118)).join('')}</div></div>
    </div>
-   <div class="tabbar">${["Home","Live TV","Films","Series","Zoeken","Mijn Bingr"].map((t,i)=>`<div class="${i==0?'on':''}"><span style="font-size:22px">${["⌂","◉","▤","▦","⌕","◯"][i]}</span>${t}</div>`).join('')}</div></div>`,
+   <div class="tabbar">${["Home","Live TV","Films","Series","Mijn Bingr"].map((t,i)=>`<div class="${i==0?'on':''}"><span style="font-size:22px">${["⌂","◉","▤","▦","◯"][i]}</span>${t}</div>`).join('')}</div></div>`,
  ios_detail:()=>`<div class="screen" style="background:#000;overflow:hidden">
    <div style="position:relative;height:560px;background:radial-gradient(circle at 50% 30%,#1abc9c,transparent 60%),linear-gradient(170deg,#16a085,#0b3d3a 70%)">
      <div style="position:absolute;inset:0;background:linear-gradient(transparent 35%,#000a 75%,#000)"></div>
@@ -121,7 +121,7 @@ const screens = {
      <div style="flex:1;min-width:0"><div style="font-weight:600;font-size:15px">${c[0]} <span style="color:var(--imdb);font-size:10px">★</span></div>
      <div style="font-size:12px;opacity:.8;margin:2px 0 3px">${c[3]}  ${c[2]}</div><div class="prog" style="width:220px"><i style="width:${c[5]*100}%"></i></div>
      <div style="font-size:11px;color:#b3b3b3;margin-top:3px">Straks ${c[4]}  ${["Sportjournaal","Talkshow","Soap","Showbizz","Nieuws","Studio Voetbal","IJszee"][i]}</div></div></div>`).join('')}
-   <div class="tabbar">${["Home","Live TV","Films","Series","Zoeken","Mijn Bingr"].map((t,i)=>`<div class="${i==1?'on':''}"><span style="font-size:22px">${["⌂","◉","▤","▦","⌕","◯"][i]}</span>${t}</div>`).join('')}</div></div>`,
+   <div class="tabbar">${["Home","Live TV","Films","Series","Mijn Bingr"].map((t,i)=>`<div class="${i==1?'on':''}"><span style="font-size:22px">${["⌂","◉","▤","▦","◯"][i]}</span>${t}</div>`).join('')}</div></div>`,
  ios_add:()=>`<div class="screen" style="background:#000"><div style="position:absolute;inset:60px 0 0 0;background:#141414;border-radius:14px 14px 0 0">
    <div style="display:flex;justify-content:space-between;padding:16px;font-size:17px"><span style="color:var(--red)">Annuleer</span><b>Afspeellijst toevoegen</b><span style="width:60px"></span></div>
    <div style="display:flex;justify-content:center;margin:6px 0 14px">${av(3,96,"Gast","#B3B3B3")}</div>
@@ -146,7 +146,7 @@ const screens = {
       ${CH.slice(0,9).map((c,r)=>{let x=0;const blocks=[[c[2],[120,60,180,90,60,150,150,120,90][r]],["Volgend programma",[150,120,90,150,180,120,60,150,120][r]],["Late show",200]];return `<div style="height:62px;position:relative;background:#101010;border-bottom:1px solid #000">${blocks.map((b,i)=>{const w=b[1];const el=`<div style="position:absolute;left:${x+1}px;top:2px;width:${w-3}px;height:56px;border-radius:4px;background:${i==0?'#3A1418':'#232323'};padding:6px 8px;overflow:hidden"><div style="font-size:12px;font-weight:600;white-space:nowrap">${b[0]}</div><div style="font-size:10px;color:#b3b3b3">${i==0?'20:00 – 21:00':'21:00 – 22:00'}</div>${i==1&&r==2?'<div style="position:absolute;top:4px;right:6px;color:var(--imdb);font-size:10px">🔔</div>':''}</div>`;x+=w;return el}).join('')}</div>`}).join('')}
       <div style="position:absolute;top:0;bottom:0;left:132px;width:2px;background:var(--red)"></div>
     </div></div>
-   <div class="tabbar">${["Home","Live TV","Films","Series","Zoeken","Mijn Bingr"].map((t,i)=>`<div class="${i==1?'on':''}"><span style="font-size:22px">${["⌂","◉","▤","▦","⌕","◯"][i]}</span>${t}</div>`).join('')}</div></div>`,
+   <div class="tabbar">${["Home","Live TV","Films","Series","Mijn Bingr"].map((t,i)=>`<div class="${i==1?'on':''}"><span style="font-size:22px">${["⌂","◉","▤","▦","◯"][i]}</span>${t}</div>`).join('')}</div></div>`,
  ios_settings:()=>`<div class="screen" style="background:#000"><div class="status"><span>20:46</span><span>●●● 5G ▮</span></div>
    <div style="font-size:34px;font-weight:800;padding:8px 16px 4px">Mijn Bingr</div>
    ${[["BIBLIOTHEEK",[["Kijkgeschiedenis","›"],["NAS & netwerk (SMB/DLNA)","›"]]],
@@ -157,14 +157,14 @@ const screens = {
       ["TAAL",[["App-taal","Systeem ⌄"]]]].map(sec=>`
      <div style="color:#8e8e93;font-size:13px;margin:18px 32px 6px">${sec[0]}</div>
      <div style="background:#1c1c1e;border-radius:12px;margin:0 16px">${sec[1].map((r,i)=>`<div style="display:flex;justify-content:space-between;padding:12px 16px;font-size:16px;${i?'border-top:1px solid #2c2c2e':''}"><span style="${r[0].startsWith('⟲')||r[0].startsWith('Wijzig')?'color:var(--red)':''}">${r[0]}</span><span style="color:${r[1]=='●'?'var(--green)':'#8e8e93'}">${r[1]=='●'?'⬤':r[1]}</span></div>`).join('')}</div>`).join('')}
-   <div class="tabbar">${["Home","Live TV","Films","Series","Zoeken","Mijn Bingr"].map((t,i)=>`<div class="${i==5?'on':''}"><span style="font-size:22px">${["⌂","◉","▤","▦","⌕","◯"][i]}</span>${t}</div>`).join('')}</div></div>`,
+   <div class="tabbar">${["Home","Live TV","Films","Series","Mijn Bingr"].map((t,i)=>`<div class="${i==4?'on':''}"><span style="font-size:22px">${["⌂","◉","▤","▦","◯"][i]}</span>${t}</div>`).join('')}</div></div>`,
  ios_top10:()=>`<div class="screen"><div class="status"><span>20:43</span><span>●●● 5G ▮</span></div>
    <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 16px"><div class="logo" style="font-size:26px">BINGR</div><div class="avatar" style="width:30px;height:30px;font-size:15px;border-radius:50%;background:linear-gradient(135deg,#E50914,#7A0008)">📺</div></div>
    <div class="row">${rowh('Verder kijken',false)}<div class="scroller">${[4,8,2,11].map((i,k)=>poster(i,112,{prog:[62,25,80,40][k]})).join('')}</div></div>
    <div class="row">${rowh('Voor jou')}<div class="scroller">${[3,9,12,6].map((i,k)=>poster(i,112,{badge:k%2?'SERIE':'FILM'})).join('')}</div></div>
    <div class="row" style="margin-top:26px">${rowh('Top 10 series vandaag')}<div class="scroller">${[7,10,1].map((i,k)=>top10(i,k,118)).join('')}</div></div>
    <div class="row" style="margin-top:26px">${rowh('Top 10 films vandaag')}<div class="scroller">${[5,13,0].map((i,k)=>top10(i,k,118)).join('')}</div></div>
-   <div class="tabbar">${["Home","Live TV","Films","Series","Zoeken","Mijn Bingr"].map((t,i)=>`<div class="${i==0?'on':''}"><span style="font-size:22px">${["⌂","◉","▤","▦","⌕","◯"][i]}</span>${t}</div>`).join('')}</div></div>`,
+   <div class="tabbar">${["Home","Live TV","Films","Series","Mijn Bingr"].map((t,i)=>`<div class="${i==0?'on':''}"><span style="font-size:22px">${["⌂","◉","▤","▦","◯"][i]}</span>${t}</div>`).join('')}</div></div>`,
  ios_categories:()=>`<div class="screen" style="background:#000"><div class="status"><span>20:47</span><span>●●● 5G ▮</span></div>
    <div style="padding:6px 16px;color:var(--red);font-size:17px">‹ Mijn Bingr</div>
    <div style="font-size:30px;font-weight:800;padding:2px 16px 10px">Categorieën</div>
