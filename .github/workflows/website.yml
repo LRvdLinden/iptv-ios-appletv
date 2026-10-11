@@ -37,7 +37,7 @@ jobs:
             echo "::warning::FTP-secrets ontbreken (FTP_SERVER, FTP_USERNAME, FTP_PASSWORD) — website niet geüpload."
             exit 0
           fi
-          common="set cmd:fail-exit true; set net:max-retries 1; set net:timeout 20; set ssl:verify-certificate no; set ftp:passive-mode true"
+          common="set cmd:fail-exit true; set net:max-retries 3; set net:timeout 30; set net:reconnect-interval-base 5; set ssl:verify-certificate no; set ftp:passive-mode true"
           # eerst expliciete FTPS (versleuteld), daarna gewone FTP als de server geen TLS kent
           USER_OK=""; base=""; SERVER_OK=""
           for srv in "$FTP_SERVER" "ftp.bingr.online" "bingr.online"; do
