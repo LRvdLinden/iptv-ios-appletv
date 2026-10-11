@@ -167,9 +167,9 @@ extension EnvironmentValues {
 
 /// Geen grijze kaart erachter: op tvOS wordt de avatar bij selectie iets groter met een witte rand.
 struct ProfileButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View { Body(configuration: configuration) }
+    func makeBody(configuration: Configuration) -> some View { ProfileButtonBody(configuration: configuration) }
 
-    private struct Body: View {
+    private struct ProfileButtonBody: View {
         let configuration: ButtonStyleConfiguration
         @Environment(\.isFocused) private var focused
         var body: some View {
