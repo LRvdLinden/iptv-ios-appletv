@@ -43,7 +43,9 @@ function poster(i,w,opt={}){const p=P[i%P.length];const h=w*1.5;
  return `<div class="poster" style="width:${w}px;height:${h}px;background:radial-gradient(circle at 30% 20%,${p[2]}cc,transparent 60%),linear-gradient(160deg,${p[2]},${p[1]} 70%);font-size:${w*.13}px">
  <span>${p[0]}</span>${opt.check?'<div class="check">✓</div>':''}${opt.prog?`<div class="bar"><i style="width:${opt.prog}%"></i></div>`:''}${opt.badge?`<div style="position:absolute;bottom:10px;z-index:2;background:var(--red);font-size:9px;padding:2px 5px;border-radius:2px">${opt.badge}</div>`:''}</div>`}
 const AV=[["#E50914","#7A0008","📺"],["#2563EB","#1E1B4B","🌐"],["#10B981","#064E3B","⚽"],["#A855F7","#3B0764","👑"],["#F59E0B","#9A3412","🔥"]];
-function av(i,s,name,color="#B3B3B3"){const a=AV[i];return `<div style="display:flex;flex-direction:column;align-items:center;gap:${s*.07}px"><div class="avatar" style="width:${s}px;height:${s}px;background:linear-gradient(135deg,${a[0]},${a[1]});font-size:${s*.42}px">${a[2]}</div><div style="color:${color};font-size:${s*.13}px">${name}</div></div>`}
+function av(i,s,name,color="#B3B3B3"){const a=AV[i];return `<div style="display:flex;flex-direction:column;align-items:center;gap:${s*.07}px"><div class="avatar" style="border-radius:50%;width:${s}px;height:${s}px;background:linear-gradient(135deg,${a[0]},${a[1]});font-size:${s*.42}px">${a[2]}</div><div style="color:${color};font-size:${s*.13}px">${name}</div></div>`}
+function top10(i,k,w){return `<div style="display:flex;align-items:flex-end;flex:none;margin-right:6px"><div style="font-size:${w*1.45}px;font-weight:900;line-height:.78;color:#000;-webkit-text-stroke:${Math.max(2,w/45)}px #8c8c8c;letter-spacing:-.06em;margin-right:-${w*.28}px">${k+1}</div><div style="position:relative;box-shadow:-6px 0 14px #000a">${poster(i,w,{badge:k==1?'Onlangs toegevoegd':null})}<div style="position:absolute;top:5px;left:5px;z-index:3;background:var(--red);border-radius:2px;padding:1px 3px;text-align:center;line-height:.9"><div style="font-size:${w*.055}px;font-weight:900">TOP</div><div style="font-size:${w*.09}px;font-weight:900">10</div></div></div></div>`}
+function rowh(t,all=true,fs=19){return `<div style="display:flex;justify-content:space-between;align-items:baseline;margin:0 16px 8px"><h3 style="margin:0;font-size:${fs}px">${t}</h3>${all?`<span style="font-size:15px;font-weight:600">Bekijk allemaal</span>`:''}</div>`}
 function chlogo(t,c){return `<div style="display:grid;place-items:center;font-weight:900;color:${c};font-size:13px;letter-spacing:-.02em">${t}</div>`}
 const CH=[["Nieuws 24","#ff6d00","Avondjournaal","20:00","20:30",.6],["Actua","#00a0e9","Achter het nieuws","21:30","22:15",.2],["Prime One","#e3001b","Showbizz vandaag","20:30","21:30",.35],
  ["Family+","#d50000","Ons dorp","19:30","20:30",.8],["Motor TV","#6a1b9a","Formule 1 · Kwalificatie","20:00","22:00",.4],["Sport 1","#ff7f00","Voetbal Live","20:00","22:00",.45],
@@ -64,7 +66,7 @@ const screens = {
    <div style="text-align:center;margin-top:120px;font-size:26px;font-weight:500">Wat wil je kijken?</div>
    <div style="display:grid;grid-template-columns:repeat(2,130px);gap:28px 28px;justify-content:center;margin-top:36px">
    ${av(0,130,"Thuis TV")}${av(1,130,"Xtream Premium")}${av(2,130,"Sport")}${av(3,130,"Films 4K")}
-   <div style="display:flex;flex-direction:column;align-items:center;gap:9px"><div style="width:130px;height:130px;border:2px solid #b3b3b380;border-radius:8px;display:grid;place-items:center;font-size:48px;color:#b3b3b3;font-weight:200">+</div><div style="color:#b3b3b3;font-size:17px">Toevoegen</div></div></div>
+   <div style="display:flex;flex-direction:column;align-items:center;gap:9px"><div style="width:130px;height:130px;border:2px solid #b3b3b380;border-radius:50%;display:grid;place-items:center;font-size:48px;color:#b3b3b3;font-weight:200">+</div><div style="color:#b3b3b3;font-size:17px">Toevoegen</div></div></div>
    <div style="position:absolute;bottom:40px;width:100%;text-align:center;color:#b3b3b3aa;font-size:12px">☁︎ iCloud gesynchroniseerd · 20:41</div></div>`,
  ios_home:()=>`<div class="screen"><div style="position:absolute;inset:0 0 auto 0;height:640px;background:radial-gradient(circle at 50% 40%,#c0392b88,#000 75%)"></div>
    <div style="position:relative"><div class="status"><span>20:42</span><span>●●● 5G ▮</span></div>
@@ -76,10 +78,10 @@ const screens = {
        <div style="font-weight:900;font-size:34px;letter-spacing:1px">THE LAST SIGNAL</div>
        <div style="font-size:12px;opacity:.85;margin:8px 0 12px">2026 • Thriller • Sci-Fi • 2u 4m</div>
        <div style="display:flex;gap:10px"><div class="btn w" style="flex:1;padding:10px">▶ Afspelen</div><div class="btn g" style="flex:1;padding:10px">ⓘ Info</div></div></div></div>
-   <div class="row"><h3>Top 10 films vandaag</h3><div class="scroller">${[0,1,2].map((i,k)=>`<div style="display:flex;align-items:center;flex:none"><div style="font-size:150px;font-weight:900;line-height:1;background:linear-gradient(#4a4a4a,#111);-webkit-background-clip:text;color:transparent;-webkit-text-stroke:2px #888;margin-right:-22px">${k+1}</div>${poster(i+5,112,{check:k==1})}</div>`).join('')}</div></div><div class="row"><h3>Onlangs toegevoegd</h3><div class="scroller">${[13,14,15,16].map(i=>poster(i,112)).join('')}</div></div>
-   <div class="row"><h3>Verder kijken</h3><div class="scroller">${[4,8,2,11].map((i,k)=>poster(i,112,{prog:[62,25,80,40][k]})).join('')}</div></div>
-   <div class="row"><h3>Voor jou</h3><div class="scroller">${[3,9,12,6].map((i,k)=>poster(i,112,{badge:k%2?'SERIE':'FILM'})).join('')}</div></div>
-   
+   <div class="row">${rowh('Onlangs toegevoegd')}<div class="scroller">${[13,14,15,16].map(i=>poster(i,112)).join('')}</div></div>
+   <div class="row">${rowh('Verder kijken',false)}<div class="scroller">${[4,8,2,11].map((i,k)=>poster(i,112,{prog:[62,25,80,40][k]})).join('')}</div></div>
+   <div class="row">${rowh('Voor jou')}<div class="scroller">${[3,9,12,6].map((i,k)=>poster(i,112,{badge:k%2?'SERIE':'FILM'})).join('')}</div></div>
+   <div class="row">${rowh('Top 10 series vandaag')}<div class="scroller">${[7,10,1].map((i,k)=>top10(i,k,118)).join('')}</div></div>
    </div>
    <div class="tabbar">${["Home","Live TV","Films","Series","Zoeken","Mijn Bingr"].map((t,i)=>`<div class="${i==0?'on':''}"><span style="font-size:22px">${["⌂","◉","▤","▦","⌕","◯"][i]}</span>${t}</div>`).join('')}</div></div>`,
  ios_detail:()=>`<div class="screen" style="background:#000;overflow:hidden">
@@ -148,14 +150,34 @@ const screens = {
    <div class="tabbar">${["Home","Live TV","Films","Series","Zoeken","Mijn Bingr"].map((t,i)=>`<div class="${i==1?'on':''}"><span style="font-size:22px">${["⌂","◉","▤","▦","⌕","◯"][i]}</span>${t}</div>`).join('')}</div></div>`,
  ios_settings:()=>`<div class="screen" style="background:#000"><div class="status"><span>20:46</span><span>●●● 5G ▮</span></div>
    <div style="font-size:34px;font-weight:800;padding:8px 16px 4px">Mijn Bingr</div>
-   ${[["TRAKT",[["Ingelogd als","leon_vdl"],["Bekeken","412 films · 2.380 afleveringen"],["⟲ Nu synchroniseren",""]]],
-      ["SPELER",[["Speler-engine","Automatisch"],["AirPlay & Chromecast","✓"]]],
-      ["KINDERSLOT",[["🔒 Vergrendeld",""],["Volwassenengroepen automatisch vergrendelen","●"],["Wijzig pincode",""]]],
-      ["TAAL",[["App-taal","Systeem ›"]]],
-      ["ICLOUD",[["Afspeellijsten","4"],["Kijkvoortgang","37 titels"],["Laatste synchronisatie","20:45"]]]].map(sec=>`
+   ${[["BIBLIOTHEEK",[["Kijkgeschiedenis","›"],["NAS & netwerk (SMB/DLNA)","›"]]],
+      ["OPENSUBTITLES",[["Ingelogd als","leon_vdl"],["Standaardtaal","Nederlands ⌄"],["Ondertitels automatisch laden","●"]]],
+      ["SPELER",[["Speler-engine","Automatisch ⌄"],["Standaard audiotaal","Nederlands ⌄"],["Standaard ondertiteltaal","Zoals in de stream ⌄"]]],
+      ["KINDERSLOT",[["🔓 Ontgrendeld voor 30 minuten",""],["Leeftijdsgrens voor dit profiel","Tot en met 12 jaar ⌄"]]],
+      ["WEERGAVE",[["Categorieën aan/uit (NL, BE, DE…)","›"],["Startscherm","Home ⌄"],["Live-tv tonen","●"]]],
+      ["TAAL",[["App-taal","Systeem ⌄"]]]].map(sec=>`
      <div style="color:#8e8e93;font-size:13px;margin:18px 32px 6px">${sec[0]}</div>
      <div style="background:#1c1c1e;border-radius:12px;margin:0 16px">${sec[1].map((r,i)=>`<div style="display:flex;justify-content:space-between;padding:12px 16px;font-size:16px;${i?'border-top:1px solid #2c2c2e':''}"><span style="${r[0].startsWith('⟲')||r[0].startsWith('Wijzig')?'color:var(--red)':''}">${r[0]}</span><span style="color:${r[1]=='●'?'var(--green)':'#8e8e93'}">${r[1]=='●'?'⬤':r[1]}</span></div>`).join('')}</div>`).join('')}
    <div class="tabbar">${["Home","Live TV","Films","Series","Zoeken","Mijn Bingr"].map((t,i)=>`<div class="${i==5?'on':''}"><span style="font-size:22px">${["⌂","◉","▤","▦","⌕","◯"][i]}</span>${t}</div>`).join('')}</div></div>`,
+ ios_top10:()=>`<div class="screen"><div class="status"><span>20:43</span><span>●●● 5G ▮</span></div>
+   <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 16px"><div class="logo" style="font-size:26px">BINGR</div><div class="avatar" style="width:30px;height:30px;font-size:15px;border-radius:50%;background:linear-gradient(135deg,#E50914,#7A0008)">📺</div></div>
+   <div class="row">${rowh('Verder kijken',false)}<div class="scroller">${[4,8,2,11].map((i,k)=>poster(i,112,{prog:[62,25,80,40][k]})).join('')}</div></div>
+   <div class="row">${rowh('Voor jou')}<div class="scroller">${[3,9,12,6].map((i,k)=>poster(i,112,{badge:k%2?'SERIE':'FILM'})).join('')}</div></div>
+   <div class="row" style="margin-top:26px">${rowh('Top 10 series vandaag')}<div class="scroller">${[7,10,1].map((i,k)=>top10(i,k,118)).join('')}</div></div>
+   <div class="row" style="margin-top:26px">${rowh('Top 10 films vandaag')}<div class="scroller">${[5,13,0].map((i,k)=>top10(i,k,118)).join('')}</div></div>
+   <div class="tabbar">${["Home","Live TV","Films","Series","Zoeken","Mijn Bingr"].map((t,i)=>`<div class="${i==0?'on':''}"><span style="font-size:22px">${["⌂","◉","▤","▦","⌕","◯"][i]}</span>${t}</div>`).join('')}</div></div>`,
+ ios_categories:()=>`<div class="screen" style="background:#000"><div class="status"><span>20:47</span><span>●●● 5G ▮</span></div>
+   <div style="padding:6px 16px;color:var(--red);font-size:17px">‹ Mijn Bingr</div>
+   <div style="font-size:30px;font-weight:800;padding:2px 16px 10px">Categorieën</div>
+   <div style="margin:0 16px;background:#1c1c1e;border-radius:9px;display:flex;padding:2px">${["Live TV","Films","Series"].map((t,i)=>`<div style="flex:1;text-align:center;padding:6px;border-radius:7px;font-size:13px;font-weight:600;${i==0?'background:#636366':''}">${t}</div>`).join('')}</div>
+   <div style="color:#8e8e93;font-size:13px;margin:18px 32px 6px">LANDEN & TALEN</div>
+   <div style="display:flex;gap:8px;padding:0 16px;flex-wrap:wrap">${[["NL","12/12",1],["BE","6/6",1],["DE","0/9",0],["TK","0/14",0],["UK","3/8",2],["FR","0/7",0]].map(p=>`<div style="padding:7px 12px;border-radius:999px;font-size:14px;background:${p[2]==1?'#E50914d9':'#232323'}"><b>${p[2]==1?'✓':p[2]==2?'−':'○'} ${p[0]}</b> <span style="color:#b3b3b3">${p[1]}</span></div>`).join('')}</div>
+   <div style="color:#8e8e93;font-size:12px;margin:6px 32px">Tik op een code om al die categorieën in één keer aan of uit te zetten.</div>
+   <div style="color:#8e8e93;font-size:13px;margin:16px 32px 6px">CATEGORIEËN (56)</div>
+   <div style="background:#1c1c1e;border-radius:12px;margin:0 16px">${[["Alles aan","Alles uit"]].map(r=>`<div style="display:flex;justify-content:space-between;padding:12px 16px;color:var(--red);font-size:16px"><span>${r[0]}</span><span>${r[1]}</span></div>`).join('')}${[["NL | Algemeen",1],["NL | Sport",1],["NL | Kids",1],["BE | Vlaams",1],["DE | Allgemein",0],["DE | Sport",0],["TK | Ulusal",0],["UK | Entertainment",1],["UK | News",0]].map(r=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px;font-size:16px;border-top:1px solid #2c2c2e"><span>${r[0]}</span><span style="width:51px;height:31px;border-radius:16px;background:${r[1]?'var(--red)':'#39393d'};position:relative"><i style="position:absolute;top:2px;${r[1]?'right':'left'}:2px;width:27px;height:27px;border-radius:50%;background:#fff"></i></span></div>`).join('')}</div></div>`,
+ ios_category:()=>`<div class="screen" style="background:#000"><div class="status"><span>20:48</span><span>●●● 5G ▮</span></div>
+   <div style="display:flex;align-items:center;gap:10px;padding:8px 12px 14px"><span style="font-size:26px">‹</span><div style="flex:1;font-size:21px;font-weight:800">NL | NETFLIX SERIES</div><span style="font-size:20px">⇅</span></div>
+   <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:0 16px">${[0,3,7,9,12,15].map((i,k)=>`<div><div style="position:relative">${poster(i,191)}<div style="position:absolute;top:6px;right:6px;z-index:3;background:var(--imdb);color:#000;font-size:11px;font-weight:800;padding:2px 6px;border-radius:4px">★ ${[7.9,8.4,6.8,7.2,8.1,6.5][k]}</div></div><div style="font-size:13px;font-weight:600;margin-top:6px">${P[i][0]}</div></div>`).join('')}</div></div>`,
  // ---------- tvOS ----------
 
  tv_multiview:()=>`<div class="screen" style="display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr">
@@ -187,9 +209,9 @@ const screens = {
      <div style="display:flex;gap:40px;padding:24px 80px">${[4,8,2,11,6,13].map((i,k)=>poster(i,230,{prog:[62,25,80,40,10,55][k]})).join('')}</div></div></div>`,
  tv_picker:()=>`<div class="screen" style="display:flex;flex-direction:column;align-items:center;justify-content:center">
    <div class="logo" style="position:absolute;top:50px;left:80px;font-size:50px">BINGR</div>
-   <div style="font-size:52px;font-weight:500;margin-bottom:60px">Wat wil je kijken?</div>
-   <div style="display:flex;gap:60px">${av(0,230,"Thuis TV")}${av(1,230,"Xtream Premium")}<div style="transform:scale(1.12);filter:drop-shadow(0 20px 30px #000)">${av(2,230,"Sport","#fff")}</div>${av(3,230,"Films 4K")}
-   <div style="display:flex;flex-direction:column;align-items:center;gap:16px"><div style="width:230px;height:230px;border:3px solid #b3b3b380;border-radius:8px;display:grid;place-items:center;font-size:90px;color:#b3b3b3;font-weight:200">+</div><div style="color:#b3b3b3;font-size:30px">Toevoegen</div></div></div>
+   <div style="font-size:52px;font-weight:500;margin-bottom:70px">Wat wil je kijken?</div>
+   <div style="display:flex;gap:70px;align-items:flex-start">${av(0,230,"Thuis TV")}${av(1,230,"Xtream Premium")}<div style="transform:scale(1.12);filter:drop-shadow(0 20px 30px #000)"><div style="display:flex;flex-direction:column;align-items:center;gap:16px"><div class="avatar" style="border-radius:50%;width:230px;height:230px;background:linear-gradient(135deg,${AV[2][0]},${AV[2][1]});font-size:97px;box-shadow:0 0 0 6px #fff">${AV[2][2]}</div><div style="color:#fff;font-weight:700;font-size:30px">Sport</div></div></div>${av(3,230,"Films 4K")}
+   <div style="display:flex;flex-direction:column;align-items:center;gap:16px"><div style="width:230px;height:230px;border:3px solid #b3b3b380;border-radius:50%;display:grid;place-items:center;font-size:90px;color:#b3b3b3;font-weight:200">+</div><div style="color:#b3b3b3;font-size:30px">Toevoegen</div></div></div>
    <div style="position:absolute;bottom:50px;color:#b3b3b3aa;font-size:22px">☁︎ iCloud gesynchroniseerd met je iPhone</div></div>`,
  tv_detail:()=>`<div class="screen" style="background:#141414">
    <div style="position:absolute;inset:0;height:460px;background:radial-gradient(circle at 30% 30%,#16a085,transparent 60%),linear-gradient(160deg,#0b3d3a,#141414)"></div>

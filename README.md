@@ -16,10 +16,10 @@ SwiftUI · iOS 17+ · tvOS 17+ · Apple- én VLC-engine · 11 talen.
 | <img src="docs/screenshots/ios_splash.png" width="240"> | <img src="docs/screenshots/ios_picker.png" width="240"> | <img src="docs/screenshots/ios_home.png" width="240"> |
 | **Details** | **Details: scores, cast, aanbevelingen** | **Live TV** |
 | <img src="docs/screenshots/ios_detail.png" width="240"> | <img src="docs/screenshots/ios_detail2.png" width="240"> | <img src="docs/screenshots/ios_live.png" width="240"> |
-| **Tv-gids** | | |
-| <img src="docs/screenshots/ios_guide.png" width="240"> | | |
-| **Afspeellijst toevoegen** | **Instellingen** | |
-| <img src="docs/screenshots/ios_add.png" width="240"> | <img src="docs/screenshots/ios_settings.png" width="240"> | |
+| **Tv-gids** | **Top 10 (Netflix-stijl)** | **Bekijk allemaal** |
+| <img src="docs/screenshots/ios_guide.png" width="240"> | <img src="docs/screenshots/ios_top10.png" width="240"> | <img src="docs/screenshots/ios_category.png" width="240"> |
+| **Afspeellijst toevoegen** | **Mijn Bingr** | **Categorieën aan/uit** |
+| <img src="docs/screenshots/ios_add.png" width="240"> | <img src="docs/screenshots/ios_settings.png" width="240"> | <img src="docs/screenshots/ios_categories.png" width="240"> |
 
 ### Apple TV
 
@@ -40,20 +40,26 @@ SwiftUI · iOS 17+ · tvOS 17+ · Apple- én VLC-engine · 11 talen.
 - **Plex** (inloggen met code op plex.tv/link), **Jellyfin**, **Emby** (films, series, live TV + gids)
 - **Stremio**: inloggen met je Stremio-account of eigen add-on-URL's (Cinemeta-catalogi, directe streams)
 - Afspeellijst-kiezer in Netflix-profielstijl met eigen **naam en avatar of profielfoto** (uit je fotobibliotheek) per lijst
-- **Zoeken in al je afspeellijsten** tegelijk
+- **Zoeken in al je afspeellijsten** tegelijk, ook in de **tv-gids** (nu, straks en terugkijken)
+- **NAS via SMB/DLNA**: servers op je netwerk worden gevonden, of voeg zelf een SMB-share toe; bladeren en afspelen
 
 **Kijken**
 - Twee engines: **Apple (AVPlayer)** voor HLS/MP4 met **HDR, Dolby Vision, Dolby Atmos** en automatisch juiste schermmodus op Apple TV; **VLC** voor .ts, .mkv, AC3/DTS en de rest. Automatisch kiezen of zelf instellen
-- **AirPlay** en **Chromecast** (zonder extra SDK)
+- **AirPlay** en **Chromecast** (zonder extra SDK), **beeld-in-beeld** op iPhone, iPad en Apple TV
+- **Standaard audio- en ondertiteltaal** (automatisch gekozen als de stream ze heeft)
 - **Automatisch herverbinden** bij haperende of weggevallen streams (met terugval naar de andere engine)
 - **Timeshift**: live tv pauzeren en terugspoelen (HLS-venster of catch-up), knop "terug naar live"
 - **Multiview**: tot 4 streams tegelijk, geluid van het geselecteerde beeld
-- Audio- en ondertitelsporen, **OpenSubtitles** (inloggen, zoeken op IMDb-ID, automatisch laden), snelheid, beeldverhouding, slaaptimer, zappen ↑↓
+- Audio- en ondertitelsporen, **OpenSubtitles** (zoeken op IMDb-ID of titel, taal kiezen tijdens het kijken, standaardtaal + automatisch laden), snelheid, beeldverhouding, slaaptimer, zappen ↑↓
 
 **Gids & beheer**
 - **Tv-gids als raster** met nu-lijn, programma-details, **terugkijken** en **herinneringen** (melding op iPhone/iPad, banner op Apple TV)
+- **Live TV** opent op "Alle zenders"; favorieten, recent en alle groepen
+- **Categorieën aan/uit** per Live TV, Films en Series, met snelknoppen per land/taal (NL, BE, DE, TK …)
 - **Beheren**: groepen en zenders hernoemen, herschikken, samenvoegen en verbergen
-- **Kinderslot** met pincode: groepen op slot, volwassenengroepen automatisch, 30 min ontgrendelen
+- **Kinderslot** met pincode: groepen op slot, volwassenengroepen automatisch, **leeftijdsgrens per profiel** (IMDb-classificatie), 30 min ontgrendelen
+- **Kijkgeschiedenis per profiel**, per dag, met verwijderen en wissen
+- **Weergave**: startscherm kiezen en tabbladen verbergen; alle keuzes als dropdown
 
 **Detailpagina (UHF-stijl)**
 - Grote afbeelding met titel-logo, score, jaar en speelduur/seizoenen
@@ -64,7 +70,10 @@ SwiftUI · iOS 17+ · tvOS 17+ · Apple- én VLC-engine · 11 talen.
 - Werkt zonder sleutels met de info van je Xtream-server; IMDb, Trakt en TMDB vullen aan
 
 **Netflix-ervaring**
-- Geanimeerde splash, billboard, rijen, Top 10 (Trakt trending in jouw lijst), Verder kijken, Mijn lijst
+- Geanimeerde splash, profielkeuze met ronde avatars (op Apple TV vergroot de geselecteerde), billboard, rijen
+- **Top 10 zoals Netflix** (grote omlijnde cijfers, Trakt trending in jouw lijst) onder Voor jou: series en films op Home, films bij Films, series bij Series
+- **Verder kijken** (verwijderbaar, zonder live tv), **Voor jou** (vergelijkbaar met wat je keek), Mijn lijst
+- **Bekijk allemaal** bij elke rij: categoriepagina met sorteren (A–Z, nieuwste, score) en IMDb-score per poster
 - **IMDb**-score, plot, cast (via OMDb) en **trailers** (via Trakt)
 - **Trakt, 2 kanten op**: koppelcode + QR, vinkjes uit Trakt in de app, afvinken in de app → Trakt, scrobblen, watchlist
 
@@ -81,7 +90,9 @@ SwiftUI · iOS 17+ · tvOS 17+ · Apple- én VLC-engine · 11 talen.
    xcodegen
    open Bingr.xcodeproj
    ```
-2. **Koppelingen instellen** in de app: *Mijn Bingr → Koppelingen instellen* (eenmalig, gratis). Trakt en OpenSubtitles eisen dat elke app zich één keer registreert; daarna log je gewoon in met je eigen account. De sleutels staan in de iCloud-sleutelhanger, dus je Apple TV heeft ze ook, en ze komen niet in deze openbare repo:
+2. **Sleutels inbouwen (aanbevolen, privé-repo)**: zet ze als *Settings → Secrets and variables → Actions*: `OPENSUBTITLES_API_KEY`, `TMDB_API_KEY` (of `TMDB_API_READ_ACCESS_TOKEN`), `OMDB_API_KEY`, `TRAKT_CLIENT_ID`, `TRAKT_CLIENT_SECRET`. De CI bouwt ze in en de zip op `ci-logs` bevat ze; gebruikers loggen dan alleen nog met hun eigen account in.
+
+   Of **koppelingen instellen** in de app: *Mijn Bingr → Koppelingen instellen* (eenmalig, gratis). Trakt en OpenSubtitles eisen dat elke app zich één keer registreert; daarna log je gewoon in met je eigen account. De sleutels staan in de iCloud-sleutelhanger, dus je Apple TV heeft ze ook, en ze komen niet in deze openbare repo:
    | Dienst | Waar aanmaken | Let op |
    |---|---|---|
    | Trakt | https://trakt.tv/oauth/applications/new | Redirect URI: `urn:ietf:wg:oauth:2.0:oob` |
