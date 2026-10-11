@@ -32,9 +32,10 @@ jobs:
         env:
           TRAKT_CLIENT_ID: ${{ secrets.TRAKT_CLIENT_ID }}
           TRAKT_CLIENT_SECRET: ${{ secrets.TRAKT_CLIENT_SECRET }}
-          OPENSUBTITLES_API_KEY: ${{ secrets.OPENSUBTITLES_API_KEY }}
+          OPENSUBTITLES_API_KEY: ${{ secrets.OPENSUBTITLES_API_KEY || secrets.OPENSUBTITLES_APIKEY || secrets.OPEN_SUBTITLES_API_KEY }}
           OMDB_API_KEY: ${{ secrets.OMDB_API_KEY }}
-          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+          # TMDB: v3-sleutel of v4 "Read Access Token" (beide werken); ook veelvoorkomende schrijfwijzen
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY || secrets.TMBD_API_KEY || secrets.TMDB_API_READ_ACCESS_TOKEN || secrets.TMDB_READ_ACCESS_TOKEN || secrets.TMDB_API_READ_ACCES_TOKEN }}
         run: python3 tools/inject_keys.py
 
       - name: Project genereren
