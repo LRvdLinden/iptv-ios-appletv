@@ -259,7 +259,16 @@ struct SettingsView: View {
                 if let d = trakt.lastRefresh {
                     LabeledContent(L("Last synced"), value: d.formatted(date: .omitted, time: .shortened))
                 }
-                Button { Task { await trakt.refresh(force: true) } } label: { Label(L("Sync now"), systemImage: "arrow.triangle.2.circlepath") }
+                if let m = trakt.lastScrobble {
+                    LabeledContent(L("Last sent"), value: m + (trakt.lastScrobbleDate.map { " · " + $0.formatted(date: .omitted, time: .shortened) } ?? ""))
+                }
+                Button { Task { await trakt.refresh(force: true) } } label: {
+                    HStack {
+                        Label(trakt.isSyncing ? L("Syncing…") : L("Sync now"), systemImage: "arrow.triangle.2.circlepath")
+                        if trakt.isSyncing { Spacer(); ProgressView() }
+                    }
+                }
+                .disabled(trakt.isSyncing)
                 Button(role: .destructive) { Task { await trakt.logout() } } label: { Label(L("Sign out of Trakt"), systemImage: "rectangle.portrait.and.arrow.right") }
             } else {
                 Button { if Secrets.traktReady { showTraktLogin = true } else { setup = .trakt } } label: {

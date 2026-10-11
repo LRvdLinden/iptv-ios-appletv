@@ -158,7 +158,15 @@ final class PlayerController: ObservableObject {
         if isPlaying && !didScrobbleStart && duration > 0 && !isPreview {
             didScrobbleStart = true
             let it = item, p = position
-            Task { await TraktSync.shared.scrobble(.start, item: it, progress: p) }
+            Task { @MainActor [weak self] in
+                // kort laten zien dat Trakt meekijkt (of waarom niet)
+                switch await TraktSync.shared.scrobble(.start, item: it, progress: p) {
+                case .ok: self?.notice = L("Trakt: watching %@", it.subtitle.map { "\(it.title) · \($0)" } ?? it.title)
+                case .notFound: self?.notice = L("Trakt: title not found, not synced")
+                case .failed: self?.notice = L("Trakt: could not connect")
+                case .skipped: break
+                }
+            }
         }
         if pendingPiP > 0 {
             pendingPiP += 1

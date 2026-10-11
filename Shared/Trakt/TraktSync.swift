@@ -15,6 +15,11 @@ final class TraktSync: ObservableObject {
     @Published private(set) var watchlist: Set<String> = []                     // imdb
     @Published private(set) var playback: [PlaybackItem] = []
     @Published private(set) var lastRefresh: Date?
+    /// Bezig met synchroniseren (draaiende pijltjes in Mijn Bingr)
+    @Published private(set) var isSyncing = false
+    /// Laatste melding over doorgeven aan Trakt ("Gezien op Trakt: …")
+    @Published private(set) var lastScrobble: String?
+    @Published private(set) var lastScrobbleDate: Date?
     @Published var lastError: String?
     @Published private(set) var displayName: String?
     @Published private(set) var avatar: URL?
@@ -164,7 +169,9 @@ final class TraktSync: ObservableObject {
     }
 
     func refresh(force: Bool = false) async {
-        guard isLoggedIn else { return }
+        guard isLoggedIn, !isSyncing else { return }
+        isSyncing = true
+        defer { isSyncing = false }
         do {
             let act: LastActivities = try await client.get("/sync/last_activities")
             if !force, let a = act.all, a == lastActivity, !watchedMovies.isEmpty || !watchedEpisodes.isEmpty {
@@ -278,27 +285,60 @@ final class TraktSync: ObservableObject {
     enum ScrobbleAction: String { case start, pause, stop }
 
     /// Scrobble: Trakt markeert automatisch als bekeken bij stop ≥ 80%.
-    func scrobble(_ action: ScrobbleAction, item: PlayableItem, progress: Double) async {
-        guard isLoggedIn, Self.scrobbleEnabled, item.type != .live, let imdb = await resolveIMDb(item) else { return }
+    /// Uitkomst van een scrobble (voor een melding in de speler en de status in Mijn Bingr).
+    enum ScrobbleResult { case ok, notFound, failed, skipped }
+
+    @discardableResult
+    func scrobble(_ action: ScrobbleAction, item: PlayableItem, progress: Double) async -> ScrobbleResult {
+        guard isLoggedIn, Self.scrobbleEnabled, item.type != .live else { return .skipped }
+        guard let imdb = await resolveIMDb(item) else {
+            lastScrobble = L("Not found on Trakt: %@", item.title)
+            return .notFound
+        }
+        let isEpisode = item.type == .episode && item.season != nil && item.episode != nil
         var body: [String: Any] = ["progress": min(max(progress * 100, 0), 100), "app_version": "1.0.0"]
-        if item.type == .episode, let s = item.season, let e = item.episode {
+        if isEpisode, let s = item.season, let e = item.episode {
             body["show"] = ["ids": ["imdb": imdb]]
             body["episode"] = ["season": s, "number": e]
         } else {
             body["movie"] = ["ids": ["imdb": imdb]]
         }
-        _ = try? await client.postRaw("/scrobble/\(action.rawValue)", body: body)
-        if action == .stop && progress >= 0.8 {
-            if item.type == .episode, let s = item.season, let e = item.episode {
-                watchedEpisodes[imdb, default: []].insert("\(s)-\(e)")
-            } else { watchedMovies.insert(imdb) }
-            saveCache()
+        let name = isEpisode ? "\(item.title) S\(item.season ?? 0)E\(item.episode ?? 0)" : item.title
+        var result: ScrobbleResult = .ok
+        do {
+            try await client.postRaw("/scrobble/\(action.rawValue)", body: body)
+        } catch {
+            result = .failed
+            lastError = error.localizedDescription
         }
+        let watched = action == .stop && progress >= 0.8
+        if watched {
+            // scrobble mislukt? dan direct in je Trakt-geschiedenis zetten, zodat het toch als gezien staat
+            if result == .failed {
+                let hist: [String: Any] = isEpisode
+                    ? ["shows": [["ids": ["imdb": imdb], "seasons": [["number": item.season ?? 0, "episodes": [["number": item.episode ?? 0]]]]]]]
+                    : ["movies": [["ids": ["imdb": imdb]]]]
+                if (try? await client.postRaw("/sync/history", body: hist)) != nil { result = .ok; lastError = nil }
+            }
+            if result == .ok {
+                if isEpisode, let s = item.season, let e = item.episode { watchedEpisodes[imdb, default: []].insert("\(s)-\(e)") }
+                else { watchedMovies.insert(imdb) }
+                saveCache()
+            }
+        }
+        switch (action, result) {
+        case (_, .failed): lastScrobble = L("Could not reach Trakt for %@", name)
+        case (.stop, .ok): lastScrobble = watched ? L("Marked as watched on Trakt: %@", name) : L("Progress saved on Trakt: %@", name)
+        case (.start, .ok): lastScrobble = L("Watching on Trakt: %@", name)
+        default: break
+        }
+        lastScrobbleDate = Date()
         // na het kijken de vinkjes van Trakt ophalen (ook wat je intussen elders keek)
         if action == .stop {
             try? await Task.sleep(nanoseconds: 3_000_000_000)
-            await refresh()
+            await refresh(force: true)
         }
+        return result
     }
 
     // MARK: metadata via Trakt (IMDb-id en trailer)
