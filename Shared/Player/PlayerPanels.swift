@@ -34,7 +34,8 @@ struct TracksPanel: View {
     }
 }
 
-/// Ondertitels zoeken en inladen via OpenSubtitles (op IMDb-ID, met seizoen/aflevering).
+/// Ondertitels zoeken en inladen via OpenSubtitles (op IMDb-ID of titel, met seizoen/aflevering).
+/// Taal kies je hier per keer; de standaardtaal stel je in onder Mijn Bingr → OpenSubtitles.
 struct OpenSubtitlesPanel: View {
     @ObservedObject var player: PlayerController
     @EnvironmentObject var subs: OpenSubtitles
@@ -43,58 +44,89 @@ struct OpenSubtitlesPanel: View {
     @State private var loading = true
     @State private var error: String?
     @State private var downloading: Int?
+    @State private var language: String = OpenSubtitles.shared.defaultLanguage
+    @State private var showLogin = false
 
     var body: some View {
         NavigationStack {
             List {
-                if !subs.isLoggedIn {
-                    Text(L("Sign in to OpenSubtitles under My Bingr → OpenSubtitles to download subtitles."))
-                        .foregroundStyle(Theme.secondary)
-                }
-                if loading { ProgressView().frame(maxWidth: .infinity) }
-                if let error { Text(error).foregroundStyle(Theme.red) }
-                ForEach(results) { s in
-                    Button {
-                        downloading = s.id
-                        Task {
-                            defer { downloading = nil }
-                            do {
-                                let file = try await subs.download(s)
-                                player.addSubtitle(file: file)
-                                dismiss()
-                            } catch { self.error = error.localizedDescription }
-                        }
-                    } label: {
-                        HStack(spacing: 12) {
-                            Text(s.language.uppercased()).font(.caption.bold())
-                                .padding(.horizontal, 6).padding(.vertical, 3)
-                                .background(Theme.elevated, in: RoundedRectangle(cornerRadius: 4))
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(s.release).font(.subheadline).lineLimit(2)
-                                HStack(spacing: 8) {
-                                    Label("\(s.downloads)", systemImage: "arrow.down.circle")
-                                    if s.hearingImpaired { Image(systemName: "ear") }
-                                    if s.fromTrusted { Image(systemName: "checkmark.seal.fill").foregroundStyle(Theme.green) }
-                                }
-                                .font(.caption).foregroundStyle(Theme.secondary)
-                            }
-                            Spacer()
-                            if downloading == s.id { ProgressView() }
-                        }
+                Section {
+                    Picker(L("Language"), selection: $language) {
+                        Text(L("All languages")).tag("")
+                        ForEach(TrackPreferences.sortedCodes, id: \.self) { Text(TrackPreferences.name($0)).tag($0) }
                     }
-                    .disabled(!subs.isLoggedIn || downloading != nil)
+                    .pickerStyle(.menu)
+                    if !subs.isLoggedIn {
+                        Button { showLogin = true } label: {
+                            Label(L("Sign in to OpenSubtitles to download"), systemImage: "person.crop.circle.badge.checkmark")
+                        }
+                    } else if let r = subs.remainingDownloads {
+                        LabeledContent(L("Downloads left today"), value: "\(r)")
+                    }
+                }
+                Section {
+                    if loading { ProgressView().frame(maxWidth: .infinity) }
+                    if let error { Text(error).foregroundStyle(Theme.secondary) }
+                    ForEach(results) { s in
+                        Button { load(s) } label: { row(s) }
+                            .disabled(downloading != nil)
+                    }
                 }
             }
             .navigationTitle("OpenSubtitles")
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button(L("Close")) { dismiss() } } }
-            .task {
-                defer { loading = false }
-                guard let imdb = player.item.imdbID else { error = L("No IMDb ID known for this title."); return }
-                do {
-                    results = try await subs.search(imdbID: imdb, season: player.item.season, episode: player.item.episode)
-                    if results.isEmpty { error = L("No subtitles found in %@.", subs.preferredLanguages.joined(separator: ", ")) }
-                } catch { self.error = error.localizedDescription }
+            .task(id: language) { await search() }
+            .task { await subs.refreshUser() }
+            .sheet(isPresented: $showLogin) {
+                if Secrets.openSubtitlesReady { OpenSubtitlesLoginView() } else { ConnectionsSetupView(focus: .openSubtitles) }
             }
+        }
+    }
+
+    private func row(_ s: OpenSubtitles.Subtitle) -> some View {
+        HStack(spacing: 12) {
+            Text(s.language.uppercased()).font(.caption.bold())
+                .padding(.horizontal, 6).padding(.vertical, 3)
+                .background(Theme.elevated, in: RoundedRectangle(cornerRadius: 4))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(s.release).font(.subheadline).lineLimit(2)
+                HStack(spacing: 8) {
+                    Label("\(s.downloads)", systemImage: "arrow.down.circle")
+                    if s.hearingImpaired { Image(systemName: "ear") }
+                    if s.fromTrusted { Image(systemName: "checkmark.seal.fill").foregroundStyle(Theme.green) }
+                }
+                .font(.caption).foregroundStyle(Theme.secondary)
+            }
+            Spacer()
+            if downloading == s.id { ProgressView() }
+        }
+    }
+
+    private func search() async {
+        loading = true; error = nil; results = []
+        defer { loading = false }
+        let it = player.item
+        do {
+            results = try await subs.search(imdbID: it.imdbID, title: it.title, year: it.subtitle.flatMap { Int($0) },
+                                            season: it.season, episode: it.episode,
+                                            languages: language.isEmpty ? [] : [language])
+            if results.isEmpty {
+                error = language.isEmpty ? L("No subtitles found for this title.")
+                                         : L("No subtitles found in %@.", TrackPreferences.name(language))
+            }
+        } catch { self.error = error.localizedDescription }
+    }
+
+    private func load(_ s: OpenSubtitles.Subtitle) {
+        guard subs.isLoggedIn else { showLogin = true; return }
+        downloading = s.id
+        Task {
+            defer { downloading = nil }
+            do {
+                let file = try await subs.download(s)
+                player.addSubtitle(file: file)
+                dismiss()
+            } catch { self.error = error.localizedDescription }
         }
     }
 }

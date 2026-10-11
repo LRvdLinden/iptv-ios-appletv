@@ -225,7 +225,7 @@ struct PlayerScreen: View {
                             }
                             #endif
                             barButton("speaker.wave.2.bubble", L("Audio & subtitles")) { panel = .audioSubs }
-                            if player.item.imdbID != nil { barButton("captions.bubble", "OpenSubtitles") { panel = .opensubs } }
+                            if !player.isLive { barButton("captions.bubble", "OpenSubtitles") { panel = .opensubs } }
                             if !stremioChoices.isEmpty { barButton("list.bullet", L("Sources")) { panel = .sources } }
                             if player.isLive && !playlists.library.channels.isEmpty {
                                 barButton("square.grid.2x2", "Multiview") { openMultiview() }
@@ -320,12 +320,30 @@ struct PlayerScreen: View {
             player.start(url: url)
         }
         poke()
-        if autoSubtitles, subs.isLoggedIn, let imdb = it.imdbID, it.type != .live {
-            if let first = try? await subs.search(imdbID: imdb, season: it.season, episode: it.episode).first,
-               let file = try? await subs.download(first) {
-                player.addSubtitle(file: file); flash(L("Subtitles: %@", first.language.uppercased()))
-            }
+        if autoSubtitles, it.type != .live { Task { await autoLoadSubtitles(it) } }
+    }
+
+    /// Standaard ondertitels: eerst een spoor in de stream in je standaardtaal, anders de beste van OpenSubtitles.
+    private func autoLoadSubtitles(_ it: PlayableItem) async {
+        let lang = subs.defaultLanguage
+        guard !lang.isEmpty else { return }
+        for _ in 0..<40 where !player.isPlaying { try? await Task.sleep(nanoseconds: 500_000_000) }
+        try? await Task.sleep(nanoseconds: 2_500_000_000)   // sporen laten binnenkomen
+        guard player.item.id == it.id, !player.hasExternalSubtitle else { return }
+        if let t = player.subtitleTracks.first(where: { TrackPreferences.matches($0, code: lang) }) {
+            player.selectSubtitle(t)
+            flash(L("Subtitles: %@", TrackPreferences.name(lang)))
+            return
         }
+        guard subs.isLoggedIn else { return }
+        do {
+            let found = try await subs.search(imdbID: it.imdbID, title: it.title, year: it.subtitle.flatMap { Int($0) },
+                                              season: it.season, episode: it.episode, languages: [lang])
+            guard let best = found.first, player.item.id == it.id else { return }
+            let file = try await subs.download(best)
+            player.addSubtitle(file: file)
+            flash(L("Subtitles: %@", "\(TrackPreferences.name(lang)) · OpenSubtitles"))
+        } catch {}
     }
 
     private func zap(_ step: Int) {

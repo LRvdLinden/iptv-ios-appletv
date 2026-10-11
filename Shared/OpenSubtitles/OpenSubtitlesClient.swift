@@ -12,12 +12,24 @@ final class OpenSubtitles: ObservableObject {
         didSet { UserDefaults.standard.set(preferredLanguages, forKey: "os.languages") }
     }
     var isLoggedIn: Bool { session != nil }
+    /// Standaardtaal voor OpenSubtitles (ISO 639-1, bijv. "nl"); "" = alle talen
+    @Published var defaultLanguage: String {
+        didSet { UserDefaults.standard.set(defaultLanguage, forKey: "os.language") }
+    }
 
     private struct Session: Codable { var token: String; var baseURL: String; var username: String }
     private var session: Session? { didSet { Keychain.setCodable(session, for: "opensubtitles.session"); username = session?.username } }
 
     private init() {
-        preferredLanguages = UserDefaults.standard.stringArray(forKey: "os.languages") ?? ["nl", "en"]
+        let prefs = UserDefaults.standard.stringArray(forKey: "os.languages") ?? ["nl", "en"]
+        preferredLanguages = prefs
+        if let d = UserDefaults.standard.string(forKey: "os.language") {
+            defaultLanguage = d
+        } else {
+            let track = TrackPreferences.subtitle
+            let first = prefs.first.map { String($0.prefix(2)).lowercased() }
+            defaultLanguage = track.count == 2 ? track : (first ?? String(Localizer.shared.language.prefix(2)))
+        }
         session = Keychain.getCodable(Session.self, "opensubtitles.session")
         username = session?.username
     }
@@ -82,14 +94,43 @@ final class OpenSubtitles: ObservableObject {
         let data: [Item]
     }
 
-    func search(imdbID: String, season: Int? = nil, episode: Int? = nil, title: String? = nil) async throws -> [Subtitle] {
-        let numeric = imdbID.replacingOccurrences(of: "tt", with: "")
-        var q = ["languages": preferredLanguages.sorted().joined(separator: ",")]
-        if let season, let episode {
-            q["parent_imdb_id"] = String(Int(numeric) ?? 0)
-            q["season_number"] = String(season); q["episode_number"] = String(episode)
+    /// Taalcode(s) zoals OpenSubtitles ze gebruikt.
+    static func apiCodes(_ code: String) -> [String] {
+        switch code {
+        case "pt": return ["pt-br", "pt-pt"]
+        case "zh": return ["zh-cn", "zh-tw"]
+        case "": return []
+        default: return [code.lowercased()]
+        }
+    }
+    /// Terug naar ISO 639-1 ("pt-PT" → "pt").
+    static func baseCode(_ c: String) -> String { String(c.lowercased().prefix(2)) }
+
+    /// Zoeken op IMDb-ID, of (als die er niet is) op titel. `languages` leeg = alle talen.
+    func search(imdbID: String?, title: String? = nil, year: Int? = nil, season: Int? = nil, episode: Int? = nil,
+                languages: [String]) async throws -> [Subtitle] {
+        var q: [String: String] = [:]
+        let langs = Array(Set(languages.flatMap(Self.apiCodes))).sorted()
+        if !langs.isEmpty { q["languages"] = langs.joined(separator: ",") }
+        let numeric = (imdbID ?? "").replacingOccurrences(of: "tt", with: "")
+        if let n = Int(numeric), n > 0 {
+            if let season, let episode {
+                q["parent_imdb_id"] = String(n)
+                q["season_number"] = String(season); q["episode_number"] = String(episode)
+            } else {
+                q["imdb_id"] = String(n)
+            }
+        } else if let title, !title.isEmpty {
+            let parsed = TitleCleaner.parse(title)
+            q["query"] = parsed.title.lowercased()
+            if let season, let episode {
+                q["type"] = "episode"; q["season_number"] = String(season); q["episode_number"] = String(episode)
+            } else {
+                q["type"] = "movie"
+                if let y = year ?? parsed.year { q["year"] = String(y) }
+            }
         } else {
-            q["imdb_id"] = String(Int(numeric) ?? 0)
+            return []
         }
         let d = try await request("/subtitles", query: q)
         let r = try JSONDecoder().decode(SearchR.self, from: d)
@@ -101,10 +142,28 @@ final class OpenSubtitles: ObservableObject {
                             hearingImpaired: i.attributes.hearing_impaired ?? false,
                             fromTrusted: i.attributes.from_trusted ?? false)
         }
-        // eerst voorkeurstaal, dan populariteit
+        // eerst gevraagde taal, dan betrouwbaar, dan populariteit
+        let order = languages.map { $0.lowercased() }
         return subs.sorted {
-            let a = preferredLanguages.firstIndex(of: $0.language) ?? 99, b = preferredLanguages.firstIndex(of: $1.language) ?? 99
-            return a != b ? a < b : $0.downloads > $1.downloads
+            let a = order.firstIndex(of: Self.baseCode($0.language)) ?? 99, b = order.firstIndex(of: Self.baseCode($1.language)) ?? 99
+            if a != b { return a < b }
+            if $0.fromTrusted != $1.fromTrusted { return $0.fromTrusted }
+            return $0.downloads > $1.downloads
+        }
+    }
+
+    /// Oude aanroep (zoeken in de standaardtaal).
+    func search(imdbID: String, season: Int? = nil, episode: Int? = nil, title: String? = nil) async throws -> [Subtitle] {
+        try await search(imdbID: imdbID, title: title, season: season, episode: episode,
+                         languages: defaultLanguage.isEmpty ? [] : [defaultLanguage])
+    }
+
+    /// Account-info (resterende downloads vandaag) verversen.
+    func refreshUser() async {
+        guard isLoggedIn else { return }
+        struct R: Decodable { struct D: Decodable { let remaining_downloads: Int?; let allowed_downloads: Int? }; let data: D }
+        if let d = try? await request("/infos/user"), let r = try? JSONDecoder().decode(R.self, from: d) {
+            remainingDownloads = r.data.remaining_downloads ?? r.data.allowed_downloads
         }
     }
 

@@ -156,7 +156,7 @@ struct SettingsView: View {
     }
 
     private var openSubtitlesSection: some View {
-        Section("OpenSubtitles") {
+        Section {
             if subs.isLoggedIn {
                 LabeledContent(L("Signed in as"), value: subs.username ?? "")
                 if let r = subs.remainingDownloads { LabeledContent(L("Downloads left today"), value: "\(r)") }
@@ -166,9 +166,16 @@ struct SettingsView: View {
                     Label(L("Sign in to OpenSubtitles"), systemImage: "captions.bubble")
                 }
             }
-            Toggle(L("Search subtitles automatically when playing"), isOn: $autoSubtitles)
-            NavigationLink(L("Languages: %@", subs.preferredLanguages.joined(separator: ", "))) { LanguagePicker() }
+            Picker(L("Default language"), selection: $subs.defaultLanguage) {
+                Text(L("All languages")).tag("")
+                ForEach(TrackPreferences.sortedCodes, id: \.self) { Text(TrackPreferences.name($0)).tag($0) }
+            }
+            .pickerStyle(.menu)
+            Toggle(L("Load subtitles automatically when playing"), isOn: $autoSubtitles)
+        } header: { Text("OpenSubtitles") } footer: {
+            Text(L("While playing, choose OpenSubtitles to pick another subtitle or language. Automatically uses a subtitle track in the stream first; otherwise the best match from OpenSubtitles is loaded (requires sign-in)."))
         }
+        .task { await subs.refreshUser() }
     }
 
     private var refreshSection: some View {
