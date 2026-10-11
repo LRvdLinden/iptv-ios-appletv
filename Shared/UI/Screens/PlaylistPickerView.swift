@@ -54,7 +54,7 @@ struct PlaylistPickerView: View {
                                 // profiel met pincode: eerst de pincode vragen
                                 if ParentalControl.shared.hasPIN(profile: p.id) { pinFor = p } else { app.open(profile: p) }
                             } label: {
-                                AvatarTile(name: p.kids ? "\(p.name) · Kids" : p.name, avatar: p.avatar, photo: store.photos[p.id],
+                                AvatarTile(name: p.name, avatar: p.avatar, photo: store.photos[p.id],
                                            badge: store.isMain(p) && store.profiles.count > 1 ? "person.fill" : nil,
                                            locked: ParentalControl.shared.hasPIN(profile: p.id))
                             }
@@ -146,6 +146,23 @@ struct ProfileEditView: View {
                         .listRowBackground(Color.clear)
                     TextField(L("Name"), text: $name)
                 }
+                Section(L("Choose a character")) {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: tvScaled(58)), spacing: tvScaled(12))], spacing: tvScaled(12)) {
+                        ForEach(PlaylistAvatar.illustrations, id: \.self) { k in
+                            Button { avatar.symbol = k; photo = nil } label: {
+                                Group {
+                                    if let img = UIImage(named: k) { Image(uiImage: img).resizable().scaledToFit() }
+                                    else { Circle().fill(Theme.elevated) }
+                                }
+                                .frame(width: tvScaled(58), height: tvScaled(58))
+                                .clipShape(Circle())
+                                .overlay(Circle().strokeBorder(.white, lineWidth: avatar.symbol == k && photo == nil ? 3 : 0))
+                            }
+                            .plainTVButton()
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
                 Section(L("Identify with an icon")) {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: tvScaled(10)) {
@@ -153,7 +170,7 @@ struct ProfileEditView: View {
                                 Button { avatar.symbol = s; photo = nil } label: {
                                     Image(systemName: s).font(.system(size: tvScaled(20), weight: .semibold))
                                         .frame(width: tvScaled(44), height: tvScaled(44)).foregroundStyle(.white)
-                                        .background(avatar.symbol == s ? AnyShapeStyle(avatar.gradient) : AnyShapeStyle(Theme.elevated), in: Circle())
+                                        .background(avatar.symbol == s && photo == nil ? AnyShapeStyle(avatar.gradient) : AnyShapeStyle(Theme.elevated), in: Circle())
                                 }
                                 .plainTVButton()
                             }
@@ -185,7 +202,11 @@ struct ProfileEditView: View {
                 if canAdmin { Section {
                     Toggle(L("Kids profile"), isOn: $isKids)
                         .disabled(locked)
-                        .onChange(of: isKids) { _, v in if v && (ageLimit == 0 || ageLimit > 12) { ageLimit = 12 } }
+                        .onChange(of: isKids) { _, v in
+                            if v && (ageLimit == 0 || ageLimit > 12) { ageLimit = 12 }
+                            // kinderprofiel zonder eigen foto: meteen een vrolijk figuurtje
+                            if v && photo == nil && !avatar.isIllustration { avatar.symbol = PlaylistAvatar.illustrations.randomElement()! }
+                        }
                     Picker(L("Age limit for this profile"), selection: $ageLimit) {
                         Text(L("None")).tag(0)
                         ForEach(ParentalControl.ageChoices, id: \.self) { Text(L("Up to %d years", $0)).tag($0) }
@@ -250,6 +271,8 @@ struct AvatarTile: View {
                 .overlay {
                     if let photo, let img = UIImage(data: photo) {
                         Image(uiImage: img).resizable().scaledToFill()
+                    } else if avatar.isIllustration {
+                        AvatarGlyph(avatar: avatar, size: tvScaled(44))
                     } else {
                         Image(systemName: avatar.symbol)
                             .font(.system(size: tvScaled(44), weight: .semibold))
@@ -285,6 +308,19 @@ struct AvatarTile: View {
     }
 }
 
+/// Icoon of getekend figuurtje van een avatar.
+struct AvatarGlyph: View {
+    let avatar: PlaylistAvatar
+    let size: CGFloat
+    var body: some View {
+        if avatar.isIllustration, let img = UIImage(named: avatar.symbol) {
+            Color.clear.overlay(Image(uiImage: img).resizable().scaledToFill())
+        } else {
+            Image(systemName: avatar.symbol).font(.system(size: size, weight: .bold)).foregroundStyle(.white)
+        }
+    }
+}
+
 /// Avatar van het actieve kijkprofiel (kopbalk, laadscherm, Mijn Bingr).
 struct ProfileAvatar: View {
     let size: CGFloat
@@ -296,7 +332,7 @@ struct ProfileAvatar: View {
                 if let d = store.photos[p.id], let img = UIImage(data: d) {
                     Color.clear.overlay(Image(uiImage: img).resizable().scaledToFill()).clipShape(Circle())
                 } else {
-                    Image(systemName: p.avatar.symbol).font(.system(size: size * 0.45, weight: .bold)).foregroundStyle(.white)
+                    AvatarGlyph(avatar: p.avatar, size: size * 0.45).clipShape(Circle())
                 }
             }
             .frame(width: size, height: size)
@@ -318,7 +354,7 @@ struct MiniAvatar: View {
                 Color.clear.overlay(Image(uiImage: img).resizable().scaledToFill())
                     .clipShape(Circle())
             } else {
-                Image(systemName: playlist.avatar.symbol).font(.system(size: size * 0.45, weight: .bold)).foregroundStyle(.white)
+                AvatarGlyph(avatar: playlist.avatar, size: size * 0.45).clipShape(Circle())
             }
         }
         .frame(width: size, height: size)

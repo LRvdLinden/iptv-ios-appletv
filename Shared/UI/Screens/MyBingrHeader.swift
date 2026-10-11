@@ -156,7 +156,11 @@ struct MyBingrHeader: View {
 @MainActor
 enum ProfileTabIcon {
     static func image(_ store: CloudStore) -> UIImage? {
-        guard let p = store.activeProfile, let d = store.photos[p.id], let img = UIImage(data: d) else { return nil }
+        guard let p = store.activeProfile else { return nil }
+        let img: UIImage
+        if let d = store.photos[p.id], let i = UIImage(data: d) { img = i }
+        else if p.avatar.isIllustration, let i = UIImage(named: p.avatar.symbol) { img = i }
+        else { return nil }
         let size = CGSize(width: 26, height: 26)
         let out = UIGraphicsImageRenderer(size: size).image { _ in
             UIBezierPath(ovalIn: CGRect(origin: .zero, size: size)).addClip()

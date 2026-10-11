@@ -62,6 +62,10 @@ struct PlaylistAvatar: Codable, Hashable {
         return LinearGradient(colors: c, startPoint: .topLeading, endPoint: .bottomTrailing)
     }
 
+    /// Getekende figuurtjes (Resources/Avatars/kid01.png …), te kiezen als profielafbeelding.
+    static let illustrations = (1...16).map { String(format: "kid%02d", $0) }
+    var isIllustration: Bool { symbol.hasPrefix("kid") }
+
     static func random() -> PlaylistAvatar {
         PlaylistAvatar(symbol: symbols.randomElement()!, colorIndex: Int.random(in: 0..<palettes.count))
     }
