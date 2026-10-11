@@ -72,7 +72,7 @@ final class NetworkDiscovery: ObservableObject {
         guard discoverers.isEmpty else { return }
         for name in ["upnp", "dsm", "smb", "bonjour"] {
             let d = VLCMediaDiscoverer(name: name)
-            if d.startDiscoverer() == 0 { discoverers.append(d) }
+            if d.start() == 0 { discoverers.append(d) }
         }
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in self?.poll() }
@@ -82,7 +82,7 @@ final class NetworkDiscovery: ObservableObject {
 
     func stop() {
         timer?.invalidate(); timer = nil
-        discoverers.forEach { $0.stopDiscoverer() }
+        discoverers.forEach { $0.stop() }
         discoverers = []
     }
 
@@ -245,7 +245,7 @@ struct NetworkFolderView: View {
         loading = true; failed = false
         let m = VLCMedia(url: url)
         media = m   // vasthouden tijdens het inlezen
-        _ = m.parse(withOptions: VLCMediaParsingOptions(rawValue: 0x01 | 0x08), timeout: 15_000)  // netwerk + inloggen
+        _ = m.parse(options: VLCMediaParsingOptions(rawValue: 0x01 | 0x08), timeout: 15_000)  // netwerk + inloggen
         for _ in 0..<80 {
             try? await Task.sleep(nanoseconds: 250_000_000)
             let st = m.parsedStatus
