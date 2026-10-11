@@ -85,6 +85,8 @@ jobs:
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git fetch origin ci-logs || true
+          # ingebouwde sleutels zitten al in de zip; werkmap weer schoon maken voor de branch-wissel
+          git reset --hard -q
           git switch --orphan ci-logs-tmp
           git rm -rf --quiet . || true
           cp report/*.txt report/Bingr-xcode.zip .
