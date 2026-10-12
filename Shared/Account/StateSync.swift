@@ -86,7 +86,8 @@ final class StateSync {
         var settingsFormat: Int? = StateSync.settingsFormat
     }
 
-    nonisolated static let settingsFormat = 59
+    /// 60: `subtitleLanguage: "off"` wordt `""` + `autoSubtitles: "off"`
+    nonisolated static let settingsFormat = 60
 
     private func saveMeta() {
         if let d = try? JSONEncoder().encode(meta) { UserDefaults.standard.set(d, forKey: metaKey) }
@@ -471,9 +472,14 @@ final class StateSync {
             return useGlobals ? global() : nil
         }
         shared["audioLanguage"] = pref(main?.audioLanguage, TrackPreferences.audio)
-        shared["subtitleLanguage"] = pref(main?.streamSubtitleLanguage, TrackPreferences.subtitle)
+        var subtitleLanguage = pref(main?.streamSubtitleLanguage, TrackPreferences.subtitle)
         // build 59: "off" | "whenNeeded" | "always" (was true/false)
-        shared["autoSubtitles"] = pref(main?.effectiveSubtitleMode, TrackPreferences.subtitleMode.rawValue)
+        var autoSubtitles = pref(main?.effectiveSubtitleMode, TrackPreferences.subtitleMode.rawValue)
+        // build 60: het oude "off" als ondertiteltaal betekent "automatisch uit" (docs/ACCOUNT.md → Build 59);
+        // zo opslaan, dan lezen alle platforms hetzelfde
+        if (subtitleLanguage as? String) == "off" { subtitleLanguage = ""; autoSubtitles = TrackPreferences.SubtitleMode.off.rawValue }
+        shared["subtitleLanguage"] = subtitleLanguage
+        shared["autoSubtitles"] = autoSubtitles
         shared["openSubtitlesLanguage"] = pref(main?.subtitleLanguage, OpenSubtitles.shared.defaultLanguage)
         shared["openSubtitlesLanguages"] = OpenSubtitles.shared.preferredLanguages
         let tab = d.integer(forKey: "ui.startTab")
@@ -608,8 +614,10 @@ final class StateSync {
 
         // kijkvoorkeuren van het hoofdaccount
         let audio = shared["audioLanguage"] as? String
-        let sub = shared["subtitleLanguage"] as? String
-        let auto = TrackPreferences.mode(fromSynced: shared["autoSubtitles"])?.rawValue
+        var sub = shared["subtitleLanguage"] as? String
+        var auto = TrackPreferences.mode(fromSynced: shared["autoSubtitles"])?.rawValue
+        // build 60: oud "off" als taal (oudere app) = automatisch uit, in de app-taal
+        if sub == "off" { sub = ""; auto = TrackPreferences.SubtitleMode.off.rawValue }
         let os = shared["openSubtitlesLanguage"] as? String
         if let main = store.mainProfileID, audio != nil || sub != nil || auto != nil || os != nil {
             store.setSyncedPreferences(main) { p in

@@ -68,7 +68,12 @@ struct MultiviewScreen: View {
         #if os(tvOS)
         .onExitCommand { closeAll() }
         #endif
-        .onDisappear { StreamSession.shared.stop(owner: streamOwner) }
+        .onDisappear {
+            StreamSession.shared.stop(owner: streamOwner)
+            // build 60: ook gesloten van buitenaf (uitgelogd, profiel verwijderd, apparaatlimiet, Esc op de Mac):
+            // alle beelden stoppen, anders bleven ze (met geluid en timers) op de achtergrond doorspelen
+            tiles.forEach { $0.controller.stop() }
+        }
         .sheet(isPresented: $picking) {
             ChannelPicker(channels: playlists.library.channels) { c in add(c) }
         }

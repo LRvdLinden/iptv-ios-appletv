@@ -200,7 +200,9 @@ struct PlexClient {
         for s in servers {
             let conns = (s.connections ?? []).sorted { ($0.local == true ? 0 : $0.relay == true ? 2 : 1) < ($1.local == true ? 0 : $1.relay == true ? 2 : 1) }
             for c in conns {
-                var r = URLRequest(url: URL(string: c.uri + "/identity")!); r.timeoutInterval = 4
+                // build 60: een onbruikbaar adres van plex.tv overslaan in plaats van crashen
+                guard let identity = URL(string: c.uri + "/identity") else { continue }
+                var r = URLRequest(url: identity); r.timeoutInterval = 4
                 if let res = try? await HTTP.data(r), res.1.statusCode == 200 {
                     return MediaSession(token: s.accessToken ?? userToken, userID: s.name, serverURI: c.uri)
                 }

@@ -187,9 +187,11 @@ final class VLCEngine: PlaybackEngine {
         pendingStart = startFraction
         player.play()
         if resumeAt == nil, let s = startFraction, s > 0.01 {
-            Task { @MainActor in
+            Task { @MainActor [weak self] in
                 for _ in 0..<40 {   // wachten tot de lengte bekend is
                     try? await Task.sleep(nanoseconds: 250_000_000)
+                    // build 60: intussen een andere stream geladen (zappen, volgende aflevering): niet op die spoelen
+                    guard let self, self.player.media === media else { return }
                     if self.duration > 0 && self.player.isPlaying { self.player.position = Float(s); break }
                 }
             }
@@ -294,6 +296,10 @@ final class AVEngine: PlaybackEngine {
     private let pipDelegate = PiPDelegate()
     /// Zendervoorbeeld: zonder geluid, lage bitrate, geen AirPlay en geen beeld-in-beeld
     private let silent: Bool
+    /// Build 60: audio- en ondertitelgroepen, asynchroon geladen per stream. De oude synchrone API
+    /// (`mediaSelectionGroup(forMediaCharacteristic:)`) is verouderd en kon de hoofdthread laten wachten.
+    private var groups: [AVMediaCharacteristic: AVMediaSelectionGroup] = [:]
+    private var groupsTask: Task<Void, Never>?
 
     init(silent: Bool = false) {
         self.silent = silent
@@ -377,6 +383,7 @@ final class AVEngine: PlaybackEngine {
             }
         ]
         player.replaceCurrentItem(with: item)
+        loadGroups(asset, for: item)
         guard let s = startFraction, s > 0.01 else { player.playImmediately(atRate: rate); return }
         // build 59: hervatten — eerst naar de positie, dan pas afspelen (niet eerst het begin laden en tonen)
         Task { @MainActor [weak self] in
@@ -404,6 +411,27 @@ final class AVEngine: PlaybackEngine {
     func pause() { player.pause() }
     func stop() {
         player.pause(); player.replaceCurrentItem(with: nil)
+        observers.forEach { NotificationCenter.default.removeObserver($0) }
+        observers = []
+        groupsTask?.cancel(); groupsTask = nil
+        groups = [:]
+    }
+
+    /// Audio- en ondertitelgroepen van deze stream op de achtergrond laden (build 60).
+    private func loadGroups(_ asset: AVURLAsset, for item: AVPlayerItem) {
+        groupsTask?.cancel()
+        groups = [:]
+        // zendervoorbeeld: geen sporen nodig
+        guard !silent else { return }
+        groupsTask = Task { @MainActor [weak self] in
+            let audible = try? await asset.loadMediaSelectionGroup(for: .audible)
+            let legible = try? await asset.loadMediaSelectionGroup(for: .legible)
+            guard let self, !Task.isCancelled, self.player.currentItem === item else { return }
+            var g: [AVMediaCharacteristic: AVMediaSelectionGroup] = [:]
+            if let audible { g[.audible] = audible }
+            if let legible { g[.legible] = legible }
+            self.groups = g
+        }
     }
 
     #if os(tvOS)
@@ -445,7 +473,7 @@ final class AVEngine: PlaybackEngine {
     }
 
     private func group(_ c: AVMediaCharacteristic) -> AVMediaSelectionGroup? {
-        player.currentItem?.asset.mediaSelectionGroup(forMediaCharacteristic: c)
+        player.currentItem == nil ? nil : groups[c]
     }
     private func options(_ c: AVMediaCharacteristic) -> [MediaTrack] {
         group(c)?.options.enumerated().map { i, o in

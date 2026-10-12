@@ -168,7 +168,9 @@ struct OpenSubtitlesPanel: View {
         defer { loading = false }
         let it = player.item
         do {
-            results = try await subs.search(imdbID: it.imdbID, title: it.title, year: it.subtitle.flatMap { Int($0) },
+            // build 60: zoals de automatische ondertitels: ook op TMDB-id, en de titel zonder taallabel ("Animal (IT)")
+            results = try await subs.search(imdbID: it.imdbID, tmdbID: ContentLanguage.Facts.shared.tmdbID(it.seriesID ?? it.id),
+                                            title: ContentLanguage.searchTitle(it.title), year: it.subtitle.flatMap { Int($0) },
                                             season: it.season, episode: it.episode,
                                             languages: language.isEmpty ? [] : [language])
             if results.isEmpty {
@@ -400,6 +402,10 @@ struct NextEpisodeCard: View {
     let autoplay: Bool
     let onPlay: () -> Void
     let onDismiss: () -> Void
+    #if os(tvOS)
+    /// Apple TV: focus van het spelerscherm, zodat de kaart ook met verborgen bediening bereikbaar is (build 60)
+    var focus: FocusState<PlayerScreen.TVField?>.Binding
+    #endif
 
     var body: some View {
         HStack(spacing: tvScaled(14)) {
@@ -417,6 +423,9 @@ struct NextEpisodeCard: View {
                     }
                     // afspeelknop in de accentkleur (build 58)
                     .buttonStyle(PlayButtonStyle(cornerRadius: tvScaled(6)))
+                    #if os(tvOS)
+                    .focused(focus, equals: .bar("nextplay"))
+                    #endif
                     Button(action: onDismiss) {
                         Text(autoplay ? L("Watch credits") : L("Hide"))
                             .font(.system(size: tvScaled(13), weight: .semibold))
@@ -424,6 +433,9 @@ struct NextEpisodeCard: View {
                             .background(Color.white.opacity(0.2), in: RoundedRectangle(cornerRadius: tvScaled(6)))
                     }
                     .plainTVButton()
+                    #if os(tvOS)
+                    .focused(focus, equals: .bar("nexthide"))
+                    #endif
                 }
             }
         }

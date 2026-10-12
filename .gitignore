@@ -9,3 +9,7 @@ DerivedData/
 *.dSYM.zip
 .DS_Store
 
+
+# Python
+__pycache__/
+*.pyc

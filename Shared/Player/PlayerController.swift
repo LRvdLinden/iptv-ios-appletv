@@ -165,6 +165,10 @@ final class PlayerController: ObservableObject {
         // build 59: niets van de vorige titel gebruiken om te hervatten (duur) of voor ondertitels
         duration = 0; position = 0; currentTime = 0
         subtitleCheck?.cancel(); subtitleCheck = nil
+        // build 60: ook geen ondertitelspoor van de vorige titel, en opnieuw beginnen ("Opnieuw" na een fout) haalt
+        // de automatische ondertitels opnieuw op (de ingeladen ondertitels zijn hierboven gewist)
+        carrySubtitle = nil
+        autoSubtitlesFor = nil
     }
 
     /// Opnieuw beginnen met foutherstel (andere bron of andere speler gekozen).
@@ -223,7 +227,9 @@ final class PlayerController: ObservableObject {
         // andere engine (bijv. VLC → Apple voor AirPlay): ingeladen ondertitels meenemen (build 57)
         if switching, let f = externalSubtitleFile { applyExternalSubtitle(f) }
         timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+        timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] t in
+            // build 60: speler opgeruimd zonder `stop()` (bijv. een tegel of voorbeeld): de timer niet eeuwig laten lopen
+            guard self != nil else { t.invalidate(); return }
             Task { @MainActor [weak self] in self?.tick() }
         }
     }

@@ -81,6 +81,13 @@ final class DownloadManager: ObservableObject {
     func start() {
         guard !started else { return }
         started = true
+        // build 60: Live Activity van een vorige keer (app afgesloten of gecrasht) overnemen in plaats van er een
+        // tweede naast te zetten; overbodige meteen beëindigen. Zonder lopende downloads gaat hij hieronder weg.
+        let existing = Activity<DownloadActivityAttributes>.activities
+        activity = existing.first
+        for extra in existing.dropFirst() {
+            Task { await extra.end(nil, dismissalPolicy: .immediate) }
+        }
         let fc = URLSessionConfiguration.background(withIdentifier: Self.fileSessionID)
         fc.sessionSendsLaunchEvents = true
         fc.isDiscretionary = false
@@ -256,6 +263,11 @@ final class DownloadManager: ObservableObject {
                              resumeAt: CloudStore.shared.progress[d.itemID]?.fraction ?? 0)
         p.seriesID = d.seriesID
         p.sourceID = d.sourceID
+        // build 60: taal van de titel (automatische ondertitels "wanneer nodig") en hervatten op de seconde (VLC)
+        let lang = ContentLanguage.resolve(title: d.title, group: nil, id: d.seriesID ?? d.itemID)
+        p.audioLanguage = (lang?.multi ?? false) ? nil : lang?.audioBase
+        p.burnedSubtitles = lang?.subtitlesBase
+        if p.resumeAt > 0.01, let e = CloudStore.shared.progress[d.itemID], e.position > 0 { p.resumeSeconds = e.position }
         return p
     }
 
@@ -372,8 +384,12 @@ final class DownloadManager: ObservableObject {
         fileTasks[id] = nil
         hlsTasks[id] = nil
         guard let i = items.firstIndex(where: { $0.id == id }) else {
-            // intussen verwijderd: bestand opruimen
-            if let f = fileName { try? FileManager.default.removeItem(at: Self.folder.appendingPathComponent(f)) }
+            // intussen verwijderd: bestand opruimen (HLS: pad ten opzichte van de thuismap, build 60)
+            if let f = fileName {
+                let url = f.hasSuffix(".movpkg") ? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(f)
+                                                 : Self.folder.appendingPathComponent(f)
+                try? FileManager.default.removeItem(at: url)
+            }
             return
         }
         guard let fileName else { failed(id, error: error ?? L("Download failed."), resumeData: nil); return }
@@ -442,8 +458,14 @@ final class DownloadManager: ObservableObject {
         if running.isEmpty {
             guard let act = activity else { return }
             activity = nil
+            // build 60: alleen "klaar" tonen als er echt iets klaar is; een overgebleven activiteit van een vorige
+            // keer (of alles verwijderd) meteen weghalen
+            guard let finishedTitle else {
+                Task { await act.end(nil, dismissalPolicy: .immediate) }
+                return
+            }
             let done = DownloadActivityAttributes.ContentState(
-                title: finishedTitle ?? L("Downloads complete"), detail: L("Ready to watch offline"),
+                title: finishedTitle, detail: L("Ready to watch offline"),
                 progress: 1, remaining: 0, paused: false, finished: true)
             Task { await act.end(ActivityContent(state: done, staleDate: nil), dismissalPolicy: .after(Date().addingTimeInterval(8))) }
             return

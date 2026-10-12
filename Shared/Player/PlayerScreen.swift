@@ -25,6 +25,10 @@ struct PlayerScreen: View {
     #if !os(tvOS)
     @StateObject private var cast = CastManager.shared
     #endif
+    #if os(macOS)
+    /// Mac: toetsenbordfocus voor de sneltoetsen van de speler (build 60)
+    @FocusState private var macKeys: Bool
+    #endif
     #if os(iOS)
     @ObservedObject private var external = ExternalDisplay.shared
     #endif
@@ -130,8 +134,7 @@ struct PlayerScreen: View {
             }
 
             if let n = nextUp, let left = nextCountdown {
-                NextEpisodeCard(next: n, secondsLeft: left, autoplay: marker?.creditsStart != nil,
-                                onPlay: { playNext(n) }, onDismiss: { creditsDismissed = true })
+                nextEpisodeCard(n, left)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                     .padding(.trailing, tvScaled(40))
                     .padding(.bottom, showControls ? tvScaled(130) : tvScaled(50))
@@ -171,6 +174,10 @@ struct PlayerScreen: View {
         #if os(macOS)
         // Mac-toetsenbord: spatie = pauze, ←/→ = 10 s, ↑/↓ = zappen, Esc = sluiten
         .focusable()
+        // build 60: meteen (en na een paneel weer) de toetsenbordfocus, anders werkten de toetsen pas na een klik
+        .focused($macKeys)
+        .onAppear { macKeys = true }
+        .onChange(of: panel) { _, p in if p == nil { macKeys = true } }
         .focusEffectDisabled()
         .onKeyPress(.space) { player.togglePlay(); poke(); return .handled }
         .onKeyPress(.leftArrow) { player.seek(by: -10); flash("−10 s"); return .handled }
@@ -182,15 +189,30 @@ struct PlayerScreen: View {
         #else
         .onPlayPauseCommand { player.togglePlay(); poke() }
         .onChange(of: showControls) { _, shown in
-            // bediening tevoorschijn → focus op afspelen/pauze; weg → focus terug naar de vanger
-            tvFocus = shown ? .bar("play") : .catcher
+            // bediening tevoorschijn → focus op afspelen/pauze; weg → focus terug naar de vanger, of naar
+            // "Intro overslaan" / "Volgende aflevering" als die in beeld staan (build 60)
+            if shown { tvFocus = .bar("play") }
+            else if showSkipIntro { tvFocus = .bar("skipintro") }
+            else if nextCountdown != nil { tvFocus = .bar("nextplay") }
+            else { tvFocus = .catcher }
         }
-        .onChange(of: tvFocus) { _, f in if case .some(.bar(_)) = f { poke() } }   // rondkijken in de balk houdt hem zichtbaar
+        // rondkijken in de balk houdt hem zichtbaar; de knoppen boven het beeld (intro overslaan, volgende aflevering)
+        // niet, anders haalt het tonen van de balk de focus er meteen weer af (build 60)
+        .onChange(of: tvFocus) { _, f in
+            if case .some(.bar(let id)) = f, !Self.overlayFocusIDs.contains(id) { poke() }
+        }
         .onAppear { tvFocus = showControls ? .bar("play") : .catcher }
         // intro overslaan: de knop krijgt de focus zolang de bediening verborgen is (zoals Netflix)
         .onChange(of: showSkipIntro) { _, v in
             if v && !showControls { tvFocus = .bar("skipintro") }
             else if !v && tvFocus == .bar("skipintro") { tvFocus = showControls ? .bar("play") : .catcher }
+        }
+        // build 60: kaart "Volgende aflevering" ook bereikbaar met verborgen bediening (de vanger vangt alle pijltjes)
+        .onChange(of: nextCountdown != nil) { _, v in
+            if v && !showControls && !showSkipIntro { tvFocus = .bar("nextplay") }
+            else if !v, case .bar(let id)? = tvFocus, id == "nextplay" || id == "nexthide" {
+                tvFocus = showControls ? .bar("play") : .catcher
+            }
         }
         .onExitCommand {
             if streamLimit != nil { close() }
@@ -419,7 +441,22 @@ struct PlayerScreen: View {
         #endif
     }
 
+    /// Kaart "Volgende aflevering"; op Apple TV met de focus van het spelerscherm (build 60).
+    @ViewBuilder
+    private func nextEpisodeCard(_ n: PlayableItem, _ left: Int) -> some View {
+        #if os(tvOS)
+        NextEpisodeCard(next: n, secondsLeft: left, autoplay: marker?.creditsStart != nil,
+                        onPlay: { playNext(n) }, onDismiss: { creditsDismissed = true }, focus: $tvFocus)
+        #else
+        NextEpisodeCard(next: n, secondsLeft: left, autoplay: marker?.creditsStart != nil,
+                        onPlay: { playNext(n) }, onDismiss: { creditsDismissed = true })
+        #endif
+    }
+
     #if os(tvOS)
+    /// Knoppen boven het beeld die de focus mogen houden zonder dat de balk tevoorschijn komt (build 60)
+    private static let overlayFocusIDs: Set<String> = ["skipintro", "nextplay", "nexthide"]
+
     /// Bediening verborgen: een onzichtbare knop over het hele beeld.
     /// Klik = bediening tonen · ←/→ = 10 s spoelen · ↑/↓ = zappen (live) of bediening tonen.
     private var tvCatcher: some View {
@@ -774,7 +811,11 @@ struct PlayerScreen: View {
     /// Opnieuw, bij films en series op dezelfde positie.
     private func retry() {
         var it = player.item
-        if it.type != .live, player.lastGoodPosition > 0.01 { it.resumeAt = player.lastGoodPosition }
+        if it.type != .live, player.lastGoodPosition > 0.01 {
+            it.resumeAt = player.lastGoodPosition
+            // build 60: VLC hervat op seconden (`:start-time`); niet de oude startpositie van de titel gebruiken
+            it.resumeSeconds = player.duration > 0 ? player.lastGoodPosition * player.duration : nil
+        }
         Task { await start(it) }
     }
 

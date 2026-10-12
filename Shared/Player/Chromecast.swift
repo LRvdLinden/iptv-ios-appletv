@@ -170,8 +170,11 @@ final class CastSession {
                 self.send(ns: "urn:x-cast:com.google.cast.receiver", to: "receiver-0",
                           ["type": "LAUNCH", "appId": "CC1AD845", "requestId": self.nextID()])
                 DispatchQueue.main.async {
-                    self.heartbeat = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
-                        self?.send(ns: "urn:x-cast:com.google.cast.tp.heartbeat", to: "receiver-0", ["type": "PING"])
+                    guard !self.closed else { return }
+                    self.heartbeat?.invalidate()
+                    self.heartbeat = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] t in
+                        guard let self, !self.closed else { t.invalidate(); return }
+                        self.queue.async { self.send(ns: "urn:x-cast:com.google.cast.tp.heartbeat", to: "receiver-0", ["type": "PING"]) }
                     }
                 }
                 self.receive()
@@ -208,13 +211,19 @@ final class CastSession {
     }
 
     func close() {
-        heartbeat?.invalidate()
+        closed = true
+        heartbeat?.invalidate(); heartbeat = nil
         LocalMediaServer.shared.remove(owner: Self.serverOwner)
-        if let t = transportID {
-            send(ns: "urn:x-cast:com.google.cast.receiver", to: "receiver-0", ["type": "STOP", "requestId": nextID(), "sessionId": t])
+        // build 60: sessiegegevens alleen op de eigen wachtrij lezen (de berichten van de Chromecast komen daar ook binnen)
+        queue.async { [self] in
+            if let t = transportID {
+                send(ns: "urn:x-cast:com.google.cast.receiver", to: "receiver-0", ["type": "STOP", "requestId": nextID(), "sessionId": t])
+            }
+            conn.cancel()
         }
-        conn.cancel()
     }
+    /// Gesloten: geen heartbeat meer starten (de verbinding kan nog net "ready" melden)
+    private var closed = false
 
     private func nextID() -> Int { requestID += 1; return requestID }
 
