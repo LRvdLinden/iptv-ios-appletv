@@ -1,0 +1,4 @@
+project_id = "bingr"
+
+[functions.device-auth]
+verify_jwt = false
