@@ -3,9 +3,7 @@ import SwiftUI
 struct MainTabView: View {
     @EnvironmentObject var app: AppState
     @EnvironmentObject var playlists: PlaylistService
-    @State private var tab = 0
     @State private var pendingDetail: DetailTarget?
-    @State private var didPickStart = false
     @AppStorage("ui.startTab") private var startTab = 0
     @AppStorage("ui.showLive") private var showLive = true
     @AppStorage("ui.showMovies") private var showMovies = true
@@ -35,7 +33,7 @@ struct MainTabView: View {
 
     var body: some View {
         ZStack {
-            TabView(selection: $tab) {
+            TabView(selection: Binding(get: { app.selectedTab ?? 0 }, set: { app.selectedTab = $0 })) {
                 HomeView(filter: .all).tag(0)
                     .tabItem { Label(L("Home"), systemImage: "house.fill") }
                 if hasLive && showLive {
@@ -94,10 +92,9 @@ struct MainTabView: View {
         }
         .onAppear {
             openPending()
-            if !didPickStart {
-                didPickStart = true
+            if app.selectedTab == nil {
                 let allowed = [0, hasLive && showLive ? 1 : -1, showMovies ? 2 : -1, showSeries ? 3 : -1]
-                tab = allowed.contains(startTab) ? startTab : 0
+                app.selectedTab = allowed.contains(startTab) ? startTab : 0
             }
         }
         #if !os(tvOS)
