@@ -8,14 +8,23 @@ struct AuthView: View {
     @EnvironmentObject var account: AccountService
     @State private var welcome: String?
     @State private var showEmail = false
+    @State private var registering = false
 
     var body: some View {
         ZStack {
             AuthBackdrop()
             if !Secrets.accountsConfigured {
                 notConfigured
+            } else if account.isSignedIn && account.deviceLimit != nil {
+                // max. 10 apparaten: eerst een apparaat verwijderen (of Cancel = uitloggen)
+                TooManyDevicesView { proceed() }.transition(.opacity)
             } else if let welcome {
                 signedInBanner(welcome)
+            } else if registering {
+                VStack(spacing: tvScaled(22)) {
+                    BingrLogo(size: tvScaled(38))
+                    ProgressView().tint(.white).scaleEffect(1.3)
+                }
             } else {
                 content
             }
@@ -62,7 +71,21 @@ struct AuthView: View {
         #if os(tvOS)
         account.stopTVLogin()
         #endif
-        guard welcome == nil else { return }
+        guard welcome == nil, !registering else { return }
+        registering = true
+        Task { @MainActor in
+            // na elke geslaagde login: dit apparaat registreren (max. 10). Limiet → "Too many devices".
+            // Een netwerkfout blokkeert niet: de registratie wordt dan bij de volgende heartbeat opnieuw geprobeerd.
+            let r = await account.registerDevice()
+            registering = false
+            guard account.isSignedIn, r != .limit else { return }
+            proceed()
+        }
+    }
+
+    /// Apparaat geregistreerd → profielen synchroniseren, dan "Wie kijkt er?".
+    private func proceed() {
+        guard welcome == nil, account.isSignedIn else { return }
         withAnimation(.easeInOut(duration: 0.3)) { welcome = account.email ?? "" }
         Task { @MainActor in
             // profielen van de account ophalen/migreren (max. 6 s; fouten zijn stil), dan "Wie kijkt er?"

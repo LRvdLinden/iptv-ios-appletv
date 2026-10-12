@@ -12,6 +12,9 @@ struct AccountSettingsSection: View {
             Section {
                 Label(L("Signed in as %@", account.email ?? ""), systemImage: "person.crop.circle")
                     .foregroundStyle(.white)
+                NavigationLink { DevicesView() } label: {
+                    Label(L("Devices"), systemImage: "laptopcomputer.and.iphone")
+                }
                 #if !os(tvOS)
                 NavigationLink { LinkTVView() } label: {
                     Label(L("Link a TV"), systemImage: "tv")

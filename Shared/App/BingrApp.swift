@@ -51,6 +51,8 @@ struct BingrApp: App {
                 store.load(mergeProgress: true)
                 Task { await trakt.refresh() }
                 Task { await app.playlists.refreshIfDue() }
+                // gekoppelde apparaten: heartbeat (of registreren) bij terugkeer naar de voorgrond
+                Task { await account.checkDevice() }
             }
         }
     }
@@ -90,8 +92,30 @@ final class AppState: ObservableObject {
         Task {
             guard Secrets.accountsConfigured, AccountService.shared.isSignedIn else { return }
             let r = await AccountService.shared.refresh()
-            if r == .ok || r == .offline { await ProfileSync.shared.syncNow() }
+            guard r == .ok || r == .offline else { return }
+            // heartbeat bij het starten (sessies van vóór build 39: eerst registreren, met de limiet-afhandeling)
+            await AccountService.shared.checkDevice(force: true)
+            await ProfileSync.shared.syncNow()
         }
+        // elke 5 minuten zolang de app open is
+        Task { @MainActor in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 300 * 1_000_000_000)
+                await AccountService.shared.checkDevice(force: true)
+            }
+        }
+        // "Too many devices" bij het starten: spelers sluiten zodat het scherm zichtbaar is
+        AccountService.shared.$deviceLimit
+            .map { $0 != nil }
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] hit in
+                guard let self, hit, self.stage == .picker || self.stage == .main else { return }
+                self.playing = nil
+                self.showMultiview = false
+                PiPCenter.shared.stopActive()
+            }
+            .store(in: &bag)
     }
 
     /// Zonder sleutels in deze build kan de gebruiker "Doorgaan zonder account" kiezen (onthouden).
@@ -173,11 +197,16 @@ struct RootView: View {
     @EnvironmentObject var app: AppState
     @EnvironmentObject var reminders: ReminderCenter
     @EnvironmentObject var playlists: PlaylistService
+    @EnvironmentObject var account: AccountService
 
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
             Group {
+                if account.isSignedIn && account.deviceLimit != nil && (app.stage == .picker || app.stage == .main) {
+                    // limiet bereikt (sessie van vóór build 39): eerst een apparaat verwijderen, of Cancel = uitloggen
+                    TooManyDevicesView().transition(.opacity)
+                } else {
                 switch app.stage {
                 case .splash:
                     SplashView { app.splashFinished() }.transition(.opacity)
@@ -188,6 +217,7 @@ struct RootView: View {
                                                                 removal: .opacity))
                 case .main:
                     MainTabView().transition(.opacity)
+                }
                 }
             }
             .fullScreenCover(isPresented: $app.showMultiview) { MultiviewScreen() }

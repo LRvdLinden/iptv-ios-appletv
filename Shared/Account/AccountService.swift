@@ -1,5 +1,8 @@
 import Foundation
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
 
 /// Bingr-account (Supabase), zie docs/ACCOUNT.md. Gewone REST-aanvragen, geen SDK.
 ///
@@ -20,6 +23,28 @@ final class AccountService: ObservableObject {
 
     enum RefreshResult { case ok, invalid, offline, noSession }
     enum SignUpResult { case signedIn, confirmEmail }
+    enum RegisterResult { case ok, limit, failed }
+
+    /// Gekoppeld apparaat (device-auth `list_devices`), zie "Gekoppelde apparaten" in docs/ACCOUNT.md.
+    struct Device: Identifiable, Equatable {
+        let id: String
+        let name: String
+        let platform: String
+        let createdAt: Date?
+        let lastSeenAt: Date?
+        let current: Bool
+    }
+
+    /// Limiet bereikt bij `register_device`: dan toont de app "Too many devices".
+    struct DeviceLimit: Equatable {
+        let limit: Int
+        let devices: [Device]
+    }
+
+    /// Gezet als `register_device` 403 `device_limit` gaf; leeg zodra het apparaat alsnog geregistreerd is of na uitloggen.
+    @Published private(set) var deviceLimit: DeviceLimit?
+    /// Dit apparaat is (sinds deze login) geregistreerd; lokaal onthouden.
+    @Published private(set) var deviceRegistered: Bool
 
     private enum K {
         static let refresh = "account.refresh_token"
@@ -27,6 +52,9 @@ final class AccountService: ObservableObject {
         static let expires = "account.expires_at"
         static let email = "account.email"
         static let user = "account.user_id"
+        static let registered = "account.device_registered"
+        /// Vaste apparaat-ID: blijft bestaan na uitloggen (dus niet in `clearLocal`).
+        static let deviceID = "account.device_id"
     }
 
     private var accessToken: String?
@@ -35,6 +63,8 @@ final class AccountService: ObservableObject {
     private var userID: String?
     private var refreshTask: Task<RefreshResult, Never>?
     private var tvTask: Task<Void, Never>?
+    private var deviceTask: Task<Void, Never>?
+    private var lastDeviceCheck: Date = .distantPast
 
     private let session: URLSession = {
         let c = URLSessionConfiguration.ephemeral
@@ -51,6 +81,7 @@ final class AccountService: ObservableObject {
         expiresAt = Double(Keychain.getLocalOnly(K.expires) ?? "") ?? 0
         email = Keychain.getLocalOnly(K.email)
         userID = Keychain.getLocalOnly(K.user)
+        deviceRegistered = Keychain.getLocalOnly(K.registered) == "1"
     }
 
     // MARK: - Fouten
@@ -168,10 +199,14 @@ final class AccountService: ObservableObject {
         }
     }
 
-    /// Uitloggen: de server op de hoogte brengen, en daarna altijd lokaal wissen.
+    /// Uitloggen: eerst dit apparaat loskoppelen (best effort), dan de server op de hoogte brengen,
+    /// en daarna altijd lokaal wissen.
     func signOut() async {
         stopTVLogin()
         isBusy = true; defer { isBusy = false }
+        if accessToken != nil, let token = try? await validAccessToken() {
+            _ = try? await post("/functions/v1/device-auth", ["action": "remove_device", "device_id": deviceID], bearer: token)
+        }
         if let a = accessToken {
             _ = try? await post("/auth/v1/logout", [:], bearer: a)
         }
@@ -199,6 +234,161 @@ final class AccountService: ObservableObject {
         }
         guard r.status == 200, (r.json["ok"] as? Bool) == true else { throw AccountError.generic }
         return r.string("device") ?? "TV"
+    }
+
+    // MARK: - Gekoppelde apparaten (max. 10)
+
+    /// Vaste, alleen lokale apparaat-ID (UUID). Eén keer aangemaakt; blijft bestaan na uitloggen.
+    let deviceID: String = {
+        if let id = Keychain.getLocalOnly(K.deviceID), !id.isEmpty { return id }
+        let id = UUID().uuidString.lowercased()
+        Keychain.setLocalOnly(id, for: K.deviceID)
+        return id
+    }()
+
+    /// `iPhone`, `iPad`, `Apple TV` of `Mac`.
+    static var platform: String {
+        #if os(tvOS)
+        return "Apple TV"
+        #elseif os(macOS)
+        return "Mac"
+        #else
+        return UIDevice.current.userInterfaceIdiom == .pad ? "iPad" : "iPhone"
+        #endif
+    }
+
+    /// Naam van dit apparaat (iOS/tvOS: `UIDevice.current.name`, Mac: de computernaam).
+    static var currentDeviceName: String {
+        #if os(macOS)
+        let n = Host.current().localizedName ?? ProcessInfo.processInfo.hostName
+        return n.isEmpty ? "Mac" : n
+        #else
+        let n = UIDevice.current.name
+        return n.isEmpty ? platform : n
+        #endif
+    }
+
+    /// Dit apparaat registreren (na elke login, of voor sessies van vóór build 39).
+    /// Bij 403 `device_limit` wordt `deviceLimit` gezet; de app toont dan "Too many devices".
+    @discardableResult
+    func registerDevice() async -> RegisterResult {
+        guard Secrets.accountsConfigured, isSignedIn else { return .failed }
+        do {
+            let body: [String: Any] = ["action": "register_device", "device_id": deviceID,
+                                       "name": Self.currentDeviceName, "platform": Self.platform]
+            let r = try await authorized { token in
+                try await self.post("/functions/v1/device-auth", body, bearer: token)
+            }
+            guard isSignedIn else { return .failed }
+            if r.status == 403 || r.string("error") == "device_limit" {
+                let limit = Int(r.number("limit") ?? 10)
+                let list = (r.json["devices"] as? [[String: Any]] ?? []).compactMap(Self.device)
+                deviceLimit = DeviceLimit(limit: limit, devices: list)
+                return .limit
+            }
+            guard r.status == 200, (r.json["ok"] as? Bool) == true else { return .failed }
+            setRegistered(true)
+            deviceLimit = nil
+            lastDeviceCheck = Date()
+            return .ok
+        } catch {
+            return .failed
+        }
+    }
+
+    /// Bij het starten, bij terugkeer naar de voorgrond en elke 5 minuten: `heartbeat`
+    /// (of `register_device` als dit apparaat nog niet geregistreerd is). `revoked` → lokaal uitloggen.
+    func checkDevice(force: Bool = false) async {
+        guard Secrets.accountsConfigured, isSignedIn, deviceLimit == nil else { return }
+        if !force && Date().timeIntervalSince(lastDeviceCheck) < 20 { return }
+        if let t = deviceTask { return await t.value }
+        let t = Task { @MainActor in
+            if self.deviceRegistered {
+                await self.heartbeat()
+            } else {
+                _ = await self.registerDevice()
+            }
+        }
+        deviceTask = t
+        await t.value
+        deviceTask = nil
+        lastDeviceCheck = Date()
+    }
+
+    private func heartbeat() async {
+        do {
+            let r = try await authorized { token in
+                try await self.post("/functions/v1/device-auth", ["action": "heartbeat", "device_id": self.deviceID], bearer: token)
+            }
+            if (r.json["revoked"] as? Bool) == true { revokedLocally() }
+        } catch {
+            // offline of tijdelijke fout: niets doen (de app blijft werken)
+        }
+    }
+
+    /// Het apparaat is verwijderd (op een ander apparaat of de website): lokaal uitloggen, zonder logout-aanroep.
+    private func revokedLocally() {
+        stopTVLogin()
+        clearLocal()
+    }
+
+    /// Alle gekoppelde apparaten, nieuwste gebruik eerst.
+    func listDevices() async throws -> DeviceLimit {
+        let r = try await authorized { token in
+            try await self.post("/functions/v1/device-auth", ["action": "list_devices", "device_id": self.deviceID], bearer: token)
+        }
+        guard r.status == 200 else { throw AccountError.generic }
+        let list = (r.json["devices"] as? [[String: Any]] ?? []).compactMap(Self.device)
+        return DeviceLimit(limit: Int(r.number("limit") ?? 10), devices: list)
+    }
+
+    /// Een apparaat verwijderen (de sessie ervan wordt ingetrokken). Het eigen apparaat = uitloggen.
+    func removeDevice(_ id: String) async throws {
+        if id == deviceID {
+            await signOut()
+            return
+        }
+        let r = try await authorized { token in
+            try await self.post("/functions/v1/device-auth", ["action": "remove_device", "device_id": id], bearer: token)
+        }
+        guard r.status == 200, (r.json["ok"] as? Bool) == true else { throw AccountError.generic }
+        if let l = deviceLimit {
+            deviceLimit = DeviceLimit(limit: l.limit, devices: l.devices.filter { $0.id != id })
+        }
+    }
+
+    /// "Too many devices" → een apparaat verwijderd: opnieuw registreren. `.ok` = door naar "Wie kijkt er?".
+    func removeDeviceAndRetry(_ id: String) async throws -> RegisterResult {
+        try await removeDevice(id)
+        guard isSignedIn else { return .failed }
+        let r = await registerDevice()
+        if r == .failed { throw AccountError.generic }
+        return r
+    }
+
+    private func setRegistered(_ v: Bool) {
+        deviceRegistered = v
+        Keychain.setLocalOnly(v ? "1" : nil, for: K.registered)
+    }
+
+    private static func device(_ j: [String: Any]) -> Device? {
+        guard let id = j["device_id"] as? String else { return nil }
+        let platform = j["platform"] as? String ?? ""
+        let name = (j["name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? (platform.isEmpty ? "?" : platform)
+        return Device(id: id, name: name, platform: platform,
+                      createdAt: parseDate(j["created_at"]), lastSeenAt: parseDate(j["last_seen_at"]),
+                      current: (j["current"] as? Bool) ?? false)
+    }
+
+    /// Postgres-tijdstempel (`2026-10-12T10:15:30.123456+00:00`) → Date.
+    static func parseDate(_ v: Any?) -> Date? {
+        guard var s = v as? String, !s.isEmpty else { return nil }
+        if let r = s.range(of: #"\.\d+"#, options: .regularExpression) { s.removeSubrange(r) }
+        if !s.contains("T") { s = s.replacingOccurrences(of: " ", with: "T") }
+        if s.hasSuffix("+00") { s += ":00" }
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f.date(from: s)
     }
 
     // MARK: - Profielen per account (account_data via PostgREST)
@@ -363,6 +553,8 @@ final class AccountService: ObservableObject {
         for k in [K.refresh, K.access, K.expires, K.email, K.user] { Keychain.setLocalOnly(nil, for: k) }
         email = nil
         userID = nil
+        setRegistered(false)
+        deviceLimit = nil
         isSignedIn = false
     }
 
