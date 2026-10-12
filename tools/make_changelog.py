@@ -19,30 +19,34 @@ def arg(n): return args[args.index(n) + 1] if n in args else None
 LABEL = {"ios": "iOS", "ipados": "iPadOS", "tvos": "tvOS", "macos": "macOS", "android": "Android", "androidtv": "Android TV", "web": "Web"}
 ORDER = ["ios", "ipados", "tvos", "macos", "android", "androidtv", "web"]
 APPS = {"ios", "ipados", "tvos", "macos", "android", "androidtv"}
-TYPES = [("new", "✨ Nieuw"), ("improved", "⚡ Verbeterd"), ("fixed", "🛠 Opgelost")]
+TYPES = [("new", "Nieuw"), ("improved", "Verbeterd"), ("fixed", "Opgelost")]
 MONTHS = ["januari", "februari", "maart", "april", "mei", "juni", "juli", "augustus", "september", "oktober", "november", "december"]
 def nl_date(iso):
     y, m, d = iso.split("-"); return f"{int(d)} {MONTHS[int(m) - 1]} {y}"
 
+def set_label(k):
+    if APPS <= set(k): return "Alle apps en de website" if "web" in k else "Alle apps"
+    names = [LABEL[p] for p in k]
+    return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " en " + names[-1]
+
 def md(keep, title, intro):
     out = [f"# Changelog · {title}", "", intro, "",
-           "Per build: **✨ Nieuw**, **⚡ Verbeterd** en **🛠 Opgelost**, met per punt de platforms waarvoor het geldt.", ""]
+           "Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.", ""]
     for e in data:
         items = [i for i in e["items"] if set(i["platforms"]) & keep]
         if not items: continue
         out += [f"## Versie {e.get('version', '1.0.0')} · Build {e['build']}", f"_{nl_date(e['date'])}_", ""]
-        for t, head in TYPES:
-            rows = [i for i in items if i["type"] == t]
-            if not rows: continue
-            out += [f"### {head}", ""]
-            for i in rows:
-                pl = i["platforms"]
-                if APPS <= set(pl):  # alle apps: één label in plaats van zes
-                    tags = "`Alle apps`" + (" `Web`" if "web" in pl else "")
-                else:
-                    tags = " ".join(f"`{LABEL[p]}`" for p in ORDER if p in pl)
-                out.append(f"- {i['nl']} {tags}")
-            out.append("")
+        # per apparaatsoort (zelfde set platforms), daarbinnen Nieuw / Verbeterd / Opgelost
+        groups = {}
+        for i in items:
+            groups.setdefault(tuple(p for p in ORDER if p in i["platforms"]), []).append(i)
+        def rank(k): return 0 if APPS <= set(k) else 1 + min(ORDER.index(p) for p in k) * 10 + len(k) * 0.1
+        for k in sorted(groups, key=rank):
+            out += [f"### {set_label(k)}", ""]
+            for t, head in TYPES:
+                rows = [i for i in groups[k] if i["type"] == t]
+                if not rows: continue
+                out += [f"**{head}**", ""] + [f"- {i['nl']}" for i in rows] + [""]
     return "\n".join(out)
 
 if arg("--android"):

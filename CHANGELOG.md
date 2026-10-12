@@ -2,392 +2,549 @@
 
 Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website. Android: [bingr-android](https://github.com/LRvdLinden/bingr-android/blob/main/CHANGELOG.md) · alles: [bingr.online/changelog](https://bingr.online/changelog/).
 
-Per build: **✨ Nieuw**, **⚡ Verbeterd** en **🛠 Opgelost**, met per punt de platforms waarvoor het geldt.
+Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
 ## Versie 1.0.0 · Build 51
 _12 oktober 2026_
 
-### ✨ Nieuw
+### Alle apps
 
-- Tegelijk kijken: met één account kijk je op maximaal 6 schermen tegelijk; zijn het er meer, dan zie je wie er kijkt `Alle apps`
-- Apparaten: je account werkt nu op maximaal 15 apparaten, met per apparaat sinds wanneer het is ingelogd `Alle apps`
-- Wie kijkt er nu (hoofdaccount): Mijn Bingr → Account toont welk apparaat en profiel wat kijkt, en hoe lang al `Alle apps`
-- Kijkgeschiedenis van 7 dagen (hoofdaccount): per dag wat er op welk apparaat en profiel gekeken is `Alle apps`
-- Collecties: maak je eigen rijen met naam en afbeelding, handmatig (Aan collectie toevoegen…) of slim met zoekwoorden `Alle apps`
-- Startscherm per profiel: zet rijen aan of uit en in je eigen volgorde (Mijn Bingr → Startscherm) `Alle apps`
-- Zappen: veeg in de live-speler omhoog of omlaag naar de volgende of vorige zender, met zenderbalk en instelbare zapvertraging `Alle apps`
-- Zendervoorbeeld: in Live TV en de tv-gids speelt de geselecteerde zender na een seconde zonder geluid mee `Alle apps`
-- Terugkijk-correctie per zender: verschuif het begin van terugkijken met −120 tot +120 minuten `Alle apps`
-- Beeldfrequentie aanpassen: de tv schakelt naar de beeldfrequentie van de stream (op Apple TV ook HDR/Dolby Vision) `tvOS` `Android TV`
-- Evenementzenders (PPV, events) in een eigen groep Evenementen, op begintijd met LIVE-label `Alle apps`
-- Zoeken: resultaten tonen de kleur van hun bron als je meerdere bronnen hebt `Alle apps`
-- Extern scherm: op een aangesloten monitor of tv speelt de video schermvullend, de bediening blijft op je telefoon of tablet `iOS` `iPadOS` `Android`
-- Website: servers, collecties, wie kijkt er nu en kijkgeschiedenis in Mijn Bingr `Web`
-- Na het wijzigen van je wachtwoord word je op al je apparaten automatisch uitgelogd `Alle apps` `Web`
+**Nieuw**
 
-### ⚡ Verbeterd
+- Tegelijk kijken: met één account kijk je op maximaal 6 schermen tegelijk; zijn het er meer, dan zie je wie er kijkt
+- Apparaten: je account werkt nu op maximaal 15 apparaten, met per apparaat sinds wanneer het is ingelogd
+- Wie kijkt er nu (hoofdaccount): Mijn Bingr → Account toont welk apparaat en profiel wat kijkt, en hoe lang al
+- Kijkgeschiedenis van 7 dagen (hoofdaccount): per dag wat er op welk apparaat en profiel gekeken is
+- Collecties: maak je eigen rijen met naam en afbeelding, handmatig (Aan collectie toevoegen…) of slim met zoekwoorden
+- Startscherm per profiel: zet rijen aan of uit en in je eigen volgorde (Mijn Bingr → Startscherm)
+- Zappen: veeg in de live-speler omhoog of omlaag naar de volgende of vorige zender, met zenderbalk en instelbare zapvertraging
+- Zendervoorbeeld: in Live TV en de tv-gids speelt de geselecteerde zender na een seconde zonder geluid mee
+- Terugkijk-correctie per zender: verschuif het begin van terugkijken met −120 tot +120 minuten
+- Evenementzenders (PPV, events) in een eigen groep Evenementen, op begintijd met LIVE-label
+- Zoeken: resultaten tonen de kleur van hun bron als je meerdere bronnen hebt
 
-- Direct laden: je bewaarde lijst staat meteen in beeld en wordt op de achtergrond bijgewerkt `Alle apps`
-- Website: Apparaten in Mijn Bingr in- en uitklapbaar `Web`
+**Verbeterd**
+
+- Direct laden: je bewaarde lijst staat meteen in beeld en wordt op de achtergrond bijgewerkt
+
+### Alle apps en de website
+
+**Nieuw**
+
+- Na het wijzigen van je wachtwoord word je op al je apparaten automatisch uitgelogd
+
+### iOS, iPadOS en Android
+
+**Nieuw**
+
+- Extern scherm: op een aangesloten monitor of tv speelt de video schermvullend, de bediening blijft op je telefoon of tablet
+
+### tvOS en Android TV
+
+**Nieuw**
+
+- Beeldfrequentie aanpassen: de tv schakelt naar de beeldfrequentie van de stream (op Apple TV ook HDR/Dolby Vision)
+
+### Web
+
+**Nieuw**
+
+- Website: servers, collecties, wie kijkt er nu en kijkgeschiedenis in Mijn Bingr
+
+**Verbeterd**
+
+- Website: Apparaten in Mijn Bingr in- en uitklapbaar
 
 ## Versie 1.0.0 · Build 50
 _12 oktober 2026_
 
-### ✨ Nieuw
+### Alle apps
 
-- Nieuw in Mijn Bingr: Bron controleren — zie precies hoeveel zenders, films en series je server aanbiedt en hoeveel Bingr inleest `Alle apps`
+**Nieuw**
 
-### ⚡ Verbeterd
+- Nieuw in Mijn Bingr: Bron controleren — zie precies hoeveel zenders, films en series je server aanbiedt en hoeveel Bingr inleest
 
-- Seriepagina opent standaard op het nieuwste seizoen (of op het seizoen waar je gebleven bent) `Alle apps`
+**Verbeterd**
 
-### 🛠 Opgelost
+- Seriepagina opent standaard op het nieuwste seizoen (of op het seizoen waar je gebleven bent)
 
-- Xtream: films, live-zenders en series worden tolerant ingelezen — één afwijkend item op de server kost niet meer de hele lijst, dus je ziet weer alles `iOS` `iPadOS` `tvOS` `macOS`
-- Filminfo (beschrijving, cast, trailer) laadt ook bij servers die velden anders aanleveren `iOS` `iPadOS` `tvOS` `macOS`
+### iOS, iPadOS, tvOS en macOS
+
+**Opgelost**
+
+- Xtream: films, live-zenders en series worden tolerant ingelezen — één afwijkend item op de server kost niet meer de hele lijst, dus je ziet weer alles
+- Filminfo (beschrijving, cast, trailer) laadt ook bij servers die velden anders aanleveren
 
 ## Versie 1.0.0 · Build 49
 _12 oktober 2026_
 
-### ✨ Nieuw
+### Alle apps
 
-- Tik op een acteur of actrice voor een eigen pagina met foto, bio en alle films en series waarin die speelt — wat in je afspeellijst staat kijk je direct `Alle apps`
-- Zoeken op naam van een acteur of actrice toont ook personen `Alle apps`
+**Nieuw**
 
-### ⚡ Verbeterd
+- Tik op een acteur of actrice voor een eigen pagina met foto, bio en alle films en series waarin die speelt — wat in je afspeellijst staat kijk je direct
+- Zoeken op naam van een acteur of actrice toont ook personen
 
-- Copyright onderaan Mijn Bingr: © 2026 Bingr `Alle apps`
+**Verbeterd**
+
+- Copyright onderaan Mijn Bingr: © 2026 Bingr
 
 ## Versie 1.0.0 · Build 48
 _12 oktober 2026_
 
-### ⚡ Verbeterd
+### Alle apps
 
-- Lukt het ophalen van afleveringen even niet, dan probeert Bingr het de volgende keer opnieuw `Alle apps`
+**Verbeterd**
 
-### 🛠 Opgelost
+- Lukt het ophalen van afleveringen even niet, dan probeert Bingr het de volgende keer opnieuw
 
-- Series van Xtream-servers tonen weer alle seizoenen en afleveringen, ook als de server ze in een andere vorm stuurt `Alle apps`
+**Opgelost**
+
+- Series van Xtream-servers tonen weer alle seizoenen en afleveringen, ook als de server ze in een andere vorm stuurt
 
 ## Versie 1.0.0 · Build 47
 _12 oktober 2026_
 
-### ✨ Nieuw
+### Alle apps
 
-- Onderaan Mijn Bingr: app-icoon, versie- en buildnummer en copyright `Alle apps`
+**Nieuw**
 
-### ⚡ Verbeterd
+- Onderaan Mijn Bingr: app-icoon, versie- en buildnummer en copyright
 
-- Website: hero op mobiel opgeknapt (telefoon en tv netjes naast elkaar) en een kleiner cookie-bolletje `Web`
+### Web
+
+**Verbeterd**
+
+- Website: hero op mobiel opgeknapt (telefoon en tv netjes naast elkaar) en een kleiner cookie-bolletje
 
 ## Versie 1.0.0 · Build 46
 _12 oktober 2026_
 
-### ⚡ Verbeterd
+### iOS, iPadOS, tvOS en macOS
 
-- Ondertekening voor iPhone, iPad, Apple TV en Mac staat vast ingesteld (team en automatisch ondertekenen) `iOS` `iPadOS` `tvOS` `macOS`
+**Verbeterd**
+
+- Ondertekening voor iPhone, iPad, Apple TV en Mac staat vast ingesteld (team en automatisch ondertekenen)
 
 ## Versie 1.0.0 · Build 45
 _12 oktober 2026_
 
-### ✨ Nieuw
+### Alle apps
 
-- Gekoppelde apparaten een eigen naam geven of wijzigen, in de app en op bingr.online/account `Alle apps`
-- Website: overzicht van alle apparaten waarop je Bingr kijkt, apparaat-iconen in Mijn Bingr en een cookiemelding die je keuze onthoudt `Web`
-- Website: cookie-bolletje links onderin om je cookiekeuze altijd te wijzigen `Web`
+**Nieuw**
 
-### ⚡ Verbeterd
+- Gekoppelde apparaten een eigen naam geven of wijzigen, in de app en op bingr.online/account
 
-- Geen deelknop meer op de detailpagina op Apple TV, Android TV, Google TV en Fire TV `tvOS` `Android TV`
-- Changelog toont nu versie, build en datum `Web`
+### tvOS en Android TV
+
+**Verbeterd**
+
+- Geen deelknop meer op de detailpagina op Apple TV, Android TV, Google TV en Fire TV
+
+### Web
+
+**Nieuw**
+
+- Website: overzicht van alle apparaten waarop je Bingr kijkt, apparaat-iconen in Mijn Bingr en een cookiemelding die je keuze onthoudt
+- Website: cookie-bolletje links onderin om je cookiekeuze altijd te wijzigen
+
+**Verbeterd**
+
+- Changelog toont nu versie, build en datum
 
 ## Versie 1.0.0 · Build 44
 _12 oktober 2026_
 
-### ✨ Nieuw
+### Alle apps
 
-- Alles gaat mee met je account: Trakt- en OpenSubtitles-login, instellingen, Mijn lijst, Verder kijken, bekeken, kijkgeschiedenis, pincodes en herinneringen — na opnieuw installeren of op een nieuw apparaat staat alles weer klaar `Alle apps`
+**Nieuw**
+
+- Alles gaat mee met je account: Trakt- en OpenSubtitles-login, instellingen, Mijn lijst, Verder kijken, bekeken, kijkgeschiedenis, pincodes en herinneringen — na opnieuw installeren of op een nieuw apparaat staat alles weer klaar
 
 ## Versie 1.0.0 · Build 43
 _12 oktober 2026_
 
-### ✨ Nieuw
+### Alle apps
 
-- Servers en afspeellijsten worden versleuteld bij je Bingr-account bewaard: na updaten, opnieuw installeren of op een nieuw apparaat staat alles na inloggen weer klaar `Alle apps`
+**Nieuw**
+
+- Servers en afspeellijsten worden versleuteld bij je Bingr-account bewaard: na updaten, opnieuw installeren of op een nieuw apparaat staat alles na inloggen weer klaar
 
 ## Versie 1.0.0 · Build 42
 _12 oktober 2026_
 
-### 🛠 Opgelost
+### Alle apps
 
-- Trakt koppelen werkt weer: na 'Apparaat goedgekeurd' op trakt.tv logt Bingr nu meteen in, ook als de app even op de achtergrond stond `Alle apps`
+**Opgelost**
+
+- Trakt koppelen werkt weer: na 'Apparaat goedgekeurd' op trakt.tv logt Bingr nu meteen in, ook als de app even op de achtergrond stond
 
 ## Versie 1.0.0 · Build 41
 _12 oktober 2026_
 
-### ✨ Nieuw
+### Alle apps
 
-- Profielen toevoegen, wijzigen en verwijderen synchroniseert met al je apparaten `Alle apps`
-- Website: Mijn Bingr met je profielen, apparaten en account, en je profielfoto rechtsboven; changelog-pagina `Web`
+**Nieuw**
 
-### ⚡ Verbeterd
+- Profielen toevoegen, wijzigen en verwijderen synchroniseert met al je apparaten
 
-- Trakt en OpenSubtitles: gewoon inloggen, de sleutels komen veilig van de Bingr-server `Alle apps`
+**Verbeterd**
+
+- Trakt en OpenSubtitles: gewoon inloggen, de sleutels komen veilig van de Bingr-server
+
+### Web
+
+**Nieuw**
+
+- Website: Mijn Bingr met je profielen, apparaten en account, en je profielfoto rechtsboven; changelog-pagina
 
 ## Versie 1.0.0 · Build 40
 _12 oktober 2026_
 
-### ✨ Nieuw
+### Alle apps
 
-- Eigen profielfoto's worden via je Bingr-account gedeeld met al je apparaten, ook Android `Alle apps`
+**Nieuw**
+
+- Eigen profielfoto's worden via je Bingr-account gedeeld met al je apparaten, ook Android
 
 ## Versie 1.0.0 · Build 39
 _12 oktober 2026_
 
-### ✨ Nieuw
+### Alle apps
 
-- Maximaal 10 apparaten per account `Alle apps`
-- Apparaten beheren: gekoppeld op, laatst gebruikt en verwijderen (in de app en op bingr.online/account) `Alle apps`
-- Een verwijderd apparaat logt automatisch uit `Alle apps`
+**Nieuw**
+
+- Maximaal 10 apparaten per account
+- Apparaten beheren: gekoppeld op, laatst gebruikt en verwijderen (in de app en op bingr.online/account)
+- Een verwijderd apparaat logt automatisch uit
 
 ## Versie 1.0.0 · Build 38
 _12 oktober 2026_
 
-### ✨ Nieuw
+### Alle apps
 
-- Bingr-account: inloggen of account maken na de splash, in Netflix-stijl `Alle apps`
-- Apple TV, Android TV en Fire TV: inloggen met een QR-code via bingr.online/tv `tvOS` `Android TV` `Web`
-- Bestaande profielen worden aan je account gekoppeld en gedeeld met al je apparaten `Alle apps`
-- E-mails in Bingr-stijl (NL/EN), wachtwoord herstellen via bingr.online/reset `Alle apps` `Web`
+**Nieuw**
 
-### 🛠 Opgelost
+- Bingr-account: inloggen of account maken na de splash, in Netflix-stijl
+- Bestaande profielen worden aan je account gekoppeld en gedeeld met al je apparaten
 
-- Versie- en buildnummer worden nu goed meegegeven aan de App Store `iOS` `iPadOS` `tvOS` `macOS`
+### Alle apps en de website
+
+**Nieuw**
+
+- E-mails in Bingr-stijl (NL/EN), wachtwoord herstellen via bingr.online/reset
+
+### iOS, iPadOS, tvOS en macOS
+
+**Opgelost**
+
+- Versie- en buildnummer worden nu goed meegegeven aan de App Store
+
+### tvOS, Android TV en Web
+
+**Nieuw**
+
+- Apple TV, Android TV en Fire TV: inloggen met een QR-code via bingr.online/tv
 
 ## Versie 1.0.0 · Build 37
 _11 oktober 2026_
 
-### ⚡ Verbeterd
+### iOS, iPadOS, tvOS en macOS
 
-- Vloeiender scrollen; Verder kijken staat boven Mijn lijst `iOS` `iPadOS` `tvOS` `macOS`
+**Verbeterd**
 
-### 🛠 Opgelost
+- Vloeiender scrollen; Verder kijken staat boven Mijn lijst
 
-- Een verwijderde pincode blijft op alle apparaten verwijderd `iOS` `iPadOS` `tvOS` `macOS`
+**Opgelost**
+
+- Een verwijderde pincode blijft op alle apparaten verwijderd
 
 ## Versie 1.0.0 · Build 36
 _11 oktober 2026_
 
-### ✨ Nieuw
+### iOS, iPadOS, tvOS en macOS
 
-- Ondertitelgrootte instellen (klein, middel, groot), ook tijdens het kijken `iOS` `iPadOS` `tvOS` `macOS`
+**Nieuw**
 
-### 🛠 Opgelost
+- Ondertitelgrootte instellen (klein, middel, groot), ook tijdens het kijken
 
-- Apple TV: pauze, spoelen en ondertitels bereikbaar in de speler `tvOS`
-- Detailpagina's lopen niet meer vast `iOS` `iPadOS` `tvOS` `macOS`
+**Opgelost**
+
+- Detailpagina's lopen niet meer vast
+
+### tvOS
+
+**Opgelost**
+
+- Apple TV: pauze, spoelen en ondertitels bereikbaar in de speler
 
 ## Versie 1.0.0 · Build 35
 _11 oktober 2026_
 
-### ⚡ Verbeterd
+### iOS, iPadOS, tvOS en macOS
 
-- Profiel opent veel sneller na het invoeren van de pincode `iOS` `iPadOS` `tvOS` `macOS`
+**Verbeterd**
+
+- Profiel opent veel sneller na het invoeren van de pincode
 
 ## Versie 1.0.0 · Build 34
 _11 oktober 2026_
 
-### ✨ Nieuw
+### iOS, iPadOS, tvOS en macOS
 
-- Bingr houdt zelf per profiel bij wat je gezien hebt, ook zonder Trakt `iOS` `iPadOS` `tvOS` `macOS`
-- Nieuwe website bingr.online met echte covers `Web`
+**Nieuw**
+
+- Bingr houdt zelf per profiel bij wat je gezien hebt, ook zonder Trakt
+
+### Web
+
+**Nieuw**
+
+- Nieuwe website bingr.online met echte covers
 
 ## Versie 1.0.0 · Build 33
 _11 oktober 2026_
 
-### ✨ Nieuw
+### iOS, iPadOS, tvOS en macOS
 
-- Zichtbare Trakt-synchronisatie (draaiende pijltjes) en melding bij scrobblen `iOS` `iPadOS` `tvOS` `macOS`
+**Nieuw**
+
+- Zichtbare Trakt-synchronisatie (draaiende pijltjes) en melding bij scrobblen
 
 ## Versie 1.0.0 · Build 32
 _11 oktober 2026_
 
-### ⚡ Verbeterd
+### iOS, iPadOS, tvOS en macOS
 
-- Compacte pincode op Apple TV die op elk scherm past `tvOS`
+**Opgelost**
 
-### 🛠 Opgelost
+- Afspelen na het invoeren van de pincode werkt altijd
 
-- Afspelen na het invoeren van de pincode werkt altijd `iOS` `iPadOS` `tvOS` `macOS`
+### tvOS
+
+**Verbeterd**
+
+- Compacte pincode op Apple TV die op elk scherm past
 
 ## Versie 1.0.0 · Build 31
 _11 oktober 2026_
 
-### ✨ Nieuw
+### macOS
 
-- Eigen Mac-app (macOS 14+) `macOS`
+**Nieuw**
+
+- Eigen Mac-app (macOS 14+)
 
 ## Versie 1.0.0 · Build 30
 _11 oktober 2026_
 
-### ✨ Nieuw
+### iOS, iPadOS en tvOS
 
-- 16 getekende profielfiguurtjes; geen 'Kids'-label meer bij de naam `iOS` `iPadOS` `tvOS`
+**Nieuw**
+
+- 16 getekende profielfiguurtjes; geen 'Kids'-label meer bij de naam
 
 ## Versie 1.0.0 · Build 29
 _11 oktober 2026_
 
-### ✨ Nieuw
+### iOS, iPadOS en tvOS
 
-- Delen vanaf de detailpagina (WhatsApp, iMessage …), QR-code op Apple TV `iOS` `iPadOS` `tvOS`
+**Nieuw**
+
+- Delen vanaf de detailpagina (WhatsApp, iMessage …), QR-code op Apple TV
 
 ## Versie 1.0.0 · Build 28
 _11 oktober 2026_
 
-### 🛠 Opgelost
+### iOS, iPadOS en tvOS
 
-- Betrouwbare Trakt-synchronisatie van wat je gezien hebt `iOS` `iPadOS` `tvOS`
+**Opgelost**
+
+- Betrouwbare Trakt-synchronisatie van wat je gezien hebt
 
 ## Versie 1.0.0 · Build 27
 _11 oktober 2026_
 
-### ✨ Nieuw
+### iOS, iPadOS en tvOS
 
-- Verder kijken met voortgangsbalk en de keuze hervatten of opnieuw kijken `iOS` `iPadOS` `tvOS`
+**Nieuw**
 
-### 🛠 Opgelost
+- Verder kijken met voortgangsbalk en de keuze hervatten of opnieuw kijken
 
-- Mijn lijst werkt weer `iOS` `iPadOS` `tvOS`
+**Opgelost**
+
+- Mijn lijst werkt weer
 
 ## Versie 1.0.0 · Build 26
 _11 oktober 2026_
 
-### ✨ Nieuw
+### iOS, iPadOS en tvOS
 
-- Zoeken op Live TV (iPhone, iPad en Apple TV) `iOS` `iPadOS` `tvOS`
-- Volgende aflevering automatisch `iOS` `iPadOS` `tvOS`
+**Nieuw**
 
-### ⚡ Verbeterd
+- Zoeken op Live TV (iPhone, iPad en Apple TV)
+- Volgende aflevering automatisch
 
-- Sneller en soepeler `iOS` `iPadOS` `tvOS`
+**Verbeterd**
+
+- Sneller en soepeler
 
 ## Versie 1.0.0 · Build 25
 _11 oktober 2026_
 
-### ✨ Nieuw
+### iOS, iPadOS en tvOS
 
-- Kinderprofiel met strenge leeftijdsfilter en een eigen Top 10 voor kids `iOS` `iPadOS` `tvOS`
+**Nieuw**
+
+- Kinderprofiel met strenge leeftijdsfilter en een eigen Top 10 voor kids
 
 ## Versie 1.0.0 · Build 24
 _11 oktober 2026_
 
-### ✨ Nieuw
+### iOS, iPadOS en tvOS
 
-- Kijkgeschiedenis en Verder kijken per profiel `iOS` `iPadOS` `tvOS`
-- Mijn Bingr zoals Mijn Netflix `iOS` `iPadOS` `tvOS`
+**Nieuw**
+
+- Kijkgeschiedenis en Verder kijken per profiel
+- Mijn Bingr zoals Mijn Netflix
 
 ## Versie 1.0.0 · Build 23
 _11 oktober 2026_
 
-### ✨ Nieuw
+### iOS, iPadOS en tvOS
 
-- Automatische ondertitels en talen per profiel `iOS` `iPadOS` `tvOS`
+**Nieuw**
+
+- Automatische ondertitels en talen per profiel
 
 ## Versie 1.0.0 · Build 22
 _11 oktober 2026_
 
-### ✨ Nieuw
+### iOS, iPadOS en tvOS
 
-- Pincode per profiel; Trakt alleen voor het hoofdaccount `iOS` `iPadOS` `tvOS`
+**Nieuw**
+
+- Pincode per profiel; Trakt alleen voor het hoofdaccount
 
 ## Versie 1.0.0 · Build 21
 _11 oktober 2026_
 
-### ✨ Nieuw
+### iOS, iPadOS en tvOS
 
-- Servers verwijderen, sneller wisselen van profiel `iOS` `iPadOS` `tvOS`
+**Nieuw**
+
+- Servers verwijderen, sneller wisselen van profiel
 
 ## Versie 1.0.0 · Build 20
 _11 oktober 2026_
 
-### ✨ Nieuw
+### iOS, iPadOS en tvOS
 
-- Hoofdaccount beheert server, koppelingen, kinderslot en profielen `iOS` `iPadOS` `tvOS`
+**Nieuw**
+
+- Hoofdaccount beheert server, koppelingen, kinderslot en profielen
 
 ## Versie 1.0.0 · Build 19
 _11 oktober 2026_
 
-### ✨ Nieuw
+### iOS, iPadOS en tvOS
 
-- Profielen: 'Wie kijkt er?' en eigen Bingr-intro `iOS` `iPadOS` `tvOS`
+**Nieuw**
+
+- Profielen: 'Wie kijkt er?' en eigen Bingr-intro
 
 ## Versie 1.0.0 · Build 18
 _11 oktober 2026_
 
-### ✨ Nieuw
+### tvOS
 
-- Apple TV zonder grijze focusvlakken, zoals Netflix `tvOS`
+**Nieuw**
+
+- Apple TV zonder grijze focusvlakken, zoals Netflix
 
 ## Versie 1.0.0 · Build 17
 _11 oktober 2026_
 
-### ⚡ Verbeterd
+### iOS, iPadOS en tvOS
 
-- Ondertitels met vlaggen, juiste tekens en timing verschuiven; snellere start `iOS` `iPadOS` `tvOS`
+**Verbeterd**
+
+- Ondertitels met vlaggen, juiste tekens en timing verschuiven; snellere start
 
 ## Versie 1.0.0 · Build 16
 _11 oktober 2026_
 
-### ✨ Nieuw
+### iOS, iPadOS en tvOS
 
-- Zoeken door alle content en categorieën `iOS` `iPadOS` `tvOS`
+**Nieuw**
+
+- Zoeken door alle content en categorieën
 
 ## Versie 1.0.0 · Build 14
 _11 oktober 2026_
 
-### ✨ Nieuw
+### iOS, iPadOS en tvOS
 
-- Top 10 altijd zichtbaar (TMDB en Trakt trending) `iOS` `iPadOS` `tvOS`
-- Elke Apple TV-gebruiker zijn eigen Bingr `tvOS`
+**Nieuw**
+
+- Top 10 altijd zichtbaar (TMDB en Trakt trending)
+
+### tvOS
+
+**Nieuw**
+
+- Elke Apple TV-gebruiker zijn eigen Bingr
 
 ## Versie 1.0.0 · Build 13
 _11 oktober 2026_
 
-### 🛠 Opgelost
+### iOS, iPadOS en tvOS
 
-- Trakt werkt met nieuwe apps zonder client secret `iOS` `iPadOS` `tvOS`
+**Opgelost**
+
+- Trakt werkt met nieuwe apps zonder client secret
 
 ## Versie 1.0.0 · Build 11
 _11 oktober 2026_
 
-### ✨ Nieuw
+### iOS, iPadOS en tvOS
 
-- OpenSubtitles: taal kiezen tijdens het kijken, automatisch laden `iOS` `iPadOS` `tvOS`
+**Nieuw**
+
+- OpenSubtitles: taal kiezen tijdens het kijken, automatisch laden
 
 ## Versie 1.0.0 · Build 10
 _11 oktober 2026_
 
-### ✨ Nieuw
+### iOS, iPadOS en tvOS
 
-- Standaard audio- en ondertiteltaal, beeld-in-beeld, kijkgeschiedenis, NAS (SMB/DLNA) `iOS` `iPadOS` `tvOS`
+**Nieuw**
+
+- Standaard audio- en ondertiteltaal, beeld-in-beeld, kijkgeschiedenis, NAS (SMB/DLNA)
 
 ## Versie 1.0.0 · Build 8
 _10 oktober 2026_
 
-### ✨ Nieuw
+### iOS, iPadOS en tvOS
 
-- Bekijk allemaal met sorteren en scores `iOS` `iPadOS` `tvOS`
+**Nieuw**
+
+- Bekijk allemaal met sorteren en scores
 
 ## Versie 1.0.0 · Build 6
 _10 oktober 2026_
 
-### ✨ Nieuw
+### iOS, iPadOS en tvOS
 
-- Nieuw Bingr-logo in app, icoon en Top Shelf `iOS` `iPadOS` `tvOS`
+**Nieuw**
+
+- Nieuw Bingr-logo in app, icoon en Top Shelf
 
 ## Versie 1.0.0 · Build 1
 _10 oktober 2026_
 
-### ✨ Nieuw
+### iOS, iPadOS en tvOS
 
-- Eerste versie: IPTV in Netflix-stijl voor iPhone, iPad en Apple TV (M3U, Xtream, Stalker, Plex, Jellyfin, Emby, Stremio) `iOS` `iPadOS` `tvOS`
+**Nieuw**
+
+- Eerste versie: IPTV in Netflix-stijl voor iPhone, iPad en Apple TV (M3U, Xtream, Stalker, Plex, Jellyfin, Emby, Stremio)
