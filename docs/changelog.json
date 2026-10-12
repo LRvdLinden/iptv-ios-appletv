@@ -1,5 +1,67 @@
 [
  {
+  "build": 57,
+  "version": "1.0.0",
+  "date": "2026-10-12",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web"
+    ],
+    "nl": "Bij Nu aan het kijken en in de kijkgeschiedenis staat de profielfoto van elk profiel voor de regel (alleen voor het hoofdaccount, met alle profielen)",
+    "en": "Watching now and watch history show each profile's picture in front of the entry (main account only, all profiles)"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "macos",
+     "android"
+    ],
+    "nl": "Ondertitels gaan mee naar de Chromecast: gedownloade ondertitels (OpenSubtitles) en ondertitelsporen uit HLS-streams, ook als je tijdens het casten wisselt",
+    "en": "Subtitles now play on Chromecast: downloaded subtitles (OpenSubtitles) and subtitle tracks from HLS streams, also when you switch while casting"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "macos"
+    ],
+    "nl": "Ondertitels via AirPlay: OpenSubtitles-ondertitels verschijnen bij HLS-streams ook op de Apple TV, en het gekozen ondertitelspoor blijft staan als je naar AirPlay overschakelt",
+    "en": "AirPlay subtitles: OpenSubtitles subtitles now also show on the Apple TV for HLS streams, and your chosen subtitle track stays selected when switching to AirPlay"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "Een ingeladen ondertitel blijft staan als je van speler wisselt en gaat niet meer mee naar de volgende titel",
+    "en": "A loaded subtitle stays when you switch player and no longer carries over to the next title"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Mijn Bingr: Kijkgeschiedenis en Collecties zijn in- en uitklapbaar en staan standaard dicht; bij apparaten en collecties staan Naam wijzigen en Verwijderen onder de tekst",
+    "en": "My Bingr: Watch history and Collections can be collapsed and start closed; for devices and collections, Rename and Remove sit below the text"
+   }
+  ]
+ },
+ {
   "build": 56,
   "version": "1.0.0",
   "date": "2026-10-12",

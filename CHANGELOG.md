@@ -4,6 +4,39 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website. Andr
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 57
+_12 oktober 2026_
+
+### Alle apps en de website
+
+**Nieuw**
+
+- Bij Nu aan het kijken en in de kijkgeschiedenis staat de profielfoto van elk profiel voor de regel (alleen voor het hoofdaccount, met alle profielen)
+
+### iOS, iPadOS en macOS
+
+**Verbeterd**
+
+- Ondertitels via AirPlay: OpenSubtitles-ondertitels verschijnen bij HLS-streams ook op de Apple TV, en het gekozen ondertitelspoor blijft staan als je naar AirPlay overschakelt
+
+### iOS, iPadOS, macOS en Android
+
+**Nieuw**
+
+- Ondertitels gaan mee naar de Chromecast: gedownloade ondertitels (OpenSubtitles) en ondertitelsporen uit HLS-streams, ook als je tijdens het casten wisselt
+
+### iOS, iPadOS, tvOS en macOS
+
+**Opgelost**
+
+- Een ingeladen ondertitel blijft staan als je van speler wisselt en gaat niet meer mee naar de volgende titel
+
+### Web
+
+**Verbeterd**
+
+- Mijn Bingr: Kijkgeschiedenis en Collecties zijn in- en uitklapbaar en staan standaard dicht; bij apparaten en collecties staan Naam wijzigen en Verwijderen onder de tekst
+
 ## Versie 1.0.0 · Build 56
 _12 oktober 2026_
 
