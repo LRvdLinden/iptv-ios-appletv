@@ -88,11 +88,15 @@ struct AuthView: View {
         guard welcome == nil, account.isSignedIn else { return }
         withAnimation(.easeInOut(duration: 0.3)) { welcome = account.email ?? "" }
         Task { @MainActor in
-            // profielen van de account ophalen/migreren (max. 6 s; fouten zijn stil), dan "Wie kijkt er?"
+            // profielen en servers van de account ophalen/migreren (max. 8 s; fouten zijn stil), dan "Wie kijkt er?"
             let started = Date()
-            let sync = Task { @MainActor in await ProfileSync.shared.syncNow() }
+            let sync = Task { @MainActor in
+                async let profiles: Void = ProfileSync.shared.syncNow()
+                async let sources: Void = SourceSync.shared.syncNow()
+                _ = await (profiles, sources)
+            }
             let timeout = Task { @MainActor in
-                try? await Task.sleep(nanoseconds: 6_000_000_000)
+                try? await Task.sleep(nanoseconds: 8_000_000_000)
                 sync.cancel()
             }
             await sync.value

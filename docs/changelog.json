@@ -1,5 +1,19 @@
 [
  {
+  "build": 43,
+  "date": "2026-10-12",
+  "platforms": [
+   "apple",
+   "android"
+  ],
+  "nl": [
+   "Servers en afspeellijsten worden versleuteld bij je Bingr-account bewaard: na updaten, opnieuw installeren of op een nieuw apparaat staat alles na inloggen weer klaar"
+  ],
+  "en": [
+   "Servers and playlists are stored encrypted with your Bingr account: after updating, reinstalling or on a new device, everything is ready again once you sign in"
+  ]
+ },
+ {
   "build": 42,
   "date": "2026-10-12",
   "platforms": [

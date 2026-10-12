@@ -59,6 +59,9 @@ final class AccountService: ObservableObject {
         static let registered = "account.device_registered"
         /// Vaste apparaat-ID: blijft bestaan na uitloggen (dus niet in `clearLocal`).
         static let deviceID = "account.device_id"
+        /// User-id van het laatst ingelogde account: blijft bestaan na uitloggen (dus niet in `clearLocal`),
+        /// zodat een **ander** account op dit apparaat herkend wordt.
+        static let lastUser = "account.last_user_id"
     }
 
     private var accessToken: String?
@@ -88,6 +91,10 @@ final class AccountService: ObservableObject {
         email = Keychain.getLocalOnly(K.email)
         userID = Keychain.getLocalOnly(K.user)
         deviceRegistered = Keychain.getLocalOnly(K.registered) == "1"
+        // sessie van vóór build 43: dit account is het laatst ingelogde
+        if let uid = userID, !uid.isEmpty, Keychain.getLocalOnly(K.lastUser) == nil {
+            Keychain.setLocalOnly(uid, for: K.lastUser)
+        }
     }
 
     // MARK: - Fouten
@@ -461,6 +468,32 @@ final class AccountService: ObservableObject {
         guard (200..<300).contains(r.status) else { throw AccountError.generic }
     }
 
+    // MARK: - Servers en afspeellijsten (build 43), versleuteld via device-auth
+
+    /// device-auth `get_sources`: `{sources, mainSourceID, updatedAt}`. Een nieuw account geeft `sources: []`.
+    func getSources() async throws -> (sources: [[String: Any]], mainSourceID: String?, updatedAt: String?) {
+        let r = try await authorized { token in
+            try await self.post("/functions/v1/device-auth", ["action": "get_sources"], bearer: token)
+        }
+        // een fout (bijv. decrypt_failed) mag nooit als "leeg" gelden: dan zou de app alles opnieuw uploaden
+        guard r.status == 200, r.json["error"] == nil, let list = r.json["sources"] as? [Any] else { throw AccountError.generic }
+        let sources = list.compactMap { $0 as? [String: Any] }
+        let main = (r.json["mainSourceID"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        return (sources, main, r.json["updatedAt"] as? String)
+    }
+
+    /// device-auth `put_sources`: altijd de **hele** lijst, inclusief tombstones. Geeft `updatedAt` terug.
+    @discardableResult
+    func putSources(_ sources: [[String: Any]], mainSourceID: String?) async throws -> String? {
+        let body: [String: Any] = ["action": "put_sources", "sources": sources,
+                                   "mainSourceID": mainSourceID.map { $0 as Any } ?? NSNull()]
+        let r = try await authorized { token in
+            try await self.post("/functions/v1/device-auth", body, bearer: token)
+        }
+        guard r.status == 200, (r.json["ok"] as? Bool) == true else { throw AccountError.generic }
+        return r.json["updatedAt"] as? String
+    }
+
     // MARK: - Profielfoto's (Storage-bucket `avatars`), zie "Profielfoto's delen (build 40)"
 
     /// User-id van de ingelogde gebruiker (map in de bucket `avatars`).
@@ -671,6 +704,14 @@ final class AccountService: ObservableObject {
         userID = uid
         email = mail
         if !isSignedIn {
+            // een ander account dan het vorige op dit apparaat: eerst de servers, profielen en gegevens
+            // van het vorige account lokaal wissen; daarna importeren de syncs de stand van dit account
+            if let uid, !uid.isEmpty {
+                if let last = Keychain.getLocalOnly(K.lastUser), !last.isEmpty, last != uid {
+                    CloudStore.shared.wipeAccountData()
+                }
+                Keychain.setLocalOnly(uid, for: K.lastUser)
+            }
             isSignedIn = true
             // na elke login: de app-sleutels van de server op de achtergrond ophalen
             Task { @MainActor in await self.fetchConfig() }

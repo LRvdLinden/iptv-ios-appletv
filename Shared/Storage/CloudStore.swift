@@ -282,13 +282,108 @@ final class CloudStore: ObservableObject {
         write(photos, K.photos)
     }
 
+    /// Server op dít apparaat verwijderd: SourceSync zet er een tombstone voor in de Bingr-account
+    /// (zie "Servers en afspeellijsten via het account (build 43)" in docs/ACCOUNT.md).
+    let sourceDeleted = PassthroughSubject<UUID, Never>()
+
     func delete(_ p: PlaylistSource) {
-        playlists.removeAll { $0.id == p.id }
-        if mainSourceID == p.id { mainSourceID = playlists.first?.id; write(mainSourceID, K.mainSource) }
-        customizations[p.id] = nil; write(customizations, K.custom)
-        if photos[p.id] != nil { setPhoto(nil, for: p.id) }
-        Keychain.set(nil, for: p.passwordKey)
+        removeSource(p.id)
+        sourceDeleted.send(p.id)
+    }
+
+    /// Server lokaal verwijderen, met zijn aanpassingen, wachtwoorden/tokens en cache (zonder tombstone).
+    func removeSource(_ id: UUID) {
+        let old = playlists.first { $0.id == id }
+        playlists.removeAll { $0.id == id }
+        if mainSourceID == id { mainSourceID = playlists.first?.id; write(mainSourceID, K.mainSource) }
+        if customizations[id] != nil { customizations[id] = nil; write(customizations, K.custom) }
+        if photos[id] != nil { setPhoto(nil, for: id) }
+        let prefix = Self.secretPrefix(id)
+        let pl = parental.lockedGroups.filter { $0.hasPrefix(id.uuidString + "|") }
+        if !pl.isEmpty { updateParental { $0.lockedGroups.subtract(pl) } }
+        DispatchQueue.global(qos: .utility).async {
+            for k in Keychain.keys(withPrefix: prefix) { Keychain.set(nil, for: k) }
+        }
+        if let old { try? FileManager.default.removeItem(at: PlaylistService.cacheURL(old)) }
         write(playlists, K.playlists)
+    }
+
+    /// Servers en profielen van het vorige account op dit apparaat (zie `wipeAccountData`)
+    nonisolated static let foreignSourcesKey = "account.foreignSources.v1"
+    nonisolated static let foreignProfilesKey = "account.foreignProfiles.v1"
+
+    /// Voorvoegsel van alle geheime velden van een bron in de sleutelhanger: `playlist.<id>.`
+    nonisolated static func secretPrefix(_ id: UUID) -> String { "playlist.\(id.uuidString)." }
+
+    /// Servers uit de Bingr-account overnemen (importeren/samenvoegen, zie SourceSync). `updatedAt` blijft
+    /// zoals gegeven. `mainID` nil = de huidige hoofdserver houden (zolang die bestaat).
+    func replaceSources(_ list: [PlaylistSource], mainID: UUID?) {
+        playlists = list
+        write(playlists, K.playlists)
+        if let mainID, list.contains(where: { $0.id == mainID }) {
+            setMainSource(mainID)
+        } else if mainSourceID == nil || !list.contains(where: { $0.id == mainSourceID }) {
+            mainSourceID = list.first?.id
+            write(mainSourceID, K.mainSource)
+        }
+        // eerste server en nog geen profiel: een hoofdprofiel (ProfileSync vervangt het als de account er heeft)
+        if profiles.isEmpty, let p = list.first {
+            let main = ViewerProfile(name: p.name, avatar: p.avatar)
+            upsertProfile(main)
+            mainProfileIDStored = main.id
+            write(mainProfileIDStored, K.mainProfile)
+        }
+    }
+
+    /// Aanpassingen van één bron in één keer zetten (uit de account-sync).
+    func setCustomization(_ playlist: UUID, _ c: Customization?) {
+        guard customizations[playlist] != c else { return }
+        customizations[playlist] = c
+        write(customizations, K.custom)
+    }
+
+    /// Kinderslot-groepen van één bron (`<id>|<groep>`) in één keer zetten (uit de account-sync).
+    func setLockedGroups(_ playlist: UUID, _ groups: [String]) {
+        let prefix = playlist.uuidString + "|"
+        var set = parental.lockedGroups.filter { !$0.hasPrefix(prefix) }
+        for g in groups { set.insert(prefix + g) }
+        guard set != parental.lockedGroups else { return }
+        updateParental { $0.lockedGroups = set }
+    }
+
+    /// Een **ander** account logt in op dit apparaat: eerst de servers, profielen en gegevens van het
+    /// vorige account lokaal wissen (zie "Uitloggen" in "Servers en afspeellijsten via het account").
+    func wipeAccountData() {
+        let ids = playlists.map(\.id)
+        let profileIDs = profiles.map(\.id)
+        for p in playlists { try? FileManager.default.removeItem(at: PlaylistService.cacheURL(p)) }
+        let bases = [K.favorites, K.myList, K.watched, K.recent, K.history, K.progress]
+        let keys = Set(kv.dictionaryRepresentation.keys).union(local.dictionaryRepresentation().keys)
+            .filter { k in bases.contains { k == $0 || k.hasPrefix($0 + ".") } }
+        for k in keys { kv.removeObject(forKey: k); local.removeObject(forKey: k) }
+        playlists = []; write(playlists, K.playlists)
+        profiles = []; write(profiles, K.profiles)
+        mainSourceID = nil; write(mainSourceID, K.mainSource)
+        mainProfileIDStored = nil; write(mainProfileIDStored, K.mainProfile)
+        customizations = [:]; write(customizations, K.custom)
+        parental = ParentalSettings(); write(parental, K.parental)
+        reminders = []; write(reminders, K.reminders)
+        photos = [:]; write(photos, K.photos)
+        favorites = []; myList = []; localWatched = []; recentChannels = []; history = []; progress = [:]
+        activeProfileID = nil
+        activePlaylistID = nil
+        local.removeObject(forKey: "activeProfileID")
+        local.removeObject(forKey: "lastPlaylistID")
+        // iCloud kan de oude servers en profielen later terugbrengen: die horen niet bij het nieuwe account
+        // en worden dan door SourceSync en ProfileSync lokaal weer gewist (niet geüpload)
+        local.set(ids.map(\.uuidString), forKey: Self.foreignSourcesKey)
+        local.set(profileIDs.map(\.uuidString), forKey: Self.foreignProfilesKey)
+        kv.synchronize()
+        DispatchQueue.global(qos: .utility).async {
+            for id in ids { for k in Keychain.keys(withPrefix: Self.secretPrefix(id)) { Keychain.set(nil, for: k) } }
+            for id in profileIDs { Keychain.set(nil, for: "profile.\(id.uuidString).pin") }
+            Keychain.set(nil, for: "parental.pin")
+        }
     }
 
     // MARK: favorieten / mijn lijst

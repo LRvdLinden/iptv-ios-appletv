@@ -55,6 +55,27 @@ enum Keychain {
         }
     }
 
+    /// Alle sleutels (lokaal en in de iCloud-spiegel) met dit voorvoegsel die een waarde hebben,
+    /// bijv. `playlist.<id>.` voor de wachtwoorden en tokens van één bron.
+    static func keys(withPrefix prefix: String) -> [String] {
+        var out = Set<String>()
+        let q: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrSynchronizable as String: kSecAttrSynchronizableAny,
+            kSecReturnAttributes as String: true,
+            kSecMatchLimit as String: kSecMatchLimitAll
+        ]
+        var res: AnyObject?
+        if SecItemCopyMatching(q as CFDictionary, &res) == errSecSuccess, let items = res as? [[String: Any]] {
+            for i in items {
+                if let a = i[kSecAttrAccount as String] as? String, a.hasPrefix(prefix) { out.insert(a) }
+            }
+        }
+        for (k, v) in cloud() where k.hasPrefix(prefix) && !v.isEmpty { out.insert(k) }
+        return out.sorted()
+    }
+
     private static func cloud() -> [String: String] {
         (kv.dictionary(forKey: cloudKey) as? [String: String]) ?? [:]
     }

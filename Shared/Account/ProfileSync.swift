@@ -263,7 +263,12 @@ final class ProfileSync {
         let local = store.profiles
         let activeID = store.activeProfileID
         let tombIDs = Set(tombs.keys.compactMap(UUID.init(uuidString:)))
-        let removed = local.filter { tombIDs.contains($0.id) && !store.isMain($0) }.map(\.id)
+        // profielen van een vorig account op dit apparaat (via iCloud teruggekomen): lokaal wissen, niet uploaden
+        let foreign = Set((UserDefaults.standard.stringArray(forKey: CloudStore.foreignProfilesKey) ?? [])
+            .compactMap(UUID.init(uuidString:)))
+        let removed = local.filter {
+            (tombIDs.contains($0.id) && !store.isMain($0)) || (foreign.contains($0.id) && active[$0.id] == nil)
+        }.map(\.id)
         let remaining = local.filter { !removed.contains($0.id) }
         let activeSorted = active.values.sorted { $0.order < $1.order }
         var updated = loadUpdated()

@@ -2,6 +2,10 @@
 
 Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac (Android: [bingr-android](https://github.com/LRvdLinden/bingr-android/blob/main/CHANGELOG.md)). Versie 1.0.0; het buildnummer loopt gelijk over alle platforms.
 
+## Build 43 · 2026-10-12
+
+- Servers en afspeellijsten worden versleuteld bij je Bingr-account bewaard: na updaten, opnieuw installeren of op een nieuw apparaat staat alles na inloggen weer klaar
+
 ## Build 42 · 2026-10-12
 
 - Trakt koppelen werkt weer: na 'Apparaat goedgekeurd' op trakt.tv logt Bingr nu meteen in, ook als de app even op de achtergrond stond

@@ -55,6 +55,7 @@ struct BingrApp: App {
                 Task {
                     await account.checkDevice()
                     await ProfileSync.shared.syncNow(periodic: true)
+                    await SourceSync.shared.syncNow()
                     // app-sleutels: alleen opnieuw als het nog niet gelukt is (bijv. offline gestart)
                     await account.fetchConfig(force: false)
                 }
@@ -93,6 +94,12 @@ final class AppState: ObservableObject {
             }
             .store(in: &bag)
         ProfileSync.shared.start()
+        SourceSync.shared.start()
+        // servers uit de Bingr-account geïmporteerd, gewijzigd of verwijderd → bibliotheek laden of verversen
+        SourceSync.shared.changes
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] change in self?.sourcesChanged(change) }
+            .store(in: &bag)
         // het actieve profiel is op een ander apparaat verwijderd → terug naar "Wie kijkt er?"
         ProfileSync.shared.activeProfileRemoved
             .receive(on: DispatchQueue.main)
@@ -114,6 +121,7 @@ final class AppState: ObservableObject {
             // heartbeat bij het starten (sessies van vóór build 39: eerst registreren, met de limiet-afhandeling)
             await AccountService.shared.checkDevice(force: true)
             await ProfileSync.shared.syncNow()
+            await SourceSync.shared.syncNow()
         }
         // elke 5 minuten zolang de app open is
         Task { @MainActor in
@@ -122,6 +130,7 @@ final class AppState: ObservableObject {
                 await AccountService.shared.checkDevice(force: true)
                 // account_data opnieuw lezen: nieuwe of verwijderde profielfoto's van andere apparaten
                 await ProfileSync.shared.syncNow(periodic: true)
+                await SourceSync.shared.syncNow()
                 await AccountService.shared.fetchConfig(force: false)
             }
         }
@@ -180,7 +189,8 @@ final class AppState: ObservableObject {
         if !store.isMain(profile) { ParentalControl.shared.lock() }   // ontgrendeling van het hoofdaccount niet meenemen
         Task { await TraktSync.shared.applyProfile(isMain: store.isMain(profile)) }
         guard let src = store.mainSource else { return }
-        if playlists.source?.id == src.id && !playlists.library.isEmptyLibrary {
+        // al geladen, of al aan het laden (bijv. na het importeren uit de account)
+        if playlists.source?.id == src.id && (!playlists.library.isEmptyLibrary || playlists.isLoading) {
             withAnimation(.easeInOut(duration: 0.4)) { stage = .main }
             playlists.applyCustomizations()
             return
@@ -194,6 +204,35 @@ final class AppState: ObservableObject {
         pendingItemID = itemID
         withAnimation(.easeInOut(duration: 0.4)) { stage = .main }
         Task { await playlists.select(p) }
+    }
+
+    /// SourceSync heeft servers uit de Bingr-account toegepast. In de app: is de open server verwijderd of
+    /// gewijzigd, of is de hoofdserver veranderd, dan de (nieuwe) hoofdserver laden. Daarbuiten (inloggen,
+    /// "Wie kijkt er?"): de bibliotheek van de hoofdserver alvast laden.
+    private func sourcesChanged(_ change: SourceSync.Change) {
+        let store = CloudStore.shared
+        let current = playlists.source?.id
+        if stage == .main {
+            guard let cur = current else {
+                if let src = store.mainSource { open(src) }
+                return
+            }
+            if change.removed.contains(cur) || !store.playlists.contains(where: { $0.id == cur }) {
+                if let src = store.mainSource { open(src) } else { switchPlaylist() }
+            } else if change.mainChanged, let src = store.mainSource, src.id != cur {
+                open(src)
+            } else if change.updated.contains(cur), let src = store.playlists.first(where: { $0.id == cur }) {
+                // instellingen of inloggegevens gewijzigd: op de achtergrond opnieuw ophalen
+                Task { await playlists.refresh(src, showSpinner: false) }
+            }
+            return
+        }
+        guard let src = store.mainSource else { return }
+        if current != src.id {
+            Task { await playlists.select(src) }
+        } else if change.updated.contains(src.id) {
+            Task { await playlists.refresh(src, showSpinner: false) }
+        }
     }
 
     func switchPlaylist() {

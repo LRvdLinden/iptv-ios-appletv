@@ -3,7 +3,7 @@
 [![Build](https://github.com/LRvdLinden/iptv-ios-appletv/actions/workflows/build.yml/badge.svg)](https://github.com/LRvdLinden/iptv-ios-appletv/actions/workflows/build.yml)
 
 Native IPTV- en mediaspeler voor **iPhone, iPad, Mac en Apple TV** met de look & feel van Netflix.
-SwiftUI · iOS 17+ · tvOS 17+ · macOS 14+ · Apple- én VLC-engine · 11 talen · versie 1.0.0 (build 42).
+SwiftUI · iOS 17+ · tvOS 17+ · macOS 14+ · Apple- én VLC-engine · 11 talen · versie 1.0.0 (build 43).
 
 Wat er nieuw is per build: [CHANGELOG.md](CHANGELOG.md) · [bingr.online/changelog](https://bingr.online/changelog/)
 
@@ -48,6 +48,7 @@ Wat er nieuw is per build: [CHANGELOG.md](CHANGELOG.md) · [bingr.online/changel
 - **Maximaal 10 apparaten per account**: elk apparaat registreert zich na het inloggen. Zit je aan de limiet, dan verwijder je eerst een ander apparaat ("Too many devices"). Onder *Mijn Bingr → Account → Apparaten* zie je alle gekoppelde apparaten (ook op Apple TV) met platform, koppeldatum en laatst gebruikt, en verwijder je er een. Een verwijderd apparaat wordt automatisch uitgelogd
 - De sessie staat alleen op dit apparaat (sleutelhanger zonder iCloud-sync); offline blijft de app gewoon werken
 - **Profielen (toevoegen, wijzigen, verwijderen) synchroniseren met al je apparaten** via je Bingr-account
+- **Servers en afspeellijsten bij je account**: ze worden versleuteld bij je account bewaard (inclusief wachtwoorden, tokens en je categorieën en groepen), dus na updaten of opnieuw installeren staat alles weer klaar
 - **Trakt en OpenSubtitles: gewoon inloggen**, de sleutels komen veilig van de Bingr-server
 
 **Bronnen**
@@ -146,7 +147,7 @@ Alle teksten staan in de code in het Engels (`L("Play")`) en worden vertaald via
 ```
 Shared/
   App/            app-start, AppState (splash → inloggen → kiezer → app), herinneringsbanner
-  Account/        Bingr-account (Supabase REST): inloggen, tv-koppeling, profielen per account
+  Account/        Bingr-account (Supabase REST): inloggen, tv-koppeling, profielen en servers per account
   Models/         playlist, zender, film, serie, EPG
   Providers/      M3U, XMLTV, Xtream, Stalker, Plex, Jellyfin/Emby, Stremio + cache en aanpassingen
   Metadata/       IMDb (OMDb) + titels opschonen
