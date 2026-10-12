@@ -10,6 +10,7 @@ _2026-10-12_
 - Geen deelknop meer op de detailpagina op Apple TV, Android TV, Google TV en Fire TV
 - Website: overzicht van alle apparaten waarop je Bingr kijkt, apparaat-iconen in Mijn Bingr en een cookiemelding die je keuze onthoudt
 - Changelog toont nu versie, build en datum
+- Website: cookie-bolletje links onderin om je cookiekeuze altijd te wijzigen
 
 ## Versie 1.0.0 · Build 44
 _2026-10-12_
