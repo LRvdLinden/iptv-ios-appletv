@@ -58,6 +58,15 @@ final class PlayerController: ObservableObject {
     private var tracksApplied = false
     private var watchedSeconds: Double = 0
     private var playingTicks = 0
+    /// Foutherstel (build 52): de andere engine al geprobeerd, en of er een herlaadpoging loopt
+    private var triedOtherEngine = false
+    private var reloadPending = false
+    private var stableTicks = 0
+    /// Laatst bekende afspeelpositie (0...1) — na een fout verder op dezelfde plek
+    private(set) var lastGoodPosition: Double = 0
+    /// Afspelen lukt niet (ook niet na één stille nieuwe poging). `true` = afgehandeld (bijv. overgeschakeld
+    /// naar een andere bron); anders verschijnt de foutmelding met Opnieuw / Andere bron / Andere speler.
+    var onGiveUp: (@MainActor () -> Bool)?
 
     static var choice: EngineChoice {
         EngineChoice(rawValue: UserDefaults.standard.string(forKey: "player.engine") ?? "") ?? .auto
@@ -76,6 +85,8 @@ final class PlayerController: ObservableObject {
     private static func prefersApple(_ url: URL) -> Bool {
         // smb://, ftp://, nfs:// enz. kan alleen VLC openen
         guard ["http", "https", "file"].contains(url.scheme?.lowercased() ?? "") else { return false }
+        // gedownloade HLS-pakketten (build 52) kan alleen de Apple-speler afspelen
+        if url.pathExtension.lowercased() == "movpkg" { return true }
         switch choice {
         case .apple: return true
         case .vlc: return false
@@ -112,6 +123,28 @@ final class PlayerController: ObservableObject {
         timeshiftStart = nil; behindLive = 0; pausedAt = nil
         attempts = 0; reconnecting = false; errorText = nil; isBuffering = true
         dismissed = false
+        triedOtherEngine = false; reloadPending = false; lastGoodPosition = 0
+    }
+
+    /// Opnieuw beginnen met foutherstel (andere bron of andere speler gekozen).
+    func resetRecovery() {
+        attempts = 0; reconnecting = false; errorText = nil; isBuffering = true
+        triedOtherEngine = false; reloadPending = false; stallSince = nil
+    }
+
+    /// Andere speler (VLC ↔ Apple) op dezelfde positie.
+    func switchEngine() {
+        guard let url else { return }
+        if !isLive { item.resumeAt = lastGoodPosition > 0.01 ? lastGoodPosition : item.resumeAt }
+        resetRecovery()
+        triedOtherEngine = true
+        start(url: url, forceApple: !usingApple)
+    }
+
+    /// Spoelen naar een tijdstip in seconden (intro overslaan).
+    func seek(toSeconds t: Double) {
+        guard !isLive, duration > 0 else { return }
+        engine.seek(toFraction: min(max(t / duration, 0), 1))
     }
 
     /// Kan niet afspelen (geen stream gevonden): foutmelding met "Opnieuw" in plaats van een eindeloze spinner.
@@ -121,7 +154,7 @@ final class PlayerController: ObservableObject {
 
     func start(url: URL, forceApple: Bool? = nil) {
         self.url = url
-        errorText = nil; didScrobbleStart = false; stallSince = nil
+        errorText = nil; didScrobbleStart = false; stallSince = nil; reloadPending = false; stableTicks = 0
         tracksApplied = false; playingTicks = 0
         #if os(tvOS)
         displayTicks = 0; displayMatched = false
@@ -151,6 +184,7 @@ final class PlayerController: ObservableObject {
         duration = engine.duration
         currentTime = engine.time
         position = engine.position
+        if st == .playing && position > 0.005 && !isLive { lastGoodPosition = position }
         if let av = engine as? AVEngine, isLive, timeshiftStart == nil { behindLive = av.behindLive > 8 ? av.behindLive : 0 }
 
         if !externalCues.isEmpty {
@@ -159,14 +193,20 @@ final class PlayerController: ObservableObject {
                 .flatMap { $0.end >= t ? $0.text : nil }
         }
 
-        // automatisch herverbinden
-        if st == .error || (isLive && st == .ended) {
-            reconnect(reason: st == .error ? L("Stream lost") : nil)
-        } else if isBuffering && isLive {
-            if stallSince == nil { stallSince = Date() }
-            if let s = stallSince, Date().timeIntervalSince(s) > 15 { reconnect(reason: nil) }
-        } else if st == .playing {
-            stallSince = nil; attempts = 0; reconnecting = false
+        // automatisch herverbinden: eerst de andere engine (Apple → VLC), dan één stille nieuwe poging,
+        // daarna een back-upbron (live) of de foutmelding met keuzes (build 52)
+        if errorText == nil && !reloadPending {
+            if st == .error || (isLive && st == .ended) {
+                reconnect(reason: st == .error ? L("Stream lost") : nil)
+            } else if isBuffering && isLive {
+                stableTicks = 0
+                if stallSince == nil { stallSince = Date() }
+                if let s = stallSince, Date().timeIntervalSince(s) > 15 { reconnect(reason: nil) }
+            } else if st == .playing {
+                stableTicks += 1
+                if stableTicks > 20 { attempts = 0 }   // 10 seconden stabiel aan het spelen
+                stallSince = nil; reconnecting = false
+            }
         }
 
         if isPlaying && !didScrobbleStart && duration > 0 && !isPreview {
@@ -206,26 +246,40 @@ final class PlayerController: ObservableObject {
     }
 
     private func reconnect(reason: String?) {
-        guard let url, attempts < 6 else {
-            if attempts >= 6 { errorText = L("This stream can't be played right now."); reconnecting = false }
-            return
-        }
+        guard let url else { return }
         // Apple-engine faalt → eerst VLC proberen (kan meer formaten aan)
-        if usingApple && attempts == 0 && engine.state == .error {
-            attempts += 1
+        if usingApple && !triedOtherEngine && engine.state == .error && !url.isFileURL {
+            triedOtherEngine = true
+            if !isLive { item.resumeAt = lastGoodPosition > 0.01 ? lastGoodPosition : item.resumeAt }
             start(url: url, forceApple: false)
             return
         }
-        attempts += 1
-        reconnecting = true
-        stallSince = Date().addingTimeInterval(Double(attempts) * 2)  // backoff
-        let resume = position
-        let delay = UInt64(min(pow(2.0, Double(attempts - 1)), 8) * 1_000_000_000)
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: delay)
-            if !self.isLive { self.item.resumeAt = resume }
-            self.engine.load(url, live: self.isLive && self.timeshiftStart == nil, startFraction: self.isLive ? nil : resume)
+        // één stille nieuwe poging
+        if attempts < 1 {
+            attempts += 1
+            reconnecting = true
+            reloadPending = true
+            stallSince = nil
+            let resume = lastGoodPosition > 0.01 ? lastGoodPosition : item.resumeAt
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                self.reloadPending = false
+                guard !self.stopped, self.url == url else { return }
+                if !self.isLive { self.item.resumeAt = resume }
+                self.engine.load(url, live: self.isLive && self.timeshiftStart == nil, startFraction: self.isLive ? nil : resume)
+            }
+            return
         }
+        reconnecting = false
+        stallSince = nil
+        if onGiveUp?() == true {
+            // het spelerscherm schakelt over (start() zet dit terug); intussen niet opnieuw ingrijpen
+            reloadPending = true; reconnecting = true
+            return
+        }
+        errorText = L("This stream can't be played right now.")
+        isBuffering = false
+        engine.pause()
     }
 
     func togglePlay() { engine.isPlaying ? pause() : resume() }

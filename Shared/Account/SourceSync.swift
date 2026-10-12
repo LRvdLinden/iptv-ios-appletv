@@ -537,6 +537,9 @@ final class SourceSync {
     }
 
     /// Bron-ID zoals de server het kent (exact bewaren).
+    /// Server-ID zoals in de Bingr-account (voor gedeelde sleutels, bijv. intro-markeringen in build 52).
+    func serverID(for id: UUID) -> String { rawID(for: id) }
+
     private func rawID(for id: UUID) -> String {
         if let s = loadExtras()[id.uuidString]?["id"] as? String, Self.uuid(for: s) == id { return s }
         return id.uuidString

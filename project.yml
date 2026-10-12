@@ -10,7 +10,7 @@ settings:
   base:
     SWIFT_VERSION: "5.9"
     MARKETING_VERSION: "1.0.0"
-    CURRENT_PROJECT_VERSION: "51"
+    CURRENT_PROJECT_VERSION: "52"
     # Team van Léon van der Linden; automatisch ondertekenen voor iOS, tvOS en macOS
     DEVELOPMENT_TEAM: EU3UY476T6
     CODE_SIGN_STYLE: Automatic
@@ -29,6 +29,8 @@ targets:
       - path: iOS
     dependencies:
       - package: VLCKitSPM
+      # Live Activity voor downloads (build 52)
+      - target: BingrWidgets
     info:
       path: iOS/Info.plist
       properties:
@@ -41,6 +43,8 @@ targets:
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         UIBackgroundModes: [audio]
+        # downloads: voortgang op het toegangsscherm en in het Dynamic Island (build 52)
+        NSSupportsLiveActivities: true
         UIUserInterfaceStyle: Dark
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true          # IPTV-servers draaien vaak op http://
@@ -69,7 +73,35 @@ targets:
         INFOPLIST_KEY_CFBundleDisplayName: Bingr
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.entertainment
         SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO   # de Mac heeft een eigen app (BingrMac)
+        # Apple Vision Pro: de iPad-app draait daar als "Designed for iPad" (VLCKit heeft geen visionOS-versie)
+        SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        # alternatieve app-iconen (build 52, gemaakt met tools/make_icons.py)
+        ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES: "AppIcon-Dark AppIcon-Light AppIcon-Blue AppIcon-Gold"
+        ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS: YES
+
+  # Widget-extensie (build 52): Live Activity met de voortgang van downloads op iPhone en iPad
+  BingrWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: BingrWidgets
+      - path: iOS/Downloads/DownloadActivityAttributes.swift
+    info:
+      path: BingrWidgets/Info.plist
+      properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleDisplayName: Bingr
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: nl.lrvdlinden.bingr.widgets
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SKIP_INSTALL: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Bingr
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks"
 
   BingrTV:
     type: application

@@ -55,6 +55,13 @@ struct MainTabView: View {
                     SearchView().tag(4)
                         .tabItem { Label(L("Search"), systemImage: "magnifyingglass") }
                 }
+                #if os(iOS)
+                // iPad: Downloads als eigen tabblad (iPhone: in Mijn Bingr, want daar passen maar 5 tabbladen)
+                if !Self.isPhone {
+                    NavigationStack { DownloadsView() }.tag(6)
+                        .tabItem { Label(L("Downloads"), systemImage: "arrow.down.circle") }
+                }
+                #endif
                 SettingsView().tag(5)
                     .tabItem { myBingrTab }
             }
@@ -102,6 +109,7 @@ struct MainTabView: View {
 
     /// Item uit een andere afspeellijst (globaal zoeken / herinnering) openen zodra de lijst geladen is.
     private func openPending() {
+        resumeLastChannel()
         guard let id = app.pendingItemID else { return }
         let lib = playlists.library
         if let c = lib.channels.first(where: { $0.id == id }) {
@@ -112,6 +120,21 @@ struct MainTabView: View {
         } else if let s = lib.series.first(where: { $0.id == id }) {
             app.pendingItemID = nil; pendingDetail = .series(s)
         }
+    }
+}
+
+extension MainTabView {
+    /// "Start bij laatste zender" (build 52): de laatst bekeken zender van dit profiel op deze server openen.
+    fileprivate func resumeLastChannel() {
+        guard app.resumeLastChannelPending, app.playing == nil, let pid = playlists.source?.id else { return }
+        let lib = playlists.library
+        guard !lib.channels.isEmpty else { return }
+        app.resumeLastChannelPending = false
+        let prefix = pid.uuidString + "|"
+        guard let k = CloudStore.shared.recentChannels.first(where: { $0.hasPrefix(prefix) }),
+              let c = lib.channels.first(where: { $0.id == String(k.dropFirst(prefix.count)) }) else { return }
+        // zappen binnen dezelfde groep, zoals vanuit Live TV
+        app.play(Playables.channel(c, now: lib.nowPlaying(c)), zap: lib.channels.filter { $0.group == c.group })
     }
 }
 

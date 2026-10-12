@@ -231,6 +231,12 @@ struct DetailView: View {
                 .accessibilityLabel(L("Add to collection…"))
                 if let _ = d?.trailerYouTubeID { circleButton("film") { openTrailer() } }
                 if isMovie { circleButton(isWatchedTitle ? "checkmark.circle.fill" : "checkmark.circle") { toggleWatchedMovie() } }
+                #if os(iOS)
+                // offline kijken (build 52)
+                if case .movie(let m) = target, DownloadManager.canDownload(Playables.movie(m, imdb: imdb)) {
+                    DownloadButton(item: Playables.movie(m, imdb: imdb), poster: m.poster)
+                }
+                #endif
                 #if !os(tvOS)
                 shareButton // geen deelknop (ook geen QR) op tv's, zie docs/ACCOUNT.md
                 #endif
@@ -471,6 +477,15 @@ struct DetailView: View {
             .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: tvScaled(14)))
         }
         .plainTVButton()
+        #if os(iOS)
+        .overlay(alignment: .topLeading) {
+            // offline kijken (build 52)
+            let item = Playables.episode(e, of: s, imdb: imdb)
+            if DownloadManager.canDownload(item) {
+                DownloadButton(item: item, seriesTitle: s.title, poster: s.poster, compact: true).padding(8)
+            }
+        }
+        #endif
         .contextMenu {
             Button {
                 store.setEpisodeWatched(e, !watched)

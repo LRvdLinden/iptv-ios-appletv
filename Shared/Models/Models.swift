@@ -242,6 +242,8 @@ struct PlayableItem: Identifiable, Hashable {
     var channelID: String? = nil
     /// Serie waar deze aflevering bij hoort (voor "gezien" per profiel, ook als afleveringen later laden)
     var seriesID: String? = nil
+    /// Bron (server) waar dit vandaan komt, als dat niet de open bron is (gedownloade titels, build 52)
+    var sourceID: UUID? = nil
 }
 
 // MARK: - Metadata -----------------------------------------------------------

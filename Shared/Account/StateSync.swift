@@ -481,6 +481,11 @@ final class StateSync {
         shared["parentalAutoLockAdult"] = store.parental.autoLockAdult
         shared["traktScrobble"] = TraktSync.scrobbleEnabled
         shared["traktAskRating"] = TraktSync.askRating
+        // build 52: uiterlijk, deinterlacing, laatste zender en intro-markeringen (zelfde sleutels als Android)
+        shared["accentColor"] = AccentChoice.current.rawValue
+        shared["deinterlace"] = DeinterlaceMode.current.rawValue
+        shared["resumeLastChannel"] = PlayerSettings.resumeLastChannel
+        shared["introMarkers"] = IntroMarkers.syncJSON()
 
         var apple: [String: Any] = [:]
         shared["categorySort"] = d.string(forKey: "category.sort") ?? "standard"
@@ -576,6 +581,10 @@ final class StateSync {
         }
         if let v = shared["traktScrobble"] as? Bool { setIfChanged(v, "trakt.scrobble") }
         if let v = shared["traktAskRating"] as? Bool { setIfChanged(v, "trakt.askRating") }
+        if let v = shared["accentColor"] as? String, AccentChoice(rawValue: v) != nil { setIfChanged(v, AccentChoice.key) }
+        if let v = shared["deinterlace"] as? String, DeinterlaceMode(rawValue: v) != nil { setIfChanged(v, DeinterlaceMode.key) }
+        if let v = shared["resumeLastChannel"] as? Bool { setIfChanged(v, PlayerSettings.resumeLastChannelKey) }
+        if let v = shared["introMarkers"] as? [String: Any] { IntroMarkers.apply(syncJSON: v) }
 
         // kijkvoorkeuren van het hoofdaccount
         let audio = shared["audioLanguage"] as? String

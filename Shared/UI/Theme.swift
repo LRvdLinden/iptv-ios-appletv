@@ -2,7 +2,10 @@ import SwiftUI
 import ImageIO
 
 enum Theme {
-    static let red = Color(hex: 0xE50914)
+    /// Accentkleur (build 52: instelbaar onder Mijn Bingr → Uiterlijk; standaard Bingr-rood)
+    static var red: Color { AccentChoice.current.color }
+    /// Altijd rood (foutmeldingen e.d.)
+    static let alert = Color(hex: 0xE50914)
     static let bg = Color.black
     static let card = Color(hex: 0x181818)
     static let elevated = Color(hex: 0x232323)

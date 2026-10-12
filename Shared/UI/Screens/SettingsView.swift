@@ -27,6 +27,8 @@ struct SettingsView: View {
     @AppStorage(PlayerSettings.previewKey) private var channelPreview = true
     @AppStorage(PlayerSettings.matchKey) private var matchFrameRate = true
     @AppStorage(PlayerSettings.externalKey) private var externalDisplay = true
+    @AppStorage(DeinterlaceMode.key) private var deinterlace = DeinterlaceMode.auto.rawValue
+    @AppStorage(PlayerSettings.resumeLastChannelKey) private var resumeLastChannel = false
     @State private var showTraktLogin = false
     @State private var showOSLogin = false
     @State private var editing: PlaylistSource?
@@ -407,6 +409,11 @@ struct SettingsView: View {
                 ForEach(PlayerSettings.zapDelays, id: \.self) { Text(PlayerSettings.zapDelayTitle($0)).tag($0) }
             }
             .pickerStyle(.menu)
+            Picker(L("Deinterlacing"), selection: $deinterlace) {
+                ForEach(DeinterlaceMode.allCases) { Text($0.title).tag($0.rawValue) }
+            }
+            .pickerStyle(.menu)
+            Toggle(L("Start with last channel"), isOn: $resumeLastChannel)
             Toggle(L("Channel preview"), isOn: $channelPreview)
             #if os(iOS)
             if PlayerSettings.isPhone && channelPreview {
@@ -422,7 +429,7 @@ struct SettingsView: View {
                 .font(.caption).foregroundStyle(Theme.secondary)
             #endif
         } header: { Text(L("Player")) } footer: {
-            Text(L("Automatic uses the Apple player for HLS and MP4 (HDR, Dolby Vision, Atmos, AirPlay, Picture in Picture) and VLC for everything else. If a stream fails, Bingr switches over and reconnects automatically. The default languages are chosen automatically when a stream has them.") + " " + L("With a zap delay, quickly zapping only shows the channel banner; the stream starts once you stop."))
+            Text(L("Automatic uses the Apple player for HLS and MP4 (HDR, Dolby Vision, Atmos, AirPlay, Picture in Picture) and VLC for everything else. If a stream fails, Bingr switches over and reconnects automatically. The default languages are chosen automatically when a stream has them.") + " " + L("With a zap delay, quickly zapping only shows the channel banner; the stream starts once you stop.") + " " + L("Deinterlacing applies to the VLC player and removes comb lines from interlaced TV channels. Start with last channel opens the channel you watched last right after choosing your profile."))
         }
     }
 
@@ -465,6 +472,9 @@ struct SettingsView: View {
 
     private var librarySection: some View {
         Section {
+            #if os(iOS)
+            NavigationLink { DownloadsView() } label: { Label(L("Downloads"), systemImage: "arrow.down.circle") }
+            #endif
             NavigationLink { HistoryView() } label: { Label(L("Watch history"), systemImage: "clock.arrow.circlepath") }
             if isMain {
                 NavigationLink { NetworkBrowserView() } label: {
@@ -478,6 +488,9 @@ struct SettingsView: View {
 
     private var interfaceSection: some View {
         Section {
+            NavigationLink { AppearanceView() } label: {
+                Label(L("Appearance"), systemImage: "paintpalette")
+            }
             NavigationLink { HomeLayoutView() } label: {
                 Label(L("Home screen"), systemImage: "rectangle.grid.1x2")
             }

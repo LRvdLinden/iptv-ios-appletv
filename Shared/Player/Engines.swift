@@ -127,6 +127,14 @@ final class VLCEngine: PlaybackEngine {
         media.addOption(":http-user-agent=\(Secrets.userAgent)")
         media.addOption(":http-reconnect")
         if silent { media.addOption(":no-audio") }
+        // deinterlacing (build 52): Mijn Bingr → Speler; standaard automatisch
+        let deint = DeinterlaceMode.current
+        for o in deint.vlcOptions { media.addOption(o) }
+        let deintSel = NSSelectorFromString("setDeinterlaceFilter:")
+        // aan/uit ook rechtstreeks op de speler; "automatisch" alleen via de media-optie (nil zou het uitzetten)
+        if deint != .auto, player.responds(to: deintSel) {
+            player.perform(deintSel, with: deint == .on ? "yadif2x" as NSString : nil)
+        }
         // ook de tekstweergave van VLC zelf (iOS/tvOS); hoger getal = kleiner
         let sel = NSSelectorFromString("setTextRendererFontSize:")
         if player.responds(to: sel) {

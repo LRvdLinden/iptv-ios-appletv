@@ -13,6 +13,12 @@ struct BingrApp: App {
     @StateObject private var reminders = ReminderCenter.shared
     @StateObject private var account = AccountService.shared
     @Environment(\.scenePhase) private var phase
+    /// Accentkleur (build 52): wisselen → alles opnieuw tekenen
+    @AppStorage(AccentChoice.key) private var accent = AccentChoice.red.rawValue
+    #if os(iOS)
+    /// Downloads op de achtergrond (build 52): het systeem maakt de app wakker als ze klaar zijn
+    @UIApplicationDelegateAdaptor(BingrAppDelegate.self) private var appDelegate
+    #endif
 
     init() {
         // grotere beeldcache: posters (ook in de intro) laden direct
@@ -22,7 +28,7 @@ struct BingrApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
-                .id(localizer.language)     // taal wisselen → alles opnieuw opbouwen
+                .id(localizer.language + "|" + accent)     // taal of accentkleur wisselen → alles opnieuw opbouwen
                 .environmentObject(app)
                 .environmentObject(app.playlists)
                 .environmentObject(store)
@@ -41,6 +47,10 @@ struct BingrApp: App {
                     reminders.start()
                     #if os(iOS)
                     ExternalDisplay.shared.start()   // extern scherm: video daar, bediening hier
+                    DownloadManager.shared.start()   // downloads hervatten (build 52)
+                    #endif
+                    #if os(macOS)
+                    AppIconChoice.applyDockIcon()    // gekozen icoon in het Dock (build 52)
                     #endif
                 }
                 #if os(macOS)
@@ -80,6 +90,8 @@ final class AppState: ObservableObject {
     @Published var multiviewStart: [Channel] = []
     /// Na wisselen van afspeellijst (globaal zoeken): dit item openen
     @Published var pendingItemID: String?
+    /// Build 52 "Start bij laatste zender": na het kiezen van een profiel de laatste zender openen zodra de lijst er is
+    @Published var resumeLastChannelPending = false
     let playlists = PlaylistService()
 
     private let lastKey = "lastPlaylistID"
@@ -196,6 +208,7 @@ final class AppState: ObservableObject {
     func open(profile: ViewerProfile) {
         let store = CloudStore.shared
         store.selectProfile(profile)
+        resumeLastChannelPending = PlayerSettings.resumeLastChannel
         if !store.isMain(profile) { ParentalControl.shared.lock() }   // ontgrendeling van het hoofdaccount niet meenemen
         Task { await TraktSync.shared.applyProfile(isMain: store.isMain(profile)) }
         guard let src = store.mainSource else { return }

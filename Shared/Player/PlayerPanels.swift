@@ -218,3 +218,191 @@ struct OptionsPanel: View {
         }
     }
 }
+
+// MARK: - Build 52: intro markeren, andere bron, volgende aflevering
+
+/// "Intro hier markeren": begin en einde van de intro (en het begin van de aftiteling) voor de hele serie.
+struct IntroMarkerPanel: View {
+    @ObservedObject var player: PlayerController
+    let key: String
+    @ObservedObject private var markers = IntroMarkers.shared
+    @Environment(\.dismiss) private var dismiss
+    #if !os(tvOS)
+    @State private var endText = ""
+    #endif
+
+    private var m: IntroMarker { markers.marker(key) ?? IntroMarker() }
+    private var now: Double { player.currentTime }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    LabeledContent(L("Now"), value: PlayerController.format(now))
+                    Button { markers.update(key) { $0.introStart = now } } label: {
+                        Label(L("Intro starts here"), systemImage: "arrow.right.to.line")
+                    }
+                    Button {
+                        markers.update(key) { m in
+                            m.introEnd = now
+                            if let s = m.introStart, s >= now { m.introStart = nil }
+                        }
+                    } label: { Label(L("Intro ends here"), systemImage: "arrow.left.to.line") }
+                    adjustRow(L("Intro starts at"), m.introStart) { v in markers.update(key) { $0.introStart = v } }
+                    adjustRow(L("Intro ends at"), m.introEnd) { v in markers.update(key) { $0.introEnd = v } }
+                    #if !os(tvOS)
+                    HStack {
+                        TextField(L("Intro ends at (mm:ss)"), text: $endText)
+                            #if os(iOS)
+                            .keyboardType(.numbersAndPunctuation)
+                            #endif
+                            .onSubmit(applyEndText)
+                        Button(L("Set"), action: applyEndText).disabled(Self.parse(endText) == nil)
+                    }
+                    #endif
+                } header: { Text(L("Intro")) } footer: {
+                    Text(L("Without a start, the intro counts from the beginning of the episode."))
+                }
+                Section {
+                    Button { markers.update(key) { $0.creditsStart = now } } label: {
+                        Label(L("Credits start here"), systemImage: "text.alignleft")
+                    }
+                    adjustRow(L("Credits start at"), m.creditsStart) { v in markers.update(key) { $0.creditsStart = v } }
+                } header: { Text(L("Credits")) } footer: {
+                    Text(L("When the credits start, the next episode begins after a short countdown."))
+                }
+                if !m.isEmpty {
+                    Section {
+                        Button(L("Remove markers"), role: .destructive) { markers.update(key) { $0 = IntroMarker() } }
+                    }
+                }
+            }
+            .navigationTitle(L("Mark intro here"))
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button(L("Done")) { dismiss() } } }
+            #if !os(tvOS)
+            .onAppear { endText = m.introEnd.map(PlayerController.format) ?? "" }
+            #endif
+        }
+    }
+
+    /// Tijd met −5 / +5 seconden
+    @ViewBuilder
+    private func adjustRow(_ title: String, _ value: Double?, _ set: @escaping (Double?) -> Void) -> some View {
+        if let v = value {
+            HStack {
+                Text(title)
+                Spacer()
+                Button { set(max(0, v - 5)) } label: { Image(systemName: "minus.circle.fill") }
+                Text(PlayerController.format(v)).monospacedDigit().frame(minWidth: tvScaled(60))
+                Button { set(v + 5) } label: { Image(systemName: "plus.circle.fill") }
+                Button { set(nil) } label: { Image(systemName: "xmark.circle") }.foregroundStyle(Theme.secondary)
+            }
+            #if !os(tvOS)
+            .buttonStyle(.borderless)
+            #endif
+        }
+    }
+
+    #if !os(tvOS)
+    private func applyEndText() {
+        guard let v = Self.parse(endText) else { return }
+        markers.update(key) { m in
+            m.introEnd = v
+            if let s = m.introStart, s >= v { m.introStart = nil }
+        }
+    }
+    #endif
+
+    /// "1:30", "01:30", "90" of "1:02:03" → seconden
+    static func parse(_ s: String) -> Double? {
+        let parts = s.trimmingCharacters(in: .whitespaces).split(separator: ":").map { Double($0) }
+        guard !parts.isEmpty, parts.count <= 3, parts.allSatisfy({ $0 != nil && $0! >= 0 }) else { return nil }
+        let v = parts.reduce(0.0) { $0 * 60 + ($1 ?? 0) }
+        return v > 0 ? v : nil
+    }
+}
+
+/// "Andere bron": dezelfde zender of titel elders.
+struct AlternativesPanel: View {
+    let items: [AlternativeSource]
+    let loading: Bool
+    let currentURL: URL?
+    let onPick: (AlternativeSource) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if loading && items.isEmpty {
+                    HStack { ProgressView(); Text(L("Searching other sources…")).foregroundStyle(Theme.secondary) }
+                } else if items.isEmpty {
+                    Text(L("No other sources found for this title.")).foregroundStyle(Theme.secondary)
+                }
+                ForEach(items) { a in
+                    Button { onPick(a) } label: {
+                        HStack(spacing: 12) {
+                            RemoteImage(url: a.logo, contentMode: .fit, placeholder: String(a.name.prefix(3)))
+                                .frame(width: tvScaled(56), height: tvScaled(34))
+                                .background(Theme.card, in: RoundedRectangle(cornerRadius: 5))
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(a.name).lineLimit(2)
+                                HStack(spacing: 6) {
+                                    Text(a.isCurrentSource ? L("This server") : a.source.name)
+                                    if a.byEPG { Text("· EPG") }
+                                }
+                                .font(.caption).foregroundStyle(Theme.secondary)
+                            }
+                            Spacer()
+                            if a.url != nil && a.url == currentURL { Image(systemName: "checkmark").foregroundStyle(Theme.red) }
+                        }
+                    }
+                }
+            }
+            .navigationTitle(L("Other source"))
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button(L("Close")) { dismiss() } } }
+        }
+    }
+}
+
+/// Kaart "Volgende aflevering" met aftellen (aftiteling of laatste seconden).
+struct NextEpisodeCard: View {
+    let next: PlayableItem
+    let secondsLeft: Int
+    /// Na het aftellen zelf starten (aftiteling gemarkeerd); anders start hij aan het einde van de aflevering
+    let autoplay: Bool
+    let onPlay: () -> Void
+    let onDismiss: () -> Void
+
+    var body: some View {
+        HStack(spacing: tvScaled(14)) {
+            RemoteImage(url: next.artwork, placeholder: "")
+                .frame(width: tvScaled(120), height: tvScaled(68))
+                .clipShape(RoundedRectangle(cornerRadius: tvScaled(8)))
+            VStack(alignment: .leading, spacing: tvScaled(6)) {
+                Text(L("Next episode")).font(.system(size: tvScaled(12), weight: .bold)).foregroundStyle(Theme.secondary)
+                Text(next.subtitle ?? next.title).font(.system(size: tvScaled(14), weight: .semibold)).lineLimit(1)
+                HStack(spacing: tvScaled(10)) {
+                    Button(action: onPlay) {
+                        Label(L("Starts in %d s", secondsLeft), systemImage: "play.fill")
+                            .font(.system(size: tvScaled(13), weight: .bold))
+                            .padding(.horizontal, tvScaled(12)).padding(.vertical, tvScaled(7))
+                            .foregroundStyle(.black)
+                            .background(.white, in: RoundedRectangle(cornerRadius: tvScaled(6)))
+                    }
+                    .plainTVButton()
+                    Button(action: onDismiss) {
+                        Text(autoplay ? L("Watch credits") : L("Hide"))
+                            .font(.system(size: tvScaled(13), weight: .semibold))
+                            .padding(.horizontal, tvScaled(12)).padding(.vertical, tvScaled(7))
+                            .background(Color.white.opacity(0.2), in: RoundedRectangle(cornerRadius: tvScaled(6)))
+                    }
+                    .plainTVButton()
+                }
+            }
+        }
+        .padding(tvScaled(12))
+        .frame(maxWidth: tvScaled(460), alignment: .leading)
+        .background(.black.opacity(0.82), in: RoundedRectangle(cornerRadius: tvScaled(12)))
+        .overlay(RoundedRectangle(cornerRadius: tvScaled(12)).stroke(.white.opacity(0.12)))
+    }
+}

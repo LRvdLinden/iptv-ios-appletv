@@ -38,8 +38,17 @@ struct PlayerScreen: View {
     @State private var bannerHide: Task<Void, Never>?
     /// Tegelijk kijken: limiet bereikt (403 `stream_limit`) → "Too many people are watching"
     @State private var streamLimit: AccountService.StreamLimit?
+    /// Build 52: andere bronnen voor deze zender/titel, en welke al geprobeerd zijn (automatisch overschakelen)
+    @State private var alternatives: [AlternativeSource] = []
+    @State private var triedAlternatives: Set<String> = []
+    @State private var loadingAlternatives = false
+    /// Build 52: kaart "Volgende aflevering" weggeklikt (aftiteling verder kijken)
+    @State private var creditsDismissed = false
+    /// Voor welke zender/titel `alternatives` gezocht zijn
+    @State private var altFor: String?
+    @ObservedObject private var markers = IntroMarkers.shared
 
-    enum Panel: String, Identifiable { case audioSubs, opensubs, options, cast, sources, rate; var id: String { rawValue } }
+    enum Panel: String, Identifiable { case audioSubs, opensubs, options, cast, sources, rate, intro, alternatives; var id: String { rawValue } }
 
     /// Teruggekomen uit beeld-in-beeld: de bestaande speler overnemen.
     private let reused: Bool
@@ -86,11 +95,7 @@ struct PlayerScreen: View {
                 }
             }
             if let e = player.errorText {
-                VStack(spacing: 12) {
-                    Image(systemName: "exclamationmark.triangle.fill").font(.system(size: tvScaled(36))).foregroundStyle(Theme.red)
-                    Text(e).font(.system(size: tvScaled(16)))
-                    NetflixButton(title: L("Try again"), icon: "arrow.clockwise") { Task { await start(player.item) } }
-                }
+                errorOverlay(e)
             }
             #if !os(tvOS)
             if cast.connected != nil {
@@ -107,12 +112,21 @@ struct PlayerScreen: View {
             #endif
 
             #if os(tvOS)
-            if !showControls && streamLimit == nil { tvCatcher }
+            if !showControls && streamLimit == nil && player.errorText == nil { tvCatcher }
             #endif
             if showControls && streamLimit == nil { controls.transition(.opacity) }
 
-            if let n = nextUp, player.errorText == nil, player.duration > 120, player.duration - player.currentTime < 45 {
-                NetflixButton(title: L("Next episode"), icon: "forward.end.fill") { playNext(n) }
+            if showSkipIntro, let end = marker?.introEnd {
+                skipIntroButton(end)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                    .padding(.trailing, tvScaled(40))
+                    .padding(.bottom, showControls ? tvScaled(130) : tvScaled(50))
+                    .transition(.opacity)
+            }
+
+            if let n = nextUp, let left = nextCountdown {
+                NextEpisodeCard(next: n, secondsLeft: left, autoplay: marker?.creditsStart != nil,
+                                onPlay: { playNext(n) }, onDismiss: { creditsDismissed = true })
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                     .padding(.trailing, tvScaled(40))
                     .padding(.bottom, showControls ? tvScaled(130) : tvScaled(50))
@@ -168,6 +182,11 @@ struct PlayerScreen: View {
         }
         .onChange(of: tvFocus) { _, f in if case .some(.bar(_)) = f { poke() } }   // rondkijken in de balk houdt hem zichtbaar
         .onAppear { tvFocus = showControls ? .bar("play") : .catcher }
+        // intro overslaan: de knop krijgt de focus zolang de bediening verborgen is (zoals Netflix)
+        .onChange(of: showSkipIntro) { _, v in
+            if v && !showControls { tvFocus = .bar("skipintro") }
+            else if !v && tvFocus == .bar("skipintro") { tvFocus = showControls ? .bar("play") : .catcher }
+        }
         .onExitCommand {
             if streamLimit != nil { close() }
             else if panel != nil { panel = nil } else if showControls { showControls = false } else { close() }
@@ -184,6 +203,16 @@ struct PlayerScreen: View {
                     panel = nil
                     player.start(url: s.url)
                 }
+            case .intro:
+                if let key = markerKey {
+                    IntroMarkerPanel(player: player, key: key)
+                }
+            case .alternatives:
+                AlternativesPanel(items: alternatives, loading: loadingAlternatives,
+                                  currentURL: player.url) { alt in
+                    panel = nil
+                    Task { await switchTo(alt, automatic: false) }
+                }
             case .cast:
                 #if !os(tvOS)
                 if let u = player.url {
@@ -196,6 +225,10 @@ struct PlayerScreen: View {
         }
         .task {
             if reused { bind(player.item); attachStream(); poke() } else { await start(item) }
+        }
+        // aftiteling gemarkeerd: na het aftellen automatisch de volgende aflevering
+        .onChange(of: nextCountdown) { _, v in
+            if v == 0, marker?.creditsStart != nil, let n = nextUp { playNext(n) }
         }
         .onChange(of: player.notice) { _, n in
             if let n { flash(n); player.notice = nil }
@@ -307,6 +340,12 @@ struct PlayerScreen: View {
                             barButton("speaker.wave.2.bubble", L("Audio & subtitles")) { panel = .audioSubs }
                             if !player.isLive { barButton("captions.bubble", "OpenSubtitles") { panel = .opensubs } }
                             if !stremioChoices.isEmpty { barButton("list.bullet", L("Sources")) { panel = .sources } }
+                            if player.item.type == .episode && markerKey != nil {
+                                barButton("forward.frame", L("Mark intro here")) { panel = .intro }
+                            }
+                            if player.isLive {
+                                barButton("arrow.triangle.branch", L("Other source")) { openAlternatives() }
+                            }
                             if player.isLive && !playlists.library.channels.isEmpty {
                                 barButton("square.grid.2x2", "Multiview") { openMultiview() }
                             }
@@ -396,6 +435,8 @@ struct PlayerScreen: View {
     /// Callbacks die naar dit scherm verwijzen (ook na terugkeer uit beeld-in-beeld opnieuw zetten).
     private func bind(_ it: PlayableItem) {
         player.onEnterPiP = { dismiss() }
+        // build 52: live → automatisch naar een back-upbron; anders de foutmelding met keuzes
+        player.onGiveUp = { autoFailover() }
         player.onFinished = {
             if let n = nextUp { playNext(n); return }   // zoals Netflix: gewoon door naar de volgende aflevering
             if TraktSync.askRating, TraktSync.shared.isLoggedIn, it.imdbID != nil, it.type != .live {
@@ -410,6 +451,14 @@ struct PlayerScreen: View {
         player.prepareNew()
         player.item = it
         streamLimit = nil
+        creditsDismissed = false
+        // andere bronnen: bij live alvast zoeken (voor automatisch overschakelen), bij films pas na een fout
+        let altKey = it.channelID ?? it.id
+        if altFor != altKey {
+            altFor = altKey
+            alternatives = []; triedAlternatives = []
+            if it.type == .live { Task { await loadAlternatives(for: it) } }
+        }
         bind(it)
         registerStream(it)
         if it.type == .live, let cid = it.channelID {
@@ -443,6 +492,13 @@ struct PlayerScreen: View {
     private func findNext(_ it: PlayableItem) async {
         nextUp = nil
         guard it.type == .episode else { return }
+        #if os(iOS)
+        // gedownloade aflevering (offline): de volgende gedownloade aflevering van dezelfde serie
+        if it.url?.isFileURL == true {
+            nextUp = DownloadManager.shared.nextEpisode(after: it)
+            return
+        }
+        #endif
         let lib = playlists.library
         guard let s = lib.series.first(where: { $0.episodes.contains { $0.id == it.id } })
                 ?? lib.series.first(where: { $0.title == it.title }) else { return }
@@ -576,6 +632,156 @@ struct PlayerScreen: View {
         panel = nil
         showControls = false
         streamLimit = l
+    }
+
+
+    // MARK: intro en aftiteling (build 52)
+
+    /// Sleutel van de serie (server + serie) voor de intro-markeringen
+    private var markerKey: String? {
+        guard player.item.type == .episode else { return nil }
+        return IntroMarkers.key(source: player.item.sourceID ?? playlists.source?.id, series: player.item.seriesID)
+    }
+    private var marker: IntroMarker? { markers.marker(markerKey) }
+
+    private var showSkipIntro: Bool {
+        guard let m = marker, player.errorText == nil, !player.isLive, player.duration > 0 else { return false }
+        return m.inIntro(player.currentTime)
+    }
+
+    /// Seconden tot de volgende aflevering start (nil = kaart niet tonen). Met een gemarkeerde aftiteling
+    /// 10 seconden aftellen vanaf het begin ervan; anders (zoals eerder) de laatste 45 seconden tot het einde.
+    private var nextCountdown: Int? {
+        guard nextUp != nil, player.errorText == nil, !creditsDismissed, player.duration > 120 else { return nil }
+        if let c = marker?.creditsStart, c > 0, c < player.duration {
+            guard player.currentTime >= c else { return nil }
+            return max(0, Int((10 - (player.currentTime - c)).rounded(.up)))
+        }
+        let left = player.duration - player.currentTime
+        guard left < 45 else { return nil }
+        return max(0, Int(left.rounded(.up)))
+    }
+
+    private func skipIntroButton(_ end: Double) -> some View {
+        Button {
+            player.seek(toSeconds: end)
+            flash(L("Intro skipped"))
+        } label: {
+            Label(L("Skip intro"), systemImage: "forward.fill")
+                .font(.system(size: tvScaled(16), weight: .bold))
+                .padding(.horizontal, tvScaled(20)).padding(.vertical, tvScaled(12))
+                .foregroundStyle(.black)
+                .background(.white, in: RoundedRectangle(cornerRadius: tvScaled(8)))
+        }
+        #if os(tvOS)
+        .buttonStyle(TVLiftStyle(scale: 1.08))
+        .focused($tvFocus, equals: .bar("skipintro"))
+        #else
+        .plainTVButton()
+        #endif
+    }
+
+    // MARK: foutherstel en andere bronnen (build 52)
+
+    private func errorOverlay(_ e: String) -> some View {
+        VStack(spacing: tvScaled(14)) {
+            Image(systemName: "exclamationmark.triangle.fill").font(.system(size: tvScaled(36))).foregroundStyle(Theme.alert)
+            Text(e).font(.system(size: tvScaled(16))).multilineTextAlignment(.center)
+            HStack(spacing: tvScaled(12)) {
+                NetflixButton(title: L("Try again"), icon: "arrow.clockwise") { retry() }
+                if player.item.type != .live || player.item.channelID != nil {
+                    NetflixButton(title: L("Other source"), icon: "arrow.triangle.branch", kind: .secondary) { openAlternatives() }
+                }
+                if canSwitchEngine {
+                    NetflixButton(title: L("Other player"), icon: "arrow.left.arrow.right", kind: .secondary) {
+                        player.switchEngine()
+                        flash(player.usingApple ? L("Now playing with: Apple") : L("Now playing with: VLC"))
+                    }
+                }
+            }
+            #if !os(tvOS)
+            Button(L("Close")) { close() }.foregroundStyle(Theme.secondary).padding(.top, 4)
+            #endif
+        }
+        .padding(tvScaled(24))
+        .background(.black.opacity(0.8), in: RoundedRectangle(cornerRadius: tvScaled(16)))
+        .padding(Theme.edge)
+    }
+
+    /// Andere speler kan alleen bij http(s) en lokale bestanden (geen HLS-pakket, geen smb://)
+    private var canSwitchEngine: Bool {
+        guard let u = player.url, ["http", "https", "file"].contains(u.scheme?.lowercased() ?? "") else { return false }
+        return u.pathExtension.lowercased() != "movpkg"
+    }
+
+    /// Opnieuw, bij films en series op dezelfde positie.
+    private func retry() {
+        var it = player.item
+        if it.type != .live, player.lastGoodPosition > 0.01 { it.resumeAt = player.lastGoodPosition }
+        Task { await start(it) }
+    }
+
+    /// Live: de zender is weggevallen (ook na een nieuwe poging) → zelf naar de volgende back-upbron.
+    private func autoFailover() -> Bool {
+        guard player.isLive, let alt = alternatives.first(where: { !triedAlternatives.contains($0.id) && $0.url != player.url }) else {
+            return false
+        }
+        Task { await switchTo(alt, automatic: true) }
+        return true
+    }
+
+    private func loadAlternatives(for it: PlayableItem) async {
+        let key = it.channelID ?? it.id
+        loadingAlternatives = true
+        defer { if altFor == key { loadingAlternatives = false } }
+        let found: [AlternativeSource]
+        if it.type == .live, let cid = it.channelID {
+            found = await AlternativeSources.liveMatches(for: cid, playlists: playlists)
+        } else {
+            found = await AlternativeSources.vodMatches(for: it, playlists: playlists)
+        }
+        guard altFor == key else { return }
+        alternatives = found
+    }
+
+    /// "Andere bron": de lijst met treffers (bij films en series eerst zoeken).
+    private func openAlternatives() {
+        panel = .alternatives
+        if alternatives.isEmpty && !loadingAlternatives {
+            let it = player.item
+            Task { await loadAlternatives(for: it) }
+        }
+    }
+
+    private func switchTo(_ alt: AlternativeSource, automatic: Bool) async {
+        triedAlternatives.insert(alt.id)
+        var url = alt.url
+        if alt.isCurrentSource, let cmd = alt.stalkerCmd {
+            var tmp = player.item
+            tmp.url = alt.url; tmp.stalkerCmd = cmd
+            url = await playlists.resolve(tmp)
+        }
+        guard !player.dismissed else { return }
+        guard let url else {
+            if automatic, autoFailover() { return }
+            player.fail(L("This stream can't be played right now."))
+            return
+        }
+        var it = player.item
+        if it.type == .live {
+            // zappen blijft werken vanaf de zender in de eigen lijst
+            if alt.isCurrentSource { it.channelID = alt.itemID }
+        } else if player.lastGoodPosition > 0.01 {
+            it.resumeAt = player.lastGoodPosition
+        }
+        it.url = url
+        it.stalkerCmd = nil
+        player.item = it
+        player.liveURL = url
+        player.resetRecovery()
+        player.start(url: url)
+        let label = alt.isCurrentSource ? alt.name : alt.source.name
+        flash(automatic ? L("Switched to %@", label) : label)
     }
 
     private func toggleControls() { showControls.toggle(); if showControls { poke() } }

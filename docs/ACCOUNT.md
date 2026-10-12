@@ -369,3 +369,21 @@ Samenvoegen: per item wint de nieuwste `updatedAt`.
 ## Wachtwoord gewijzigd: overal uitgelogd
 
 Een database-trigger op `auth.users` wist bij elke wachtwoordwijziging alle sessies, alle gekoppelde apparaten en alle lopende streams van dat account. Dat geldt ook voor wijzigingen via bingr.online/reset. De apps hoeven hier niets nieuws voor te doen. Bij de volgende heartbeat (bij openen, terugkeer naar de voorgrond of binnen 5 minuten) geeft de server `revoked`, en het verversen van de sessie geeft 400/401. Dan gaat de app naar het inlogscherm.
+
+## Build 52: intro-markeringen, accentkleur, deinterlacing en laatste zender
+
+Vier nieuwe sleutels in `settings.shared`, op iOS en Android gelijk. Zoals alle instellingen wint het geheel met de nieuwste `updatedAt`.
+
+| Sleutel | Waarde | Standaard |
+|---|---|---|
+| `accentColor` | `"red"`, `"blue"`, `"green"`, `"purple"`, `"orange"` of `"pink"` | `"red"` |
+| `deinterlace` | `"off"`, `"auto"` of `"on"` (alleen voor VLC-afspelen) | `"auto"` |
+| `resumeLastChannel` | `true`/`false`: na het kiezen van een profiel meteen de laatst bekeken zender van dat profiel openen | `false` |
+| `introMarkers` | `{"<serverID>:<serieID>": {introStart, introEnd, creditsStart}}`, in seconden; een veld mag ontbreken of `null` zijn | `{}` |
+
+- **`serverID`** is de `id` van de bron zoals in `get_sources`/`put_sources`. **`serieID`** is de lokale serie-id die ook in `ep:<serieID>|s-e` staat.
+- Sleutels worden zonder onderscheid tussen hoofdletters en kleine letters vergeleken.
+- Een item waarvan alle drie de velden leeg zijn, telt als gewist.
+- **Intro:** zonder `introStart` loopt de intro vanaf het begin van de aflevering. Zolang de speler in de intro zit, staat er een knop **Intro overslaan** in beeld.
+- **Aftiteling:** vanaf `creditsStart` verschijnt de kaart **Volgende aflevering**. Na 10 seconden aftellen start die automatisch.
+- Het app-icoon (alleen op Apple) wordt niet gesynchroniseerd.
