@@ -141,3 +141,79 @@ end $$;
 drop trigger if exists bingr_password_change on auth.users;
 create trigger bingr_password_change after update of encrypted_password on auth.users
   for each row execute function public.bingr_on_password_change();
+
+-- Build 60: limieten atomair (gelijktijdige aanvragen kunnen de grens niet meer overschrijden), opruimen en groottegrenzen.
+-- Alle functies hieronder zijn alleen voor de Edge Function (service role).
+create index if not exists account_watch_log_started_idx on public.account_watch_log (started_at);
+create index if not exists account_streams_ping_idx on public.account_streams (last_ping);
+
+-- Profielenlijst begrenzen (512 KB); not valid = bestaande rijen worden niet opnieuw gecontroleerd.
+alter table public.account_data drop constraint if exists account_data_profiles_size;
+alter table public.account_data add constraint account_data_profiles_size check (octet_length(profiles::text) <= 524288) not valid;
+
+-- Apparaat registreren met een slot per account: tellen + toevoegen gebeurt in één transactie.
+create or replace function public.bingr_register_device(p_user uuid, p_device text, p_name text, p_platform text, p_session uuid, p_limit int)
+returns jsonb language plpgsql security definer set search_path = public, auth as $$
+declare cur record; n int;
+begin
+  perform pg_advisory_xact_lock(hashtextextended('bingr.devices:' || p_user::text, 0));
+  select session_id, custom_name into cur from public.account_devices where user_id = p_user and device_id = p_device;
+  if not found then
+    select count(*) into n from public.account_devices where user_id = p_user;
+    if n >= p_limit then return jsonb_build_object('ok', false, 'error', 'device_limit'); end if;
+    insert into public.account_devices (user_id, device_id, name, platform, session_id, signed_in_at)
+    values (p_user, p_device, p_name, p_platform, p_session, now());
+    return jsonb_build_object('ok', true);
+  end if;
+  -- zelfde apparaat opnieuw ingelogd: oude sessie intrekken als die anders is
+  if cur.session_id is not null and p_session is not null and cur.session_id <> p_session then
+    delete from auth.sessions where id = cur.session_id;
+  end if;
+  update public.account_devices set
+    platform = p_platform,
+    session_id = coalesce(p_session, session_id),
+    last_seen_at = now(),
+    signed_in_at = case when p_session is not null and cur.session_id is distinct from p_session then now() else signed_in_at end,
+    name = case when custom_name then name else p_name end
+  where user_id = p_user and device_id = p_device;
+  return jsonb_build_object('ok', true);
+end $$;
+revoke all on function public.bingr_register_device(uuid, text, text, text, uuid, int) from public, anon, authenticated;
+grant execute on function public.bingr_register_device(uuid, text, text, text, uuid, int) to service_role;
+
+-- Stream starten met een slot per account: verlopen streams weg, tellen, geschiedenis en stream in één transactie.
+create or replace function public.bingr_stream_start(p_user uuid, p_device text, p_profile_id text, p_profile_name text,
+  p_title text, p_kind text, p_content_id text, p_limit int, p_ttl_seconds int)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare n int; old_log bigint; dev_name text; dev_platform text; new_log bigint;
+begin
+  perform pg_advisory_xact_lock(hashtextextended('bingr.streams:' || p_user::text, 0));
+  delete from public.account_streams where user_id = p_user and last_ping < now() - make_interval(secs => p_ttl_seconds);
+  select count(*) into n from public.account_streams where user_id = p_user and device_id <> p_device;
+  if n >= p_limit then return jsonb_build_object('ok', false, 'error', 'stream_limit'); end if;
+  -- lopende stream op dit apparaat afsluiten in de geschiedenis
+  select log_id into old_log from public.account_streams where user_id = p_user and device_id = p_device;
+  if old_log is not null then update public.account_watch_log set ended_at = now() where id = old_log and user_id = p_user; end if;
+  select name, platform into dev_name, dev_platform from public.account_devices where user_id = p_user and device_id = p_device;
+  insert into public.account_watch_log (user_id, device_id, device_name, platform, profile_id, profile_name, title, kind, content_id)
+  values (p_user, p_device, dev_name, dev_platform, p_profile_id, p_profile_name, p_title, p_kind, p_content_id)
+  returning id into new_log;
+  insert into public.account_streams (user_id, device_id, profile_id, profile_name, title, kind, content_id, log_id, started_at, last_ping)
+  values (p_user, p_device, p_profile_id, p_profile_name, p_title, p_kind, p_content_id, new_log, now(), now())
+  on conflict (user_id, device_id) do update set profile_id = excluded.profile_id, profile_name = excluded.profile_name,
+    title = excluded.title, kind = excluded.kind, content_id = excluded.content_id, log_id = excluded.log_id,
+    started_at = excluded.started_at, last_ping = excluded.last_ping;
+  return jsonb_build_object('ok', true);
+end $$;
+revoke all on function public.bingr_stream_start(uuid, text, text, text, text, text, text, int, int) from public, anon, authenticated;
+grant execute on function public.bingr_stream_start(uuid, text, text, text, text, text, text, int, int) to service_role;
+
+-- Opruimen voor alle accounts: verlopen tv-codes, streams zonder ping (> 1 dag) en kijkgeschiedenis ouder dan 8 dagen.
+create or replace function public.bingr_cleanup() returns void
+language sql security definer set search_path = public as $$
+  delete from public.device_codes where expires_at < now();
+  delete from public.account_streams where last_ping < now() - interval '1 day';
+  delete from public.account_watch_log where started_at < now() - interval '8 days';
+$$;
+revoke all on function public.bingr_cleanup() from public, anon, authenticated;
+grant execute on function public.bingr_cleanup() to service_role;

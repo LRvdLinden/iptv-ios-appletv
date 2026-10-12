@@ -7,11 +7,14 @@
 //   delete_account  {}       (ingelogd)  -> {ok}
 //   register_device {device_id, name, platform} (ingelogd) -> {ok, device} | 403 {error:"device_limit", limit, devices}
 //   heartbeat       {device_id} (ingelogd) -> {ok} | {revoked:true}  (werkt ook "laatst gebruikt" bij)
+//                   Ongeldig/verlopen token -> 401 {error:"not_signed_in"} (app ververst en probeert opnieuw); auth-server onbereikbaar -> 503.
 //   list_devices    {device_id?} (ingelogd) -> {limit, devices:[{device_id,name,platform,created_at,last_seen_at,current}]}
 //   rename_device   {device_id, name} (ingelogd) -> {ok}   (eigen naam; register_device overschrijft die niet meer)
 //   remove_device   {device_id} (ingelogd) -> {ok}  (trekt de sessie van dat apparaat in)
 //   get_sources     {}       (ingelogd)  -> {sources:[…], mainSourceID, updatedAt}
 //   put_sources     {sources, mainSourceID} (ingelogd) -> {ok, updatedAt}   (versleuteld opgeslagen)
+//                   Build 60: de server voegt samen per bron-id (nieuwste updatedAt wint, ook tombstones); een bron die
+//                   alleen op de server staat blijft staan. Verwijderen gaat dus altijd via een tombstone.
 //   get_state       {sections?:[naam…]} (ingelogd) -> {sections:{naam:{data, updatedAt}}}
 //   put_state       {section, data}      (ingelogd) -> {ok, updatedAt}     (versleuteld; data = willekeurige JSON)
 //   delete_state    {section}            (ingelogd) -> {ok}
@@ -33,6 +36,7 @@ const cors = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Max-Age": "86400",
 };
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
@@ -75,12 +79,19 @@ async function removeDevice(userId: string, deviceId: string) {
   await admin.from("account_streams").delete().eq("user_id", userId).eq("device_id", deviceId);
 }
 // AES-GCM met BINGR_SOURCES_KEY (32 bytes, base64); wordt eenmalig door de Backend-workflow aangemaakt.
-async function sourcesKey(): Promise<CryptoKey> {
-  const raw = Uint8Array.from(atob(Deno.env.get("BINGR_SOURCES_KEY") ?? ""), (c) => c.charCodeAt(0));
-  if (raw.length !== 32) throw new Error("sources_key_missing");
-  return crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["encrypt", "decrypt"]);
+// Elke seal() krijgt een eigen willekeurige nonce van 12 bytes (veilig tot ~2^32 versleutelingen per sleutel).
+let keyPromise: Promise<CryptoKey> | null = null;
+function sourcesKey(): Promise<CryptoKey> {
+  if (!keyPromise) {
+    keyPromise = (async () => {
+      const raw = Uint8Array.from(atob(Deno.env.get("BINGR_SOURCES_KEY") ?? ""), (c) => c.charCodeAt(0));
+      if (raw.length !== 32) throw new Error("sources_key_missing");
+      return crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["encrypt", "decrypt"]);
+    })();
+    keyPromise.catch(() => { keyPromise = null; });
+  }
+  return keyPromise;
 }
-const b64 = (u: Uint8Array) => btoa(String.fromCharCode(...u));
 async function seal(obj: unknown): Promise<string> {
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await sourcesKey(), new TextEncoder().encode(JSON.stringify(obj))));
@@ -95,10 +106,6 @@ async function open_(data: string): Promise<any> {
 }
 const s80 = (v: unknown) => (v == null ? null : String(v).slice(0, 80));
 const s200 = (v: unknown) => (v == null ? null : String(v).slice(0, 200));
-async function deviceInfo(userId: string, deviceId: string) {
-  const { data } = await admin.from("account_devices").select("name,platform,signed_in_at,created_at").eq("user_id", userId).eq("device_id", deviceId).maybeSingle();
-  return data;
-}
 async function closeLog(userId: string, deviceId: string) {
   const { data: cur } = await admin.from("account_streams").select("log_id").eq("user_id", userId).eq("device_id", deviceId).maybeSingle();
   if (cur?.log_id) await admin.from("account_watch_log").update({ ended_at: new Date().toISOString() }).eq("id", cur.log_id);
@@ -114,22 +121,67 @@ async function activeStreams(userId: string) {
     return { ...r, device_name: d?.name ?? null, platform: d?.platform ?? null, signed_in_at: d?.signed_in_at ?? d?.created_at ?? null };
   });
 }
-async function userFrom(req: Request) {
+// Ingelogde gebruiker, of een kant-en-klaar foutantwoord: 401 bij een ongeldig/verlopen token (de apps verversen dan
+// en proberen het opnieuw), 503 als de auth-server tijdelijk niet antwoordt (nooit uitloggen door een storing).
+type Authed = { id: string; email?: string };
+async function authed(req: Request): Promise<Authed | Response> {
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
-  if (!token) return null;
+  if (!token || token.split(".").length !== 3) return json({ error: "not_signed_in" }, 401);
   const { data, error } = await admin.auth.getUser(token);
-  return error ? null : data.user;
+  if (!error && data?.user) return data.user;
+  const status = (error as { status?: number } | null)?.status ?? 0;
+  return status >= 400 && status < 500 ? json({ error: "not_signed_in" }, 401) : json({ error: "unavailable" }, 503);
 }
+const isoMs = (v: unknown) => { const t = Date.parse(String(v ?? "")); return Number.isFinite(t) ? t : 0; };
+const TOMBSTONE_MS = 90 * 864e5;
+// Bronnen samenvoegen per id (hoofdletterongevoelig): nieuwste updatedAt (of deletedAt) wint, bij gelijk de nieuwe lijst.
+// Een bron die alleen op de server staat blijft staan, zodat een apparaat met een oude lijst niets kan wissen.
+function mergeSources(stored: unknown[], incoming: unknown[]) {
+  const key = (o: any) => String(o?.id ?? "").toLowerCase();
+  const stamp = (o: any) => isoMs(o?.updatedAt) || isoMs(o?.deletedAt);
+  const out = new Map<string, any>();
+  const loose: unknown[] = [];
+  for (const o of stored) { const k = key(o); if (k) out.set(k, o); }
+  for (const o of incoming) {
+    const k = key(o);
+    if (!k) { loose.push(o); continue; }
+    const cur = out.get(k);
+    if (!cur || stamp(o) >= stamp(cur)) out.set(k, o);
+  }
+  const cut = Date.now() - TOMBSTONE_MS;
+  return [...out.values(), ...loose].filter((o: any) => !(o?.deleted === true && (isoMs(o.deletedAt) || isoMs(o.updatedAt)) < cut));
+}
+
+const MAX_BODY = 2 * 1024 * 1024;
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
-  let body: Record<string, unknown> = {};
-  try { body = await req.json(); } catch { return json({ error: "bad_json" }, 400); }
+  if (Number(req.headers.get("content-length") ?? 0) > MAX_BODY) return json({ error: "too_large" }, 413);
+  let body: Record<string, unknown>;
+  try {
+    const text = await req.text();
+    if (text.length > MAX_BODY) return json({ error: "too_large" }, 413);
+    body = JSON.parse(text);
+  } catch { return json({ error: "bad_json" }, 400); }
+  if (!body || typeof body !== "object" || Array.isArray(body)) return json({ error: "bad_json" }, 400);
+  try {
+    return await handle(req, body);
+  } catch (e) {
+    // nooit interne details naar buiten; wel in de functielogs
+    console.error("device-auth", String(body.action ?? ""), e instanceof Error ? e.message : e);
+    return json({ error: "server_error" }, 500);
+  }
+});
 
+async function handle(req: Request, body: Record<string, unknown>): Promise<Response> {
   switch (body.action) {
     case "start": {
       await admin.from("device_codes").delete().lt("expires_at", new Date().toISOString());
+      // af en toe voor alle accounts opruimen (oude streams, geschiedenis > 8 dagen)
+      if (Math.random() < 0.1) await admin.rpc("bingr_cleanup");
+      const { count: open } = await admin.from("device_codes").select("code", { count: "exact", head: true });
+      if ((open ?? 0) >= 10000) return json({ error: "try_again" }, 503);
       const device = String(body.device ?? "TV").slice(0, 60);
       for (let i = 0; i < 5; i++) {
         const code = randomCode(), poll_secret = randomSecret();
@@ -140,7 +192,7 @@ Deno.serve(async (req) => {
       return json({ error: "try_again" }, 503);
     }
     case "poll": {
-      const code = normalize(body.code);
+      const code = normalize(body.code).slice(0, 12);
       const { data: row } = await admin.from("device_codes").select("*").eq("code", code).maybeSingle();
       if (!row || !same(row.poll_secret, String(body.poll_secret ?? ""))) return json({ status: "expired" });
       if (new Date(row.expires_at) < new Date()) {
@@ -157,105 +209,116 @@ Deno.serve(async (req) => {
       return json({ status: "approved", token_hash: link.properties.hashed_token, email });
     }
     case "approve": {
-      const user = await userFrom(req);
-      if (!user) return json({ error: "not_signed_in" }, 401);
-      const code = normalize(body.code);
+      const user = await authed(req);
+      if (user instanceof Response) return user;
+      const code = normalize(body.code).slice(0, 12);
       const { data: row } = await admin.from("device_codes").select("code, device, expires_at, user_id").eq("code", code).maybeSingle();
       if (!row || new Date(row.expires_at) < new Date()) return json({ error: "invalid_code" }, 404);
       if (row.user_id && row.user_id !== user.id) return json({ error: "invalid_code" }, 404);
-      await admin.from("device_codes").update({ user_id: user.id }).eq("code", code);
+      // alleen een nog niet goedgekeurde code (of je eigen) claimen, ook als twee accounts tegelijk goedkeuren
+      const { data: claimed } = await admin.from("device_codes").update({ user_id: user.id }).eq("code", code)
+        .or(`user_id.is.null,user_id.eq.${user.id}`).select("code");
+      if (!claimed?.length) return json({ error: "invalid_code" }, 404);
       return json({ ok: true, device: row.device });
     }
     case "delete_account": {
-      const user = await userFrom(req);
-      if (!user) return json({ error: "not_signed_in" }, 401);
+      const user = await authed(req);
+      if (user instanceof Response) return user;
       // profielfoto's opruimen, daarna de gebruiker (tabellen gaan mee via on delete cascade)
-      const { data: files } = await admin.storage.from("avatars").list(user.id, { limit: 1000 });
-      if (files?.length) await admin.storage.from("avatars").remove(files.map((f) => `${user.id}/${f.name}`));
+      for (let i = 0; i < 20; i++) {
+        const { data: files, error: le } = await admin.storage.from("avatars").list(user.id, { limit: 1000 });
+        if (le || !files?.length) break;
+        const { error: re } = await admin.storage.from("avatars").remove(files.map((f) => `${user.id}/${f.name}`));
+        if (re) break;
+      }
+      // sessies van gekoppelde apparaten intrekken; alle tabellen (profielen, servers, gegevens, apparaten, streams,
+      // geschiedenis, tv-codes) gaan mee via on delete cascade
       const { error } = await admin.auth.admin.deleteUser(user.id);
-      return error ? json({ error: "delete_failed" }, 500) : json({ ok: true });
+      if (error) { console.error("delete_account", error.message); return json({ error: "delete_failed" }, 500); }
+      return json({ ok: true });
     }
     case "register_device": {
-      const user = await userFrom(req);
-      if (!user) return json({ error: "not_signed_in" }, 401);
+      const user = await authed(req);
+      if (user instanceof Response) return user;
       const device_id = String(body.device_id ?? "").slice(0, 80);
       if (!device_id) return json({ error: "device_id_missing" }, 400);
       const name = String(body.name ?? "").slice(0, 80), platform = String(body.platform ?? "").slice(0, 40);
-      const session_id = sessionIdFrom(req);
-      const { data: existing } = await admin.from("account_devices").select("device_id,session_id").eq("user_id", user.id).eq("device_id", device_id).maybeSingle();
-      if (!existing) {
-        const { count } = await admin.from("account_devices").select("device_id", { count: "exact", head: true }).eq("user_id", user.id);
-        if ((count ?? 0) >= DEVICE_LIMIT) return json({ error: "device_limit", limit: DEVICE_LIMIT, devices: await listDevices(user.id) }, 403);
-        await admin.from("account_devices").insert({ user_id: user.id, device_id, name, platform, session_id, signed_in_at: new Date().toISOString() });
-      } else {
-        // zelfde apparaat opnieuw ingelogd: oude sessie intrekken als die anders is
-        if (existing.session_id && session_id && existing.session_id !== session_id) await admin.rpc("revoke_session", { sid: existing.session_id });
-        const { data: cur } = await admin.from("account_devices").select("custom_name").eq("user_id", user.id).eq("device_id", device_id).maybeSingle();
-        const patch: Record<string, unknown> = { platform, session_id, last_seen_at: new Date().toISOString() };
-        if (session_id && existing.session_id !== session_id) patch.signed_in_at = new Date().toISOString();
-        if (!cur?.custom_name) patch.name = name;
-        await admin.from("account_devices").update(patch).eq("user_id", user.id).eq("device_id", device_id);
-      }
+      const sid = sessionIdFrom(req);
+      const session_id = sid && /^[0-9a-f-]{36}$/i.test(sid) ? sid : null;
+      // tellen + toevoegen atomair in de database (slot per account), zodat gelijktijdige logins de limiet niet passeren
+      const { data: r, error } = await admin.rpc("bingr_register_device", {
+        p_user: user.id, p_device: device_id, p_name: name, p_platform: platform, p_session: session_id, p_limit: DEVICE_LIMIT,
+      });
+      if (error) throw new Error(error.message);
+      if (r?.error === "device_limit") return json({ error: "device_limit", limit: DEVICE_LIMIT, devices: await listDevices(user.id) }, 403);
       return json({ ok: true, limit: DEVICE_LIMIT });
     }
     case "heartbeat": {
-      const user = await userFrom(req);
-      if (!user) return json({ revoked: true });
-      const device_id = String(body.device_id ?? "");
+      const user = await authed(req);
+      if (user instanceof Response) return user;
+      const device_id = String(body.device_id ?? "").slice(0, 80);
       const { data: row } = await admin.from("account_devices").select("session_id").eq("user_id", user.id).eq("device_id", device_id).maybeSingle();
       if (!row) return json({ revoked: true });
       const sid = sessionIdFrom(req);
       const patch: Record<string, unknown> = { last_seen_at: new Date().toISOString() };
-      if (sid && sid !== row.session_id) patch.session_id = sid;
+      if (sid && /^[0-9a-f-]{36}$/i.test(sid) && sid !== row.session_id) patch.session_id = sid;
       await admin.from("account_devices").update(patch).eq("user_id", user.id).eq("device_id", device_id);
       return json({ ok: true });
     }
     case "list_devices": {
-      const user = await userFrom(req);
-      if (!user) return json({ error: "not_signed_in" }, 401);
-      return json({ limit: DEVICE_LIMIT, devices: await listDevices(user.id, body.device_id ? String(body.device_id) : undefined) });
+      const user = await authed(req);
+      if (user instanceof Response) return user;
+      return json({ limit: DEVICE_LIMIT, devices: await listDevices(user.id, body.device_id ? String(body.device_id).slice(0, 80) : undefined) });
     }
     case "rename_device": {
-      const user = await userFrom(req);
-      if (!user) return json({ error: "not_signed_in" }, 401);
+      const user = await authed(req);
+      if (user instanceof Response) return user;
       const name = String(body.name ?? "").trim().slice(0, 60);
       if (!name) return json({ error: "name_missing" }, 400);
       const { error } = await admin.from("account_devices").update({ name, custom_name: true })
-        .eq("user_id", user.id).eq("device_id", String(body.device_id ?? ""));
+        .eq("user_id", user.id).eq("device_id", String(body.device_id ?? "").slice(0, 80));
       return error ? json({ error: "rename_failed" }, 500) : json({ ok: true });
     }
     case "remove_device": {
-      const user = await userFrom(req);
-      if (!user) return json({ error: "not_signed_in" }, 401);
-      await removeDevice(user.id, String(body.device_id ?? ""));
+      const user = await authed(req);
+      if (user instanceof Response) return user;
+      await removeDevice(user.id, String(body.device_id ?? "").slice(0, 80));
       return json({ ok: true });
     }
     case "get_sources": {
-      const user = await userFrom(req);
-      if (!user) return json({ error: "not_signed_in" }, 401);
+      const user = await authed(req);
+      if (user instanceof Response) return user;
       const { data: row } = await admin.from("account_sources").select("data,updated_at").eq("user_id", user.id).maybeSingle();
       if (!row) return json({ sources: [], mainSourceID: null, updatedAt: null });
       try {
         const o = await open_(row.data);
         return json({ sources: o.sources ?? [], mainSourceID: o.mainSourceID ?? null, updatedAt: row.updated_at });
-      } catch { return json({ error: "decrypt_failed" }, 500); }
+      } catch (e) { console.error("get_sources", e instanceof Error ? e.message : e); return json({ error: "decrypt_failed" }, 500); }
     }
     case "put_sources": {
-      const user = await userFrom(req);
-      if (!user) return json({ error: "not_signed_in" }, 401);
-      const sources = Array.isArray(body.sources) ? body.sources.slice(0, 50) : [];
-      const payload = { sources, mainSourceID: body.mainSourceID ?? null };
-      const size = JSON.stringify(payload).length;
-      if (size > 512 * 1024) return json({ error: "too_large" }, 413);
+      const user = await authed(req);
+      if (user instanceof Response) return user;
+      if (!Array.isArray(body.sources)) return json({ error: "bad_sources" }, 400);
+      const incoming = body.sources.filter((o) => o && typeof o === "object" && !Array.isArray(o)).slice(0, 100);
+      const main = body.mainSourceID == null ? null : String(body.mainSourceID).slice(0, 80);
+      const { data: row } = await admin.from("account_sources").select("data").eq("user_id", user.id).maybeSingle();
+      let stored: unknown[] = [];
+      if (row) {
+        try { const o = await open_(row.data); stored = Array.isArray(o?.sources) ? o.sources : []; }
+        catch (e) { console.error("put_sources", e instanceof Error ? e.message : e); return json({ error: "decrypt_failed" }, 500); }
+      }
+      const payload = { sources: mergeSources(stored, incoming), mainSourceID: main };
+      if (JSON.stringify(payload).length > 512 * 1024) return json({ error: "too_large" }, 413);
       const updated_at = new Date().toISOString();
-      await admin.from("account_sources").upsert({ user_id: user.id, data: await seal(payload), updated_at });
+      const { error } = await admin.from("account_sources").upsert({ user_id: user.id, data: await seal(payload), updated_at });
+      if (error) throw new Error(error.message);
       return json({ ok: true, updatedAt: updated_at });
     }
     case "get_state": {
-      const user = await userFrom(req);
-      if (!user) return json({ error: "not_signed_in" }, 401);
+      const user = await authed(req);
+      if (user instanceof Response) return user;
       let q = admin.from("account_state").select("section,data,updated_at").eq("user_id", user.id);
-      if (Array.isArray(body.sections) && body.sections.length) q = q.in("section", body.sections.map(String).slice(0, 100));
+      if (Array.isArray(body.sections) && body.sections.length) q = q.in("section", body.sections.slice(0, 100).map((x) => String(x).slice(0, 80)));
       const { data: rows } = await q;
       const out: Record<string, unknown> = {};
       for (const r of rows ?? []) {
@@ -264,10 +327,10 @@ Deno.serve(async (req) => {
       return json({ sections: out });
     }
     case "put_state": {
-      const user = await userFrom(req);
-      if (!user) return json({ error: "not_signed_in" }, 401);
-      const section = String(body.section ?? "").slice(0, 80);
-      if (!/^[a-zA-Z0-9._:-]+$/.test(section)) return json({ error: "bad_section" }, 400);
+      const user = await authed(req);
+      if (user instanceof Response) return user;
+      const section = String(body.section ?? "");
+      if (section.length > 80 || !/^[a-zA-Z0-9._:-]+$/.test(section)) return json({ error: "bad_section" }, 400);
       if (JSON.stringify(body.data ?? null).length > 1024 * 1024) return json({ error: "too_large" }, 413);
       const { count } = await admin.from("account_state").select("section", { count: "exact", head: true }).eq("user_id", user.id);
       if ((count ?? 0) >= 200) {
@@ -275,71 +338,66 @@ Deno.serve(async (req) => {
         if (!exists) return json({ error: "too_many_sections" }, 413);
       }
       const updated_at = new Date().toISOString();
-      await admin.from("account_state").upsert({ user_id: user.id, section, data: await seal(body.data ?? null), updated_at });
+      const { error } = await admin.from("account_state").upsert({ user_id: user.id, section, data: await seal(body.data ?? null), updated_at });
+      if (error) throw new Error(error.message);
       return json({ ok: true, updatedAt: updated_at });
     }
     case "delete_state": {
-      const user = await userFrom(req);
-      if (!user) return json({ error: "not_signed_in" }, 401);
-      await admin.from("account_state").delete().eq("user_id", user.id).eq("section", String(body.section ?? ""));
+      const user = await authed(req);
+      if (user instanceof Response) return user;
+      await admin.from("account_state").delete().eq("user_id", user.id).eq("section", String(body.section ?? "").slice(0, 80));
       return json({ ok: true });
     }
     case "stream_start": {
-      const user = await userFrom(req);
-      if (!user) return json({ error: "not_signed_in" }, 401);
+      const user = await authed(req);
+      if (user instanceof Response) return user;
       const device_id = String(body.device_id ?? "").slice(0, 80);
       if (!device_id) return json({ error: "device_id_missing" }, 400);
-      const fresh = new Date(Date.now() - STREAM_TTL_MS).toISOString();
-      await admin.from("account_streams").delete().eq("user_id", user.id).lt("last_ping", fresh);
-      const { data: active } = await admin.from("account_streams").select("device_id").eq("user_id", user.id).neq("device_id", device_id);
-      if ((active?.length ?? 0) >= STREAM_LIMIT) return json({ error: "stream_limit", limit: STREAM_LIMIT, streams: await activeStreams(user.id) }, 403);
-      const dev = await deviceInfo(user.id, device_id);
-      const row = {
-        profile_id: s80(body.profile_id), profile_name: s80(body.profile_name), title: s200(body.title),
-        kind: s80(body.kind), content_id: s200(body.content_id),
-      };
-      // lopende stream op dit apparaat afsluiten in de geschiedenis
-      await closeLog(user.id, device_id);
-      const { data: log } = await admin.from("account_watch_log").insert({
-        user_id: user.id, device_id, device_name: dev?.name ?? null, platform: dev?.platform ?? null, ...row,
-      }).select("id").single();
-      await admin.from("account_streams").upsert({
-        user_id: user.id, device_id, ...row, log_id: log?.id ?? null,
-        started_at: new Date().toISOString(), last_ping: new Date().toISOString(),
+      // verlopen streams weg, tellen, geschiedenis en stream in één transactie met een slot per account,
+      // zodat gelijktijdige starts nooit boven de limiet uitkomen
+      const { data: r, error } = await admin.rpc("bingr_stream_start", {
+        p_user: user.id, p_device: device_id, p_profile_id: s80(body.profile_id), p_profile_name: s80(body.profile_name),
+        p_title: s200(body.title), p_kind: s80(body.kind), p_content_id: s200(body.content_id),
+        p_limit: STREAM_LIMIT, p_ttl_seconds: Math.round(STREAM_TTL_MS / 1000),
       });
-      // geschiedenis ouder dan 8 dagen opruimen
-      await admin.from("account_watch_log").delete().eq("user_id", user.id).lt("started_at", new Date(Date.now() - 8 * 864e5).toISOString());
+      if (error) throw new Error(error.message);
+      if (r?.error === "stream_limit") return json({ error: "stream_limit", limit: STREAM_LIMIT, streams: await activeStreams(user.id) }, 403);
+      // af en toe voor alle accounts opruimen (geschiedenis > 8 dagen, oude streams, verlopen tv-codes)
+      if (Math.random() < 0.05) await admin.rpc("bingr_cleanup");
       return json({ ok: true, limit: STREAM_LIMIT });
     }
     case "stream_ping": {
-      const user = await userFrom(req);
-      if (!user) return json({ stopped: true });
-      const device_id = String(body.device_id ?? "");
-      const { data: cur } = await admin.from("account_streams").select("log_id").eq("user_id", user.id).eq("device_id", device_id).maybeSingle();
-      if (!cur) return json({ stopped: true });
+      const user = await authed(req);
+      if (user instanceof Response) return user;
+      const device_id = String(body.device_id ?? "").slice(0, 80);
+      const { data: cur } = await admin.from("account_streams").select("log_id,last_ping").eq("user_id", user.id).eq("device_id", device_id).maybeSingle();
+      // geen stream, of te lang geen ping (telde al niet meer mee): opnieuw stream_start, zodat de limiet weer geldt
+      if (!cur || Date.now() - isoMs(cur.last_ping) > STREAM_TTL_MS) return json({ stopped: true });
       const now = new Date().toISOString();
       const patch: Record<string, unknown> = { last_ping: now };
       if (body.title) patch.title = s200(body.title);
+      if (body.kind) patch.kind = s80(body.kind);
+      if (body.content_id) patch.content_id = s200(body.content_id);
       await admin.from("account_streams").update(patch).eq("user_id", user.id).eq("device_id", device_id);
       if (cur.log_id) await admin.from("account_watch_log").update({ ended_at: now }).eq("id", cur.log_id);
       return json({ ok: true });
     }
     case "stream_stop": {
-      const user = await userFrom(req);
-      if (!user) return json({ ok: true });
-      const device_id = String(body.device_id ?? "");
+      const user = await authed(req);
+      if (user instanceof Response) return user.status === 401 ? json({ ok: true }) : user;
+      const device_id = String(body.device_id ?? "").slice(0, 80);
       await closeLog(user.id, device_id);
       await admin.from("account_streams").delete().eq("user_id", user.id).eq("device_id", device_id);
       return json({ ok: true });
     }
     case "list_streams": {
-      const user = await userFrom(req);
-      if (!user) return json({ error: "not_signed_in" }, 401);
+      const user = await authed(req);
+      if (user instanceof Response) return user;
       return json({ limit: STREAM_LIMIT, streams: await activeStreams(user.id) });
     }
     case "watch_log": {
-      const user = await userFrom(req);
-      if (!user) return json({ error: "not_signed_in" }, 401);
+      const user = await authed(req);
+      if (user instanceof Response) return user;
       const days = Math.min(Math.max(Number(body.days ?? 7) || 7, 1), 7);
       const since = new Date(Date.now() - days * 864e5).toISOString();
       const { data } = await admin.from("account_watch_log")
@@ -351,8 +409,8 @@ Deno.serve(async (req) => {
       return json({ entries });
     }
     case "config": {
-      const user = await userFrom(req);
-      if (!user) return json({ error: "not_signed_in" }, 401);
+      const user = await authed(req);
+      if (user instanceof Response) return user;
       const env = (k: string) => Deno.env.get(k) ?? "";
       return json({
         traktClientID: env("BINGR_TRAKT_CLIENT_ID"),
@@ -365,4 +423,4 @@ Deno.serve(async (req) => {
     default:
       return json({ error: "unknown_action" }, 400);
   }
-});
+}

@@ -1,4 +1,4 @@
-# Bingr-account: contract (iOS, iPadOS, tvOS, macOS, Android, Android TV, website)
+# Bingr-account: contract (iOS, iPadOS, tvOS, macOS, Android, Android TV, Samsung TV/Tizen, website)
 
 Inloggen is **verplicht**. Flow: **splash → (geen geldige sessie) inlogscherm → "Wie kijkt er?" → app**. Met een geldige sessie gaat de app na de splash direct naar "Wie kijkt er?". Uitloggen brengt je terug naar het inlogscherm.
 
@@ -84,7 +84,7 @@ Sign In · Create account · Email · Password · Show · Hide · Sign up now. �
 - `bingr.online/reset`: nieuw wachtwoord instellen via de link uit de e-mail.
 - `assets/config.js` (`window.BINGR_SUPABASE = {url, anonKey}`) wordt bij de deploy uit de secrets gemaakt.
 
-## Gekoppelde apparaten (max. 10)
+## Gekoppelde apparaten (max. 15, was 10 tot build 51)
 
 Elk apparaat heeft een eigen, vaste **device_id** (UUID). Die wordt één keer aangemaakt en alleen lokaal bewaard: op Apple in de sleutelhanger zonder iCloud-sync, op Android in de app-opslag. Hij blijft bestaan na uitloggen.
 
@@ -92,9 +92,9 @@ Alle aanroepen gaan naar device-auth, met `Authorization: Bearer <access_token>`
 
 | Actie | Body | Antwoord |
 |---|---|---|
-| `register_device` | `{device_id, name, platform}` | `{ok}`, of **403** `{error:"device_limit", limit:10, devices:[…]}` |
-| `heartbeat` | `{device_id}` | `{ok}`, of `{revoked:true}`: het apparaat is verwijderd, dus direct lokaal uitloggen (zonder de logout-aanroep) en terug naar het inlogscherm |
-| `list_devices` | `{device_id}` | `{limit, devices:[{device_id, name, platform, created_at, last_seen_at, current}]}`, nieuwste gebruik eerst |
+| `register_device` | `{device_id, name, platform}` | `{ok, limit}`, of **403** `{error:"device_limit", limit, devices:[…]}` |
+| `heartbeat` | `{device_id}` | `{ok}`, of `{revoked:true}`: het apparaat is verwijderd, dus direct lokaal uitloggen (zonder de logout-aanroep) en terug naar het inlogscherm. Sinds build 60: **401** bij een ongeldig/verlopen token (sessie vernieuwen en opnieuw proberen; alleen een mislukte refresh met 400/401 logt uit) en **503** als de server tijdelijk niet kan controleren (niets doen). |
+| `list_devices` | `{device_id}` | `{limit, devices:[{device_id, name, platform, created_at, last_seen_at, signed_in_at, current}]}`, nieuwste gebruik eerst |
 | `remove_device` | `{device_id}` | `{ok}`. De sessie van dat apparaat wordt ingetrokken, zodat het apparaat uitlogt. |
 
 - **name**: de naam van het apparaat (op iOS `UIDevice.current.name`, op de Mac `Host.current().localizedName`, op Android `Settings.Global.DEVICE_NAME` of anders `Build.MODEL`).
@@ -202,7 +202,7 @@ Servers horen bij het account. Na het (opnieuw) installeren, na een update en op
 | Actie (device-auth, met `Authorization: Bearer <access_token>`) | Body | Antwoord |
 |---|---|---|
 | `get_sources` | `{}` | `{sources:[…], mainSourceID, updatedAt}`. Voor een nieuw account: `sources: []`, `updatedAt: null`. |
-| `put_sources` | `{sources:[…], mainSourceID}` | `{ok, updatedAt}`. Stuurt altijd de **hele** lijst, inclusief tombstones. Maximaal 512 KB. |
+| `put_sources` | `{sources:[…], mainSourceID}` | `{ok, updatedAt}`. Stuurt altijd de **hele** lijst, inclusief tombstones. Maximaal 512 KB, 100 bronnen. Sinds build 60 voegt de server samen (zie "Build 60"). |
 
 **Bron (gedeeld formaat, gelijk op iOS en Android)**
 
@@ -250,7 +250,7 @@ Alles wat iemand in Bingr instelt of opbouwt, komt na het (opnieuw) installeren 
 |---|---|
 | `connections` | `trakt: {accessToken, refreshToken, expiresAt (ISO), username}` of `null`; `opensubtitles: {token, username, password?, baseURL?}` of `null` (precies wat de app nu lokaal bewaart om ingelogd te blijven). Plus `updatedAt`. |
 | `settings` | `shared`: instellingen met dezelfde betekenis op beide platforms, zoals app-taal, speler-engine (`auto`/`apple`/`exo`/`vlc`, elk platform vertaalt naar wat het heeft), ondertitelgrootte, standaard audio- en ondertiteltaal, automatisch ondertitels, OpenSubtitles-standaardtaal, startscherm, verborgen tabbladen, intromuziek, verversinterval en kinderslot-instellingen die niet per server zijn. Daarnaast `apple: {…}` en `android: {…}` met de rest. Plus `updatedAt`. |
-| `profile.<profielID>` | per profiel: `myList`, `favorites`, `progress` (`{key: {position, duration, updatedAt, …}}`), `watched` (set van sleutels), `history` (lijst met tijd), `recentChannels`, `prefs` (kijkvoorkeuren), `pin` (de pincode zoals de app hem nu bewaart, of `null`), `updatedAt`. Sleutels voor inhoud zijn op iOS en Android al gelijk (bijvoorbeeld `ep:<serieID>\|s-e`). |
+| `profile.<profielID>` | per profiel: `myList`, `favorites`, `progress` (`{key: {position, duration, updatedAt, …}}`), `watched` (set van sleutels), `history` (lijst met tijd), `recentChannels`, `prefs` (kijkvoorkeuren), `pin` (de pincode zoals de app hem nu bewaart, of `null`), `updatedAt`. Sleutels voor inhoud zijn op iOS en Android al gelijk (bijvoorbeeld `ep:<serieID>\|s-e`). Het precieze formaat staat bij "Build 60". |
 | `reminders` | lijst met herinneringen, plus `updatedAt` |
 
 **Samenvoegen** (bij lezen: na login, bij het starten, bij terugkeer naar de voorgrond en bij elke heartbeat):
@@ -342,10 +342,10 @@ Samenvoegen: per item wint de nieuwste `updatedAt`.
 | Actie | Body | Antwoord |
 |---|---|---|
 | `stream_start` | `{device_id, profile_id, profile_name, title, kind ("live"\|"movie"\|"episode"), content_id}` | `{ok}`, of **403** `{error:"stream_limit", limit, streams:[…]}` |
-| `stream_ping` | `{device_id, title?}` | `{ok}`, of `{stopped:true}`: deze stream telt niet meer (bijvoorbeeld door een te lange pauze), dus opnieuw `stream_start` |
+| `stream_ping` | `{device_id, title?, kind?, content_id?}` | `{ok}`, of `{stopped:true}`: deze stream telt niet meer (geen ping in 90 s, of gestopt op een ander apparaat), dus opnieuw `stream_start` (dat controleert de limiet opnieuw). Ook Multiview moet hierop reageren. |
 | `stream_stop` | `{device_id}` | `{ok}` |
-| `list_streams` | `{}` | `{limit, streams:[{device_id, device_name, platform, profile_name, title, kind, started_at, last_ping, signed_in_at}]}` |
-| `watch_log` | `{days: 7}` | `{entries:[{device_name, platform, profile_name, title, kind, content_id, started_at, ended_at, minutes}]}`, nieuwste eerst |
+| `list_streams` | `{}` | `{limit, streams:[{device_id, device_name, platform, profile_id, profile_name, title, kind, started_at, last_ping, signed_in_at}]}` |
+| `watch_log` | `{days: 7}` | `{entries:[{device_name, platform, profile_id, profile_name, title, kind, content_id, started_at, ended_at, minutes}]}`, nieuwste eerst (max. 1000) |
 
 **De speler:**
 - **Starten:** bij het starten van elke stream (live, film of aflevering, ook bij zappen of de volgende aflevering) roep je `stream_start` aan, met het actieve profiel en de titel. Bij een live-zender is dat de zendernaam plus het programma als dat bekend is ("NPO 1 · Journaal").
@@ -474,3 +474,72 @@ Volgorde: titel → categorie → originele taal uit TMDB (alleen als die al gel
 ### Andere taal
 
 Dezelfde titel in een andere taal: zelfde TMDB-id als die van beide bekend is, anders zelfde opgeschoonde titel en jaar (±1). Alleen versies met een ander taallabel. Detailpagina: knop **"Andere taal"**; in de speler onder Audio & ondertitels, met bij één audiospoor "Deze stream heeft één audiotaal". Wisselen in de speler hervat op dezelfde plek; elke versie houdt verder haar eigen voortgang.
+
+## Build 60: backend-hardening en het volledige formaat van de gedeelde gegevens
+
+### Server (device-auth)
+
+- **Fouten** zijn altijd JSON `{error}` zonder interne details: 400 `bad_json` / `bad_section` / `bad_sources` / `device_id_missing` / `name_missing`, 401 `not_signed_in`, 403 `device_limit` / `stream_limit`, 404 `invalid_code`, 413 `too_large` / `too_many_sections`, 500 `server_error` / `decrypt_failed` / `delete_failed`, 503 `unavailable` / `try_again`. Een aanvraag mag maximaal 2 MB zijn.
+- **401 = token ongeldig of verlopen**, voor alle acties met inloggen (ook `heartbeat` en `stream_ping`, die gaven eerder `revoked`/`stopped`): sessie vernieuwen en één keer opnieuw proberen. **503** = de server kon het token tijdelijk niet controleren: niets doen, niet uitloggen.
+- **Limieten atomair:** `register_device` (15 apparaten) en `stream_start` (6 streams) tellen en schrijven in één databasetransactie met een slot per account. Gelijktijdige aanvragen kunnen de limiet niet meer overschrijden.
+- **Opruimen:** verlopen tv-codes, streams zonder ping (> 1 dag) en kijkgeschiedenis ouder dan 8 dagen worden voor alle accounts opgeruimd, niet alleen bij een nieuwe stream van hetzelfde account.
+- **`approve`** claimt een code alleen als hij nog vrij is (of al van jou); twee accounts kunnen niet dezelfde tv koppelen.
+- **`delete_account`** verwijdert alle profielfoto's in Storage en daarna de gebruiker; alle tabellen (profielen, servers, onderdelen, apparaten, streams, geschiedenis, tv-codes) gaan mee.
+- **`account_data.profiles`** is maximaal 512 KB.
+
+### `put_sources`: samenvoegen op de server
+
+De server voegt de binnenkomende lijst samen met wat er al staat, per `id` (zonder onderscheid tussen hoofd- en kleine letters):
+- de versie met de nieuwste `updatedAt` (bij een tombstone `updatedAt`, anders `deletedAt`) wint; bij gelijke tijd de binnenkomende;
+- een bron die **alleen op de server** staat blijft staan. Een apparaat met een verouderde lijst kan dus niets meer wissen; **verwijderen gaat altijd via een tombstone**;
+- tombstones ouder dan 90 dagen gaan weg;
+- `mainSourceID` is altijd die uit de aanvraag.
+De apps hoeven hier niets voor te veranderen. De website haalt vóór elke wijziging de nieuwste lijst op en past alleen de gewijzigde velden toe.
+
+### `settings` (section): alle gedeelde sleutels
+
+`{shared:{…}, apple:{…}, android:{…}, updatedAt}`. Het geheel met de nieuwste `updatedAt` wint. Wie schrijft, houdt onbekende sleutels in `shared` en het blok van het andere platform onaangeroerd (lees eerst de serverversie en pas alleen eigen sleutels aan).
+
+| Sleutel in `shared` | Waarde |
+|---|---|
+| `appLanguage` | taalcode (`"nl"`, `"en"` …) of `""` = systeemtaal. Oud: `language`. |
+| `playerEngine` | `"auto"`, `"apple"`, `"exo"` of `"vlc"`; een onbekende waarde betekent `"auto"` en blijft op de server staan |
+| `subtitleSize` | `"small"`, `"medium"` of `"large"` |
+| `audioLanguage` | ISO 639-1, `""` = app-taal, `"stream"` = niets kiezen (zoals de stream) |
+| `subtitleLanguage` | taal van **ondertitels in de stream**, ISO 639-1; `""` = app-taal; oud `"off"` = `autoSubtitles: "off"` |
+| `autoSubtitles` | `"off"`, `"whenNeeded"` of `"always"`; oud `true` → `"always"`, `false` → `"whenNeeded"` |
+| `openSubtitlesLanguage` | standaardtaal voor zoeken bij OpenSubtitles (`""` = alle) |
+| `openSubtitlesLanguages` | lijst met taalcodes |
+| `startScreen` | `"home"`, `"live"`, `"movies"` of `"series"` |
+| `hiddenTabs` | lijst met `"live"`, `"movies"`, `"series"` |
+| `introMusic` | true/false |
+| `refreshInterval` | de raw value van het verversbeleid (gelijk op iOS en Android) |
+| `categorySort` | `"standard"` of een andere sorteerwijze |
+| `parentalControl`, `parentalAutoLockAdult` | true/false (lezen: ook een object `parentalControl: {enabled, autoLockAdult}`) |
+| `traktScrobble`, `traktAskRating` | true/false |
+| `deinterlace`, `resumeLastChannel`, `introMarkers` | zie build 52 |
+| `accentColor` | alleen nog voor de migratie (build 54); niet meer schrijven, wel laten staan |
+
+### `profile.<id>` (section): het volledige formaat
+
+| Veld | Inhoud |
+|---|---|
+| `myList`, `favorites`, `watched`, `recentChannels` | lijst `[{id, at}]` (aanwezig). Een verwijdering mag ook in de lijst staan als `{id, removed:true, at}`. |
+| `progress` | `{"<sleutel>": {position, duration, fraction, updatedAt, title, artwork?, playlistID?}}` (seconden; `fraction` 0…1) |
+| `history` | lijst `{id, itemID, playlistID?, title, subtitle?, artwork?, type ("live"\|"movie"\|"series"\|"episode"), channelID?, at, date}`, nieuwste eerst, max. 500. `at` en `date` zijn dezelfde tijd (iOS schreef `at`, Android/Tizen `date`); schrijf allebei, lees wat er is. |
+| `removed` | **verwijderingen**: `{"myList": {id: at}, "favorites": {…}, "watched": {…}, "recentChannels": {…}, "progress": {sleutel: at}, "history": {id: at}}`. Per item wint de nieuwste tijd. Verwijderingen ouder dan 90 dagen mogen weg. |
+| `prefs` | `{autoSubtitles, audioLanguage, streamSubtitleLanguage, subtitleLanguage, updatedAt}`; `null` = niet ingesteld (dan geldt `settings.shared`). **Let op:** in `prefs` is `subtitleLanguage` de **OpenSubtitles**-taal en `streamSubtitleLanguage` de taal van ondertitels in de stream (in `settings.shared` heten die `openSubtitlesLanguage` en `subtitleLanguage`). Oud `autoSubtitles: false` in `prefs` = niet ingesteld. |
+| `pin`, `pinUpdatedAt` | pincode of `null`, met eigen tijd |
+| `homeLayout` | zie build 51 |
+| `updatedAt` | tijd van de laatste upload |
+
+- **Lezen:** accepteer verwijderingen in alle drie de vormen: `removed.<veld>`, `{removed:true}` in de lijst/in een `progress`-item, en de oudere iOS-velden `progressRemoved` / `historyRemoved` (en `<veld>Removed`).
+- **Schrijven:** zet verwijderingen altijd in `removed` (Android en Tizen lezen alleen die vorm voor `progress` en `history`). Haal `removed` nooit weg; iOS-apps van vóór build 60 schrijven daarnaast `progressRemoved` / `historyRemoved`, laat die staan.
+
+### `collections`: wanneer is het gemigreerd
+
+Gemigreerd (version 2) als `version >= 2` **of** als er een object `profiles` is. Alleen dan niet opnieuw migreren.
+
+### Profielen (`account_data.profiles`): alle velden
+
+`id`, `name`, `avatar {symbol, colorIndex, emoji?}`, `kids`, `ageLimit` (getal of `null`), `isMain`, `order`, `accentColor` (build 54), `photo` (build 40, `{path, updated}` of `null`), `updatedAt`, en bij een tombstone `deleted`, `deletedAt`. Onbekende velden blijven staan.
