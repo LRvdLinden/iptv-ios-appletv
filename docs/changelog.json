@@ -1,5 +1,65 @@
 [
  {
+  "build": 56,
+  "version": "1.0.0",
+  "date": "2026-10-12",
+  "items": [
+   {
+    "type": "fixed",
+    "platforms": [
+     "android"
+    ],
+    "nl": "Casten naar Chromecast werkt nu ook voor live-zenders, films en series: Bingr kiest automatisch een formaat dat de Chromecast kan afspelen en probeert bij een fout eerst een ander formaat",
+    "en": "Casting to Chromecast now works for live channels, movies and series: Bingr automatically picks a format the Chromecast can play and tries another format before giving up"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "android"
+    ],
+    "nl": "Chromecast toont titel, poster en aflevering, gaat verder op de juiste plek en neemt de volgende aflevering of zender automatisch mee",
+    "en": "Chromecast shows title, poster and episode, resumes at the right spot and automatically follows the next episode or channel"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Soepeler scrollen: collecties en leeftijdsclassificaties worden op de achtergrond bijgewerkt, alleen als er echt iets veranderd is, zonder dat lijsten haperen of verspringen",
+    "en": "Smoother scrolling: collections and age ratings update in the background, only when something actually changed, without lists stuttering or jumping"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Live TV: het zendervoorbeeld start pas als je even op een zender blijft staan en hapert niet meer bij snel scrollen; de tv-gids reageert sneller",
+    "en": "Live TV: the channel preview only starts once you rest on a channel and no longer stutters while scrolling fast; the TV guide responds faster"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "Synchroniseren bouwt het scherm niet meer onnodig opnieuw op, en collecties bewerken reageert direct tijdens het typen",
+    "en": "Syncing no longer rebuilds the screen needlessly, and editing a collection stays responsive while typing"
+   }
+  ]
+ },
+ {
   "build": 55,
   "version": "1.0.0",
   "date": "2026-10-12",

@@ -4,6 +4,22 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website. Andr
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 56
+_12 oktober 2026_
+
+### iOS, iPadOS, tvOS en macOS
+
+**Verbeterd**
+
+- Synchroniseren bouwt het scherm niet meer onnodig opnieuw op, en collecties bewerken reageert direct tijdens het typen
+
+### iOS, iPadOS, tvOS, macOS, Android en Android TV
+
+**Verbeterd**
+
+- Soepeler scrollen: collecties en leeftijdsclassificaties worden op de achtergrond bijgewerkt, alleen als er echt iets veranderd is, zonder dat lijsten haperen of verspringen
+- Live TV: het zendervoorbeeld start pas als je even op een zender blijft staan en hapert niet meer bij snel scrollen; de tv-gids reageert sneller
+
 ## Versie 1.0.0 · Build 55
 _12 oktober 2026_
 
