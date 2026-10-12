@@ -2,6 +2,12 @@
 
 Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac (Android: [bingr-android](https://github.com/LRvdLinden/bingr-android/blob/main/CHANGELOG.md)). Per versie het buildnummer en de datum; het buildnummer loopt gelijk over alle platforms.
 
+## Versie 1.0.0 · Build 50
+_2026-10-12_
+
+- Xtream: films, live-zenders en series worden tolerant ingelezen — één afwijkend item op de server kost niet meer de hele lijst, dus je ziet weer alles
+- Filminfo (beschrijving, cast, trailer) laadt ook bij servers die velden anders aanleveren
+
 ## Versie 1.0.0 · Build 49
 _2026-10-12_
 

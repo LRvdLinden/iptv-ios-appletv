@@ -28,18 +28,72 @@ struct XtreamClient {
         struct UserInfo: Decodable { let auth: Flex?; let status: String?; let exp_date: Flex?; let max_connections: Flex? }
         let user_info: UserInfo?
     }
-    struct Cat: Decodable { let category_id: Flex; let category_name: String? }
+    // Lijsten en velden worden tolerant gelezen: servers sturen tekst soms als getal (of andersom), lege
+    // velden als [] of false, en één afwijkend item mag nooit de hele lijst (alle films/zenders/series) kosten.
+    struct Cat: Decodable {
+        let category_id: Flex; let category_name: String?
+        private enum K: String, CodingKey { case category_id, category_name }
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: K.self)
+            category_id = try c.decode(Flex.self, forKey: .category_id)
+            category_name = c.flexString(.category_name)
+        }
+    }
     struct Live: Decodable {
         let stream_id: Flex; let name: String?; let stream_icon: String?; let epg_channel_id: String?
         let category_id: Flex?; let num: Flex?; let tv_archive: Flex?; let tv_archive_duration: Flex?
+        private enum K: String, CodingKey { case stream_id, name, stream_icon, epg_channel_id, category_id, num, tv_archive, tv_archive_duration }
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: K.self)
+            stream_id = try c.decode(Flex.self, forKey: .stream_id)
+            name = c.flexString(.name); stream_icon = c.flexString(.stream_icon); epg_channel_id = c.flexString(.epg_channel_id)
+            category_id = try? c.decode(Flex.self, forKey: .category_id); num = try? c.decode(Flex.self, forKey: .num)
+            tv_archive = try? c.decode(Flex.self, forKey: .tv_archive); tv_archive_duration = try? c.decode(Flex.self, forKey: .tv_archive_duration)
+        }
     }
     struct Vod: Decodable {
         let stream_id: Flex; let name: String?; let stream_icon: String?; let category_id: Flex?
         let container_extension: String?; let rating: Flex?; let added: Flex?; let year: Flex?
+        private enum K: String, CodingKey { case stream_id, name, title, stream_icon, cover, category_id, container_extension, rating, added, year }
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: K.self)
+            stream_id = try c.decode(Flex.self, forKey: .stream_id)
+            name = c.flexString(.name) ?? c.flexString(.title)
+            stream_icon = c.flexString(.stream_icon) ?? c.flexString(.cover)
+            category_id = try? c.decode(Flex.self, forKey: .category_id)
+            container_extension = c.flexString(.container_extension).flatMap { $0.isEmpty ? nil : $0 }
+            rating = try? c.decode(Flex.self, forKey: .rating); added = try? c.decode(Flex.self, forKey: .added)
+            year = try? c.decode(Flex.self, forKey: .year)
+        }
     }
     struct SeriesDTO: Decodable {
         let series_id: Flex; let name: String?; let cover: String?; let category_id: Flex?
         let plot: String?; let rating: Flex?; let releaseDate: String?; let year: Flex?
+        private enum K: String, CodingKey { case series_id, name, title, cover, category_id, plot, rating, releaseDate, release_date, year }
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: K.self)
+            series_id = try c.decode(Flex.self, forKey: .series_id)
+            name = c.flexString(.name) ?? c.flexString(.title); cover = c.flexString(.cover)
+            category_id = try? c.decode(Flex.self, forKey: .category_id); plot = c.flexString(.plot)
+            rating = try? c.decode(Flex.self, forKey: .rating)
+            releaseDate = c.flexString(.releaseDate) ?? c.flexString(.release_date)
+            year = try? c.decode(Flex.self, forKey: .year)
+        }
+    }
+    /// Lijst waarin een kapot item wordt overgeslagen in plaats van de hele lijst te laten mislukken.
+    struct LossyList<T: Decodable>: Decodable {
+        let items: [T]
+        private struct Item: Decodable {
+            let value: T?
+            init(from decoder: Decoder) throws { value = try? T(from: decoder) }
+        }
+        init(from decoder: Decoder) throws {
+            // sommige servers sturen een object {"0": item, "1": item} in plaats van een lijst
+            if let a = try? [Item](from: decoder) { items = a.compactMap(\.value) }
+            else if let d = try? [String: Item](from: decoder) {
+                items = d.sorted { (Int($0.key) ?? 0) < (Int($1.key) ?? 0) }.compactMap { $0.value.value }
+            } else { items = [] }
+        }
     }
     /// get_series_info. Servers verschillen sterk: `episodes` kan een object per seizoen zijn ({"1":[…]}),
     /// een lijst met lijsten ([[…],[…]]), een platte lijst of leeg; `info` kan een object of een lege lijst zijn.
@@ -136,8 +190,29 @@ struct XtreamClient {
             let backdrop_path: StringOrArray?; let director: String?; let cast: String?; let actors: String?
             let genre: String?; let releasedate: String?; let duration: String?; let duration_secs: Flex?
             let description: String?; let country: String?
+            private enum K: String, CodingKey {
+                case imdb_id, plot, rating, youtube_trailer, tmdb_id, tmdb, name, o_name, cover_big, movie_image, backdrop_path,
+                     director, cast, actors, genre, releasedate, release_date, duration, duration_secs, description, country
+            }
+            init(from decoder: Decoder) throws {
+                let c = try decoder.container(keyedBy: K.self)
+                imdb_id = c.flexString(.imdb_id); plot = c.flexString(.plot); rating = try? c.decode(Flex.self, forKey: .rating)
+                youtube_trailer = c.flexString(.youtube_trailer)
+                tmdb_id = (try? c.decode(Flex.self, forKey: .tmdb_id)) ?? (try? c.decode(Flex.self, forKey: .tmdb))
+                name = c.flexString(.name) ?? c.flexString(.o_name); cover_big = c.flexString(.cover_big); movie_image = c.flexString(.movie_image)
+                backdrop_path = try? c.decode(StringOrArray.self, forKey: .backdrop_path)
+                director = c.flexString(.director); cast = c.flexString(.cast); actors = c.flexString(.actors); genre = c.flexString(.genre)
+                releasedate = c.flexString(.releasedate) ?? c.flexString(.release_date); duration = c.flexString(.duration)
+                duration_secs = try? c.decode(Flex.self, forKey: .duration_secs)
+                description = c.flexString(.description); country = c.flexString(.country)
+            }
         }
         let info: Info?
+        private enum K: String, CodingKey { case info }
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: K.self)
+            info = try? c.decode(Info.self, forKey: .info)   // soms [] i.p.v. een object
+        }
     }
     struct ShortEPG: Decodable {
         struct L: Decodable { let title: String?; let description: String?; let start_timestamp: Flex?; let stop_timestamp: Flex? }
@@ -157,12 +232,12 @@ struct XtreamClient {
               let vc = api("get_vod_categories"), let vs = api("get_vod_streams"),
               let sc = api("get_series_categories"), let ss = api("get_series") else { throw HTTPError.badURL }
 
-        async let liveCats = (try? HTTP.json([Cat].self, lc)) ?? []
-        async let live = (try? HTTP.json([Live].self, ls)) ?? []
-        async let vodCats = (try? HTTP.json([Cat].self, vc)) ?? []
-        async let vod = (try? HTTP.json([Vod].self, vs)) ?? []
-        async let serCats = (try? HTTP.json([Cat].self, sc)) ?? []
-        async let ser = (try? HTTP.json([SeriesDTO].self, ss)) ?? []
+        async let liveCats = (try? HTTP.json(LossyList<Cat>.self, lc))?.items ?? []
+        async let live = (try? HTTP.json(LossyList<Live>.self, ls))?.items ?? []
+        async let vodCats = (try? HTTP.json(LossyList<Cat>.self, vc))?.items ?? []
+        async let vod = (try? HTTP.json(LossyList<Vod>.self, vs))?.items ?? []
+        async let serCats = (try? HTTP.json(LossyList<Cat>.self, sc))?.items ?? []
+        async let ser = (try? HTTP.json(LossyList<SeriesDTO>.self, ss))?.items ?? []
 
         func map(_ cats: [Cat]) -> [String: String] {
             Dictionary(cats.compactMap { c in c.category_id.string.map { ($0, c.category_name ?? L("Other")) } },

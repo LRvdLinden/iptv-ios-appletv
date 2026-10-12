@@ -1,5 +1,21 @@
 [
  {
+  "build": 50,
+  "version": "1.0.0",
+  "date": "2026-10-12",
+  "platforms": [
+   "apple"
+  ],
+  "nl": [
+   "Xtream: films, live-zenders en series worden tolerant ingelezen — één afwijkend item op de server kost niet meer de hele lijst, dus je ziet weer alles",
+   "Filminfo (beschrijving, cast, trailer) laadt ook bij servers die velden anders aanleveren"
+  ],
+  "en": [
+   "Xtream: movies, live channels and series are read tolerantly — one odd item on the server no longer costs the whole list, so you see everything again",
+   "Movie info (plot, cast, trailer) also loads on servers that send fields differently"
+  ]
+ },
+ {
   "build": 49,
   "version": "1.0.0",
   "date": "2026-10-12",

@@ -92,6 +92,11 @@ extension String {
     var trimmedSlash: String { var s = trimmingCharacters(in: .whitespaces); while s.hasSuffix("/") { s.removeLast() }; return s }
 }
 
+extension KeyedDecodingContainer {
+    /// Tekstveld dat ook als getal, bool, null, [] of {} kan binnenkomen (dan nil of omgezet naar tekst).
+    func flexString(_ key: Key) -> String? { (try? decode(Flex.self, forKey: key))?.string }
+}
+
 /// Veld dat soms een string en soms een lijst met strings is (bijv. Xtream backdrop_path).
 struct StringOrArray: Decodable, Hashable {
     let values: [String]
