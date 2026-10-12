@@ -99,6 +99,10 @@ struct CategoryView: View {
                         .frame(width: g.size.width, height: g.size.width * 1.5)
                         .clipped()
                     if watched(t) { WatchedBadge().padding(6).frame(maxWidth: .infinity, alignment: .topLeading) }
+                    // taal onderaan de poster (build 59)
+                    if let l = language(t) {
+                        LanguageStrip(language: l).frame(maxHeight: .infinity, alignment: .bottom)
+                    }
                     if let r = rating(t) {
                         HStack(spacing: 3) {
                             Image(systemName: "star.fill").font(.system(size: tvScaled(9)))
@@ -134,8 +138,15 @@ struct CategoryView: View {
         }
     }
 
+    /// Titel zonder taallabel ("Animal (IT)" → "Animal"); de taal staat op de poster (build 59)
     private func title(_ t: DetailTarget) -> String {
-        switch t { case .movie(let m): return m.title; case .series(let s): return s.title }
+        switch t {
+        case .movie(let m): return ContentLanguage.displayTitle(m.title)
+        case .series(let s): return ContentLanguage.displayTitle(s.title)
+        }
+    }
+    private func language(_ t: DetailTarget) -> ContentLanguage? {
+        switch t { case .movie(let m): return ContentLanguage.of(m); case .series(let s): return ContentLanguage.of(s) }
     }
     private func poster(_ t: DetailTarget) -> URL? {
         switch t {

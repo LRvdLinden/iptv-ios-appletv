@@ -86,7 +86,7 @@ final class StateSync {
         var settingsFormat: Int? = StateSync.settingsFormat
     }
 
-    nonisolated static let settingsFormat = 54
+    nonisolated static let settingsFormat = 59
 
     private func saveMeta() {
         if let d = try? JSONEncoder().encode(meta) { UserDefaults.standard.set(d, forKey: metaKey) }
@@ -472,7 +472,8 @@ final class StateSync {
         }
         shared["audioLanguage"] = pref(main?.audioLanguage, TrackPreferences.audio)
         shared["subtitleLanguage"] = pref(main?.streamSubtitleLanguage, TrackPreferences.subtitle)
-        shared["autoSubtitles"] = pref(main?.autoSubtitles, d.bool(forKey: "autoSubtitles"))
+        // build 59: "off" | "whenNeeded" | "always" (was true/false)
+        shared["autoSubtitles"] = pref(main?.effectiveSubtitleMode, TrackPreferences.subtitleMode.rawValue)
         shared["openSubtitlesLanguage"] = pref(main?.subtitleLanguage, OpenSubtitles.shared.defaultLanguage)
         shared["openSubtitlesLanguages"] = OpenSubtitles.shared.preferredLanguages
         let tab = d.integer(forKey: "ui.startTab")
@@ -608,13 +609,13 @@ final class StateSync {
         // kijkvoorkeuren van het hoofdaccount
         let audio = shared["audioLanguage"] as? String
         let sub = shared["subtitleLanguage"] as? String
-        let auto = shared["autoSubtitles"] as? Bool
+        let auto = TrackPreferences.mode(fromSynced: shared["autoSubtitles"])?.rawValue
         let os = shared["openSubtitlesLanguage"] as? String
         if let main = store.mainProfileID, audio != nil || sub != nil || auto != nil || os != nil {
             store.setSyncedPreferences(main) { p in
                 if let audio { p.audioLanguage = audio }
                 if let sub { p.streamSubtitleLanguage = sub }
-                if let auto { p.autoSubtitles = auto }
+                if let auto { p.subtitleMode = auto }
                 if let os { p.subtitleLanguage = os }
             }
             // dezelfde voorkeuren zijn nu ook de bekende stand van profile.<hoofdprofiel>
@@ -627,7 +628,7 @@ final class StateSync {
         if store.activeProfileID == nil || store.isMainActive {
             if let audio { setIfChanged(audio, TrackPreferences.audioKey) }
             if let sub { setIfChanged(sub, TrackPreferences.subtitleKey) }
-            if let auto { setIfChanged(auto, "autoSubtitles") }
+            if let auto { setIfChanged(auto, TrackPreferences.subtitleModeKey) }
             if let os, os != OpenSubtitles.shared.defaultLanguage { OpenSubtitles.shared.defaultLanguage = os }
         }
 
@@ -982,7 +983,7 @@ final class StateSync {
     // MARK: - profile.<id>
 
     private static func prefs(of p: ViewerProfile) -> [String: Any] {
-        ["autoSubtitles": p.autoSubtitles.map { $0 as Any } ?? NSNull(),
+        ["autoSubtitles": p.effectiveSubtitleMode.map { $0 as Any } ?? NSNull(),
          "subtitleLanguage": p.subtitleLanguage.map { $0 as Any } ?? NSNull(),
          "audioLanguage": p.audioLanguage.map { $0 as Any } ?? NSNull(),
          "streamSubtitleLanguage": p.streamSubtitleLanguage.map { $0 as Any } ?? NSNull()]
@@ -1102,7 +1103,10 @@ final class StateSync {
             let spAt = Self.time(sp["updatedAt"]) ?? sectionAt
             if prefsAt == nil || spAt > prefsAt! {
                 store.setSyncedPreferences(id) { p in
-                    if sp.keys.contains("autoSubtitles") { p.autoSubtitles = sp["autoSubtitles"] as? Bool }
+                    if sp.keys.contains("autoSubtitles") {
+                        p.subtitleMode = TrackPreferences.mode(fromSynced: sp["autoSubtitles"])?.rawValue
+                        if p.subtitleMode == nil { p.autoSubtitles = nil }
+                    }
                     if sp.keys.contains("subtitleLanguage") { p.subtitleLanguage = sp["subtitleLanguage"] as? String }
                     if sp.keys.contains("audioLanguage") { p.audioLanguage = sp["audioLanguage"] as? String }
                     if sp.keys.contains("streamSubtitleLanguage") { p.streamSubtitleLanguage = sp["streamSubtitleLanguage"] as? String }

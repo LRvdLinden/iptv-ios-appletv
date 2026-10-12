@@ -38,6 +38,9 @@ struct DetailView: View {
     @State private var seasonTrailers: [Int: String] = [:]
     /// De trailer die in het blad speelt
     @State private var trailerID: String?
+    /// Build 59: dezelfde titel in andere talen in je bibliotheek
+    @State private var languageVersions: [LanguageVersion] = []
+    @State private var showLanguages = false
     #if os(tvOS)
     /// Apple TV: focus in de afleveringenrij begint bij de aflevering waar je bent
     @FocusState private var focusedEpisode: String?
@@ -47,7 +50,15 @@ struct DetailView: View {
 
     private var pid: UUID? { playlists.source?.id }
     private var baseTitle: String { switch target { case .movie(let m): return m.title; case .series(let s): return s.title } }
-    private var title: String { d?.title ?? baseTitle }
+    /// Titel zonder taallabel ("Animal (IT)" → "Animal"), build 59
+    private var title: String { d?.title ?? ContentLanguage.displayTitle(baseTitle) }
+    /// Taal van deze versie (label in de titel/categorie, anders de originele taal uit TMDB)
+    private var language: ContentLanguage? {
+        switch target {
+        case .movie(let m): return ContentLanguage.of(m)
+        case .series(let s): return ContentLanguage.of(s)
+        }
+    }
     private var imdb: String? {
         switch target {
         case .movie(let m): return trakt.imdb(for: m) ?? d?.imdbID
@@ -126,8 +137,10 @@ struct DetailView: View {
             }
         }
         .task(id: target.id) { await load() }
+        .task(id: "\(target.id)-\(playlists.libraryVersion)") { await loadLanguageVersions() }
         .task(id: d?.recommendations.map(\.id) ?? []) { await matchRecommendations() }
         .sheet(isPresented: $showSources) { sourcesSheet }
+        .sheet(isPresented: $showLanguages) { languagesSheet }
         .sheet(item: $collecting) { AddToCollectionSheet(target: $0) }
         .sheet(isPresented: $ageGate, onDismiss: {
             // pas afspelen als het pincodescherm helemaal weg is (anders opent de speler niet, vooral op Apple TV)
@@ -216,6 +229,10 @@ struct DetailView: View {
                 Text(seasons.count == 1 ? L("1 season") : L("%d seasons", seasons.count))
             } else if let rt = d?.runtime { Text(rt) }
             if isWatchedTitle { Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.green) }
+            // build 59: taal van deze versie ("Taal: Italiaans")
+            if let lt = language?.detailText {
+                Text(L("Language: %@", lt)).lineLimit(1).minimumScaleFactor(0.7)
+            }
         }
         .font(.system(size: tvScaled(16)))
         .foregroundStyle(.white)
@@ -261,6 +278,20 @@ struct DetailView: View {
                         .lineLimit(1).minimumScaleFactor(0.8)
                         .padding(.horizontal, tvScaled(10))
                         .frame(maxWidth: .infinity).frame(height: tvScaled(50))
+                        .background(Color.white.opacity(0.12), in: Capsule())
+                        .overlay(Capsule().stroke(.white.opacity(0.12)))
+                }
+                .plainTVButton()
+            }
+            // build 59: dezelfde titel in een andere taal
+            if !languageVersions.isEmpty {
+                Button { showLanguages = true } label: {
+                    Label(L("Other language") + " · " + orderedUnique(languageVersions.map(\.label)).prefix(4).joined(separator: ", "),
+                          systemImage: "globe")
+                        .font(.system(size: tvScaled(15), weight: .medium))
+                        .lineLimit(1).minimumScaleFactor(0.8)
+                        .padding(.horizontal, tvScaled(14))
+                        .frame(maxWidth: .infinity).frame(height: tvScaled(46))
                         .background(Color.white.opacity(0.12), in: Capsule())
                         .overlay(Capsule().stroke(.white.opacity(0.12)))
                 }
@@ -775,6 +806,61 @@ struct DetailView: View {
         }
     }
 
+    /// Build 59: andere-taalversies; kiezen = die versie afspelen (film, met zijn eigen hervatpunt) of openen (serie).
+    private var languagesSheet: some View {
+        NavigationStack {
+            List {
+                if let l = language?.detailText {
+                    Section(L("This version")) { Label(l, systemImage: "checkmark.circle.fill") }
+                }
+                Section(L("Other language")) {
+                    ForEach(languageVersions) { v in
+                        Button {
+                            showLanguages = false
+                            openVersion(v)
+                        } label: {
+                            HStack(spacing: 12) {
+                                Text(v.label).font(.system(size: tvScaled(12), weight: .bold).smallCaps())
+                                    .padding(.horizontal, 8).padding(.vertical, 4)
+                                    .background(Color.white.opacity(0.14), in: RoundedRectangle(cornerRadius: 5))
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(v.name)
+                                    Text(v.group).font(.caption).foregroundStyle(Theme.secondary).lineLimit(1)
+                                }
+                                Spacer()
+                                Image(systemName: isMovie ? "play.fill" : "chevron.right").foregroundStyle(Theme.secondary)
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle(L("Other language"))
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button(L("Close")) { showLanguages = false } } }
+        }
+    }
+
+    private func openVersion(_ v: LanguageVersion) {
+        switch v.target {
+        case .movie(let m):
+            let imdbID = imdb
+            Task { @MainActor in
+                // pas afspelen als het blad weg is (anders opent de speler niet, vooral op Apple TV)
+                try? await Task.sleep(nanoseconds: 350_000_000)
+                ageChecked { app.play(Playables.movie(m, imdb: imdbID)) }
+            }
+        case .series:
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 350_000_000)
+                nested = v.target
+            }
+        }
+    }
+
+    private func loadLanguageVersions() async {
+        let key = "\(playlists.source?.id.uuidString ?? "")-\(playlists.libraryVersion)"
+        languageVersions = await LanguageVersions.shared.versions(of: target, in: playlists.library, key: key)
+    }
+
     // MARK: acties
 
     private var isWatchedTitle: Bool {
@@ -802,9 +888,28 @@ struct DetailView: View {
     /// Classificatie: TMDB (Kijkwijzer eerst), anders IMDb/Trakt; onbekend bij een kinderprofiel = streng.
     private func ageChecked(_ action: @escaping () -> Void) {
         guard let profile = store.activeProfile, let limit = profile.effectiveAgeLimit else { action(); return }
+        PlaybackTiming.begin(title, step: "age check")
         Task { @MainActor in
-            let info = await currentAgeInfo()
+            // build 59: eerst de classificatie die al bekend is (de detailpagina haalt hem bij het openen al op).
+            // Onbekend: een kinderprofiel wacht op TMDB (streng), andere profielen hooguit 1,5 seconde.
+            var info: AgeInfo? = ageInfo ?? cachedAgeInfo
+            if info == nil || !(info?.isFresh ?? false) {
+                let lookup = Task { @MainActor in await currentAgeInfo() }
+                if profile.strictAgeFilter {
+                    info = await lookup.value ?? info
+                } else {
+                    let quick: AgeInfo? = await withTaskGroup(of: AgeInfo?.self) { g in
+                        g.addTask { await lookup.value }
+                        g.addTask { try? await Task.sleep(nanoseconds: 1_500_000_000); return nil }
+                        let first = (await g.next()) ?? nil
+                        g.cancelAll()
+                        return first
+                    }
+                    info = quick ?? info
+                }
+            }
             if info != nil { ageInfo = info }
+            PlaybackTiming.mark("age check done")
             let group: String = { switch target { case .movie(let m): return m.group; case .series(let s): return s.group } }()
             let cached: TitleMetadata? = {
                 switch target {
@@ -821,6 +926,14 @@ struct DetailView: View {
         }
     }
 
+    /// Classificatie uit de cache (zonder netwerk), ook als hij oud is.
+    private var cachedAgeInfo: AgeInfo? {
+        switch target {
+        case .movie(let m): return AgeRatingService.shared.cached(m)
+        case .series(let s): return AgeRatingService.shared.cached(s)
+        }
+    }
+
     /// TMDB-classificatie van deze titel (gecachet; voor series die van de serie, niet van een film).
     private func currentAgeInfo() async -> AgeInfo? {
         switch target {
@@ -829,7 +942,10 @@ struct DetailView: View {
         }
     }
 
-    private func play() { ageChecked(playNow) }
+    private func play() {
+        if store.activeProfile?.effectiveAgeLimit == nil { PlaybackTiming.begin(title) }
+        ageChecked(playNow)
+    }
 
     private func playNow() {
         switch target {
@@ -923,6 +1039,11 @@ struct DetailView: View {
 
     private func load() async {
         loading = true
+        // build 59: bij een profiel met leeftijdsgrens de classificatie meteen (tegelijk met de details) ophalen,
+        // zodat Afspelen er niet op hoeft te wachten
+        if store.activeProfile?.effectiveAgeLimit != nil, ageInfo == nil {
+            Task { @MainActor in if let info = await currentAgeInfo(), ageInfo == nil { ageInfo = info } }
+        }
         var epsTask: Task<[Episode], Never>?
         if case .series(let s) = target {
             let pl = playlists

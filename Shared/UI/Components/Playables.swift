@@ -8,7 +8,16 @@ enum Playables {
                              imdbID: imdb, artwork: m.poster, stalkerCmd: m.stalkerCmd,
                              resumeAt: resume(m.id, imdb: imdb))
         if m.streamURL == nil, m.stalkerCmd == nil, let id = m.imdbID ?? imdb { p.stremio = "movie|\(id)" }
+        applyLanguage(ContentLanguage.of(m), to: &p)
         return p
+    }
+
+    /// Taal van de titel meegeven aan de speler (automatische ondertitels) en de hervatpositie in seconden (build 59).
+    private static func applyLanguage(_ l: ContentLanguage?, to p: inout PlayableItem) {
+        p.audioLanguage = (l?.multi ?? false) ? nil : l?.audioBase
+        p.burnedSubtitles = l?.subtitlesBase
+        if p.resumeAt > 0.01, let e = CloudStore.shared.progress[p.id], e.position > 0,
+           abs(e.fraction - p.resumeAt) < 0.001 { p.resumeSeconds = e.position }
     }
 
     static func episode(_ e: Episode, of s: Series, imdb: String?) -> PlayableItem {
@@ -18,6 +27,7 @@ enum Playables {
                              artwork: e.still ?? s.poster, resumeAt: resume(e.id, imdb: nil))
         if e.streamURL == nil, e.id.hasPrefix("se") { p.stremio = "series|\(e.id.dropFirst(2))" }
         p.seriesID = s.id
+        applyLanguage(ContentLanguage.of(s), to: &p)
         return p
     }
 

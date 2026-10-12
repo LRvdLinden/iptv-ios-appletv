@@ -11,7 +11,7 @@ struct SettingsView: View {
     @EnvironmentObject var parental: ParentalControl
     /// App-sleutels van de server (build 41): opnieuw tekenen zodra ze binnen zijn
     @ObservedObject private var account = AccountService.shared
-    @AppStorage("autoSubtitles") private var autoSubtitles = false
+    @AppStorage(TrackPreferences.subtitleModeKey) private var subtitleMode = TrackPreferences.SubtitleMode.whenNeeded.rawValue
     @AppStorage("trakt.scrobble") private var traktScrobble = true
     @AppStorage("trakt.askRating") private var traktAskRating = true
     @AppStorage("playlist.refresh") private var refreshPolicy = RefreshPolicy.daily.rawValue
@@ -92,7 +92,8 @@ struct SettingsView: View {
             }
             .navigationTitle(store.activeProfile?.name ?? L("My Bingr"))
             // persoonlijke kijkvoorkeuren horen bij het profiel
-            .onChange(of: autoSubtitles) { _, v in store.updateActivePreferences { $0.autoSubtitles = v } }
+            .onChange(of: subtitleMode) { _, v in store.updateActivePreferences { $0.subtitleMode = v } }
+            .onAppear(perform: migrateSubtitlePreferences)
             .onChange(of: audioLanguage) { _, v in store.updateActivePreferences { $0.audioLanguage = v } }
             .onChange(of: subtitleLanguage) { _, v in store.updateActivePreferences { $0.streamSubtitleLanguage = v } }
             .onChange(of: subs.defaultLanguage) { _, v in store.updateActivePreferences { $0.subtitleLanguage = v } }
@@ -339,6 +340,17 @@ struct SettingsView: View {
         }
     }
 
+    /// Oude instellingen (t/m build 58) omzetten: ondertitelspoor "Uit" → automatisch uit; oude schakelaar → modus.
+    private func migrateSubtitlePreferences() {
+        if UserDefaults.standard.string(forKey: TrackPreferences.subtitleModeKey) == nil {
+            subtitleMode = TrackPreferences.subtitleMode.rawValue
+        }
+        if subtitleLanguage == "off" {
+            subtitleLanguage = ""
+            subtitleMode = TrackPreferences.SubtitleMode.off.rawValue
+        }
+    }
+
     private var openSubtitlesSection: some View {
         Section {
             if subs.isLoggedIn {
@@ -357,7 +369,6 @@ struct SettingsView: View {
                 ForEach(TrackPreferences.sortedCodes, id: \.self) { Text(TrackPreferences.label($0)).tag($0) }
             }
             .pickerStyle(.menu)
-            Toggle(L("Load subtitles automatically when playing"), isOn: $autoSubtitles)
         } header: { Text("OpenSubtitles") } footer: {
             Text(L("While playing, choose OpenSubtitles to pick another subtitle or language. Automatically uses a subtitle track in the stream first; otherwise the best match from OpenSubtitles is loaded (requires sign-in).") + " " + L("These choices apply to this profile only."))
         }
@@ -394,14 +405,18 @@ struct SettingsView: View {
                 ForEach(SubtitleSize.allCases, id: \.rawValue) { Text($0.title).tag($0.rawValue) }
             }
             .pickerStyle(.menu)
-            Picker(L("Default audio language"), selection: $audioLanguage) {
-                Text(L("As in the stream")).tag("")
+            // build 59: voorkeurstaal (standaard de app-taal) en automatische ondertitels
+            Picker(L("Preferred audio language"), selection: $audioLanguage) {
+                Text(L("App language (%@)", TrackPreferences.name(TrackPreferences.appLanguage))).tag("")
                 ForEach(TrackPreferences.sortedCodes, id: \.self) { Text(TrackPreferences.label($0)).tag($0) }
             }
             .pickerStyle(.menu)
-            Picker(L("Default subtitle language"), selection: $subtitleLanguage) {
-                Text(L("As in the stream")).tag("")
-                Text(L("Off")).tag("off")
+            Picker(L("Subtitles automatically"), selection: $subtitleMode) {
+                ForEach(TrackPreferences.SubtitleMode.allCases) { Text($0.title).tag($0.rawValue) }
+            }
+            .pickerStyle(.menu)
+            Picker(L("Preferred subtitle language"), selection: $subtitleLanguage) {
+                Text(L("App language (%@)", TrackPreferences.name(TrackPreferences.appLanguage))).tag("")
                 ForEach(TrackPreferences.sortedCodes, id: \.self) { Text(TrackPreferences.label($0)).tag($0) }
             }
             .pickerStyle(.menu)
@@ -429,7 +444,7 @@ struct SettingsView: View {
                 .font(.caption).foregroundStyle(Theme.secondary)
             #endif
         } header: { Text(L("Player")) } footer: {
-            Text(L("Automatic uses the Apple player for HLS and MP4 (HDR, Dolby Vision, Atmos, AirPlay, Picture in Picture) and VLC for everything else. If a stream fails, Bingr switches over and reconnects automatically. The default languages are chosen automatically when a stream has them.") + " " + L("With a zap delay, quickly zapping only shows the channel banner; the stream starts once you stop.") + " " + L("Deinterlacing applies to the VLC player and removes comb lines from interlaced TV channels. Start with last channel opens the channel you watched last right after choosing your profile."))
+            Text(L("Automatic uses the Apple player for HLS and MP4 (HDR, Dolby Vision, Atmos, AirPlay, Picture in Picture) and VLC for everything else. If a stream fails, Bingr switches over and reconnects automatically. The default languages are chosen automatically when a stream has them.") + " " + L("Subtitles automatically: when needed shows subtitles in your preferred language only if the audio is in another language, using a track in the stream or else the best match from OpenSubtitles (requires sign-in); always shows them for every movie and episode.") + " " + L("With a zap delay, quickly zapping only shows the channel banner; the stream starts once you stop.") + " " + L("Deinterlacing applies to the VLC player and removes comb lines from interlaced TV channels. Start with last channel opens the channel you watched last right after choosing your profile."))
         }
     }
 

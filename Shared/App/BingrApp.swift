@@ -275,6 +275,8 @@ final class AppState: ObservableObject {
     }
 
     func play(_ item: PlayableItem, zap: [Channel] = []) {
+        // build 59: tijdmeting van het startpad (al begonnen op de detailpagina? dan alleen een tussenstap)
+        PlaybackTiming.begin(item.title, step: "app.play", keepRecent: true)
         PiPCenter.shared.stopActive()
         ChannelPreview.shared.stop(release: true)
         liveZapList = zap

@@ -131,6 +131,8 @@ final class VLCEngine: PlaybackEngine {
 
     private var lastURL: URL?
     private var lastLive = false
+    /// Build 59: hervatten vanaf deze seconde via `:start-time` (VLC buffert dan niet eerst vanaf het begin)
+    var startSeconds: Double?
 
     func setSubtitleSize(_ size: SubtitleSize) {
         guard let url = lastURL, state == .playing || state == .paused || state == .buffering else { return }
@@ -143,9 +145,17 @@ final class VLCEngine: PlaybackEngine {
         // ondertitels: VLC tekent ze standaard erg groot (zeker op een tv)
         media.addOption(":sub-text-scale=\(SubtitleSize.current.vlcScale)")
         media.addOption(":freetype-rel-fontsize=\(SubtitleSize.current == .large ? 16 : SubtitleSize.current == .medium ? 18 : 20)")
-        media.addOption(":network-caching=\(live ? 1500 : 3000)")
+        // build 59: kleinere buffer = sneller beeld (was 1500 ms live / 3000 ms films); VLC herverbindt zelf bij haperen
+        media.addOption(":network-caching=\(live ? 1000 : 1200)")
         media.addOption(":http-user-agent=\(Secrets.userAgent)")
         media.addOption(":http-reconnect")
+        if !silent {
+            // build 59: meteen het audiospoor in de voorkeurstaal kiezen (instelling, anders de app-taal)
+            media.addOption(":audio-language=\(TrackPreferences.vlcCodes(TrackPreferences.preferredAudio))")
+        }
+        let resumeAt = live ? nil : startSeconds.flatMap { $0 > 1 ? $0 : nil }
+        startSeconds = nil
+        if let r = resumeAt { media.addOption(":start-time=\(Int(r))") }
         if silent {
             media.addOption(":no-audio")
             // voorbeeld in een klein venster: lagere resolutie kiezen (HLS/DASH) en lichter decoderen
@@ -176,7 +186,7 @@ final class VLCEngine: PlaybackEngine {
         player.media = media
         pendingStart = startFraction
         player.play()
-        if let s = startFraction, s > 0.01 {
+        if resumeAt == nil, let s = startFraction, s > 0.01 {
             Task { @MainActor in
                 for _ in 0..<40 {   // wachten tot de lengte bekend is
                     try? await Task.sleep(nanoseconds: 250_000_000)
@@ -205,7 +215,8 @@ final class VLCEngine: PlaybackEngine {
         let i = idx?.compactMap { ($0 as? NSNumber)?.int32Value } ?? []
         return zip(i, n).map { MediaTrack(id: String($0), name: $1) }
     }
-    var audioTracks: [MediaTrack] { tracks(player.audioTrackNames, player.audioTrackIndexes) }
+    /// Zonder "Uitschakelen" (-1): die keuze zette het geluid uit in plaats van een andere taal te kiezen
+    var audioTracks: [MediaTrack] { tracks(player.audioTrackNames, player.audioTrackIndexes).filter { $0.id != "-1" } }
     var subtitleTracks: [MediaTrack] { tracks(player.videoSubTitlesNames, player.videoSubTitlesIndexes).filter { $0.id != "-1" } }
     var currentAudio: String? { String(player.currentAudioTrackIndex) }
     var currentSubtitle: String? { player.currentVideoSubTitleIndex == -1 ? nil : String(player.currentVideoSubTitleIndex) }
@@ -351,6 +362,12 @@ final class AVEngine: PlaybackEngine {
             player.isMuted = true
         }
         item.textStyleRules = Self.textRules(SubtitleSize.current)
+        if !silent {
+            // build 59: audio in de voorkeurstaal (instelling, anders de app-taal) als de stream die heeft
+            let criteria = AVPlayerMediaSelectionCriteria(preferredLanguages: [TrackPreferences.preferredAudio],
+                                                          preferredMediaCharacteristics: nil)
+            player.setMediaSelectionCriteria(criteria, forMediaCharacteristic: .audible)
+        }
         observers = [
             NotificationCenter.default.addObserver(forName: .AVPlayerItemFailedToPlayToEndTime, object: item, queue: .main) { [weak self] _ in
                 Task { @MainActor in self?.failed = true }
@@ -360,14 +377,27 @@ final class AVEngine: PlaybackEngine {
             }
         ]
         player.replaceCurrentItem(with: item)
-        player.playImmediately(atRate: rate)
-        if let s = startFraction, s > 0.01 {
-            Task { @MainActor in
-                for _ in 0..<40 {
-                    try? await Task.sleep(nanoseconds: 250_000_000)
-                    if self.duration > 0 { self.seek(toFraction: s); break }
+        guard let s = startFraction, s > 0.01 else { player.playImmediately(atRate: rate); return }
+        // build 59: hervatten — eerst naar de positie, dan pas afspelen (niet eerst het begin laden en tonen)
+        Task { @MainActor [weak self] in
+            for _ in 0..<100 {
+                guard let self, self.player.currentItem === item else { return }
+                if self.duration > 0 {
+                    let tol = CMTime(seconds: 2, preferredTimescale: 600)
+                    self.player.seek(to: CMTime(seconds: self.duration * s, preferredTimescale: 600),
+                                     toleranceBefore: tol, toleranceAfter: tol) { [weak self] _ in
+                        Task { @MainActor in
+                            guard let self, self.player.currentItem === item else { return }
+                            self.player.playImmediately(atRate: self.rate)
+                        }
+                    }
+                    return
                 }
+                if item.status == .failed { self.player.playImmediately(atRate: self.rate); return }
+                try? await Task.sleep(nanoseconds: 100_000_000)
             }
+            guard let self, self.player.currentItem === item else { return }
+            self.player.playImmediately(atRate: self.rate)
         }
     }
     func play() { player.playImmediately(atRate: rate) }

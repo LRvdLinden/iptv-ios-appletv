@@ -7,7 +7,6 @@ struct PlayerScreen: View {
     @EnvironmentObject var playlists: PlaylistService
     @EnvironmentObject var subs: OpenSubtitles
     @Environment(\.dismiss) private var dismiss
-    @AppStorage("autoSubtitles") private var autoSubtitles = false
 
     @StateObject private var player: PlayerController
     @State private var showControls = true
@@ -47,6 +46,9 @@ struct PlayerScreen: View {
     /// Voor welke zender/titel `alternatives` gezocht zijn
     @State private var altFor: String?
     @ObservedObject private var markers = IntroMarkers.shared
+    /// Build 59: dezelfde film/serie in andere talen (om naar te wisselen vanuit Audio & ondertitels)
+    @State private var languageVersions: [LanguageVersion] = []
+    @State private var versionsFor: String?
 
     enum Panel: String, Identifiable { case audioSubs, opensubs, options, cast, sources, rate, intro, alternatives; var id: String { rawValue } }
 
@@ -197,7 +199,11 @@ struct PlayerScreen: View {
         #endif
         .sheet(item: $panel) { p in
             switch p {
-            case .audioSubs: TracksPanel(player: player)
+            case .audioSubs:
+                TracksPanel(player: player, versions: languageVersions) { v in
+                    panel = nil
+                    Task { await switchLanguage(to: v) }
+                }
             case .opensubs: OpenSubtitlesPanel(player: player)
             case .options: OptionsPanel(player: player)
             case .rate:
@@ -287,7 +293,7 @@ struct PlayerScreen: View {
                     Button(action: close) { Image(systemName: "xmark").font(.system(size: 20, weight: .bold)).padding(10) }
                     #endif
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(player.item.title).font(.system(size: tvScaled(17), weight: .bold))
+                        Text(ContentLanguage.displayTitle(player.item.title)).font(.system(size: tvScaled(17), weight: .bold))
                         if let s = player.item.subtitle { Text(s).font(.system(size: tvScaled(13))).foregroundStyle(Theme.secondary) }
                     }
                     Spacer()
@@ -439,6 +445,11 @@ struct PlayerScreen: View {
     /// Callbacks die naar dit scherm verwijzen (ook na terugkeer uit beeld-in-beeld opnieuw zetten).
     private func bind(_ it: PlayableItem) {
         player.onEnterPiP = { dismiss() }
+        // build 59: ondertitels van OpenSubtitles op de achtergrond (het afspelen wacht hier niet op)
+        player.onNeedSubtitles = { lang in
+            let current = player.item
+            Task { await fetchSubtitles(current, language: lang) }
+        }
         // build 52: live → automatisch naar een back-upbron; anders de foutmelding met keuzes
         player.onGiveUp = { autoFailover() }
         player.onFinished = {
@@ -452,6 +463,7 @@ struct PlayerScreen: View {
     }
 
     private func start(_ it: PlayableItem) async {
+        PlaybackTiming.mark("player screen")
         player.prepareNew()
         player.item = it
         streamLimit = nil
@@ -471,6 +483,11 @@ struct PlayerScreen: View {
         } else {
             player.catchupProvider = nil
         }
+        if it.type != .live, versionsFor != it.id {
+            versionsFor = it.id
+            languageVersions = []
+            Task { await loadLanguageVersions(for: it) }
+        }
         if it.stremio != nil {
             let found = await playlists.stremioStreams(it)
             // intussen gesloten of al naar een andere zender gezapt → niet meer starten
@@ -484,11 +501,11 @@ struct PlayerScreen: View {
             let resolved = await playlists.resolve(it)
             guard !player.dismissed, player.item.id == it.id, streamLimit == nil else { return }
             guard let url = resolved else { player.fail(L("No stream address available.")); return }
+            PlaybackTiming.mark("stream url")
             player.liveURL = url
             player.start(url: url)
         }
         poke()
-        if autoSubtitles, it.type != .live { Task { await autoLoadSubtitles(it) } }
         await findNext(it)
     }
 
@@ -504,7 +521,8 @@ struct PlayerScreen: View {
         }
         #endif
         let lib = playlists.library
-        guard let s = lib.series.first(where: { $0.episodes.contains { $0.id == it.id } })
+        guard let s = lib.series.first(where: { $0.id == it.seriesID })
+                ?? lib.series.first(where: { $0.episodes.contains { $0.id == it.id } })
                 ?? lib.series.first(where: { $0.title == it.title }) else { return }
         let eps = await playlists.episodes(for: s).sorted { ($0.season, $0.number) < ($1.season, $1.number) }
         guard player.item.id == it.id, let i = eps.firstIndex(where: { $0.id == it.id }), i + 1 < eps.count else { return }
@@ -517,27 +535,62 @@ struct PlayerScreen: View {
         Task { player.stop(keepDisplay: true); await start(n) }
     }
 
-    /// Standaard ondertitels: eerst een spoor in de stream in je standaardtaal, anders de beste van OpenSubtitles.
-    private func autoLoadSubtitles(_ it: PlayableItem) async {
-        let lang = subs.defaultLanguage
-        guard !lang.isEmpty else { return }
-        for _ in 0..<40 where !player.isPlaying { try? await Task.sleep(nanoseconds: 500_000_000) }
-        try? await Task.sleep(nanoseconds: 2_500_000_000)   // sporen laten binnenkomen
-        guard player.item.id == it.id, !player.hasExternalSubtitle else { return }
-        if let t = player.subtitleTracks.first(where: { TrackPreferences.matches($0, code: lang) }) {
-            player.selectSubtitle(t)
-            flash(L("Subtitles: %@", TrackPreferences.label(lang)))
+    /// Build 59: beste ondertitel van OpenSubtitles in deze taal, op de achtergrond (IMDb- of TMDB-id, seizoen/aflevering
+    /// en de hash van het bestand als dat kan), en meteen aanzetten met een korte melding.
+    private func fetchSubtitles(_ it: PlayableItem, language lang: String) async {
+        guard subs.isLoggedIn, player.item.id == it.id, !player.hasExternalSubtitle else { return }
+        let tmdb = ContentLanguage.Facts.shared.tmdbID(it.seriesID ?? it.id)
+        let hash = await OpenSubtitles.movieHash(player.url)
+        do {
+            let found = try await subs.search(imdbID: it.imdbID, tmdbID: tmdb, title: ContentLanguage.searchTitle(it.title),
+                                              year: it.subtitle.flatMap { Int($0) }, season: it.season, episode: it.episode,
+                                              languages: [lang], movieHash: hash)
+            guard let best = found.first, player.item.id == it.id, !player.hasExternalSubtitle else { return }
+            let file = try await subs.download(best)
+            guard player.item.id == it.id, !player.hasExternalSubtitle else { return }
+            player.addSubtitle(file: file, name: "\(TrackPreferences.flag(best.language)) \(best.release)", language: best.language)
+            flash(L("Subtitles: %@ (OpenSubtitles)", TrackPreferences.name(lang)))
+        } catch {}
+    }
+
+    // MARK: andere taal (build 59)
+
+    private func loadLanguageVersions(for it: PlayableItem) async {
+        let lib = playlists.library
+        let target: DetailTarget
+        if it.type == .episode, let s = lib.series.first(where: { $0.id == it.seriesID }) { target = .series(s) }
+        else if let m = lib.movies.first(where: { $0.id == it.id }) { target = .movie(m) }
+        else { return }
+        let key = "\(playlists.source?.id.uuidString ?? "")-\(playlists.libraryVersion)"
+        let found = await LanguageVersions.shared.versions(of: target, in: lib, key: key)
+        guard versionsFor == it.id else { return }
+        languageVersions = found
+    }
+
+    /// Naar dezelfde film/aflevering in een andere taal, op dezelfde plek.
+    private func switchLanguage(to v: LanguageVersion) async {
+        let old = player.item
+        let at = player.currentTime, fraction = player.position
+        var next: PlayableItem?
+        switch v.target {
+        case .movie(let m):
+            next = Playables.movie(m, imdb: old.imdbID)
+        case .series(let s):
+            guard let season = old.season, let number = old.episode else { break }
+            let eps = await playlists.episodes(for: s)
+            if let e = eps.first(where: { $0.season == season && $0.number == number }) {
+                next = Playables.episode(e, of: s, imdb: old.imdbID)
+            }
+        }
+        guard var it = next else {
+            flash(L("This episode isn't available in %@.", v.label))
             return
         }
-        guard subs.isLoggedIn else { return }
-        do {
-            let found = try await subs.search(imdbID: it.imdbID, title: it.title, year: it.subtitle.flatMap { Int($0) },
-                                              season: it.season, episode: it.episode, languages: [lang])
-            guard let best = found.first, player.item.id == it.id else { return }
-            let file = try await subs.download(best)
-            player.addSubtitle(file: file, name: "\(TrackPreferences.flag(best.language)) \(best.release)", language: best.language)
-            flash(L("Subtitles: %@", "\(TrackPreferences.label(lang)) · OpenSubtitles"))
-        } catch {}
+        if fraction > 0.01 { it.resumeAt = fraction; it.resumeSeconds = at }
+        flash(v.name)
+        PlaybackTiming.begin(it.title, step: "language switch")
+        player.stop(keepDisplay: true)
+        await start(it)
     }
 
     /// Volgende/vorige zender in de huidige groep. Met een zapvertraging toont snel zappen alleen de zenderbalk;

@@ -229,9 +229,9 @@ struct HomeView: View {
                         case .movie(let m):
                             PosterCard(title: m.title, poster: m.poster, imdbID: trakt.imdb(for: m),
                                        watched: Playables.isWatched(movie: m, imdb: trakt.imdb(for: m)),
-                                       progress: store.progress[m.id]?.fraction)
+                                       progress: store.progress[m.id]?.fraction, language: ContentLanguage.of(m))
                         case .series(let se):
-                            PosterCard(title: se.title, poster: se.poster, imdbID: trakt.imdb(for: se))
+                            PosterCard(title: se.title, poster: se.poster, imdbID: trakt.imdb(for: se), language: ContentLanguage.of(se))
                         }
                     }
                     .cardButton()
@@ -270,9 +270,9 @@ struct HomeView: View {
                             switch t {
                             case .movie(let m):
                                 PosterCard(title: m.title, poster: m.poster, imdbID: trakt.imdb(for: m),
-                                           watched: Playables.isWatched(movie: m, imdb: trakt.imdb(for: m)), progress: store.progress[m.id]?.fraction)
+                                           watched: Playables.isWatched(movie: m, imdb: trakt.imdb(for: m)), progress: store.progress[m.id]?.fraction, language: ContentLanguage.of(m))
                             case .series(let se):
-                                PosterCard(title: se.title, poster: se.poster, imdbID: trakt.imdb(for: se))
+                                PosterCard(title: se.title, poster: se.poster, imdbID: trakt.imdb(for: se), language: ContentLanguage.of(se))
                             }
                         }
                         .cardButton()
@@ -348,9 +348,9 @@ struct HomeView: View {
                     Button { detail = t } label: {
                         switch t {
                         case .movie(let m):
-                            PosterCard(title: m.title, poster: m.poster, badge: L("MOVIE"))
+                            PosterCard(title: m.title, poster: m.poster, badge: L("MOVIE"), language: ContentLanguage.of(m))
                         case .series(let s):
-                            PosterCard(title: s.title, poster: s.poster, badge: L("SERIES"))
+                            PosterCard(title: s.title, poster: s.poster, badge: L("SERIES"), language: ContentLanguage.of(s))
                         }
                     }
                     .cardButton()
@@ -366,7 +366,7 @@ struct HomeView: View {
                 Button { detail = .movie(m) } label: {
                     PosterCard(title: m.title, poster: m.poster, imdbID: imdb,
                                watched: Playables.isWatched(movie: m, imdb: imdb),
-                               progress: store.progress[m.id]?.fraction)
+                               progress: store.progress[m.id]?.fraction, language: ContentLanguage.of(m))
                 }
                 .cardButton()
                 .contextMenu { movieMenu(m, imdb: imdb) }
@@ -382,7 +382,7 @@ struct HomeView: View {
                                 s.episodes.filter { store.localWatched.contains($0.id) }.count)
                 Button { detail = .series(s) } label: {
                     PosterCard(title: s.title, poster: s.poster, imdbID: imdb,
-                               badge: count > 0 ? L("%d WATCHED", count) : nil)
+                               badge: count > 0 ? L("%d WATCHED", count) : nil, language: ContentLanguage.of(s))
                 }
                 .cardButton()
                 .contextMenu {
@@ -407,11 +407,11 @@ struct HomeView: View {
                 Button { detail = .movie(m) } label: {
                     Top10Card(rank: i + 1, title: m.title, poster: m.poster,
                               watched: Playables.isWatched(movie: m, imdb: trakt.imdb(for: m)),
-                              badge: (m.addedAt ?? .distantPast) > Date().addingTimeInterval(-14 * 86400) ? L("Recently added") : nil)
+                              badge: (m.addedAt ?? .distantPast) > Date().addingTimeInterval(-14 * 86400) ? L("Recently added") : nil, language: ContentLanguage.of(m))
                 }.cardButton()
             }
             ForEach(Array(series.enumerated()), id: \.element.id) { i, s in
-                Button { detail = .series(s) } label: { Top10Card(rank: i + 1, title: s.title, poster: s.poster) }.cardButton()
+                Button { detail = .series(s) } label: { Top10Card(rank: i + 1, title: s.title, poster: s.poster, language: ContentLanguage.of(s)) }.cardButton()
             }
         }
     }

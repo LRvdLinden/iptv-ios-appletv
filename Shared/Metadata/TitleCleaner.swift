@@ -12,7 +12,8 @@ enum TitleCleaner {
         pattern: #"(?i)\b(4k|uhd|fhd|hd|sd|hevc|h\.?265|x265|x264|1080p|720p|2160p|multi|subs?|nl ?sub|vost\w*|dolby|atmos|hdr10?\+?|dv)\b|\[[^\]]*\]|\([^\)]*\)"#)
 
     static func parse(_ raw: String) -> Parsed {
-        var s = raw
+        // taallabels ("Animal (IT)", "EN-Animal", "NL SUBS") eerst weg, met dezelfde regels als de covers (build 59)
+        var s = ContentLanguage.displayTitle(raw)
         // landcodes/labels vooraan weg (eventueel meerdere)
         for _ in 0..<2 { s = replace(prefix, in: s, with: "") }
 

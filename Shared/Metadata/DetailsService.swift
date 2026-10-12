@@ -25,6 +25,8 @@ struct TitleDetails: Hashable {
     var episodeInfo: [String: EpisodeInfo] = [:]     // "s-e"
     var seasonCount: Int?
     var tmdbID: Int?
+    /// Originele taal volgens TMDB ("en", "it"), build 59
+    var originalLanguage: String?
 
     struct Rating: Hashable, Identifiable { var id: String { source }; var source: String; var value: String }
     struct CastMember: Hashable, Identifiable {
@@ -52,15 +54,19 @@ final class DetailsService: ObservableObject {
         let isShow = target.isSeries
         switch target {
         case .movie(let m):
-            d = TitleDetails(title: m.title, year: m.year.map(String.init), overview: m.plot, poster: m.poster, imdbID: knownIMDb ?? m.imdbID)
+            // titel zonder taallabel ("Animal (IT)" → "Animal"), build 59
+            d = TitleDetails(title: ContentLanguage.displayTitle(m.title), year: m.year.map(String.init), overview: m.plot, poster: m.poster, imdbID: knownIMDb ?? m.imdbID)
             if let r = m.rating, r > 0 { d.ratings.append(.init(source: L("Playlist"), value: String(format: "%.1f", r))) }
             if let vi = await playlists.xtreamVodInfo(m) { merge(xtream: vi, into: &d) }
         case .series(let s):
-            d = TitleDetails(title: s.title, year: s.year.map(String.init), overview: s.plot, poster: s.poster, imdbID: knownIMDb ?? s.imdbID)
+            d = TitleDetails(title: ContentLanguage.displayTitle(s.title), year: s.year.map(String.init), overview: s.plot, poster: s.poster, imdbID: knownIMDb ?? s.imdbID)
             if let r = s.rating, r > 0 { d.ratings.append(.init(source: L("Playlist"), value: String(format: "%.1f", r))) }
             if let si = await playlists.xtreamSeriesInfo(s) { merge(xtream: si, into: &d) }
         }
-        let yearInt = d.year.flatMap { Int($0.prefix(4)) }
+        // zoeken en koppelen met de opgeschoonde titel (zonder taallabel en IPTV-rommel)
+        let cleaned = TitleCleaner.parse(d.title)
+        let searchTitle = cleaned.title
+        let yearInt = d.year.flatMap { Int($0.prefix(4)) } ?? cleaned.year
 
         // IMDb via OMDb
         let meta: TitleMetadata?
@@ -84,7 +90,7 @@ final class DetailsService: ObservableObject {
         }
 
         // Trakt
-        if let t = await TraktDetails.fetch(imdb: d.imdbID, title: d.title, year: yearInt, isShow: isShow) {
+        if let t = await TraktDetails.fetch(imdb: d.imdbID, title: searchTitle, year: yearInt, isShow: isShow) {
             d.imdbID = d.imdbID ?? t.imdb
             d.traktSlug = d.traktSlug ?? t.slug
             if let r = t.rating, r > 0 { d.ratings.append(.init(source: "Trakt", value: "\(Int((r * 10).rounded()))%")) }
@@ -102,7 +108,7 @@ final class DetailsService: ObservableObject {
         }
 
         // TMDB (optioneel): foto's, logo, achtergrond, stills en teksten in de app-taal
-        if let tm = await TMDB.details(imdb: d.imdbID, tmdbID: tmdbHint, title: d.title, year: yearInt, isShow: isShow) {
+        if let tm = await TMDB.details(imdb: d.imdbID, tmdbID: tmdbHint, title: searchTitle, year: yearInt, isShow: isShow) {
             d.backdrop = tm.backdrop ?? d.backdrop
             d.logo = tm.logo ?? d.logo
             d.poster = d.poster ?? tm.poster
@@ -113,7 +119,10 @@ final class DetailsService: ObservableObject {
             d.trailerYouTubeID = d.trailerYouTubeID ?? tm.trailer
             d.imdbID = d.imdbID ?? tm.imdb
             d.tmdbID = tm.id
+            d.originalLanguage = tm.originalLanguage
         }
+        // originele taal en TMDB-id onthouden voor de cover en voor automatische ondertitels (build 59)
+        ContentLanguage.Facts.shared.set(id: target.id, original: d.originalLanguage, tmdbID: d.tmdbID)
         tmdbHint = nil
         cache[target.id] = d
         return d

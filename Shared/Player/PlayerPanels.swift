@@ -3,15 +3,43 @@ import SwiftUI
 /// Audio- en ondertitelsporen die in de stream zitten.
 struct TracksPanel: View {
     @ObservedObject var player: PlayerController
+    /// Build 59: dezelfde titel in andere talen (andere versie in de bibliotheek)
+    var versions: [LanguageVersion] = []
+    var onSwitch: (LanguageVersion) -> Void = { _ in }
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
             List {
-                Section(L("Audio")) {
-                    if player.audioTracks.isEmpty { Text(L("No alternative audio tracks")).foregroundStyle(Theme.secondary) }
-                    ForEach(player.audioTracks) { t in
+                Section {
+                    let tracks = player.audioTracks
+                    if tracks.isEmpty { Text(L("No alternative audio tracks")).foregroundStyle(Theme.secondary) }
+                    ForEach(tracks) { t in
                         row(Self.flagged(t), selected: t.id == player.currentAudio) { player.selectAudio(t) }
+                    }
+                } header: { Text(L("Audio")) } footer: {
+                    // build 59: één audiotaal → zeggen welke, en dat je een andere versie kunt kiezen
+                    if player.audioTracks.count <= 1 {
+                        let lang = player.spokenLanguage.map { TrackPreferences.label($0) }
+                        Text([lang, L("This stream has one audio language.")].compactMap { $0 }.joined(separator: " · ")
+                             + (versions.isEmpty ? "" : " " + L("Choose another language version below.")))
+                    }
+                }
+                if !player.isLive && !versions.isEmpty {
+                    Section(L("Other language")) {
+                        ForEach(versions) { v in
+                            Button { onSwitch(v) } label: {
+                                HStack(spacing: 10) {
+                                    Image(systemName: "globe").foregroundStyle(Theme.secondary)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(v.name)
+                                        Text(v.group).font(.caption).foregroundStyle(Theme.secondary).lineLimit(1)
+                                    }
+                                    Spacer()
+                                    Text(v.label).font(.caption.weight(.bold).smallCaps()).foregroundStyle(Theme.secondary)
+                                }
+                            }
+                        }
                     }
                 }
                 Section(L("Subtitles")) {

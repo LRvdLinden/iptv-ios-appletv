@@ -14,10 +14,15 @@ struct PosterCard: View {
     var progress: Double?
     var badge: String?
     var width: CGFloat = Theme.posterWidth
+    /// Taal van de titel (build 59); nil = uit de titel zelf afleiden ("Animal (IT)")
+    var language: ContentLanguage? = nil
+
+    private var lang: ContentLanguage? { language ?? ContentLanguage.resolve(title: title, group: nil, id: nil) }
 
     var body: some View {
+        let l = lang
         ZStack(alignment: .topTrailing) {
-            RemoteImage(url: poster, placeholder: title)
+            RemoteImage(url: poster, placeholder: ContentLanguage.displayTitle(title))
                 .frame(width: width, height: width * 1.5)
                 .clipped()
             if watched { WatchedBadge().padding(6) }
@@ -26,14 +31,34 @@ struct PosterCard: View {
                     .padding(.horizontal, 5).padding(.vertical, 2)
                     .background(Theme.red, in: RoundedRectangle(cornerRadius: 2))
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                    .padding(.bottom, progress == nil ? 6 : 10)
+                    .padding(.bottom, (progress == nil ? 6 : 10) + (l?.banner == nil ? 0 : tvScaled(16)))
             }
-            if let progress, progress > 0 {
-                VStack { Spacer(); ProgressBar(value: progress).frame(height: tvScaled(3)) }
+            VStack(spacing: 0) {
+                Spacer()
+                if let l { LanguageStrip(language: l) }
+                if let progress, progress > 0 { ProgressBar(value: progress).frame(height: tvScaled(3)) }
             }
         }
         .frame(width: width, height: width * 1.5)
         .clipShape(RoundedRectangle(cornerRadius: tvScaled(4)))
+    }
+}
+
+/// Smalle strook onderaan een poster met de taal ("NL", "IT", "EN · NL ondertitels", "Multi"), build 59.
+struct LanguageStrip: View {
+    let language: ContentLanguage
+    var body: some View {
+        if let text = language.banner {
+            Text(text)
+                .font(.system(size: tvScaled(9.5), weight: .semibold).smallCaps())
+                .kerning(0.6)
+                .foregroundStyle(.white.opacity(language.source == .original ? 0.72 : 0.95))
+                .lineLimit(1).minimumScaleFactor(0.7)
+                .padding(.horizontal, 6).padding(.vertical, tvScaled(2.5))
+                .frame(maxWidth: .infinity)
+                .background(.black.opacity(0.58))
+                .accessibilityLabel(language.detailText ?? text)
+        }
     }
 }
 
@@ -96,6 +121,7 @@ struct Top10Card: View {
     var watched = false
     /// Rood label onderaan de poster, bijv. "Onlangs toegevoegd"
     var badge: String? = nil
+    var language: ContentLanguage? = nil
 
     private var w: CGFloat { Theme.posterWidth * 1.08 }
     private var h: CGFloat { w * 1.5 }
@@ -105,7 +131,7 @@ struct Top10Card: View {
             OutlinedNumber(text: "\(rank)", size: h * 0.86)
                 .frame(width: rank >= 10 ? h * 0.78 : h * 0.46, height: h, alignment: .trailing)
             ZStack(alignment: .topLeading) {
-                PosterCard(title: title, poster: poster, watched: watched, badge: badge, width: w)
+                PosterCard(title: title, poster: poster, watched: watched, badge: badge, width: w, language: language)
                 Top10Badge().padding(tvScaled(5))
             }
             .shadow(color: .black.opacity(0.6), radius: 8, x: -4)

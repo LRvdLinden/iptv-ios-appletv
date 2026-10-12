@@ -118,6 +118,9 @@ final class CloudStore: ObservableObject {
         let d = UserDefaults.standard
         let fresh = !isMain(p)   // nieuw/ander profiel zonder eigen keuze → standaardwaarden, niet die van een ander
         if let v = p.autoSubtitles { d.set(v, forKey: "autoSubtitles") } else if fresh { d.set(false, forKey: "autoSubtitles") }
+        // build 59: ondertitels automatisch (uit / wanneer nodig / altijd)
+        if let v = p.effectiveSubtitleMode { d.set(v, forKey: TrackPreferences.subtitleModeKey) }
+        else if fresh { d.set(TrackPreferences.SubtitleMode.whenNeeded.rawValue, forKey: TrackPreferences.subtitleModeKey) }
         if let v = p.audioLanguage { d.set(v, forKey: TrackPreferences.audioKey) } else if fresh { d.set("", forKey: TrackPreferences.audioKey) }
         if let v = p.streamSubtitleLanguage { d.set(v, forKey: TrackPreferences.subtitleKey) } else if fresh { d.set("", forKey: TrackPreferences.subtitleKey) }
         if let v = p.subtitleLanguage { OpenSubtitles.shared.defaultLanguage = v }

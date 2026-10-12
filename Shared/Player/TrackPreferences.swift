@@ -9,6 +9,56 @@ enum TrackPreferences {
     static var audio: String { UserDefaults.standard.string(forKey: audioKey) ?? "" }
     static var subtitle: String { UserDefaults.standard.string(forKey: subtitleKey) ?? "" }
 
+    // MARK: voorkeurstaal en automatische ondertitels (build 59)
+
+    /// Ondertitels automatisch: uit, alleen als het nodig is (andere audiotaal dan je voorkeur), of altijd.
+    /// Gesynchroniseerd als `settings.shared.autoSubtitles` ("off" | "whenNeeded" | "always").
+    enum SubtitleMode: String, CaseIterable, Identifiable {
+        case off, whenNeeded, always
+        var id: String { rawValue }
+        var title: String {
+            switch self {
+            case .off: return L("Off")
+            case .whenNeeded: return L("When needed")
+            case .always: return L("Always")
+            }
+        }
+    }
+    static let subtitleModeKey = "player.autoSubtitles"
+    /// Oude schakelaar (t/m build 58): "OpenSubtitles automatisch laden"
+    static let legacyAutoKey = "autoSubtitles"
+
+    static var subtitleMode: SubtitleMode {
+        if subtitle == "off" { return .off }   // oude instelling "ondertitels uit"
+        if let v = UserDefaults.standard.string(forKey: subtitleModeKey), let m = SubtitleMode(rawValue: v) { return m }
+        return UserDefaults.standard.bool(forKey: legacyAutoKey) ? .always : .whenNeeded
+    }
+
+    /// Waarde uit de account (nieuw: tekst; oud: true/false) → modus. Oud `true` = altijd, `false` = standaard (wanneer nodig).
+    static func mode(fromSynced v: Any?) -> SubtitleMode? {
+        if let s = v as? String { return SubtitleMode(rawValue: s) }
+        if let b = v as? Bool { return b ? .always : .whenNeeded }
+        return nil
+    }
+
+    /// App-taal als taalcode ("zh-Hans" → "zh")
+    static var appLanguage: String { baseCode(Localizer.shared.language) }
+    /// Voorkeurstaal voor audio: de instelling, anders de app-taal
+    static var preferredAudio: String { audio.isEmpty ? appLanguage : baseCode(audio) }
+    /// Voorkeurstaal voor ondertitels: de instelling, anders de app-taal
+    static var preferredSubtitle: String { (subtitle.isEmpty || subtitle == "off") ? appLanguage : baseCode(subtitle) }
+
+    /// Taal van een spoor (taalcode van de stream, anders herkend aan de naam); nil = onbekend
+    static func language(of t: MediaTrack) -> String? {
+        if let l = t.lang, !l.isEmpty, l.lowercased() != "und" { return baseCode(l) }
+        return languages.map(\.code).first { matches(t, code: $0) }
+    }
+
+    /// VLC-optie `:audio-language=` (ISO 639-1 en -2), zodat VLC meteen het goede spoor kiest.
+    static func vlcCodes(_ code: String) -> String {
+        ([code] + (languages.first { $0.code == code }?.alt.filter { $0.count == 3 } ?? [])).joined(separator: ",")
+    }
+
     /// Talen die je kunt kiezen (ISO 639-1) met hun ISO 639-2-varianten (zoals streams ze vaak noemen).
     static let languages: [(code: String, alt: [String])] = [
         ("nl", ["nld", "dut", "vlaams", "flemish"]), ("en", ["eng"]), ("de", ["deu", "ger"]), ("fr", ["fra", "fre"]),

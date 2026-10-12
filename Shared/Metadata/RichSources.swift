@@ -90,6 +90,8 @@ enum TMDB {
     struct Result {
         var id: Int; var imdb: String?; var overview: String?; var poster: URL?; var backdrop: URL?; var logo: URL?
         var trailer: String?; var cast: [TitleDetails.CastMember] = []; var recommendations: [TitleDetails.Recommendation] = []
+        /// Originele taal (ISO 639-1), build 59
+        var originalLanguage: String? = nil
     }
 
     static var language: String {
@@ -185,6 +187,7 @@ enum TMDB {
         let id: Int; let overview: String?; let poster_path: String?; let backdrop_path: String?
         let imdb_id: String?; let credits: Credits?; let aggregate_credits: Credits?; let recommendations: Recs?
         let images: Images?; let videos: Videos?; let external_ids: Ext?
+        let original_language: String?
     }
 
     static func details(imdb: String?, tmdbID: Int?, title: String, year: Int?, isShow: Bool) async -> Result? {
@@ -210,7 +213,7 @@ enum TMDB {
         guard let f = full else { return nil }
         let logo = f.images?.logos?.first { $0.iso_639_1 == base } ?? f.images?.logos?.first { $0.iso_639_1 == "en" } ?? f.images?.logos?.first
         let castSrc = (isShow ? f.aggregate_credits : f.credits)?.cast ?? []
-        return Result(
+        var result = Result(
             id: f.id, imdb: f.imdb_id ?? f.external_ids?.imdb_id, overview: f.overview,
             poster: img(f.poster_path, "w780"), backdrop: img(f.backdrop_path, "w1280"), logo: img(logo?.file_path, "w500"),
             trailer: f.videos?.results?.first { $0.site == "YouTube" && $0.type == "Trailer" }?.key,
@@ -219,6 +222,8 @@ enum TMDB {
                 TitleDetails.Recommendation(title: r.title ?? r.name ?? "?", year: (r.release_date ?? r.first_air_date).flatMap { Int($0.prefix(4)) },
                       poster: img(r.poster_path, "w342"), imdbID: nil, isShow: isShow)
             })
+        result.originalLanguage = f.original_language
+        return result
     }
 
     private struct SeasonR: Decodable {

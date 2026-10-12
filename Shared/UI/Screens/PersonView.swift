@@ -188,9 +188,9 @@ struct PersonView: View {
                     VStack(alignment: .leading, spacing: 6) {
                         switch t {
                         case .movie(let m):
-                            PosterCard(title: m.title, poster: m.poster, watched: Playables.isWatched(movie: m, imdb: trakt.imdb(for: m)))
+                            PosterCard(title: m.title, poster: m.poster, watched: Playables.isWatched(movie: m, imdb: trakt.imdb(for: m)), language: ContentLanguage.of(m))
                         case .series(let s):
-                            PosterCard(title: s.title, poster: s.poster)
+                            PosterCard(title: s.title, poster: s.poster, language: ContentLanguage.of(s))
                         }
                     }
                 }

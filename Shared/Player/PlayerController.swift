@@ -92,8 +92,24 @@ final class PlayerController: ObservableObject {
     init(item: PlayableItem, silent: Bool = false) {
         self.item = item
         self.silent = silent
-        engine = VLCEngine(silent: silent)
+        // build 59: meteen de engine die deze stream waarschijnlijk gebruikt; `start` hergebruikt hem dan in plaats
+        // van eerst een VLC-speler te maken en die direct weer weg te gooien
+        let apple = !silent && (item.url.map(Self.prefersApple) ?? false)
+        engine = apple ? AVEngine(silent: silent) : VLCEngine(silent: silent)
+        usingApple = apple
+        freshEngine = true
+        (engine as? AVEngine)?.onPiP = { [weak self] e in self?.handlePiP(e) }
     }
+
+    /// De engine uit `init` is nog niet gebruikt
+    private var freshEngine = false
+    /// Build 59: wacht na de start op het eerste beeld (spinner meteen weg, tijdmeting)
+    private var startWatch: Task<Void, Never>?
+    /// Build 59: OpenSubtitles nodig in deze taal (het spelerscherm haalt ze op de achtergrond op)
+    var onNeedSubtitles: (@MainActor (String) -> Void)?
+    private var subtitleCheck: Task<Void, Never>?
+    /// Voor welke titel de automatische ondertitels al bekeken zijn (één keer per titel, niet na elke herverbinding)
+    private var autoSubtitlesFor: String?
 
     var isLive: Bool { item.type == .live }
     var canTimeshift: Bool { isLive && (catchupProvider != nil || ((engine as? AVEngine)?.liveWindow ?? 0) > 30) }
@@ -146,6 +162,9 @@ final class PlayerController: ObservableObject {
         externalCues = []; subtitleText = nil; externalSubtitleName = nil
         externalSubtitleFile = nil; externalSubtitleLanguage = nil
         airPlayWrapTries = 0
+        // build 59: niets van de vorige titel gebruiken om te hervatten (duur) of voor ondertitels
+        duration = 0; position = 0; currentTime = 0
+        subtitleCheck?.cancel(); subtitleCheck = nil
     }
 
     /// Opnieuw beginnen met foutherstel (andere bron of andere speler gekozen).
@@ -185,16 +204,46 @@ final class PlayerController: ObservableObject {
         stopped = false
         let apple = forceApple ?? Self.prefersApple(url)
         let switching = apple != usingApple
-        // zendervoorbeeld na `halt()`: dezelfde engine (en weergave) hergebruiken in plaats van een nieuwe te maken
-        if switching || (timer == nil && !keepEngine) { makeEngine(apple: apple) }
+        // zendervoorbeeld na `halt()`: dezelfde engine (en weergave) hergebruiken in plaats van een nieuwe te maken;
+        // de nog ongebruikte engine uit `init` ook (build 59)
+        let reuseFresh = freshEngine && !switching
+        if !reuseFresh && (switching || (timer == nil && !keepEngine)) { makeEngine(apple: apple) }
+        freshEngine = false
         keepEngine = false
         airPlayWrapped = false; airPlaySelectPending = 0
+        // build 59: VLC hervat meteen op de juiste seconde (`:start-time`) in plaats van eerst vanaf het begin te bufferen
+        if let v = engine as? VLCEngine {
+            var secs: Double?
+            if !isLive, item.resumeAt > 0.01 { secs = duration > 0 ? item.resumeAt * duration : item.resumeSeconds }
+            v.startSeconds = secs
+        }
+        if !isPreview && !silent { PlaybackTiming.mark("engine.load (\(apple ? "Apple" : "VLC"))") }
         engine.load(url, live: isLive && timeshiftStart == nil, startFraction: isLive ? nil : item.resumeAt)
+        watchFirstFrame()
         // andere engine (bijv. VLC → Apple voor AirPlay): ingeladen ondertitels meenemen (build 57)
         if switching, let f = externalSubtitleFile { applyExternalSubtitle(f) }
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in self?.tick() }
+        }
+    }
+
+    /// Build 59: zo snel mogelijk merken dat het beeld er is (de gewone tick is maar elke halve seconde):
+    /// spinner weg en de starttijd loggen.
+    private func watchFirstFrame() {
+        startWatch?.cancel()
+        let log = !isPreview && !silent
+        startWatch = Task { @MainActor [weak self] in
+            for _ in 0..<300 {
+                guard !Task.isCancelled, let self, !self.stopped else { return }
+                if self.engine.state == .playing && self.engine.isPlaying {
+                    if self.isBuffering { self.isBuffering = false }
+                    if !self.isPlaying { self.isPlaying = true }
+                    if log { PlaybackTiming.end("first frame (\(self.usingApple ? "Apple" : "VLC"))") }
+                    return
+                }
+                try? await Task.sleep(nanoseconds: 100_000_000)
+            }
         }
     }
 
@@ -410,6 +459,7 @@ final class PlayerController: ObservableObject {
     func stop(keepDisplay: Bool = false) {
         guard !stopped else { return }
         stopped = true
+        startWatch?.cancel(); subtitleCheck?.cancel()
         #if os(tvOS)
         if !keepDisplay { resetDisplay() }
         #endif
@@ -540,36 +590,80 @@ final class PlayerController: ObservableObject {
 
     // MARK: sporen & ondertitels
 
-    /// Standaard audio-/ondertiteltaal uit de instellingen toepassen.
+    /// Voorkeurstaal voor audio en automatische ondertitels toepassen (build 59).
     private func applyTrackPreferences() {
         tracksApplied = true
         guard !isPreview else { return }
-        let audio = TrackPreferences.audio, sub = TrackPreferences.subtitle
-        if !audio.isEmpty {
-            let tracks = engine.audioTracks.filter { $0.id != "-1" }
-            if let t = tracks.first(where: { TrackPreferences.matches($0, code: audio) }), t.id != engine.currentAudio {
-                engine.selectAudio(t)
-            }
-        }
-        if sub == "off" {
-            if externalCues.isEmpty { engine.selectSubtitle(nil) }
-        } else if !sub.isEmpty, externalCues.isEmpty {
-            if let t = engine.subtitleTracks.first(where: { TrackPreferences.matches($0, code: sub) }) {
-                engine.selectSubtitle(t)
-            }
+        // audio: de voorkeurstaal (instelling, anders de app-taal) als de stream meer dan één audiotaal heeft
+        let prefAudio = TrackPreferences.preferredAudio
+        let tracks = engine.audioTracks
+        if tracks.count > 1, let t = tracks.first(where: { TrackPreferences.matches($0, code: prefAudio) }), t.id != engine.currentAudio {
+            engine.selectAudio(t)
         }
         // na het wisselen van engine: hetzelfde spoor als daarvoor (op taal, anders op naam)
         if let want = carrySubtitle, externalCues.isEmpty, externalSubtitleFile == nil {
             carrySubtitle = nil
             let code = want.lang.map(TrackPreferences.baseCode)
                 ?? TrackPreferences.languages.map(\.code).first { TrackPreferences.matches(want, code: $0) }
-            let tracks = engine.subtitleTracks
-            if let t = tracks.first(where: { code != nil && TrackPreferences.matches($0, code: code!) })
-                ?? tracks.first(where: { $0.name.caseInsensitiveCompare(want.name) == .orderedSame }) {
+            let subs = engine.subtitleTracks
+            if let t = subs.first(where: { code != nil && TrackPreferences.matches($0, code: code!) })
+                ?? subs.first(where: { $0.name.caseInsensitiveCompare(want.name) == .orderedSame }) {
                 engine.selectSubtitle(t)
             }
+        } else {
+            applyAutoSubtitles()
         }
         objectWillChange.send()
+    }
+
+    /// Gesproken taal: het gekozen audiospoor, anders het label van de titel ("Animal (IT)") of de originele taal (TMDB).
+    var spokenLanguage: String? {
+        let tracks = engine.audioTracks
+        if let id = engine.currentAudio, let t = tracks.first(where: { $0.id == id }), let l = TrackPreferences.language(of: t) { return l }
+        if tracks.count == 1, let l = TrackPreferences.language(of: tracks[0]) { return l }
+        return item.audioLanguage
+    }
+
+    /// Ondertitels automatisch (build 59). "Wanneer nodig": alleen als de audio een andere taal is dan je voorkeur en
+    /// er nog geen ondertitels in die taal in beeld zijn. "Altijd": altijd in je voorkeurstaal. Eerst een spoor in de
+    /// stream, anders OpenSubtitles op de achtergrond — het afspelen wacht hier nooit op.
+    private func applyAutoSubtitles() {
+        guard autoSubtitlesFor != item.id, externalSubtitleFile == nil, externalCues.isEmpty else { return }
+        autoSubtitlesFor = item.id
+        let mode = TrackPreferences.subtitleMode
+        if mode == .off {
+            // oude instelling "ondertitels uit": ook een standaardspoor van de stream uitzetten
+            if TrackPreferences.subtitle == "off" { engine.selectSubtitle(nil) }
+            return
+        }
+        let want = TrackPreferences.preferredSubtitle
+        if item.burnedSubtitles == want { return }          // zitten al in beeld ("NL SUBS")
+        if mode == .whenNeeded {
+            guard let spoken = spokenLanguage, spoken != want else { return }   // zelfde taal of onbekend: niet nodig
+        }
+        if let t = engine.subtitleTracks.first(where: { TrackPreferences.matches($0, code: want) }) {
+            if t.id != engine.currentSubtitle {
+                engine.selectSubtitle(t)
+                notice = L("Subtitles: %@", TrackPreferences.name(want))
+            }
+            return
+        }
+        guard !isLive else { return }
+        // ondertitelsporen komen soms later binnen: even wachten, dan pas OpenSubtitles
+        let id = item.id
+        subtitleCheck?.cancel()
+        subtitleCheck = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            guard let self, !Task.isCancelled, !self.stopped, self.item.id == id,
+                  self.externalSubtitleFile == nil, self.externalCues.isEmpty else { return }
+            if let t = self.engine.subtitleTracks.first(where: { TrackPreferences.matches($0, code: want) }) {
+                self.engine.selectSubtitle(t)
+                self.objectWillChange.send()
+                self.notice = L("Subtitles: %@", TrackPreferences.name(want))
+                return
+            }
+            self.onNeedSubtitles?(want)
+        }
     }
 
     var audioTracks: [MediaTrack] { engine.audioTracks }
@@ -601,7 +695,20 @@ final class PlayerController: ObservableObject {
         }
     }
 
-    func selectAudio(_ t: MediaTrack) { engine.selectAudio(t); objectWillChange.send() }
+    func selectAudio(_ t: MediaTrack) {
+        engine.selectAudio(t); objectWillChange.send()
+        // build 59: sommige streams nemen de wissel niet meteen over → na even nog eens, bij VLC met een korte herstart
+        // van de decoder op dezelfde plek
+        let id = t.id
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 800_000_000)
+            guard let self, !self.stopped, self.engine.currentAudio != id,
+                  self.engine.audioTracks.contains(where: { $0.id == id }) else { return }
+            self.engine.selectAudio(t)
+            if !self.usingApple, !self.isLive, self.duration > 0 { self.engine.seek(toFraction: self.engine.position) }
+            self.objectWillChange.send()
+        }
+    }
     func selectSubtitle(_ t: MediaTrack?) {
         externalCues = []; subtitleText = nil; externalSubtitleName = nil
         externalSubtitleFile = nil; externalSubtitleLanguage = nil

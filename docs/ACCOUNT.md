@@ -445,3 +445,32 @@ State-section `collections`:
 ### Apple Vision Pro
 
 Build 54 ondersteunt Apple Vision Pro niet meer (`SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD: NO`).
+
+## Build 59: taal van titels, voorkeurstaal en automatische ondertitels
+
+### Instellingen (`settings.shared` en `profile.<id>.prefs`)
+
+| Sleutel | Waarde | Standaard |
+|---|---|---|
+| `audioLanguage` | ISO 639-1 (`"nl"`, `"en"` …); `""` = de app-taal | `""` |
+| `subtitleLanguage` | voorkeurstaal ondertitels, ISO 639-1; `""` = de app-taal. Het oude `"off"` betekent nu `autoSubtitles: "off"`. In `prefs` heet dit veld `streamSubtitleLanguage` (zoals sinds build 44). | `""` |
+| `autoSubtitles` | `"off"`, `"whenNeeded"` of `"always"` (was `true`/`false`). Lezen: `true` → `"always"`, `false` → `"whenNeeded"`. | `"whenNeeded"` |
+
+- **Audio:** heeft een stream meer dan één audiotaal, dan kiest de speler bij de start de voorkeurstaal (AVPlayer via de media-selectie, VLC via `:audio-language`), daarna nog eens op naam/taalcode zodra de sporen bekend zijn.
+- **`whenNeeded`:** alleen als de gesproken taal (gekozen audiospoor, anders het taallabel van de titel, anders de originele taal uit TMDB) bekend is en verschilt van de voorkeurstaal, en er nog geen ondertitels in die taal in beeld zitten (`NL SUBS`). Eerst een ondertitelspoor uit de stream, anders op de achtergrond de beste treffer van OpenSubtitles (IMDb-id, anders TMDB-id, met seizoen/aflevering; met de bestandshash als dat kan), automatisch aan, met de melding "Ondertitels: Nederlands (OpenSubtitles)".
+- **`always`:** altijd ondertitels in de voorkeurstaal (eerst uit de stream, anders OpenSubtitles), behalve als ze al in beeld zitten.
+- Het afspelen wacht nooit op ondertitels.
+
+### Taal van een titel (`ContentLanguage`)
+
+Volgorde: titel → categorie → originele taal uit TMDB (alleen als die al geladen is; op de cover iets gedimd).
+
+- **Titel:** labels vooraan (`NL | `, `NL: `, `|NL| `, `[NL] `, `NL - `, `EN-`), tussen haken waar dan ook (`(IT)`, `[NL]`, `(NL SUBS)`, `(MULTI)`, `(ITA/ENG)` = dual), en achteraan zonder haken (`NL SUBS`, `MULTI`, `DUAL`, `NL GESPROKEN`, ` - NL`).
+- **Woorden die ook een code zijn** (`IN`, `NO`, `US`, `SO`, `AL`, `IT`): alleen tussen haken of met `|`. `IT - ` mag (Italiaans), `IT: Chapter Two` niet. `(IN)` = Hindi.
+- **`(UK)` / `(US)`** tellen als Engels maar blijven in de titel staan (landversie, bijv. "The Office (UK)").
+- **Categorie:** codes van 2–3 letters alleen in hoofdletters (`NL Films`, `VOD | DE`), volledige namen in elke schrijfwijze (`Italian Movies`).
+- **Weergave:** de titel zonder label ("Animal (IT)" → "Animal"); een strook onderaan de poster: `IT`, `EN · NL ondertitels`, `Multi`. Detailpagina: "Taal: Italiaans". Zoeken en koppelen gebruiken de opgeschoonde titel.
+
+### Andere taal
+
+Dezelfde titel in een andere taal: zelfde TMDB-id als die van beide bekend is, anders zelfde opgeschoonde titel en jaar (±1). Alleen versies met een ander taallabel. Detailpagina: knop **"Andere taal"**; in de speler onder Audio & ondertitels, met bij één audiospoor "Deze stream heeft één audiotaal". Wisselen in de speler hervat op dezelfde plek; elke versie houdt verder haar eigen voortgang.

@@ -98,6 +98,8 @@ final class OpenSubtitles: ObservableObject {
         var downloads: Int
         var hearingImpaired: Bool
         var fromTrusted: Bool
+        /// Gemaakt voor precies dit bestand (hash komt overeen), build 59
+        var hashMatch = false
     }
 
     private struct SearchR: Decodable {
@@ -106,6 +108,7 @@ final class OpenSubtitles: ObservableObject {
                 struct F: Decodable { let file_id: Int; let file_name: String? }
                 let language: String?; let release: String?; let download_count: Int?
                 let hearing_impaired: Bool?; let from_trusted: Bool?; let files: [F]
+                let moviehash_match: Bool?
             }
             let attributes: A
         }
@@ -124,12 +127,14 @@ final class OpenSubtitles: ObservableObject {
     /// Terug naar ISO 639-1 ("pt-PT" → "pt").
     static func baseCode(_ c: String) -> String { String(c.lowercased().prefix(2)) }
 
-    /// Zoeken op IMDb-ID, of (als die er niet is) op titel. `languages` leeg = alle talen.
-    func search(imdbID: String?, title: String? = nil, year: Int? = nil, season: Int? = nil, episode: Int? = nil,
-                languages: [String]) async throws -> [Subtitle] {
+    /// Zoeken op IMDb-ID, anders TMDB-ID (build 59), anders op titel. `languages` leeg = alle talen.
+    /// `movieHash`: OpenSubtitles-hash van het bestand; treffers die precies passen komen bovenaan.
+    func search(imdbID: String?, tmdbID: Int? = nil, title: String? = nil, year: Int? = nil, season: Int? = nil, episode: Int? = nil,
+                languages: [String], movieHash: String? = nil) async throws -> [Subtitle] {
         var q: [String: String] = [:]
         let langs = Array(Set(languages.flatMap(Self.apiCodes))).sorted()
         if !langs.isEmpty { q["languages"] = langs.joined(separator: ",") }
+        if let movieHash { q["moviehash"] = movieHash }
         let numeric = (imdbID ?? "").replacingOccurrences(of: "tt", with: "")
         if let n = Int(numeric), n > 0 {
             if let season, let episode {
@@ -137,6 +142,13 @@ final class OpenSubtitles: ObservableObject {
                 q["season_number"] = String(season); q["episode_number"] = String(episode)
             } else {
                 q["imdb_id"] = String(n)
+            }
+        } else if let tmdbID, tmdbID > 0 {
+            if let season, let episode {
+                q["parent_tmdb_id"] = String(tmdbID)
+                q["season_number"] = String(season); q["episode_number"] = String(episode)
+            } else {
+                q["tmdb_id"] = String(tmdbID)
             }
         } else if let title, !title.isEmpty {
             let parsed = TitleCleaner.parse(title)
@@ -158,13 +170,15 @@ final class OpenSubtitles: ObservableObject {
                             release: i.attributes.release ?? f.file_name ?? "Subtitle",
                             downloads: i.attributes.download_count ?? 0,
                             hearingImpaired: i.attributes.hearing_impaired ?? false,
-                            fromTrusted: i.attributes.from_trusted ?? false)
+                            fromTrusted: i.attributes.from_trusted ?? false,
+                            hashMatch: i.attributes.moviehash_match ?? false)
         }
         // eerst gevraagde taal, dan betrouwbaar, dan populariteit
         let order = languages.map { $0.lowercased() }
         return subs.sorted {
             let a = order.firstIndex(of: Self.baseCode($0.language)) ?? 99, b = order.firstIndex(of: Self.baseCode($1.language)) ?? 99
             if a != b { return a < b }
+            if $0.hashMatch != $1.hashMatch { return $0.hashMatch }
             if $0.fromTrusted != $1.fromTrusted { return $0.fromTrusted }
             return $0.downloads > $1.downloads
         }
@@ -174,6 +188,53 @@ final class OpenSubtitles: ObservableObject {
     func search(imdbID: String, season: Int? = nil, episode: Int? = nil, title: String? = nil) async throws -> [Subtitle] {
         try await search(imdbID: imdbID, title: title, season: season, episode: episode,
                          languages: defaultLanguage.isEmpty ? [] : [defaultLanguage])
+    }
+
+    /// OpenSubtitles-hash van een bestand (build 59): grootte + de eerste en laatste 64 kB als 64-bits getallen opgeteld.
+    /// Bij http(s) met twee Range-verzoeken, alleen voor losse videobestanden (geen HLS/live); hooguit een paar seconden.
+    nonisolated static func movieHash(_ url: URL?) async -> String? {
+        guard let url else { return nil }
+        let ext = url.pathExtension.lowercased()
+        guard ["mkv", "mp4", "m4v", "avi", "mov", "ts", "wmv", "mpg", "mpeg"].contains(ext) else { return nil }
+        let chunk = 65_536
+        func sum(_ d: Data) -> UInt64 {
+            var h: UInt64 = 0
+            d.withUnsafeBytes { raw in
+                let n = raw.count / 8
+                for i in 0..<n { h &+= UInt64(littleEndian: raw.loadUnaligned(fromByteOffset: i * 8, as: UInt64.self)) }
+            }
+            return h
+        }
+        let head: Data, tail: Data, size: UInt64
+        if url.isFileURL {
+            guard let fh = try? FileHandle(forReadingFrom: url) else { return nil }
+            defer { try? fh.close() }
+            guard let end = try? fh.seekToEnd(), end >= UInt64(chunk) else { return nil }
+            size = end
+            try? fh.seek(toOffset: 0)
+            head = (try? fh.read(upToCount: chunk)) ?? Data()
+            try? fh.seek(toOffset: end - UInt64(chunk))
+            tail = (try? fh.read(upToCount: chunk)) ?? Data()
+        } else if ["http", "https"].contains(url.scheme?.lowercased() ?? "") {
+            func range(_ r: String) async -> (Data, HTTPURLResponse)? {
+                var req = URLRequest(url: url, timeoutInterval: 4)
+                req.setValue("bytes=\(r)", forHTTPHeaderField: "Range")
+                req.setValue(Secrets.userAgent, forHTTPHeaderField: "User-Agent")
+                guard let (d, resp) = try? await URLSession.shared.data(for: req), let h = resp as? HTTPURLResponse,
+                      h.statusCode == 206 else { return nil }
+                return (d, h)
+            }
+            guard let first = await range("0-\(chunk - 1)"),
+                  let total = (first.1.value(forHTTPHeaderField: "Content-Range")?.split(separator: "/").last).flatMap({ UInt64($0) }),
+                  total >= UInt64(chunk),
+                  let last = await range("\(total - UInt64(chunk))-\(total - 1)") else { return nil }
+            head = first.0; tail = last.0; size = total
+        } else {
+            return nil
+        }
+        guard head.count == chunk, tail.count == chunk else { return nil }
+        let h = size &+ sum(head) &+ sum(tail)
+        return String(format: "%016llx", h)
     }
 
     /// Account-info (resterende downloads vandaag) verversen.

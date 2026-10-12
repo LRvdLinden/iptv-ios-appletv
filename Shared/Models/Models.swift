@@ -106,6 +106,8 @@ struct ViewerProfile: Codable, Identifiable, Hashable {
     var createdAt = Date()
     // Persoonlijke kijkvoorkeuren (nil = nog niet ingesteld)
     var autoSubtitles: Bool? = nil
+    /// Ondertitels automatisch (build 59): "off" | "whenNeeded" | "always"; nil = nog niet gekozen (dan telt `autoSubtitles`)
+    var subtitleMode: String? = nil
     var subtitleLanguage: String? = nil       // OpenSubtitles-standaardtaal
     var audioLanguage: String? = nil          // standaard audiotaal in de stream
     var streamSubtitleLanguage: String? = nil // standaard ondertitelspoor in de stream ("" / "off" / code)
@@ -116,6 +118,11 @@ struct ViewerProfile: Codable, Identifiable, Hashable {
     var accentColor: String? = nil
 
     var kids: Bool { isKids ?? false }
+    /// Gekozen modus voor automatische ondertitels, ook uit de oude schakelaar (nil = standaard)
+    var effectiveSubtitleMode: String? {
+        if let m = subtitleMode { return m }
+        return autoSubtitles.map { $0 ? "always" : "whenNeeded" }
+    }
     /// Leeftijdsgrens die echt geldt (kinderprofiel zonder grens = t/m 12)
     var effectiveAgeLimit: Int? { ageLimit ?? (kids ? 12 : nil) }
     /// Streng filteren (alleen zeker geschikte titels): kinderprofiel of grens t/m 12
@@ -302,6 +309,12 @@ struct PlayableItem: Identifiable, Hashable {
     var seriesID: String? = nil
     /// Bron (server) waar dit vandaan komt, als dat niet de open bron is (gedownloade titels, build 52)
     var sourceID: UUID? = nil
+    /// Build 59: gesproken taal volgens het label van de titel/categorie of TMDB (ISO 639-1), als bekend
+    var audioLanguage: String? = nil
+    /// Build 59: ondertitels die al in het beeld zitten ("NL SUBS"), als bekend
+    var burnedSubtitles: String? = nil
+    /// Build 59: positie in seconden om te hervatten (sneller starten in VLC, zonder eerst vanaf 0 te bufferen)
+    var resumeSeconds: Double? = nil
 }
 
 // MARK: - Metadata -----------------------------------------------------------
