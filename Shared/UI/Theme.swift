@@ -120,10 +120,10 @@ struct PlayButtonStyle: ButtonStyle {
     var cornerRadius: CGFloat? = nil
     var scale: CGFloat = 1.06
     func makeBody(configuration: Configuration) -> some View {
-        Body(configuration: configuration, cornerRadius: cornerRadius, scale: scale)
+        PlayBody(configuration: configuration, cornerRadius: cornerRadius, scale: scale)
     }
 
-    private struct Body: View {
+    private struct PlayBody: View {
         let configuration: ButtonStyleConfiguration
         let cornerRadius: CGFloat?
         let scale: CGFloat
