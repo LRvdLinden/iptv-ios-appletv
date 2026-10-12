@@ -48,7 +48,7 @@ if "--zip" in sys.argv:
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
         for f in sorted(site.rglob("*")):
             rel = f.relative_to(site)
-            if f.is_file() and f.name != ".DS_Store" and rel.parts[0] not in (".git", ".github") and f.name != "README.md":
+            if f.is_file() and f.name != ".DS_Store" and rel.parts[0] not in (".git", ".github") and f.name not in ("README.md", ".gitignore"):
                 z.write(f, pathlib.Path("bingr.online") / rel)
     print(out)
 print(f"website bijgewerkt: {version} (build {build})")
