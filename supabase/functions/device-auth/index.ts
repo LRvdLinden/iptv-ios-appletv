@@ -11,6 +11,9 @@
 //   remove_device   {device_id} (ingelogd) -> {ok}  (trekt de sessie van dat apparaat in)
 //   get_sources     {}       (ingelogd)  -> {sources:[…], mainSourceID, updatedAt}
 //   put_sources     {sources, mainSourceID} (ingelogd) -> {ok, updatedAt}   (versleuteld opgeslagen)
+//   get_state       {sections?:[naam…]} (ingelogd) -> {sections:{naam:{data, updatedAt}}}
+//   put_state       {section, data}      (ingelogd) -> {ok, updatedAt}     (versleuteld; data = willekeurige JSON)
+//   delete_state    {section}            (ingelogd) -> {ok}
 //   config          {}       (ingelogd)  -> {traktClientID, traktClientSecret, openSubtitlesAPIKey, omdbAPIKey, tmdbAPIKey}
 //                   App-sleutels staan alleen als function-secrets op de server (BINGR_*), nooit in de openbare repo.
 import { createClient } from "jsr:@supabase/supabase-js@2";
@@ -204,6 +207,39 @@ Deno.serve(async (req) => {
       const updated_at = new Date().toISOString();
       await admin.from("account_sources").upsert({ user_id: user.id, data: await seal(payload), updated_at });
       return json({ ok: true, updatedAt: updated_at });
+    }
+    case "get_state": {
+      const user = await userFrom(req);
+      if (!user) return json({ error: "not_signed_in" }, 401);
+      let q = admin.from("account_state").select("section,data,updated_at").eq("user_id", user.id);
+      if (Array.isArray(body.sections) && body.sections.length) q = q.in("section", body.sections.map(String).slice(0, 100));
+      const { data: rows } = await q;
+      const out: Record<string, unknown> = {};
+      for (const r of rows ?? []) {
+        try { out[r.section] = { data: await open_(r.data), updatedAt: r.updated_at }; } catch { /* onleesbaar: overslaan */ }
+      }
+      return json({ sections: out });
+    }
+    case "put_state": {
+      const user = await userFrom(req);
+      if (!user) return json({ error: "not_signed_in" }, 401);
+      const section = String(body.section ?? "").slice(0, 80);
+      if (!/^[a-zA-Z0-9._:-]+$/.test(section)) return json({ error: "bad_section" }, 400);
+      if (JSON.stringify(body.data ?? null).length > 1024 * 1024) return json({ error: "too_large" }, 413);
+      const { count } = await admin.from("account_state").select("section", { count: "exact", head: true }).eq("user_id", user.id);
+      if ((count ?? 0) >= 200) {
+        const { data: exists } = await admin.from("account_state").select("section").eq("user_id", user.id).eq("section", section).maybeSingle();
+        if (!exists) return json({ error: "too_many_sections" }, 413);
+      }
+      const updated_at = new Date().toISOString();
+      await admin.from("account_state").upsert({ user_id: user.id, section, data: await seal(body.data ?? null), updated_at });
+      return json({ ok: true, updatedAt: updated_at });
+    }
+    case "delete_state": {
+      const user = await userFrom(req);
+      if (!user) return json({ error: "not_signed_in" }, 401);
+      await admin.from("account_state").delete().eq("user_id", user.id).eq("section", String(body.section ?? ""));
+      return json({ ok: true });
     }
     case "config": {
       const user = await userFrom(req);

@@ -76,3 +76,14 @@ create table if not exists public.account_sources (
 );
 alter table public.account_sources enable row level security;
 revoke all on public.account_sources from anon, authenticated;
+
+-- Overige accountgegevens per onderdeel (koppelingen, instellingen, gegevens per profiel, herinneringen), versleuteld door de Edge Function.
+create table if not exists public.account_state (
+  user_id    uuid not null references auth.users(id) on delete cascade,
+  section    text not null,
+  data       text not null,
+  updated_at timestamptz not null default now(),
+  primary key (user_id, section)
+);
+alter table public.account_state enable row level security;
+revoke all on public.account_state from anon, authenticated;

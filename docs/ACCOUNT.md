@@ -233,3 +233,34 @@ Servers horen bij het account. Na het (opnieuw) installeren, na een update en op
 Op Apple blijft de bestaande iCloud-sync van servers ook werken. Omdat de `id`'s gelijk zijn, botst dat niet.
 
 **Uitloggen:** de lokale servers blijven staan. Logt een **ander** account in op het apparaat, wis dan eerst de lokale servers, profielen en gegevens van het vorige account. Op Apple, waar iCloud ook servers kan leveren: wis lokaal en importeer daarna van het nieuwe account. Om dit te kunnen zien, onthoud je de user-id van het laatst ingelogde account.
+
+## Alle overige gegevens via het account (build 44)
+
+Alles wat iemand in Bingr instelt of opbouwt, komt na het (opnieuw) installeren of op een nieuw apparaat terug. De gegevens worden versleuteld opgeslagen per **onderdeel** (section), via device-auth met `Authorization: Bearer <access_token>`:
+
+| Actie | Body | Antwoord |
+|---|---|---|
+| `get_state` | `{sections?: ["…"]}` (leeg = alles) | `{sections: {"<naam>": {data, updatedAt}}}` |
+| `put_state` | `{section, data}` (`data` = JSON, max. 1 MB) | `{ok, updatedAt}` |
+| `delete_state` | `{section}` | `{ok}` |
+
+**Onderdelen.** Gedeelde sleutels hebben op iOS en Android dezelfde naam en betekenis. Platform-specifieke sleutels gaan in een blok `apple` of `android`; een platform bewaart het blok van het andere platform onaangeroerd.
+
+| Section | Inhoud |
+|---|---|
+| `connections` | `trakt: {accessToken, refreshToken, expiresAt (ISO), username}` of `null`; `opensubtitles: {token, username, password?, baseURL?}` of `null` (precies wat de app nu lokaal bewaart om ingelogd te blijven). Plus `updatedAt`. |
+| `settings` | `shared`: instellingen met dezelfde betekenis op beide platforms, zoals app-taal, speler-engine (`auto`/`apple`/`exo`/`vlc`, elk platform vertaalt naar wat het heeft), ondertitelgrootte, standaard audio- en ondertiteltaal, automatisch ondertitels, OpenSubtitles-standaardtaal, startscherm, verborgen tabbladen, intromuziek, verversinterval en kinderslot-instellingen die niet per server zijn. Daarnaast `apple: {…}` en `android: {…}` met de rest. Plus `updatedAt`. |
+| `profile.<profielID>` | per profiel: `myList`, `favorites`, `progress` (`{key: {position, duration, updatedAt, …}}`), `watched` (set van sleutels), `history` (lijst met tijd), `recentChannels`, `prefs` (kijkvoorkeuren), `pin` (de pincode zoals de app hem nu bewaart, of `null`), `updatedAt`. Sleutels voor inhoud zijn op iOS en Android al gelijk (bijvoorbeeld `ep:<serieID>\|s-e`). |
+| `reminders` | lijst met herinneringen, plus `updatedAt` |
+
+**Samenvoegen** (bij lezen: na login, bij het starten, bij terugkeer naar de voorgrond en bij elke heartbeat):
+- **Lijsten en sets** (`myList`, `favorites`, `watched`, `recentChannels`): samenvoegen, maar een **verwijdering** moet doorkomen. Houd daarom per item `{id, removed?, at}` bij, of een aparte lijst `removed: {id: at}`. Per item wint de nieuwste `at`.
+- **`progress`**: per sleutel wint de nieuwste `updatedAt`.
+- **`history`**: samenvoegen op id of tijd, nieuwste eerst, maximaal 500 items.
+- **Instellingen, `connections`, `pin` en `prefs`**: het geheel met de nieuwste `updatedAt` wint, niet per veld.
+- **Trakt-tokens zijn eenmalig bij verversen.** Lees daarom eerst `connections` voordat je een Trakt-token ververst. Heeft de server nieuwere tokens (een later `updatedAt`), gebruik die en ververs niet. Na het verversen meteen `put_state` voor `connections`.
+- **Uploaden:** bij elke lokale wijziging, met ongeveer 3 seconden vertraging. Voortgang tijdens het afspelen maximaal eens per 30 seconden en bij stoppen.
+- **Profiel verwijderd** (tombstone): `delete_state` voor `profile.<id>`.
+- **Ander account op dit apparaat:** zoals bij build 43 alles lokaal wissen, daarna alles importeren.
+- **Fouten:** altijd stil. Lokaal blijft leidend tot er weer verbinding is.
+- **Migratie:** is een onderdeel op de server leeg en is er lokaal iets, dan uploaden.
