@@ -125,3 +125,33 @@ Alle aanroepen gaan naar device-auth, met `Authorization: Bearer <access_token>`
 **Nieuwe teksten:** Devices · %d of %d devices · Linked %@ · Last used %@ · This device · Now · Remove · Remove %@? It will be signed out. · Too many devices · Your account can be used on up to %d devices. Remove a device to sign in on this one. · Cancel · just now · %d min ago · yesterday
 
 Op de website staat hetzelfde beheer op `bingr.online/account`.
+
+## Profielfoto's delen (build 40)
+
+Eigen profielfoto's horen bij het account. Iedereen die met hetzelfde account inlogt, ziet dezelfde foto, op elk platform en los van iCloud of Apple ID.
+
+**Opslag:** de privé-bucket `avatars`. Elk bestand staat op `<user_id>/<profiel_id>.jpg`, is JPEG, maximaal 512×512 pixels (vierkant bijgesneden) met kwaliteit 0,8, en maximaal 1 MB. Alleen de eigenaar heeft toegang. Alle aanvragen hebben de headers `apikey` en `Authorization: Bearer <access_token>`.
+
+| Wat | Aanvraag |
+|---|---|
+| Uploaden of vervangen | `POST {URL}/storage/v1/object/avatars/<user_id>/<profiel_id>.jpg` met de headers `Content-Type: image/jpeg` en `x-upsert: true`, body: de JPEG-bytes |
+| Downloaden | `GET {URL}/storage/v1/object/authenticated/avatars/<user_id>/<profiel_id>.jpg` |
+| Verwijderen | `DELETE {URL}/storage/v1/object/avatars/<user_id>/<profiel_id>.jpg` |
+
+**In `account_data.profiles`** krijgt elk profiel het veld `photo`:
+- met foto: `{"path": "<user_id>/<profiel_id>.jpg", "updated": "<ISO-8601>"}`;
+- zonder foto: `null`.
+
+Het avatar-icoon wordt ook gewoon meegestuurd, zodat er altijd iets te tonen is.
+
+**Lokaal bijhouden:** per profiel de `updated` van de foto die het apparaat heeft, de *photoVersion*.
+
+**Synchroniseren**
+- **Foto gekozen of gewijzigd op dit apparaat:** verklein de foto, upload hem, zet `photo` met `updated` = nu, sla die waarde lokaal op als *photoVersion* en upload de profiellijst (met de vertraging die er al is).
+- **Foto verwijderd:** stuur DELETE (fouten negeren), zet `photo: null` en upload de lijst.
+- **Bij lezen, migreren, importeren of samenvoegen:**
+  - Is `photo.updated` op de server nieuwer dan de lokale *photoVersion*, of heeft het apparaat geen foto: download en bewaar de foto als profielfoto. Op Apple gaat hij ook zoals nu via iCloud.
+  - Is `photo` `null` en kwam de lokale foto eerder uit de sync (er staat een *photoVersion*): verwijder de lokale foto.
+- **Migratie:** heeft een profiel lokaal een foto en op de server niet (`photo` ontbreekt of is `null`, en het apparaat heeft geen *photoVersion*), upload de foto dan.
+- **Wanneer:** bij het starten en bij elke heartbeat (elke 5 minuten) de `account_data` opnieuw lezen en deze regels toepassen. Zo verschijnt een nieuwe foto ook op apparaten die al open staan.
+- **Fouten:** altijd stil, de app nooit blokkeren.

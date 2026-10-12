@@ -49,3 +49,20 @@ language sql security definer set search_path = auth, public as $$
 $$;
 revoke all on function public.revoke_session(uuid) from public, anon, authenticated;
 grant execute on function public.revoke_session(uuid) to service_role;
+
+-- Profielfoto's per account: privé-bucket "avatars", pad <user_id>/<profiel_id>.jpg; alleen de eigenaar kan erbij.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('avatars', 'avatars', false, 1048576, array['image/jpeg'])
+on conflict (id) do update set public = false, file_size_limit = 1048576, allowed_mime_types = array['image/jpeg'];
+drop policy if exists "avatars eigen lezen" on storage.objects;
+drop policy if exists "avatars eigen toevoegen" on storage.objects;
+drop policy if exists "avatars eigen wijzigen" on storage.objects;
+drop policy if exists "avatars eigen verwijderen" on storage.objects;
+create policy "avatars eigen lezen" on storage.objects for select to authenticated
+  using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
+create policy "avatars eigen toevoegen" on storage.objects for insert to authenticated
+  with check (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
+create policy "avatars eigen wijzigen" on storage.objects for update to authenticated
+  using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
+create policy "avatars eigen verwijderen" on storage.objects for delete to authenticated
+  using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
