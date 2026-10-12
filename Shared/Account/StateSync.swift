@@ -450,7 +450,7 @@ final class StateSync {
         let d = UserDefaults.standard
         let store = CloudStore.shared
         var shared: [String: Any] = [:]
-        shared["language"] = Localizer.shared.override
+        shared["appLanguage"] = Localizer.shared.override
         shared["playerEngine"] = d.string(forKey: "player.engine") ?? "auto"
         shared["subtitleSize"] = Self.sizeNames[min(max(SubtitleSize.current.rawValue, 0), 2)]
         // kijkvoorkeuren: die van het hoofdaccount (andere profielen hebben hun eigen in profile.<id>)
@@ -474,12 +474,13 @@ final class StateSync {
         shared["hiddenTabs"] = hidden
         shared["introMusic"] = d.object(forKey: "splash.sound") as? Bool ?? true
         shared["refreshInterval"] = RefreshPolicy.current.rawValue
-        shared["parentalControl"] = ["enabled": store.parental.enabled, "autoLockAdult": store.parental.autoLockAdult]
+        shared["parentalControl"] = store.parental.enabled
+        shared["parentalAutoLockAdult"] = store.parental.autoLockAdult
         shared["traktScrobble"] = TraktSync.scrobbleEnabled
         shared["traktAskRating"] = TraktSync.askRating
 
         var apple: [String: Any] = [:]
-        apple["categorySort"] = d.string(forKey: "category.sort") ?? "standard"
+        shared["categorySort"] = d.string(forKey: "category.sort") ?? "standard"
         if let h = d.string(forKey: "trakt.oauthHost") { apple["traktOAuthHost"] = h }
         apple["nasServers"] = NASServer.load().map { s -> [String: Any] in
             ["id": s.id.uuidString, "name": s.name, "host": s.host, "share": s.share, "username": s.username,
@@ -563,6 +564,9 @@ final class StateSync {
         if let p = shared["parentalControl"] as? [String: Any] {
             store.setSyncedParental(enabled: p["enabled"] as? Bool ?? store.parental.enabled,
                                     autoLockAdult: p["autoLockAdult"] as? Bool ?? store.parental.autoLockAdult)
+        } else if shared["parentalControl"] is Bool || shared["parentalAutoLockAdult"] is Bool {
+            store.setSyncedParental(enabled: shared["parentalControl"] as? Bool ?? store.parental.enabled,
+                                    autoLockAdult: shared["parentalAutoLockAdult"] as? Bool ?? store.parental.autoLockAdult)
         }
         if let v = shared["traktScrobble"] as? Bool { setIfChanged(v, "trakt.scrobble") }
         if let v = shared["traktAskRating"] as? Bool { setIfChanged(v, "trakt.askRating") }
@@ -594,7 +598,7 @@ final class StateSync {
         }
 
         // apple
-        if let v = apple["categorySort"] as? String { setIfChanged(v, "category.sort") }
+        if let v = (shared["categorySort"] as? String) ?? (apple["categorySort"] as? String) { setIfChanged(v, "category.sort") }
         if let v = apple["traktOAuthHost"] as? String, v.hasPrefix("https://") { setIfChanged(v, "trakt.oauthHost") }
         if let list = apple["nasServers"] as? [[String: Any]] {
             var servers: [NASServer] = []
@@ -611,7 +615,7 @@ final class StateSync {
         }
 
         // taal als laatste: dit bouwt de hele interface opnieuw op
-        if let v = shared["language"] as? String, v != Localizer.shared.override,
+        if let v = (shared["appLanguage"] as? String) ?? (shared["language"] as? String), v != Localizer.shared.override,
            v.isEmpty || Localizer.supported.contains(where: { $0.code == v }) {
             Localizer.shared.override = v
         }
