@@ -273,6 +273,8 @@ final class PlayerController: ObservableObject {
         timer?.invalidate(); timer = nil
         saveProgress()
         if !isPreview { let p = position, it = item; Task { await TraktSync.shared.scrobble(.stop, item: it, progress: p) } }
+        // voortgang bij stoppen meteen naar de Bingr-account
+        if !isPreview { StateSync.shared.playbackStopped() }
         engine.stop()
     }
 
@@ -315,6 +317,7 @@ final class PlayerController: ObservableObject {
         position = 1
         saveProgress()
         if !isPreview { let it = item; Task { await TraktSync.shared.scrobble(.stop, item: it, progress: 1) } }
+        if !isPreview { StateSync.shared.playbackStopped() }
         onFinished?()
     }
 

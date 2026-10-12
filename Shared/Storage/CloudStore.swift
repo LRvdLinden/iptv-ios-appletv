@@ -126,6 +126,7 @@ final class CloudStore: ObservableObject {
     func upsertProfile(_ p: ViewerProfile) {
         if let i = profiles.firstIndex(where: { $0.id == p.id }) { profiles[i] = p } else { profiles.append(p) }
         write(profiles, K.profiles)
+        edited(.prefs)
     }
 
     /// Profiel op dít apparaat verwijderd: ProfileSync zet er een tombstone voor in de Bingr-account
@@ -386,6 +387,83 @@ final class CloudStore: ObservableObject {
         }
     }
 
+    // MARK: overige gegevens via de Bingr-account (build 44, zie StateSync)
+
+    /// Soort lokale wijziging, zodat StateSync weet wat er (vertraagd) naar de account moet.
+    enum StateEdit { case profile, progress, prefs, reminders, settings }
+    /// Eigen wijziging op dit apparaat: (profiel-ID of nil, soort). Niet bij overnemen uit iCloud of de account.
+    let stateEdited = PassthroughSubject<(UUID?, StateEdit), Never>()
+
+    private func edited(_ kind: StateEdit) {
+        stateEdited.send((activeProfileID ?? mainProfileID, kind))
+    }
+
+    /// Lijsten, voortgang en geschiedenis van één profiel (ook als het niet actief is).
+    struct ProfileData: Equatable {
+        var favorites: Set<String> = []
+        var myList: Set<String> = []
+        var watched: Set<String> = []
+        var recentChannels: [String] = []
+        var history: [HistoryEntry] = []
+        var progress: [String: ProgressEntry] = [:]
+    }
+
+    /// Gegevens van een profiel lezen. Het hoofdprofiel neemt (net als `scoped`) de gegevens van vóór de profielen over.
+    func profileData(_ id: UUID) -> ProfileData {
+        // het actieve profiel: wat nu in het geheugen staat (dat is altijd het nieuwste)
+        if id == activeProfileID {
+            return ProfileData(favorites: favorites, myList: myList, watched: localWatched,
+                               recentChannels: recentChannels, history: history, progress: progress)
+        }
+        func read<T: Decodable>(_ t: T.Type, _ base: String) -> T? {
+            if let v = decode(t, "\(base).\(id.uuidString)") { return v }
+            return id == mainProfileID ? decode(t, base) : nil
+        }
+        return ProfileData(favorites: read(Set<String>.self, K.favorites) ?? [],
+                           myList: read(Set<String>.self, K.myList) ?? [],
+                           watched: read(Set<String>.self, K.watched) ?? [],
+                           recentChannels: read([String].self, K.recent) ?? [],
+                           history: read([HistoryEntry].self, K.history) ?? [],
+                           progress: read([String: ProgressEntry].self, K.progress) ?? [:])
+    }
+
+    /// Gegevens van een profiel uit de Bingr-account zetten (StateSync). Alleen wat veranderd is wordt geschreven;
+    /// is het profiel actief, dan ziet de app het meteen.
+    func setProfileData(_ id: UUID, _ d: ProfileData) {
+        let old = profileData(id)
+        guard old != d else { return }
+        let suffix = ".\(id.uuidString)"
+        if old.favorites != d.favorites { write(d.favorites, K.favorites + suffix) }
+        if old.myList != d.myList { write(d.myList, K.myList + suffix) }
+        if old.watched != d.watched { write(d.watched, K.watched + suffix) }
+        if old.recentChannels != d.recentChannels { write(d.recentChannels, K.recent + suffix) }
+        if old.history != d.history { write(d.history, K.history + suffix) }
+        if old.progress != d.progress { write(d.progress, K.progress + suffix) }
+        if id == activeProfileID {
+            favorites = d.favorites; myList = d.myList; localWatched = d.watched
+            recentChannels = d.recentChannels; history = d.history; progress = d.progress
+        }
+    }
+
+    /// Kijkvoorkeuren van een profiel uit de account zetten; is het profiel actief, dan ook meteen toepassen.
+    func setSyncedPreferences(_ id: UUID, _ change: (inout ViewerProfile) -> Void) {
+        guard let i = profiles.firstIndex(where: { $0.id == id }) else { return }
+        var p = profiles[i]
+        change(&p)
+        guard p != profiles[i] else { return }
+        profiles[i] = p
+        write(profiles, K.profiles)
+        if id == activeProfileID { applyPreferences(of: p) }
+    }
+
+    /// Kinderslot aan/uit en volwassenengroepen (zonder de groepen per server) uit de account zetten.
+    func setSyncedParental(enabled: Bool, autoLockAdult: Bool) {
+        guard parental.enabled != enabled || parental.autoLockAdult != autoLockAdult else { return }
+        parental.enabled = enabled
+        parental.autoLockAdult = autoLockAdult
+        write(parental, K.parental)
+    }
+
     // MARK: favorieten / mijn lijst
 
     func key(_ playlist: UUID, _ item: String) -> String { "\(playlist.uuidString)|\(item)" }
@@ -394,6 +472,7 @@ final class CloudStore: ObservableObject {
         let k = key(playlist, item)
         if favorites.contains(k) { favorites.remove(k) } else { favorites.insert(k) }
         write(favorites, pk(K.favorites))
+        edited(.profile)
     }
     func isFavorite(_ playlist: UUID, _ item: String) -> Bool { favorites.contains(key(playlist, item)) }
 
@@ -401,6 +480,7 @@ final class CloudStore: ObservableObject {
         let k = key(playlist, item)
         if myList.contains(k) { myList.remove(k) } else { myList.insert(k) }
         write(myList, pk(K.myList))
+        edited(.profile)
     }
     func inMyList(_ playlist: UUID, _ item: String) -> Bool { myList.contains(key(playlist, item)) }
     func setMyList(_ playlist: UUID, _ item: String, _ on: Bool) {
@@ -417,8 +497,9 @@ final class CloudStore: ObservableObject {
             progress = Dictionary(uniqueKeysWithValues: keep.map { ($0.key, $0.value) })
         }
         write(progress, pk(K.progress))
+        edited(.progress)
     }
-    func clearProgress(_ itemKey: String) { progress[itemKey] = nil; write(progress, pk(K.progress)) }
+    func clearProgress(_ itemKey: String) { progress[itemKey] = nil; write(progress, pk(K.progress)); edited(.profile) }
 
     // MARK: lokaal bekeken (als Trakt niet gekoppeld is)
 
@@ -429,6 +510,7 @@ final class CloudStore: ObservableObject {
         let k = Self.episodeKey(series: e.seriesID, season: e.season, episode: e.number)
         if watched { localWatched.insert(e.id); localWatched.insert(k) } else { localWatched.remove(e.id); localWatched.remove(k) }
         write(localWatched, pk(K.watched))
+        edited(.profile)
     }
     func localWatchedCount(series id: String) -> Int {
         let prefix = "ep:\(id)|"
@@ -438,6 +520,7 @@ final class CloudStore: ObservableObject {
     func setLocalWatched(_ itemKey: String, _ watched: Bool) {
         if watched { localWatched.insert(itemKey) } else { localWatched.remove(itemKey) }
         write(localWatched, pk(K.watched))
+        edited(.profile)
     }
 
     func pushRecentChannel(_ playlist: UUID, _ channelID: String) {
@@ -446,6 +529,7 @@ final class CloudStore: ObservableObject {
         recentChannels.insert(k, at: 0)
         recentChannels = Array(recentChannels.prefix(20))
         write(recentChannels, pk(K.recent))
+        edited(.profile)
     }
 
     // MARK: beheren (hernoemen / verbergen / volgorde / samenvoegen)
@@ -464,6 +548,7 @@ final class CloudStore: ObservableObject {
     func updateParental(_ change: (inout ParentalSettings) -> Void) {
         change(&parental)
         write(parental, K.parental)
+        edited(.settings)
     }
 
     // MARK: kijkgeschiedenis
@@ -471,16 +556,19 @@ final class CloudStore: ObservableObject {
     func addHistory(_ e: HistoryEntry) {
         history.removeAll { $0.itemID == e.itemID && $0.playlistID == e.playlistID }
         history.insert(e, at: 0)
-        if history.count > 200 { history = Array(history.prefix(200)) }
+        if history.count > 500 { history = Array(history.prefix(500)) }   // zelfde maximum als in de account
         write(history, pk(K.history))
+        edited(.profile)
     }
     func removeHistory(_ e: HistoryEntry) {
         history.removeAll { $0.id == e.id }
         write(history, pk(K.history))
+        edited(.profile)
     }
     func clearHistory(playlist: UUID?) {
         history.removeAll { $0.playlistID == playlist }
         write(history, pk(K.history))
+        edited(.profile)
     }
     /// Kijkgeschiedenis van het actieve profiel (en de server).
     func history(for playlist: UUID?) -> [HistoryEntry] {
@@ -499,9 +587,18 @@ final class CloudStore: ObservableObject {
         reminders.removeAll { $0.id == r.id }
         reminders.append(r)
         write(reminders, K.reminders)
+        edited(.reminders)
     }
     func removeReminder(_ id: String) {
         reminders.removeAll { $0.id == id }
+        write(reminders, K.reminders)
+        edited(.reminders)
+    }
+
+    /// Herinneringen uit de Bingr-account in één keer zetten (StateSync); telt niet als eigen wijziging.
+    func replaceReminders(_ list: [ProgramReminder]) {
+        guard list != reminders else { return }
+        reminders = list
         write(reminders, K.reminders)
     }
     func hasReminder(_ id: String) -> Bool { reminders.contains { $0.id == id } }

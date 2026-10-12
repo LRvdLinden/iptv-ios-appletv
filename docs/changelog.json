@@ -1,5 +1,19 @@
 [
  {
+  "build": 44,
+  "date": "2026-10-12",
+  "platforms": [
+   "apple",
+   "android"
+  ],
+  "nl": [
+   "Alles gaat mee met je account: Trakt- en OpenSubtitles-login, instellingen, Mijn lijst, Verder kijken, bekeken, kijkgeschiedenis, pincodes en herinneringen — na opnieuw installeren of op een nieuw apparaat staat alles weer klaar"
+  ],
+  "en": [
+   "Everything comes with your account: Trakt and OpenSubtitles sign-in, settings, My List, Continue Watching, watched, watch history, PINs and reminders — after reinstalling or on a new device, everything is ready again"
+  ]
+ },
+ {
   "build": 43,
   "date": "2026-10-12",
   "platforms": [

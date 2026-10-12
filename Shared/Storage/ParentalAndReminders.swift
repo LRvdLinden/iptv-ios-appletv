@@ -243,19 +243,37 @@ final class ReminderCenter: ObservableObject {
         let r = ProgramReminder(id: "\(channel.id)-\(Int(program.start.timeIntervalSince1970))", playlistID: playlist,
                                 channelID: channel.id, channelName: channel.name, title: program.title, start: program.start)
         CloudStore.shared.addReminder(r)
+        await scheduleNotification(r)
+    }
+
+    /// Melding 2 minuten voor de start (iPhone, iPad, Mac). Ook voor herinneringen uit de Bingr-account.
+    func scheduleNotification(_ r: ProgramReminder, ask: Bool = true) async {
         #if !os(tvOS)
         let center = UNUserNotificationCenter.current()
-        let granted = (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false
-        guard granted else { return }
+        let granted: Bool
+        if ask {
+            granted = (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false
+        } else {
+            let s = await center.notificationSettings()
+            granted = s.authorizationStatus == .authorized || s.authorizationStatus == .provisional
+        }
+        guard granted, r.start > Date() else { return }
         let content = UNMutableNotificationContent()
         content.title = r.title
         content.body = L("Starts in 2 minutes on %@", r.channelName)
         content.sound = .default
         content.userInfo = ["channelID": r.channelID, "playlistID": r.playlistID.uuidString]
-        let fire = max(program.start.addingTimeInterval(-120).timeIntervalSinceNow, 1)
+        let fire = max(r.start.addingTimeInterval(-120).timeIntervalSinceNow, 1)
         let req = UNNotificationRequest(identifier: r.id, content: content,
                                         trigger: UNTimeIntervalNotificationTrigger(timeInterval: fire, repeats: false))
         try? await center.add(req)
+        #endif
+    }
+
+    /// Melding van een (elders) verwijderde herinnering intrekken.
+    func cancelNotification(_ id: String) {
+        #if !os(tvOS)
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [id])
         #endif
     }
 

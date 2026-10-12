@@ -142,8 +142,29 @@ actor TraktClient {
     /// Redirect-URI's zoals ze bij de Trakt-app geregistreerd kunnen zijn.
     static let redirectURIs = ["https://github.com/LRvdLinden/iptv-ios-appletv", "urn:ietf:wg:oauth:2.0:oob"]
 
+    /// Tokens uit de Bingr-account zetten of wissen (StateSync), zonder intrekken bij Trakt.
+    func store(_ t: TraktTokens?) {
+        Keychain.setCodable(t, for: tokenKey)
+    }
+
+    /// Trakt-tokens zijn eenmalig bij verversen: eerst de account lezen (een ander apparaat kan al
+    /// ververst hebben), daarna pas zelf verversen, en de nieuwe tokens meteen terugzetten in de account.
+    private var refreshing: Task<Void, Never>?
+
     private func validToken() async throws -> String {
         guard var t = tokens else { throw TraktError.notLoggedIn }
+        if t.expiresAt.timeIntervalSinceNow < 24 * 3600 {
+            if let r = refreshing {
+                await r.value
+            } else {
+                let r = Task { await StateSync.beforeTraktRefresh() }
+                refreshing = r
+                await r.value
+                refreshing = nil
+            }
+            guard let latest = tokens else { throw TraktError.notLoggedIn }
+            t = latest
+        }
         if t.expiresAt.timeIntervalSinceNow < 24 * 3600 {
             // Inloggen gaat met een apparaatcode (geen redirect). Bij verversen eist Trakt wel een
             // geregistreerde redirect-URI; we proberen de veilige https-variant en de oude "oob".
@@ -155,7 +176,9 @@ actor TraktClient {
                 if r.statusCode == 200, let n = try? JSONDecoder().decode(TokenResponse.self, from: d) {
                     let user = t.username; t = n.tokens; t.username = user
                     Keychain.setCodable(t, for: tokenKey)
-                    refreshed = true; break
+                    refreshed = true
+                    await StateSync.traktTokensRefreshed()
+                    break
                 }
                 if r.statusCode == 401 || r.statusCode == 400 { unauthorized += 1 }
             }

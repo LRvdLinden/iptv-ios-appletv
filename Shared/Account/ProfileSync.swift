@@ -478,6 +478,14 @@ final class ProfileSync {
         return NSNull()
     }
 
+    /// Profielen met een tombstone (eigen of van de server): StateSync verwijdert hun `profile.<id>`.
+    var tombstonedIDs: Set<UUID> {
+        Set(loadTombstones().keys.compactMap(UUID.init(uuidString:)))
+    }
+
+    /// Profiel-ID zoals de server het kent (ook voor `profile.<id>` in de account-state).
+    func serverID(for id: UUID) -> String { rawID(for: id) }
+
     /// Profiel-ID zoals de server het kent (voor het pad in de bucket).
     private func rawID(for id: UUID) -> String {
         if let s = loadExtras()[id.uuidString]?["id"] as? String, Self.uuid(for: s) == id { return s }
@@ -664,7 +672,7 @@ final class ProfileSync {
     }
 
     /// Profiel-ID van de server → UUID (een ander formaat krijgt een vaste, afgeleide UUID).
-    private static func uuid(for raw: String) -> UUID {
+    static func uuid(for raw: String) -> UUID {
         if let u = UUID(uuidString: raw) { return u }
         let h = Array(SHA256.hash(data: Data(raw.utf8)))
         var b = Array(h.prefix(16))

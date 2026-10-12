@@ -146,6 +146,32 @@ final class TraktSync: ObservableObject {
         await loadProfile()
     }
 
+    /// Trakt-koppeling uit de Bingr-account toegepast (StateSync): de UI meteen bijwerken.
+    /// `tokens` nil = elders uitgelogd (lokaal wissen, zonder intrekken bij Trakt).
+    func applySyncedConnection(_ tokens: TraktTokens?) async {
+        await client.store(tokens)
+        guard tokens != nil else {
+            isLoggedIn = false; username = nil
+            watchedMovies = []; watchedEpisodes = [:]; watchlist = []; playback = []; titleIndex = TitleIndex()
+            displayName = nil; avatar = nil
+            saveCache()
+            return
+        }
+        let wasLoggedIn = isLoggedIn
+        username = tokens?.username ?? username
+        // andere profielen dan het hoofdaccount zien Trakt niet (zie applyProfile)
+        guard profileAllowed else { return }
+        isLoggedIn = true
+        if !wasLoggedIn {
+            loadCache()
+            // los starten: dit kan vanuit een Trakt-verversing komen (zie StateSync.beforeTraktRefresh)
+            Task { @MainActor in
+                await self.refresh(force: true)
+                await self.loadProfile()
+            }
+        }
+    }
+
     func logout() async {
         await client.logout()
         isLoggedIn = false; username = nil

@@ -3,7 +3,7 @@
 [![Build](https://github.com/LRvdLinden/iptv-ios-appletv/actions/workflows/build.yml/badge.svg)](https://github.com/LRvdLinden/iptv-ios-appletv/actions/workflows/build.yml)
 
 Native IPTV- en mediaspeler voor **iPhone, iPad, Mac en Apple TV** met de look & feel van Netflix.
-SwiftUI · iOS 17+ · tvOS 17+ · macOS 14+ · Apple- én VLC-engine · 11 talen · versie 1.0.0 (build 43).
+SwiftUI · iOS 17+ · tvOS 17+ · macOS 14+ · Apple- én VLC-engine · 11 talen · versie 1.0.0 (build 44).
 
 Wat er nieuw is per build: [CHANGELOG.md](CHANGELOG.md) · [bingr.online/changelog](https://bingr.online/changelog/)
 
@@ -44,11 +44,12 @@ Wat er nieuw is per build: [CHANGELOG.md](CHANGELOG.md) · [bingr.online/changel
 **Account**
 - **Verplicht inloggen** met een Bingr-account (e-mail + wachtwoord), zoals Netflix: splash → inlogscherm → "Wie kijkt er?". Met een geldige sessie ga je meteen door; account maken, wachtwoord vergeten, uitloggen en account verwijderen in de app (Mijn Bingr → Account)
 - **QR-koppeling op Apple TV**: scan de QR-code met je telefoon of ga naar **bingr.online/tv** en voer de code in; of log op de tv in met e-mail. Op iPhone, iPad en Mac koppel je een tv met *Mijn Bingr → Account → Tv koppelen*
-- **Profielen bij je account**: bij de eerste login worden je bestaande profielen aan je account gekoppeld (niets gaat verloren) en gedeeld met de Android-app. Pincodes blijven op je apparaten; eigen profielfoto's worden via je Bingr-account gedeeld met al je apparaten (ook Android)
+- **Profielen bij je account**: bij de eerste login worden je bestaande profielen aan je account gekoppeld (niets gaat verloren) en gedeeld met de Android-app. Pincodes gaan (sinds build 44) versleuteld mee met je account; eigen profielfoto's worden via je Bingr-account gedeeld met al je apparaten (ook Android)
 - **Maximaal 10 apparaten per account**: elk apparaat registreert zich na het inloggen. Zit je aan de limiet, dan verwijder je eerst een ander apparaat ("Too many devices"). Onder *Mijn Bingr → Account → Apparaten* zie je alle gekoppelde apparaten (ook op Apple TV) met platform, koppeldatum en laatst gebruikt, en verwijder je er een. Een verwijderd apparaat wordt automatisch uitgelogd
 - De sessie staat alleen op dit apparaat (sleutelhanger zonder iCloud-sync); offline blijft de app gewoon werken
 - **Profielen (toevoegen, wijzigen, verwijderen) synchroniseren met al je apparaten** via je Bingr-account
 - **Servers en afspeellijsten bij je account**: ze worden versleuteld bij je account bewaard (inclusief wachtwoorden, tokens en je categorieën en groepen), dus na updaten of opnieuw installeren staat alles weer klaar
+- **Alles bij je account**: alles (Trakt, OpenSubtitles, instellingen, Mijn lijst, voortgang, bekeken, pincodes, herinneringen) gaat versleuteld mee met je account. Na opnieuw installeren of op een nieuw apparaat staat alles na inloggen weer klaar
 - **Trakt en OpenSubtitles: gewoon inloggen**, de sleutels komen veilig van de Bingr-server
 
 **Bronnen**
@@ -147,7 +148,7 @@ Alle teksten staan in de code in het Engels (`L("Play")`) en worden vertaald via
 ```
 Shared/
   App/            app-start, AppState (splash → inloggen → kiezer → app), herinneringsbanner
-  Account/        Bingr-account (Supabase REST): inloggen, tv-koppeling, profielen en servers per account
+  Account/        Bingr-account (Supabase REST): inloggen, tv-koppeling, profielen, servers en alle overige gegevens per account
   Models/         playlist, zender, film, serie, EPG
   Providers/      M3U, XMLTV, Xtream, Stalker, Plex, Jellyfin/Emby, Stremio + cache en aanpassingen
   Metadata/       IMDb (OMDb) + titels opschonen

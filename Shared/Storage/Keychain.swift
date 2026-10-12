@@ -20,7 +20,12 @@ enum Keychain {
         if let value, !value.isEmpty { d[key] = value } else { d[key] = "" }
         kv.set(d, forKey: cloudKey)
         kv.synchronize()
+        // StateSync volgt o.a. Trakt, OpenSubtitles en pincodes (zie "Alle overige gegevens via het account")
+        DispatchQueue.main.async { NotificationCenter.default.post(name: didChange, object: nil, userInfo: ["key": key]) }
     }
+
+    /// Een geheim is op dit apparaat gezet of verwijderd (`userInfo["key"]`).
+    static let didChange = Notification.Name("bingr.keychain.didChange")
 
     static func get(_ key: String) -> String? {
         let c = cloud()

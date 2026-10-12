@@ -56,6 +56,7 @@ struct BingrApp: App {
                     await account.checkDevice()
                     await ProfileSync.shared.syncNow(periodic: true)
                     await SourceSync.shared.syncNow()
+                    await StateSync.shared.syncNow()
                     // app-sleutels: alleen opnieuw als het nog niet gelukt is (bijv. offline gestart)
                     await account.fetchConfig(force: false)
                 }
@@ -95,6 +96,7 @@ final class AppState: ObservableObject {
             .store(in: &bag)
         ProfileSync.shared.start()
         SourceSync.shared.start()
+        StateSync.shared.start()
         // servers uit de Bingr-account geïmporteerd, gewijzigd of verwijderd → bibliotheek laden of verversen
         SourceSync.shared.changes
             .receive(on: DispatchQueue.main)
@@ -122,6 +124,8 @@ final class AppState: ObservableObject {
             await AccountService.shared.checkDevice(force: true)
             await ProfileSync.shared.syncNow()
             await SourceSync.shared.syncNow()
+            // Trakt, OpenSubtitles, instellingen, lijsten, voortgang, pincodes en herinneringen
+            await StateSync.shared.syncNow()
         }
         // elke 5 minuten zolang de app open is
         Task { @MainActor in
@@ -131,6 +135,7 @@ final class AppState: ObservableObject {
                 // account_data opnieuw lezen: nieuwe of verwijderde profielfoto's van andere apparaten
                 await ProfileSync.shared.syncNow(periodic: true)
                 await SourceSync.shared.syncNow()
+                await StateSync.shared.syncNow()
                 await AccountService.shared.fetchConfig(force: false)
             }
         }

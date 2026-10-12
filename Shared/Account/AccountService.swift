@@ -494,6 +494,47 @@ final class AccountService: ObservableObject {
         return r.json["updatedAt"] as? String
     }
 
+    // MARK: - Alle overige gegevens (build 44), versleuteld per onderdeel via device-auth
+
+    /// device-auth `get_state`: `{sections: {"<naam>": {data, updatedAt}}}`. `sections` nil = alles.
+    func getState(sections: [String]? = nil) async throws -> [String: (data: Any, updatedAt: String?)] {
+        var body: [String: Any] = ["action": "get_state"]
+        if let sections { body["sections"] = sections }
+        let r = try await authorized { token in
+            try await self.post("/functions/v1/device-auth", body, bearer: token)
+        }
+        // een fout (bijv. decrypt_failed) mag nooit als "leeg" gelden: dan zou de app alles opnieuw uploaden
+        guard r.status == 200, r.json["error"] == nil else { throw AccountError.generic }
+        var out: [String: (data: Any, updatedAt: String?)] = [:]
+        if let all = r.json["sections"] as? [String: Any] {
+            for (name, v) in all {
+                guard let row = v as? [String: Any], let data = row["data"], !(data is NSNull) else { continue }
+                out[name] = (data, row["updatedAt"] as? String)
+            }
+        } else if r.json["sections"] == nil {
+            throw AccountError.generic
+        }
+        return out
+    }
+
+    /// device-auth `put_state`: één onderdeel opslaan (max. 1 MB). Geeft `updatedAt` terug.
+    @discardableResult
+    func putState(section: String, data: Any) async throws -> String? {
+        let r = try await authorized { token in
+            try await self.post("/functions/v1/device-auth", ["action": "put_state", "section": section, "data": data], bearer: token)
+        }
+        guard r.status == 200, (r.json["ok"] as? Bool) == true else { throw AccountError.generic }
+        return r.json["updatedAt"] as? String
+    }
+
+    /// device-auth `delete_state`: een onderdeel verwijderen (bijv. `profile.<id>` na een tombstone).
+    func deleteState(section: String) async throws {
+        let r = try await authorized { token in
+            try await self.post("/functions/v1/device-auth", ["action": "delete_state", "section": section], bearer: token)
+        }
+        guard r.status == 200, (r.json["ok"] as? Bool) == true else { throw AccountError.generic }
+    }
+
     // MARK: - Profielfoto's (Storage-bucket `avatars`), zie "Profielfoto's delen (build 40)"
 
     /// User-id van de ingelogde gebruiker (map in de bucket `avatars`).
@@ -709,11 +750,10 @@ final class AccountService: ObservableObject {
             if let uid, !uid.isEmpty {
                 if let last = Keychain.getLocalOnly(K.lastUser), !last.isEmpty, last != uid {
                     CloudStore.shared.wipeAccountData()
-                    // Trakt en OpenSubtitles van het vorige account ontkoppelen (anders scrobbelt dit account naar iemand anders' Trakt)
-                    Task { @MainActor in
-                        await TraktSync.shared.logout()
-                        await OpenSubtitles.shared.logout()
-                    }
+                    // Trakt en OpenSubtitles van het vorige account ontkoppelen (anders scrobbelt dit account naar
+                    // iemand anders' Trakt), en de sync-stand van de overige gegevens wissen; daarna importeert
+                    // StateSync alles van dit account
+                    StateSync.shared.accountSwitched()
                 }
                 Keychain.setLocalOnly(uid, for: K.lastUser)
             }

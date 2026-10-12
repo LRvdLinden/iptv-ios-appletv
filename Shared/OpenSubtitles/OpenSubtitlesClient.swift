@@ -66,6 +66,24 @@ final class OpenSubtitles: ObservableObject {
         remainingDownloads = r.user?.remaining_downloads ?? r.user?.allowed_downloads
     }
 
+    /// Wat de app bewaart om ingelogd te blijven (voor de Bingr-account, zie StateSync).
+    var syncedSession: (token: String, baseURL: String, username: String)? {
+        session.map { ($0.token, $0.baseURL, $0.username) }
+    }
+
+    /// Sessie uit de Bingr-account zetten of wissen (zonder uitloggen bij OpenSubtitles).
+    func applySyncedSession(token: String, baseURL: String?, username: String) {
+        let s = Session(token: token, baseURL: (baseURL?.isEmpty == false ? baseURL! : "api.opensubtitles.com"), username: username)
+        guard session?.token != s.token || session?.baseURL != s.baseURL || session?.username != s.username else { return }
+        session = s
+        Task { await refreshUser() }
+    }
+
+    func forgetSession() {
+        if session != nil { session = nil }
+        remainingDownloads = nil
+    }
+
     func logout() async {
         _ = try? await request("/logout", method: "DELETE")
         session = nil
