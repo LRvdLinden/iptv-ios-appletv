@@ -32,6 +32,18 @@ struct DetailView: View {
     @State private var afterPIN: (() -> Void)?
     @State private var pinOK = false
     @State private var collecting: CollectionTarget?
+    /// Leeftijdsclassificatie uit TMDB (Kijkwijzer eerst), build 53
+    @State private var ageInfo: AgeInfo?
+    /// Trailer per seizoen (TMDB), seizoen → YouTube-ID; build 53
+    @State private var seasonTrailers: [Int: String] = [:]
+    /// De trailer die in het blad speelt
+    @State private var trailerID: String?
+    #if os(tvOS)
+    /// Apple TV: focus in de afleveringenrij begint bij de aflevering waar je bent
+    @FocusState private var focusedEpisode: String?
+    @Namespace private var episodeNS
+    @State private var episodeFocusRedirected = false
+    #endif
 
     private var pid: UUID? { playlists.source?.id }
     private var baseTitle: String { switch target { case .movie(let m): return m.title; case .series(let s): return s.title } }
@@ -131,7 +143,7 @@ struct DetailView: View {
         }
         #if !os(tvOS)
         .sheet(isPresented: $showTrailer) {
-            if let t = d?.trailerYouTubeID { TrailerSheet(youtubeID: t, title: title) }
+            if let t = trailerID ?? currentTrailer { TrailerSheet(youtubeID: t, title: title) }
         }
         .sheet(item: $nested) { DetailView(target: $0) }
         #else
@@ -198,7 +210,7 @@ struct DetailView: View {
                 .padding(.horizontal, 12).padding(.vertical, 6)
                 .background(Color.white.opacity(0.15), in: RoundedRectangle(cornerRadius: 10))
             if let y = d?.year { Text(String(y.prefix(4))) }
-            if let c = d?.certification { Text(c).font(.system(size: tvScaled(12), weight: .semibold))
+            if let c = certificationLabel { Text(c).font(.system(size: tvScaled(12), weight: .semibold))
                 .padding(.horizontal, 5).padding(.vertical, 1).overlay(RoundedRectangle(cornerRadius: 3).stroke(Theme.secondary)) }
             if !isMovie, !seasons.isEmpty {
                 Text(seasons.count == 1 ? L("1 season") : L("%d seasons", seasons.count))
@@ -229,7 +241,10 @@ struct DetailView: View {
                     collecting = .detail(target)
                 }
                 .accessibilityLabel(L("Add to collection…"))
-                if let _ = d?.trailerYouTubeID { circleButton("film") { openTrailer() } }
+                if let t = currentTrailer {
+                    circleButton("film") { openTrailer(t) }
+                        .accessibilityLabel(hasSeasonTrailer ? L("Trailer season %d", season) : L("Trailer"))
+                }
                 if isMovie { circleButton(isWatchedTitle ? "checkmark.circle.fill" : "checkmark.circle") { toggleWatchedMovie() } }
                 #if os(iOS)
                 // offline kijken (build 52)
@@ -372,13 +387,27 @@ struct DetailView: View {
     @ViewBuilder private func episodesSection(_ s: Series) -> some View {
         VStack(alignment: .leading, spacing: tvScaled(14)) {
             sectionTitle(L("Episodes"))
+            // hoeveel van de serie je al gezien hebt (build 53)
+            if let f = watchedFraction(episodes), f > 0 {
+                progressLine(L("%d%% of the series watched", percent(f)), f)
+            }
             HStack(spacing: 12) {
                 if seasons.count > 1 {
                     Menu {
-                        ForEach(seasons, id: \.self) { n in Button(L("Season %d", n)) { season = n } }
+                        ForEach(seasons, id: \.self) { n in Button(seasonLabel(n)) { season = n } }
                     } label: { seasonPill(chevron: true) }
                 } else if !seasons.isEmpty {
                     seasonPill(chevron: false)
+                }
+                if hasSeasonTrailer, let t = seasonTrailers[season] {
+                    Button { openTrailer(t) } label: {
+                        Label(L("Trailer season %d", season), systemImage: "play.rectangle")
+                            .font(.system(size: tvScaled(14), weight: .semibold))
+                            .padding(.horizontal, 14).padding(.vertical, 10)
+                            .background(Color.white.opacity(0.12), in: Capsule())
+                            .foregroundStyle(.white)
+                    }
+                    .plainTVButton()
                 }
                 Spacer()
                 let list = episodes.filter { $0.season == season }
@@ -398,27 +427,75 @@ struct DetailView: View {
 
             if loading && episodes.isEmpty { ProgressView().tint(.white).frame(maxWidth: .infinity) }
             let list = episodes.filter { $0.season == season }
+            if seasons.count > 1, let f = watchedFraction(list), f > 0 {
+                progressLine(L("Season %d · %d%% watched", season, percent(f)), f)
+            }
+            let current = currentEpisodeID(in: list)
             ScrollViewReader { proxy in
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(alignment: .top, spacing: tvScaled(14)) {
-                        ForEach(list) { e in episodeCard(e, s).id(e.id) }
+                        ForEach(list) { e in
+                            episodeCard(e, s).id(e.id)
+                            #if os(tvOS)
+                                .focused($focusedEpisode, equals: e.id)
+                                .prefersDefaultFocus(e.id == current, in: episodeNS)
+                            #endif
+                        }
                     }
                     .padding(.horizontal, Theme.edge)
                     #if os(tvOS)
                     .padding(.vertical, 30)
+                    .focusScope(episodeNS)
                     #endif
                 }
                 #if os(tvOS)
                 .scrollClipDisabled()
                 #endif
-                .onAppear { if let n = nextEpisode, n.season == season { proxy.scrollTo(n.id, anchor: .leading) } }
+                // meteen naar de aflevering waar je bent (volgende onbekeken of half gekeken), ook als de lijst later binnenkomt
+                .task(id: "\(season)-\(list.count)-\(current ?? "")") {
+                    guard let current else { return }
+                    try? await Task.sleep(nanoseconds: 120_000_000)
+                    #if os(tvOS)
+                    proxy.scrollTo(current, anchor: .leading)
+                    #else
+                    proxy.scrollTo(current, anchor: .center)
+                    #endif
+                }
             }
+            #if os(tvOS)
+            .onChange(of: focusedEpisode) { old, new in
+                // eerste keer de rij in: naar de huidige aflevering, niet de dichtstbijzijnde kaart
+                guard !episodeFocusRedirected, old == nil, let new else { return }
+                episodeFocusRedirected = true
+                if let current, current != new { focusedEpisode = current }
+            }
+            .onChange(of: season) { _, _ in episodeFocusRedirected = false }
+            #endif
         }
-        .task(id: season) {
+        .task(id: "\(season)-\(d?.tmdbID ?? -1)-\(d != nil)") {
             guard let d else { return }
-            let info = await DetailsService.shared.seasonInfo(d, season: season)
+            let n = season
+            // trailer van dit seizoen (TMDB), tegelijk met de afleveringsinfo; geen eigen trailer → die van de serie
+            let tvID = seasonTrailers[n] == nil ? (d.tmdbID ?? -1) : -1
+            async let trailer = TMDB.seasonTrailer(tvID: tvID, season: n)
+            let info = await DetailsService.shared.seasonInfo(d, season: n)
             if !info.isEmpty { seasonInfo.merge(info) { _, new in new } }
+            if let t = await trailer { seasonTrailers[n] = t }
         }
+    }
+
+    /// Dunne voortgangsbalk met tekst ("42% van de serie bekeken").
+    private func progressLine(_ text: String, _ f: Double) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(text).font(.system(size: tvScaled(13), weight: .medium)).foregroundStyle(Theme.secondary)
+            Capsule().fill(Color.white.opacity(0.18)).frame(height: tvScaled(3))
+                .overlay(alignment: .leading) {
+                    GeometryReader { g in Capsule().fill(Theme.red).frame(width: g.size.width * min(max(f, 0), 1)) }
+                }
+                .frame(maxWidth: tvScaled(420))
+        }
+        .padding(.horizontal, Theme.edge)
+        .accessibilityElement(children: .combine)
     }
 
     private func seasonPill(chevron: Bool) -> some View {
@@ -429,6 +506,56 @@ struct DetailView: View {
         .padding(.horizontal, 16).padding(.vertical, 10)
         .background(Color.white.opacity(0.12), in: Capsule())
         .foregroundStyle(.white)
+    }
+
+    // MARK: kijkvoortgang (build 53)
+
+    /// Gezien = 1, half gekeken = de voortgang, anders 0.
+    private func episodeFraction(_ e: Episode) -> Double {
+        if Playables.isWatched(e, imdb: imdb) { return 1 }
+        return min(max(store.progress[e.id]?.fraction ?? 0, 0), 1)
+    }
+
+    /// Deel van deze afleveringen dat je gezien hebt (nil als er geen afleveringen bekend zijn).
+    private func watchedFraction(_ list: [Episode]) -> Double? {
+        guard !list.isEmpty else { return nil }
+        return list.reduce(0) { $0 + episodeFraction($1) } / Double(list.count)
+    }
+
+    /// Percentage zonder "0%" bij een begin of "100%" als er nog iets open staat.
+    private func percent(_ f: Double) -> Int {
+        let p = Int((f * 100).rounded())
+        if f > 0 && p == 0 { return 1 }
+        if f < 1 && p == 100 { return 99 }
+        return p
+    }
+
+    private func seasonLabel(_ n: Int) -> String {
+        guard let f = watchedFraction(episodes.filter { $0.season == n }), f > 0 else { return L("Season %d", n) }
+        return L("Season %d · %d%% watched", n, percent(f))
+    }
+
+    /// De aflevering waar je bent in deze lijst: de half gekeken of volgende onbekeken.
+    private func currentEpisodeID(in list: [Episode]) -> String? {
+        guard let n = nextEpisode, list.contains(where: { $0.id == n.id }) else { return nil }
+        return n.id
+    }
+
+    // MARK: trailer per seizoen (build 53)
+
+    /// Seizoen met een eigen trailer (bij meer dan één seizoen)?
+    private var hasSeasonTrailer: Bool { !isMovie && seasons.count > 1 && seasonTrailers[season] != nil }
+
+    /// Trailer van het gekozen seizoen, anders die van de serie/film.
+    private var currentTrailer: String? {
+        if !isMovie, let t = seasonTrailers[season] { return t }
+        return d?.trailerYouTubeID
+    }
+
+    /// Kijkwijzer als die er is, anders de classificatie van IMDb/Trakt of TMDB.
+    private var certificationLabel: String? {
+        if let a = ageInfo, a.country == "NL", let l = a.label { return l }
+        return d?.certification ?? ageInfo?.label
     }
 
     private func info(_ e: Episode) -> TitleDetails.EpisodeInfo? {
@@ -665,21 +792,34 @@ struct DetailView: View {
     }
 
     /// Leeftijdsfilter van dit profiel: boven de grens alleen met pincode.
+    /// Classificatie: TMDB (Kijkwijzer eerst), anders IMDb/Trakt; onbekend bij een kinderprofiel = streng.
     private func ageChecked(_ action: @escaping () -> Void) {
-        let limit = store.activeProfile?.effectiveAgeLimit
-        let group: String = { switch target { case .movie(let m): return m.group; case .series(let s): return s.group } }()
-        let cached: TitleMetadata? = {
-            switch target {
-            case .movie(let m): return MetadataService.shared.cached(m)
-            case .series(let s): return MetadataService.shared.cached(s)
-            }
-        }()
-        let rated = d?.certification ?? cached?.rated
-        let genre = cached?.genre ?? d.map { $0.genres.joined(separator: ",") }
-        if ParentalControl.shared.allowed(rated: rated, group: group, limit: limit, genre: genre,
-                                          strict: store.activeProfile?.strictAgeFilter ?? false) { action(); return }
-        if ParentalControl.shared.hasPIN { afterPIN = action; ageGate = true }
-        else { flash(L("Not available on this profile (age limit).")) }
+        guard let profile = store.activeProfile, let limit = profile.effectiveAgeLimit else { action(); return }
+        Task { @MainActor in
+            let info = await currentAgeInfo()
+            if info != nil { ageInfo = info }
+            let group: String = { switch target { case .movie(let m): return m.group; case .series(let s): return s.group } }()
+            let cached: TitleMetadata? = {
+                switch target {
+                case .movie(let m): return MetadataService.shared.cached(m)
+                case .series(let s): return MetadataService.shared.cached(s)
+                }
+            }()
+            let rated = d?.certification ?? cached?.rated
+            let genre = cached?.genre ?? d.map { $0.genres.joined(separator: ",") }
+            if ParentalControl.shared.allowed(rated: rated, group: group, limit: limit, genre: genre,
+                                              strict: profile.strictAgeFilter, info: info) { action(); return }
+            if ParentalControl.shared.hasPIN { afterPIN = action; ageGate = true }
+            else { flash(L("Not available on this profile (age limit).")) }
+        }
+    }
+
+    /// TMDB-classificatie van deze titel (gecachet; voor series die van de serie, niet van een film).
+    private func currentAgeInfo() async -> AgeInfo? {
+        switch target {
+        case .movie(let m): return await AgeRatingService.shared.info(title: m.title, year: m.year, isShow: false, imdb: imdb, tmdbID: d?.tmdbID)
+        case .series(let s): return await AgeRatingService.shared.info(title: s.title, year: s.year, isShow: true, imdb: imdb, tmdbID: d?.tmdbID)
+        }
     }
 
     private func play() { ageChecked(playNow) }
@@ -712,9 +852,9 @@ struct DetailView: View {
         Task { await trakt.setWatched(Playables.movie(m, imdb: imdb), !w) }
     }
 
-    private func openTrailer() {
-        guard let t = d?.trailerYouTubeID else { return }
+    private func openTrailer(_ t: String) {
         #if !os(tvOS)
+        trailerID = t
         showTrailer = true
         #else
         if let u = Trailer.appURL(t) { openURL(u) { ok in if !ok, let w = Trailer.webURL(t) { openURL(w) } } }
@@ -789,6 +929,8 @@ struct DetailView: View {
         }
         if started, let n = nextEpisode { season = n.season } else if let newest = seasons.last { season = newest }
         loading = false
+        // classificatie voor de detailregel (Kijkwijzer) en het leeftijdsfilter
+        if let info = await currentAgeInfo() { ageInfo = info }
     }
 }
 

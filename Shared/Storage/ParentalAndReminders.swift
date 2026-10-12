@@ -77,48 +77,87 @@ final class ParentalControl: ObservableObject {
         return adultWords.contains { l.contains($0) }
     }
 
-    /// Minimumleeftijd uit een classificatie (IMDb/OMDb "Rated": PG-13, TV-MA, 16, …). nil = onbekend.
+    /// Minimumleeftijd uit een classificatie (IMDb/OMDb "Rated", TMDB: PG-13, TV-MA, 16, AL, …). nil = onbekend.
     nonisolated static func minimumAge(_ rated: String?) -> Int? {
         guard let r = rated?.uppercased().trimmingCharacters(in: .whitespaces), !r.isEmpty, r != "N/A",
-              r != "NOT RATED", r != "UNRATED" else { return nil }
+              r != "NOT RATED", r != "UNRATED", r != "NR" else { return nil }
+        // "Approved"/"Passed" (oude VS-films) zeggen niets over de leeftijd: als onbekend behandelen
         let table: [String: Int] = [
-            "G": 0, "TV-Y": 0, "TV-G": 0, "AL": 0, "U": 0, "ALL": 0, "APPROVED": 0, "PASSED": 0,
-            "TV-Y7": 7, "TV-Y7-FV": 7, "PG": 9, "TV-PG": 10, "UC": 0,
-            "PG-13": 13, "TV-14": 14, "12A": 12, "M": 15, "MA15+": 15,
-            "R": 17, "TV-MA": 17, "NC-17": 18, "X": 18, "R18+": 18, "18": 18
+            "G": 0, "TV-Y": 0, "TV-G": 0, "AL": 0, "U": 0, "ALL": 0, "UC": 0,
+            "TV-Y7": 7, "TV-Y7-FV": 7, "PG": 9, "TV-PG": 10,
+            "PG-13": 13, "TV-14": 14, "12A": 12, "M": 15, "MA15+": 15, "MA 15+": 15,
+            "R": 17, "TV-MA": 17, "NC-17": 18, "X": 18, "R18+": 18, "R18": 18, "18": 18
         ]
         if let v = table[r] { return v }
+        // getallen ("12", "16+", "FSK 12", "K-12"): geen string-vergelijking, maar het getal zelf
         let digits = r.filter(\.isNumber)
         if let n = Int(digits), n <= 21 { return n }
         return nil
     }
 
-    /// Mag dit profiel dit zien? (Onbekende classificatie = toegestaan, behalve in volwassenengroepen.)
-    func allowed(rated: String?, group: String, limit: Int?, genre: String? = nil, strict: Bool = false) -> Bool {
+    /// Mag dit profiel dit zien?
+    func allowed(rated: String?, group: String, limit: Int?, genre: String? = nil, strict: Bool = false, info: AgeInfo? = nil) -> Bool {
         guard !isUnlocked else { return true }
-        return Self.allowedFor(rated: rated, group: group, limit: limit, genre: genre, strict: strict)
+        return Self.allowedFor(rated: rated, group: group, limit: limit, genre: genre, strict: strict, info: info)
+    }
+
+    /// Mag het actieve profiel deze film/serie zien? (Zelfde regel als de afspeellijst.)
+    func allowed(movie m: Movie) -> Bool {
+        guard let p = CloudStore.shared.activeProfile, let limit = p.effectiveAgeLimit else { return true }
+        let meta = MetadataService.shared.cached(m)
+        return allowed(rated: meta?.rated, group: m.group, limit: limit, genre: meta?.genre, strict: p.strictAgeFilter,
+                       info: AgeRatingService.shared.cached(m))
+    }
+    func allowed(series s: Series) -> Bool {
+        guard let p = CloudStore.shared.activeProfile, let limit = p.effectiveAgeLimit else { return true }
+        let meta = MetadataService.shared.cached(s)
+        return allowed(rated: meta?.rated, group: s.group, limit: limit, genre: meta?.genre, strict: p.strictAgeFilter,
+                       info: AgeRatingService.shared.cached(s))
     }
 
     /// Dezelfde regel zonder toegang tot de app-status (kan op de achtergrond draaien).
-    nonisolated static func allowedFor(rated: String?, group: String, limit: Int?, genre: String? = nil, strict: Bool = false) -> Bool {
+    ///
+    /// Bekende leeftijd (TMDB: Kijkwijzer eerst, anders VS/overig; daarna IMDb/OMDb) → alleen t/m de grens.
+    /// Onbekende leeftijd bij een kinderprofiel / grens t/m 12 → streng: alleen een kindergroep of
+    /// genre animatie/familie/kids, en nooit horror, thriller, misdaad of oorlog.
+    nonisolated static func allowedFor(rated: String?, group: String, limit: Int?, genre: String? = nil,
+                                       strict: Bool = false, info: AgeInfo? = nil) -> Bool {
         guard let limit else { return true }
         if Self.isAdultGroup(group) { return false }
-        let age = Self.minimumAge(rated)
-        if let age, age > limit { return false }
+        if let age = info?.age ?? Self.minimumAge(rated) { return age <= limit }
         guard strict else { return true }
-        // Kinderprofiel / t/m 12 jaar: alleen wat zeker geschikt is — bekende leeftijd binnen de grens,
-        // een kindergroep (Kids, Kinderen, Cartoon, Disney…) of genre animatie/familie.
-        if age != nil { return true }
+        let tokens = Self.genreTokens(genre)
+        if info?.adultGenre == true || !tokens.isDisjoint(with: adultGenres) { return false }
         if Self.isKidsGroup(group) { return true }
-        if let g = genre?.lowercased(), g.contains("animation") || g.contains("family") { return true }
+        if info?.kidsGenre == true || !tokens.isDisjoint(with: kidsGenres) { return true }
         return false
     }
 
-    nonisolated private static let kidsWords = ["kid", "kinder", "kinderen", "child", "junior", "jeugd", "cartoon", "anim", "disney",
-                                    "nick", "pixar", "dreamworks", "family", "familie", "enfant", "jeunesse", "niños", "infantil",
-                                    "bambini", "ragazzi", "çocuk", "cocuk", "dzieci", "bajki", "kika", "zapp", "baby", "boomerang",
-                                    "cbeebies", "pbs kids", "toon", "أطفال", "儿童", "动画"]
-    /// Groep met kinderinhoud?
+    /// Zender voor dit profiel? Met een leeftijdsgrens nooit volwassenengroepen; bij een kinderprofiel /
+    /// t/m 12 alleen zenders in een kindergroep of met een duidelijke kindernaam (Nickelodeon, Disney Junior …).
+    nonisolated static func channelAllowed(name: String, group: String, limit: Int?, strict: Bool) -> Bool {
+        guard limit != nil else { return true }
+        if isAdultGroup(group) || isAdultGroup(name) { return false }
+        guard strict else { return true }
+        return isKidsGroup(group) || isKidsGroup(name)
+    }
+
+    nonisolated private static let adultGenres: Set<String> = ["horror", "thriller", "crime", "war", "misdaad", "oorlog",
+                                                              "war & politics", "erotic", "erotiek", "adult"]
+    nonisolated private static let kidsGenres: Set<String> = ["animation", "family", "kids", "children", "animatie",
+                                                             "familie", "kinderen", "jeugd"]
+    nonisolated private static func genreTokens(_ g: String?) -> Set<String> {
+        guard let g, !g.isEmpty else { return [] }
+        return Set(g.lowercased().components(separatedBy: CharacterSet(charactersIn: ",/|"))
+            .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty })
+    }
+
+    // "anim" stond hier eerst ook in, maar dat raakte "Anime" (vaak niet voor kinderen): nu alleen "animat" (animatie/animation)
+    nonisolated private static let kidsWords = ["kid", "kinder", "kinderen", "child", "junior", "jeugd", "cartoon", "animat", "disney",
+                                    "nickelodeon", "nick jr", "nicktoons", "pixar", "dreamworks", "family", "familie", "enfant", "jeunesse", "niños", "infantil",
+                                    "bambini", "ragazzi", "çocuk", "cocuk", "dzieci", "bajki", "kika", "zapp", "babytv", "baby tv", "boomerang",
+                                    "cbeebies", "pbs kids", "toon", "jim jam", "duck tv", "pebble", "أطفال", "儿童", "动画"]
+    /// Groep (of zendernaam) met kinderinhoud?
     nonisolated static func isKidsGroup(_ g: String) -> Bool {
         let l = g.lowercased()
         return !isAdultGroup(g) && kidsWords.contains { l.contains($0) }

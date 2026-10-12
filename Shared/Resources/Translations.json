@@ -698,7 +698,11 @@
   "Waiting…": "في الانتظار…",
   "Watch credits": "مشاهدة الشارة",
   "When the credits start, the next episode begins after a short countdown.": "عند بدء الشارة، تبدأ الحلقة التالية بعد عد تنازلي قصير.",
-  "Without a start, the intro counts from the beginning of the episode.": "بدون بداية، تُحسب المقدمة من بداية الحلقة."
+  "Without a start, the intro counts from the beginning of the episode.": "بدون بداية، تُحسب المقدمة من بداية الحلقة.",
+  "%d%% of the series watched": "تمت مشاهدة %d%% من المسلسل",
+  "Season %d · %d%% watched": "الموسم %d · تمت مشاهدة %d%%",
+  "Trailer season %d": "إعلان الموسم %d",
+  "Trailer": "الإعلان"
  },
  "de": {
   "%@ is now signed in.": "%@ ist jetzt angemeldet.",
@@ -1399,7 +1403,11 @@
   "Waiting…": "Warten …",
   "Watch credits": "Abspann ansehen",
   "When the credits start, the next episode begins after a short countdown.": "Beginnt der Abspann, startet die nächste Folge nach einem kurzen Countdown.",
-  "Without a start, the intro counts from the beginning of the episode.": "Ohne Beginn zählt das Intro ab dem Anfang der Folge."
+  "Without a start, the intro counts from the beginning of the episode.": "Ohne Beginn zählt das Intro ab dem Anfang der Folge.",
+  "%d%% of the series watched": "%d%% der Serie gesehen",
+  "Season %d · %d%% watched": "Staffel %d · %d%% gesehen",
+  "Trailer season %d": "Trailer Staffel %d",
+  "Trailer": "Trailer"
  },
  "es": {
   "%@ is now signed in.": "%@ ya ha iniciado sesión.",
@@ -2100,7 +2108,11 @@
   "Waiting…": "Esperando…",
   "Watch credits": "Ver créditos",
   "When the credits start, the next episode begins after a short countdown.": "Cuando empiezan los créditos, el siguiente episodio arranca tras una breve cuenta atrás.",
-  "Without a start, the intro counts from the beginning of the episode.": "Sin inicio, la intro cuenta desde el principio del episodio."
+  "Without a start, the intro counts from the beginning of the episode.": "Sin inicio, la intro cuenta desde el principio del episodio.",
+  "%d%% of the series watched": "%d%% de la serie visto",
+  "Season %d · %d%% watched": "Temporada %d · %d%% visto",
+  "Trailer season %d": "Tráiler temporada %d",
+  "Trailer": "Tráiler"
  },
  "fr": {
   "%@ is now signed in.": "%@ est maintenant connecté.",
@@ -2801,7 +2813,11 @@
   "Waiting…": "En attente…",
   "Watch credits": "Voir le générique",
   "When the credits start, the next episode begins after a short countdown.": "Au début du générique, l’épisode suivant démarre après un court compte à rebours.",
-  "Without a start, the intro counts from the beginning of the episode.": "Sans début, le générique compte depuis le début de l’épisode."
+  "Without a start, the intro counts from the beginning of the episode.": "Sans début, le générique compte depuis le début de l’épisode.",
+  "%d%% of the series watched": "%d%% de la série vus",
+  "Season %d · %d%% watched": "Saison %d · %d%% vus",
+  "Trailer season %d": "Bande-annonce saison %d",
+  "Trailer": "Bande-annonce"
  },
  "it": {
   "%@ is now signed in.": "%@ ha effettuato l’accesso.",
@@ -3502,7 +3518,11 @@
   "Waiting…": "In attesa…",
   "Watch credits": "Guarda i titoli",
   "When the credits start, the next episode begins after a short countdown.": "All’inizio dei titoli, l’episodio successivo parte dopo un breve conto alla rovescia.",
-  "Without a start, the intro counts from the beginning of the episode.": "Senza inizio, la sigla parte dall’inizio dell’episodio."
+  "Without a start, the intro counts from the beginning of the episode.": "Senza inizio, la sigla parte dall’inizio dell’episodio.",
+  "%d%% of the series watched": "%d%% della serie visto",
+  "Season %d · %d%% watched": "Stagione %d · %d%% visto",
+  "Trailer season %d": "Trailer stagione %d",
+  "Trailer": "Trailer"
  },
  "nl": {
   "%@ is now signed in.": "%@ is nu ingelogd.",
@@ -4203,7 +4223,11 @@
   "Waiting…": "Wachten…",
   "Watch credits": "Aftiteling kijken",
   "When the credits start, the next episode begins after a short countdown.": "Als de aftiteling begint, start de volgende aflevering na een kort aftellen.",
-  "Without a start, the intro counts from the beginning of the episode.": "Zonder begin telt de intro vanaf het begin van de aflevering."
+  "Without a start, the intro counts from the beginning of the episode.": "Zonder begin telt de intro vanaf het begin van de aflevering.",
+  "%d%% of the series watched": "%d%% van de serie bekeken",
+  "Season %d · %d%% watched": "Seizoen %d · %d%% bekeken",
+  "Trailer season %d": "Trailer seizoen %d",
+  "Trailer": "Trailer"
  },
  "pl": {
   "%@ is now signed in.": "%@ jest teraz zalogowany.",
@@ -4904,7 +4928,11 @@
   "Waiting…": "Oczekiwanie…",
   "Watch credits": "Oglądaj napisy",
   "When the credits start, the next episode begins after a short countdown.": "Gdy zaczną się napisy, następny odcinek ruszy po krótkim odliczaniu.",
-  "Without a start, the intro counts from the beginning of the episode.": "Bez początku czołówka liczy się od początku odcinka."
+  "Without a start, the intro counts from the beginning of the episode.": "Bez początku czołówka liczy się od początku odcinka.",
+  "%d%% of the series watched": "Obejrzano %d%% serialu",
+  "Season %d · %d%% watched": "Sezon %d · obejrzano %d%%",
+  "Trailer season %d": "Zwiastun sezonu %d",
+  "Trailer": "Zwiastun"
  },
  "pt": {
   "%@ is now signed in.": "%@ já tem sessão iniciada.",
@@ -5605,7 +5633,11 @@
   "Waiting…": "Aguardando…",
   "Watch credits": "Ver créditos",
   "When the credits start, the next episode begins after a short countdown.": "Quando os créditos começam, o próximo episódio inicia após uma contagem curta.",
-  "Without a start, the intro counts from the beginning of the episode.": "Sem início, a abertura conta desde o começo do episódio."
+  "Without a start, the intro counts from the beginning of the episode.": "Sem início, a abertura conta desde o começo do episódio.",
+  "%d%% of the series watched": "%d%% da série visto",
+  "Season %d · %d%% watched": "Temporada %d · %d%% visto",
+  "Trailer season %d": "Trailer temporada %d",
+  "Trailer": "Trailer"
  },
  "tr": {
   "%@ is now signed in.": "%@ artık oturum açtı.",
@@ -6306,7 +6338,11 @@
   "Waiting…": "Bekleniyor…",
   "Watch credits": "Jeneriği izle",
   "When the credits start, the next episode begins after a short countdown.": "Jenerik başladığında, sonraki bölüm kısa bir geri sayımdan sonra başlar.",
-  "Without a start, the intro counts from the beginning of the episode.": "Başlangıç yoksa giriş, bölümün başından sayılır."
+  "Without a start, the intro counts from the beginning of the episode.": "Başlangıç yoksa giriş, bölümün başından sayılır.",
+  "%d%% of the series watched": "Dizinin %d%% kadarı izlendi",
+  "Season %d · %d%% watched": "Sezon %d · %d%% izlendi",
+  "Trailer season %d": "Sezon %d fragmanı",
+  "Trailer": "Fragman"
  },
  "zh-Hans": {
   "%@ is now signed in.": "%@ 现已登录。",
@@ -7007,6 +7043,10 @@
   "Waiting…": "等待中…",
   "Watch credits": "观看片尾",
   "When the credits start, the next episode begins after a short countdown.": "片尾开始后，短暂倒计时即播放下一集。",
-  "Without a start, the intro counts from the beginning of the episode.": "未设置开始时间时，片头从本集开头算起。"
+  "Without a start, the intro counts from the beginning of the episode.": "未设置开始时间时，片头从本集开头算起。",
+  "%d%% of the series watched": "已看完本剧 %d%%",
+  "Season %d · %d%% watched": "第 %d 季 · 已看 %d%%",
+  "Trailer season %d": "第 %d 季预告片",
+  "Trailer": "预告片"
  }
 }

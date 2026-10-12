@@ -22,6 +22,7 @@ struct PersonView: View {
     private var name: String { info?.name.isEmpty == false ? info!.name : person.name }
     private var photo: URL? { info?.photo ?? person.photo }
     private var kids: Bool { store.activeProfile?.kids ?? false }
+    private var ageLimited: Bool { store.activeProfile?.effectiveAgeLimit != nil }
     private var photoSize: CGFloat {
         #if os(tvOS)
         return 360
@@ -44,7 +45,8 @@ struct PersonView: View {
                             .frame(maxWidth: .infinity).padding(.top, 20)
                     }
                     if !available.isEmpty { availableRow }
-                    if !kids, !more.isEmpty { moreRow }
+                    // titels buiten je lijst (zonder leeftijdscontrole) niet tonen bij een leeftijdsgrens
+                    if !ageLimited, !more.isEmpty { moreRow }
                     Color.clear.frame(height: 40)
                 }
                 .padding(.top, tvScaled(40))
@@ -258,15 +260,9 @@ struct PersonView: View {
 
     /// Leeftijdsfilter van dit profiel (zelfde regel als de afspeellijst en de detailpagina).
     private func allowed(_ t: DetailTarget) -> Bool {
-        guard let limit = store.activeProfile?.effectiveAgeLimit else { return true }
-        let strict = store.activeProfile?.strictAgeFilter ?? false
         switch t {
-        case .movie(let m):
-            let meta = MetadataService.shared.cached(m)
-            return ParentalControl.shared.allowed(rated: meta?.rated, group: m.group, limit: limit, genre: meta?.genre, strict: strict)
-        case .series(let s):
-            let meta = MetadataService.shared.cached(s)
-            return ParentalControl.shared.allowed(rated: meta?.rated, group: s.group, limit: limit, genre: meta?.genre, strict: strict)
+        case .movie(let m): return ParentalControl.shared.allowed(movie: m)
+        case .series(let s): return ParentalControl.shared.allowed(series: s)
         }
     }
 }

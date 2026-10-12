@@ -226,6 +226,23 @@ enum TMDB {
         let season_number: Int; let episodes: [E]?
     }
 
+    /// Trailer van één seizoen (build 53): eerst "Trailer", dan "Teaser"; app-taal eerst, dan Engels.
+    static func seasonTrailer(tvID: Int, season: Int) async -> String? {
+        struct R: Decodable {
+            struct V: Decodable { let key: String; let site: String; let type: String; let iso_639_1: String? }
+            let results: [V]?
+        }
+        guard tvID > 0 else { return nil }
+        let base = String(language.prefix(2))
+        let r: R? = await get("/tv/\(tvID)/season/\(season)/videos",
+                              ["language": language, "include_video_language": "\(base),en,null"])
+        let vids = (r?.results ?? []).filter { $0.site == "YouTube" && ($0.type == "Trailer" || $0.type == "Teaser") }
+        func rank(_ v: R.V) -> (Int, Int) {
+            (v.type == "Trailer" ? 0 : 1, v.iso_639_1 == base ? 0 : (v.iso_639_1 == "en" ? 1 : 2))
+        }
+        return vids.min { rank($0) < rank($1) }?.key
+    }
+
     static func season(tvID: Int, season: Int) async -> [String: TitleDetails.EpisodeInfo] {
         let r: SeasonR? = await get("/tv/\(tvID)/season/\(season)", ["language": language])
         let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"
