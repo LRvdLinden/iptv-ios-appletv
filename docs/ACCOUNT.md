@@ -279,3 +279,55 @@ Alles wat iemand in Bingr instelt of opbouwt, komt na het (opnieuw) installeren 
   - iPhone: telefoon. iPad: tablet. Mac: laptop of computer. Apple TV: Apple TV-kastje.
   - Android: telefoon. Android tablet: tablet. Android TV, Google TV en Fire TV: tv.
 - **Delen op tv's:** op Apple TV, Android TV, Google TV en Fire TV staat **geen** deelknop (ook geen QR) op de detailpagina.
+
+## Build 51: collecties, startscherm, terugkijk-correctie en webconsole
+
+**Collecties** (eigen rijen, voor het hele account). State-section `collections` = `{items:[…], updatedAt}`. Elk item:
+
+| Veld | Inhoud |
+|---|---|
+| `id` | UUID als tekst |
+| `name` | naam |
+| `image` | `{symbol, colorIndex}` zoals een avatar, of `{url}` voor een eigen plaatje (https-URL of TMDB-poster) |
+| `kind` | `"manual"` of `"smart"` |
+| `items` | bij manual: lijst `{type:"channel"\|"movie"\|"series", id}` met de lokale id's zoals de app ze gebruikt (bijvoorbeeld `x123`, `xv456`, `xs789`); die zijn op iOS en Android gelijk voor dezelfde server |
+| `query` | bij smart: zoekwoorden, gescheiden door komma's (bijvoorbeeld `"sport, voetbal, F1"`) |
+| `types` | bij smart: welke soorten mogen erin, bijvoorbeeld `["channel","movie","series"]` |
+| `group` | optioneel: beperkt tot een categorie |
+| `sourceID` | optioneel: beperkt tot één server |
+| `order` | volgorde |
+| `updatedAt` | ISO-8601 |
+| `deleted`, `deletedAt` | tombstone, zelfde regels als bij profielen |
+
+Samenvoegen: per item wint de nieuwste `updatedAt`.
+
+**Startscherm per profiel.** In `profile.<id>` het veld `homeLayout` = `{rows:[{key, visible}], updatedAt}`.
+- Vaste rij-sleutels:
+  - `continue` (Verder kijken), `mylist`, `top10`, `foryou` (Voor jou), `recent` (Onlangs toegevoegd)
+  - `live` (Live nu / favoriete zenders), `movies`, `series`
+  - `categories` (rijen per categorie)
+  - `collection:<id>` voor elke collectie
+- Onbekende sleutels negeren. Nieuwe collecties komen standaard zichtbaar onderaan.
+- Het hele object wint op `updatedAt`.
+
+**Terugkijk-correctie per zender.** Elke bron in `get_sources`/`put_sources` krijgt het gedeelde veld `catchupOffsets: {"<channelID>": minuten}`. Een getal, mag negatief zijn, van −120 tot 120. Bij het afspelen van terugkijken wordt het begintijdstip met dit aantal minuten verschoven. Op iOS en Android gelijk; ook de website bewaart het onaangeroerd.
+
+**Kleur per bron.** Elke bron heeft al `avatar.colorIndex`. Gebruik die kleur, uit dezelfde 8 paletten, als badge en accent bij zoekresultaten en waar meerdere bronnen door elkaar staan.
+
+**Evenementzenders.** Herkennen gebeurt alleen lokaal en wordt niet gesynchroniseerd:
+- **Herkenning:** zenders in een groep met `PPV`, `EVENT`, `EVENTS`, `LIVE EVENT`, `SPORTS EVENT` of `UFC/WWE/BOXING EVENTS` in de naam, of zendernamen met een datum/tijd en "vs"/"v"/"-" tussen twee namen.
+- **Uitlezen** uit de naam: de wedstrijd, de datum en de tijd. Formaten zoals `12/10 20:45`, `2026-10-12 20:45`, `Oct 12 8:45pm`, met tijdzone als die erbij staat, anders lokaal.
+- **Tonen:** een nette kaart met de titel (bijvoorbeeld "Ajax – PSV"), de begintijd in de lokale tijd ("vandaag 20:45") en het label **LIVE** zodra die begonnen is.
+- **Live TV:** een eigen groep "Evenementen", gesorteerd op begintijd, met verlopen evenementen (meer dan 6 uur oud) onderaan of weg.
+
+**Webconsole** (bingr.online/account → Servers):
+- **Wie:** alleen het hoofdaccount; de website kan dat niet controleren, dus iedereen met de inlog kan het, net als in de apps.
+- **Bekijken:** de lijst uit `get_sources`.
+- **Toevoegen en wijzigen:** M3U (URL en EPG-URL), Xtream (server, gebruikersnaam, wachtwoord, HLS aan of uit) en Stalker (portal-URL en MAC-adres).
+- **Plex, Jellyfin, Emby en Stremio:** alleen hernoemen en verwijderen, want daar is een login in de app nodig.
+- **Hoofdserver** instellen.
+- **Verwijderen** maakt een tombstone.
+- **Bewaren:** onbekende velden, het `apple`- en `android`-blok, `secrets` die niet gewijzigd zijn, en `catchupOffsets` blijven onaangeroerd.
+- **Wachtwoorden** worden nooit getoond; leeg laten betekent "ongewijzigd".
+- **Tijd:** `updatedAt` wordt op nu gezet bij elke wijziging.
+- **Collecties:** bekijken, hernoemen, verwijderen en smart-collecties maken via state-section `collections`.
