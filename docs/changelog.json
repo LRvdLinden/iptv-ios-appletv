@@ -1,5 +1,77 @@
 [
  {
+  "build": 53,
+  "version": "1.0.0",
+  "date": "2026-10-12",
+  "items": [
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Kinderprofielen filteren nu echt op leeftijd, overal in de app: met Kijkwijzer-classificaties via TMDB, en titels zonder leeftijd alleen als ze duidelijk voor kinderen zijn",
+    "en": "Kids profiles now truly filter by age everywhere in the app: using Kijkwijzer ratings via TMDB, and titles without a rating only when they are clearly for kids"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Live tv en de tv-gids tonen op een kinderprofiel alleen kinderzenders",
+    "en": "Live TV and the TV guide show only kids channels on a kids profile"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Een serie opent bij de aflevering waar je bent: de afleveringenlijst scrolt er direct naartoe",
+    "en": "A series opens at the episode you're on: the episode list scrolls straight to it"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Kijkvoortgang in procenten: hoeveel van de serie en van elk seizoen je hebt gezien",
+    "en": "Watch progress as a percentage: how much of the series and of each season you've watched"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Trailer per seizoen: de trailerknop speelt de trailer van het gekozen seizoen",
+    "en": "Trailer per season: the trailer button plays the trailer of the selected season"
+   }
+  ]
+ },
+ {
   "build": 52,
   "version": "1.0.0",
   "date": "2026-10-12",

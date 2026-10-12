@@ -4,6 +4,25 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website. Andr
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 53
+_12 oktober 2026_
+
+### Alle apps
+
+**Nieuw**
+
+- Kijkvoortgang in procenten: hoeveel van de serie en van elk seizoen je hebt gezien
+- Trailer per seizoen: de trailerknop speelt de trailer van het gekozen seizoen
+
+**Verbeterd**
+
+- Een serie opent bij de aflevering waar je bent: de afleveringenlijst scrolt er direct naartoe
+
+**Opgelost**
+
+- Kinderprofielen filteren nu echt op leeftijd, overal in de app: met Kijkwijzer-classificaties via TMDB, en titels zonder leeftijd alleen als ze duidelijk voor kinderen zijn
+- Live tv en de tv-gids tonen op een kinderprofiel alleen kinderzenders
+
 ## Versie 1.0.0 · Build 52
 _12 oktober 2026_
 
