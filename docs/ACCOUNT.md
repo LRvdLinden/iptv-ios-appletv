@@ -83,3 +83,45 @@ Sign In · Create account · Email · Password · Show · Hide · Sign up now. �
 - `bingr.online/tv?code=XXXXXX`: inloggen (of account maken) en de tv koppelen.
 - `bingr.online/reset`: nieuw wachtwoord instellen via de link uit de e-mail.
 - `assets/config.js` (`window.BINGR_SUPABASE = {url, anonKey}`) wordt bij de deploy uit de secrets gemaakt.
+
+## Gekoppelde apparaten (max. 10)
+
+Elk apparaat heeft een eigen, vaste **device_id** (UUID). Die wordt één keer aangemaakt en alleen lokaal bewaard: op Apple in de sleutelhanger zonder iCloud-sync, op Android in de app-opslag. Hij blijft bestaan na uitloggen.
+
+Alle aanroepen gaan naar device-auth, met `Authorization: Bearer <access_token>`:
+
+| Actie | Body | Antwoord |
+|---|---|---|
+| `register_device` | `{device_id, name, platform}` | `{ok}`, of **403** `{error:"device_limit", limit:10, devices:[…]}` |
+| `heartbeat` | `{device_id}` | `{ok}`, of `{revoked:true}`: het apparaat is verwijderd, dus direct lokaal uitloggen (zonder de logout-aanroep) en terug naar het inlogscherm |
+| `list_devices` | `{device_id}` | `{limit, devices:[{device_id, name, platform, created_at, last_seen_at, current}]}`, nieuwste gebruik eerst |
+| `remove_device` | `{device_id}` | `{ok}`. De sessie van dat apparaat wordt ingetrokken, zodat het apparaat uitlogt. |
+
+- **name**: de naam van het apparaat (op iOS `UIDevice.current.name`, op de Mac `Host.current().localizedName`, op Android `Settings.Global.DEVICE_NAME` of anders `Build.MODEL`).
+- **platform**: een van `iPhone`, `iPad`, `Apple TV`, `Mac`, `Android`, `Android tablet`, `Android TV`, `Fire TV`.
+
+**Wanneer de app wat aanroept**
+- **Na elke geslaagde login** (e-mail of tv-koppeling): `register_device`.
+  - Geeft dat `device_limit`, toon dan het scherm **"Too many devices"**: "Your account can be used on up to %d devices. Remove a device to sign in on this one." met de lijst en per apparaat een knop **Remove**.
+  - Na het verwijderen opnieuw `register_device`. Lukt het daarna, ga dan door naar "Wie kijkt er?".
+  - Met **Cancel** log je uit.
+  - Lokaal onthouden: `deviceRegistered = true`.
+- **Bij het starten, bij terugkeer naar de voorgrond en elke 5 minuten zolang de app open is**:
+  - Als `deviceRegistered`: `heartbeat`. Geeft die `revoked`, dan uitloggen.
+  - Zo niet (bijvoorbeeld bij een sessie van vóór build 39): `register_device`, met dezelfde afhandeling van de limiet.
+- **Uitloggen** door de gebruiker: eerst `remove_device` voor het eigen apparaat, daarna de logout-aanroep en lokaal wissen.
+- **Refresh met 400/401**: uitloggen (dit gebeurt al).
+
+**Mijn Bingr → Account → "Devices"** (op alle platforms, ook op tv):
+- Kop: "%d of %d devices".
+- Lijst met:
+  - een icoon per platform;
+  - de **naam**, en het platform eronder;
+  - "Linked %@" (datum, bijvoorbeeld 12 okt 2026);
+  - "Last used %@" (relatieve tijd: "just now", "5 min ago", "yesterday", of een datum).
+- Het eigen apparaat krijgt het label **"This device"** en als laatst gebruikt "Now".
+- Per apparaat een knop **"Remove"**, met de bevestiging "Remove %@? It will be signed out." Remove bij het eigen apparaat betekent hetzelfde als uitloggen.
+
+**Nieuwe teksten:** Devices · %d of %d devices · Linked %@ · Last used %@ · This device · Now · Remove · Remove %@? It will be signed out. · Too many devices · Your account can be used on up to %d devices. Remove a device to sign in on this one. · Cancel · just now · %d min ago · yesterday
+
+Op de website staat hetzelfde beheer op `bingr.online/account`.

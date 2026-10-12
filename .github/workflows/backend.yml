@@ -56,3 +56,5 @@ jobs:
           [ -n "$C" ] || { echo "::error::start gaf geen code"; exit 1; }
           curl -s -X POST "https://$REF.supabase.co/functions/v1/device-auth" -H "Content-Type: application/json" -d "{\"action\":\"poll\",\"code\":\"$C\",\"poll_secret\":\"$P\"}" | tee /tmp/p.json; echo
           grep -q pending /tmp/p.json && echo "::notice::tv-koppeling (start + poll) werkt, code $C" || { echo "::error::poll gaf geen pending"; exit 1; }
+          curl -s -X POST "https://$REF.supabase.co/functions/v1/device-auth" -H "Content-Type: application/json" -d '{"action":"list_devices"}' | tee /tmp/l.json; echo
+          grep -q not_signed_in /tmp/l.json && echo "::notice::apparatenbeheer actief" || { echo "::error::list_devices onverwacht"; exit 1; }

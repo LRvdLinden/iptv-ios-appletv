@@ -27,3 +27,25 @@ create policy "eigen gegevens lezen"    on public.account_data for select to aut
 create policy "eigen gegevens schrijven" on public.account_data for insert to authenticated with check (user_id = auth.uid());
 create policy "eigen gegevens wijzigen" on public.account_data for update to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
 grant select, insert, update on public.account_data to authenticated;
+
+-- Gekoppelde apparaten per account (max. 10). Alleen de Edge Function (service role) schrijft hierin.
+create table if not exists public.account_devices (
+  user_id      uuid not null references auth.users(id) on delete cascade,
+  device_id    text not null,
+  name         text not null default '',
+  platform     text not null default '',
+  session_id   uuid,
+  created_at   timestamptz not null default now(),
+  last_seen_at timestamptz not null default now(),
+  primary key (user_id, device_id)
+);
+alter table public.account_devices enable row level security;
+revoke all on public.account_devices from anon, authenticated;
+
+-- Sessie van een verwijderd apparaat intrekken (refresh tokens vervallen mee), zodat het apparaat uitlogt.
+create or replace function public.revoke_session(sid uuid) returns void
+language sql security definer set search_path = auth, public as $$
+  delete from auth.sessions where id = sid;
+$$;
+revoke all on function public.revoke_session(uuid) from public, anon, authenticated;
+grant execute on function public.revoke_session(uuid) to service_role;

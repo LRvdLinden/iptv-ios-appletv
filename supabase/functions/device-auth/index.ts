@@ -5,6 +5,10 @@
 //                   Bij approved: POST /auth/v1/verify {type:"magiclink", token_hash} geeft de tv een eigen sessie.
 //   approve         {code}   (ingelogd)  -> {ok, device}
 //   delete_account  {}       (ingelogd)  -> {ok}
+//   register_device {device_id, name, platform} (ingelogd) -> {ok, device} | 403 {error:"device_limit", limit, devices}
+//   heartbeat       {device_id} (ingelogd) -> {ok} | {revoked:true}  (werkt ook "laatst gebruikt" bij)
+//   list_devices    {device_id?} (ingelogd) -> {limit, devices:[{device_id,name,platform,created_at,last_seen_at,current}]}
+//   remove_device   {device_id} (ingelogd) -> {ok}  (trekt de sessie van dat apparaat in)
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
 const SITE = Deno.env.get("BINGR_SITE") ?? "https://bingr.online";
@@ -33,6 +37,25 @@ function same(a: string, b: string) {
   let d = 0;
   for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i);
   return d === 0;
+}
+const DEVICE_LIMIT = 10;
+function sessionIdFrom(req: Request): string | null {
+  try {
+    const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
+    const part = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    const claims = JSON.parse(atob(part + "===".slice((part.length + 3) % 4)));
+    return typeof claims.session_id === "string" ? claims.session_id : null;
+  } catch { return null; }
+}
+async function listDevices(userId: string, current?: string) {
+  const { data } = await admin.from("account_devices").select("device_id,name,platform,created_at,last_seen_at")
+    .eq("user_id", userId).order("last_seen_at", { ascending: false });
+  return (data ?? []).map((d) => ({ ...d, current: d.device_id === current }));
+}
+async function removeDevice(userId: string, deviceId: string) {
+  const { data: row } = await admin.from("account_devices").select("session_id").eq("user_id", userId).eq("device_id", deviceId).maybeSingle();
+  if (row?.session_id) await admin.rpc("revoke_session", { sid: row.session_id });
+  await admin.from("account_devices").delete().eq("user_id", userId).eq("device_id", deviceId);
 }
 async function userFrom(req: Request) {
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
@@ -91,6 +114,49 @@ Deno.serve(async (req) => {
       if (!user) return json({ error: "not_signed_in" }, 401);
       const { error } = await admin.auth.admin.deleteUser(user.id);
       return error ? json({ error: "delete_failed" }, 500) : json({ ok: true });
+    }
+    case "register_device": {
+      const user = await userFrom(req);
+      if (!user) return json({ error: "not_signed_in" }, 401);
+      const device_id = String(body.device_id ?? "").slice(0, 80);
+      if (!device_id) return json({ error: "device_id_missing" }, 400);
+      const name = String(body.name ?? "").slice(0, 80), platform = String(body.platform ?? "").slice(0, 40);
+      const session_id = sessionIdFrom(req);
+      const { data: existing } = await admin.from("account_devices").select("device_id,session_id").eq("user_id", user.id).eq("device_id", device_id).maybeSingle();
+      if (!existing) {
+        const { count } = await admin.from("account_devices").select("device_id", { count: "exact", head: true }).eq("user_id", user.id);
+        if ((count ?? 0) >= DEVICE_LIMIT) return json({ error: "device_limit", limit: DEVICE_LIMIT, devices: await listDevices(user.id) }, 403);
+        await admin.from("account_devices").insert({ user_id: user.id, device_id, name, platform, session_id });
+      } else {
+        // zelfde apparaat opnieuw ingelogd: oude sessie intrekken als die anders is
+        if (existing.session_id && session_id && existing.session_id !== session_id) await admin.rpc("revoke_session", { sid: existing.session_id });
+        await admin.from("account_devices").update({ name, platform, session_id, last_seen_at: new Date().toISOString() })
+          .eq("user_id", user.id).eq("device_id", device_id);
+      }
+      return json({ ok: true, limit: DEVICE_LIMIT });
+    }
+    case "heartbeat": {
+      const user = await userFrom(req);
+      if (!user) return json({ revoked: true });
+      const device_id = String(body.device_id ?? "");
+      const { data: row } = await admin.from("account_devices").select("session_id").eq("user_id", user.id).eq("device_id", device_id).maybeSingle();
+      if (!row) return json({ revoked: true });
+      const sid = sessionIdFrom(req);
+      const patch: Record<string, unknown> = { last_seen_at: new Date().toISOString() };
+      if (sid && sid !== row.session_id) patch.session_id = sid;
+      await admin.from("account_devices").update(patch).eq("user_id", user.id).eq("device_id", device_id);
+      return json({ ok: true });
+    }
+    case "list_devices": {
+      const user = await userFrom(req);
+      if (!user) return json({ error: "not_signed_in" }, 401);
+      return json({ limit: DEVICE_LIMIT, devices: await listDevices(user.id, body.device_id ? String(body.device_id) : undefined) });
+    }
+    case "remove_device": {
+      const user = await userFrom(req);
+      if (!user) return json({ error: "not_signed_in" }, 401);
+      await removeDevice(user.id, String(body.device_id ?? ""));
+      return json({ ok: true });
     }
     default:
       return json({ error: "unknown_action" }, 400);
