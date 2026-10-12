@@ -7,10 +7,19 @@ import Combine
 @MainActor
 final class PlaylistService: ObservableObject {
     @Published private(set) var source: PlaylistSource? { didSet { CloudStore.shared.activePlaylistID = source?.id } }
-    @Published private(set) var library = Library() { didSet { libraryVersion &+= 1 } }
+    @Published private(set) var library = Library() { didSet { if !epgOnlyUpdate { libraryVersion &+= 1 } } }
+    /// Alleen gidsgegevens van één zender aangevuld (Stalker): de rijen op Home en de collecties blijven gelijk,
+    /// dus `libraryVersion` niet ophogen (anders bouwt elk scherm alles opnieuw op)
+    private var epgOnlyUpdate = false
     /// Telt op bij elke nieuwe (gefilterde) lijst — schermen bouwen hun rijen dan één keer opnieuw op
     @Published private(set) var libraryVersion = 0
-    @Published private(set) var rawLibrary = Library()
+    @Published private(set) var rawLibrary = Library() { didSet { rawVersion &+= 1 } }
+    /// Telt op bij elke nieuwe ongefilterde lijst; zo weet het filter of een nieuwe uitkomst echt anders kan zijn
+    private var rawVersion = 0
+    /// Van welke `rawVersion` de huidige `library` gemaakt is
+    private var libraryRawVersion = -1
+    /// Met welke regels de huidige `library` gefilterd is
+    private var libraryContext: FilterContext?
     @Published private(set) var isLoading = false
     @Published private(set) var loadingText = ""
     /// De open bron wordt op de achtergrond ververst (de bewaarde lijst staat al in beeld)
@@ -56,7 +65,7 @@ final class PlaylistService: ObservableObject {
             .dropFirst()
             .debounce(for: .seconds(3), scheduler: RunLoop.main)
             .sink { [weak self] _ in
-                if CloudStore.shared.activeProfile?.effectiveAgeLimit != nil { self?.applyCustomizations() }
+                if CloudStore.shared.activeProfile?.effectiveAgeLimit != nil { self?.refilterWhenIdle() }
             }
             .store(in: &bag)
         // nieuwe TMDB-classificaties (Kijkwijzer) binnen → idem (build 53)
@@ -64,9 +73,21 @@ final class PlaylistService: ObservableObject {
             .dropFirst()
             .debounce(for: .seconds(3), scheduler: RunLoop.main)
             .sink { [weak self] _ in
-                if CloudStore.shared.activeProfile?.effectiveAgeLimit != nil { self?.applyCustomizations() }
+                if CloudStore.shared.activeProfile?.effectiveAgeLimit != nil { self?.refilterWhenIdle() }
             }
             .store(in: &bag)
+    }
+
+    private var idleRefilter: Task<Void, Never>?
+    /// Nieuwe classificaties binnen (build 56): opnieuw filteren zodra er niet meer gescrold wordt. Het filter loopt
+    /// door de hele bibliotheek; midden in het scrollen gaf dat haperingen.
+    private func refilterWhenIdle() {
+        idleRefilter?.cancel()
+        idleRefilter = Task { [weak self] in
+            await ScrollActivity.shared.waitUntilIdle()
+            guard !Task.isCancelled else { return }
+            self?.applyCustomizations()
+        }
     }
 
     // MARK: laden
@@ -225,6 +246,14 @@ final class PlaylistService: ObservableObject {
         var meta: [String: TitleMetadata]
         /// TMDB-classificaties (build 53); leeg zonder leeftijdsgrens
         var ratings: [String: AgeInfo] = [:]
+
+        /// Dezelfde regels (alles behalve de classificaties zelf)? Dan mag de vorige uitkomst blijven staan
+        /// tot de nieuwe klaar is, en hoeft een gelijke uitkomst niet opnieuw gepubliceerd te worden.
+        func sameRules(as o: FilterContext) -> Bool {
+            playlist == o.playlist && ageLimit == o.ageLimit && strict == o.strict && parentalEnabled == o.parentalEnabled
+                && autoLockAdult == o.autoLockAdult && unlocked == o.unlocked && lockedGroups == o.lockedGroups
+                && custom == o.custom
+        }
     }
 
     private func context(for s: PlaylistSource) -> FilterContext {
@@ -250,27 +279,53 @@ final class PlaylistService: ObservableObject {
 
     /// Filtert de lijst (verbergen, kinderslot, leeftijd) op de achtergrond; de app blijft direct reageren.
     func applyCustomizations() {
-        guard let s = source else { library = rawLibrary; return }
+        guard let s = source else { library = rawLibrary; libraryRawVersion = -1; return }
         let ctx = context(for: s)
         let raw = rawLibrary
         // profiel met leeftijdsgrens: classificaties op de achtergrond aanvullen (TMDB, gecachet)
         if ctx.ageLimit != nil { AgeRatingService.shared.prefetch(raw) }
         filterGeneration += 1
         let gen = filterGeneration
+        let rv = rawVersion
+        // dezelfde bron opnieuw gefilterd (bijv. nieuwe leeftijdsclassificaties, iCloud-sync): alleen publiceren als
+        // de uitkomst anders is. Anders bouwt elk scherm (Home, collecties, Live TV) alles opnieuw op terwijl je scrolt.
+        let previous: Library? = libraryRawVersion == rv && libraryContext?.sameRules(as: ctx) == true ? library : nil
         // kleine lijsten: meteen; grote lijsten: op de achtergrond
         if raw.channels.count + raw.movies.count + raw.series.count < 3000 {
-            library = Self.apply(raw, ctx)
+            let lib = Self.apply(raw, ctx)
+            if let previous, Self.sameContent(previous, lib) { return }
+            library = lib
+            libraryRawVersion = rv
+            libraryContext = ctx
             return
         }
         // kinderprofiel/leeftijdsgrens: niets ongefilterds laten zien terwijl er gefilterd wordt
-        if ctx.ageLimit != nil { library = Library() }
-        isFiltering = true
+        // (alleen bij een nieuwe lijst; bij opnieuw filteren blijft de vorige uitkomst staan tot de nieuwe klaar is)
+        if ctx.ageLimit != nil && previous == nil { library = Library(); libraryRawVersion = -1 }
+        // stil opnieuw filteren (vorige uitkomst blijft staan): geen extra schermverversingen voor de spinner
+        if previous == nil { isFiltering = true }
         Task {
-            let lib = await Task.detached(priority: .userInitiated) { Self.apply(raw, ctx) }.value
+            let result: Library? = await Task.detached(priority: .userInitiated) { () -> Library? in
+                let lib = Self.apply(raw, ctx)
+                if let previous, Self.sameContent(previous, lib) { return nil }
+                return lib
+            }.value
             guard gen == self.filterGeneration else { return }   // intussen opnieuw gefilterd
-            self.library = lib
-            self.isFiltering = false
+            if let result {
+                self.library = result
+                self.libraryRawVersion = rv
+                self.libraryContext = ctx
+            }
+            if self.isFiltering { self.isFiltering = false }
         }
+    }
+
+    /// Zelfde zenders, films en series (met dezelfde namen/groepen) uit dezelfde ongefilterde lijst?
+    /// De gids volgt de zenders, dus die hoeft niet apart vergeleken te worden.
+    nonisolated static func sameContent(_ a: Library, _ b: Library) -> Bool {
+        a.channels.count == b.channels.count && a.movies.count == b.movies.count && a.series.count == b.series.count
+            && a.epg.count == b.epg.count
+            && a.channels == b.channels && a.movies == b.movies && a.series == b.series
     }
 
     /// Voor "Bron controleren": wat er van een lijst overblijft na alleen jouw categorie-instellingen
@@ -333,6 +388,8 @@ final class PlaylistService: ObservableObject {
             return ok
         }
         var lib = raw
+        // programma's per zender op begintijd (nodig voor het snelle opzoeken van nu/straks per rij)
+        lib.epg = Library.sortedEPG(raw.epg)
         lib.channels = raw.channels.filter { visible($0.id, $0.group) }.map { ch in
             var x = ch; x.group = group(ch.group); x.name = c.renamed[ch.id] ?? ch.name; return x
         }
@@ -435,8 +492,14 @@ final class PlaylistService: ObservableObject {
 
     func shortEPG(_ c: Channel) async -> [EPGProgram] {
         if let s = stalker, library.epg[c.epgID ?? c.id] == nil {
-            let p = await s.shortEPG(channelID: c.id)
-            if !p.isEmpty { rawLibrary.epg[c.id] = p; library.epg[c.id] = p }
+            let p = await s.shortEPG(channelID: c.id).sorted { $0.start < $1.start }
+            if !p.isEmpty {
+                rawLibrary.epg[c.id] = p
+                epgOnlyUpdate = true
+                library.epg[c.id] = p
+                epgOnlyUpdate = false
+                libraryRawVersion = rawVersion
+            }
             return p
         }
         return library.upcoming(c, count: 10)

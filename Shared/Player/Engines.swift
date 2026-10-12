@@ -76,13 +76,20 @@ final class VLCEngine: PlaybackEngine {
     /// Zendervoorbeeld: zonder geluid
     private let silent: Bool
 
+    /// Zendervoorbeeld: stoppen en een nieuwe stream openen gebeurt hier, niet op de hoofdthread. In VLCKit 3 wacht
+    /// `stop` (ook het vervangen van de media) tot de netwerk- en decodeerthreads klaar zijn; dat liet het scrollen haperen.
+    private static let previewQueue = DispatchQueue(label: "bingr.preview.vlc", qos: .userInitiated)
+
     init(silent: Bool = false) {
         self.silent = silent
         player.drawable = view
         #if !os(macOS)
         // na de intro-tune (ambient) weer echte afspeel-audio, ook met de stil-schakelaar aan
-        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
-        try? AVAudioSession.sharedInstance().setActive(true)
+        // (niet voor het stille voorbeeld: dat heeft geen geluid, en dit kost tijd op de hoofdthread)
+        if !silent {
+            try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
+            try? AVAudioSession.sharedInstance().setActive(true)
+        }
         #endif
     }
 
@@ -99,7 +106,8 @@ final class VLCEngine: PlaybackEngine {
         }
     }
     var isPlaying: Bool { player.isPlaying }
-    var duration: Double { Double(player.media?.length.intValue ?? 0) / 1000 }
+    /// Het voorbeeld is altijd live (en de media wordt daar op een eigen thread gewisseld): niet uitlezen
+    var duration: Double { silent ? 0 : Double(player.media?.length.intValue ?? 0) / 1000 }
     var time: Double { Double(player.time.intValue) / 1000 }
     var position: Double { duration > 0 ? Double(player.position) : 0 }
     var rate: Float { get { player.rate } set { player.rate = newValue } }
@@ -126,7 +134,12 @@ final class VLCEngine: PlaybackEngine {
         media.addOption(":network-caching=\(live ? 1500 : 3000)")
         media.addOption(":http-user-agent=\(Secrets.userAgent)")
         media.addOption(":http-reconnect")
-        if silent { media.addOption(":no-audio") }
+        if silent {
+            media.addOption(":no-audio")
+            // voorbeeld in een klein venster: lagere resolutie kiezen (HLS/DASH) en lichter decoderen
+            media.addOption(":adaptive-maxheight=576")
+            media.addOption(":avcodec-skiploopfilter=4")
+        }
         // deinterlacing (build 52): Mijn Bingr → Speler; standaard automatisch
         let deint = DeinterlaceMode.current
         for o in deint.vlcOptions { media.addOption(o) }
@@ -139,6 +152,14 @@ final class VLCEngine: PlaybackEngine {
         let sel = NSSelectorFromString("setTextRendererFontSize:")
         if player.responds(to: sel) {
             player.perform(sel, with: NSNumber(value: SubtitleSize.current == .large ? 16 : SubtitleSize.current == .medium ? 18 : 20))
+        }
+        if silent {
+            let p = player
+            Self.previewQueue.async {
+                p.media = media
+                p.play()
+            }
+            return
         }
         player.media = media
         pendingStart = startFraction
@@ -154,7 +175,14 @@ final class VLCEngine: PlaybackEngine {
     }
     func play() { player.play() }
     func pause() { player.pause() }
-    func stop() { player.stop() }
+    func stop() {
+        if silent {
+            let p = player
+            Self.previewQueue.async { p.stop() }
+        } else {
+            player.stop()
+        }
+    }
     func seek(toFraction f: Double) { player.position = Float(min(max(f, 0), 1)) }
     func jump(_ seconds: Double) {
         if seconds >= 0 { player.jumpForward(Int32(seconds)) } else { player.jumpBackward(Int32(-seconds)) }

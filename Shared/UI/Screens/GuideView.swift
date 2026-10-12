@@ -106,7 +106,8 @@ struct GuideGridView: View {
 
     private func row(_ c: Channel) -> some View {
         let end = start.addingTimeInterval(hours * 3600)
-        let progs = (playlists.library.epg[c.epgID ?? c.id] ?? []).filter { $0.end > start && $0.start < end }
+        // programma's per zender staan op begintijd: binair zoeken naar het zichtbare stuk (build 56)
+        let progs = playlists.library.programs(c, from: start, to: end)
         return ZStack(alignment: .leading) {
             Rectangle().fill(Color(hex: 0x101010))
             if progs.isEmpty {
@@ -119,7 +120,7 @@ struct GuideGridView: View {
                     Button { onProgram(c, p) } label: {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(p.title).font(.system(size: tvScaled(12), weight: .semibold)).lineLimit(1)
-                            Text("\(p.start.formatted(date: .omitted, time: .shortened)) – \(p.end.formatted(date: .omitted, time: .shortened))")
+                            Text("\(TimeText.short(p.start)) – \(TimeText.short(p.end))")
                                 .font(.system(size: tvScaled(10))).foregroundStyle(Theme.secondary).lineLimit(1)
                         }
                         .padding(.horizontal, 8)

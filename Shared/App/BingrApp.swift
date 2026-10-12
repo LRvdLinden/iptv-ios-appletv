@@ -4,14 +4,16 @@ import Combine
 @main
 struct BingrApp: App {
     @StateObject private var app = AppState()
-    @StateObject private var store = CloudStore.shared
-    @StateObject private var trakt = TraktSync.shared
-    @StateObject private var meta = MetadataService.shared
-    @StateObject private var subs = OpenSubtitles.shared
     @StateObject private var localizer = Localizer.shared
-    @StateObject private var parental = ParentalControl.shared
-    @StateObject private var reminders = ReminderCenter.shared
-    @StateObject private var account = AccountService.shared
+    // Gedeelde objecten die alleen worden doorgegeven: niet als @StateObject, anders rekent de hele app-scene
+    // opnieuw bij elke wijziging (bijv. elke nieuwe IMDb-score of sync-ronde). De schermen volgen ze zelf.
+    private let store = CloudStore.shared
+    private let trakt = TraktSync.shared
+    private let meta = MetadataService.shared
+    private let subs = OpenSubtitles.shared
+    private let parental = ParentalControl.shared
+    private let reminders = ReminderCenter.shared
+    private let account = AccountService.shared
     @Environment(\.scenePhase) private var phase
     /// Accentkleur van het actieve profiel (build 54): wisselen (ook door een ander profiel te kiezen) → alles opnieuw tekenen
     @AppStorage(AccentChoice.key) private var accent = AccentChoice.current.rawValue
@@ -274,14 +276,14 @@ final class AppState: ObservableObject {
 
     func play(_ item: PlayableItem, zap: [Channel] = []) {
         PiPCenter.shared.stopActive()
-        ChannelPreview.shared.stop()
+        ChannelPreview.shared.stop(release: true)
         liveZapList = zap
         playing = item
     }
 
     func openMultiview(start: [Channel], candidates: [Channel]) {
         PiPCenter.shared.stopActive()
-        ChannelPreview.shared.stop()
+        ChannelPreview.shared.stop(release: true)
         multiviewStart = start
         liveZapList = candidates
         showMultiview = true

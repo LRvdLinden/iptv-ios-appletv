@@ -72,9 +72,11 @@ final class PlayerController: ObservableObject {
         EngineChoice(rawValue: UserDefaults.standard.string(forKey: "player.engine") ?? "") ?? .auto
     }
 
-    init(item: PlayableItem) {
+    /// `silent`: zendervoorbeeld — meteen een stille engine (zonder het instellen van de audiosessie op de hoofdthread)
+    init(item: PlayableItem, silent: Bool = false) {
         self.item = item
-        engine = VLCEngine()
+        self.silent = silent
+        engine = VLCEngine(silent: silent)
     }
 
     var isLive: Bool { item.type == .live }
@@ -162,7 +164,9 @@ final class PlayerController: ObservableObject {
         if stopped || timer == nil { watchedSeconds = 0; recordedHistory = false }
         stopped = false
         let apple = forceApple ?? Self.prefersApple(url)
-        if apple != usingApple || timer == nil { makeEngine(apple: apple) }
+        // zendervoorbeeld na `halt()`: dezelfde engine (en weergave) hergebruiken in plaats van een nieuwe te maken
+        if apple != usingApple || (timer == nil && !keepEngine) { makeEngine(apple: apple) }
+        keepEngine = false
         engine.load(url, live: isLive && timeshiftStart == nil, startFraction: isLive ? nil : item.resumeAt)
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
@@ -179,18 +183,28 @@ final class PlayerController: ObservableObject {
 
     private func tick() {
         let st = engine.state
-        isPlaying = engine.isPlaying
-        isBuffering = st == .buffering || st == .opening
-        duration = engine.duration
-        currentTime = engine.time
-        position = engine.position
+        // alleen publiceren wat veranderd is (elke toewijzing laat de schermen die deze speler volgen opnieuw tekenen)
+        let playingNow = engine.isPlaying
+        if isPlaying != playingNow { isPlaying = playingNow }
+        let buffering = st == .buffering || st == .opening
+        if isBuffering != buffering { isBuffering = buffering }
+        let d = engine.duration
+        if duration != d { duration = d }
+        let t0 = engine.time
+        if currentTime != t0 { currentTime = t0 }
+        let pos = engine.position
+        if position != pos { position = pos }
         if st == .playing && position > 0.005 && !isLive { lastGoodPosition = position }
-        if let av = engine as? AVEngine, isLive, timeshiftStart == nil { behindLive = av.behindLive > 8 ? av.behindLive : 0 }
+        if let av = engine as? AVEngine, isLive, timeshiftStart == nil {
+            let b = av.behindLive > 8 ? av.behindLive : 0
+            if behindLive != b { behindLive = b }
+        }
 
         if !externalCues.isEmpty {
             let t = currentTime - subtitleDelay
-            subtitleText = externalCues.last(where: { $0.start <= t })
+            let text = externalCues.last(where: { $0.start <= t })
                 .flatMap { $0.end >= t ? $0.text : nil }
+            if subtitleText != text { subtitleText = text }
         }
 
         // automatisch herverbinden: eerst de andere engine (Apple → VLC), dan één stille nieuwe poging,
@@ -235,6 +249,11 @@ final class PlayerController: ObservableObject {
             if displayTicks >= 2 { matchDisplay() }
         }
         #endif
+        if !tracksApplied && st == .playing && isPreview {
+            // voorbeeld/Multiview: geen voorkeurssporen, en de sporenlijst (bij Apple synchroon uit de stream gelezen)
+            // dus ook niet elke halve seconde op de hoofdthread opvragen
+            tracksApplied = true
+        }
         if !tracksApplied && st == .playing {
             playingTicks += 1
             // sporen zijn er meestal na een paar tellen; daarna niet meer ingrijpen (jouw eigen keuze blijft staan)
@@ -333,6 +352,17 @@ final class PlayerController: ObservableObject {
     var liveURL: URL?
 
     func seek(to fraction: Double) { guard !isLive else { return }; engine.seek(toFraction: fraction) }
+
+    /// Zendervoorbeeld: alleen het beeld stoppen (snel scrollen, andere groep). De engine blijft bestaan voor de
+    /// volgende zender, zodat er niet steeds een nieuwe speler opgebouwd en afgebroken wordt.
+    private var keepEngine = false
+    func halt() {
+        timer?.invalidate(); timer = nil
+        keepEngine = true
+        engine.stop()
+        if isPlaying { isPlaying = false }
+        if !isBuffering { isBuffering = true }
+    }
 
     /// `keepDisplay`: zappen of volgende aflevering — de schermstand niet eerst terugzetten (geen extra knipper).
     func stop(keepDisplay: Bool = false) {

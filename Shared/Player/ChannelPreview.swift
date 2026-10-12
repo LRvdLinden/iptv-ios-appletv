@@ -67,8 +67,13 @@ final class NetworkStatus: @unchecked Sendable {
     }
 }
 
-/// Eén gedeelde, lichte speler voor het zendervoorbeeld (zonder geluid). Start na ±1 seconde op dezelfde zender,
+/// Eén gedeelde, lichte speler voor het zendervoorbeeld (zonder geluid). Start pas als de selectie even blijft staan,
 /// eerst met de Apple-engine; alleen als die de stream niet kan afspelen valt hij terug op VLC.
+///
+/// Scrollen (build 56): het voorbeeld start pas als de selectie 1,2 seconde blijft staan; elke nieuwe selectie zet
+/// de wachttijd opnieuw in. Bij snel door de lijst gaan (focus/aanwijzer verspringt binnen `scrollGap`) wordt het
+/// lopende beeld stilgezet, zodat er tijdens het scrollen niets gedecodeerd wordt. Er is één speler die steeds een
+/// andere zender krijgt; hij wordt pas losgelaten als je Live TV verlaat of er echt iets gaat spelen.
 @MainActor
 final class ChannelPreview: ObservableObject {
     static let shared = ChannelPreview()
@@ -79,6 +84,14 @@ final class ChannelPreview: ObservableObject {
     @Published private(set) var floating = true
     private var pending: Task<Void, Never>?
     private var generation = 0
+    /// De speler die stilstaat (na scrollen of een andere groep), klaar om opnieuw te gebruiken
+    private var spare: PlayerController?
+    /// Beeld stilgezet tijdens het scrollen; `channel` toont dan alleen het logo
+    private var suspended = false
+    private var lastSelect = Date.distantPast
+
+    /// Twee selecties binnen deze tijd = scrollen
+    static let scrollGap: TimeInterval = 0.6
 
     private init() {
         _ = NetworkStatus.shared   // vast beginnen met meten
@@ -89,17 +102,42 @@ final class ChannelPreview: ObservableObject {
         PlayerSettings.previewEnabled && !(PlayerSettings.isPhone && NetworkStatus.shared.isCellular)
     }
 
-    /// Een zender is geselecteerd (focus op Apple TV, aanwijzer op iPad/Mac): na ±1 seconde het voorbeeld starten.
-    /// `nil` = selectie weg; het lopende voorbeeld blijft dan staan.
-    func select(_ c: Channel?, playlists: PlaylistService, delay: Double = 1, floating: Bool = true) {
+    /// Een zender is geselecteerd (focus op Apple TV, aanwijzer op iPad/Mac): als de selectie blijft staan het
+    /// voorbeeld starten. `nil` = selectie weg; het lopende voorbeeld blijft dan staan.
+    func select(_ c: Channel?, playlists: PlaylistService, delay: Double = 1.2, floating: Bool = true) {
         pending?.cancel()
+        pending = nil
+        ScrollActivity.shared.touch()   // focus gaat door de lijst: ander zwaar werk even laten wachten
         guard let c, allowed else { return }
-        if channel?.id == c.id { return }
-        self.floating = floating
+        let now = Date()
+        let scrolling = now.timeIntervalSince(lastSelect) < Self.scrollGap
+        lastSelect = now
+        if channel?.id == c.id && !suspended { return }   // speelt al
+        if self.floating != floating { self.floating = floating }
+        let wait = delay
+        if scrolling && delay > 0 {
+            // snel scrollen: niet decoderen terwijl de lijst beweegt; starten zodra de focus even rust
+            suspend(showing: c)
+        }
         pending = Task { @MainActor [weak self] in
-            if delay > 0 { try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000)) }
+            if wait > 0 { try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000)) }
             guard let self, !Task.isCancelled else { return }
+            self.pending = nil
             await self.start(c, playlists: playlists)
+        }
+    }
+
+    /// Beeld stilzetten (speler blijft bewaard); een al zichtbaar voorbeeld volgt de selectie met het logo.
+    private func suspend(showing c: Channel) {
+        generation += 1   // een lopende start (stream opzoeken) is niet meer nodig
+        if let ctrl = controller {
+            ctrl.halt()
+            spare = ctrl
+            controller = nil
+        }
+        if channel != nil {
+            suspended = true
+            if channel?.id != c.id { channel = c }
         }
     }
 
@@ -107,15 +145,16 @@ final class ChannelPreview: ObservableObject {
         generation += 1
         let gen = generation
         let item = Playables.channel(c, now: playlists.library.nowPlaying(c))
-        let ctrl = controller ?? {
-            let p = PlayerController(item: item)
+        let ctrl = controller ?? spare ?? {
+            let p = PlayerController(item: item, silent: true)
             p.isPreview = true
-            p.silent = true
             p.muted = true
             return p
         }()
-        controller = ctrl
-        channel = c
+        spare = nil
+        suspended = false
+        if controller !== ctrl { controller = ctrl }
+        if channel?.id != c.id { channel = c }
         ctrl.prepareNew()
         ctrl.item = item
         guard let url = await playlists.resolve(item), gen == generation, channel?.id == c.id else {
@@ -125,14 +164,22 @@ final class ChannelPreview: ObservableObject {
         ctrl.start(url: url, forceApple: url.scheme.map { ["http", "https"].contains($0.lowercased()) } ?? false)
     }
 
-    /// Weg uit Live TV of de gids, of er gaat echt iets spelen: stoppen.
-    func stop() {
+    /// Weg uit Live TV of de gids, of er gaat echt iets spelen: stoppen. `release`: ook de bewaarde speler loslaten
+    /// (scherm verlaten); anders blijft hij klaarstaan voor het volgende voorbeeld.
+    func stop(release: Bool = false) {
         pending?.cancel()
         pending = nil
         generation += 1
-        controller?.stop()
-        controller = nil
-        channel = nil
+        suspended = false
+        if let ctrl = controller {
+            if release { ctrl.stop() } else { ctrl.halt(); spare = ctrl }
+            controller = nil
+        }
+        if release, let s = spare {
+            s.stop()
+            spare = nil
+        }
+        if channel != nil { channel = nil }
     }
 }
 

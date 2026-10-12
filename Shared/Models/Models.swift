@@ -211,12 +211,67 @@ struct Library: Codable {
     var movieGroups: [String] { orderedUnique(movies.map(\.group)) }
     var seriesGroups: [String] { orderedUnique(series.map(\.group)) }
 
-    func nowPlaying(_ c: Channel) -> EPGProgram? {
-        epg[c.epgID ?? c.id]?.first(where: { $0.isNow })
+    // EPG-opzoekingen per rij: de programma's per zender staan op begintijd gesorteerd (zie `sortedEPG`), dus
+    // binair zoeken in plaats van de hele lijst (dagen terugkijken + vooruit) per cel door te lopen.
+
+    /// Index van het eerste programma dat ná `date` begint.
+    static func firstStarting(after date: Date, in list: [EPGProgram]) -> Int {
+        var lo = 0, hi = list.count
+        while lo < hi {
+            let mid = (lo + hi) / 2
+            if list[mid].start <= date { lo = mid + 1 } else { hi = mid }
+        }
+        return lo
     }
-    func upcoming(_ c: Channel, count: Int = 6) -> [EPGProgram] {
-        let now = Date()
-        return Array((epg[c.epgID ?? c.id] ?? []).filter { $0.end > now }.prefix(count))
+
+    func nowPlaying(_ c: Channel, at now: Date = Date()) -> EPGProgram? {
+        guard let list = epg[c.epgID ?? c.id], !list.isEmpty else { return nil }
+        // de programma's die al begonnen zijn; bij overlap (rommelige gidsen) een paar terugkijken en, zoals
+        // voorheen, het eerste in de lijst nemen dat nu bezig is
+        let end = Self.firstStarting(after: now, in: list)
+        var i = max(0, end - 4)
+        while i < end {
+            if list[i].start <= now && now < list[i].end { return list[i] }
+            i += 1
+        }
+        return nil
+    }
+
+    func upcoming(_ c: Channel, count: Int = 6, now: Date = Date()) -> [EPGProgram] {
+        guard let list = epg[c.epgID ?? c.id], !list.isEmpty, count > 0 else { return [] }
+        // vanaf een paar programma's vóór "nu" (die kunnen nog bezig zijn) vooruit lopen
+        var i = max(0, Self.firstStarting(after: now, in: list) - 4)
+        var out: [EPGProgram] = []
+        out.reserveCapacity(count)
+        while i < list.count && out.count < count {
+            if list[i].end > now { out.append(list[i]) }
+            i += 1
+        }
+        return out
+    }
+
+    /// Programma's die (deels) tussen `from` en `to` vallen (tv-gids).
+    func programs(_ c: Channel, from: Date, to: Date) -> [EPGProgram] {
+        guard let list = epg[c.epgID ?? c.id], !list.isEmpty else { return [] }
+        var i = max(0, Self.firstStarting(after: from, in: list) - 4)
+        let endIdx = Self.firstStarting(after: to, in: list)
+        var out: [EPGProgram] = []
+        while i < endIdx {
+            if list[i].end > from && list[i].start < to { out.append(list[i]) }
+            i += 1
+        }
+        return out
+    }
+
+    /// Alle programmalijsten op begintijd gesorteerd (alleen waar dat nog niet zo is).
+    static func sortedEPG(_ epg: [String: [EPGProgram]]) -> [String: [EPGProgram]] {
+        var out = epg
+        for (k, list) in epg where list.count > 1 {
+            var sorted = true
+            for i in 1..<list.count where list[i - 1].start > list[i].start { sorted = false; break }
+            if !sorted { out[k] = list.sorted { $0.start < $1.start } }
+        }
+        return out
     }
 }
 

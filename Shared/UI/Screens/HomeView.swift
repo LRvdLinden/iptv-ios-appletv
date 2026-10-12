@@ -48,6 +48,7 @@ struct HomeView: View {
             }
             .coordinateSpace(name: "scroll")
             .onPreferenceChange(OffsetKey.self) { y in
+                ScrollActivity.shared.touch()   // zwaar achtergrondwerk wacht tot het scrollen stopt
                 let v = max(-400, min(0, y))   // alleen het stuk waar de balk van kleur verandert
                 if abs(v - scroll.y) >= 2 || (v == 0) != (scroll.y == 0) { scroll.y = v }
             }
@@ -66,13 +67,19 @@ struct HomeView: View {
             matchTraktPlayback()
         }
         .onChange(of: trakt.playback.count) { _, _ in matchTraktPlayback() }
-        .task(id: CollectionsKey(version: playlists.libraryVersion, collections: store.activeCollections)) {
-            let l = lib, list = store.activeCollections, src = pid
-            collectionContent = await Task.detached(priority: .userInitiated) {
-                var out: [String: CollectionContent] = [:]
-                for c in list { out[c.id] = CollectionResolver.resolve(c, lib: l, source: src) }
-                return out
-            }.value
+        .task(id: CollectionsKey(version: playlists.libraryVersion, source: pid, collections: store.activeCollections)) {
+            // Build 56: wijzigingen (sync, nieuwe lijst) komen vaak vlak na elkaar; even wachten, en niet midden in
+            // het scrollen herberekenen. De eerste keer meteen.
+            if !collectionContent.isEmpty {
+                try? await Task.sleep(nanoseconds: 300_000_000)
+                await ScrollActivity.shared.waitUntilIdle()
+                if Task.isCancelled { return }
+            }
+            let l = lib, list = store.activeCollections, src = pid, version = playlists.libraryVersion
+            // buiten de hoofdthread, en per (lijst, server, collectie) bewaard: alleen gewijzigde collecties rekenen opnieuw
+            let out = await CollectionCache.shared.content(for: list, lib: l, version: version, source: src)
+            guard !Task.isCancelled else { return }
+            if out != collectionContent { collectionContent = out }   // gelijk = Home niet opnieuw tekenen
         }
         .sheet(item: $collecting) { AddToCollectionSheet(target: $0) }
         .fullScreenCover(item: $category) { CategoryView(target: $0) }
@@ -624,6 +631,7 @@ struct HomeView: View {
 /// Opnieuw uitrekenen als de lijst of de collecties veranderen.
 private struct CollectionsKey: Equatable {
     let version: Int
+    let source: UUID?
     let collections: [BingrCollection]
 }
 

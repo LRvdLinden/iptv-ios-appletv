@@ -104,6 +104,7 @@ final class AgeRatingService: ObservableObject {
             guard !work.isEmpty, !Task.isCancelled else { return }
             var batch: [String: AgeInfo] = [:]
             var index = 0
+            var lastMerge = Date()
             while index < work.count, !Task.isCancelled {
                 let chunk = Array(work[index..<min(index + 6, work.count)])   // 6 tegelijk: ruim binnen de TMDB-limiet
                 index += chunk.count
@@ -113,9 +114,9 @@ final class AgeRatingService: ObservableObject {
                     }
                     for await (k, r) in g { if let r { batch[k] = r } }
                 }
-                // in porties doorgeven: het filter loopt dan niet bij elke titel opnieuw
-                if batch.count >= 60 || index >= work.count {
-                    self?.merge(batch); batch = [:]
+                // in grotere porties doorgeven (aantal of tijd): elke portie laat het leeftijdsfilter opnieuw lopen
+                if batch.count >= 150 || (batch.count > 0 && Date().timeIntervalSince(lastMerge) > 20) || index >= work.count {
+                    self?.merge(batch); batch = [:]; lastMerge = Date()
                 }
             }
             if !batch.isEmpty { self?.merge(batch) }
@@ -125,8 +126,10 @@ final class AgeRatingService: ObservableObject {
     private struct Job: Sendable { let key: String; let title: String; let year: Int?; let isShow: Bool; let imdb: String? }
 
     private func merge(_ b: [String: AgeInfo]) {
-        guard !b.isEmpty else { return }
-        cache.merge(b) { _, new in new }
+        // alleen wat echt nieuw of anders is: een gelijke portie hoeft het leeftijdsfilter niet opnieuw te laten lopen
+        let changed = b.filter { cache[$0.key] != $0.value }
+        guard !changed.isEmpty else { return }
+        cache.merge(changed) { _, new in new }
         scheduleSave()
     }
 

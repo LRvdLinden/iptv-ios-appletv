@@ -82,7 +82,7 @@ enum CollectionResolver {
         return SourceSync.uuid(for: s) == source
     }
 
-    static func resolve(_ c: BingrCollection, lib: Library, source: UUID?) -> CollectionContent {
+    static func resolve(_ c: BingrCollection, lib: Library, source: UUID?, index: LibrarySearchIndex? = nil) -> CollectionContent {
         guard matchesSource(c, source) else { return CollectionContent() }
         var out = CollectionContent()
         switch c.kind {
@@ -105,25 +105,28 @@ enum CollectionResolver {
             let words = c.keywords
             guard !words.isEmpty else { return out }
             let group = c.group.flatMap { $0.isEmpty ? nil : $0 }
-            func hit(_ title: String, _ g: String) -> Bool {
+            // met een index: de titels en groepen zijn al één keer per lijst gevouwen (kleine letters, zonder
+            // accenten) in plaats van bij elke collectie en elke wijziging opnieuw voor tienduizenden titels
+            let ix = index.flatMap { $0.matches(lib) ? $0 : nil }
+            func hit(_ title: String, _ g: String, _ folded: (String, String)?) -> Bool {
                 if let group, g != group { return false }
-                let t = PlaylistService.fold(title), gf = PlaylistService.fold(g)
+                let (t, gf) = folded ?? (PlaylistService.fold(title), PlaylistService.fold(g))
                 return words.contains { t.contains($0) || gf.contains($0) }
             }
             if c.allows(.channel) {
-                for x in lib.channels where hit(x.name, x.group) {
+                for (i, x) in lib.channels.enumerated() where hit(x.name, x.group, ix.map { ($0.channelNames[i], $0.channelGroups[i]) }) {
                     out.channels.append(x)
                     if out.channels.count >= limit { break }
                 }
             }
             if c.allows(.movie) {
-                for x in lib.movies where hit(x.title, x.group) {
+                for (i, x) in lib.movies.enumerated() where hit(x.title, x.group, ix.map { ($0.movieTitles[i], $0.movieGroups[i]) }) {
                     out.movies.append(x)
                     if out.movies.count >= limit { break }
                 }
             }
             if c.allows(.series) {
-                for x in lib.series where hit(x.title, x.group) {
+                for (i, x) in lib.series.enumerated() where hit(x.title, x.group, ix.map { ($0.seriesTitles[i], $0.seriesGroups[i]) }) {
                     out.series.append(x)
                     if out.series.count >= limit { break }
                 }
@@ -138,6 +141,82 @@ enum CollectionResolver {
         var only = c
         if c.kind == .smart { only.types = ["channel"] } else { only.items = c.items.filter { $0.type == .channel } }
         return resolve(only, lib: lib, source: source).channels
+    }
+}
+
+/// Gevouwen titels en groepen van één bibliotheek (per item op dezelfde plek), voor slimme collecties.
+/// Eén keer per lijst gebouwd, op de achtergrond; groepen worden per unieke groep maar één keer gevouwen.
+final class LibrarySearchIndex: @unchecked Sendable {
+    let version: Int
+    let channelNames: [String], channelGroups: [String]
+    let movieTitles: [String], movieGroups: [String]
+    let seriesTitles: [String], seriesGroups: [String]
+
+    init(_ lib: Library, version: Int) {
+        self.version = version
+        var groups: [String: String] = [:]
+        func g(_ s: String) -> String {
+            if let f = groups[s] { return f }
+            let f = PlaylistService.fold(s)
+            groups[s] = f
+            return f
+        }
+        channelNames = lib.channels.map { PlaylistService.fold($0.name) }
+        channelGroups = lib.channels.map { g($0.group) }
+        movieTitles = lib.movies.map { PlaylistService.fold($0.title) }
+        movieGroups = lib.movies.map { g($0.group) }
+        seriesTitles = lib.series.map { PlaylistService.fold($0.title) }
+        seriesGroups = lib.series.map { g($0.group) }
+    }
+
+    /// Hoort deze index bij deze lijst (zelfde aantallen)? Anders zonder index zoeken.
+    func matches(_ lib: Library) -> Bool {
+        channelNames.count == lib.channels.count && movieTitles.count == lib.movies.count && seriesTitles.count == lib.series.count
+    }
+}
+
+/// Uitkomsten van collecties, buiten de hoofdthread berekend en bewaard per (bibliotheekversie, bron, collectie).
+/// Een collectie telt als gewijzigd zodra iets ervan verandert (o.a. `updatedAt`, eigenaar/profiel, zoekwoorden).
+actor CollectionCache {
+    static let shared = CollectionCache()
+
+    private struct Key: Hashable {
+        let version: Int
+        let source: UUID?
+        let collection: BingrCollection
+    }
+    private var index: LibrarySearchIndex?
+    private var results: [Key: CollectionContent] = [:]
+    private var cachedVersion: Int?
+
+    /// Inhoud van een reeks collecties (collectie-id → inhoud).
+    func content(for list: [BingrCollection], lib: Library, version: Int, source: UUID?) -> [String: CollectionContent] {
+        var out: [String: CollectionContent] = [:]
+        for c in list { out[c.id] = content(c, lib: lib, version: version, source: source) }
+        return out
+    }
+
+    /// Alleen de zenders (Live TV).
+    func channels(_ c: BingrCollection, lib: Library, version: Int, source: UUID?) -> [Channel] {
+        content(c, lib: lib, version: version, source: source).channels
+    }
+
+    private func content(_ c: BingrCollection, lib: Library, version: Int, source: UUID?) -> CollectionContent {
+        if cachedVersion != version {
+            // nieuwe lijst: oude uitkomsten en index weg
+            cachedVersion = version
+            results = [:]
+            index = nil
+        }
+        let key = Key(version: version, source: source, collection: c)
+        if let hit = results[key] { return hit }
+        if c.kind == .smart && index == nil && CollectionResolver.matchesSource(c, source) && !c.keywords.isEmpty {
+            index = LibrarySearchIndex(lib, version: version)
+        }
+        let r = CollectionResolver.resolve(c, lib: lib, source: source, index: index)
+        if results.count > 200 { results = [:] }   // oude versies van gewijzigde collecties niet eindeloos bewaren
+        results[key] = r
+        return r
     }
 }
 

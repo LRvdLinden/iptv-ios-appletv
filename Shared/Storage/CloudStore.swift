@@ -35,7 +35,7 @@ final class CloudStore: ObservableObject {
     @Published private(set) var history: [HistoryEntry] = []
     /// Eigen collecties van alle profielen op dit apparaat (build 54: per profiel, zie `owner`), inclusief
     /// tombstones (`deleted`). Zonder `owner`: nog niet gemigreerd (build 51–53, voor het hele account).
-    @Published private(set) var collections: [BingrCollection] = []
+    @Published private(set) var collections: [BingrCollection] = [] { didSet { refreshActiveCollections() } }
     /// Startscherm per profiel (profiel-ID → indeling)
     @Published private(set) var homeLayouts: [String: HomeLayout] = [:]
     /// Het profiel dat nu open is (gezet door PlaylistService)
@@ -47,17 +47,19 @@ final class CloudStore: ObservableObject {
     // Per profiel apart: Mijn lijst, favorieten, kijkvoortgang/Verder kijken, bekeken, recente zenders,
     // kijkgeschiedenis, avatar/foto en leeftijdsgrens. Gedeeld: server(s), aanpassingen, Trakt, OpenSubtitles.
 
-    @Published private(set) var profiles: [ViewerProfile] = []
+    @Published private(set) var profiles: [ViewerProfile] = [] { didSet { refreshActiveCollections() } }
     /// De server die alle profielen gebruiken
     @Published private(set) var mainSourceID: UUID?
     /// Gekozen profiel op dít apparaat (per Apple TV-gebruiker apart)
-    @Published private(set) var activeProfileID: UUID? = UserDefaults.standard.string(forKey: "activeProfileID").flatMap(UUID.init)
+    @Published private(set) var activeProfileID: UUID? = UserDefaults.standard.string(forKey: "activeProfileID").flatMap(UUID.init) {
+        didSet { refreshActiveCollections() }
+    }
 
     var activeProfile: ViewerProfile? { profiles.first { $0.id == activeProfileID } }
 
     /// Het hoofdaccount: alleen dat profiel stelt de server, Trakt, OpenSubtitles, kinderslot,
     /// categorieën en profielen in. Standaard het eerste profiel.
-    @Published private(set) var mainProfileIDStored: UUID?
+    @Published private(set) var mainProfileIDStored: UUID? { didSet { refreshActiveCollections() } }
     var mainProfileID: UUID? {
         if let m = mainProfileIDStored, profiles.contains(where: { $0.id == m }) { return m }
         return profiles.first?.id
@@ -76,11 +78,11 @@ final class CloudStore: ObservableObject {
     }
 
     private func loadProfileData() {
-        favorites = scoped(Set<String>.self, K.favorites) ?? []
-        myList = scoped(Set<String>.self, K.myList) ?? []
-        localWatched = scoped(Set<String>.self, K.watched) ?? []
-        recentChannels = scoped([String].self, K.recent) ?? []
-        history = scoped([HistoryEntry].self, K.history) ?? []
+        assign(\.favorites, scoped(Set<String>.self, K.favorites) ?? [])
+        assign(\.myList, scoped(Set<String>.self, K.myList) ?? [])
+        assign(\.localWatched, scoped(Set<String>.self, K.watched) ?? [])
+        assign(\.recentChannels, scoped([String].self, K.recent) ?? [])
+        assign(\.history, scoped([HistoryEntry].self, K.history) ?? [])
     }
 
     /// Bestaande afspeellijsten (vroeger = profielen) omzetten naar kijkprofielen.
@@ -197,10 +199,11 @@ final class CloudStore: ObservableObject {
     /// `mainID` nil = het huidige hoofdprofiel houden.
     func replaceProfiles(_ list: [ViewerProfile], mainID: UUID?) {
         let removed = profiles.filter { old in !list.contains { $0.id == old.id } }
-        profiles = list
+        // gelijke waarden niet opnieuw publiceren (elke sync-ronde liet anders alle schermen opnieuw tekenen)
+        assign(\.profiles, list)
         write(profiles, K.profiles)
         if let mainID {
-            mainProfileIDStored = mainID
+            assign(\.mainProfileIDStored, mainID)
             write(mainProfileIDStored, K.mainProfile)
         }
         for p in removed where photos[p.id] != nil { setSyncedPhoto(nil, for: p.id) }
@@ -212,7 +215,7 @@ final class CloudStore: ObservableObject {
     }
 
     func setMainSource(_ id: UUID) {
-        mainSourceID = id
+        assign(\.mainSourceID, id)
         write(mainSourceID, K.mainSource)
     }
 
@@ -248,7 +251,21 @@ final class CloudStore: ObservableObject {
         kv.set(d, forKey: key)
         local.set(d, forKey: key)
         kv.synchronize()
-        lastSync = Date()
+        touchLastSync()
+    }
+
+    /// "Laatst gesynchroniseerd" toont alleen uren en minuten: niet bij elke opslag (bijv. voortgang tijdens het
+    /// kijken) publiceren, want dat laat elk scherm dat de store volgt opnieuw tekenen.
+    private func touchLastSync() {
+        let now = Date()
+        if let l = lastSync, Calendar.current.isDate(l, equalTo: now, toGranularity: .minute) { return }
+        lastSync = now
+    }
+
+    /// Alleen toewijzen als de waarde echt anders is: elke toewijzing aan een @Published-eigenschap (ook een gelijke)
+    /// laat alle schermen die de store volgen opnieuw rekenen.
+    private func assign<T: Equatable>(_ path: ReferenceWritableKeyPath<CloudStore, T>, _ value: T) {
+        if self[keyPath: path] != value { self[keyPath: path] = value }
     }
 
     private func decode<T: Decodable>(_ t: T.Type, _ key: String) -> T? {
@@ -257,20 +274,21 @@ final class CloudStore: ObservableObject {
     }
 
     func load(mergeProgress: Bool) {
-        playlists = decode([PlaylistSource].self, K.playlists) ?? []
-        profiles = decode([ViewerProfile].self, K.profiles) ?? []
-        mainSourceID = decode(UUID.self, K.mainSource)
-        mainProfileIDStored = decode(UUID.self, K.mainProfile)
+        // bij elke iCloud-wijziging van een ander apparaat: alleen wat echt veranderd is opnieuw publiceren
+        assign(\.playlists, decode([PlaylistSource].self, K.playlists) ?? [])
+        assign(\.profiles, decode([ViewerProfile].self, K.profiles) ?? [])
+        assign(\.mainSourceID, decode(UUID.self, K.mainSource))
+        assign(\.mainProfileIDStored, decode(UUID.self, K.mainProfile))
         migrateToProfiles()
         loadProfileData()
         // zonder Bingr-account in deze build: migraties alleen lokaal (anders na de sync, zie ProfileSync/StateSync)
         if !Secrets.accountsConfigured { migrateLegacyAccent() }
         applyActiveAccent()
-        customizations = decode([UUID: Customization].self, K.custom) ?? [:]
-        parental = decode(ParentalSettings.self, K.parental) ?? ParentalSettings()
-        photos = decode([UUID: Data].self, K.photos) ?? [:]
-        collections = decode([BingrCollection].self, K.collections) ?? collections
-        homeLayouts = decode([String: HomeLayout].self, K.homeLayout) ?? homeLayouts
+        assign(\.customizations, decode([UUID: Customization].self, K.custom) ?? [:])
+        assign(\.parental, decode(ParentalSettings.self, K.parental) ?? ParentalSettings())
+        assign(\.photos, decode([UUID: Data].self, K.photos) ?? [:])
+        assign(\.collections, decode([BingrCollection].self, K.collections) ?? collections)
+        assign(\.homeLayouts, decode([String: HomeLayout].self, K.homeLayout) ?? homeLayouts)
         if !Secrets.accountsConfigured { migrateLegacyCollections() }
         // wachtwoorden/tokens ook via iCloud KV delen (Apple TV krijgt ze anders niet) — op de achtergrond,
         // sleutelhanger-acties zijn traag en blokkeerden het wisselen van profiel
@@ -283,16 +301,16 @@ final class CloudStore: ObservableObject {
             Keychain.pushToCloud(keys: secretKeys)
             DispatchQueue.main.async { Secrets.reload() }
         }
-        reminders = (decode([ProgramReminder].self, K.reminders) ?? []).filter { $0.start > Date().addingTimeInterval(-3600) }
+        assign(\.reminders, (decode([ProgramReminder].self, K.reminders) ?? []).filter { $0.start > Date().addingTimeInterval(-3600) })
         let remote = scoped([String: ProgressEntry].self, K.progress) ?? [:]
         if mergeProgress {
             var merged = progress
             for (k, v) in remote where (merged[k]?.updated ?? .distantPast) < v.updated { merged[k] = v }
-            progress = merged
+            assign(\.progress, merged)
         } else {
-            progress = remote
+            assign(\.progress, remote)
         }
-        lastSync = Date()
+        touchLastSync()
     }
 
     // MARK: playlists
@@ -365,7 +383,7 @@ final class CloudStore: ObservableObject {
     /// Servers uit de Bingr-account overnemen (importeren/samenvoegen, zie SourceSync). `updatedAt` blijft
     /// zoals gegeven. `mainID` nil = de huidige hoofdserver houden (zolang die bestaat).
     func replaceSources(_ list: [PlaylistSource], mainID: UUID?) {
-        playlists = list
+        assign(\.playlists, list)
         write(playlists, K.playlists)
         if let mainID, list.contains(where: { $0.id == mainID }) {
             setMainSource(mainID)
@@ -491,8 +509,9 @@ final class CloudStore: ObservableObject {
         if old.history != d.history { write(d.history, K.history + suffix) }
         if old.progress != d.progress { write(d.progress, K.progress + suffix) }
         if id == activeProfileID {
-            favorites = d.favorites; myList = d.myList; localWatched = d.watched
-            recentChannels = d.recentChannels; history = d.history; progress = d.progress
+            // alleen wat veranderd is: anders tekent elk scherm opnieuw bij elke sync-ronde
+            assign(\.favorites, d.favorites); assign(\.myList, d.myList); assign(\.localWatched, d.watched)
+            assign(\.recentChannels, d.recentChannels); assign(\.history, d.history); assign(\.progress, d.progress)
         }
     }
 
@@ -522,7 +541,18 @@ final class CloudStore: ObservableObject {
 
     /// Collecties van het actieve profiel zoals de app ze toont: zonder tombstones, op volgorde. Collecties zonder
     /// eigenaar (nog niet gemigreerd, build 51–53) zijn tot de migratie voor iedereen zichtbaar, zodat niets verdwijnt.
-    var activeCollections: [BingrCollection] {
+    /// Eén keer uitgerekend bij een wijziging (niet bij elke schermverversing; Home en Live TV vragen dit per rij op).
+    private(set) var activeCollections: [BingrCollection] = []
+    private var activeCollectionsByID: [String: BingrCollection] = [:]
+
+    private func refreshActiveCollections() {
+        let list = computeActiveCollections()
+        guard list != activeCollections else { return }
+        activeCollections = list
+        activeCollectionsByID = Dictionary(list.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+    }
+
+    private func computeActiveCollections() -> [BingrCollection] {
         let me = collectionOwner
         let mine = collections.filter { $0.owner != nil && $0.owner == me }
         let mineIDs = Set(mine.map(\.id))   // ook tombstones: een eigen verwijdering verbergt de oude versie
@@ -531,7 +561,7 @@ final class CloudStore: ObservableObject {
             .sorted { $0.order != $1.order ? $0.order < $1.order : $0.name < $1.name }
     }
 
-    func collection(_ id: String) -> BingrCollection? { activeCollections.first { $0.id == id } }
+    func collection(_ id: String) -> BingrCollection? { activeCollectionsByID[id] }
 
     /// Index van de collectie van het actieve profiel. Bestaat alleen nog een oude (zonder eigenaar), dan wordt
     /// die eerst een eigen kopie van dit profiel.

@@ -6,7 +6,9 @@ struct HeroBanner: View {
     let onPlay: () -> Void
     let onInfo: () -> Void
 
-    @EnvironmentObject var meta: MetadataService
+    /// Alleen opvragen, niet volgen (build 56): anders tekende het billboard opnieuw bij elke IMDb-score die
+    /// ergens in de app binnenkwam (bijv. tijdens het scrollen door een categorie)
+    private var meta: MetadataService { MetadataService.shared }
     @EnvironmentObject var trakt: TraktSync
     @State private var info: TitleMetadata?
 

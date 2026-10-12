@@ -176,6 +176,28 @@ struct CollectionEditor: View {
     @State private var sourceID = ""
     @State private var confirmDelete = false
     @State private var loaded = false
+    /// Wat er nu in de collectie zou staan (aantallen, posters, namen): op de achtergrond uitgerekend en pas na een
+    /// korte pauze in het typen (build 56), niet bij elke toetsaanslag door de hele bibliotheek
+    @State private var content = CollectionContent()
+    @State private var contentReady = false
+    /// Alle categorieën van de lijst (één keer per lijst, op de achtergrond)
+    @State private var allGroups: [String] = []
+
+    /// Alleen wat de inhoud bepaalt (niet naam of afbeelding)
+    private struct ContentKey: Equatable {
+        let kind: BingrCollection.Kind
+        let items: [CollectionItem]
+        let query: String
+        let types: [Bool]
+        let group: String
+        let sourceID: String
+        let version: Int
+        let source: UUID?
+    }
+    private var contentKey: ContentKey {
+        ContentKey(kind: kind, items: items, query: query, types: [channels, movies, series], group: group,
+                   sourceID: sourceID, version: playlists.libraryVersion, source: playlists.source?.id)
+    }
 
     private var draft: BingrCollection {
         var c = existing ?? BingrCollection(name: "")
@@ -195,8 +217,16 @@ struct CollectionEditor: View {
         return c
     }
 
-    private var content: CollectionContent {
-        CollectionResolver.resolve(draft, lib: playlists.library, source: playlists.source?.id)
+    private func updateContent() async {
+        if contentReady {
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            if Task.isCancelled { return }
+        }
+        let d = draft, l = playlists.library, src = playlists.source?.id
+        let c = await Task.detached(priority: .userInitiated) { CollectionResolver.resolve(d, lib: l, source: src) }.value
+        guard !Task.isCancelled else { return }
+        if c != content { content = c }
+        contentReady = true
     }
 
     var body: some View {
@@ -246,6 +276,13 @@ struct CollectionEditor: View {
                 }
             }
             .onAppear(perform: load)
+            .task(id: contentKey) { await updateContent() }
+            .task(id: playlists.libraryVersion) {
+                let lib = playlists.library
+                allGroups = await Task.detached(priority: .userInitiated) {
+                    orderedUnique(lib.channelGroups + lib.movieGroups + lib.seriesGroups)
+                }.value
+            }
         }
     }
 
@@ -276,8 +313,7 @@ struct CollectionEditor: View {
     }
 
     private var groups: [String] {
-        let lib = playlists.library
-        var out = orderedUnique(lib.channelGroups + lib.movieGroups + lib.seriesGroups)
+        var out = allGroups
         if !group.isEmpty && !out.contains(group) { out.insert(group, at: 0) }
         return out
     }
@@ -338,7 +374,16 @@ struct CollectionEditor: View {
         switch t { case .channel: return "tv"; case .movie: return "film"; case .series: return "rectangle.stack" }
     }
 
+    /// Naam van een item: uit de (al opgezochte) inhoud, niet bij elke schermverversing door de hele bibliotheek.
+    /// Nog niet opgezocht (net geopend): dan wel direct in de bibliotheek.
     private func title(_ item: CollectionItem) -> String {
+        if contentReady {
+            switch item.type {
+            case .channel: if let x = content.channels.first(where: { $0.id == item.id }) { return x.name }
+            case .movie: if let x = content.movies.first(where: { $0.id == item.id }) { return x.title }
+            case .series: if let x = content.series.first(where: { $0.id == item.id }) { return x.title }
+            }
+        }
         let lib = playlists.library
         switch item.type {
         case .channel: return lib.channels.first { $0.id == item.id }?.name ?? item.id

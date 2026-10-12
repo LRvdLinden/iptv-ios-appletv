@@ -9,9 +9,16 @@ struct LiveTVView: View {
     @State private var guideFor: Channel?
     @State private var program: ProgramTarget?
     @State private var filterText = ""
-    @ObservedObject private var preview = ChannelPreview.shared
+    /// Het voorbeeld niet volgen (build 56): anders tekende heel Live TV (lijst, groepen, gids) opnieuw bij elke
+    /// focusstap en elke start van het voorbeeld. Alleen de voorbeeldvakken hieronder volgen het.
+    private var preview: ChannelPreview { ChannelPreview.shared }
     /// Evenementzenders (één keer per lijst uitgelezen, op de achtergrond)
     @State private var events: [(channel: Channel, info: EventInfo)] = []
+    /// Groepen van de zenders (één keer per lijst, niet bij elke schermverversing)
+    @State private var channelGroups: [String] = []
+    /// Zenders van de gekozen groep, collectie of zoekopdracht: buiten de hoofdthread samengesteld (build 56)
+    @State private var shown: [Channel] = []
+    @State private var shownKey: ListKey?
     @State private var collecting: CollectionTarget?
     @State private var offsetFor: Channel?
 
@@ -24,7 +31,7 @@ struct LiveTVView: View {
 
     private var groups: [String] {
         [Self.allKey, Self.favKey, Self.recentKey] + (events.isEmpty ? [] : [Self.eventsKey])
-            + channelCollections.map { Self.collectionPrefix + $0.id } + lib.channelGroups
+            + channelCollections.map { Self.collectionPrefix + $0.id } + channelGroups
     }
 
     /// Collecties waar zenders in (kunnen) staan
@@ -52,39 +59,91 @@ struct LiveTVView: View {
         }
     }
 
-    private var channels: [Channel] {
-        var list: [Channel]
-        switch group {
-        case Self.favKey: list = lib.channels.filter { store.isFavorite(pid, $0.id) }
-        case Self.recentKey:
-            list = store.recentChannels.compactMap { k in lib.channels.first { store.key(pid, $0.id) == k } }
-        case Self.allKey: list = lib.channels
-        case Self.eventsKey: list = events.map { $0.channel }
-        default:
-            if let c = collection(for: group) {
-                list = CollectionResolver.channels(c, lib: lib, source: playlists.source?.id)
-            } else {
-                list = lib.channels.filter { $0.group == group }
-            }
-        }
-        return list
-    }
-
     /// Zoeken gaat altijd door álle zenders (los van de gekozen groep): naam, nummer, groep en wat er nu speelt.
     private var searching: Bool { !query.isEmpty }
     private var query: String { filterText.trimmingCharacters(in: .whitespaces) }
+
+    /// Wat de zenderlijst bepaalt; verandert dit, dan wordt de lijst (op de achtergrond) opnieuw samengesteld.
+    struct ListKey: Equatable {
+        let version: Int
+        let source: UUID?
+        let group: String
+        let query: String
+        /// Alleen bij Favorieten/Recent: de zender-ID's daarvan (op volgorde voor Recent)
+        let favorites: Set<String>
+        let recent: [String]
+        /// Alleen bij een collectie
+        let collection: BingrCollection?
+    }
+
+    private var listKey: ListKey {
+        let prefix = store.key(pid, "")
+        func ids<S: Sequence>(_ keys: S) -> [String] where S.Element == String {
+            keys.compactMap { $0.hasPrefix(prefix) ? String($0.dropFirst(prefix.count)) : nil }
+        }
+        return ListKey(version: playlists.libraryVersion, source: playlists.source?.id, group: group, query: query,
+                       favorites: !searching && group == Self.favKey ? Set(ids(store.favorites)) : [],
+                       recent: !searching && group == Self.recentKey ? ids(store.recentChannels) : [],
+                       collection: searching ? nil : collection(for: group))
+    }
+
+    /// De zenders die nu in beeld staan. Alle zenders en Evenementen zijn al klaar; de rest komt uit `shown`.
     private var visibleChannels: [Channel] {
-        guard searching else { return channels }
-        let q = query
-        let byName = lib.channels.filter {
-            $0.name.localizedCaseInsensitiveContains(q) || ($0.number.map { "\($0)" == q } ?? false)
+        if !searching && group == Self.allKey { return lib.channels }
+        if !searching && group == Self.eventsKey { return events.map { $0.channel } }
+        return shown
+    }
+
+    /// Lijst samenstellen buiten de hoofdthread (filteren door tienduizenden zenders, slimme collecties, zoeken).
+    private func rebuildList(_ key: ListKey) async {
+        if !key.query.isEmpty {
+            // tijdens het typen: pas zoeken als er even niet getypt wordt
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            if Task.isCancelled { return }
         }
-        let nameIDs = Set(byName.map(\.id))
-        let byOther = lib.channels.filter { c in
-            !nameIDs.contains(c.id) && (c.group.localizedCaseInsensitiveContains(q)
-                || (lib.nowPlaying(c)?.title.localizedCaseInsensitiveContains(q) ?? false))
+        let l = lib
+        let result: [Channel]
+        if !key.query.isEmpty {
+            let q = key.query
+            result = await Task.detached(priority: .userInitiated) { () -> [Channel] in
+                let byName = l.channels.filter {
+                    $0.name.localizedCaseInsensitiveContains(q) || ($0.number.map { "\($0)" == q } ?? false)
+                }
+                let nameIDs = Set(byName.map(\.id))
+                let now = Date()
+                let byOther = l.channels.filter { c in
+                    !nameIDs.contains(c.id) && (c.group.localizedCaseInsensitiveContains(q)
+                        || (l.nowPlaying(c, at: now)?.title.localizedCaseInsensitiveContains(q) ?? false))
+                }
+                return byName + byOther
+            }.value
+        } else if let c = key.collection {
+            // slimme collecties: zelfde bewaarde uitkomst als op Home (per lijst, server en collectie)
+            result = await CollectionCache.shared.channels(c, lib: l, version: key.version, source: key.source)
+        } else {
+            enum Pick { case favorites(Set<String>), recent([String]), group(String), none }
+            let pick: Pick
+            switch key.group {
+            case Self.favKey: pick = .favorites(key.favorites)
+            case Self.recentKey: pick = .recent(key.recent)
+            case Self.allKey, Self.eventsKey: pick = .none   // staan al klaar (zie `visibleChannels`)
+            default: pick = .group(key.group)
+            }
+            result = await Task.detached(priority: .userInitiated) { () -> [Channel] in
+                switch pick {
+                case .favorites(let favs): return l.channels.filter { favs.contains($0.id) }
+                case .recent(let recent):
+                    var byID: [String: Channel] = [:]
+                    for ch in l.channels where byID[ch.id] == nil { byID[ch.id] = ch }
+                    return recent.compactMap { byID[$0] }
+                case .group(let g): return l.channels.filter { $0.group == g }
+                case .none: return []
+                }
+            }.value
         }
-        return byName + byOther
+        guard !Task.isCancelled else { return }
+        if result != shown { shown = result }
+        shownKey = key
     }
 
     var body: some View {
@@ -111,12 +170,17 @@ struct LiveTVView: View {
         .sheet(item: $offsetFor) { CatchupOffsetSheet(channel: $0) }
         .task(id: playlists.libraryVersion) {
             let chans = lib.channels
-            let found = await Task.detached(priority: .utility) { EventChannels.events(chans) }.value
+            let (found, groups) = await Task.detached(priority: .utility) {
+                (EventChannels.events(chans), orderedUnique(chans.map(\.group)))
+            }.value
+            if groups != channelGroups { channelGroups = groups }
             events = found
             if group == Self.eventsKey && found.isEmpty { group = Self.allKey }
         }
+        .task(id: listKey) { await rebuildList(listKey) }
         .onChange(of: group) { _, _ in preview.stop() }
-        .onDisappear { preview.stop() }
+        // Live TV verlaten: ook de bewaarde voorbeeldspeler loslaten
+        .onDisappear { preview.stop(release: true) }
     }
 
     @ViewBuilder private var content: some View {
@@ -188,69 +252,15 @@ struct LiveTVView: View {
                           onPlay: { c in play(c) },
                           onProgram: { c, p in program = ProgramTarget(channel: c, p: p) },
                           onSelect: { c in preview.select(c, playlists: playlists) })
-                .overlay(alignment: .bottomTrailing) { floatingPreview }
+                .overlay(alignment: .bottomTrailing) { FloatingChannelPreview(onPlay: { play($0) }) }
         } else {
             #if os(tvOS)
             HStack(alignment: .top, spacing: 40) {
                 channelList
-                if PlayerSettings.previewEnabled { previewPane.frame(width: 560) }
+                if PlayerSettings.previewEnabled { LivePreviewPane().frame(width: 560) }
             }
             #else
-            channelList.overlay(alignment: .bottomTrailing) { floatingPreview }
-            #endif
-        }
-    }
-
-    /// Apple TV: het voorbeeld naast de lijst, met wat er nu op is.
-    private var previewPane: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            ChannelPreviewView(placeholder: nil)
-            if let c = preview.channel {
-                Text(c.name).font(.system(size: 30, weight: .bold)).lineLimit(1)
-                if let now = lib.nowPlaying(c) {
-                    Text("\(now.start.formatted(date: .omitted, time: .shortened))–\(now.end.formatted(date: .omitted, time: .shortened))  \(now.title)")
-                        .font(.system(size: 24)).foregroundStyle(.white.opacity(0.85)).lineLimit(2)
-                    ProgressBar(value: now.progress).frame(height: 4).clipShape(Capsule())
-                    if let d = now.description {
-                        Text(d).font(.system(size: 20)).foregroundStyle(Theme.secondary).lineLimit(4)
-                    }
-                }
-            } else {
-                Text(L("Select a channel for a preview")).font(.system(size: 22)).foregroundStyle(Theme.secondary)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.top, 20)
-    }
-
-    /// iPad/Mac (aanwijzer) en de tv-gids: een klein voorbeeld rechtsonder; tik = kijken.
-    @ViewBuilder private var floatingPreview: some View {
-        if let c = preview.channel, preview.floating {
-            #if os(tvOS)
-            ChannelPreviewView(placeholder: nil).frame(width: 480).padding(30)
-                .shadow(color: .black.opacity(0.6), radius: 16)
-            #else
-            ZStack(alignment: .topTrailing) {
-                Button { play(c) } label: {
-                    VStack(alignment: .leading, spacing: 4) {
-                        ChannelPreviewView(placeholder: nil)
-                        Text(c.name).font(.system(size: 12, weight: .semibold)).lineLimit(1).padding(.horizontal, 4)
-                    }
-                    .padding(6)
-                    .background(.black.opacity(0.85), in: RoundedRectangle(cornerRadius: 12))
-                }
-                .buttonStyle(.plain)
-                Button { preview.stop() } label: {
-                    Image(systemName: "xmark.circle.fill").font(.system(size: 20)).foregroundStyle(.white, .black.opacity(0.6))
-                }
-                .buttonStyle(.plain)
-                .padding(10)
-                .accessibilityLabel(L("Close"))
-            }
-            .frame(width: 260)
-            .padding(16)
-            .shadow(color: .black.opacity(0.6), radius: 12)
-            .transition(.opacity)
+            channelList.overlay(alignment: .bottomTrailing) { FloatingChannelPreview(onPlay: { play($0) }) }
             #endif
         }
     }
@@ -269,7 +279,7 @@ struct LiveTVView: View {
                         .font(.system(size: tvScaled(13), weight: .semibold)).foregroundStyle(Theme.secondary)
                         .padding(.horizontal, tvScaled(8)).padding(.top, tvScaled(6))
                 }
-                if list.isEmpty {
+                if list.isEmpty && (shownKey == listKey || (!searching && (group == Self.allKey || group == Self.eventsKey))) {
                     Text(searching ? L("No channels found.") :
                          group == Self.favKey ? L("No favorites yet. Hold a channel to add it.") : L("No channels."))
                         .foregroundStyle(Theme.secondary).padding(.top, 40)
@@ -283,6 +293,7 @@ struct LiveTVView: View {
                             if let info = eventInfo[c.id] {
                                 EventRow(channel: c, info: info)
                             } else {
+                                // gids per zender op begintijd: binair zoeken, geen lus door alle programma's per rij
                                 ChannelRow(channel: c, now: lib.nowPlaying(c), next: lib.upcoming(c, count: 2).dropFirst().first,
                                            favorite: store.isFavorite(pid, c.id))
                             }
@@ -324,6 +335,71 @@ struct LiveTVView: View {
         }
         Button { app.openMultiview(start: [c], candidates: list) } label: {
             Label(L("Open in Multiview"), systemImage: "square.grid.2x2")
+        }
+    }
+}
+
+/// Apple TV: het voorbeeld naast de lijst, met wat er nu op is. Volgt zelf het voorbeeld (build 56), zodat alleen
+/// dit vak opnieuw tekent als het voorbeeld wisselt.
+private struct LivePreviewPane: View {
+    @ObservedObject private var preview = ChannelPreview.shared
+    @EnvironmentObject var playlists: PlaylistService
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            ChannelPreviewView(placeholder: nil)
+            if let c = preview.channel {
+                Text(c.name).font(.system(size: 30, weight: .bold)).lineLimit(1)
+                if let now = playlists.library.nowPlaying(c) {
+                    Text("\(TimeText.short(now.start))–\(TimeText.short(now.end))  \(now.title)")
+                        .font(.system(size: 24)).foregroundStyle(.white.opacity(0.85)).lineLimit(2)
+                    ProgressBar(value: now.progress).frame(height: 4).clipShape(Capsule())
+                    if let d = now.description {
+                        Text(d).font(.system(size: 20)).foregroundStyle(Theme.secondary).lineLimit(4)
+                    }
+                }
+            } else {
+                Text(L("Select a channel for a preview")).font(.system(size: 22)).foregroundStyle(Theme.secondary)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.top, 20)
+    }
+}
+
+/// iPad/Mac (aanwijzer) en de tv-gids: een klein voorbeeld rechtsonder; tik = kijken.
+private struct FloatingChannelPreview: View {
+    @ObservedObject private var preview = ChannelPreview.shared
+    let onPlay: (Channel) -> Void
+
+    var body: some View {
+        if let c = preview.channel, preview.floating {
+            #if os(tvOS)
+            ChannelPreviewView(placeholder: nil).frame(width: 480).padding(30)
+                .shadow(color: .black.opacity(0.6), radius: 16)
+            #else
+            ZStack(alignment: .topTrailing) {
+                Button { onPlay(c) } label: {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ChannelPreviewView(placeholder: nil)
+                        Text(c.name).font(.system(size: 12, weight: .semibold)).lineLimit(1).padding(.horizontal, 4)
+                    }
+                    .padding(6)
+                    .background(.black.opacity(0.85), in: RoundedRectangle(cornerRadius: 12))
+                }
+                .buttonStyle(.plain)
+                Button { preview.stop() } label: {
+                    Image(systemName: "xmark.circle.fill").font(.system(size: 20)).foregroundStyle(.white, .black.opacity(0.6))
+                }
+                .buttonStyle(.plain)
+                .padding(10)
+                .accessibilityLabel(L("Close"))
+            }
+            .frame(width: 260)
+            .padding(16)
+            .shadow(color: .black.opacity(0.6), radius: 12)
+            .transition(.opacity)
+            #endif
         }
     }
 }
@@ -467,12 +543,12 @@ private struct ChannelRow: View {
                     if channel.catchupDays > 0 { Image(systemName: "clock.arrow.circlepath").font(.system(size: tvScaled(10))).foregroundStyle(Theme.secondary) }
                 }
                 if let now {
-                    Text("\(now.start.formatted(date: .omitted, time: .shortened))  \(now.title)")
+                    Text("\(TimeText.short(now.start))  \(now.title)")
                         .font(.system(size: tvScaled(12))).foregroundStyle(.white.opacity(0.8)).lineLimit(1)
                     ProgressBar(value: now.progress).frame(height: 2).frame(maxWidth: tvScaled(220))
                 }
                 if let next {
-                    Text(L("Next %@  %@", next.start.formatted(date: .omitted, time: .shortened), next.title))
+                    Text(L("Next %@  %@", TimeText.short(next.start), next.title))
                         .font(.system(size: tvScaled(11))).foregroundStyle(Theme.secondary).lineLimit(1)
                 }
             }

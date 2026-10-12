@@ -187,6 +187,50 @@ struct WatchedBadge: View {
     }
 }
 
+/// Korte tijd ("20:45") voor lijsten en de tv-gids (build 56): één gedeelde formatter in plaats van per cel
+/// opnieuw opmaken. Zelfde uitkomst als `formatted(date: .omitted, time: .shortened)` (taal/regio van het apparaat).
+enum TimeText {
+    private static let formatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = .autoupdatingCurrent
+        f.dateStyle = .none
+        f.timeStyle = .short
+        return f
+    }()
+    private static let lock = NSLock()
+
+    static func short(_ d: Date) -> String { lock.withLock { formatter.string(from: d) } }
+}
+
+/// Of er nu gescrold wordt (of de focus/aanwijzer door een lijst gaat), build 56. Zwaar werk dat kan wachten
+/// (opnieuw filteren na nieuwe leeftijdsclassificaties, collecties bijwerken na een sync) wacht hierop,
+/// zodat het niet midden in het scrollen de hoofdthread bezet.
+final class ScrollActivity: @unchecked Sendable {
+    static let shared = ScrollActivity()
+    /// Zo lang na de laatste beweging telt het nog als scrollen
+    static let quiet: TimeInterval = 1.5
+    private let lock = NSLock()
+    private var last = Date.distantPast
+
+    /// Aanroepen bij elke scroll- of focusbeweging (goedkoop; vanaf elke thread).
+    func touch() {
+        let now = Date()
+        lock.withLock { last = now }
+    }
+
+    var isActive: Bool {
+        let l = lock.withLock { last }
+        return Date().timeIntervalSince(l) < Self.quiet
+    }
+
+    /// Wacht tot er even niet gescrold is (of de taak geannuleerd wordt).
+    func waitUntilIdle() async {
+        while isActive && !Task.isCancelled {
+            try? await Task.sleep(nanoseconds: 300_000_000)
+        }
+    }
+}
+
 /// Asynchroon geladen afbeelding met placeholder.
 /// Afbeelding van internet, snel: verkleind gedecodeerd op de achtergrond en in het geheugen bewaard,
 /// zodat terugscrollen niet opnieuw laadt of hapert (AsyncImage deed beide niet).
