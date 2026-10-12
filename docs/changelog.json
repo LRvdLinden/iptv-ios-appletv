@@ -1,5 +1,19 @@
 [
  {
+  "build": 46,
+  "version": "1.0.0",
+  "date": "2026-10-12",
+  "platforms": [
+   "apple"
+  ],
+  "nl": [
+   "Ondertekening voor iPhone, iPad, Apple TV en Mac staat vast ingesteld (team en automatisch ondertekenen)"
+  ],
+  "en": [
+   "Signing for iPhone, iPad, Apple TV and Mac is preset (team and automatic signing)"
+  ]
+ },
+ {
   "build": 45,
   "date": "2026-10-12",
   "platforms": [

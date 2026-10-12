@@ -2,6 +2,11 @@
 
 Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac (Android: [bingr-android](https://github.com/LRvdLinden/bingr-android/blob/main/CHANGELOG.md)). Per versie het buildnummer en de datum; het buildnummer loopt gelijk over alle platforms.
 
+## Versie 1.0.0 · Build 46
+_2026-10-12_
+
+- Ondertekening voor iPhone, iPad, Apple TV en Mac staat vast ingesteld (team en automatisch ondertekenen)
+
 ## Versie 1.0.0 · Build 45
 _2026-10-12_
 

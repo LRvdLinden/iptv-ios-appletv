@@ -3,7 +3,7 @@
 [![Build](https://github.com/LRvdLinden/iptv-ios-appletv/actions/workflows/build.yml/badge.svg)](https://github.com/LRvdLinden/iptv-ios-appletv/actions/workflows/build.yml)
 
 Native IPTV- en mediaspeler voor **iPhone, iPad, Mac en Apple TV** met de look & feel van Netflix.
-SwiftUI · iOS 17+ · tvOS 17+ · macOS 14+ · Apple- én VLC-engine · 11 talen · versie 1.0.0 (build 45).
+SwiftUI · iOS 17+ · tvOS 17+ · macOS 14+ · Apple- én VLC-engine · 11 talen · versie 1.0.0 (build 46).
 
 Wat er nieuw is per build: [CHANGELOG.md](CHANGELOG.md) · [bingr.online/changelog](https://bingr.online/changelog/)
 
@@ -130,7 +130,7 @@ Wat er nieuw is per build: [CHANGELOG.md](CHANGELOG.md) · [bingr.online/changel
    | OpenSubtitles | https://www.opensubtitles.com/consumers | "API consumer" aanmaken |
    | IMDb-gegevens (OMDb) | https://www.omdbapi.com/apikey.aspx | gratis: 1000 verzoeken/dag; titels worden gecachet |
    | TMDB (optioneel) | https://www.themoviedb.org/settings/api | foto's van cast, titel-logo's, afleveringsfoto's, teksten in jouw taal |
-3. **Signing**: kies in Xcode je Team voor alle drie de targets (`Bingr` voor iPhone/iPad, `BingrTV` voor Apple TV, `BingrMac` voor de Mac). Bundle ID voor alle drie: `nl.lrvdlinden.bingr` (één app in de App Store voor alle apparaten), Display Name *Bingr*, categorie *Entertainment* (staat al ingesteld).
+3. **Signing**: het Team (`EU3UY476T6`) en automatisch ondertekenen staan al in `project.yml` voor alle drie de targets (`Bingr` voor iPhone/iPad, `BingrTV` voor Apple TV, `BingrMac` voor de Mac). Bundle ID voor alle drie: `nl.lrvdlinden.bingr` (één app in de App Store voor alle apparaten), Display Name *Bingr*, categorie *Entertainment* (staat al ingesteld).
 4. **iCloud**: zet bij alle targets de capability *iCloud → Key-value storage* aan (staat al in de entitlements) en houd dezelfde Team-ID aan. De Mac-app draait in de App Sandbox met netwerktoegang.
 5. **Apple TV met meerdere gebruikers**: target `BingrTV` → *User Management* → "Runs as Current User Only When User-Independent Keychain is Available" (staat al in de entitlements). Elke Apple TV-gebruiker moet in iCloud ingelogd zijn met zijn eigen Apple ID.
 
