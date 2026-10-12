@@ -19,8 +19,8 @@
 //                   -> {ok} | 403 {error:"stream_limit", limit:6, streams:[…]}
 //   stream_ping     {device_id, title?, kind?, content_id?} (ingelogd, elke 30 s tijdens afspelen) -> {ok} | {stopped:true}
 //   stream_stop     {device_id} (ingelogd) -> {ok}
-//   list_streams    {} (ingelogd) -> {limit, streams:[{device_id, device_name, platform, profile_name, title, kind, started_at, signed_in_at}]}
-//   watch_log       {days?:7} (ingelogd) -> {entries:[{device_name, platform, profile_name, title, kind, started_at, ended_at, minutes}]}
+//   list_streams    {} (ingelogd) -> {limit, streams:[{device_id, device_name, platform, profile_id, profile_name, title, kind, started_at, signed_in_at}]}
+//   watch_log       {days?:7} (ingelogd) -> {entries:[{device_name, platform, profile_id, profile_name, title, kind, started_at, ended_at, minutes}]}
 //   config          {}       (ingelogd)  -> {traktClientID, traktClientSecret, openSubtitlesAPIKey, omdbAPIKey, tmdbAPIKey}
 //                   App-sleutels staan alleen als function-secrets op de server (BINGR_*), nooit in de openbare repo.
 import { createClient } from "jsr:@supabase/supabase-js@2";
@@ -105,7 +105,7 @@ async function closeLog(userId: string, deviceId: string) {
 }
 async function activeStreams(userId: string) {
   const fresh = new Date(Date.now() - STREAM_TTL_MS).toISOString();
-  const { data: rows } = await admin.from("account_streams").select("device_id,profile_name,title,kind,started_at,last_ping")
+  const { data: rows } = await admin.from("account_streams").select("device_id,profile_id,profile_name,title,kind,started_at,last_ping")
     .eq("user_id", userId).gte("last_ping", fresh).order("started_at", { ascending: true });
   const { data: devs } = await admin.from("account_devices").select("device_id,name,platform,signed_in_at,created_at").eq("user_id", userId);
   const map = new Map((devs ?? []).map((d) => [d.device_id, d]));
@@ -343,7 +343,7 @@ Deno.serve(async (req) => {
       const days = Math.min(Math.max(Number(body.days ?? 7) || 7, 1), 7);
       const since = new Date(Date.now() - days * 864e5).toISOString();
       const { data } = await admin.from("account_watch_log")
-        .select("device_name,platform,profile_name,title,kind,content_id,started_at,ended_at")
+        .select("device_name,platform,profile_id,profile_name,title,kind,content_id,started_at,ended_at")
         .eq("user_id", user.id).gte("started_at", since).order("started_at", { ascending: false }).limit(1000);
       const entries = (data ?? []).map((e) => ({
         ...e, minutes: Math.max(0, Math.round((Date.parse(e.ended_at) - Date.parse(e.started_at)) / 60000)),
