@@ -4,6 +4,41 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website. Andr
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 52
+_12 oktober 2026_
+
+### Alle apps
+
+**Nieuw**
+
+- Intro overslaan: markeer de intro en de aftiteling één keer per serie; daarna krijg je bij elke aflevering een knop Intro overslaan en start bij de aftiteling de volgende aflevering na een aftelling
+- Uiterlijk: kies een accentkleur voor de hele app (rood, blauw, groen, paars, oranje of roze)
+- Reservebron bij live tv: valt een zender weg, dan schakelt Bingr automatisch over naar dezelfde zender op een andere server; zelf kiezen kan via Andere bron in de speler
+- Deinterlacing voor oude SD- en sportzenders: Uit, Automatisch of Aan
+- Start bij laatste zender: na het kiezen van je profiel meteen verder met de zender die je het laatst keek (optioneel)
+
+**Verbeterd**
+
+- Slim foutherstel: eerst stil opnieuw proberen, daarna Opnieuw, Andere bron of Andere speler, en je kijkt verder op dezelfde plek
+
+### iOS, iPadOS en Android
+
+**Nieuw**
+
+- Downloads: films en afleveringen downloaden en offline kijken, met een eigen Downloads-overzicht. Het downloaden gaat door op de achtergrond en je ziet de voortgang op het toegangsscherm
+
+### iOS, iPadOS, macOS en Android
+
+**Nieuw**
+
+- Kies een ander app-icoon: donker, licht, blauw of goud (op de Mac het Dock-icoon zolang Bingr open is)
+
+### iPadOS
+
+**Verbeterd**
+
+- Bingr is geschikt voor Apple Vision Pro als iPad-app
+
 ## Versie 1.0.0 · Build 51
 _12 oktober 2026_
 

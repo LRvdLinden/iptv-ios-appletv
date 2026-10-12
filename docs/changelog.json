@@ -1,5 +1,119 @@
 [
  {
+  "build": 52,
+  "version": "1.0.0",
+  "date": "2026-10-12",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "android"
+    ],
+    "nl": "Downloads: films en afleveringen downloaden en offline kijken, met een eigen Downloads-overzicht. Het downloaden gaat door op de achtergrond en je ziet de voortgang op het toegangsscherm",
+    "en": "Downloads: save movies and episodes to watch offline, with their own Downloads overview. Downloads continue in the background and show their progress on the lock screen"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Intro overslaan: markeer de intro en de aftiteling één keer per serie; daarna krijg je bij elke aflevering een knop Intro overslaan en start bij de aftiteling de volgende aflevering na een aftelling",
+    "en": "Skip intro: mark a series' intro and credits once; every episode then gets a Skip intro button, and at the credits the next episode starts after a countdown"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Uiterlijk: kies een accentkleur voor de hele app (rood, blauw, groen, paars, oranje of roze)",
+    "en": "Appearance: choose an accent colour for the whole app (red, blue, green, purple, orange or pink)"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "macos",
+     "android"
+    ],
+    "nl": "Kies een ander app-icoon: donker, licht, blauw of goud (op de Mac het Dock-icoon zolang Bingr open is)",
+    "en": "Choose a different app icon: dark, light, blue or gold (on the Mac, the Dock icon while Bingr is open)"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Reservebron bij live tv: valt een zender weg, dan schakelt Bingr automatisch over naar dezelfde zender op een andere server; zelf kiezen kan via Andere bron in de speler",
+    "en": "Backup source for live TV: if a channel fails, Bingr switches automatically to the same channel on another server; pick one yourself via Other source in the player"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Slim foutherstel: eerst stil opnieuw proberen, daarna Opnieuw, Andere bron of Andere speler, en je kijkt verder op dezelfde plek",
+    "en": "Smart error recovery: a silent retry first, then Try again, Other source or Other player, continuing where you were"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Deinterlacing voor oude SD- en sportzenders: Uit, Automatisch of Aan",
+    "en": "Deinterlacing for older SD and sports channels: Off, Automatic or On"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Start bij laatste zender: na het kiezen van je profiel meteen verder met de zender die je het laatst keek (optioneel)",
+    "en": "Start with last channel: after choosing your profile, go straight back to the channel you watched last (optional)"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ipados"
+    ],
+    "nl": "Bingr is geschikt voor Apple Vision Pro als iPad-app",
+    "en": "Bingr can run on Apple Vision Pro as an iPad app"
+   }
+  ]
+ },
+ {
   "build": 51,
   "version": "1.0.0",
   "date": "2026-10-12",
