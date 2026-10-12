@@ -145,7 +145,6 @@ Shared/
   UI/             Netflix-thema, kaarten, schermen (profielen, home, live, gids, detail, categorie, beheren, zoeken, instellingen)
   Platform/       Mac-ondersteuning (AppKit-vertalingen van UIKit)
 iOS/ tvOS/ macOS/ iconen, Info.plist & entitlements (gegenereerd door XcodeGen)
-android/          Android-versie (telefoon, tablet, Android TV)
 tools/            vertaalcontrole, sleutels inbouwen (CI), intro-tune (make_tune.py), profielfiguurtjes (make_avatars.py), screenshots (make_screenshots.py)
 docs/             mockups en screenshots
 website/          bingr.online (statische site)
@@ -160,22 +159,7 @@ Covers op de site en in de screenshots komen van TMDB (workflow `Covers`, elke m
 
 ## Android
 
-In `android/` staat de native Android-versie (Kotlin + Jetpack Compose, Media3/ExoPlayer en VLC) voor telefoon, tablet en Android TV / Google TV / Fire TV, met dezelfde functies als iOS: profielen (met kinderprofiel en pincode per profiel), Verder kijken, Mijn lijst, Live TV met gids en zoeken, Trakt (hoofdprofiel), ondertitels (OpenSubtitles, instelbare grootte), Chromecast, delen en multiview. De vertalingen komen uit `Shared/Resources/Translations.json`.
-
-**Bouwen in Android Studio**
-1. *File → Open* en kies de map `android/`. Laat Gradle synchroniseren (Gradle 8.10.2, AGP 8.7.3, JDK 17).
-2. Zet je sleutels in `android/local.properties` (staat niet in git):
-   ```
-   TRAKT_CLIENT_ID=...
-   TRAKT_CLIENT_SECRET=...
-   TMDB_API_KEY=...
-   TMDB_ACCESS_TOKEN=...
-   OMDB_API_KEY=...
-   OPENSUBTITLES_API_KEY=...
-   ```
-3. *Build → Build App Bundle(s) / APK(s) → Build APK(s)*, of start direct op een toestel of Android TV-emulator.
-
-`android/CONTRACT.md` beschrijft de opzet.
+De Android-versie (telefoon, tablet, Android TV / Google TV / Fire TV) staat in een eigen repo: [LRvdLinden/bingr-android](https://github.com/LRvdLinden/bingr-android). De vertalingen in `Shared/Resources/Translations.json` worden daar als kopie gebruikt.
 
 ## Opmerkingen
 
