@@ -2,6 +2,12 @@
 
 Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac (Android: [bingr-android](https://github.com/LRvdLinden/bingr-android/blob/main/CHANGELOG.md)). Per versie het buildnummer en de datum; het buildnummer loopt gelijk over alle platforms.
 
+## Versie 1.0.0 · Build 48
+_2026-10-12_
+
+- Series van Xtream-servers tonen weer alle seizoenen en afleveringen, ook als de server ze in een andere vorm stuurt
+- Lukt het ophalen van afleveringen even niet, dan probeert Bingr het de volgende keer opnieuw
+
 ## Versie 1.0.0 · Build 47
 _2026-10-12_
 

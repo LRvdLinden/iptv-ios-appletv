@@ -1,5 +1,22 @@
 [
  {
+  "build": 48,
+  "version": "1.0.0",
+  "date": "2026-10-12",
+  "platforms": [
+   "apple",
+   "android"
+  ],
+  "nl": [
+   "Series van Xtream-servers tonen weer alle seizoenen en afleveringen, ook als de server ze in een andere vorm stuurt",
+   "Lukt het ophalen van afleveringen even niet, dan probeert Bingr het de volgende keer opnieuw"
+  ],
+  "en": [
+   "Series from Xtream servers show all seasons and episodes again, even when the server sends them in a different format",
+   "If loading episodes fails, Bingr tries again next time"
+  ]
+ },
+ {
   "build": 47,
   "version": "1.0.0",
   "date": "2026-10-12",

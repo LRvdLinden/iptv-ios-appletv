@@ -41,22 +41,93 @@ struct XtreamClient {
         let series_id: Flex; let name: String?; let cover: String?; let category_id: Flex?
         let plot: String?; let rating: Flex?; let releaseDate: String?; let year: Flex?
     }
+    /// get_series_info. Servers verschillen sterk: `episodes` kan een object per seizoen zijn ({"1":[…]}),
+    /// een lijst met lijsten ([[…],[…]]), een platte lijst of leeg; `info` kan een object of een lege lijst zijn.
+    /// Alles wordt daarom per veld tolerant gelezen: één afwijkend veld mag de hele serie niet laten mislukken.
     struct SeriesInfo: Decodable {
         struct Ep: Decodable {
             struct Info: Decodable {
                 let movie_image: String?; let plot: String?; let duration_secs: Flex?
                 let releasedate: String?; let air_date: String?; let rating: Flex?
+                private enum K: String, CodingKey { case movie_image, plot, duration_secs, releasedate, air_date, rating, cover_big }
+                init(from decoder: Decoder) throws {
+                    let c = try decoder.container(keyedBy: K.self)
+                    movie_image = (try? c.decode(Flex.self, forKey: .movie_image))?.string ?? (try? c.decode(Flex.self, forKey: .cover_big))?.string
+                    plot = (try? c.decode(Flex.self, forKey: .plot))?.string
+                    duration_secs = try? c.decode(Flex.self, forKey: .duration_secs)
+                    releasedate = (try? c.decode(Flex.self, forKey: .releasedate))?.string
+                    air_date = (try? c.decode(Flex.self, forKey: .air_date))?.string
+                    rating = try? c.decode(Flex.self, forKey: .rating)
+                }
             }
             let id: Flex; let episode_num: Flex?; let title: String?; let container_extension: String?
             let season: Flex?; let info: Info?
+            private enum K: String, CodingKey { case id, stream_id, episode_num, title, name, container_extension, season, info }
+            init(from decoder: Decoder) throws {
+                let c = try decoder.container(keyedBy: K.self)
+                if let i = try? c.decode(Flex.self, forKey: .id), i.string != nil { id = i }
+                else { id = try c.decode(Flex.self, forKey: .stream_id) }
+                episode_num = try? c.decode(Flex.self, forKey: .episode_num)
+                title = (try? c.decode(Flex.self, forKey: .title))?.string ?? (try? c.decode(Flex.self, forKey: .name))?.string
+                container_extension = (try? c.decode(Flex.self, forKey: .container_extension))?.string
+                season = try? c.decode(Flex.self, forKey: .season)
+                info = try? c.decode(Info.self, forKey: .info)   // soms [] i.p.v. een object
+            }
         }
         struct SInfo: Decodable {
             let name: String?; let cover: String?; let plot: String?; let cast: String?; let director: String?
             let genre: String?; let releaseDate: String?; let rating: Flex?; let backdrop_path: StringOrArray?
             let youtube_trailer: String?; let tmdb: Flex?; let episode_run_time: Flex?
+            private enum K: String, CodingKey {
+                case name, cover, plot, cast, director, genre, releaseDate, release_date, rating, backdrop_path, youtube_trailer, tmdb, tmdb_id, episode_run_time
+            }
+            init(from decoder: Decoder) throws {
+                let c = try decoder.container(keyedBy: K.self)
+                func str(_ k: K) -> String? { (try? c.decode(Flex.self, forKey: k))?.string }
+                name = str(.name); cover = str(.cover); plot = str(.plot); cast = str(.cast); director = str(.director)
+                genre = str(.genre); releaseDate = str(.releaseDate) ?? str(.release_date)
+                rating = try? c.decode(Flex.self, forKey: .rating)
+                backdrop_path = try? c.decode(StringOrArray.self, forKey: .backdrop_path)
+                youtube_trailer = str(.youtube_trailer)
+                tmdb = (try? c.decode(Flex.self, forKey: .tmdb)) ?? (try? c.decode(Flex.self, forKey: .tmdb_id))
+                episode_run_time = try? c.decode(Flex.self, forKey: .episode_run_time)
+            }
+        }
+        /// Element dat mag mislukken zonder de rest mee te nemen.
+        private struct Lossy<T: Decodable>: Decodable {
+            let value: T?
+            init(from decoder: Decoder) throws { value = try? T(from: decoder) }
         }
         let episodes: [String: [Ep]]?
         let info: SInfo?
+        private enum K: String, CodingKey { case episodes, info }
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: K.self)
+            info = try? c.decode(SInfo.self, forKey: .info)
+            if let d = try? c.decode([String: [Lossy<Ep>]].self, forKey: .episodes) {
+                // {"1": [ep, ep], "2": [...]}
+                episodes = d.mapValues { $0.compactMap(\.value) }
+            } else if let d = try? c.decode([String: [String: Lossy<Ep>]].self, forKey: .episodes) {
+                // {"1": {"0": ep, "1": ep}}
+                episodes = d.mapValues { group in
+                    group.sorted { a, b in (Int(a.key) ?? 0) < (Int(b.key) ?? 0) }.compactMap { pair in pair.value.value }
+                }
+            } else if let a = try? c.decode([[Lossy<Ep>]].self, forKey: .episodes) {
+                // [[ep, ep], [ep]]: seizoen = veld "season" of de positie
+                var out: [String: [Ep]] = [:]
+                for (i, group) in a.enumerated() {
+                    for e in group.compactMap(\.value) { out[e.season?.string ?? String(i + 1), default: []].append(e) }
+                }
+                episodes = out
+            } else if let a = try? c.decode([Lossy<Ep>].self, forKey: .episodes) {
+                // platte lijst [ep, ep, ...]
+                var out: [String: [Ep]] = [:]
+                for e in a.compactMap(\.value) { out[e.season?.string ?? "1", default: []].append(e) }
+                episodes = out
+            } else {
+                episodes = nil
+            }
+        }
     }
     struct VodInfo: Decodable {
         struct Info: Decodable {
@@ -135,9 +206,10 @@ struct XtreamClient {
         guard let sid = series.xtreamSeriesID, let u = api("get_series_info", ["series_id": String(sid)]) else { return [] }
         let info = try await HTTP.json(SeriesInfo.self, u)
         var out: [Episode] = []
+        var seen = Set<String>()
         for (seasonKey, eps) in info.episodes ?? [:] {
             for e in eps {
-                guard let eid = e.id.string else { continue }
+                guard let eid = e.id.string, seen.insert(eid).inserted else { continue }
                 out.append(Episode(id: "xe\(eid)", seriesID: series.id,
                                    season: e.season?.int ?? Int(seasonKey) ?? 1,
                                    number: e.episode_num?.int ?? 0,

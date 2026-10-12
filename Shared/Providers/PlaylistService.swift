@@ -338,7 +338,8 @@ final class PlaylistService: ObservableObject {
             eps = (try? await StremioClient(addons: stremioAddons).episodes(series)) ?? []
         default: break
         }
-        episodeCache[series.id] = eps
+        // alleen bewaren als er iets binnenkwam: bij een time-out of serverfout opnieuw proberen
+        if !eps.isEmpty { episodeCache[series.id] = eps }
         return eps
     }
 
