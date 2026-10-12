@@ -1,5 +1,19 @@
 [
  {
+  "build": 42,
+  "date": "2026-10-12",
+  "platforms": [
+   "apple",
+   "android"
+  ],
+  "nl": [
+   "Trakt koppelen werkt weer: na 'Apparaat goedgekeurd' op trakt.tv logt Bingr nu meteen in, ook als de app even op de achtergrond stond"
+  ],
+  "en": [
+   "Linking Trakt works again: after 'Device approved' on trakt.tv, Bingr now signs in right away, even if the app was in the background"
+  ]
+ },
+ {
   "build": 41,
   "date": "2026-10-12",
   "platforms": [

@@ -90,7 +90,12 @@ actor TraktClient {
         while Date() < deadline {
             try await Task.sleep(nanoseconds: interval * 1_000_000_000)
             let req = try oauthRequest("/oauth/device/token", oauthBody(["code": code.device_code, "code_verifier": verifier]))
-            let (d, r) = try await HTTP.data(req)
+            // Netwerkfouten (bijv. "verbinding verbroken" terwijl je in Safari op trakt.tv/activate zit
+            // en de app op de achtergrond staat) niet als fout behandelen: gewoon opnieuw proberen.
+            let d: Data, r: HTTPURLResponse
+            do { (d, r) = try await HTTP.data(req) }
+            catch is CancellationError { throw CancellationError() }
+            catch { interval = max(interval, 3); continue }
             switch r.statusCode {
             case 200:
                 let t = try JSONDecoder().decode(TokenResponse.self, from: d)
