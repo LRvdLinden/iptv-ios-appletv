@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// Eenmalig instellen: de app-sleutels die Trakt en OpenSubtitles vereisen.
-/// Daarna log je gewoon in met je eigen account. Opgeslagen in de iCloud-sleutelhanger,
-/// dus je Apple TV, iPad en Mac hebben ze meteen ook.
+/// Geavanceerd: eigen app-sleutels voor Trakt, OpenSubtitles, OMDb en TMDB. Normaal komen die van de
+/// Bingr-server (build 41); dit scherm is alleen nodig als een sleutel ontbreekt of je je eigen sleutels wilt
+/// gebruiken. Alleen wat je hier zelf invult wordt opgeslagen (iCloud-sleutelhanger), nooit de serversleutels.
 struct ConnectionsSetupView: View {
     enum Focus { case trakt, openSubtitles, all }
     var focus: Focus = .all
@@ -10,11 +10,11 @@ struct ConnectionsSetupView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
-    @State private var traktID = Secrets.traktClientID
-    @State private var traktSecret = Secrets.traktClientSecret
-    @State private var osKey = Secrets.openSubtitlesAPIKey
-    @State private var omdb = Secrets.omdbAPIKey
-    @State private var tmdb = Secrets.tmdbAPIKey
+    @State private var traktID = Secrets.userValue(.traktClientID)
+    @State private var traktSecret = Secrets.userValue(.traktClientSecret)
+    @State private var osKey = Secrets.userValue(.openSubtitlesAPIKey)
+    @State private var omdb = Secrets.userValue(.omdbAPIKey)
+    @State private var tmdb = Secrets.userValue(.tmdbAPIKey)
 
     private let traktURL = "https://trakt.tv/oauth/applications/new"
     private let osURL = "https://www.opensubtitles.com/consumers"

@@ -3,7 +3,7 @@
 [![Build](https://github.com/LRvdLinden/iptv-ios-appletv/actions/workflows/build.yml/badge.svg)](https://github.com/LRvdLinden/iptv-ios-appletv/actions/workflows/build.yml)
 
 Native IPTV- en mediaspeler voor **iPhone, iPad, Mac en Apple TV** met de look & feel van Netflix.
-SwiftUI · iOS 17+ · tvOS 17+ · macOS 14+ · Apple- én VLC-engine · 11 talen · versie 1.0.0 (build 40).
+SwiftUI · iOS 17+ · tvOS 17+ · macOS 14+ · Apple- én VLC-engine · 11 talen · versie 1.0.0 (build 41).
 
 ## Screenshots
 
@@ -45,6 +45,8 @@ SwiftUI · iOS 17+ · tvOS 17+ · macOS 14+ · Apple- én VLC-engine · 11 talen
 - **Profielen bij je account**: bij de eerste login worden je bestaande profielen aan je account gekoppeld (niets gaat verloren) en gedeeld met de Android-app. Pincodes blijven op je apparaten; eigen profielfoto's worden via je Bingr-account gedeeld met al je apparaten (ook Android)
 - **Maximaal 10 apparaten per account**: elk apparaat registreert zich na het inloggen. Zit je aan de limiet, dan verwijder je eerst een ander apparaat ("Too many devices"). Onder *Mijn Bingr → Account → Apparaten* zie je alle gekoppelde apparaten (ook op Apple TV) met platform, koppeldatum en laatst gebruikt, en verwijder je er een. Een verwijderd apparaat wordt automatisch uitgelogd
 - De sessie staat alleen op dit apparaat (sleutelhanger zonder iCloud-sync); offline blijft de app gewoon werken
+- **Profielen (toevoegen, wijzigen, verwijderen) synchroniseren met al je apparaten** via je Bingr-account
+- **Trakt en OpenSubtitles: gewoon inloggen**, de sleutels komen veilig van de Bingr-server
 
 **Bronnen**
 - M3U/M3U8 + XMLTV-EPG, **Xtream Codes** (incl. catch-up), **Stalker/MAC-portal**
@@ -117,7 +119,7 @@ SwiftUI · iOS 17+ · tvOS 17+ · macOS 14+ · Apple- én VLC-engine · 11 talen
 
    Voor de **Bingr-account** (verplicht inloggen) zet je ook `SUPABASE_URL` (bv. `https://abcd1234.supabase.co`) en `SUPABASE_ANON_KEY` (de publieke anon/publishable key). Die worden alleen ingebouwd (niet in de app aan te passen). Zonder deze sleutels toont het inlogscherm "Accounts are not configured in this build." met een knop om zonder account door te gaan. De backend (`supabase/`: database-schema, e-mailtemplates en de Edge Function `device-auth`) wordt gedeployed met de workflow **Backend** (*Actions → Backend → Run workflow*), met de secrets `SUPABASE_ACCESS_TOKEN` en `SUPABASE_PROJECT_REF`. Zie `docs/ACCOUNT.md` voor het contract.
 
-   Of **koppelingen instellen** in de app: *Mijn Bingr → Koppelingen instellen* (eenmalig, gratis). Trakt en OpenSubtitles eisen dat elke app zich één keer registreert; daarna log je gewoon in met je eigen account. De sleutels staan in de iCloud-sleutelhanger, dus je Apple TV heeft ze ook:
+   Sinds build 41 haalt de app de sleutels na het inloggen veilig op bij de Bingr-server. Wil je toch eigen sleutels gebruiken, kies dan **koppelingen instellen** (geavanceerd, onderaan in *Mijn Bingr*; eenmalig, gratis). Trakt en OpenSubtitles eisen dat elke app zich één keer registreert; daarna log je gewoon in met je eigen account. De sleutels staan in de iCloud-sleutelhanger, dus je Apple TV heeft ze ook:
    | Dienst | Waar aanmaken | Let op |
    |---|---|---|
    | Trakt | https://trakt.tv/oauth/applications/new | Redirect URI: `https://github.com/LRvdLinden/iptv-ios-appletv` (inloggen gaat met een code, er wordt nooit doorgestuurd) |

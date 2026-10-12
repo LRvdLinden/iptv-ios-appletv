@@ -9,6 +9,8 @@ struct SettingsView: View {
     @EnvironmentObject var subs: OpenSubtitles
     @EnvironmentObject var localizer: Localizer
     @EnvironmentObject var parental: ParentalControl
+    /// App-sleutels van de server (build 41): opnieuw tekenen zodra ze binnen zijn
+    @ObservedObject private var account = AccountService.shared
     @AppStorage("autoSubtitles") private var autoSubtitles = false
     @AppStorage("trakt.scrobble") private var traktScrobble = true
     @AppStorage("trakt.askRating") private var traktAskRating = true
@@ -62,6 +64,7 @@ struct SettingsView: View {
                     LabeledContent(L("Version"), value: "\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0") (\(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"))")
                     LabeledContent(L("IMDb data"), value: Secrets.isSet(Secrets.omdbAPIKey) ? L("Active (OMDb)") : L("No OMDb key"))
                 }
+                if isMain { advancedSection }
             }
             .navigationTitle(store.activeProfile?.name ?? L("My Bingr"))
             // persoonlijke kijkvoorkeuren horen bij het profiel
@@ -135,11 +138,34 @@ struct SettingsView: View {
                 } header: { Text("iCloud") } footer: {
                     Text(L("Playlists, avatars, favorites, My List, watch progress, reminders, your changes and your Trakt/OpenSubtitles sign-in are shared via iCloud between iPhone, iPad, Mac and Apple TV."))
                 }
-                Section {
-                    Button { setup = .all } label: { Label(L("Set up connections"), systemImage: "key.horizontal") }
-                } footer: {
-                    Text(L("Trakt and OpenSubtitles require a one-time app registration. Saved in iCloud Keychain, so your other devices have it too."))
-                }
+    }
+
+    /// Geavanceerd, helemaal onderaan: eigen app-sleutels. Normaal komen die van de Bingr-server.
+    private var advancedSection: some View {
+        Section {
+            Button { setup = .all } label: { Label(L("Set up connections"), systemImage: "key.horizontal") }
+        } header: { Text(L("Advanced")) } footer: {
+            Text(L("Only needed if you want to use your own API keys. Bingr normally gets the keys for Trakt and OpenSubtitles securely from the Bingr server."))
+        }
+    }
+
+    /// Trakt: gewoon inloggen (koppelcode en QR). Ontbreekt de sleutel, dan eerst de server
+    /// proberen; alleen als hij er dan nog niet is "Koppelingen instellen".
+    private func signInToTrakt() {
+        if Secrets.traktReady { showTraktLogin = true; return }
+        Task { @MainActor in
+            await account.fetchConfig()
+            if Secrets.traktReady { showTraktLogin = true } else { setup = .trakt }
+        }
+    }
+
+    /// OpenSubtitles: gewoon inloggen met gebruikersnaam en wachtwoord (zie `signInToTrakt`).
+    private func signInToOpenSubtitles() {
+        if Secrets.openSubtitlesReady { showOSLogin = true; return }
+        Task { @MainActor in
+            await account.fetchConfig()
+            if Secrets.openSubtitlesReady { showOSLogin = true } else { setup = .openSubtitles }
+        }
     }
 
     // MARK: secties
@@ -275,8 +301,8 @@ struct SettingsView: View {
                 .disabled(trakt.isSyncing)
                 Button(role: .destructive) { Task { await trakt.logout() } } label: { Label(L("Sign out of Trakt"), systemImage: "rectangle.portrait.and.arrow.right") }
             } else {
-                Button { if Secrets.traktReady { showTraktLogin = true } else { setup = .trakt } } label: {
-                    Label(L("Connect Trakt"), systemImage: "link")
+                Button { signInToTrakt() } label: {
+                    Label(L("Sign in to Trakt"), systemImage: "person.crop.circle.badge.checkmark")
                 }
             }
             if let e = trakt.lastError { Text(e).font(.caption).foregroundStyle(Theme.red) }
@@ -294,7 +320,7 @@ struct SettingsView: View {
                     Button(role: .destructive) { Task { await subs.logout() } } label: { Label(L("Sign out"), systemImage: "rectangle.portrait.and.arrow.right") }
                 }
             } else if isMain {
-                Button { if Secrets.openSubtitlesReady { showOSLogin = true } else { setup = .openSubtitles } } label: {
+                Button { signInToOpenSubtitles() } label: {
                     Label(L("Sign in to OpenSubtitles"), systemImage: "captions.bubble")
                 }
             }

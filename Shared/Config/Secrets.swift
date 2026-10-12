@@ -2,12 +2,12 @@ import Foundation
 
 /// App-sleutels voor Trakt, OpenSubtitles, OMDb en TMDB.
 ///
-/// Trakt en OpenSubtitles eisen dat elke app zich één keer registreert (zo doet UHF
-/// dat ook). Die sleutels vul je in de app in: **Mijn Bingr → Koppelingen instellen**.
-/// Ze worden in de iCloud-sleutelhanger bewaard, dus ook je Apple TV heeft ze meteen,
-/// en ze komen nooit in de (openbare) GitHub-repo te staan.
+/// De repo is openbaar, dus deze sleutels staan niet in de app. Sinds build 41 komen ze van de
+/// Bingr-server (device-auth `config`, zie docs/ACCOUNT.md → "App-sleutels van de server") en worden
+/// ze alleen op dit apparaat bewaard (sleutelhanger zonder iCloud).
 ///
-/// Wil je ze toch vast in de app bakken, vul ze dan hieronder in `builtIn` in.
+/// Volgorde bij het opzoeken: eerst wat de gebruiker zelf heeft ingevuld (**Mijn Bingr → Koppelingen
+/// instellen**, iCloud-sleutelhanger), dan de sleutel van de server, dan `builtIn`.
 enum Secrets {
     enum Key: String, CaseIterable {
         case traktClientID, traktClientSecret, openSubtitlesAPIKey, omdbAPIKey, tmdbAPIKey
@@ -35,16 +35,46 @@ enum Secrets {
         lock.lock(); defer { lock.unlock() }
         if let v = cache[k] { return v }
         if k.builtInOnly { let v = builtIn[k] ?? ""; cache[k] = v; return v }
-        let v = Keychain.get("apikey.\(k.rawValue)") ?? builtIn[k] ?? ""
+        let v = nonEmpty(Keychain.get(userKey(k))) ?? nonEmpty(Keychain.getLocalOnly(serverKey(k))) ?? builtIn[k] ?? ""
         cache[k] = v
+        return v
+    }
+
+    /// Alleen de waarde die de gebruiker zelf heeft ingevuld (voor "Koppelingen instellen").
+    static func userValue(_ k: Key) -> String {
+        guard !k.builtInOnly else { return "" }
+        return nonEmpty(Keychain.get(userKey(k))) ?? ""
+    }
+
+    /// Sleutels van de Bingr-server opslaan (alleen op dit apparaat, nooit in iCloud).
+    /// Een lege waarde wist de opgeslagen serverwaarde. Geeft `true` als er iets veranderd is.
+    @discardableResult
+    static func setServerValues(_ values: [Key: String]) -> Bool {
+        var changed = false
+        for (k, raw) in values where !k.builtInOnly {
+            let v = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            let old = Keychain.getLocalOnly(serverKey(k)) ?? ""
+            guard old != v else { continue }
+            Keychain.setLocalOnly(v.isEmpty ? nil : v, for: serverKey(k))
+            changed = true
+        }
+        if changed { reload() }
+        return changed
+    }
+
+    private static func userKey(_ k: Key) -> String { "apikey.\(k.rawValue)" }
+    private static func serverKey(_ k: Key) -> String { "serverkey.\(k.rawValue)" }
+    private static func nonEmpty(_ v: String?) -> String? {
+        guard let v = v?.trimmingCharacters(in: .whitespacesAndNewlines), !v.isEmpty else { return nil }
         return v
     }
 
     static func set(_ k: Key, _ value: String) {
         guard !k.builtInOnly else { return }
         let v = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        Keychain.set(v.isEmpty ? nil : v, for: "apikey.\(k.rawValue)")
-        lock.lock(); cache[k] = v.isEmpty ? (builtIn[k] ?? "") : v; lock.unlock()
+        Keychain.set(v.isEmpty ? nil : v, for: userKey(k))
+        // opnieuw opzoeken: leeg = terugvallen op de server of `builtIn`
+        lock.lock(); cache[k] = nil; lock.unlock()
     }
 
     /// Opnieuw inlezen (bijv. na wijziging op een ander apparaat via iCloud).

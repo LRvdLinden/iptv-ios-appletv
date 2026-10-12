@@ -74,6 +74,8 @@ struct OpenSubtitlesPanel: View {
     @State private var downloading: Int?
     @State private var language: String = OpenSubtitles.shared.defaultLanguage
     @State private var showLogin = false
+    /// App-sleutels van de server: opnieuw tekenen zodra ze binnen zijn (dan gewoon inloggen)
+    @ObservedObject private var account = AccountService.shared
 
     var body: some View {
         NavigationStack {
@@ -105,6 +107,7 @@ struct OpenSubtitlesPanel: View {
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button(L("Close")) { dismiss() } } }
             .task(id: language) { await search() }
             .task { await subs.refreshUser() }
+            .task { if !Secrets.openSubtitlesReady { await account.fetchConfig(force: false) } }
             .sheet(isPresented: $showLogin) {
                 if Secrets.openSubtitlesReady { OpenSubtitlesLoginView() } else { ConnectionsSetupView(focus: .openSubtitles) }
             }

@@ -55,6 +55,8 @@ struct BingrApp: App {
                 Task {
                     await account.checkDevice()
                     await ProfileSync.shared.syncNow(periodic: true)
+                    // app-sleutels: alleen opnieuw als het nog niet gelukt is (bijv. offline gestart)
+                    await account.fetchConfig(force: false)
                 }
             }
         }
@@ -91,11 +93,24 @@ final class AppState: ObservableObject {
             }
             .store(in: &bag)
         ProfileSync.shared.start()
+        // het actieve profiel is op een ander apparaat verwijderd → terug naar "Wie kijkt er?"
+        ProfileSync.shared.activeProfileRemoved
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] in
+                guard let self, self.stage == .main else { return }
+                self.playing = nil
+                self.showMultiview = false
+                PiPCenter.shared.stopActive()
+                self.switchPlaylist()
+            }
+            .store(in: &bag)
         // met een sessie meteen door naar "Wie kijkt er?" en op de achtergrond vernieuwen + profielen synchroniseren
         Task {
             guard Secrets.accountsConfigured, AccountService.shared.isSignedIn else { return }
             let r = await AccountService.shared.refresh()
             guard r == .ok || r == .offline else { return }
+            // app-sleutels (Trakt, OpenSubtitles, OMDb, TMDB) van de server op de achtergrond
+            Task { await AccountService.shared.fetchConfig() }
             // heartbeat bij het starten (sessies van vóór build 39: eerst registreren, met de limiet-afhandeling)
             await AccountService.shared.checkDevice(force: true)
             await ProfileSync.shared.syncNow()
@@ -107,6 +122,7 @@ final class AppState: ObservableObject {
                 await AccountService.shared.checkDevice(force: true)
                 // account_data opnieuw lezen: nieuwe of verwijderde profielfoto's van andere apparaten
                 await ProfileSync.shared.syncNow(periodic: true)
+                await AccountService.shared.fetchConfig(force: false)
             }
         }
         // "Too many devices" bij het starten: spelers sluiten zodat het scherm zichtbaar is

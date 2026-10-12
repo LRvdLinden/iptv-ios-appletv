@@ -128,12 +128,30 @@ final class CloudStore: ObservableObject {
         write(profiles, K.profiles)
     }
 
+    /// Profiel op dít apparaat verwijderd: ProfileSync zet er een tombstone voor in de Bingr-account
+    /// (zie "Profielen volledig synchroniseren (build 41)" in docs/ACCOUNT.md).
+    let profileDeleted = PassthroughSubject<UUID, Never>()
+
     func deleteProfile(_ p: ViewerProfile) {
         guard !isMain(p) else { return }   // het hoofdaccount blijft altijd bestaan
         profiles.removeAll { $0.id == p.id }
         write(profiles, K.profiles)
         setPhoto(nil, for: p.id)
+        purgeProfileData(p.id)
         if activeProfileID == p.id { activeProfileID = nil; UserDefaults.standard.removeObject(forKey: "activeProfileID") }
+        profileDeleted.send(p.id)
+    }
+
+    /// De lokale gegevens van een (verwijderd) profiel wissen: lijsten, voortgang, geschiedenis en pincode.
+    func purgeProfileData(_ id: UUID) {
+        guard id != mainProfileID else { return }
+        for base in [K.favorites, K.myList, K.watched, K.recent, K.history, K.progress] {
+            let key = "\(base).\(id.uuidString)"
+            kv.removeObject(forKey: key)
+            local.removeObject(forKey: key)
+        }
+        kv.synchronize()
+        if Keychain.get("profile.\(id.uuidString).pin") != nil { Keychain.set(nil, for: "profile.\(id.uuidString).pin") }
     }
 
     /// Profielen uit de Bingr-account overnemen (importeren/samenvoegen, zie ProfileSync).

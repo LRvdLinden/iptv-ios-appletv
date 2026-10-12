@@ -46,6 +46,9 @@ final class AccountService: ObservableObject {
     @Published private(set) var deviceLimit: DeviceLimit?
     /// Dit apparaat is (sinds deze login) geregistreerd; lokaal onthouden.
     @Published private(set) var deviceRegistered: Bool
+    /// Telt op zodra de app-sleutels van de server (device-auth `config`) veranderd zijn, zodat
+    /// Trakt- en OpenSubtitles-schermen opnieuw tekenen (zie "App-sleutels van de server (build 41)").
+    @Published private(set) var configRevision = 0
 
     private enum K {
         static let refresh = "account.refresh_token"
@@ -66,6 +69,8 @@ final class AccountService: ObservableObject {
     private var tvTask: Task<Void, Never>?
     private var deviceTask: Task<Void, Never>?
     private var lastDeviceCheck: Date = .distantPast
+    private var configTask: Task<Bool, Never>?
+    private var lastConfigFetch: Date?
 
     private let session: URLSession = {
         let c = URLSessionConfiguration.ephemeral
@@ -382,7 +387,7 @@ final class AccountService: ObservableObject {
     }
 
     /// Postgres-tijdstempel (`2026-10-12T10:15:30.123456+00:00`) → Date.
-    static func parseDate(_ v: Any?) -> Date? {
+    nonisolated static func parseDate(_ v: Any?) -> Date? {
         guard var s = v as? String, !s.isEmpty else { return nil }
         if let r = s.range(of: #"\.\d+"#, options: .regularExpression) { s.removeSubrange(r) }
         if !s.contains("T") { s = s.replacingOccurrences(of: " ", with: "T") }
@@ -390,6 +395,44 @@ final class AccountService: ObservableObject {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime]
         return f.date(from: s)
+    }
+
+    // MARK: - App-sleutels van de server (build 41)
+
+    /// device-auth `{"action":"config"}`: Trakt-, OpenSubtitles-, OMDb- en TMDB-sleutels ophalen en alleen
+    /// lokaal bewaren (sleutelhanger zonder iCloud). Na elke login en bij het starten met een geldige sessie.
+    /// `force: false` haalt alleen op als het nog niet gelukt is of langer dan een uur geleden is.
+    /// Stil bij fouten; geeft `true` als de sleutels zijn opgehaald.
+    @discardableResult
+    func fetchConfig(force: Bool = true) async -> Bool {
+        guard Secrets.accountsConfigured, isSignedIn else { return false }
+        if !force, let last = lastConfigFetch, Date().timeIntervalSince(last) < 3600 { return true }
+        if let t = configTask { return await t.value }
+        let t = Task { @MainActor in await self.performFetchConfig() }
+        configTask = t
+        let ok = await t.value
+        configTask = nil
+        return ok
+    }
+
+    private func performFetchConfig() async -> Bool {
+        do {
+            let r = try await authorized { token in
+                try await self.post("/functions/v1/device-auth", ["action": "config"], bearer: token)
+            }
+            guard r.status == 200, isSignedIn else { return false }
+            var values: [Secrets.Key: String] = [:]
+            for k in [Secrets.Key.traktClientID, .traktClientSecret, .openSubtitlesAPIKey, .omdbAPIKey, .tmdbAPIKey] {
+                // ontbreekt het veld, dan de opgeslagen waarde laten staan; "" = geen sleutel
+                if let v = r.json[k.rawValue] as? String { values[k] = v }
+            }
+            lastConfigFetch = Date()
+            Secrets.reload()
+            if Secrets.setServerValues(values) { configRevision += 1 }
+            return true
+        } catch {
+            return false   // offline: de eerder opgehaalde sleutels blijven werken
+        }
     }
 
     // MARK: - Profielen per account (account_data via PostgREST)
@@ -627,7 +670,11 @@ final class AccountService: ObservableObject {
         Keychain.setLocalOnly(uid, for: K.user)
         userID = uid
         email = mail
-        if !isSignedIn { isSignedIn = true }
+        if !isSignedIn {
+            isSignedIn = true
+            // na elke login: de app-sleutels van de server op de achtergrond ophalen
+            Task { @MainActor in await self.fetchConfig() }
+        }
         return true
     }
 

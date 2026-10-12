@@ -2,30 +2,43 @@ import Foundation
 import Combine
 import CryptoKit
 
-/// Profielen per Bingr-account (tabel `account_data`), zie docs/ACCOUNT.md → "Profielen migreren en delen".
+/// Profielen per Bingr-account (tabel `account_data`), zie docs/ACCOUNT.md → "Profielen migreren en delen"
+/// en "Profielen volledig synchroniseren (build 41)".
 ///
-/// Na inloggen en bij het starten met een geldige sessie: lezen, dan migreren (server leeg),
-/// importeren (lokaal alleen het automatische hoofdprofiel of niets) of samenvoegen op `id`.
-/// Daarna gaat elke wijziging (met ~2 s vertraging) als hele lijst naar de server.
-/// Pincodes gaan nooit mee. Eigen foto's staan in de Storage-bucket `avatars`; in de lijst staat per
+/// `account_data.profiles` is de bron van waarheid: toevoegen, wijzigen en verwijderen gaan via de server.
+/// Elk profiel heeft een `updatedAt`; een verwijderd profiel blijft als tombstone (`deleted`, `deletedAt`)
+/// in de lijst staan, zodat andere apparaten het ook verwijderen. Bij elke lezing (login, starten, voorgrond,
+/// heartbeat en na een eigen wijziging) wordt de serverstand toegepast en zo nodig de samengevoegde lijst
+/// geüpload. Pincodes gaan nooit mee. Eigen foto's staan in de Storage-bucket `avatars`; in de lijst staat per
 /// profiel alleen `photo` (`{path, updated}` of null), zie "Profielfoto's delen (build 40)".
 /// Fouten zijn stil en blokkeren de app nooit.
 @MainActor
 final class ProfileSync {
     static let shared = ProfileSync()
 
+    /// Het actieve profiel is op een ander apparaat verwijderd: terug naar "Wie kijkt er?".
+    let activeProfileRemoved = PassthroughSubject<Void, Never>()
+
     private var bag = Set<AnyCancellable>()
-    /// `account_data` is gelezen: pas daarna mag er geüpload worden (anders zou een lege/automatische
-    /// lokale lijst de profielen op de server overschrijven).
+    /// `account_data` is (deze sessie) gelezen: pas daarna leiden eigen wijzigingen tot een sync.
     private var ready = false
     private var running: Task<Void, Never>?
-    private var lastUploaded: Data?
+    /// Tijdens een lopende sync kwam er nog een verzoek: daarna nog een ronde.
+    private var again = false
+    /// Er is lokaal iets dat zeker naar de server moet (bijv. een foto of een tombstone).
+    private var dirty = false
     /// Onbekende velden van de server per profiel (bewaren en weer meesturen)
     private let extrasKey = "account.profileExtras.v1"
     /// Per profiel de `updated` van de foto die dit apparaat heeft (*photoVersion*), alleen lokaal
     private let versionsKey = "account.photoVersions.v1"
     /// Profielen met een eigen foto-wijziging die nog geüpload of verwijderd moet worden
     private let pendingKey = "account.photoPending.v1"
+    /// Per profiel de `updatedAt` van de versie die dit apparaat heeft (*localUpdatedAt*)
+    private let updatedKey = "account.profileUpdatedAt.v1"
+    /// Per profiel de gesynchroniseerde velden zoals laatst gezien (om eigen wijzigingen te herkennen)
+    private let fingerprintKey = "account.profileFingerprints.v1"
+    /// Tombstones (eigen en van de server), per profiel-ID
+    private let tombstonesKey = "account.profileTombstones.v1"
     /// `photo` per profiel zoals laatst van de server gelezen
     private var remotePhotos: [UUID: [String: Any]] = [:]
     private var photoBusy = false
@@ -33,6 +46,8 @@ final class ProfileSync {
     private var photoChanged = false
     /// Velden die nooit (zo) naar de server gaan; `photo` zet `payload()` zelf
     private static let privateKeys = ["pin", "pinCode", "pin_code", "photo", "photoData", "customPhoto"]
+    /// Tombstones ouder dan dit mogen bij het uploaden weg
+    private static let tombstoneLifetime: TimeInterval = 90 * 24 * 3600
 
     private init() {}
 
@@ -43,12 +58,17 @@ final class ProfileSync {
         store.$profiles.combineLatest(store.$mainProfileIDStored)
             .dropFirst()
             .debounce(for: .seconds(2), scheduler: DispatchQueue.main)
-            .sink { [weak self] _ in self?.uploadIfChanged() }
+            .sink { [weak self] _ in self?.profilesChanged() }
             .store(in: &bag)
         // eigen foto gekozen, gewijzigd of verwijderd op dit apparaat → uploaden of verwijderen
         store.photoEdited
             .receive(on: DispatchQueue.main)
             .sink { [weak self] id in self?.photoEdited(id) }
+            .store(in: &bag)
+        // profiel op dit apparaat verwijderd → tombstone
+        store.profileDeleted
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] id in self?.profileDeleted(id) }
             .store(in: &bag)
         AccountService.shared.$isSignedIn
             .removeDuplicates()
@@ -58,15 +78,22 @@ final class ProfileSync {
             .store(in: &bag)
     }
 
-    /// Lezen + migreren/importeren/samenvoegen + foto's + uploaden. Stil bij fouten.
-    /// `periodic`: bij elke heartbeat opnieuw lezen; de lijst gaat dan alleen mee als hij veranderd is.
+    /// Lezen + serverstand toepassen (tombstones, toevoegen, wijzigen, volgorde) + foto's + zo nodig uploaden.
+    /// Stil bij fouten. `periodic` wordt niet meer anders behandeld: er gaat alleen iets naar de server als
+    /// lokaal iets nieuwer is of op de server ontbreekt.
     func syncNow(periodic: Bool = false) async {
         start()
         if let running {
+            again = true
             await withTaskCancellationHandler { await running.value } onCancel: { running.cancel() }
             return
         }
-        let t = Task { await self.performSync(periodic: periodic) }
+        let t = Task { @MainActor in
+            repeat {
+                self.again = false
+                await self.performSync()
+            } while self.again && !Task.isCancelled
+        }
         running = t
         await withTaskCancellationHandler { await t.value } onCancel: { t.cancel() }
         running = nil
@@ -75,9 +102,78 @@ final class ProfileSync {
     private func reset() {
         running?.cancel()
         ready = false
-        lastUploaded = nil
+        dirty = false
         remotePhotos = [:]
-        for k in [extrasKey, versionsKey, pendingKey] { UserDefaults.standard.removeObject(forKey: k) }
+        for k in [extrasKey, versionsKey, pendingKey, updatedKey, fingerprintKey, tombstonesKey] {
+            UserDefaults.standard.removeObject(forKey: k)
+        }
+    }
+
+    // MARK: - Eigen wijzigingen
+
+    /// Profielenlijst veranderd (debounced). Alleen als gesynchroniseerde velden anders zijn: synchroniseren.
+    private func profilesChanged() {
+        guard ready, Secrets.accountsConfigured, AccountService.shared.isSignedIn else { return }
+        let store = CloudStore.shared
+        let prints = loadFingerprints()
+        let changed = store.profiles.enumerated().contains { i, p in prints[p.id.uuidString] != fingerprint(p, index: i) }
+        guard changed else { return }
+        Task { await self.syncNow() }
+    }
+
+    /// Profiel op dit apparaat verwijderd: tombstone, foto verwijderen (DELETE) en de lijst uploaden.
+    private func profileDeleted(_ id: UUID) {
+        guard Secrets.accountsConfigured, AccountService.shared.isSignedIn else { return }
+        let now = Self.now()
+        var tombs = loadTombstones()
+        tombs[id.uuidString] = ["id": rawID(for: id), "deleted": true, "deletedAt": now, "updatedAt": now]
+        let path = (remotePhotos[id]?["path"] as? String) ?? AccountService.shared.photoPath(profileID: rawID(for: id))
+        saveTombstones(tombs)
+        forget(id)
+        dirty = true
+        remotePhotos[id] = nil
+        Task {
+            if let path { await AccountService.shared.deletePhoto(path: path) }
+            await self.syncNow()
+        }
+    }
+
+    /// Eigen wijzigingen herkennen: gesynchroniseerde velden anders dan laatst gezien → `updatedAt` = nu.
+    /// Een profiel zonder vingerafdruk dat de server al kent, krijgt geen nieuwe `updatedAt` (eerste keer na
+    /// een update of op een nieuw apparaat); een nieuw lokaal profiel wel.
+    private func noteLocalChanges(knownOnServer: Set<UUID>) {
+        let store = CloudStore.shared
+        var prints = loadFingerprints()
+        var updated = loadUpdated()
+        let now = Self.now()
+        for (i, p) in store.profiles.enumerated() {
+            let key = p.id.uuidString
+            let fp = fingerprint(p, index: i)
+            if let old = prints[key] {
+                if old != fp { updated[key] = now }
+            } else if !knownOnServer.contains(p.id) && updated[key] == nil {
+                updated[key] = now
+            }
+            prints[key] = fp
+        }
+        saveFingerprints(prints)
+        saveUpdated(updated)
+    }
+
+    /// Naam, avatar, kinderprofiel, leeftijdsgrens, volgorde en hoofdprofiel.
+    private func fingerprint(_ p: ViewerProfile, index: Int) -> String {
+        let store = CloudStore.shared
+        return [p.name, p.avatar.symbol, String(p.avatar.colorIndex), p.kids ? "1" : "0",
+                p.ageLimit.map(String.init) ?? "-", String(index), store.isMain(p) ? "m" : ""].joined(separator: "\u{1F}")
+    }
+
+    /// Lokale sync-gegevens van een profiel vergeten.
+    private func forget(_ id: UUID) {
+        var updated = loadUpdated(); updated[id.uuidString] = nil; saveUpdated(updated)
+        var prints = loadFingerprints(); prints[id.uuidString] = nil; saveFingerprints(prints)
+        var extras = loadExtras(); extras[id.uuidString] = nil; saveExtras(extras)
+        setVersion(nil, for: id)
+        removePending(id)
     }
 
     // MARK: - Synchroniseren
@@ -86,9 +182,16 @@ final class ProfileSync {
         let profile: ViewerProfile
         let isMain: Bool
         let order: Int
+        let updatedAt: String?
         let raw: [String: Any]
         /// `photo` van de server: ontbreekt/null, een foto, of onleesbaar (dan niets mee doen)
         let photo: PhotoField
+    }
+
+    private struct Tombstone {
+        let id: UUID
+        let raw: [String: Any]
+        var deletedAt: Date { ProfileSync.date(raw["deletedAt"]) ?? ProfileSync.date(raw["updatedAt"]) ?? .distantPast }
     }
 
     private enum PhotoField {
@@ -97,7 +200,7 @@ final class ProfileSync {
         case invalid
     }
 
-    private func performSync(periodic: Bool) async {
+    private func performSync() async {
         let account = AccountService.shared
         guard Secrets.accountsConfigured, account.isSignedIn else { return }
         let rows: [[String: Any]]
@@ -105,46 +208,139 @@ final class ProfileSync {
         guard !Task.isCancelled, account.isSignedIn else { return }
 
         let store = CloudStore.shared
-        var seen = Set<UUID>()
-        let remote = rows.enumerated().compactMap { Self.decode($0.element, index: $0.offset) }
-            .filter { seen.insert($0.profile.id).inserted }
-            .sorted { $0.order < $1.order }
+        // decoderen: actieve profielen en tombstones; dubbele id's → de nieuwste telt
+        var serverActive: [UUID: Remote] = [:]
+        var serverTombs: [UUID: Tombstone] = [:]
+        for (i, row) in rows.enumerated() {
+            if (row["deleted"] as? Bool) == true {
+                guard let t = Self.decodeTombstone(row) else { continue }
+                if let old = serverTombs[t.id], old.deletedAt >= t.deletedAt { continue }
+                serverTombs[t.id] = t
+            } else if let r = Self.decode(row, index: i) {
+                if let old = serverActive[r.profile.id],
+                   (Self.date(old.updatedAt) ?? .distantPast) >= (Self.date(r.updatedAt) ?? .distantPast) { continue }
+                serverActive[r.profile.id] = r
+            }
+        }
+        for (id, t) in serverTombs {
+            guard let r = serverActive[id] else { continue }
+            if (Self.date(r.updatedAt) ?? .distantPast) > t.deletedAt { serverTombs[id] = nil } else { serverActive[id] = nil }
+        }
         // onbekende velden bewaren
         var extras = loadExtras()
-        for r in remote { extras[r.profile.id.uuidString] = r.raw }
+        for r in serverActive.values { extras[r.profile.id.uuidString] = r.raw }
+        for id in serverTombs.keys { extras[id.uuidString] = nil }
         saveExtras(extras)
 
-        let local = store.profiles
-        let remoteIDs = Set(remote.map(\.profile.id))
-        // "lokaal geen profielen": niets, of alleen het automatische hoofdprofiel (dat niet op de server staat)
-        let localEmpty = local.isEmpty || (local.count == 1 && !remoteIDs.contains(local[0].id))
+        // eigen wijzigingen sinds de vorige keer → updatedAt = nu
+        noteLocalChanges(knownOnServer: Set(serverActive.keys).union(serverTombs.keys))
 
-        if remote.isEmpty {
-            // migreren: lokale profielen (en hun foto's) uploaden, of niets te doen
-            ready = true
-            _ = await applyRemotePhotos(remote)
-            if !store.profiles.isEmpty { await upload(force: true) }
-            return
+        // tombstones samenvoegen (eigen + server)
+        var tombs = loadTombstones()
+        for (id, t) in serverTombs {
+            if let mine = tombs[id.uuidString].flatMap({ Self.decodeTombstone($0) }), mine.deletedAt >= t.deletedAt { continue }
+            tombs[id.uuidString] = t.raw
         }
-        if localEmpty {
-            // importeren: dezelfde id's, zonder pincode; foto's downloaden
-            let main = remote.first(where: \.isMain)?.profile.id ?? remote.first?.profile.id
-            store.replaceProfiles(remote.map(\.profile), mainID: main)
-            ready = true
-            if await applyRemotePhotos(remote) {
-                await upload(force: true)
+        // eigen tombstone tegenover een actief profiel op de server: verwijderd blijft verwijderd,
+        // tenzij het profiel op de server ná het verwijderen nog gewijzigd is
+        var active = serverActive
+        for (id, r) in serverActive {
+            guard let t = tombs[id.uuidString].flatMap({ Self.decodeTombstone($0) }) else { continue }
+            if (Self.date(r.updatedAt) ?? .distantPast) > t.deletedAt {
+                tombs[id.uuidString] = nil
             } else {
-                lastUploaded = encoded(payload())
+                active[id] = nil
+                dirty = true   // de server moet de tombstone nog krijgen
             }
-            return
         }
-        // samenvoegen op id: lokale profielen blijven, alleen-op-de-server erbij, foto's, daarna uploaden
-        let localIDs = Set(local.map(\.id))
-        let added = remote.filter { !localIDs.contains($0.profile.id) }.map(\.profile)
-        if !added.isEmpty { store.replaceProfiles(local + added, mainID: nil) }
+        // het hoofdprofiel wordt nooit door een tombstone verwijderd
+        if let main = store.mainProfileID, tombs[main.uuidString] != nil {
+            tombs[main.uuidString] = nil
+            dirty = true
+        }
+        saveTombstones(tombs)
+
+        let local = store.profiles
+        let activeID = store.activeProfileID
+        let tombIDs = Set(tombs.keys.compactMap(UUID.init(uuidString:)))
+        let removed = local.filter { tombIDs.contains($0.id) && !store.isMain($0) }.map(\.id)
+        let remaining = local.filter { !removed.contains($0.id) }
+        let activeSorted = active.values.sorted { $0.order < $1.order }
+        var updated = loadUpdated()
+        var list = remaining
+        var mainID: UUID?
+
+        if activeSorted.isEmpty {
+            // migreren (of alleen tombstones): lokale profielen houden en uploaden
+            dirty = dirty || !remaining.isEmpty
+        } else if remaining.isEmpty || (remaining.count == 1 && active[remaining[0].id] == nil && removed.isEmpty) {
+            // importeren: lokaal alleen het automatische hoofdprofiel of niets → de profielen van de server,
+            // met dezelfde id's en zonder pincode
+            list = activeSorted.map(\.profile)
+            mainID = activeSorted.first(where: \.isMain)?.profile.id ?? activeSorted.first?.profile.id
+            for r in activeSorted { updated[r.profile.id.uuidString] = r.updatedAt }
+        } else {
+            // samenvoegen op id
+            var keyed: [(p: ViewerProfile, key: Double, tie: Int)] = []
+            for (i, p) in remaining.enumerated() {
+                var p = p
+                var key = Double(i)
+                if let r = active[p.id] {
+                    let mine = Self.date(updated[p.id.uuidString]) ?? .distantPast
+                    if let theirs = Self.date(r.updatedAt), theirs > mine {
+                        // server nieuwer: naam, avatar, kinderprofiel, leeftijdsgrens en volgorde overnemen
+                        p.name = r.profile.name
+                        p.avatar = r.profile.avatar
+                        p.isKids = r.profile.kids ? true : (p.isKids == nil ? nil : false)
+                        p.ageLimit = r.profile.ageLimit
+                        key = Double(r.order)
+                        updated[p.id.uuidString] = r.updatedAt
+                    }
+                }
+                keyed.append((p, key, i))
+            }
+            // alleen op de server (en niet verwijderd): toevoegen, zonder pincode
+            let localIDs = Set(remaining.map(\.id))
+            for r in activeSorted where !localIDs.contains(r.profile.id) {
+                keyed.append((r.profile, Double(r.order), keyed.count))
+                updated[r.profile.id.uuidString] = r.updatedAt
+            }
+            list = keyed.sorted { $0.key != $1.key ? $0.key < $1.key : $0.tie < $1.tie }.map(\.p)
+        }
+        saveUpdated(updated)
+
+        if list != local || mainID != nil {
+            store.replaceProfiles(list, mainID: mainID)
+        }
+        for id in removed {
+            store.purgeProfileData(id)
+            forget(id)
+        }
+        // bij importeren vervangen (automatisch hoofdprofiel): alleen de lokale sync-gegevens vergeten
+        if mainID != nil {
+            for p in remaining where !list.contains(where: { $0.id == p.id }) { forget(p.id) }
+        }
+        if let a = activeID, removed.contains(a) { activeProfileRemoved.send() }
+        // de nieuwe stand is de bekende stand: geen "eigen wijziging"
+        var prints = loadFingerprints()
+        for (i, p) in store.profiles.enumerated() { prints[p.id.uuidString] = fingerprint(p, index: i) }
+        saveFingerprints(prints)
         ready = true
-        let photosChanged = await applyRemotePhotos(remote)
-        await upload(force: !periodic || photosChanged)
+
+        let photosChanged = await applyRemotePhotos(activeSorted)
+        guard account.isSignedIn, !Task.isCancelled else { return }
+
+        // uploaden als lokaal iets nieuwer is of op de server ontbreekt
+        let now = loadUpdated()
+        let pruned = prunedTombstones()
+        let needs = dirty || photosChanged
+            || store.profiles.contains { p in
+                guard let r = active[p.id] else { return true }   // ontbreekt op de server
+                let mine = Self.date(now[p.id.uuidString]) ?? .distantPast
+                return mine > (Self.date(r.updatedAt) ?? .distantPast)
+            }
+            || pruned.keys.contains { k in UUID(uuidString: k).map { serverTombs[$0] == nil } ?? false }
+        if needs { await upload() }
     }
 
     // MARK: - Profielfoto's
@@ -222,7 +418,11 @@ final class ProfileSync {
         } while photoAgain && AccountService.shared.isSignedIn
         photoBusy = false
         let changed = photoChanged
-        if changed && uploadList { await upload(force: false) }
+        if changed && uploadList {
+            // de lijst (met `photo`) gaat mee via een gewone sync: eerst lezen, dan samengevoegd uploaden
+            dirty = true
+            Task { await self.syncNow() }
+        }
         return changed
     }
 
@@ -288,7 +488,7 @@ final class ProfileSync {
     /// Is de `updated` van de server nieuwer dan de lokale photoVersion?
     private static func isNewer(_ server: String, than local: String) -> Bool {
         if server == local { return false }
-        if let s = AccountService.parseDate(server), let l = AccountService.parseDate(local) { return s > l }
+        if let s = date(server), let l = date(local) { return s > l }
         return true
     }
 
@@ -320,37 +520,38 @@ final class ProfileSync {
 
     // MARK: - Uploaden
 
-    private func uploadIfChanged() {
+    private func upload() async {
         guard ready, AccountService.shared.isSignedIn else { return }
-        Task { await self.upload(force: false) }
-    }
-
-    private func upload(force: Bool) async {
-        guard ready, AccountService.shared.isSignedIn else { return }
-        let list = payload()
-        let data = encoded(list)
-        if !force, data != nil, data == lastUploaded { return }
         do {
-            try await AccountService.shared.saveAccountProfiles(list)
-            lastUploaded = data
+            try await AccountService.shared.saveAccountProfiles(payload())
+            dirty = false
         } catch {
-            // stil: de volgende wijziging of start probeert het opnieuw
+            // stil: de volgende wijziging, start of heartbeat probeert het opnieuw
         }
     }
 
-    private func encoded(_ list: [[String: Any]]) -> Data? {
-        try? JSONSerialization.data(withJSONObject: list, options: [.sortedKeys])
+    /// Tombstones zonder die van langer dan 90 dagen geleden (en nooit voor een lokaal profiel).
+    private func prunedTombstones() -> [String: [String: Any]] {
+        let cutoff = Date().addingTimeInterval(-Self.tombstoneLifetime)
+        let localIDs = Set(CloudStore.shared.profiles.map(\.id.uuidString))
+        return loadTombstones().filter { k, raw in
+            guard !localIDs.contains(k), let t = Self.decodeTombstone(raw) else { return false }
+            return t.deletedAt >= cutoff
+        }
     }
 
     /// De hele profielenlijst in het contractformaat (zonder pincodes; een eigen foto alleen als
-    /// verwijzing `photo`, en het gewone avatar-icoon gaat altijd mee).
+    /// verwijzing `photo`, en het gewone avatar-icoon gaat altijd mee), plus de tombstones.
     private func payload() -> [[String: Any]] {
         let store = CloudStore.shared
         let extras = loadExtras()
+        let updated = loadUpdated()
         var out: [[String: Any]] = []
         for (i, p) in store.profiles.enumerated() {
             var d = extras[p.id.uuidString] ?? [:]
             for k in Self.privateKeys { d[k] = nil }
+            d["deleted"] = nil
+            d["deletedAt"] = nil
             if (d["id"] as? String).map({ Self.uuid(for: $0) }) != p.id { d["id"] = p.id.uuidString }
             d["name"] = p.name
             var av = d["avatar"] as? [String: Any] ?? [:]
@@ -362,10 +563,45 @@ final class ProfileSync {
             if let a = p.ageLimit { d["ageLimit"] = a } else { d["ageLimit"] = NSNull() }
             d["isMain"] = store.isMain(p)
             d["order"] = i
+            if let u = updated[p.id.uuidString] { d["updatedAt"] = u }
             d["photo"] = photoField(for: p.id)
             out.append(d)
         }
+        let tombs = prunedTombstones()
+        for k in tombs.keys.sorted() {
+            guard let raw = tombs[k], let t = Self.decodeTombstone(raw) else { continue }
+            var d: [String: Any] = ["id": raw["id"] as? String ?? t.id.uuidString, "deleted": true]
+            let deletedAt = (raw["deletedAt"] as? String) ?? (raw["updatedAt"] as? String) ?? Self.now()
+            d["deletedAt"] = deletedAt
+            d["updatedAt"] = (raw["updatedAt"] as? String) ?? deletedAt
+            out.append(d)
+        }
         return out
+    }
+
+    // MARK: - Opslag van sync-gegevens
+
+    private func loadUpdated() -> [String: String] {
+        UserDefaults.standard.dictionary(forKey: updatedKey) as? [String: String] ?? [:]
+    }
+
+    private func saveUpdated(_ v: [String: String]) { UserDefaults.standard.set(v, forKey: updatedKey) }
+
+    private func loadFingerprints() -> [String: String] {
+        UserDefaults.standard.dictionary(forKey: fingerprintKey) as? [String: String] ?? [:]
+    }
+
+    private func saveFingerprints(_ v: [String: String]) { UserDefaults.standard.set(v, forKey: fingerprintKey) }
+
+    private func loadTombstones() -> [String: [String: Any]] {
+        guard let d = UserDefaults.standard.data(forKey: tombstonesKey),
+              let j = (try? JSONSerialization.jsonObject(with: d)) as? [String: [String: Any]] else { return [:] }
+        return j
+    }
+
+    private func saveTombstones(_ t: [String: [String: Any]]) {
+        guard let d = try? JSONSerialization.data(withJSONObject: t) else { return }
+        UserDefaults.standard.set(d, forKey: tombstonesKey)
     }
 
     // MARK: - Decoderen
@@ -392,7 +628,34 @@ final class ProfileSync {
         } else {
             photo = .invalid
         }
-        return Remote(profile: p, isMain: isMain, order: order, raw: raw, photo: photo)
+        let updatedAt = (d["updatedAt"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        raw["deleted"] = nil
+        raw["deletedAt"] = nil
+        return Remote(profile: p, isMain: isMain, order: order, updatedAt: updatedAt, raw: raw, photo: photo)
+    }
+
+    /// Tombstone: alleen `id`, `deleted`, `deletedAt` en `updatedAt`. Zonder datum telt hij vanaf nu.
+    private static func decodeTombstone(_ d: [String: Any]) -> Tombstone? {
+        let rawID = (d["id"] as? String) ?? (d["id"] as? NSNumber)?.stringValue ?? ""
+        guard !rawID.isEmpty else { return nil }
+        var raw: [String: Any] = ["id": rawID, "deleted": true]
+        let deletedAt = (d["deletedAt"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        let updatedAt = (d["updatedAt"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        let deleted: String = deletedAt ?? updatedAt ?? now()
+        raw["deletedAt"] = deleted
+        raw["updatedAt"] = updatedAt ?? deleted
+        return Tombstone(id: uuid(for: rawID), raw: raw)
+    }
+
+    /// ISO-8601 (met of zonder fracties) of Postgres-tijdstempel → Date. Ontbreekt = nil (telt als heel oud).
+    nonisolated static func date(_ v: Any?) -> Date? {
+        guard let s = v as? String, !s.isEmpty else { return nil }
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = f.date(from: s) { return d }
+        f.formatOptions = [.withInternetDateTime]
+        if let d = f.date(from: s) { return d }
+        return AccountService.parseDate(s)
     }
 
     /// Profiel-ID van de server → UUID (een ander formaat krijgt een vaste, afgeleide UUID).
