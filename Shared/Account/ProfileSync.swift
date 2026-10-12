@@ -7,7 +7,9 @@ import CryptoKit
 /// Na inloggen en bij het starten met een geldige sessie: lezen, dan migreren (server leeg),
 /// importeren (lokaal alleen het automatische hoofdprofiel of niets) of samenvoegen op `id`.
 /// Daarna gaat elke wijziging (met ~2 s vertraging) als hele lijst naar de server.
-/// Pincodes en eigen foto's gaan nooit mee. Fouten zijn stil en blokkeren de app nooit.
+/// Pincodes gaan nooit mee. Eigen foto's staan in de Storage-bucket `avatars`; in de lijst staat per
+/// profiel alleen `photo` (`{path, updated}` of null), zie "Profielfoto's delen (build 40)".
+/// Fouten zijn stil en blokkeren de app nooit.
 @MainActor
 final class ProfileSync {
     static let shared = ProfileSync()
@@ -20,7 +22,16 @@ final class ProfileSync {
     private var lastUploaded: Data?
     /// Onbekende velden van de server per profiel (bewaren en weer meesturen)
     private let extrasKey = "account.profileExtras.v1"
-    /// Velden die nooit naar de server gaan
+    /// Per profiel de `updated` van de foto die dit apparaat heeft (*photoVersion*), alleen lokaal
+    private let versionsKey = "account.photoVersions.v1"
+    /// Profielen met een eigen foto-wijziging die nog geüpload of verwijderd moet worden
+    private let pendingKey = "account.photoPending.v1"
+    /// `photo` per profiel zoals laatst van de server gelezen
+    private var remotePhotos: [UUID: [String: Any]] = [:]
+    private var photoBusy = false
+    private var photoAgain = false
+    private var photoChanged = false
+    /// Velden die nooit (zo) naar de server gaan; `photo` zet `payload()` zelf
     private static let privateKeys = ["pin", "pinCode", "pin_code", "photo", "photoData", "customPhoto"]
 
     private init() {}
@@ -34,6 +45,11 @@ final class ProfileSync {
             .debounce(for: .seconds(2), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in self?.uploadIfChanged() }
             .store(in: &bag)
+        // eigen foto gekozen, gewijzigd of verwijderd op dit apparaat → uploaden of verwijderen
+        store.photoEdited
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] id in self?.photoEdited(id) }
+            .store(in: &bag)
         AccountService.shared.$isSignedIn
             .removeDuplicates()
             .sink { [weak self] signedIn in
@@ -42,14 +58,15 @@ final class ProfileSync {
             .store(in: &bag)
     }
 
-    /// Lezen + migreren/importeren/samenvoegen + uploaden. Stil bij fouten.
-    func syncNow() async {
+    /// Lezen + migreren/importeren/samenvoegen + foto's + uploaden. Stil bij fouten.
+    /// `periodic`: bij elke heartbeat opnieuw lezen; de lijst gaat dan alleen mee als hij veranderd is.
+    func syncNow(periodic: Bool = false) async {
         start()
         if let running {
             await withTaskCancellationHandler { await running.value } onCancel: { running.cancel() }
             return
         }
-        let t = Task { await self.performSync() }
+        let t = Task { await self.performSync(periodic: periodic) }
         running = t
         await withTaskCancellationHandler { await t.value } onCancel: { t.cancel() }
         running = nil
@@ -59,7 +76,8 @@ final class ProfileSync {
         running?.cancel()
         ready = false
         lastUploaded = nil
-        UserDefaults.standard.removeObject(forKey: extrasKey)
+        remotePhotos = [:]
+        for k in [extrasKey, versionsKey, pendingKey] { UserDefaults.standard.removeObject(forKey: k) }
     }
 
     // MARK: - Synchroniseren
@@ -69,9 +87,17 @@ final class ProfileSync {
         let isMain: Bool
         let order: Int
         let raw: [String: Any]
+        /// `photo` van de server: ontbreekt/null, een foto, of onleesbaar (dan niets mee doen)
+        let photo: PhotoField
     }
 
-    private func performSync() async {
+    private enum PhotoField {
+        case none
+        case photo(path: String, updated: String, raw: [String: Any])
+        case invalid
+    }
+
+    private func performSync(periodic: Bool) async {
         let account = AccountService.shared
         guard Secrets.accountsConfigured, account.isSignedIn else { return }
         let rows: [[String: Any]]
@@ -94,25 +120,202 @@ final class ProfileSync {
         let localEmpty = local.isEmpty || (local.count == 1 && !remoteIDs.contains(local[0].id))
 
         if remote.isEmpty {
-            // migreren: lokale profielen uploaden (of niets te doen)
+            // migreren: lokale profielen (en hun foto's) uploaden, of niets te doen
             ready = true
-            if !local.isEmpty { await upload(force: true) }
+            _ = await applyRemotePhotos(remote)
+            if !store.profiles.isEmpty { await upload(force: true) }
             return
         }
         if localEmpty {
-            // importeren: dezelfde id's, zonder pincode
+            // importeren: dezelfde id's, zonder pincode; foto's downloaden
             let main = remote.first(where: \.isMain)?.profile.id ?? remote.first?.profile.id
             store.replaceProfiles(remote.map(\.profile), mainID: main)
             ready = true
-            lastUploaded = encoded(payload())
+            if await applyRemotePhotos(remote) {
+                await upload(force: true)
+            } else {
+                lastUploaded = encoded(payload())
+            }
             return
         }
-        // samenvoegen op id: lokale profielen blijven, alleen-op-de-server erbij, daarna uploaden
+        // samenvoegen op id: lokale profielen blijven, alleen-op-de-server erbij, foto's, daarna uploaden
         let localIDs = Set(local.map(\.id))
         let added = remote.filter { !localIDs.contains($0.profile.id) }.map(\.profile)
         if !added.isEmpty { store.replaceProfiles(local + added, mainID: nil) }
         ready = true
-        await upload(force: true)
+        let photosChanged = await applyRemotePhotos(remote)
+        await upload(force: !periodic || photosChanged)
+    }
+
+    // MARK: - Profielfoto's
+
+    /// Regels uit het contract toepassen op wat de server zegt. `true` = er is een foto
+    /// geüpload of verwijderd (de lijst moet dan mee).
+    private func applyRemotePhotos(_ remote: [Remote]) async -> Bool {
+        let store = CloudStore.shared
+        let account = AccountService.shared
+        var fresh: [UUID: [String: Any]] = [:]
+        for r in remote { if case .photo(_, _, let raw) = r.photo { fresh[r.profile.id] = raw } }
+        remotePhotos = fresh
+
+        let localIDs = Set(store.profiles.map(\.id))
+        var onServer = Set<UUID>()
+        for r in remote where localIDs.contains(r.profile.id) {
+            let id = r.profile.id
+            onServer.insert(id)
+            if loadPending().contains(id) { continue }   // eigen wijziging gaat voor
+            let local = store.photos[id]
+            let mine = loadVersions()[id.uuidString]
+            switch r.photo {
+            case .invalid:
+                continue
+            case .photo(let path, let updated, _):
+                guard local == nil || mine == nil || Self.isNewer(updated, than: mine!) else { continue }
+                guard let data = await account.downloadPhoto(path: path),
+                      let small = AccountService.squareJPEG(data, maxSide: 320, quality: 0.72) else { continue }
+                // intussen uitgelogd of zelf een foto gekozen? dan niet overschrijven
+                guard account.isSignedIn, !loadPending().contains(id),
+                      store.profiles.contains(where: { $0.id == id }) else { continue }
+                store.setSyncedPhoto(small, for: id)
+                setVersion(updated, for: id)
+            case .none:
+                if mine != nil {
+                    // foto elders verwijderd: de lokale (uit de sync) ook weg
+                    if local != nil { store.setSyncedPhoto(nil, for: id) }
+                    setVersion(nil, for: id)
+                } else if local != nil {
+                    markPending(id)   // migratie: lokale foto, server heeft er geen
+                }
+            }
+        }
+        // profielen die (nog) niet op de server staan: lokale foto zonder photoVersion → migreren
+        for p in store.profiles where !onServer.contains(p.id) && store.photos[p.id] != nil
+            && loadVersions()[p.id.uuidString] == nil {
+            markPending(p.id)
+        }
+        return await processPending(uploadList: false)
+    }
+
+    /// Foto op dit apparaat gekozen, gewijzigd of verwijderd.
+    private func photoEdited(_ id: UUID) {
+        guard Secrets.accountsConfigured, AccountService.shared.isSignedIn else { return }
+        markPending(id)
+        Task { await self.processPending(uploadList: true) }
+    }
+
+    /// Openstaande foto-wijzigingen uploaden of verwijderen. Eén tegelijk; komt er intussen
+    /// een wijziging bij, dan gaat de lopende ronde nog een keer.
+    @discardableResult
+    private func processPending(uploadList: Bool) async -> Bool {
+        if photoBusy {
+            photoAgain = true
+            return false
+        }
+        photoBusy = true
+        photoChanged = false
+        repeat {
+            photoAgain = false
+            for id in loadPending() {
+                guard AccountService.shared.isSignedIn else { break }
+                await processPhoto(id)
+            }
+        } while photoAgain && AccountService.shared.isSignedIn
+        photoBusy = false
+        let changed = photoChanged
+        if changed && uploadList { await upload(force: false) }
+        return changed
+    }
+
+    private func processPhoto(_ id: UUID) async {
+        let store = CloudStore.shared
+        let account = AccountService.shared
+        let key = rawID(for: id)
+        if store.profiles.contains(where: { $0.id == id }), let data = store.photos[id] {
+            guard let jpeg = AccountService.squareJPEG(data, maxSide: 512, quality: 0.8) else {
+                removePending(id)
+                return
+            }
+            do {
+                try await account.uploadPhoto(profileID: key, jpegData: jpeg)
+            } catch {
+                return   // blijft openstaan: de volgende sync of heartbeat probeert het opnieuw
+            }
+            setVersion(Self.now(), for: id)
+            remotePhotos[id] = nil
+            photoChanged = true
+            // intussen alweer gewijzigd? dan blijft hij openstaan voor de volgende ronde
+            if store.photos[id] == data { removePending(id) } else { photoAgain = true }
+        } else {
+            // foto (of het hele profiel) verwijderd
+            let known = loadVersions()[id.uuidString] != nil || remotePhotos[id] != nil
+            if known, let path = (remotePhotos[id]?["path"] as? String) ?? account.photoPath(profileID: key) {
+                await account.deletePhoto(path: path)
+                photoChanged = true
+            }
+            setVersion(nil, for: id)
+            remotePhotos[id] = nil
+            removePending(id)
+        }
+    }
+
+    /// `photo` voor de lijst: `{path, updated}` of null.
+    private func photoField(for id: UUID) -> Any {
+        let store = CloudStore.shared
+        let pending = loadPending().contains(id)
+        let local = store.photos[id]
+        if !pending, local != nil, let v = loadVersions()[id.uuidString],
+           let path = (remotePhotos[id]?["path"] as? String) ?? AccountService.shared.photoPath(profileID: rawID(for: id)) {
+            return ["path": path, "updated": v]
+        }
+        if pending && local == nil { return NSNull() }
+        // nog niet geüpload (of download mislukt): de waarde van de server laten staan
+        if let r = remotePhotos[id] { return r }
+        return NSNull()
+    }
+
+    /// Profiel-ID zoals de server het kent (voor het pad in de bucket).
+    private func rawID(for id: UUID) -> String {
+        if let s = loadExtras()[id.uuidString]?["id"] as? String, Self.uuid(for: s) == id { return s }
+        return id.uuidString
+    }
+
+    private static func now() -> String {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f.string(from: Date())
+    }
+
+    /// Is de `updated` van de server nieuwer dan de lokale photoVersion?
+    private static func isNewer(_ server: String, than local: String) -> Bool {
+        if server == local { return false }
+        if let s = AccountService.parseDate(server), let l = AccountService.parseDate(local) { return s > l }
+        return true
+    }
+
+    private func loadVersions() -> [String: String] {
+        UserDefaults.standard.dictionary(forKey: versionsKey) as? [String: String] ?? [:]
+    }
+
+    private func setVersion(_ v: String?, for id: UUID) {
+        var all = loadVersions()
+        all[id.uuidString] = v
+        UserDefaults.standard.set(all, forKey: versionsKey)
+    }
+
+    private func loadPending() -> [UUID] {
+        (UserDefaults.standard.stringArray(forKey: pendingKey) ?? []).compactMap(UUID.init(uuidString:))
+    }
+
+    private func markPending(_ id: UUID) {
+        var all = loadPending()
+        guard !all.contains(id) else { return }
+        all.append(id)
+        UserDefaults.standard.set(all.map(\.uuidString), forKey: pendingKey)
+    }
+
+    private func removePending(_ id: UUID) {
+        let all = loadPending().filter { $0 != id }
+        UserDefaults.standard.set(all.map(\.uuidString), forKey: pendingKey)
     }
 
     // MARK: - Uploaden
@@ -139,8 +342,8 @@ final class ProfileSync {
         try? JSONSerialization.data(withJSONObject: list, options: [.sortedKeys])
     }
 
-    /// De hele profielenlijst in het contractformaat (zonder pincodes en eigen foto's;
-    /// een profiel met een eigen foto stuurt zijn gewone avatar mee).
+    /// De hele profielenlijst in het contractformaat (zonder pincodes; een eigen foto alleen als
+    /// verwijzing `photo`, en het gewone avatar-icoon gaat altijd mee).
     private func payload() -> [[String: Any]] {
         let store = CloudStore.shared
         let extras = loadExtras()
@@ -159,6 +362,7 @@ final class ProfileSync {
             if let a = p.ageLimit { d["ageLimit"] = a } else { d["ageLimit"] = NSNull() }
             d["isMain"] = store.isMain(p)
             d["order"] = i
+            d["photo"] = photoField(for: p.id)
             out.append(d)
         }
         return out
@@ -178,7 +382,17 @@ final class ProfileSync {
         let order = (d["order"] as? NSNumber)?.intValue ?? index
         var raw = d
         for k in privateKeys { raw[k] = nil }
-        return Remote(profile: p, isMain: isMain, order: order, raw: raw)
+        let photo: PhotoField
+        let pv = d["photo"]
+        if pv == nil || pv is NSNull {
+            photo = .none
+        } else if let j = pv as? [String: Any], let path = j["path"] as? String, !path.isEmpty,
+                  let updated = j["updated"] as? String, !updated.isEmpty {
+            photo = .photo(path: path, updated: updated, raw: j)
+        } else {
+            photo = .invalid
+        }
+        return Remote(profile: p, isMain: isMain, order: order, raw: raw, photo: photo)
     }
 
     /// Profiel-ID van de server → UUID (een ander formaat krijgt een vaste, afgeleide UUID).

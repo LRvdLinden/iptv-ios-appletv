@@ -146,7 +146,7 @@ final class CloudStore: ObservableObject {
             mainProfileIDStored = mainID
             write(mainProfileIDStored, K.mainProfile)
         }
-        for p in removed where photos[p.id] != nil { setPhoto(nil, for: p.id) }
+        for p in removed where photos[p.id] != nil { setSyncedPhoto(nil, for: p.id) }
         if let a = activeProfileID, !list.contains(where: { $0.id == a }) {
             activeProfileID = nil
             UserDefaults.standard.removeObject(forKey: "activeProfileID")
@@ -247,8 +247,20 @@ final class CloudStore: ObservableObject {
         }
     }
 
+    /// Eigen foto gekozen, gewijzigd of verwijderd op dít apparaat (niet via iCloud of de account-sync).
+    /// ProfileSync uploadt of verwijdert hem dan in de Bingr-account.
+    let photoEdited = PassthroughSubject<UUID, Never>()
+
     func setPhoto(_ data: Data?, for playlist: UUID) {
         photos[playlist] = data
+        write(photos, K.photos)
+        photoEdited.send(playlist)
+    }
+
+    /// Foto uit de Bingr-account toepassen (gaat ook via iCloud, maar telt niet als eigen wijziging).
+    func setSyncedPhoto(_ data: Data?, for profile: UUID) {
+        guard photos[profile] != data else { return }
+        photos[profile] = data
         write(photos, K.photos)
     }
 

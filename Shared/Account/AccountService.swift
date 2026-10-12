@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import ImageIO
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -417,6 +418,90 @@ final class AccountService: ObservableObject {
         guard (200..<300).contains(r.status) else { throw AccountError.generic }
     }
 
+    // MARK: - Profielfoto's (Storage-bucket `avatars`), zie "Profielfoto's delen (build 40)"
+
+    /// User-id van de ingelogde gebruiker (map in de bucket `avatars`).
+    var currentUserID: String? { isSignedIn ? userID : nil }
+
+    /// `<user_id>/<profiel_id>.jpg`
+    func photoPath(profileID: String) -> String? {
+        guard let uid = currentUserID, !uid.isEmpty else { return nil }
+        return "\(uid)/\(profileID).jpg"
+    }
+
+    /// Foto uploaden of vervangen (`x-upsert: true`). Geeft het pad in de bucket terug.
+    @discardableResult
+    func uploadPhoto(profileID: String, jpegData: Data) async throws -> String {
+        guard let path = photoPath(profileID: profileID), let p = Self.safePhotoPath(path) else { throw AccountError.generic }
+        let r = try await authorized { token in
+            try await self.send("POST", "/storage/v1/object/avatars/\(p)", body: nil, bearer: token,
+                                headers: ["Content-Type": "image/jpeg", "x-upsert": "true"], rawBody: jpegData)
+        }
+        guard (200..<300).contains(r.status) else { throw AccountError.generic }
+        return path
+    }
+
+    /// Foto downloaden; nil bij een fout of als hij niet (meer) bestaat.
+    func downloadPhoto(path: String) async -> Data? {
+        guard let p = Self.safePhotoPath(path) else { return nil }
+        do {
+            let r = try await authorized { token in
+                try await self.send("GET", "/storage/v1/object/authenticated/avatars/\(p)", body: nil, bearer: token,
+                                    headers: ["Accept": "image/jpeg, */*"])
+            }
+            guard r.status == 200, !r.data.isEmpty else { return nil }
+            return r.data
+        } catch {
+            return nil
+        }
+    }
+
+    /// Foto verwijderen (fouten negeren).
+    func deletePhoto(path: String) async {
+        guard let p = Self.safePhotoPath(path) else { return }
+        _ = try? await authorized { token in
+            try await self.send("DELETE", "/storage/v1/object/avatars/\(p)", body: nil, bearer: token)
+        }
+    }
+
+    /// Alleen een gewoon relatief pad (`map/bestand.jpg`), percent-gecodeerd per deel.
+    private static func safePhotoPath(_ path: String) -> String? {
+        let parts = path.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
+        guard !parts.isEmpty, !parts.contains(where: { $0.isEmpty || $0 == "." || $0 == ".." }) else { return nil }
+        var allowed = CharacterSet.urlPathAllowed
+        allowed.remove(charactersIn: "/?#")
+        let enc = parts.compactMap { $0.addingPercentEncoding(withAllowedCharacters: allowed) }
+        guard enc.count == parts.count else { return nil }
+        return enc.joined(separator: "/")
+    }
+
+    /// Vierkant (midden) uitsnijden, verkleinen tot max. `maxSide` pixels en als JPEG coderen.
+    /// Alleen ImageIO/CoreGraphics, dus hetzelfde op iOS, tvOS en macOS.
+    nonisolated static func squareJPEG(_ data: Data, maxSide: Int = 512, quality: Double = 0.8) -> Data? {
+        guard let src = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+        // met de EXIF-oriëntatie toegepast
+        let opts: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true,
+                                     kCGImageSourceCreateThumbnailWithTransform: true,
+                                     kCGImageSourceThumbnailMaxPixelSize: 4096]
+        guard let img = CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary) else { return nil }
+        let side = min(img.width, img.height)
+        guard side > 0,
+              let crop = img.cropping(to: CGRect(x: (img.width - side) / 2, y: (img.height - side) / 2,
+                                                 width: side, height: side)) else { return nil }
+        let out = min(side, maxSide)
+        guard let ctx = CGContext(data: nil, width: out, height: out, bitsPerComponent: 8, bytesPerRow: 0,
+                                  space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else { return nil }
+        ctx.interpolationQuality = .high
+        ctx.draw(crop, in: CGRect(x: 0, y: 0, width: out, height: out))
+        guard let scaled = ctx.makeImage() else { return nil }
+        let result = NSMutableData()
+        guard let dest = CGImageDestinationCreateWithData(result as CFMutableData, "public.jpeg" as CFString, 1, nil) else { return nil }
+        CGImageDestinationAddImage(dest, scaled, [kCGImageDestinationLossyCompressionQuality: quality] as CFDictionary)
+        guard CGImageDestinationFinalize(dest) else { return nil }
+        return result as Data
+    }
+
     /// Aanvraag met een geldig access token; bij 401 één keer vernieuwen en opnieuw proberen.
     private func authorized(_ make: (String) async throws -> Response) async throws -> Response {
         let r = try await make(try await validAccessToken())
@@ -565,7 +650,7 @@ final class AccountService: ObservableObject {
     }
 
     private func send(_ method: String, _ path: String, body: [String: Any]?, bearer: String?,
-                      headers: [String: String] = [:]) async throws -> Response {
+                      headers: [String: String] = [:], rawBody: Data? = nil) async throws -> Response {
         guard Secrets.accountsConfigured, let url = URL(string: Secrets.supabaseURL + path) else {
             throw AccountError.message(L("Accounts are not configured in this build."))
         }
@@ -577,6 +662,7 @@ final class AccountService: ObservableObject {
         if let bearer { req.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization") }
         for (k, v) in headers { req.setValue(v, forHTTPHeaderField: k) }
         if let body { req.httpBody = try? JSONSerialization.data(withJSONObject: body) }
+        if let rawBody { req.httpBody = rawBody }
         let data: Data
         let resp: URLResponse
         do {

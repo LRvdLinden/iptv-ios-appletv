@@ -52,7 +52,10 @@ struct BingrApp: App {
                 Task { await trakt.refresh() }
                 Task { await app.playlists.refreshIfDue() }
                 // gekoppelde apparaten: heartbeat (of registreren) bij terugkeer naar de voorgrond
-                Task { await account.checkDevice() }
+                Task {
+                    await account.checkDevice()
+                    await ProfileSync.shared.syncNow(periodic: true)
+                }
             }
         }
     }
@@ -102,6 +105,8 @@ final class AppState: ObservableObject {
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 300 * 1_000_000_000)
                 await AccountService.shared.checkDevice(force: true)
+                // account_data opnieuw lezen: nieuwe of verwijderde profielfoto's van andere apparaten
+                await ProfileSync.shared.syncNow(periodic: true)
             }
         }
         // "Too many devices" bij het starten: spelers sluiten zodat het scherm zichtbaar is
