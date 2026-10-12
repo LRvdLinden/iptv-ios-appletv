@@ -23,8 +23,9 @@ enum Secrets {
         .openSubtitlesAPIKey: "",
         .omdbAPIKey: "",
         .tmdbAPIKey: "",
-        .supabaseURL: "",
-        .supabaseAnonKey: ""
+        // Bingr-accounts: openbaar bedoeld (publishable key), daarom vast in de app
+        .supabaseURL: "https://vjewsncmsxmhmhnoxwqx.supabase.co",
+        .supabaseAnonKey: "sb_publishable_lpIup6Omq5kW2k3oICGZ4g_HPGac5A3"
     ]
 
     private static let lock = NSLock()
