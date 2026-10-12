@@ -195,7 +195,7 @@ final class CloudStore: ObservableObject {
         let secretKeys = playlists.flatMap { [$0.passwordKey, "playlist.\($0.id.uuidString).session"] }
             + ["trakt.tokens", "opensubtitles.session", "parental.pin"]
             + profiles.map { "profile.\($0.id.uuidString).pin" }
-            + Secrets.Key.allCases.map { "apikey.\($0.rawValue)" }
+            + Secrets.Key.allCases.filter { !$0.builtInOnly }.map { "apikey.\($0.rawValue)" }
         DispatchQueue.global(qos: .utility).async {
             Keychain.syncFromCloud()
             Keychain.pushToCloud(keys: secretKeys)

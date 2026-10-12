@@ -37,6 +37,9 @@ jobs:
           OMDB_API_KEY: ${{ secrets.OMDB_API_KEY }}
           # TMDB: v3-sleutel (TMDB_API_KEY), anders de v4-token (TMDB_ACCESS_TOKEN)
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY || secrets.TMDB_ACCESS_TOKEN }}
+          # Bingr-accounts (Supabase): project-URL en publieke anon/publishable key
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: python3 tools/inject_keys.py
 
       - name: Project genereren
