@@ -15,6 +15,12 @@
 //   get_state       {sections?:[naam…]} (ingelogd) -> {sections:{naam:{data, updatedAt}}}
 //   put_state       {section, data}      (ingelogd) -> {ok, updatedAt}     (versleuteld; data = willekeurige JSON)
 //   delete_state    {section}            (ingelogd) -> {ok}
+//   stream_start    {device_id, profile_id, profile_name, title, kind, content_id} (ingelogd)
+//                   -> {ok} | 403 {error:"stream_limit", limit:6, streams:[…]}
+//   stream_ping     {device_id, title?, kind?, content_id?} (ingelogd, elke 30 s tijdens afspelen) -> {ok} | {stopped:true}
+//   stream_stop     {device_id} (ingelogd) -> {ok}
+//   list_streams    {} (ingelogd) -> {limit, streams:[{device_id, device_name, platform, profile_name, title, kind, started_at, signed_in_at}]}
+//   watch_log       {days?:7} (ingelogd) -> {entries:[{device_name, platform, profile_name, title, kind, started_at, ended_at, minutes}]}
 //   config          {}       (ingelogd)  -> {traktClientID, traktClientSecret, openSubtitlesAPIKey, omdbAPIKey, tmdbAPIKey}
 //                   App-sleutels staan alleen als function-secrets op de server (BINGR_*), nooit in de openbare repo.
 import { createClient } from "jsr:@supabase/supabase-js@2";
@@ -46,7 +52,9 @@ function same(a: string, b: string) {
   for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i);
   return d === 0;
 }
-const DEVICE_LIMIT = 10;
+const DEVICE_LIMIT = 15;
+const STREAM_LIMIT = 6;
+const STREAM_TTL_MS = 90 * 1000; // een stream zonder ping na 90 s telt niet meer mee
 function sessionIdFrom(req: Request): string | null {
   try {
     const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
@@ -56,7 +64,7 @@ function sessionIdFrom(req: Request): string | null {
   } catch { return null; }
 }
 async function listDevices(userId: string, current?: string) {
-  const { data } = await admin.from("account_devices").select("device_id,name,platform,created_at,last_seen_at")
+  const { data } = await admin.from("account_devices").select("device_id,name,platform,created_at,last_seen_at,signed_in_at")
     .eq("user_id", userId).order("last_seen_at", { ascending: false });
   return (data ?? []).map((d) => ({ ...d, current: d.device_id === current }));
 }
@@ -64,6 +72,7 @@ async function removeDevice(userId: string, deviceId: string) {
   const { data: row } = await admin.from("account_devices").select("session_id").eq("user_id", userId).eq("device_id", deviceId).maybeSingle();
   if (row?.session_id) await admin.rpc("revoke_session", { sid: row.session_id });
   await admin.from("account_devices").delete().eq("user_id", userId).eq("device_id", deviceId);
+  await admin.from("account_streams").delete().eq("user_id", userId).eq("device_id", deviceId);
 }
 // AES-GCM met BINGR_SOURCES_KEY (32 bytes, base64); wordt eenmalig door de Backend-workflow aangemaakt.
 async function sourcesKey(): Promise<CryptoKey> {
@@ -83,6 +92,27 @@ async function open_(data: string): Promise<any> {
   const all = Uint8Array.from(atob(data), (c) => c.charCodeAt(0));
   const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: all.subarray(0, 12) }, await sourcesKey(), all.subarray(12));
   return JSON.parse(new TextDecoder().decode(pt));
+}
+const s80 = (v: unknown) => (v == null ? null : String(v).slice(0, 80));
+const s200 = (v: unknown) => (v == null ? null : String(v).slice(0, 200));
+async function deviceInfo(userId: string, deviceId: string) {
+  const { data } = await admin.from("account_devices").select("name,platform,signed_in_at,created_at").eq("user_id", userId).eq("device_id", deviceId).maybeSingle();
+  return data;
+}
+async function closeLog(userId: string, deviceId: string) {
+  const { data: cur } = await admin.from("account_streams").select("log_id").eq("user_id", userId).eq("device_id", deviceId).maybeSingle();
+  if (cur?.log_id) await admin.from("account_watch_log").update({ ended_at: new Date().toISOString() }).eq("id", cur.log_id);
+}
+async function activeStreams(userId: string) {
+  const fresh = new Date(Date.now() - STREAM_TTL_MS).toISOString();
+  const { data: rows } = await admin.from("account_streams").select("device_id,profile_name,title,kind,started_at,last_ping")
+    .eq("user_id", userId).gte("last_ping", fresh).order("started_at", { ascending: true });
+  const { data: devs } = await admin.from("account_devices").select("device_id,name,platform,signed_in_at,created_at").eq("user_id", userId);
+  const map = new Map((devs ?? []).map((d) => [d.device_id, d]));
+  return (rows ?? []).map((r) => {
+    const d = map.get(r.device_id);
+    return { ...r, device_name: d?.name ?? null, platform: d?.platform ?? null, signed_in_at: d?.signed_in_at ?? d?.created_at ?? null };
+  });
 }
 async function userFrom(req: Request) {
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
@@ -156,12 +186,13 @@ Deno.serve(async (req) => {
       if (!existing) {
         const { count } = await admin.from("account_devices").select("device_id", { count: "exact", head: true }).eq("user_id", user.id);
         if ((count ?? 0) >= DEVICE_LIMIT) return json({ error: "device_limit", limit: DEVICE_LIMIT, devices: await listDevices(user.id) }, 403);
-        await admin.from("account_devices").insert({ user_id: user.id, device_id, name, platform, session_id });
+        await admin.from("account_devices").insert({ user_id: user.id, device_id, name, platform, session_id, signed_in_at: new Date().toISOString() });
       } else {
         // zelfde apparaat opnieuw ingelogd: oude sessie intrekken als die anders is
         if (existing.session_id && session_id && existing.session_id !== session_id) await admin.rpc("revoke_session", { sid: existing.session_id });
         const { data: cur } = await admin.from("account_devices").select("custom_name").eq("user_id", user.id).eq("device_id", device_id).maybeSingle();
         const patch: Record<string, unknown> = { platform, session_id, last_seen_at: new Date().toISOString() };
+        if (session_id && existing.session_id !== session_id) patch.signed_in_at = new Date().toISOString();
         if (!cur?.custom_name) patch.name = name;
         await admin.from("account_devices").update(patch).eq("user_id", user.id).eq("device_id", device_id);
       }
@@ -252,6 +283,72 @@ Deno.serve(async (req) => {
       if (!user) return json({ error: "not_signed_in" }, 401);
       await admin.from("account_state").delete().eq("user_id", user.id).eq("section", String(body.section ?? ""));
       return json({ ok: true });
+    }
+    case "stream_start": {
+      const user = await userFrom(req);
+      if (!user) return json({ error: "not_signed_in" }, 401);
+      const device_id = String(body.device_id ?? "").slice(0, 80);
+      if (!device_id) return json({ error: "device_id_missing" }, 400);
+      const fresh = new Date(Date.now() - STREAM_TTL_MS).toISOString();
+      await admin.from("account_streams").delete().eq("user_id", user.id).lt("last_ping", fresh);
+      const { data: active } = await admin.from("account_streams").select("device_id").eq("user_id", user.id).neq("device_id", device_id);
+      if ((active?.length ?? 0) >= STREAM_LIMIT) return json({ error: "stream_limit", limit: STREAM_LIMIT, streams: await activeStreams(user.id) }, 403);
+      const dev = await deviceInfo(user.id, device_id);
+      const row = {
+        profile_id: s80(body.profile_id), profile_name: s80(body.profile_name), title: s200(body.title),
+        kind: s80(body.kind), content_id: s200(body.content_id),
+      };
+      // lopende stream op dit apparaat afsluiten in de geschiedenis
+      await closeLog(user.id, device_id);
+      const { data: log } = await admin.from("account_watch_log").insert({
+        user_id: user.id, device_id, device_name: dev?.name ?? null, platform: dev?.platform ?? null, ...row,
+      }).select("id").single();
+      await admin.from("account_streams").upsert({
+        user_id: user.id, device_id, ...row, log_id: log?.id ?? null,
+        started_at: new Date().toISOString(), last_ping: new Date().toISOString(),
+      });
+      // geschiedenis ouder dan 8 dagen opruimen
+      await admin.from("account_watch_log").delete().eq("user_id", user.id).lt("started_at", new Date(Date.now() - 8 * 864e5).toISOString());
+      return json({ ok: true, limit: STREAM_LIMIT });
+    }
+    case "stream_ping": {
+      const user = await userFrom(req);
+      if (!user) return json({ stopped: true });
+      const device_id = String(body.device_id ?? "");
+      const { data: cur } = await admin.from("account_streams").select("log_id").eq("user_id", user.id).eq("device_id", device_id).maybeSingle();
+      if (!cur) return json({ stopped: true });
+      const now = new Date().toISOString();
+      const patch: Record<string, unknown> = { last_ping: now };
+      if (body.title) patch.title = s200(body.title);
+      await admin.from("account_streams").update(patch).eq("user_id", user.id).eq("device_id", device_id);
+      if (cur.log_id) await admin.from("account_watch_log").update({ ended_at: now }).eq("id", cur.log_id);
+      return json({ ok: true });
+    }
+    case "stream_stop": {
+      const user = await userFrom(req);
+      if (!user) return json({ ok: true });
+      const device_id = String(body.device_id ?? "");
+      await closeLog(user.id, device_id);
+      await admin.from("account_streams").delete().eq("user_id", user.id).eq("device_id", device_id);
+      return json({ ok: true });
+    }
+    case "list_streams": {
+      const user = await userFrom(req);
+      if (!user) return json({ error: "not_signed_in" }, 401);
+      return json({ limit: STREAM_LIMIT, streams: await activeStreams(user.id) });
+    }
+    case "watch_log": {
+      const user = await userFrom(req);
+      if (!user) return json({ error: "not_signed_in" }, 401);
+      const days = Math.min(Math.max(Number(body.days ?? 7) || 7, 1), 7);
+      const since = new Date(Date.now() - days * 864e5).toISOString();
+      const { data } = await admin.from("account_watch_log")
+        .select("device_name,platform,profile_name,title,kind,started_at,ended_at")
+        .eq("user_id", user.id).gte("started_at", since).order("started_at", { ascending: false }).limit(1000);
+      const entries = (data ?? []).map((e) => ({
+        ...e, minutes: Math.max(0, Math.round((Date.parse(e.ended_at) - Date.parse(e.started_at)) / 60000)),
+      })).filter((e) => e.minutes >= 1 || Date.now() - Date.parse(e.started_at) < 5 * 60000);
+      return json({ entries });
     }
     case "config": {
       const user = await userFrom(req);

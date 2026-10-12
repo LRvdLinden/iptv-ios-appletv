@@ -90,3 +90,38 @@ revoke all on public.account_state from anon, authenticated;
 
 -- Eigen apparaatnaam (build 45): een zelfgekozen naam wordt niet meer overschreven bij het registreren.
 alter table public.account_devices add column if not exists custom_name boolean not null default false;
+
+-- Build 51: wie kijkt er nu (max. 6 tegelijk) en kijkgeschiedenis van het account (7 dagen).
+alter table public.account_devices add column if not exists signed_in_at timestamptz;
+create table if not exists public.account_streams (
+  user_id      uuid not null references auth.users(id) on delete cascade,
+  device_id    text not null,
+  profile_id   text,
+  profile_name text,
+  title        text,
+  kind         text,
+  content_id   text,
+  log_id       bigint,
+  started_at   timestamptz not null default now(),
+  last_ping    timestamptz not null default now(),
+  primary key (user_id, device_id)
+);
+alter table public.account_streams enable row level security;
+revoke all on public.account_streams from anon, authenticated;
+create table if not exists public.account_watch_log (
+  id           bigserial primary key,
+  user_id      uuid not null references auth.users(id) on delete cascade,
+  device_id    text,
+  device_name  text,
+  platform     text,
+  profile_id   text,
+  profile_name text,
+  title        text,
+  kind         text,
+  content_id   text,
+  started_at   timestamptz not null default now(),
+  ended_at     timestamptz not null default now()
+);
+create index if not exists account_watch_log_user_idx on public.account_watch_log (user_id, started_at desc);
+alter table public.account_watch_log enable row level security;
+revoke all on public.account_watch_log from anon, authenticated;

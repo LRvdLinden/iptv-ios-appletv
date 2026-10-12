@@ -331,3 +331,37 @@ Samenvoegen: per item wint de nieuwste `updatedAt`.
 - **Wachtwoorden** worden nooit getoond; leeg laten betekent "ongewijzigd".
 - **Tijd:** `updatedAt` wordt op nu gezet bij elke wijziging.
 - **Collecties:** bekijken, hernoemen, verwijderen en smart-collecties maken via state-section `collections`.
+
+
+## Build 51: maximaal 6 tegelijk kijken, 15 apparaten, wie kijkt er nu, kijkgeschiedenis van 7 dagen
+
+- **Apparaten:** een account kan op maximaal **15** apparaten ingelogd zijn (dit was 10). Gebruik overal de `limit` uit het antwoord van de server, nooit een vast getal in de app.
+- **Tegelijk kijken:** maximaal **6** apparaten tegelijk. device-auth, met `Authorization: Bearer <access_token>`:
+
+| Actie | Body | Antwoord |
+|---|---|---|
+| `stream_start` | `{device_id, profile_id, profile_name, title, kind ("live"\|"movie"\|"episode"), content_id}` | `{ok}`, of **403** `{error:"stream_limit", limit, streams:[…]}` |
+| `stream_ping` | `{device_id, title?}` | `{ok}`, of `{stopped:true}`: deze stream telt niet meer (bijvoorbeeld door een te lange pauze), dus opnieuw `stream_start` |
+| `stream_stop` | `{device_id}` | `{ok}` |
+| `list_streams` | `{}` | `{limit, streams:[{device_id, device_name, platform, profile_name, title, kind, started_at, last_ping, signed_in_at}]}` |
+| `watch_log` | `{days: 7}` | `{entries:[{device_name, platform, profile_name, title, kind, started_at, ended_at, minutes}]}`, nieuwste eerst |
+
+**De speler:**
+- **Starten:** bij het starten van elke stream (live, film of aflevering, ook bij zappen of de volgende aflevering) roep je `stream_start` aan, met het actieve profiel en de titel. Bij een live-zender is dat de zendernaam plus het programma als dat bekend is ("NPO 1 · Journaal").
+- **Bij 403** stopt het afspelen en toon je **"Too many people are watching"**: "Your account can be used on up to %d screens at the same time." met de lijst van wie er kijkt (apparaat, profiel en titel). Daaronder de knoppen **Try again** en **Close**.
+- **Netwerkfout bij `stream_start`:** gewoon afspelen. Offline wordt niet geblokkeerd.
+- **Tijdens het afspelen**, ook bij pauze: elke 30 s `stream_ping`.
+- **Bij stoppen of sluiten** en als de app naar de achtergrond gaat (behalve bij beeld-in-beeld of AirPlay/Chromecast): `stream_stop`.
+- **Multiview** telt als één stream per apparaat.
+
+**Alleen voor het hoofdprofiel** in Mijn Bingr → Account:
+- **Nu aan het kijken**: de rij toont "%d van %d kijken nu". Een tik opent een detailscherm met per stream:
+  - het apparaat-icoon en de naam;
+  - het profiel;
+  - de titel;
+  - hoe lang al ("kijkt al 42 min", vanaf `started_at`);
+  - "Ingelogd sinds %@" (`signed_in_at`).
+  
+  Het scherm ververst elke 30 s.
+- **Kijkgeschiedenis (7 dagen)**: gegroepeerd per dag, met als kop "Vandaag", "Gisteren" of de dag en datum ("maandag 12 oktober"). Per regel: tijd, titel, profiel, apparaat en hoe lang er gekeken is ("45 min"). Bij een film of aflevering die in de bibliotheek staat, opent een tik de detailpagina.
+- **Op de website** staat hetzelfde in bingr.online/account, onder Apparaten.
