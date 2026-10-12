@@ -16,7 +16,7 @@ struct AuthView: View {
             if !Secrets.accountsConfigured {
                 notConfigured
             } else if account.isSignedIn && account.deviceLimit != nil {
-                // max. 10 apparaten: eerst een apparaat verwijderen (of Cancel = uitloggen)
+                // apparaatlimiet van de server (build 51: 15): eerst een apparaat verwijderen (of Cancel = uitloggen)
                 TooManyDevicesView { proceed() }.transition(.opacity)
             } else if let welcome {
                 signedInBanner(welcome)
@@ -74,7 +74,7 @@ struct AuthView: View {
         guard welcome == nil, !registering else { return }
         registering = true
         Task { @MainActor in
-            // na elke geslaagde login: dit apparaat registreren (max. 10). Limiet → "Too many devices".
+            // na elke geslaagde login: dit apparaat registreren (limiet van de server). Limiet → "Too many devices".
             // Een netwerkfout blokkeert niet: de registratie wordt dan bij de volgende heartbeat opnieuw geprobeerd.
             let r = await account.registerDevice()
             registering = false

@@ -9,6 +9,13 @@ struct MultiviewScreen: View {
     @State private var tiles: [Tile] = []
     @State private var active: UUID?
     @State private var picking = false
+    /// Tegelijk kijken: Multiview telt als één stream; dit object meldt hem aan en af.
+    @State private var streamOwner = StreamOwner()
+    @State private var streamLimit: AccountService.StreamLimit?
+    /// Zenders die stopten door de limiet (voor "Try again")
+    @State private var stoppedChannels: [Channel] = []
+
+    final class StreamOwner {}
 
     struct Tile: Identifiable {
         let id = UUID()
@@ -47,15 +54,27 @@ struct MultiviewScreen: View {
             }
             .foregroundStyle(.white)
             .padding(.horizontal, Theme.edge).padding(.top, tvScaled(8))
+
+            if let l = streamLimit {
+                StreamLimitView(limit: l, onRetry: {
+                    streamLimit = nil
+                    registerStream()
+                    let again = stoppedChannels
+                    stoppedChannels = []
+                    for c in again { add(c) }
+                }, onClose: { closeAll() })
+            }
         }
         #if os(tvOS)
         .onExitCommand { closeAll() }
         #endif
+        .onDisappear { StreamSession.shared.stop(owner: streamOwner) }
         .sheet(isPresented: $picking) {
             ChannelPicker(channels: playlists.library.channels) { c in add(c) }
         }
         .onAppear {
             if tiles.isEmpty {
+                registerStream()
                 for c in app.multiviewStart.prefix(4) { add(c) }
                 if tiles.isEmpty { picking = true }
             }
@@ -121,7 +140,31 @@ struct MultiviewScreen: View {
         }
     }
 
+    /// Multiview = één stream voor dit apparaat, hoeveel beelden er ook spelen.
+    private func registerStream() {
+        let owner = streamOwner
+        let session = StreamSession.shared
+        session.keepAliveInBackground = nil
+        session.titleProvider = nil
+        Task { @MainActor in
+            let r = await session.start(StreamSession.Info(title: "Multiview", kind: "live", contentID: "multiview"), owner: owner)
+            guard case .limit(let l) = r, app.showMultiview else { return }
+            hitLimit(l)
+        }
+        session.onLimit = { l in hitLimit(l) }
+    }
+
+    private func hitLimit(_ l: AccountService.StreamLimit) {
+        stoppedChannels = tiles.map(\.channel)
+        tiles.forEach { $0.controller.stop() }
+        tiles = []
+        active = nil
+        picking = false
+        streamLimit = l
+    }
+
     private func closeAll() {
+        StreamSession.shared.stop(owner: streamOwner)
         tiles.forEach { $0.controller.stop() }
         tiles = []
         app.showMultiview = false

@@ -36,6 +36,8 @@ struct PlayerScreen: View {
     @State private var banner: Channel?
     @State private var bannerPending = false
     @State private var bannerHide: Task<Void, Never>?
+    /// Tegelijk kijken: limiet bereikt (403 `stream_limit`) → "Too many people are watching"
+    @State private var streamLimit: AccountService.StreamLimit?
 
     enum Panel: String, Identifiable { case audioSubs, opensubs, options, cast, sources, rate; var id: String { rawValue } }
 
@@ -53,7 +55,7 @@ struct PlayerScreen: View {
             Color.black.ignoresSafeArea()
             EngineView(controller: player, external: true).ignoresSafeArea().allowsHitTesting(false)
             #if os(iOS)
-            if external.isConnected {
+            if external.isConnected && PlayerSettings.externalDisplay {
                 VStack(spacing: 12) {
                     Image(systemName: "rectangle.on.rectangle").font(.system(size: 44))
                     Text(L("Playing on the external display")).font(.headline)
@@ -105,9 +107,9 @@ struct PlayerScreen: View {
             #endif
 
             #if os(tvOS)
-            if !showControls { tvCatcher }
+            if !showControls && streamLimit == nil { tvCatcher }
             #endif
-            if showControls { controls.transition(.opacity) }
+            if showControls && streamLimit == nil { controls.transition(.opacity) }
 
             if let n = nextUp, player.errorText == nil, player.duration > 120, player.duration - player.currentTime < 45 {
                 NetflixButton(title: L("Next episode"), icon: "forward.end.fill") { playNext(n) }
@@ -132,6 +134,14 @@ struct PlayerScreen: View {
                     .background(.black.opacity(0.75), in: Capsule())
                     .frame(maxHeight: .infinity, alignment: .top).padding(.top, tvScaled(40))
                     .transition(.move(edge: .top).combined(with: .opacity))
+            }
+
+            if let l = streamLimit {
+                StreamLimitView(limit: l, onRetry: {
+                    streamLimit = nil
+                    Task { await start(player.item) }
+                }, onClose: { close() })
+                .transition(.opacity)
             }
         }
         .animation(.easeInOut(duration: 0.25), value: showControls)
@@ -159,7 +169,8 @@ struct PlayerScreen: View {
         .onChange(of: tvFocus) { _, f in if case .some(.bar(_)) = f { poke() } }   // rondkijken in de balk houdt hem zichtbaar
         .onAppear { tvFocus = showControls ? .bar("play") : .catcher }
         .onExitCommand {
-            if panel != nil { panel = nil } else if showControls { showControls = false } else { close() }
+            if streamLimit != nil { close() }
+            else if panel != nil { panel = nil } else if showControls { showControls = false } else { close() }
         }
         #endif
         .sheet(item: $panel) { p in
@@ -184,14 +195,17 @@ struct PlayerScreen: View {
             }
         }
         .task {
-            if reused { bind(player.item); poke() } else { await start(item) }
+            if reused { bind(player.item); attachStream(); poke() } else { await start(item) }
         }
         .onChange(of: player.notice) { _, n in
             if let n { flash(n); player.notice = nil }
         }
         .onDisappear {
             zapTask?.cancel()
-            if !player.inPiP { player.dismissed = true; player.stop() }
+            if !player.inPiP {
+                player.dismissed = true; player.stop()
+                StreamSession.shared.stop(owner: player)
+            }
         }
     }
 
@@ -250,7 +264,7 @@ struct PlayerScreen: View {
                     #endif
                     if player.isLive {
                         Button { player.goLive(); poke() } label: {
-                            Label(player.behindLive > 5 ? "−\(PlayerController.format(player.behindLive))" : "LIVE",
+                            Label(player.behindLive > 5 ? "−\(PlayerController.format(player.behindLive))" : L("LIVE"),
                                   systemImage: "dot.radiowaves.left.and.right")
                                 .font(.system(size: tvScaled(12), weight: .heavy))
                                 .padding(.horizontal, 10).padding(.vertical, 5)
@@ -395,7 +409,9 @@ struct PlayerScreen: View {
     private func start(_ it: PlayableItem) async {
         player.prepareNew()
         player.item = it
+        streamLimit = nil
         bind(it)
+        registerStream(it)
         if it.type == .live, let cid = it.channelID {
             let pl = playlists
             player.catchupProvider = { from, to in pl.catchupURL(channelID: cid, start: from, end: to) }
@@ -405,7 +421,7 @@ struct PlayerScreen: View {
         if it.stremio != nil {
             let found = await playlists.stremioStreams(it)
             // intussen gesloten of al naar een andere zender gezapt → niet meer starten
-            guard !player.dismissed, player.item.id == it.id else { return }
+            guard !player.dismissed, player.item.id == it.id, streamLimit == nil else { return }
             stremioChoices = found
             guard let first = stremioChoices.first else {
                 player.fail(L("No playable streams found for this title.")); return
@@ -413,7 +429,7 @@ struct PlayerScreen: View {
             player.start(url: first.url)
         } else {
             let resolved = await playlists.resolve(it)
-            guard !player.dismissed, player.item.id == it.id else { return }
+            guard !player.dismissed, player.item.id == it.id, streamLimit == nil else { return }
             guard let url = resolved else { player.fail(L("No stream address available.")); return }
             player.liveURL = url
             player.start(url: url)
@@ -514,7 +530,53 @@ struct PlayerScreen: View {
         }
     }
 
-    private func close() { player.stop(); dismiss() }
+    private func close() { player.stop(); StreamSession.shared.stop(owner: player); dismiss() }
+
+    // MARK: tegelijk kijken (build 51)
+
+    /// Elke nieuwe stream (ook zappen en de volgende aflevering) aanmelden bij de Bingr-account.
+    /// Afspelen wacht daar niet op; bij 403 `stream_limit` stopt de speler alsnog.
+    private func registerStream(_ it: PlayableItem) {
+        attachStream()
+        let p = player
+        Task { @MainActor in
+            let r = await StreamSession.shared.start(item: it, owner: p)
+            guard case .limit(let l) = r, !p.dismissed, p.item.id == it.id else { return }
+            hitLimit(l)
+        }
+    }
+
+    /// Callbacks van de stream-sessie naar deze speler (ook na terugkeer uit beeld-in-beeld).
+    private func attachStream() {
+        let p = player, pl = playlists
+        let session = StreamSession.shared
+        session.keepAliveInBackground = {
+            #if os(tvOS)
+            return p.inPiP || p.isExternalPlayback
+            #else
+            return p.inPiP || p.isExternalPlayback || CastManager.shared.connected != nil
+            #endif
+        }
+        session.titleProvider = {
+            var it = p.item
+            if it.type == .live, let cid = it.channelID, let c = pl.library.channels.first(where: { $0.id == cid }),
+               let now = pl.library.nowPlaying(c) {
+                it.subtitle = now.title
+            }
+            return StreamSession.info(for: it).title
+        }
+        session.onLimit = { l in hitLimit(l) }
+    }
+
+    private func hitLimit(_ l: AccountService.StreamLimit) {
+        zapTask?.cancel()
+        zapTarget = nil
+        nextUp = nil
+        player.stop()
+        panel = nil
+        showControls = false
+        streamLimit = l
+    }
 
     private func toggleControls() { showControls.toggle(); if showControls { poke() } }
 

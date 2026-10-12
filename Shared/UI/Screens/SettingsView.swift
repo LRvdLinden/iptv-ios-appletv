@@ -26,6 +26,7 @@ struct SettingsView: View {
     @AppStorage(PlayerSettings.zapDelayKey) private var zapDelay = 0.0
     @AppStorage(PlayerSettings.previewKey) private var channelPreview = true
     @AppStorage(PlayerSettings.matchKey) private var matchFrameRate = true
+    @AppStorage(PlayerSettings.externalKey) private var externalDisplay = true
     @State private var showTraktLogin = false
     @State private var showOSLogin = false
     @State private var editing: PlaylistSource?
@@ -411,6 +412,9 @@ struct SettingsView: View {
             if PlayerSettings.isPhone && channelPreview {
                 Text(L("Not over mobile data, to save your data.")).font(.caption).foregroundStyle(Theme.secondary)
             }
+            #endif
+            #if os(iOS)
+            Toggle(L("Show on external display"), isOn: $externalDisplay)
             #endif
             #if os(tvOS)
             Toggle(L("Match frame rate"), isOn: $matchFrameRate)

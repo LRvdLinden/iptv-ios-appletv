@@ -330,6 +330,9 @@ final class PlayerController: ObservableObject {
 
     // MARK: beeld-in-beeld
 
+    /// AirPlay (Apple-engine speelt op een ander scherm): op de achtergrond blijft de stream dan aangemeld.
+    var isExternalPlayback: Bool { (engine as? AVEngine)?.player.isExternalPlaybackActive ?? false }
+
     static var pipSupported: Bool { AVPictureInPictureController.isPictureInPictureSupported() }
 
     /// Start beeld-in-beeld. Bij VLC wordt eerst naar de Apple-speler gewisseld (alleen die kan PiP).
@@ -355,7 +358,10 @@ final class PlayerController: ObservableObject {
         case .didStop:
             inPiP = false
             if PiPCenter.shared.active === self { PiPCenter.shared.active = nil }
-            if restoringFromPiP { restoringFromPiP = false } else { stop() }   // venster gesloten = stoppen
+            if restoringFromPiP { restoringFromPiP = false } else {   // venster gesloten = stoppen
+                stop()
+                StreamSession.shared.stop(owner: self)
+            }
         case .failed:
             notice = L("Picture in Picture isn't available for this stream.")
         }
@@ -503,6 +509,7 @@ final class PiPCenter {
         active = nil
         (a.engine as? AVEngine)?.stopPiP()
         a.stop()
+        StreamSession.shared.stop(owner: a)
     }
 }
 
@@ -560,7 +567,7 @@ struct EngineView: UIViewRepresentable {
         let v = controller.engine.view
         context.coordinator.engineView = v
         #if os(iOS)
-        if external && display.isConnected {
+        if external && display.isConnected && PlayerSettings.externalDisplay {
             display.attach(v)
             return
         }

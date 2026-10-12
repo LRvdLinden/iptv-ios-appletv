@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Gekoppelde apparaten (max. 10), zie "Gekoppelde apparaten" in docs/ACCOUNT.md.
+/// Gekoppelde apparaten (limiet komt van de server, build 51: 15), zie "Gekoppelde apparaten" in docs/ACCOUNT.md.
 
 // MARK: - Weergave
 
@@ -102,6 +102,9 @@ struct DeviceRow: View {
                 }
                 if let used = DeviceText.lastUsed(device) {
                     Text(used).font(.system(size: tvScaled(12))).foregroundStyle(Theme.secondary)
+                }
+                if let since = StreamText.signedInSince(device.signedInAt) {
+                    Text(since).font(.system(size: tvScaled(12))).foregroundStyle(Theme.secondary)
                 }
             }
             Spacer(minLength: tvScaled(8))
@@ -301,7 +304,7 @@ struct DevicesView: View {
             let clean = String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(60))
             data = AccountService.DeviceLimit(limit: cur.limit, devices: cur.devices.map {
                 $0.id == d.id ? AccountService.Device(id: $0.id, name: clean, platform: $0.platform, createdAt: $0.createdAt,
-                                                      lastSeenAt: $0.lastSeenAt, current: $0.current) : $0
+                                                      lastSeenAt: $0.lastSeenAt, current: $0.current, signedInAt: $0.signedInAt) : $0
             })
         }
         await load()
@@ -371,7 +374,7 @@ struct TooManyDevicesView: View {
             Text(L("Too many devices"))
                 .font(.system(size: tvScaled(28), weight: .bold))
                 .foregroundStyle(.white)
-            Text(L("Your account can be used on up to %d devices. Remove a device to sign in on this one.", limit?.limit ?? 10))
+            Text(L("Your account can be used on up to %d devices. Remove a device to sign in on this one.", limit?.limit ?? AccountService.fallbackDeviceLimit))
                 .font(.system(size: tvScaled(15)))
                 .foregroundStyle(Theme.secondary)
                 .fixedSize(horizontal: false, vertical: true)

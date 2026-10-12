@@ -369,7 +369,7 @@ private struct EventRow: View {
                 Text(info.title).font(.system(size: tvScaled(15), weight: .bold)).lineLimit(2)
                 HStack(spacing: 8) {
                     if live {
-                        Text("LIVE").font(.system(size: tvScaled(10), weight: .heavy))
+                        Text(L("LIVE")).font(.system(size: tvScaled(10), weight: .heavy))
                             .padding(.horizontal, 6).padding(.vertical, 2)
                             .background(Theme.red, in: Capsule())
                     }

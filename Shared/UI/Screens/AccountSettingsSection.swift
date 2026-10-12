@@ -3,6 +3,7 @@ import SwiftUI
 /// Mijn Bingr → "Account" (voor het hoofdaccount en alle profielen), zie docs/ACCOUNT.md.
 struct AccountSettingsSection: View {
     @EnvironmentObject var account: AccountService
+    @EnvironmentObject var store: CloudStore
     @State private var confirmSignOut = false
     @State private var confirmDelete = false
     @State private var error: String?
@@ -14,6 +15,13 @@ struct AccountSettingsSection: View {
                     .foregroundStyle(.white)
                 NavigationLink { DevicesView() } label: {
                     Label(L("Devices"), systemImage: "laptopcomputer.and.iphone")
+                }
+                // tegelijk kijken (build 51): alleen voor het hoofdprofiel
+                if isMain {
+                    WatchingNowRow()
+                    NavigationLink { WatchLogView() } label: {
+                        Label(L("Watch history (7 days)"), systemImage: "clock.arrow.circlepath")
+                    }
                 }
                 #if !os(tvOS)
                 NavigationLink { LinkTVView() } label: {
@@ -51,6 +59,9 @@ struct AccountSettingsSection: View {
             .disabled(account.isBusy)
         }
     }
+
+    /// Hoofdprofiel (of nog geen profielen), net als in Mijn Bingr.
+    private var isMain: Bool { store.isMainActive || store.profiles.isEmpty || store.activeProfileID == nil }
 
     private func deleteAccount() {
         error = nil

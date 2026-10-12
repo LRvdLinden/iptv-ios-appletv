@@ -251,7 +251,7 @@ struct CollectionEditor: View {
 
     @ViewBuilder private var smartSection: some View {
         Section {
-            TextField(L("Keywords, e.g. sport, football, F1"), text: $query)
+            TextField(L("Keywords"), text: $query, prompt: Text(L("Keywords, e.g. sport, football, F1")))
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
             Toggle(L("Channels"), isOn: $channels)

@@ -616,7 +616,19 @@
   "Type": "النوع",
   "Updating…": "جارٍ التحديث…",
   "With a zap delay, quickly zapping only shows the channel banner; the stream starts once you stop.": "مع تأخير التنقل، يُظهر التنقل السريع شريط القناة فقط؛ ويبدأ البث عندما تتوقف.",
-  "Zap delay": "تأخير التنقل"
+  "Zap delay": "تأخير التنقل",
+  "%d of %d watching now": "%d من %d يشاهدون الآن",
+  "Keywords": "كلمات مفتاحية",
+  "LIVE": "مباشر",
+  "Nobody is watching right now.": "لا أحد يشاهد الآن.",
+  "Nothing watched in the last 7 days.": "لم تتم مشاهدة شيء خلال آخر 7 أيام.",
+  "Show on external display": "العرض على الشاشة الخارجية",
+  "Signed in since %@": "مسجّل الدخول منذ %@",
+  "Too many people are watching": "عدد كبير جدًا من المشاهدين",
+  "Watch history (7 days)": "سجل المشاهدة (7 أيام)",
+  "Watching for %@": "يشاهد منذ %@",
+  "Watching now": "يشاهد الآن",
+  "Your account can be used on up to %d screens at the same time.": "يمكن استخدام حسابك على %d شاشات كحد أقصى في الوقت نفسه."
  },
  "de": {
   "%@ is now signed in.": "%@ ist jetzt angemeldet.",
@@ -1235,7 +1247,19 @@
   "Type": "Art",
   "Updating…": "Wird aktualisiert…",
   "With a zap delay, quickly zapping only shows the channel banner; the stream starts once you stop.": "Mit Zapp-Verzögerung zeigt schnelles Zappen nur die Senderleiste; der Stream startet, sobald du anhältst.",
-  "Zap delay": "Zapp-Verzögerung"
+  "Zap delay": "Zapp-Verzögerung",
+  "%d of %d watching now": "%d von %d schauen gerade",
+  "Keywords": "Suchbegriffe",
+  "LIVE": "LIVE",
+  "Nobody is watching right now.": "Gerade schaut niemand.",
+  "Nothing watched in the last 7 days.": "In den letzten 7 Tagen wurde nichts geschaut.",
+  "Show on external display": "Auf externem Bildschirm zeigen",
+  "Signed in since %@": "Angemeldet seit %@",
+  "Too many people are watching": "Zu viele schauen gerade",
+  "Watch history (7 days)": "Verlauf (7 Tage)",
+  "Watching for %@": "Schaut seit %@",
+  "Watching now": "Schaut gerade",
+  "Your account can be used on up to %d screens at the same time.": "Dein Konto kann auf bis zu %d Bildschirmen gleichzeitig genutzt werden."
  },
  "es": {
   "%@ is now signed in.": "%@ ya ha iniciado sesión.",
@@ -1854,7 +1878,19 @@
   "Type": "Tipo",
   "Updating…": "Actualizando…",
   "With a zap delay, quickly zapping only shows the channel banner; the stream starts once you stop.": "Con un retardo de zapping, zapear rápido solo muestra la barra del canal; la emisión empieza cuando paras.",
-  "Zap delay": "Retardo de zapping"
+  "Zap delay": "Retardo de zapping",
+  "%d of %d watching now": "%d de %d viendo ahora",
+  "Keywords": "Palabras clave",
+  "LIVE": "EN VIVO",
+  "Nobody is watching right now.": "Nadie está viendo ahora.",
+  "Nothing watched in the last 7 days.": "No se ha visto nada en los últimos 7 días.",
+  "Show on external display": "Mostrar en pantalla externa",
+  "Signed in since %@": "Sesión iniciada desde %@",
+  "Too many people are watching": "Demasiadas personas están viendo",
+  "Watch history (7 days)": "Historial (7 días)",
+  "Watching for %@": "Viendo desde hace %@",
+  "Watching now": "Viendo ahora",
+  "Your account can be used on up to %d screens at the same time.": "Tu cuenta puede usarse en hasta %d pantallas a la vez."
  },
  "fr": {
   "%@ is now signed in.": "%@ est maintenant connecté.",
@@ -2473,7 +2509,19 @@
   "Type": "Type",
   "Updating…": "Mise à jour…",
   "With a zap delay, quickly zapping only shows the channel banner; the stream starts once you stop.": "Avec un délai de zapping, zapper rapidement n’affiche que le bandeau de la chaîne ; le flux démarre quand vous vous arrêtez.",
-  "Zap delay": "Délai de zapping"
+  "Zap delay": "Délai de zapping",
+  "%d of %d watching now": "%d sur %d regardent",
+  "Keywords": "Mots-clés",
+  "LIVE": "EN DIRECT",
+  "Nobody is watching right now.": "Personne ne regarde en ce moment.",
+  "Nothing watched in the last 7 days.": "Rien regardé ces 7 derniers jours.",
+  "Show on external display": "Afficher sur l’écran externe",
+  "Signed in since %@": "Connecté depuis le %@",
+  "Too many people are watching": "Trop de personnes regardent",
+  "Watch history (7 days)": "Historique (7 jours)",
+  "Watching for %@": "Regarde depuis %@",
+  "Watching now": "En cours de visionnage",
+  "Your account can be used on up to %d screens at the same time.": "Votre compte peut être utilisé sur %d écrans maximum en même temps."
  },
  "it": {
   "%@ is now signed in.": "%@ ha effettuato l’accesso.",
@@ -3092,7 +3140,19 @@
   "Type": "Tipo",
   "Updating…": "Aggiornamento…",
   "With a zap delay, quickly zapping only shows the channel banner; the stream starts once you stop.": "Con un ritardo di zapping, cambiare canale velocemente mostra solo la barra del canale; lo stream parte quando ti fermi.",
-  "Zap delay": "Ritardo zapping"
+  "Zap delay": "Ritardo zapping",
+  "%d of %d watching now": "%d di %d stanno guardando",
+  "Keywords": "Parole chiave",
+  "LIVE": "LIVE",
+  "Nobody is watching right now.": "Nessuno sta guardando ora.",
+  "Nothing watched in the last 7 days.": "Niente guardato negli ultimi 7 giorni.",
+  "Show on external display": "Mostra sullo schermo esterno",
+  "Signed in since %@": "Accesso dal %@",
+  "Too many people are watching": "Troppe persone stanno guardando",
+  "Watch history (7 days)": "Cronologia (7 giorni)",
+  "Watching for %@": "Guarda da %@",
+  "Watching now": "In visione ora",
+  "Your account can be used on up to %d screens at the same time.": "Il tuo account può essere usato su un massimo di %d schermi contemporaneamente."
  },
  "nl": {
   "%@ is now signed in.": "%@ is nu ingelogd.",
@@ -3711,7 +3771,19 @@
   "Type": "Soort",
   "Updating…": "Bijwerken…",
   "With a zap delay, quickly zapping only shows the channel banner; the stream starts once you stop.": "Met een zapvertraging toont snel zappen alleen de zenderbalk; de stream start zodra je stopt.",
-  "Zap delay": "Zapvertraging"
+  "Zap delay": "Zapvertraging",
+  "%d of %d watching now": "%d van %d kijken nu",
+  "Keywords": "Zoekwoorden",
+  "LIVE": "LIVE",
+  "Nobody is watching right now.": "Er kijkt nu niemand.",
+  "Nothing watched in the last 7 days.": "De afgelopen 7 dagen is er niets gekeken.",
+  "Show on external display": "Tonen op extern scherm",
+  "Signed in since %@": "Ingelogd sinds %@",
+  "Too many people are watching": "Er kijken te veel mensen tegelijk",
+  "Watch history (7 days)": "Kijkgeschiedenis (7 dagen)",
+  "Watching for %@": "Kijkt al %@",
+  "Watching now": "Nu aan het kijken",
+  "Your account can be used on up to %d screens at the same time.": "Je account kan op maximaal %d schermen tegelijk worden gebruikt."
  },
  "pl": {
   "%@ is now signed in.": "%@ jest teraz zalogowany.",
@@ -4330,7 +4402,19 @@
   "Type": "Rodzaj",
   "Updating…": "Aktualizowanie…",
   "With a zap delay, quickly zapping only shows the channel banner; the stream starts once you stop.": "Z opóźnieniem przełączania szybkie przełączanie pokazuje tylko pasek kanału; strumień startuje, gdy się zatrzymasz.",
-  "Zap delay": "Opóźnienie przełączania"
+  "Zap delay": "Opóźnienie przełączania",
+  "%d of %d watching now": "%d z %d ogląda teraz",
+  "Keywords": "Słowa kluczowe",
+  "LIVE": "NA ŻYWO",
+  "Nobody is watching right now.": "Nikt teraz nie ogląda.",
+  "Nothing watched in the last 7 days.": "Nic nie oglądano w ciągu ostatnich 7 dni.",
+  "Show on external display": "Pokaż na zewnętrznym ekranie",
+  "Signed in since %@": "Zalogowano od %@",
+  "Too many people are watching": "Zbyt wiele osób ogląda",
+  "Watch history (7 days)": "Historia oglądania (7 dni)",
+  "Watching for %@": "Ogląda od %@",
+  "Watching now": "Teraz ogląda",
+  "Your account can be used on up to %d screens at the same time.": "Z konta można korzystać jednocześnie na maksymalnie %d ekranach."
  },
  "pt": {
   "%@ is now signed in.": "%@ já tem sessão iniciada.",
@@ -4949,7 +5033,19 @@
   "Type": "Tipo",
   "Updating…": "A atualizar…",
   "With a zap delay, quickly zapping only shows the channel banner; the stream starts once you stop.": "Com um atraso de zapping, mudar de canal depressa só mostra a barra do canal; a emissão começa quando parar.",
-  "Zap delay": "Atraso de zapping"
+  "Zap delay": "Atraso de zapping",
+  "%d of %d watching now": "%d de %d a ver agora",
+  "Keywords": "Palavras-chave",
+  "LIVE": "AO VIVO",
+  "Nobody is watching right now.": "Ninguém está a ver agora.",
+  "Nothing watched in the last 7 days.": "Nada visto nos últimos 7 dias.",
+  "Show on external display": "Mostrar no ecrã externo",
+  "Signed in since %@": "Sessão iniciada desde %@",
+  "Too many people are watching": "Demasiadas pessoas a ver",
+  "Watch history (7 days)": "Histórico (7 dias)",
+  "Watching for %@": "A ver há %@",
+  "Watching now": "A ver agora",
+  "Your account can be used on up to %d screens at the same time.": "A tua conta pode ser usada em até %d ecrãs ao mesmo tempo."
  },
  "tr": {
   "%@ is now signed in.": "%@ artık oturum açtı.",
@@ -5568,7 +5664,19 @@
   "Type": "Tür",
   "Updating…": "Güncelleniyor…",
   "With a zap delay, quickly zapping only shows the channel banner; the stream starts once you stop.": "Zap gecikmesiyle hızlı kanal değiştirmede yalnızca kanal bandı görünür; yayın sen durunca başlar.",
-  "Zap delay": "Zap gecikmesi"
+  "Zap delay": "Zap gecikmesi",
+  "%d of %d watching now": "%d / %d şu an izliyor",
+  "Keywords": "Anahtar kelimeler",
+  "LIVE": "CANLI",
+  "Nobody is watching right now.": "Şu an kimse izlemiyor.",
+  "Nothing watched in the last 7 days.": "Son 7 günde hiçbir şey izlenmedi.",
+  "Show on external display": "Harici ekranda göster",
+  "Signed in since %@": "%@ tarihinden beri oturum açık",
+  "Too many people are watching": "Çok fazla kişi izliyor",
+  "Watch history (7 days)": "İzleme geçmişi (7 gün)",
+  "Watching for %@": "%@ süredir izliyor",
+  "Watching now": "Şu an izleniyor",
+  "Your account can be used on up to %d screens at the same time.": "Hesabın aynı anda en fazla %d ekranda kullanılabilir."
  },
  "zh-Hans": {
   "%@ is now signed in.": "%@ 现已登录。",
@@ -6187,6 +6295,18 @@
   "Type": "类型",
   "Updating…": "正在更新…",
   "With a zap delay, quickly zapping only shows the channel banner; the stream starts once you stop.": "设置换台延迟后，快速换台时只显示频道横幅；停下后才开始播放。",
-  "Zap delay": "换台延迟"
+  "Zap delay": "换台延迟",
+  "%d of %d watching now": "%d / %d 正在观看",
+  "Keywords": "关键词",
+  "LIVE": "直播",
+  "Nobody is watching right now.": "目前没有人在观看。",
+  "Nothing watched in the last 7 days.": "过去 7 天没有观看记录。",
+  "Show on external display": "在外接显示器上显示",
+  "Signed in since %@": "自 %@ 起登录",
+  "Too many people are watching": "观看人数过多",
+  "Watch history (7 days)": "观看记录（7 天）",
+  "Watching for %@": "已观看 %@",
+  "Watching now": "正在观看",
+  "Your account can be used on up to %d screens at the same time.": "你的账户最多可同时在 %d 个屏幕上使用。"
  }
 }

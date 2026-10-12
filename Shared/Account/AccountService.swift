@@ -34,7 +34,12 @@ final class AccountService: ObservableObject {
         let createdAt: Date?
         let lastSeenAt: Date?
         let current: Bool
+        /// Ingelogd sinds (`signed_in_at`, build 51); nil bij oudere servers.
+        var signedInAt: Date? = nil
     }
+
+    /// Valt alleen terug op dit getal als de server geen `limit` meestuurt; de server is leidend (build 51: 15).
+    static let fallbackDeviceLimit = 15
 
     /// Limiet bereikt bij `register_device`: dan toont de app "Too many devices".
     struct DeviceLimit: Equatable {
@@ -249,7 +254,7 @@ final class AccountService: ObservableObject {
         return r.string("device") ?? "TV"
     }
 
-    // MARK: - Gekoppelde apparaten (max. 10)
+    // MARK: - Gekoppelde apparaten (limiet van de server, build 51: 15)
 
     /// Vaste, alleen lokale apparaat-ID (UUID). Eén keer aangemaakt; blijft bestaan na uitloggen.
     let deviceID: String = {
@@ -294,7 +299,7 @@ final class AccountService: ObservableObject {
             }
             guard isSignedIn else { return .failed }
             if r.status == 403 || r.string("error") == "device_limit" {
-                let limit = Int(r.number("limit") ?? 10)
+                let limit = Int(r.number("limit") ?? Double(Self.fallbackDeviceLimit))
                 let list = (r.json["devices"] as? [[String: Any]] ?? []).compactMap(Self.device)
                 deviceLimit = DeviceLimit(limit: limit, devices: list)
                 return .limit
@@ -352,7 +357,7 @@ final class AccountService: ObservableObject {
         }
         guard r.status == 200 else { throw AccountError.generic }
         let list = (r.json["devices"] as? [[String: Any]] ?? []).compactMap(Self.device)
-        return DeviceLimit(limit: Int(r.number("limit") ?? 10), devices: list)
+        return DeviceLimit(limit: Int(r.number("limit") ?? Double(Self.fallbackDeviceLimit)), devices: list)
     }
 
     /// Een apparaat verwijderen (de sessie ervan wordt ingetrokken). Het eigen apparaat = uitloggen.
@@ -381,7 +386,7 @@ final class AccountService: ObservableObject {
         if let l = deviceLimit {
             deviceLimit = DeviceLimit(limit: l.limit, devices: l.devices.map {
                 $0.id == id ? Device(id: $0.id, name: clean, platform: $0.platform, createdAt: $0.createdAt,
-                                     lastSeenAt: $0.lastSeenAt, current: $0.current) : $0
+                                     lastSeenAt: $0.lastSeenAt, current: $0.current, signedInAt: $0.signedInAt) : $0
             })
         }
     }
@@ -395,6 +400,122 @@ final class AccountService: ObservableObject {
         return r
     }
 
+    // MARK: - Tegelijk kijken (build 51), zie docs/ACCOUNT.md
+
+    /// Een stream die nu loopt (`list_streams`, of de lijst bij 403 `stream_limit`).
+    struct ActiveStream: Identifiable, Equatable {
+        let deviceID: String
+        let deviceName: String
+        let platform: String
+        let profileName: String
+        let title: String
+        let kind: String
+        let startedAt: Date?
+        let signedInAt: Date?
+        var id: String { deviceID }
+    }
+
+    struct StreamLimit: Equatable {
+        let limit: Int
+        let streams: [ActiveStream]
+    }
+
+    /// Eén regel uit de kijkgeschiedenis (`watch_log`).
+    struct WatchLogEntry: Identifiable, Equatable {
+        let id = UUID()
+        let deviceName: String
+        let platform: String
+        let profileName: String
+        let title: String
+        let kind: String
+        let startedAt: Date
+        let minutes: Int
+    }
+
+    enum StreamStartResult { case ok, limit(StreamLimit), offline }
+
+    /// `stream_start`. Netwerkfouten en onverwachte antwoorden → `.offline` (afspelen gaat gewoon door).
+    func streamStart(profileID: String?, profileName: String?, title: String, kind: String, contentID: String) async -> StreamStartResult {
+        guard Secrets.accountsConfigured, isSignedIn else { return .offline }
+        var body: [String: Any] = ["action": "stream_start", "device_id": deviceID, "title": title,
+                                   "kind": kind, "content_id": contentID]
+        if let profileID { body["profile_id"] = profileID }
+        if let profileName { body["profile_name"] = profileName }
+        do {
+            let r = try await authorized { token in try await self.post("/functions/v1/device-auth", body, bearer: token) }
+            if r.status == 403 || r.string("error") == "stream_limit" {
+                let streams = (r.json["streams"] as? [[String: Any]] ?? []).compactMap(Self.stream)
+                return .limit(StreamLimit(limit: Int(r.number("limit") ?? Double(streams.count)), streams: streams))
+            }
+            return r.status == 200 ? .ok : .offline
+        } catch {
+            return .offline
+        }
+    }
+
+    /// `stream_ping`: `false` als de server zegt dat de stream niet meer telt (`stopped`); dan opnieuw `stream_start`.
+    func streamPing(title: String?) async -> Bool {
+        guard Secrets.accountsConfigured, isSignedIn else { return true }
+        var body: [String: Any] = ["action": "stream_ping", "device_id": deviceID]
+        if let title { body["title"] = title }
+        do {
+            let r = try await authorized { token in try await self.post("/functions/v1/device-auth", body, bearer: token) }
+            return (r.json["stopped"] as? Bool) != true
+        } catch {
+            return true
+        }
+    }
+
+    func streamStop() async {
+        guard Secrets.accountsConfigured, isSignedIn else { return }
+        _ = try? await authorized { token in
+            try await self.post("/functions/v1/device-auth", ["action": "stream_stop", "device_id": self.deviceID], bearer: token)
+        }
+    }
+
+    /// Wie kijkt er nu (alleen voor het hoofdprofiel in Mijn Bingr → Account).
+    func listStreams() async throws -> StreamLimit {
+        let r = try await authorized { token in
+            try await self.post("/functions/v1/device-auth", ["action": "list_streams"], bearer: token)
+        }
+        guard r.status == 200 else { throw AccountError.generic }
+        let streams = (r.json["streams"] as? [[String: Any]] ?? []).compactMap(Self.stream)
+        return StreamLimit(limit: Int(r.number("limit") ?? Double(streams.count)), streams: streams)
+    }
+
+    /// Kijkgeschiedenis van de laatste `days` dagen, nieuwste eerst.
+    func watchLog(days: Int = 7) async throws -> [WatchLogEntry] {
+        let r = try await authorized { token in
+            try await self.post("/functions/v1/device-auth", ["action": "watch_log", "days": days], bearer: token)
+        }
+        guard r.status == 200 else { throw AccountError.generic }
+        let rows = r.json["entries"] as? [[String: Any]] ?? []
+        var out: [WatchLogEntry] = []
+        for j in rows {
+            guard let start = Self.parseDate(j["started_at"]) else { continue }
+            var minutes = (j["minutes"] as? NSNumber)?.intValue
+            if minutes == nil, let end = Self.parseDate(j["ended_at"]) { minutes = Int(end.timeIntervalSince(start) / 60) }
+            let platform = j["platform"] as? String ?? ""
+            out.append(WatchLogEntry(deviceName: (j["device_name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? platform,
+                                     platform: platform,
+                                     profileName: j["profile_name"] as? String ?? "",
+                                     title: j["title"] as? String ?? "",
+                                     kind: j["kind"] as? String ?? "",
+                                     startedAt: start, minutes: max(0, minutes ?? 0)))
+        }
+        return out.sorted { $0.startedAt > $1.startedAt }
+    }
+
+    private static func stream(_ j: [String: Any]) -> ActiveStream? {
+        guard let id = j["device_id"] as? String else { return nil }
+        let platform = j["platform"] as? String ?? ""
+        let name = (j["device_name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? (platform.isEmpty ? "?" : platform)
+        return ActiveStream(deviceID: id, deviceName: name, platform: platform,
+                            profileName: j["profile_name"] as? String ?? "", title: j["title"] as? String ?? "",
+                            kind: j["kind"] as? String ?? "", startedAt: parseDate(j["started_at"]),
+                            signedInAt: parseDate(j["signed_in_at"]))
+    }
+
     private func setRegistered(_ v: Bool) {
         deviceRegistered = v
         Keychain.setLocalOnly(v ? "1" : nil, for: K.registered)
@@ -406,7 +527,7 @@ final class AccountService: ObservableObject {
         let name = (j["name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? (platform.isEmpty ? "?" : platform)
         return Device(id: id, name: name, platform: platform,
                       createdAt: parseDate(j["created_at"]), lastSeenAt: parseDate(j["last_seen_at"]),
-                      current: (j["current"] as? Bool) ?? false)
+                      current: (j["current"] as? Bool) ?? false, signedInAt: parseDate(j["signed_in_at"]))
     }
 
     /// Postgres-tijdstempel (`2026-10-12T10:15:30.123456+00:00`) → Date.

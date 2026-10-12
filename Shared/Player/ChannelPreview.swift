@@ -30,6 +30,10 @@ enum PlayerSettings {
     static let matchKey = "player.matchFrameRate"
     static var matchFrameRate: Bool { UserDefaults.standard.object(forKey: matchKey) as? Bool ?? true }
 
+    /// iPhone/iPad: met een extern scherm (HDMI of AirPlay-schermdeling) de video daar tonen (standaard aan).
+    static let externalKey = "player.externalDisplay"
+    static var externalDisplay: Bool { UserDefaults.standard.object(forKey: externalKey) as? Bool ?? true }
+
     @MainActor static var isPhone: Bool {
         #if os(iOS)
         return UIDevice.current.userInterfaceIdiom == .phone
