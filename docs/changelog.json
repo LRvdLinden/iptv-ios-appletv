@@ -3,719 +3,1295 @@
   "build": 51,
   "version": "1.0.0",
   "date": "2026-10-12",
-  "platforms": [
-   "apple",
-   "android",
-   "web"
-  ],
-  "nl": [
-   "Tegelijk kijken: met één account kijk je op maximaal 6 schermen tegelijk; zijn het er meer, dan zie je wie er kijkt",
-   "Apparaten: je account werkt nu op maximaal 15 apparaten, met per apparaat sinds wanneer het is ingelogd",
-   "Wie kijkt er nu (hoofdaccount): Mijn Bingr → Account toont welk apparaat en profiel wat kijkt, en hoe lang al",
-   "Kijkgeschiedenis van 7 dagen (hoofdaccount): per dag wat er op welk apparaat en profiel gekeken is",
-   "Collecties: maak je eigen rijen met naam en afbeelding, handmatig (Aan collectie toevoegen…) of slim met zoekwoorden",
-   "Startscherm per profiel: zet rijen aan of uit en in je eigen volgorde (Mijn Bingr → Startscherm)",
-   "Zappen: veeg in de live-speler omhoog of omlaag naar de volgende of vorige zender, met zenderbalk en instelbare zapvertraging",
-   "Zendervoorbeeld: in Live TV en de tv-gids speelt de geselecteerde zender na een seconde zonder geluid mee",
-   "Terugkijk-correctie per zender: verschuif het begin van terugkijken met −120 tot +120 minuten",
-   "Apple TV: beeldfrequentie en dynamisch bereik passen zich aan de stream aan",
-   "Direct laden: je bewaarde lijst staat meteen in beeld en wordt op de achtergrond bijgewerkt",
-   "Evenementzenders (PPV, events) in een eigen groep Evenementen, op begintijd met LIVE-label",
-   "Zoeken: resultaten tonen de kleur van hun bron als je meerdere bronnen hebt",
-   "iPhone en iPad: op een extern scherm speelt de video schermvullend, de bediening blijft op je toestel",
-   "Website: servers, collecties, wie kijkt er nu en kijkgeschiedenis in Mijn Bingr",
-   "Na het wijzigen van je wachtwoord word je op al je apparaten automatisch uitgelogd",
-   "Website: Apparaten in Mijn Bingr in- en uitklapbaar"
-  ],
-  "en": [
-   "Watching together: one account can watch on up to 6 screens at the same time; beyond that you see who's watching",
-   "Devices: your account now works on up to 15 devices, each showing when it signed in",
-   "Watching now (main profile): My Bingr → Account shows which device and profile is watching what, and for how long",
-   "7-day watch history (main profile): per day, what was watched on which device and profile",
-   "Collections: make your own rows with a name and image, manual (Add to collection…) or smart with keywords",
-   "Home screen per profile: turn rows on or off and put them in your own order (My Bingr → Home screen)",
-   "Zapping: swipe up or down in the live player for the next or previous channel, with a channel banner and adjustable zap delay",
-   "Channel preview: in Live TV and the TV guide the selected channel plays muted after a second",
-   "Catch-up offset per channel: shift the start of catch-up by −120 to +120 minutes",
-   "Apple TV: frame rate and dynamic range follow the stream",
-   "Instant loading: your saved list shows right away and is updated in the background",
-   "Event channels (PPV, events) in their own Events group, sorted by start time with a LIVE label",
-   "Search: results show the colour of their source when you have several sources",
-   "iPhone and iPad: on an external display the video plays full screen while the controls stay on your device",
-   "Website: servers, collections, watching now and watch history in My Bingr",
-   "After changing your password you're signed out on all your devices automatically",
-   "Website: Devices in My Bingr can be collapsed and expanded"
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Tegelijk kijken: met één account kijk je op maximaal 6 schermen tegelijk; zijn het er meer, dan zie je wie er kijkt",
+    "en": "Watching together: one account can watch on up to 6 screens at the same time; beyond that you see who's watching"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Apparaten: je account werkt nu op maximaal 15 apparaten, met per apparaat sinds wanneer het is ingelogd",
+    "en": "Devices: your account now works on up to 15 devices, each showing when it signed in"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Wie kijkt er nu (hoofdaccount): Mijn Bingr → Account toont welk apparaat en profiel wat kijkt, en hoe lang al",
+    "en": "Watching now (main profile): My Bingr → Account shows which device and profile is watching what, and for how long"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Kijkgeschiedenis van 7 dagen (hoofdaccount): per dag wat er op welk apparaat en profiel gekeken is",
+    "en": "7-day watch history (main profile): per day, what was watched on which device and profile"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Collecties: maak je eigen rijen met naam en afbeelding, handmatig (Aan collectie toevoegen…) of slim met zoekwoorden",
+    "en": "Collections: make your own rows with a name and image, manual (Add to collection…) or smart with keywords"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Startscherm per profiel: zet rijen aan of uit en in je eigen volgorde (Mijn Bingr → Startscherm)",
+    "en": "Home screen per profile: turn rows on or off and put them in your own order (My Bingr → Home screen)"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "android",
+     "tvos",
+     "androidtv",
+     "macos"
+    ],
+    "nl": "Zappen: veeg in de live-speler omhoog of omlaag naar de volgende of vorige zender, met zenderbalk en instelbare zapvertraging",
+    "en": "Zapping: swipe up or down in the live player for the next or previous channel, with a channel banner and adjustable zap delay"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Zendervoorbeeld: in Live TV en de tv-gids speelt de geselecteerde zender na een seconde zonder geluid mee",
+    "en": "Channel preview: in Live TV and the TV guide the selected channel plays muted after a second"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Terugkijk-correctie per zender: verschuif het begin van terugkijken met −120 tot +120 minuten",
+    "en": "Catch-up offset per channel: shift the start of catch-up by −120 to +120 minutes"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "tvos",
+     "androidtv"
+    ],
+    "nl": "Beeldfrequentie aanpassen: de tv schakelt naar de beeldfrequentie van de stream (op Apple TV ook HDR/Dolby Vision)",
+    "en": "Frame rate matching: the TV switches to the stream's frame rate (on Apple TV also HDR/Dolby Vision)"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Direct laden: je bewaarde lijst staat meteen in beeld en wordt op de achtergrond bijgewerkt",
+    "en": "Instant loading: your saved list shows right away and is updated in the background"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Evenementzenders (PPV, events) in een eigen groep Evenementen, op begintijd met LIVE-label",
+    "en": "Event channels (PPV, events) in their own Events group, sorted by start time with a LIVE label"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Zoeken: resultaten tonen de kleur van hun bron als je meerdere bronnen hebt",
+    "en": "Search: results show the colour of their source when you have several sources"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "android"
+    ],
+    "nl": "Extern scherm: op een aangesloten monitor of tv speelt de video schermvullend, de bediening blijft op je telefoon of tablet",
+    "en": "External display: video plays fullscreen on a connected monitor or TV, controls stay on your phone or tablet"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Website: servers, collecties, wie kijkt er nu en kijkgeschiedenis in Mijn Bingr",
+    "en": "Website: servers, collections, watching now and watch history in My Bingr"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web"
+    ],
+    "nl": "Na het wijzigen van je wachtwoord word je op al je apparaten automatisch uitgelogd",
+    "en": "After changing your password you're signed out on all your devices automatically"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Website: Apparaten in Mijn Bingr in- en uitklapbaar",
+    "en": "Website: Devices in My Bingr can be collapsed and expanded"
+   }
   ]
  },
  {
   "build": 50,
   "version": "1.0.0",
   "date": "2026-10-12",
-  "platforms": [
-   "apple",
-   "android"
-  ],
-  "nl": [
-   "Xtream: films, live-zenders en series worden tolerant ingelezen — één afwijkend item op de server kost niet meer de hele lijst, dus je ziet weer alles",
-   "Filminfo (beschrijving, cast, trailer) laadt ook bij servers die velden anders aanleveren",
-   "Seriepagina opent standaard op het nieuwste seizoen (of op het seizoen waar je gebleven bent)",
-   "Nieuw in Mijn Bingr: Bron controleren — zie precies hoeveel zenders, films en series je server aanbiedt en hoeveel Bingr inleest"
-  ],
-  "en": [
-   "Xtream: movies, live channels and series are read tolerantly — one odd item on the server no longer costs the whole list, so you see everything again",
-   "Movie info (plot, cast, trailer) also loads on servers that send fields differently",
-   "Series page opens on the newest season by default (or on the season where you left off)",
-   "New in My Bingr: Check source — see exactly how many channels, movies and series your server offers and how many Bingr reads"
+  "items": [
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "Xtream: films, live-zenders en series worden tolerant ingelezen — één afwijkend item op de server kost niet meer de hele lijst, dus je ziet weer alles",
+    "en": "Xtream: movies, live channels and series are read tolerantly — one odd item on the server no longer costs the whole list, so you see everything again"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "Filminfo (beschrijving, cast, trailer) laadt ook bij servers die velden anders aanleveren",
+    "en": "Movie info (plot, cast, trailer) also loads on servers that send fields differently"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Seriepagina opent standaard op het nieuwste seizoen (of op het seizoen waar je gebleven bent)",
+    "en": "Series page opens on the newest season by default (or on the season where you left off)"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Nieuw in Mijn Bingr: Bron controleren — zie precies hoeveel zenders, films en series je server aanbiedt en hoeveel Bingr inleest",
+    "en": "New in My Bingr: Check source — see exactly how many channels, movies and series your server offers and how many Bingr reads"
+   }
   ]
  },
  {
   "build": 49,
   "version": "1.0.0",
   "date": "2026-10-12",
-  "platforms": [
-   "apple",
-   "android"
-  ],
-  "nl": [
-   "Tik op een acteur of actrice voor een eigen pagina met foto, bio en alle films en series waarin die speelt — wat in je afspeellijst staat kijk je direct",
-   "Zoeken op naam van een acteur of actrice toont ook personen",
-   "Copyright onderaan Mijn Bingr: © 2026 Bingr"
-  ],
-  "en": [
-   "Tap an actor or actress for their own page with photo, bio and every movie and series they appear in — anything in your playlist you can watch right away",
-   "Searching for an actor's or actress's name now also shows people",
-   "Copyright at the bottom of My Bingr: © 2026 Bingr"
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Tik op een acteur of actrice voor een eigen pagina met foto, bio en alle films en series waarin die speelt — wat in je afspeellijst staat kijk je direct",
+    "en": "Tap an actor or actress for their own page with photo, bio and every movie and series they appear in — anything in your playlist you can watch right away"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Zoeken op naam van een acteur of actrice toont ook personen",
+    "en": "Searching for an actor's or actress's name now also shows people"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Copyright onderaan Mijn Bingr: © 2026 Bingr",
+    "en": "Copyright at the bottom of My Bingr: © 2026 Bingr"
+   }
   ]
  },
  {
   "build": 48,
   "version": "1.0.0",
   "date": "2026-10-12",
-  "platforms": [
-   "apple",
-   "android"
-  ],
-  "nl": [
-   "Series van Xtream-servers tonen weer alle seizoenen en afleveringen, ook als de server ze in een andere vorm stuurt",
-   "Lukt het ophalen van afleveringen even niet, dan probeert Bingr het de volgende keer opnieuw"
-  ],
-  "en": [
-   "Series from Xtream servers show all seasons and episodes again, even when the server sends them in a different format",
-   "If loading episodes fails, Bingr tries again next time"
+  "items": [
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Series van Xtream-servers tonen weer alle seizoenen en afleveringen, ook als de server ze in een andere vorm stuurt",
+    "en": "Series from Xtream servers show all seasons and episodes again, even when the server sends them in a different format"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Lukt het ophalen van afleveringen even niet, dan probeert Bingr het de volgende keer opnieuw",
+    "en": "If loading episodes fails, Bingr tries again next time"
+   }
   ]
  },
  {
   "build": 47,
   "version": "1.0.0",
   "date": "2026-10-12",
-  "platforms": [
-   "apple",
-   "android",
-   "web"
-  ],
-  "nl": [
-   "Onderaan Mijn Bingr: app-icoon, versie- en buildnummer en copyright",
-   "Website: hero op mobiel opgeknapt (telefoon en tv netjes naast elkaar) en een kleiner cookie-bolletje"
-  ],
-  "en": [
-   "Bottom of My Bingr: app icon, version and build number and copyright",
-   "Website: improved hero on mobile (phone and TV neatly side by side) and a smaller cookie button"
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Onderaan Mijn Bingr: app-icoon, versie- en buildnummer en copyright",
+    "en": "Bottom of My Bingr: app icon, version and build number and copyright"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Website: hero op mobiel opgeknapt (telefoon en tv netjes naast elkaar) en een kleiner cookie-bolletje",
+    "en": "Website: improved hero on mobile (phone and TV neatly side by side) and a smaller cookie button"
+   }
   ]
  },
  {
   "build": 46,
   "version": "1.0.0",
   "date": "2026-10-12",
-  "platforms": [
-   "apple"
-  ],
-  "nl": [
-   "Ondertekening voor iPhone, iPad, Apple TV en Mac staat vast ingesteld (team en automatisch ondertekenen)"
-  ],
-  "en": [
-   "Signing for iPhone, iPad, Apple TV and Mac is preset (team and automatic signing)"
+  "items": [
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "Ondertekening voor iPhone, iPad, Apple TV en Mac staat vast ingesteld (team en automatisch ondertekenen)",
+    "en": "Signing for iPhone, iPad, Apple TV and Mac is preset (team and automatic signing)"
+   }
   ]
  },
  {
   "build": 45,
+  "version": "1.0.0",
   "date": "2026-10-12",
-  "platforms": [
-   "apple",
-   "android",
-   "web"
-  ],
-  "nl": [
-   "Gekoppelde apparaten een eigen naam geven of wijzigen, in de app en op bingr.online/account",
-   "Google TV wordt als eigen apparaattype herkend",
-   "Geen deelknop meer op de detailpagina op Apple TV, Android TV, Google TV en Fire TV",
-   "Website: overzicht van alle apparaten waarop je Bingr kijkt, apparaat-iconen in Mijn Bingr en een cookiemelding die je keuze onthoudt",
-   "Changelog toont nu versie, build en datum",
-   "Website: cookie-bolletje links onderin om je cookiekeuze altijd te wijzigen"
-  ],
-  "en": [
-   "Give linked devices a name of your own or change it, in the app and at bingr.online/account",
-   "Google TV is recognized as its own device type",
-   "No more share button on the detail page on Apple TV, Android TV, Google TV and Fire TV",
-   "Website: overview of all devices you can watch Bingr on, device icons in My Bingr and a cookie notice that remembers your choice",
-   "Changelog now shows version, build and date",
-   "Website: cookie button in the bottom left to change your cookie choice at any time"
-  ],
-  "version": "1.0.0"
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Gekoppelde apparaten een eigen naam geven of wijzigen, in de app en op bingr.online/account",
+    "en": "Give linked devices a name of your own or change it, in the app and at bingr.online/account"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "androidtv"
+    ],
+    "nl": "Google TV wordt als eigen apparaattype herkend",
+    "en": "Google TV is recognized as its own device type"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "tvos",
+     "androidtv"
+    ],
+    "nl": "Geen deelknop meer op de detailpagina op Apple TV, Android TV, Google TV en Fire TV",
+    "en": "No more share button on the detail page on Apple TV, Android TV, Google TV and Fire TV"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Website: overzicht van alle apparaten waarop je Bingr kijkt, apparaat-iconen in Mijn Bingr en een cookiemelding die je keuze onthoudt",
+    "en": "Website: overview of all devices you can watch Bingr on, device icons in My Bingr and a cookie notice that remembers your choice"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Changelog toont nu versie, build en datum",
+    "en": "Changelog now shows version, build and date"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Website: cookie-bolletje links onderin om je cookiekeuze altijd te wijzigen",
+    "en": "Website: cookie button in the bottom left to change your cookie choice at any time"
+   }
+  ]
  },
  {
   "build": 44,
+  "version": "1.0.0",
   "date": "2026-10-12",
-  "platforms": [
-   "apple",
-   "android"
-  ],
-  "nl": [
-   "Alles gaat mee met je account: Trakt- en OpenSubtitles-login, instellingen, Mijn lijst, Verder kijken, bekeken, kijkgeschiedenis, pincodes en herinneringen — na opnieuw installeren of op een nieuw apparaat staat alles weer klaar"
-  ],
-  "en": [
-   "Everything comes with your account: Trakt and OpenSubtitles sign-in, settings, My List, Continue Watching, watched, watch history, PINs and reminders — after reinstalling or on a new device, everything is ready again"
-  ],
-  "version": "1.0.0"
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Alles gaat mee met je account: Trakt- en OpenSubtitles-login, instellingen, Mijn lijst, Verder kijken, bekeken, kijkgeschiedenis, pincodes en herinneringen — na opnieuw installeren of op een nieuw apparaat staat alles weer klaar",
+    "en": "Everything comes with your account: Trakt and OpenSubtitles sign-in, settings, My List, Continue Watching, watched, watch history, PINs and reminders — after reinstalling or on a new device, everything is ready again"
+   }
+  ]
  },
  {
   "build": 43,
+  "version": "1.0.0",
   "date": "2026-10-12",
-  "platforms": [
-   "apple",
-   "android"
-  ],
-  "nl": [
-   "Servers en afspeellijsten worden versleuteld bij je Bingr-account bewaard: na updaten, opnieuw installeren of op een nieuw apparaat staat alles na inloggen weer klaar"
-  ],
-  "en": [
-   "Servers and playlists are stored encrypted with your Bingr account: after updating, reinstalling or on a new device, everything is ready again once you sign in"
-  ],
-  "version": "1.0.0"
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Servers en afspeellijsten worden versleuteld bij je Bingr-account bewaard: na updaten, opnieuw installeren of op een nieuw apparaat staat alles na inloggen weer klaar",
+    "en": "Servers and playlists are stored encrypted with your Bingr account: after updating, reinstalling or on a new device, everything is ready again once you sign in"
+   }
+  ]
  },
  {
   "build": 42,
+  "version": "1.0.0",
   "date": "2026-10-12",
-  "platforms": [
-   "apple",
-   "android"
-  ],
-  "nl": [
-   "Trakt koppelen werkt weer: na 'Apparaat goedgekeurd' op trakt.tv logt Bingr nu meteen in, ook als de app even op de achtergrond stond"
-  ],
-  "en": [
-   "Linking Trakt works again: after 'Device approved' on trakt.tv, Bingr now signs in right away, even if the app was in the background"
-  ],
-  "version": "1.0.0"
+  "items": [
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Trakt koppelen werkt weer: na 'Apparaat goedgekeurd' op trakt.tv logt Bingr nu meteen in, ook als de app even op de achtergrond stond",
+    "en": "Linking Trakt works again: after 'Device approved' on trakt.tv, Bingr now signs in right away, even if the app was in the background"
+   }
+  ]
  },
  {
   "build": 41,
+  "version": "1.0.0",
   "date": "2026-10-12",
-  "platforms": [
-   "apple",
-   "android",
-   "web"
-  ],
-  "nl": [
-   "Trakt en OpenSubtitles: gewoon inloggen, de sleutels komen veilig van de Bingr-server",
-   "Profielen toevoegen, wijzigen en verwijderen synchroniseert met al je apparaten",
-   "Android: vaste ondertekensleutel, updates installeren over de vorige versie heen",
-   "Website: Mijn Bingr met je profielen, apparaten en account, en je profielfoto rechtsboven; changelog-pagina"
-  ],
-  "en": [
-   "Trakt and OpenSubtitles: just sign in, the keys come securely from the Bingr server",
-   "Adding, editing and deleting profiles syncs across all your devices",
-   "Android: fixed signing key, updates install over the previous version",
-   "Website: My Bingr with your profiles, devices and account, and your profile picture in the top right; changelog page"
-  ],
-  "version": "1.0.0"
+  "items": [
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Trakt en OpenSubtitles: gewoon inloggen, de sleutels komen veilig van de Bingr-server",
+    "en": "Trakt and OpenSubtitles: just sign in, the keys come securely from the Bingr server"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Profielen toevoegen, wijzigen en verwijderen synchroniseert met al je apparaten",
+    "en": "Adding, editing and deleting profiles syncs across all your devices"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "android",
+     "androidtv"
+    ],
+    "nl": "Android: vaste ondertekensleutel, zodat je updates over de vorige versie heen installeert",
+    "en": "Android: fixed signing key, so updates install over the previous version"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Website: Mijn Bingr met je profielen, apparaten en account, en je profielfoto rechtsboven; changelog-pagina",
+    "en": "Website: My Bingr with your profiles, devices and account, and your profile picture in the top right; changelog page"
+   }
+  ]
  },
  {
   "build": 40,
+  "version": "1.0.0",
   "date": "2026-10-12",
-  "platforms": [
-   "apple",
-   "android"
-  ],
-  "nl": [
-   "Eigen profielfoto's worden via je Bingr-account gedeeld met al je apparaten, ook Android"
-  ],
-  "en": [
-   "Custom profile photos are shared with all your devices through your Bingr account, including Android"
-  ],
-  "version": "1.0.0"
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Eigen profielfoto's worden via je Bingr-account gedeeld met al je apparaten, ook Android",
+    "en": "Custom profile photos are shared with all your devices through your Bingr account, including Android"
+   }
+  ]
  },
  {
   "build": 39,
+  "version": "1.0.0",
   "date": "2026-10-12",
-  "platforms": [
-   "apple",
-   "android",
-   "web"
-  ],
-  "nl": [
-   "Maximaal 10 apparaten per account",
-   "Apparaten beheren: gekoppeld op, laatst gebruikt en verwijderen (in de app en op bingr.online/account)",
-   "Een verwijderd apparaat logt automatisch uit"
-  ],
-  "en": [
-   "Up to 10 devices per account",
-   "Manage devices: linked on, last used and remove (in the app and at bingr.online/account)",
-   "A removed device is signed out automatically"
-  ],
-  "version": "1.0.0"
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Maximaal 10 apparaten per account",
+    "en": "Up to 10 devices per account"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Apparaten beheren: gekoppeld op, laatst gebruikt en verwijderen (in de app en op bingr.online/account)",
+    "en": "Manage devices: linked on, last used and remove (in the app and at bingr.online/account)"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Een verwijderd apparaat logt automatisch uit",
+    "en": "A removed device is signed out automatically"
+   }
+  ]
  },
  {
   "build": 38,
+  "version": "1.0.0",
   "date": "2026-10-12",
-  "platforms": [
-   "apple",
-   "android",
-   "web"
-  ],
-  "nl": [
-   "Bingr-account: inloggen of account maken na de splash, in Netflix-stijl",
-   "Apple TV, Android TV en Fire TV: inloggen met een QR-code via bingr.online/tv",
-   "Bestaande profielen worden aan je account gekoppeld en gedeeld met al je apparaten",
-   "E-mails in Bingr-stijl (NL/EN), wachtwoord herstellen via bingr.online/reset",
-   "Versie- en buildnummer worden nu goed meegegeven aan de App Store"
-  ],
-  "en": [
-   "Bingr account: sign in or create an account after the splash, Netflix style",
-   "Apple TV, Android TV and Fire TV: sign in with a QR code via bingr.online/tv",
-   "Existing profiles are linked to your account and shared across your devices",
-   "Bingr-branded emails (NL/EN), reset your password at bingr.online/reset",
-   "Version and build number are now passed to the App Store correctly"
-  ],
-  "version": "1.0.0"
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Bingr-account: inloggen of account maken na de splash, in Netflix-stijl",
+    "en": "Bingr account: sign in or create an account after the splash, Netflix style"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "tvos",
+     "androidtv",
+     "web"
+    ],
+    "nl": "Apple TV, Android TV en Fire TV: inloggen met een QR-code via bingr.online/tv",
+    "en": "Apple TV, Android TV and Fire TV: sign in with a QR code via bingr.online/tv"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Bestaande profielen worden aan je account gekoppeld en gedeeld met al je apparaten",
+    "en": "Existing profiles are linked to your account and shared across your devices"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web"
+    ],
+    "nl": "E-mails in Bingr-stijl (NL/EN), wachtwoord herstellen via bingr.online/reset",
+    "en": "Bingr-branded emails (NL/EN), reset your password at bingr.online/reset"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "Versie- en buildnummer worden nu goed meegegeven aan de App Store",
+    "en": "Version and build number are now passed to the App Store correctly"
+   }
+  ]
  },
  {
   "build": 37,
+  "version": "1.0.0",
   "date": "2026-10-11",
-  "platforms": [
-   "apple",
-   "android"
-  ],
-  "nl": [
-   "Eerste Android-versie: telefoon, tablet, Android TV en Fire TV",
-   "Vloeiender scrollen; Verder kijken staat boven Mijn lijst",
-   "Een verwijderde pincode blijft op alle apparaten verwijderd"
-  ],
-  "en": [
-   "First Android version: phone, tablet, Android TV and Fire TV",
-   "Smoother scrolling; Continue watching sits above My List",
-   "A removed PIN stays removed on all devices"
-  ],
-  "version": "1.0.0"
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "android",
+     "androidtv"
+    ],
+    "nl": "Eerste Android-versie: telefoon, tablet, Android TV en Fire TV",
+    "en": "First Android version: phone, tablet, Android TV and Fire TV"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "Vloeiender scrollen; Verder kijken staat boven Mijn lijst",
+    "en": "Smoother scrolling; Continue watching sits above My List"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "Een verwijderde pincode blijft op alle apparaten verwijderd",
+    "en": "A removed PIN stays removed on all devices"
+   }
+  ]
  },
  {
   "build": 36,
+  "version": "1.0.0",
   "date": "2026-10-11",
-  "platforms": [
-   "apple"
-  ],
-  "nl": [
-   "Ondertitelgrootte instellen (klein, middel, groot), ook tijdens het kijken",
-   "Apple TV: pauze, spoelen en ondertitels bereikbaar in de speler",
-   "Detailpagina's lopen niet meer vast"
-  ],
-  "en": [
-   "Subtitle size (small, medium, large), also while watching",
-   "Apple TV: pause, seek and subtitles reachable in the player",
-   "Detail pages no longer hang"
-  ],
-  "version": "1.0.0"
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "Ondertitelgrootte instellen (klein, middel, groot), ook tijdens het kijken",
+    "en": "Subtitle size (small, medium, large), also while watching"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "tvos"
+    ],
+    "nl": "Apple TV: pauze, spoelen en ondertitels bereikbaar in de speler",
+    "en": "Apple TV: pause, seek and subtitles reachable in the player"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "Detailpagina's lopen niet meer vast",
+    "en": "Detail pages no longer hang"
+   }
+  ]
  },
  {
   "build": 35,
+  "version": "1.0.0",
   "date": "2026-10-11",
-  "platforms": [
-   "apple"
-  ],
-  "nl": [
-   "Profiel opent veel sneller na het invoeren van de pincode"
-  ],
-  "en": [
-   "Profiles open much faster after entering the PIN"
-  ],
-  "version": "1.0.0"
+  "items": [
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "Profiel opent veel sneller na het invoeren van de pincode",
+    "en": "Profiles open much faster after entering the PIN"
+   }
+  ]
  },
  {
   "build": 34,
+  "version": "1.0.0",
   "date": "2026-10-11",
-  "platforms": [
-   "apple",
-   "web"
-  ],
-  "nl": [
-   "Bingr houdt zelf per profiel bij wat je gezien hebt, ook zonder Trakt",
-   "Nieuwe website bingr.online met echte covers"
-  ],
-  "en": [
-   "Bingr tracks what each profile has watched, also without Trakt",
-   "New website bingr.online with real covers"
-  ],
-  "version": "1.0.0"
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "Bingr houdt zelf per profiel bij wat je gezien hebt, ook zonder Trakt",
+    "en": "Bingr tracks what each profile has watched, also without Trakt"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Nieuwe website bingr.online met echte covers",
+    "en": "New website bingr.online with real covers"
+   }
+  ]
  },
  {
   "build": 33,
+  "version": "1.0.0",
   "date": "2026-10-11",
-  "platforms": [
-   "apple"
-  ],
-  "nl": [
-   "Zichtbare Trakt-synchronisatie (draaiende pijltjes) en melding bij scrobblen"
-  ],
-  "en": [
-   "Visible Trakt sync (spinning arrows) and scrobble feedback"
-  ],
-  "version": "1.0.0"
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "Zichtbare Trakt-synchronisatie (draaiende pijltjes) en melding bij scrobblen",
+    "en": "Visible Trakt sync (spinning arrows) and scrobble feedback"
+   }
+  ]
  },
  {
   "build": 32,
+  "version": "1.0.0",
   "date": "2026-10-11",
-  "platforms": [
-   "apple"
-  ],
-  "nl": [
-   "Compacte pincode op Apple TV die op elk scherm past",
-   "Afspelen na het invoeren van de pincode werkt altijd"
-  ],
-  "en": [
-   "Compact PIN pad on Apple TV that fits every screen",
-   "Playing after entering the PIN always works"
-  ],
-  "version": "1.0.0"
+  "items": [
+   {
+    "type": "improved",
+    "platforms": [
+     "tvos"
+    ],
+    "nl": "Compacte pincode op Apple TV die op elk scherm past",
+    "en": "Compact PIN pad on Apple TV that fits every screen"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "Afspelen na het invoeren van de pincode werkt altijd",
+    "en": "Playing after entering the PIN always works"
+   }
+  ]
  },
  {
   "build": 31,
+  "version": "1.0.0",
   "date": "2026-10-11",
-  "platforms": [
-   "apple"
-  ],
-  "nl": [
-   "Eigen Mac-app (macOS 14+)"
-  ],
-  "en": [
-   "Native Mac app (macOS 14+)"
-  ],
-  "version": "1.0.0"
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "macos"
+    ],
+    "nl": "Eigen Mac-app (macOS 14+)",
+    "en": "Native Mac app (macOS 14+)"
+   }
+  ]
  },
  {
   "build": 30,
+  "version": "1.0.0",
   "date": "2026-10-11",
-  "platforms": [
-   "apple"
-  ],
-  "nl": [
-   "16 getekende profielfiguurtjes; geen 'Kids'-label meer bij de naam"
-  ],
-  "en": [
-   "16 illustrated profile characters; no more 'Kids' label next to the name"
-  ],
-  "version": "1.0.0"
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos"
+    ],
+    "nl": "16 getekende profielfiguurtjes; geen 'Kids'-label meer bij de naam",
+    "en": "16 illustrated profile characters; no more 'Kids' label next to the name"
+   }
+  ]
  },
  {
   "build": 29,
+  "version": "1.0.0",
   "date": "2026-10-11",
-  "platforms": [
-   "apple"
-  ],
-  "nl": [
-   "Delen vanaf de detailpagina (WhatsApp, iMessage …), QR-code op Apple TV"
-  ],
-  "en": [
-   "Share from the detail page (WhatsApp, iMessage …), QR code on Apple TV"
-  ],
-  "version": "1.0.0"
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos"
+    ],
+    "nl": "Delen vanaf de detailpagina (WhatsApp, iMessage …), QR-code op Apple TV",
+    "en": "Share from the detail page (WhatsApp, iMessage …), QR code on Apple TV"
+   }
+  ]
  },
  {
   "build": 28,
+  "version": "1.0.0",
   "date": "2026-10-11",
-  "platforms": [
-   "apple"
-  ],
-  "nl": [
-   "Betrouwbare Trakt-synchronisatie van wat je gezien hebt"
-  ],
-  "en": [
-   "Reliable Trakt sync of what you've watched"
-  ],
-  "version": "1.0.0"
+  "items": [
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos"
+    ],
+    "nl": "Betrouwbare Trakt-synchronisatie van wat je gezien hebt",
+    "en": "Reliable Trakt sync of what you've watched"
+   }
+  ]
  },
  {
   "build": 27,
+  "version": "1.0.0",
   "date": "2026-10-11",
-  "platforms": [
-   "apple"
-  ],
-  "nl": [
-   "Mijn lijst werkt weer",
-   "Verder kijken met voortgangsbalk en de keuze hervatten of opnieuw kijken"
-  ],
-  "en": [
-   "My List works again",
-   "Continue watching with a progress bar and resume or start over"
-  ],
-  "version": "1.0.0"
+  "items": [
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos"
+    ],
+    "nl": "Mijn lijst werkt weer",
+    "en": "My List works again"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos"
+    ],
+    "nl": "Verder kijken met voortgangsbalk en de keuze hervatten of opnieuw kijken",
+    "en": "Continue watching with a progress bar and resume or start over"
+   }
+  ]
  },
  {
   "build": 26,
+  "version": "1.0.0",
   "date": "2026-10-11",
-  "platforms": [
-   "apple"
-  ],
-  "nl": [
-   "Zoeken op Live TV (iPhone, iPad en Apple TV)",
-   "Volgende aflevering automatisch",
-   "Sneller en soepeler"
-  ],
-  "en": [
-   "Search on Live TV (iPhone, iPad and Apple TV)",
-   "Next episode automatically",
-   "Faster and smoother"
-  ],
-  "version": "1.0.0"
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos"
+    ],
+    "nl": "Zoeken op Live TV (iPhone, iPad en Apple TV)",
+    "en": "Search on Live TV (iPhone, iPad and Apple TV)"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos"
+    ],
+    "nl": "Volgende aflevering automatisch",
+    "en": "Next episode automatically"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos"
+    ],
+    "nl": "Sneller en soepeler",
+    "en": "Faster and smoother"
+   }
+  ]
  },
  {
   "build": 25,
+  "version": "1.0.0",
   "date": "2026-10-11",
-  "platforms": [
-   "apple"
-  ],
-  "nl": [
-   "Kinderprofiel met strenge leeftijdsfilter en een eigen Top 10 voor kids"
-  ],
-  "en": [
-   "Kids profile with a strict age filter and its own Top 10 for kids"
-  ],
-  "version": "1.0.0"
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos"
+    ],
+    "nl": "Kinderprofiel met strenge leeftijdsfilter en een eigen Top 10 voor kids",
+    "en": "Kids profile with a strict age filter and its own Top 10 for kids"
+   }
+  ]
  },
  {
   "build": 24,
+  "version": "1.0.0",
   "date": "2026-10-11",
-  "platforms": [
-   "apple"
-  ],
-  "nl": [
-   "Kijkgeschiedenis en Verder kijken per profiel",
-   "Mijn Bingr zoals Mijn Netflix"
-  ],
-  "en": [
-   "Watch history and Continue watching per profile",
-   "My Bingr like My Netflix"
-  ],
-  "version": "1.0.0"
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos"
+    ],
+    "nl": "Kijkgeschiedenis en Verder kijken per profiel",
+    "en": "Watch history and Continue watching per profile"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos"
+    ],
+    "nl": "Mijn Bingr zoals Mijn Netflix",
+    "en": "My Bingr like My Netflix"
+   }
+  ]
  },
  {
   "build": 23,
+  "version": "1.0.0",
   "date": "2026-10-11",
-  "platforms": [
-   "apple"
-  ],
-  "nl": [
-   "Automatische ondertitels en talen per profiel"
-  ],
-  "en": [
-   "Automatic subtitles and languages per profile"
-  ],
-  "version": "1.0.0"
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos"
+    ],
+    "nl": "Automatische ondertitels en talen per profiel",
+    "en": "Automatic subtitles and languages per profile"
+   }
+  ]
  },
  {
   "build": 22,
+  "version": "1.0.0",
   "date": "2026-10-11",
-  "platforms": [
-   "apple"
-  ],
-  "nl": [
-   "Pincode per profiel; Trakt alleen voor het hoofdaccount"
-  ],
-  "en": [
-   "PIN per profile; Trakt for the main account only"
-  ],
-  "version": "1.0.0"
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos"
+    ],
+    "nl": "Pincode per profiel; Trakt alleen voor het hoofdaccount",
+    "en": "PIN per profile; Trakt for the main account only"
+   }
+  ]
  },
  {
   "build": 21,
+  "version": "1.0.0",
   "date": "2026-10-11",
-  "platforms": [
-   "apple"
-  ],
-  "nl": [
-   "Servers verwijderen, sneller wisselen van profiel"
-  ],
-  "en": [
-   "Delete servers, faster profile switching"
-  ],
-  "version": "1.0.0"
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos"
+    ],
+    "nl": "Servers verwijderen, sneller wisselen van profiel",
+    "en": "Delete servers, faster profile switching"
+   }
+  ]
  },
  {
   "build": 20,
+  "version": "1.0.0",
   "date": "2026-10-11",
-  "platforms": [
-   "apple"
-  ],
-  "nl": [
-   "Hoofdaccount beheert server, koppelingen, kinderslot en profielen"
-  ],
-  "en": [
-   "The main account manages server, connections, parental control and profiles"
-  ],
-  "version": "1.0.0"
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos"
+    ],
+    "nl": "Hoofdaccount beheert server, koppelingen, kinderslot en profielen",
+    "en": "The main account manages server, connections, parental control and profiles"
+   }
+  ]
  },
  {
   "build": 19,
+  "version": "1.0.0",
   "date": "2026-10-11",
-  "platforms": [
-   "apple"
-  ],
-  "nl": [
-   "Profielen: 'Wie kijkt er?' en eigen Bingr-intro"
-  ],
-  "en": [
-   "Profiles: 'Who's watching?' and the Bingr intro tune"
-  ],
-  "version": "1.0.0"
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos"
+    ],
+    "nl": "Profielen: 'Wie kijkt er?' en eigen Bingr-intro",
+    "en": "Profiles: 'Who's watching?' and the Bingr intro tune"
+   }
+  ]
  },
  {
   "build": 18,
+  "version": "1.0.0",
   "date": "2026-10-11",
-  "platforms": [
-   "apple"
-  ],
-  "nl": [
-   "Apple TV zonder grijze focusvlakken, zoals Netflix"
-  ],
-  "en": [
-   "Apple TV without grey focus boxes, like Netflix"
-  ],
-  "version": "1.0.0"
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "tvos"
+    ],
+    "nl": "Apple TV zonder grijze focusvlakken, zoals Netflix",
+    "en": "Apple TV without grey focus boxes, like Netflix"
+   }
+  ]
  },
  {
   "build": 17,
+  "version": "1.0.0",
   "date": "2026-10-11",
-  "platforms": [
-   "apple"
-  ],
-  "nl": [
-   "Ondertitels met vlaggen, juiste tekens en timing verschuiven; snellere start"
-  ],
-  "en": [
-   "Subtitles with flags, correct characters and timing offset; faster start"
-  ],
-  "version": "1.0.0"
+  "items": [
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos"
+    ],
+    "nl": "Ondertitels met vlaggen, juiste tekens en timing verschuiven; snellere start",
+    "en": "Subtitles with flags, correct characters and timing offset; faster start"
+   }
+  ]
  },
  {
   "build": 16,
+  "version": "1.0.0",
   "date": "2026-10-11",
-  "platforms": [
-   "apple"
-  ],
-  "nl": [
-   "Zoeken door alle content en categorieën"
-  ],
-  "en": [
-   "Search across all content and categories"
-  ],
-  "version": "1.0.0"
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos"
+    ],
+    "nl": "Zoeken door alle content en categorieën",
+    "en": "Search across all content and categories"
+   }
+  ]
  },
  {
   "build": 14,
+  "version": "1.0.0",
   "date": "2026-10-11",
-  "platforms": [
-   "apple"
-  ],
-  "nl": [
-   "Top 10 altijd zichtbaar (TMDB en Trakt trending)",
-   "Elke Apple TV-gebruiker zijn eigen Bingr"
-  ],
-  "en": [
-   "Top 10 always visible (TMDB and Trakt trending)",
-   "Every Apple TV user gets their own Bingr"
-  ],
-  "version": "1.0.0"
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos"
+    ],
+    "nl": "Top 10 altijd zichtbaar (TMDB en Trakt trending)",
+    "en": "Top 10 always visible (TMDB and Trakt trending)"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "tvos"
+    ],
+    "nl": "Elke Apple TV-gebruiker zijn eigen Bingr",
+    "en": "Every Apple TV user gets their own Bingr"
+   }
+  ]
  },
  {
   "build": 13,
+  "version": "1.0.0",
   "date": "2026-10-11",
-  "platforms": [
-   "apple"
-  ],
-  "nl": [
-   "Trakt werkt met nieuwe apps zonder client secret"
-  ],
-  "en": [
-   "Trakt works with new apps without a client secret"
-  ],
-  "version": "1.0.0"
+  "items": [
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos"
+    ],
+    "nl": "Trakt werkt met nieuwe apps zonder client secret",
+    "en": "Trakt works with new apps without a client secret"
+   }
+  ]
  },
  {
   "build": 11,
+  "version": "1.0.0",
   "date": "2026-10-11",
-  "platforms": [
-   "apple"
-  ],
-  "nl": [
-   "OpenSubtitles: taal kiezen tijdens het kijken, automatisch laden"
-  ],
-  "en": [
-   "OpenSubtitles: pick a language while watching, load automatically"
-  ],
-  "version": "1.0.0"
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos"
+    ],
+    "nl": "OpenSubtitles: taal kiezen tijdens het kijken, automatisch laden",
+    "en": "OpenSubtitles: pick a language while watching, load automatically"
+   }
+  ]
  },
  {
   "build": 10,
+  "version": "1.0.0",
   "date": "2026-10-11",
-  "platforms": [
-   "apple"
-  ],
-  "nl": [
-   "Standaard audio- en ondertiteltaal, beeld-in-beeld, kijkgeschiedenis, NAS (SMB/DLNA)"
-  ],
-  "en": [
-   "Default audio and subtitle language, picture in picture, watch history, NAS (SMB/DLNA)"
-  ],
-  "version": "1.0.0"
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos"
+    ],
+    "nl": "Standaard audio- en ondertiteltaal, beeld-in-beeld, kijkgeschiedenis, NAS (SMB/DLNA)",
+    "en": "Default audio and subtitle language, picture in picture, watch history, NAS (SMB/DLNA)"
+   }
+  ]
  },
  {
   "build": 8,
+  "version": "1.0.0",
   "date": "2026-10-10",
-  "platforms": [
-   "apple"
-  ],
-  "nl": [
-   "Bekijk allemaal met sorteren en scores"
-  ],
-  "en": [
-   "See all with sorting and scores"
-  ],
-  "version": "1.0.0"
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos"
+    ],
+    "nl": "Bekijk allemaal met sorteren en scores",
+    "en": "See all with sorting and scores"
+   }
+  ]
  },
  {
   "build": 6,
+  "version": "1.0.0",
   "date": "2026-10-10",
-  "platforms": [
-   "apple"
-  ],
-  "nl": [
-   "Nieuw Bingr-logo in app, icoon en Top Shelf"
-  ],
-  "en": [
-   "New Bingr logo in the app, icon and Top Shelf"
-  ],
-  "version": "1.0.0"
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos"
+    ],
+    "nl": "Nieuw Bingr-logo in app, icoon en Top Shelf",
+    "en": "New Bingr logo in the app, icon and Top Shelf"
+   }
+  ]
  },
  {
   "build": 1,
+  "version": "1.0.0",
   "date": "2026-10-10",
-  "platforms": [
-   "apple"
-  ],
-  "nl": [
-   "Eerste versie: IPTV in Netflix-stijl voor iPhone, iPad en Apple TV (M3U, Xtream, Stalker, Plex, Jellyfin, Emby, Stremio)"
-  ],
-  "en": [
-   "First release: Netflix-style IPTV for iPhone, iPad and Apple TV (M3U, Xtream, Stalker, Plex, Jellyfin, Emby, Stremio)"
-  ],
-  "version": "1.0.0"
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos"
+    ],
+    "nl": "Eerste versie: IPTV in Netflix-stijl voor iPhone, iPad en Apple TV (M3U, Xtream, Stalker, Plex, Jellyfin, Emby, Stremio)",
+    "en": "First release: Netflix-style IPTV for iPhone, iPad and Apple TV (M3U, Xtream, Stalker, Plex, Jellyfin, Emby, Stremio)"
+   }
+  ]
  }
 ]
