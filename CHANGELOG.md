@@ -6,6 +6,7 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac (Android: [bingr-andro
 _2026-10-12_
 
 - Onderaan Mijn Bingr: app-icoon, versie- en buildnummer en copyright
+- Website: hero op mobiel opgeknapt (telefoon en tv netjes naast elkaar) en een kleiner cookie-bolletje
 
 ## Versie 1.0.0 · Build 46
 _2026-10-12_

@@ -5,13 +5,16 @@
   "date": "2026-10-12",
   "platforms": [
    "apple",
-   "android"
+   "android",
+   "web"
   ],
   "nl": [
-   "Onderaan Mijn Bingr: app-icoon, versie- en buildnummer en copyright"
+   "Onderaan Mijn Bingr: app-icoon, versie- en buildnummer en copyright",
+   "Website: hero op mobiel opgeknapt (telefoon en tv netjes naast elkaar) en een kleiner cookie-bolletje"
   ],
   "en": [
-   "Bottom of My Bingr: app icon, version and build number and copyright"
+   "Bottom of My Bingr: app icon, version and build number and copyright",
+   "Website: improved hero on mobile (phone and TV neatly side by side) and a smaller cookie button"
   ]
  },
  {
