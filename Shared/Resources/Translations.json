@@ -578,7 +578,6 @@
   "Channel preview": "معاينة القناة",
   "Collection": "مجموعة",
   "Collections": "المجموعات",
-  "Collections are shared with all your devices and appear as rows on Home, and in Live TV, Movies and Series. Hold a channel, movie or series to add it.": "تتم مشاركة المجموعات مع كل أجهزتك وتظهر كصفوف في الرئيسية وفي البث المباشر والأفلام والمسلسلات. اضغط مطولًا على قناة أو فيلم أو مسلسل لإضافته.",
   "Delete collection": "حذف المجموعة",
   "Edit collection": "تعديل المجموعة",
   "Events": "الأحداث",
@@ -694,7 +693,6 @@
   "The app icon is only changed on this device.": "تتغير أيقونة التطبيق على هذا الجهاز فقط.",
   "This server": "هذا الخادم",
   "This title can't be downloaded.": "لا يمكن تنزيل هذا العنوان.",
-  "Used for buttons, progress bars and highlights. Synced with your Bingr account.": "للأزرار وأشرطة التقدم والتمييز. تتم مزامنته مع حساب Bingr.",
   "Waiting…": "في الانتظار…",
   "Watch credits": "مشاهدة الشارة",
   "When the credits start, the next episode begins after a short countdown.": "عند بدء الشارة، تبدأ الحلقة التالية بعد عد تنازلي قصير.",
@@ -702,7 +700,9 @@
   "%d%% of the series watched": "تمت مشاهدة %d%% من المسلسل",
   "Season %d · %d%% watched": "الموسم %d · تمت مشاهدة %d%%",
   "Trailer season %d": "إعلان الموسم %d",
-  "Trailer": "الإعلان"
+  "Trailer": "الإعلان",
+  "Applies to this profile only, on all your devices. Used for buttons, progress bars and highlights.": "ينطبق على هذا الملف الشخصي فقط، على كل أجهزتك. للأزرار وأشرطة التقدم والتمييز.",
+  "Every profile has its own collections, on all your devices. They appear as rows on Home, and in Live TV, Movies and Series. Hold a channel, movie or series to add it.": "لكل ملف شخصي مجموعاته الخاصة، على كل أجهزتك. تظهر كصفوف في الرئيسية وفي التلفزيون المباشر والأفلام والمسلسلات. اضغط مطولًا على قناة أو فيلم أو مسلسل لإضافته."
  },
  "de": {
   "%@ is now signed in.": "%@ ist jetzt angemeldet.",
@@ -1283,7 +1283,6 @@
   "Channel preview": "Sendervorschau",
   "Collection": "Sammlung",
   "Collections": "Sammlungen",
-  "Collections are shared with all your devices and appear as rows on Home, and in Live TV, Movies and Series. Hold a channel, movie or series to add it.": "Sammlungen werden mit all deinen Geräten geteilt und erscheinen als Reihe auf der Startseite sowie in Live-TV, Filme und Serien. Halte einen Sender, Film oder eine Serie gedrückt, um sie hinzuzufügen.",
   "Delete collection": "Sammlung löschen",
   "Edit collection": "Sammlung bearbeiten",
   "Events": "Events",
@@ -1399,7 +1398,6 @@
   "The app icon is only changed on this device.": "Das App-Symbol ändert sich nur auf diesem Gerät.",
   "This server": "Dieser Server",
   "This title can't be downloaded.": "Dieser Titel kann nicht heruntergeladen werden.",
-  "Used for buttons, progress bars and highlights. Synced with your Bingr account.": "Für Tasten, Fortschrittsbalken und Hervorhebungen. Wird mit deinem Bingr-Konto synchronisiert.",
   "Waiting…": "Warten …",
   "Watch credits": "Abspann ansehen",
   "When the credits start, the next episode begins after a short countdown.": "Beginnt der Abspann, startet die nächste Folge nach einem kurzen Countdown.",
@@ -1407,7 +1405,9 @@
   "%d%% of the series watched": "%d%% der Serie gesehen",
   "Season %d · %d%% watched": "Staffel %d · %d%% gesehen",
   "Trailer season %d": "Trailer Staffel %d",
-  "Trailer": "Trailer"
+  "Trailer": "Trailer",
+  "Applies to this profile only, on all your devices. Used for buttons, progress bars and highlights.": "Gilt nur für dieses Profil, auf all deinen Geräten. Für Tasten, Fortschrittsbalken und Hervorhebungen.",
+  "Every profile has its own collections, on all your devices. They appear as rows on Home, and in Live TV, Movies and Series. Hold a channel, movie or series to add it.": "Jedes Profil hat eigene Sammlungen, auf all deinen Geräten. Sie erscheinen als Reihen auf der Startseite sowie in Live-TV, Filme und Serien. Halte einen Sender, Film oder eine Serie gedrückt, um ihn hinzuzufügen."
  },
  "es": {
   "%@ is now signed in.": "%@ ya ha iniciado sesión.",
@@ -1988,7 +1988,6 @@
   "Channel preview": "Vista previa del canal",
   "Collection": "Colección",
   "Collections": "Colecciones",
-  "Collections are shared with all your devices and appear as rows on Home, and in Live TV, Movies and Series. Hold a channel, movie or series to add it.": "Las colecciones se comparten con todos tus dispositivos y aparecen como filas en Inicio y en TV en directo, Películas y Series. Mantén pulsado un canal, película o serie para añadirlo.",
   "Delete collection": "Eliminar colección",
   "Edit collection": "Editar colección",
   "Events": "Eventos",
@@ -2104,7 +2103,6 @@
   "The app icon is only changed on this device.": "El icono solo cambia en este dispositivo.",
   "This server": "Este servidor",
   "This title can't be downloaded.": "Este título no se puede descargar.",
-  "Used for buttons, progress bars and highlights. Synced with your Bingr account.": "Para botones, barras de progreso y resaltados. Se sincroniza con tu cuenta Bingr.",
   "Waiting…": "Esperando…",
   "Watch credits": "Ver créditos",
   "When the credits start, the next episode begins after a short countdown.": "Cuando empiezan los créditos, el siguiente episodio arranca tras una breve cuenta atrás.",
@@ -2112,7 +2110,9 @@
   "%d%% of the series watched": "%d%% de la serie visto",
   "Season %d · %d%% watched": "Temporada %d · %d%% visto",
   "Trailer season %d": "Tráiler temporada %d",
-  "Trailer": "Tráiler"
+  "Trailer": "Tráiler",
+  "Applies to this profile only, on all your devices. Used for buttons, progress bars and highlights.": "Solo se aplica a este perfil, en todos tus dispositivos. Para botones, barras de progreso y resaltados.",
+  "Every profile has its own collections, on all your devices. They appear as rows on Home, and in Live TV, Movies and Series. Hold a channel, movie or series to add it.": "Cada perfil tiene sus propias colecciones, en todos tus dispositivos. Aparecen como filas en Inicio y en TV en directo, Películas y Series. Mantén pulsado un canal, una película o una serie para añadirlo."
  },
  "fr": {
   "%@ is now signed in.": "%@ est maintenant connecté.",
@@ -2693,7 +2693,6 @@
   "Channel preview": "Aperçu de la chaîne",
   "Collection": "Collection",
   "Collections": "Collections",
-  "Collections are shared with all your devices and appear as rows on Home, and in Live TV, Movies and Series. Hold a channel, movie or series to add it.": "Les collections sont partagées avec tous vos appareils et apparaissent en rangées sur l’accueil, ainsi que dans TV en direct, Films et Séries. Maintenez une chaîne, un film ou une série pour l’ajouter.",
   "Delete collection": "Supprimer la collection",
   "Edit collection": "Modifier la collection",
   "Events": "Événements",
@@ -2809,7 +2808,6 @@
   "The app icon is only changed on this device.": "L’icône change uniquement sur cet appareil.",
   "This server": "Ce serveur",
   "This title can't be downloaded.": "Ce titre ne peut pas être téléchargé.",
-  "Used for buttons, progress bars and highlights. Synced with your Bingr account.": "Pour les boutons, barres de progression et mises en avant. Synchronisé avec ton compte Bingr.",
   "Waiting…": "En attente…",
   "Watch credits": "Voir le générique",
   "When the credits start, the next episode begins after a short countdown.": "Au début du générique, l’épisode suivant démarre après un court compte à rebours.",
@@ -2817,7 +2815,9 @@
   "%d%% of the series watched": "%d%% de la série vus",
   "Season %d · %d%% watched": "Saison %d · %d%% vus",
   "Trailer season %d": "Bande-annonce saison %d",
-  "Trailer": "Bande-annonce"
+  "Trailer": "Bande-annonce",
+  "Applies to this profile only, on all your devices. Used for buttons, progress bars and highlights.": "S'applique uniquement à ce profil, sur tous tes appareils. Pour les boutons, barres de progression et mises en avant.",
+  "Every profile has its own collections, on all your devices. They appear as rows on Home, and in Live TV, Movies and Series. Hold a channel, movie or series to add it.": "Chaque profil a ses propres collections, sur tous tes appareils. Elles apparaissent en rangées sur l'accueil et dans TV en direct, Films et Séries. Maintiens une chaîne, un film ou une série pour l'ajouter."
  },
  "it": {
   "%@ is now signed in.": "%@ ha effettuato l’accesso.",
@@ -3398,7 +3398,6 @@
   "Channel preview": "Anteprima canale",
   "Collection": "Raccolta",
   "Collections": "Raccolte",
-  "Collections are shared with all your devices and appear as rows on Home, and in Live TV, Movies and Series. Hold a channel, movie or series to add it.": "Le raccolte sono condivise con tutti i tuoi dispositivi e appaiono come righe nella Home e in TV in diretta, Film e Serie. Tieni premuto un canale, film o serie per aggiungerlo.",
   "Delete collection": "Elimina raccolta",
   "Edit collection": "Modifica raccolta",
   "Events": "Eventi",
@@ -3514,7 +3513,6 @@
   "The app icon is only changed on this device.": "L’icona cambia solo su questo dispositivo.",
   "This server": "Questo server",
   "This title can't be downloaded.": "Questo titolo non può essere scaricato.",
-  "Used for buttons, progress bars and highlights. Synced with your Bingr account.": "Per pulsanti, barre di avanzamento ed evidenziazioni. Sincronizzato con il tuo account Bingr.",
   "Waiting…": "In attesa…",
   "Watch credits": "Guarda i titoli",
   "When the credits start, the next episode begins after a short countdown.": "All’inizio dei titoli, l’episodio successivo parte dopo un breve conto alla rovescia.",
@@ -3522,7 +3520,9 @@
   "%d%% of the series watched": "%d%% della serie visto",
   "Season %d · %d%% watched": "Stagione %d · %d%% visto",
   "Trailer season %d": "Trailer stagione %d",
-  "Trailer": "Trailer"
+  "Trailer": "Trailer",
+  "Applies to this profile only, on all your devices. Used for buttons, progress bars and highlights.": "Vale solo per questo profilo, su tutti i tuoi dispositivi. Per pulsanti, barre di avanzamento ed evidenziazioni.",
+  "Every profile has its own collections, on all your devices. They appear as rows on Home, and in Live TV, Movies and Series. Hold a channel, movie or series to add it.": "Ogni profilo ha le sue raccolte, su tutti i tuoi dispositivi. Appaiono come righe nella Home e in TV in diretta, Film e Serie. Tieni premuto un canale, un film o una serie per aggiungerlo."
  },
  "nl": {
   "%@ is now signed in.": "%@ is nu ingelogd.",
@@ -4103,7 +4103,6 @@
   "Channel preview": "Zendervoorbeeld",
   "Collection": "Collectie",
   "Collections": "Collecties",
-  "Collections are shared with all your devices and appear as rows on Home, and in Live TV, Movies and Series. Hold a channel, movie or series to add it.": "Collecties worden gedeeld met al je apparaten en verschijnen als rij op Home en in Live TV, Films en Series. Houd een zender, film of serie ingedrukt om hem toe te voegen.",
   "Delete collection": "Collectie verwijderen",
   "Edit collection": "Collectie bewerken",
   "Events": "Evenementen",
@@ -4219,7 +4218,6 @@
   "The app icon is only changed on this device.": "Het app-icoon verandert alleen op dit apparaat.",
   "This server": "Deze server",
   "This title can't be downloaded.": "Deze titel kan niet gedownload worden.",
-  "Used for buttons, progress bars and highlights. Synced with your Bingr account.": "Voor knoppen, voortgangsbalken en accenten. Wordt gesynchroniseerd met je Bingr-account.",
   "Waiting…": "Wachten…",
   "Watch credits": "Aftiteling kijken",
   "When the credits start, the next episode begins after a short countdown.": "Als de aftiteling begint, start de volgende aflevering na een kort aftellen.",
@@ -4227,7 +4225,9 @@
   "%d%% of the series watched": "%d%% van de serie bekeken",
   "Season %d · %d%% watched": "Seizoen %d · %d%% bekeken",
   "Trailer season %d": "Trailer seizoen %d",
-  "Trailer": "Trailer"
+  "Trailer": "Trailer",
+  "Applies to this profile only, on all your devices. Used for buttons, progress bars and highlights.": "Geldt alleen voor dit profiel, op al je apparaten. Voor knoppen, voortgangsbalken en accenten.",
+  "Every profile has its own collections, on all your devices. They appear as rows on Home, and in Live TV, Movies and Series. Hold a channel, movie or series to add it.": "Elk profiel heeft eigen collecties, op al je apparaten. Ze staan als rijen op Home en in Live TV, Films en Series. Houd een zender, film of serie ingedrukt om hem toe te voegen."
  },
  "pl": {
   "%@ is now signed in.": "%@ jest teraz zalogowany.",
@@ -4808,7 +4808,6 @@
   "Channel preview": "Podgląd kanału",
   "Collection": "Kolekcja",
   "Collections": "Kolekcje",
-  "Collections are shared with all your devices and appear as rows on Home, and in Live TV, Movies and Series. Hold a channel, movie or series to add it.": "Kolekcje są udostępniane na wszystkich Twoich urządzeniach i pojawiają się jako rzędy na stronie głównej oraz w Telewizji na żywo, Filmach i Serialach. Przytrzymaj kanał, film lub serial, aby go dodać.",
   "Delete collection": "Usuń kolekcję",
   "Edit collection": "Edytuj kolekcję",
   "Events": "Wydarzenia",
@@ -4924,7 +4923,6 @@
   "The app icon is only changed on this device.": "Ikona zmienia się tylko na tym urządzeniu.",
   "This server": "Ten serwer",
   "This title can't be downloaded.": "Tego tytułu nie można pobrać.",
-  "Used for buttons, progress bars and highlights. Synced with your Bingr account.": "Dla przycisków, pasków postępu i wyróżnień. Synchronizowane z kontem Bingr.",
   "Waiting…": "Oczekiwanie…",
   "Watch credits": "Oglądaj napisy",
   "When the credits start, the next episode begins after a short countdown.": "Gdy zaczną się napisy, następny odcinek ruszy po krótkim odliczaniu.",
@@ -4932,7 +4930,9 @@
   "%d%% of the series watched": "Obejrzano %d%% serialu",
   "Season %d · %d%% watched": "Sezon %d · obejrzano %d%%",
   "Trailer season %d": "Zwiastun sezonu %d",
-  "Trailer": "Zwiastun"
+  "Trailer": "Zwiastun",
+  "Applies to this profile only, on all your devices. Used for buttons, progress bars and highlights.": "Dotyczy tylko tego profilu, na wszystkich twoich urządzeniach. Dla przycisków, pasków postępu i wyróżnień.",
+  "Every profile has its own collections, on all your devices. They appear as rows on Home, and in Live TV, Movies and Series. Hold a channel, movie or series to add it.": "Każdy profil ma własne kolekcje, na wszystkich twoich urządzeniach. Pojawiają się jako rzędy na stronie głównej oraz w TV na żywo, Filmach i Serialach. Przytrzymaj kanał, film lub serial, aby go dodać."
  },
  "pt": {
   "%@ is now signed in.": "%@ já tem sessão iniciada.",
@@ -5513,7 +5513,6 @@
   "Channel preview": "Pré-visualização do canal",
   "Collection": "Coleção",
   "Collections": "Coleções",
-  "Collections are shared with all your devices and appear as rows on Home, and in Live TV, Movies and Series. Hold a channel, movie or series to add it.": "As coleções são partilhadas com todos os seus dispositivos e aparecem como filas no Início e em TV ao vivo, Filmes e Séries. Mantenha pressionado um canal, filme ou série para adicioná-lo.",
   "Delete collection": "Eliminar coleção",
   "Edit collection": "Editar coleção",
   "Events": "Eventos",
@@ -5629,7 +5628,6 @@
   "The app icon is only changed on this device.": "O ícone muda só neste dispositivo.",
   "This server": "Este servidor",
   "This title can't be downloaded.": "Este título não pode ser baixado.",
-  "Used for buttons, progress bars and highlights. Synced with your Bingr account.": "Para botões, barras de progresso e destaques. Sincronizado com sua conta Bingr.",
   "Waiting…": "Aguardando…",
   "Watch credits": "Ver créditos",
   "When the credits start, the next episode begins after a short countdown.": "Quando os créditos começam, o próximo episódio inicia após uma contagem curta.",
@@ -5637,7 +5635,9 @@
   "%d%% of the series watched": "%d%% da série visto",
   "Season %d · %d%% watched": "Temporada %d · %d%% visto",
   "Trailer season %d": "Trailer temporada %d",
-  "Trailer": "Trailer"
+  "Trailer": "Trailer",
+  "Applies to this profile only, on all your devices. Used for buttons, progress bars and highlights.": "Vale só para este perfil, em todos os seus dispositivos. Para botões, barras de progresso e destaques.",
+  "Every profile has its own collections, on all your devices. They appear as rows on Home, and in Live TV, Movies and Series. Hold a channel, movie or series to add it.": "Cada perfil tem suas próprias coleções, em todos os seus dispositivos. Elas aparecem como fileiras no Início e em TV ao vivo, Filmes e Séries. Mantenha pressionado um canal, filme ou série para adicioná-lo."
  },
  "tr": {
   "%@ is now signed in.": "%@ artık oturum açtı.",
@@ -6218,7 +6218,6 @@
   "Channel preview": "Kanal önizlemesi",
   "Collection": "Koleksiyon",
   "Collections": "Koleksiyonlar",
-  "Collections are shared with all your devices and appear as rows on Home, and in Live TV, Movies and Series. Hold a channel, movie or series to add it.": "Koleksiyonlar tüm cihazlarınla paylaşılır ve Ana sayfada, Canlı TV, Filmler ve Diziler’de satır olarak görünür. Eklemek için bir kanala, filme veya diziye basılı tut.",
   "Delete collection": "Koleksiyonu sil",
   "Edit collection": "Koleksiyonu düzenle",
   "Events": "Etkinlikler",
@@ -6334,7 +6333,6 @@
   "The app icon is only changed on this device.": "Uygulama simgesi yalnızca bu cihazda değişir.",
   "This server": "Bu sunucu",
   "This title can't be downloaded.": "Bu içerik indirilemez.",
-  "Used for buttons, progress bars and highlights. Synced with your Bingr account.": "Düğmeler, ilerleme çubukları ve vurgular için. Bingr hesabınla eşitlenir.",
   "Waiting…": "Bekleniyor…",
   "Watch credits": "Jeneriği izle",
   "When the credits start, the next episode begins after a short countdown.": "Jenerik başladığında, sonraki bölüm kısa bir geri sayımdan sonra başlar.",
@@ -6342,7 +6340,9 @@
   "%d%% of the series watched": "Dizinin %d%% kadarı izlendi",
   "Season %d · %d%% watched": "Sezon %d · %d%% izlendi",
   "Trailer season %d": "Sezon %d fragmanı",
-  "Trailer": "Fragman"
+  "Trailer": "Fragman",
+  "Applies to this profile only, on all your devices. Used for buttons, progress bars and highlights.": "Yalnızca bu profil için, tüm cihazlarında geçerlidir. Düğmeler, ilerleme çubukları ve vurgular için.",
+  "Every profile has its own collections, on all your devices. They appear as rows on Home, and in Live TV, Movies and Series. Hold a channel, movie or series to add it.": "Her profilin tüm cihazlarında kendi koleksiyonları vardır. Ana Sayfa'da ve Canlı TV, Filmler ve Diziler'de satır olarak görünürler. Eklemek için bir kanala, filme veya diziye basılı tut."
  },
  "zh-Hans": {
   "%@ is now signed in.": "%@ 现已登录。",
@@ -6923,7 +6923,6 @@
   "Channel preview": "频道预览",
   "Collection": "合集",
   "Collections": "合集",
-  "Collections are shared with all your devices and appear as rows on Home, and in Live TV, Movies and Series. Hold a channel, movie or series to add it.": "合集会同步到你的所有设备，并作为一行显示在首页以及直播、电影和剧集中。长按频道、电影或剧集即可添加。",
   "Delete collection": "删除合集",
   "Edit collection": "编辑合集",
   "Events": "赛事",
@@ -7039,7 +7038,6 @@
   "The app icon is only changed on this device.": "App 图标只会在此设备上更改。",
   "This server": "此服务器",
   "This title can't be downloaded.": "此内容无法下载。",
-  "Used for buttons, progress bars and highlights. Synced with your Bingr account.": "用于按钮、进度条和突出显示。会与你的 Bingr 账户同步。",
   "Waiting…": "等待中…",
   "Watch credits": "观看片尾",
   "When the credits start, the next episode begins after a short countdown.": "片尾开始后，短暂倒计时即播放下一集。",
@@ -7047,6 +7045,8 @@
   "%d%% of the series watched": "已看完本剧 %d%%",
   "Season %d · %d%% watched": "第 %d 季 · 已看 %d%%",
   "Trailer season %d": "第 %d 季预告片",
-  "Trailer": "预告片"
+  "Trailer": "预告片",
+  "Applies to this profile only, on all your devices. Used for buttons, progress bars and highlights.": "仅适用于此个人资料，在你的所有设备上生效。用于按钮、进度条和突出显示。",
+  "Every profile has its own collections, on all your devices. They appear as rows on Home, and in Live TV, Movies and Series. Hold a channel, movie or series to add it.": "每个个人资料都有自己的合集，在你的所有设备上同步。它们以行的形式显示在首页以及直播电视、电影和剧集中。长按频道、电影或剧集即可添加。"
  }
 }

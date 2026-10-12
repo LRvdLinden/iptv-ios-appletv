@@ -33,7 +33,8 @@ final class CloudStore: ObservableObject {
     @Published private(set) var photos: [UUID: Data] = [:]
     /// Kijkgeschiedenis, per profiel (afspeellijst)
     @Published private(set) var history: [HistoryEntry] = []
-    /// Eigen collecties (voor het hele account), inclusief tombstones (`deleted`)
+    /// Eigen collecties van alle profielen op dit apparaat (build 54: per profiel, zie `owner`), inclusief
+    /// tombstones (`deleted`). Zonder `owner`: nog niet gemigreerd (build 51–53, voor het hele account).
     @Published private(set) var collections: [BingrCollection] = []
     /// Startscherm per profiel (profiel-ID → indeling)
     @Published private(set) var homeLayouts: [String: HomeLayout] = [:]
@@ -105,6 +106,7 @@ final class CloudStore: ObservableObject {
         activeProfileID = p.id
         UserDefaults.standard.set(p.id.uuidString, forKey: "activeProfileID")
         applyPreferences(of: p)
+        applyActiveAccent()
         loadProfileData()
         progress = scoped([String: ProgressEntry].self, K.progress) ?? [:]
     }
@@ -130,7 +132,34 @@ final class CloudStore: ObservableObject {
     func upsertProfile(_ p: ViewerProfile) {
         if let i = profiles.firstIndex(where: { $0.id == p.id }) { profiles[i] = p } else { profiles.append(p) }
         write(profiles, K.profiles)
+        if p.id == activeProfileID { applyActiveAccent() }
         edited(.prefs)
+    }
+
+    // MARK: accentkleur per profiel (build 54)
+
+    /// De accentkleur van het actieve profiel actief maken (de app tekent dan meteen opnieuw, zie BingrApp).
+    /// Zonder actief profiel ("Wie kijkt er?") blijft de laatste kleur staan.
+    func applyActiveAccent() {
+        guard let p = activeProfile else { return }
+        let v = AccentChoice.of(p).rawValue
+        if local.string(forKey: AccentChoice.key) != v { local.set(v, forKey: AccentChoice.key) }
+    }
+
+    /// Eenmalige migratie: de oude kleur van het account (`settings.shared.accentColor`, build 52/53) naar elk
+    /// profiel zonder eigen `accentColor`, zodat niemands kleur verandert. Daarna wordt de oude kleur niet meer gelezen.
+    /// Zonder bekende oude kleur gebeurt er nog niets (die kan later via de account binnenkomen).
+    func migrateLegacyAccent() {
+        guard !local.bool(forKey: AccentChoice.migratedKey) else { return }
+        guard let legacy = AccentChoice.legacy, !profiles.isEmpty else { return }
+        var changed = false
+        for i in profiles.indices where profiles[i].accentColor == nil {
+            profiles[i].accentColor = legacy.rawValue
+            changed = true
+        }
+        if changed { write(profiles, K.profiles) }
+        local.set(true, forKey: AccentChoice.migratedKey)
+        applyActiveAccent()
     }
 
     /// Profiel op dít apparaat verwijderd: ProfileSync zet er een tombstone voor in de Bingr-account
@@ -157,6 +186,11 @@ final class CloudStore: ObservableObject {
         }
         kv.synchronize()
         if Keychain.get("profile.\(id.uuidString).pin") != nil { Keychain.set(nil, for: "profile.\(id.uuidString).pin") }
+        // collecties van dit profiel (build 54)
+        if collections.contains(where: { $0.owner == id }) {
+            collections.removeAll { $0.owner == id }
+            write(collections, K.collections)
+        }
     }
 
     /// Profielen uit de Bingr-account overnemen (importeren/samenvoegen, zie ProfileSync).
@@ -174,6 +208,7 @@ final class CloudStore: ObservableObject {
             activeProfileID = nil
             UserDefaults.standard.removeObject(forKey: "activeProfileID")
         }
+        applyActiveAccent()   // kleur van het actieve profiel kan op een ander apparaat gewijzigd zijn
     }
 
     func setMainSource(_ id: UUID) {
@@ -228,11 +263,15 @@ final class CloudStore: ObservableObject {
         mainProfileIDStored = decode(UUID.self, K.mainProfile)
         migrateToProfiles()
         loadProfileData()
+        // zonder Bingr-account in deze build: migraties alleen lokaal (anders na de sync, zie ProfileSync/StateSync)
+        if !Secrets.accountsConfigured { migrateLegacyAccent() }
+        applyActiveAccent()
         customizations = decode([UUID: Customization].self, K.custom) ?? [:]
         parental = decode(ParentalSettings.self, K.parental) ?? ParentalSettings()
         photos = decode([UUID: Data].self, K.photos) ?? [:]
         collections = decode([BingrCollection].self, K.collections) ?? collections
         homeLayouts = decode([String: HomeLayout].self, K.homeLayout) ?? homeLayouts
+        if !Secrets.accountsConfigured { migrateLegacyCollections() }
         // wachtwoorden/tokens ook via iCloud KV delen (Apple TV krijgt ze anders niet) — op de achtergrond,
         // sleutelhanger-acties zijn traag en blokkeerden het wisselen van profiel
         let secretKeys = playlists.flatMap { [$0.passwordKey, "playlist.\($0.id.uuidString).session"] }
@@ -379,6 +418,9 @@ final class CloudStore: ObservableObject {
         photos = [:]; write(photos, K.photos)
         collections = []; write(collections, K.collections)
         homeLayouts = [:]; write(homeLayouts, K.homeLayout)
+        // oude accentkleur van het vorige account niet naar de profielen van dit account kopiëren
+        local.removeObject(forKey: AccentChoice.legacyKey)
+        local.removeObject(forKey: AccentChoice.migratedKey)
         favorites = []; myList = []; localWatched = []; recentChannels = []; history = []; progress = [:]
         activeProfileID = nil
         activePlaylistID = nil
@@ -462,7 +504,7 @@ final class CloudStore: ObservableObject {
         guard p != profiles[i] else { return }
         profiles[i] = p
         write(profiles, K.profiles)
-        if id == activeProfileID { applyPreferences(of: p) }
+        if id == activeProfileID { applyPreferences(of: p); applyActiveAccent() }
     }
 
     /// Kinderslot aan/uit en volwassenengroepen (zonder de groepen per server) uit de account zetten.
@@ -473,20 +515,43 @@ final class CloudStore: ObservableObject {
         write(parental, K.parental)
     }
 
-    // MARK: collecties (build 51)
+    // MARK: collecties (build 51, per profiel sinds build 54)
 
-    /// Collecties zoals de app ze toont: zonder tombstones, op volgorde.
+    /// Het profiel waarvan de collecties nu gelden: het actieve, anders het hoofdprofiel.
+    var collectionOwner: UUID? { activeProfileID ?? mainProfileID }
+
+    /// Collecties van het actieve profiel zoals de app ze toont: zonder tombstones, op volgorde. Collecties zonder
+    /// eigenaar (nog niet gemigreerd, build 51–53) zijn tot de migratie voor iedereen zichtbaar, zodat niets verdwijnt.
     var activeCollections: [BingrCollection] {
-        collections.filter { !$0.deleted }.sorted { $0.order != $1.order ? $0.order < $1.order : $0.name < $1.name }
+        let me = collectionOwner
+        let mine = collections.filter { $0.owner != nil && $0.owner == me }
+        let mineIDs = Set(mine.map(\.id))   // ook tombstones: een eigen verwijdering verbergt de oude versie
+        let legacy = collections.filter { $0.owner == nil && !mineIDs.contains($0.id) }
+        return (mine + legacy).filter { !$0.deleted }
+            .sorted { $0.order != $1.order ? $0.order < $1.order : $0.name < $1.name }
     }
 
-    func collection(_ id: String) -> BingrCollection? { collections.first { $0.id == id && !$0.deleted } }
+    func collection(_ id: String) -> BingrCollection? { activeCollections.first { $0.id == id } }
 
-    /// Nieuw of gewijzigd (eigen wijziging: `updatedAt` = nu).
+    /// Index van de collectie van het actieve profiel. Bestaat alleen nog een oude (zonder eigenaar), dan wordt
+    /// die eerst een eigen kopie van dit profiel.
+    private func ownedCollectionIndex(_ id: String) -> Int? {
+        let me = collectionOwner
+        if let i = collections.firstIndex(where: { $0.id == id && $0.owner != nil && $0.owner == me }) { return i }
+        guard let me, let old = collections.first(where: { $0.id == id && $0.owner == nil }) else { return nil }
+        var c = old
+        c.owner = me
+        collections.append(c)
+        return collections.count - 1
+    }
+
+    /// Nieuw of gewijzigd, voor het actieve profiel (eigen wijziging: `updatedAt` = nu). Elk profiel mag dit,
+    /// ook een kinderprofiel: de inhoud komt uit de bibliotheek van dat profiel, die al op leeftijd gefilterd is.
     func upsertCollection(_ c: BingrCollection) {
         var c = c
         c.updatedAt = Date()
-        if let i = collections.firstIndex(where: { $0.id == c.id }) {
+        c.owner = collectionOwner
+        if let i = ownedCollectionIndex(c.id) {
             collections[i] = c
         } else {
             c.order = (activeCollections.map(\.order).max() ?? -1) + 1
@@ -496,9 +561,9 @@ final class CloudStore: ObservableObject {
         stateEdited.send((nil, .collections))
     }
 
-    /// Verwijderen = tombstone (zelfde regels als bij profielen).
+    /// Verwijderen = tombstone (zelfde regels als bij profielen), alleen bij het actieve profiel.
     func deleteCollection(_ id: String) {
-        guard let i = collections.firstIndex(where: { $0.id == id }) else { return }
+        guard let i = ownedCollectionIndex(id) else { return }
         let now = Date()
         collections[i].deleted = true
         collections[i].deletedAt = now
@@ -512,7 +577,7 @@ final class CloudStore: ObservableObject {
     func reorderCollections(_ ids: [String]) {
         let now = Date()
         for (n, id) in ids.enumerated() {
-            guard let i = collections.firstIndex(where: { $0.id == id }), collections[i].order != n else { continue }
+            guard let i = ownedCollectionIndex(id), collections[i].order != n else { continue }
             collections[i].order = n
             collections[i].updatedAt = now
         }
@@ -529,6 +594,23 @@ final class CloudStore: ObservableObject {
     /// Collecties uit de Bingr-account (StateSync); telt niet als eigen wijziging.
     func replaceCollections(_ list: [BingrCollection]) {
         guard list != collections else { return }
+        collections = list
+        write(collections, K.collections)
+    }
+
+    /// Zonder account (build 54): oude collecties zonder eigenaar naar elk bestaand profiel kopiëren
+    /// (zelfde `id` en `updatedAt`), zodat niets verdwijnt. Met een account doet StateSync dit.
+    func migrateLegacyCollections() {
+        let legacy = collections.filter { $0.owner == nil }
+        guard !legacy.isEmpty, !profiles.isEmpty else { return }
+        var list = collections.filter { $0.owner != nil }
+        for p in profiles {
+            for c in legacy where !list.contains(where: { $0.owner == p.id && $0.id == c.id }) {
+                var copy = c
+                copy.owner = p.id
+                list.append(copy)
+            }
+        }
         collections = list
         write(collections, K.collections)
     }

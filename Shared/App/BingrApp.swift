@@ -13,8 +13,8 @@ struct BingrApp: App {
     @StateObject private var reminders = ReminderCenter.shared
     @StateObject private var account = AccountService.shared
     @Environment(\.scenePhase) private var phase
-    /// Accentkleur (build 52): wisselen → alles opnieuw tekenen
-    @AppStorage(AccentChoice.key) private var accent = AccentChoice.red.rawValue
+    /// Accentkleur van het actieve profiel (build 54): wisselen (ook door een ander profiel te kiezen) → alles opnieuw tekenen
+    @AppStorage(AccentChoice.key) private var accent = AccentChoice.current.rawValue
     /// De accentkleur waarmee nu getekend is; een wijziging (ook via de account) pas toepassen als er niets speelt
     @State private var shownAccent = AccentChoice.current.rawValue
     #if os(iOS)
@@ -51,9 +51,8 @@ struct BingrApp: App {
                     ExternalDisplay.shared.start()   // extern scherm: video daar, bediening hier
                     DownloadManager.shared.start()   // downloads hervatten (build 52)
                     #endif
-                    #if os(macOS)
-                    AppIconChoice.applyDockIcon()    // gekozen icoon in het Dock (build 52)
-                    #endif
+                    // gekozen app-icoon na een update gelijktrekken; Mac: in het Dock (build 52/54)
+                    AppIconChoice.reconcile()
                 }
                 .onChange(of: accent) { _, v in
                     if app.playing == nil && !app.showMultiview { shownAccent = v }

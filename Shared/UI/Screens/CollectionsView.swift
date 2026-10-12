@@ -94,7 +94,7 @@ struct CollectionsView: View {
                 }
                 Button { adding = true } label: { Label(L("New collection"), systemImage: "plus") }
             } footer: {
-                Text(L("Collections are shared with all your devices and appear as rows on Home, and in Live TV, Movies and Series. Hold a channel, movie or series to add it."))
+                Text(L("Every profile has its own collections, on all your devices. They appear as rows on Home, and in Live TV, Movies and Series. Hold a channel, movie or series to add it."))
             }
         }
         .navigationTitle(L("Collections"))

@@ -387,3 +387,60 @@ Vier nieuwe sleutels in `settings.shared`, op iOS en Android gelijk. Zoals alle 
 - **Intro:** zonder `introStart` loopt de intro vanaf het begin van de aflevering. Zolang de speler in de intro zit, staat er een knop **Intro overslaan** in beeld.
 - **Aftiteling:** vanaf `creditsStart` verschijnt de kaart **Volgende aflevering**. Na 10 seconden aftellen start die automatisch.
 - Het app-icoon (alleen op Apple) wordt niet gesynchroniseerd.
+- **Sinds build 54** staat `accentColor` per profiel in `account_data.profiles` (zie "Build 54"); `settings.shared.accentColor` is alleen nog de bron voor de migratie.
+
+## Build 54: accentkleur per profiel, app-icoon alleen hoofdprofiel, collecties per profiel
+
+### Accentkleur per profiel
+
+Elk profiel heeft een eigen accentkleur. Die staat in `account_data.profiles`, dus bij het profiel zelf: hij blijft na een update of herinstallatie en volgt het profiel naar elk apparaat.
+
+| Veld (per profiel in `profiles`) | Waarde | Ontbreekt |
+|---|---|---|
+| `accentColor` | `"red"`, `"blue"`, `"green"`, `"purple"`, `"orange"` of `"pink"` | `"red"` |
+
+- **Wijzigen** (Mijn Bingr → Uiterlijk, elk profiel): zet `accentColor` bij het actieve profiel, zet `updatedAt` = nu en upload de profielenlijst (zoals bij naam of avatar). `accentColor` hoort bij de velden die bij "server nieuwer" worden overgenomen.
+- **Samenvoegen:** is de server nieuwer en heeft hij `accentColor`, neem die over. Ontbreekt `accentColor` op de server (een oudere app), laat de lokale waarde staan. Heeft het profiel lokaal nog geen kleur en de server wel, neem die van de server over (ook als de server niet nieuwer is).
+- **Toepassen:** bij het kiezen van een profiel en zodra de kleur van het actieve profiel (ook via de sync) verandert, meteen de hele interface in die kleur. "Wie kijkt er?" houdt de laatste kleur.
+- **Migratie (eenmalig per apparaat):** is `settings.shared.accentColor` bekend (build 52/53) en heeft een profiel nog geen `accentColor`, kopieer die oude kleur dan naar **alle bestaande profielen** zonder eigen kleur. Doe dit pas nadat de profielen van de server zijn toegepast, zodat een kleur die een ander apparaat al per profiel bewaarde voorgaat. Daarna gaat de wijziging gewoon mee met de profielenlijst. Is er geen oude kleur, dan gebeurt er niets (rood).
+- **Na de migratie** wordt `settings.shared.accentColor` niet meer gelezen en niet meer geschreven. De waarde blijft op de server staan (bij het samenvoegen van `settings` blijft hij onaangeroerd), zodat oudere apps blijven werken.
+
+### App-icoon alleen voor het hoofdprofiel (alleen Apple)
+
+- Alleen het hoofdprofiel (`isMain`, hetzelfde profiel dat servers, kinderslot en de kijkgeschiedenis van het account beheert) ziet de keuze voor het app-icoon. Andere profielen zien in Uiterlijk alleen de accentkleuren.
+- Het icoon blijft een instelling van het apparaat (UserDefaults `ui.appIcon`) en wordt niet gesynchroniseerd. Bij het starten wordt de bewaarde keuze gelijkgetrokken met het icoon dat het systeem toont (iPhone/iPad, blijft na een update staan) of opnieuw als Dock-icoon gezet (Mac).
+
+### Collecties per profiel
+
+Elk profiel heeft zijn eigen collecties; elk profiel mag ze maken, wijzigen, herschikken en verwijderen, ook een kinderprofiel. De inhoud komt uit de bibliotheek van dat profiel, die al op leeftijd gefilterd is: een kinderprofiel ziet in een (slimme of handmatige) collectie dus alleen wat door het kinderfilter komt.
+
+State-section `collections`:
+
+```json
+{
+  "version": 2,
+  "profiles": {
+    "<profielID>": {
+      "items": [ { "id": "…", "name": "…", "image": {…}, "kind": "manual|smart", "items": […], "query": "…",
+                   "types": […], "group": "…", "sourceID": "…", "order": 0, "updatedAt": "ISO-8601",
+                   "deleted": true, "deletedAt": "ISO-8601" } ],
+      "updatedAt": "ISO-8601"
+    }
+  },
+  "items": [ … ],
+  "migratedAt": "ISO-8601",
+  "updatedAt": "ISO-8601"
+}
+```
+
+- **`profiles`**: per profiel-ID (zoals in `account_data.profiles[].id`, en zoals in `profile.<id>`) een emmer met `items` en `updatedAt` (= de nieuwste `updatedAt` van de items erin). Een collectie-item heeft precies het formaat van build 51 (zie hierboven).
+- **`version: 2`**: de section is gemigreerd. Zonder `version` (of < 2) en zonder `profiles` is het nog het oude formaat.
+- **`items`** op het hoogste niveau: de oude collecties van build 51–53 (voor het hele account). Apps van build 54 lezen ze alleen voor de migratie en laten ze daarna onaangeroerd staan (oudere apps lezen ze nog).
+- **Collectie-ID's** zijn uniek binnen een profiel. Dezelfde `id` mag in meerdere profielen voorkomen (na de migratie is dat zo); `homeLayout` in `profile.<id>` blijft `collection:<id>` gebruiken.
+- **Samenvoegen:** per profiel en per collectie-`id` wint de nieuwste `updatedAt`, ook een tombstone. Tombstones ouder dan 90 dagen mogen weg. Onbekende velden en emmers van profielen die het apparaat (nog) niet kent blijven onaangeroerd. De emmer van een verwijderd profiel (tombstone in `account_data.profiles`) gaat weg.
+- **Migratie** (eerste build 54-app die de section leest en `version` < 2 ziet): elke oude collectie uit `items` (en lokale collecties van vóór build 54) gaat naar **elk bestaand profiel** dat nog geen collectie met die `id` heeft, met dezelfde `id`, `order` en `updatedAt`. Zo verdwijnt er niets en blijven de startscherm-rijen werken. Daarna `version: 2`, `migratedAt` = nu en uploaden. Doen twee apparaten dit tegelijk, dan levert dat dezelfde items op (zelfde `id` en `updatedAt`). Profielen die later worden aangemaakt beginnen leeg.
+- **Uploaden:** bij elke eigen wijziging (ongeveer 3 seconden vertraging) de hele section, met alle emmers.
+
+### Apple Vision Pro
+
+Build 54 ondersteunt Apple Vision Pro niet meer (`SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD: NO`).

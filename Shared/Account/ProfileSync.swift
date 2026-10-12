@@ -35,8 +35,9 @@ final class ProfileSync {
     private let pendingKey = "account.photoPending.v1"
     /// Per profiel de `updatedAt` van de versie die dit apparaat heeft (*localUpdatedAt*)
     private let updatedKey = "account.profileUpdatedAt.v1"
-    /// Per profiel de gesynchroniseerde velden zoals laatst gezien (om eigen wijzigingen te herkennen)
-    private let fingerprintKey = "account.profileFingerprints.v1"
+    /// Per profiel de gesynchroniseerde velden zoals laatst gezien (om eigen wijzigingen te herkennen).
+    /// v2 (build 54): met `accentColor`. Een nieuwe sleutel, zodat een update niet als eigen wijziging telt.
+    private let fingerprintKey = "account.profileFingerprints.v2"
     /// Tombstones (eigen en van de server), per profiel-ID
     private let tombstonesKey = "account.profileTombstones.v1"
     /// `photo` per profiel zoals laatst van de server gelezen
@@ -104,7 +105,7 @@ final class ProfileSync {
         ready = false
         dirty = false
         remotePhotos = [:]
-        for k in [extrasKey, versionsKey, pendingKey, updatedKey, fingerprintKey, tombstonesKey] {
+        for k in [extrasKey, versionsKey, pendingKey, updatedKey, fingerprintKey, tombstonesKey, "account.profileFingerprints.v1"] {
             UserDefaults.standard.removeObject(forKey: k)
         }
     }
@@ -160,11 +161,20 @@ final class ProfileSync {
         saveUpdated(updated)
     }
 
-    /// Naam, avatar, kinderprofiel, leeftijdsgrens, volgorde en hoofdprofiel.
+    /// Naam, avatar, kinderprofiel, leeftijdsgrens, volgorde, hoofdprofiel en accentkleur (build 54).
     private func fingerprint(_ p: ViewerProfile, index: Int) -> String {
         let store = CloudStore.shared
         return [p.name, p.avatar.symbol, String(p.avatar.colorIndex), p.kids ? "1" : "0",
-                p.ageLimit.map(String.init) ?? "-", String(index), store.isMain(p) ? "m" : ""].joined(separator: "\u{1F}")
+                p.ageLimit.map(String.init) ?? "-", String(index), store.isMain(p) ? "m" : "",
+                p.accentColor ?? "-"].joined(separator: "\u{1F}")
+    }
+
+    /// De oude accentkleur van het account (`settings.shared.accentColor`) is via StateSync binnengekomen:
+    /// naar de profielen zonder eigen kleur kopiëren. Pas als de profielen van de server toegepast zijn, zodat
+    /// een kleur die een ander apparaat al per profiel bewaarde voorgaat. De wijziging gaat daarna vanzelf mee.
+    func legacyAccentArrived() {
+        guard ready || !Secrets.accountsConfigured || !AccountService.shared.isSignedIn else { return }
+        CloudStore.shared.migrateLegacyAccent()
     }
 
     /// Lokale sync-gegevens van een profiel vergeten.
@@ -298,8 +308,12 @@ final class ProfileSync {
                         p.avatar = r.profile.avatar
                         p.isKids = r.profile.kids ? true : (p.isKids == nil ? nil : false)
                         p.ageLimit = r.profile.ageLimit
+                        if let a = r.profile.accentColor { p.accentColor = a }   // ontbreekt = niet gewijzigd (oudere app)
                         key = Double(r.order)
                         updated[p.id.uuidString] = r.updatedAt
+                    } else if p.accentColor == nil, let a = r.profile.accentColor {
+                        // lokaal nog geen kleur (bijv. net bijgewerkt): die van de server overnemen
+                        p.accentColor = a
                     }
                 }
                 keyed.append((p, key, i))
@@ -331,6 +345,9 @@ final class ProfileSync {
         for (i, p) in store.profiles.enumerated() { prints[p.id.uuidString] = fingerprint(p, index: i) }
         saveFingerprints(prints)
         ready = true
+        // build 54: de oude accentkleur van het account eenmalig naar profielen zonder eigen kleur (gaat daarna mee
+        // met de volgende ronde, want de vingerafdruk is dan anders)
+        store.migrateLegacyAccent()
 
         let photosChanged = await applyRemotePhotos(activeSorted)
         guard account.isSignedIn, !Task.isCancelled else { return }
@@ -576,6 +593,8 @@ final class ProfileSync {
             if let a = p.ageLimit { d["ageLimit"] = a } else { d["ageLimit"] = NSNull() }
             d["isMain"] = store.isMain(p)
             d["order"] = i
+            // build 54: accentkleur per profiel (ontbreekt = "red"; zonder eigen kleur laten we de waarde van de server staan)
+            if let a = p.accentColor, AccentChoice(rawValue: a) != nil { d["accentColor"] = a }
             if let u = updated[p.id.uuidString] { d["updatedAt"] = u }
             d["photo"] = photoField(for: p.id)
             out.append(d)
@@ -627,6 +646,7 @@ final class ProfileSync {
         p.id = uuid(for: rawID)
         if let n = d["ageLimit"] as? NSNumber, n.intValue > 0 { p.ageLimit = n.intValue }
         if (d["kids"] as? Bool) == true { p.isKids = true }
+        if let a = d["accentColor"] as? String, AccentChoice(rawValue: a) != nil { p.accentColor = a }
         let isMain = (d["isMain"] as? Bool) ?? false
         let order = (d["order"] as? NSNumber)?.intValue ?? index
         var raw = d

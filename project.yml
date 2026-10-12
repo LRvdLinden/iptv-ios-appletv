@@ -10,7 +10,7 @@ settings:
   base:
     SWIFT_VERSION: "5.9"
     MARKETING_VERSION: "1.0.0"
-    CURRENT_PROJECT_VERSION: "53"
+    CURRENT_PROJECT_VERSION: "54"
     # Team van Léon van der Linden; automatisch ondertekenen voor iOS, tvOS en macOS
     DEVELOPMENT_TEAM: EU3UY476T6
     CODE_SIGN_STYLE: Automatic
@@ -73,8 +73,7 @@ targets:
         INFOPLIST_KEY_CFBundleDisplayName: Bingr
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.entertainment
         SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO   # de Mac heeft een eigen app (BingrMac)
-        # Apple Vision Pro: de iPad-app draait daar als "Designed for iPad" (VLCKit heeft geen visionOS-versie)
-        SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD: YES
+        SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD: NO    # geen Apple Vision Pro (build 54)
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         # alternatieve app-iconen (build 52, gemaakt met tools/make_icons.py)
         ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES: "AppIcon-Dark AppIcon-Light AppIcon-Blue AppIcon-Gold"

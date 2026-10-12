@@ -10,7 +10,8 @@ import CryptoKit
 /// - `settings`: `shared` (zelfde betekenis op iOS en Android), `apple` (de rest); `android` blijft onaangeroerd.
 /// - `profile.<id>`: Mijn lijst, favorieten, voortgang, bekeken, geschiedenis, recente zenders, kijkvoorkeuren, pincode.
 /// - `reminders`: herinneringen.
-/// - `collections`: eigen collecties (build 51), per item wint de nieuwste `updatedAt`; in `profile.<id>` ook `homeLayout`.
+/// - `collections`: eigen collecties (build 51), sinds build 54 per profiel (`profiles.<profielID>.items`); per item
+///   wint de nieuwste `updatedAt`; in `profile.<id>` ook `homeLayout`.
 ///
 /// Lijsten en sets worden per item samengevoegd (`{id, removed?, at}`, nieuwste `at` wint), zodat ook een
 /// verwijdering doorkomt. Lokale wijzigingen worden herkend door de huidige stand te vergelijken met de laatst
@@ -79,7 +80,13 @@ final class StateSync {
         var reminders = ListMeta()
         /// Per lokaal profiel-ID
         var profiles: [String: ListMeta] = [:]
+        /// Opbouw van de instellingen-vingerafdruk (build 54: zonder `accentColor`). Anders = na een update
+        /// eenmalig opnieuw vastleggen, zonder dat het als eigen wijziging telt.
+        /// (Een nieuwe meta begint met het huidige formaat; een opgeslagen meta van vóór build 54 heeft nil.)
+        var settingsFormat: Int? = StateSync.settingsFormat
     }
+
+    nonisolated static let settingsFormat = 54
 
     private func saveMeta() {
         if let d = try? JSONEncoder().encode(meta) { UserDefaults.standard.set(d, forKey: metaKey) }
@@ -481,8 +488,9 @@ final class StateSync {
         shared["parentalAutoLockAdult"] = store.parental.autoLockAdult
         shared["traktScrobble"] = TraktSync.scrobbleEnabled
         shared["traktAskRating"] = TraktSync.askRating
-        // build 52: uiterlijk, deinterlacing, laatste zender en intro-markeringen (zelfde sleutels als Android)
-        shared["accentColor"] = AccentChoice.current.rawValue
+        // build 52: deinterlacing, laatste zender en intro-markeringen (zelfde sleutels als Android).
+        // `accentColor` staat sinds build 54 per profiel in account_data.profiles; de oude sleutel hier wordt niet
+        // meer geschreven (bij het samenvoegen blijft de waarde van de server gewoon staan).
         shared["deinterlace"] = DeinterlaceMode.current.rawValue
         shared["resumeLastChannel"] = PlayerSettings.resumeLastChannel
         shared["introMarkers"] = IntroMarkers.syncJSON()
@@ -505,6 +513,13 @@ final class StateSync {
     private func noteSettings() -> Bool {
         let s = localSettings()
         let fp = Self.fingerprint(["shared": s.shared, "apple": s.apple])
+        if meta.settingsFormat != Self.settingsFormat {
+            // andere opbouw na een update: alleen de vingerafdruk bijwerken
+            if meta.settings.fp != nil { meta.settings.fp = fp }
+            meta.settingsFormat = Self.settingsFormat
+            saveMeta()
+            return false
+        }
         guard fp != meta.settings.fp else { return false }
         meta.settings = Stamp(fp: fp, at: meta.settingsSeeded ? Date().timeIntervalSince1970 : meta.settings.at)
         saveMeta()
@@ -581,7 +596,11 @@ final class StateSync {
         }
         if let v = shared["traktScrobble"] as? Bool { setIfChanged(v, "trakt.scrobble") }
         if let v = shared["traktAskRating"] as? Bool { setIfChanged(v, "trakt.askRating") }
-        if let v = shared["accentColor"] as? String, AccentChoice(rawValue: v) != nil { setIfChanged(v, AccentChoice.key) }
+        // oude accentkleur van het account (build 52/53): alleen nog bewaren voor de eenmalige migratie naar de profielen
+        if !d.bool(forKey: AccentChoice.migratedKey), let v = shared["accentColor"] as? String, AccentChoice(rawValue: v) != nil {
+            setIfChanged(v, AccentChoice.legacyKey)
+            ProfileSync.shared.legacyAccentArrived()
+        }
         if let v = shared["deinterlace"] as? String, DeinterlaceMode(rawValue: v) != nil { setIfChanged(v, DeinterlaceMode.key) }
         if let v = shared["resumeLastChannel"] as? Bool { setIfChanged(v, PlayerSettings.resumeLastChannelKey) }
         if let v = shared["introMarkers"] as? [String: Any] { IntroMarkers.apply(syncJSON: v) }
@@ -734,13 +753,20 @@ final class StateSync {
                                start: Date(timeIntervalSince1970: start))
     }
 
-    // MARK: - collections (build 51)
+    // MARK: - collections (build 51, per profiel sinds build 54)
+    //
+    // Section `collections` (zie docs/ACCOUNT.md → "Build 54"):
+    // `{version: 2, profiles: {"<profielID>": {items:[…], updatedAt}}, items:[…oud…], migratedAt, updatedAt}`.
+    // Elk profiel heeft zijn eigen collecties. `items` op het hoogste niveau is het formaat van build 51–53: dat
+    // blijft onaangeroerd staan en wordt alleen gelezen zolang `version` < 2 (de migratie).
 
-    /// Onbekende velden per collectie van de server (die gaan onaangeroerd terug)
-    private let collectionExtrasKey = "account.collectionExtras.v1"
+    /// Onbekende velden per collectie van de server (die gaan onaangeroerd terug), per "<profielID>|<collectieID>"
+    private let collectionExtrasKey = "account.collectionExtras.v2"
+    /// Build 51–53: per collectie-ID (alleen nog voor de migratie)
+    private let legacyCollectionExtrasKey = "account.collectionExtras.v1"
 
-    private func loadCollectionExtras() -> [String: [String: Any]] {
-        guard let d = UserDefaults.standard.data(forKey: collectionExtrasKey),
+    private func loadCollectionExtras(_ key: String? = nil) -> [String: [String: Any]] {
+        guard let d = UserDefaults.standard.data(forKey: key ?? collectionExtrasKey),
               let j = (try? JSONSerialization.jsonObject(with: d)) as? [String: [String: Any]] else { return [:] }
         return j
     }
@@ -750,54 +776,130 @@ final class StateSync {
         UserDefaults.standard.set(d, forKey: collectionExtrasKey)
     }
 
-    /// Per item wint de nieuwste `updatedAt` (ook een tombstone). Geeft de data terug als er geüpload moet worden.
+    private static func extrasKey(_ owner: UUID, _ id: String) -> String { owner.uuidString + "|" + id }
+
+    /// Per profiel en per item wint de nieuwste `updatedAt` (ook een tombstone). Oude collecties (build 51–53,
+    /// zonder profiel) gaan eenmalig naar elk bestaand profiel, met dezelfde `id` en `updatedAt`, zodat niets
+    /// verdwijnt en de rijen op het startscherm (`collection:<id>`) blijven werken. Geeft de data terug als er
+    /// geüpload moet worden.
     private func mergeCollections(_ remote: (data: Any, updatedAt: String?)?) -> [String: Any]? {
         let store = CloudStore.shared
         let data: [String: Any]
         if let d = remote?.data as? [String: Any] { data = d }
         else if let a = remote?.data as? [Any] { data = ["items": a] }
         else { data = [:] }
-        var server: [String: (c: BingrCollection, raw: [String: Any])] = [:]
-        for e in data["items"] as? [Any] ?? [] {
-            guard let j = e as? [String: Any], let c = Self.collection(j) else { continue }
-            if let old = server[c.id], old.c.updatedAt >= c.updatedAt { continue }
-            server[c.id] = (c, j)
+        let tombs = ProfileSync.shared.tombstonedIDs
+        let profileIDs = store.profiles.map(\.id).filter { !tombs.contains($0) }
+        guard !profileIDs.isEmpty else { return nil }
+        let known = Set(profileIDs)
+        let serverBuckets = data["profiles"] as? [String: Any] ?? [:]
+        let migrated = ((data["version"] as? NSNumber)?.intValue ?? 1) >= 2 || data["profiles"] is [String: Any]
+
+        // server: per profiel; emmers van profielen die dit apparaat (nog) niet kent blijven onaangeroerd
+        var server: [UUID: [String: (c: BingrCollection, raw: [String: Any])]] = [:]
+        var serverKey: [UUID: String] = [:]
+        var foreign: [String: Any] = [:]
+        for (key, v) in serverBuckets {
+            let owner = ProfileSync.uuid(for: key)
+            guard known.contains(owner) else {
+                if !tombs.contains(owner) { foreign[key] = v }   // verwijderd profiel: emmer weg
+                continue
+            }
+            serverKey[owner] = key
+            let items = ((v as? [String: Any])?["items"] as? [Any]) ?? (v as? [Any]) ?? []
+            var bucket = server[owner] ?? [:]
+            for e in items {
+                guard let j = e as? [String: Any], var c = Self.collection(j) else { continue }
+                c.owner = owner
+                if let old = bucket[c.id], old.c.updatedAt >= c.updatedAt { continue }
+                bucket[c.id] = (c, j)
+            }
+            server[owner] = bucket
         }
-        var merged: [String: BingrCollection] = [:]
-        for c in store.collections { merged[c.id] = c }
+
+        // oude collecties (zonder profiel): van de server zolang die nog niet gemigreerd is, en lokaal
+        var legacy: [String: (c: BingrCollection, raw: [String: Any]?)] = [:]
+        if !migrated {
+            for e in data["items"] as? [Any] ?? [] {
+                guard let j = e as? [String: Any], let c = Self.collection(j) else { continue }
+                if let old = legacy[c.id], old.c.updatedAt >= c.updatedAt { continue }
+                legacy[c.id] = (c: c, raw: Optional(j))
+            }
+        }
+        let legacyExtras = loadCollectionExtras(legacyCollectionExtrasKey)
+        for c in store.collections where c.owner == nil {
+            if let old = legacy[c.id], old.c.updatedAt >= c.updatedAt { continue }
+            let raw: [String: Any]? = legacy[c.id]?.raw ?? legacyExtras[c.id]
+            legacy[c.id] = (c: c, raw: raw)
+        }
+
+        // samenvoegen: lokaal (per profiel) + server, nieuwste `updatedAt` wint
         var extras = loadCollectionExtras()
-        for (id, s) in server {
-            extras[id] = s.raw
-            if let l = merged[id], l.updatedAt >= s.c.updatedAt { continue }
-            merged[id] = s.c
+        var merged: [UUID: [String: BingrCollection]] = [:]
+        for c in store.collections {
+            guard let o = c.owner, known.contains(o) else { continue }
+            if let old = merged[o]?[c.id], old.updatedAt >= c.updatedAt { continue }
+            merged[o, default: [:]][c.id] = c
+        }
+        for (owner, bucket) in server {
+            for (id, s) in bucket {
+                extras[Self.extrasKey(owner, id)] = s.raw
+                if let l = merged[owner]?[id], l.updatedAt >= s.c.updatedAt { continue }
+                merged[owner, default: [:]][id] = s.c
+            }
+        }
+        // migratie: elke oude collectie naar elk profiel dat er (nog) geen versie van heeft
+        for owner in profileIDs {
+            for (id, l) in legacy where merged[owner]?[id] == nil {
+                var c = l.c
+                c.owner = owner
+                c.id = id
+                merged[owner, default: [:]][id] = c
+                if let r = l.raw { extras[Self.extrasKey(owner, id)] = r }
+            }
         }
         // tombstones ouder dan 90 dagen weg
         let cutoff = Date().addingTimeInterval(-Self.removedLifetime)
-        merged = merged.filter { !$0.value.deleted || ($0.value.deletedAt ?? $0.value.updatedAt) >= cutoff }
-        let list = Self.sortedCollections(Array(merged.values))
+        for (owner, bucket) in merged {
+            merged[owner] = bucket.filter { !$0.value.deleted || ($0.value.deletedAt ?? $0.value.updatedAt) >= cutoff }
+        }
+        let list = profileIDs.flatMap { Self.sortedCollections(Array((merged[$0] ?? [:]).values)) }
         store.replaceCollections(list)
-        extras = extras.filter { merged[$0.key] != nil }
+        extras = extras.filter { k, _ in list.contains { Self.extrasKey($0.owner!, $0.id) == k } }
         saveCollectionExtras(extras)
+        UserDefaults.standard.removeObject(forKey: legacyCollectionExtrasKey)
 
         if remote == nil && list.isEmpty { return nil }
-        let mine = collectionsPayload(list, extras: extras, section: data)
-        if remote != nil {
-            let theirs = collectionsPayload(Self.sortedCollections(server.values.map { $0.c }), extras: extras, section: data)
-            if Self.same(Self.withoutUpdatedAt(mine), Self.withoutUpdatedAt(theirs)) { return nil }
+        // uploaden als er gemigreerd is, of als een profiel lokaal iets anders heeft dan de server
+        var buckets = foreign
+        var differs = !migrated
+        for owner in profileIDs {
+            let key = serverKey[owner] ?? ProfileSync.shared.serverID(for: owner)
+            let mine = Self.sortedCollections(Array((merged[owner] ?? [:]).values))
+            let theirs = Self.sortedCollections((server[owner] ?? [:]).values.map(\.c))
+            let mineJSON = mine.map { Self.collectionJSON($0, extras: extras[Self.extrasKey(owner, $0.id)] ?? [:]) }
+            let theirsJSON = theirs.map { Self.collectionJSON($0, extras: extras[Self.extrasKey(owner, $0.id)] ?? [:]) }
+            if !Self.same(mineJSON, theirsJSON) { differs = true }
+            if mine.isEmpty && serverBuckets[key] == nil { continue }
+            var b = serverBuckets[key] as? [String: Any] ?? [:]
+            b["items"] = mineJSON
+            let last = mine.map(\.updatedAt).max() ?? Date(timeIntervalSince1970: 0)
+            b["updatedAt"] = Self.iso(last.timeIntervalSince1970)
+            buckets[key] = b
         }
-        return mine
+        // emmers van verwijderde profielen die de server nog had: weg
+        if serverBuckets.keys.contains(where: { tombs.contains(ProfileSync.uuid(for: $0)) }) { differs = true }
+        guard differs else { return nil }
+        var out = data
+        out["version"] = 2
+        out["profiles"] = buckets
+        if out["migratedAt"] == nil { out["migratedAt"] = Self.iso(Date().timeIntervalSince1970) }
+        out["updatedAt"] = Self.iso(Date().timeIntervalSince1970)
+        return out
     }
 
     private static func sortedCollections(_ l: [BingrCollection]) -> [BingrCollection] {
         l.sorted { $0.order != $1.order ? $0.order < $1.order : $0.id < $1.id }
-    }
-
-    private func collectionsPayload(_ list: [BingrCollection], extras: [String: [String: Any]],
-                                    section: [String: Any]) -> [String: Any] {
-        var out = section
-        out["items"] = list.map { Self.collectionJSON($0, extras: extras[$0.id] ?? [:]) }
-        out["updatedAt"] = Self.iso(Date().timeIntervalSince1970)
-        return out
     }
 
     private static func collectionJSON(_ c: BingrCollection, extras: [String: Any]) -> [String: Any] {

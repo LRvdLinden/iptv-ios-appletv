@@ -22,7 +22,7 @@ struct CollectionImage: Codable, Hashable {
     var imageURL: URL? { url.flatMap { $0.isEmpty ? nil : URL(string: $0) } }
 }
 
-/// Eigen rij van de gebruiker, voor het hele account (state-section `collections`).
+/// Eigen rij van een profiel (state-section `collections`, per profiel sinds build 54).
 struct BingrCollection: Codable, Hashable, Identifiable {
     enum Kind: String, Codable { case manual, smart }
 
@@ -44,6 +44,9 @@ struct BingrCollection: Codable, Hashable, Identifiable {
     var updatedAt = Date()
     var deleted = false
     var deletedAt: Date? = nil
+    /// Profiel waar deze collectie bij hoort (build 54). Alleen lokaal: op de server staat de collectie onder
+    /// `collections.profiles.<profielID>.items`. nil = van vóór build 54 (nog niet gemigreerd).
+    var owner: UUID? = nil
 
     /// Sleutel van de rij op het startscherm
     var homeKey: String { HomeLayout.collectionPrefix + id }

@@ -111,6 +111,9 @@ struct ViewerProfile: Codable, Identifiable, Hashable {
     var streamSubtitleLanguage: String? = nil // standaard ondertitelspoor in de stream ("" / "off" / code)
     /// Kinderprofiel: alleen kinderinhoud (standaard t/m 12 jaar) en een eigen Top 10 voor kids
     var isKids: Bool? = nil
+    /// Accentkleur van dit profiel (build 54): "red", "blue", "green", "purple", "orange" of "pink" (nil = rood).
+    /// Gaat mee in `account_data.profiles[].accentColor`, dus naar alle apparaten van het account.
+    var accentColor: String? = nil
 
     var kids: Bool { isKids ?? false }
     /// Leeftijdsgrens die echt geldt (kinderprofiel zonder grens = t/m 12)
