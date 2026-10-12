@@ -344,7 +344,7 @@ Samenvoegen: per item wint de nieuwste `updatedAt`.
 | `stream_ping` | `{device_id, title?}` | `{ok}`, of `{stopped:true}`: deze stream telt niet meer (bijvoorbeeld door een te lange pauze), dus opnieuw `stream_start` |
 | `stream_stop` | `{device_id}` | `{ok}` |
 | `list_streams` | `{}` | `{limit, streams:[{device_id, device_name, platform, profile_name, title, kind, started_at, last_ping, signed_in_at}]}` |
-| `watch_log` | `{days: 7}` | `{entries:[{device_name, platform, profile_name, title, kind, started_at, ended_at, minutes}]}`, nieuwste eerst |
+| `watch_log` | `{days: 7}` | `{entries:[{device_name, platform, profile_name, title, kind, content_id, started_at, ended_at, minutes}]}`, nieuwste eerst |
 
 **De speler:**
 - **Starten:** bij het starten van elke stream (live, film of aflevering, ook bij zappen of de volgende aflevering) roep je `stream_start` aan, met het actieve profiel en de titel. Bij een live-zender is dat de zendernaam plus het programma als dat bekend is ("NPO 1 · Journaal").

@@ -343,7 +343,7 @@ Deno.serve(async (req) => {
       const days = Math.min(Math.max(Number(body.days ?? 7) || 7, 1), 7);
       const since = new Date(Date.now() - days * 864e5).toISOString();
       const { data } = await admin.from("account_watch_log")
-        .select("device_name,platform,profile_name,title,kind,started_at,ended_at")
+        .select("device_name,platform,profile_name,title,kind,content_id,started_at,ended_at")
         .eq("user_id", user.id).gte("started_at", since).order("started_at", { ascending: false }).limit(1000);
       const entries = (data ?? []).map((e) => ({
         ...e, minutes: Math.max(0, Math.round((Date.parse(e.ended_at) - Date.parse(e.started_at)) / 60000)),
