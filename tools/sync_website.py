@@ -38,6 +38,11 @@ icon = Image.open(root / "macOS/Assets.xcassets/AppIcon.appiconset/icon_512x512@
 icon.resize((180, 180), Image.LANCZOS).save(site / "apple-touch-icon.png")
 icon.resize((64, 64), Image.LANCZOS).save(site / "favicon.png")
 
+# changelog (bron: docs/changelog.json)
+import shutil
+(site / "assets").mkdir(exist_ok=True)
+shutil.copy(root / "docs/changelog.json", site / "assets/changelog.json")
+
 for page in site.glob("*.html"):
     t = page.read_text()
     t = re.sub(r'(<span data-build>)[^<]*(</span>)', rf'\g<1>{version} (build {build})\g<2>', t)

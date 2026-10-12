@@ -114,6 +114,9 @@ Deno.serve(async (req) => {
     case "delete_account": {
       const user = await userFrom(req);
       if (!user) return json({ error: "not_signed_in" }, 401);
+      // profielfoto's opruimen, daarna de gebruiker (tabellen gaan mee via on delete cascade)
+      const { data: files } = await admin.storage.from("avatars").list(user.id, { limit: 1000 });
+      if (files?.length) await admin.storage.from("avatars").remove(files.map((f) => `${user.id}/${f.name}`));
       const { error } = await admin.auth.admin.deleteUser(user.id);
       return error ? json({ error: "delete_failed" }, 500) : json({ ok: true });
     }
