@@ -155,3 +155,42 @@ Het avatar-icoon wordt ook gewoon meegestuurd, zodat er altijd iets te tonen is.
 - **Migratie:** heeft een profiel lokaal een foto en op de server niet (`photo` ontbreekt of is `null`, en het apparaat heeft geen *photoVersion*), upload de foto dan.
 - **Wanneer:** bij het starten en bij elke heartbeat (elke 5 minuten) de `account_data` opnieuw lezen en deze regels toepassen. Zo verschijnt een nieuwe foto ook op apparaten die al open staan.
 - **Fouten:** altijd stil, de app nooit blokkeren.
+
+## App-sleutels van de server (build 41)
+
+De repo is openbaar, dus de sleutels voor Trakt, OpenSubtitles, OMDb en TMDB worden niet in de app gebouwd. De app haalt ze op bij de server:
+
+- **Aanroep:** device-auth `{"action":"config"}` met `Authorization: Bearer <access_token>`.
+- **Antwoord:** `{traktClientID, traktClientSecret, openSubtitlesAPIKey, omdbAPIKey, tmdbAPIKey}`. Een waarde kan `""` zijn.
+- **Wanneer:** na elke login en bij het starten met een geldige sessie, op de achtergrond.
+- **Bewaren:** alleen lokaal, op Apple in de sleutelhanger zonder iCloud, op Android in privé-instellingen. Zo werkt de app daarna ook offline.
+- **Uitloggen:** de opgehaalde sleutels blijven staan.
+- **Volgorde bij het opzoeken van een sleutel:** eerst wat de gebruiker zelf heeft ingevuld (de bestaande instelling), dan de sleutel van de server, dan de ingebouwde (`builtIn`, op Android `BuildConfig`).
+- **Is de sleutel van de server binnen,** dan is `traktReady` / `openSubtitlesReady` waar. De gebruiker ziet dan gewoon **"Inloggen bij Trakt"** (koppelcode en QR) en **"Inloggen bij OpenSubtitles"** (gebruikersnaam en wachtwoord), en nooit het scherm "Koppelingen instellen".
+- **"Koppelingen instellen"** blijft alleen bereikbaar als een sleutel ontbreekt, en als geavanceerde optie onderaan in Mijn Bingr.
+- **Na het ophalen van de config:** UI verversen en `Secrets.reload()`, of iets vergelijkbaars, zodat Trakt en OpenSubtitles direct werken.
+
+## Profielen volledig synchroniseren (build 41)
+
+`account_data.profiles` wordt de bron van waarheid voor de profielen van een account: toevoegen, wijzigen en verwijderen. Pincodes blijven lokaal.
+
+**Extra velden per profiel**
+- `updatedAt` (ISO-8601): wanneer naam, avatar, `kids`, `ageLimit` of `order` voor het laatst lokaal is gewijzigd.
+- `deleted: true` en `deletedAt` (ISO-8601): een tombstone. Een verwijderd profiel blijft als tombstone in de lijst staan, met alleen `id`, `deleted`, `deletedAt` en `updatedAt`, zodat andere apparaten het ook verwijderen. Tombstones ouder dan 90 dagen mogen bij het uploaden weg.
+
+**Lokaal bijhouden:** per profiel de `updatedAt` van de versie die het apparaat heeft (de *localUpdatedAt*).
+
+**Lokaal wijzigen**
+- Profiel aanmaken, naam, avatar, kinderprofiel, leeftijdsgrens of volgorde wijzigen: zet `updatedAt` = nu, sla het lokaal op en upload de lijst (met de vertraging die er al is).
+- Profiel verwijderen: verwijder het lokaal (met de lokale gegevens), zet er een tombstone voor in de lijst, verwijder de foto (DELETE in Storage) en upload de lijst.
+- **Het hoofdprofiel** (`isMain`) kan nooit verwijderd worden en wordt nooit door een tombstone verwijderd.
+
+**Toepassen van de server.** Dit gebeurt bij elke lezing: na login, bij het starten, bij terugkeer naar de voorgrond en bij elke heartbeat (elke 5 minuten). Per `id`:
+- **Server-tombstone en lokaal profiel bestaat:** verwijder het lokaal, met de foto en de gegevens van dat profiel. Is dit het actieve profiel, ga dan terug naar "Wie kijkt er?".
+- **Server actief en lokaal ontbreekt:** voeg het toe, zonder pincode.
+- **Allebei actief:** is de `updatedAt` van de server nieuwer dan de lokale *localUpdatedAt*, neem dan `name`, `avatar`, `kids`, `ageLimit` en `order` van de server over. Anders blijft lokaal staan.
+- **Lokaal actief en niet op de server:** dat is een nieuw lokaal profiel of een migratie, dus houden en uploaden.
+- **Sortering:** op `order`.
+- **Daarna:** is lokaal iets nieuwer dan de server, of ontbreekt het op de server, upload dan de samengevoegde lijst. Tombstones van de server blijven daarin staan.
+
+**Ouder formaat zonder `updatedAt`:** behandel dat als heel oud (epoch). De regels voor migreren en importeren van build 38 blijven gelden.

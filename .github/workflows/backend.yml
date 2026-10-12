@@ -41,6 +41,23 @@ jobs:
         if: steps.check.outputs.skip != '1'
         with:
           version: latest
+      - name: App-sleutels als function-secrets
+        if: steps.check.outputs.skip != '1'
+        env:
+          K_TRAKT_ID: ${{ secrets.TRAKT_CLIENT_ID }}
+          K_TRAKT_SECRET: ${{ secrets.TRAKT_CLIENT_SECRET }}
+          K_OS: ${{ secrets.OPENSUBTITLES_API_KEY }}
+          K_OMDB: ${{ secrets.OMDB_API_KEY }}
+          K_TMDB: ${{ secrets.TMDB_API_KEY || secrets.TMDB_ACCESS_TOKEN }}
+        run: |
+          : > /tmp/keys.env
+          [ -n "$K_TRAKT_ID" ] && echo "BINGR_TRAKT_CLIENT_ID=$K_TRAKT_ID" >> /tmp/keys.env
+          [ -n "$K_TRAKT_SECRET" ] && echo "BINGR_TRAKT_CLIENT_SECRET=$K_TRAKT_SECRET" >> /tmp/keys.env
+          [ -n "$K_OS" ] && echo "BINGR_OPENSUBTITLES_API_KEY=$K_OS" >> /tmp/keys.env
+          [ -n "$K_OMDB" ] && echo "BINGR_OMDB_API_KEY=$K_OMDB" >> /tmp/keys.env
+          [ -n "$K_TMDB" ] && echo "BINGR_TMDB_API_KEY=$K_TMDB" >> /tmp/keys.env
+          if [ -s /tmp/keys.env ]; then supabase secrets set --project-ref "$REF" --env-file /tmp/keys.env; echo "::notice::$(wc -l < /tmp/keys.env) app-sleutel(s) op de server gezet"; fi
+          rm -f /tmp/keys.env
       - name: Edge Function device-auth
         if: steps.check.outputs.skip != '1'
         run: supabase functions deploy device-auth --project-ref "$REF" --no-verify-jwt --use-api

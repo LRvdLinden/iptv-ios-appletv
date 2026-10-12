@@ -9,6 +9,8 @@
 //   heartbeat       {device_id} (ingelogd) -> {ok} | {revoked:true}  (werkt ook "laatst gebruikt" bij)
 //   list_devices    {device_id?} (ingelogd) -> {limit, devices:[{device_id,name,platform,created_at,last_seen_at,current}]}
 //   remove_device   {device_id} (ingelogd) -> {ok}  (trekt de sessie van dat apparaat in)
+//   config          {}       (ingelogd)  -> {traktClientID, traktClientSecret, openSubtitlesAPIKey, omdbAPIKey, tmdbAPIKey}
+//                   App-sleutels staan alleen als function-secrets op de server (BINGR_*), nooit in de openbare repo.
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
 const SITE = Deno.env.get("BINGR_SITE") ?? "https://bingr.online";
@@ -157,6 +159,18 @@ Deno.serve(async (req) => {
       if (!user) return json({ error: "not_signed_in" }, 401);
       await removeDevice(user.id, String(body.device_id ?? ""));
       return json({ ok: true });
+    }
+    case "config": {
+      const user = await userFrom(req);
+      if (!user) return json({ error: "not_signed_in" }, 401);
+      const env = (k: string) => Deno.env.get(k) ?? "";
+      return json({
+        traktClientID: env("BINGR_TRAKT_CLIENT_ID"),
+        traktClientSecret: env("BINGR_TRAKT_CLIENT_SECRET"),
+        openSubtitlesAPIKey: env("BINGR_OPENSUBTITLES_API_KEY"),
+        omdbAPIKey: env("BINGR_OMDB_API_KEY"),
+        tmdbAPIKey: env("BINGR_TMDB_API_KEY"),
+      });
     }
     default:
       return json({ error: "unknown_action" }, 400);
