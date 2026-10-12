@@ -601,9 +601,9 @@ final class PlayerController: ObservableObject {
         tracksApplied = true
         guard !isPreview else { return }
         // audio: de voorkeurstaal (instelling, anders de app-taal) als de stream meer dan één audiotaal heeft
-        let prefAudio = TrackPreferences.preferredAudio
+        // bij "zoals in de stream" niets kiezen
         let tracks = engine.audioTracks
-        if tracks.count > 1, let t = tracks.first(where: { TrackPreferences.matches($0, code: prefAudio) }), t.id != engine.currentAudio {
+        if let prefAudio = TrackPreferences.autoAudio, tracks.count > 1, let t = tracks.first(where: { TrackPreferences.matches($0, code: prefAudio) }), t.id != engine.currentAudio {
             engine.selectAudio(t)
         }
         // na het wisselen van engine: hetzelfde spoor als daarvoor (op taal, anders op naam)

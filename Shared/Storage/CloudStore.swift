@@ -120,6 +120,8 @@ final class CloudStore: ObservableObject {
         if let v = p.autoSubtitles { d.set(v, forKey: "autoSubtitles") } else if fresh { d.set(false, forKey: "autoSubtitles") }
         // build 59: ondertitels automatisch (uit / wanneer nodig / altijd)
         if let v = p.effectiveSubtitleMode { d.set(v, forKey: TrackPreferences.subtitleModeKey) }
+        // oud "off" als ondertiteltaal zonder gekozen modus = automatisch uit
+        else if p.streamSubtitleLanguage == "off" { d.set(TrackPreferences.SubtitleMode.off.rawValue, forKey: TrackPreferences.subtitleModeKey) }
         else if fresh { d.set(TrackPreferences.SubtitleMode.whenNeeded.rawValue, forKey: TrackPreferences.subtitleModeKey) }
         if let v = p.audioLanguage { d.set(v, forKey: TrackPreferences.audioKey) } else if fresh { d.set("", forKey: TrackPreferences.audioKey) }
         if let v = p.streamSubtitleLanguage { d.set(v, forKey: TrackPreferences.subtitleKey) } else if fresh { d.set("", forKey: TrackPreferences.subtitleKey) }

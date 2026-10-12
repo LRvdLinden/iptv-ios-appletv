@@ -342,13 +342,12 @@ struct SettingsView: View {
 
     /// Oude instellingen (t/m build 58) omzetten: ondertitelspoor "Uit" → automatisch uit; oude schakelaar → modus.
     private func migrateSubtitlePreferences() {
+        // zonder gekozen modus telt het oude "Uit" als automatisch uit (dat doet `TrackPreferences.subtitleMode`);
+        // met een modus wint die
         if UserDefaults.standard.string(forKey: TrackPreferences.subtitleModeKey) == nil {
             subtitleMode = TrackPreferences.subtitleMode.rawValue
         }
-        if subtitleLanguage == "off" {
-            subtitleLanguage = ""
-            subtitleMode = TrackPreferences.SubtitleMode.off.rawValue
-        }
+        if subtitleLanguage == "off" { subtitleLanguage = "" }
     }
 
     private var openSubtitlesSection: some View {
@@ -408,6 +407,8 @@ struct SettingsView: View {
             // build 59: voorkeurstaal (standaard de app-taal) en automatische ondertitels
             Picker(L("Preferred audio language"), selection: $audioLanguage) {
                 Text(L("App language (%@)", TrackPreferences.name(TrackPreferences.appLanguage))).tag("")
+                // build 60: geen audiospoor kiezen, zoals Android ("stream")
+                Text(L("As in the stream")).tag(TrackPreferences.streamAudio)
                 ForEach(TrackPreferences.sortedCodes, id: \.self) { Text(TrackPreferences.label($0)).tag($0) }
             }
             .pickerStyle(.menu)

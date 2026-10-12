@@ -3,10 +3,14 @@ import Foundation
 /// Standaard audio- en ondertiteltaal (Mijn Bingr → Speler).
 /// Wordt toegepast zodra een stream zijn sporen bekendmaakt, in beide engines.
 enum TrackPreferences {
-    static let audioKey = "player.audioLanguage"       // "" = zoals de stream
+    static let audioKey = "player.audioLanguage"       // "" = de app-taal, "stream" = zoals de stream
     static let subtitleKey = "player.subtitleLanguage" // "" = zoals de stream, "off" = uit
 
     static var audio: String { UserDefaults.standard.string(forKey: audioKey) ?? "" }
+    /// Waarde van `audioLanguage` voor "zoals in de stream": geen audiospoor automatisch kiezen (build 60, zoals Android)
+    static let streamAudio = "stream"
+    /// Geen automatische keuze van het audiospoor: de stream bepaalt
+    static var audioFromStream: Bool { audio == streamAudio }
     static var subtitle: String { UserDefaults.standard.string(forKey: subtitleKey) ?? "" }
 
     // MARK: voorkeurstaal en automatische ondertitels (build 59)
@@ -29,8 +33,9 @@ enum TrackPreferences {
     static let legacyAutoKey = "autoSubtitles"
 
     static var subtitleMode: SubtitleMode {
-        if subtitle == "off" { return .off }   // oude instelling "ondertitels uit"
+        // een gekozen (of gesynchroniseerde) modus gaat voor; het oude "ondertitels uit" telt alleen zonder modus
         if let v = UserDefaults.standard.string(forKey: subtitleModeKey), let m = SubtitleMode(rawValue: v) { return m }
+        if subtitle == "off" { return .off }   // oude instelling "ondertitels uit"
         return UserDefaults.standard.bool(forKey: legacyAutoKey) ? .always : .whenNeeded
     }
 
@@ -43,8 +48,10 @@ enum TrackPreferences {
 
     /// App-taal als taalcode ("zh-Hans" → "zh")
     static var appLanguage: String { baseCode(Localizer.shared.language) }
-    /// Voorkeurstaal voor audio: de instelling, anders de app-taal
-    static var preferredAudio: String { audio.isEmpty ? appLanguage : baseCode(audio) }
+    /// Voorkeurstaal voor audio: de instelling, anders de app-taal ("zoals in de stream" telt hier als de app-taal)
+    static var preferredAudio: String { (audio.isEmpty || audioFromStream) ? appLanguage : baseCode(audio) }
+    /// Taal om het audiospoor automatisch op te kiezen; nil bij "zoals in de stream"
+    static var autoAudio: String? { audioFromStream ? nil : preferredAudio }
     /// Voorkeurstaal voor ondertitels: de instelling, anders de app-taal
     static var preferredSubtitle: String { (subtitle.isEmpty || subtitle == "off") ? appLanguage : baseCode(subtitle) }
 

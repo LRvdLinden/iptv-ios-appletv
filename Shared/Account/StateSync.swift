@@ -477,7 +477,11 @@ final class StateSync {
         var autoSubtitles = pref(main?.effectiveSubtitleMode, TrackPreferences.subtitleMode.rawValue)
         // build 60: het oude "off" als ondertiteltaal betekent "automatisch uit" (docs/ACCOUNT.md → Build 59);
         // zo opslaan, dan lezen alle platforms hetzelfde
-        if (subtitleLanguage as? String) == "off" { subtitleLanguage = ""; autoSubtitles = TrackPreferences.SubtitleMode.off.rawValue }
+        // (alleen als er geen modus gekozen is; `TrackPreferences.subtitleMode` geeft dan al "off")
+        if (subtitleLanguage as? String) == "off" {
+            subtitleLanguage = ""
+            if main?.effectiveSubtitleMode == nil && !useGlobals { autoSubtitles = TrackPreferences.SubtitleMode.off.rawValue }
+        }
         shared["subtitleLanguage"] = subtitleLanguage
         shared["autoSubtitles"] = autoSubtitles
         shared["openSubtitlesLanguage"] = pref(main?.subtitleLanguage, OpenSubtitles.shared.defaultLanguage)
@@ -617,7 +621,8 @@ final class StateSync {
         var sub = shared["subtitleLanguage"] as? String
         var auto = TrackPreferences.mode(fromSynced: shared["autoSubtitles"])?.rawValue
         // build 60: oud "off" als taal (oudere app) = automatisch uit, in de app-taal
-        if sub == "off" { sub = ""; auto = TrackPreferences.SubtitleMode.off.rawValue }
+        // alleen als `autoSubtitles` ontbreekt: een gesynchroniseerde modus wint
+        if sub == "off" { sub = ""; if auto == nil { auto = TrackPreferences.SubtitleMode.off.rawValue } }
         let os = shared["openSubtitlesLanguage"] as? String
         if let main = store.mainProfileID, audio != nil || sub != nil || auto != nil || os != nil {
             store.setSyncedPreferences(main) { p in
@@ -1188,7 +1193,7 @@ final class StateSync {
         let mine: [String: Any] = profilePayload(
             sets: sets, removed: removed,
             progress: progress.mapValues { $0.raw.merging(["updatedAt": Self.iso($0.at)]) { _, b in b } },
-            history: historySorted.map { $0.raw.merging(["at": Self.iso($0.at)]) { _, b in b } },
+            history: historySorted.map { $0.raw.merging(["at": Self.iso($0.at), "date": Self.iso($0.at)]) { _, b in b } },
             prefs: prefsOut, prefsAt: prefsAt, pin: pin, pinAt: pinAt, homeLayout: layoutOut, extras: data)
         guard remote != nil else {
             let empty = sets.values.allSatisfy(\.isEmpty) && progress.isEmpty && history.isEmpty && pin == nil
@@ -1213,14 +1218,19 @@ final class StateSync {
             sets: theirSets, removed: theirRemoved,
             progress: serverProgress.mapValues { $0.raw.merging(["updatedAt": Self.iso($0.at)]) { _, b in b } },
             history: serverHistory.values.sorted { $0.at != $1.at ? $0.at > $1.at : $0.entry.id < $1.entry.id }
-                .prefix(Self.maxHistory).map { $0.raw.merging(["at": Self.iso($0.at)]) { _, b in b } },
+                .prefix(Self.maxHistory).map { $0.raw.merging(["at": Self.iso($0.at), "date": Self.iso($0.at)]) { _, b in b } },
             prefs: sp.map { $0.filter { $0.key != "updatedAt" } } ?? [:],
             prefsAt: sp.map { Self.time($0["updatedAt"]) ?? sectionAt },
             pin: (data["pin"] as? String).flatMap { $0.isEmpty ? nil : $0 },
             pinAt: data.keys.contains("pin")
                 ? (Self.time(data["pinUpdatedAt"]) ?? ((data["pin"] as? String).map { $0.isEmpty ? 0 : sectionAt } ?? 0)) : nil,
             extras: data)
-        if Self.same(Self.withoutUpdatedAt(mine), Self.withoutUpdatedAt(theirs)) { return nil }
+        // staan er verwijderingen alleen in de oude velden (iOS vóór build 60), upload dan ook zonder
+        // verdere wijziging, zodat Android en Tizen ze in `removed` zien
+        let legacyOnly = ["progress", "history"].contains { name in
+            !(removed[name] ?? [:]).isEmpty && removedAll[name] == nil
+        }
+        if !legacyOnly && Self.same(Self.withoutUpdatedAt(mine), Self.withoutUpdatedAt(theirs)) { return nil }
         return mine
     }
 
@@ -1230,7 +1240,13 @@ final class StateSync {
                                 homeLayout: [String: Any]? = nil, extras: [String: Any]) -> [String: Any] {
         var out = extras
         if let homeLayout { out["homeLayout"] = homeLayout }
-        out["removed"] = nil
+        // verwijderingen per contract (build 60) in `removed.<veld>`; onbekende sleutels blijven staan en
+        // `removed` wordt nooit weggehaald (Android en Tizen lezen voor progress en history alleen deze vorm)
+        var removedOut = extras["removed"] as? [String: Any] ?? [:]
+        for name in Self.setLists + ["recentChannels", "progress", "history"] {
+            removedOut[name] = (removed[name] ?? [:]).mapValues { Self.iso($0) }
+        }
+        out["removed"] = removedOut
         for name in Self.setLists + ["recentChannels"] {
             let present = sets[name] ?? [:]
             let gone = removed[name] ?? [:]
@@ -1245,8 +1261,9 @@ final class StateSync {
             out[name + "Removed"] = nil
         }
         out["progress"] = progress
-        out["progressRemoved"] = (removed["progress"] ?? [:]).mapValues { Self.iso($0) }
         out["history"] = history
+        // de oudere velden blijven ook gevuld, voor iOS-apps van vóór build 60
+        out["progressRemoved"] = (removed["progress"] ?? [:]).mapValues { Self.iso($0) }
         out["historyRemoved"] = (removed["history"] ?? [:]).mapValues { Self.iso($0) }
         var p = prefs
         p["updatedAt"] = Self.iso(prefsAt ?? 0)
@@ -1282,7 +1299,7 @@ final class StateSync {
 
     private static func historyRaw(_ e: HistoryEntry) -> [String: Any] {
         var j: [String: Any] = ["id": e.id, "itemID": e.itemID, "title": e.title, "type": e.type.rawValue,
-                                "at": iso(e.date.timeIntervalSince1970)]
+                                "at": iso(e.date.timeIntervalSince1970), "date": iso(e.date.timeIntervalSince1970)]
         j["playlistID"] = Self.orNull(e.playlistID?.uuidString)
         j["subtitle"] = Self.orNull(e.subtitle)
         j["artwork"] = Self.orNull(e.artwork?.absoluteString)

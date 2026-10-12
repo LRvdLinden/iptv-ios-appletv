@@ -149,9 +149,10 @@ final class VLCEngine: PlaybackEngine {
         media.addOption(":network-caching=\(live ? 1000 : 1200)")
         media.addOption(":http-user-agent=\(Secrets.userAgent)")
         media.addOption(":http-reconnect")
-        if !silent {
-            // build 59: meteen het audiospoor in de voorkeurstaal kiezen (instelling, anders de app-taal)
-            media.addOption(":audio-language=\(TrackPreferences.vlcCodes(TrackPreferences.preferredAudio))")
+        if !silent, let audio = TrackPreferences.autoAudio {
+            // build 59: meteen het audiospoor in de voorkeurstaal kiezen (instelling, anders de app-taal);
+            // build 60: niet bij "zoals in de stream"
+            media.addOption(":audio-language=\(TrackPreferences.vlcCodes(audio))")
         }
         let resumeAt = live ? nil : startSeconds.flatMap { $0 > 1 ? $0 : nil }
         startSeconds = nil
@@ -368,9 +369,10 @@ final class AVEngine: PlaybackEngine {
             player.isMuted = true
         }
         item.textStyleRules = Self.textRules(SubtitleSize.current)
-        if !silent {
-            // build 59: audio in de voorkeurstaal (instelling, anders de app-taal) als de stream die heeft
-            let criteria = AVPlayerMediaSelectionCriteria(preferredLanguages: [TrackPreferences.preferredAudio],
+        if !silent, let audio = TrackPreferences.autoAudio {
+            // build 59: audio in de voorkeurstaal (instelling, anders de app-taal) als de stream die heeft;
+            // build 60: niet bij "zoals in de stream"
+            let criteria = AVPlayerMediaSelectionCriteria(preferredLanguages: [audio],
                                                           preferredMediaCharacteristics: nil)
             player.setMediaSelectionCriteria(criteria, forMediaCharacteristic: .audible)
         }
