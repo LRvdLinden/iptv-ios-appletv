@@ -4,6 +4,63 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website. Andr
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 60
+_13 oktober 2026_
+
+### Alle apps
+
+**Verbeterd**
+
+- Het maximum van 6 schermen en 15 apparaten klopt nu ook als apparaten precies tegelijk starten of inloggen; kijkgeschiedenis ouder dan 8 dagen wordt altijd gewist
+- Audiotaal 'Zoals in de stream' en de ondertitelinstellingen werken op alle apps hetzelfde
+
+**Opgelost**
+
+- Je wordt niet meer onterecht uitgelogd als je sessie net verlopen is of de server even niet bereikbaar is
+- Wat je uit Verder kijken of je geschiedenis haalt, komt niet meer terug op je andere apparaten
+
+### Alle apps en de website
+
+**Opgelost**
+
+- Servers die je op een ander apparaat of op de website toevoegt, verdwijnen niet meer als een ander apparaat tegelijk een oudere lijst opslaat
+
+### iOS en iPadOS
+
+**Opgelost**
+
+- Downloads: geen dubbele Live Activity meer, half gedownloade bestanden worden opgeruimd en offline weet de speler taal en hervatplek
+
+### iOS, iPadOS, tvOS en macOS
+
+**Opgelost**
+
+- Multiview stopt echt als het scherm sluit; Opnieuw na een afspeelfout gaat verder waar het misging, met automatische ondertitels; audio- en ondertitelsporen laden op de achtergrond
+
+### iOS, iPadOS, tvOS, macOS, Android en Android TV
+
+**Opgelost**
+
+- Plex crasht niet meer bij een onbruikbaar serveradres; Chromecast-sessies sluiten netjes af; OpenSubtitles vindt betere treffers
+
+### tvOS
+
+**Opgelost**
+
+- Volgende aflevering en Intro overslaan zijn bereikbaar met de afstandsbediening, ook als de bediening verborgen is
+
+### macOS
+
+**Opgelost**
+
+- Sneltoetsen in de speler (spatie, pijltjes, Esc) werken meteen
+
+### Web
+
+**Verbeterd**
+
+- Mijn Bingr: een server wijzigen overschrijft geen wijzigingen van je andere apparaten meer; support- en privacypagina ook in het Engels; het changelogfilter onthoudt je keuze
+
 ## Versie 1.0.0 · Build 59
 _12 oktober 2026_
 

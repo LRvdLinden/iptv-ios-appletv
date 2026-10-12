@@ -1,5 +1,189 @@
 [
  {
+  "build": 60,
+  "version": "1.0.0",
+  "date": "2026-10-13",
+  "items": [
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen"
+    ],
+    "nl": "Je wordt niet meer onterecht uitgelogd als je sessie net verlopen is of de server even niet bereikbaar is",
+    "en": "You're no longer signed out by mistake when your session has just expired or the server is briefly unreachable"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web"
+    ],
+    "nl": "Servers die je op een ander apparaat of op de website toevoegt, verdwijnen niet meer als een ander apparaat tegelijk een oudere lijst opslaat",
+    "en": "Servers you add on another device or the website no longer disappear when another device saves an older list at the same time"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen"
+    ],
+    "nl": "Wat je uit Verder kijken of je geschiedenis haalt, komt niet meer terug op je andere apparaten",
+    "en": "Items you remove from Continue watching or your history no longer come back on your other devices"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen"
+    ],
+    "nl": "Het maximum van 6 schermen en 15 apparaten klopt nu ook als apparaten precies tegelijk starten of inloggen; kijkgeschiedenis ouder dan 8 dagen wordt altijd gewist",
+    "en": "The limit of 6 screens and 15 devices now also holds when devices start or sign in at exactly the same time; watch history older than 8 days is always deleted"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen"
+    ],
+    "nl": "Audiotaal 'Zoals in de stream' en de ondertitelinstellingen werken op alle apps hetzelfde",
+    "en": "Audio language 'As in the stream' and the subtitle settings work the same in all apps"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "Multiview stopt echt als het scherm sluit; Opnieuw na een afspeelfout gaat verder waar het misging, met automatische ondertitels; audio- en ondertitelsporen laden op de achtergrond",
+    "en": "Multiview really stops when its screen closes; Try again after a playback error resumes where it failed, with automatic subtitles; audio and subtitle tracks load in the background"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "tvos"
+    ],
+    "nl": "Volgende aflevering en Intro overslaan zijn bereikbaar met de afstandsbediening, ook als de bediening verborgen is",
+    "en": "Next episode and Skip intro can be reached with the remote, even when the controls are hidden"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "macos"
+    ],
+    "nl": "Sneltoetsen in de speler (spatie, pijltjes, Esc) werken meteen",
+    "en": "Player keyboard shortcuts (space, arrows, Esc) work right away"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados"
+    ],
+    "nl": "Downloads: geen dubbele Live Activity meer, half gedownloade bestanden worden opgeruimd en offline weet de speler taal en hervatplek",
+    "en": "Downloads: no duplicate Live Activity, partly downloaded files are cleaned up, and offline the player knows the language and resume point"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Plex crasht niet meer bij een onbruikbaar serveradres; Chromecast-sessies sluiten netjes af; OpenSubtitles vindt betere treffers",
+    "en": "Plex no longer crashes on an unusable server address; Chromecast sessions close cleanly; OpenSubtitles finds better matches"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "android",
+     "androidtv"
+    ],
+    "nl": "Profielen, lijsten en voortgang raken niet meer kwijt als de app midden in het opslaan stopt; reservebronnen houden rekening met het kinderprofiel; ontbrekende vertalingen aangevuld",
+    "en": "Profiles, lists and progress no longer get lost if the app stops while saving; backup sources respect the kids profile; missing translations added"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "android"
+    ],
+    "nl": "Downloads casten naar een Chromecast; downloads van een ander profiel staan ook in je eigen Downloads en verwijderde bestanden verdwijnen uit de lijst",
+    "en": "Cast downloads to a Chromecast; downloads from another profile also show in your own Downloads and deleted files disappear from the list"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "android"
+    ],
+    "nl": "Meldingen-toestemming wordt maar één keer gevraagd en herinneringen blijven werken na een herstart van je telefoon",
+    "en": "Notification permission is asked only once and reminders keep working after restarting your phone"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "tizen"
+    ],
+    "nl": "De speler wordt netjes vrijgegeven als de app naar de achtergrond gaat en speelt daarna verder op dezelfde plek (ook multiview)",
+    "en": "The player is released properly when the app goes to the background and then continues from the same spot (multiview too)"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "tizen"
+    ],
+    "nl": "Geen vastlopende focus meer in lege lijsten en de tv-gids; server opslaan zonder internet geeft een duidelijke melding; minder geheugengebruik",
+    "en": "No more stuck focus in empty lists and the TV guide; saving a server without internet shows a clear message; lower memory use"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "tizen"
+    ],
+    "nl": "Apparaten hernoemen, en bij inloggen met e-mail ook een account maken of je wachtwoord herstellen",
+    "en": "Rename devices, and when signing in with email also create an account or reset your password"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Mijn Bingr: een server wijzigen overschrijft geen wijzigingen van je andere apparaten meer; support- en privacypagina ook in het Engels; het changelogfilter onthoudt je keuze",
+    "en": "My Bingr: editing a server no longer overwrites changes from your other devices; support and privacy pages also in English; the changelog filter remembers your choice"
+   }
+  ]
+ },
+ {
   "build": 59,
   "version": "1.0.0",
   "date": "2026-10-12",
