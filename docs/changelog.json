@@ -1,5 +1,104 @@
 [
  {
+  "build": 58,
+  "version": "1.0.0",
+  "date": "2026-10-12",
+  "items": [
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen"
+    ],
+    "nl": "De knop Afspelen is nu gevuld in de accentkleur van je profiel (standaard rood) met witte tekst en icoon; op tv's blijft de selectie duidelijk zichtbaar",
+    "en": "The Play button is now filled in your profile's accent colour (red by default) with white text and icon; on TVs the selection stays clearly visible"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen"
+    ],
+    "nl": "De knop Andere bronnen heeft overal een eigen icoon: op de detailpagina, in de speler en bij een afspeelfout",
+    "en": "The Other sources button has its own icon everywhere: on the detail page, in the player and on playback errors"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "tizen"
+    ],
+    "nl": "Servers toevoegen, wijzigen en verwijderen op de tv (M3U, Xtream, Stalker, Plex, Jellyfin, Emby, Stremio) met een schermtoetsenbord en keuze van de hoofdserver",
+    "en": "Add, edit and delete servers on the TV (M3U, Xtream, Stalker, Plex, Jellyfin, Emby, Stremio) with an on-screen keyboard and main-server choice"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "tizen"
+    ],
+    "nl": "Plex, Jellyfin, Emby en Stremio: bladeren en afspelen",
+    "en": "Plex, Jellyfin, Emby and Stremio: browse and play"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "tizen"
+    ],
+    "nl": "Terugkijken bij Xtream en Stalker, met terugkijk-correctie per zender",
+    "en": "Catch-up for Xtream and Stalker, with a catch-up offset per channel"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "tizen"
+    ],
+    "nl": "Trakt (scrobbelen en bekeken, koppelen met een code), OpenSubtitles in de speler en herinneringen met een melding in beeld",
+    "en": "Trakt (scrobbling and watched, link with a code), OpenSubtitles in the player and reminders with an on-screen notice"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "tizen"
+    ],
+    "nl": "Multiview: 2 tot 4 zenders tegelijk",
+    "en": "Multiview: watch 2 to 4 channels at once"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "tizen"
+    ],
+    "nl": "Intro en aftiteling markeren in de speler, gedeeld met je andere apps",
+    "en": "Mark intro and credits in the player, shared with your other apps"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "tizen"
+    ],
+    "nl": "Ingepakte tv-gidsen (.xml.gz) en leeftijden via TMDB (Kijkwijzer eerst): het kinderfilter werkt nu hetzelfde als op de andere apps",
+    "en": "Gzipped TV guides (.xml.gz) and TMDB age ratings (Kijkwijzer first): the kids filter now works the same as in the other apps"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "tizen"
+    ],
+    "nl": "Veel soepeler scrollen en zappen, ook op oudere tv's; het zendervoorbeeld start pas als je stilstaat",
+    "en": "Much smoother scrolling and zapping, also on older TVs; the channel preview only starts once you stop moving"
+   }
+  ]
+ },
+ {
   "build": 57,
   "version": "1.0.0",
   "date": "2026-10-12",

@@ -4,6 +4,16 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website. Andr
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 58
+_12 oktober 2026_
+
+### Alle apps
+
+**Verbeterd**
+
+- De knop Afspelen is nu gevuld in de accentkleur van je profiel (standaard rood) met witte tekst en icoon; op tv's blijft de selectie duidelijk zichtbaar
+- De knop Andere bronnen heeft overal een eigen icoon: op de detailpagina, in de speler en bij een afspeelfout
+
 ## Versie 1.0.0 · Build 57
 _12 oktober 2026_
 
