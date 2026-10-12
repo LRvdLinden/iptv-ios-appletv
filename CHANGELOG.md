@@ -4,6 +4,21 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website. Andr
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 55
+_12 oktober 2026_
+
+### iOS, iPadOS, tvOS, macOS, Android, Android TV en Web
+
+**Verbeterd**
+
+- Samsung TV verschijnt met eigen icoon in je apparatenlijst, bij Wie kijkt er nu en in de kijkgeschiedenis
+
+### Web
+
+**Nieuw**
+
+- Website: Samsung TV bij de apparaten, een downloadknop voor het .wgt-bestand en uitleg over installeren op je Samsung TV
+
 ## Versie 1.0.0 · Build 54
 _12 oktober 2026_
 

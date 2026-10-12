@@ -1,5 +1,58 @@
 [
  {
+  "build": 55,
+  "version": "1.0.0",
+  "date": "2026-10-12",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "tizen"
+    ],
+    "nl": "Bingr voor Samsung TV (Tizen, 2018 en nieuwer): inloggen met de QR-code, profielen met pincode en accentkleur, Home, Live TV met tv-gids, films, series, zoeken en instellingen. Alles synchroniseert met je account en blijft na updates bewaard",
+    "en": "Bingr for Samsung TV (Tizen, 2018 and newer): sign in with the QR code, profiles with PIN and accent colour, Home, Live TV with TV guide, movies, series, search and settings. Everything syncs with your account and is kept after updates"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "tizen"
+    ],
+    "nl": "Speler met Samsung AVPlay: verder kijken, audio- en ondertitelsporen, zappen, intro overslaan, volgende aflevering, reservebron bij storing en maximaal 6 schermen tegelijk",
+    "en": "Player with Samsung AVPlay: resume, audio and subtitle tracks, channel zapping, skip intro, next episode, backup source on failure and up to 6 screens at once"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "tizen"
+    ],
+    "nl": "Bij elke release staat naast de APK een .wgt-bestand voor Samsung TV",
+    "en": "Every release now includes a .wgt file for Samsung TV next to the APK"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web"
+    ],
+    "nl": "Samsung TV verschijnt met eigen icoon in je apparatenlijst, bij Wie kijkt er nu en in de kijkgeschiedenis",
+    "en": "Samsung TV shows up with its own icon in your device list, Watching now and watch history"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Website: Samsung TV bij de apparaten, een downloadknop voor het .wgt-bestand en uitleg over installeren op je Samsung TV",
+    "en": "Website: Samsung TV among the devices, a download button for the .wgt file and instructions for installing on your Samsung TV"
+   }
+  ]
+ },
+ {
   "build": 54,
   "version": "1.0.0",
   "date": "2026-10-12",
