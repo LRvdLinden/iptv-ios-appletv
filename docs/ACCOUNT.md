@@ -264,3 +264,18 @@ Alles wat iemand in Bingr instelt of opbouwt, komt na het (opnieuw) installeren 
 - **Ander account op dit apparaat:** zoals bij build 43 alles lokaal wissen, daarna alles importeren.
 - **Fouten:** altijd stil. Lokaal blijft leidend tot er weer verbinding is.
 - **Migratie:** is een onderdeel op de server leeg en is er lokaal iets, dan uploaden.
+
+## Apparaten hernoemen en platformnamen (build 45)
+
+- **Hernoemen:** device-auth `{"action":"rename_device","device_id","name"}` met `Authorization: Bearer <access_token>` geeft `{ok}`. De naam mag maximaal 60 tekens zijn. Daarna overschrijft `register_device` de naam niet meer.
+- **Waar:** in de app bij Mijn Bingr → Account → Apparaten, per apparaat (ook het eigen apparaat). Dat geldt op iPhone, iPad, Mac, Apple TV, Android-telefoon, -tablet, Android TV, Google TV en Fire TV, en op bingr.online/account.
+  - Er is een knop **"Rename"**. Die opent een tekstveld met de huidige naam, met de knoppen **Save** en **Cancel**. Op tv's gebruik je het tv-toetsenbord.
+  - Nieuwe teksten: "Rename" · "Device name" · "Save".
+- **Platformnamen** (`platform` bij `register_device`):
+  - `iPhone`, `iPad`, `Mac`, `Apple TV`
+  - `Android` (telefoon), `Android tablet`, `Android TV`, `Google TV`, `Fire TV`
+  - Android: `Fire TV` als `Build.MANUFACTURER == "Amazon"`. `Google TV` als het een tv is en `packageManager.hasSystemFeature("com.google.android.feature.GOOGLE_EXPERIENCE")` waar is, of als `Build.MODEL` "Chromecast" bevat of `Build.BRAND` "google" is. Anders `Android TV`.
+- **Iconen per platform:** gebruik in de apparatenlijst dezelfde soort iconen als iOS.
+  - iPhone: telefoon. iPad: tablet. Mac: laptop of computer. Apple TV: Apple TV-kastje.
+  - Android: telefoon. Android tablet: tablet. Android TV, Google TV en Fire TV: tv.
+- **Delen op tv's:** op Apple TV, Android TV, Google TV en Fire TV staat **geen** deelknop (ook geen QR) op de detailpagina.

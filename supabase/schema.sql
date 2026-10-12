@@ -87,3 +87,6 @@ create table if not exists public.account_state (
 );
 alter table public.account_state enable row level security;
 revoke all on public.account_state from anon, authenticated;
+
+-- Eigen apparaatnaam (build 45): een zelfgekozen naam wordt niet meer overschreven bij het registreren.
+alter table public.account_devices add column if not exists custom_name boolean not null default false;

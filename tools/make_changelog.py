@@ -8,10 +8,10 @@ data = json.loads((root / "docs/changelog.json").read_text())
 args = sys.argv[1:]
 def arg(n): return args[args.index(n) + 1] if n in args else None
 def md(platform, title, link):
-    out = [f"# Changelog · {title}", "", f"Alle versies van Bingr {link}. Versie 1.0.0; het buildnummer loopt gelijk over alle platforms.", ""]
+    out = [f"# Changelog · {title}", "", f"Alle versies van Bingr {link}. Per versie het buildnummer en de datum; het buildnummer loopt gelijk over alle platforms.", ""]
     for e in data:
         if platform not in e["platforms"]: continue
-        out += [f"## Build {e['build']} · {e['date']}", ""] + [f"- {x}" for x in e["nl"]] + [""]
+        out += [f"## Versie {e.get('version', '1.0.0')} · Build {e['build']}", f"_{e['date']}_", ""] + [f"- {x}" for x in e["nl"]] + [""]
     return "\n".join(out)
 if arg("--android"):
     p = pathlib.Path(arg("--android")) / "CHANGELOG.md"

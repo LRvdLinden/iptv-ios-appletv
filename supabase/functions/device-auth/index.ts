@@ -8,6 +8,7 @@
 //   register_device {device_id, name, platform} (ingelogd) -> {ok, device} | 403 {error:"device_limit", limit, devices}
 //   heartbeat       {device_id} (ingelogd) -> {ok} | {revoked:true}  (werkt ook "laatst gebruikt" bij)
 //   list_devices    {device_id?} (ingelogd) -> {limit, devices:[{device_id,name,platform,created_at,last_seen_at,current}]}
+//   rename_device   {device_id, name} (ingelogd) -> {ok}   (eigen naam; register_device overschrijft die niet meer)
 //   remove_device   {device_id} (ingelogd) -> {ok}  (trekt de sessie van dat apparaat in)
 //   get_sources     {}       (ingelogd)  -> {sources:[…], mainSourceID, updatedAt}
 //   put_sources     {sources, mainSourceID} (ingelogd) -> {ok, updatedAt}   (versleuteld opgeslagen)
@@ -159,8 +160,10 @@ Deno.serve(async (req) => {
       } else {
         // zelfde apparaat opnieuw ingelogd: oude sessie intrekken als die anders is
         if (existing.session_id && session_id && existing.session_id !== session_id) await admin.rpc("revoke_session", { sid: existing.session_id });
-        await admin.from("account_devices").update({ name, platform, session_id, last_seen_at: new Date().toISOString() })
-          .eq("user_id", user.id).eq("device_id", device_id);
+        const { data: cur } = await admin.from("account_devices").select("custom_name").eq("user_id", user.id).eq("device_id", device_id).maybeSingle();
+        const patch: Record<string, unknown> = { platform, session_id, last_seen_at: new Date().toISOString() };
+        if (!cur?.custom_name) patch.name = name;
+        await admin.from("account_devices").update(patch).eq("user_id", user.id).eq("device_id", device_id);
       }
       return json({ ok: true, limit: DEVICE_LIMIT });
     }
@@ -180,6 +183,15 @@ Deno.serve(async (req) => {
       const user = await userFrom(req);
       if (!user) return json({ error: "not_signed_in" }, 401);
       return json({ limit: DEVICE_LIMIT, devices: await listDevices(user.id, body.device_id ? String(body.device_id) : undefined) });
+    }
+    case "rename_device": {
+      const user = await userFrom(req);
+      if (!user) return json({ error: "not_signed_in" }, 401);
+      const name = String(body.name ?? "").trim().slice(0, 60);
+      if (!name) return json({ error: "name_missing" }, 400);
+      const { error } = await admin.from("account_devices").update({ name, custom_name: true })
+        .eq("user_id", user.id).eq("device_id", String(body.device_id ?? ""));
+      return error ? json({ error: "rename_failed" }, 500) : json({ ok: true });
     }
     case "remove_device": {
       const user = await userFrom(req);
