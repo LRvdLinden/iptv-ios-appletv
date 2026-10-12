@@ -17,6 +17,8 @@ final class CastManager: ObservableObject {
     @Published private(set) var connected: Device?
     @Published private(set) var status: String = ""
     @Published private(set) var isPlaying = false
+    /// Melding over ondertitels op de Chromecast (bijv. spoor uit de stream niet beschikbaar) (build 57)
+    @Published private(set) var subtitleNote: String?
 
     private var browser: NWBrowser?
     private var session: CastSession?
@@ -39,28 +41,85 @@ final class CastManager: ObservableObject {
 
     func stopDiscovery() { browser?.cancel(); browser = nil }
 
-    func cast(_ item: PlayableItem, url: URL, to device: Device, at seconds: Double) {
+    /// `subtitles`: de ondertitel die nu in de speler gekozen is (build 57), met de ingestelde verschuiving.
+    func cast(_ item: PlayableItem, url: URL, to device: Device, at seconds: Double,
+              subtitles: SubtitleChoice? = nil, delay: Double = 0) {
         session?.close()
+        LocalMediaServer.shared.remove(owner: CastSession.serverOwner)
         status = L("Connecting to %@…", device.name)
+        subtitleNote = nil
         let s = CastSession(endpoint: device.endpoint)
         s.onStatus = { [weak self] text, playing in
             Task { @MainActor in self?.status = text; self?.isPlaying = playing }
         }
+        s.onSubtitleNote = { [weak self] note in
+            Task { @MainActor in self?.subtitleNote = note }
+        }
         session = s
         connected = device
-        let contentType = url.pathExtension.lowercased() == "m3u8" ? "application/x-mpegurl"
+        let s2 = url.absoluteString.lowercased()
+        let contentType = url.pathExtension.lowercased() == "m3u8" || s2.contains(".m3u8") ? "application/x-mpegurl"
             : url.pathExtension.lowercased() == "mp4" ? "video/mp4" : "video/mp2t"
         s.start(media: url, contentType: contentType, title: item.title, subtitle: item.subtitle ?? "",
-                image: item.artwork, live: item.type == .live, startAt: seconds)
+                image: item.artwork, live: item.type == .live, startAt: seconds,
+                subtitles: Self.spec(subtitles, delay: delay), style: Self.textStyle())
+    }
+
+    /// Andere ondertitel gekozen tijdens het casten (of andere verschuiving).
+    func updateSubtitle(_ choice: SubtitleChoice?, delay: Double) {
+        guard let session else { return }
+        subtitleNote = nil
+        session.setSubtitles(Self.spec(choice, delay: delay), style: Self.textStyle())
     }
 
     func togglePause() { session?.togglePause() }
-    func disconnect() { session?.close(); session = nil; connected = nil; status = ""; isPlaying = false }
+    func disconnect() {
+        session?.close(); session = nil; connected = nil; status = ""; isPlaying = false; subtitleNote = nil
+        // lokale server alleen tijdens het casten
+        LocalMediaServer.shared.remove(owner: CastSession.serverOwner)
+    }
+
+    /// Keuze in de speler → wat de Chromecast nodig heeft (bestand als WebVTT, of welk spoor uit de stream).
+    private static func spec(_ c: SubtitleChoice?, delay: Double) -> CastSubtitleSpec? {
+        guard let c else { return nil }
+        let lang = c.language.map(TrackPreferences.baseCode)
+        switch c.kind {
+        case .file(let f):
+            guard let vtt = WebVTT.make(from: f, delay: delay) else { return nil }
+            return CastSubtitleSpec(vtt: vtt, key: "\(f.path)|\(delay)", name: c.name, language: lang, embeddedIndex: nil)
+        case .embedded(let i):
+            return CastSubtitleSpec(vtt: nil, key: "embedded-\(i)", name: c.name, language: lang, embeddedIndex: i)
+        }
+    }
+
+    /// Goed leesbare ondertitels op de tv: wit met schaduw op een half doorzichtige balk.
+    private static func textStyle() -> [String: Any] {
+        let scale: Double
+        switch SubtitleSize.current { case .small: scale = 0.9; case .medium: scale = 1.1; case .large: scale = 1.3 }
+        return ["foregroundColor": "#FFFFFFFF", "backgroundColor": "#00000099", "edgeType": "DROP_SHADOW",
+                "edgeColor": "#000000FF", "fontScale": scale, "fontGenericFamily": "SANS_SERIF",
+                "fontStyle": "NORMAL", "windowType": "NONE"]
+    }
+}
+
+/// Ondertitel voor de Chromecast: een WebVTT-bestand (via de lokale server) of een spoor uit de stream.
+struct CastSubtitleSpec {
+    var vtt: Data?
+    /// Zelfde bestand en verschuiving = zelfde sleutel (dan hoeft de media niet opnieuw geladen te worden)
+    var key: String
+    var name: String
+    var language: String?
+    var embeddedIndex: Int?
 }
 
 /// Eén verbinding met een Cast-apparaat.
 final class CastSession {
+    static let serverOwner = "cast"
+    /// Ons eigen ondertitelspoor (hoog nummer, botst niet met sporen die de ontvanger zelf uit HLS haalt)
+    private static let ownTrackID = 1000
     private let conn: NWConnection
+    /// Alles van deze sessie op één wachtrij (berichten van de Chromecast én wijzigingen vanuit de app)
+    private let queue = DispatchQueue(label: "bingr.cast")
     private let sender = "sender-bingr"
     private var transportID: String?
     private var mediaSessionID: Int?
@@ -69,8 +128,21 @@ final class CastSession {
     private var heartbeat: Timer?
     private var paused = false
     var onStatus: ((String, Bool) -> Void)?
+    var onSubtitleNote: ((String?) -> Void)?
 
     private var pending: (url: URL, type: String, title: String, subtitle: String, image: URL?, live: Bool, start: Double)?
+
+    // ondertitels (build 57)
+    private var subs: CastSubtitleSpec?
+    private var style: [String: Any] = [:]
+    /// Sleutel van het bestand dat in de geladen media als ons spoor zit
+    private var loadedKey: String?
+    private var fileCounter = 0
+    /// Tekstsporen die de ontvanger meldt (ook die uit de HLS-stream zelf); nil = nog niet bekend
+    private var remoteTextTracks: [[String: Any]]?
+    /// Spoor uit de stream gekozen, wacht op de sporenlijst van de ontvanger
+    private var embeddedPending = false
+    private var lastTime: Double = 0
 
     init(endpoint: NWEndpoint) {
         let tls = NWProtocolTLS.Options()
@@ -84,8 +156,12 @@ final class CastSession {
         }
     }
 
-    func start(media: URL, contentType: String, title: String, subtitle: String, image: URL?, live: Bool, startAt: Double) {
+    func start(media: URL, contentType: String, title: String, subtitle: String, image: URL?, live: Bool, startAt: Double,
+               subtitles: CastSubtitleSpec? = nil, style: [String: Any] = [:]) {
         pending = (media, contentType, title, subtitle, image, live, startAt)
+        subs = subtitles
+        self.style = style
+        lastTime = startAt
         conn.stateUpdateHandler = { [weak self] st in
             guard let self else { return }
             switch st {
@@ -104,18 +180,36 @@ final class CastSession {
             default: break
             }
         }
-        conn.start(queue: .global(qos: .userInitiated))
+        conn.start(queue: queue)
     }
 
     func togglePause() {
-        guard let t = transportID, let m = mediaSessionID else { return }
-        paused.toggle()
-        send(ns: "urn:x-cast:com.google.cast.media", to: t,
-             ["type": paused ? "PAUSE" : "PLAY", "mediaSessionId": m, "requestId": nextID()])
+        queue.async { [self] in
+            guard let t = transportID, let m = mediaSessionID else { return }
+            paused.toggle()
+            send(ns: "urn:x-cast:com.google.cast.media", to: t,
+                 ["type": paused ? "PAUSE" : "PLAY", "mediaSessionId": m, "requestId": nextID()])
+        }
+    }
+
+    /// Andere ondertitel tijdens het casten: aan/uit en sporen uit de stream via EDIT_TRACKS_INFO;
+    /// een nieuw bestand (of andere verschuiving) kan alleen met de media opnieuw laden op dezelfde plek.
+    func setSubtitles(_ spec: CastSubtitleSpec?, style: [String: Any]) {
+        queue.async { [self] in
+            subs = spec
+            self.style = style
+            guard let t = transportID, mediaSessionID != nil else { return }   // nog aan het laden: LOAD neemt het mee
+            if let spec, spec.vtt != nil, spec.key != loadedKey {
+                load(transport: t, startAt: lastTime)
+            } else {
+                applyActiveTracks()
+            }
+        }
     }
 
     func close() {
         heartbeat?.invalidate()
+        LocalMediaServer.shared.remove(owner: Self.serverOwner)
         if let t = transportID {
             send(ns: "urn:x-cast:com.google.cast.receiver", to: "receiver-0", ["type": "STOP", "requestId": nextID(), "sessionId": t])
         }
@@ -159,24 +253,108 @@ final class CastSession {
                   let t = app["transportId"] as? String, let p = pending else { return }
             transportID = t
             send(ns: "urn:x-cast:com.google.cast.tp.connection", to: t, ["type": "CONNECT"])
-            var meta: [String: Any] = ["metadataType": 0, "title": p.title, "subtitle": p.subtitle]
-            if let i = p.image { meta["images"] = [["url": i.absoluteString]] }
-            send(ns: "urn:x-cast:com.google.cast.media", to: t, [
-                "type": "LOAD", "requestId": nextID(), "autoplay": true, "currentTime": p.start,
-                "media": ["contentId": p.url.absoluteString, "contentType": p.type,
-                          "streamType": p.live ? "LIVE" : "BUFFERED", "metadata": meta]
-            ])
+            load(transport: t, startAt: p.start)
             onStatus?(L("Playing on Chromecast"), true)
         case "MEDIA_STATUS":
             if let s = (j["status"] as? [[String: Any]])?.first {
                 mediaSessionID = s["mediaSessionId"] as? Int ?? mediaSessionID
+                if let ct = (s["currentTime"] as? NSNumber)?.doubleValue, ct > 0 { lastTime = ct }
                 let state = s["playerState"] as? String ?? ""
                 onStatus?(state == "PAUSED" ? L("Paused on Chromecast") : L("Playing on Chromecast"), state == "PLAYING" || state == "BUFFERING")
+                // sporenlijst van de ontvanger (o.a. ondertitels uit de HLS-stream)
+                if let media = s["media"] as? [String: Any] {
+                    let tracks = media["tracks"] as? [[String: Any]] ?? []
+                    remoteTextTracks = tracks.filter { ($0["type"] as? String) == "TEXT" }
+                    // pas beslissen als er sporen zijn of de stream echt speelt (dan is de afspeellijst gelezen)
+                    if embeddedPending, !(remoteTextTracks ?? []).isEmpty || state == "PLAYING" { applyActiveTracks() }
+                }
             }
         case "LOAD_FAILED", "LOAD_CANCELLED":
             onStatus?(L("This stream can't be played on Chromecast."), false)
         default: break
         }
+    }
+
+    // MARK: media laden met ondertitels (build 57)
+
+    /// LOAD-bericht: de stream plus (bij een eigen bestand) een WebVTT-tekstspoor van de lokale server.
+    private func load(transport t: String, startAt: Double) {
+        guard let p = pending else { return }
+        var meta: [String: Any] = ["metadataType": 0, "title": p.title, "subtitle": p.subtitle]
+        if let i = p.image { meta["images"] = [["url": i.absoluteString]] }
+        var media: [String: Any] = ["contentId": p.url.absoluteString, "contentType": p.type,
+                                    "streamType": p.live ? "LIVE" : "BUFFERED", "metadata": meta]
+        var msg: [String: Any] = ["type": "LOAD", "requestId": nextID(), "autoplay": true, "currentTime": startAt]
+        loadedKey = nil
+        remoteTextTracks = nil
+        embeddedPending = subs?.embeddedIndex != nil
+        if let s = subs, let vtt = s.vtt, let track = publish(vtt, spec: s) {
+            media["tracks"] = [track]
+            msg["activeTrackIds"] = [Self.ownTrackID]
+            loadedKey = s.key
+        } else if let s = subs, s.vtt != nil {
+            onSubtitleNote?(L("Subtitles can't be sent to the Chromecast (no Wi-Fi connection)."))
+        }
+        if !style.isEmpty { media["textTrackStyle"] = style }
+        msg["media"] = media
+        mediaSessionID = nil
+        send(ns: "urn:x-cast:com.google.cast.media", to: t, msg)
+    }
+
+    /// Zet de WebVTT op de lokale server (adres waarmee de telefoon de Chromecast bereikt) en geeft het tekstspoor.
+    private func publish(_ vtt: Data, spec: CastSubtitleSpec) -> [String: Any]? {
+        // elke keer een nieuwe naam: de ontvanger onthoudt een eerder opgehaald bestand
+        fileCounter += 1
+        let name = "cast-\(fileCounter).vtt"
+        let server = LocalMediaServer.shared
+        server.remove(owner: Self.serverOwner)
+        guard let host = LocalMediaServer.address(of: conn.currentPath?.localEndpoint) ?? LocalMediaServer.lanAddress(),
+              server.publish(vtt, name: name, contentType: "text/vtt; charset=utf-8", owner: Self.serverOwner) != nil,
+              let url = server.url(name: name, host: host) else { return nil }
+        var track: [String: Any] = ["trackId": Self.ownTrackID, "type": "TEXT", "subtype": "SUBTITLES",
+                                    "trackContentId": url.absoluteString, "trackContentType": "text/vtt",
+                                    "name": spec.name]
+        if let l = spec.language, !l.isEmpty { track["language"] = l }
+        return track
+    }
+
+    /// Welk tekstspoor aan staat (EDIT_TRACKS_INFO): ons bestand, een spoor uit de stream, of geen.
+    private func applyActiveTracks() {
+        guard let t = transportID, let m = mediaSessionID else { return }
+        var ids: [Int] = []
+        if let s = subs {
+            if s.vtt != nil, loadedKey == s.key {
+                ids = [Self.ownTrackID]
+            } else if let index = s.embeddedIndex {
+                guard let tracks = remoteTextTracks else { embeddedPending = true; return }   // nog niet bekend
+                embeddedPending = false
+                if let id = matchEmbedded(s, index: index, in: tracks) {
+                    ids = [id]
+                } else {
+                    onSubtitleNote?(L("Subtitles from this stream can't be shown on the Chromecast."))
+                }
+            }
+        }
+        var msg: [String: Any] = ["type": "EDIT_TRACKS_INFO", "requestId": nextID(), "mediaSessionId": m, "activeTrackIds": ids]
+        if !style.isEmpty { msg["textTrackStyle"] = style }
+        send(ns: "urn:x-cast:com.google.cast.media", to: t, msg)
+    }
+
+    /// Spoor uit de stream terugvinden in de sporen van de ontvanger: op taal, dan op naam, dan op volgorde.
+    private func matchEmbedded(_ s: CastSubtitleSpec, index: Int, in tracks: [[String: Any]]) -> Int? {
+        let own = tracks.filter { ($0["trackId"] as? Int) != Self.ownTrackID }
+        guard !own.isEmpty else { return nil }
+        func id(_ t: [String: Any]) -> Int? { (t["trackId"] as? NSNumber)?.intValue }
+        if let lang = s.language, !lang.isEmpty {
+            let hits = own.filter { t in
+                TrackPreferences.matches(MediaTrack(id: "", name: t["name"] as? String ?? "", lang: t["language"] as? String), code: lang)
+            }
+            if hits.count == 1 { return id(hits[0]) }
+            if let n = hits.first(where: { ($0["name"] as? String)?.caseInsensitiveCompare(s.name) == .orderedSame }) { return id(n) }
+            if let first = hits.first { return id(first) }
+        }
+        if let n = own.first(where: { ($0["name"] as? String)?.caseInsensitiveCompare(s.name) == .orderedSame }) { return id(n) }
+        return index < own.count ? id(own[index]) : nil
     }
 
     private func send(ns: String, to dest: String, _ obj: [String: Any]) {
@@ -247,6 +425,9 @@ struct CastPicker: View {
     let item: PlayableItem
     let url: URL
     let position: Double
+    /// Gekozen ondertitel in de speler (build 57)
+    var subtitles: SubtitleChoice? = nil
+    var subtitleDelay: Double = 0
     var onCast: () -> Void
     @StateObject private var cast = CastManager.shared
     @Environment(\.dismiss) private var dismiss
@@ -259,7 +440,7 @@ struct CastPicker: View {
                 }
                 ForEach(cast.devices) { d in
                     Button {
-                        cast.cast(item, url: url, to: d, at: position)
+                        cast.cast(item, url: url, to: d, at: position, subtitles: subtitles, delay: subtitleDelay)
                         onCast(); dismiss()
                     } label: { Label(d.name, systemImage: "tv.and.mediabox") }
                 }

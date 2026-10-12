@@ -30,6 +30,18 @@ enum EngineState { case idle, opening, buffering, playing, paused, ended, error 
 
 struct MediaTrack: Identifiable, Hashable { var id: String; var name: String; var lang: String? = nil }
 
+/// Gekozen ondertitel (build 57), voor Chromecast: een bestand (OpenSubtitles) of een spoor uit de stream.
+struct SubtitleChoice: Equatable {
+    enum Kind: Equatable {
+        case file(URL)
+        /// Spoor in de stream; `index` = plaats in de lijst met ondertitelsporen van de speler
+        case embedded(index: Int)
+    }
+    var kind: Kind
+    var name: String
+    var language: String?
+}
+
 /// Gemeenschappelijke interface voor de twee afspeel-engines:
 /// - **Apple (AVPlayer)**: HDR/Dolby Vision, Atmos, AirPlay, beeld-in-beeld — voor HLS/MP4
 /// - **VLC**: alles daarbuiten (.ts, .mkv, AC3/DTS, MAC-portals)
@@ -511,6 +523,8 @@ enum SRT {
         let first = s.trimmingCharacters(in: .whitespaces).split(separator: " ").first.map(String.init) ?? ""
         let t = first.replacingOccurrences(of: ",", with: ".")
         let p = t.split(separator: ":")
+        // WebVTT mag de uren weglaten ("01:02.500")
+        if p.count == 2, let m = Double(p[0]), let sec = Double(p[1].prefix(6)) { return m * 60 + sec }
         guard p.count == 3, let h = Double(p[0]), let m = Double(p[1]), let sec = Double(p[2].prefix(6)) else { return nil }
         return h * 3600 + m * 60 + sec
     }

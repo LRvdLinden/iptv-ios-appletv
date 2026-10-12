@@ -55,6 +55,22 @@ final class PlayerController: ObservableObject {
     private var pausedAt: Date?
     private var timeshiftStart: Date?        // begin van de catch-up-stream die nu speelt
     private var externalCues: [SubtitleCue] = []
+    /// Ingeladen ondertitelbestand (OpenSubtitles), UTF-8; ook nodig voor Chromecast en AirPlay (build 57)
+    private(set) var externalSubtitleFile: URL?
+    /// Taalcode van dat bestand (bijv. "nl", "pt-BR"), als bekend
+    private(set) var externalSubtitleLanguage: String?
+    /// AirPlay met eigen ondertitels: de Apple-speler speelt een eigen HLS-afspeellijst met ondertitelspoor (build 57)
+    private var airPlayWrapped = false
+    private var airPlayWrapBusy = false
+    private var airPlayWrapTries = 0
+    private var airPlaySelectPending = 0
+    private var wasExternalPlayback = false
+    /// Ondertitelspoor van de vorige engine, opnieuw kiezen zodra de sporen bekend zijn (build 57)
+    private var carrySubtitle: MediaTrack?
+    /// Verschuiving veranderd terwijl de eigen afspeellijst speelt: ondertitels opnieuw maken
+    private var airPlayNeedsRewrap = false
+    /// Deze speler deelt bestanden op de lokale server (bij stoppen weer weghalen)
+    private var airPlayServing = false
     private var tracksApplied = false
     private var watchedSeconds: Double = 0
     private var playingTicks = 0
@@ -126,6 +142,10 @@ final class PlayerController: ObservableObject {
         attempts = 0; reconnecting = false; errorText = nil; isBuffering = true
         dismissed = false
         triedOtherEngine = false; reloadPending = false; lastGoodPosition = 0
+        // ondertitels van de vorige titel niet meenemen
+        externalCues = []; subtitleText = nil; externalSubtitleName = nil
+        externalSubtitleFile = nil; externalSubtitleLanguage = nil
+        airPlayWrapTries = 0
     }
 
     /// Opnieuw beginnen met foutherstel (andere bron of andere speler gekozen).
@@ -164,10 +184,14 @@ final class PlayerController: ObservableObject {
         if stopped || timer == nil { watchedSeconds = 0; recordedHistory = false }
         stopped = false
         let apple = forceApple ?? Self.prefersApple(url)
+        let switching = apple != usingApple
         // zendervoorbeeld na `halt()`: dezelfde engine (en weergave) hergebruiken in plaats van een nieuwe te maken
-        if apple != usingApple || (timer == nil && !keepEngine) { makeEngine(apple: apple) }
+        if switching || (timer == nil && !keepEngine) { makeEngine(apple: apple) }
         keepEngine = false
+        airPlayWrapped = false; airPlaySelectPending = 0
         engine.load(url, live: isLive && timeshiftStart == nil, startFraction: isLive ? nil : item.resumeAt)
+        // andere engine (bijv. VLC → Apple voor AirPlay): ingeladen ondertitels meenemen (build 57)
+        if switching, let f = externalSubtitleFile { applyExternalSubtitle(f) }
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in self?.tick() }
@@ -177,6 +201,10 @@ final class PlayerController: ObservableObject {
     /// Wisselt naar de Apple-engine (voor AirPlay) op dezelfde positie.
     func switchToApple() {
         guard !usingApple, let url else { return }
+        // gekozen ondertitelspoor uit de stream meenemen naar de Apple-speler (die geeft het door via AirPlay)
+        if externalSubtitleFile == nil, let id = engine.currentSubtitle {
+            carrySubtitle = engine.subtitleTracks.first { $0.id == id }
+        }
         item.resumeAt = position
         start(url: url, forceApple: true)
     }
@@ -200,7 +228,10 @@ final class PlayerController: ObservableObject {
             if behindLive != b { behindLive = b }
         }
 
-        if !externalCues.isEmpty {
+        #if !os(tvOS)
+        if !isPreview && !silent { checkAirPlaySubtitles() }
+        #endif
+        if !externalCues.isEmpty && !airPlayWrapped {
             let t = currentTime - subtitleDelay
             let text = externalCues.last(where: { $0.start <= t })
                 .flatMap { $0.end >= t ? $0.text : nil }
@@ -266,6 +297,16 @@ final class PlayerController: ObservableObject {
 
     private func reconnect(reason: String?) {
         guard let url else { return }
+        #if !os(tvOS)
+        // eigen AirPlay-afspeellijst werkt niet: terug naar de gewone stream (met de melding) (build 57)
+        if airPlayWrapped, engine.state == .error {
+            airPlayWrapped = false; airPlaySelectPending = 0; airPlayWrapTries = 2
+            notice = L("Subtitles from OpenSubtitles aren't shown via AirPlay.")
+            if let f = externalSubtitleFile { applyExternalSubtitle(f) }
+            engine.load(url, live: isLive && timeshiftStart == nil, startFraction: isLive ? nil : lastGoodPosition)
+            return
+        }
+        #endif
         // Apple-engine faalt → eerst VLC proberen (kan meer formaten aan)
         if usingApple && !triedOtherEngine && engine.state == .error && !url.isFileURL {
             triedOtherEngine = true
@@ -285,6 +326,7 @@ final class PlayerController: ObservableObject {
                 self.reloadPending = false
                 guard !self.stopped, self.url == url else { return }
                 if !self.isLive { self.item.resumeAt = resume }
+                self.airPlayWrapped = false
                 self.engine.load(url, live: self.isLive && self.timeshiftStart == nil, startFraction: self.isLive ? nil : resume)
             }
             return
@@ -379,6 +421,10 @@ final class PlayerController: ObservableObject {
         // voortgang bij stoppen meteen naar de Bingr-account
         if !isPreview { StateSync.shared.playbackStopped() }
         engine.stop()
+        #if !os(tvOS)
+        if airPlayServing { AirPlaySubtitles.stop(); airPlayServing = false }
+        airPlayWrapped = false
+        #endif
     }
 
     // MARK: Apple TV: framerate en dynamisch bereik (Match Content)
@@ -512,6 +558,17 @@ final class PlayerController: ObservableObject {
                 engine.selectSubtitle(t)
             }
         }
+        // na het wisselen van engine: hetzelfde spoor als daarvoor (op taal, anders op naam)
+        if let want = carrySubtitle, externalCues.isEmpty, externalSubtitleFile == nil {
+            carrySubtitle = nil
+            let code = want.lang.map(TrackPreferences.baseCode)
+                ?? TrackPreferences.languages.map(\.code).first { TrackPreferences.matches(want, code: $0) }
+            let tracks = engine.subtitleTracks
+            if let t = tracks.first(where: { code != nil && TrackPreferences.matches($0, code: code!) })
+                ?? tracks.first(where: { $0.name.caseInsensitiveCompare(want.name) == .orderedSame }) {
+                engine.selectSubtitle(t)
+            }
+        }
         objectWillChange.send()
     }
 
@@ -520,31 +577,131 @@ final class PlayerController: ObservableObject {
     var currentAudio: String? { engine.currentAudio }
     var currentSubtitle: String? { externalCues.isEmpty ? engine.currentSubtitle : "ext" }
     var hasExternalSubtitle: Bool { !externalCues.isEmpty || externalSubtitleName != nil }
+
+    /// Wat er nu als ondertitel gekozen is (voor Chromecast).
+    var selectedSubtitle: SubtitleChoice? {
+        if let f = externalSubtitleFile {
+            return SubtitleChoice(kind: .file(f), name: externalSubtitleName ?? "OpenSubtitles", language: externalSubtitleLanguage)
+        }
+        guard let id = engine.currentSubtitle, let t = engine.subtitleTracks.first(where: { $0.id == id }) else { return nil }
+        let index = engine.subtitleTracks.firstIndex(where: { $0.id == id }) ?? 0
+        let lang = t.lang ?? TrackPreferences.languages.map(\.code).first { TrackPreferences.matches(t, code: $0) }
+        return SubtitleChoice(kind: .embedded(index: index), name: t.name, language: lang)
+    }
     /// Naam van de laatst ingeladen OpenSubtitles-ondertitel (met vlag)
     @Published private(set) var externalSubtitleName: String?
     /// Verschuiving van de ondertitels in seconden (+ = later tonen)
-    @Published var subtitleDelay: Double = 0 { didSet { engine.setSubtitleDelay(subtitleDelay) } }
+    @Published var subtitleDelay: Double = 0 {
+        didSet {
+            engine.setSubtitleDelay(subtitleDelay)
+            if oldValue != subtitleDelay {
+                if airPlayWrapped { airPlayNeedsRewrap = true; airPlayWrapTries = 0 }
+                subtitlesChanged()
+            }
+        }
+    }
 
     func selectAudio(_ t: MediaTrack) { engine.selectAudio(t); objectWillChange.send() }
     func selectSubtitle(_ t: MediaTrack?) {
         externalCues = []; subtitleText = nil; externalSubtitleName = nil
+        externalSubtitleFile = nil; externalSubtitleLanguage = nil
         engine.selectSubtitle(t); objectWillChange.send()
+        subtitlesChanged()
     }
 
-    func addSubtitle(file: URL, name: String? = nil) {
+    /// `language`: taalcode van de ondertitel (OpenSubtitles), voor Chromecast en AirPlay.
+    func addSubtitle(file: URL, name: String? = nil, language: String? = nil) {
         // altijd als UTF-8 aanbieden (OpenSubtitles levert soms Windows-1252/Latin-1 → rare tekens)
         let utf8 = SRT.normalizedFile(file) ?? file
+        externalSubtitleFile = utf8
+        externalSubtitleLanguage = language
+        applyExternalSubtitle(utf8)
+        externalSubtitleName = name ?? file.deletingPathExtension().lastPathComponent
+        objectWillChange.send()
+        // nieuwe ondertitel tijdens AirPlay: opnieuw proberen met het nieuwe bestand
+        airPlayWrapTries = 0
+        if airPlayWrapped { airPlayWrapped = false; airPlaySelectPending = 0 }
+        subtitlesChanged()
+    }
+
+    /// Bestand aan de huidige engine geven: VLC tekent het zelf, bij de Apple-speler de eigen overlay.
+    private func applyExternalSubtitle(_ utf8: URL) {
         if engine.supportsExternalSubtitles {
+            externalCues = []
             engine.addSubtitle(utf8)
         } else if let d = try? Data(contentsOf: utf8) {
             engine.selectSubtitle(nil)
             externalCues = SRT.parse(d)
             subtitleText = nil
         }
-        externalSubtitleName = name ?? file.deletingPathExtension().lastPathComponent
         engine.setSubtitleDelay(subtitleDelay)
-        objectWillChange.send()
     }
+
+    /// Ondertitelkeuze veranderd: Chromecast bijwerken (tijdens het casten).
+    private func subtitlesChanged() {
+        #if !os(tvOS)
+        guard !isPreview, !silent, CastManager.shared.connected != nil else { return }
+        CastManager.shared.updateSubtitle(selectedSubtitle, delay: subtitleDelay)
+        #endif
+    }
+
+    // MARK: AirPlay met eigen ondertitels (build 57)
+
+    #if !os(tvOS)
+    /// Elke tick: AirPlay aan of uit? Met een eigen ondertitel tijdens AirPlay → eigen HLS-afspeellijst met
+    /// ondertitelspoor; lukt dat niet (geen HLS), dan een melding.
+    private func checkAirPlaySubtitles() {
+        let external = isExternalPlayback
+        defer { wasExternalPlayback = external }
+        guard let av = engine as? AVEngine else { return }
+
+        // ons spoor kiezen zodra de nieuwe afspeellijst geladen is
+        if airPlaySelectPending > 0 {
+            airPlaySelectPending += 1
+            if let t = av.subtitleTracks.first(where: { $0.name == AirPlaySubtitles.trackName }) {
+                av.selectSubtitle(t)
+                airPlaySelectPending = 0
+                subtitleText = nil
+                objectWillChange.send()
+            } else if airPlaySelectPending > 40 {
+                airPlaySelectPending = 0
+            }
+        }
+
+        // AirPlay net aangezet: opnieuw proberen (en zo nodig opnieuw melden)
+        if external && !wasExternalPlayback && !airPlayWrapped { airPlayWrapTries = 0 }
+        // opnieuw maken (andere verschuiving) mag ook zonder AirPlay: dan speelt de eigen afspeellijst al
+        let wanted = airPlayWrapped ? airPlayNeedsRewrap : external
+        guard wanted, externalSubtitleFile != nil, !airPlayWrapBusy,
+              engine.state == .playing || engine.state == .paused,
+              !isLive, airPlayWrapTries < 2, let url, let file = externalSubtitleFile else { return }
+        airPlayNeedsRewrap = false
+        airPlayWrapTries += 1
+        airPlayWrapBusy = true
+        let lang = externalSubtitleLanguage, dur = duration, delay = subtitleDelay, pos = position
+        Task { @MainActor in
+            let wrapped = await AirPlaySubtitles.wrap(source: url, subtitle: file, language: lang, duration: dur, delay: delay)
+            self.airPlayWrapBusy = false
+            // intussen iets anders gaan spelen of AirPlay al weer uit
+            guard !self.stopped, self.url == url, self.externalSubtitleFile == file,
+                  self.isExternalPlayback || self.airPlayWrapped, let av = self.engine as? AVEngine else { return }
+            guard let wrapped else {
+                self.airPlayWrapTries = 2
+                self.notice = L("Subtitles from OpenSubtitles aren't shown via AirPlay.")
+                return
+            }
+            let at = av.duration > 0 ? av.position : pos
+            let wasPlaying = av.isPlaying
+            self.airPlayWrapped = true
+            self.airPlayServing = true
+            self.airPlaySelectPending = 1
+            self.subtitleText = nil
+            av.load(wrapped, live: false, startFraction: at)
+            if !wasPlaying { av.pause() }
+        }
+    }
+    #endif
+
 
     static func format(_ s: Double) -> String {
         guard s.isFinite, s >= 0 else { return "0:00" }

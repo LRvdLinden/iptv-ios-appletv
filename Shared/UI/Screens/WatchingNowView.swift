@@ -33,6 +33,73 @@ enum StreamText {
     }
 }
 
+// MARK: - Profielfoto bij Nu kijken en kijkgeschiedenis (build 57)
+
+/// Klein rond profielplaatje van een profiel van het account: zoekt op `profile_id`, anders op naam;
+/// onbekend profiel → beginletter in een gekleurde cirkel. Zelfde weergave als de profielkiezer
+/// (eigen foto uit de bucket `avatars`, getekend figuurtje of symbool op kleurverloop).
+struct AccountProfileAvatar: View {
+    let profileID: String?
+    let profileName: String
+    var size: CGFloat = tvScaled(30)
+    @ObservedObject private var store = CloudStore.shared
+
+    private var profile: ViewerProfile? {
+        if let id = profileID.flatMap(UUID.init(uuidString:)), let p = store.profiles.first(where: { $0.id == id }) { return p }
+        let n = profileName.trimmingCharacters(in: .whitespaces)
+        guard !n.isEmpty else { return nil }
+        return store.profiles.first { $0.name.trimmingCharacters(in: .whitespaces).caseInsensitiveCompare(n) == .orderedSame }
+    }
+
+    var body: some View {
+        Group {
+            if let p = profile {
+                ZStack {
+                    Circle().fill(p.avatar.gradient)
+                    if let img = AvatarImageCache.image(for: p.id, data: store.photos[p.id]) {
+                        Color.clear.overlay(Image(uiImage: img).resizable().scaledToFill()).clipShape(Circle())
+                    } else {
+                        AvatarGlyph(avatar: p.avatar, size: size * 0.45).clipShape(Circle())
+                    }
+                }
+            } else {
+                // geen bekend profiel: beginletter op een vaste kleur per naam
+                ZStack {
+                    Circle().fill(Self.fallbackGradient(profileName))
+                    Text(Self.initial(profileName))
+                        .font(.system(size: size * 0.48, weight: .bold)).foregroundStyle(.white)
+                }
+            }
+        }
+        .frame(width: size, height: size)
+        .accessibilityLabel(profileName)
+    }
+
+    static func initial(_ name: String) -> String {
+        name.trimmingCharacters(in: .whitespaces).first.map { String($0).uppercased() } ?? "?"
+    }
+
+    /// Vaste kleur per naam (niet `hashValue`: die verschilt per app-start).
+    static func fallbackGradient(_ name: String) -> LinearGradient {
+        let sum = name.lowercased().unicodeScalars.reduce(0) { ($0 &* 31 &+ Int($1.value)) & 0xFFFF }
+        return PlaylistAvatar(symbol: "person", colorIndex: sum % PlaylistAvatar.palettes.count).gradient
+    }
+}
+
+/// Gedecodeerde profielfoto's, zodat lijsten niet bij elke weergave opnieuw een JPEG decoderen.
+@MainActor
+enum AvatarImageCache {
+    private static var cache: [UUID: (size: Int, image: UIImage)] = [:]
+
+    static func image(for id: UUID, data: Data?) -> UIImage? {
+        guard let data else { cache[id] = nil; return nil }
+        if let c = cache[id], c.size == data.count { return c.image }
+        guard let img = UIImage(data: data) else { return nil }
+        cache[id] = (data.count, img)
+        return img
+    }
+}
+
 /// Eén stream: apparaat-icoon en naam, profiel, titel en (optioneel) hoe lang al en ingelogd sinds.
 struct ActiveStreamRow: View {
     let stream: AccountService.ActiveStream
@@ -40,6 +107,8 @@ struct ActiveStreamRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: tvScaled(14)) {
+            // profielfoto vóór de tekst (build 57)
+            AccountProfileAvatar(profileID: stream.profileID, profileName: stream.profileName, size: tvScaled(30))
             Image(systemName: StreamText.icon(platform: stream.platform, name: stream.deviceName))
                 .font(.system(size: tvScaled(22)))
                 .foregroundStyle(stream.deviceID == AccountService.shared.deviceID ? Theme.red : .white)
@@ -234,6 +303,8 @@ struct WatchLogView: View {
 
     private func row(_ e: AccountService.WatchLogEntry, chevron: Bool) -> some View {
         HStack(alignment: .top, spacing: tvScaled(12)) {
+            // profielfoto vóór de tekst (build 57)
+            AccountProfileAvatar(profileID: e.profileID, profileName: e.profileName, size: tvScaled(30))
             Text(e.startedAt.formatted(date: .omitted, time: .shortened))
                 .font(.system(size: tvScaled(13)).monospacedDigit()).foregroundStyle(Theme.secondary)
                 .frame(width: tvScaled(52), alignment: .leading)

@@ -157,7 +157,7 @@ struct OpenSubtitlesPanel: View {
             defer { downloading = nil }
             do {
                 let file = try await subs.download(s)
-                player.addSubtitle(file: file, name: "\(TrackPreferences.flag(s.language)) \(s.release)")
+                player.addSubtitle(file: file, name: "\(TrackPreferences.flag(s.language)) \(s.release)", language: s.language)
                 dismiss()
             } catch { self.error = error.localizedDescription }
         }

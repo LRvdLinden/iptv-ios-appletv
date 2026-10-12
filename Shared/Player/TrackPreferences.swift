@@ -52,6 +52,13 @@ enum TrackPreferences {
     /// "🇳🇱 Nederlands" voor keuzelijsten.
     static func label(_ code: String) -> String { "\(flag(code)) \(name(code))" }
 
+    /// "nld" / "nl-NL" / "pt-BR" → "nl" / "nl" / "pt" (ISO 639-1, zoals in `languages`) (build 57)
+    static func baseCode(_ code: String) -> String {
+        let base = String(code.lowercased().split(whereSeparator: { $0 == "-" || $0 == "_" }).first ?? "")
+        if base.count == 3, let hit = languages.first(where: { $0.alt.contains(base) }) { return hit.code }
+        return base
+    }
+
     /// Talen alfabetisch op naam.
     static var sortedCodes: [String] {
         languages.map(\.code).sorted { name($0).localizedCaseInsensitiveCompare(name($1)) == .orderedAscending }

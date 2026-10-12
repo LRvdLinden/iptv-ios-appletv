@@ -102,6 +102,9 @@ struct PlayerScreen: View {
                 VStack(spacing: 12) {
                     Image(systemName: "tv.and.mediabox").font(.system(size: 48))
                     Text(cast.status).font(.headline)
+                    if let note = cast.subtitleNote {
+                        Text(note).font(.subheadline).foregroundStyle(Theme.secondary).multilineTextAlignment(.center)
+                    }
                     HStack(spacing: 20) {
                         NetflixButton(title: cast.isPlaying ? L("Pause") : L("Play"), icon: cast.isPlaying ? "pause.fill" : "play.fill") { cast.togglePause() }
                         NetflixButton(title: L("Stop casting"), icon: "xmark", kind: .secondary) { cast.disconnect(); player.resume() }
@@ -216,7 +219,8 @@ struct PlayerScreen: View {
             case .cast:
                 #if !os(tvOS)
                 if let u = player.url {
-                    CastPicker(item: player.item, url: u, position: player.currentTime) { player.pause() }
+                    CastPicker(item: player.item, url: u, position: player.currentTime,
+                               subtitles: player.selectedSubtitle, subtitleDelay: player.subtitleDelay) { player.pause() }
                 }
                 #else
                 EmptyView()
@@ -531,7 +535,7 @@ struct PlayerScreen: View {
                                               season: it.season, episode: it.episode, languages: [lang])
             guard let best = found.first, player.item.id == it.id else { return }
             let file = try await subs.download(best)
-            player.addSubtitle(file: file, name: "\(TrackPreferences.flag(best.language)) \(best.release)")
+            player.addSubtitle(file: file, name: "\(TrackPreferences.flag(best.language)) \(best.release)", language: best.language)
             flash(L("Subtitles: %@", "\(TrackPreferences.label(lang)) · OpenSubtitles"))
         } catch {}
     }

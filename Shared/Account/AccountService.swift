@@ -407,6 +407,8 @@ final class AccountService: ObservableObject {
         let deviceID: String
         let deviceName: String
         let platform: String
+        /// Profiel-id (build 57); oudere regels hebben er geen
+        var profileID: String? = nil
         let profileName: String
         let title: String
         let kind: String
@@ -425,6 +427,8 @@ final class AccountService: ObservableObject {
         let id = UUID()
         let deviceName: String
         let platform: String
+        /// Profiel-id (build 57); oudere regels hebben er geen
+        var profileID: String? = nil
         let profileName: String
         let title: String
         let kind: String
@@ -498,6 +502,7 @@ final class AccountService: ObservableObject {
             let platform = j["platform"] as? String ?? ""
             out.append(WatchLogEntry(deviceName: (j["device_name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? platform,
                                      platform: platform,
+                                     profileID: Self.profileID(j),
                                      profileName: j["profile_name"] as? String ?? "",
                                      title: j["title"] as? String ?? "",
                                      kind: j["kind"] as? String ?? "",
@@ -506,11 +511,17 @@ final class AccountService: ObservableObject {
         return out.sorted { $0.startedAt > $1.startedAt }
     }
 
+    /// `profile_id` (build 57): string of ontbrekend/leeg bij oudere regels.
+    private static func profileID(_ j: [String: Any]) -> String? {
+        guard let v = j["profile_id"] as? String, !v.isEmpty else { return nil }
+        return v
+    }
+
     private static func stream(_ j: [String: Any]) -> ActiveStream? {
         guard let id = j["device_id"] as? String else { return nil }
         let platform = j["platform"] as? String ?? ""
         let name = (j["device_name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? (platform.isEmpty ? "?" : platform)
-        return ActiveStream(deviceID: id, deviceName: name, platform: platform,
+        return ActiveStream(deviceID: id, deviceName: name, platform: platform, profileID: profileID(j),
                             profileName: j["profile_name"] as? String ?? "", title: j["title"] as? String ?? "",
                             kind: j["kind"] as? String ?? "", startedAt: parseDate(j["started_at"]),
                             signedInAt: parseDate(j["signed_in_at"]))
