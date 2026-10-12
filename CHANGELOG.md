@@ -4,6 +4,39 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website. Andr
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 54
+_12 oktober 2026_
+
+### Alle apps
+
+**Nieuw**
+
+- Elk profiel heeft een eigen accentkleur; die wisselt mee als je van profiel wisselt en gaat mee naar al je apparaten
+
+### Alle apps en de website
+
+**Nieuw**
+
+- Collecties per profiel: elk profiel, ook een kinderprofiel, maakt zijn eigen collecties. Bestaande collecties staan bij elk profiel, er verdwijnt niets
+
+### iOS en iPadOS
+
+**Verbeterd**
+
+- Ondersteuning voor Apple Vision Pro is weer verwijderd
+
+### iOS, iPadOS en macOS
+
+**Opgelost**
+
+- Het gekozen app-icoon blijft na een update goed staan
+
+### iOS, iPadOS, macOS en Android
+
+**Verbeterd**
+
+- Alleen het hoofdprofiel kan het app-icoon wijzigen; andere profielen kiezen alleen hun accentkleur
+
 ## Versie 1.0.0 · Build 53
 _12 oktober 2026_
 

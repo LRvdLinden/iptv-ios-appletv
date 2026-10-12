@@ -1,5 +1,69 @@
 [
  {
+  "build": 54,
+  "version": "1.0.0",
+  "date": "2026-10-12",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Elk profiel heeft een eigen accentkleur; die wisselt mee als je van profiel wisselt en gaat mee naar al je apparaten",
+    "en": "Every profile has its own accent colour; it changes when you switch profiles and follows you to all your devices"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web"
+    ],
+    "nl": "Collecties per profiel: elk profiel, ook een kinderprofiel, maakt zijn eigen collecties. Bestaande collecties staan bij elk profiel, er verdwijnt niets",
+    "en": "Collections per profile: every profile, including kids profiles, makes its own collections. Existing collections are kept for every profile, nothing is lost"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "macos",
+     "android"
+    ],
+    "nl": "Alleen het hoofdprofiel kan het app-icoon wijzigen; andere profielen kiezen alleen hun accentkleur",
+    "en": "Only the main profile can change the app icon; other profiles just pick their accent colour"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "macos"
+    ],
+    "nl": "Het gekozen app-icoon blijft na een update goed staan",
+    "en": "The chosen app icon stays correct after an update"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados"
+    ],
+    "nl": "Ondersteuning voor Apple Vision Pro is weer verwijderd",
+    "en": "Support for Apple Vision Pro has been removed again"
+   }
+  ]
+ },
+ {
   "build": 53,
   "version": "1.0.0",
   "date": "2026-10-12",
