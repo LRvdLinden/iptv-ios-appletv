@@ -9,6 +9,8 @@
 //   heartbeat       {device_id} (ingelogd) -> {ok} | {revoked:true}  (werkt ook "laatst gebruikt" bij)
 //   list_devices    {device_id?} (ingelogd) -> {limit, devices:[{device_id,name,platform,created_at,last_seen_at,current}]}
 //   remove_device   {device_id} (ingelogd) -> {ok}  (trekt de sessie van dat apparaat in)
+//   get_sources     {}       (ingelogd)  -> {sources:[…], mainSourceID, updatedAt}
+//   put_sources     {sources, mainSourceID} (ingelogd) -> {ok, updatedAt}   (versleuteld opgeslagen)
 //   config          {}       (ingelogd)  -> {traktClientID, traktClientSecret, openSubtitlesAPIKey, omdbAPIKey, tmdbAPIKey}
 //                   App-sleutels staan alleen als function-secrets op de server (BINGR_*), nooit in de openbare repo.
 import { createClient } from "jsr:@supabase/supabase-js@2";
@@ -58,6 +60,25 @@ async function removeDevice(userId: string, deviceId: string) {
   const { data: row } = await admin.from("account_devices").select("session_id").eq("user_id", userId).eq("device_id", deviceId).maybeSingle();
   if (row?.session_id) await admin.rpc("revoke_session", { sid: row.session_id });
   await admin.from("account_devices").delete().eq("user_id", userId).eq("device_id", deviceId);
+}
+// AES-GCM met BINGR_SOURCES_KEY (32 bytes, base64); wordt eenmalig door de Backend-workflow aangemaakt.
+async function sourcesKey(): Promise<CryptoKey> {
+  const raw = Uint8Array.from(atob(Deno.env.get("BINGR_SOURCES_KEY") ?? ""), (c) => c.charCodeAt(0));
+  if (raw.length !== 32) throw new Error("sources_key_missing");
+  return crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["encrypt", "decrypt"]);
+}
+const b64 = (u: Uint8Array) => btoa(String.fromCharCode(...u));
+async function seal(obj: unknown): Promise<string> {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await sourcesKey(), new TextEncoder().encode(JSON.stringify(obj))));
+  const out = new Uint8Array(iv.length + ct.length); out.set(iv); out.set(ct, iv.length);
+  let s = ""; for (let i = 0; i < out.length; i += 8192) s += String.fromCharCode(...out.subarray(i, i + 8192));
+  return btoa(s);
+}
+async function open_(data: string): Promise<any> {
+  const all = Uint8Array.from(atob(data), (c) => c.charCodeAt(0));
+  const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: all.subarray(0, 12) }, await sourcesKey(), all.subarray(12));
+  return JSON.parse(new TextDecoder().decode(pt));
 }
 async function userFrom(req: Request) {
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
@@ -162,6 +183,27 @@ Deno.serve(async (req) => {
       if (!user) return json({ error: "not_signed_in" }, 401);
       await removeDevice(user.id, String(body.device_id ?? ""));
       return json({ ok: true });
+    }
+    case "get_sources": {
+      const user = await userFrom(req);
+      if (!user) return json({ error: "not_signed_in" }, 401);
+      const { data: row } = await admin.from("account_sources").select("data,updated_at").eq("user_id", user.id).maybeSingle();
+      if (!row) return json({ sources: [], mainSourceID: null, updatedAt: null });
+      try {
+        const o = await open_(row.data);
+        return json({ sources: o.sources ?? [], mainSourceID: o.mainSourceID ?? null, updatedAt: row.updated_at });
+      } catch { return json({ error: "decrypt_failed" }, 500); }
+    }
+    case "put_sources": {
+      const user = await userFrom(req);
+      if (!user) return json({ error: "not_signed_in" }, 401);
+      const sources = Array.isArray(body.sources) ? body.sources.slice(0, 50) : [];
+      const payload = { sources, mainSourceID: body.mainSourceID ?? null };
+      const size = JSON.stringify(payload).length;
+      if (size > 512 * 1024) return json({ error: "too_large" }, 413);
+      const updated_at = new Date().toISOString();
+      await admin.from("account_sources").upsert({ user_id: user.id, data: await seal(payload), updated_at });
+      return json({ ok: true, updatedAt: updated_at });
     }
     case "config": {
       const user = await userFrom(req);

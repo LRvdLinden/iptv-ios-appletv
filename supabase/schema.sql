@@ -66,3 +66,13 @@ create policy "avatars eigen wijzigen" on storage.objects for update to authenti
   using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
 create policy "avatars eigen verwijderen" on storage.objects for delete to authenticated
   using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
+
+-- Servers en afspeellijsten per account, versleuteld (AES-GCM) door de Edge Function met BINGR_SOURCES_KEY.
+-- Alleen de Edge Function (service role) leest en schrijft hierin.
+create table if not exists public.account_sources (
+  user_id    uuid primary key references auth.users(id) on delete cascade,
+  data       text not null,
+  updated_at timestamptz not null default now()
+);
+alter table public.account_sources enable row level security;
+revoke all on public.account_sources from anon, authenticated;

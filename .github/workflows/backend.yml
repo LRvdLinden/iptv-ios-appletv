@@ -58,6 +58,11 @@ jobs:
           [ -n "$K_TMDB" ] && echo "BINGR_TMDB_API_KEY=$K_TMDB" >> /tmp/keys.env
           if [ -s /tmp/keys.env ]; then supabase secrets set --project-ref "$REF" --env-file /tmp/keys.env; echo "::notice::$(wc -l < /tmp/keys.env) app-sleutel(s) op de server gezet"; fi
           rm -f /tmp/keys.env
+          # versleutelsleutel voor servers/afspeellijsten: alleen aanmaken als hij nog niet bestaat (nooit vervangen)
+          if ! supabase secrets list --project-ref "$REF" 2>/dev/null | grep -q BINGR_SOURCES_KEY; then
+            supabase secrets set --project-ref "$REF" BINGR_SOURCES_KEY="$(openssl rand -base64 32)" >/dev/null
+            echo "::notice::Versleutelsleutel voor servers aangemaakt"
+          fi
       - name: Edge Function device-auth
         if: steps.check.outputs.skip != '1'
         run: supabase functions deploy device-auth --project-ref "$REF" --no-verify-jwt --use-api

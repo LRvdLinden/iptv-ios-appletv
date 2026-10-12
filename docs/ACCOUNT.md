@@ -194,3 +194,42 @@ De repo is openbaar, dus de sleutels voor Trakt, OpenSubtitles, OMDb en TMDB wor
 - **Daarna:** is lokaal iets nieuwer dan de server, of ontbreekt het op de server, upload dan de samengevoegde lijst. Tombstones van de server blijven daarin staan.
 
 **Ouder formaat zonder `updatedAt`:** behandel dat als heel oud (epoch). De regels voor migreren en importeren van build 38 blijven gelden.
+
+## Servers en afspeellijsten via het account (build 43)
+
+Servers horen bij het account. Na het (opnieuw) installeren, na een update en op een nieuw apparaat staat alles weer klaar zodra je inlogt. Opslag gebeurt via de Edge Function, die alles versleutelt (AES-GCM) met een sleutel die alleen de server kent. De database ziet de gegevens nooit leesbaar.
+
+| Actie (device-auth, met `Authorization: Bearer <access_token>`) | Body | Antwoord |
+|---|---|---|
+| `get_sources` | `{}` | `{sources:[…], mainSourceID, updatedAt}`. Voor een nieuw account: `sources: []`, `updatedAt: null`. |
+| `put_sources` | `{sources:[…], mainSourceID}` | `{ok, updatedAt}`. Stuurt altijd de **hele** lijst, inclusief tombstones. Maximaal 512 KB. |
+
+**Bron (gedeeld formaat, gelijk op iOS en Android)**
+
+| Veld | Inhoud |
+|---|---|
+| `id` | UUID als tekst. Bewaar het exact; iOS gebruikt hoofdletters. |
+| `name` | naam |
+| `kind` | de raw value: `"M3U / M3U8"`, `"Xtream Codes"`, `"Stalker / MAC-portal"`, `"Plex"`, `"Jellyfin"`, `"Emby"` of `"Stremio"` |
+| `avatar` | `{symbol, colorIndex, emoji?}`, net als bij profielen (iOS-symboolnaam, Android vertaalt met `AvatarMap`) |
+| `m3uURL`, `epgURL`, `serverURL`, `username`, `macAddress` | tekst, `""` als het leeg is |
+| `preferHLS` | true of false |
+| `secrets` | `{ "<naam>": "<waarde>" }`: **alle** geheime velden die nu lokaal in de sleutelhanger of privé-opslag staan onder `playlist.<id>.<naam>`. Bijvoorbeeld `password`, en bij Plex, Jellyfin, Emby en Stremio ook tokens. Zoek alle sleutels met dat voorvoegsel op. |
+| `apple`, `android` | optioneel, per platform een eigen blok met instellingen die bij deze bron horen. Denk aan categorieën aan/uit, hernoemde, verborgen of herschikte groepen en zenders. Elk platform leest alleen zijn eigen blok en bewaart het blok van het andere platform onaangeroerd. |
+| `updatedAt` | ISO-8601 |
+| `deleted`, `deletedAt` | `deleted: true` met `deletedAt` maakt er een tombstone van, zelfde regels als bij profielen. Tombstones ouder dan 90 dagen weg. |
+
+`mainSourceID` is de actieve server van het account.
+
+**Wie beheert:** alleen het hoofdaccount voegt servers toe, wijzigt ze en verwijdert ze; dat is al zo. Elk apparaat van het account leest ze en past ze toe, ongeacht het actieve profiel.
+
+**Synchroniseren** volgt hetzelfde patroon als profielen. Het gebeurt na login (vóór "Wie kijkt er?", met maximaal 8 seconden wachten), bij het starten, bij terugkeer naar de voorgrond en bij elke heartbeat:
+- **Server leeg en lokaal bronnen:** uploaden. Dat is de migratie van bestaande gebruikers, inclusief de wachtwoorden en tokens uit de sleutelhanger.
+- **Lokaal leeg en server bronnen:** alles lokaal aanmaken met hetzelfde `id`, de `secrets` terugzetten in de sleutelhanger of opslag, het eigen platformblok toepassen, `mainSourceID` instellen en de bibliotheek laden. Dit is het geval na herinstallatie of op een nieuw apparaat.
+- **Allebei:** per `id` geldt de nieuwste `updatedAt`. Tombstones verwijderen lokaal, inclusief de secrets en de cache van die bron. Daarna uploaden als lokaal iets nieuwer is of ontbreekt.
+- **Lokaal wijzigen:** server toevoegen, wijzigen (ook wachtwoord) of verwijderen, en wijzigingen aan categorieën of groepen. Zet `updatedAt` = nu en upload met ongeveer 2 seconden vertraging.
+- **Fouten:** stil. De app blijft werken met wat lokaal staat.
+
+Op Apple blijft de bestaande iCloud-sync van servers ook werken. Omdat de `id`'s gelijk zijn, botst dat niet.
+
+**Uitloggen:** de lokale servers blijven staan. Logt een **ander** account in op het apparaat, wis dan eerst de lokale servers, profielen en gegevens van het vorige account. Op Apple, waar iCloud ook servers kan leveren: wis lokaal en importeer daarna van het nieuwe account. Om dit te kunnen zien, onthoud je de user-id van het laatst ingelogde account.
