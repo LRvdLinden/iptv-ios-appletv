@@ -50,3 +50,9 @@ jobs:
           sleep 5
           curl -s -X POST "https://$REF.supabase.co/functions/v1/device-auth" -H "Content-Type: application/json" -d '{"action":"nope"}' | tee /tmp/t.txt; echo
           grep -q unknown_action /tmp/t.txt && echo "::notice::device-auth werkt" || echo "::warning::device-auth gaf een onverwacht antwoord"
+          # tv-code starten en pollen (moet 'pending' geven)
+          curl -s -X POST "https://$REF.supabase.co/functions/v1/device-auth" -H "Content-Type: application/json" -d '{"action":"start","device":"CI-test"}' > /tmp/s.json; cat /tmp/s.json; echo
+          C=$(python3 -c 'import json;print(json.load(open("/tmp/s.json")).get("code",""))'); P=$(python3 -c 'import json;print(json.load(open("/tmp/s.json")).get("poll_secret",""))')
+          [ -n "$C" ] || { echo "::error::start gaf geen code"; exit 1; }
+          curl -s -X POST "https://$REF.supabase.co/functions/v1/device-auth" -H "Content-Type: application/json" -d "{\"action\":\"poll\",\"code\":\"$C\",\"poll_secret\":\"$P\"}" | tee /tmp/p.json; echo
+          grep -q pending /tmp/p.json && echo "::notice::tv-koppeling (start + poll) werkt, code $C" || { echo "::error::poll gaf geen pending"; exit 1; }
