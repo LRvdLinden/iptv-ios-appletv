@@ -494,7 +494,8 @@
   "yesterday": "أمس",
   "Advanced": "متقدم",
   "Sign in to Trakt": "تسجيل الدخول إلى Trakt",
-  "Only needed if you want to use your own API keys. Bingr normally gets the keys for Trakt and OpenSubtitles securely from the Bingr server.": "مطلوب فقط إذا كنت تريد استخدام مفاتيح API الخاصة بك. عادةً يحصل Bingr على مفاتيح Trakt وOpenSubtitles بأمان من خادم Bingr."
+  "Only needed if you want to use your own API keys. Bingr normally gets the keys for Trakt and OpenSubtitles securely from the Bingr server.": "مطلوب فقط إذا كنت تريد استخدام مفاتيح API الخاصة بك. عادةً يحصل Bingr على مفاتيح Trakt وOpenSubtitles بأمان من خادم Bingr.",
+  "Device name": "اسم الجهاز"
  },
  "de": {
   "%@ is now signed in.": "%@ ist jetzt angemeldet.",
@@ -991,7 +992,8 @@
   "yesterday": "gestern",
   "Advanced": "Erweitert",
   "Sign in to Trakt": "Bei Trakt anmelden",
-  "Only needed if you want to use your own API keys. Bingr normally gets the keys for Trakt and OpenSubtitles securely from the Bingr server.": "Nur nötig, wenn du eigene API-Schlüssel verwenden möchtest. Normalerweise holt Bingr die Schlüssel für Trakt und OpenSubtitles sicher vom Bingr-Server."
+  "Only needed if you want to use your own API keys. Bingr normally gets the keys for Trakt and OpenSubtitles securely from the Bingr server.": "Nur nötig, wenn du eigene API-Schlüssel verwenden möchtest. Normalerweise holt Bingr die Schlüssel für Trakt und OpenSubtitles sicher vom Bingr-Server.",
+  "Device name": "Gerätename"
  },
  "es": {
   "%@ is now signed in.": "%@ ya ha iniciado sesión.",
@@ -1488,7 +1490,8 @@
   "yesterday": "ayer",
   "Advanced": "Avanzado",
   "Sign in to Trakt": "Iniciar sesión en Trakt",
-  "Only needed if you want to use your own API keys. Bingr normally gets the keys for Trakt and OpenSubtitles securely from the Bingr server.": "Solo es necesario si quieres usar tus propias claves de API. Normalmente, Bingr obtiene las claves de Trakt y OpenSubtitles de forma segura desde el servidor de Bingr."
+  "Only needed if you want to use your own API keys. Bingr normally gets the keys for Trakt and OpenSubtitles securely from the Bingr server.": "Solo es necesario si quieres usar tus propias claves de API. Normalmente, Bingr obtiene las claves de Trakt y OpenSubtitles de forma segura desde el servidor de Bingr.",
+  "Device name": "Nombre del dispositivo"
  },
  "fr": {
   "%@ is now signed in.": "%@ est maintenant connecté.",
@@ -1985,7 +1988,8 @@
   "yesterday": "hier",
   "Advanced": "Avancé",
   "Sign in to Trakt": "Se connecter à Trakt",
-  "Only needed if you want to use your own API keys. Bingr normally gets the keys for Trakt and OpenSubtitles securely from the Bingr server.": "Uniquement nécessaire si vous souhaitez utiliser vos propres clés API. Normalement, Bingr récupère les clés pour Trakt et OpenSubtitles en toute sécurité depuis le serveur Bingr."
+  "Only needed if you want to use your own API keys. Bingr normally gets the keys for Trakt and OpenSubtitles securely from the Bingr server.": "Uniquement nécessaire si vous souhaitez utiliser vos propres clés API. Normalement, Bingr récupère les clés pour Trakt et OpenSubtitles en toute sécurité depuis le serveur Bingr.",
+  "Device name": "Nom de l’appareil"
  },
  "it": {
   "%@ is now signed in.": "%@ ha effettuato l’accesso.",
@@ -2482,7 +2486,8 @@
   "yesterday": "ieri",
   "Advanced": "Avanzate",
   "Sign in to Trakt": "Accedi a Trakt",
-  "Only needed if you want to use your own API keys. Bingr normally gets the keys for Trakt and OpenSubtitles securely from the Bingr server.": "Necessario solo se vuoi usare le tue chiavi API. Di solito Bingr ottiene le chiavi per Trakt e OpenSubtitles in modo sicuro dal server Bingr."
+  "Only needed if you want to use your own API keys. Bingr normally gets the keys for Trakt and OpenSubtitles securely from the Bingr server.": "Necessario solo se vuoi usare le tue chiavi API. Di solito Bingr ottiene le chiavi per Trakt e OpenSubtitles in modo sicuro dal server Bingr.",
+  "Device name": "Nome del dispositivo"
  },
  "nl": {
   "%@ is now signed in.": "%@ is nu ingelogd.",
@@ -2979,7 +2984,8 @@
   "yesterday": "gisteren",
   "Advanced": "Geavanceerd",
   "Sign in to Trakt": "Inloggen bij Trakt",
-  "Only needed if you want to use your own API keys. Bingr normally gets the keys for Trakt and OpenSubtitles securely from the Bingr server.": "Alleen nodig als je eigen API-sleutels wilt gebruiken. Normaal haalt Bingr de sleutels voor Trakt en OpenSubtitles veilig op bij de Bingr-server."
+  "Only needed if you want to use your own API keys. Bingr normally gets the keys for Trakt and OpenSubtitles securely from the Bingr server.": "Alleen nodig als je eigen API-sleutels wilt gebruiken. Normaal haalt Bingr de sleutels voor Trakt en OpenSubtitles veilig op bij de Bingr-server.",
+  "Device name": "Apparaatnaam"
  },
  "pl": {
   "%@ is now signed in.": "%@ jest teraz zalogowany.",
@@ -3476,7 +3482,8 @@
   "yesterday": "wczoraj",
   "Advanced": "Zaawansowane",
   "Sign in to Trakt": "Zaloguj się do Trakt",
-  "Only needed if you want to use your own API keys. Bingr normally gets the keys for Trakt and OpenSubtitles securely from the Bingr server.": "Potrzebne tylko, jeśli chcesz używać własnych kluczy API. Zwykle Bingr bezpiecznie pobiera klucze do Trakt i OpenSubtitles z serwera Bingr."
+  "Only needed if you want to use your own API keys. Bingr normally gets the keys for Trakt and OpenSubtitles securely from the Bingr server.": "Potrzebne tylko, jeśli chcesz używać własnych kluczy API. Zwykle Bingr bezpiecznie pobiera klucze do Trakt i OpenSubtitles z serwera Bingr.",
+  "Device name": "Nazwa urządzenia"
  },
  "pt": {
   "%@ is now signed in.": "%@ já tem sessão iniciada.",
@@ -3973,7 +3980,8 @@
   "yesterday": "ontem",
   "Advanced": "Avançado",
   "Sign in to Trakt": "Iniciar sessão no Trakt",
-  "Only needed if you want to use your own API keys. Bingr normally gets the keys for Trakt and OpenSubtitles securely from the Bingr server.": "Só é necessário se quiser usar as suas próprias chaves de API. Normalmente, o Bingr obtém as chaves do Trakt e do OpenSubtitles de forma segura a partir do servidor Bingr."
+  "Only needed if you want to use your own API keys. Bingr normally gets the keys for Trakt and OpenSubtitles securely from the Bingr server.": "Só é necessário se quiser usar as suas próprias chaves de API. Normalmente, o Bingr obtém as chaves do Trakt e do OpenSubtitles de forma segura a partir do servidor Bingr.",
+  "Device name": "Nome do dispositivo"
  },
  "tr": {
   "%@ is now signed in.": "%@ artık oturum açtı.",
@@ -4470,7 +4478,8 @@
   "yesterday": "dün",
   "Advanced": "Gelişmiş",
   "Sign in to Trakt": "Trakt'a giriş yap",
-  "Only needed if you want to use your own API keys. Bingr normally gets the keys for Trakt and OpenSubtitles securely from the Bingr server.": "Yalnızca kendi API anahtarlarınızı kullanmak istiyorsanız gereklidir. Bingr, Trakt ve OpenSubtitles anahtarlarını normalde Bingr sunucusundan güvenli şekilde alır."
+  "Only needed if you want to use your own API keys. Bingr normally gets the keys for Trakt and OpenSubtitles securely from the Bingr server.": "Yalnızca kendi API anahtarlarınızı kullanmak istiyorsanız gereklidir. Bingr, Trakt ve OpenSubtitles anahtarlarını normalde Bingr sunucusundan güvenli şekilde alır.",
+  "Device name": "Cihaz adı"
  },
  "zh-Hans": {
   "%@ is now signed in.": "%@ 现已登录。",
@@ -4967,6 +4976,7 @@
   "yesterday": "昨天",
   "Advanced": "高级",
   "Sign in to Trakt": "登录 Trakt",
-  "Only needed if you want to use your own API keys. Bingr normally gets the keys for Trakt and OpenSubtitles securely from the Bingr server.": "仅在你想使用自己的 API 密钥时需要。通常 Bingr 会从 Bingr 服务器安全获取 Trakt 和 OpenSubtitles 的密钥。"
+  "Only needed if you want to use your own API keys. Bingr normally gets the keys for Trakt and OpenSubtitles securely from the Bingr server.": "仅在你想使用自己的 API 密钥时需要。通常 Bingr 会从 Bingr 服务器安全获取 Trakt 和 OpenSubtitles 的密钥。",
+  "Device name": "设备名称"
  }
 }

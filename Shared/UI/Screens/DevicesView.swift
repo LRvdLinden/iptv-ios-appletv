@@ -14,7 +14,7 @@ enum DeviceText {
         case "Mac": return d.name.localizedCaseInsensitiveContains("macbook") ? "macbook" : "desktopcomputer"
         case "Android": return "candybarphone"
         case "Android tablet": return "ipad.landscape"
-        case "Android TV", "Fire TV": return "tv"
+        case "Android TV", "Google TV", "Fire TV": return "tv"
         default: return "display"
         }
     }
@@ -62,10 +62,12 @@ enum DeviceText {
     }
 }
 
-/// Eén apparaat: icoon, naam, platform, gekoppeld, laatst gebruikt, "This device" en een knop "Remove".
+/// Eén apparaat: icoon, naam, platform, gekoppeld, laatst gebruikt, "This device" en knoppen "Rename" en "Remove".
 struct DeviceRow: View {
     let device: AccountService.Device
     let busy: Bool
+    /// nil = geen knop "Rename" (bv. op "Too many devices").
+    var onRename: (() -> Void)? = nil
     let onRemove: () -> Void
 
     var body: some View {
@@ -106,6 +108,12 @@ struct DeviceRow: View {
             if busy {
                 ProgressView()
             } else {
+                if let onRename {
+                    Button(action: onRename) {
+                        Text(L("Rename")).font(.system(size: tvScaled(14), weight: .semibold))
+                    }
+                    .buttonStyle(.bordered)
+                }
                 Button(role: .destructive, action: onRemove) {
                     Text(L("Remove")).font(.system(size: tvScaled(14), weight: .semibold))
                 }
@@ -132,6 +140,120 @@ private extension View {
     }
 }
 
+// MARK: - Rename
+
+/// Venster "Rename": tekstveld met de huidige naam (max. 60 tekens), "Save" en "Cancel".
+/// Op Apple TV opent het tekstveld het tv-toetsenbord; de focus start op het tekstveld.
+struct DeviceRenameSheet: View {
+    let current: String
+    let onSave: (String) async throws -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var name = ""
+    @State private var saving = false
+    @State private var error: String?
+    @FocusState private var focus: Field?
+    private enum Field: Hashable { case name, save }
+
+    private var clean: String { String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(60)) }
+    private var canSave: Bool { !clean.isEmpty && !saving }
+
+    var body: some View {
+        content
+            .onAppear {
+                name = current
+                focus = .name
+            }
+            .onChange(of: name) { _, v in if v.count > 60 { name = String(v.prefix(60)) } }
+    }
+
+    #if os(tvOS)
+    private var content: some View {
+        ZStack {
+            AuthBackdrop()
+            VStack(alignment: .leading, spacing: 28) {
+                Text(L("Rename"))
+                    .font(.system(size: 44, weight: .bold))
+                    .foregroundStyle(.white)
+                TextField(L("Device name"), text: $name)
+                    .autocorrectionDisabled()
+                    .focused($focus, equals: .name)
+                    .submitLabel(.done)
+                    .onSubmit { focus = .save }
+                    .frame(width: 900)
+                if let error {
+                    Label(error, systemImage: "exclamationmark.circle.fill")
+                        .font(.system(size: 24, weight: .medium))
+                        .foregroundStyle(AuthForm.errorColor)
+                }
+                HStack(spacing: 30) {
+                    Button { save() } label: {
+                        HStack(spacing: 12) {
+                            Text(L("Save")).bold()
+                            if saving { ProgressView() }
+                        }
+                        .frame(minWidth: 220)
+                    }
+                    .focused($focus, equals: .save)
+                    .disabled(!canSave)
+                    Button(L("Cancel")) { dismiss() }
+                        .disabled(saving)
+                }
+            }
+            .padding(60)
+            .frame(maxWidth: 1100, alignment: .leading)
+            .background(.black.opacity(0.78), in: RoundedRectangle(cornerRadius: 24))
+        }
+        .defaultFocus($focus, .name)
+    }
+    #else
+    private var content: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField(L("Device name"), text: $name)
+                        .autocorrectionDisabled()
+                        .focused($focus, equals: .name)
+                        .submitLabel(.done)
+                        .onSubmit { save() }
+                } footer: {
+                    if let error {
+                        Label(error, systemImage: "exclamationmark.circle.fill").foregroundStyle(AuthForm.errorColor)
+                    }
+                }
+            }
+            .navigationTitle(L("Rename"))
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(L("Cancel")) { dismiss() }.disabled(saving)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    if saving { ProgressView() } else { Button(L("Save")) { save() }.disabled(!canSave) }
+                }
+            }
+        }
+        #if os(macOS)
+        .frame(minWidth: 380, minHeight: 180)
+        #endif
+    }
+    #endif
+
+    private func save() {
+        guard canSave else { return }
+        saving = true
+        error = nil
+        let value = clean
+        Task { @MainActor in
+            defer { saving = false }
+            do {
+                try await onSave(value)
+                dismiss()
+            } catch {
+                self.error = error.localizedDescription
+            }
+        }
+    }
+}
+
 // MARK: - Mijn Bingr → Account → Devices
 
 struct DevicesView: View {
@@ -141,13 +263,14 @@ struct DevicesView: View {
     @State private var error: String?
     @State private var pending: AccountService.Device?
     @State private var removing: String?
+    @State private var renaming: AccountService.Device?
 
     var body: some View {
         List {
             Section {
                 if let data {
                     ForEach(data.devices) { d in
-                        DeviceRow(device: d, busy: removing == d.id) { pending = d }
+                        DeviceRow(device: d, busy: removing == d.id, onRename: { renaming = d }) { pending = d }
                             .disabled(removing != nil)
                     }
                 } else if loading {
@@ -164,7 +287,24 @@ struct DevicesView: View {
         }
         .navigationTitle(L("Devices"))
         .removeConfirmation($pending) { remove($0) }
+        .sheet(item: $renaming) { d in
+            DeviceRenameSheet(current: d.name) { name in try await rename(d, to: name) }
+                .environmentObject(account)
+        }
         .onAppear { Task { await load() } }
+    }
+
+    /// Opslaan; daarna de lijst opnieuw ophalen. Een fout gaat terug naar het venster.
+    @MainActor private func rename(_ d: AccountService.Device, to name: String) async throws {
+        try await account.renameDevice(d.id, name: name)
+        if let cur = data {
+            let clean = String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(60))
+            data = AccountService.DeviceLimit(limit: cur.limit, devices: cur.devices.map {
+                $0.id == d.id ? AccountService.Device(id: $0.id, name: clean, platform: $0.platform, createdAt: $0.createdAt,
+                                                      lastSeenAt: $0.lastSeenAt, current: $0.current) : $0
+            })
+        }
+        await load()
     }
 
     @MainActor private func load() async {

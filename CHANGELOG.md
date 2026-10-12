@@ -2,6 +2,15 @@
 
 Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac (Android: [bingr-android](https://github.com/LRvdLinden/bingr-android/blob/main/CHANGELOG.md)). Per versie het buildnummer en de datum; het buildnummer loopt gelijk over alle platforms.
 
+## Versie 1.0.0 · Build 45
+_2026-10-12_
+
+- Gekoppelde apparaten een eigen naam geven of wijzigen, in de app en op bingr.online/account
+- Google TV wordt als eigen apparaattype herkend
+- Geen deelknop meer op de detailpagina op Apple TV, Android TV, Google TV en Fire TV
+- Website: overzicht van alle apparaten waarop je Bingr kijkt, apparaat-iconen in Mijn Bingr en een cookiemelding die je keuze onthoudt
+- Changelog toont nu versie, build en datum
+
 ## Versie 1.0.0 · Build 44
 _2026-10-12_
 

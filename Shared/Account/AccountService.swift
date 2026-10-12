@@ -370,6 +370,22 @@ final class AccountService: ObservableObject {
         }
     }
 
+    /// Een apparaat (ook het eigen) een eigen naam geven, max. 60 tekens. Daarna overschrijft `register_device` die niet meer.
+    func renameDevice(_ id: String, name: String) async throws {
+        let clean = String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(60))
+        guard !clean.isEmpty else { throw AccountError.generic }
+        let r = try await authorized { token in
+            try await self.post("/functions/v1/device-auth", ["action": "rename_device", "device_id": id, "name": clean], bearer: token)
+        }
+        guard r.status == 200, (r.json["ok"] as? Bool) == true else { throw AccountError.generic }
+        if let l = deviceLimit {
+            deviceLimit = DeviceLimit(limit: l.limit, devices: l.devices.map {
+                $0.id == id ? Device(id: $0.id, name: clean, platform: $0.platform, createdAt: $0.createdAt,
+                                     lastSeenAt: $0.lastSeenAt, current: $0.current) : $0
+            })
+        }
+    }
+
     /// "Too many devices" → een apparaat verwijderd: opnieuw registreren. `.ok` = door naar "Wie kijkt er?".
     func removeDeviceAndRetry(_ id: String) async throws -> RegisterResult {
         try await removeDevice(id)

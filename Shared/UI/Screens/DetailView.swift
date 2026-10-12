@@ -29,7 +29,6 @@ struct DetailView: View {
     @State private var ageGate = false
     @State private var afterPIN: (() -> Void)?
     @State private var pinOK = false
-    @State private var showShareQR = false
 
     private var pid: UUID? { playlists.source?.id }
     private var baseTitle: String { switch target { case .movie(let m): return m.title; case .series(let s): return s.title } }
@@ -114,9 +113,6 @@ struct DetailView: View {
         .task(id: target.id) { await load() }
         .task(id: d?.recommendations.map(\.id) ?? []) { await matchRecommendations() }
         .sheet(isPresented: $showSources) { sourcesSheet }
-        #if os(tvOS)
-        .sheet(isPresented: $showShareQR) { shareQRSheet }
-        #endif
         .sheet(isPresented: $ageGate, onDismiss: {
             // pas afspelen als het pincodescherm helemaal weg is (anders opent de speler niet, vooral op Apple TV)
             let run = pinOK ? afterPIN : nil
@@ -222,7 +218,9 @@ struct DetailView: View {
                 circleButton(inMyList ? "heart.fill" : "heart") { toggleMyList() }
                 if let _ = d?.trailerYouTubeID { circleButton("film") { openTrailer() } }
                 if isMovie { circleButton(isWatchedTitle ? "checkmark.circle.fill" : "checkmark.circle") { toggleWatchedMovie() } }
-                shareButton
+                #if !os(tvOS)
+                shareButton // geen deelknop (ook geen QR) op tv's, zie docs/ACCOUNT.md
+                #endif
                 Button { Task { await openSources() } } label: {
                     Text(L("Other sources")).font(.system(size: tvScaled(15), weight: .medium))
                         .frame(maxWidth: .infinity).frame(height: tvScaled(50))
@@ -278,8 +276,8 @@ struct DetailView: View {
         return L(isMovie ? "Movie tip: %@" : "Series tip: %@", name)
     }
 
-    @ViewBuilder private var shareButton: some View {
-        #if !os(tvOS)
+    #if !os(tvOS)
+    private var shareButton: some View {
         Group {
             if let url = shareURL {
                 ShareLink(item: url, subject: Text(shareTitle), message: Text(shareText),
@@ -295,10 +293,6 @@ struct DetailView: View {
             } label: { Label(L("Copy link"), systemImage: "doc.on.doc") }
         }
         .accessibilityLabel(L("Share"))
-        #else
-        // Apple TV kan niet delen: QR-code om met je telefoon te scannen
-        if shareURL != nil { circleButton("square.and.arrow.up") { showShareQR = true } }
-        #endif
     }
 
     private var shareIcon: some View {
@@ -307,22 +301,6 @@ struct DetailView: View {
             .frame(width: tvScaled(50), height: tvScaled(50))
             .background(Color.white.opacity(0.12), in: Circle())
             .overlay(Circle().stroke(.white.opacity(0.12)))
-    }
-
-    #if os(tvOS)
-    private var shareQRSheet: some View {
-        VStack(spacing: 30) {
-            Text(L("Share")).font(.system(size: 46, weight: .bold))
-            Text(shareText).font(.system(size: 28)).foregroundStyle(Theme.secondary)
-            if let u = shareURL, let img = QRCode.image(u.absoluteString) {
-                Image(uiImage: img).interpolation(.none).resizable().frame(width: 360, height: 360)
-                    .padding(20).background(.white, in: RoundedRectangle(cornerRadius: 20))
-                Text(L("Scan with your phone to share via WhatsApp, iMessage and more."))
-                    .font(.system(size: 26)).foregroundStyle(Theme.secondary)
-                Text(u.absoluteString).font(.system(size: 24, design: .monospaced))
-            }
-        }
-        .padding(60)
     }
     #endif
 

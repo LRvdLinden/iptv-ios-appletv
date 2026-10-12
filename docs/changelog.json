@@ -1,5 +1,29 @@
 [
  {
+  "build": 45,
+  "date": "2026-10-12",
+  "platforms": [
+   "apple",
+   "android",
+   "web"
+  ],
+  "nl": [
+   "Gekoppelde apparaten een eigen naam geven of wijzigen, in de app en op bingr.online/account",
+   "Google TV wordt als eigen apparaattype herkend",
+   "Geen deelknop meer op de detailpagina op Apple TV, Android TV, Google TV en Fire TV",
+   "Website: overzicht van alle apparaten waarop je Bingr kijkt, apparaat-iconen in Mijn Bingr en een cookiemelding die je keuze onthoudt",
+   "Changelog toont nu versie, build en datum"
+  ],
+  "en": [
+   "Give linked devices a name of your own or change it, in the app and at bingr.online/account",
+   "Google TV is recognized as its own device type",
+   "No more share button on the detail page on Apple TV, Android TV, Google TV and Fire TV",
+   "Website: overview of all devices you can watch Bingr on, device icons in My Bingr and a cookie notice that remembers your choice",
+   "Changelog now shows version, build and date"
+  ],
+  "version": "1.0.0"
+ },
+ {
   "build": 44,
   "date": "2026-10-12",
   "platforms": [
