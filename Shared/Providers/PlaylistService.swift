@@ -247,6 +247,20 @@ final class PlaylistService: ObservableObject {
         }
     }
 
+    /// Voor "Bron controleren": wat er van een lijst overblijft na alleen jouw categorie-instellingen
+    /// (verbergen, samenvoegen), en wat er zichtbaar is na ook kinderslot en leeftijdsgrens van dit profiel.
+    func visibility(of raw: Library) async -> (afterSettings: Library, visible: Library) {
+        guard let s = source else { return (raw, raw) }
+        let ctx = context(for: s)
+        var settingsOnly = ctx
+        settingsOnly.ageLimit = nil
+        settingsOnly.parentalEnabled = false
+        settingsOnly.meta = [:]
+        return await Task.detached(priority: .userInitiated) {
+            (Self.apply(raw, settingsOnly), Self.apply(raw, ctx))
+        }.value
+    }
+
     /// Oude aanroepen (bijv. zoeken in andere afspeellijsten).
     static func apply(_ raw: Library, _ c: Customization, playlist: UUID, ageLimit: Int? = nil, strict: Bool = false) -> Library {
         let st = CloudStore.shared

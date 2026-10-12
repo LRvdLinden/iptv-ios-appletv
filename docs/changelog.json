@@ -4,15 +4,20 @@
   "version": "1.0.0",
   "date": "2026-10-12",
   "platforms": [
-   "apple"
+   "apple",
+   "android"
   ],
   "nl": [
    "Xtream: films, live-zenders en series worden tolerant ingelezen — één afwijkend item op de server kost niet meer de hele lijst, dus je ziet weer alles",
-   "Filminfo (beschrijving, cast, trailer) laadt ook bij servers die velden anders aanleveren"
+   "Filminfo (beschrijving, cast, trailer) laadt ook bij servers die velden anders aanleveren",
+   "Seriepagina opent standaard op het nieuwste seizoen (of op het seizoen waar je gebleven bent)",
+   "Nieuw in Mijn Bingr: Bron controleren — zie precies hoeveel zenders, films en series je server aanbiedt en hoeveel Bingr inleest"
   ],
   "en": [
    "Xtream: movies, live channels and series are read tolerantly — one odd item on the server no longer costs the whole list, so you see everything again",
-   "Movie info (plot, cast, trailer) also loads on servers that send fields differently"
+   "Movie info (plot, cast, trailer) also loads on servers that send fields differently",
+   "Series page opens on the newest season by default (or on the season where you left off)",
+   "New in My Bingr: Check source — see exactly how many channels, movies and series your server offers and how many Bingr reads"
   ]
  },
  {

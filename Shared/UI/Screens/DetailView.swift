@@ -756,7 +756,11 @@ struct DetailView: View {
         }
         d = await DetailsService.shared.details(for: target, playlists: playlists, knownIMDb: imdb)
         episodes = await epsTask?.value ?? []
-        if let n = nextEpisode { season = n.season } else if let f = seasons.first { season = f }
+        // al begonnen met kijken: het seizoen van de volgende aflevering; anders het nieuwste seizoen
+        let started = episodes.contains { e in
+            (store.progress[e.id]?.fraction ?? 0) > 0.02 || Playables.isWatched(e, imdb: imdb)
+        }
+        if started, let n = nextEpisode { season = n.season } else if let newest = seasons.last { season = newest }
         loading = false
     }
 }

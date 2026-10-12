@@ -270,6 +270,9 @@ struct SettingsView: View {
                     NavigationLink { ManageView() } label: {
                         Label(L("Manage groups and channels"), systemImage: "slider.horizontal.below.rectangle")
                     }
+                    NavigationLink { SourceCheckView() } label: {
+                        Label(L("Check source"), systemImage: "stethoscope")
+                    }
                     Button { Task { await playlists.select(s, forceRefresh: true) } } label: {
                         Label(L("Refresh now"), systemImage: "arrow.clockwise")
                     }

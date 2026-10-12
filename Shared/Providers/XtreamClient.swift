@@ -239,15 +239,22 @@ struct XtreamClient {
         async let serCats = (try? HTTP.json(LossyList<Cat>.self, sc))?.items ?? []
         async let ser = (try? HTTP.json(LossyList<SeriesDTO>.self, ss))?.items ?? []
 
+        return makeLibrary(liveCats: await liveCats, live: await live, vodCats: await vodCats, vod: await vod,
+                           serCats: await serCats, series: await ser)
+    }
+
+    /// Zet de (tolerant gelezen) lijsten om naar een Library. Ook gebruikt door "Bron controleren",
+    /// zodat die precies telt wat de app zelf inleest.
+    func makeLibrary(liveCats: [Cat], live: [Live], vodCats: [Cat], vod: [Vod], serCats: [Cat], series ser: [SeriesDTO]) -> Library {
         func map(_ cats: [Cat]) -> [String: String] {
             Dictionary(cats.compactMap { c in c.category_id.string.map { ($0, c.category_name ?? L("Other")) } },
                        uniquingKeysWith: { a, _ in a })
         }
-        let lcMap = map(await liveCats), vcMap = map(await vodCats), scMap = map(await serCats)
+        let lcMap = map(liveCats), vcMap = map(vodCats), scMap = map(serCats)
         let liveExt = preferHLS ? "m3u8" : "ts"
 
         var lib = Library()
-        lib.channels = await live.compactMap { l in
+        lib.channels = live.compactMap { l in
             guard let sid = l.stream_id.string else { return nil }
             return Channel(id: "x\(sid)", name: l.name ?? "Channel", logo: l.stream_icon?.urlValue,
                            group: lcMap[l.category_id?.string ?? ""] ?? L("Other"),
@@ -256,7 +263,7 @@ struct XtreamClient {
                            number: l.num?.int,
                            catchupDays: l.tv_archive?.int == 1 ? (l.tv_archive_duration?.int ?? 0) : 0)
         }
-        lib.movies = await vod.compactMap { v in
+        lib.movies = vod.compactMap { v in
             guard let sid = v.stream_id.string else { return nil }
             let p = TitleCleaner.parse(v.name ?? "")
             return Movie(id: "xv\(sid)", title: p.title, year: v.year?.int ?? p.year, poster: v.stream_icon?.urlValue,
@@ -266,7 +273,7 @@ struct XtreamClient {
                          addedAt: v.added?.double.map { Date(timeIntervalSince1970: $0) },
                          xtreamVodID: Int(sid))
         }
-        lib.series = await ser.compactMap { s in
+        lib.series = ser.compactMap { s in
             guard let sid = s.series_id.int else { return nil }
             let p = TitleCleaner.parse(s.name ?? "")
             let y = s.year?.int ?? s.releaseDate.flatMap { Int($0.prefix(4)) } ?? p.year
@@ -275,6 +282,38 @@ struct XtreamClient {
                           plot: s.plot, rating: s.rating?.double, xtreamSeriesID: sid)
         }
         return lib
+    }
+
+    // MARK: Bron controleren
+
+    /// Ruwe antwoord van de server (zonder decoderen), voor "Bron controleren".
+    func rawData(_ action: String? = nil) async throws -> Data {
+        guard let u = api(action) else { throw HTTPError.badURL }
+        return try await HTTP.get(u)
+    }
+
+    /// Eén lijst zoals de server hem stuurt: het aantal elementen rechtstreeks uit de JSON geteld
+    /// (los van het decoderen) en de items die Bingr er via dezelfde LossyList als `library()` uit leest.
+    struct RawList<T: Decodable> {
+        var serverCount: Int?
+        var items: [T] = []
+        var error: String?
+    }
+
+    func rawList<T: Decodable>(_ action: String, as type: T.Type) async -> RawList<T> {
+        let data: Data
+        do { data = try await rawData(action) } catch { return RawList(serverCount: nil, error: error.localizedDescription) }
+        var out = RawList<T>(serverCount: nil)
+        if data.isEmpty { out.serverCount = 0 }
+        else if let obj = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]) {
+            if let a = obj as? [Any] { out.serverCount = a.count }
+            else if let d = obj as? [String: Any] { out.serverCount = d.count }
+            else { out.serverCount = 0 }    // false, null of een getal: geen lijst
+        } else {
+            out.error = L("The server did not send valid JSON")
+        }
+        out.items = (try? JSONDecoder.lenient.decode(LossyList<T>.self, from: data))?.items ?? []
+        return out
     }
 
     func episodes(for series: Series) async throws -> [Episode] {
