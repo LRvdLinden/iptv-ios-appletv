@@ -125,3 +125,19 @@ create table if not exists public.account_watch_log (
 create index if not exists account_watch_log_user_idx on public.account_watch_log (user_id, started_at desc);
 alter table public.account_watch_log enable row level security;
 revoke all on public.account_watch_log from anon, authenticated;
+
+-- Wachtwoord gewijzigd: overal uitloggen. Alle sessies vervallen en alle gekoppelde apparaten worden ontkoppeld;
+-- de apps zien bij hun volgende controle (heartbeat) dat ze verwijderd zijn en gaan naar het inlogscherm.
+create or replace function public.bingr_on_password_change() returns trigger
+language plpgsql security definer set search_path = public, auth as $$
+begin
+  if new.encrypted_password is distinct from old.encrypted_password then
+    delete from auth.sessions where user_id = new.id;
+    delete from public.account_devices where user_id = new.id;
+    delete from public.account_streams where user_id = new.id;
+  end if;
+  return new;
+end $$;
+drop trigger if exists bingr_password_change on auth.users;
+create trigger bingr_password_change after update of encrypted_password on auth.users
+  for each row execute function public.bingr_on_password_change();

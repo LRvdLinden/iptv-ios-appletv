@@ -365,3 +365,7 @@ Samenvoegen: per item wint de nieuwste `updatedAt`.
   Het scherm ververst elke 30 s.
 - **Kijkgeschiedenis (7 dagen)**: gegroepeerd per dag, met als kop "Vandaag", "Gisteren" of de dag en datum ("maandag 12 oktober"). Per regel: tijd, titel, profiel, apparaat en hoe lang er gekeken is ("45 min"). Bij een film of aflevering die in de bibliotheek staat, opent een tik de detailpagina.
 - **Op de website** staat hetzelfde in bingr.online/account, onder Apparaten.
+
+## Wachtwoord gewijzigd: overal uitgelogd
+
+Een database-trigger op `auth.users` wist bij elke wachtwoordwijziging alle sessies, alle gekoppelde apparaten en alle lopende streams van dat account. Dat geldt ook voor wijzigingen via bingr.online/reset. De apps hoeven hier niets nieuws voor te doen. Bij de volgende heartbeat (bij openen, terugkeer naar de voorgrond of binnen 5 minuten) geeft de server `revoked`, en het verversen van de sessie geeft 400/401. Dan gaat de app naar het inlogscherm.
