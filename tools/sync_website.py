@@ -1,10 +1,16 @@
 """Werkt de website bij met de nieuwste screenshots, figuurtjes en het buildnummer.
-Gebruik: python3 tools/sync_website.py [--zip]   (draait ook in CI)"""
+Gebruik: python3 tools/sync_website.py [--site <map>] [--zip [pad]]
+De site staat in de repo LRvdLinden/bingr-website; standaard ../bingr-website naast deze repo (of BINGR_SITE)."""
+import os
 import re, sys, pathlib, zipfile
 from PIL import Image
 
 root = pathlib.Path(__file__).resolve().parent.parent
-site = root / "website"
+def _arg(name):
+    return sys.argv[sys.argv.index(name) + 1] if name in sys.argv and len(sys.argv) > sys.argv.index(name) + 1 else None
+site = pathlib.Path(_arg("--site") or os.environ.get("BINGR_SITE") or root.parent / "bingr-website").resolve()
+if not (site / "index.html").exists():
+    sys.exit(f"website niet gevonden in {site} — clone LRvdLinden/bingr-website of geef --site <map>")
 img = site / "assets" / "img"
 img.mkdir(parents=True, exist_ok=True)
 
@@ -38,10 +44,11 @@ for page in site.glob("*.html"):
     page.write_text(t)
 
 if "--zip" in sys.argv:
-    out = pathlib.Path(sys.argv[sys.argv.index("--zip") + 1]) if len(sys.argv) > sys.argv.index("--zip") + 1 else root / f"Bingr-website-build{build}.zip"
+    out = pathlib.Path(_arg("--zip") or root / f"Bingr-website-build{build}.zip")
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
         for f in sorted(site.rglob("*")):
-            if f.is_file() and f.name != ".DS_Store":
-                z.write(f, pathlib.Path("bingr.online") / f.relative_to(site))
+            rel = f.relative_to(site)
+            if f.is_file() and f.name != ".DS_Store" and rel.parts[0] not in (".git", ".github") and f.name != "README.md":
+                z.write(f, pathlib.Path("bingr.online") / rel)
     print(out)
 print(f"website bijgewerkt: {version} (build {build})")

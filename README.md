@@ -147,15 +147,11 @@ Shared/
 iOS/ tvOS/ macOS/ iconen, Info.plist & entitlements (gegenereerd door XcodeGen)
 tools/            vertaalcontrole, sleutels inbouwen (CI), intro-tune (make_tune.py), profielfiguurtjes (make_avatars.py), screenshots (make_screenshots.py)
 docs/             mockups en screenshots
-website/          bingr.online (statische site)
 ```
 
 ## Website (bingr.online)
 
-De website staat in `website/` (statische HTML, Nederlands en Engels, zonder build-stap): `index.html`, `privacy.html` en `support.html`.
-Covers op de site en in de screenshots komen van TMDB (workflow `Covers`, elke maandag vers, met de `TMDB_API_KEY`-secret). `python3 tools/sync_website.py` zet de nieuwste screenshots, profielfiguurtjes, het icoon en het buildnummer erin; met `--zip <pad>` maak je er meteen een uploadklare zip van. De CI zet bij elke build ook `Bingr-website.zip` op de branch `ci-logs`.
-
-**Automatisch online zetten (FTPS):** de workflow `Website` uploadt `website/` bij elke wijziging naar de webserver. Zet hiervoor bij *Settings → Secrets and variables → Actions* de secrets `FTP_SERVER`, `FTP_USERNAME`, `FTP_PASSWORD` (en eventueel `FTP_USERNAME_ALT` en `FTP_DIR` voor een vaste doelmap; anders zoekt de workflow zelf `public_html`, `httpdocs`, `www` enz.). Wachtwoorden staan nooit in de repo.
+De website staat in een eigen repo: [LRvdLinden/bingr-website](https://github.com/LRvdLinden/bingr-website), met eigen workflows voor FTPS-upload en verse TMDB-covers. `python3 tools/sync_website.py --site ../bingr-website` zet de nieuwste screenshots, profielfiguurtjes, het icoon en het buildnummer in de site; met `--zip <pad>` maak je er een uploadklare zip van.
 
 ## Android
 

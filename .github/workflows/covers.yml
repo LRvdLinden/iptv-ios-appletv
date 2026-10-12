@@ -1,7 +1,7 @@
 name: Covers
 
-# Haalt echte covers (TMDB) op, maakt de screenshots (NL + EN) opnieuw en werkt de website bij.
-# De commit wijzigt alleen docs/ en website/, dus de app-build draait niet; de Website-workflow zet de site online.
+# Haalt echte covers (TMDB) op en maakt de screenshots (NL + EN) voor de README opnieuw.
+# De commit wijzigt alleen docs/, dus de app-build draait niet. De website (LRvdLinden/bingr-website) heeft een eigen Covers-workflow.
 on:
   workflow_dispatch:
   schedule:
@@ -27,16 +27,14 @@ jobs:
         env:
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY || secrets.TMDB_ACCESS_TOKEN }}
         run: python3 tools/fetch_covers.py
-      - name: Screenshots en website bijwerken
-        run: |
-          python3 tools/make_screenshots.py .
-          python3 tools/sync_website.py
+      - name: Screenshots bijwerken
+        run: python3 tools/make_screenshots.py .
       - name: Vastleggen
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
-          git add docs website
+          git add docs
           git diff --cached --quiet && { echo "geen wijzigingen"; exit 0; }
-          git commit -m "Covers, screenshots en website bijgewerkt"
+          git commit -m "Covers en screenshots bijgewerkt"
           git pull --rebase -q origin main
           git push origin HEAD:main
