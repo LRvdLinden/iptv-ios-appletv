@@ -260,6 +260,25 @@ screens.mac_home=()=>`<div class="screen" style="background:radial-gradient(circ
 const k = new URLSearchParams(location.search).get('s');
 document.getElementById('app').innerHTML = screens[k]();
 
+// Android-variant: ?platform=android (statusbalk, navigatiebalk en lettertype van Android; geen iCloud)
+if (new URLSearchParams(location.search).get('platform') === 'android') {
+  const st = document.createElement('style');
+  st.textContent = `body{font-family:Roboto,"Google Sans","Noto Sans",Arial,sans-serif}
+  .status{height:40px!important;align-items:center!important;padding:0 22px!important;font-weight:500!important;font-size:14px!important}
+  .tabbar{height:80px!important;padding-top:12px!important;border-top:none!important;background:#0b0b0b!important}
+  .gesture{position:absolute;left:50%;bottom:8px;width:120px;height:4px;margin-left:-60px;border-radius:2px;background:#fffc;z-index:20}`;
+  document.head.appendChild(st);
+  document.querySelectorAll('.status').forEach(el => {
+    const t = el.firstElementChild ? el.firstElementChild.textContent : '20:41';
+    el.innerHTML = `<span>${t}</span><span style="display:flex;gap:7px;align-items:center;font-size:13px">▾ <span style="letter-spacing:-1px">◢</span> <span style="display:inline-block;width:10px;height:15px;border:1.5px solid #fff;border-radius:2px;position:relative"><i style="position:absolute;left:1px;right:1px;bottom:1px;height:70%;background:#fff"></i></span></span>`;
+  });
+  // geen iCloud op Android
+  const w0 = document.createTreeWalker(document.getElementById('app'), NodeFilter.SHOW_TEXT); let n0; const icl = [];
+  while ((n0 = w0.nextNode())) if (/iCloud/.test(n0.nodeValue)) icl.push(n0);
+  icl.forEach(t => { const el = t.parentElement; if (el) el.style.visibility = 'hidden'; });
+  if ((k || '').startsWith('ios_')) document.querySelectorAll('.screen').forEach((sc, i) => { if (i === 0) { const g = document.createElement('div'); g.className = 'gesture'; sc.appendChild(g); } });
+}
+
 // Engelse screenshots: ?lang=en vertaalt alle teksten in beeld
 const EN_MOCK = {
  "Afleveringen":"Episodes","AFLEVERINGEN":"EPISODES","AANBEVELINGEN":"RECOMMENDATIONS","BEOORDELINGEN":"RATINGS",
