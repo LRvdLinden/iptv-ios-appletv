@@ -1,49 +1,480 @@
 [
- {"build":41,"date":"2026-10-12","platforms":["apple","android"],
-  "nl":["Trakt en OpenSubtitles: gewoon inloggen, de sleutels komen veilig van de Bingr-server","Profielen toevoegen, wijzigen en verwijderen synchroniseert met al je apparaten","Android: vaste ondertekensleutel, updates installeren over de vorige versie heen"],
-  "en":["Trakt and OpenSubtitles: just sign in, the keys come securely from the Bingr server","Adding, editing and deleting profiles syncs across all your devices","Android: fixed signing key, updates install over the previous version"]},
- {"build":40,"date":"2026-10-12","platforms":["apple","android"],
-  "nl":["Eigen profielfoto's worden via je Bingr-account gedeeld met al je apparaten, ook Android"],
-  "en":["Custom profile photos are shared with all your devices through your Bingr account, including Android"]},
- {"build":39,"date":"2026-10-12","platforms":["apple","android","web"],
-  "nl":["Maximaal 10 apparaten per account","Apparaten beheren: gekoppeld op, laatst gebruikt en verwijderen (in de app en op bingr.online/account)","Een verwijderd apparaat logt automatisch uit"],
-  "en":["Up to 10 devices per account","Manage devices: linked on, last used and remove (in the app and at bingr.online/account)","A removed device is signed out automatically"]},
- {"build":38,"date":"2026-10-12","platforms":["apple","android","web"],
-  "nl":["Bingr-account: inloggen of account maken na de splash, in Netflix-stijl","Apple TV, Android TV en Fire TV: inloggen met een QR-code via bingr.online/tv","Bestaande profielen worden aan je account gekoppeld en gedeeld met al je apparaten","E-mails in Bingr-stijl (NL/EN), wachtwoord herstellen via bingr.online/reset","Versie- en buildnummer worden nu goed meegegeven aan de App Store"],
-  "en":["Bingr account: sign in or create an account after the splash, Netflix style","Apple TV, Android TV and Fire TV: sign in with a QR code via bingr.online/tv","Existing profiles are linked to your account and shared across your devices","Bingr-branded emails (NL/EN), reset your password at bingr.online/reset","Version and build number are now passed to the App Store correctly"]},
- {"build":37,"date":"2026-10-11","platforms":["apple","android"],
-  "nl":["Eerste Android-versie: telefoon, tablet, Android TV en Fire TV","Vloeiender scrollen; Verder kijken staat boven Mijn lijst","Een verwijderde pincode blijft op alle apparaten verwijderd"],
-  "en":["First Android version: phone, tablet, Android TV and Fire TV","Smoother scrolling; Continue watching sits above My List","A removed PIN stays removed on all devices"]},
- {"build":36,"date":"2026-10-11","platforms":["apple"],
-  "nl":["Ondertitelgrootte instellen (klein, middel, groot), ook tijdens het kijken","Apple TV: pauze, spoelen en ondertitels bereikbaar in de speler","Detailpagina's lopen niet meer vast"],
-  "en":["Subtitle size (small, medium, large), also while watching","Apple TV: pause, seek and subtitles reachable in the player","Detail pages no longer hang"]},
- {"build":35,"date":"2026-10-11","platforms":["apple"],"nl":["Profiel opent veel sneller na het invoeren van de pincode"],"en":["Profiles open much faster after entering the PIN"]},
- {"build":34,"date":"2026-10-11","platforms":["apple","web"],
-  "nl":["Bingr houdt zelf per profiel bij wat je gezien hebt, ook zonder Trakt","Nieuwe website bingr.online met echte covers"],
-  "en":["Bingr tracks what each profile has watched, also without Trakt","New website bingr.online with real covers"]},
- {"build":33,"date":"2026-10-11","platforms":["apple"],"nl":["Zichtbare Trakt-synchronisatie (draaiende pijltjes) en melding bij scrobblen"],"en":["Visible Trakt sync (spinning arrows) and scrobble feedback"]},
- {"build":32,"date":"2026-10-11","platforms":["apple"],"nl":["Compacte pincode op Apple TV die op elk scherm past","Afspelen na het invoeren van de pincode werkt altijd"],"en":["Compact PIN pad on Apple TV that fits every screen","Playing after entering the PIN always works"]},
- {"build":31,"date":"2026-10-11","platforms":["apple"],"nl":["Eigen Mac-app (macOS 14+)"],"en":["Native Mac app (macOS 14+)"]},
- {"build":30,"date":"2026-10-11","platforms":["apple"],"nl":["16 getekende profielfiguurtjes; geen 'Kids'-label meer bij de naam"],"en":["16 illustrated profile characters; no more 'Kids' label next to the name"]},
- {"build":29,"date":"2026-10-11","platforms":["apple"],"nl":["Delen vanaf de detailpagina (WhatsApp, iMessage …), QR-code op Apple TV"],"en":["Share from the detail page (WhatsApp, iMessage …), QR code on Apple TV"]},
- {"build":28,"date":"2026-10-11","platforms":["apple"],"nl":["Betrouwbare Trakt-synchronisatie van wat je gezien hebt"],"en":["Reliable Trakt sync of what you've watched"]},
- {"build":27,"date":"2026-10-11","platforms":["apple"],"nl":["Mijn lijst werkt weer","Verder kijken met voortgangsbalk en de keuze hervatten of opnieuw kijken"],"en":["My List works again","Continue watching with a progress bar and resume or start over"]},
- {"build":26,"date":"2026-10-11","platforms":["apple"],"nl":["Zoeken op Live TV (iPhone, iPad en Apple TV)","Volgende aflevering automatisch","Sneller en soepeler"],"en":["Search on Live TV (iPhone, iPad and Apple TV)","Next episode automatically","Faster and smoother"]},
- {"build":25,"date":"2026-10-11","platforms":["apple"],"nl":["Kinderprofiel met strenge leeftijdsfilter en een eigen Top 10 voor kids"],"en":["Kids profile with a strict age filter and its own Top 10 for kids"]},
- {"build":24,"date":"2026-10-11","platforms":["apple"],"nl":["Kijkgeschiedenis en Verder kijken per profiel","Mijn Bingr zoals Mijn Netflix"],"en":["Watch history and Continue watching per profile","My Bingr like My Netflix"]},
- {"build":23,"date":"2026-10-11","platforms":["apple"],"nl":["Automatische ondertitels en talen per profiel"],"en":["Automatic subtitles and languages per profile"]},
- {"build":22,"date":"2026-10-11","platforms":["apple"],"nl":["Pincode per profiel; Trakt alleen voor het hoofdaccount"],"en":["PIN per profile; Trakt for the main account only"]},
- {"build":21,"date":"2026-10-11","platforms":["apple"],"nl":["Servers verwijderen, sneller wisselen van profiel"],"en":["Delete servers, faster profile switching"]},
- {"build":20,"date":"2026-10-11","platforms":["apple"],"nl":["Hoofdaccount beheert server, koppelingen, kinderslot en profielen"],"en":["The main account manages server, connections, parental control and profiles"]},
- {"build":19,"date":"2026-10-11","platforms":["apple"],"nl":["Profielen: 'Wie kijkt er?' en eigen Bingr-intro"],"en":["Profiles: 'Who's watching?' and the Bingr intro tune"]},
- {"build":18,"date":"2026-10-11","platforms":["apple"],"nl":["Apple TV zonder grijze focusvlakken, zoals Netflix"],"en":["Apple TV without grey focus boxes, like Netflix"]},
- {"build":17,"date":"2026-10-11","platforms":["apple"],"nl":["Ondertitels met vlaggen, juiste tekens en timing verschuiven; snellere start"],"en":["Subtitles with flags, correct characters and timing offset; faster start"]},
- {"build":16,"date":"2026-10-11","platforms":["apple"],"nl":["Zoeken door alle content en categorieën"],"en":["Search across all content and categories"]},
- {"build":14,"date":"2026-10-11","platforms":["apple"],"nl":["Top 10 altijd zichtbaar (TMDB en Trakt trending)","Elke Apple TV-gebruiker zijn eigen Bingr"],"en":["Top 10 always visible (TMDB and Trakt trending)","Every Apple TV user gets their own Bingr"]},
- {"build":13,"date":"2026-10-11","platforms":["apple"],"nl":["Trakt werkt met nieuwe apps zonder client secret"],"en":["Trakt works with new apps without a client secret"]},
- {"build":11,"date":"2026-10-11","platforms":["apple"],"nl":["OpenSubtitles: taal kiezen tijdens het kijken, automatisch laden"],"en":["OpenSubtitles: pick a language while watching, load automatically"]},
- {"build":10,"date":"2026-10-11","platforms":["apple"],"nl":["Standaard audio- en ondertiteltaal, beeld-in-beeld, kijkgeschiedenis, NAS (SMB/DLNA)"],"en":["Default audio and subtitle language, picture in picture, watch history, NAS (SMB/DLNA)"]},
- {"build":8,"date":"2026-10-10","platforms":["apple"],"nl":["Bekijk allemaal met sorteren en scores"],"en":["See all with sorting and scores"]},
- {"build":6,"date":"2026-10-10","platforms":["apple"],"nl":["Nieuw Bingr-logo in app, icoon en Top Shelf"],"en":["New Bingr logo in the app, icon and Top Shelf"]},
- {"build":1,"date":"2026-10-10","platforms":["apple"],"nl":["Eerste versie: IPTV in Netflix-stijl voor iPhone, iPad en Apple TV (M3U, Xtream, Stalker, Plex, Jellyfin, Emby, Stremio)"],"en":["First release: Netflix-style IPTV for iPhone, iPad and Apple TV (M3U, Xtream, Stalker, Plex, Jellyfin, Emby, Stremio)"]}
+ {
+  "build": 41,
+  "date": "2026-10-12",
+  "platforms": [
+   "apple",
+   "android",
+   "web"
+  ],
+  "nl": [
+   "Trakt en OpenSubtitles: gewoon inloggen, de sleutels komen veilig van de Bingr-server",
+   "Profielen toevoegen, wijzigen en verwijderen synchroniseert met al je apparaten",
+   "Android: vaste ondertekensleutel, updates installeren over de vorige versie heen",
+   "Website: Mijn Bingr met je profielen, apparaten en account, en je profielfoto rechtsboven; changelog-pagina"
+  ],
+  "en": [
+   "Trakt and OpenSubtitles: just sign in, the keys come securely from the Bingr server",
+   "Adding, editing and deleting profiles syncs across all your devices",
+   "Android: fixed signing key, updates install over the previous version",
+   "Website: My Bingr with your profiles, devices and account, and your profile picture in the top right; changelog page"
+  ]
+ },
+ {
+  "build": 40,
+  "date": "2026-10-12",
+  "platforms": [
+   "apple",
+   "android"
+  ],
+  "nl": [
+   "Eigen profielfoto's worden via je Bingr-account gedeeld met al je apparaten, ook Android"
+  ],
+  "en": [
+   "Custom profile photos are shared with all your devices through your Bingr account, including Android"
+  ]
+ },
+ {
+  "build": 39,
+  "date": "2026-10-12",
+  "platforms": [
+   "apple",
+   "android",
+   "web"
+  ],
+  "nl": [
+   "Maximaal 10 apparaten per account",
+   "Apparaten beheren: gekoppeld op, laatst gebruikt en verwijderen (in de app en op bingr.online/account)",
+   "Een verwijderd apparaat logt automatisch uit"
+  ],
+  "en": [
+   "Up to 10 devices per account",
+   "Manage devices: linked on, last used and remove (in the app and at bingr.online/account)",
+   "A removed device is signed out automatically"
+  ]
+ },
+ {
+  "build": 38,
+  "date": "2026-10-12",
+  "platforms": [
+   "apple",
+   "android",
+   "web"
+  ],
+  "nl": [
+   "Bingr-account: inloggen of account maken na de splash, in Netflix-stijl",
+   "Apple TV, Android TV en Fire TV: inloggen met een QR-code via bingr.online/tv",
+   "Bestaande profielen worden aan je account gekoppeld en gedeeld met al je apparaten",
+   "E-mails in Bingr-stijl (NL/EN), wachtwoord herstellen via bingr.online/reset",
+   "Versie- en buildnummer worden nu goed meegegeven aan de App Store"
+  ],
+  "en": [
+   "Bingr account: sign in or create an account after the splash, Netflix style",
+   "Apple TV, Android TV and Fire TV: sign in with a QR code via bingr.online/tv",
+   "Existing profiles are linked to your account and shared across your devices",
+   "Bingr-branded emails (NL/EN), reset your password at bingr.online/reset",
+   "Version and build number are now passed to the App Store correctly"
+  ]
+ },
+ {
+  "build": 37,
+  "date": "2026-10-11",
+  "platforms": [
+   "apple",
+   "android"
+  ],
+  "nl": [
+   "Eerste Android-versie: telefoon, tablet, Android TV en Fire TV",
+   "Vloeiender scrollen; Verder kijken staat boven Mijn lijst",
+   "Een verwijderde pincode blijft op alle apparaten verwijderd"
+  ],
+  "en": [
+   "First Android version: phone, tablet, Android TV and Fire TV",
+   "Smoother scrolling; Continue watching sits above My List",
+   "A removed PIN stays removed on all devices"
+  ]
+ },
+ {
+  "build": 36,
+  "date": "2026-10-11",
+  "platforms": [
+   "apple"
+  ],
+  "nl": [
+   "Ondertitelgrootte instellen (klein, middel, groot), ook tijdens het kijken",
+   "Apple TV: pauze, spoelen en ondertitels bereikbaar in de speler",
+   "Detailpagina's lopen niet meer vast"
+  ],
+  "en": [
+   "Subtitle size (small, medium, large), also while watching",
+   "Apple TV: pause, seek and subtitles reachable in the player",
+   "Detail pages no longer hang"
+  ]
+ },
+ {
+  "build": 35,
+  "date": "2026-10-11",
+  "platforms": [
+   "apple"
+  ],
+  "nl": [
+   "Profiel opent veel sneller na het invoeren van de pincode"
+  ],
+  "en": [
+   "Profiles open much faster after entering the PIN"
+  ]
+ },
+ {
+  "build": 34,
+  "date": "2026-10-11",
+  "platforms": [
+   "apple",
+   "web"
+  ],
+  "nl": [
+   "Bingr houdt zelf per profiel bij wat je gezien hebt, ook zonder Trakt",
+   "Nieuwe website bingr.online met echte covers"
+  ],
+  "en": [
+   "Bingr tracks what each profile has watched, also without Trakt",
+   "New website bingr.online with real covers"
+  ]
+ },
+ {
+  "build": 33,
+  "date": "2026-10-11",
+  "platforms": [
+   "apple"
+  ],
+  "nl": [
+   "Zichtbare Trakt-synchronisatie (draaiende pijltjes) en melding bij scrobblen"
+  ],
+  "en": [
+   "Visible Trakt sync (spinning arrows) and scrobble feedback"
+  ]
+ },
+ {
+  "build": 32,
+  "date": "2026-10-11",
+  "platforms": [
+   "apple"
+  ],
+  "nl": [
+   "Compacte pincode op Apple TV die op elk scherm past",
+   "Afspelen na het invoeren van de pincode werkt altijd"
+  ],
+  "en": [
+   "Compact PIN pad on Apple TV that fits every screen",
+   "Playing after entering the PIN always works"
+  ]
+ },
+ {
+  "build": 31,
+  "date": "2026-10-11",
+  "platforms": [
+   "apple"
+  ],
+  "nl": [
+   "Eigen Mac-app (macOS 14+)"
+  ],
+  "en": [
+   "Native Mac app (macOS 14+)"
+  ]
+ },
+ {
+  "build": 30,
+  "date": "2026-10-11",
+  "platforms": [
+   "apple"
+  ],
+  "nl": [
+   "16 getekende profielfiguurtjes; geen 'Kids'-label meer bij de naam"
+  ],
+  "en": [
+   "16 illustrated profile characters; no more 'Kids' label next to the name"
+  ]
+ },
+ {
+  "build": 29,
+  "date": "2026-10-11",
+  "platforms": [
+   "apple"
+  ],
+  "nl": [
+   "Delen vanaf de detailpagina (WhatsApp, iMessage …), QR-code op Apple TV"
+  ],
+  "en": [
+   "Share from the detail page (WhatsApp, iMessage …), QR code on Apple TV"
+  ]
+ },
+ {
+  "build": 28,
+  "date": "2026-10-11",
+  "platforms": [
+   "apple"
+  ],
+  "nl": [
+   "Betrouwbare Trakt-synchronisatie van wat je gezien hebt"
+  ],
+  "en": [
+   "Reliable Trakt sync of what you've watched"
+  ]
+ },
+ {
+  "build": 27,
+  "date": "2026-10-11",
+  "platforms": [
+   "apple"
+  ],
+  "nl": [
+   "Mijn lijst werkt weer",
+   "Verder kijken met voortgangsbalk en de keuze hervatten of opnieuw kijken"
+  ],
+  "en": [
+   "My List works again",
+   "Continue watching with a progress bar and resume or start over"
+  ]
+ },
+ {
+  "build": 26,
+  "date": "2026-10-11",
+  "platforms": [
+   "apple"
+  ],
+  "nl": [
+   "Zoeken op Live TV (iPhone, iPad en Apple TV)",
+   "Volgende aflevering automatisch",
+   "Sneller en soepeler"
+  ],
+  "en": [
+   "Search on Live TV (iPhone, iPad and Apple TV)",
+   "Next episode automatically",
+   "Faster and smoother"
+  ]
+ },
+ {
+  "build": 25,
+  "date": "2026-10-11",
+  "platforms": [
+   "apple"
+  ],
+  "nl": [
+   "Kinderprofiel met strenge leeftijdsfilter en een eigen Top 10 voor kids"
+  ],
+  "en": [
+   "Kids profile with a strict age filter and its own Top 10 for kids"
+  ]
+ },
+ {
+  "build": 24,
+  "date": "2026-10-11",
+  "platforms": [
+   "apple"
+  ],
+  "nl": [
+   "Kijkgeschiedenis en Verder kijken per profiel",
+   "Mijn Bingr zoals Mijn Netflix"
+  ],
+  "en": [
+   "Watch history and Continue watching per profile",
+   "My Bingr like My Netflix"
+  ]
+ },
+ {
+  "build": 23,
+  "date": "2026-10-11",
+  "platforms": [
+   "apple"
+  ],
+  "nl": [
+   "Automatische ondertitels en talen per profiel"
+  ],
+  "en": [
+   "Automatic subtitles and languages per profile"
+  ]
+ },
+ {
+  "build": 22,
+  "date": "2026-10-11",
+  "platforms": [
+   "apple"
+  ],
+  "nl": [
+   "Pincode per profiel; Trakt alleen voor het hoofdaccount"
+  ],
+  "en": [
+   "PIN per profile; Trakt for the main account only"
+  ]
+ },
+ {
+  "build": 21,
+  "date": "2026-10-11",
+  "platforms": [
+   "apple"
+  ],
+  "nl": [
+   "Servers verwijderen, sneller wisselen van profiel"
+  ],
+  "en": [
+   "Delete servers, faster profile switching"
+  ]
+ },
+ {
+  "build": 20,
+  "date": "2026-10-11",
+  "platforms": [
+   "apple"
+  ],
+  "nl": [
+   "Hoofdaccount beheert server, koppelingen, kinderslot en profielen"
+  ],
+  "en": [
+   "The main account manages server, connections, parental control and profiles"
+  ]
+ },
+ {
+  "build": 19,
+  "date": "2026-10-11",
+  "platforms": [
+   "apple"
+  ],
+  "nl": [
+   "Profielen: 'Wie kijkt er?' en eigen Bingr-intro"
+  ],
+  "en": [
+   "Profiles: 'Who's watching?' and the Bingr intro tune"
+  ]
+ },
+ {
+  "build": 18,
+  "date": "2026-10-11",
+  "platforms": [
+   "apple"
+  ],
+  "nl": [
+   "Apple TV zonder grijze focusvlakken, zoals Netflix"
+  ],
+  "en": [
+   "Apple TV without grey focus boxes, like Netflix"
+  ]
+ },
+ {
+  "build": 17,
+  "date": "2026-10-11",
+  "platforms": [
+   "apple"
+  ],
+  "nl": [
+   "Ondertitels met vlaggen, juiste tekens en timing verschuiven; snellere start"
+  ],
+  "en": [
+   "Subtitles with flags, correct characters and timing offset; faster start"
+  ]
+ },
+ {
+  "build": 16,
+  "date": "2026-10-11",
+  "platforms": [
+   "apple"
+  ],
+  "nl": [
+   "Zoeken door alle content en categorieën"
+  ],
+  "en": [
+   "Search across all content and categories"
+  ]
+ },
+ {
+  "build": 14,
+  "date": "2026-10-11",
+  "platforms": [
+   "apple"
+  ],
+  "nl": [
+   "Top 10 altijd zichtbaar (TMDB en Trakt trending)",
+   "Elke Apple TV-gebruiker zijn eigen Bingr"
+  ],
+  "en": [
+   "Top 10 always visible (TMDB and Trakt trending)",
+   "Every Apple TV user gets their own Bingr"
+  ]
+ },
+ {
+  "build": 13,
+  "date": "2026-10-11",
+  "platforms": [
+   "apple"
+  ],
+  "nl": [
+   "Trakt werkt met nieuwe apps zonder client secret"
+  ],
+  "en": [
+   "Trakt works with new apps without a client secret"
+  ]
+ },
+ {
+  "build": 11,
+  "date": "2026-10-11",
+  "platforms": [
+   "apple"
+  ],
+  "nl": [
+   "OpenSubtitles: taal kiezen tijdens het kijken, automatisch laden"
+  ],
+  "en": [
+   "OpenSubtitles: pick a language while watching, load automatically"
+  ]
+ },
+ {
+  "build": 10,
+  "date": "2026-10-11",
+  "platforms": [
+   "apple"
+  ],
+  "nl": [
+   "Standaard audio- en ondertiteltaal, beeld-in-beeld, kijkgeschiedenis, NAS (SMB/DLNA)"
+  ],
+  "en": [
+   "Default audio and subtitle language, picture in picture, watch history, NAS (SMB/DLNA)"
+  ]
+ },
+ {
+  "build": 8,
+  "date": "2026-10-10",
+  "platforms": [
+   "apple"
+  ],
+  "nl": [
+   "Bekijk allemaal met sorteren en scores"
+  ],
+  "en": [
+   "See all with sorting and scores"
+  ]
+ },
+ {
+  "build": 6,
+  "date": "2026-10-10",
+  "platforms": [
+   "apple"
+  ],
+  "nl": [
+   "Nieuw Bingr-logo in app, icoon en Top Shelf"
+  ],
+  "en": [
+   "New Bingr logo in the app, icon and Top Shelf"
+  ]
+ },
+ {
+  "build": 1,
+  "date": "2026-10-10",
+  "platforms": [
+   "apple"
+  ],
+  "nl": [
+   "Eerste versie: IPTV in Netflix-stijl voor iPhone, iPad en Apple TV (M3U, Xtream, Stalker, Plex, Jellyfin, Emby, Stremio)"
+  ],
+  "en": [
+   "First release: Netflix-style IPTV for iPhone, iPad and Apple TV (M3U, Xtream, Stalker, Plex, Jellyfin, Emby, Stremio)"
+  ]
+ }
 ]

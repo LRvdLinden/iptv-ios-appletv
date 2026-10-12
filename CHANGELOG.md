@@ -7,6 +7,7 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac (Android: [bingr-andro
 - Trakt en OpenSubtitles: gewoon inloggen, de sleutels komen veilig van de Bingr-server
 - Profielen toevoegen, wijzigen en verwijderen synchroniseert met al je apparaten
 - Android: vaste ondertekensleutel, updates installeren over de vorige versie heen
+- Website: Mijn Bingr met je profielen, apparaten en account, en je profielfoto rechtsboven; changelog-pagina
 
 ## Build 40 · 2026-10-12
 
