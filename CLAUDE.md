@@ -7,5 +7,6 @@
   - Draai `python3 tools/make_changelog.py` voor `CHANGELOG.md` hier.
   - Draai `python3 tools/make_changelog.py --android ../bingr-android` voor de changelog daar. De Android-workflow haalt daaruit de release-notities.
   - Draai `python3 tools/sync_website.py --site ../bingr-website` (screenshots, buildnummer, changelog), en commit en push daarna ook de website-repo.
+  - Controleer daarna dat de workflow `Website` in bingr-website geslaagd is en dat bingr.online het nieuwe buildnummer toont. Is de upload mislukt, start hem dan opnieuw. Elke build hoort in de changelog op de website te staan.
 - Accounts (Supabase): het contract staat in `docs/ACCOUNT.md`, de backend in `supabase/`. De workflow `Backend` zet schema, functie, e-mailtemplates en app-sleutels klaar.
 - Geheime sleutels nooit in de repo; de repo is openbaar. De Supabase-URL en de publishable key mogen er wel in.
