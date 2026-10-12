@@ -1,6 +1,6 @@
 name: Backend
 
-# Zet de Bingr-accounts in Supabase klaar: tabel (supabase/schema.sql) en Edge Function device-auth (tv-koppeling met QR).
+# Zet de Bingr-accounts in Supabase klaar: tabel (supabase/schema.sql), e-mailtemplates (supabase/templates) en Edge Function device-auth (tv-koppeling met QR).
 # Secrets: SUPABASE_ACCESS_TOKEN (supabase.com/dashboard/account/tokens) en SUPABASE_PROJECT_REF (bv. abcd1234 uit https://abcd1234.supabase.co).
 on:
   push:
@@ -30,6 +30,13 @@ jobs:
           code=$(curl -s -o /tmp/r.txt -w '%{http_code}' -X POST "https://api.supabase.com/v1/projects/$REF/database/query" \
             -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" --data @/tmp/q.json)
           cat /tmp/r.txt; echo; [ "$code" -lt 300 ] || { echo "::error::Schema mislukt (HTTP $code)"; exit 1; }
+      - name: E-mailtemplates (Bingr-huisstijl)
+        if: steps.check.outputs.skip != '1'
+        run: |
+          python3 supabase/templates/build.py
+          code=$(curl -s -o /tmp/r.txt -w '%{http_code}' -X PATCH "https://api.supabase.com/v1/projects/$REF/config/auth" \
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" --data @supabase/templates/templates.json)
+          [ "$code" -lt 300 ] && echo "::notice::E-mailtemplates bijgewerkt" || { head -c 400 /tmp/r.txt; echo "::error::Templates mislukt (HTTP $code)"; exit 1; }
       - uses: supabase/setup-cli@v1
         if: steps.check.outputs.skip != '1'
         with:

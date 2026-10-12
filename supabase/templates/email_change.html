@@ -1,0 +1,19 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><meta name="supported-color-schemes" content="dark"><title>Bingr</title></head>
+<body style="margin:0;padding:0;background:#000000">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#000000"><tr><td align="center" style="padding:32px 16px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+<tr><td style="padding:0 4px 24px">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+    <td style="vertical-align:middle"><img src="https://bingr.online/apple-touch-icon.png" width="44" height="44" alt="" style="display:block;border-radius:10px"></td>
+    <td style="vertical-align:middle;padding-left:12px"><div style="font-size:30px;font-weight:900;letter-spacing:1px;color:#ffffff;line-height:30px">BINGR</div><div style="height:4px;width:74px;background:#E50914;border-radius:2px;margin-top:6px"></div></td>
+  </tr></table>
+</td></tr>
+<tr><td style="background:#141414;border-radius:12px;padding:36px 32px;border-top:4px solid #E50914">
+{{ if and .Data.lang (eq .Data.lang "nl") }}<h1 style="margin:0 0 16px;font-size:26px;line-height:32px;font-weight:800;color:#ffffff">Bevestig je nieuwe e-mailadres</h1><p style="margin:0 0 28px;font-size:16px;line-height:24px;color:#d6d6d6">Je wilt het e-mailadres van je Bingr-account wijzigen naar {{ .NewEmail }}. Bevestig dit met de knop hieronder.</p><a href="{{ .ConfirmationURL }}" style="display:inline-block;background:#E50914;color:#ffffff;text-decoration:none;font-weight:700;font-size:16px;padding:14px 32px;border-radius:6px">Nieuw adres bevestigen</a><p style="margin:28px 0 0;font-size:14px;line-height:21px;color:#b3b3b3">Heb je dit niet aangevraagd? Wijzig dan meteen je wachtwoord.</p><p style="margin:28px 0 0;font-size:12px;line-height:18px;color:#8c8c8c">Werkt de knop niet? Kopieer deze link:<br><a href="{{ .ConfirmationURL }}" style="color:#b3b3b3;word-break:break-all">{{ .ConfirmationURL }}</a></p>{{ else }}<h1 style="margin:0 0 16px;font-size:26px;line-height:32px;font-weight:800;color:#ffffff">Confirm your new email address</h1><p style="margin:0 0 28px;font-size:16px;line-height:24px;color:#d6d6d6">You asked to change the email address of your Bingr account to {{ .NewEmail }}. Confirm with the button below.</p><a href="{{ .ConfirmationURL }}" style="display:inline-block;background:#E50914;color:#ffffff;text-decoration:none;font-weight:700;font-size:16px;padding:14px 32px;border-radius:6px">Confirm new address</a><p style="margin:28px 0 0;font-size:14px;line-height:21px;color:#b3b3b3">Didn't ask for this? Change your password right away.</p><p style="margin:28px 0 0;font-size:12px;line-height:18px;color:#8c8c8c">Button not working? Copy this link:<br><a href="{{ .ConfirmationURL }}" style="color:#b3b3b3;word-break:break-all">{{ .ConfirmationURL }}</a></p>{{ end }}
+</td></tr>
+<tr><td style="padding:24px 8px 0;font-size:12px;line-height:18px;color:#737373;text-align:center">
+{{ if and .Data.lang (eq .Data.lang "nl") }}Je ontvangt deze e-mail omdat iemand dit adres ({{ .Email }}) bij Bingr heeft gebruikt. Was jij dit niet? Dan kun je deze e-mail negeren.{{ else }}You received this email because this address ({{ .Email }}) was used with Bingr. If this wasn't you, you can ignore this email.{{ end }}<br><br>
+<a href="https://bingr.online" style="color:#b3b3b3;text-decoration:none;font-weight:700">bingr.online</a> &nbsp;·&nbsp; <a href="https://bingr.online/support.html" style="color:#737373">Support</a> &nbsp;·&nbsp; <a href="https://bingr.online/privacy.html" style="color:#737373">Privacy</a>
+</td></tr>
+</table></td></tr></table></body></html>

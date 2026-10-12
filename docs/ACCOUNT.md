@@ -17,7 +17,7 @@ Elke aanvraag krijgt de header `apikey: <ANON_KEY>` en `Content-Type: applicatio
 
 | Wat | Aanvraag | Antwoord |
 |---|---|---|
-| Account maken | `POST {URL}/auth/v1/signup` `{email, password}` | 200: sessie (zie onder) **of** een user zonder `access_token`. Dan moet het e-mailadres eerst bevestigd worden: toon "Check your inbox to confirm your email address, then sign in." |
+| Account maken | `POST {URL}/auth/v1/signup` `{email, password, data:{lang}}` (`lang` = huidige app-taal, bv. `"nl"`; bepaalt de taal van de e-mails) | 200: sessie (zie onder) **of** een user zonder `access_token`. Dan moet het e-mailadres eerst bevestigd worden: toon "Check your inbox to confirm your email address, then sign in." |
 | Inloggen | `POST {URL}/auth/v1/token?grant_type=password` `{email, password}` | 200: sessie. 400: `error_code` is `invalid_credentials` ("Incorrect email or password.") of `email_not_confirmed` ("Confirm your email address first. Check your inbox.") |
 | Vernieuwen | `POST {URL}/auth/v1/token?grant_type=refresh_token` `{refresh_token}` | 200: nieuwe sessie (sla het **nieuwe** refresh_token op). 400/401: sessie ongeldig, dus uitloggen. Netwerkfout: sessie houden (offline blijft de app werken). |
 | Wachtwoord vergeten | `POST {URL}/auth/v1/recover?redirect_to=https%3A%2F%2Fbingr.online%2Freset` `{email}` | 200: altijd "If an account exists, you'll receive an email to reset your password." |
