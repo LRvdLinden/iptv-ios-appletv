@@ -27,7 +27,12 @@ struct TitleDetails: Hashable {
     var tmdbID: Int?
 
     struct Rating: Hashable, Identifiable { var id: String { source }; var source: String; var value: String }
-    struct CastMember: Hashable, Identifiable { var id: String { name + (character ?? "") }; var name: String; var character: String?; var photo: URL? }
+    struct CastMember: Hashable, Identifiable {
+        var id: String { name + (character ?? "") }
+        var name: String; var character: String?; var photo: URL?
+        /// TMDB-persoons-ID (alleen bij TMDB-cast; OMDb/Trakt/afspeellijst geven alleen namen)
+        var personID: Int? = nil
+    }
     struct Recommendation: Hashable, Identifiable {
         var id: String { imdbID ?? title }
         var title: String; var year: Int?; var poster: URL?; var imdbID: String?; var isShow: Bool

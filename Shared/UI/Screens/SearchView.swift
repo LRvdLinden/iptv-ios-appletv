@@ -17,6 +17,10 @@ struct SearchView: View {
     @State private var searching = false
     @State private var programs: [ProgramHit] = []
     @State private var program: ProgramHit?
+    /// Acteurs/actrices bij TMDB (vanaf 3 tekens)
+    @State private var people: [PersonRef] = []
+    @State private var peopleTask: Task<Void, Never>?
+    @State private var person: PersonRef?
 
     struct ProgramHit: Identifiable { var id: String { channel.id + p.id }; let channel: Channel; let p: EPGProgram }
 
@@ -33,7 +37,7 @@ struct SearchView: View {
                                 .multilineTextAlignment(.center)
                         }
                         .foregroundStyle(Theme.secondary).frame(maxWidth: .infinity).padding(.top, 80)
-                    } else if results.isEmpty && programs.isEmpty && groupHits.isEmpty && !searching {
+                    } else if results.isEmpty && programs.isEmpty && groupHits.isEmpty && people.isEmpty && !searching {
                         Text(L("Nothing found for “%@”.", query)).foregroundStyle(Theme.secondary)
                             .frame(maxWidth: .infinity).padding(.top, 80)
                     }
@@ -46,6 +50,7 @@ struct SearchView: View {
                             }
                         }
                     }
+                    if !people.isEmpty { peopleRow }
                     if !groupHits.isEmpty { categoryList }
                     if !programs.isEmpty { programList }
                     if !results.movies.isEmpty { grid(L("Movies"), results.movies.map { .movie($0) }) }
@@ -58,6 +63,7 @@ struct SearchView: View {
             .navigationTitle(L("Search"))
             .modifier(SearchField(query: $query, active: $searchActive, modal: modal, close: { dismiss() }))
             .onChange(of: query) { _, q in
+                searchPeople(q)
                 Task {
                     try? await Task.sleep(nanoseconds: 300_000_000)
                     guard q == query else { return }
@@ -74,12 +80,44 @@ struct SearchView: View {
             }
         }
         .sheet(item: $program) { h in ProgramSheet(channel: h.channel, program: h.p) }
+        #if os(iOS)
+        .sheet(item: $person) { PersonView(person: $0).presentationDragIndicator(.visible) }
+        #else
+        .fullScreenCover(item: $person) { PersonView(person: $0) }
+        #endif
         .fullScreenCover(item: $category) { CategoryView(target: $0) }
         #if !os(tvOS)
         .sheet(item: $detail) { DetailView(target: $0) }
         #else
         .fullScreenCover(item: $detail) { DetailView(target: $0) }
         #endif
+    }
+
+    // MARK: personen (TMDB)
+
+    /// Zoekt acteurs/actrices op naam: met vertraging, en een vorige zoekopdracht wordt afgebroken.
+    private func searchPeople(_ q: String) {
+        peopleTask?.cancel()
+        let term = q.trimmingCharacters(in: .whitespaces)
+        guard term.count >= 3, PersonService.shared.available else { people = []; return }
+        peopleTask = Task {
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            guard !Task.isCancelled else { return }
+            let found = await PersonService.shared.search(term)
+            guard !Task.isCancelled, term == query.trimmingCharacters(in: .whitespaces) else { return }
+            people = found
+        }
+    }
+
+    private var peopleRow: some View {
+        MediaRow(title: L("People")) {
+            ForEach(people) { p in
+                Button { person = p } label: {
+                    PersonBubble(name: p.name, photo: p.photo, subtitle: p.department.map(PersonView.department), size: tvScaled(84))
+                }
+                .plainTVButton()
+            }
+        }
     }
 
     // MARK: categorieën doorzoeken (films en series, alle categorieën)

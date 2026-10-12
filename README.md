@@ -3,7 +3,7 @@
 [![Build](https://github.com/LRvdLinden/iptv-ios-appletv/actions/workflows/build.yml/badge.svg)](https://github.com/LRvdLinden/iptv-ios-appletv/actions/workflows/build.yml)
 
 Native IPTV- en mediaspeler voor **iPhone, iPad, Mac en Apple TV** met de look & feel van Netflix.
-SwiftUI · iOS 17+ · tvOS 17+ · macOS 14+ · Apple- én VLC-engine · 11 talen · versie 1.0.0 (build 48).
+SwiftUI · iOS 17+ · tvOS 17+ · macOS 14+ · Apple- én VLC-engine · 11 talen · versie 1.0.0 (build 49).
 
 Wat er nieuw is per build: [CHANGELOG.md](CHANGELOG.md) · [bingr.online/changelog](https://bingr.online/changelog/)
 
@@ -93,6 +93,7 @@ Wat er nieuw is per build: [CHANGELOG.md](CHANGELOG.md) · [bingr.online/changel
 - **Delen**: deelknop bij films en series (WhatsApp, iMessage, Instagram, Facebook, Mail …) met een link naar IMDb (of Trakt/TMDB) en een tekst als "Serietip: Reacher (2022)"; vasthouden = link kopiëren. Op Apple TV een QR-code om met je telefoon te scannen
 - Afleveringen als kaarten met foto, voortgang, vinkje, beschrijving en uitzenddatum
 - Beoordelingen (IMDb, Trakt), cast met foto's en rol, aanbevelingen (direct afspelen als ze in je lijst staan)
+- **Pagina per acteur/actrice** (Netflix-stijl, ook op Apple TV en Mac): tik op iemand uit de cast voor een grote foto, bio, geboortedatum en alle films en series. Wat in je afspeellijst staat ("Beschikbaar in Bingr") kijk je direct; de rest toont korte info. Bij **Zoeken op naam** verschijnt ook een rij **Personen** (TMDB). Kinderprofielen zien alleen toegestane titels uit hun lijst
 - Werkt zonder sleutels met de info van je Xtream-server; IMDb, Trakt en TMDB vullen aan
 
 **Netflix-ervaring**

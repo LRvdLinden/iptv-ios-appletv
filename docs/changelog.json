@@ -1,5 +1,24 @@
 [
  {
+  "build": 49,
+  "version": "1.0.0",
+  "date": "2026-10-12",
+  "platforms": [
+   "apple",
+   "android"
+  ],
+  "nl": [
+   "Tik op een acteur of actrice voor een eigen pagina met foto, bio en alle films en series waarin die speelt — wat in je afspeellijst staat kijk je direct",
+   "Zoeken op naam van een acteur of actrice toont ook personen",
+   "Copyright onderaan Mijn Bingr: © 2026 Bingr"
+  ],
+  "en": [
+   "Tap an actor or actress for their own page with photo, bio and every movie and series they appear in — anything in your playlist you can watch right away",
+   "Searching for an actor's or actress's name now also shows people",
+   "Copyright at the bottom of My Bingr: © 2026 Bingr"
+  ]
+ },
+ {
   "build": 48,
   "version": "1.0.0",
   "date": "2026-10-12",

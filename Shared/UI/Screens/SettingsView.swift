@@ -652,7 +652,7 @@ struct AboutFooter: View {
                 .clipShape(RoundedRectangle(cornerRadius: iconSize * 0.225, style: .continuous))
                 .accessibilityHidden(true)
             Text(L("Version: %@ (%@)", version, build))
-            Text(verbatim: "© 2026 Bingr · Léon van der Linden")
+            Text(verbatim: "© 2026 Bingr")
         }
         .font(.footnote)
         .foregroundStyle(.secondary)

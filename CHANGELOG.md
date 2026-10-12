@@ -2,6 +2,13 @@
 
 Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac (Android: [bingr-android](https://github.com/LRvdLinden/bingr-android/blob/main/CHANGELOG.md)). Per versie het buildnummer en de datum; het buildnummer loopt gelijk over alle platforms.
 
+## Versie 1.0.0 · Build 49
+_2026-10-12_
+
+- Tik op een acteur of actrice voor een eigen pagina met foto, bio en alle films en series waarin die speelt — wat in je afspeellijst staat kijk je direct
+- Zoeken op naam van een acteur of actrice toont ook personen
+- Copyright onderaan Mijn Bingr: © 2026 Bingr
+
 ## Versie 1.0.0 · Build 48
 _2026-10-12_
 

@@ -20,7 +20,7 @@ enum TraktDetails {
     private struct Hit: Decodable { let movie: Media?; let show: Media? }
     private struct People: Decodable {
         struct Cast: Decodable {
-            struct Person: Decodable { let name: String; let images: [String: [String]]? }
+            struct Person: Decodable { let name: String; let images: [String: [String]]?; let ids: TraktIDs? }
             let character: String?; let characters: [String]?; let person: Person
         }
         let cast: [Cast]?
@@ -65,7 +65,7 @@ enum TraktDetails {
         async let seasons: [Season]? = isShow ? (try? c.get("/shows/\(slug)/seasons", query: ["extended": "episodes,full,images"], auth: false)) : nil
 
         r.cast = (await people)?.cast?.prefix(20).map { p in
-            TitleDetails.CastMember(name: p.person.name, character: p.characters?.first ?? p.character, photo: image(p.person.images, "headshot"))
+            TitleDetails.CastMember(name: p.person.name, character: p.characters?.first ?? p.character, photo: image(p.person.images, "headshot"), personID: p.person.ids?.tmdb)
         } ?? []
         r.related = (await related)?.map { x in
             TitleDetails.Recommendation(title: x.title ?? "?", year: x.year, poster: image(x.images, "poster"), imdbID: x.ids.imdb, isShow: isShow)
@@ -92,7 +92,7 @@ enum TMDB {
         var trailer: String?; var cast: [TitleDetails.CastMember] = []; var recommendations: [TitleDetails.Recommendation] = []
     }
 
-    private static var language: String {
+    static var language: String {
         let l = Localizer.shared.language
         switch l {
         case "zh-Hans": return "zh-CN"
@@ -101,12 +101,12 @@ enum TMDB {
         }
     }
 
-    private static func img(_ path: String?, _ size: String) -> URL? {
+    static func img(_ path: String?, _ size: String) -> URL? {
         guard let path, !path.isEmpty else { return nil }
         return URL(string: "https://image.tmdb.org/t/p/\(size)\(path)")
     }
 
-    private static func get<T: Decodable>(_ path: String, _ q: [String: String] = [:]) async -> T? {
+    static func get<T: Decodable>(_ path: String, _ q: [String: String] = [:]) async -> T? {
         guard Secrets.isSet(Secrets.tmdbAPIKey) else { return nil }
         var c = URLComponents(string: "https://api.themoviedb.org/3\(path)")!
         var items = q.map { URLQueryItem(name: $0.key, value: $0.value) }
@@ -171,7 +171,7 @@ enum TMDB {
         struct Credits: Decodable {
             struct Cast: Decodable {
                 struct Role: Decodable { let character: String? }
-                let name: String; let character: String?; let profile_path: String?; let roles: [Role]?
+                let id: Int?; let name: String; let character: String?; let profile_path: String?; let roles: [Role]?
             }
             let cast: [Cast]?
         }
@@ -214,7 +214,7 @@ enum TMDB {
             id: f.id, imdb: f.imdb_id ?? f.external_ids?.imdb_id, overview: f.overview,
             poster: img(f.poster_path, "w780"), backdrop: img(f.backdrop_path, "w1280"), logo: img(logo?.file_path, "w500"),
             trailer: f.videos?.results?.first { $0.site == "YouTube" && $0.type == "Trailer" }?.key,
-            cast: castSrc.prefix(20).map { TitleDetails.CastMember(name: $0.name, character: $0.character ?? $0.roles?.first?.character, photo: img($0.profile_path, "w185")) },
+            cast: castSrc.prefix(20).map { TitleDetails.CastMember(name: $0.name, character: $0.character ?? $0.roles?.first?.character, photo: img($0.profile_path, "w185"), personID: $0.id) },
             recommendations: (f.recommendations?.results ?? []).prefix(15).map { r in
                 TitleDetails.Recommendation(title: r.title ?? r.name ?? "?", year: (r.release_date ?? r.first_air_date).flatMap { Int($0.prefix(4)) },
                       poster: img(r.poster_path, "w342"), imdbID: nil, isShow: isShow)

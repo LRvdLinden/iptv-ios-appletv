@@ -21,6 +21,8 @@ struct DetailView: View {
     @State private var showSources = false
     @State private var sources: [PlaylistService.OtherHit] = []
     @State private var nested: DetailTarget?
+    /// Geopende acteur/actrice uit de cast
+    @State private var person: PersonRef?
     @State private var toast: String?
     /// Scrollpositie apart: alleen de kopafbeelding en de balk lezen hem (anders rekent de hele pagina per frame opnieuw)
     @State private var scroll = ScrollTracker()
@@ -132,6 +134,11 @@ struct DetailView: View {
         .sheet(item: $nested) { DetailView(target: $0) }
         #else
         .fullScreenCover(item: $nested) { DetailView(target: $0) }
+        #endif
+        #if os(iOS)
+        .sheet(item: $person) { PersonView(person: $0).presentationDragIndicator(.visible) }
+        #else
+        .fullScreenCover(item: $person) { PersonView(person: $0) }
         #endif
     }
 
@@ -503,26 +510,43 @@ struct DetailView: View {
                 LazyHGrid(rows: [GridItem(.fixed(tvScaled(76)), spacing: tvScaled(14)),
                                  GridItem(.fixed(tvScaled(76)), spacing: tvScaled(14))], spacing: tvScaled(26)) {
                     ForEach(cast) { c in
-                        HStack(spacing: 12) {
-                            ZStack {
-                                Circle().fill(Theme.elevated)
-                                if let p = c.photo { RemoteImage(url: p).clipShape(Circle()) }
-                                else { Text(initials(c.name)).font(.system(size: tvScaled(18), weight: .bold)).foregroundStyle(Theme.secondary) }
-                            }
-                            .frame(width: tvScaled(70), height: tvScaled(70))
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(c.name).font(.system(size: tvScaled(16), weight: .medium)).lineLimit(1)
-                                if let ch = c.character, !ch.isEmpty {
-                                    Text(ch).font(.system(size: tvScaled(14))).foregroundStyle(Theme.secondary).lineLimit(1)
-                                }
-                            }
-                            .frame(width: tvScaled(170), alignment: .leading)
+                        // tik/klik (Apple TV: focus + select) → eigen pagina van de acteur/actrice
+                        if PersonService.shared.available {
+                            Button { person = PersonRef(tmdbID: c.personID, name: c.name, photo: c.photo) } label: { castCell(c) }
+                                .plainTVButton()
+                        } else {
+                            castCell(c)
                         }
                     }
                 }
                 .padding(.horizontal, Theme.edge)
+                #if os(tvOS)
+                .padding(.vertical, 20)
+                #endif
             }
+            #if os(tvOS)
+            .scrollClipDisabled()
+            #endif
         }
+    }
+
+    private func castCell(_ c: TitleDetails.CastMember) -> some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle().fill(Theme.elevated)
+                if let p = c.photo { RemoteImage(url: p).clipShape(Circle()) }
+                else { Text(initials(c.name)).font(.system(size: tvScaled(18), weight: .bold)).foregroundStyle(Theme.secondary) }
+            }
+            .frame(width: tvScaled(70), height: tvScaled(70))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(c.name).font(.system(size: tvScaled(16), weight: .medium)).foregroundStyle(.white).lineLimit(1)
+                if let ch = c.character, !ch.isEmpty {
+                    Text(ch).font(.system(size: tvScaled(14))).foregroundStyle(Theme.secondary).lineLimit(1)
+                }
+            }
+            .frame(width: tvScaled(170), alignment: .leading)
+        }
+        .contentShape(Rectangle())
     }
 
     private func initials(_ n: String) -> String {

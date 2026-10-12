@@ -38,6 +38,27 @@ final class TitleMatcher: @unchecked Sendable {
     func movies(_ list: [ExternalTitle], limit: Int = 10) -> [Movie] { find(list, movieIndex, movies, limit) }
     func series(_ list: [ExternalTitle], limit: Int = 10) -> [Series] { find(list, seriesIndex, series, limit) }
 
+    /// Eén titel strikt koppelen (persoonspagina): jaar ±1 als dat bekend is, anders alleen
+    /// titels zonder jaar of met een jaar dat er dichtbij ligt (voorkomt "Home" → verkeerde film).
+    func movie(_ t: ExternalTitle) -> Movie? { strict(t, movieIndex, movies, year: { $0.year ?? TitleCleaner.parse($0.title).year }) }
+    func series(_ t: ExternalTitle) -> Series? { strict(t, seriesIndex, series, year: { $0.year ?? TitleCleaner.parse($0.title).year }) }
+
+    private func strict<T>(_ t: ExternalTitle, _ idx: [String: Int], _ items: [T], year: (T) -> Int?) -> T? {
+        for title in t.titles {
+            let n = Self.norm(title)
+            guard n.count > 1 else { continue }
+            if let y = t.year {
+                for yy in [y, y - 1, y + 1] { if let i = idx["\(n)|\(yy)"] { return items[i] } }
+            }
+            if let i = idx[n] {
+                let item = items[i]
+                guard let y = t.year, let iy = year(item) else { return item }
+                if abs(iy - y) <= 1 { return item }
+            }
+        }
+        return nil
+    }
+
     private func find<T>(_ list: [ExternalTitle], _ idx: [String: Int], _ items: [T], _ limit: Int) -> [T] {
         var out: [T] = [], seen = Set<Int>()
         for t in list {
