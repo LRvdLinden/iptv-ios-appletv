@@ -2,7 +2,34 @@
 
 Inloggen is **verplicht**. Flow: **splash → (geen geldige sessie) inlogscherm → "Wie kijkt er?" → app**. Met een geldige sessie gaat de app na de splash direct naar "Wie kijkt er?". Uitloggen brengt je terug naar het inlogscherm.
 
-De account regelt in deze versie alleen het inloggen. Servers, profielen en voortgang blijven zoals ze zijn (iCloud op Apple, lokaal op Android).
+De account regelt het inloggen en bewaart de **profielen** (zonder pincodes en eigen foto's). Servers, voortgang, lijsten en pincodes blijven zoals ze zijn (iCloud op Apple, lokaal op Android).
+
+## Profielen migreren en delen
+
+Bestaande gebruikers houden al hun profielen: het inlogscherm komt vóór "Wie kijkt er?" en raakt geen lokale gegevens aan.
+
+Tabel `account_data`: één rij per account, `{user_id, profiles, updated_at}`. Lezen en schrijven gaat via PostgREST met de sessie van de gebruiker:
+- Lezen: `GET {URL}/rest/v1/account_data?select=profiles,updated_at` + `apikey` + `Authorization: Bearer <access_token>`. Antwoord: `[]` of `[{profiles, updated_at}]`.
+- Schrijven: `POST {URL}/rest/v1/account_data` + dezelfde headers + `Prefer: resolution=merge-duplicates,return=minimal`, body `{"user_id":"<user.id>","profiles":[…],"updated_at":"<ISO-8601 nu>"}`.
+
+`profiles` is een lijst van objecten met deze velden:
+- `id`: het bestaande profiel-ID
+- `name`
+- `avatar`: emoji, kleur en/of figuur `kidNN`, zoals de app het al opslaat; een eigen foto wordt niet meegestuurd
+- `kids`: true of false
+- `ageLimit`: getal of null
+- `isMain`: true of false
+- `order`: getal
+
+Extra velden negeren en bewaren.
+
+Na inloggen (en bij het starten met een geldige sessie):
+1. Lees `account_data`.
+2. Leeg op de server en lokaal wel profielen: **migreren**, dus de lokale profielen uploaden.
+3. Lokaal geen profielen (alleen het automatische hoofdprofiel of niets) en op de server wel: **importeren**, dus de profielen lokaal aanmaken met hetzelfde `id` en zonder pincode.
+4. Allebei: samenvoegen op `id`. Lokale profielen blijven. Profielen die alleen op de server staan, worden lokaal toegevoegd. Daarna wordt de samengevoegde lijst geüpload.
+
+Wijzigingen in profielen (toevoegen, hernoemen, avatar, kinderprofiel, verwijderen) worden daarna geüpload: de hele lijst, met een korte vertraging. Een fout bij synchroniseren blokkeert de app nooit; het gebeurt stil op de achtergrond.
 
 ## Configuratie
 
