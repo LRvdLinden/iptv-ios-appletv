@@ -4,6 +4,22 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website. Andr
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 59
+_12 oktober 2026_
+
+### Alle apps
+
+**Nieuw**
+
+- Taal op covers: een strookje onderaan de poster toont de taal van de versie (bijv. NL, IT, EN · NL ondertitels, Multi); het taallabel verdwijnt uit de titel en de detailpagina toont de taal
+- Andere taal: staat dezelfde film of serie in een andere taal in je lijst, dan kies je die op de detailpagina of tijdens het kijken, en kijk je verder op dezelfde plek
+- Ondertitels automatisch (uit, als nodig, altijd) met een voorkeurstaal: is de audio in een andere taal, dan gaan ondertitels in jouw taal vanzelf aan, eerst uit de stream en anders van OpenSubtitles
+
+**Verbeterd**
+
+- Audiotaal: je voorkeurstaal (standaard de taal van de app) wordt automatisch gekozen; wisselen werkt betrouwbaarder en bij een stream met één audiotaal zie je dat meteen
+- Sneller starten: kleinere buffer, direct verder op de juiste plek en niets wacht meer op de server, de leeftijdscontrole of ondertitels voordat het beeld begint
+
 ## Versie 1.0.0 · Build 58
 _12 oktober 2026_
 

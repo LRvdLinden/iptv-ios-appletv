@@ -1,5 +1,82 @@
 [
  {
+  "build": 59,
+  "version": "1.0.0",
+  "date": "2026-10-12",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen"
+    ],
+    "nl": "Taal op covers: een strookje onderaan de poster toont de taal van de versie (bijv. NL, IT, EN · NL ondertitels, Multi); het taallabel verdwijnt uit de titel en de detailpagina toont de taal",
+    "en": "Language on covers: a strip at the bottom of the poster shows the version's language (e.g. NL, IT, EN · NL subtitles, Multi); the language tag is removed from the title and the detail page shows the language"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen"
+    ],
+    "nl": "Andere taal: staat dezelfde film of serie in een andere taal in je lijst, dan kies je die op de detailpagina of tijdens het kijken, en kijk je verder op dezelfde plek",
+    "en": "Other language: if your library has the same movie or series in another language, pick it on the detail page or while watching and continue at the same spot"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen"
+    ],
+    "nl": "Ondertitels automatisch (uit, als nodig, altijd) met een voorkeurstaal: is de audio in een andere taal, dan gaan ondertitels in jouw taal vanzelf aan, eerst uit de stream en anders van OpenSubtitles",
+    "en": "Automatic subtitles (off, when needed, always) with a preferred language: when the audio is in another language, subtitles in your language turn on by themselves, from the stream first, otherwise from OpenSubtitles"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen"
+    ],
+    "nl": "Audiotaal: je voorkeurstaal (standaard de taal van de app) wordt automatisch gekozen; wisselen werkt betrouwbaarder en bij een stream met één audiotaal zie je dat meteen",
+    "en": "Audio language: your preferred language (the app language by default) is picked automatically; switching is more reliable and the player tells you when a stream has only one audio language"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen"
+    ],
+    "nl": "Sneller starten: kleinere buffer, direct verder op de juiste plek en niets wacht meer op de server, de leeftijdscontrole of ondertitels voordat het beeld begint",
+    "en": "Faster start: smaller buffer, resuming straight at the right spot, and nothing waits for the server, the age check or subtitles before the picture starts"
+   }
+  ]
+ },
+ {
   "build": 58,
   "version": "1.0.0",
   "date": "2026-10-12",
