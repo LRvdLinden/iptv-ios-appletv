@@ -26,11 +26,13 @@ final class AccountService: ObservableObject {
         static let access = "account.access_token"
         static let expires = "account.expires_at"
         static let email = "account.email"
+        static let user = "account.user_id"
     }
 
     private var accessToken: String?
     private var refreshToken: String?
     private var expiresAt: Double = 0
+    private var userID: String?
     private var refreshTask: Task<RefreshResult, Never>?
     private var tvTask: Task<Void, Never>?
 
@@ -48,6 +50,7 @@ final class AccountService: ObservableObject {
         accessToken = Keychain.getLocalOnly(K.access)
         expiresAt = Double(Keychain.getLocalOnly(K.expires) ?? "") ?? 0
         email = Keychain.getLocalOnly(K.email)
+        userID = Keychain.getLocalOnly(K.user)
     }
 
     // MARK: - Fouten
@@ -66,8 +69,9 @@ final class AccountService: ObservableObject {
         static var generic: AccountError { .message(L("Something went wrong. Please try again.")) }
     }
 
-    private struct Response {
+    struct Response {
         let status: Int
+        let data: Data
         let json: [String: Any]
         func string(_ k: String) -> String? { json[k] as? String }
         func number(_ k: String) -> Double? { (json[k] as? NSNumber)?.doubleValue }
@@ -93,7 +97,10 @@ final class AccountService: ObservableObject {
         let mail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         try validate(email: mail, password: password)
         isBusy = true; defer { isBusy = false }
-        let r = try await post("/auth/v1/signup", ["email": mail, "password": password])
+        // `lang` = huidige app-taal: bepaalt de taal van de e-mails
+        let body: [String: Any] = ["email": mail, "password": password,
+                                   "data": ["lang": Localizer.shared.language]]
+        let r = try await post("/auth/v1/signup", body)
         guard r.status == 200 || r.status == 201 else { throw Self.authError(r) }
         if storeSession(r.json, fallbackEmail: mail) { return .signedIn }
         return .confirmEmail
@@ -194,6 +201,40 @@ final class AccountService: ObservableObject {
         return r.string("device") ?? "TV"
     }
 
+    // MARK: - Profielen per account (account_data via PostgREST)
+
+    /// `profiles` uit `account_data` (nil = nog geen rij op de server).
+    func fetchAccountProfiles() async throws -> [[String: Any]]? {
+        let r = try await authorized { token in
+            try await self.send("GET", "/rest/v1/account_data?select=profiles,updated_at", body: nil, bearer: token)
+        }
+        guard r.status == 200 else { throw AccountError.generic }
+        guard let rows = (try? JSONSerialization.jsonObject(with: r.data)) as? [[String: Any]],
+              let first = rows.first else { return nil }
+        return first["profiles"] as? [[String: Any]] ?? []
+    }
+
+    /// De hele profielenlijst opslaan (upsert op user_id).
+    func saveAccountProfiles(_ profiles: [[String: Any]]) async throws {
+        let r = try await authorized { token in
+            guard let uid = self.userID else { throw AccountError.generic }
+            let f = ISO8601DateFormatter()
+            f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            let body: [String: Any] = ["user_id": uid, "profiles": profiles, "updated_at": f.string(from: Date())]
+            return try await self.send("POST", "/rest/v1/account_data", body: body, bearer: token,
+                                       headers: ["Prefer": "resolution=merge-duplicates,return=minimal"])
+        }
+        guard (200..<300).contains(r.status) else { throw AccountError.generic }
+    }
+
+    /// Aanvraag met een geldig access token; bij 401 één keer vernieuwen en opnieuw proberen.
+    private func authorized(_ make: (String) async throws -> Response) async throws -> Response {
+        let r = try await make(try await validAccessToken())
+        guard r.status == 401 else { return r }
+        expiresAt = 0
+        return try await make(try await validAccessToken())
+    }
+
     // MARK: - Tv: inloggen met je telefoon
 
     /// Start (of herstart) de tv-koppeling: code ophalen en pollen. Verloopt de code, dan komt er vanzelf een nieuwe.
@@ -279,6 +320,17 @@ final class AccountService: ObservableObject {
         #endif
     }
 
+    /// `sub` (user id) uit een JWT, voor sessies zonder `user` in het antwoord.
+    private static func subject(ofJWT token: String) -> String? {
+        let parts = token.split(separator: ".")
+        guard parts.count >= 2 else { return nil }
+        var b = String(parts[1]).replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+        while b.count % 4 != 0 { b += "=" }
+        guard let d = Data(base64Encoded: b),
+              let j = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any] else { return nil }
+        return j["sub"] as? String
+    }
+
     // MARK: - Sessie (alleen op dit apparaat)
 
     @discardableResult
@@ -287,7 +339,9 @@ final class AccountService: ObservableObject {
               let refresh = j["refresh_token"] as? String, !refresh.isEmpty else { return false }
         let expiresIn = (j["expires_in"] as? NSNumber)?.doubleValue ?? 3600
         let exp = Date().timeIntervalSince1970 + expiresIn
-        let mail = ((j["user"] as? [String: Any])?["email"] as? String) ?? fallbackEmail ?? email
+        let user = j["user"] as? [String: Any]
+        let mail = (user?["email"] as? String) ?? fallbackEmail ?? email
+        let uid = (user?["id"] as? String) ?? Self.subject(ofJWT: access) ?? userID
         accessToken = access
         refreshToken = refresh
         expiresAt = exp
@@ -295,6 +349,8 @@ final class AccountService: ObservableObject {
         Keychain.setLocalOnly(access, for: K.access)
         Keychain.setLocalOnly(String(exp), for: K.expires)
         Keychain.setLocalOnly(mail, for: K.email)
+        Keychain.setLocalOnly(uid, for: K.user)
+        userID = uid
         email = mail
         if !isSignedIn { isSignedIn = true }
         return true
@@ -304,24 +360,31 @@ final class AccountService: ObservableObject {
         accessToken = nil
         refreshToken = nil
         expiresAt = 0
-        for k in [K.refresh, K.access, K.expires, K.email] { Keychain.setLocalOnly(nil, for: k) }
+        for k in [K.refresh, K.access, K.expires, K.email, K.user] { Keychain.setLocalOnly(nil, for: k) }
         email = nil
+        userID = nil
         isSignedIn = false
     }
 
     // MARK: - HTTP
 
     private func post(_ path: String, _ body: [String: Any], bearer: String? = nil) async throws -> Response {
+        try await send("POST", path, body: body, bearer: bearer)
+    }
+
+    private func send(_ method: String, _ path: String, body: [String: Any]?, bearer: String?,
+                      headers: [String: String] = [:]) async throws -> Response {
         guard Secrets.accountsConfigured, let url = URL(string: Secrets.supabaseURL + path) else {
             throw AccountError.message(L("Accounts are not configured in this build."))
         }
         var req = URLRequest(url: url)
-        req.httpMethod = "POST"
+        req.httpMethod = method
         req.setValue(Secrets.supabaseAnonKey, forHTTPHeaderField: "apikey")
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("application/json", forHTTPHeaderField: "Accept")
         if let bearer { req.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization") }
-        req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        for (k, v) in headers { req.setValue(v, forHTTPHeaderField: k) }
+        if let body { req.httpBody = try? JSONSerialization.data(withJSONObject: body) }
         let data: Data
         let resp: URLResponse
         do {
@@ -336,7 +399,7 @@ final class AccountService: ObservableObject {
         }
         let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
         let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
-        return Response(status: status, json: json)
+        return Response(status: status, data: data, json: json)
     }
 
     /// Supabase-foutcodes → teksten uit het contract.

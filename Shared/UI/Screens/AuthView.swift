@@ -62,9 +62,20 @@ struct AuthView: View {
         #if os(tvOS)
         account.stopTVLogin()
         #endif
+        guard welcome == nil else { return }
         withAnimation(.easeInOut(duration: 0.3)) { welcome = account.email ?? "" }
         Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 1_400_000_000)
+            // profielen van de account ophalen/migreren (max. 6 s; fouten zijn stil), dan "Wie kijkt er?"
+            let started = Date()
+            let sync = Task { @MainActor in await ProfileSync.shared.syncNow() }
+            let timeout = Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 6_000_000_000)
+                sync.cancel()
+            }
+            await sync.value
+            timeout.cancel()
+            let left = 1.4 - Date().timeIntervalSince(started)
+            if left > 0 { try? await Task.sleep(nanoseconds: UInt64(left * 1_000_000_000)) }
             app.authFinished()
         }
     }

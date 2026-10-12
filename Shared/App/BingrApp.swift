@@ -85,7 +85,13 @@ final class AppState: ObservableObject {
                 self.showAuthIfNeeded()
             }
             .store(in: &bag)
-        Task { await AccountService.shared.refresh() }
+        ProfileSync.shared.start()
+        // met een sessie meteen door naar "Wie kijkt er?" en op de achtergrond vernieuwen + profielen synchroniseren
+        Task {
+            guard Secrets.accountsConfigured, AccountService.shared.isSignedIn else { return }
+            let r = await AccountService.shared.refresh()
+            if r == .ok || r == .offline { await ProfileSync.shared.syncNow() }
+        }
     }
 
     /// Zonder sleutels in deze build kan de gebruiker "Doorgaan zonder account" kiezen (onthouden).

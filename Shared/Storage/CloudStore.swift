@@ -136,6 +136,23 @@ final class CloudStore: ObservableObject {
         if activeProfileID == p.id { activeProfileID = nil; UserDefaults.standard.removeObject(forKey: "activeProfileID") }
     }
 
+    /// Profielen uit de Bingr-account overnemen (importeren/samenvoegen, zie ProfileSync).
+    /// `mainID` nil = het huidige hoofdprofiel houden.
+    func replaceProfiles(_ list: [ViewerProfile], mainID: UUID?) {
+        let removed = profiles.filter { old in !list.contains { $0.id == old.id } }
+        profiles = list
+        write(profiles, K.profiles)
+        if let mainID {
+            mainProfileIDStored = mainID
+            write(mainProfileIDStored, K.mainProfile)
+        }
+        for p in removed where photos[p.id] != nil { setPhoto(nil, for: p.id) }
+        if let a = activeProfileID, !list.contains(where: { $0.id == a }) {
+            activeProfileID = nil
+            UserDefaults.standard.removeObject(forKey: "activeProfileID")
+        }
+    }
+
     func setMainSource(_ id: UUID) {
         mainSourceID = id
         write(mainSourceID, K.mainSource)

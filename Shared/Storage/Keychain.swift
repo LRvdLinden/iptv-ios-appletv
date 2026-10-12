@@ -110,13 +110,19 @@ enum Keychain {
         ]
         SecItemDelete(base as CFDictionary)
         guard let value, !value.isEmpty, let data = value.data(using: .utf8) else { return }
+        #if os(macOS)
+        // Mac: gewone (lokale) sleutelhanger, zoals de rest van de app
+        let accessible = kSecAttrAccessibleAfterFirstUnlock
+        #else
+        let accessible = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        #endif
         let add: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: localOnlyService,
             kSecAttrAccount as String: key,
             kSecValueData as String: data,
-            kSecAttrSynchronizable as String: false,
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+            kSecAttrSynchronizable as String: kCFBooleanFalse as Any,
+            kSecAttrAccessible as String: accessible
         ]
         SecItemAdd(add as CFDictionary, nil)
     }
