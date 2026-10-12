@@ -26,6 +26,16 @@ struct PlayerScreen: View {
     #if !os(tvOS)
     @StateObject private var cast = CastManager.shared
     #endif
+    #if os(iOS)
+    @ObservedObject private var external = ExternalDisplay.shared
+    #endif
+    /// Zappen: de zender waar de balk nu naar wijst (met zapvertraging start de stream pas later)
+    @State private var zapTarget: Channel?
+    @State private var zapTask: Task<Void, Never>?
+    /// Zenderbalk in beeld (zappen)
+    @State private var banner: Channel?
+    @State private var bannerPending = false
+    @State private var bannerHide: Task<Void, Never>?
 
     enum Panel: String, Identifiable { case audioSubs, opensubs, options, cast, sources, rate; var id: String { rawValue } }
 
@@ -41,7 +51,17 @@ struct PlayerScreen: View {
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            EngineView(controller: player).ignoresSafeArea().allowsHitTesting(false)
+            EngineView(controller: player, external: true).ignoresSafeArea().allowsHitTesting(false)
+            #if os(iOS)
+            if external.isConnected {
+                VStack(spacing: 12) {
+                    Image(systemName: "rectangle.on.rectangle").font(.system(size: 44))
+                    Text(L("Playing on the external display")).font(.headline)
+                }
+                .foregroundStyle(Theme.secondary)
+                .allowsHitTesting(false)
+            }
+            #endif
             #if !os(tvOS)
             tapLayer
             #endif
@@ -97,6 +117,15 @@ struct PlayerScreen: View {
                     .transition(.opacity)
             }
 
+            if let banner {
+                ZapBanner(channel: banner, now: playlists.library.nowPlaying(banner), pending: bannerPending)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                    .padding(.horizontal, Theme.edge)
+                    .padding(.bottom, showControls ? tvScaled(110) : tvScaled(30))
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .allowsHitTesting(false)
+            }
+
             if let toast {
                 Text(toast).font(.system(size: tvScaled(14), weight: .semibold))
                     .padding(.horizontal, 16).padding(.vertical, 10)
@@ -106,6 +135,7 @@ struct PlayerScreen: View {
             }
         }
         .animation(.easeInOut(duration: 0.25), value: showControls)
+        .animation(.easeInOut(duration: 0.2), value: banner?.id)
         #if !os(tvOS)
         .statusBarHidden()
         .persistentSystemOverlays(.hidden)
@@ -159,7 +189,10 @@ struct PlayerScreen: View {
         .onChange(of: player.notice) { _, n in
             if let n { flash(n); player.notice = nil }
         }
-        .onDisappear { if !player.inPiP { player.dismissed = true; player.stop() } }
+        .onDisappear {
+            zapTask?.cancel()
+            if !player.inPiP { player.dismissed = true; player.stop() }
+        }
     }
 
     // MARK: bediening
@@ -182,6 +215,14 @@ struct PlayerScreen: View {
             }
         }
         .ignoresSafeArea()
+        // live: omhoog/omlaag vegen = volgende/vorige zender in de groep
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 30).onEnded { v in
+                let dy = v.translation.height, dx = v.translation.width
+                guard player.isLive, abs(dy) > 60, abs(dy) > abs(dx) * 1.5 else { return }
+                zap(dy < 0 ? 1 : -1)
+            }
+        )
     }
     #endif
 
@@ -397,7 +438,7 @@ struct PlayerScreen: View {
     private func playNext(_ n: PlayableItem) {
         nextUp = nil
         flash(n.subtitle ?? n.title)
-        Task { player.stop(); await start(n) }
+        Task { player.stop(keepDisplay: true); await start(n) }
     }
 
     /// Standaard ondertitels: eerst een spoor in de stream in je standaardtaal, anders de beste van OpenSubtitles.
@@ -423,14 +464,44 @@ struct PlayerScreen: View {
         } catch {}
     }
 
+    /// Volgende/vorige zender in de huidige groep. Met een zapvertraging toont snel zappen alleen de zenderbalk;
+    /// de stream start pas als je even stopt.
     private func zap(_ step: Int) {
         let list = app.liveZapList
-        guard player.isLive, !list.isEmpty, let i = list.firstIndex(where: { $0.id == player.item.channelID ?? player.item.id }) else { return }
+        let current = zapTarget?.id ?? player.item.channelID ?? player.item.id
+        guard player.isLive, !list.isEmpty, let i = list.firstIndex(where: { $0.id == current }) else { return }
         let next = list[(i + step + list.count) % list.count]
+        zapTarget = next
+        let delay = PlayerSettings.zapDelay
+        showBanner(next, pending: delay > 0)
+        zapTask?.cancel()
+        zapTask = Task { @MainActor in
+            if delay > 0 {
+                try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                guard !Task.isCancelled else { return }
+            }
+            await tune(next)
+        }
+    }
+
+    private func tune(_ next: Channel) async {
         if let pid = playlists.source?.id { CloudStore.shared.pushRecentChannel(pid, next.id) }
         let it = Playables.channel(next, now: playlists.library.nowPlaying(next))
-        flash("\(next.number.map { "\($0)  " } ?? "")\(next.name)")
-        Task { player.stop(); await start(it) }
+        player.stop(keepDisplay: true)
+        zapTarget = nil
+        showBanner(next, pending: false)
+        await start(it)
+    }
+
+    private func showBanner(_ c: Channel, pending: Bool) {
+        banner = c
+        bannerPending = pending
+        bannerHide?.cancel()
+        bannerHide = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 3_500_000_000)
+            guard !Task.isCancelled, zapTarget == nil else { return }
+            banner = nil
+        }
     }
 
     private func openMultiview() {
@@ -459,6 +530,41 @@ struct PlayerScreen: View {
     private func flash(_ text: String) {
         withAnimation { toast = text }
         Task { try? await Task.sleep(nanoseconds: 1_800_000_000); withAnimation { if toast == text { toast = nil } } }
+    }
+}
+
+/// Zenderbalk bij het zappen: logo, nummer, naam en wat er nu op is.
+private struct ZapBanner: View {
+    let channel: Channel
+    let now: EPGProgram?
+    let pending: Bool
+
+    var body: some View {
+        HStack(spacing: tvScaled(14)) {
+            RemoteImage(url: channel.logo, contentMode: .fit, placeholder: String(channel.name.prefix(3)))
+                .frame(width: tvScaled(72), height: tvScaled(44))
+                .background(Theme.card, in: RoundedRectangle(cornerRadius: 6))
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 8) {
+                    if let n = channel.number {
+                        Text("\(n)").font(.system(size: tvScaled(15), weight: .heavy).monospacedDigit()).foregroundStyle(Theme.red)
+                    }
+                    Text(channel.name).font(.system(size: tvScaled(16), weight: .bold)).lineLimit(1)
+                    if pending { ProgressView().tint(.white).scaleEffect(0.7) }
+                }
+                if let now {
+                    Text("\(now.start.formatted(date: .omitted, time: .shortened))–\(now.end.formatted(date: .omitted, time: .shortened))  \(now.title)")
+                        .font(.system(size: tvScaled(12))).foregroundStyle(.white.opacity(0.85)).lineLimit(1)
+                    ProgressBar(value: now.progress).frame(width: tvScaled(220), height: 3).clipShape(Capsule())
+                } else {
+                    Text(channel.group).font(.system(size: tvScaled(12))).foregroundStyle(Theme.secondary).lineLimit(1)
+                }
+            }
+        }
+        .padding(.horizontal, tvScaled(16)).padding(.vertical, tvScaled(10))
+        .frame(maxWidth: tvScaled(560), alignment: .leading)
+        .background(.black.opacity(0.78), in: RoundedRectangle(cornerRadius: tvScaled(12)))
+        .overlay(RoundedRectangle(cornerRadius: tvScaled(12)).stroke(.white.opacity(0.12)))
     }
 }
 

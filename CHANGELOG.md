@@ -2,6 +2,21 @@
 
 Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac (Android: [bingr-android](https://github.com/LRvdLinden/bingr-android/blob/main/CHANGELOG.md)). Per versie het buildnummer en de datum; het buildnummer loopt gelijk over alle platforms.
 
+## Versie 1.0.0 · Build 51
+_2026-10-12_
+
+- Collecties: maak je eigen rijen met een naam en afbeelding — handmatig (houd een zender, film of serie ingedrukt → Aan collectie toevoegen) of slim met zoekwoorden; ze staan op Home en in Live TV, Films en Series
+- Startscherm per profiel: zet rijen aan of uit en zet ze in je eigen volgorde (Mijn Bingr → Startscherm)
+- Zappen: veeg in de live-speler omhoog of omlaag naar de volgende of vorige zender, met zenderbalk; nieuwe instelling Zapvertraging
+- Zendervoorbeeld: in Live TV en de tv-gids speelt de geselecteerde zender na een seconde zonder geluid mee (uit te zetten bij Speler)
+- Terugkijk-correctie per zender: verschuif het begin van terugkijken met −120 tot +120 minuten
+- Apple TV: beeldfrequentie en dynamisch bereik passen zich aan de stream aan (Beeldfrequentie aanpassen)
+- Sneller starten: je bewaarde lijst staat meteen in beeld en wordt op de achtergrond bijgewerkt
+- Evenementzenders (PPV, events) in een eigen groep Evenementen, op begintijd met LIVE-label
+- Zoeken: resultaten tonen de kleur en naam van hun bron als je meerdere bronnen hebt
+- iPhone en iPad: met een extern scherm of AirPlay-schermdeling speelt de video schermvullend op dat scherm, de bediening blijft op je toestel
+- Website: servers en collecties beheren in Mijn Bingr (webconsole)
+
 ## Versie 1.0.0 · Build 50
 _2026-10-12_
 

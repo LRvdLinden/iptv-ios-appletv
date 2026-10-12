@@ -13,6 +13,8 @@ final class PlaylistService: ObservableObject {
     @Published private(set) var rawLibrary = Library()
     @Published private(set) var isLoading = false
     @Published private(set) var loadingText = ""
+    /// De open bron wordt op de achtergrond ververst (de bewaarde lijst staat al in beeld)
+    @Published private(set) var isRefreshing = false
     @Published var error: String?
     @Published private(set) var episodeCache: [String: [Episode]] = [:]
 
@@ -87,7 +89,12 @@ final class PlaylistService: ObservableObject {
 
     func refresh(_ s: PlaylistSource, showSpinner: Bool) async {
         if showSpinner { isLoading = true }
-        defer { isLoading = false; loadingText = "" }
+        let background = !showSpinner && source?.id == s.id
+        if background { isRefreshing = true }
+        defer {
+            isLoading = false; loadingText = ""
+            if background { isRefreshing = false }
+        }
         do {
             var lib: Library
             let password = Keychain.get(s.passwordKey) ?? ""
@@ -394,7 +401,9 @@ final class PlaylistService: ObservableObject {
     func catchupURL(channelID: String, start: Date, end: Date) -> URL? {
         guard let s = source, s.kind == .xtream,
               let ch = rawLibrary.channels.first(where: { $0.id == channelID }), ch.catchupDays > 0 else { return nil }
-        let p = EPGProgram(channelID: channelID, title: "", start: start, end: end)
+        // terugkijk-correctie van deze zender (build 51): het begintijdstip verschuiven
+        let shift = TimeInterval((s.catchupOffsets?[channelID] ?? 0) * 60)
+        let p = EPGProgram(channelID: channelID, title: "", start: start.addingTimeInterval(shift), end: end.addingTimeInterval(shift))
         return XtreamClient(source: s, password: Keychain.get(s.passwordKey) ?? "").catchupURL(channel: ch, program: p)
     }
 

@@ -37,7 +37,12 @@ struct BingrApp: App {
                 .environment(\.layoutDirection, localizer.isRTL ? .rightToLeft : .leftToRight)
                 .preferredColorScheme(.dark)
                 .tint(Theme.red)
-                .onAppear { reminders.start() }
+                .onAppear {
+                    reminders.start()
+                    #if os(iOS)
+                    ExternalDisplay.shared.start()   // extern scherm: video daar, bediening hier
+                    #endif
+                }
                 #if os(macOS)
                 .frame(minWidth: 900, minHeight: 600)
                 #endif
@@ -246,12 +251,14 @@ final class AppState: ObservableObject {
 
     func play(_ item: PlayableItem, zap: [Channel] = []) {
         PiPCenter.shared.stopActive()
+        ChannelPreview.shared.stop()
         liveZapList = zap
         playing = item
     }
 
     func openMultiview(start: [Channel], candidates: [Channel]) {
         PiPCenter.shared.stopActive()
+        ChannelPreview.shared.stop()
         multiviewStart = start
         liveZapList = candidates
         showMultiview = true

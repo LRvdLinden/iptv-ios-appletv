@@ -66,9 +66,17 @@ struct MainTabView: View {
             if playlists.isLoading {
                 LoadingOverlay(text: playlists.loadingText, source: playlists.source)
                     .transition(.opacity)
+            } else if playlists.isRefreshing {
+                // de bewaarde lijst staat al in beeld; verversen gebeurt op de achtergrond
+                UpdatingPill()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                    .padding(.bottom, tvScaled(70))
+                    .allowsHitTesting(false)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
         .animation(.easeInOut, value: playlists.isLoading)
+        .animation(.easeInOut, value: playlists.isRefreshing)
         .alert(L("Couldn't load playlist"), isPresented: Binding(get: { playlists.error != nil },
                                                                  set: { if !$0 { playlists.error = nil } })) {
             Button(L("Try again")) { if let s = playlists.source { Task { await playlists.select(s, forceRefresh: true) } } }
@@ -104,6 +112,19 @@ struct MainTabView: View {
         } else if let s = lib.series.first(where: { $0.id == id }) {
             app.pendingItemID = nil; pendingDetail = .series(s)
         }
+    }
+}
+
+/// Klein "Bijwerken…"-label tijdens het verversen op de achtergrond.
+private struct UpdatingPill: View {
+    var body: some View {
+        HStack(spacing: 8) {
+            ProgressView().tint(.white).scaleEffect(0.7)
+            Text(L("Updating…")).font(.system(size: tvScaled(12), weight: .semibold))
+        }
+        .padding(.horizontal, tvScaled(14)).padding(.vertical, tvScaled(6))
+        .background(.black.opacity(0.75), in: Capsule())
+        .overlay(Capsule().stroke(.white.opacity(0.12)))
     }
 }
 

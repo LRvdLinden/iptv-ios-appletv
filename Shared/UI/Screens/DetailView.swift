@@ -31,6 +31,7 @@ struct DetailView: View {
     @State private var ageGate = false
     @State private var afterPIN: (() -> Void)?
     @State private var pinOK = false
+    @State private var collecting: CollectionTarget?
 
     private var pid: UUID? { playlists.source?.id }
     private var baseTitle: String { switch target { case .movie(let m): return m.title; case .series(let s): return s.title } }
@@ -115,6 +116,7 @@ struct DetailView: View {
         .task(id: target.id) { await load() }
         .task(id: d?.recommendations.map(\.id) ?? []) { await matchRecommendations() }
         .sheet(isPresented: $showSources) { sourcesSheet }
+        .sheet(item: $collecting) { AddToCollectionSheet(target: $0) }
         .sheet(isPresented: $ageGate, onDismiss: {
             // pas afspelen als het pincodescherm helemaal weg is (anders opent de speler niet, vooral op Apple TV)
             let run = pinOK ? afterPIN : nil
@@ -223,6 +225,10 @@ struct DetailView: View {
             playButton
             HStack(spacing: tvScaled(12)) {
                 circleButton(inMyList ? "heart.fill" : "heart") { toggleMyList() }
+                circleButton(inAnyCollection ? "rectangle.stack.fill.badge.plus" : "rectangle.stack.badge.plus") {
+                    collecting = .detail(target)
+                }
+                .accessibilityLabel(L("Add to collection…"))
                 if let _ = d?.trailerYouTubeID { circleButton("film") { openTrailer() } }
                 if isMovie { circleButton(isWatchedTitle ? "checkmark.circle.fill" : "checkmark.circle") { toggleWatchedMovie() } }
                 #if !os(tvOS)
@@ -629,6 +635,12 @@ struct DetailView: View {
 
     /// Mijn lijst van dít profiel (de Trakt-watchlist volgt mee, maar bepaalt niet wat er in je lijst staat).
     private var inMyList: Bool { pid.map { store.inMyList($0, target.id) } ?? false }
+
+    /// Staat deze titel in een eigen (handmatige) collectie?
+    private var inAnyCollection: Bool {
+        let item = CollectionTarget.detail(target).item
+        return store.activeCollections.contains { $0.kind == .manual && $0.contains(item) }
+    }
 
     private var nextEpisode: Episode? {
         // de laatst bekeken aflevering met voortgang (niet zomaar de eerste in de lijst)

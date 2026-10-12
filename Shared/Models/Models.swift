@@ -90,6 +90,8 @@ struct PlaylistSource: Codable, Identifiable, Hashable {
     var ageLimit: Int? = nil
     var createdAt = Date()
     var updatedAt = Date()
+    /// Terugkijk-correctie per zender in minuten (−120…120), gedeeld met Android (build 51)
+    var catchupOffsets: [String: Int]? = nil
 
     var passwordKey: String { "playlist.\(id.uuidString).password" }
 }

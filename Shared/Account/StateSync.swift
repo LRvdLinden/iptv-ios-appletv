@@ -10,6 +10,7 @@ import CryptoKit
 /// - `settings`: `shared` (zelfde betekenis op iOS en Android), `apple` (de rest); `android` blijft onaangeroerd.
 /// - `profile.<id>`: Mijn lijst, favorieten, voortgang, bekeken, geschiedenis, recente zenders, kijkvoorkeuren, pincode.
 /// - `reminders`: herinneringen.
+/// - `collections`: eigen collecties (build 51), per item wint de nieuwste `updatedAt`; in `profile.<id>` ook `homeLayout`.
 ///
 /// Lijsten en sets worden per item samengevoegd (`{id, removed?, at}`, nieuwste `at` wint), zodat ook een
 /// verwijdering doorkomt. Lokale wijzigingen worden herkend door de huidige stand te vergelijken met de laatst
@@ -180,6 +181,7 @@ final class StateSync {
     private func edited(profile id: UUID?, _ kind: CloudStore.StateEdit) {
         switch kind {
         case .reminders: schedule(["reminders"], delay: 3)
+        case .collections: schedule(["collections"], delay: 3)
         case .settings: settingsMaybeChanged()
         case .prefs:
             settingsMaybeChanged()
@@ -302,6 +304,7 @@ final class StateSync {
         if wants("connections"), let u = await mergeConnections(server["connections"]) { uploads.append(("connections", u)) }
         if wants("settings"), let u = mergeSettings(server["settings"]) { uploads.append(("settings", u)) }
         if wants("reminders"), let u = mergeReminders(server["reminders"]) { uploads.append(("reminders", u)) }
+        if wants("collections"), let u = mergeCollections(server["collections"]) { uploads.append(("collections", u)) }
         let tombs = ProfileSync.shared.tombstonedIDs
         for p in store.profiles where !tombs.contains(p.id) {
             let name = profileSection(p.id)
@@ -482,6 +485,9 @@ final class StateSync {
         var apple: [String: Any] = [:]
         shared["categorySort"] = d.string(forKey: "category.sort") ?? "standard"
         if let h = d.string(forKey: "trakt.oauthHost") { apple["traktOAuthHost"] = h }
+        apple["zapDelay"] = PlayerSettings.zapDelay
+        apple["channelPreview"] = PlayerSettings.previewEnabled
+        apple["matchFrameRate"] = PlayerSettings.matchFrameRate
         apple["nasServers"] = NASServer.load().map { s -> [String: Any] in
             ["id": s.id.uuidString, "name": s.name, "host": s.host, "share": s.share, "username": s.username,
              "password": Keychain.get(s.passwordKey) ?? ""]
@@ -600,6 +606,10 @@ final class StateSync {
         // apple
         if let v = (shared["categorySort"] as? String) ?? (apple["categorySort"] as? String) { setIfChanged(v, "category.sort") }
         if let v = apple["traktOAuthHost"] as? String, v.hasPrefix("https://") { setIfChanged(v, "trakt.oauthHost") }
+        if let v = (apple["zapDelay"] as? NSNumber)?.doubleValue, PlayerSettings.zapDelays.contains(v),
+           v != PlayerSettings.zapDelay { d.set(v, forKey: PlayerSettings.zapDelayKey) }
+        if let v = apple["channelPreview"] as? Bool { setIfChanged(v, PlayerSettings.previewKey) }
+        if let v = apple["matchFrameRate"] as? Bool { setIfChanged(v, PlayerSettings.matchKey) }
         if let list = apple["nasServers"] as? [[String: Any]] {
             var servers: [NASServer] = []
             for j in list {
@@ -713,6 +723,149 @@ final class StateSync {
         return ProgramReminder(id: id, playlistID: pl, channelID: channel,
                                channelName: j["channelName"] as? String ?? "", title: j["title"] as? String ?? "",
                                start: Date(timeIntervalSince1970: start))
+    }
+
+    // MARK: - collections (build 51)
+
+    /// Onbekende velden per collectie van de server (die gaan onaangeroerd terug)
+    private let collectionExtrasKey = "account.collectionExtras.v1"
+
+    private func loadCollectionExtras() -> [String: [String: Any]] {
+        guard let d = UserDefaults.standard.data(forKey: collectionExtrasKey),
+              let j = (try? JSONSerialization.jsonObject(with: d)) as? [String: [String: Any]] else { return [:] }
+        return j
+    }
+
+    private func saveCollectionExtras(_ e: [String: [String: Any]]) {
+        guard JSONSerialization.isValidJSONObject(e), let d = try? JSONSerialization.data(withJSONObject: e) else { return }
+        UserDefaults.standard.set(d, forKey: collectionExtrasKey)
+    }
+
+    /// Per item wint de nieuwste `updatedAt` (ook een tombstone). Geeft de data terug als er geüpload moet worden.
+    private func mergeCollections(_ remote: (data: Any, updatedAt: String?)?) -> [String: Any]? {
+        let store = CloudStore.shared
+        let data: [String: Any]
+        if let d = remote?.data as? [String: Any] { data = d }
+        else if let a = remote?.data as? [Any] { data = ["items": a] }
+        else { data = [:] }
+        var server: [String: (c: BingrCollection, raw: [String: Any])] = [:]
+        for e in data["items"] as? [Any] ?? [] {
+            guard let j = e as? [String: Any], let c = Self.collection(j) else { continue }
+            if let old = server[c.id], old.c.updatedAt >= c.updatedAt { continue }
+            server[c.id] = (c, j)
+        }
+        var merged: [String: BingrCollection] = [:]
+        for c in store.collections { merged[c.id] = c }
+        var extras = loadCollectionExtras()
+        for (id, s) in server {
+            extras[id] = s.raw
+            if let l = merged[id], l.updatedAt >= s.c.updatedAt { continue }
+            merged[id] = s.c
+        }
+        // tombstones ouder dan 90 dagen weg
+        let cutoff = Date().addingTimeInterval(-Self.removedLifetime)
+        merged = merged.filter { !$0.value.deleted || ($0.value.deletedAt ?? $0.value.updatedAt) >= cutoff }
+        let list = Self.sortedCollections(Array(merged.values))
+        store.replaceCollections(list)
+        extras = extras.filter { merged[$0.key] != nil }
+        saveCollectionExtras(extras)
+
+        if remote == nil && list.isEmpty { return nil }
+        let mine = collectionsPayload(list, extras: extras, section: data)
+        if remote != nil {
+            let theirs = collectionsPayload(Self.sortedCollections(server.values.map { $0.c }), extras: extras, section: data)
+            if Self.same(Self.withoutUpdatedAt(mine), Self.withoutUpdatedAt(theirs)) { return nil }
+        }
+        return mine
+    }
+
+    private static func sortedCollections(_ l: [BingrCollection]) -> [BingrCollection] {
+        l.sorted { $0.order != $1.order ? $0.order < $1.order : $0.id < $1.id }
+    }
+
+    private func collectionsPayload(_ list: [BingrCollection], extras: [String: [String: Any]],
+                                    section: [String: Any]) -> [String: Any] {
+        var out = section
+        out["items"] = list.map { Self.collectionJSON($0, extras: extras[$0.id] ?? [:]) }
+        out["updatedAt"] = Self.iso(Date().timeIntervalSince1970)
+        return out
+    }
+
+    private static func collectionJSON(_ c: BingrCollection, extras: [String: Any]) -> [String: Any] {
+        var d = extras
+        d["id"] = c.id
+        d["name"] = c.name
+        if let u = c.image.url, !u.isEmpty {
+            d["image"] = ["url": u]
+        } else {
+            d["image"] = ["symbol": c.image.avatar.symbol, "colorIndex": c.image.avatar.colorIndex]
+        }
+        d["kind"] = c.kind.rawValue
+        d["items"] = c.items.map { ["type": $0.type.rawValue, "id": $0.id] }
+        d["query"] = c.query
+        d["types"] = c.types
+        if let g = c.group, !g.isEmpty { d["group"] = g } else { d.removeValue(forKey: "group") }
+        if let s = c.sourceID, !s.isEmpty { d["sourceID"] = s } else { d.removeValue(forKey: "sourceID") }
+        d["order"] = c.order
+        d["updatedAt"] = iso(c.updatedAt.timeIntervalSince1970)
+        if c.deleted {
+            d["deleted"] = true
+            d["deletedAt"] = iso((c.deletedAt ?? c.updatedAt).timeIntervalSince1970)
+        } else {
+            d.removeValue(forKey: "deleted")
+            d.removeValue(forKey: "deletedAt")
+        }
+        return d
+    }
+
+    private static func collection(_ j: [String: Any]) -> BingrCollection? {
+        guard let id = string(j["id"]) else { return nil }
+        var c = BingrCollection(name: j["name"] as? String ?? "")
+        c.id = id
+        if let img = j["image"] as? [String: Any] {
+            var ci = CollectionImage()
+            ci.url = (img["url"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            ci.symbol = img["symbol"] as? String
+            ci.colorIndex = (img["colorIndex"] as? NSNumber).map { (($0.intValue % PlaylistAvatar.palettes.count)
+                + PlaylistAvatar.palettes.count) % PlaylistAvatar.palettes.count }
+            if ci.url == nil && ci.symbol == nil { ci.symbol = "star" }
+            c.image = ci
+        }
+        c.kind = (j["kind"] as? String).flatMap(BingrCollection.Kind.init(rawValue:)) ?? .manual
+        c.items = (j["items"] as? [Any] ?? []).compactMap { e in
+            guard let d = e as? [String: Any], let t = (d["type"] as? String).flatMap(CollectionItem.Kind.init(rawValue:)),
+                  let iid = string(d["id"]) else { return nil }
+            return CollectionItem(type: t, id: iid)
+        }
+        c.query = j["query"] as? String ?? ""
+        if let t = j["types"] as? [String] { c.types = t }
+        c.group = (j["group"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        c.sourceID = string(j["sourceID"])
+        c.order = (j["order"] as? NSNumber)?.intValue ?? 0
+        c.updatedAt = Date(timeIntervalSince1970: time(j["updatedAt"]) ?? 0)
+        c.deleted = (j["deleted"] as? Bool) ?? false
+        c.deletedAt = time(j["deletedAt"]).map { Date(timeIntervalSince1970: $0) }
+        return c
+    }
+
+    // MARK: - startscherm (homeLayout in profile.<id>)
+
+    private static func homeLayout(_ j: [String: Any]) -> HomeLayout? {
+        guard let rows = j["rows"] as? [Any] else { return nil }
+        var l = HomeLayout()
+        l.rows = rows.compactMap { e in
+            guard let d = e as? [String: Any], let k = string(d["key"]) else { return nil }
+            return HomeLayout.Row(key: k, visible: (d["visible"] as? Bool) ?? true)
+        }
+        l.updatedAt = Date(timeIntervalSince1970: time(j["updatedAt"]) ?? 0)
+        return l
+    }
+
+    private static func homeLayoutJSON(_ l: HomeLayout, extras: [String: Any]) -> [String: Any] {
+        var d = extras
+        d["rows"] = l.rows.map { ["key": $0.key, "visible": $0.visible] as [String: Any] }
+        d["updatedAt"] = iso(l.updatedAt.timeIntervalSince1970)
+        return d
     }
 
     // MARK: - profile.<id>
@@ -878,6 +1031,19 @@ final class StateSync {
         }
         m.pin = Stamp(fp: Self.hash(pin ?? ""), at: pinAt)
 
+        // startscherm: het geheel met de nieuwste updatedAt wint
+        var layoutOut: [String: Any]?
+        let localLayout = store.homeLayout(for: id)
+        if let sj = data["homeLayout"] as? [String: Any], let sl = Self.homeLayout(sj) {
+            if let l = localLayout, l.updatedAt > sl.updatedAt {
+                layoutOut = Self.homeLayoutJSON(l, extras: sj)
+            } else if localLayout != sl {
+                store.setSyncedHomeLayout(id, sl)
+            }
+        } else if let l = localLayout, !l.rows.isEmpty {
+            layoutOut = Self.homeLayoutJSON(l, extras: [:])
+        }
+
         // lokaal toepassen
         var newData = CloudStore.ProfileData()
         newData.myList = Set((sets["myList"] ?? [:]).keys)
@@ -900,10 +1066,10 @@ final class StateSync {
             sets: sets, removed: removed,
             progress: progress.mapValues { $0.raw.merging(["updatedAt": Self.iso($0.at)]) { _, b in b } },
             history: historySorted.map { $0.raw.merging(["at": Self.iso($0.at)]) { _, b in b } },
-            prefs: prefsOut, prefsAt: prefsAt, pin: pin, pinAt: pinAt, extras: data)
+            prefs: prefsOut, prefsAt: prefsAt, pin: pin, pinAt: pinAt, homeLayout: layoutOut, extras: data)
         guard remote != nil else {
             let empty = sets.values.allSatisfy(\.isEmpty) && progress.isEmpty && history.isEmpty && pin == nil
-                && removed.values.allSatisfy(\.isEmpty) && prefsAt == nil
+                && removed.values.allSatisfy(\.isEmpty) && prefsAt == nil && layoutOut == nil
             return empty ? nil : mine
         }
         var theirSets: [String: [String: Double]] = [:]
@@ -938,8 +1104,9 @@ final class StateSync {
     private func profilePayload(sets: [String: [String: Double]], removed: [String: [String: Double]],
                                 progress: [String: [String: Any]], history: [[String: Any]],
                                 prefs: [String: Any], prefsAt: Double?, pin: String?, pinAt: Double?,
-                                extras: [String: Any]) -> [String: Any] {
+                                homeLayout: [String: Any]? = nil, extras: [String: Any]) -> [String: Any] {
         var out = extras
+        if let homeLayout { out["homeLayout"] = homeLayout }
         out["removed"] = nil
         for name in Self.setLists + ["recentChannels"] {
             let present = sets[name] ?? [:]

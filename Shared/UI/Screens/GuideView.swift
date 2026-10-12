@@ -8,6 +8,8 @@ struct GuideGridView: View {
     private var shown: [Channel] { Array(channels.prefix(Self.limit)) }
     var onPlay: (Channel) -> Void
     var onProgram: (Channel, EPGProgram) -> Void
+    /// Zender geselecteerd (focus of aanwijzer): voor het voorbeeld
+    var onSelect: ((Channel) -> Void)? = nil
 
     @EnvironmentObject var playlists: PlaylistService
     @State private var now = Date()
@@ -42,8 +44,14 @@ struct GuideGridView: View {
                             .padding(.horizontal, 6)
                             .frame(width: channelWidth, height: rowHeight)
                             .background(Theme.card)
+                            #if os(tvOS)
+                            .background(FocusProbe { f in if f { onSelect?(c) } })
+                            #endif
                         }
                         .plainTVButton()
+                        #if !os(tvOS)
+                        .onHover { inside in if inside { onSelect?(c) } }
+                        #endif
                         .overlay(Rectangle().fill(Color.black).frame(height: 1), alignment: .bottom)
                     }
                 }
@@ -122,6 +130,9 @@ struct GuideGridView: View {
                                 Image(systemName: "bell.fill").font(.system(size: tvScaled(9))).foregroundStyle(Theme.imdb).padding(4)
                             }
                         }
+                        #if os(tvOS)
+                        .background(FocusProbe { f in if f { onSelect?(c) } })
+                        #endif
                     }
                     .plainTVButton()
                     .offset(x: x0 + 1)
@@ -148,6 +159,7 @@ struct ProgramSheet: View {
     @EnvironmentObject var playlists: PlaylistService
     @EnvironmentObject var store: CloudStore
     @Environment(\.dismiss) private var dismiss
+    @State private var editOffset = false
 
     private var reminderID: String { "\(channel.id)-\(Int(program.start.timeIntervalSince1970))" }
     private var canCatchup: Bool {
@@ -159,8 +171,21 @@ struct ProgramSheet: View {
         VStack(alignment: .leading, spacing: tvScaled(14)) {
             Text(channel.name).font(.system(size: tvScaled(13), weight: .semibold)).foregroundStyle(Theme.secondary)
             Text(program.title).font(.system(size: tvScaled(24), weight: .bold))
-            Text("\(program.start.formatted(date: .abbreviated, time: .shortened)) – \(program.end.formatted(date: .omitted, time: .shortened))")
-                .foregroundStyle(Theme.secondary)
+            HStack(spacing: tvScaled(10)) {
+                Text("\(program.start.formatted(date: .abbreviated, time: .shortened)) – \(program.end.formatted(date: .omitted, time: .shortened))")
+                    .foregroundStyle(Theme.secondary)
+                if channel.catchupDays > 0, let pid = playlists.source?.id {
+                    let off = store.catchupOffset(pid, channel.id)
+                    Button { editOffset = true } label: {
+                        Label(off == 0 ? L("Catch-up offset") : L("Offset %@ min", (off > 0 ? "+" : "−") + "\(abs(off))"),
+                              systemImage: "clock.badge.questionmark")
+                            .font(.system(size: tvScaled(12), weight: .semibold))
+                            .padding(.horizontal, 10).padding(.vertical, 4)
+                            .background(Color.white.opacity(0.12), in: Capsule())
+                    }
+                    .plainTVButton()
+                }
+            }
             if let d = program.description { Text(d).font(.system(size: tvScaled(14))).foregroundStyle(.white.opacity(0.85)) }
             HStack(spacing: tvScaled(14)) {
                 if program.isNow {
@@ -198,5 +223,6 @@ struct ProgramSheet: View {
         #if !os(tvOS)
         .presentationDetents([.medium])
         #endif
+        .sheet(isPresented: $editOffset) { CatchupOffsetSheet(channel: channel) }
     }
 }

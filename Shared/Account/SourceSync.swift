@@ -312,10 +312,16 @@ final class SourceSync {
             list = remaining.map { p in
                 guard let r = active[p.id] else { return p }
                 let mine = ProfileSync.date(updated[p.id.uuidString]) ?? .distantPast
-                guard let theirs = ProfileSync.date(r.updatedAt), theirs > mine else { return p }
+                guard let theirs = ProfileSync.date(r.updatedAt), theirs > mine else {
+                    // terugkijk-correcties die een andere app (of de website) al bewaarde: overnemen
+                    var keep = p
+                    if keep.catchupOffsets == nil, let o = r.source.catchupOffsets { keep.catchupOffsets = o }
+                    return keep
+                }
                 var s = r.source
                 s.createdAt = p.createdAt
                 s.ageLimit = p.ageLimit
+                if s.catchupOffsets == nil { s.catchupOffsets = p.catchupOffsets }
                 let connection: (PlaylistSource) -> [String] = {
                     [$0.kind.rawValue, $0.m3uURL, $0.epgURL, $0.serverURL, $0.username, $0.macAddress, $0.preferHLS ? "1" : "0"]
                 }
@@ -521,10 +527,13 @@ final class SourceSync {
 
     /// De gedeelde velden van een bron (zonder geheimen, `apple` en `updatedAt`).
     private static func fields(_ p: PlaylistSource) -> [String: Any] {
-        ["id": p.id.uuidString, "name": p.name, "kind": p.kind.rawValue,
-         "avatar": ["symbol": p.avatar.symbol, "colorIndex": p.avatar.colorIndex],
-         "m3uURL": p.m3uURL, "epgURL": p.epgURL, "serverURL": p.serverURL,
-         "username": p.username, "macAddress": p.macAddress, "preferHLS": p.preferHLS]
+        var d: [String: Any] = ["id": p.id.uuidString, "name": p.name, "kind": p.kind.rawValue,
+                                "avatar": ["symbol": p.avatar.symbol, "colorIndex": p.avatar.colorIndex],
+                                "m3uURL": p.m3uURL, "epgURL": p.epgURL, "serverURL": p.serverURL,
+                                "username": p.username, "macAddress": p.macAddress, "preferHLS": p.preferHLS]
+        // terugkijk-correctie per zender (build 51); zonder eigen waarde blijft die van de server onaangeroerd
+        if let o = p.catchupOffsets { d["catchupOffsets"] = o }
+        return d
     }
 
     /// Bron-ID zoals de server het kent (exact bewaren).
@@ -545,6 +554,14 @@ final class SourceSync {
         s.m3uURL = str("m3uURL"); s.epgURL = str("epgURL"); s.serverURL = str("serverURL")
         s.username = str("username"); s.macAddress = str("macAddress")
         s.preferHLS = (d["preferHLS"] as? Bool) ?? false
+        if let o = d["catchupOffsets"] as? [String: Any] {
+            var m: [String: Int] = [:]
+            for (k, v) in o {
+                guard let n = (v as? NSNumber)?.intValue ?? (v as? String).flatMap({ Int($0) }) else { continue }
+                m[k] = min(max(n, -120), 120)
+            }
+            s.catchupOffsets = m
+        }
         let updatedAt = (d["updatedAt"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         if let u = ProfileSync.date(updatedAt) { s.updatedAt = u }
         var secrets: [String: String]?
@@ -574,7 +591,7 @@ final class SourceSync {
     }
 
     /// Bron-ID van de server → UUID (een ander formaat krijgt een vaste, afgeleide UUID).
-    private static func uuid(for raw: String) -> UUID {
+    nonisolated static func uuid(for raw: String) -> UUID {
         if let u = UUID(uuidString: raw) { return u }
         let h = Array(SHA256.hash(data: Data(raw.utf8)))
         var b = Array(h.prefix(16))

@@ -1,6 +1,9 @@
 import Foundation
 import SwiftUI
 import AVKit
+#if os(tvOS)
+import UIKit
+#endif
 
 /// Stuurt één afspeelsessie aan: kiest de engine (Apple of VLC), herverbindt
 /// automatisch, doet timeshift bij live, bewaart voortgang en scrobblet naar Trakt.
@@ -41,6 +44,8 @@ final class PlayerController: ObservableObject {
     var onFinished: (@MainActor () -> Void)?
     /// Multiview-tegels: geen voortgang/scrobble
     var isPreview = false
+    /// Zendervoorbeeld: zonder geluid, lage bitrate, geen beeld-in-beeld en geen schermaanpassing
+    var silent = false
 
     private var timer: Timer?
     private var lastSaved = Date.distantPast
@@ -83,7 +88,7 @@ final class PlayerController: ObservableObject {
 
     private func makeEngine(apple: Bool) {
         engine.stop()
-        engine = apple ? AVEngine() : VLCEngine()
+        engine = apple ? AVEngine(silent: silent) : VLCEngine(silent: silent)
         usingApple = apple
         (engine as? AVEngine)?.onPiP = { [weak self] e in self?.handlePiP(e) }
         engine.rate = rate
@@ -118,6 +123,9 @@ final class PlayerController: ObservableObject {
         self.url = url
         errorText = nil; didScrobbleStart = false; stallSince = nil
         tracksApplied = false; playingTicks = 0
+        #if os(tvOS)
+        displayTicks = 0; displayMatched = false
+        #endif
         if stopped || timer == nil { watchedSeconds = 0; recordedHistory = false }
         stopped = false
         let apple = forceApple ?? Self.prefersApple(url)
@@ -180,6 +188,13 @@ final class PlayerController: ObservableObject {
             else if pendingPiP > 30 { pendingPiP = 0; notice = L("Picture in Picture isn't available for this stream.") }
         }
         if st == .playing { watchedSeconds += 0.5 }
+        #if os(tvOS)
+        // na een seconde echt afspelen: het scherm aanpassen aan framerate en dynamisch bereik van de stream
+        if st == .playing && !isPreview && !silent && !displayMatched {
+            displayTicks += 1
+            if displayTicks >= 2 { matchDisplay() }
+        }
+        #endif
         if !tracksApplied && st == .playing {
             playingTicks += 1
             // sporen zijn er meestal na een paar tellen; daarna niet meer ingrijpen (jouw eigen keuze blijft staan)
@@ -265,9 +280,13 @@ final class PlayerController: ObservableObject {
 
     func seek(to fraction: Double) { guard !isLive else { return }; engine.seek(toFraction: fraction) }
 
-    func stop() {
+    /// `keepDisplay`: zappen of volgende aflevering — de schermstand niet eerst terugzetten (geen extra knipper).
+    func stop(keepDisplay: Bool = false) {
         guard !stopped else { return }
         stopped = true
+        #if os(tvOS)
+        if !keepDisplay { resetDisplay() }
+        #endif
         pendingPiP = 0
         recordHistory()
         timer?.invalidate(); timer = nil
@@ -277,6 +296,37 @@ final class PlayerController: ObservableObject {
         if !isPreview { StateSync.shared.playbackStopped() }
         engine.stop()
     }
+
+    // MARK: Apple TV: framerate en dynamisch bereik (Match Content)
+
+    #if os(tvOS)
+    private var displayTicks = 0
+    private var displayMatched = false
+    /// Deze sessie heeft de schermstand veranderd (en zet hem bij het stoppen terug)
+    private var displayChanged = false
+
+    private static var displayManager: AVDisplayManager? {
+        let windows = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.flatMap(\.windows)
+        return (windows.first(where: \.isKeyWindow) ?? windows.first)?.avDisplayManager
+    }
+
+    /// Werkt alleen als "Pas inhoud aan" (Match Content) in de instellingen van de Apple TV aan staat.
+    private func matchDisplay() {
+        displayMatched = true
+        guard PlayerSettings.matchFrameRate, let dm = Self.displayManager, dm.isDisplayCriteriaMatchingEnabled else { return }
+        if let av = engine as? AVEngine {
+            if let c = av.displayCriteria() { dm.preferredDisplayCriteria = c; displayChanged = true }
+        } else if let vlc = engine as? VLCEngine {
+            if let c = vlc.displayCriteria() { dm.preferredDisplayCriteria = c; displayChanged = true }
+        }
+    }
+
+    private func resetDisplay() {
+        guard displayChanged else { return }
+        displayChanged = false
+        Self.displayManager?.preferredDisplayCriteria = nil
+    }
+    #endif
 
     // MARK: beeld-in-beeld
 
@@ -460,6 +510,7 @@ final class PiPCenter {
 #if os(macOS)
 struct EngineView: NSViewRepresentable {
     @ObservedObject var controller: PlayerController
+    var external = false
     /// Klikken gaan naar de SwiftUI-bediening, niet naar VLC/AVPlayer.
     final class Host: NSView { override func hitTest(_ point: NSPoint) -> NSView? { nil } }
     func makeNSView(context: Context) -> NSView {
@@ -482,16 +533,41 @@ struct EngineView: NSViewRepresentable {
 #else
 struct EngineView: UIViewRepresentable {
     @ObservedObject var controller: PlayerController
+    /// iPhone/iPad: met een extern scherm komt het beeld daar (alleen het spelerscherm, niet Multiview of voorbeelden)
+    var external = false
+    #if os(iOS)
+    @ObservedObject private var display = ExternalDisplay.shared
+    #endif
+
+    final class Coordinator { weak var engineView: UIView? }
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
     func makeUIView(context: Context) -> UIView {
         let host = UIView(); host.backgroundColor = .black
         host.isUserInteractionEnabled = false   // tikken gaan naar de SwiftUI-bediening, niet naar VLC/AVPlayer
-        attach(controller.engine.view, to: host)
+        place(host, context)
         return host
     }
     func updateUIView(_ host: UIView, context: Context) {
-        if controller.engine.view.superview !== host {
+        place(host, context)
+    }
+    static func dismantleUIView(_ host: UIView, coordinator: Coordinator) {
+        #if os(iOS)
+        if let v = coordinator.engineView { ExternalDisplay.shared.detach(v) }
+        #endif
+    }
+    private func place(_ host: UIView, _ context: Context) {
+        let v = controller.engine.view
+        context.coordinator.engineView = v
+        #if os(iOS)
+        if external && display.isConnected {
+            display.attach(v)
+            return
+        }
+        #endif
+        if v.superview !== host {
             host.subviews.forEach { $0.removeFromSuperview() }
-            attach(controller.engine.view, to: host)
+            attach(v, to: host)
         }
     }
     private func attach(_ v: UIView, to host: UIView) {

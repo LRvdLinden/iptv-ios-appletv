@@ -23,6 +23,9 @@ struct SettingsView: View {
     @AppStorage("ui.showLive") private var showLive = true
     @AppStorage("ui.showMovies") private var showMovies = true
     @AppStorage("ui.showSeries") private var showSeries = true
+    @AppStorage(PlayerSettings.zapDelayKey) private var zapDelay = 0.0
+    @AppStorage(PlayerSettings.previewKey) private var channelPreview = true
+    @AppStorage(PlayerSettings.matchKey) private var matchFrameRate = true
     @State private var showTraktLogin = false
     @State private var showOSLogin = false
     @State private var editing: PlaylistSource?
@@ -399,8 +402,23 @@ struct SettingsView: View {
                 ForEach(TrackPreferences.sortedCodes, id: \.self) { Text(TrackPreferences.label($0)).tag($0) }
             }
             .pickerStyle(.menu)
+            Picker(L("Zap delay"), selection: $zapDelay) {
+                ForEach(PlayerSettings.zapDelays, id: \.self) { Text(PlayerSettings.zapDelayTitle($0)).tag($0) }
+            }
+            .pickerStyle(.menu)
+            Toggle(L("Channel preview"), isOn: $channelPreview)
+            #if os(iOS)
+            if PlayerSettings.isPhone && channelPreview {
+                Text(L("Not over mobile data, to save your data.")).font(.caption).foregroundStyle(Theme.secondary)
+            }
+            #endif
+            #if os(tvOS)
+            Toggle(L("Match frame rate"), isOn: $matchFrameRate)
+            Text(L("Also turn on Settings → Video and Audio → Match Content (Dynamic Range and Frame Rate) on your Apple TV."))
+                .font(.caption).foregroundStyle(Theme.secondary)
+            #endif
         } header: { Text(L("Player")) } footer: {
-            Text(L("Automatic uses the Apple player for HLS and MP4 (HDR, Dolby Vision, Atmos, AirPlay, Picture in Picture) and VLC for everything else. If a stream fails, Bingr switches over and reconnects automatically. The default languages are chosen automatically when a stream has them."))
+            Text(L("Automatic uses the Apple player for HLS and MP4 (HDR, Dolby Vision, Atmos, AirPlay, Picture in Picture) and VLC for everything else. If a stream fails, Bingr switches over and reconnects automatically. The default languages are chosen automatically when a stream has them.") + " " + L("With a zap delay, quickly zapping only shows the channel banner; the stream starts once you stop."))
         }
     }
 
@@ -456,6 +474,12 @@ struct SettingsView: View {
 
     private var interfaceSection: some View {
         Section {
+            NavigationLink { HomeLayoutView() } label: {
+                Label(L("Home screen"), systemImage: "rectangle.grid.1x2")
+            }
+            NavigationLink { CollectionsView() } label: {
+                Label(L("Collections"), systemImage: "rectangle.stack.badge.plus")
+            }
             Picker(L("Start screen"), selection: $startTab) {
                 Text(L("Home")).tag(0)
                 Text(L("Live TV")).tag(1)

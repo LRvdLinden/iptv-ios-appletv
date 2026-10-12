@@ -24,6 +24,10 @@ struct SearchView: View {
 
     struct ProgramHit: Identifiable { var id: String { channel.id + p.id }; let channel: Channel; let p: EPGProgram }
 
+    /// Meerdere bronnen: elk resultaat krijgt de kleur (avatar) van zijn bron
+    private var showSources: Bool { CloudStore.shared.playlists.count > 1 }
+    private var currentSource: PlaylistSource? { showSources ? playlists.source : nil }
+
     private var columns: [GridItem] { [GridItem(.adaptive(minimum: Theme.posterWidth, maximum: Theme.posterWidth + 20), spacing: Theme.rowSpacing)] }
 
     var body: some View {
@@ -46,6 +50,7 @@ struct SearchView: View {
                             ForEach(results.channels) { c in
                                 Button { app.play(Playables.channel(c, now: playlists.library.nowPlaying(c)), zap: results.channels) } label: {
                                     ChannelCard(channel: c, now: playlists.library.nowPlaying(c))
+                                        .sourceAccent(currentSource)
                                 }.cardButton()
                             }
                         }
@@ -226,8 +231,10 @@ struct SearchView: View {
                         case .movie(let m):
                             PosterCard(title: m.title, poster: m.poster,
                                        watched: Playables.isWatched(movie: m, imdb: trakt.imdb(for: m)))
+                                .sourceAccent(currentSource)
                         case .series(let s):
                             PosterCard(title: s.title, poster: s.poster)
+                                .sourceAccent(currentSource)
                         }
                     }
                     .cardButton()
@@ -245,6 +252,7 @@ struct SearchView: View {
                 ForEach(results.other) { h in
                     Button { app.open(h.playlist, thenShow: h.itemID) } label: {
                         HStack(spacing: 12) {
+                            Capsule().fill(h.playlist.avatar.gradient).frame(width: tvScaled(4), height: tvScaled(52))
                             RemoteImage(url: h.artwork, contentMode: .fill, placeholder: String(h.title.prefix(2)))
                                 .frame(width: tvScaled(44), height: tvScaled(62)).clipShape(RoundedRectangle(cornerRadius: 4))
                             VStack(alignment: .leading, spacing: 3) {
@@ -252,10 +260,7 @@ struct SearchView: View {
                                 Text(h.subtitle).font(.system(size: tvScaled(11))).foregroundStyle(Theme.secondary)
                             }
                             Spacer()
-                            HStack(spacing: 6) {
-                                MiniAvatar(playlist: h.playlist, size: tvScaled(22))
-                                Text(h.playlist.name).font(.system(size: tvScaled(11))).foregroundStyle(Theme.secondary)
-                            }
+                            SourceBadge(source: h.playlist)
                         }
                         .padding(.horizontal, Theme.edge).padding(.vertical, 4)
                         .contentShape(Rectangle())
@@ -263,6 +268,37 @@ struct SearchView: View {
                     .plainTVButton()
                 }
             }
+        }
+    }
+}
+
+/// Bron van een zoekresultaat: naam op de kleur van de avatar van die bron.
+struct SourceBadge: View {
+    let source: PlaylistSource
+    var body: some View {
+        HStack(spacing: 4) {
+            AvatarGlyph(avatar: source.avatar, size: tvScaled(8))
+                .frame(width: tvScaled(14), height: tvScaled(14))
+                .clipShape(Circle())
+            Text(source.name).font(.system(size: tvScaled(10), weight: .bold)).lineLimit(1)
+        }
+        .foregroundStyle(.white)
+        .padding(.leading, 3).padding(.trailing, 7).padding(.vertical, 2)
+        .background(source.avatar.gradient, in: Capsule())
+    }
+}
+
+extension View {
+    /// Kleuraccent en naam van de bron (alleen als er meerdere bronnen zijn).
+    @ViewBuilder func sourceAccent(_ source: PlaylistSource?) -> some View {
+        if let source {
+            self
+                .overlay(alignment: .bottom) { Rectangle().fill(source.avatar.gradient).frame(height: tvScaled(3)) }
+                .overlay(alignment: .topLeading) {
+                    SourceBadge(source: source).frame(maxWidth: Theme.posterWidth - 8, alignment: .leading).padding(4)
+                }
+        } else {
+            self
         }
     }
 }

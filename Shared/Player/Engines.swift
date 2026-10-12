@@ -73,8 +73,11 @@ final class VLCEngine: PlaybackEngine {
     private let player = VLCMediaPlayer()
     let view: PlatformView = makeBlackView()
     private var pendingStart: Double?
+    /// Zendervoorbeeld: zonder geluid
+    private let silent: Bool
 
-    init() {
+    init(silent: Bool = false) {
+        self.silent = silent
         player.drawable = view
         #if !os(macOS)
         // na de intro-tune (ambient) weer echte afspeel-audio, ook met de stil-schakelaar aan
@@ -123,6 +126,7 @@ final class VLCEngine: PlaybackEngine {
         media.addOption(":network-caching=\(live ? 1500 : 3000)")
         media.addOption(":http-user-agent=\(Secrets.userAgent)")
         media.addOption(":http-reconnect")
+        if silent { media.addOption(":no-audio") }
         // ook de tekstweergave van VLC zelf (iOS/tvOS); hoger getal = kleiner
         let sel = NSSelectorFromString("setTextRendererFontSize:")
         if player.responds(to: sel) {
@@ -161,6 +165,28 @@ final class VLCEngine: PlaybackEngine {
     func selectSubtitle(_ t: MediaTrack?) { player.currentVideoSubTitleIndex = t.flatMap { Int32($0.id) } ?? -1 }
     func addSubtitle(_ file: URL) { _ = player.addPlaybackSlave(file, type: .subtitle, enforce: true) }
     func setSubtitleDelay(_ seconds: Double) { player.currentVideoSubTitleDelay = Int(seconds * 1_000_000) }
+
+    #if os(tvOS)
+    /// Schermstand voor de stream (framerate uit de VLC-sporen; VLC speelt altijd SDR af).
+    func displayCriteria() -> AVDisplayCriteria? {
+        guard let info = player.media?.tracksInformation as? [[String: Any]] else { return nil }
+        for t in info where (t["type"] as? String) == "video" {
+            let num = (t["frame_rate_num"] as? NSNumber)?.doubleValue ?? 0
+            let den = (t["frame_rate_den"] as? NSNumber)?.doubleValue ?? 0
+            guard num > 0, den > 0 else { continue }
+            let fps = Float(num / den)
+            guard fps > 10, fps < 130 else { continue }
+            let w = Int32((t["width"] as? NSNumber)?.intValue ?? 1920)
+            let h = Int32((t["height"] as? NSNumber)?.intValue ?? 1080)
+            var fd: CMVideoFormatDescription?
+            CMVideoFormatDescriptionCreate(allocator: kCFAllocatorDefault, codecType: kCMVideoCodecType_H264,
+                                           width: max(w, 16), height: max(h, 16), extensions: nil, formatDescriptionOut: &fd)
+            guard let fd else { return nil }
+            return AVDisplayCriteria(refreshRate: fps, formatDescription: fd)
+        }
+        return nil
+    }
+    #endif
 
     func setAspect(_ a: PlayerController.Aspect) {
         switch a {
@@ -207,12 +233,17 @@ final class AVEngine: PlaybackEngine {
     /// Beeld-in-beeld (iPhone, iPad en Apple TV)
     private(set) var pip: AVPictureInPictureController?
     private let pipDelegate = PiPDelegate()
+    /// Zendervoorbeeld: zonder geluid, lage bitrate, geen AirPlay en geen beeld-in-beeld
+    private let silent: Bool
 
-    init() {
+    init(silent: Bool = false) {
+        self.silent = silent
         layerView.backgroundColor = .black
         layerView.playerLayer.player = player
         layerView.playerLayer.videoGravity = .resizeAspect
-        player.allowsExternalPlayback = true
+        player.allowsExternalPlayback = !silent
+        player.isMuted = silent
+        if silent { return }
         if AVPictureInPictureController.isPictureInPictureSupported() {
             pip = AVPictureInPictureController(playerLayer: layerView.playerLayer)
             pip?.delegate = pipDelegate
@@ -266,6 +297,11 @@ final class AVEngine: PlaybackEngine {
         let asset = AVURLAsset(url: url, options: ["AVURLAssetHTTPHeaderFieldsKey": ["User-Agent": Secrets.userAgent]])
         let item = AVPlayerItem(asset: asset)
         item.preferredForwardBufferDuration = live ? 4 : 0
+        if silent {
+            item.preferredPeakBitRate = 2_500_000
+            item.preferredMaximumResolution = CGSize(width: 960, height: 540)
+            player.isMuted = true
+        }
         item.textStyleRules = Self.textRules(SubtitleSize.current)
         observers = [
             NotificationCenter.default.addObserver(forName: .AVPlayerItemFailedToPlayToEndTime, object: item, queue: .main) { [weak self] _ in
@@ -277,12 +313,6 @@ final class AVEngine: PlaybackEngine {
         ]
         player.replaceCurrentItem(with: item)
         player.playImmediately(atRate: rate)
-        #if os(tvOS)
-        // Apple TV: schakel het scherm naar het juiste dynamisch bereik (HDR/Dolby Vision) en framerate
-        if let dm = layerView.window?.avDisplayManager, dm.isDisplayCriteriaMatchingEnabled {
-            dm.preferredDisplayCriteria = asset.preferredDisplayCriteria
-        }
-        #endif
         if let s = startFraction, s > 0.01 {
             Task { @MainActor in
                 for _ in 0..<40 {
@@ -296,10 +326,23 @@ final class AVEngine: PlaybackEngine {
     func pause() { player.pause() }
     func stop() {
         player.pause(); player.replaceCurrentItem(with: nil)
-        #if os(tvOS)
-        layerView.window?.avDisplayManager.preferredDisplayCriteria = nil
-        #endif
     }
+
+    #if os(tvOS)
+    /// Schermstand voor de stream: framerate en formaat (incl. HDR/Dolby Vision) van het videospoor; anders
+    /// wat het bestand zelf aangeeft.
+    func displayCriteria() -> AVDisplayCriteria? {
+        guard let item = player.currentItem else { return nil }
+        for t in item.tracks {
+            guard let a = t.assetTrack, a.mediaType == .video else { continue }
+            let fps = t.currentVideoFrameRate > 0 ? t.currentVideoFrameRate : a.nominalFrameRate
+            guard fps > 10, let raw = a.formatDescriptions.first else { continue }
+            let fd = raw as! CMFormatDescription
+            return AVDisplayCriteria(refreshRate: fps, formatDescription: fd)
+        }
+        return item.asset.preferredDisplayCriteria
+    }
+    #endif
     func seek(toFraction f: Double) {
         guard duration > 0 else { return }
         player.seek(to: CMTime(seconds: duration * min(max(f, 0), 1), preferredTimescale: 600))

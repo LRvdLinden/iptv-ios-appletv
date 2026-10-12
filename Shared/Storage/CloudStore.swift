@@ -33,6 +33,10 @@ final class CloudStore: ObservableObject {
     @Published private(set) var photos: [UUID: Data] = [:]
     /// Kijkgeschiedenis, per profiel (afspeellijst)
     @Published private(set) var history: [HistoryEntry] = []
+    /// Eigen collecties (voor het hele account), inclusief tombstones (`deleted`)
+    @Published private(set) var collections: [BingrCollection] = []
+    /// Startscherm per profiel (profiel-ID → indeling)
+    @Published private(set) var homeLayouts: [String: HomeLayout] = [:]
     /// Het profiel dat nu open is (gezet door PlaylistService)
     var activePlaylistID: UUID?
 
@@ -186,7 +190,8 @@ final class CloudStore: ObservableObject {
                    progress = "progress.v1", watched = "watched.v1", recent = "recent.v1",
                    custom = "custom.v1", parental = "parental.v1", reminders = "reminders.v1",
                    photos = "photos.v1", history = "history.v1",
-                   profiles = "profiles.v1", mainSource = "mainsource.v1", mainProfile = "mainprofile.v1"
+                   profiles = "profiles.v1", mainSource = "mainsource.v1", mainProfile = "mainprofile.v1",
+                   collections = "collections.v1", homeLayout = "homelayout.v1"
     }
 
     private init() {
@@ -226,6 +231,8 @@ final class CloudStore: ObservableObject {
         customizations = decode([UUID: Customization].self, K.custom) ?? [:]
         parental = decode(ParentalSettings.self, K.parental) ?? ParentalSettings()
         photos = decode([UUID: Data].self, K.photos) ?? [:]
+        collections = decode([BingrCollection].self, K.collections) ?? collections
+        homeLayouts = decode([String: HomeLayout].self, K.homeLayout) ?? homeLayouts
         // wachtwoorden/tokens ook via iCloud KV delen (Apple TV krijgt ze anders niet) — op de achtergrond,
         // sleutelhanger-acties zijn traag en blokkeerden het wisselen van profiel
         let secretKeys = playlists.flatMap { [$0.passwordKey, "playlist.\($0.id.uuidString).session"] }
@@ -370,6 +377,8 @@ final class CloudStore: ObservableObject {
         parental = ParentalSettings(); write(parental, K.parental)
         reminders = []; write(reminders, K.reminders)
         photos = [:]; write(photos, K.photos)
+        collections = []; write(collections, K.collections)
+        homeLayouts = [:]; write(homeLayouts, K.homeLayout)
         favorites = []; myList = []; localWatched = []; recentChannels = []; history = []; progress = [:]
         activeProfileID = nil
         activePlaylistID = nil
@@ -390,7 +399,7 @@ final class CloudStore: ObservableObject {
     // MARK: overige gegevens via de Bingr-account (build 44, zie StateSync)
 
     /// Soort lokale wijziging, zodat StateSync weet wat er (vertraagd) naar de account moet.
-    enum StateEdit { case profile, progress, prefs, reminders, settings }
+    enum StateEdit { case profile, progress, prefs, reminders, settings, collections }
     /// Eigen wijziging op dit apparaat: (profiel-ID of nil, soort). Niet bij overnemen uit iCloud of de account.
     let stateEdited = PassthroughSubject<(UUID?, StateEdit), Never>()
 
@@ -462,6 +471,107 @@ final class CloudStore: ObservableObject {
         parental.enabled = enabled
         parental.autoLockAdult = autoLockAdult
         write(parental, K.parental)
+    }
+
+    // MARK: collecties (build 51)
+
+    /// Collecties zoals de app ze toont: zonder tombstones, op volgorde.
+    var activeCollections: [BingrCollection] {
+        collections.filter { !$0.deleted }.sorted { $0.order != $1.order ? $0.order < $1.order : $0.name < $1.name }
+    }
+
+    func collection(_ id: String) -> BingrCollection? { collections.first { $0.id == id && !$0.deleted } }
+
+    /// Nieuw of gewijzigd (eigen wijziging: `updatedAt` = nu).
+    func upsertCollection(_ c: BingrCollection) {
+        var c = c
+        c.updatedAt = Date()
+        if let i = collections.firstIndex(where: { $0.id == c.id }) {
+            collections[i] = c
+        } else {
+            c.order = (activeCollections.map(\.order).max() ?? -1) + 1
+            collections.append(c)
+        }
+        write(collections, K.collections)
+        stateEdited.send((nil, .collections))
+    }
+
+    /// Verwijderen = tombstone (zelfde regels als bij profielen).
+    func deleteCollection(_ id: String) {
+        guard let i = collections.firstIndex(where: { $0.id == id }) else { return }
+        let now = Date()
+        collections[i].deleted = true
+        collections[i].deletedAt = now
+        collections[i].updatedAt = now
+        collections[i].items = []
+        write(collections, K.collections)
+        stateEdited.send((nil, .collections))
+    }
+
+    /// Nieuwe volgorde (ids van boven naar beneden).
+    func reorderCollections(_ ids: [String]) {
+        let now = Date()
+        for (n, id) in ids.enumerated() {
+            guard let i = collections.firstIndex(where: { $0.id == id }), collections[i].order != n else { continue }
+            collections[i].order = n
+            collections[i].updatedAt = now
+        }
+        write(collections, K.collections)
+        stateEdited.send((nil, .collections))
+    }
+
+    func toggleInCollection(_ id: String, _ item: CollectionItem) {
+        guard var c = collection(id), c.kind == .manual else { return }
+        if let i = c.items.firstIndex(of: item) { c.items.remove(at: i) } else { c.items.append(item) }
+        upsertCollection(c)
+    }
+
+    /// Collecties uit de Bingr-account (StateSync); telt niet als eigen wijziging.
+    func replaceCollections(_ list: [BingrCollection]) {
+        guard list != collections else { return }
+        collections = list
+        write(collections, K.collections)
+    }
+
+    // MARK: startscherm per profiel (build 51)
+
+    /// Indeling van het startscherm van het actieve profiel.
+    var homeLayout: HomeLayout { (activeProfileID ?? mainProfileID).flatMap { homeLayouts[$0.uuidString] } ?? HomeLayout() }
+
+    func homeLayout(for profile: UUID) -> HomeLayout? { homeLayouts[profile.uuidString] }
+
+    /// Eigen wijziging van het startscherm van het actieve profiel.
+    func setHomeLayout(_ l: HomeLayout) {
+        guard let id = activeProfileID ?? mainProfileID else { return }
+        var l = l
+        l.updatedAt = Date()
+        homeLayouts[id.uuidString] = l
+        write(homeLayouts, K.homeLayout)
+        edited(.profile)
+    }
+
+    /// Startscherm uit de Bingr-account (StateSync); telt niet als eigen wijziging.
+    func setSyncedHomeLayout(_ profile: UUID, _ l: HomeLayout?) {
+        guard homeLayouts[profile.uuidString] != l else { return }
+        homeLayouts[profile.uuidString] = l
+        write(homeLayouts, K.homeLayout)
+    }
+
+    // MARK: terugkijk-correctie per zender (build 51)
+
+    /// Minuten (−120…120) die het begintijdstip van terugkijken verschuiven; 0 = geen correctie.
+    func catchupOffset(_ playlist: UUID, _ channelID: String) -> Int {
+        playlists.first { $0.id == playlist }?.catchupOffsets?[channelID] ?? 0
+    }
+
+    func setCatchupOffset(_ playlist: UUID, _ channelID: String, _ minutes: Int) {
+        guard var p = playlists.first(where: { $0.id == playlist }) else { return }
+        let m = min(max(minutes, -120), 120)
+        var offsets = p.catchupOffsets ?? [:]
+        guard (offsets[channelID] ?? 0) != m else { return }
+        offsets[channelID] = m == 0 ? nil : m
+        p.catchupOffsets = offsets
+        upsert(p)
     }
 
     // MARK: favorieten / mijn lijst

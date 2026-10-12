@@ -23,6 +23,9 @@ struct HomeView: View {
     @State private var traktContinue: [ContinueItem] = []
     /// Scrollpositie apart bijhouden: alleen de bovenbalk leest hem, zodat Home niet bij elke scrollframe opnieuw rekent.
     @State private var scroll = ScrollTracker()
+    /// Inhoud van de collecties (één keer per lijst of wijziging, op de achtergrond)
+    @State private var collectionContent: [String: CollectionContent] = [:]
+    @State private var collecting: CollectionTarget?
 
     private var lib: Library { playlists.library }
     private var pid: UUID? { playlists.source?.id }
@@ -63,6 +66,15 @@ struct HomeView: View {
             matchTraktPlayback()
         }
         .onChange(of: trakt.playback.count) { _, _ in matchTraktPlayback() }
+        .task(id: CollectionsKey(version: playlists.libraryVersion, collections: store.activeCollections)) {
+            let l = lib, list = store.activeCollections, src = pid
+            collectionContent = await Task.detached(priority: .userInitiated) {
+                var out: [String: CollectionContent] = [:]
+                for c in list { out[c.id] = CollectionResolver.resolve(c, lib: l, source: src) }
+                return out
+            }.value
+        }
+        .sheet(item: $collecting) { AddToCollectionSheet(target: $0) }
         .fullScreenCover(item: $category) { CategoryView(target: $0) }
         .resumeDialog($resumeChoice) { detail = $0 }
         #if !os(tvOS)
@@ -75,51 +87,32 @@ struct HomeView: View {
     // MARK: rijen
 
     @ViewBuilder private var rows: some View {
-        let kids = store.activeProfile?.kids ?? false
-        let top10Movies = trendingMovies.isEmpty ? nil : top10Row(kids ? L("Top 10 kids movies") : L("Top 10 movies today"), movies: Array(trendingMovies.prefix(10)))
-        let top10Series = trendingSeries.isEmpty ? nil : top10Row(kids ? L("Top 10 kids series") : L("Top 10 series today"), series: Array(trendingSeries.prefix(10)))
         switch filter {
         case .all:
-            continueRow
-            myListRows
-            recentRow
-            forYouRow
-            // zoals Netflix: onder Voor jou de Top 10 series, daarna de films
-            if let top10Series { top10Series }
-            if let top10Movies { top10Movies }
+            // Home: de rijen zoals ingesteld bij Mijn Bingr → Startscherm (per profiel)
+            ForEach(homeRows, id: \.self) { key in homeRow(key) }
         case .movies:
             continueRow
             myListRows
             recentRow
             forYouRow
-            if let top10Movies { top10Movies }
+            top10MoviesRow
+            ForEach(store.activeCollections) { c in collectionRow(c) }
         case .series:
             continueRow
             myListRows
             forYouRow
-            if let top10Series { top10Series }
+            top10SeriesRow
+            ForEach(store.activeCollections) { c in collectionRow(c) }
         }
 
-        if filter == .all {
-            let favs = pid.map { p in store.favorites.compactMap { k in index.channel(forKey: k, playlist: p) } } ?? []
-            if !favs.isEmpty {
-                MediaRow(title: L("Favorite channels")) {
-                    ForEach(favs) { c in
-                        Button { app.play(Playables.channel(c, now: lib.nowPlaying(c)), zap: favs) } label: {
-                            ChannelCard(channel: c, now: lib.nowPlaying(c), favorite: true)
-                        }.cardButton()
-                    }
-                }
-            }
-        }
-
-        if filter != .series {
-            ForEach(index.movieGroups.prefix(filter == .all ? 8 : 40)) { g in
+        if filter == .movies {
+            ForEach(index.movieGroups.prefix(40)) { g in
                 movieRow(g.id, Array(g.items.prefix(40)), all: g.items)
             }
         }
-        if filter != .movies {
-            ForEach(index.seriesGroups.prefix(filter == .all ? 8 : 40)) { g in
+        if filter == .series {
+            ForEach(index.seriesGroups.prefix(40)) { g in
                 seriesRow(g.id, Array(g.items.prefix(40)), all: g.items)
             }
         }
@@ -131,6 +124,131 @@ struct HomeView: View {
                     .foregroundStyle(Theme.secondary)
             }
             .frame(maxWidth: .infinity).padding(.top, 60)
+        }
+    }
+
+    /// Zichtbare rijen van het startscherm, in de eigen volgorde.
+    private var homeRows: [String] {
+        store.homeLayout.effective(collections: store.activeCollections).filter(\.visible).map(\.key)
+    }
+
+    @ViewBuilder private func homeRow(_ key: String) -> some View {
+        switch key {
+        case "continue": continueRow
+        case "mylist": myListRows
+        case "recent": recentRow
+        case "foryou": forYouRow
+        case "top10":
+            // zoals Netflix: eerst de Top 10 series, daarna de films
+            top10SeriesRow
+            top10MoviesRow
+        case "live": favoriteChannelsRow
+        case "categories":
+            ForEach(index.movieGroups.prefix(8)) { g in
+                movieRow(g.id, Array(g.items.prefix(40)), all: g.items)
+            }
+            ForEach(index.seriesGroups.prefix(8)) { g in
+                seriesRow(g.id, Array(g.items.prefix(40)), all: g.items)
+            }
+        case "movies":
+            let top = index.popularMovies
+            if !top.isEmpty { movieRow(L("Movies"), Array(top.prefix(30)), all: top) }
+        case "series":
+            let top = index.popularSeries
+            if !top.isEmpty { seriesRow(L("Series"), Array(top.prefix(30)), all: top) }
+        default:
+            if key.hasPrefix(HomeLayout.collectionPrefix),
+               let c = store.collection(String(key.dropFirst(HomeLayout.collectionPrefix.count))) {
+                collectionRow(c)
+            }
+        }
+    }
+
+    @ViewBuilder private var top10MoviesRow: some View {
+        let kids = store.activeProfile?.kids ?? false
+        if !trendingMovies.isEmpty {
+            top10Row(kids ? L("Top 10 kids movies") : L("Top 10 movies today"), movies: Array(trendingMovies.prefix(10)))
+        }
+    }
+
+    @ViewBuilder private var top10SeriesRow: some View {
+        let kids = store.activeProfile?.kids ?? false
+        if !trendingSeries.isEmpty {
+            top10Row(kids ? L("Top 10 kids series") : L("Top 10 series today"), series: Array(trendingSeries.prefix(10)))
+        }
+    }
+
+    /// Favoriete zenders; zonder favorieten de laatst bekeken zenders.
+    @ViewBuilder private var favoriteChannelsRow: some View {
+        let favs = pid.map { p in store.favorites.compactMap { k in index.channel(forKey: k, playlist: p) } } ?? []
+        let recent = favs.isEmpty ? (pid.map { p in store.recentChannels.compactMap { k in index.channel(forKey: k, playlist: p) } } ?? []) : []
+        let list = favs.isEmpty ? recent : favs
+        if !list.isEmpty {
+            MediaRow(title: favs.isEmpty ? L("Recently watched channels") : L("Favorite channels")) {
+                ForEach(list) { c in
+                    Button { app.play(Playables.channel(c, now: lib.nowPlaying(c)), zap: list) } label: {
+                        ChannelCard(channel: c, now: lib.nowPlaying(c), favorite: !favs.isEmpty)
+                    }
+                    .cardButton()
+                    .contextMenu {
+                        Button { collecting = .channel(c) } label: {
+                            Label(L("Add to collection…"), systemImage: "rectangle.stack.badge.plus")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Rij van een eigen collectie (op Films/Series alleen de films of series daaruit).
+    @ViewBuilder private func collectionRow(_ c: BingrCollection) -> some View {
+        let content = collectionContent[c.id] ?? CollectionContent()
+        let channels = filter == .all ? content.channels : []
+        let movies = filter == .series ? [] : content.movies
+        let series = filter == .movies ? [] : content.series
+        if !(channels.isEmpty && movies.isEmpty && series.isEmpty) {
+            let titles: [DetailTarget] = movies.map { .movie($0) } + series.map { .series($0) }
+            MediaRow(title: c.name, onSeeAll: seeAll(c.name, titles)) {
+                ForEach(channels.prefix(40)) { ch in
+                    Button { app.play(Playables.channel(ch, now: lib.nowPlaying(ch)), zap: channels) } label: {
+                        ChannelCard(channel: ch, now: lib.nowPlaying(ch))
+                    }
+                    .cardButton()
+                    .contextMenu { collectionItemMenu(c, .init(type: .channel, id: ch.id)) }
+                }
+                ForEach(titles.prefix(60)) { t in
+                    Button { detail = t } label: {
+                        switch t {
+                        case .movie(let m):
+                            PosterCard(title: m.title, poster: m.poster, imdbID: trakt.imdb(for: m),
+                                       watched: Playables.isWatched(movie: m, imdb: trakt.imdb(for: m)),
+                                       progress: store.progress[m.id]?.fraction)
+                        case .series(let se):
+                            PosterCard(title: se.title, poster: se.poster, imdbID: trakt.imdb(for: se))
+                        }
+                    }
+                    .cardButton()
+                    .contextMenu {
+                        collectionItemMenu(c, t.isSeries ? .init(type: .series, id: t.id) : .init(type: .movie, id: t.id))
+                    }
+                }
+            }
+        }
+    }
+
+    private func seeAll(_ title: String, _ items: [DetailTarget]) -> (() -> Void)? {
+        guard items.count > 6 else { return nil }
+        return { category = CategoryTarget(title: title, items: items) }
+    }
+
+    @ViewBuilder private func collectionItemMenu(_ c: BingrCollection, _ item: CollectionItem) -> some View {
+        if c.kind == .manual {
+            Button(role: .destructive) { store.toggleInCollection(c.id, item) } label: {
+                Label(L("Remove from collection"), systemImage: "minus.circle")
+            }
+        }
+        Button { collecting = CollectionTarget(item: item, title: c.name) } label: {
+            Label(L("Add to collection…"), systemImage: "rectangle.stack.badge.plus")
         }
     }
 
@@ -260,6 +378,16 @@ struct HomeView: View {
                                badge: count > 0 ? L("%d WATCHED", count) : nil)
                 }
                 .cardButton()
+                .contextMenu {
+                    if let pid {
+                        Button { store.toggleMyList(pid, s.id) } label: {
+                            Label(store.inMyList(pid, s.id) ? L("Remove from My List") : L("Add to My List"), systemImage: "plus")
+                        }
+                    }
+                    Button { collecting = .series(s) } label: {
+                        Label(L("Add to collection…"), systemImage: "rectangle.stack.badge.plus")
+                    }
+                }
             }
         }
     }
@@ -292,6 +420,9 @@ struct HomeView: View {
             Button { store.toggleMyList(pid, m.id) } label: {
                 Label(store.inMyList(pid, m.id) ? L("Remove from My List") : L("Add to My List"), systemImage: "plus")
             }
+        }
+        Button { collecting = .movie(m) } label: {
+            Label(L("Add to collection…"), systemImage: "rectangle.stack.badge.plus")
         }
     }
 
@@ -490,6 +621,12 @@ struct HomeView: View {
 
 @Observable final class ScrollTracker { var y: CGFloat = 0 }
 
+/// Opnieuw uitrekenen als de lijst of de collecties veranderen.
+private struct CollectionsKey: Equatable {
+    let version: Int
+    let collections: [BingrCollection]
+}
+
 #if !os(tvOS)
 /// iOS bovenbalk (wordt donker bij scrollen, zoals Netflix).
 private struct HomeTopBar: View {
@@ -536,6 +673,9 @@ struct HomeIndex {
     var channelByID: [String: Channel] = [:]
     var movieByIMDb: [String: Movie] = [:]
     var seriesTitles: Set<String> = []
+    /// Rij "Films"/"Series" op het startscherm: best beoordeeld, anders nieuwst
+    var popularMovies: [Movie] = []
+    var popularSeries: [Series] = []
 
     static func build(_ lib: Library) -> HomeIndex {
         var x = HomeIndex()
@@ -557,6 +697,9 @@ struct HomeIndex {
         x.seriesGroups = sOrder.map { Group(id: $0, items: sGroups[$0] ?? []) }
         for c in lib.channels { x.channelByID[c.id] = c }
         x.recent = lib.movies.filter { $0.addedAt != nil }.sorted { ($0.addedAt ?? .distantPast) > ($1.addedAt ?? .distantPast) }
+        x.popularMovies = Array(lib.movies.filter { $0.poster != nil }
+            .sorted { ($0.rating ?? 0, $0.addedAt ?? .distantPast) > ($1.rating ?? 0, $1.addedAt ?? .distantPast) }.prefix(60))
+        x.popularSeries = Array(lib.series.filter { $0.poster != nil }.sorted { ($0.rating ?? 0) > ($1.rating ?? 0) }.prefix(60))
         return x
     }
 
