@@ -106,7 +106,7 @@ struct PlayerScreen: View {
                         Text(note).font(.subheadline).foregroundStyle(Theme.secondary).multilineTextAlignment(.center)
                     }
                     HStack(spacing: 20) {
-                        NetflixButton(title: cast.isPlaying ? L("Pause") : L("Play"), icon: cast.isPlaying ? "pause.fill" : "play.fill") { cast.togglePause() }
+                        NetflixButton(title: cast.isPlaying ? L("Pause") : L("Play"), icon: cast.isPlaying ? "pause.fill" : "play.fill", kind: .play) { cast.togglePause() }
                         NetflixButton(title: L("Stop casting"), icon: "xmark", kind: .secondary) { cast.disconnect(); player.resume() }
                     }
                 }
@@ -348,7 +348,7 @@ struct PlayerScreen: View {
                                 barButton("forward.frame", L("Mark intro here")) { panel = .intro }
                             }
                             if player.isLive {
-                                barButton("arrow.triangle.branch", L("Other source")) { openAlternatives() }
+                                barButton(Theme.otherSourceIcon, L("Other source")) { openAlternatives() }
                             }
                             if player.isLive && !playlists.library.channels.isEmpty {
                                 barButton("square.grid.2x2", "Multiview") { openMultiview() }
@@ -694,7 +694,7 @@ struct PlayerScreen: View {
             HStack(spacing: tvScaled(12)) {
                 NetflixButton(title: L("Try again"), icon: "arrow.clockwise") { retry() }
                 if player.item.type != .live || player.item.channelID != nil {
-                    NetflixButton(title: L("Other source"), icon: "arrow.triangle.branch", kind: .secondary) { openAlternatives() }
+                    NetflixButton(title: L("Other source"), icon: Theme.otherSourceIcon, kind: .secondary) { openAlternatives() }
                 }
                 if canSwitchEngine {
                     NetflixButton(title: L("Other player"), icon: "arrow.left.arrow.right", kind: .secondary) {

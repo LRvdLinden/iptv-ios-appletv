@@ -45,7 +45,7 @@ struct HeroBanner: View {
                             .shadow(radius: 8)
                         Text(tags).font(.system(size: 12, weight: .medium)).foregroundStyle(.white.opacity(0.85))
                         HStack(spacing: 10) {
-                            NetflixButton(title: L("Play"), icon: "play.fill", action: onPlay).frame(maxWidth: .infinity)
+                            NetflixButton(title: L("Play"), icon: "play.fill", kind: .play, action: onPlay).frame(maxWidth: .infinity)
                             NetflixButton(title: L("Info"), icon: "info.circle", kind: .secondary, action: onInfo).frame(maxWidth: .infinity)
                         }
                     }
@@ -81,7 +81,7 @@ struct HeroBanner: View {
                         .frame(maxWidth: 900, alignment: .leading)
                 }
                 HStack(spacing: 24) {
-                    NetflixButton(title: L("Play"), icon: "play.fill", action: onPlay)
+                    NetflixButton(title: L("Play"), icon: "play.fill", kind: .play, action: onPlay)
                     NetflixButton(title: L("More info"), icon: "info.circle", kind: .secondary, action: onInfo)
                 }
             }

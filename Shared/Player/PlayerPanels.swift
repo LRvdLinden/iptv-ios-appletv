@@ -386,10 +386,9 @@ struct NextEpisodeCard: View {
                         Label(L("Starts in %d s", secondsLeft), systemImage: "play.fill")
                             .font(.system(size: tvScaled(13), weight: .bold))
                             .padding(.horizontal, tvScaled(12)).padding(.vertical, tvScaled(7))
-                            .foregroundStyle(.black)
-                            .background(.white, in: RoundedRectangle(cornerRadius: tvScaled(6)))
                     }
-                    .plainTVButton()
+                    // afspeelknop in de accentkleur (build 58)
+                    .buttonStyle(PlayButtonStyle(cornerRadius: tvScaled(6)))
                     Button(action: onDismiss) {
                         Text(autoplay ? L("Watch credits") : L("Hide"))
                             .font(.system(size: tvScaled(13), weight: .semibold))

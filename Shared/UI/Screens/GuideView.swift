@@ -190,11 +190,11 @@ struct ProgramSheet: View {
             if let d = program.description { Text(d).font(.system(size: tvScaled(14))).foregroundStyle(.white.opacity(0.85)) }
             HStack(spacing: tvScaled(14)) {
                 if program.isNow {
-                    NetflixButton(title: L("Watch live"), icon: "play.fill") {
+                    NetflixButton(title: L("Watch live"), icon: "play.fill", kind: .play) {
                         dismiss(); app.play(Playables.channel(channel, now: program), zap: playlists.library.channels)
                     }
                 } else if canCatchup, let u = playlists.catchupURL(channel, program) {
-                    NetflixButton(title: L("Watch from the start"), icon: "clock.arrow.circlepath") {
+                    NetflixButton(title: L("Watch from the start"), icon: "clock.arrow.circlepath", kind: .play) {
                         dismiss()
                         app.play(PlayableItem(id: "\(channel.id)-cu-\(Int(program.start.timeIntervalSince1970))", title: program.title,
                                               subtitle: channel.name, url: u, type: .movie, artwork: channel.logo))

@@ -256,7 +256,10 @@ struct DetailView: View {
                 shareButton // geen deelknop (ook geen QR) op tv's, zie docs/ACCOUNT.md
                 #endif
                 Button { Task { await openSources() } } label: {
-                    Text(L("Other sources")).font(.system(size: tvScaled(15), weight: .medium))
+                    Label(L("Other sources"), systemImage: Theme.otherSourceIcon)
+                        .font(.system(size: tvScaled(15), weight: .medium))
+                        .lineLimit(1).minimumScaleFactor(0.8)
+                        .padding(.horizontal, tvScaled(10))
                         .frame(maxWidth: .infinity).frame(height: tvScaled(50))
                         .background(Color.white.opacity(0.12), in: Capsule())
                         .overlay(Capsule().stroke(.white.opacity(0.12)))
@@ -272,18 +275,22 @@ struct DetailView: View {
         Button { play() } label: {
             Label(playTitle, systemImage: "play.fill")
                 .font(.system(size: tvScaled(16), weight: .semibold))
-                .foregroundStyle(.black)
                 .frame(maxWidth: .infinity).frame(height: tvScaled(52))
-                .background(.white, in: Capsule())
+                .contentShape(Capsule())
                 .overlay(alignment: .bottom) {
+                    // voortgang: wit op de accentkleur (build 58)
                     if let p = resumeFraction, p > 0.02 {
                         GeometryReader { g in
-                            Capsule().fill(Theme.red).frame(width: g.size.width * p, height: 3)
+                            ZStack(alignment: .leading) {
+                                Capsule().fill(.white.opacity(0.3))
+                                Capsule().fill(.white).frame(width: g.size.width * p)
+                            }
                         }.frame(height: 3).padding(.horizontal, 24).padding(.bottom, 6)
                     }
                 }
         }
-        .plainTVButton()
+        // afspeelknop in de accentkleur van het profiel, met eigen tvOS-focus (build 58)
+        .buttonStyle(PlayButtonStyle())
         .disabled(isMovie ? false : episodes.isEmpty && !loading)
     }
 

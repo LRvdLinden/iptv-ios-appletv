@@ -12,6 +12,8 @@ enum Theme {
     static let secondary = Color(hex: 0xB3B3B3)
     static let imdb = Color(hex: 0xF5C518)
     static let green = Color(hex: 0x46D369)
+    /// Icoon voor "Andere bron(nen)" (build 58): overal hetzelfde, op detailpagina's, in de speler en bij een fout.
+    static let otherSourceIcon = "square.stack.3d.up"
 
     #if os(tvOS)
     static let posterWidth: CGFloat = 230
@@ -77,7 +79,7 @@ extension View {
     }
 }
 
-/// Primaire knoppen (wit "Afspelen", grijs "Meer info").
+/// Primaire knoppen (grijs "Meer info" e.d.; "Afspelen" heeft vanaf build 58 `PlayButtonStyle`).
 /// Apple TV-focus zonder grijze vlakken: iets groter, schaduw, en (optioneel) gedimd als niet geselecteerd.
 struct TVLiftStyle: ButtonStyle {
     var scale: CGFloat = 1.08
@@ -110,14 +112,74 @@ extension EnvironmentValues {
     }
 }
 
+/// De afspeelknop (build 58): gevuld in de accentkleur van het actieve profiel, witte tekst en icoon.
+/// Eigen stijl die zelf `isFocused` afhandelt, zodat de systeemfocus (wit vlak) hem op Apple TV niet weer
+/// wit maakt: geselecteerd = groter, iets lichter accent, witte rand en schaduw.
+struct PlayButtonStyle: ButtonStyle {
+    /// `nil` = capsule, anders een afgeronde rechthoek met deze straal
+    var cornerRadius: CGFloat? = nil
+    var scale: CGFloat = 1.06
+    func makeBody(configuration: Configuration) -> some View {
+        Body(configuration: configuration, cornerRadius: cornerRadius, scale: scale)
+    }
+
+    private struct Body: View {
+        let configuration: ButtonStyleConfiguration
+        let cornerRadius: CGFloat?
+        let scale: CGFloat
+        @Environment(\.isFocused) private var focused
+        @Environment(\.isEnabled) private var enabled
+
+        var body: some View {
+            configuration.label
+                .foregroundStyle(.white)
+                .background { shape.fill(Theme.red) }
+                // geselecteerd: iets lichter; ingedrukt: iets donkerder
+                .overlay { shape.fill(.white.opacity(isFocused ? 0.14 : 0)) }
+                .overlay { shape.fill(.black.opacity(configuration.isPressed ? 0.18 : 0)) }
+                .overlay { shape.stroke(.white, lineWidth: isFocused ? tvScaled(2) : 0) }
+                .environment(\.tvFocused, isFocused)
+                .opacity(enabled ? 1 : 0.5)
+                .scaleEffect(configuration.isPressed ? effectiveScale * 0.97 : effectiveScale)
+                .shadow(color: .black.opacity(isFocused ? 0.7 : 0), radius: 16, y: 10)
+                .animation(.spring(response: 0.28, dampingFraction: 0.78), value: isFocused)
+                .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
+        }
+
+        private var shape: AnyShape {
+            if let r = cornerRadius { return AnyShape(RoundedRectangle(cornerRadius: r)) }
+            return AnyShape(Capsule())
+        }
+        /// Focus telt alleen op Apple TV (op iPad/Mac met toetsenbord geen sprong in grootte)
+        private var isFocused: Bool {
+            #if os(tvOS)
+            return focused
+            #else
+            return false
+            #endif
+        }
+        private var effectiveScale: CGFloat { isFocused ? scale : 1 }
+    }
+}
+
 struct NetflixButton: View {
-    enum Kind { case primary, secondary, accent }
+    /// `.play`: de primaire afspeelknop (accentkleur, zie `PlayButtonStyle`)
+    enum Kind { case primary, secondary, accent, play }
     let title: String
     let icon: String
     var kind: Kind = .primary
     let action: () -> Void
 
     var body: some View {
+        if kind == .play {
+            Button(action: action) { NetflixButtonLabel(title: title, icon: icon, kind: kind) }
+                .buttonStyle(PlayButtonStyle(cornerRadius: tvScaled(6)))
+        } else {
+            styled
+        }
+    }
+
+    @ViewBuilder private var styled: some View {
         Button(action: action) { NetflixButtonLabel(title: title, icon: icon, kind: kind) }
         #if os(tvOS)
         .buttonStyle(TVLiftStyle(scale: 1.06))
@@ -138,14 +200,29 @@ private struct NetflixButtonLabel: View {
             .font(.system(size: tvScaled(16), weight: .bold))
             .padding(.horizontal, tvScaled(22)).padding(.vertical, tvScaled(10))
             .frame(minWidth: tvScaled(120))
-            .foregroundStyle(isLight ? Color.black : Color.white)
-            .background(background, in: RoundedRectangle(cornerRadius: tvScaled(6)))
+            .modifier(Fill(kind: kind, isLight: isLight, background: background))
+    }
+
+    /// Bij `.play` tekent `PlayButtonStyle` zelf de achtergrond en tekstkleur.
+    private struct Fill: ViewModifier {
+        let kind: NetflixButton.Kind
+        let isLight: Bool
+        let background: Color
+        func body(content: Content) -> some View {
+            if kind == .play {
+                content.contentShape(RoundedRectangle(cornerRadius: tvScaled(6)))
+            } else {
+                content
+                    .foregroundStyle(isLight ? Color.black : Color.white)
+                    .background(background, in: RoundedRectangle(cornerRadius: tvScaled(6)))
+            }
+        }
     }
 
     /// Op Apple TV wordt de geselecteerde knop wit (zoals Netflix); op iPhone is Afspelen altijd wit.
     private var isLight: Bool {
         #if os(tvOS)
-        return kind != .accent && focused
+        return kind != .accent && kind != .play && focused
         #else
         return kind == .primary
         #endif
