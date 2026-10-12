@@ -20,6 +20,8 @@ _2026-10-12_
 - Zoeken: resultaten tonen de kleur van hun bron als je meerdere bronnen hebt
 - iPhone en iPad: op een extern scherm speelt de video schermvullend, de bediening blijft op je toestel
 - Website: servers, collecties, wie kijkt er nu en kijkgeschiedenis in Mijn Bingr
+- Na het wijzigen van je wachtwoord word je op al je apparaten automatisch uitgelogd
+- Website: Apparaten in Mijn Bingr in- en uitklapbaar
 
 ## Versie 1.0.0 · Build 50
 _2026-10-12_
