@@ -1,5 +1,20 @@
 [
  {
+  "build": 47,
+  "version": "1.0.0",
+  "date": "2026-10-12",
+  "platforms": [
+   "apple",
+   "android"
+  ],
+  "nl": [
+   "Onderaan Mijn Bingr: app-icoon, versie- en buildnummer en copyright"
+  ],
+  "en": [
+   "Bottom of My Bingr: app icon, version and build number and copyright"
+  ]
+ },
+ {
   "build": 46,
   "version": "1.0.0",
   "date": "2026-10-12",

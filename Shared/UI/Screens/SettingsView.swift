@@ -37,8 +37,14 @@ struct SettingsView: View {
 
     enum PinMode: String, Identifiable { case set, unlock, disable; var id: String { rawValue } }
 
+    /// Laatste focusbare rijen (tvOS scrollt dan door tot de footer)
+    enum BottomFocus: Hashable { case language, advanced }
+    @FocusState private var bottomFocus: BottomFocus?
+    private static let footerID = "bingr.footer"
+
     var body: some View {
         NavigationStack {
+            ScrollViewReader { proxy in
             List {
                 Section { MyBingrHeader() }
                     .listRowBackground(Color.clear)
@@ -61,10 +67,22 @@ struct SettingsView: View {
                 languageSection
                 if isMain { adminFooterSections }
                 Section(L("About")) {
-                    LabeledContent(L("Version"), value: "\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0") (\(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"))")
                     LabeledContent(L("IMDb data"), value: Secrets.isSet(Secrets.omdbAPIKey) ? L("Active (OMDb)") : L("No OMDb key"))
                 }
                 if isMain { advancedSection }
+                // Build 47: app-icoon, versie en copyright helemaal onderaan
+                Section { AboutFooter() }
+                    .id(Self.footerID)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+            }
+            #if os(tvOS)
+            // De footer is niet focusbaar: bij de laatste focusbare rij er zelf naartoe scrollen
+            .onChange(of: bottomFocus) { _, f in
+                guard let f, f == (isMain ? .advanced : .language) else { return }
+                withAnimation { proxy.scrollTo(Self.footerID, anchor: .bottom) }
+            }
+            #endif
             }
             .navigationTitle(store.activeProfile?.name ?? L("My Bingr"))
             // persoonlijke kijkvoorkeuren horen bij het profiel
@@ -144,6 +162,7 @@ struct SettingsView: View {
     private var advancedSection: some View {
         Section {
             Button { setup = .all } label: { Label(L("Set up connections"), systemImage: "key.horizontal") }
+                .focused($bottomFocus, equals: .advanced)
         } header: { Text(L("Advanced")) } footer: {
             Text(L("Only needed if you want to use your own API keys. Bingr normally gets the keys for Trakt and OpenSubtitles securely from the Bingr server."))
         }
@@ -465,6 +484,7 @@ struct SettingsView: View {
                 ForEach(Localizer.supported, id: \.code) { Text($0.name).tag($0.code) }
             }
             .pickerStyle(.menu)
+            .focused($bottomFocus, equals: .language)
         }
     }
 }
@@ -607,5 +627,39 @@ enum QRCode {
         guard let out = f.outputImage?.transformed(by: CGAffineTransform(scaleX: 10, y: 10)),
               let cg = CIContext().createCGImage(out, from: out.extent) else { return nil }
         return UIImage(cgImage: cg)
+    }
+}
+
+/// Footer onderaan Mijn Bingr: app-icoon, versie (build) en copyright.
+/// `BingrIcon` is een gewone afbeelding: het AppIcon is op tvOS een gelaagde stapel.
+struct AboutFooter: View {
+    private var version: String { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0" }
+    private var build: String { Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1" }
+
+    #if os(tvOS)
+    private let iconSize: CGFloat = 90
+    #else
+    private let iconSize: CGFloat = 56
+    #endif
+
+    var body: some View {
+        VStack(spacing: 8) {
+            Image("BingrIcon")
+                .resizable()
+                .interpolation(.high)
+                .scaledToFit()
+                .frame(width: iconSize, height: iconSize)
+                .clipShape(RoundedRectangle(cornerRadius: iconSize * 0.225, style: .continuous))
+                .accessibilityHidden(true)
+            Text(L("Version: %@ (%@)", version, build))
+            Text(verbatim: "© 2026 Bingr · Léon van der Linden")
+        }
+        .font(.footnote)
+        .foregroundStyle(.secondary)
+        .multilineTextAlignment(.center)
+        .frame(maxWidth: .infinity)
+        .padding(.top, 12)
+        .padding(.bottom, 24)
+        .accessibilityElement(children: .combine)
     }
 }
