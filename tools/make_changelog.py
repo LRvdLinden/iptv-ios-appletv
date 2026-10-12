@@ -3,9 +3,12 @@
 Formaat docs/changelog.json: lijst van builds (nieuwste eerst):
   {"build": 51, "version": "1.0.0", "date": "2026-10-12",
    "items": [{"type": "new"|"improved"|"fixed",
-              "platforms": ["ios","ipados","tvos","macos","android","androidtv","web"],
+              "platforms": ["ios","ipados","tvos","macos","android","androidtv","tizen","web"],
               "nl": "…", "en": "…"}]}
-"androidtv" staat voor Android TV, Google TV en Fire TV.
+"androidtv" staat voor Android TV, Google TV en Fire TV; "tizen" voor Samsung TV (vanaf build 55).
+
+"Alle apps" = alle apps in APPS, dus ook tizen. Builds van voor TIZEN_FROM hadden nog geen
+Samsung TV-app: daar telt een punt met de zes oudere apps (APPS zonder tizen) ook als "Alle apps".
 
 Gebruik: python3 tools/make_changelog.py                   → CHANGELOG.md (Apple + web)
          python3 tools/make_changelog.py --android <pad>   → <pad>/CHANGELOG.md (Android)
@@ -16,9 +19,17 @@ data = json.loads((root / "docs/changelog.json").read_text())
 args = sys.argv[1:]
 def arg(n): return args[args.index(n) + 1] if n in args else None
 
-LABEL = {"ios": "iOS", "ipados": "iPadOS", "tvos": "tvOS", "macos": "macOS", "android": "Android", "androidtv": "Android TV", "web": "Web"}
-ORDER = ["ios", "ipados", "tvos", "macos", "android", "androidtv", "web"]
-APPS = {"ios", "ipados", "tvos", "macos", "android", "androidtv"}
+LABEL = {"ios": "iOS", "ipados": "iPadOS", "tvos": "tvOS", "macos": "macOS", "android": "Android", "androidtv": "Android TV",
+         "tizen": "Samsung TV (Tizen)", "web": "Web"}
+ORDER = ["ios", "ipados", "tvos", "macos", "android", "androidtv", "tizen", "web"]
+APPS = {"ios", "ipados", "tvos", "macos", "android", "androidtv", "tizen"}
+TIZEN_FROM = 55  # eerste build met de Samsung TV-app
+
+def platforms(i, build):
+    """Platforms van een punt; vóór TIZEN_FROM is tizen inbegrepen als alle zes andere apps genoemd zijn."""
+    s = set(i["platforms"])
+    if build < TIZEN_FROM and APPS - {"tizen"} <= s: s.add("tizen")
+    return s
 TYPES = [("new", "Nieuw"), ("improved", "Verbeterd"), ("fixed", "Opgelost")]
 MONTHS = ["januari", "februari", "maart", "april", "mei", "juni", "juli", "augustus", "september", "oktober", "november", "december"]
 def nl_date(iso):
@@ -33,13 +44,14 @@ def md(keep, title, intro):
     out = [f"# Changelog · {title}", "", intro, "",
            "Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.", ""]
     for e in data:
-        items = [i for i in e["items"] if set(i["platforms"]) & keep]
+        items = [i for i in e["items"] if platforms(i, e["build"]) & keep]
         if not items: continue
         out += [f"## Versie {e.get('version', '1.0.0')} · Build {e['build']}", f"_{nl_date(e['date'])}_", ""]
         # per apparaatsoort (zelfde set platforms), daarbinnen Nieuw / Verbeterd / Opgelost
         groups = {}
         for i in items:
-            groups.setdefault(tuple(p for p in ORDER if p in i["platforms"]), []).append(i)
+            ps = platforms(i, e["build"])
+            groups.setdefault(tuple(p for p in ORDER if p in ps), []).append(i)
         def rank(k): return 0 if APPS <= set(k) else 1 + min(ORDER.index(p) for p in k) * 10 + len(k) * 0.1
         for k in sorted(groups, key=rank):
             out += [f"### {set_label(k)}", ""]
@@ -51,8 +63,8 @@ def md(keep, title, intro):
 
 if arg("--android"):
     p = pathlib.Path(arg("--android")) / "CHANGELOG.md"
-    p.write_text(md({"android", "androidtv"}, "Android",
-        "Alle versies van Bingr voor Android-telefoon en -tablet, Android TV, Google TV en Fire TV. iPhone, iPad, Apple TV en Mac: [iptv-ios-appletv](https://github.com/LRvdLinden/iptv-ios-appletv/blob/main/CHANGELOG.md) · alles: [bingr.online/changelog](https://bingr.online/changelog/)."))
+    p.write_text(md({"android", "androidtv", "tizen"}, "Android en Samsung TV",
+        "Alle versies van Bingr voor Android-telefoon en -tablet, Android TV, Google TV, Fire TV en Samsung TV (Tizen). iPhone, iPad, Apple TV en Mac: [iptv-ios-appletv](https://github.com/LRvdLinden/iptv-ios-appletv/blob/main/CHANGELOG.md) · alles: [bingr.online/changelog](https://bingr.online/changelog/)."))
     print(p)
 elif arg("--site"):
     d = pathlib.Path(arg("--site")) / "assets"; d.mkdir(exist_ok=True)

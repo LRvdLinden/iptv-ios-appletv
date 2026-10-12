@@ -98,7 +98,7 @@ Alle aanroepen gaan naar device-auth, met `Authorization: Bearer <access_token>`
 | `remove_device` | `{device_id}` | `{ok}`. De sessie van dat apparaat wordt ingetrokken, zodat het apparaat uitlogt. |
 
 - **name**: de naam van het apparaat (op iOS `UIDevice.current.name`, op de Mac `Host.current().localizedName`, op Android `Settings.Global.DEVICE_NAME` of anders `Build.MODEL`).
-- **platform**: een van `iPhone`, `iPad`, `Apple TV`, `Mac`, `Android`, `Android tablet`, `Android TV`, `Fire TV`.
+- **platform**: een van `iPhone`, `iPad`, `Apple TV`, `Mac`, `Android`, `Android tablet`, `Android TV`, `Google TV`, `Fire TV`, `tizen` (Samsung TV, build 55).
 
 **Wanneer de app wat aanroept**
 - **Na elke geslaagde login** (e-mail of tv-koppeling): `register_device`.
@@ -274,10 +274,11 @@ Alles wat iemand in Bingr instelt of opbouwt, komt na het (opnieuw) installeren 
 - **Platformnamen** (`platform` bij `register_device`):
   - `iPhone`, `iPad`, `Mac`, `Apple TV`
   - `Android` (telefoon), `Android tablet`, `Android TV`, `Google TV`, `Fire TV`
+  - Samsung TV (Tizen, build 55): `tizen`. Apps tonen dit als "Samsung TV" met een tv-icoon.
   - Android: `Fire TV` als `Build.MANUFACTURER == "Amazon"`. `Google TV` als het een tv is en `packageManager.hasSystemFeature("com.google.android.feature.GOOGLE_EXPERIENCE")` waar is, of als `Build.MODEL` "Chromecast" bevat of `Build.BRAND` "google" is. Anders `Android TV`.
 - **Iconen per platform:** gebruik in de apparatenlijst dezelfde soort iconen als iOS.
   - iPhone: telefoon. iPad: tablet. Mac: laptop of computer. Apple TV: Apple TV-kastje.
-  - Android: telefoon. Android tablet: tablet. Android TV, Google TV en Fire TV: tv.
+  - Android: telefoon. Android tablet: tablet. Android TV, Google TV, Fire TV en Samsung TV (`tizen`): tv.
 - **Delen op tv's:** op Apple TV, Android TV, Google TV en Fire TV staat **geen** deelknop (ook geen QR) op de detailpagina.
 
 ## Build 51: collecties, startscherm, terugkijk-correctie en webconsole

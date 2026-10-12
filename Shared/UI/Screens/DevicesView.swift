@@ -7,6 +7,7 @@ import SwiftUI
 enum DeviceText {
     /// SF Symbol per platform.
     static func icon(_ d: AccountService.Device) -> String {
+        if isTizen(d.platform) { return "tv" }
         switch d.platform {
         case "iPhone": return "iphone"
         case "iPad": return "ipad"
@@ -17,6 +18,16 @@ enum DeviceText {
         case "Android TV", "Google TV", "Fire TV": return "tv"
         default: return "display"
         }
+    }
+
+    /// Samsung TV-app (Tizen, vanaf build 55) meldt zich met platform `tizen`.
+    static func isTizen(_ platform: String) -> Bool {
+        platform.caseInsensitiveCompare("tizen") == .orderedSame || platform.caseInsensitiveCompare("Samsung TV") == .orderedSame
+    }
+
+    /// Platformnaam zoals getoond onder de apparaatnaam (`tizen` wordt "Samsung TV").
+    static func platformLabel(_ platform: String) -> String {
+        isTizen(platform) ? L("Samsung TV") : platform
     }
 
     /// "Linked %@" met een datum (medium, bv. 12 okt 2026).
@@ -93,7 +104,7 @@ struct DeviceRow: View {
                     }
                 }
                 if !device.platform.isEmpty {
-                    Text(device.platform)
+                    Text(DeviceText.platformLabel(device.platform))
                         .font(.system(size: tvScaled(13)))
                         .foregroundStyle(Theme.secondary)
                 }
