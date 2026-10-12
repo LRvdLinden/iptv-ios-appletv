@@ -709,6 +709,11 @@ final class AccountService: ObservableObject {
             if let uid, !uid.isEmpty {
                 if let last = Keychain.getLocalOnly(K.lastUser), !last.isEmpty, last != uid {
                     CloudStore.shared.wipeAccountData()
+                    // Trakt en OpenSubtitles van het vorige account ontkoppelen (anders scrobbelt dit account naar iemand anders' Trakt)
+                    Task { @MainActor in
+                        await TraktSync.shared.logout()
+                        await OpenSubtitles.shared.logout()
+                    }
                 }
                 Keychain.setLocalOnly(uid, for: K.lastUser)
             }
