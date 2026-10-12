@@ -95,6 +95,46 @@ enum Keychain {
         return String(data: data, encoding: .utf8)
     }
 
+    // MARK: alleen op dit apparaat (Bingr-account)
+
+    /// Eigen service, dus `pushToCloud`/`syncFromCloud` (die alleen `service` en de iCloud-spiegel kennen)
+    /// raken deze items nooit aan. Niet-synchroniseerbaar: refresh tokens zijn eenmalig en horen bij één apparaat.
+    private static let localOnlyService = "nl.lrvdlinden.bingr.device"
+
+    static func setLocalOnly(_ value: String?, for key: String) {
+        let base: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: localOnlyService,
+            kSecAttrAccount as String: key,
+            kSecAttrSynchronizable as String: kSecAttrSynchronizableAny
+        ]
+        SecItemDelete(base as CFDictionary)
+        guard let value, !value.isEmpty, let data = value.data(using: .utf8) else { return }
+        let add: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: localOnlyService,
+            kSecAttrAccount as String: key,
+            kSecValueData as String: data,
+            kSecAttrSynchronizable as String: false,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        ]
+        SecItemAdd(add as CFDictionary, nil)
+    }
+
+    static func getLocalOnly(_ key: String) -> String? {
+        let q: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: localOnlyService,
+            kSecAttrAccount as String: key,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        var out: AnyObject?
+        guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess,
+              let data = out as? Data else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
     static func setCodable<T: Encodable>(_ value: T?, for key: String) {
         guard let value, let data = try? JSONEncoder().encode(value) else { set(nil, for: key); return }
         set(String(data: data, encoding: .utf8), for: key)

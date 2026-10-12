@@ -11,6 +11,10 @@ import Foundation
 enum Secrets {
     enum Key: String, CaseIterable {
         case traktClientID, traktClientSecret, openSubtitlesAPIKey, omdbAPIKey, tmdbAPIKey
+        /// Bingr-account (Supabase): alleen ingebouwd, nooit in de sleutelhanger of in de app aan te passen.
+        case supabaseURL, supabaseAnonKey
+
+        var builtInOnly: Bool { self == .supabaseURL || self == .supabaseAnonKey }
     }
 
     private static let builtIn: [Key: String] = [
@@ -18,7 +22,9 @@ enum Secrets {
         .traktClientSecret: "",
         .openSubtitlesAPIKey: "",
         .omdbAPIKey: "",
-        .tmdbAPIKey: ""
+        .tmdbAPIKey: "",
+        .supabaseURL: "",
+        .supabaseAnonKey: ""
     ]
 
     private static let lock = NSLock()
@@ -27,12 +33,14 @@ enum Secrets {
     static func value(_ k: Key) -> String {
         lock.lock(); defer { lock.unlock() }
         if let v = cache[k] { return v }
+        if k.builtInOnly { let v = builtIn[k] ?? ""; cache[k] = v; return v }
         let v = Keychain.get("apikey.\(k.rawValue)") ?? builtIn[k] ?? ""
         cache[k] = v
         return v
     }
 
     static func set(_ k: Key, _ value: String) {
+        guard !k.builtInOnly else { return }
         let v = value.trimmingCharacters(in: .whitespacesAndNewlines)
         Keychain.set(v.isEmpty ? nil : v, for: "apikey.\(k.rawValue)")
         lock.lock(); cache[k] = v.isEmpty ? (builtIn[k] ?? "") : v; lock.unlock()
@@ -46,6 +54,15 @@ enum Secrets {
     static var openSubtitlesAPIKey: String { value(.openSubtitlesAPIKey) }
     static var omdbAPIKey: String { value(.omdbAPIKey) }
     static var tmdbAPIKey: String { value(.tmdbAPIKey) }
+    static var supabaseURL: String {
+        let v = value(.supabaseURL).trimmingCharacters(in: .whitespacesAndNewlines)
+        return v.hasSuffix("/") ? String(v.dropLast()) : v
+    }
+    static var supabaseAnonKey: String { value(.supabaseAnonKey) }
+    /// Bingr-accounts beschikbaar in deze build (SUPABASE_URL en SUPABASE_ANON_KEY ingebouwd).
+    static var accountsConfigured: Bool {
+        isSet(supabaseURL) && isSet(supabaseAnonKey) && URL(string: supabaseURL)?.host != nil
+    }
 
     /// Nieuwe Trakt-apps (sinds okt. 2026) hebben alleen een Client ID (PKCE); het secret is optioneel.
     static var traktReady: Bool { isSet(traktClientID) }

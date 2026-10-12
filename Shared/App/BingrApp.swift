@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 @main
 struct BingrApp: App {
@@ -10,6 +11,7 @@ struct BingrApp: App {
     @StateObject private var localizer = Localizer.shared
     @StateObject private var parental = ParentalControl.shared
     @StateObject private var reminders = ReminderCenter.shared
+    @StateObject private var account = AccountService.shared
     @Environment(\.scenePhase) private var phase
 
     init() {
@@ -30,6 +32,7 @@ struct BingrApp: App {
                 .environmentObject(localizer)
                 .environmentObject(parental)
                 .environmentObject(reminders)
+                .environmentObject(account)
                 .environment(\.locale, localizer.locale)
                 .environment(\.layoutDirection, localizer.isRTL ? .rightToLeft : .leftToRight)
                 .preferredColorScheme(.dark)
@@ -55,7 +58,7 @@ struct BingrApp: App {
 
 @MainActor
 final class AppState: ObservableObject {
-    enum Stage { case splash, picker, main }
+    enum Stage { case splash, auth, picker, main }
     @Published var stage: Stage = .splash
     @Published var playing: PlayableItem?
     @Published var liveZapList: [Channel] = []
@@ -67,8 +70,47 @@ final class AppState: ObservableObject {
 
     private let lastKey = "lastPlaylistID"
 
+    private var bag = Set<AnyCancellable>()
+    private let skipKey = "account.skipped"
+
     init() {
         PiPCenter.shared.present = { [weak self] item in self?.playing = item }
+        // Bingr-account: sessie op de achtergrond vernieuwen; ongeldig, uitgelogd of verwijderd → inlogscherm
+        AccountService.shared.$isSignedIn
+            .removeDuplicates()
+            .dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] signedIn in
+                guard let self, !signedIn else { return }
+                self.showAuthIfNeeded()
+            }
+            .store(in: &bag)
+        Task { await AccountService.shared.refresh() }
+    }
+
+    /// Zonder sleutels in deze build kan de gebruiker "Doorgaan zonder account" kiezen (onthouden).
+    var skippedAccounts: Bool {
+        get { UserDefaults.standard.bool(forKey: skipKey) }
+        set { UserDefaults.standard.set(newValue, forKey: skipKey) }
+    }
+
+    private var needsAuth: Bool {
+        if Secrets.accountsConfigured { return !AccountService.shared.isSignedIn }
+        return !skippedAccounts
+    }
+
+    private func showAuthIfNeeded() {
+        guard stage != .splash, stage != .auth, needsAuth else { return }
+        playing = nil
+        showMultiview = false
+        PiPCenter.shared.stopActive()
+        withAnimation(.easeInOut(duration: 0.4)) { stage = .auth }
+    }
+
+    /// Ingelogd (of zonder account verder) → "Wie kijkt er?"
+    func authFinished(skipped: Bool = false) {
+        if skipped { skippedAccounts = true }
+        withAnimation(.easeInOut(duration: 0.5)) { stage = .picker }
     }
 
     var lastPlaylistID: UUID? {
@@ -77,7 +119,7 @@ final class AppState: ObservableObject {
     }
 
     func splashFinished() {
-        withAnimation(.easeInOut(duration: 0.5)) { stage = .picker }
+        withAnimation(.easeInOut(duration: 0.5)) { stage = needsAuth ? .auth : .picker }
     }
 
     /// Profiel gekozen ("Wie kijkt er?") → de server van het hoofdaccount openen.
@@ -133,6 +175,8 @@ struct RootView: View {
                 switch app.stage {
                 case .splash:
                     SplashView { app.splashFinished() }.transition(.opacity)
+                case .auth:
+                    AuthView().transition(.opacity)
                 case .picker:
                     PlaylistPickerView().transition(.asymmetric(insertion: .scale(scale: 1.08).combined(with: .opacity),
                                                                 removal: .opacity))

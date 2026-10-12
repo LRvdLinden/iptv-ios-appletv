@@ -4,7 +4,8 @@ import os, pathlib, re
 p = pathlib.Path(__file__).resolve().parent.parent / "Shared/Config/Secrets.swift"
 s = p.read_text()
 env = {"traktClientID": "TRAKT_CLIENT_ID", "traktClientSecret": "TRAKT_CLIENT_SECRET",
-       "openSubtitlesAPIKey": "OPENSUBTITLES_API_KEY", "omdbAPIKey": "OMDB_API_KEY", "tmdbAPIKey": "TMDB_API_KEY"}
+       "openSubtitlesAPIKey": "OPENSUBTITLES_API_KEY", "omdbAPIKey": "OMDB_API_KEY", "tmdbAPIKey": "TMDB_API_KEY",
+       "supabaseURL": "SUPABASE_URL", "supabaseAnonKey": "SUPABASE_ANON_KEY"}
 n = 0
 for key, var in env.items():
     v = os.environ.get(var, "").strip()
