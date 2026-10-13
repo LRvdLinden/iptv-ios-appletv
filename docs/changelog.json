@@ -9,6 +9,14 @@
     "platforms": [
      "web"
     ],
+    "nl": "Webspeler: dezelfde intro als in de apps (vallende covers en de letters van BINGR) in plaats van een logo met laadrondje",
+    "en": "Web player: the same intro as in the apps (falling covers and the BINGR letters) instead of a logo with a loading spinner"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "web"
+    ],
     "nl": "Webspeler: servers op http werken nu ook. Alles loopt dan via de server van Bingr, ook video in Safari op iPhone en iPad",
     "en": "Web player: servers on http now work too. Everything then goes through Bingr's server, including video in Safari on iPhone and iPad"
    },

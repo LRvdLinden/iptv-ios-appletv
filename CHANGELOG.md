@@ -11,6 +11,7 @@ _13 oktober 2026_
 
 **Nieuw**
 
+- Webspeler: dezelfde intro als in de apps (vallende covers en de letters van BINGR) in plaats van een logo met laadrondje
 - Webspeler: servers op http werken nu ook. Alles loopt dan via de server van Bingr, ook video in Safari op iPhone en iPad
 
 **Verbeterd**
