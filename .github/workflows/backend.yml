@@ -190,8 +190,13 @@ jobs:
           code=$(curl -s -o /tmp/x.json -w '%{http_code}' -X POST "$F" -H "Content-Type: application/json" -d '{"action":"run"}')
           [ "$code" = 403 ] && echo "::notice::status run zonder geheim geweigerd (403)" || { echo "::error::status run zonder geheim gaf HTTP $code"; exit 1; }
           # een volledige controle (alle monitors), met het geheim uit de vorige stap
-          curl -s -X POST "$F" -H "Content-Type: application/json" -H "x-status-secret: $(cat "$RUNNER_TEMP/status_secret")" \
-            -d '{"action":"run","force":true,"source":"deploy"}' > /tmp/run.json
+          # loopt de geplande controle net (busy), dan even wachten en opnieuw
+          for i in 1 2 3 4 5 6 7 8; do
+            curl -s -X POST "$F" -H "Content-Type: application/json" -H "x-status-secret: $(cat "$RUNNER_TEMP/status_secret")" \
+              -d '{"action":"run","force":true,"source":"deploy"}' > /tmp/run.json
+            grep -Eq '"busy": ?true' /tmp/run.json || break
+            echo "Er loopt al een controle (planning); over 15 s opnieuw"; sleep 15
+          done
           python3 - <<'PY'
           import json
           r = json.load(open("/tmp/run.json"))
