@@ -10,9 +10,10 @@
 //   announce_send       {token, id}       -> {email_total, email_sent, email_failed, done}  (volgende batch; herhalen tot done)
 //   announcements_list  {token}           -> {items:[…]}
 //   announcement_delete {token, id}       -> {ok}
+//   status              {token, op: overview|checks|monitor_save|monitor_delete|run, …} -> antwoord van de functie `status`
 //   unsubscribe         {t}               -> {ok}    (openbaar; t = ondertekend token uit de e-mail)
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import nodemailer from "npm:nodemailer@7.0.13";
+import { smtpConfigured, transport } from "../_shared/mail.ts";
 
 const SITE = Deno.env.get("BINGR_SITE") ?? "https://bingr.online";
 const env = (k: string) => Deno.env.get(k) ?? "";
@@ -106,15 +107,6 @@ const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&
 const linkify = (s: string) => s.replace(/https:\/\/[^\s<]+[^\s<.,;:!?)]/g, (u) => `<a href="${u}" style="color:#ffffff">${u}</a>`);
 
 // ---- e-mail ----
-const smtpConfigured = () => !!(env("BINGR_SMTP_HOST") && env("BINGR_SMTP_USER") && env("BINGR_SMTP_PASSWORD") && env("BINGR_SMTP_FROM"));
-function transport() {
-  const port = Number(env("BINGR_SMTP_PORT") || 465);
-  return nodemailer.createTransport({
-    host: env("BINGR_SMTP_HOST"), port, secure: port !== 587 && port !== 25, // 465 = TLS (Supabase blokkeert 25 en 587)
-    auth: { user: env("BINGR_SMTP_USER"), pass: env("BINGR_SMTP_PASSWORD") },
-    connectionTimeout: 15000, greetingTimeout: 15000, socketTimeout: 30000,
-  });
-}
 function mailFor(lang: "nl" | "en", title: string, body: string, unsubUrl: string) {
   const nl = lang === "nl";
   const paras = body.split(/\n{2,}/).map((p) => `<p style="margin:0 0 16px;font-size:16px;line-height:24px;color:#d6d6d6">${linkify(esc(p)).replace(/\n/g, "<br>")}</p>`).join("");
@@ -302,6 +294,25 @@ async function handle(req: Request, body: Record<string, unknown>, json: (b: unk
       if (error) throw new Error(error.message);
       await audit("announcement_delete", ip, null, { id: body.id });
       return json({ ok: true });
+    }
+    case "status": {
+      // tab Status: doorgeven aan de functie `status` met het geheim (staat alleen op de server)
+      const op = String(body.op ?? "");
+      const map: Record<string, string> = { overview: "admin", checks: "checks", monitor_save: "monitor_save", monitor_delete: "monitor_delete", run: "run" };
+      if (!map[op]) return json({ error: "unknown_action" }, 400);
+      if (!env("STATUS_CRON_SECRET")) return json({ error: "status_not_configured" }, 503);
+      const { action: _a, token: _t, op: _o, ...rest } = body;
+      const res = await fetch(`${env("SUPABASE_URL").replace(/\/+$/, "")}/functions/v1/status`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-status-secret": env("STATUS_CRON_SECRET") },
+        body: JSON.stringify({ ...rest, action: map[op], ...(op === "run" ? { force: true, source: "admin" } : {}) }),
+        signal: AbortSignal.timeout(60000),
+      });
+      const out = await res.json().catch(() => ({ error: "server_error" }));
+      if (["monitor_save", "monitor_delete", "run"].includes(op) && res.ok) {
+        await audit(`status_${op}`, ip, null, op === "run" ? { checked: out.checked, down: out.down } : { id: out.id ?? rest.id });
+      }
+      return json(out, res.status);
     }
     default:
       return json({ error: "unknown_action" }, 400);

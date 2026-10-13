@@ -1,20 +1,28 @@
 name: Backend
 
 # Zet de Bingr-accounts in Supabase klaar: tabel (supabase/schema.sql), e-mailtemplates (supabase/templates) en de Edge Functions
-# device-auth (accounts, tv-koppeling), web-proxy (webspeler) en admin (beheer-dashboard).
+# device-auth (accounts, tv-koppeling), web-proxy (webspeler), admin (beheer-dashboard) en status (bingr.online/status).
 # Secrets: SUPABASE_ACCESS_TOKEN (supabase.com/dashboard/account/tokens) en SUPABASE_PROJECT_REF (bv. abcd1234 uit https://abcd1234.supabase.co).
 # Beheer (optioneel): BINGR_ADMIN_USER, BINGR_ADMIN_PASSWORD; bulkmail: BINGR_SMTP_HOST, BINGR_SMTP_PORT (465), BINGR_SMTP_USER,
 # BINGR_SMTP_PASSWORD, BINGR_SMTP_FROM. Alleen gezette secrets worden doorgezet; waarden komen nooit in de repo of het log.
+# Status (optioneel): BINGR_ALERT_EMAIL (storingsmeldingen per e-mail, via de SMTP hierboven), BINGR_GITHUB_TOKEN (alleen-lezen
+# token tegen de GitHub-limiet; zonder token valt de controle terug op de webpagina), STATUS_CRON_SECRET (vast geheim voor
+# de planning; zonder dit secret maakt elke deploy een nieuw geheim en zet het de pg_cron-taak opnieuw klaar).
 on:
   push:
     branches: [main]
     paths: ['supabase/**', '.github/workflows/backend.yml']
   workflow_dispatch:
+    inputs:
+      verify_scheduler:
+        description: 'Wachten tot de planning (pg_cron) de statuscontrole zelf heeft uitgevoerd (max. 7 min)'
+        type: boolean
+        default: false
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       REF: ${{ secrets.SUPABASE_PROJECT_REF }}
@@ -76,6 +84,8 @@ jobs:
           S_USER: ${{ secrets.BINGR_SMTP_USER }}
           S_PASS: ${{ secrets.BINGR_SMTP_PASSWORD }}
           S_FROM: ${{ secrets.BINGR_SMTP_FROM }}
+          S_ALERT: ${{ secrets.BINGR_ALERT_EMAIL }}
+          S_GH: ${{ secrets.BINGR_GITHUB_TOKEN }}
         run: |
           # als losse argumenten (geen env-bestand), zodat tekens als # " of spaties in wachtwoorden geen probleem zijn
           args=()
@@ -86,9 +96,12 @@ jobs:
           [ -n "$S_USER" ] && args+=("BINGR_SMTP_USER=$S_USER")
           [ -n "$S_PASS" ] && args+=("BINGR_SMTP_PASSWORD=$S_PASS")
           [ -n "$S_FROM" ] && args+=("BINGR_SMTP_FROM=$S_FROM")
+          [ -n "$S_ALERT" ] && args+=("BINGR_ALERT_EMAIL=$S_ALERT")
+          [ -n "$S_GH" ] && args+=("BINGR_GITHUB_TOKEN=$S_GH")
           if [ ${#args[@]} -gt 0 ]; then supabase secrets set --project-ref "$REF" "${args[@]}" >/dev/null; echo "::notice::${#args[@]} beheer/mail-secret(s) op de server gezet"; fi
           [ -z "$A_USER" ] || [ -z "$A_PASS" ] && echo "::warning::BINGR_ADMIN_USER/BINGR_ADMIN_PASSWORD ontbreken: beheer-dashboard kan niet inloggen."
           [ -n "$A_PASS" ] && [ ${#A_PASS} -lt 12 ] && echo "::warning::BINGR_ADMIN_PASSWORD is korter dan 12 tekens; kies een langer wachtwoord."
+          [ -z "$S_ALERT" ] && echo "::notice::BINGR_ALERT_EMAIL ontbreekt: storingen komen alleen op de statuspagina, niet per e-mail."
           [ -n "$S_PORT" ] && { [ "$S_PORT" = 587 ] || [ "$S_PORT" = 25 ]; } && echo "::warning::Supabase blokkeert uitgaande SMTP op poort $S_PORT; gebruik 465 (SSL/TLS)."
           true
       - name: Edge Function device-auth
@@ -100,6 +113,45 @@ jobs:
       - name: Edge Function admin
         if: steps.check.outputs.skip != '1'
         run: supabase functions deploy admin --project-ref "$REF" --no-verify-jwt --use-api
+      - name: Statusmonitor - geheim
+        if: steps.check.outputs.skip != '1'
+        env:
+          S_CRON: ${{ secrets.STATUS_CRON_SECRET }}
+        run: |
+          # geheim voor de planning en "Nu controleren": vast (repo-secret) of per deploy nieuw; nooit in de repo of het log
+          SECRET="${S_CRON:-$(openssl rand -hex 32)}"
+          echo "::add-mask::$SECRET"
+          [[ "$SECRET" =~ ^[A-Za-z0-9_-]{24,128}$ ]] || { echo "::error::STATUS_CRON_SECRET: 24-128 tekens, alleen letters, cijfers, - en _"; exit 1; }
+          supabase secrets set --project-ref "$REF" STATUS_CRON_SECRET="$SECRET" >/dev/null
+          umask 077; printf '%s' "$SECRET" > "$RUNNER_TEMP/status_secret"
+          echo "::notice::STATUS_CRON_SECRET ${S_CRON:+(vast) }op de server gezet"
+      - name: Edge Function status
+        if: steps.check.outputs.skip != '1'
+        run: supabase functions deploy status --project-ref "$REF" --no-verify-jwt --use-api
+      - name: Statusmonitor - planning (pg_cron + pg_net)
+        if: steps.check.outputs.skip != '1'
+        id: cron
+        run: |
+          # de taak roept elke 5 minuten de functie status aan; het geheim gaat alleen via de Management API naar de database
+          python3 - <<'PY' > /tmp/cron.json
+          import json, os
+          ref = os.environ["REF"]; sec = open(os.path.join(os.environ["RUNNER_TEMP"], "status_secret")).read()
+          cmd = ("select net.http_post(url := 'https://%s.supabase.co/functions/v1/status', "
+                 "headers := jsonb_build_object('Content-Type', 'application/json', 'x-status-secret', '%s'), "
+                 "body := '{\"action\":\"run\",\"source\":\"cron\"}'::jsonb, timeout_milliseconds := 60000);") % (ref, sec)
+          sql = ("select cron.unschedule(jobid) from cron.job where jobname = 'bingr-status';\n"
+                 "select cron.schedule('bingr-status', '*/5 * * * *', $cmd$ " + cmd + " $cmd$);\n"
+                 "select jobid, jobname, schedule, active from cron.job where jobname = 'bingr-status';")
+          print(json.dumps({"query": sql}))
+          PY
+          code=$(curl -s -o /tmp/r.txt -w '%{http_code}' -X POST "https://api.supabase.com/v1/projects/$REF/database/query" \
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" --data @/tmp/cron.json)
+          rm -f /tmp/cron.json
+          if [ "$code" -lt 300 ] && grep -Eq '"active": ?true' /tmp/r.txt; then
+            echo "::notice::Planning actief: $(cat /tmp/r.txt)"; echo "ok=1" >> $GITHUB_OUTPUT
+          else
+            echo "::warning::pg_cron/pg_net niet beschikbaar (HTTP $code): $(head -c 300 /tmp/r.txt)"; echo "ok=0" >> $GITHUB_OUTPUT
+          fi
       - name: Testen
         if: steps.check.outputs.skip != '1'
         run: |
@@ -120,3 +172,58 @@ jobs:
           grep -q not_signed_in /tmp/w.json && echo "::notice::web-proxy actief" || { echo "::error::web-proxy onverwacht"; exit 1; }
           curl -s -X POST "https://$REF.supabase.co/functions/v1/admin" -H "Content-Type: application/json" -d '{"action":"stats"}' | tee /tmp/b.json; echo
           grep -q not_signed_in /tmp/b.json && echo "::notice::admin actief" || { echo "::error::admin onverwacht"; exit 1; }
+          for fn in device-auth web-proxy; do
+            curl -s -X POST "https://$REF.supabase.co/functions/v1/$fn" -H "Content-Type: application/json" -d '{"action":"ping"}' | tee /tmp/p.json; echo
+            grep -q '"ok":true' /tmp/p.json && echo "::notice::$fn ping werkt" || { echo "::error::$fn ping onverwacht"; exit 1; }
+          done
+          curl -s -X POST "https://$REF.supabase.co/functions/v1/admin" -H "Content-Type: application/json" -d '{"action":"status","op":"overview"}' | tee /tmp/b.json; echo
+          grep -q not_signed_in /tmp/b.json && echo "::notice::admin status vraagt om inloggen" || { echo "::error::admin status onverwacht"; exit 1; }
+      - name: Statusmonitor testen
+        if: steps.check.outputs.skip != '1'
+        run: |
+          F="https://$REF.supabase.co/functions/v1/status"
+          code=$(curl -s -o /tmp/x.json -w '%{http_code}' -X POST "$F" -H "Content-Type: application/json" -d '{"action":"run"}')
+          [ "$code" = 403 ] && echo "::notice::status run zonder geheim geweigerd (403)" || { echo "::error::status run zonder geheim gaf HTTP $code"; exit 1; }
+          # een volledige controle (alle monitors), met het geheim uit de vorige stap
+          curl -s -X POST "$F" -H "Content-Type: application/json" -H "x-status-secret: $(cat "$RUNNER_TEMP/status_secret")" \
+            -d '{"action":"run","force":true,"source":"deploy"}' > /tmp/run.json
+          python3 - <<'PY'
+          import json
+          r = json.load(open("/tmp/run.json"))
+          if "checked" not in r: print("::error::status run mislukt:", r); raise SystemExit(1)
+          print(f"::notice::Statuscontrole: {r['checked']} gecontroleerd, {r['skipped']} overgeslagen, {r['up']} up, {r['degraded']} verminderd, {r['down']} storing, {r['ms']} ms")
+          for x in r["results"]:
+              print(f"  {x['id']:<10} {x['state']:<9} {str(x['ms'] or ''):>6} ms  {x['error'] or ''}")
+          PY
+          curl -s "$F?action=public" > /tmp/pub.json
+          python3 - <<'PY'
+          import json
+          p = json.load(open("/tmp/pub.json"))
+          n = sum(len(g["monitors"]) for g in p.get("groups", []))
+          if not n: print("::error::status public zonder monitors:", str(p)[:300]); raise SystemExit(1)
+          if '"devices"' in json.dumps(p): print("::error::status public bevat apparaatgegevens"); raise SystemExit(1)
+          print(f"::notice::Statuspagina (public): {p['overall']['state']}, {n} openbare monitors in {len(p['groups'])} groepen, {len(p['incidents'])} storingen")
+          PY
+          curl -s -X POST "$F" -H "Content-Type: application/json" -H "x-status-secret: $(cat "$RUNNER_TEMP/status_secret")" -d '{"action":"admin"}' > /tmp/adm.json
+          python3 -c 'import json;a=json.load(open("/tmp/adm.json"));print("::notice::Planning:", json.dumps(a.get("scheduler")), "| alert-e-mail:", "ja" if a["alerts"]["email"] else "nee", "| smtp:", a["alerts"]["smtp"])'
+      - name: Statusmonitor - planning controleren
+        if: steps.check.outputs.skip != '1' && steps.cron.outputs.ok == '1' && inputs.verify_scheduler
+        run: |
+          # wachten tot pg_cron de functie zelf heeft aangeroepen (status_runner.last_source = cron, na deze deploy)
+          start=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          q() { python3 -c 'import json,sys;print(json.dumps({"query":sys.argv[1]}))' "$1" > /tmp/q.json
+                curl -s -X POST "https://api.supabase.com/v1/projects/$REF/database/query" -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" --data @/tmp/q.json; }
+          for i in $(seq 1 15); do
+            sleep 30
+            r=$(q "select last_run_at, last_source, (select count(*) from status_checks where at > '$start') as checks from status_runner where id = 1")
+            echo "$r"
+            if echo "$r" | grep -Eq '"last_source": ?"cron"' && ! echo "$r" | grep -Eq '"checks": ?"?0"?[,}]'; then
+              echo "::notice::Planning werkt: pg_cron heeft de controle uitgevoerd ($r)"
+              q "select status, start_time, return_message from cron.job_run_details where jobid = (select jobid from cron.job where jobname = 'bingr-status') order by start_time desc limit 3"; echo
+              q "select status_code, timed_out, created from net._http_response order by created desc limit 3"; echo
+              exit 0
+            fi
+          done
+          q "select status, start_time, return_message from cron.job_run_details where jobid = (select jobid from cron.job where jobname = 'bingr-status') order by start_time desc limit 5"; echo
+          q "select status_code, timed_out, error_msg, created from net._http_response order by created desc limit 5"; echo
+          echo "::error::De planning heeft binnen 7 minuten geen controle uitgevoerd"; exit 1

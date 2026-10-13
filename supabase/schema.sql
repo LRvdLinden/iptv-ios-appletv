@@ -514,3 +514,207 @@ language sql security definer set search_path = public as $$
 $$;
 revoke all on function public.bingr_cleanup() from public, anon, authenticated;
 grant execute on function public.bingr_cleanup() to service_role;
+
+-- ============================================================================================================
+-- Statuspagina (bingr.online/status) en de tab Status in het beheer. Alleen de Edge Function `status` (service role)
+-- leest en schrijft hierin. Monitors worden één keer klaargezet (on conflict do nothing): wijzigingen uit het beheer
+-- blijven bij een nieuwe deploy staan; een verwijderde standaardmonitor komt wel terug (uitzetten kan altijd).
+create table if not exists public.status_monitors (
+  id              text primary key,
+  name_nl         text not null,
+  name_en         text not null,
+  grp             text not null default 'website',
+  kind            text not null default 'http',
+  target          text not null default '',
+  keyword         text,
+  interval_min    int  not null default 5,
+  public          boolean not null default true,
+  enabled         boolean not null default true,
+  builtin         boolean not null default false,
+  sort            int  not null default 100,
+  created_at      timestamptz not null default now(),
+  last_checked_at timestamptz,
+  last_state      text,
+  last_ms         int,
+  last_error      text,
+  fail_streak     int not null default 0,
+  ok_streak       int not null default 0
+);
+alter table public.status_monitors enable row level security;
+revoke all on public.status_monitors from anon, authenticated;
+do $$ begin
+  alter table public.status_monitors add constraint status_monitors_grp_chk check (grp in ('server', 'website', 'apps'));
+exception when duplicate_object then null; end $$;
+do $$ begin
+  alter table public.status_monitors add constraint status_monitors_interval_chk check (interval_min between 1 and 1440);
+exception when duplicate_object then null; end $$;
+
+insert into public.status_monitors (id, name_nl, name_en, grp, kind, target, keyword, interval_min, public, builtin, sort) values
+  ('auth',       'Accounts & inloggen',          'Accounts & sign-in',           'server',  'auth',        '',                                       null,         5,  true,  true, 10),
+  ('db',         'Database',                     'Database',                     'server',  'db',          '',                                       null,         5,  true,  true, 20),
+  ('api',        'API apps',                     'App API',                      'server',  'fn',          'device-auth',                            null,         5,  true,  true, 30),
+  ('proxy',      'Webspeler-doorgifte',          'Web player relay',             'server',  'fn',          'web-proxy',                              null,         5,  true,  true, 40),
+  ('storage',    'Opslag (profielfoto''s)',      'Storage (profile photos)',     'server',  'storage',     'avatars',                                null,         5,  true,  true, 50),
+  ('smtp',       'E-mail (SMTP)',                'Email (SMTP)',                 'server',  'smtp',        '',                                       null,         5,  true,  true, 60),
+  ('site',       'Website',                      'Website',                      'website', 'http',        'https://bingr.online/',                  'data-build', 5,  true,  true, 10),
+  ('site-web',   'Webspeler',                    'Web player',                   'website', 'http',        'https://bingr.online/web/',              null,         5,  true,  true, 20),
+  ('site-log',   'Changelog',                    'Changelog',                    'website', 'http',        'https://bingr.online/changelog/',        null,         5,  true,  true, 30),
+  ('site-link',  'Tv koppelen',                  'TV linking',                   'website', 'http',        'https://bingr.online/koppelen/',         null,         5,  true,  true, 40),
+  ('site-acc',   'Mijn Bingr',                   'My Bingr',                     'website', 'http',        'https://bingr.online/account/',          null,         5,  true,  true, 50),
+  ('tls',        'TLS-certificaat',              'TLS certificate',              'website', 'tls',         'bingr.online',                           null,         60, true,  true, 60),
+  ('apk',        'Android-download (APK)',       'Android download (APK)',       'apps',    'gh_asset',    'LRvdLinden/bingr-android|.apk',          null,         15, true,  true, 10),
+  ('wgt',        'Samsung TV-download (.wgt)',   'Samsung TV download (.wgt)',   'apps',    'gh_asset',    'LRvdLinden/bingr-android|.wgt',          null,         15, true,  true, 20),
+  ('apple',      'Apple-build',                  'Apple build',                  'apps',    'gh_workflow', 'LRvdLinden/iptv-ios-appletv|build.yml|main', null,     15, true,  true, 30),
+  ('devices',    'Actieve apparaten',            'Active devices',               'apps',    'devices',     '',                                       null,         5,  false, true, 90)
+on conflict (id) do nothing;
+
+create table if not exists public.status_checks (
+  id          bigserial primary key,
+  monitor_id  text not null references public.status_monitors(id) on delete cascade,
+  at          timestamptz not null default now(),
+  ok          boolean not null,
+  state       text not null default 'up',        -- up | degraded | down (een losse fout = degraded, bevestigd = down)
+  status_code int,
+  ms          int,
+  error       text,
+  detail      text
+);
+create index if not exists status_checks_monitor_at_idx on public.status_checks (monitor_id, at desc);
+create index if not exists status_checks_at_idx on public.status_checks (at);
+alter table public.status_checks enable row level security;
+revoke all on public.status_checks from anon, authenticated;
+
+-- Dagtotalen (Nederlandse tijd) voor de 90-dagenbalk en uptime over 7/30/90 dagen; bijgewerkt door een trigger.
+create table if not exists public.status_daily (
+  monitor_id  text not null references public.status_monitors(id) on delete cascade,
+  day         date not null,
+  n           int not null default 0,
+  n_degraded  int not null default 0,
+  n_down      int not null default 0,
+  ms_sum      bigint not null default 0,
+  ms_n        int not null default 0,
+  primary key (monitor_id, day)
+);
+alter table public.status_daily enable row level security;
+revoke all on public.status_daily from anon, authenticated;
+
+create or replace function public.bingr_status_rollup() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  insert into public.status_daily as d (monitor_id, day, n, n_degraded, n_down, ms_sum, ms_n)
+  values (new.monitor_id, (new.at at time zone 'Europe/Amsterdam')::date, 1,
+          (new.state = 'degraded')::int, (new.state = 'down')::int, coalesce(new.ms, 0), (new.ms is not null)::int)
+  on conflict (monitor_id, day) do update set
+    n = d.n + 1, n_degraded = d.n_degraded + excluded.n_degraded, n_down = d.n_down + excluded.n_down,
+    ms_sum = d.ms_sum + excluded.ms_sum, ms_n = d.ms_n + excluded.ms_n;
+  return new;
+end $$;
+drop trigger if exists status_checks_rollup on public.status_checks;
+create trigger status_checks_rollup after insert on public.status_checks for each row execute function public.bingr_status_rollup();
+
+create table if not exists public.status_incidents (
+  id          bigserial primary key,
+  monitor_id  text not null references public.status_monitors(id) on delete cascade,
+  started_at  timestamptz not null default now(),
+  ended_at    timestamptz,
+  cause       text
+);
+-- per monitor hooguit één open storing (ook als twee controles tegelijk lopen)
+create unique index if not exists status_incidents_open_idx on public.status_incidents (monitor_id) where ended_at is null;
+create index if not exists status_incidents_started_idx on public.status_incidents (started_at desc);
+alter table public.status_incidents enable row level security;
+revoke all on public.status_incidents from anon, authenticated;
+
+-- Eén controle tegelijk: een run claimt het slot voor 90 s.
+create table if not exists public.status_runner (
+  id            int primary key default 1,
+  running_until timestamptz not null default 'epoch',
+  last_run_at   timestamptz,
+  last_source   text
+);
+insert into public.status_runner (id) values (1) on conflict (id) do nothing;
+alter table public.status_runner enable row level security;
+revoke all on public.status_runner from anon, authenticated;
+
+create or replace function public.bingr_status_lock(p_source text) returns boolean
+language plpgsql security definer set search_path = public as $$
+declare got int;
+begin
+  update public.status_runner set running_until = now() + interval '90 seconds', last_run_at = now(), last_source = left(p_source, 20)
+  where id = 1 and running_until < now();
+  get diagnostics got = row_count;
+  return got > 0;
+end $$;
+create or replace function public.bingr_status_unlock() returns void
+language sql security definer set search_path = public as $$
+  update public.status_runner set running_until = 'epoch' where id = 1;
+$$;
+
+-- Alles wat de statuspagina nodig heeft in één jsonb (geen limiet van 1000 rijen zoals bij gewone REST).
+create or replace function public.bingr_status_data(p_days int) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object(
+    'today', (now() at time zone 'Europe/Amsterdam')::date,
+    'daily', coalesce((select jsonb_agg(jsonb_build_object('m', monitor_id, 'd', day, 'n', n, 'g', n_degraded, 'x', n_down,
+               'ms', case when ms_n > 0 then round(ms_sum::numeric / ms_n) end) order by monitor_id, day)
+             from public.status_daily where day > (now() at time zone 'Europe/Amsterdam')::date - p_days), '[]'::jsonb),
+    'last24', coalesce((select jsonb_agg(jsonb_build_object('m', monitor_id, 'n', n, 'x', x, 'ms', ms))
+             from (select monitor_id, count(*) n, count(*) filter (where state = 'down') x, round(avg(ms)) ms
+                   from public.status_checks where at > now() - interval '24 hours' group by monitor_id) t), '[]'::jsonb),
+    'incidents', coalesce((select jsonb_agg(jsonb_build_object('id', id, 'm', monitor_id, 'started_at', started_at,
+               'ended_at', ended_at, 'cause', cause) order by started_at desc)
+             from public.status_incidents where started_at > now() - make_interval(days => p_days) or ended_at is null), '[]'::jsonb)
+  );
+$$;
+
+-- Actieve apparaten per platform (laatste 15 minuten), alleen voor het beheer.
+create or replace function public.bingr_status_devices() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(jsonb_build_object('platform', platform, 'devices', n) order by n desc), '[]'::jsonb)
+  from (select coalesce(nullif(platform, ''), '?') platform, count(*) n from public.account_devices
+        where last_seen_at > now() - interval '15 minutes' group by 1) p;
+$$;
+
+-- Planning (pg_cron): bestaat de taak, en hoe ging de laatste uitvoering. Werkt ook zonder pg_cron (dan null).
+create or replace function public.bingr_status_cron() returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare res jsonb;
+begin
+  execute $q$
+    select jsonb_build_object('active', j.active, 'schedule', j.schedule,
+      'last_run', (select jsonb_build_object('start', d.start_time, 'status', d.status) from cron.job_run_details d
+                   where d.jobid = j.jobid order by d.start_time desc limit 1))
+    from cron.job j where j.jobname = 'bingr-status' limit 1 $q$ into res;
+  return res;
+exception when others then
+  return null;
+end $$;
+
+-- Opruimen: ruwe controles 90 dagen, dagtotalen 400 dagen, afgesloten storingen 1 jaar.
+create or replace function public.bingr_status_cleanup() returns void
+language sql security definer set search_path = public as $$
+  delete from public.status_checks where at < now() - interval '90 days';
+  delete from public.status_daily where day < (now() at time zone 'Europe/Amsterdam')::date - 400;
+  delete from public.status_incidents where ended_at is not null and ended_at < now() - interval '1 year';
+$$;
+revoke all on function public.bingr_status_lock(text) from public, anon, authenticated;
+revoke all on function public.bingr_status_unlock() from public, anon, authenticated;
+revoke all on function public.bingr_status_data(int) from public, anon, authenticated;
+revoke all on function public.bingr_status_devices() from public, anon, authenticated;
+revoke all on function public.bingr_status_cron() from public, anon, authenticated;
+revoke all on function public.bingr_status_cleanup() from public, anon, authenticated;
+revoke all on function public.bingr_status_rollup() from public, anon, authenticated;
+grant execute on function public.bingr_status_lock(text) to service_role;
+grant execute on function public.bingr_status_unlock() to service_role;
+grant execute on function public.bingr_status_data(int) to service_role;
+grant execute on function public.bingr_status_devices() to service_role;
+grant execute on function public.bingr_status_cron() to service_role;
+grant execute on function public.bingr_status_cleanup() to service_role;
+
+-- Planning: pg_cron + pg_net (de taak zelf, met het geheim, zet de Backend-workflow klaar; nooit in de repo).
+do $$ begin
+  execute 'create extension if not exists pg_cron with schema pg_catalog';
+  execute 'create extension if not exists pg_net with schema extensions';
+exception when others then
+  raise notice 'pg_cron/pg_net niet beschikbaar: %', sqlerrm;
+end $$;

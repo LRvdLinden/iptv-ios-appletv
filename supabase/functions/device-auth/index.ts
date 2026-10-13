@@ -25,6 +25,7 @@
 //   list_streams    {} (ingelogd) -> {limit, streams:[{device_id, device_name, platform, profile_id, profile_name, title, kind, started_at, signed_in_at}]}
 //   watch_log       {days?:7} (ingelogd) -> {entries:[{device_name, platform, profile_id, profile_name, title, kind, started_at, ended_at, minutes}]}
 //   announcements   {lang?:"nl"|"en"} (ingelogd) -> {items:[{id, title, body, created_at}]}  (build 62; max. 5, nieuwste eerst)
+//   ping            {}                  -> {ok:true}  (statuscontrole, zonder inloggen)
 //   config          {}       (ingelogd)  -> {traktClientID, traktClientSecret, openSubtitlesAPIKey, omdbAPIKey, tmdbAPIKey}
 //                   App-sleutels staan alleen als function-secrets op de server (BINGR_*), nooit in de openbare repo.
 import { createClient } from "jsr:@supabase/supabase-js@2";
@@ -179,6 +180,8 @@ Deno.serve(async (req) => {
 
 async function handle(req: Request, body: Record<string, unknown>): Promise<Response> {
   switch (body.action) {
+    case "ping": // statuspagina: werkt de functie (zonder inloggen, zonder database)
+      return json({ ok: true });
     case "start": {
       await admin.from("device_codes").delete().lt("expires_at", new Date().toISOString());
       // af en toe voor alle accounts opruimen (oude streams, geschiedenis > 8 dagen)

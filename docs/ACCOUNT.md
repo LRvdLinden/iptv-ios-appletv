@@ -601,3 +601,15 @@ IPTV-servers sturen zelden CORS-headers en draaien vaak op **http**. Een https-p
 ### Beheer (alleen intern)
 
 Er is een aparte Edge Function `admin` voor het beheer-dashboard. Apps roepen die nooit aan. Het enige wat apps ervan merken: berichten (hierboven), en dat e-mails met berichten een afmeldlink naar `bingr.online/unsubscribe/` hebben. Accountmails (bevestigen, wachtwoord) worden altijd verstuurd.
+
+## Status en monitoring (bingr.online/status)
+
+Een aparte Edge Function `status` controleert elke 5 minuten de backend, de website en de downloads. Apps roepen die niet aan; ze hoeven er niets voor te doen.
+
+- **`ping`** (nieuw in device-auth en web-proxy): `{action:"ping"}` geeft `{ok:true}`, zonder inloggen en zonder database. Alleen voor de statuscontrole.
+- **Openbaar:** `GET /functions/v1/status?action=public` (of POST `{action:"public"}`), zonder sleutel, ~60 s in de cache. Antwoord: `{generated_at, overall:{state, down, degraded}, groups:[{id, name:{nl,en}, monitors:[{id, name:{nl,en}, state, checked_at, ms24, uptime:{d1,d7,d30,d90}, days:[{d, u, s}] (90 dagen)}]}], incidents:[{id, monitor_id, name, started_at, ended_at, duration_s}] (30 dagen)}`. `state` is `up`, `degraded` (verminderd) of `down`; `s` per dag ook `none` (geen gegevens). Alleen openbare monitors; nooit gebruikers- of apparaataantallen.
+- **Intern** (header `x-status-secret` = function-secret `STATUS_CRON_SECRET`, alleen pg_cron en de functie `admin`): `run` (controleren), `admin` (alles, ook niet-openbare monitors, actieve apparaten per platform en de planning), `checks`, `monitor_save`, `monitor_delete`. Het beheer gebruikt dit via `admin` `{action:"status", op:…}`.
+- **Regels:** time-out 10 s per controle. Eén fout = verminderd, twee fouten op rij = storing (incident open), twee goede controles op rij = storing voorbij. Trager dan 5 s = verminderd; TLS-certificaat van bingr.online minder dan 14 dagen geldig = verminderd. Uptime telt alleen storingen als uit.
+- **Tabellen:** `status_monitors`, `status_checks` (ruwe controles, 90 dagen bewaard), `status_daily` (dagtotalen, Nederlandse tijd), `status_incidents`. Alleen de service role kan erbij.
+- **Planning:** pg_cron-taak `bingr-status` (elke 5 min) roept via pg_net de functie aan. De Backend-workflow zet de taak bij elke deploy opnieuw klaar met het geheim; dat staat nooit in de repo.
+- **Meldingen:** bij het openen en sluiten van een storing een e-mail naar `BINGR_ALERT_EMAIL` (optioneel), via dezelfde SMTP-instellingen als de berichten.

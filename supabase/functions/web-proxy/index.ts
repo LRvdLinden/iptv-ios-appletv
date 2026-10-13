@@ -4,6 +4,7 @@
 // POST /functions/v1/web-proxy, headers `apikey` en `Authorization: Bearer <access_token>`:
 //   {url, range?}       body van `url` (http of https), gestreamd; range bv. "bytes=0-1048575"
 //   {action:"token"}    → {token, expires_at}: kort geldig (6 uur) token voor de GET-vorm
+//   {action:"ping"}     → {ok:true}: statuscontrole, zonder inloggen
 // GET /functions/v1/web-proxy?u=<base64url van de URL>&t=<token>[&s=<handtekening>]
 //   voor <video>, hls.js en Safari's eigen HLS-speler (die geen headers kunnen meesturen). De Range-header van de
 //   browser gaat mee. HLS-afspeellijsten worden herschreven: elke URI wordt een GET-URL van de proxy (met `s`).
@@ -359,6 +360,8 @@ Deno.serve(async (req) => {
       body = JSON.parse(text);
       if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error();
     } catch { return json({ error: "bad_json" }, 400); }
+
+    if (body.action === "ping") return json({ ok: true }); // statuspagina: werkt de proxy (zonder inloggen)
 
     if (body.action === "token") {
       const user = await userFor(req);
