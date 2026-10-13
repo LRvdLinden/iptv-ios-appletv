@@ -1,5 +1,36 @@
 [
  {
+  "build": 65,
+  "version": "1.0.0",
+  "date": "2026-10-13",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Nieuwe statuspagina op bingr.online/status: per onderdeel zie je of het werkt, de uptime van de afgelopen 90 dagen en eerdere storingen. De pagina werkt zichzelf elke minuut bij",
+    "en": "New status page at bingr.online/status: see whether each part of Bingr is working, its uptime over the last 90 days and past incidents. The page refreshes itself every minute"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Bingr controleert elke 5 minuten zelf de accounts, de webspeler-doorgifte, de website en de downloads, en houdt storingen automatisch bij",
+    "en": "Bingr now checks accounts, the web player relay, the website and the downloads every 5 minutes, and records incidents automatically"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "web"
+    ],
+    "nl": "In de footer van de website staat nu een link naar de statuspagina",
+    "en": "The website footer now links to the status page"
+   }
+  ]
+ },
+ {
   "build": 64,
   "version": "1.0.0",
   "date": "2026-10-13",

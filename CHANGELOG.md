@@ -4,6 +4,25 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 65
+_13 oktober 2026_
+
+### Website
+
+**Nieuw**
+
+- Nieuwe statuspagina op bingr.online/status: per onderdeel zie je of het werkt, de uptime van de afgelopen 90 dagen en eerdere storingen. De pagina werkt zichzelf elke minuut bij
+
+**Verbeterd**
+
+- In de footer van de website staat nu een link naar de statuspagina
+
+### Server
+
+**Nieuw**
+
+- Bingr controleert elke 5 minuten zelf de accounts, de webspeler-doorgifte, de website en de downloads, en houdt storingen automatisch bij
+
 ## Versie 1.0.0 · Build 64
 _13 oktober 2026_
 
