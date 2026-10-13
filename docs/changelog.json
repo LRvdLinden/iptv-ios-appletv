@@ -1,5 +1,87 @@
 [
  {
+  "build": 74,
+  "version": "1.0.0",
+  "date": "2026-10-14",
+  "items": [
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web"
+    ],
+    "nl": "Profielen zien alleen nog hun eigen collecties, niet meer die van het hoofdprofiel of van andere profielen; kopieën die eerder bij andere profielen terechtkwamen, worden opgeruimd",
+    "en": "Profiles now only see their own collections, no longer those of the main profile or other profiles; copies that ended up with other profiles earlier are cleaned up"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web"
+    ],
+    "nl": "Uitloggen logt alleen dit apparaat of deze browser uit; je andere apparaten blijven ingelogd",
+    "en": "Signing out only signs out this device or browser; your other devices stay signed in"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Webspeler: films en series spelen weer af, ook MKV in Chrome, Edge en Firefox; lukt het niet, dan zegt de speler waarom",
+    "en": "Web player: movies and series play again, including MKV in Chrome, Edge and Firefox; if one can't play, the player says why"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Films via de doorgifte van Bingr spelen ook in Safari en bij servers die geen deelverzoeken ondersteunen",
+    "en": "Movies through Bingr's relay also play in Safari and from servers that don't support partial requests"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web"
+    ],
+    "nl": "Voor jou: het label Serie/Film staat linksboven op de cover en de rij staat altijd op alfabet, series en films door elkaar",
+    "en": "For you: the Series/Movie label is in the top-left corner of the cover and the row is always alphabetical, series and movies mixed"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web"
+    ],
+    "nl": "Apple TV heeft overal hetzelfde Apple TV-icoon, in de apparatenlijst, bij Nu aan het kijken en op bingr.online",
+    "en": "Apple TV has the same Apple TV icon everywhere: in the device list, in Watching now and on bingr.online"
+   }
+  ]
+ },
+ {
   "build": 73,
   "version": "1.0.0",
   "date": "2026-10-14",
