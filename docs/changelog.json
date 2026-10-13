@@ -1,5 +1,52 @@
 [
  {
+  "build": 62,
+  "version": "1.0.0",
+  "date": "2026-10-13",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Kijk Bingr in je browser op bingr.online/web: inloggen met e-mail op je telefoon of met een QR-code op iPad en computer, met je profielen, Live TV met tv-gids, films, series, Mijn lijst en voortgang, sneltoetsen, beeld-in-beeld en volledig scherm",
+    "en": "Watch Bingr in your browser at bingr.online/web: sign in with email on your phone or with a QR code on iPad and computer, with your profiles, Live TV with TV guide, movies, series, My List and progress, keyboard shortcuts, Picture in Picture and full screen"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Bingr in de browser werkt met servers die https gebruiken; servers zonder https tonen een duidelijke melding om in de app te kijken",
+    "en": "Bingr in the browser works with servers that use https; servers without https show a clear message to watch in the app"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Servers zonder CORS werken ook in de browser via een beveiligde doorgifte, alleen voor https en alleen voor je eigen servers",
+    "en": "Servers without CORS also work in the browser through a secure relay, https only and only for your own servers"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web",
+     "server"
+    ],
+    "nl": "Apparaten: de browser verschijnt als eigen apparaattype (bijv. \"Chrome op Mac\") met een browser-icoon",
+    "en": "Devices: the browser appears as its own device type (e.g. \"Chrome on Mac\") with a browser icon"
+   }
+  ]
+ },
+ {
   "build": 61,
   "version": "1.0.0",
   "date": "2026-10-13",

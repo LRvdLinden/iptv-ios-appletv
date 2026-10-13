@@ -4,6 +4,28 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 62
+_13 oktober 2026_
+
+### Alle apps, de website en de server
+
+**Nieuw**
+
+- Apparaten: de browser verschijnt als eigen apparaattype (bijv. "Chrome op Mac") met een browser-icoon
+
+### Website
+
+**Nieuw**
+
+- Kijk Bingr in je browser op bingr.online/web: inloggen met e-mail op je telefoon of met een QR-code op iPad en computer, met je profielen, Live TV met tv-gids, films, series, Mijn lijst en voortgang, sneltoetsen, beeld-in-beeld en volledig scherm
+- Bingr in de browser werkt met servers die https gebruiken; servers zonder https tonen een duidelijke melding om in de app te kijken
+
+### Server
+
+**Nieuw**
+
+- Servers zonder CORS werken ook in de browser via een beveiligde doorgifte, alleen voor https en alleen voor je eigen servers
+
 ## Versie 1.0.0 · Build 61
 _13 oktober 2026_
 
