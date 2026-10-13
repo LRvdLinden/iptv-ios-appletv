@@ -4,6 +4,15 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 73
+_14 oktober 2026_
+
+### Website
+
+**Verbeterd**
+
+- Alle pagina's van bingr.online (changelog, status, tv koppelen, Mijn Bingr, support, privacy, wachtwoord herstellen en afmelden) hebben nu dezelfde stijl, menubalk en footer als de homepage
+
 ## Versie 1.0.0 · Build 72
 _13 oktober 2026_
 

@@ -1,5 +1,20 @@
 [
  {
+  "build": 73,
+  "version": "1.0.0",
+  "date": "2026-10-14",
+  "items": [
+   {
+    "type": "improved",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Alle pagina's van bingr.online (changelog, status, tv koppelen, Mijn Bingr, support, privacy, wachtwoord herstellen en afmelden) hebben nu dezelfde stijl, menubalk en footer als de homepage",
+    "en": "All pages on bingr.online (changelog, status, link a TV, My Bingr, support, privacy, password reset and unsubscribe) now share the homepage's style, menu bar and footer"
+   }
+  ]
+ },
+ {
   "build": 72,
   "version": "1.0.0",
   "date": "2026-10-13",
