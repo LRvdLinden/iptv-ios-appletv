@@ -1,7 +1,10 @@
 name: Backend
 
-# Zet de Bingr-accounts in Supabase klaar: tabel (supabase/schema.sql), e-mailtemplates (supabase/templates) en Edge Function device-auth (tv-koppeling met QR).
+# Zet de Bingr-accounts in Supabase klaar: tabel (supabase/schema.sql), e-mailtemplates (supabase/templates) en de Edge Functions
+# device-auth (accounts, tv-koppeling), web-proxy (webspeler) en admin (beheer-dashboard).
 # Secrets: SUPABASE_ACCESS_TOKEN (supabase.com/dashboard/account/tokens) en SUPABASE_PROJECT_REF (bv. abcd1234 uit https://abcd1234.supabase.co).
+# Beheer (optioneel): BINGR_ADMIN_USER, BINGR_ADMIN_PASSWORD; bulkmail: BINGR_SMTP_HOST, BINGR_SMTP_PORT (465), BINGR_SMTP_USER,
+# BINGR_SMTP_PASSWORD, BINGR_SMTP_FROM. Alleen gezette secrets worden doorgezet; waarden komen nooit in de repo of het log.
 on:
   push:
     branches: [main]
@@ -63,9 +66,40 @@ jobs:
             supabase secrets set --project-ref "$REF" BINGR_SOURCES_KEY="$(openssl rand -base64 32)" >/dev/null
             echo "::notice::Versleutelsleutel voor servers aangemaakt"
           fi
+      - name: Beheer- en mailgegevens als function-secrets
+        if: steps.check.outputs.skip != '1'
+        env:
+          A_USER: ${{ secrets.BINGR_ADMIN_USER }}
+          A_PASS: ${{ secrets.BINGR_ADMIN_PASSWORD }}
+          S_HOST: ${{ secrets.BINGR_SMTP_HOST }}
+          S_PORT: ${{ secrets.BINGR_SMTP_PORT }}
+          S_USER: ${{ secrets.BINGR_SMTP_USER }}
+          S_PASS: ${{ secrets.BINGR_SMTP_PASSWORD }}
+          S_FROM: ${{ secrets.BINGR_SMTP_FROM }}
+        run: |
+          # als losse argumenten (geen env-bestand), zodat tekens als # " of spaties in wachtwoorden geen probleem zijn
+          args=()
+          [ -n "$A_USER" ] && args+=("BINGR_ADMIN_USER=$A_USER")
+          [ -n "$A_PASS" ] && args+=("BINGR_ADMIN_PASSWORD=$A_PASS")
+          [ -n "$S_HOST" ] && args+=("BINGR_SMTP_HOST=$S_HOST")
+          [ -n "$S_PORT" ] && args+=("BINGR_SMTP_PORT=$S_PORT")
+          [ -n "$S_USER" ] && args+=("BINGR_SMTP_USER=$S_USER")
+          [ -n "$S_PASS" ] && args+=("BINGR_SMTP_PASSWORD=$S_PASS")
+          [ -n "$S_FROM" ] && args+=("BINGR_SMTP_FROM=$S_FROM")
+          if [ ${#args[@]} -gt 0 ]; then supabase secrets set --project-ref "$REF" "${args[@]}" >/dev/null; echo "::notice::${#args[@]} beheer/mail-secret(s) op de server gezet"; fi
+          [ -z "$A_USER" ] || [ -z "$A_PASS" ] && echo "::warning::BINGR_ADMIN_USER/BINGR_ADMIN_PASSWORD ontbreken: beheer-dashboard kan niet inloggen."
+          [ -n "$A_PASS" ] && [ ${#A_PASS} -lt 12 ] && echo "::warning::BINGR_ADMIN_PASSWORD is korter dan 12 tekens; kies een langer wachtwoord."
+          [ -n "$S_PORT" ] && { [ "$S_PORT" = 587 ] || [ "$S_PORT" = 25 ]; } && echo "::warning::Supabase blokkeert uitgaande SMTP op poort $S_PORT; gebruik 465 (SSL/TLS)."
+          true
       - name: Edge Function device-auth
         if: steps.check.outputs.skip != '1'
         run: supabase functions deploy device-auth --project-ref "$REF" --no-verify-jwt --use-api
+      - name: Edge Function web-proxy
+        if: steps.check.outputs.skip != '1'
+        run: supabase functions deploy web-proxy --project-ref "$REF" --no-verify-jwt --use-api
+      - name: Edge Function admin
+        if: steps.check.outputs.skip != '1'
+        run: supabase functions deploy admin --project-ref "$REF" --no-verify-jwt --use-api
       - name: Testen
         if: steps.check.outputs.skip != '1'
         run: |
@@ -80,3 +114,9 @@ jobs:
           grep -q pending /tmp/p.json && echo "::notice::tv-koppeling (start + poll) werkt, code $C" || { echo "::error::poll gaf geen pending"; exit 1; }
           curl -s -X POST "https://$REF.supabase.co/functions/v1/device-auth" -H "Content-Type: application/json" -d '{"action":"list_devices"}' | tee /tmp/l.json; echo
           grep -q not_signed_in /tmp/l.json && echo "::notice::apparatenbeheer actief" || { echo "::error::list_devices onverwacht"; exit 1; }
+          curl -s -X POST "https://$REF.supabase.co/functions/v1/device-auth" -H "Content-Type: application/json" -d '{"action":"announcements"}' | tee /tmp/a.json; echo
+          grep -q not_signed_in /tmp/a.json && echo "::notice::announcements actief" || { echo "::error::announcements onverwacht"; exit 1; }
+          curl -s -X POST "https://$REF.supabase.co/functions/v1/web-proxy" -H "Content-Type: application/json" -d '{"url":"https://example.com/"}' | tee /tmp/w.json; echo
+          grep -q not_signed_in /tmp/w.json && echo "::notice::web-proxy actief" || { echo "::error::web-proxy onverwacht"; exit 1; }
+          curl -s -X POST "https://$REF.supabase.co/functions/v1/admin" -H "Content-Type: application/json" -d '{"action":"stats"}' | tee /tmp/b.json; echo
+          grep -q not_signed_in /tmp/b.json && echo "::notice::admin actief" || { echo "::error::admin onverwacht"; exit 1; }

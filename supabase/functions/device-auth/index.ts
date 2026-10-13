@@ -5,8 +5,8 @@
 //                   Bij approved: POST /auth/v1/verify {type:"magiclink", token_hash} geeft de tv een eigen sessie.
 //   approve         {code}   (ingelogd)  -> {ok, device}
 //   delete_account  {}       (ingelogd)  -> {ok}
-//   register_device {device_id, name, platform} (ingelogd) -> {ok, device} | 403 {error:"device_limit", limit, devices}
-//   heartbeat       {device_id} (ingelogd) -> {ok} | {revoked:true}  (werkt ook "laatst gebruikt" bij)
+//   register_device {device_id, name, platform, app_version?, os_version?} (ingelogd) -> {ok, device} | 403 {error:"device_limit", limit, devices}
+//   heartbeat       {device_id, app_version?, os_version?} (ingelogd) -> {ok} | {revoked:true}  (werkt ook "laatst gebruikt" bij)
 //                   Ongeldig/verlopen token -> 401 {error:"not_signed_in"} (app ververst en probeert opnieuw); auth-server onbereikbaar -> 503.
 //   list_devices    {device_id?} (ingelogd) -> {limit, devices:[{device_id,name,platform,created_at,last_seen_at,current}]}
 //   rename_device   {device_id, name} (ingelogd) -> {ok}   (eigen naam; register_device overschrijft die niet meer)
@@ -24,6 +24,7 @@
 //   stream_stop     {device_id} (ingelogd) -> {ok}
 //   list_streams    {} (ingelogd) -> {limit, streams:[{device_id, device_name, platform, profile_id, profile_name, title, kind, started_at, signed_in_at}]}
 //   watch_log       {days?:7} (ingelogd) -> {entries:[{device_name, platform, profile_id, profile_name, title, kind, started_at, ended_at, minutes}]}
+//   announcements   {lang?:"nl"|"en"} (ingelogd) -> {items:[{id, title, body, created_at}]}  (build 62; max. 5, nieuwste eerst)
 //   config          {}       (ingelogd)  -> {traktClientID, traktClientSecret, openSubtitlesAPIKey, omdbAPIKey, tmdbAPIKey}
 //                   App-sleutels staan alleen als function-secrets op de server (BINGR_*), nooit in de openbare repo.
 import { createClient } from "jsr:@supabase/supabase-js@2";
@@ -106,6 +107,8 @@ async function open_(data: string): Promise<any> {
 }
 const s80 = (v: unknown) => (v == null ? null : String(v).slice(0, 80));
 const s200 = (v: unknown) => (v == null ? null : String(v).slice(0, 200));
+// Build 62: appversie ("1.0.0 (62)") en systeemversie, max. 40 tekens; leeg/ontbrekend = niet meegestuurd.
+const s40 = (v: unknown) => { const t = v == null ? "" : String(v).trim().slice(0, 40); return t || null; };
 async function closeLog(userId: string, deviceId: string) {
   const { data: cur } = await admin.from("account_streams").select("log_id").eq("user_id", userId).eq("device_id", deviceId).maybeSingle();
   if (cur?.log_id) await admin.from("account_watch_log").update({ ended_at: new Date().toISOString() }).eq("id", cur.log_id);
@@ -248,6 +251,7 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       // tellen + toevoegen atomair in de database (slot per account), zodat gelijktijdige logins de limiet niet passeren
       const { data: r, error } = await admin.rpc("bingr_register_device", {
         p_user: user.id, p_device: device_id, p_name: name, p_platform: platform, p_session: session_id, p_limit: DEVICE_LIMIT,
+        p_app_version: s40(body.app_version), p_os_version: s40(body.os_version),
       });
       if (error) throw new Error(error.message);
       if (r?.error === "device_limit") return json({ error: "device_limit", limit: DEVICE_LIMIT, devices: await listDevices(user.id) }, 403);
@@ -262,7 +266,13 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       const sid = sessionIdFrom(req);
       const patch: Record<string, unknown> = { last_seen_at: new Date().toISOString() };
       if (sid && /^[0-9a-f-]{36}$/i.test(sid) && sid !== row.session_id) patch.session_id = sid;
+      const av = s40(body.app_version), ov = s40(body.os_version);
+      if (av) patch.app_version = av;
+      if (ov) patch.os_version = ov;
       await admin.from("account_devices").update(patch).eq("user_id", user.id).eq("device_id", device_id);
+      // actief vandaag (statistieken); één rij per account per dag
+      await admin.from("account_logins").upsert({ user_id: user.id, day: new Date().toISOString().slice(0, 10) },
+        { onConflict: "user_id,day", ignoreDuplicates: true });
       return json({ ok: true });
     }
     case "list_devices": {
@@ -407,6 +417,21 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
         ...e, minutes: Math.max(0, Math.round((Date.parse(e.ended_at) - Date.parse(e.started_at)) / 60000)),
       })).filter((e) => e.minutes >= 1 || Date.now() - Date.parse(e.started_at) < 5 * 60000);
       return json({ entries });
+    }
+    case "announcements": {
+      const user = await authed(req);
+      if (user instanceof Response) return user;
+      const en = String(body.lang ?? "").toLowerCase().startsWith("en");
+      const now = new Date().toISOString();
+      const { data } = await admin.from("announcements").select("id,title_nl,body_nl,title_en,body_en,created_at")
+        .gte("created_at", new Date(Date.now() - 30 * 864e5).toISOString())
+        .or(`expires_at.is.null,expires_at.gt."${now}"`)
+        .order("created_at", { ascending: false }).limit(5);
+      const items = (data ?? []).map((a) => {
+        const useEn = en && String(a.title_en ?? "").trim() !== "" && String(a.body_en ?? "").trim() !== "";
+        return { id: a.id, title: useEn ? a.title_en : a.title_nl, body: useEn ? a.body_en : a.body_nl, created_at: a.created_at };
+      });
+      return json({ items });
     }
     case "config": {
       const user = await authed(req);

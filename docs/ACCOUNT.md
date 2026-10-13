@@ -98,7 +98,7 @@ Alle aanroepen gaan naar device-auth, met `Authorization: Bearer <access_token>`
 | `remove_device` | `{device_id}` | `{ok}`. De sessie van dat apparaat wordt ingetrokken, zodat het apparaat uitlogt. |
 
 - **name**: de naam van het apparaat (op iOS `UIDevice.current.name`, op de Mac `Host.current().localizedName`, op Android `Settings.Global.DEVICE_NAME` of anders `Build.MODEL`).
-- **platform**: een van `iPhone`, `iPad`, `Apple TV`, `Mac`, `Android`, `Android tablet`, `Android TV`, `Google TV`, `Fire TV`, `tizen` (Samsung TV, build 55).
+- **platform**: een van `iPhone`, `iPad`, `Apple TV`, `Mac`, `Android`, `Android tablet`, `Android TV`, `Google TV`, `Fire TV`, `tizen` (Samsung TV, build 55), `browser` (webspeler op bingr.online, build 62).
 
 **Wanneer de app wat aanroept**
 - **Na elke geslaagde login** (e-mail of tv-koppeling): `register_device`.
@@ -543,3 +543,55 @@ Gemigreerd (version 2) als `version >= 2` **of** als er een object `profiles` is
 ### Profielen (`account_data.profiles`): alle velden
 
 `id`, `name`, `avatar {symbol, colorIndex, emoji?}`, `kids`, `ageLimit` (getal of `null`), `isMain`, `order`, `accentColor` (build 54), `photo` (build 40, `{path, updated}` of `null`), `updatedAt`, en bij een tombstone `deleted`, `deletedAt`. Onbekende velden blijven staan.
+
+## Build 62: appversies, berichten en de webspeler
+
+### `register_device` en `heartbeat`: app- en systeemversie
+
+Beide acties accepteren twee optionele velden. De server bewaart ze bij het apparaat (`account_devices.app_version` / `os_version`) en werkt ze bij elke aanroep bij; ontbreekt een veld of is het leeg, dan blijft de oude waarde staan.
+
+| Veld | Inhoud | Voorbeeld |
+|---|---|---|
+| `app_version` | versie en build, max. 40 tekens | `"1.0.0 (62)"` |
+| `os_version` | systeem en versie, max. 40 tekens | `"iOS 26.1"`, `"tvOS 26.0"`, `"macOS 26.1"`, `"Android 15"`, `"Tizen 9.0"`, `"Chrome 141 / macOS"` |
+
+Stuur ze bij **elke** `register_device` en `heartbeat`. Antwoorden en foutcodes blijven gelijk.
+
+**Webspeler:** `platform` = `"browser"`, `name` = browser + systeem, bijvoorbeeld `"Chrome op Mac"`, `"Safari op iPhone"`, `"Edge op Windows"`. De apps tonen `browser` in de apparatenlijst als "Webbrowser" met een globe-icoon (Apple: `globe`, Android: `Icons.Default.Language`).
+
+### Berichten (`announcements`)
+
+device-auth `{"action":"announcements","lang":"nl"}` met `Authorization: Bearer <access_token>`:
+
+```json
+{"items":[{"id":"<uuid>","title":"…","body":"…","created_at":"ISO-8601"}]}
+```
+
+- Alleen actieve berichten: niet verlopen en jonger dan 30 dagen; nieuwste eerst, max. 5.
+- `lang` `"en"` (of `"en-…"`) geeft de Engelse tekst als die er is; elke andere taal (en ontbrekend) geeft Nederlands.
+- `body` is platte tekst; regels gescheiden door `\n`, alinea's door `\n\n`. Https-links mogen klikbaar worden.
+- **Wanneer:** na login en bij het starten met een geldige sessie, en bij terugkeer naar de voorgrond (hooguit eens per uur).
+- **Tonen:** elk nog niet gezien bericht één keer, oudste eerst, als melding met titel, tekst en een knop **OK** (NL "OK"). Daarna het `id` lokaal als gezien bewaren (per apparaat, niet per profiel; max. 50 id's onthouden).
+- **Fouten:** stil, nooit blokkeren. 401/503 zoals elders.
+
+### Webproxy (`web-proxy`) voor de webspeler
+
+IPTV-servers sturen zelden CORS-headers. De webspeler op bingr.online haalt API-JSON, M3U, XMLTV en HLS-afspeellijsten/-segmenten daarom op via een eigen Edge Function als de server zelf geen CORS toestaat.
+
+`POST {URL}/functions/v1/web-proxy`, headers `apikey`, `Authorization: Bearer <access_token>`, `Content-Type: application/json`, body:
+
+| Veld | Inhoud |
+|---|---|
+| `url` | volledige **https**-URL (de webspeler ondersteunt alleen https-bronnen; http geeft 400 `https_only`) |
+| `range` | optioneel, bv. `"bytes=0-1048575"` |
+
+- **Antwoord:** de body van de server, gestreamd (niet gebufferd), met dezelfde status (200, 206, 404 …) en `Content-Type`, `Content-Length`, `Content-Range`, `Accept-Ranges`. De header **`X-Final-URL`** geeft het adres na doorverwijzingen; gebruik dat als basis voor relatieve URL's in HLS-afspeellijsten.
+- **Alleen eigen servers:** de host moet voorkomen in de eigen bronnen van het account (`get_sources`: `m3uURL`, `epgURL`, `serverURL`; ook subdomeinen van hetzelfde domein). Doorverwijzingen (max. 5) volgt de proxy zelf, ook naar een andere host, maar alleen via https en nooit naar interne adressen. Een net toegevoegde bron werkt binnen ongeveer een minuut.
+- **Grenzen:** max. 200 MB per aanvraag, 120 s per aanvraag, 600 aanvragen per minuut per account.
+- **Fouten van de proxy zelf** zijn JSON `{error}`: 400 `bad_json` / `bad_url` / `https_only` / `bad_range`, 401 `not_signed_in`, 403 `host_not_allowed`, 413 `too_large`, 429 `rate_limited`, 502 `upstream_failed`, 503 `unavailable`, 504 `timeout`. Een fout van de IPTV-server zelf komt gewoon door met zijn eigen status.
+- **CORS:** alleen voor `https://bingr.online` (en `http://localhost` / `127.0.0.1` om te testen).
+- **Wanneer gebruiken:** eerst direct proberen; alleen bij een CORS-/netwerkfout via de proxy (en dat per server onthouden). Video via de proxy kost dataverkeer op de server, dus segmenten alleen via de proxy als het direct niet lukt.
+
+### Beheer (alleen intern)
+
+Er is een aparte Edge Function `admin` voor het beheer-dashboard. Apps roepen die nooit aan. Het enige wat apps ervan merken: berichten (hierboven), en dat e-mails met berichten een afmeldlink naar `bingr.online/unsubscribe/` hebben. Accountmails (bevestigen, wachtwoord) worden altijd verstuurd.

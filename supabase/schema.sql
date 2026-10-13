@@ -217,3 +217,300 @@ language sql security definer set search_path = public as $$
 $$;
 revoke all on function public.bingr_cleanup() from public, anon, authenticated;
 grant execute on function public.bingr_cleanup() to service_role;
+
+-- Build 62: appversie per apparaat, berichten, webproxy-limiet en beheer.
+alter table public.account_devices add column if not exists app_version text;
+alter table public.account_devices add column if not exists os_version text;
+
+-- Eén rij per account per dag dat het account actief was (register_device/heartbeat); voor de statistieken.
+create table if not exists public.account_logins (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  day     date not null default (now() at time zone 'utc')::date,
+  primary key (user_id, day)
+);
+create index if not exists account_logins_day_idx on public.account_logins (day);
+alter table public.account_logins enable row level security;
+revoke all on public.account_logins from anon, authenticated;
+
+-- Register_device krijgt app_version/os_version (oude handtekening eerst weg, anders is de aanroep dubbelzinnig).
+drop function if exists public.bingr_register_device(uuid, text, text, text, uuid, int);
+create or replace function public.bingr_register_device(p_user uuid, p_device text, p_name text, p_platform text, p_session uuid, p_limit int,
+  p_app_version text default null, p_os_version text default null)
+returns jsonb language plpgsql security definer set search_path = public, auth as $$
+declare cur record; n int;
+begin
+  perform pg_advisory_xact_lock(hashtextextended('bingr.devices:' || p_user::text, 0));
+  insert into public.account_logins (user_id) values (p_user) on conflict do nothing;
+  select session_id, custom_name into cur from public.account_devices where user_id = p_user and device_id = p_device;
+  if not found then
+    select count(*) into n from public.account_devices where user_id = p_user;
+    if n >= p_limit then return jsonb_build_object('ok', false, 'error', 'device_limit'); end if;
+    insert into public.account_devices (user_id, device_id, name, platform, session_id, signed_in_at, app_version, os_version)
+    values (p_user, p_device, p_name, p_platform, p_session, now(), p_app_version, p_os_version);
+    return jsonb_build_object('ok', true);
+  end if;
+  -- zelfde apparaat opnieuw ingelogd: oude sessie intrekken als die anders is
+  if cur.session_id is not null and p_session is not null and cur.session_id <> p_session then
+    delete from auth.sessions where id = cur.session_id;
+  end if;
+  update public.account_devices set
+    platform = p_platform,
+    session_id = coalesce(p_session, session_id),
+    last_seen_at = now(),
+    signed_in_at = case when p_session is not null and cur.session_id is distinct from p_session then now() else signed_in_at end,
+    name = case when custom_name then name else p_name end,
+    app_version = coalesce(p_app_version, app_version),
+    os_version = coalesce(p_os_version, os_version)
+  where user_id = p_user and device_id = p_device;
+  return jsonb_build_object('ok', true);
+end $$;
+revoke all on function public.bingr_register_device(uuid, text, text, text, uuid, int, text, text) from public, anon, authenticated;
+grant execute on function public.bingr_register_device(uuid, text, text, text, uuid, int, text, text) to service_role;
+
+-- Berichten van de beheerder aan alle gebruikers (in de apps één keer getoond; eventueel ook per e-mail).
+create table if not exists public.announcements (
+  id            uuid primary key default gen_random_uuid(),
+  title_nl      text not null,
+  body_nl       text not null,
+  title_en      text not null default '',
+  body_en       text not null default '',
+  created_at    timestamptz not null default now(),
+  expires_at    timestamptz,
+  email         boolean not null default false,
+  email_total   int not null default 0,
+  email_sent    int not null default 0,
+  email_failed  int not null default 0,
+  email_cursor  uuid,
+  email_done_at timestamptz
+);
+create index if not exists announcements_created_idx on public.announcements (created_at desc);
+alter table public.announcements enable row level security;
+revoke all on public.announcements from anon, authenticated;
+
+-- Afmelden voor e-mails van Bingr (berichten); accountmails (bevestigen, wachtwoord) gaan altijd.
+create table if not exists public.account_email_prefs (
+  user_id       uuid primary key references auth.users(id) on delete cascade,
+  email_opt_out boolean not null default false,
+  updated_at    timestamptz not null default now()
+);
+alter table public.account_email_prefs enable row level security;
+revoke all on public.account_email_prefs from anon, authenticated;
+
+-- Beheer: mislukte inlogpogingen per IP en een logboek van acties.
+create table if not exists public.admin_login_attempts (
+  ip           text primary key,
+  failures     int not null default 0,
+  window_start timestamptz not null default now(),
+  locked_until timestamptz
+);
+alter table public.admin_login_attempts enable row level security;
+revoke all on public.admin_login_attempts from anon, authenticated;
+create table if not exists public.admin_audit (
+  id          bigserial primary key,
+  action      text not null,
+  target_user uuid,
+  detail      jsonb,
+  ip          text,
+  created_at  timestamptz not null default now()
+);
+create index if not exists admin_audit_created_idx on public.admin_audit (created_at desc);
+alter table public.admin_audit enable row level security;
+revoke all on public.admin_audit from anon, authenticated;
+
+-- Tellers voor limieten (webproxy): per sleutel per minuut.
+create table if not exists public.rate_limits (
+  key    text not null,
+  bucket timestamptz not null,
+  hits   int not null default 0,
+  primary key (key, bucket)
+);
+alter table public.rate_limits enable row level security;
+revoke all on public.rate_limits from anon, authenticated;
+
+create or replace function public.bingr_rate_hit(p_key text, p_max int) returns boolean
+language plpgsql security definer set search_path = public as $$
+declare n int;
+begin
+  insert into public.rate_limits (key, bucket, hits) values (p_key, date_trunc('minute', now()), 1)
+  on conflict (key, bucket) do update set hits = public.rate_limits.hits + 1
+  returning hits into n;
+  return n <= p_max;
+end $$;
+revoke all on function public.bingr_rate_hit(text, int) from public, anon, authenticated;
+grant execute on function public.bingr_rate_hit(text, int) to service_role;
+
+-- Beheer-login: is dit IP (of alles samen, bij een aanval van veel IP's) geblokkeerd?
+create or replace function public.bingr_admin_gate(p_ip text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare until_ts timestamptz; total int;
+begin
+  select locked_until into until_ts from public.admin_login_attempts where ip = p_ip;
+  if until_ts is not null and until_ts > now() then
+    return jsonb_build_object('locked', true, 'retry_after', ceil(extract(epoch from until_ts - now())));
+  end if;
+  select coalesce(sum(failures), 0) into total from public.admin_login_attempts where window_start > now() - interval '15 minutes';
+  if total >= 50 then return jsonb_build_object('locked', true, 'retry_after', 900); end if;
+  return jsonb_build_object('locked', false);
+end $$;
+-- Resultaat van een poging: na 5 fouten binnen 15 min is het IP 15 min geblokkeerd; gelukt = teller weg.
+create or replace function public.bingr_admin_result(p_ip text, p_ok boolean) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if p_ok then delete from public.admin_login_attempts where ip = p_ip; return; end if;
+  insert into public.admin_login_attempts as a (ip, failures, window_start) values (p_ip, 1, now())
+  on conflict (ip) do update set
+    failures = case when a.window_start < now() - interval '15 minutes' then 1 else a.failures + 1 end,
+    window_start = case when a.window_start < now() - interval '15 minutes' then now() else a.window_start end;
+  update public.admin_login_attempts set locked_until = now() + interval '15 minutes', failures = 0, window_start = now()
+  where ip = p_ip and failures >= 5;
+end $$;
+revoke all on function public.bingr_admin_gate(text) from public, anon, authenticated;
+revoke all on function public.bingr_admin_result(text, boolean) from public, anon, authenticated;
+grant execute on function public.bingr_admin_gate(text) to service_role;
+grant execute on function public.bingr_admin_result(text, boolean) to service_role;
+
+-- Inlogs per dag uit het auth-logboek (als dat bestaat en gevuld wordt), anders leeg.
+create or replace function public.bingr_audit_logins(p_days int) returns table(day date, n bigint)
+language plpgsql security definer set search_path = public, auth as $$
+begin
+  if to_regclass('auth.audit_log_entries') is null then return; end if;
+  return query execute
+    'select (created_at at time zone ''utc'')::date, count(*) from auth.audit_log_entries
+      where created_at > now() - make_interval(days => $1) and payload->>''action'' = ''login'' group by 1'
+    using p_days;
+exception when others then return;
+end $$;
+revoke all on function public.bingr_audit_logins(int) from public, anon, authenticated;
+grant execute on function public.bingr_audit_logins(int) to service_role;
+
+-- Statistieken voor het beheer-dashboard.
+create or replace function public.bingr_admin_stats() returns jsonb
+language plpgsql security definer set search_path = public, auth as $$
+declare res jsonb; days jsonb; audit_total bigint;
+begin
+  select coalesce(sum(n), 0) into audit_total from public.bingr_audit_logins(30);
+  with d as (select generate_series((now() at time zone 'utc')::date - 29, (now() at time zone 'utc')::date, interval '1 day')::date as day),
+  nu as (select (created_at at time zone 'utc')::date as day, count(*) n from auth.users where created_at > now() - interval '31 days' group by 1),
+  al as (select day, count(*) n from public.account_logins where day > (now() at time zone 'utc')::date - 31 group by 1),
+  au as (select * from public.bingr_audit_logins(31))
+  select jsonb_agg(jsonb_build_object('day', d.day, 'new_users', coalesce(nu.n, 0), 'active_users', coalesce(al.n, 0),
+           'signins', case when audit_total > 0 then coalesce(au.n, 0) else coalesce(al.n, 0) end) order by d.day)
+  into days from d left join nu on nu.day = d.day left join al on al.day = d.day left join au on au.day = d.day;
+  res := jsonb_build_object(
+    'total_users', (select count(*) from auth.users),
+    'confirmed_users', (select count(*) from auth.users where email_confirmed_at is not null),
+    'new_users_7d', (select count(*) from auth.users where created_at > now() - interval '7 days'),
+    'active_today', (select count(*) from public.account_logins where day = (now() at time zone 'utc')::date),
+    'active_30d', (select count(distinct user_id) from public.account_logins where day > (now() at time zone 'utc')::date - 30),
+    'devices_total', (select count(*) from public.account_devices),
+    'watching_now', (select count(*) from public.account_streams where last_ping > now() - interval '90 seconds'),
+    'opted_out', (select count(*) from public.account_email_prefs where email_opt_out),
+    'signins_source', case when audit_total > 0 then 'audit' else 'activity' end,
+    'days', coalesce(days, '[]'::jsonb),
+    'platforms', coalesce((select jsonb_agg(jsonb_build_object('platform', platform, 'devices', n) order by n desc)
+       from (select coalesce(nullif(platform, ''), '?') platform, count(*) n from public.account_devices
+             where last_seen_at > now() - interval '30 days' group by 1) p), '[]'::jsonb),
+    'versions', coalesce((select jsonb_agg(jsonb_build_object('platform', platform, 'app_version', app_version, 'devices', n) order by n desc)
+       from (select coalesce(nullif(platform, ''), '?') platform, coalesce(app_version, '?') app_version, count(*) n
+             from public.account_devices where last_seen_at > now() - interval '30 days' group by 1, 2) v), '[]'::jsonb)
+  );
+  return res;
+end $$;
+revoke all on function public.bingr_admin_stats() from public, anon, authenticated;
+grant execute on function public.bingr_admin_stats() to service_role;
+
+-- Gebruikers (hoofdaccounts), nieuwste eerst, zoeken op begin van het e-mailadres. De functie maskeert de e-mail.
+create or replace function public.bingr_admin_users(p_search text, p_limit int, p_offset int) returns jsonb
+language plpgsql security definer set search_path = public, auth as $$
+declare pat text := replace(replace(replace(lower(coalesce(p_search, '')), '\', '\\'), '%', '\%'), '_', '\_') || '%';
+begin
+  return jsonb_build_object(
+    'total', (select count(*) from auth.users u where lower(u.email) like pat),
+    'items', coalesce((select jsonb_agg(row_to_json(x)::jsonb order by x.created_at desc) from (
+      select u.id, u.email, u.created_at, u.last_sign_in_at, u.email_confirmed_at is not null as confirmed,
+        (select count(*) from public.account_devices d where d.user_id = u.id) as device_count,
+        (select coalesce(jsonb_agg(distinct d.platform), '[]'::jsonb) from public.account_devices d where d.user_id = u.id) as platforms,
+        (select coalesce(jsonb_agg(distinct d.app_version), '[]'::jsonb) from public.account_devices d where d.user_id = u.id and d.app_version is not null) as app_versions,
+        (select max(d.last_seen_at) from public.account_devices d where d.user_id = u.id) as last_seen_at,
+        (select count(*) from public.account_data a, jsonb_array_elements(case when jsonb_typeof(a.profiles) = 'array' then a.profiles else '[]'::jsonb end) e
+          where a.user_id = u.id and coalesce(e->>'deleted', 'false') <> 'true') as profile_count,
+        coalesce((select p.email_opt_out from public.account_email_prefs p where p.user_id = u.id), false) as email_opt_out
+      from auth.users u where lower(u.email) like pat
+      order by u.created_at desc limit least(greatest(p_limit, 1), 100) offset greatest(p_offset, 0)) x), '[]'::jsonb)
+  );
+end $$;
+revoke all on function public.bingr_admin_users(text, int, int) from public, anon, authenticated;
+grant execute on function public.bingr_admin_users(text, int, int) to service_role;
+
+create or replace function public.bingr_admin_user(p_id uuid) returns jsonb
+language plpgsql security definer set search_path = public, auth as $$
+declare u record;
+begin
+  select id, email, created_at, last_sign_in_at, email_confirmed_at, raw_user_meta_data->>'lang' as lang into u from auth.users where id = p_id;
+  if not found then return null; end if;
+  return jsonb_build_object(
+    'id', u.id, 'email', u.email, 'created_at', u.created_at, 'last_sign_in_at', u.last_sign_in_at,
+    'confirmed', u.email_confirmed_at is not null, 'lang', u.lang,
+    'profile_count', (select count(*) from public.account_data a, jsonb_array_elements(case when jsonb_typeof(a.profiles) = 'array' then a.profiles else '[]'::jsonb end) e
+          where a.user_id = u.id and coalesce(e->>'deleted', 'false') <> 'true'),
+    'email_opt_out', coalesce((select p.email_opt_out from public.account_email_prefs p where p.user_id = u.id), false),
+    'watching_now', (select count(*) from public.account_streams s where s.user_id = u.id and s.last_ping > now() - interval '90 seconds'),
+    'active_days_30d', (select count(*) from public.account_logins l where l.user_id = u.id and l.day > (now() at time zone 'utc')::date - 30),
+    'devices', coalesce((select jsonb_agg(jsonb_build_object('name', d.name, 'platform', d.platform, 'app_version', d.app_version,
+        'os_version', d.os_version, 'created_at', d.created_at, 'last_seen_at', d.last_seen_at) order by d.last_seen_at desc)
+      from public.account_devices d where d.user_id = u.id), '[]'::jsonb)
+  );
+end $$;
+revoke all on function public.bingr_admin_user(uuid) from public, anon, authenticated;
+grant execute on function public.bingr_admin_user(uuid) to service_role;
+
+-- Bulkmail: de volgende ontvangers claimen (cursor schuift meteen door, dus twee tabbladen versturen nooit dubbel).
+create or replace function public.bingr_announce_claim(p_id uuid, p_batch int) returns jsonb
+language plpgsql security definer set search_path = public, auth as $$
+declare a record; rows jsonb; last_id uuid;
+begin
+  select * into a from public.announcements where id = p_id for update;
+  if not found or not a.email or a.email_done_at is not null then return jsonb_build_object('items', '[]'::jsonb, 'done', true); end if;
+  select jsonb_agg(jsonb_build_object('id', r.id, 'email', r.email, 'lang', r.lang) order by r.id), max(r.id::text)::uuid into rows, last_id from (
+    select u.id, u.email, u.raw_user_meta_data->>'lang' as lang from auth.users u
+    where u.email is not null and u.email_confirmed_at is not null
+      and (a.email_cursor is null or u.id > a.email_cursor)
+      and not exists (select 1 from public.account_email_prefs p where p.user_id = u.id and p.email_opt_out)
+    order by u.id limit greatest(least(p_batch, 100), 1)) r;
+  if rows is null then
+    update public.announcements set email_done_at = now() where id = p_id;
+    return jsonb_build_object('items', '[]'::jsonb, 'done', true);
+  end if;
+  update public.announcements set email_cursor = last_id where id = p_id;
+  return jsonb_build_object('items', rows, 'done', false);
+end $$;
+create or replace function public.bingr_announce_report(p_id uuid, p_sent int, p_failed int) returns jsonb
+language sql security definer set search_path = public as $$
+  update public.announcements set email_sent = email_sent + p_sent, email_failed = email_failed + p_failed where id = p_id
+  returning jsonb_build_object('email_total', email_total, 'email_sent', email_sent, 'email_failed', email_failed, 'done', email_done_at is not null);
+$$;
+create or replace function public.bingr_email_recipients() returns int
+language sql security definer set search_path = public, auth as $$
+  select count(*)::int from auth.users u where u.email is not null and u.email_confirmed_at is not null
+    and not exists (select 1 from public.account_email_prefs p where p.user_id = u.id and p.email_opt_out);
+$$;
+revoke all on function public.bingr_announce_claim(uuid, int) from public, anon, authenticated;
+revoke all on function public.bingr_announce_report(uuid, int, int) from public, anon, authenticated;
+revoke all on function public.bingr_email_recipients() from public, anon, authenticated;
+grant execute on function public.bingr_announce_claim(uuid, int) to service_role;
+grant execute on function public.bingr_announce_report(uuid, int, int) to service_role;
+grant execute on function public.bingr_email_recipients() to service_role;
+
+-- Opruimen uitgebreid: ook oude limiettellers, inlogpogingen, actieve dagen (> 400 dagen) en het beheerlogboek (> 1 jaar).
+create or replace function public.bingr_cleanup() returns void
+language sql security definer set search_path = public as $$
+  delete from public.device_codes where expires_at < now();
+  delete from public.account_streams where last_ping < now() - interval '1 day';
+  delete from public.account_watch_log where started_at < now() - interval '8 days';
+  delete from public.rate_limits where bucket < now() - interval '10 minutes';
+  delete from public.admin_login_attempts where window_start < now() - interval '1 day' and (locked_until is null or locked_until < now());
+  delete from public.account_logins where day < (now() at time zone 'utc')::date - 400;
+  delete from public.admin_audit where created_at < now() - interval '1 year';
+$$;
+revoke all on function public.bingr_cleanup() from public, anon, authenticated;
+grant execute on function public.bingr_cleanup() to service_role;
