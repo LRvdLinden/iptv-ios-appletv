@@ -18,17 +18,21 @@
 //   get_state       {sections?:[naam…]} (ingelogd) -> {sections:{naam:{data, updatedAt}}}
 //   put_state       {section, data}      (ingelogd) -> {ok, updatedAt}     (versleuteld; data = willekeurige JSON)
 //   delete_state    {section}            (ingelogd) -> {ok}
-//   stream_start    {device_id, profile_id, profile_name, title, kind, content_id} (ingelogd)
-//                   -> {ok} | 403 {error:"stream_limit", limit:6, streams:[…]}
-//   stream_ping     {device_id, title?, kind?, content_id?} (ingelogd, elke 30 s tijdens afspelen) -> {ok} | {stopped:true}
+//   stream_start    {device_id, profile_id, profile_name, title, kind, content_id, series_id?, series_title?, tz?} (ingelogd)
+//                   -> {ok} | 403 {error:"stream_limit", limit:6, streams:[…]}   (build 68: series_id/series_title/tz voor statistieken)
+//   stream_ping     {device_id, title?, kind?, content_id?, series_id?, series_title?} (ingelogd, elke 30 s) -> {ok} | {stopped:true}
 //   stream_stop     {device_id} (ingelogd) -> {ok}
+//                   start/ping/stop schrijven de kijktijd bij in account_watch_stats (max. 3 min per keer).
 //   list_streams    {} (ingelogd) -> {limit, streams:[{device_id, device_name, platform, profile_id, profile_name, title, kind, started_at, signed_in_at}]}
 //   watch_log       {days?:7} (ingelogd) -> {entries:[{device_name, platform, profile_id, profile_name, title, kind, started_at, ended_at, minutes}]}
+//   watch_stats     {period?:"week"|"month"|"year", offset?:0, profile_id?, tz?} (ingelogd) -> statistieken (build 68, zie docs/ACCOUNT.md)
+//   delete_watch_stats {profile_id?} (ingelogd) -> {ok}   (zonder profile_id: alle profielen)
 //   announcements   {lang?:"nl"|"en"} (ingelogd) -> {items:[{id, title, body, created_at}]}  (build 62; max. 5, nieuwste eerst)
 //   ping            {}                  -> {ok:true}  (statuscontrole, zonder inloggen)
 //   config          {}       (ingelogd)  -> {traktClientID, traktClientSecret, openSubtitlesAPIKey, omdbAPIKey, tmdbAPIKey}
 //                   App-sleutels staan alleen als function-secrets op de server (BINGR_*), nooit in de openbare repo.
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { buildStats, DEFAULT_TZ, periodRange, todayIn, validTz } from "./stats.ts";
 
 const SITE = Deno.env.get("BINGR_SITE") ?? "https://bingr.online";
 const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {
@@ -113,6 +117,11 @@ const s40 = (v: unknown) => { const t = v == null ? "" : String(v).trim().slice(
 async function closeLog(userId: string, deviceId: string) {
   const { data: cur } = await admin.from("account_streams").select("log_id").eq("user_id", userId).eq("device_id", deviceId).maybeSingle();
   if (cur?.log_id) await admin.from("account_watch_log").update({ ended_at: new Date().toISOString() }).eq("id", cur.log_id);
+}
+// Build 68: kijktijd van de lopende stream op dit apparaat bijschrijven (statistieken); een fout stopt het afspelen nooit.
+async function account(userId: string, deviceId: string) {
+  const { error } = await admin.rpc("bingr_stream_account", { p_user: userId, p_device: deviceId, p_ttl_seconds: Math.round(STREAM_TTL_MS / 1000) });
+  if (error) console.error("stream_account", error.message);
 }
 async function activeStreams(userId: string) {
   const fresh = new Date(Date.now() - STREAM_TTL_MS).toISOString();
@@ -372,6 +381,7 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
         p_user: user.id, p_device: device_id, p_profile_id: s80(body.profile_id), p_profile_name: s80(body.profile_name),
         p_title: s200(body.title), p_kind: s80(body.kind), p_content_id: s200(body.content_id),
         p_limit: STREAM_LIMIT, p_ttl_seconds: Math.round(STREAM_TTL_MS / 1000),
+        p_series_id: s200(body.series_id || null), p_series_title: s200(body.series_title || null), p_tz: validTz(body.tz),
       });
       if (error) throw new Error(error.message);
       if (r?.error === "stream_limit") return json({ error: "stream_limit", limit: STREAM_LIMIT, streams: await activeStreams(user.id) }, 403);
@@ -391,6 +401,10 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       if (body.title) patch.title = s200(body.title);
       if (body.kind) patch.kind = s80(body.kind);
       if (body.content_id) patch.content_id = s200(body.content_id);
+      if (body.series_id) patch.series_id = s200(body.series_id);
+      if (body.series_title) patch.series_title = s200(body.series_title);
+      // eerst de kijktijd tot nu bijschrijven (op de titel die tot nu liep), dan pas de wijzigingen
+      await account(user.id, device_id);
       await admin.from("account_streams").update(patch).eq("user_id", user.id).eq("device_id", device_id);
       if (cur.log_id) await admin.from("account_watch_log").update({ ended_at: now }).eq("id", cur.log_id);
       return json({ ok: true });
@@ -400,6 +414,7 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       if (user instanceof Response) return user.status === 401 ? json({ ok: true }) : user;
       const device_id = String(body.device_id ?? "").slice(0, 80);
       await closeLog(user.id, device_id);
+      await account(user.id, device_id);
       await admin.from("account_streams").delete().eq("user_id", user.id).eq("device_id", device_id);
       return json({ ok: true });
     }
@@ -420,6 +435,35 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
         ...e, minutes: Math.max(0, Math.round((Date.parse(e.ended_at) - Date.parse(e.started_at)) / 60000)),
       })).filter((e) => e.minutes >= 1 || Date.now() - Date.parse(e.started_at) < 5 * 60000);
       return json({ entries });
+    }
+    case "watch_stats": {
+      const user = await authed(req);
+      if (user instanceof Response) return user;
+      const tz = validTz(body.tz) ?? DEFAULT_TZ;
+      const range = periodRange(body.period, body.offset, todayIn(tz));
+      const profileId = body.profile_id == null || body.profile_id === "" ? null : String(body.profile_id).slice(0, 80);
+      const { data: raw, error } = await admin.rpc("bingr_watch_stats", {
+        p_user: user.id, p_profile: profileId, p_from: range.from, p_to: range.to, p_by_month: range.byMonth,
+      });
+      if (error) throw new Error(error.message);
+      // profielnamen zoals ze nu heten (de statistieken bewaren de naam van toen)
+      const names = new Map<string, string>();
+      if (profileId == null) {
+        const { data: acc } = await admin.from("account_data").select("profiles").eq("user_id", user.id).maybeSingle();
+        for (const p of Array.isArray(acc?.profiles) ? acc.profiles : []) {
+          if (p && typeof p === "object" && p.id && !p.deleted && p.name) names.set(String(p.id), String(p.name));
+        }
+      }
+      return json(buildStats(raw ?? {}, range, { profileId, tz, profileNames: names }));
+    }
+    case "delete_watch_stats": {
+      const user = await authed(req);
+      if (user instanceof Response) return user;
+      let q = admin.from("account_watch_stats").delete().eq("user_id", user.id);
+      if (body.profile_id != null && body.profile_id !== "") q = q.eq("profile_id", String(body.profile_id).slice(0, 80));
+      const { error } = await q;
+      if (error) throw new Error(error.message);
+      return json({ ok: true });
     }
     case "announcements": {
       const user = await authed(req);

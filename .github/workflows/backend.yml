@@ -34,6 +34,11 @@ jobs:
       REF: ${{ secrets.SUPABASE_PROJECT_REF }}
     steps:
       - uses: actions/checkout@v5
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Unittests (statistieken)
+        run: deno test supabase/functions/device-auth/stats_test.ts
       - name: Controleren
         id: check
         run: |
@@ -167,6 +172,22 @@ jobs:
           grep -q not_signed_in /tmp/a.json && echo "::notice::announcements actief" || { echo "::error::announcements onverwacht"; exit 1; }
           curl -s -X POST "https://$REF.supabase.co/functions/v1/web-proxy" -H "Content-Type: application/json" -d '{"url":"https://example.com/"}' | tee /tmp/w.json; echo
           grep -q not_signed_in /tmp/w.json && echo "::notice::web-proxy actief" || { echo "::error::web-proxy onverwacht"; exit 1; }
+          # build 68: kijkstatistieken (zonder inloggen 401), en de SQL-functies zelf via de Management API
+          for a in watch_stats delete_watch_stats; do
+            code=$(curl -s -o /tmp/ws.json -w '%{http_code}' -X POST "https://$REF.supabase.co/functions/v1/device-auth" -H "Content-Type: application/json" -d "{\"action\":\"$a\",\"period\":\"week\"}")
+            cat /tmp/ws.json; echo
+            [ "$code" = 401 ] && grep -q not_signed_in /tmp/ws.json && echo "::notice::$a actief (401 zonder inloggen)" || { echo "::error::$a gaf HTTP $code"; exit 1; }
+          done
+          python3 -c 'import json;print(json.dumps({"query":"select (select to_jsonb(i) from public.bingr_stats_item(%s) i) as item, public.bingr_watch_stats(%s) as stats" % ("$$episode$$, $$e1$$, null, null, $$Serie · S1:E2 · Naam$$", "$$00000000-0000-0000-0000-000000000000$$::uuid, null, current_date - 7, current_date, false")}))' > /tmp/q.json
+          curl -s -X POST "https://api.supabase.com/v1/projects/$REF/database/query" -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" --data @/tmp/q.json > /tmp/sq.json
+          python3 - <<'PY'
+          import json
+          r = json.load(open("/tmp/sq.json"))
+          row = r[0] if isinstance(r, list) and r else None
+          if not row or '"t:serie"' not in json.dumps(row["item"]) or "buckets" not in json.dumps(row["stats"]):
+              print("::error::bingr_stats_item/bingr_watch_stats onverwacht:", str(r)[:400]); raise SystemExit(1)
+          print("::notice::Statistieken-SQL werkt:", json.dumps(row["item"]), "| leeg account:", json.dumps(row["stats"])[:200])
+          PY
           for fn in device-auth web-proxy; do
             curl -s -X POST "https://$REF.supabase.co/functions/v1/$fn" -H "Content-Type: application/json" -d '{"action":"ping"}' | tee /tmp/p.json; echo
             grep -q '"ok":true' /tmp/p.json && echo "::notice::$fn ping werkt" || { echo "::error::$fn ping onverwacht"; exit 1; }

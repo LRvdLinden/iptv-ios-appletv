@@ -613,3 +613,80 @@ Een aparte Edge Function `status` controleert elke 5 minuten de backend, de webs
 - **Tabellen:** `status_monitors`, `status_checks` (ruwe controles, 90 dagen bewaard), `status_daily` (dagtotalen, Nederlandse tijd), `status_incidents`. Alleen de service role kan erbij.
 - **Planning:** pg_cron-taak `bingr-status` (elke 5 min) roept via pg_net de functie aan. De Backend-workflow zet de taak bij elke deploy opnieuw klaar met het geheim; dat staat nooit in de repo.
 - **Meldingen:** bij het openen en sluiten van een storing een e-mail naar `BINGR_ALERT_EMAIL` (optioneel), via dezelfde SMTP-instellingen als de berichten.
+
+## Build 68: kijkstatistieken (zoals Trakt)
+
+De server houdt per profiel bij hoeveel er gekeken is: per lokale dag, per soort (film, serie, live) en per titel. Hij telt dat zelf op uit `stream_start` / `stream_ping` / `stream_stop`; de apps sturen alleen een paar extra velden mee en lezen het resultaat met `watch_stats`.
+
+### `stream_start`: extra velden (optioneel)
+
+| Veld | Inhoud |
+|---|---|
+| `series_id` | bij een aflevering: de serie-id van de app (max. 200 tekens), dezelfde id als in `ep:<serieID>\|s-e`, voortgang en collecties |
+| `series_title` | bij een aflevering: de serietitel (max. 200) |
+| `tz` | IANA-tijdzone van het apparaat, bv. `"Europe/Amsterdam"`; bepaalt op welke dag de kijktijd valt |
+
+- `kind`: `"movie"`, `"episode"` of `"live"`; `"catchup"` (terugkijken) telt als live. Een andere waarde telt niet mee (wel voor de limiet en de geschiedenis).
+- `content_id` blijft: bij een film de film-id, bij een aflevering de afleverings-id, bij live de zender-id.
+- `stream_ping` accepteert ook `series_id` / `series_title` (alleen nodig als de titel wisselt zonder nieuwe `stream_start`; normaal: bij elke nieuwe titel `stream_start`).
+- **Oudere apps** sturen deze velden niet. Dan: tijdzone `Europe/Amsterdam`; serie = de titel vóór `S<n>E<n>` / `S<n>:E<n>` (en vóór ` · `), sleutel `t:<serietitel in kleine letters>`. Die sleutel is anders dan de `series_id` van nieuwe apps, dus dezelfde serie kan in de overgangsperiode twee keer in de lijst staan.
+- **Live:** de zendernaam is het deel van `title` vóór ` · ` ("NPO 1 · Journaal" → "NPO 1"). Stuur dus zoals nu de zendernaam vooraan.
+
+### Hoe de server telt
+
+- **Tabel** `account_watch_stats` (alleen service role, RLS zonder policies): `user_id, profile_id, profile_name, day (lokale dag in tz), kind (movie|episode|live), item_key, title, episodes (text[], unieke afleverings-id's, max. 500), minutes (numeric), plays (int), updated_at`. Sleutel: `(user_id, profile_id, day, kind, item_key)`.
+- **`item_key`**: film = `content_id`; aflevering = `series_id` (oude apps: `t:<serietitel>`); live = `content_id` van de zender. Zonder `content_id`: `t:<titel>`.
+- **`title`**: filmtitel (deel vóór ` · `), serietitel, zendernaam.
+- **Kijktijd:** bij elke `stream_ping` en `stream_stop` (en bij een nieuwe `stream_start` op hetzelfde apparaat) telt de server de tijd sinds het laatst getelde moment (`account_streams.last_accounted_at`) bij de titel die liep, **max. 3 minuten per keer** (een gat telt niet). Was de stream al verlopen (geen ping in 90 s), dan alleen tot de laatste ping. Pauze telt mee zolang de app pingt (zoals bij de limiet).
+- **Weergaven:** één `plays` per `stream_start`.
+- **Afleveringen:** elke afleverings-`content_id` waarvoor kijktijd is geteld, komt (uniek) in `episodes`.
+- **Bewaren:** 400 dagen (opruimen in `bingr_cleanup`). `delete_account` wist alles (on delete cascade).
+- **Start:** eenmalig gevuld uit de bestaande kijkgeschiedenis (max. 8 dagen terug, Nederlandse tijd). Echte telling vanaf 13 oktober 2026.
+
+### `watch_stats` (ingelogd)
+
+Body: `{period: "week"|"month"|"year" (standaard "month"), offset: 0 (0 = huidig, -1 = vorige …, min. -600; positief = 0), profile_id?: string (ontbreekt/null/"" = alle profielen), tz?: IANA (standaard Europe/Amsterdam)}`. Een week loopt van maandag t/m zondag; "vandaag" is de datum in `tz`.
+
+```json
+{
+  "period": "month", "offset": 0, "from": "2026-10-01", "to": "2026-10-31", "label_hint": "2026-10",
+  "tz": "Europe/Amsterdam", "profile_id": null,
+  "totals": {
+    "minutes": 1260,
+    "movies": {"count": 4, "minutes": 410},
+    "series": {"shows": 3, "episodes": 17, "minutes": 690},
+    "live": {"channels": 6, "minutes": 160}
+  },
+  "by_bucket": [{"key": "2026-10-01", "minutes": 95, "movie_minutes": 0, "episode_minutes": 80, "live_minutes": 15}, …],
+  "top": {
+    "series": [{"title": "Bluey", "item_key": "xs7", "minutes": 300, "episodes": 9}],
+    "movies": [{"title": "Dune", "item_key": "xv5", "minutes": 155}],
+    "channels": [{"title": "NPO 1", "item_key": "x12", "minutes": 90}]
+  },
+  "profiles": [{"profile_id": "…", "profile_name": "Léon", "minutes": 900}],
+  "since": "2026-10-06"
+}
+```
+
+- **Alle minuten zijn hele getallen** (afgerond); `totals.minutes` is de afgeronde som, dus niet altijd precies de som van de afgeronde delen.
+- **`label_hint`**: week `"2026-W42"` (ISO-week), maand `"2026-10"`, jaar `"2026"`. Apps maken hun eigen label uit `from`/`to` ("12–18 okt", "oktober 2026", "2026").
+- **`by_bucket`**: altijd compleet en op volgorde, ook dagen zonder kijktijd (0): per dag (`"YYYY-MM-DD"`) bij week en maand, per maand (`"YYYY-MM"`, 12 stuks) bij jaar.
+- **`top`**: max. 10 per soort, meeste minuten eerst; alleen titels met minstens 1 minuut. Tellers (`count`, `shows`, `channels`) tellen ook alleen titels met minstens 1 minuut. `episodes` = unieke afleveringen in de periode.
+- **`profiles`**: alleen bij alle profielen (`profile_id` null), anders `[]`. Naam zoals het profiel nu heet (`account_data`), anders de naam van toen. `profile_id` `null` = kijktijd van een oude app zonder profiel.
+- **`since`**: eerste dag met gegevens (voor dit profiel / alle profielen), of `null` als er nog niets is. Toon dan de lege staat: "Statistieken worden bijgehouden vanaf 13 oktober 2026" (EN "Statistics are being kept since 13 October 2026").
+- `item_key` is bij nieuwe apps de eigen id (film-id, `series_id`, zender-id): een tik kan de detailpagina openen als die titel in de bibliotheek staat. `t:…` = afgeleid van de titel (geen id).
+
+### `delete_watch_stats` (ingelogd)
+
+`{profile_id?}` → `{ok:true}`. Met `profile_id`: alleen dat profiel; zonder (of `null`/`""`): het hele account. Roep dit ook aan bij het verwijderen van een profiel (tombstone), zodat de statistieken van dat profiel meteen weg zijn.
+
+### Wie ziet wat (in de apps)
+
+- **Hoofdprofiel** (`isMain`): Mijn Bingr → **Statistieken** met alle profielen samen, en een filter "Alle profielen" + per profiel (rond avatar). Mag ook de statistieken van een ander profiel of alles wissen.
+- **Ander profiel en kinderprofiel:** alleen de eigen statistieken (`profile_id` = het actieve profiel), zonder filter; "Statistieken wissen" wist alleen het eigen profiel.
+- De server weet niet welk profiel actief is: deze beperking gebeurt in de app, net als bij de andere onderdelen die alleen het hoofdprofiel ziet (nu aan het kijken, kijkgeschiedenis).
+- **Website** (bingr.online/account, sectie Statistieken): alles, met het profielfilter (hoofdaccount). **Webspeler** (Instellingen → Statistieken): zoals de apps.
+
+### Scherm (alle platforms)
+
+Periode **Week / Maand (standaard) / Jaar** met ‹ › om terug en (tot de huidige periode) vooruit te gaan; tegels **Uren gekeken**, **Films** (aantal + uren), **Series** (series, afleveringen, uren), **Live TV** (zenders, uren); een staafgrafiek per dag (week/maand) of per maand (jaar), gestapeld: films in de accentkleur (rood), series blauw `#3B82F6`, live oranje `#F59E0B`; toplijsten series, films en zenders; **Statistieken wissen** met bevestiging.

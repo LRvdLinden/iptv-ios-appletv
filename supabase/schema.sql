@@ -721,3 +721,217 @@ do $$ begin
 exception when others then
   raise notice 'pg_cron/pg_net niet beschikbaar: %', sqlerrm;
 end $$;
+
+-- ============================================================================================================
+-- Build 68: kijkstatistieken (zoals Trakt). De server telt de kijktijd zelf op uit stream_start/ping/stop:
+-- per account, profiel, lokale dag (tijdzone van de app), soort (movie | episode | live) en titel (item_key).
+-- Alleen de Edge Function device-auth (service role) leest en schrijft hierin. Bewaard: 400 dagen.
+alter table public.account_streams add column if not exists series_id text;
+alter table public.account_streams add column if not exists series_title text;
+alter table public.account_streams add column if not exists tz text;
+alter table public.account_streams add column if not exists last_accounted_at timestamptz;
+
+create table if not exists public.account_watch_stats (
+  user_id      uuid not null references auth.users(id) on delete cascade,
+  profile_id   text not null default '',            -- '' = onbekend profiel (oude apps zonder profile_id)
+  profile_name text,
+  day          date not null,                       -- lokale dag in de tijdzone van de app (tz), anders Europe/Amsterdam
+  kind         text not null,                       -- movie | episode | live (catchup telt als live)
+  item_key     text not null,                       -- movie: content_id; episode: series_id (of 't:<serietitel>'); live: content_id van de zender
+  title        text,                                -- filmtitel, serietitel of zendernaam
+  episodes     text[] not null default '{}',        -- episode: unieke content_id's van afleveringen (max. 500)
+  minutes      numeric not null default 0,
+  plays        int not null default 0,
+  updated_at   timestamptz not null default now(),
+  primary key (user_id, profile_id, day, kind, item_key)
+);
+create index if not exists account_watch_stats_user_day_idx on public.account_watch_stats (user_id, day);
+create index if not exists account_watch_stats_day_idx on public.account_watch_stats (day);
+alter table public.account_watch_stats enable row level security;
+revoke all on public.account_watch_stats from anon, authenticated;
+
+-- Eenmalige stappen (zoals het vullen van de statistieken uit de bestaande kijkgeschiedenis).
+create table if not exists public.bingr_migrations (
+  name    text primary key,
+  done_at timestamptz not null default now()
+);
+alter table public.bingr_migrations enable row level security;
+revoke all on public.bingr_migrations from anon, authenticated;
+
+-- Welke titel telt een stream: soort, sleutel en weergavenaam. Oude apps sturen geen series_id: dan de serietitel uit de
+-- streamtitel ("Serie · S1:E2 · Naam", "Serie S01E02", "Serie - S1E2") met sleutel 't:<serietitel in kleine letters>'.
+-- Live: de zendernaam vóór " · " (de apps zetten het programma erachter). Onbekende soort = niet tellen (kind null).
+create or replace function public.bingr_stats_item(p_kind text, p_content_id text, p_series_id text, p_series_title text, p_title text)
+returns table(kind text, item_key text, title text)
+language plpgsql immutable set search_path = public as $$
+declare k text := lower(btrim(coalesce(p_kind, ''))); t text := btrim(coalesce(p_title, ''));
+        cid text := nullif(btrim(coalesce(p_content_id, '')), ''); base text; pre text;
+begin
+  base := btrim(split_part(t, ' · ', 1));
+  if k in ('live', 'catchup', 'channel') then kind := 'live';
+  elsif k in ('episode', 'series') then kind := 'episode';
+  elsif k in ('movie', 'vod') then kind := 'movie';
+  else kind := null; item_key := null; title := null; return next; return;
+  end if;
+  if kind = 'episode' then
+    pre := btrim(regexp_replace(base, '\s*[-–:|]?\s*S\d{1,3}\s*[:.]?\s*E\d{1,4}\M.*$', '', 'i'));
+    pre := btrim(regexp_replace(pre, '\s*[-–:|·]+$', ''));
+    if pre = '' then pre := base; end if;
+    title := coalesce(nullif(btrim(coalesce(p_series_title, '')), ''), nullif(pre, ''));
+    item_key := coalesce(nullif(btrim(coalesce(p_series_id, '')), ''), case when title is not null then 't:' || lower(title) end, cid);
+  else
+    title := nullif(base, '');
+    item_key := coalesce(cid, case when title is not null then 't:' || lower(title) end);
+  end if;
+  title := left(title, 200); item_key := left(item_key, 200);
+  return next;
+end $$;
+
+-- Lokale dag in een tijdzone; een onbekende tijdzone valt terug op Europe/Amsterdam.
+create or replace function public.bingr_local_day(p_tz text, p_at timestamptz default now()) returns date
+language plpgsql stable set search_path = public as $$
+begin
+  return (p_at at time zone coalesce(nullif(p_tz, ''), 'Europe/Amsterdam'))::date;
+exception when others then
+  return (p_at at time zone 'Europe/Amsterdam')::date;
+end $$;
+
+-- Kijktijd van een lopende stream bijschrijven: de tijd sinds het laatst getelde moment (max. p_max_seconds per keer,
+-- zodat een gat niet meetelt). Was de stream al verlopen (geen ping binnen p_ttl_seconds), dan alleen tot de laatste ping.
+create or replace function public.bingr_stream_account(p_user uuid, p_device text, p_ttl_seconds int default 90, p_max_seconds int default 180)
+returns void language plpgsql security definer set search_path = public as $$
+declare s record; it record; v_end timestamptz; secs numeric;
+begin
+  select * into s from public.account_streams where user_id = p_user and device_id = p_device for update;
+  if not found then return; end if;
+  v_end := case when now() - s.last_ping > make_interval(secs => p_ttl_seconds) then s.last_ping else now() end;
+  secs := least(greatest(extract(epoch from v_end - coalesce(s.last_accounted_at, s.started_at)), 0), p_max_seconds);
+  update public.account_streams set last_accounted_at = greatest(v_end, coalesce(last_accounted_at, v_end))
+  where user_id = p_user and device_id = p_device;
+  if secs <= 0 then return; end if;
+  select * into it from public.bingr_stats_item(s.kind, s.content_id, s.series_id, s.series_title, s.title);
+  if it.kind is null or coalesce(it.item_key, '') = '' then return; end if;
+  insert into public.account_watch_stats as w (user_id, profile_id, profile_name, day, kind, item_key, title, episodes, minutes, plays)
+  values (p_user, coalesce(s.profile_id, ''), s.profile_name, public.bingr_local_day(s.tz, v_end), it.kind, it.item_key, it.title,
+          case when it.kind = 'episode' and s.content_id is not null then array[left(s.content_id, 200)] else '{}'::text[] end, secs / 60.0, 0)
+  on conflict (user_id, profile_id, day, kind, item_key) do update set
+    minutes = w.minutes + excluded.minutes,
+    title = coalesce(excluded.title, w.title),
+    profile_name = coalesce(excluded.profile_name, w.profile_name),
+    episodes = case when cardinality(excluded.episodes) = 0 or excluded.episodes[1] = any(w.episodes) or cardinality(w.episodes) >= 500
+                    then w.episodes else w.episodes || excluded.episodes end,
+    updated_at = now();
+end $$;
+revoke all on function public.bingr_stream_account(uuid, text, int, int) from public, anon, authenticated;
+grant execute on function public.bingr_stream_account(uuid, text, int, int) to service_role;
+
+-- stream_start met series_id, series_title en tz: eerst de lopende stream op dit apparaat bijschrijven,
+-- dan zoals voorheen (limiet, geschiedenis), en één weergave (plays) voor de nieuwe titel.
+drop function if exists public.bingr_stream_start(uuid, text, text, text, text, text, text, int, int);
+create or replace function public.bingr_stream_start(p_user uuid, p_device text, p_profile_id text, p_profile_name text,
+  p_title text, p_kind text, p_content_id text, p_limit int, p_ttl_seconds int,
+  p_series_id text default null, p_series_title text default null, p_tz text default null)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare n int; old_log bigint; dev_name text; dev_platform text; new_log bigint; it record;
+begin
+  perform pg_advisory_xact_lock(hashtextextended('bingr.streams:' || p_user::text, 0));
+  perform public.bingr_stream_account(p_user, p_device, p_ttl_seconds);
+  delete from public.account_streams where user_id = p_user and last_ping < now() - make_interval(secs => p_ttl_seconds);
+  select count(*) into n from public.account_streams where user_id = p_user and device_id <> p_device;
+  if n >= p_limit then return jsonb_build_object('ok', false, 'error', 'stream_limit'); end if;
+  -- lopende stream op dit apparaat afsluiten in de geschiedenis
+  select log_id into old_log from public.account_streams where user_id = p_user and device_id = p_device;
+  if old_log is not null then update public.account_watch_log set ended_at = now() where id = old_log and user_id = p_user; end if;
+  select name, platform into dev_name, dev_platform from public.account_devices where user_id = p_user and device_id = p_device;
+  insert into public.account_watch_log (user_id, device_id, device_name, platform, profile_id, profile_name, title, kind, content_id)
+  values (p_user, p_device, dev_name, dev_platform, p_profile_id, p_profile_name, p_title, p_kind, p_content_id)
+  returning id into new_log;
+  insert into public.account_streams (user_id, device_id, profile_id, profile_name, title, kind, content_id, log_id, started_at, last_ping,
+    series_id, series_title, tz, last_accounted_at)
+  values (p_user, p_device, p_profile_id, p_profile_name, p_title, p_kind, p_content_id, new_log, now(), now(),
+    p_series_id, p_series_title, p_tz, now())
+  on conflict (user_id, device_id) do update set profile_id = excluded.profile_id, profile_name = excluded.profile_name,
+    title = excluded.title, kind = excluded.kind, content_id = excluded.content_id, log_id = excluded.log_id,
+    started_at = excluded.started_at, last_ping = excluded.last_ping, series_id = excluded.series_id,
+    series_title = excluded.series_title, tz = excluded.tz, last_accounted_at = excluded.last_accounted_at;
+  select * into it from public.bingr_stats_item(p_kind, p_content_id, p_series_id, p_series_title, p_title);
+  if it.kind is not null and coalesce(it.item_key, '') <> '' then
+    insert into public.account_watch_stats as w (user_id, profile_id, profile_name, day, kind, item_key, title, plays)
+    values (p_user, coalesce(p_profile_id, ''), p_profile_name, public.bingr_local_day(p_tz), it.kind, it.item_key, it.title, 1)
+    on conflict (user_id, profile_id, day, kind, item_key) do update set plays = w.plays + 1,
+      title = coalesce(excluded.title, w.title), profile_name = coalesce(excluded.profile_name, w.profile_name), updated_at = now();
+  end if;
+  return jsonb_build_object('ok', true);
+end $$;
+revoke all on function public.bingr_stream_start(uuid, text, text, text, text, text, text, int, int, text, text, text) from public, anon, authenticated;
+grant execute on function public.bingr_stream_start(uuid, text, text, text, text, text, text, int, int, text, text, text) to service_role;
+
+-- Statistieken voor een periode (p_from t/m p_to, lokale dagen), voor één profiel of alle (p_profile null).
+-- Per dag of per maand (p_by_month) en per soort; titels (top 50 per soort) en tellers; minuten per profiel.
+create or replace function public.bingr_watch_stats(p_user uuid, p_profile text, p_from date, p_to date, p_by_month boolean)
+returns jsonb language sql stable security definer set search_path = public as $$
+  with r as (
+    select * from public.account_watch_stats
+    where user_id = p_user and day between p_from and p_to and (p_profile is null or profile_id = p_profile)
+  ), ep as (
+    select r.kind, r.item_key, count(distinct e) n from r, unnest(r.episodes) e group by 1, 2
+  ), items as (
+    select r.kind, r.item_key, (array_agg(r.title order by r.updated_at desc) filter (where r.title is not null))[1] as title,
+      sum(r.minutes) as minutes, sum(r.plays) as plays, coalesce(max(ep.n), 0) as episodes
+    from r left join ep on ep.kind = r.kind and ep.item_key = r.item_key group by 1, 2
+  )
+  select jsonb_build_object(
+    'buckets', coalesce((select jsonb_agg(jsonb_build_object('key', key, 'kind', kind, 'minutes', m)) from (
+        select case when p_by_month then to_char(day, 'YYYY-MM') else to_char(day, 'YYYY-MM-DD') end as key, kind, sum(minutes) as m
+        from r group by 1, 2) b), '[]'::jsonb),
+    'items', coalesce((select jsonb_agg(jsonb_build_object('kind', kind, 'item_key', item_key, 'title', title, 'minutes', minutes,
+        'plays', plays, 'episodes', episodes)) from (
+        select *, row_number() over (partition by kind order by minutes desc, item_key) as rn from items where minutes >= 1) x where rn <= 50), '[]'::jsonb),
+    'counts', coalesce((select jsonb_agg(jsonb_build_object('kind', kind, 'items', n, 'episodes', e)) from (
+        select kind, count(*) as n, sum(episodes) as e from items where minutes >= 1 group by kind) c), '[]'::jsonb),
+    'profiles', coalesce((select jsonb_agg(jsonb_build_object('profile_id', profile_id, 'profile_name', profile_name, 'minutes', m)) from (
+        select profile_id, (array_agg(profile_name order by updated_at desc) filter (where profile_name is not null))[1] as profile_name, sum(minutes) as m
+        from r group by 1) p), '[]'::jsonb),
+    'since', (select min(day) from public.account_watch_stats where user_id = p_user and (p_profile is null or profile_id = p_profile))
+  );
+$$;
+revoke all on function public.bingr_watch_stats(uuid, text, date, date, boolean) from public, anon, authenticated;
+grant execute on function public.bingr_watch_stats(uuid, text, date, date, boolean) to service_role;
+revoke all on function public.bingr_stats_item(text, text, text, text, text) from public, anon, authenticated;
+revoke all on function public.bingr_local_day(text, timestamptz) from public, anon, authenticated;
+grant execute on function public.bingr_stats_item(text, text, text, text, text) to service_role;
+grant execute on function public.bingr_local_day(text, timestamptz) to service_role;
+
+-- Eenmalig: statistieken vullen uit de bestaande kijkgeschiedenis (max. 8 dagen, Nederlandse tijd, best effort).
+-- Lopende streams tellen daarna verder vanaf hun laatste ping, zodat niets dubbel telt.
+do $$ begin
+  if not exists (select 1 from public.bingr_migrations where name = 'watch_stats_seed_68') then
+    insert into public.account_watch_stats (user_id, profile_id, profile_name, day, kind, item_key, title, episodes, minutes, plays)
+    select l.user_id, coalesce(l.profile_id, ''), max(l.profile_name), (l.started_at at time zone 'Europe/Amsterdam')::date,
+      it.kind, it.item_key, max(it.title),
+      case when it.kind = 'episode' then coalesce((array_agg(distinct left(l.content_id, 200)) filter (where l.content_id is not null))[1:500], '{}'::text[]) else '{}'::text[] end,
+      sum(least(greatest(extract(epoch from l.ended_at - l.started_at), 0), 6 * 3600)) / 60.0, count(*)
+    from public.account_watch_log l
+    cross join lateral public.bingr_stats_item(l.kind, l.content_id, null, null, l.title) it
+    where it.kind is not null and coalesce(it.item_key, '') <> ''
+    group by l.user_id, coalesce(l.profile_id, ''), (l.started_at at time zone 'Europe/Amsterdam')::date, it.kind, it.item_key
+    on conflict do nothing;
+    update public.account_streams set last_accounted_at = coalesce(last_accounted_at, last_ping);
+    insert into public.bingr_migrations (name) values ('watch_stats_seed_68');
+  end if;
+end $$;
+
+-- Opruimen: zoals hierboven, plus kijkstatistieken ouder dan 400 dagen.
+create or replace function public.bingr_cleanup() returns void
+language sql security definer set search_path = public as $$
+  delete from public.device_codes where expires_at < now();
+  delete from public.account_streams where last_ping < now() - interval '1 day';
+  delete from public.account_watch_log where started_at < now() - interval '8 days';
+  delete from public.rate_limits where bucket < now() - interval '10 minutes';
+  delete from public.admin_login_attempts where window_start < now() - interval '1 day' and (locked_until is null or locked_until < now());
+  delete from public.account_logins where day < (now() at time zone 'utc')::date - 400;
+  delete from public.admin_audit where created_at < now() - interval '1 year';
+  delete from public.account_watch_stats where day < (now() at time zone 'utc')::date - 400;
+$$;
+revoke all on function public.bingr_cleanup() from public, anon, authenticated;
+grant execute on function public.bingr_cleanup() to service_role;
