@@ -4,6 +4,15 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 70
+_13 oktober 2026_
+
+### Website
+
+**Verbeterd**
+
+- Nieuwe homepage op bingr.online: in één oogopslag op welke apparaten Bingr werkt en dat je je eigen IPTV-server of -abonnement nodig hebt, met screenshots, uitleg hoe je begint, alle downloads op één plek en meer veelgestelde vragen
+
 ## Versie 1.0.0 · Build 69
 _13 oktober 2026_
 

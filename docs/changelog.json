@@ -1,5 +1,20 @@
 [
  {
+  "build": 70,
+  "version": "1.0.0",
+  "date": "2026-10-13",
+  "items": [
+   {
+    "type": "improved",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Nieuwe homepage op bingr.online: in één oogopslag op welke apparaten Bingr werkt en dat je je eigen IPTV-server of -abonnement nodig hebt, met screenshots, uitleg hoe je begint, alle downloads op één plek en meer veelgestelde vragen",
+    "en": "New homepage on bingr.online: see at a glance which devices Bingr runs on and that you need your own IPTV server or subscription, with screenshots, how to get started, all downloads in one place and more FAQs"
+   }
+  ]
+ },
+ {
   "build": 69,
   "version": "1.0.0",
   "date": "2026-10-13",
