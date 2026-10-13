@@ -43,12 +43,15 @@ def set_label(k):
     names = [LABEL[p] for p in k]
     return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " en " + names[-1]
 
-def md(keep, title, intro):
+def md(keep, title, intro, core=None):
+    # core: een build komt alleen in dit bestand als hij voor één van deze platforms is (elk platform heeft zijn eigen build);
+    # serverpunten verschijnen dan alleen bij builds van die apps.
+    core = core or keep
     out = [f"# Changelog · {title}", "", intro, "",
            "Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.", ""]
     for e in data:
         items = [i for i in e["items"] if platforms(i, e["build"]) & keep]
-        if not items: continue
+        if not items or not any(platforms(i, e["build"]) & core for i in items): continue
         out += [f"## Versie {e.get('version', '1.0.0')} · Build {e['build']}", f"_{nl_date(e['date'])}_", ""]
         # per apparaatsoort (zelfde set platforms), daarbinnen Nieuw / Verbeterd / Opgelost
         groups = {}
@@ -67,7 +70,7 @@ def md(keep, title, intro):
 if arg("--android"):
     p = pathlib.Path(arg("--android")) / "CHANGELOG.md"
     p.write_text(md({"android", "androidtv", "tizen", "server"}, "Android en Samsung TV",
-        "Alle versies van Bingr voor Android-telefoon en -tablet, Android TV, Google TV, Fire TV en Samsung TV (Tizen). iPhone, iPad, Apple TV en Mac: [iptv-ios-appletv](https://github.com/LRvdLinden/iptv-ios-appletv/blob/main/CHANGELOG.md) · alles: [bingr.online/changelog](https://bingr.online/changelog/)."))
+        "Alle versies van Bingr voor Android-telefoon en -tablet, Android TV, Google TV, Fire TV en Samsung TV (Tizen). iPhone, iPad, Apple TV en Mac: [iptv-ios-appletv](https://github.com/LRvdLinden/iptv-ios-appletv/blob/main/CHANGELOG.md) · alles: [bingr.online/changelog](https://bingr.online/changelog/).", core={"android", "androidtv", "tizen"}))
     print(p)
 elif arg("--site"):
     d = pathlib.Path(arg("--site")) / "assets"; d.mkdir(exist_ok=True)

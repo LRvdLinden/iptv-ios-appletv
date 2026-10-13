@@ -14,7 +14,11 @@ if not (site / "index.html").exists():
 img = site / "assets" / "img"
 img.mkdir(parents=True, exist_ok=True)
 
-build = re.search(r'CURRENT_PROJECT_VERSION:\s*"(\d+)"', (root / "project.yml").read_text()).group(1)
+# Elk platform heeft zijn eigen build: de website toont de nieuwste build waarin de website ('web') veranderd is.
+import json as _json
+_log = _json.loads((root / "docs/changelog.json").read_text())
+_web = [e for e in _log if any("web" in (i.get("platforms") or []) for i in e.get("items", []))]
+build = str(_web[0]["build"]) if _web else re.search(r'CURRENT_PROJECT_VERSION:\s*"(\d+)"', (root / "project.yml").read_text()).group(1)
 version = re.search(r'MARKETING_VERSION:\s*"([\d.]+)"', (root / "project.yml").read_text()).group(1)
 
 shots = {"ios_categories": 600, "ios_home": 600, "ios_live": 600, "ios_detail": 600, "ios_top10": 600, "ios_picker": 600,
