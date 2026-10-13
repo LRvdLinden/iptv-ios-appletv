@@ -84,6 +84,8 @@ struct BingrApp: App {
                     // app-sleutels: alleen opnieuw als het nog niet gelukt is (bijv. offline gestart)
                     await account.fetchConfig(force: false)
                 }
+                // mededelingen (build 62): hooguit eens per uur, alleen in de app zelf
+                if app.stage == .main { AnnouncementCenter.shared.check() }
             }
         }
     }
@@ -119,6 +121,7 @@ final class AppState: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] signedIn in
                 guard let self, !signedIn else { return }
+                AnnouncementCenter.shared.reset()
                 self.showAuthIfNeeded()
             }
             .store(in: &bag)
@@ -297,6 +300,19 @@ struct RootView: View {
     @EnvironmentObject var reminders: ReminderCenter
     @EnvironmentObject var playlists: PlaylistService
     @EnvironmentObject var account: AccountService
+    @ObservedObject private var announcements = AnnouncementCenter.shared
+    /// Mededelingen bij het eerste "in de app" na het starten altijd ophalen (daarna hooguit eens per uur)
+    @State private var announcementsChecked = false
+
+    /// Mededeling alleen tonen in de app zelf, niet tijdens het kijken of op andere schermen.
+    private var showAnnouncement: Binding<AccountService.Announcement?> {
+        Binding(get: {
+            guard app.stage == .main, app.playing == nil, !app.showMultiview, account.deviceLimit == nil else { return nil }
+            return announcements.current
+        }, set: { v in
+            if v == nil, announcements.current != nil { announcements.dismiss() }
+        })
+    }
 
     var body: some View {
         ZStack {
@@ -320,6 +336,15 @@ struct RootView: View {
                 }
             }
             .fullScreenCover(isPresented: $app.showMultiview) { MultiviewScreen() }
+            .sheet(item: showAnnouncement) { a in
+                AnnouncementSheet(announcement: a) { announcements.dismiss() }
+            }
+            .onChange(of: app.stage) { _, stage in
+                // na inloggen en het kiezen van een profiel (build 62)
+                guard stage == .main else { return }
+                AnnouncementCenter.shared.check(force: !announcementsChecked)
+                announcementsChecked = true
+            }
 
             if let r = reminders.due { reminderBanner(r) }
         }

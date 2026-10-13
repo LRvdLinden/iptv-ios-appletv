@@ -8,6 +8,7 @@ enum DeviceText {
     /// SF Symbol per platform.
     static func icon(_ d: AccountService.Device) -> String {
         if isTizen(d.platform) { return "tv" }
+        if isBrowser(d.platform) { return "globe" }
         switch d.platform {
         case "iPhone": return "iphone"
         case "iPad": return "ipad"
@@ -25,9 +26,16 @@ enum DeviceText {
         platform.caseInsensitiveCompare("tizen") == .orderedSame || platform.caseInsensitiveCompare("Samsung TV") == .orderedSame
     }
 
-    /// Platformnaam zoals getoond onder de apparaatnaam (`tizen` wordt "Samsung TV").
+    /// Webspeler op bingr.online/web (build 62) meldt zich met platform `browser` (naam bv. "Chrome op Mac").
+    static func isBrowser(_ platform: String) -> Bool {
+        platform.caseInsensitiveCompare("browser") == .orderedSame
+    }
+
+    /// Platformnaam zoals getoond onder de apparaatnaam (`tizen` wordt "Samsung TV", `browser` wordt "Browser").
     static func platformLabel(_ platform: String) -> String {
-        isTizen(platform) ? L("Samsung TV") : platform
+        if isTizen(platform) { return L("Samsung TV") }
+        if isBrowser(platform) { return L("Browser") }
+        return platform
     }
 
     /// "Linked %@" met een datum (medium, bv. 12 okt 2026).

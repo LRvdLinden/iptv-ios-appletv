@@ -286,6 +286,28 @@ final class AccountService: ObservableObject {
         #endif
     }
 
+    /// App-versie voor `register_device` en `heartbeat` (build 62), bv. "1.0.0 (62)". Oudere servers negeren het veld.
+    static var appVersion: String {
+        let info = Bundle.main.infoDictionary
+        let short = info?["CFBundleShortVersionString"] as? String ?? "?"
+        let build = info?["CFBundleVersion"] as? String ?? "?"
+        return "\(short) (\(build))"
+    }
+
+    /// Systeemversie (build 62), bv. "iOS 26.1", "iPadOS 26.1", "tvOS 26.0" of "macOS 26.0".
+    static var osVersion: String {
+        let v = ProcessInfo.processInfo.operatingSystemVersion
+        let number = v.patchVersion > 0 ? "\(v.majorVersion).\(v.minorVersion).\(v.patchVersion)" : "\(v.majorVersion).\(v.minorVersion)"
+        #if os(tvOS)
+        let name = "tvOS"
+        #elseif os(macOS)
+        let name = "macOS"
+        #else
+        let name = UIDevice.current.userInterfaceIdiom == .pad ? "iPadOS" : "iOS"
+        #endif
+        return "\(name) \(number)"
+    }
+
     /// Dit apparaat registreren (na elke login, of voor sessies van vóór build 39).
     /// Bij 403 `device_limit` wordt `deviceLimit` gezet; de app toont dan "Too many devices".
     @discardableResult
@@ -293,7 +315,8 @@ final class AccountService: ObservableObject {
         guard Secrets.accountsConfigured, isSignedIn else { return .failed }
         do {
             let body: [String: Any] = ["action": "register_device", "device_id": deviceID,
-                                       "name": Self.currentDeviceName, "platform": Self.platform]
+                                       "name": Self.currentDeviceName, "platform": Self.platform,
+                                       "app_version": Self.appVersion, "os_version": Self.osVersion]
             let r = try await authorized { token in
                 try await self.post("/functions/v1/device-auth", body, bearer: token)
             }
@@ -336,11 +359,41 @@ final class AccountService: ObservableObject {
     private func heartbeat() async {
         do {
             let r = try await authorized { token in
-                try await self.post("/functions/v1/device-auth", ["action": "heartbeat", "device_id": self.deviceID], bearer: token)
+                try await self.post("/functions/v1/device-auth", ["action": "heartbeat", "device_id": self.deviceID,
+                                                                         "app_version": Self.appVersion, "os_version": Self.osVersion], bearer: token)
             }
             if (r.json["revoked"] as? Bool) == true { revokedLocally() }
         } catch {
             // offline of tijdelijke fout: niets doen (de app blijft werken)
+        }
+    }
+
+    /// Mededeling van de beheerder (device-auth `announcements`, build 62).
+    struct Announcement: Identifiable, Equatable {
+        let id: String
+        let title: String
+        let body: String
+        let createdAt: Date?
+    }
+
+    /// Mededelingen in de taal van de app (`nl`, anders `en`). nil bij een fout of een oudere server zonder deze actie.
+    func fetchAnnouncements() async -> [Announcement]? {
+        guard Secrets.accountsConfigured, isSignedIn else { return nil }
+        let lang = Localizer.shared.language == "nl" ? "nl" : "en"
+        do {
+            let r = try await authorized { token in
+                try await self.post("/functions/v1/device-auth", ["action": "announcements", "device_id": self.deviceID, "lang": lang], bearer: token)
+            }
+            guard r.status == 200, let items = r.json["items"] as? [[String: Any]] else { return nil }
+            return items.compactMap { j in
+                guard let id = (j["id"] as? String) ?? (j["id"] as? NSNumber)?.stringValue, !id.isEmpty else { return nil }
+                let title = (j["title"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                let body = (j["body"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !title.isEmpty || !body.isEmpty else { return nil }
+                return Announcement(id: id, title: title, body: body, createdAt: Self.parseDate(j["created_at"]))
+            }
+        } catch {
+            return nil
         }
     }
 

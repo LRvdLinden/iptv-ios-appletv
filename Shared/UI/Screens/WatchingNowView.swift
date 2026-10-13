@@ -110,6 +110,7 @@ struct ActiveStreamRow: View {
             // profielfoto vóór de tekst (build 57)
             AccountProfileAvatar(profileID: stream.profileID, profileName: stream.profileName, size: tvScaled(30))
             Image(systemName: StreamText.icon(platform: stream.platform, name: stream.deviceName))
+                .accessibilityLabel(DeviceText.platformLabel(stream.platform))
                 .font(.system(size: tvScaled(22)))
                 .foregroundStyle(stream.deviceID == AccountService.shared.deviceID ? Theme.red : .white)
                 .frame(width: tvScaled(34))
@@ -313,6 +314,7 @@ struct WatchLogView: View {
                     .font(.system(size: tvScaled(15), weight: .semibold)).foregroundStyle(.white).lineLimit(2)
                 HStack(spacing: tvScaled(6)) {
                     Image(systemName: StreamText.icon(platform: e.platform, name: e.deviceName))
+                        .accessibilityLabel(DeviceText.platformLabel(e.platform))
                     Text([e.profileName, e.deviceName].filter { !$0.isEmpty }.joined(separator: " · ")).lineLimit(1)
                 }
                 .font(.system(size: tvScaled(12))).foregroundStyle(Theme.secondary)
