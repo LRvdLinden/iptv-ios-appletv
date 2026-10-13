@@ -806,7 +806,12 @@
   "Statistics are not available yet. Please try again later.": "الإحصائيات غير متاحة بعد. حاول مرة أخرى لاحقًا.",
   "Previous period": "الفترة السابقة",
   "Next period": "الفترة التالية",
-  "Tracked since %@": "مسجلة منذ %@"
+  "Tracked since %@": "مسجلة منذ %@",
+  "Account and devices": "الحساب والأجهزة",
+  "Not connected": "غير متصل",
+  "Profile menu": "قائمة الملف الشخصي",
+  "Settings": "الإعدادات",
+  "Sync failed": "فشلت المزامنة"
  },
  "de": {
   "%@ is now signed in.": "%@ ist jetzt angemeldet.",
@@ -1615,7 +1620,12 @@
   "Statistics are not available yet. Please try again later.": "Statistiken sind noch nicht verfügbar. Bitte versuche es später erneut.",
   "Previous period": "Vorheriger Zeitraum",
   "Next period": "Nächster Zeitraum",
-  "Tracked since %@": "Erfasst seit %@"
+  "Tracked since %@": "Erfasst seit %@",
+  "Account and devices": "Konto und Geräte",
+  "Not connected": "Nicht verbunden",
+  "Profile menu": "Profilmenü",
+  "Settings": "Einstellungen",
+  "Sync failed": "Synchronisierung fehlgeschlagen"
  },
  "es": {
   "%@ is now signed in.": "%@ ya ha iniciado sesión.",
@@ -2424,7 +2434,12 @@
   "Statistics are not available yet. Please try again later.": "Las estadísticas aún no están disponibles. Inténtalo más tarde.",
   "Previous period": "Periodo anterior",
   "Next period": "Periodo siguiente",
-  "Tracked since %@": "Registradas desde %@"
+  "Tracked since %@": "Registradas desde %@",
+  "Account and devices": "Cuenta y dispositivos",
+  "Not connected": "No conectado",
+  "Profile menu": "Menú del perfil",
+  "Settings": "Ajustes",
+  "Sync failed": "Error de sincronización"
  },
  "fr": {
   "%@ is now signed in.": "%@ est maintenant connecté.",
@@ -3233,7 +3248,12 @@
   "Statistics are not available yet. Please try again later.": "Les statistiques ne sont pas encore disponibles. Réessayez plus tard.",
   "Previous period": "Période précédente",
   "Next period": "Période suivante",
-  "Tracked since %@": "Enregistrées depuis le %@"
+  "Tracked since %@": "Enregistrées depuis le %@",
+  "Account and devices": "Compte et appareils",
+  "Not connected": "Non connecté",
+  "Profile menu": "Menu du profil",
+  "Settings": "Réglages",
+  "Sync failed": "Échec de la synchronisation"
  },
  "it": {
   "%@ is now signed in.": "%@ ha effettuato l’accesso.",
@@ -4042,7 +4062,12 @@
   "Statistics are not available yet. Please try again later.": "Le statistiche non sono ancora disponibili. Riprova più tardi.",
   "Previous period": "Periodo precedente",
   "Next period": "Periodo successivo",
-  "Tracked since %@": "Registrate dal %@"
+  "Tracked since %@": "Registrate dal %@",
+  "Account and devices": "Account e dispositivi",
+  "Not connected": "Non collegato",
+  "Profile menu": "Menu del profilo",
+  "Settings": "Impostazioni",
+  "Sync failed": "Sincronizzazione non riuscita"
  },
  "nl": {
   "%@ is now signed in.": "%@ is nu ingelogd.",
@@ -4851,7 +4876,12 @@
   "Statistics are not available yet. Please try again later.": "Statistieken zijn nog niet beschikbaar. Probeer het later opnieuw.",
   "Previous period": "Vorige periode",
   "Next period": "Volgende periode",
-  "Tracked since %@": "Bijgehouden sinds %@"
+  "Tracked since %@": "Bijgehouden sinds %@",
+  "Account and devices": "Account en apparaten",
+  "Not connected": "Niet gekoppeld",
+  "Profile menu": "Profielmenu",
+  "Settings": "Instellingen",
+  "Sync failed": "Synchroniseren mislukt"
  },
  "pl": {
   "%@ is now signed in.": "%@ jest teraz zalogowany.",
@@ -5660,7 +5690,12 @@
   "Statistics are not available yet. Please try again later.": "Statystyki nie są jeszcze dostępne. Spróbuj ponownie później.",
   "Previous period": "Poprzedni okres",
   "Next period": "Następny okres",
-  "Tracked since %@": "Zapisywane od %@"
+  "Tracked since %@": "Zapisywane od %@",
+  "Account and devices": "Konto i urządzenia",
+  "Not connected": "Nie połączono",
+  "Profile menu": "Menu profilu",
+  "Settings": "Ustawienia",
+  "Sync failed": "Synchronizacja nie powiodła się"
  },
  "pt": {
   "%@ is now signed in.": "%@ já tem sessão iniciada.",
@@ -6469,7 +6504,12 @@
   "Statistics are not available yet. Please try again later.": "As estatísticas ainda não estão disponíveis. Tente novamente mais tarde.",
   "Previous period": "Período anterior",
   "Next period": "Período seguinte",
-  "Tracked since %@": "Registadas desde %@"
+  "Tracked since %@": "Registadas desde %@",
+  "Account and devices": "Conta e dispositivos",
+  "Not connected": "Não ligado",
+  "Profile menu": "Menu do perfil",
+  "Settings": "Definições",
+  "Sync failed": "Falha na sincronização"
  },
  "tr": {
   "%@ is now signed in.": "%@ artık oturum açtı.",
@@ -7278,7 +7318,12 @@
   "Statistics are not available yet. Please try again later.": "İstatistikler henüz kullanılamıyor. Lütfen daha sonra tekrar deneyin.",
   "Previous period": "Önceki dönem",
   "Next period": "Sonraki dönem",
-  "Tracked since %@": "%@ tarihinden beri kaydediliyor"
+  "Tracked since %@": "%@ tarihinden beri kaydediliyor",
+  "Account and devices": "Hesap ve cihazlar",
+  "Not connected": "Bağlı değil",
+  "Profile menu": "Profil menüsü",
+  "Settings": "Ayarlar",
+  "Sync failed": "Eşitleme başarısız"
  },
  "zh-Hans": {
   "%@ is now signed in.": "%@ 现已登录。",
@@ -8087,6 +8132,11 @@
   "Statistics are not available yet. Please try again later.": "统计暂不可用，请稍后再试。",
   "Previous period": "上一时段",
   "Next period": "下一时段",
-  "Tracked since %@": "自 %@ 起记录"
+  "Tracked since %@": "自 %@ 起记录",
+  "Account and devices": "账户和设备",
+  "Not connected": "未连接",
+  "Profile menu": "个人资料菜单",
+  "Settings": "设置",
+  "Sync failed": "同步失败"
  }
 }

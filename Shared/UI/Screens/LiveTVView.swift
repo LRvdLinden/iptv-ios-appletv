@@ -162,6 +162,12 @@ struct LiveTVView: View {
                         }
                         .disabled(lib.channels.isEmpty)
                     }
+                    #if !os(tvOS)
+                    // build 72: ook hier het profielmenu achter de avatar
+                    ToolbarItem(placement: .primaryAction) {
+                        ProfileMenuButton { ProfileAvatar(size: 28) }
+                    }
+                    #endif
                 }
         }
         .sheet(item: $guideFor) { c in GuideSheet(channel: c) }

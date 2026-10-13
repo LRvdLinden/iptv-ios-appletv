@@ -55,7 +55,7 @@ struct HomeView: View {
             .ignoresSafeArea(edges: .top)
 
             #if !os(tvOS)
-            HomeTopBar(scroll: scroll, onSearch: { showSearch = true }, onProfile: { app.switchPlaylist() })   // op Apple TV zit Zoeken al in de menubalk
+            HomeTopBar(scroll: scroll, onSearch: { showSearch = true })   // op Apple TV zit Zoeken al in de menubalk
             #endif
         }
         .fullScreenCover(isPresented: $showSearch) { SearchView(modal: true) }
@@ -640,7 +640,6 @@ private struct CollectionsKey: Equatable {
 private struct HomeTopBar: View {
     let scroll: ScrollTracker
     let onSearch: () -> Void
-    let onProfile: () -> Void
 
     var body: some View {
         let off = Double(-scroll.y)
@@ -652,8 +651,15 @@ private struct HomeTopBar: View {
                     .frame(width: 34, height: 34)
             }
             .accessibilityLabel(L("Search"))
-            Button(action: onProfile) { ProfileAvatar(size: 30) }
-                .accessibilityLabel(L("Switch profile"))
+            // build 72: profielmenu zoals op bingr.online (andere profielen, Mijn Bingr, Instellingen, Uitloggen…)
+            ProfileMenuButton {
+                HStack(spacing: 5) {
+                    ProfileAvatar(size: 30)
+                    Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)).foregroundStyle(.white)
+                }
+                .frame(height: 34)
+                .contentShape(Rectangle())
+            }
         }
         .padding(.horizontal, 16).padding(.bottom, 10)
         .background(

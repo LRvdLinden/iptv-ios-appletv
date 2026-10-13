@@ -105,6 +105,8 @@ final class AppState: ObservableObject {
     @Published var resumeLastChannelPending = false
     /// Gekozen tabblad (blijft staan als de interface opnieuw wordt opgebouwd, bijv. na een andere accentkleur)
     @Published var selectedTab: Int?
+    /// Profielmenu (build 72): Mijn Bingr openen, eventueel meteen op een pagina (Instellingen, Account…)
+    @Published var myBingrRequest: MyBingrRequest?
     let playlists = PlaylistService()
 
     private let lastKey = "lastPlaylistID"
@@ -271,6 +273,12 @@ final class AppState: ObservableObject {
         } else if change.updated.contains(src.id) {
             Task { await playlists.refresh(src, showSpinner: false) }
         }
+    }
+
+    /// Naar het tabblad Mijn Bingr, en daar (optioneel) meteen een pagina openen.
+    func showMyBingr(_ route: MyBingrRoute? = nil) {
+        selectedTab = 5
+        myBingrRequest = MyBingrRequest(route: route)
     }
 
     func switchPlaylist() {

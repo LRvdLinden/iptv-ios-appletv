@@ -1,19 +1,17 @@
 import SwiftUI
 import CoreImage.CIFilterBuiltins
 
-struct SettingsView: View {
+/// Mijn Bingr → Instellingen (build 72): alles wat niet in Bibliotheek of Profiel past.
+struct AppSettingsView: View {
     @EnvironmentObject var app: AppState
     @EnvironmentObject var playlists: PlaylistService
     @EnvironmentObject var store: CloudStore
-    @EnvironmentObject var trakt: TraktSync
     @EnvironmentObject var subs: OpenSubtitles
     @EnvironmentObject var localizer: Localizer
     @EnvironmentObject var parental: ParentalControl
     /// App-sleutels van de server (build 41): opnieuw tekenen zodra ze binnen zijn
     @ObservedObject private var account = AccountService.shared
     @AppStorage(TrackPreferences.subtitleModeKey) private var subtitleMode = TrackPreferences.SubtitleMode.whenNeeded.rawValue
-    @AppStorage("trakt.scrobble") private var traktScrobble = true
-    @AppStorage("trakt.askRating") private var traktAskRating = true
     @AppStorage("playlist.refresh") private var refreshPolicy = RefreshPolicy.daily.rawValue
     @AppStorage("player.engine") private var engine = PlayerController.EngineChoice.auto.rawValue
     @AppStorage(SubtitleSize.key) private var subtitleSize = SubtitleSize.small.rawValue
@@ -29,82 +27,49 @@ struct SettingsView: View {
     @AppStorage(PlayerSettings.externalKey) private var externalDisplay = true
     @AppStorage(DeinterlaceMode.key) private var deinterlace = DeinterlaceMode.auto.rawValue
     @AppStorage(PlayerSettings.resumeLastChannelKey) private var resumeLastChannel = false
-    @State private var showTraktLogin = false
     @State private var showOSLogin = false
     @State private var editing: PlaylistSource?
     @State private var editingProfile: ViewerProfile?
     @State private var addingServer = false
-    @State private var addingProfile = false
     @State private var deletingServer: PlaylistSource?
     @State private var pinMode: PinMode?
     @State private var setup: SetupTarget?
 
-    enum SetupTarget: String, Identifiable { case trakt, openSubtitles, all; var id: String { rawValue } }
+    enum SetupTarget: String, Identifiable { case openSubtitles, all; var id: String { rawValue } }
 
     enum PinMode: String, Identifiable { case set, unlock, disable; var id: String { rawValue } }
 
-    /// Laatste focusbare rijen (tvOS scrollt dan door tot de footer)
-    enum BottomFocus: Hashable { case language, advanced }
-    @FocusState private var bottomFocus: BottomFocus?
-    private static let footerID = "bingr.footer"
 
     var body: some View {
-        NavigationStack {
-            ScrollViewReader { proxy in
-            List {
-                Section { MyBingrHeader() }
-                    .listRowBackground(Color.clear)
-                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
-                playlistSection
-                AccountSettingsSection()
-                if isMain {
-                    serverSection
-                    profilesSection
-                }
-                librarySection
-                if isMain {
-                    refreshSection
-                    traktSection
-                }
-                openSubtitlesSection
-                playerSection
-                parentalSection
-                interfaceSection
-                languageSection
-                if isMain { adminFooterSections }
-                Section(L("About")) {
-                    LabeledContent(L("IMDb data"), value: Secrets.isSet(Secrets.omdbAPIKey) ? L("Active (OMDb)") : L("No OMDb key"))
-                }
-                if isMain { advancedSection }
-                // Build 47: app-icoon, versie en copyright helemaal onderaan
-                Section { AboutFooter() }
-                    .id(Self.footerID)
-                    .listRowBackground(Color.clear)
-                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+        List {
+            playlistSection
+            if isMain {
+                serverSection
+                refreshSection
             }
-            #if os(tvOS)
-            // De footer is niet focusbaar: bij de laatste focusbare rij er zelf naartoe scrollen
-            .onChange(of: bottomFocus) { _, f in
-                guard let f, f == (isMain ? .advanced : .language) else { return }
-                withAnimation { proxy.scrollTo(Self.footerID, anchor: .bottom) }
+            openSubtitlesSection
+            playerSection
+            parentalSection
+            interfaceSection
+            languageSection
+            if isMain { adminFooterSections }
+            Section(L("About")) {
+                LabeledContent(L("IMDb data"), value: Secrets.isSet(Secrets.omdbAPIKey) ? L("Active (OMDb)") : L("No OMDb key"))
             }
-            #endif
-            }
-            .navigationTitle(store.activeProfile?.name ?? L("My Bingr"))
-            // persoonlijke kijkvoorkeuren horen bij het profiel
-            .onChange(of: subtitleMode) { _, v in store.updateActivePreferences { $0.subtitleMode = v } }
-            .onAppear(perform: migrateSubtitlePreferences)
-            .onChange(of: audioLanguage) { _, v in store.updateActivePreferences { $0.audioLanguage = v } }
-            .onChange(of: subtitleLanguage) { _, v in store.updateActivePreferences { $0.streamSubtitleLanguage = v } }
-            .onChange(of: subs.defaultLanguage) { _, v in store.updateActivePreferences { $0.subtitleLanguage = v } }
+            if isMain { advancedSection }
         }
+        .navigationTitle(L("Settings"))
+        // persoonlijke kijkvoorkeuren horen bij het profiel
+        .onChange(of: subtitleMode) { _, v in store.updateActivePreferences { $0.subtitleMode = v } }
+        .onAppear(perform: migrateSubtitlePreferences)
+        .onChange(of: audioLanguage) { _, v in store.updateActivePreferences { $0.audioLanguage = v } }
+        .onChange(of: subtitleLanguage) { _, v in store.updateActivePreferences { $0.streamSubtitleLanguage = v } }
+        .onChange(of: subs.defaultLanguage) { _, v in store.updateActivePreferences { $0.subtitleLanguage = v } }
 
-        .sheet(isPresented: $showTraktLogin) { TraktLoginView() }
         .sheet(isPresented: $showOSLogin) { OpenSubtitlesLoginView() }
         .sheet(item: $editing) { AddPlaylistView(existing: $0) }
         .sheet(item: $editingProfile) { ProfileEditView(existing: $0) }
         .sheet(isPresented: $addingServer) { AddPlaylistView(existing: nil) }
-        .sheet(isPresented: $addingProfile) { ProfileEditView(existing: nil) }
         .confirmationDialog(L("Delete server"), isPresented: Binding(get: { deletingServer != nil }, set: { if !$0 { deletingServer = nil } }),
                             presenting: deletingServer) { src in
             Button(L("Delete %@", src.name), role: .destructive) { deleteServer(src) }
@@ -112,10 +77,6 @@ struct SettingsView: View {
         } message: { _ in Text(L("Profiles keep their own lists. Channels, movies and series of this server disappear from the app.")) }
         .sheet(item: $setup) { t in
             switch t {
-            case .trakt:
-                ConnectionsSetupView(focus: .trakt) {
-                    if Secrets.traktReady { Task { try? await Task.sleep(nanoseconds: 500_000_000); showTraktLogin = true } }
-                }
             case .openSubtitles:
                 ConnectionsSetupView(focus: .openSubtitles) {
                     if Secrets.openSubtitlesReady { Task { try? await Task.sleep(nanoseconds: 500_000_000); showOSLogin = true } }
@@ -169,23 +130,12 @@ struct SettingsView: View {
     private var advancedSection: some View {
         Section {
             Button { setup = .all } label: { Label(L("Set up connections"), systemImage: "key.horizontal") }
-                .focused($bottomFocus, equals: .advanced)
         } header: { Text(L("Advanced")) } footer: {
             Text(L("Only needed if you want to use your own API keys. Bingr normally gets the keys for Trakt and OpenSubtitles securely from the Bingr server."))
         }
     }
 
-    /// Trakt: gewoon inloggen (koppelcode en QR). Ontbreekt de sleutel, dan eerst de server
-    /// proberen; alleen als hij er dan nog niet is "Koppelingen instellen".
-    private func signInToTrakt() {
-        if Secrets.traktReady { showTraktLogin = true; return }
-        Task { @MainActor in
-            await account.fetchConfig()
-            if Secrets.traktReady { showTraktLogin = true } else { setup = .trakt }
-        }
-    }
-
-    /// OpenSubtitles: gewoon inloggen met gebruikersnaam en wachtwoord (zie `signInToTrakt`).
+    /// OpenSubtitles: gewoon inloggen met gebruikersnaam en wachtwoord (zie `TraktSettingsView.signIn`).
     private func signInToOpenSubtitles() {
         if Secrets.openSubtitlesReady { showOSLogin = true; return }
         Task { @MainActor in
@@ -214,31 +164,6 @@ struct SettingsView: View {
             } header: { Text(L("Profile")) } footer: {
                 if !isMain { Text(L("The server and all settings are managed in the main account.")) }
             }
-        }
-    }
-
-    /// Alle kijkprofielen (alleen het hoofdaccount maakt ze aan en beheert ze).
-    private var profilesSection: some View {
-        Section {
-            ForEach(store.profiles) { p in
-                Button { editingProfile = p } label: {
-                    HStack(spacing: 12) {
-                        AvatarTile(name: "", avatar: p.avatar, photo: store.photos[p.id]).frame(width: tvScaled(34))
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(p.name).foregroundStyle(.white)
-                            Text(store.isMain(p) ? L("Main account") : (p.ageLimit.map { L("Up to %d years", $0) } ?? L("Profile")))
-                                .font(.caption).foregroundStyle(Theme.secondary)
-                        }
-                        Spacer()
-                        Image(systemName: "pencil").foregroundStyle(Theme.secondary)
-                    }
-                }
-            }
-            if store.profiles.count < 8 {
-                Button { addingProfile = true } label: { Label(L("Add profile"), systemImage: "person.badge.plus") }
-            }
-        } header: { Text(L("Profiles")) } footer: {
-            Text(L("Each profile uses the same server, with its own My List, Continue watching, favorites, history and age limit."))
         }
     }
 
@@ -291,52 +216,6 @@ struct SettingsView: View {
             } header: { Text(L("Server")) } footer: {
                 Text(L("The server, Trakt and OpenSubtitles belong to the main account and are used by all profiles."))
             }
-        }
-    }
-
-    private var traktSection: some View {
-        Section {
-            if trakt.isLoggedIn {
-                HStack(spacing: 14) {
-                    ZStack {
-                        Circle().fill(Theme.elevated)
-                        if let a = trakt.avatar { RemoteImage(url: a).clipShape(Circle()) }
-                        else { Image(systemName: "person.fill").foregroundStyle(Theme.secondary) }
-                    }
-                    .frame(width: tvScaled(52), height: tvScaled(52))
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(trakt.displayName ?? trakt.username ?? "Trakt").font(.headline)
-                        if let u = trakt.username { Text(u).font(.subheadline).foregroundStyle(Theme.secondary) }
-                    }
-                }
-                Toggle(isOn: $traktScrobble) { Label(L("Sync playback progress"), systemImage: "playpause") }
-                Toggle(isOn: $traktAskRating) { Label(L("Ask for ratings"), systemImage: "star") }
-                LabeledContent(L("Watched"), value: L("%d movies · %d episodes", trakt.watchedMovies.count,
-                                                      trakt.watchedEpisodes.values.reduce(0) { $0 + $1.count }))
-                if let d = trakt.lastRefresh {
-                    LabeledContent(L("Last synced"), value: d.formatted(date: .omitted, time: .shortened))
-                }
-                if let m = trakt.lastScrobble {
-                    LabeledContent(L("Last sent"), value: m + (trakt.lastScrobbleDate.map { " · " + $0.formatted(date: .omitted, time: .shortened) } ?? ""))
-                }
-                Button { Task { await trakt.refresh(force: true) } } label: {
-                    HStack {
-                        Label(trakt.isSyncing ? L("Syncing…") : trakt.justSynced ? L("Up to date") : L("Sync now"),
-                              systemImage: trakt.justSynced ? "checkmark.circle.fill" : "arrow.triangle.2.circlepath")
-                        Spacer()
-                        if trakt.isSyncing { ProgressView() }
-                    }
-                }
-                .disabled(trakt.isSyncing)
-                Button(role: .destructive) { Task { await trakt.logout() } } label: { Label(L("Sign out of Trakt"), systemImage: "rectangle.portrait.and.arrow.right") }
-            } else {
-                Button { signInToTrakt() } label: {
-                    Label(L("Sign in to Trakt"), systemImage: "person.crop.circle.badge.checkmark")
-                }
-            }
-            if let e = trakt.lastError { Text(e).font(.caption).foregroundStyle(Theme.red) }
-        } header: { Text("Trakt") } footer: {
-            Text(L("What you watch in Bingr is scrobbled automatically. What you've watched on Trakt (or in another app) is checked off here."))
         }
     }
 
@@ -486,36 +365,10 @@ struct SettingsView: View {
         }
     }
 
-    private var librarySection: some View {
-        Section {
-            #if os(iOS)
-            NavigationLink { DownloadsView() } label: { Label(L("Downloads"), systemImage: "arrow.down.circle") }
-            #endif
-            NavigationLink { HistoryView() } label: { Label(L("Watch history"), systemImage: "clock.arrow.circlepath") }
-            // kijkstatistieken (build 68): per week, maand of jaar, via de Bingr-account
-            if Secrets.accountsConfigured && account.isSignedIn {
-                NavigationLink { StatsView() } label: { Label(L("Statistics"), systemImage: "chart.bar.xaxis") }
-            }
-            if isMain {
-                NavigationLink { NetworkBrowserView() } label: {
-                    Label(L("NAS & network (SMB/DLNA)"), systemImage: "externaldrive.connected.to.line.below")
-                }
-            }
-        } header: { Text(L("Library")) } footer: {
-            Text(L("Watch history is kept per profile. Plex, Jellyfin and Emby can be added as a playlist."))
-        }
-    }
-
     private var interfaceSection: some View {
         Section {
             NavigationLink { AppearanceView() } label: {
                 Label(L("Appearance"), systemImage: "paintpalette")
-            }
-            NavigationLink { HomeLayoutView() } label: {
-                Label(L("Home screen"), systemImage: "rectangle.grid.1x2")
-            }
-            NavigationLink { CollectionsView() } label: {
-                Label(L("Collections"), systemImage: "rectangle.stack.badge.plus")
             }
             Picker(L("Start screen"), selection: $startTab) {
                 Text(L("Home")).tag(0)
@@ -548,7 +401,6 @@ struct SettingsView: View {
                 ForEach(Localizer.supported, id: \.code) { Text($0.name).tag($0.code) }
             }
             .pickerStyle(.menu)
-            .focused($bottomFocus, equals: .language)
         }
     }
 }

@@ -16,6 +16,13 @@ struct MainTabView: View {
         } else {
             Label(L("My Bingr"), systemImage: "person.crop.circle")
         }
+        #elseif os(tvOS)
+        // build 72: de ronde avatar van het actieve profiel aan het eind van de menubalk (als tvOS hem toont)
+        if let img = ProfileTabIcon.image(CloudStore.shared, size: 40) {
+            Label { Text(CloudStore.shared.activeProfile?.name ?? L("My Bingr")) } icon: { Image(uiImage: img) }
+        } else {
+            Label(CloudStore.shared.activeProfile?.name ?? L("My Bingr"), systemImage: "person.crop.circle")
+        }
         #else
         Label(CloudStore.shared.activeProfile?.name ?? L("My Bingr"), systemImage: "person.crop.circle")
         #endif
@@ -60,7 +67,7 @@ struct MainTabView: View {
                         .tabItem { Label(L("Downloads"), systemImage: "arrow.down.circle") }
                 }
                 #endif
-                SettingsView().tag(5)
+                MyBingrView().tag(5)
                     .tabItem { myBingrTab }
             }
             #if os(iOS)

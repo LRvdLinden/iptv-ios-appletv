@@ -45,16 +45,18 @@ struct MyBingrHeader: View {
     var body: some View {
         VStack(alignment: .leading, spacing: tvScaled(18)) {
             VStack(spacing: tvScaled(8)) {
-                ProfileAvatar(size: tvScaled(84))
-                Button { app.switchPlaylist() } label: {
-                    HStack(spacing: 6) {
-                        Text(store.activeProfile?.name ?? L("My Bingr")).font(.system(size: tvScaled(20), weight: .bold))
-                        Image(systemName: "chevron.down").font(.system(size: tvScaled(13), weight: .bold))
+                // build 72: avatar en naam openen het profielmenu (andere profielen, Instellingen, Account, Uitloggen)
+                ProfileMenuButton {
+                    VStack(spacing: tvScaled(8)) {
+                        ProfileAvatar(size: tvScaled(84))
+                        HStack(spacing: 6) {
+                            Text(store.activeProfile?.name ?? L("My Bingr")).font(.system(size: tvScaled(20), weight: .bold))
+                            Image(systemName: "chevron.down").font(.system(size: tvScaled(13), weight: .bold))
+                        }
+                        .foregroundStyle(.white)
                     }
-                    .foregroundStyle(.white)
+                    .contentShape(Rectangle())
                 }
-                .plainTVButton()
-                .accessibilityLabel(L("Switch profile"))
                 if trakt.isLoggedIn { traktStatus }
             }
             .frame(maxWidth: .infinity)
@@ -169,17 +171,17 @@ struct MyBingrHeader: View {
     }
 }
 
-#if os(iOS)
+#if !os(macOS)
 /// Tabbladicoon "Mijn Bingr": de profielfoto (rond), zoals bij Netflix.
 @MainActor
 enum ProfileTabIcon {
-    static func image(_ store: CloudStore) -> UIImage? {
+    static func image(_ store: CloudStore, size side: CGFloat = 26) -> UIImage? {
         guard let p = store.activeProfile else { return nil }
         let img: UIImage
         if let d = store.photos[p.id], let i = UIImage(data: d) { img = i }
         else if p.avatar.isIllustration, let i = UIImage(named: p.avatar.symbol) { img = i }
         else { return nil }
-        let size = CGSize(width: 26, height: 26)
+        let size = CGSize(width: side, height: side)
         let out = UIGraphicsImageRenderer(size: size).image { _ in
             UIBezierPath(ovalIn: CGRect(origin: .zero, size: size)).addClip()
             img.draw(in: CGRect(origin: .zero, size: size))
