@@ -4,6 +4,16 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 67
+_13 oktober 2026_
+
+### Website
+
+**Verbeterd**
+
+- Webspeler op de telefoon: bovenaan Home staat nu een grote cover met titel, Afspelen en Info, net als in de iPhone-app
+- Webspeler: de knop Afspelen is gevuld in je accentkleur, net als in de apps
+
 ## Versie 1.0.0 · Build 66
 _13 oktober 2026_
 

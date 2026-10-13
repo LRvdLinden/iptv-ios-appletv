@@ -1,5 +1,28 @@
 [
  {
+  "build": 67,
+  "version": "1.0.0",
+  "date": "2026-10-13",
+  "items": [
+   {
+    "type": "improved",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Webspeler op de telefoon: bovenaan Home staat nu een grote cover met titel, Afspelen en Info, net als in de iPhone-app",
+    "en": "Web player on phones: Home now opens with a large cover with title, Play and Info, just like the iPhone app"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Webspeler: de knop Afspelen is gevuld in je accentkleur, net als in de apps",
+    "en": "Web player: the Play button is filled in your accent colour, like in the apps"
+   }
+  ]
+ },
+ {
   "build": 66,
   "version": "1.0.0",
   "date": "2026-10-13",
