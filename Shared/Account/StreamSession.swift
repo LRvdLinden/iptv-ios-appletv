@@ -17,6 +17,9 @@ final class StreamSession {
         let title: String
         let kind: String
         let contentID: String
+        /// Build 68 (statistieken): bij een aflevering de serie waar hij bij hoort
+        var seriesID: String? = nil
+        var seriesTitle: String? = nil
     }
 
     enum Result { case ok, limit(AccountService.StreamLimit) }
@@ -63,10 +66,18 @@ final class StreamSession {
             kind = "live"
             if let s = item.subtitle, !s.isEmpty { title += " · " + s }
         case .movie:
+            // terugkijken uit de gids (id "<zender>-cu-<start>"): titel "Zender · Programma", telt bij de zender
+            if let r = item.id.range(of: "-cu-") {
+                let channelID = String(item.id[..<r.lowerBound])
+                if let s = item.subtitle, !s.isEmpty { title = s + " · " + title }
+                return Info(title: String(title.prefix(200)), kind: "catchup", contentID: item.channelID ?? channelID)
+            }
             kind = "movie"
         case .episode, .series:
             kind = "episode"
             if let s = item.subtitle, !s.isEmpty { title += " · " + s }
+            return Info(title: String(title.prefix(200)), kind: kind, contentID: item.id,
+                        seriesID: item.seriesID, seriesTitle: item.title)
         }
         return Info(title: String(title.prefix(200)), kind: kind, contentID: item.channelID ?? item.id)
     }
@@ -83,7 +94,8 @@ final class StreamSession {
         startPinging()
         let r = await send { await AccountService.shared.streamStart(profileID: Self.profileID, profileName: Self.profileName,
                                                                       title: info.title, kind: info.kind,
-                                                                      contentID: info.contentID) }
+                                                                      contentID: info.contentID, seriesID: info.seriesID,
+                                                                      seriesTitle: info.seriesTitle) }
         // intussen gezapt of gesloten: dit antwoord telt niet meer
         guard gen == generation else { return .ok }
         if case .limit(let l) = r {
@@ -135,7 +147,8 @@ final class StreamSession {
         // telt niet meer (bijv. te lange pauze of verwijderd op een ander apparaat): opnieuw aanmelden
         let r = await AccountService.shared.streamStart(profileID: Self.profileID, profileName: Self.profileName,
                                                         title: titleProvider?() ?? cur.title, kind: cur.kind,
-                                                        contentID: cur.contentID)
+                                                        contentID: cur.contentID, seriesID: cur.seriesID,
+                                                        seriesTitle: cur.seriesTitle)
         guard gen == generation, case .limit(let l) = r else { return }
         reportLimit(l)
     }
@@ -167,7 +180,8 @@ final class StreamSession {
         Task { @MainActor in
             let r = await self.send { await AccountService.shared.streamStart(profileID: Self.profileID, profileName: Self.profileName,
                                                                                title: self.titleProvider?() ?? info.title,
-                                                                               kind: info.kind, contentID: info.contentID) }
+                                                                               kind: info.kind, contentID: info.contentID,
+                                                                               seriesID: info.seriesID, seriesTitle: info.seriesTitle) }
             guard gen == self.generation, case .limit(let l) = r else { return }
             self.reportLimit(l)
         }

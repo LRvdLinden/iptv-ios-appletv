@@ -492,6 +492,10 @@ struct SettingsView: View {
             NavigationLink { DownloadsView() } label: { Label(L("Downloads"), systemImage: "arrow.down.circle") }
             #endif
             NavigationLink { HistoryView() } label: { Label(L("Watch history"), systemImage: "clock.arrow.circlepath") }
+            // kijkstatistieken (build 68): per week, maand of jaar, via de Bingr-account
+            if Secrets.accountsConfigured && account.isSignedIn {
+                NavigationLink { StatsView() } label: { Label(L("Statistics"), systemImage: "chart.bar.xaxis") }
+            }
             if isMain {
                 NavigationLink { NetworkBrowserView() } label: {
                     Label(L("NAS & network (SMB/DLNA)"), systemImage: "externaldrive.connected.to.line.below")

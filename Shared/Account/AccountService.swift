@@ -492,12 +492,16 @@ final class AccountService: ObservableObject {
     enum StreamStartResult { case ok, limit(StreamLimit), offline }
 
     /// `stream_start`. Netwerkfouten en onverwachte antwoorden → `.offline` (afspelen gaat gewoon door).
-    func streamStart(profileID: String?, profileName: String?, title: String, kind: String, contentID: String) async -> StreamStartResult {
+    /// Build 68: bij een aflevering ook `series_id` en `series_title` (voor de statistieken), en altijd `tz`.
+    func streamStart(profileID: String?, profileName: String?, title: String, kind: String, contentID: String,
+                     seriesID: String? = nil, seriesTitle: String? = nil) async -> StreamStartResult {
         guard Secrets.accountsConfigured, isSignedIn else { return .offline }
         var body: [String: Any] = ["action": "stream_start", "device_id": deviceID, "title": title,
-                                   "kind": kind, "content_id": contentID]
+                                   "kind": kind, "content_id": contentID, "tz": TimeZone.current.identifier]
         if let profileID { body["profile_id"] = profileID }
         if let profileName { body["profile_name"] = profileName }
+        if let seriesID, !seriesID.isEmpty { body["series_id"] = seriesID }
+        if let seriesTitle, !seriesTitle.isEmpty { body["series_title"] = String(seriesTitle.prefix(200)) }
         do {
             let r = try await authorized { token in try await self.post("/functions/v1/device-auth", body, bearer: token) }
             if r.status == 403 || r.string("error") == "stream_limit" {
@@ -562,6 +566,137 @@ final class AccountService: ObservableObject {
                                      startedAt: start, minutes: max(0, minutes ?? 0)))
         }
         return out.sorted { $0.startedAt > $1.startedAt }
+    }
+
+    // MARK: - Kijkstatistieken (build 68), zie docs/ACCOUNT.md
+
+    enum StatsPeriod: String, CaseIterable, Identifiable {
+        case week, month, year
+        var id: String { rawValue }
+    }
+
+    /// Antwoord van `watch_stats`. Ontbrekende velden worden 0 of leeg.
+    struct WatchStats: Equatable {
+        struct Bucket: Equatable {
+            let key: String
+            let minutes: Int
+            let movieMinutes: Int
+            let episodeMinutes: Int
+            let liveMinutes: Int
+        }
+        struct TopItem: Identifiable, Equatable {
+            let title: String
+            let itemKey: String
+            let minutes: Int
+            let episodes: Int
+            var id: String { itemKey.isEmpty ? title : itemKey }
+        }
+        struct ProfileShare: Identifiable, Equatable {
+            let profileID: String?
+            let profileName: String
+            let minutes: Int
+            var id: String { profileID ?? profileName }
+        }
+        var from: Date? = nil
+        var to: Date? = nil
+        var totalMinutes = 0
+        var movieCount = 0, movieMinutes = 0
+        var seriesShows = 0, seriesEpisodes = 0, seriesMinutes = 0
+        var liveChannels = 0, liveMinutes = 0
+        var buckets: [Bucket] = []
+        var topSeries: [TopItem] = []
+        var topMovies: [TopItem] = []
+        var topChannels: [TopItem] = []
+        var profiles: [ProfileShare] = []
+        var since: Date? = nil
+
+        var isEmpty: Bool {
+            totalMinutes == 0 && movieMinutes == 0 && seriesMinutes == 0 && liveMinutes == 0
+                && !buckets.contains { $0.minutes > 0 } && topSeries.isEmpty && topMovies.isEmpty && topChannels.isEmpty
+        }
+    }
+
+    /// Fout als de server `watch_stats` nog niet kent (oude backend).
+    struct StatsUnavailable: LocalizedError {
+        var errorDescription: String? { L("Statistics are not available yet. Please try again later.") }
+    }
+
+    /// `watch_stats`: statistieken voor een week, maand of jaar (`offset` 0 = nu, -1 = vorige …).
+    /// `profileID` nil = alle profielen (alleen het hoofdprofiel).
+    func watchStats(period: StatsPeriod, offset: Int, profileID: String?) async throws -> WatchStats {
+        var body: [String: Any] = ["action": "watch_stats", "period": period.rawValue, "offset": offset,
+                                   "tz": TimeZone.current.identifier]
+        if let profileID { body["profile_id"] = profileID }
+        let r = try await authorized { token in try await self.post("/functions/v1/device-auth", body, bearer: token) }
+        if r.string("error") == "unknown_action" || r.status == 404 { throw StatsUnavailable() }
+        guard r.status == 200 else { throw AccountError.generic }
+        return Self.parseStats(r.json)
+    }
+
+    /// `delete_watch_stats`: statistieken wissen (`profileID` nil = alle profielen).
+    func deleteWatchStats(profileID: String?) async throws {
+        var body: [String: Any] = ["action": "delete_watch_stats"]
+        if let profileID { body["profile_id"] = profileID }
+        let r = try await authorized { token in try await self.post("/functions/v1/device-auth", body, bearer: token) }
+        if r.string("error") == "unknown_action" || r.status == 404 { throw StatsUnavailable() }
+        guard r.status == 200 else { throw AccountError.generic }
+    }
+
+    nonisolated static func parseStats(_ j: [String: Any]) -> WatchStats {
+        func int(_ v: Any?) -> Int {
+            if let n = v as? NSNumber { return max(0, Int(n.doubleValue.rounded())) }
+            if let s = v as? String, let d = Double(s) { return max(0, Int(d.rounded())) }
+            return 0
+        }
+        func obj(_ v: Any?) -> [String: Any] { v as? [String: Any] ?? [:] }
+        func list(_ v: Any?) -> [[String: Any]] { v as? [[String: Any]] ?? [] }
+        func str(_ v: Any?) -> String {
+            if let s = v as? String { return s }
+            if let n = v as? NSNumber { return n.stringValue }
+            return ""
+        }
+        func top(_ v: Any?) -> [WatchStats.TopItem] {
+            list(v).map { WatchStats.TopItem(title: str($0["title"]), itemKey: str($0["item_key"]),
+                                             minutes: int($0["minutes"]), episodes: int($0["episodes"])) }
+                .filter { !$0.title.isEmpty || !$0.itemKey.isEmpty }
+        }
+        var s = WatchStats()
+        s.from = parseDay(j["from"])
+        s.to = parseDay(j["to"])
+        let totals = obj(j["totals"])
+        let movies = obj(totals["movies"]), series = obj(totals["series"]), live = obj(totals["live"])
+        s.movieCount = int(movies["count"]); s.movieMinutes = int(movies["minutes"])
+        s.seriesShows = int(series["shows"]); s.seriesEpisodes = int(series["episodes"]); s.seriesMinutes = int(series["minutes"])
+        s.liveChannels = int(live["channels"]); s.liveMinutes = int(live["minutes"])
+        s.totalMinutes = totals["minutes"] != nil ? int(totals["minutes"]) : s.movieMinutes + s.seriesMinutes + s.liveMinutes
+        s.buckets = list(j["by_bucket"]).compactMap { b in
+            let key = str(b["key"])
+            guard !key.isEmpty else { return nil }
+            let mv = int(b["movie_minutes"]), ep = int(b["episode_minutes"]), lv = int(b["live_minutes"])
+            return WatchStats.Bucket(key: key, minutes: b["minutes"] != nil ? int(b["minutes"]) : mv + ep + lv,
+                                     movieMinutes: mv, episodeMinutes: ep, liveMinutes: lv)
+        }
+        let t = obj(j["top"])
+        s.topSeries = top(t["series"]); s.topMovies = top(t["movies"]); s.topChannels = top(t["channels"])
+        s.profiles = list(j["profiles"]).map {
+            let id = str($0["profile_id"])
+            return WatchStats.ProfileShare(profileID: id.isEmpty ? nil : id, profileName: str($0["profile_name"]),
+                                           minutes: int($0["minutes"]))
+        }
+        s.since = parseDay(j["since"])
+        return s
+    }
+
+    /// "2026-10-13" of een volledige tijdstempel → Date.
+    nonisolated private static func parseDay(_ v: Any?) -> Date? {
+        if let d = parseDate(v) { return d }
+        guard let s = v as? String, s.count >= 10 else { return nil }
+        let f = DateFormatter()
+        f.calendar = Calendar(identifier: .gregorian)
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = .current
+        f.dateFormat = "yyyy-MM-dd"
+        return f.date(from: String(s.prefix(10)))
     }
 
     /// `profile_id` (build 57): string of ontbrekend/leeg bij oudere regels.
