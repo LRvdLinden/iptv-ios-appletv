@@ -22,19 +22,21 @@ _13 oktober 2026_
 **Nieuw**
 
 - Kijk Bingr in je browser op bingr.online/web: inloggen met e-mail op je telefoon of met een QR-code op iPad en computer, met je profielen, Live TV met tv-gids, films, series, Mijn lijst en voortgang, sneltoetsen, beeld-in-beeld en volledig scherm
-- Bingr in de browser werkt met servers die https gebruiken; servers zonder https tonen een duidelijke melding om in de app te kijken
 - Changelog: per apparaat zie je de nieuwste versie en build, bovenaan op je telefoon en rechts op je computer; tik erop om alleen dat apparaat te zien
 - Changelog: elke build heeft een eigen link met een knop Link kopiëren; wie de link opent, komt direct bij die build en ziet hem opengeklapt
+- Webspeler: servers op http werken nu ook. Alles loopt dan via de server van Bingr, ook video in Safari op iPhone en iPad
 
 **Verbeterd**
 
 - Changelog: de nieuwste build staat open en oudere builds zijn ingeklapt; dicht zie je versie, build, datum, hoeveel er nieuw, verbeterd en opgelost is en voor welke apparaten
+- Webspeler: profielfoto's zijn overal rond, net als in de apps; het pincodescherm toont het profiel
 
 ### Server
 
 **Nieuw**
 
-- Servers zonder CORS werken ook in de browser via een beveiligde doorgifte, alleen voor https en alleen voor je eigen servers
+- Servers zonder CORS werken ook in de browser via een beveiligde doorgifte, alleen voor je eigen servers
+- De doorgifte voor de webspeler ondersteunt ook http-servers en haalt live-tv, films en afbeeldingen veilig op, alleen voor de servers in je eigen account
 
 ## Versie 1.0.0 · Build 61
 _13 oktober 2026_

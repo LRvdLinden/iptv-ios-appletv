@@ -15,18 +15,10 @@
    {
     "type": "new",
     "platforms": [
-     "web"
-    ],
-    "nl": "Bingr in de browser werkt met servers die https gebruiken; servers zonder https tonen een duidelijke melding om in de app te kijken",
-    "en": "Bingr in the browser works with servers that use https; servers without https show a clear message to watch in the app"
-   },
-   {
-    "type": "new",
-    "platforms": [
      "server"
     ],
-    "nl": "Servers zonder CORS werken ook in de browser via een beveiligde doorgifte, alleen voor https en alleen voor je eigen servers",
-    "en": "Servers without CORS also work in the browser through a secure relay, https only and only for your own servers"
+    "nl": "Servers zonder CORS werken ook in de browser via een beveiligde doorgifte, alleen voor je eigen servers",
+    "en": "Servers without CORS also work in the browser through a secure relay, only for your own servers"
    },
    {
     "type": "new",
@@ -83,6 +75,30 @@
     ],
     "nl": "Changelog: elke build heeft een eigen link met een knop Link kopiëren; wie de link opent, komt direct bij die build en ziet hem opengeklapt",
     "en": "Changelog: every build has its own link with a Copy link button; opening the link takes you straight to that build, already expanded"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Webspeler: servers op http werken nu ook. Alles loopt dan via de server van Bingr, ook video in Safari op iPhone en iPad",
+    "en": "Web player: servers on http now work too. Everything then goes through Bingr's server, including video in Safari on iPhone and iPad"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Webspeler: profielfoto's zijn overal rond, net als in de apps; het pincodescherm toont het profiel",
+    "en": "Web player: profile photos are round everywhere, like in the apps; the PIN screen shows the profile"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "server"
+    ],
+    "nl": "De doorgifte voor de webspeler ondersteunt ook http-servers en haalt live-tv, films en afbeeldingen veilig op, alleen voor de servers in je eigen account",
+    "en": "The web player relay also supports http servers and safely fetches live TV, movies and images, only for the servers in your own account"
    }
   ]
  },
