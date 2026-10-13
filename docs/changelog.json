@@ -1,5 +1,20 @@
 [
  {
+  "build": 71,
+  "version": "1.0.0",
+  "date": "2026-10-13",
+  "items": [
+   {
+    "type": "improved",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Apple TV-apparaten hebben op bingr.online en in de webspeler hetzelfde icoon als in de iOS-app",
+    "en": "Apple TV devices now have the same icon on bingr.online and in the web player as in the iOS app"
+   }
+  ]
+ },
+ {
   "build": 70,
   "version": "1.0.0",
   "date": "2026-10-13",
