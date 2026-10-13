@@ -3,7 +3,7 @@
 Formaat docs/changelog.json: lijst van builds (nieuwste eerst):
   {"build": 51, "version": "1.0.0", "date": "2026-10-12",
    "items": [{"type": "new"|"improved"|"fixed",
-              "platforms": ["ios","ipados","tvos","macos","android","androidtv","tizen","web"],
+              "platforms": ["ios","ipados","tvos","macos","android","androidtv","tizen","web","server"],
               "nl": "…", "en": "…"}]}
 "androidtv" staat voor Android TV, Google TV en Fire TV; "tizen" voor Samsung TV (vanaf build 55).
 
@@ -20,8 +20,8 @@ args = sys.argv[1:]
 def arg(n): return args[args.index(n) + 1] if n in args else None
 
 LABEL = {"ios": "iOS", "ipados": "iPadOS", "tvos": "tvOS", "macos": "macOS", "android": "Android", "androidtv": "Android TV",
-         "tizen": "Samsung TV (Tizen)", "web": "Web"}
-ORDER = ["ios", "ipados", "tvos", "macos", "android", "androidtv", "tizen", "web"]
+         "tizen": "Samsung TV (Tizen)", "web": "Website", "server": "Server"}
+ORDER = ["ios", "ipados", "tvos", "macos", "android", "androidtv", "tizen", "web", "server"]
 APPS = {"ios", "ipados", "tvos", "macos", "android", "androidtv", "tizen"}
 TIZEN_FROM = 55  # eerste build met de Samsung TV-app
 
@@ -36,7 +36,10 @@ def nl_date(iso):
     y, m, d = iso.split("-"); return f"{int(d)} {MONTHS[int(m) - 1]} {y}"
 
 def set_label(k):
-    if APPS <= set(k): return "Alle apps en de website" if "web" in k else "Alle apps"
+    if APPS <= set(k):
+        extra = [n for p, n in (("web", "de website"), ("server", "de server")) if p in k]
+        if not extra: return "Alle apps"
+        return "Alle apps en " + extra[0] if len(extra) == 1 else "Alle apps, " + extra[0] + " en " + extra[1]
     names = [LABEL[p] for p in k]
     return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " en " + names[-1]
 
@@ -63,7 +66,7 @@ def md(keep, title, intro):
 
 if arg("--android"):
     p = pathlib.Path(arg("--android")) / "CHANGELOG.md"
-    p.write_text(md({"android", "androidtv", "tizen"}, "Android en Samsung TV",
+    p.write_text(md({"android", "androidtv", "tizen", "server"}, "Android en Samsung TV",
         "Alle versies van Bingr voor Android-telefoon en -tablet, Android TV, Google TV, Fire TV en Samsung TV (Tizen). iPhone, iPad, Apple TV en Mac: [iptv-ios-appletv](https://github.com/LRvdLinden/iptv-ios-appletv/blob/main/CHANGELOG.md) · alles: [bingr.online/changelog](https://bingr.online/changelog/)."))
     print(p)
 elif arg("--site"):
@@ -71,6 +74,6 @@ elif arg("--site"):
     shutil.copy(root / "docs/changelog.json", d / "changelog.json"); print(d / "changelog.json")
 else:
     p = root / "CHANGELOG.md"
-    p.write_text(md({"ios", "ipados", "tvos", "macos", "web"}, "iPhone, iPad, Apple TV, Mac en web",
-        "Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website. Android: [bingr-android](https://github.com/LRvdLinden/bingr-android/blob/main/CHANGELOG.md) · alles: [bingr.online/changelog](https://bingr.online/changelog/)."))
+    p.write_text(md({"ios", "ipados", "tvos", "macos", "web", "server"}, "iPhone, iPad, Apple TV, Mac, website en server",
+        "Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de server. Android: [bingr-android](https://github.com/LRvdLinden/bingr-android/blob/main/CHANGELOG.md) · alles: [bingr.online/changelog](https://bingr.online/changelog/)."))
     print(p)

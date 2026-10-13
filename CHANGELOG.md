@@ -1,29 +1,37 @@
-# Changelog · iPhone, iPad, Apple TV, Mac en web
+# Changelog · iPhone, iPad, Apple TV, Mac, website en server
 
-Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website. Android: [bingr-android](https://github.com/LRvdLinden/bingr-android/blob/main/CHANGELOG.md) · alles: [bingr.online/changelog](https://bingr.online/changelog/).
+Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de server. Android: [bingr-android](https://github.com/LRvdLinden/bingr-android/blob/main/CHANGELOG.md) · alles: [bingr.online/changelog](https://bingr.online/changelog/).
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
 ## Versie 1.0.0 · Build 60
 _13 oktober 2026_
 
-### Alle apps
+### Alle apps en de server
 
 **Verbeterd**
 
 - Het maximum van 6 schermen en 15 apparaten klopt nu ook als apparaten precies tegelijk starten of inloggen; kijkgeschiedenis ouder dan 8 dagen wordt altijd gewist
-- Audiotaal 'Zoals in de stream' en de ondertitelinstellingen werken op alle apps hetzelfde
 
 **Opgelost**
 
 - Je wordt niet meer onterecht uitgelogd als je sessie net verlopen is of de server even niet bereikbaar is
-- Wat je uit Verder kijken of je geschiedenis haalt, komt niet meer terug op je andere apparaten
 
-### Alle apps en de website
+### Alle apps, de website en de server
 
 **Opgelost**
 
 - Servers die je op een ander apparaat of op de website toevoegt, verdwijnen niet meer als een ander apparaat tegelijk een oudere lijst opslaat
+
+### Alle apps
+
+**Verbeterd**
+
+- Audiotaal 'Zoals in de stream' en de ondertitelinstellingen werken op alle apps hetzelfde
+
+**Opgelost**
+
+- Wat je uit Verder kijken of je geschiedenis haalt, komt niet meer terug op je andere apparaten
 
 ### iOS en iPadOS
 
@@ -55,7 +63,7 @@ _13 oktober 2026_
 
 - Sneltoetsen in de speler (spatie, pijltjes, Esc) werken meteen
 
-### Web
+### Website
 
 **Verbeterd**
 
@@ -90,7 +98,7 @@ _12 oktober 2026_
 ## Versie 1.0.0 · Build 57
 _12 oktober 2026_
 
-### Alle apps en de website
+### Alle apps, de website en de server
 
 **Nieuw**
 
@@ -114,7 +122,7 @@ _12 oktober 2026_
 
 - Een ingeladen ondertitel blijft staan als je van speler wisselt en gaat niet meer mee naar de volgende titel
 
-### Web
+### Website
 
 **Verbeterd**
 
@@ -139,13 +147,13 @@ _12 oktober 2026_
 ## Versie 1.0.0 · Build 55
 _12 oktober 2026_
 
-### iOS, iPadOS, tvOS, macOS, Android, Android TV en Web
+### iOS, iPadOS, tvOS, macOS, Android, Android TV en Website
 
 **Verbeterd**
 
 - Samsung TV verschijnt met eigen icoon in je apparatenlijst, bij Wie kijkt er nu en in de kijkgeschiedenis
 
-### Web
+### Website
 
 **Nieuw**
 
@@ -241,7 +249,7 @@ _12 oktober 2026_
 ## Versie 1.0.0 · Build 51
 _12 oktober 2026_
 
-### Alle apps
+### Alle apps en de server
 
 **Nieuw**
 
@@ -249,6 +257,11 @@ _12 oktober 2026_
 - Apparaten: je account werkt nu op maximaal 15 apparaten, met per apparaat sinds wanneer het is ingelogd
 - Wie kijkt er nu (hoofdaccount): Mijn Bingr → Account toont welk apparaat en profiel wat kijkt, en hoe lang al
 - Kijkgeschiedenis van 7 dagen (hoofdaccount): per dag wat er op welk apparaat en profiel gekeken is
+
+### Alle apps
+
+**Nieuw**
+
 - Collecties: maak je eigen rijen met naam en afbeelding, handmatig (Aan collectie toevoegen…) of slim met zoekwoorden
 - Startscherm per profiel: zet rijen aan of uit en in je eigen volgorde (Mijn Bingr → Startscherm)
 - Zappen: veeg in de live-speler omhoog of omlaag naar de volgende of vorige zender, met zenderbalk en instelbare zapvertraging
@@ -261,7 +274,7 @@ _12 oktober 2026_
 
 - Direct laden: je bewaarde lijst staat meteen in beeld en wordt op de achtergrond bijgewerkt
 
-### Alle apps en de website
+### Alle apps, de website en de server
 
 **Nieuw**
 
@@ -279,7 +292,7 @@ _12 oktober 2026_
 
 - Beeldfrequentie aanpassen: de tv schakelt naar de beeldfrequentie van de stream (op Apple TV ook HDR/Dolby Vision)
 
-### Web
+### Website
 
 **Nieuw**
 
@@ -345,7 +358,7 @@ _12 oktober 2026_
 
 - Onderaan Mijn Bingr: app-icoon, versie- en buildnummer en copyright
 
-### Web
+### Website
 
 **Verbeterd**
 
@@ -363,7 +376,7 @@ _12 oktober 2026_
 ## Versie 1.0.0 · Build 45
 _12 oktober 2026_
 
-### Alle apps
+### Alle apps en de server
 
 **Nieuw**
 
@@ -375,7 +388,7 @@ _12 oktober 2026_
 
 - Geen deelknop meer op de detailpagina op Apple TV, Android TV, Google TV en Fire TV
 
-### Web
+### Website
 
 **Nieuw**
 
@@ -389,7 +402,7 @@ _12 oktober 2026_
 ## Versie 1.0.0 · Build 44
 _12 oktober 2026_
 
-### Alle apps
+### Alle apps en de server
 
 **Nieuw**
 
@@ -398,7 +411,7 @@ _12 oktober 2026_
 ## Versie 1.0.0 · Build 43
 _12 oktober 2026_
 
-### Alle apps
+### Alle apps en de server
 
 **Nieuw**
 
@@ -416,7 +429,7 @@ _12 oktober 2026_
 ## Versie 1.0.0 · Build 41
 _12 oktober 2026_
 
-### Alle apps
+### Alle apps en de server
 
 **Nieuw**
 
@@ -426,7 +439,7 @@ _12 oktober 2026_
 
 - Trakt en OpenSubtitles: gewoon inloggen, de sleutels komen veilig van de Bingr-server
 
-### Web
+### Website
 
 **Nieuw**
 
@@ -435,7 +448,7 @@ _12 oktober 2026_
 ## Versie 1.0.0 · Build 40
 _12 oktober 2026_
 
-### Alle apps
+### Alle apps en de server
 
 **Nieuw**
 
@@ -444,25 +457,30 @@ _12 oktober 2026_
 ## Versie 1.0.0 · Build 39
 _12 oktober 2026_
 
-### Alle apps
+### Alle apps en de server
 
 **Nieuw**
 
 - Maximaal 10 apparaten per account
 - Apparaten beheren: gekoppeld op, laatst gebruikt en verwijderen (in de app en op bingr.online/account)
+
+### Alle apps
+
+**Nieuw**
+
 - Een verwijderd apparaat logt automatisch uit
 
 ## Versie 1.0.0 · Build 38
 _12 oktober 2026_
 
-### Alle apps
+### Alle apps en de server
 
 **Nieuw**
 
 - Bingr-account: inloggen of account maken na de splash, in Netflix-stijl
 - Bestaande profielen worden aan je account gekoppeld en gedeeld met al je apparaten
 
-### Alle apps en de website
+### Alle apps, de website en de server
 
 **Nieuw**
 
@@ -474,7 +492,7 @@ _12 oktober 2026_
 
 - Versie- en buildnummer worden nu goed meegegeven aan de App Store
 
-### tvOS, Android TV en Web
+### tvOS, Android TV en Website
 
 **Nieuw**
 
@@ -530,7 +548,7 @@ _11 oktober 2026_
 
 - Bingr houdt zelf per profiel bij wat je gezien hebt, ook zonder Trakt
 
-### Web
+### Website
 
 **Nieuw**
 

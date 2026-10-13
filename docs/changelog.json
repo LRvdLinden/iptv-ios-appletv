@@ -13,7 +13,8 @@
      "macos",
      "android",
      "androidtv",
-     "tizen"
+     "tizen",
+     "server"
     ],
     "nl": "Je wordt niet meer onterecht uitgelogd als je sessie net verlopen is of de server even niet bereikbaar is",
     "en": "You're no longer signed out by mistake when your session has just expired or the server is briefly unreachable"
@@ -28,7 +29,8 @@
      "android",
      "androidtv",
      "tizen",
-     "web"
+     "web",
+     "server"
     ],
     "nl": "Servers die je op een ander apparaat of op de website toevoegt, verdwijnen niet meer als een ander apparaat tegelijk een oudere lijst opslaat",
     "en": "Servers you add on another device or the website no longer disappear when another device saves an older list at the same time"
@@ -56,7 +58,8 @@
      "macos",
      "android",
      "androidtv",
-     "tizen"
+     "tizen",
+     "server"
     ],
     "nl": "Het maximum van 6 schermen en 15 apparaten klopt nu ook als apparaten precies tegelijk starten of inloggen; kijkgeschiedenis ouder dan 8 dagen wordt altijd gewist",
     "en": "The limit of 6 screens and 15 devices now also holds when devices start or sign in at exactly the same time; watch history older than 8 days is always deleted"
@@ -374,7 +377,8 @@
      "android",
      "androidtv",
      "tizen",
-     "web"
+     "web",
+     "server"
     ],
     "nl": "Bij Nu aan het kijken en in de kijkgeschiedenis staat de profielfoto van elk profiel voor de regel (alleen voor het hoofdaccount, met alle profielen)",
     "en": "Watching now and watch history show each profile's picture in front of the entry (main account only, all profiles)"
@@ -797,7 +801,8 @@
      "tvos",
      "macos",
      "android",
-     "androidtv"
+     "androidtv",
+     "server"
     ],
     "nl": "Tegelijk kijken: met één account kijk je op maximaal 6 schermen tegelijk; zijn het er meer, dan zie je wie er kijkt",
     "en": "Watching together: one account can watch on up to 6 screens at the same time; beyond that you see who's watching"
@@ -810,7 +815,8 @@
      "tvos",
      "macos",
      "android",
-     "androidtv"
+     "androidtv",
+     "server"
     ],
     "nl": "Apparaten: je account werkt nu op maximaal 15 apparaten, met per apparaat sinds wanneer het is ingelogd",
     "en": "Devices: your account now works on up to 15 devices, each showing when it signed in"
@@ -823,7 +829,8 @@
      "tvos",
      "macos",
      "android",
-     "androidtv"
+     "androidtv",
+     "server"
     ],
     "nl": "Wie kijkt er nu (hoofdaccount): Mijn Bingr → Account toont welk apparaat en profiel wat kijkt, en hoe lang al",
     "en": "Watching now (main profile): My Bingr → Account shows which device and profile is watching what, and for how long"
@@ -836,7 +843,8 @@
      "tvos",
      "macos",
      "android",
-     "androidtv"
+     "androidtv",
+     "server"
     ],
     "nl": "Kijkgeschiedenis van 7 dagen (hoofdaccount): per dag wat er op welk apparaat en profiel gekeken is",
     "en": "7-day watch history (main profile): per day, what was watched on which device and profile"
@@ -981,7 +989,8 @@
      "macos",
      "android",
      "androidtv",
-     "web"
+     "web",
+     "server"
     ],
     "nl": "Na het wijzigen van je wachtwoord word je op al je apparaten automatisch uitgelogd",
     "en": "After changing your password you're signed out on all your devices automatically"
@@ -1189,7 +1198,8 @@
      "tvos",
      "macos",
      "android",
-     "androidtv"
+     "androidtv",
+     "server"
     ],
     "nl": "Gekoppelde apparaten een eigen naam geven of wijzigen, in de app en op bingr.online/account",
     "en": "Give linked devices a name of your own or change it, in the app and at bingr.online/account"
@@ -1250,7 +1260,8 @@
      "tvos",
      "macos",
      "android",
-     "androidtv"
+     "androidtv",
+     "server"
     ],
     "nl": "Alles gaat mee met je account: Trakt- en OpenSubtitles-login, instellingen, Mijn lijst, Verder kijken, bekeken, kijkgeschiedenis, pincodes en herinneringen — na opnieuw installeren of op een nieuw apparaat staat alles weer klaar",
     "en": "Everything comes with your account: Trakt and OpenSubtitles sign-in, settings, My List, Continue Watching, watched, watch history, PINs and reminders — after reinstalling or on a new device, everything is ready again"
@@ -1270,7 +1281,8 @@
      "tvos",
      "macos",
      "android",
-     "androidtv"
+     "androidtv",
+     "server"
     ],
     "nl": "Servers en afspeellijsten worden versleuteld bij je Bingr-account bewaard: na updaten, opnieuw installeren of op een nieuw apparaat staat alles na inloggen weer klaar",
     "en": "Servers and playlists are stored encrypted with your Bingr account: after updating, reinstalling or on a new device, everything is ready again once you sign in"
@@ -1310,7 +1322,8 @@
      "tvos",
      "macos",
      "android",
-     "androidtv"
+     "androidtv",
+     "server"
     ],
     "nl": "Trakt en OpenSubtitles: gewoon inloggen, de sleutels komen veilig van de Bingr-server",
     "en": "Trakt and OpenSubtitles: just sign in, the keys come securely from the Bingr server"
@@ -1323,7 +1336,8 @@
      "tvos",
      "macos",
      "android",
-     "androidtv"
+     "androidtv",
+     "server"
     ],
     "nl": "Profielen toevoegen, wijzigen en verwijderen synchroniseert met al je apparaten",
     "en": "Adding, editing and deleting profiles syncs across all your devices"
@@ -1360,7 +1374,8 @@
      "tvos",
      "macos",
      "android",
-     "androidtv"
+     "androidtv",
+     "server"
     ],
     "nl": "Eigen profielfoto's worden via je Bingr-account gedeeld met al je apparaten, ook Android",
     "en": "Custom profile photos are shared with all your devices through your Bingr account, including Android"
@@ -1380,7 +1395,8 @@
      "tvos",
      "macos",
      "android",
-     "androidtv"
+     "androidtv",
+     "server"
     ],
     "nl": "Maximaal 10 apparaten per account",
     "en": "Up to 10 devices per account"
@@ -1393,7 +1409,8 @@
      "tvos",
      "macos",
      "android",
-     "androidtv"
+     "androidtv",
+     "server"
     ],
     "nl": "Apparaten beheren: gekoppeld op, laatst gebruikt en verwijderen (in de app en op bingr.online/account)",
     "en": "Manage devices: linked on, last used and remove (in the app and at bingr.online/account)"
@@ -1426,7 +1443,8 @@
      "tvos",
      "macos",
      "android",
-     "androidtv"
+     "androidtv",
+     "server"
     ],
     "nl": "Bingr-account: inloggen of account maken na de splash, in Netflix-stijl",
     "en": "Bingr account: sign in or create an account after the splash, Netflix style"
@@ -1449,7 +1467,8 @@
      "tvos",
      "macos",
      "android",
-     "androidtv"
+     "androidtv",
+     "server"
     ],
     "nl": "Bestaande profielen worden aan je account gekoppeld en gedeeld met al je apparaten",
     "en": "Existing profiles are linked to your account and shared across your devices"
@@ -1463,7 +1482,8 @@
      "macos",
      "android",
      "androidtv",
-     "web"
+     "web",
+     "server"
     ],
     "nl": "E-mails in Bingr-stijl (NL/EN), wachtwoord herstellen via bingr.online/reset",
     "en": "Bingr-branded emails (NL/EN), reset your password at bingr.online/reset"
