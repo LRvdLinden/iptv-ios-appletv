@@ -75,6 +75,14 @@
     ],
     "nl": "Changelog: de nieuwste build staat open en oudere builds zijn ingeklapt; dicht zie je versie, build, datum, hoeveel er nieuw, verbeterd en opgelost is en voor welke apparaten",
     "en": "Changelog: the newest build is open and older builds are collapsed; when closed you see version, build, date, how many items are new, improved and fixed, and for which devices"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Changelog: elke build heeft een eigen link met een knop Link kopiëren; wie de link opent, komt direct bij die build en ziet hem opengeklapt",
+    "en": "Changelog: every build has its own link with a Copy link button; opening the link takes you straight to that build, already expanded"
    }
   ]
  },
