@@ -79,6 +79,8 @@ jobs:
 
       - name: Build-rapport publiceren (branch ci-logs)
         if: always()
+        env:
+          BEHEER_TOKEN: ${{ secrets.BINGR_BEHEER_TOKEN }}
         run: |
           mkdir -p report
           {
@@ -108,10 +110,37 @@ jobs:
           git reset --hard -q
           git switch --orphan ci-logs-tmp
           git rm -rf --quiet . || true
-          cp report/*.txt report/Bingr-xcode.zip .
-          git add latest.txt ios-tail.txt tvos-tail.txt macos-tail.txt Bingr-xcode.zip
+          cp report/*.txt .
+          git add latest.txt ios-tail.txt tvos-tail.txt macos-tail.txt
+          # het Xcode-project gaat naar bingr-beheer/versions (stap hierna); alleen zonder token nog op ci-logs
+          if [ -z "$BEHEER_TOKEN" ]; then cp report/Bingr-xcode.zip . && git add Bingr-xcode.zip; fi
           git commit -m "build $GITHUB_SHA ios=${{ steps.ios.outcome }} tvos=${{ steps.tvos.outcome }} macos=${{ steps.macos.outcome }}"
           git push -f origin HEAD:ci-logs
+
+      # Xcode-project naar bingr-beheer/versions/apple/<versie>-build<N>/ (alleen als iOS, tvOS en macOS slagen).
+      # Nodig: secret BINGR_BEHEER_TOKEN (fine-grained token met Contents: Read and write op LRvdLinden/bingr-beheer).
+      - name: In bingr-beheer/versions zetten
+        if: steps.ios.outcome == 'success' && steps.tvos.outcome == 'success' && steps.macos.outcome == 'success'
+        env:
+          TOKEN: ${{ secrets.BINGR_BEHEER_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then echo "::warning::Secret BINGR_BEHEER_TOKEN ontbreekt: Xcode-project alleen op branch ci-logs."; exit 0; fi
+          # (de werkmap is na de ci-logs-stap leeg; versie en build komen uit het project in de zip)
+          mkdir -p /tmp/pkg && cd /tmp/pkg && rm -rf x && mkdir x && cd x && unzip -q "$GITHUB_WORKSPACE/report/Bingr-xcode.zip"
+          B=$(grep -m1 'CURRENT_PROJECT_VERSION' project.yml | grep -o '[0-9]\+'); V=$(grep -m1 'MARKETING_VERSION' project.yml | grep -o '[0-9.]\+' || echo 1.0.0)
+          # zonder docs/screenshots en docs/covers (die horen niet in het pakket)
+          rm -rf docs/screenshots docs/covers
+          zip -qr "/tmp/pkg/Bingr-$V-build$B-Xcode.zip" .
+          cd /tmp/pkg
+          git clone -q --depth 1 "https://x-access-token:${TOKEN}@github.com/LRvdLinden/bingr-beheer.git" beheer
+          # één pakket per Apple-build: staat deze build er al, dan niets doen (een nieuwe Apple-versie krijgt een nieuw buildnummer)
+          if [ -d "beheer/versions/apple/$V-build$B" ]; then echo "::notice::Apple $V build $B staat al in versions/"; exit 0; fi
+          python3 beheer/tools/add_version.py apple "$B" "/tmp/pkg/Bingr-$V-build$B-Xcode.zip" --version "$V"
+          cd beheer && git add -A versions
+          if git diff --cached --quiet; then echo "::notice::Niets nieuws voor versions/"; exit 0; fi
+          git -c user.name=github-actions -c user.email=actions@github.com commit -qm "Versies: Apple $V build $B ($(echo $GITHUB_SHA | cut -c1-7))"
+          for i in 1 2 3; do git push -q && break; git pull -q --rebase; done
+          echo "::notice::In bingr-beheer/versions gezet: Apple $V build $B"
 
       - name: Status
         if: steps.ios.outcome != 'success' || steps.tvos.outcome != 'success' || steps.macos.outcome != 'success'

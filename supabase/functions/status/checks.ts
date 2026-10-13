@@ -18,7 +18,7 @@ export interface Ctx {
   db: SupabaseClient;
   env: (k: string) => string;
   fetch?: typeof fetch;
-  /** per run gedeeld: GitHub-releases maar één keer ophalen voor APK en .wgt */
+  /** per run gedeeld: versions/latest.json maar één keer ophalen voor APK en .wgt */
   cache: Map<string, Promise<unknown>>;
 }
 
@@ -273,45 +273,37 @@ function ghHeaders(ctx: Ctx): Record<string, string> {
 }
 const limited = (res: Response) => res.status === 429 || (res.status === 403 && res.headers.get("x-ratelimit-remaining") === "0");
 
-async function latestAssets(repo: string, ctx: Ctx, signal: AbortSignal): Promise<{ tag: string; urls: string[] }> {
-  const key = `rel:${repo}`;
+/** Downloads staan sinds build 69 niet meer als GitHub-release, maar in <repo>/versions (latest.json met per platform het bestand). */
+const VERSION_KEYS: Record<string, string> = { ".apk": "android", ".wgt": "tizen", ".zip": "apple" };
+
+async function latestVersions(repo: string, ctx: Ctx, signal: AbortSignal): Promise<Record<string, { build?: number; file?: string; url?: string }>> {
+  const key = `ver:${repo}`;
   if (!ctx.cache.has(key)) {
     ctx.cache.set(key, (async () => {
       const f = ctx.fetch ?? fetch;
-      const res = await f(`https://api.github.com/repos/${repo}/releases/latest`, { signal, headers: ghHeaders(ctx) });
-      if (res.ok) {
-        const j = await res.json();
-        return { tag: String(j.tag_name ?? ""), urls: (j.assets ?? []).map((a: { browser_download_url: string }) => a.browser_download_url) };
-      }
-      await res.body?.cancel();
-      if (!limited(res)) throw new Error(`GitHub API HTTP ${res.status}`);
-      // terugval zonder API: /releases/latest verwijst naar de tag, expanded_assets toont de bestanden
-      const r1 = await f(`https://github.com/${repo}/releases/latest`, { signal, redirect: "manual", headers: { "User-Agent": UA } });
-      await r1.body?.cancel();
-      const loc = r1.headers.get("location") ?? "";
-      const tag = decodeURIComponent(loc.split("/releases/tag/")[1] ?? "");
-      if (!tag) throw new Error("geen release gevonden");
-      const r2 = await f(`https://github.com/${repo}/releases/expanded_assets/${encodeURIComponent(tag)}`, { signal, headers: { "User-Agent": UA } });
-      const html = await r2.text();
-      const urls = [...html.matchAll(/href="(\/[^"]+\/releases\/download\/[^"]+)"/g)].map((m) => `https://github.com${m[1]}`);
-      return { tag, urls };
+      const res = await f(`https://raw.githubusercontent.com/${repo}/main/versions/latest.json`, { signal, headers: { "User-Agent": UA } });
+      if (!res.ok) { await res.body?.cancel(); throw new Error(`versions/latest.json HTTP ${res.status}`); }
+      return await res.json();
     })());
   }
-  return await (ctx.cache.get(key) as Promise<{ tag: string; urls: string[] }>);
+  return await (ctx.cache.get(key) as Promise<Record<string, { build?: number; file?: string; url?: string }>>);
 }
 
+/** target: "<owner/repo>|<.apk|.wgt|.zip>" — controleert of het nieuwste bestand in versions/ te downloaden is. */
 export async function checkGhAsset(target: string, ctx: Ctx): Promise<CheckResult> {
-  const [repo, ext] = target.split("|");
+  const [repo0, ext] = target.split("|");
+  // oude monitors wezen naar de releases van bingr-android; die bestaan niet meer
+  const repo = repo0 === "LRvdLinden/bingr-android" ? "LRvdLinden/bingr-beheer" : repo0;
   const f = ctx.fetch ?? fetch;
   const t = now();
   return await withTimeout(async (signal) => {
-    const rel = await latestAssets(repo, ctx, signal);
-    const url = rel.urls.find((u) => u.toLowerCase().endsWith((ext || "").toLowerCase()));
-    if (!url) return { ok: false, ms: since(t), error: `geen ${ext}-bestand in release ${rel.tag}` };
-    const res = await f(url, { signal, headers: { "User-Agent": UA, Range: "bytes=0-0" }, redirect: "follow" });
+    const all = await latestVersions(repo, ctx, signal);
+    const v = all[VERSION_KEYS[(ext || "").toLowerCase()] ?? ""];
+    if (!v?.url) return { ok: false, ms: since(t), error: `geen ${ext}-bestand in versions/latest.json` };
+    const res = await f(v.url, { signal, headers: { "User-Agent": UA, Range: "bytes=0-0" }, redirect: "follow" });
     await res.body?.cancel();
     const ms = since(t);
-    const name = decodeURIComponent(url.split("/").pop() ?? "");
+    const name = v.file ?? decodeURIComponent(v.url.split("/").pop() ?? "");
     if (res.status !== 200 && res.status !== 206) return { ok: false, code: res.status, ms, error: `download HTTP ${res.status}`, detail: name };
     return { ok: true, code: res.status, ms, detail: name };
   });

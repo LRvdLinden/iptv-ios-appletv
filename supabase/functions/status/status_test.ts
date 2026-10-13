@@ -100,31 +100,24 @@ Deno.test({ name: "http-controle: status, trefwoord, traag, timeout", sanitizeOp
   eq(t, "timeout");
 });
 
-Deno.test("GitHub: release-bestanden via API en via de webpagina bij de limiet", async () => {
+Deno.test("Downloads: nieuwste bestanden uit versions/latest.json", async () => {
   const calls: string[] = [];
-  const api: Handler = (u) => {
+  const h: Handler = (u) => {
     calls.push(u);
-    if (u.includes("api.github.com")) {
-      return Response.json({ tag_name: "v1", assets: [{ browser_download_url: "https://github.com/o/r/releases/download/v1/Bingr-1.apk" }] });
+    if (u.endsWith("/versions/latest.json")) {
+      return Response.json({ android: { build: 69, file: "B.apk", url: "https://raw.example/B.apk" }, tizen: { build: 69, file: "B.wgt", url: "https://raw.example/B.wgt" } });
     }
-    return new Response("", { status: 206 });
+    return new Response("", { status: u.endsWith(".wgt") ? 404 : 206 });
   };
-  const ctx = ctxWith(api);
-  eq((await checkGhAsset("o/r|.apk", ctx)).ok, true);
-  const wgt = await checkGhAsset("o/r|.wgt", ctx);
-  eq([wgt.ok, wgt.error], [false, "geen .wgt-bestand in release v1"]);
-  eq(calls.filter((c) => c.includes("api.github.com")).length, 1); // release maar één keer opgehaald per run
-
-  const html: Handler = (u) => {
-    if (u.includes("api.github.com")) return new Response("{}", { status: 403, headers: { "x-ratelimit-remaining": "0" } });
-    if (u.endsWith("/releases/latest")) return new Response(null, { status: 302, headers: { location: "https://github.com/o/r/releases/tag/v2" } });
-    if (u.includes("expanded_assets/v2")) return new Response('<a href="/o/r/releases/download/v2/B.apk">x</a><a href="/o/r/releases/download/v2/B.wgt">y</a>');
-    return new Response("", { status: u.endsWith(".wgt") ? 404 : 200 });
-  };
-  const c2 = ctxWith(html);
-  eq((await checkGhAsset("o/r|.apk", c2)).ok, true);
-  const w2 = await checkGhAsset("o/r|.wgt", c2);
-  eq([w2.ok, w2.code], [false, 404]);
+  const ctx = ctxWith(h);
+  const apk = await checkGhAsset("LRvdLinden/bingr-android|.apk", ctx); // oude monitor-target
+  eq([apk.ok, apk.detail], [true, "B.apk"]);
+  eq(calls[0], "https://raw.githubusercontent.com/LRvdLinden/bingr-beheer/main/versions/latest.json");
+  const wgt = await checkGhAsset("LRvdLinden/bingr-beheer|.wgt", ctx);
+  eq([wgt.ok, wgt.code], [false, 404]);
+  eq(calls.filter((c) => c.endsWith("latest.json")).length, 1); // maar één keer opgehaald per run
+  const none = await checkGhAsset("LRvdLinden/bingr-beheer|.zip", ctx);
+  eq([none.ok, none.error], [false, "geen .zip-bestand in versions/latest.json"]);
 });
 
 Deno.test("GitHub: Apple-build", async () => {

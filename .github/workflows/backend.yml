@@ -39,6 +39,8 @@ jobs:
           deno-version: v2.x
       - name: Unittests (statistieken)
         run: deno test supabase/functions/device-auth/stats_test.ts
+      - name: Unittests (statuspagina)
+        run: deno test --allow-all supabase/functions/status/status_test.ts
       - name: Controleren
         id: check
         run: |
