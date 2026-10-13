@@ -793,8 +793,8 @@ final class StateSync {
     private static func extrasKey(_ owner: UUID, _ id: String) -> String { owner.uuidString + "|" + id }
 
     /// Per profiel en per item wint de nieuwste `updatedAt` (ook een tombstone). Oude collecties (build 51–53,
-    /// zonder profiel) gaan eenmalig naar elk bestaand profiel, met dezelfde `id` en `updatedAt`, zodat niets
-    /// verdwijnt en de rijen op het startscherm (`collection:<id>`) blijven werken. Geeft de data terug als er
+    /// zonder profiel) gaan eenmalig naar het hoofdprofiel (build 74; daarvoor naar elk profiel), met dezelfde `id`
+    /// en `updatedAt`, zodat niets verdwijnt en de rijen op het startscherm (`collection:<id>`) blijven werken. Geeft de data terug als er
     /// geüpload moet worden.
     private func mergeCollections(_ remote: (data: Any, updatedAt: String?)?) -> [String: Any]? {
         let store = CloudStore.shared
@@ -833,12 +833,14 @@ final class StateSync {
 
         // oude collecties (zonder profiel): van de server zolang die nog niet gemigreerd is, en lokaal
         var legacy: [String: (c: BingrCollection, raw: [String: Any]?)] = [:]
-        if !migrated {
-            for e in data["items"] as? [Any] ?? [] {
-                guard let j = e as? [String: Any], let c = Self.collection(j) else { continue }
-                if let old = legacy[c.id], old.c.updatedAt >= c.updatedAt { continue }
-                legacy[c.id] = (c: c, raw: Optional(j))
-            }
+        // alle oude collecties van de server (ook na de migratie), om de kopieën van build 54–73 te herkennen
+        var legacyStamps: [String: Set<Date>] = [:]
+        for e in data["items"] as? [Any] ?? [] {
+            guard let j = e as? [String: Any], let c = Self.collection(j) else { continue }
+            legacyStamps[c.id, default: []].insert(c.updatedAt)
+            if migrated { continue }
+            if let old = legacy[c.id], old.c.updatedAt >= c.updatedAt { continue }
+            legacy[c.id] = (c: c, raw: Optional(j))
         }
         let legacyExtras = loadCollectionExtras(legacyCollectionExtrasKey)
         for c in store.collections where c.owner == nil {
@@ -846,6 +848,10 @@ final class StateSync {
             let raw: [String: Any]? = legacy[c.id]?.raw ?? legacyExtras[c.id]
             legacy[c.id] = (c: c, raw: raw)
         }
+
+        // het hoofdprofiel is nodig voor de migratie; nog onbekend: wachten (niets weggooien)
+        let main = store.mainProfileID.flatMap { known.contains($0) ? $0 : nil }
+        if main == nil && !legacy.isEmpty { return nil }
 
         // samenvoegen: lokaal (per profiel) + server, nieuwste `updatedAt` wint
         var extras = loadCollectionExtras()
@@ -862,14 +868,35 @@ final class StateSync {
                 merged[owner, default: [:]][id] = s.c
             }
         }
-        // migratie: elke oude collectie naar elk profiel dat er (nog) geen versie van heeft
-        for owner in profileIDs {
+        // migratie (build 74): oude collecties gaan alleen naar het hoofdprofiel; een profiel ziet nooit de
+        // collecties van een ander profiel
+        if let owner = main {
             for (id, l) in legacy where merged[owner]?[id] == nil {
                 var c = l.c
                 c.owner = owner
                 c.id = id
                 merged[owner, default: [:]][id] = c
                 if let r = l.raw { extras[Self.extrasKey(owner, id)] = r }
+            }
+        }
+        // build 54–73 kopieerde oude collecties naar élk profiel: ongewijzigde kopieën bij een ander profiel dan het
+        // hoofdprofiel (zelfde `id` en `updatedAt` als de oude collectie of als die van het hoofdprofiel) worden
+        // tombstones, zodat ze ook op andere apparaten verdwijnen
+        if let main {
+            for c in legacy.values.map(\.c) { legacyStamps[c.id, default: []].insert(c.updatedAt) }
+            for c in (merged[main] ?? [:]).values { legacyStamps[c.id, default: []].insert(c.updatedAt) }
+            let now = Date()
+            for owner in profileIDs where owner != main {
+                for (id, c) in merged[owner] ?? [:] where !c.deleted {
+                    guard let stamps = legacyStamps[id],
+                          stamps.contains(where: { abs($0.timeIntervalSince(c.updatedAt)) < 1 }) else { continue }
+                    var t = c
+                    t.deleted = true
+                    t.deletedAt = now
+                    t.updatedAt = now
+                    t.items = []
+                    merged[owner]?[id] = t
+                }
             }
         }
         // tombstones ouder dan 90 dagen weg

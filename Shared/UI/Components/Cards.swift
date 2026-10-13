@@ -13,6 +13,8 @@ struct PosterCard: View {
     var watched = false
     var progress: Double?
     var badge: String?
+    /// Plek van het label: onderaan in het midden (standaard) of linksboven (`.topLeading`, "Voor jou")
+    var badgeAlignment: Alignment = .bottom
     var width: CGFloat = Theme.posterWidth
     /// Taal van de titel (build 59); nil = uit de titel zelf afleiden ("Animal (IT)")
     var language: ContentLanguage? = nil
@@ -27,11 +29,18 @@ struct PosterCard: View {
                 .clipped()
             if watched { WatchedBadge().padding(6) }
             if let badge {
-                Text(badge).font(.system(size: tvScaled(9), weight: .heavy)).foregroundStyle(.white)
+                let label = Text(badge).font(.system(size: tvScaled(9), weight: .heavy)).foregroundStyle(.white)
                     .padding(.horizontal, 5).padding(.vertical, 2)
                     .background(Theme.red, in: RoundedRectangle(cornerRadius: 2))
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                    .padding(.bottom, (progress == nil ? 6 : 10) + (l?.banner == nil ? 0 : tvScaled(16)))
+                if badgeAlignment == .bottom {
+                    label
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                        .padding(.bottom, (progress == nil ? 6 : 10) + (l?.banner == nil ? 0 : tvScaled(16)))
+                } else {
+                    label
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: badgeAlignment)
+                        .padding(tvScaled(6))
+                }
             }
             VStack(spacing: 0) {
                 Spacer()

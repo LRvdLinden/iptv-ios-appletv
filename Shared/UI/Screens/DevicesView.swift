@@ -7,6 +7,8 @@ import SwiftUI
 enum DeviceText {
     /// SF Symbol per platform.
     static func icon(_ d: AccountService.Device) -> String {
+        // Apple TV altijd met het symbool "appletv" (ook bij een andere schrijfwijze van het platform)
+        if isAppleTV(d.platform, name: d.name) { return "appletv" }
         if isTizen(d.platform) { return "tv" }
         if isBrowser(d.platform) { return "globe" }
         switch d.platform {
@@ -19,6 +21,13 @@ enum DeviceText {
         case "Android TV", "Google TV", "Fire TV": return "tv"
         default: return "display"
         }
+    }
+
+    /// Apple TV-app: platform "Apple TV" (ook "appletv", "tvOS"); zonder platform herkend aan de naam.
+    static func isAppleTV(_ platform: String, name: String) -> Bool {
+        let p = platform.lowercased().replacingOccurrences(of: " ", with: "")
+        if p == "appletv" || p == "tvos" { return true }
+        return p.isEmpty && name.localizedCaseInsensitiveContains("Apple TV")
     }
 
     /// Samsung TV-app (Tizen, vanaf build 55) meldt zich met platform `tizen`.

@@ -336,26 +336,45 @@ struct HomeView: View {
     }
 
     @ViewBuilder private var forYouRow: some View {
+        // altijd alfabetisch op titel, films en series door elkaar (zonder taallabel, hoofdletters en accenten)
         let items = forYou.filter { t in
             switch (filter, t) {
             case (.movies, .series), (.series, .movie): return false
             default: return true
             }
-        }
+        }.sorted(by: Self.alphabetical)
         if !items.isEmpty {
             MediaRow(title: L("For you"), onSeeAll: { category = CategoryTarget(title: L("For you"), items: items) }) {
                 ForEach(items) { t in
                     Button { detail = t } label: {
                         switch t {
                         case .movie(let m):
-                            PosterCard(title: m.title, poster: m.poster, badge: L("MOVIE"), language: ContentLanguage.of(m))
+                            PosterCard(title: m.title, poster: m.poster, badge: L("MOVIE"), badgeAlignment: .topLeading,
+                                       language: ContentLanguage.of(m))
                         case .series(let s):
-                            PosterCard(title: s.title, poster: s.poster, badge: L("SERIES"), language: ContentLanguage.of(s))
+                            PosterCard(title: s.title, poster: s.poster, badge: L("SERIES"), badgeAlignment: .topLeading,
+                                       language: ContentLanguage.of(s))
                         }
                     }
                     .cardButton()
                 }
             }
+        }
+    }
+
+    /// Alfabetisch op titel, zonder onderscheid in hoofdletters en accenten (bij gelijke titel op id)
+    private static func alphabetical(_ a: DetailTarget, _ b: DetailTarget) -> Bool {
+        let x = sortTitle(a), y = sortTitle(b)
+        let r = x.compare(y, options: [.caseInsensitive, .diacriticInsensitive, .numeric, .widthInsensitive],
+                          range: nil, locale: .current)
+        return r == .orderedSame ? a.id < b.id : r == .orderedAscending
+    }
+
+    /// Titel om op te sorteren: zoals op de poster (zonder taallabel)
+    private static func sortTitle(_ t: DetailTarget) -> String {
+        switch t {
+        case .movie(let m): return ContentLanguage.displayTitle(m.title)
+        case .series(let s): return ContentLanguage.displayTitle(s.title)
         }
     }
 

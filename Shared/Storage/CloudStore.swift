@@ -544,8 +544,9 @@ final class CloudStore: ObservableObject {
     /// Het profiel waarvan de collecties nu gelden: het actieve, anders het hoofdprofiel.
     var collectionOwner: UUID? { activeProfileID ?? mainProfileID }
 
-    /// Collecties van het actieve profiel zoals de app ze toont: zonder tombstones, op volgorde. Collecties zonder
-    /// eigenaar (nog niet gemigreerd, build 51–53) zijn tot de migratie voor iedereen zichtbaar, zodat niets verdwijnt.
+    /// Collecties van het actieve profiel zoals de app ze toont: zonder tombstones, op volgorde. Een profiel ziet
+    /// alleen zijn eigen collecties, nooit die van het hoofdprofiel of van een ander profiel. Collecties zonder
+    /// eigenaar (nog niet gemigreerd, build 51–53) horen bij het hoofdprofiel (build 74).
     /// Eén keer uitgerekend bij een wijziging (niet bij elke schermverversing; Home en Live TV vragen dit per rij op).
     private(set) var activeCollections: [BingrCollection] = []
     private var activeCollectionsByID: [String: BingrCollection] = [:]
@@ -561,7 +562,8 @@ final class CloudStore: ObservableObject {
         let me = collectionOwner
         let mine = collections.filter { $0.owner != nil && $0.owner == me }
         let mineIDs = Set(mine.map(\.id))   // ook tombstones: een eigen verwijdering verbergt de oude versie
-        let legacy = collections.filter { $0.owner == nil && !mineIDs.contains($0.id) }
+        let legacy = me != nil && me == mainProfileID
+            ? collections.filter { $0.owner == nil && !mineIDs.contains($0.id) } : []
         return (mine + legacy).filter { !$0.deleted }
             .sorted { $0.order != $1.order ? $0.order < $1.order : $0.name < $1.name }
     }
@@ -569,11 +571,12 @@ final class CloudStore: ObservableObject {
     func collection(_ id: String) -> BingrCollection? { activeCollectionsByID[id] }
 
     /// Index van de collectie van het actieve profiel. Bestaat alleen nog een oude (zonder eigenaar), dan wordt
-    /// die eerst een eigen kopie van dit profiel.
+    /// die eerst een eigen kopie van het hoofdprofiel (alleen als dat het actieve profiel is).
     private func ownedCollectionIndex(_ id: String) -> Int? {
         let me = collectionOwner
         if let i = collections.firstIndex(where: { $0.id == id && $0.owner != nil && $0.owner == me }) { return i }
-        guard let me, let old = collections.first(where: { $0.id == id && $0.owner == nil }) else { return nil }
+        guard let me, me == mainProfileID,
+              let old = collections.first(where: { $0.id == id && $0.owner == nil }) else { return nil }
         var c = old
         c.owner = me
         collections.append(c)
@@ -633,19 +636,26 @@ final class CloudStore: ObservableObject {
         write(collections, K.collections)
     }
 
-    /// Zonder account (build 54): oude collecties zonder eigenaar naar elk bestaand profiel kopiëren
-    /// (zelfde `id` en `updatedAt`), zodat niets verdwijnt. Met een account doet StateSync dit.
+    /// Zonder account: oude collecties zonder eigenaar (build 51–53) gaan naar het hoofdprofiel (zelfde `id` en
+    /// `updatedAt`), zodat niets verdwijnt. Met een account doet StateSync dit.
+    /// Build 54–73 kopieerde ze naar élk profiel; die ongewijzigde kopieën bij andere profielen (zelfde `id` en
+    /// `updatedAt` als bij het hoofdprofiel) worden verwijderd: een profiel ziet geen collecties van een ander.
     func migrateLegacyCollections() {
+        guard let main = mainProfileID, !profiles.isEmpty else { return }
         let legacy = collections.filter { $0.owner == nil }
-        guard !legacy.isEmpty, !profiles.isEmpty else { return }
         var list = collections.filter { $0.owner != nil }
-        for p in profiles {
-            for c in legacy where !list.contains(where: { $0.owner == p.id && $0.id == c.id }) {
-                var copy = c
-                copy.owner = p.id
-                list.append(copy)
-            }
+        for c in legacy where !list.contains(where: { $0.owner == main && $0.id == c.id }) {
+            var copy = c
+            copy.owner = main
+            list.append(copy)
         }
+        let mainStamps = Dictionary(list.filter { $0.owner == main }.map { ($0.id, $0.updatedAt) },
+                                    uniquingKeysWith: { a, _ in a })
+        list.removeAll { c in
+            guard let o = c.owner, o != main, let t = mainStamps[c.id] else { return false }
+            return abs(t.timeIntervalSince(c.updatedAt)) < 1
+        }
+        guard list != collections else { return }
         collections = list
         write(collections, K.collections)
     }

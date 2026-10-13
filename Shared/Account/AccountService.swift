@@ -226,7 +226,9 @@ final class AccountService: ObservableObject {
             _ = try? await post("/functions/v1/device-auth", ["action": "remove_device", "device_id": deviceID], bearer: token)
         }
         if let a = accessToken {
-            _ = try? await post("/auth/v1/logout", [:], bearer: a)
+            // alleen de sessie van dit apparaat; zonder scope=local (standaard global) zou Supabase het account
+            // op alle apparaten uitloggen
+            _ = try? await post("/auth/v1/logout?scope=local", [:], bearer: a)
         }
         clearLocal()
     }
