@@ -4,6 +4,29 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 68
+_13 oktober 2026_
+
+### Alle apps en de website
+
+**Nieuw**
+
+- Statistieken in Mijn Bingr: zie per week, maand of jaar hoeveel je hebt gekeken, met uren, films, series en live tv, een grafiek per dag of maand en je meest gekeken series, films en zenders
+- Het hoofdprofiel ziet de statistieken van alle profielen samen of per profiel; andere profielen zien alleen hun eigen cijfers
+- Statistieken wissen: het hoofdprofiel voor alle profielen of één profiel, andere profielen voor zichzelf
+
+### Alle apps
+
+**Verbeterd**
+
+- Afleveringen tellen per serie mee en terugkijken telt bij de zender
+
+### Server
+
+**Nieuw**
+
+- Kijkstatistieken: de server houdt per profiel bij hoeveel er gekeken wordt (films, series en live tv), per dag, met de meest gekeken titels; 400 dagen bewaard en zelf te wissen
+
 ## Versie 1.0.0 · Build 67
 _13 oktober 2026_
 

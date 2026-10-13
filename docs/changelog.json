@@ -1,5 +1,79 @@
 [
  {
+  "build": 68,
+  "version": "1.0.0",
+  "date": "2026-10-13",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web"
+    ],
+    "nl": "Statistieken in Mijn Bingr: zie per week, maand of jaar hoeveel je hebt gekeken, met uren, films, series en live tv, een grafiek per dag of maand en je meest gekeken series, films en zenders",
+    "en": "Statistics in My Bingr: see how much you watched per week, month or year, with hours, movies, series and live TV, a chart per day or month and your most watched series, movies and channels"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web"
+    ],
+    "nl": "Het hoofdprofiel ziet de statistieken van alle profielen samen of per profiel; andere profielen zien alleen hun eigen cijfers",
+    "en": "The main profile sees the statistics of all profiles together or per profile; other profiles only see their own numbers"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web"
+    ],
+    "nl": "Statistieken wissen: het hoofdprofiel voor alle profielen of één profiel, andere profielen voor zichzelf",
+    "en": "Clear statistics: the main profile for all profiles or one profile, other profiles for themselves"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Kijkstatistieken: de server houdt per profiel bij hoeveel er gekeken wordt (films, series en live tv), per dag, met de meest gekeken titels; 400 dagen bewaard en zelf te wissen",
+    "en": "Viewing statistics: the server keeps track of how much each profile watches (movies, series and live TV), per day, with the most watched titles; kept for 400 days and deletable by you"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen"
+    ],
+    "nl": "Afleveringen tellen per serie mee en terugkijken telt bij de zender",
+    "en": "Episodes count towards their series and catch-up counts towards the channel"
+   }
+  ]
+ },
+ {
   "build": 67,
   "version": "1.0.0",
   "date": "2026-10-13",
