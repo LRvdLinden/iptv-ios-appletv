@@ -3,7 +3,7 @@
 [![Build](https://github.com/LRvdLinden/iptv-ios-appletv/actions/workflows/build.yml/badge.svg)](https://github.com/LRvdLinden/iptv-ios-appletv/actions/workflows/build.yml)
 
 Native IPTV- en mediaspeler voor **iPhone, iPad, Mac en Apple TV** met de look & feel van Netflix.
-SwiftUI · iOS 17+ · tvOS 17+ · macOS 14+ · Apple- én VLC-engine · 11 talen · versie 1.0.0 (build 51).
+SwiftUI · iOS 17+ · tvOS 17+ · macOS 14+ · Apple- én VLC-engine · 11 talen.
 
 Wat er nieuw is per build: [CHANGELOG.md](CHANGELOG.md) · [bingr.online/changelog](https://bingr.online/changelog/)
 
@@ -44,9 +44,9 @@ Wat er nieuw is per build: [CHANGELOG.md](CHANGELOG.md) · [bingr.online/changel
 **Account**
 - **Verplicht inloggen** met een Bingr-account (e-mail + wachtwoord), zoals Netflix: splash → inlogscherm → "Wie kijkt er?". Met een geldige sessie ga je meteen door; account maken, wachtwoord vergeten, uitloggen en account verwijderen in de app (Mijn Bingr → Account)
 - **QR-koppeling op Apple TV**: scan de QR-code met je telefoon of ga naar **bingr.online/koppelen** en voer de code in; of log op de tv in met e-mail. Op iPhone, iPad en Mac koppel je een tv met *Mijn Bingr → Account → Tv koppelen*
-- **Profielen bij je account**: bij de eerste login worden je bestaande profielen aan je account gekoppeld (niets gaat verloren) en gedeeld met de Android-app. Pincodes gaan (sinds build 44) versleuteld mee met je account; eigen profielfoto's worden via je Bingr-account gedeeld met al je apparaten (ook Android)
+- **Profielen bij je account**: bij de eerste login worden je bestaande profielen aan je account gekoppeld (niets gaat verloren) en gedeeld met de Android-app. Pincodes gaan versleuteld mee met je account; eigen profielfoto's worden via je Bingr-account gedeeld met al je apparaten (ook Android)
 - **Maximaal 15 apparaten per account** (de limiet komt van de server): elk apparaat registreert zich na het inloggen. Zit je aan de limiet, dan verwijder je eerst een ander apparaat ("Too many devices"). Onder *Mijn Bingr → Account → Apparaten* zie je alle gekoppelde apparaten (ook op Apple TV) met platform (iPhone, iPad, Mac, Apple TV, Android, Android-tablet, Android TV, Google TV, Fire TV), koppeldatum, laatst gebruikt en sinds wanneer het is ingelogd. Je geeft elk apparaat (ook dit apparaat) met **Naam wijzigen** een eigen naam (ook op bingr.online/account), of verwijdert er een. Een verwijderd apparaat wordt automatisch uitgelogd
-- **Maximaal 6 schermen tegelijk** (build 51): de speler meldt elke stream aan bij je account (ook bij zappen, de volgende aflevering en Multiview, dat als één stream telt) en pingt elke 30 s. Zijn er al 6, dan zie je "Too many people are watching" met wie er kijkt. Het hoofdprofiel ziet in *Mijn Bingr → Account* wie er nu kijkt en de kijkgeschiedenis van 7 dagen
+- **Maximaal 6 schermen tegelijk**: de speler meldt elke stream aan bij je account (ook bij zappen, de volgende aflevering en Multiview, dat als één stream telt) en pingt elke 30 s. Zijn er al 6, dan zie je "Too many people are watching" met wie er kijkt. Het hoofdprofiel ziet in *Mijn Bingr → Account* wie er nu kijkt en de kijkgeschiedenis van 7 dagen
 - De sessie staat alleen op dit apparaat (sleutelhanger zonder iCloud-sync); offline blijft de app gewoon werken
 - **Profielen (toevoegen, wijzigen, verwijderen) synchroniseren met al je apparaten** via je Bingr-account
 - **Servers en afspeellijsten bij je account**: ze worden versleuteld bij je account bewaard (inclusief wachtwoorden, tokens en je categorieën en groepen), dus na updaten of opnieuw installeren staat alles weer klaar
@@ -113,67 +113,13 @@ Wat er nieuw is per build: [CHANGELOG.md](CHANGELOG.md) · [bingr.online/changel
 - **Meerdere Apple TV-gebruikers**: wissel je van gebruiker op de Apple TV, dan zie je de Bingr (playlists, voortgang, Trakt) van díe gebruiker via zijn eigen iCloud
 - **Eigen Mac-app** (macOS 14+, Apple silicon én Intel): zelfde functies en iCloud-sync, met VLC voor .ts/.mkv, AirPlay, Chromecast en beeld-in-beeld. Bediening met het toetsenbord: spatie = pauze, ←/→ = 10 s, ↑/↓ = zappen, Esc = sluiten
 
-## Installeren
-
-1. **Project genereren** (op een Mac):
-   ```bash
-   brew install xcodegen
-   xcodegen
-   open Bingr.xcodeproj
-   ```
-2. **Sleutels inbouwen (aanbevolen, privé-repo)**: zet ze als *Settings → Secrets and variables → Actions*: `OPENSUBTITLES_API_KEY`, `TMDB_API_KEY` (of `TMDB_ACCESS_TOKEN`), `OMDB_API_KEY`, `TRAKT_CLIENT_ID` (en `TRAKT_CLIENT_SECRET` alleen bij oude Trakt-apps; nieuwe apps gebruiken PKCE zonder secret). De CI bouwt ze in en de zip op `ci-logs` bevat ze; gebruikers loggen dan alleen nog met hun eigen account in.
-
-   Voor de **Bingr-account** (verplicht inloggen) zet je ook `SUPABASE_URL` (bv. `https://abcd1234.supabase.co`) en `SUPABASE_ANON_KEY` (de publieke anon/publishable key). Die worden alleen ingebouwd (niet in de app aan te passen). Zonder deze sleutels toont het inlogscherm "Accounts are not configured in this build." met een knop om zonder account door te gaan. De backend (`supabase/`: database-schema, e-mailtemplates en de Edge Function `device-auth`) wordt gedeployed met de workflow **Backend** (*Actions → Backend → Run workflow*), met de secrets `SUPABASE_ACCESS_TOKEN` en `SUPABASE_PROJECT_REF`. Zie `docs/ACCOUNT.md` voor het contract.
-
-   Sinds build 41 haalt de app de sleutels na het inloggen veilig op bij de Bingr-server. Wil je toch eigen sleutels gebruiken, kies dan **koppelingen instellen** (geavanceerd, onderaan in *Mijn Bingr*; eenmalig, gratis). Trakt en OpenSubtitles eisen dat elke app zich één keer registreert; daarna log je gewoon in met je eigen account. De sleutels staan in de iCloud-sleutelhanger, dus je Apple TV heeft ze ook:
-   | Dienst | Waar aanmaken | Let op |
-   |---|---|---|
-   | Trakt | https://trakt.tv/oauth/applications/new | Redirect URI: `https://github.com/LRvdLinden/iptv-ios-appletv` (inloggen gaat met een code, er wordt nooit doorgestuurd) |
-   | OpenSubtitles | https://www.opensubtitles.com/consumers | "API consumer" aanmaken |
-   | IMDb-gegevens (OMDb) | https://www.omdbapi.com/apikey.aspx | gratis: 1000 verzoeken/dag; titels worden gecachet |
-   | TMDB (optioneel) | https://www.themoviedb.org/settings/api | foto's van cast, titel-logo's, afleveringsfoto's, teksten in jouw taal |
-3. **Signing**: het Team (`EU3UY476T6`) en automatisch ondertekenen staan al in `project.yml` voor alle drie de targets (`Bingr` voor iPhone/iPad, `BingrTV` voor Apple TV, `BingrMac` voor de Mac). Bundle ID voor alle drie: `nl.lrvdlinden.bingr` (één app in de App Store voor alle apparaten), Display Name *Bingr*, categorie *Entertainment* (staat al ingesteld).
-4. **iCloud**: zet bij alle targets de capability *iCloud → Key-value storage* aan (staat al in de entitlements) en houd dezelfde Team-ID aan. De Mac-app draait in de App Sandbox met netwerktoegang.
-5. **Apple TV met meerdere gebruikers**: target `BingrTV` → *User Management* → "Runs as Current User Only When User-Independent Keychain is Available" (staat al in de entitlements). Elke Apple TV-gebruiker moet in iCloud ingelogd zijn met zijn eigen Apple ID.
-
-Versie blijft 1.0.0; het buildnummer (`CURRENT_PROJECT_VERSION` in `project.yml`) gaat per build omhoog.
-
-Elke push naar `main` wordt door GitHub Actions gebouwd voor iOS, tvOS en macOS (zonder signing). Het build-rapport staat op de branch `ci-logs`.
-
-## Vertalingen
-
-Alle teksten staan in de code in het Engels (`L("Play")`) en worden vertaald via `Shared/Resources/Translations.json`.
-`python3 tools/extract_strings.py` controleert of elke tekst in elke taal vertaald is en of de `%@`/`%d`-codes kloppen (draait ook in CI).
-
-## Structuur
-
-```
-Shared/
-  App/            app-start, AppState (splash → inloggen → kiezer → app), herinneringsbanner
-  Account/        Bingr-account (Supabase REST): inloggen, tv-koppeling, profielen, servers en alle overige gegevens per account
-  Models/         playlist, zender, film, serie, EPG
-  Providers/      M3U, XMLTV, Xtream, Stalker, Plex, Jellyfin/Emby, Stremio + cache en aanpassingen
-  Metadata/       IMDb (OMDb) + titels opschonen
-  Trakt/          login, sync, scrobble, trending
-  OpenSubtitles/  login, zoeken, downloaden
-  Player/         Apple/VLC-engines, Chromecast, AirPlay, multiview, panelen
-  Storage/        iCloud KV-store, iCloud-sleutelhanger, kinderslot, herinneringen
-  Localization/   taalsysteem (L())
-  Resources/      Translations.json, bingr_tune.m4a (intro)
-  UI/             Netflix-thema, kaarten, schermen (profielen, home, live, gids, detail, categorie, beheren, zoeken, instellingen)
-  Platform/       Mac-ondersteuning (AppKit-vertalingen van UIKit)
-iOS/ tvOS/ macOS/ iconen, Info.plist & entitlements (gegenereerd door XcodeGen)
-tools/            vertaalcontrole, sleutels inbouwen (CI), intro-tune (make_tune.py), profielfiguurtjes (make_avatars.py), screenshots (make_screenshots.py)
-docs/             mockups en screenshots
-```
-
 ## Website (bingr.online)
 
-De website staat in een eigen repo: [LRvdLinden/bingr-website](https://github.com/LRvdLinden/bingr-website), met eigen workflows voor FTPS-upload en verse TMDB-covers. `python3 tools/sync_website.py --site ../bingr-website` zet de nieuwste screenshots, profielfiguurtjes, het icoon en het buildnummer in de site; met `--zip <pad>` maak je er een uploadklare zip van.
+Op [bingr.online](https://bingr.online) vind je de downloads, de [hulppagina](https://bingr.online/support.html) (ook voor installeren), de webspeler [bingr.online/web](https://bingr.online/web/) en [bingr.online/koppelen](https://bingr.online/koppelen/) om een tv aan je account te koppelen. De broncode van de site staat in [LRvdLinden/bingr-website](https://github.com/LRvdLinden/bingr-website).
 
 ## Android
 
-De Android-versie (telefoon, tablet, Android TV / Google TV / Fire TV) staat in een eigen repo: [LRvdLinden/bingr-android](https://github.com/LRvdLinden/bingr-android). De vertalingen in `Shared/Resources/Translations.json` worden daar als kopie gebruikt.
+De Android-versie (telefoon, tablet, Android TV / Google TV / Fire TV) staat in een eigen repo: [LRvdLinden/bingr-android](https://github.com/LRvdLinden/bingr-android).
 
 ## Opmerkingen
 
