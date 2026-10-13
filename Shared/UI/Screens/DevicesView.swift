@@ -82,17 +82,19 @@ struct DeviceRow: View {
     let onRemove: () -> Void
 
     var body: some View {
-        HStack(alignment: .center, spacing: tvScaled(14)) {
+        // Knoppen onder de tekst, zodat naam en gegevens de volle breedte hebben (build 61).
+        HStack(alignment: .top, spacing: tvScaled(14)) {
             Image(systemName: DeviceText.icon(device))
                 .font(.system(size: tvScaled(24)))
                 .foregroundStyle(device.current ? Theme.red : .white)
                 .frame(width: tvScaled(36))
+                .padding(.top, tvScaled(2))
             VStack(alignment: .leading, spacing: tvScaled(3)) {
                 HStack(spacing: tvScaled(8)) {
                     Text(device.name)
                         .font(.system(size: tvScaled(16), weight: .semibold))
                         .foregroundStyle(.white)
-                        .lineLimit(1)
+                        .lineLimit(2)
                     if device.current {
                         Text(L("This device"))
                             .font(.system(size: tvScaled(11), weight: .bold))
@@ -117,23 +119,28 @@ struct DeviceRow: View {
                 if let since = StreamText.signedInSince(device.signedInAt) {
                     Text(since).font(.system(size: tvScaled(12))).foregroundStyle(Theme.secondary)
                 }
-            }
-            Spacer(minLength: tvScaled(8))
-            if busy {
-                ProgressView()
-            } else {
-                if let onRename {
-                    Button(action: onRename) {
-                        Text(L("Rename")).font(.system(size: tvScaled(14), weight: .semibold))
+                HStack(spacing: tvScaled(10)) {
+                    if busy {
+                        ProgressView()
+                    } else {
+                        if let onRename {
+                            Button(action: onRename) {
+                                Text(L("Rename")).font(.system(size: tvScaled(14), weight: .semibold))
+                                    .lineLimit(1).fixedSize()
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                        Button(role: .destructive, action: onRemove) {
+                            Text(L("Remove")).font(.system(size: tvScaled(14), weight: .semibold))
+                                .lineLimit(1).fixedSize()
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(Theme.red)
                     }
-                    .buttonStyle(.bordered)
                 }
-                Button(role: .destructive, action: onRemove) {
-                    Text(L("Remove")).font(.system(size: tvScaled(14), weight: .semibold))
-                }
-                .buttonStyle(.bordered)
-                .tint(Theme.red)
+                .padding(.top, tvScaled(8))
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.vertical, tvScaled(4))
     }

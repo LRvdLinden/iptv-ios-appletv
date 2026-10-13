@@ -1,5 +1,25 @@
 [
  {
+  "build": 61,
+  "version": "1.0.0",
+  "date": "2026-10-13",
+  "items": [
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Apparaten: Naam wijzigen en Verwijderen staan nu naast elkaar onder de tekst, zodat naam en gegevens goed leesbaar zijn",
+    "en": "Devices: Rename and Remove now sit side by side below the text, so the name and details are easy to read"
+   }
+  ]
+ },
+ {
   "build": 60,
   "version": "1.0.0",
   "date": "2026-10-13",
