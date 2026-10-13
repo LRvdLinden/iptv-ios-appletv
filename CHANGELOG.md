@@ -9,10 +9,6 @@ _13 oktober 2026_
 
 ### Website
 
-**Nieuw**
-
-- Webspeler: de intro speelt de Bingr-tune af. Laat de browser geen geluid toe zonder tik, dan start je Bingr met één tik; uit te zetten met Intromuziek in Instellingen
-
 **Verbeterd**
 
 - Webspeler: inloggen met de QR-code ziet er nu hetzelfde uit als op Apple TV, met je covers vervaagd op de achtergrond
