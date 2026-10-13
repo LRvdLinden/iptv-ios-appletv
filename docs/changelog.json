@@ -67,6 +67,14 @@
     ],
     "nl": "Changelog: per apparaat zie je de nieuwste versie en build, bovenaan op je telefoon en rechts op je computer; tik erop om alleen dat apparaat te zien",
     "en": "Changelog: see the latest version and build per device, at the top on your phone and on the right on your computer; tap one to show only that device"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Changelog: de nieuwste build staat open en oudere builds zijn ingeklapt; dicht zie je versie, build, datum, hoeveel er nieuw, verbeterd en opgelost is en voor welke apparaten",
+    "en": "Changelog: the newest build is open and older builds are collapsed; when closed you see version, build, date, how many items are new, improved and fixed, and for which devices"
    }
   ]
  },
