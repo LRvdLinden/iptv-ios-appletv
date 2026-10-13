@@ -1,5 +1,54 @@
 [
  {
+  "build": 72,
+  "version": "1.0.0",
+  "date": "2026-10-13",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "macos",
+     "android"
+    ],
+    "nl": "Profielmenu achter je profielfoto in de bovenbalk: wissel direct naar een ander profiel (met pincode als die is ingesteld), of ga naar Wissel van profiel, Profielen beheren, Mijn Bingr, Instellingen, Account en apparaten of Uitloggen, net als op bingr.online",
+    "en": "Profile menu behind your profile picture in the top bar: switch straight to another profile (asking for the PIN if one is set), or go to Switch profile, Manage profiles, My Bingr, Settings, Account and devices or Sign out, just like on bingr.online"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "tvos",
+     "androidtv",
+     "tizen"
+    ],
+    "nl": "Profielmenu op de tv: kies je profielfoto om meteen van profiel te wisselen of naar Instellingen, Account en apparaten of Uitloggen te gaan (Apple TV: bovenaan Mijn Bingr, Android TV: rechts in de bovenbalk, Samsung TV: bovenaan het zijmenu)",
+    "en": "Profile menu on TV: select your profile picture to switch profiles right away or go to Settings, Account and devices or Sign out (Apple TV: at the top of My Bingr, Android TV: at the right of the top bar, Samsung TV: at the top of the side menu)"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Mijn Bingr is overzichtelijker, zoals op bingr.online: Bibliotheek (kijkgeschiedenis, collecties, statistieken, Trakt) en Profiel (profielen beheren, startscherm, instellingen, account en apparaten); alle andere instellingen staan onder Instellingen",
+    "en": "My Bingr is tidier, like on bingr.online: Library (watch history, collections, statistics, Trakt) and Profile (manage profiles, home screen, settings, account and devices); all other settings are under Settings"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Webspeler: de Trakt-status in Mijn Bingr toont weer de juiste tijd in plaats van \"bijgewerkt om Bijgewerkt\"",
+    "en": "Web player: the Trakt status in My Bingr shows the correct time again instead of \"synced at Up to date\""
+   }
+  ]
+ },
+ {
   "build": 71,
   "version": "1.0.0",
   "date": "2026-10-13",
