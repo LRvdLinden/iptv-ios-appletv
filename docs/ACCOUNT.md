@@ -600,7 +600,7 @@ IPTV-servers sturen zelden CORS-headers en draaien vaak op **http**. Een https-p
 
 ### Beheer (alleen intern)
 
-Er is een aparte Edge Function `admin` voor het beheer-dashboard. Apps roepen die nooit aan. Het enige wat apps ervan merken: berichten (hierboven), en dat e-mails met berichten een afmeldlink naar `bingr.online/unsubscribe/` hebben. Accountmails (bevestigen, wachtwoord) worden altijd verstuurd.
+Er is een aparte Edge Function `admin` voor het beheer-dashboard (https://beheer.bingr.online). Beide staan in de privé-repo LRvdLinden/bingr-beheer en worden daar gedeployd; de Backend-workflow hier raakt de functie niet. De tabellen en `bingr_admin_*`-functies die hij gebruikt staan wel hier in `supabase/schema.sql`. Apps roepen `admin` nooit aan; de enige openbare actie is `unsubscribe` (vanaf `bingr.online`). Het enige wat apps ervan merken: berichten (hierboven), en dat e-mails met berichten een afmeldlink naar `bingr.online/unsubscribe/` hebben. Accountmails (bevestigen, wachtwoord) worden altijd verstuurd.
 
 ## Status en monitoring (bingr.online/status)
 

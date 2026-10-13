@@ -19,6 +19,7 @@ const db = createClient(env("SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"), {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 const SITE = env("BINGR_SITE") || "https://bingr.online";
+const BEHEER = env("BINGR_BEHEER_URL") || "https://beheer.bingr.online";
 const GROUPS = [
   { id: "server", name: { nl: "Server", en: "Server" } },
   { id: "website", name: { nl: "Website", en: "Website" } },
@@ -220,12 +221,12 @@ async function alert(events: Event[]): Promise<boolean | string> {
   const subject = events.length > 1
     ? `Bingr-status: ${events.length} wijzigingen`
     : first.kind === "open" ? `Bingr-status: storing bij ${first.monitor.name_nl}` : `Bingr-status: ${first.monitor.name_nl} werkt weer`;
-  const text = `${lines.join("\n")}\n\nStatuspagina: ${SITE}/status/\nBeheer: ${SITE}/admindashboard/`;
+  const text = `${lines.join("\n")}\n\nStatuspagina: ${SITE}/status/\nBeheer: ${BEHEER}/`;
   const html = `<!doctype html><html><body style="margin:0;background:#000;padding:24px;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#fff">
 <div style="max-width:520px;margin:0 auto;background:#141414;border-radius:12px;border-top:4px solid #E50914;padding:24px">
 <div style="font-weight:900;font-size:22px;margin-bottom:14px">BINGR <span style="color:#b3b3b3;font-weight:600;font-size:14px">Status</span></div>
 ${events.map((e, i) => `<p style="margin:0 0 10px;font-size:15px;line-height:22px;color:${e.kind === "open" ? "#ff8a80" : "#6ee68a"}">${escHtml(lines[i])}</p>`).join("")}
-<p style="margin:18px 0 0;font-size:13px"><a href="${SITE}/status/" style="color:#fff">Statuspagina</a> · <a href="${SITE}/admindashboard/" style="color:#b3b3b3">Beheer</a></p>
+<p style="margin:18px 0 0;font-size:13px"><a href="${SITE}/status/" style="color:#fff">Statuspagina</a> · <a href="${BEHEER}/" style="color:#b3b3b3">Beheer</a></p>
 </div></body></html>`;
   const tx = transport();
   try {

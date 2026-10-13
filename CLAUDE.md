@@ -15,4 +15,4 @@
   - Controleer daarna dat de workflow `Website` in bingr-website geslaagd is en dat bingr.online het nieuwe buildnummer toont. Is de upload mislukt, start hem dan opnieuw. Elke build hoort in de changelog op de website te staan.
 - Accounts (Supabase): het contract staat in `docs/ACCOUNT.md`, de backend in `supabase/`. De workflow `Backend` zet schema, functie, e-mailtemplates en app-sleutels klaar.
 - Geheime sleutels nooit in de repo; de repo is openbaar. De Supabase-URL en de publishable key mogen er wel in.
-- Admin-dashboard (bingr.online/admindashboard, functie `admin`): wijzigingen hieraan nooit in de changelog. Inloggegevens alleen als GitHub-secrets BINGR_ADMIN_USER / BINGR_ADMIN_PASSWORD.
+- Admin-dashboard: staat in de privé-repo LRvdLinden/bingr-beheer (https://beheer.bingr.online, functie `admin`). Wijzigingen daaraan nooit in de changelog.

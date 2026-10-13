@@ -1,9 +1,10 @@
 name: Backend
 
 # Zet de Bingr-accounts in Supabase klaar: tabel (supabase/schema.sql), e-mailtemplates (supabase/templates) en de Edge Functions
-# device-auth (accounts, tv-koppeling), web-proxy (webspeler), admin (beheer-dashboard) en status (bingr.online/status).
+# device-auth (accounts, tv-koppeling), web-proxy (webspeler) en status (bingr.online/status). De functie admin (beheer-dashboard)
+# staat in de privé-repo LRvdLinden/bingr-beheer en wordt daar gedeployd; deze workflow raakt of verwijdert hem nooit.
 # Secrets: SUPABASE_ACCESS_TOKEN (supabase.com/dashboard/account/tokens) en SUPABASE_PROJECT_REF (bv. abcd1234 uit https://abcd1234.supabase.co).
-# Beheer (optioneel): BINGR_ADMIN_USER, BINGR_ADMIN_PASSWORD; bulkmail: BINGR_SMTP_HOST, BINGR_SMTP_PORT (465), BINGR_SMTP_USER,
+# Mail (optioneel, ook gebruikt door admin): BINGR_SMTP_HOST, BINGR_SMTP_PORT (465), BINGR_SMTP_USER,
 # BINGR_SMTP_PASSWORD, BINGR_SMTP_FROM. Alleen gezette secrets worden doorgezet; waarden komen nooit in de repo of het log.
 # Status (optioneel): BINGR_ALERT_EMAIL (storingsmeldingen per e-mail, via de SMTP hierboven), BINGR_GITHUB_TOKEN (alleen-lezen
 # token tegen de GitHub-limiet; zonder token valt de controle terug op de webpagina), STATUS_CRON_SECRET (vast geheim voor
@@ -79,11 +80,9 @@ jobs:
             supabase secrets set --project-ref "$REF" BINGR_SOURCES_KEY="$(openssl rand -base64 32)" >/dev/null
             echo "::notice::Versleutelsleutel voor servers aangemaakt"
           fi
-      - name: Beheer- en mailgegevens als function-secrets
+      - name: Mail- en statusgegevens als function-secrets
         if: steps.check.outputs.skip != '1'
         env:
-          A_USER: ${{ secrets.BINGR_ADMIN_USER }}
-          A_PASS: ${{ secrets.BINGR_ADMIN_PASSWORD }}
           S_HOST: ${{ secrets.BINGR_SMTP_HOST }}
           S_PORT: ${{ secrets.BINGR_SMTP_PORT }}
           S_USER: ${{ secrets.BINGR_SMTP_USER }}
@@ -94,8 +93,6 @@ jobs:
         run: |
           # als losse argumenten (geen env-bestand), zodat tekens als # " of spaties in wachtwoorden geen probleem zijn
           args=()
-          [ -n "$A_USER" ] && args+=("BINGR_ADMIN_USER=$A_USER")
-          [ -n "$A_PASS" ] && args+=("BINGR_ADMIN_PASSWORD=$A_PASS")
           [ -n "$S_HOST" ] && args+=("BINGR_SMTP_HOST=$S_HOST")
           [ -n "$S_PORT" ] && args+=("BINGR_SMTP_PORT=$S_PORT")
           [ -n "$S_USER" ] && args+=("BINGR_SMTP_USER=$S_USER")
@@ -103,9 +100,7 @@ jobs:
           [ -n "$S_FROM" ] && args+=("BINGR_SMTP_FROM=$S_FROM")
           [ -n "$S_ALERT" ] && args+=("BINGR_ALERT_EMAIL=$S_ALERT")
           [ -n "$S_GH" ] && args+=("BINGR_GITHUB_TOKEN=$S_GH")
-          if [ ${#args[@]} -gt 0 ]; then supabase secrets set --project-ref "$REF" "${args[@]}" >/dev/null; echo "::notice::${#args[@]} beheer/mail-secret(s) op de server gezet"; fi
-          [ -z "$A_USER" ] || [ -z "$A_PASS" ] && echo "::warning::BINGR_ADMIN_USER/BINGR_ADMIN_PASSWORD ontbreken: beheer-dashboard kan niet inloggen."
-          [ -n "$A_PASS" ] && [ ${#A_PASS} -lt 12 ] && echo "::warning::BINGR_ADMIN_PASSWORD is korter dan 12 tekens; kies een langer wachtwoord."
+          if [ ${#args[@]} -gt 0 ]; then supabase secrets set --project-ref "$REF" "${args[@]}" >/dev/null; echo "::notice::${#args[@]} mail/status-secret(s) op de server gezet"; fi
           [ -z "$S_ALERT" ] && echo "::notice::BINGR_ALERT_EMAIL ontbreekt: storingen komen alleen op de statuspagina, niet per e-mail."
           [ -n "$S_PORT" ] && { [ "$S_PORT" = 587 ] || [ "$S_PORT" = 25 ]; } && echo "::warning::Supabase blokkeert uitgaande SMTP op poort $S_PORT; gebruik 465 (SSL/TLS)."
           true
@@ -115,9 +110,6 @@ jobs:
       - name: Edge Function web-proxy
         if: steps.check.outputs.skip != '1'
         run: supabase functions deploy web-proxy --project-ref "$REF" --no-verify-jwt --use-api
-      - name: Edge Function admin
-        if: steps.check.outputs.skip != '1'
-        run: supabase functions deploy admin --project-ref "$REF" --no-verify-jwt --use-api
       - name: Statusmonitor - geheim
         if: steps.check.outputs.skip != '1'
         env:
@@ -175,14 +167,13 @@ jobs:
           grep -q not_signed_in /tmp/a.json && echo "::notice::announcements actief" || { echo "::error::announcements onverwacht"; exit 1; }
           curl -s -X POST "https://$REF.supabase.co/functions/v1/web-proxy" -H "Content-Type: application/json" -d '{"url":"https://example.com/"}' | tee /tmp/w.json; echo
           grep -q not_signed_in /tmp/w.json && echo "::notice::web-proxy actief" || { echo "::error::web-proxy onverwacht"; exit 1; }
-          curl -s -X POST "https://$REF.supabase.co/functions/v1/admin" -H "Content-Type: application/json" -d '{"action":"stats"}' | tee /tmp/b.json; echo
-          grep -q not_signed_in /tmp/b.json && echo "::notice::admin actief" || { echo "::error::admin onverwacht"; exit 1; }
           for fn in device-auth web-proxy; do
             curl -s -X POST "https://$REF.supabase.co/functions/v1/$fn" -H "Content-Type: application/json" -d '{"action":"ping"}' | tee /tmp/p.json; echo
             grep -q '"ok":true' /tmp/p.json && echo "::notice::$fn ping werkt" || { echo "::error::$fn ping onverwacht"; exit 1; }
           done
-          curl -s -X POST "https://$REF.supabase.co/functions/v1/admin" -H "Content-Type: application/json" -d '{"action":"status","op":"overview"}' | tee /tmp/b.json; echo
-          grep -q not_signed_in /tmp/b.json && echo "::notice::admin status vraagt om inloggen" || { echo "::error::admin status onverwacht"; exit 1; }
+          # admin (privé-repo bingr-beheer): alleen kijken of hij er nog staat, als waarschuwing (deze workflow deployt hem niet)
+          curl -s -X POST "https://$REF.supabase.co/functions/v1/admin" -H "Content-Type: application/json" -d '{"action":"status","op":"overview"}' > /tmp/b.json || true
+          grep -q not_signed_in /tmp/b.json && echo "::notice::admin (bingr-beheer) staat online" || echo "::warning::admin (bingr-beheer) gaf geen not_signed_in: $(head -c 200 /tmp/b.json)"
       - name: Statusmonitor testen
         if: steps.check.outputs.skip != '1'
         run: |

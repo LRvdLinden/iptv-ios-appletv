@@ -267,6 +267,9 @@ end $$;
 revoke all on function public.bingr_register_device(uuid, text, text, text, uuid, int, text, text) from public, anon, authenticated;
 grant execute on function public.bingr_register_device(uuid, text, text, text, uuid, int, text, text) to service_role;
 
+-- Beheer: de tabellen announcements, account_email_prefs, admin_login_attempts en admin_audit en de functies bingr_admin_*
+-- horen bij dit gedeelde schema, maar worden gebruikt door de Edge Function admin in de privé-repo LRvdLinden/bingr-beheer
+-- (beheer.bingr.online). Alleen announcements wordt ook door device-auth gelezen (berichten in de apps).
 -- Berichten van de beheerder aan alle gebruikers (in de apps één keer getoond; eventueel ook per e-mail).
 create table if not exists public.announcements (
   id            uuid primary key default gen_random_uuid(),
@@ -383,7 +386,7 @@ end $$;
 revoke all on function public.bingr_audit_logins(int) from public, anon, authenticated;
 grant execute on function public.bingr_audit_logins(int) to service_role;
 
--- Statistieken voor het beheer-dashboard.
+-- Statistieken voor het beheer-dashboard (functie admin, privé-repo bingr-beheer).
 create or replace function public.bingr_admin_stats() returns jsonb
 language plpgsql security definer set search_path = public, auth as $$
 declare res jsonb; days jsonb; audit_total bigint;
