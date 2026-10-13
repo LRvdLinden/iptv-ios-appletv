@@ -19,6 +19,11 @@ on:
         type: boolean
         default: false
 
+# nooit twee deploys tegelijk: elke deploy zet het statusgeheim en de pg_cron-taak samen klaar
+concurrency:
+  group: backend-deploy
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -193,7 +198,8 @@ jobs:
           if "checked" not in r: print("::error::status run mislukt:", r); raise SystemExit(1)
           print(f"::notice::Statuscontrole: {r['checked']} gecontroleerd, {r['skipped']} overgeslagen, {r['up']} up, {r['degraded']} verminderd, {r['down']} storing, {r['ms']} ms")
           for x in r["results"]:
-              print(f"  {x['id']:<10} {x['state']:<9} {str(x['ms'] or ''):>6} ms  {x['error'] or ''}")
+              print(f"  {x['id']:<10} {x['state']:<9} {str(x['ms'] or ''):>6} ms  {x['error'] or ''} {x.get('detail') or ''}")
+          print("::notice::Per monitor: " + "; ".join(f"{x['id']} {x['state']} {x['ms'] or 0} ms" + (f" ({x['error'] or x.get('detail')})" if (x['error'] or x.get('detail')) else "") for x in r["results"]))
           PY
           curl -s "$F?action=public" > /tmp/pub.json
           python3 - <<'PY'

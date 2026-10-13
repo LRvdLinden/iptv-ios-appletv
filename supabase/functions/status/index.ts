@@ -150,7 +150,7 @@ async function run(force: boolean, onlyId: string | null, source: string) {
     const updates: PromiseLike<unknown>[] = [];
     const events: Event[] = [];
     let skipped = 0;
-    const summaryRows: { id: string; state: string; ok: boolean; ms: number | null; error: string | null }[] = [];
+    const summaryRows: { id: string; state: string; ok: boolean; ms: number | null; error: string | null; detail?: string | null }[] = [];
     for (const [m, r] of results) {
       if (r.skip) {
         skipped++;
@@ -174,7 +174,7 @@ async function run(force: boolean, onlyId: string | null, source: string) {
         events.push({ kind: "close", monitor: m, started_at: inc?.started_at, duration_s: inc ? durationS(inc.started_at, at) : undefined });
         updates.push(db.from("status_incidents").update({ ended_at: at }).eq("monitor_id", m.id).is("ended_at", null));
       }
-      summaryRows.push({ id: m.id, state: ev.current, ok: r.ok, ms: r.ms ?? null, error: r.ok ? null : r.error ?? null });
+      summaryRows.push({ id: m.id, state: ev.current, ok: r.ok, ms: r.ms ?? null, error: r.ok ? null : r.error ?? null, detail: r.detail ?? null });
     }
     if (rows.length) {
       const { error } = await db.from("status_checks").insert(rows);
