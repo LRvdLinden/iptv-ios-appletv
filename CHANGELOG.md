@@ -4,6 +4,25 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 69
+_13 oktober 2026_
+
+### Website
+
+**Nieuw**
+
+- Webspeler: Trakt koppelen, synchroniseren en scrobbelen vanuit het hoofdprofiel
+- Webspeler: zien wat je al hebt gekeken, met vinkjes op posters en afleveringen en een kijkgeschiedenis per dag
+- Webspeler: films, afleveringen en hele seizoenen als bekeken of onbekeken markeren
+- Webspeler: collecties maken, wijzigen en verwijderen, handmatig of slim, en titels en zenders aan een collectie toevoegen
+- Webspeler: profielen toevoegen, wijzigen en verwijderen, met foto, leeftijdsgrens en pincode, alleen vanuit het hoofdprofiel
+- Webspeler: Mijn Bingr, indeling van het startscherm en de rij Voor jou
+
+**Verbeterd**
+
+- Webspeler: menu met acties op kaarten via rechtsklik of lang indrukken
+- Webspeler: inloggen bij OpenSubtitles, startscherm en tabbladen kiezen en kinderslot instellen vanuit het hoofdprofiel
+
 ## Versie 1.0.0 · Build 68
 _13 oktober 2026_
 
