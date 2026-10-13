@@ -1,5 +1,28 @@
 [
  {
+  "build": 64,
+  "version": "1.0.0",
+  "date": "2026-10-13",
+  "items": [
+   {
+    "type": "improved",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Webspeler: inloggen met de QR-code ziet er nu hetzelfde uit als op Apple TV, met je covers vervaagd op de achtergrond",
+    "en": "Web player: signing in with the QR code now looks the same as on Apple TV, with your covers blurred in the background"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Webspeler: de intro speelt de Bingr-tune af. Laat de browser geen geluid toe zonder tik, dan start je Bingr met één tik; uit te zetten met Intromuziek in Instellingen",
+    "en": "Web player: the intro plays the Bingr tune. If the browser doesn't allow sound without a tap, you start Bingr with one tap; turn it off with Intro sound in Settings"
+   }
+  ]
+ },
+ {
   "build": 63,
   "version": "1.0.0",
   "date": "2026-10-13",
