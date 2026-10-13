@@ -4,6 +4,15 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 66
+_13 oktober 2026_
+
+### Website
+
+**Verbeterd**
+
+- Webspeler: het Bingr-logo is nu hetzelfde als in de apps: witte letters met een streep in je accentkleur eronder
+
 ## Versie 1.0.0 · Build 65
 _13 oktober 2026_
 

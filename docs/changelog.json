@@ -1,5 +1,20 @@
 [
  {
+  "build": 66,
+  "version": "1.0.0",
+  "date": "2026-10-13",
+  "items": [
+   {
+    "type": "improved",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Webspeler: het Bingr-logo is nu hetzelfde als in de apps: witte letters met een streep in je accentkleur eronder",
+    "en": "Web player: the Bingr logo now matches the apps: white letters with a line in your accent colour underneath"
+   }
+  ]
+ },
+ {
   "build": 65,
   "version": "1.0.0",
   "date": "2026-10-13",
