@@ -131,6 +131,8 @@ Deno.test("GitHub: Apple-build", async () => {
   const run = (concl: string) => ctxWith(() => Response.json({ workflow_runs: [{ conclusion: concl, run_number: 9, head_sha: "abcdef123" }] }));
   eq((await checkGhWorkflow("o/r|build.yml|main", run("success"))).ok, true);
   eq((await checkGhWorkflow("o/r|build.yml|main", run("failure"))).error, "laatste build: failure");
+  const mixed = ctxWith(() => Response.json({ workflow_runs: [{ conclusion: "cancelled", run_number: 11 }, { conclusion: "success", run_number: 10 }] }));
+  eq((await checkGhWorkflow("o/r|build.yml|main", mixed)).ok, true); // geannuleerd telt niet
   const badge = (txt: string) => ctxWith((u) => u.includes("api.github.com")
     ? new Response("", { status: 429 }) : new Response(`<svg><text>Build</text><text>${txt}</text></svg>`));
   eq((await checkGhWorkflow("o/r|build.yml", badge("passing"))).ok, true);

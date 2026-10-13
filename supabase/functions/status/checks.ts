@@ -322,11 +322,12 @@ export async function checkGhWorkflow(target: string, ctx: Ctx): Promise<CheckRe
   const f = ctx.fetch ?? fetch;
   const t = now();
   return await withTimeout(async (signal) => {
-    const res = await f(`https://api.github.com/repos/${repo}/actions/workflows/${encodeURIComponent(file)}/runs?branch=${encodeURIComponent(branch)}&status=completed&per_page=1`,
+    const res = await f(`https://api.github.com/repos/${repo}/actions/workflows/${encodeURIComponent(file)}/runs?branch=${encodeURIComponent(branch)}&status=completed&per_page=15`,
       { signal, headers: ghHeaders(ctx) });
     if (res.ok) {
       const j = await res.json();
-      const run = j.workflow_runs?.[0];
+      // geannuleerde of overgeslagen builds (bv. ingehaald door een nieuwere push) tellen niet mee
+      const run = (j.workflow_runs ?? []).find((r: { conclusion?: string }) => !["cancelled", "skipped", "neutral", "stale"].includes(String(r.conclusion)));
       const ms = since(t);
       if (!run) return { ok: true, skip: true, error: "nog geen build" };
       const detail = `run ${run.run_number} (${String(run.head_sha ?? "").slice(0, 7)})`;
