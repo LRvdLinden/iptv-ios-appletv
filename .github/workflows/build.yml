@@ -112,8 +112,8 @@ jobs:
           git rm -rf --quiet . || true
           cp report/*.txt .
           git add latest.txt ios-tail.txt tvos-tail.txt macos-tail.txt
-          # het Xcode-project gaat naar bingr-beheer/versions (stap hierna); alleen zonder token nog op ci-logs
-          if [ -z "$BEHEER_TOKEN" ]; then cp report/Bingr-xcode.zip . && git add Bingr-xcode.zip; fi
+          # het nieuwste Xcode-project ook op ci-logs (overschreven per build; de vaste versies staan in bingr-beheer/versions)
+          cp report/Bingr-xcode.zip . && git add Bingr-xcode.zip
           git commit -m "build $GITHUB_SHA ios=${{ steps.ios.outcome }} tvos=${{ steps.tvos.outcome }} macos=${{ steps.macos.outcome }}"
           git push -f origin HEAD:ci-logs
 
