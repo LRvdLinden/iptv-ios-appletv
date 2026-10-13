@@ -139,7 +139,13 @@ jobs:
           cd beheer && git add -A versions
           if git diff --cached --quiet; then echo "::notice::Niets nieuws voor versions/"; exit 0; fi
           git -c user.name=github-actions -c user.email=actions@github.com commit -qm "Versies: Apple $V build $B ($(echo $GITHUB_SHA | cut -c1-7))"
-          for i in 1 2 3; do git push -q && break; git pull -q --rebase; done
+          ok=""
+          for i in 1 2 3; do
+            if git push -q 2>push.err; then ok=1; break; fi
+            echo "::warning::Push naar bingr-beheer mislukt (poging $i): $(tr '\n' ' ' < push.err | sed 's#x-access-token:[^@]*@#***@#g' | head -c 300)"
+            git pull -q --rebase || { git fetch -q --depth 20 origin main && git rebase -q origin/main; }
+          done
+          [ -n "$ok" ] || { echo "::error::Niet in bingr-beheer/versions gezet: push mislukt. Heeft BINGR_BEHEER_TOKEN Contents: Read and write op LRvdLinden/bingr-beheer?"; exit 1; }
           echo "::notice::In bingr-beheer/versions gezet: Apple $V build $B"
 
       - name: Status
