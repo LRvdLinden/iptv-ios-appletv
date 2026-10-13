@@ -117,6 +117,14 @@ jobs:
           git commit -m "build $GITHUB_SHA ios=${{ steps.ios.outcome }} tvos=${{ steps.tvos.outcome }} macos=${{ steps.macos.outcome }}"
           git push -f origin HEAD:ci-logs
 
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Bingr-xcode
+          path: report/Bingr-xcode.zip
+          if-no-files-found: ignore
+          retention-days: 30
+
       # Xcode-project naar bingr-beheer/versions/apple/<versie>-build<N>/ (alleen als iOS, tvOS en macOS slagen).
       # Nodig: secret BINGR_BEHEER_TOKEN (fine-grained token met Contents: Read and write op LRvdLinden/bingr-beheer).
       - name: In bingr-beheer/versions zetten
