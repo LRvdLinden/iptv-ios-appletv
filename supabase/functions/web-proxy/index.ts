@@ -7,7 +7,8 @@
 //   {action:"ping"}     → {ok:true}: statuscontrole, zonder inloggen
 // GET /functions/v1/web-proxy?u=<base64url van de URL>&t=<token>[&s=<handtekening>]
 //   voor <video>, hls.js en Safari's eigen HLS-speler (die geen headers kunnen meesturen). De Range-header van de
-//   browser gaat mee. HLS-afspeellijsten worden herschreven: elke URI wordt een GET-URL van de proxy (met `s`).
+//   browser gaat mee, begrensd tot 8 MB per aanvraag; negeert de server Range, dan maakt de proxy zelf de 206.
+//   HLS-afspeellijsten worden herschreven: elke URI wordt een GET-URL van de proxy (met `s`).
 // Alleen hosts uit de eigen servers van het account (get_sources: m3uURL, epgURL, serverURL) mogen, plus subdomeinen
 // van hetzelfde domein; of een URL die de proxy zelf in een afspeellijst zette (`s` = HMAC over gebruiker + URL).
 // Doorverwijzingen (max. 5, http of https) volgt de proxy zelf, ook naar andere hosts, maar nooit naar interne
@@ -15,7 +16,8 @@
 // Antwoord: de body van de server, gestreamd, met dezelfde status (200/206/4xx/5xx) en content-type, content-length,
 // content-range, accept-ranges. Fouten van de proxy zelf zijn JSON {error}:
 //   400 bad_json/bad_url/bad_range · 401 not_signed_in/bad_token · 403 host_not_allowed · 405 method_not_allowed
-//   413 too_large (> 200 MB) · 429 rate_limited · 502 upstream_failed · 503 unavailable · 504 timeout
+//   413 too_large (> 200 MB) · 416 (bereik voorbij het einde) · 429 rate_limited · 502 upstream_failed/range_not_supported
+//   · 503 unavailable · 504 timeout
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { b64url, isHlsPlaylist, rewritePlaylist, unb64url } from "./hls.ts";
 
@@ -33,6 +35,8 @@ const TOKEN_TTL_S = 6 * 3600;
 // GET met een open bereik (bytes=N-) voor een bestand: in stukken van 8 MB, zodat één aanvraag binnen de tijdslimiet
 // blijft; de browser vraagt zelf het volgende stuk (206 met Content-Range).
 const GET_CHUNK = 8 * 1024 * 1024;
+// negeert de server Range, dan slaat de proxy zelf hooguit zoveel over om bij het gevraagde stuk te komen
+const MAX_SKIP = 512 * 1024 * 1024;
 
 function corsFor(req: Request): Record<string, string> {
   const origin = req.headers.get("Origin") ?? "";
@@ -227,11 +231,20 @@ async function proxy(req: Request, opts: { target: URL; range: string | null; us
   if (!opts.trusted && !hostAllowed(host, await allowedHosts(user))) return json({ error: "host_not_allowed" }, 403);
   if (await resolvesPrivate(host)) return json({ error: "host_not_allowed" }, 403);
 
-  // GET met een open bereik voor iets dat geen afspeellijst is: begrenzen tot GET_CHUNK
+  // GET-bereik voor iets dat geen afspeellijst is: begrenzen tot GET_CHUNK. Open (bytes=N-, Chrome/Firefox) én gesloten
+  // bereiken die groter zijn (Safari vraagt bytes=0-<eind>): anders loopt een film van > 200 MB op too_large (413)
   const looksPlaylist = /\.m3u8?$/i.test(target.pathname);
+  let rangeFrom: number | null = null;
   if (get && range && !looksPlaylist) {
-    const m = /^bytes=(\d+)-$/.exec(range);
-    if (m) { const from = Number(m[1]); range = `bytes=${from}-${from + GET_CHUNK - 1}`; }
+    const m = /^bytes=(\d+)-(\d*)$/.exec(range);
+    if (m) {
+      const from = Number(m[1]);
+      const to = m[2] === "" ? Infinity : Number(m[2]);
+      if (to >= from) {
+        rangeFrom = from;
+        if (to - from + 1 > GET_CHUNK) range = `bytes=${from}-${from + GET_CHUNK - 1}`;
+      }
+    }
   }
 
   const ctl = new AbortController();
@@ -261,10 +274,44 @@ async function proxy(req: Request, opts: { target: URL; range: string | null; us
   if (!res) { clearTimeout(timer); return json({ error: "upstream_failed" }, 502); }
 
   const len = Number(res.headers.get("content-length") ?? "");
-  if (len > MAX_BYTES) { clearTimeout(timer); await res.body?.cancel(); return json({ error: "too_large" }, 413); }
-
   const ctype = res.headers.get("content-type") ?? "";
   const out = new Headers({ ...corsFor(req), "Cache-Control": "no-store", "X-Final-URL": url.toString() });
+
+  // de server negeert Range (200 met het hele bestand, komt voor bij Xtream-servers voor /movie/ en /series/):
+  // zelf een 206 maken voor het gevraagde stuk (tot GET_CHUNK; vanaf een verschuiving die we kunnen overslaan),
+  // zodat <video> het bestand toch in stukken kan afspelen en doorspoelen
+  const plainMedia = !/mpegurl/i.test(ctype) && !/\.m3u8$/i.test(url.pathname) && !looksPlaylist;
+  if (get && rangeFrom != null && res.status === 200 && res.body && plainMedia && len > 0 && Number.isFinite(len)) {
+    if (rangeFrom >= len) {
+      clearTimeout(timer); await res.body.cancel();
+      out.set("content-range", `bytes */${len}`);
+      return new Response(null, { status: 416, headers: out });
+    }
+    if (rangeFrom > MAX_SKIP) { clearTimeout(timer); await res.body.cancel(); return json({ error: "range_not_supported" }, 502); }
+    const want = Math.min(GET_CHUNK, len - rangeFrom);
+    const from = rangeFrom;
+    let skip = from, sent = 0;
+    const slice = new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, c) {
+        let part = chunk;
+        if (skip > 0) {
+          if (part.byteLength <= skip) { skip -= part.byteLength; return; }
+          part = part.subarray(skip); skip = 0;
+        }
+        if (sent + part.byteLength > want) part = part.subarray(0, want - sent);
+        if (part.byteLength) { c.enqueue(part); sent += part.byteLength; }
+        if (sent >= want) { clearTimeout(timer); c.terminate(); }
+      },
+      flush() { clearTimeout(timer); },
+    });
+    if (ctype) out.set("content-type", ctype);
+    out.set("content-length", String(want));
+    out.set("content-range", `bytes ${from}-${from + want - 1}/${len}`);
+    out.set("accept-ranges", "bytes");
+    return new Response(res.body.pipeThrough(slice), { status: 206, headers: out });
+  }
+
+  if (len > MAX_BYTES) { clearTimeout(timer); await res.body?.cancel(); return json({ error: "too_large" }, 413); }
   if (get && res.status === 200 && /^image\//i.test(ctype)) out.set("Cache-Control", "private, max-age=86400");
 
   // GET-vorm + HLS-afspeellijst: herschrijven, zodat de browser alles via de proxy ophaalt
