@@ -205,7 +205,7 @@ private struct TVPhoneLogin: View {
                 }
             }
             .frame(width: 300, height: 300)
-            (Text(L("Or go to")) + Text(" bingr.online/tv ").bold().foregroundColor(.white) + Text(L("and enter this code:")))
+            (Text(L("Or go to")) + Text(" bingr.online/koppelen ").bold().foregroundColor(.white) + Text(L("and enter this code:")))
                 .font(.system(size: 26))
                 .foregroundStyle(Theme.secondary)
                 .multilineTextAlignment(.center)

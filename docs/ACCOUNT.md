@@ -64,7 +64,7 @@ Tv-code tonen als `K7Q-4MX` (3 + 3). Bij het invoeren hoofdletters maken en `-` 
 **Inlogscherm op telefoon, tablet en Mac** (Netflix-stijl): zwarte achtergrond met een gedimde, licht vervaagde collage van posters (covers uit de bibliotheek als die er zijn, anders een donker verloop met rood), bovenaan het Bingr-logo. Daaronder een kaart met de kop **"Sign In"** of **"Create account"**, de velden **E-mail** en **Password** (met tonen/verbergen), een rode volle knop, en een foutmelding in oranje/rood onder de velden. Daaronder: "Forgot password?", en "New to Bingr? **Sign up now.**" / "Already have an account? **Sign in.**". Wachtwoord minimaal 6 tekens. Tijdens het laden een spinner in de knop.
 
 **Inlogscherm op tv** (Apple TV, Android TV, Fire TV), zoals Netflix:
-- Links: **"Sign in with your phone"**, "Scan the QR code with your phone's camera" + grote witte QR-code (de `url` uit start) + "Or go to **bingr.online/tv** and enter this code:" + de code groot (`K7Q-4MX`). De code ververst automatisch als hij verloopt. Onderaan "Waiting for confirmation…" met een spinner.
+- Links: **"Sign in with your phone"**, "Scan the QR code with your phone's camera" + grote witte QR-code (de `url` uit start) + "Or go to **bingr.online/koppelen** and enter this code:" + de code groot (`K7Q-4MX`). De code ververst automatisch als hij verloopt. Onderaan "Waiting for confirmation…" met een spinner.
 - Rechts, gescheiden door "OR": knop **"Sign in with email"**, die het e-mailformulier opent (tv-toetsenbord). Daarin ook "Create account".
 - Is de tv gekoppeld, dan kort "Signed in as %@" en door naar "Wie kijkt er?".
 
@@ -80,7 +80,7 @@ Sign In · Create account · Email · Password · Show · Hide · Sign up now. �
 
 ## Website
 
-- `bingr.online/tv?code=XXXXXX`: inloggen (of account maken) en de tv koppelen.
+- `bingr.online/koppelen?code=XXXXXX` (oude link `bingr.online/tv` stuurt door): inloggen (of account maken) en de tv koppelen.
 - `bingr.online/reset`: nieuw wachtwoord instellen via de link uit de e-mail.
 - `assets/config.js` (`window.BINGR_SUPABASE = {url, anonKey}`) wordt bij de deploy uit de secrets gemaakt.
 

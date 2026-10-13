@@ -13,12 +13,17 @@ _13 oktober 2026_
 
 - Apparaten: de browser verschijnt als eigen apparaattype (bijv. "Chrome op Mac") met een browser-icoon
 
+**Verbeterd**
+
+- Apparaat koppelen gaat nu via bingr.online/koppelen (de QR-code en de code op je tv of computer wijzen daarheen); de oude link bingr.online/tv blijft werken
+
 ### Website
 
 **Nieuw**
 
 - Kijk Bingr in je browser op bingr.online/web: inloggen met e-mail op je telefoon of met een QR-code op iPad en computer, met je profielen, Live TV met tv-gids, films, series, Mijn lijst en voortgang, sneltoetsen, beeld-in-beeld en volledig scherm
 - Bingr in de browser werkt met servers die https gebruiken; servers zonder https tonen een duidelijke melding om in de app te kijken
+- Changelog: per apparaat zie je de nieuwste versie en build, bovenaan op je telefoon en rechts op je computer; tik erop om alleen dat apparaat te zien
 
 ### Server
 

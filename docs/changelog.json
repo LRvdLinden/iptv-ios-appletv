@@ -43,6 +43,30 @@
     ],
     "nl": "Apparaten: de browser verschijnt als eigen apparaattype (bijv. \"Chrome op Mac\") met een browser-icoon",
     "en": "Devices: the browser appears as its own device type (e.g. \"Chrome on Mac\") with a browser icon"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web",
+     "server"
+    ],
+    "nl": "Apparaat koppelen gaat nu via bingr.online/koppelen (de QR-code en de code op je tv of computer wijzen daarheen); de oude link bingr.online/tv blijft werken",
+    "en": "Linking a device now uses bingr.online/koppelen (the QR code and the code on your TV or computer point there); the old link bingr.online/tv keeps working"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Changelog: per apparaat zie je de nieuwste versie en build, bovenaan op je telefoon en rechts op je computer; tik erop om alleen dat apparaat te zien",
+    "en": "Changelog: see the latest version and build per device, at the top on your phone and on the right on your computer; tap one to show only that device"
    }
   ]
  },

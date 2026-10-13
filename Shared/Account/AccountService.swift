@@ -852,7 +852,7 @@ final class AccountService: ObservableObject {
                     throw AccountError.generic
                 }
                 tvCode = code
-                tvURL = start.string("url") ?? "https://bingr.online/tv?code=\(code)"
+                tvURL = start.string("url") ?? "https://bingr.online/koppelen?code=\(code)"
                 tvError = nil
                 let interval = max(2, start.number("interval") ?? 3)
                 let deadline = Date().addingTimeInterval(start.number("expires_in") ?? 600)

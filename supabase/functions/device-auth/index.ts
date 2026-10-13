@@ -190,7 +190,7 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
         const code = randomCode(), poll_secret = randomSecret();
         const expires = new Date(Date.now() + 10 * 60 * 1000).toISOString();
         const { error } = await admin.from("device_codes").insert({ code, poll_secret, device, expires_at: expires });
-        if (!error) return json({ code, poll_secret, url: `${SITE}/tv?code=${code}`, expires_in: 600, interval: 3 });
+        if (!error) return json({ code, poll_secret, url: `${SITE}/koppelen?code=${code}`, expires_in: 600, interval: 3 });
       }
       return json({ error: "try_again" }, 503);
     }
