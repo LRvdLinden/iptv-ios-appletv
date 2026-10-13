@@ -576,21 +576,27 @@ device-auth `{"action":"announcements","lang":"nl"}` met `Authorization: Bearer 
 
 ### Webproxy (`web-proxy`) voor de webspeler
 
-IPTV-servers sturen zelden CORS-headers. De webspeler op bingr.online haalt API-JSON, M3U, XMLTV en HLS-afspeellijsten/-segmenten daarom op via een eigen Edge Function als de server zelf geen CORS toestaat.
+IPTV-servers sturen zelden CORS-headers en draaien vaak op **http**. Een https-pagina (bingr.online) mag niets van http laden (mixed content: de browser blokkeert API, M3U, XMLTV, afbeeldingen én video). De webspeler haalt daarom alles van een http-server via deze Edge Function op (aan de serverkant geldt die beperking niet); https-servers eerst direct, en alleen bij een CORS-/netwerkfout via de proxy.
 
-`POST {URL}/functions/v1/web-proxy`, headers `apikey`, `Authorization: Bearer <access_token>`, `Content-Type: application/json`, body:
+**POST** `{URL}/functions/v1/web-proxy`, headers `apikey`, `Authorization: Bearer <access_token>`, `Content-Type: application/json`, body:
 
 | Veld | Inhoud |
 |---|---|
-| `url` | volledige **https**-URL (de webspeler ondersteunt alleen https-bronnen; http geeft 400 `https_only`) |
+| `url` | volledige **http**- of **https**-URL |
 | `range` | optioneel, bv. `"bytes=0-1048575"` |
 
-- **Antwoord:** de body van de server, gestreamd (niet gebufferd), met dezelfde status (200, 206, 404 …) en `Content-Type`, `Content-Length`, `Content-Range`, `Accept-Ranges`. De header **`X-Final-URL`** geeft het adres na doorverwijzingen; gebruik dat als basis voor relatieve URL's in HLS-afspeellijsten.
-- **Alleen eigen servers:** de host moet voorkomen in de eigen bronnen van het account (`get_sources`: `m3uURL`, `epgURL`, `serverURL`; ook subdomeinen van hetzelfde domein). Doorverwijzingen (max. 5) volgt de proxy zelf, ook naar een andere host, maar alleen via https en nooit naar interne adressen. Een net toegevoegde bron werkt binnen ongeveer een minuut.
-- **Grenzen:** max. 200 MB per aanvraag, 120 s per aanvraag, 600 aanvragen per minuut per account.
-- **Fouten van de proxy zelf** zijn JSON `{error}`: 400 `bad_json` / `bad_url` / `https_only` / `bad_range`, 401 `not_signed_in`, 403 `host_not_allowed`, 413 `too_large`, 429 `rate_limited`, 502 `upstream_failed`, 503 `unavailable`, 504 `timeout`. Een fout van de IPTV-server zelf komt gewoon door met zijn eigen status.
-- **CORS:** alleen voor `https://bingr.online` (en `http://localhost` / `127.0.0.1` om te testen).
-- **Wanneer gebruiken:** eerst direct proberen; alleen bij een CORS-/netwerkfout via de proxy (en dat per server onthouden). Video via de proxy kost dataverkeer op de server, dus segmenten alleen via de proxy als het direct niet lukt.
+**Token** voor de GET-vorm: `POST {"action":"token"}` (met JWT) geeft `{token, expires_at}`. Het token (`<user-id>.<verloopt>.<HMAC-SHA256>`, sleutel afgeleid van `BINGR_SOURCES_KEY`, dus geen extra secret) is **6 uur** geldig; de webspeler haalt het na het inloggen op en ververst het ruim voor het verloopt.
+
+**GET** `{URL}/functions/v1/web-proxy?u=<base64url van de URL>&t=<token>` voor `<video>`, hls.js en Safari's eigen HLS-speler (die geen `Authorization`-header kunnen meesturen). De `Range`-header van de browser gaat mee; een open bereik (`bytes=N-`) voor een bestand wordt per 8 MB beantwoord (206 met `Content-Range`), zodat één aanvraag binnen de tijdslimiet blijft en de browser zelf het volgende stuk vraagt. Afbeeldingen krijgen `Cache-Control: private, max-age=86400`.
+
+- **HLS-afspeellijsten herschrijven (alleen GET):** is het antwoord een HLS-afspeellijst (content-type `mpegurl` of een pad op `.m3u8`, én de inhoud heeft `#EXT-X-`-regels; een IPTV-zenderlijst in M3U-vorm blijft ongemoeid), dan wordt elke URI absoluut gemaakt t.o.v. het adres ná doorverwijzingen en vervangen door een GET-URL van de proxy: regels zonder `#` (varianten, segmenten) en `URI="…"` in `#EXT-X-KEY`, `-MAP`, `-MEDIA`, `-I-FRAME-STREAM-INF`, `-SESSION-KEY`, `-PART`, `-PRELOAD-HINT`, `-RENDITION-REPORT`. Andere schema's (`skd://`, `data:`) blijven staan. Zo haalt de browser varianten, segmenten en sleutels ook via de proxy op. Die URL's dragen een extra parameter `s` (HMAC over gebruiker + URL): daarmee mag de proxy ook naar de host waar de afspeellijst naar verwijst (Xtream-servers sturen streams vaak door naar een ander IP of CDN).
+- **Segmenten en MP4** gaan gestreamd door (niet gebufferd), met `Range`. Een doorlopende live-`.ts`-stream loopt tegen de tijdslimiet aan: de webspeler gebruikt voor Xtream live en terugkijken daarom HLS (`/live/<user>/<pw>/<id>.m3u8`, `/timeshift/…/<id>.m3u8`).
+- **Antwoord:** de body van de server met dezelfde status (200, 206, 404 …) en `Content-Type`, `Content-Length`, `Content-Range`, `Accept-Ranges`. De header **`X-Final-URL`** geeft het adres na doorverwijzingen.
+- **Alleen eigen servers:** de begin-URL moet een host hebben uit de eigen bronnen van het account (`get_sources`: `m3uURL`, `epgURL`, `serverURL`; ook subdomeinen van hetzelfde domein), of een door de proxy zelf ondertekende URL uit een afspeellijst zijn (`s`). Doorverwijzingen (max. 5) volgt de proxy zelf, http ↔ https en naar elke publieke host. Nooit naar interne adressen (localhost, 10/8, 172.16/12, 192.168/16, 169.254/16, 100.64/10, IPv6-literals …), ook niet via een doorverwijzing, en waar de runtime het kan ook na DNS-opvraging. Een net toegevoegde bron werkt binnen ongeveer een minuut.
+- **Grenzen:** max. 200 MB per aanvraag (afspeellijsten 4 MB), 120 s per aanvraag, 600 aanvragen per minuut per account (POST en GET samen).
+- **Fouten van de proxy zelf** zijn JSON `{error}`: 400 `bad_json` / `bad_url` / `bad_range`, 401 `not_signed_in` (POST) / `bad_token` (GET), 403 `host_not_allowed`, 413 `too_large`, 429 `rate_limited`, 502 `upstream_failed`, 503 `unavailable`, 504 `timeout`. Een fout van de IPTV-server zelf komt gewoon door met zijn eigen status.
+- **CORS:** alleen voor `https://bingr.online` (en `http://localhost` / `127.0.0.1` om te testen); methoden GET, POST, OPTIONS; header `Range` toegestaan.
+- **Kosten:** alles via de proxy (bij http-servers ook alle video) kost dataverkeer en aanroepen van Supabase. Sommige aanbieders blokkeren datacenter-IP's of staan maar één verbinding tegelijk toe; dan werkt de webspeler voor die server niet of alleen als er niet tegelijk in een app wordt gekeken.
 
 ### Beheer (alleen intern)
 
