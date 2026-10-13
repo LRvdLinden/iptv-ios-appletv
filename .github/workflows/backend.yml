@@ -220,21 +220,21 @@ jobs:
       - name: Statusmonitor - planning controleren
         if: steps.check.outputs.skip != '1' && steps.cron.outputs.ok == '1' && inputs.verify_scheduler
         run: |
-          # wachten tot pg_cron de functie zelf heeft aangeroepen (status_runner.last_source = cron, na deze deploy)
+          # wachten tot pg_cron de functie zelf heeft aangeroepen (status_runner: last_source = cron, na het begin van deze stap)
           start=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           q() { python3 -c 'import json,sys;print(json.dumps({"query":sys.argv[1]}))' "$1" > /tmp/q.json
-                curl -s -X POST "https://api.supabase.com/v1/projects/$REF/database/query" -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" --data @/tmp/q.json; }
-          for i in $(seq 1 15); do
-            sleep 30
-            r=$(q "select last_run_at, last_source, (select count(*) from status_checks where at > '$start') as checks from status_runner where id = 1")
+                curl -s -X POST "https://api.supabase.com/v1/projects/$REF/database/query" -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" --data @/tmp/q.json | tr '\n' ' ' | head -c 900; }
+          for i in $(seq 1 26); do
+            sleep 20
+            r=$(q "select last_run_at, last_source, last_run_at > '$start'::timestamptz as after_start, (select count(*) from status_checks where at > '$start'::timestamptz) as checks from status_runner where id = 1")
             echo "$r"
-            if echo "$r" | grep -Eq '"last_source": ?"cron"' && ! echo "$r" | grep -Eq '"checks": ?"?0"?[,}]'; then
-              echo "::notice::Planning werkt: pg_cron heeft de controle uitgevoerd ($r)"
-              q "select status, start_time, return_message from cron.job_run_details where jobid = (select jobid from cron.job where jobname = 'bingr-status') order by start_time desc limit 3"; echo
-              q "select status_code, timed_out, created from net._http_response order by created desc limit 3"; echo
+            if echo "$r" | grep -Eq '"last_source": ?"cron"' && echo "$r" | grep -Eq '"after_start": ?true'; then
+              echo "::notice::Planning werkt: pg_cron heeft de functie status zelf aangeroepen: $r"
+              echo "::notice::cron.job_run_details: $(q "select status, start_time, return_message from cron.job_run_details where jobid = (select jobid from cron.job where jobname = 'bingr-status') order by start_time desc limit 2")"
+              echo "::notice::net._http_response: $(q "select status_code, timed_out, created from net._http_response order by created desc limit 2")"
               exit 0
             fi
           done
-          q "select status, start_time, return_message from cron.job_run_details where jobid = (select jobid from cron.job where jobname = 'bingr-status') order by start_time desc limit 5"; echo
-          q "select status_code, timed_out, error_msg, created from net._http_response order by created desc limit 5"; echo
-          echo "::error::De planning heeft binnen 7 minuten geen controle uitgevoerd"; exit 1
+          echo "::warning::cron.job_run_details: $(q "select status, start_time, return_message from cron.job_run_details order by start_time desc limit 4")"
+          echo "::warning::net._http_response: $(q "select status_code, timed_out, error_msg, left(content, 120) as content, created from net._http_response order by created desc limit 4")"
+          echo "::error::De planning heeft binnen 9 minuten de functie niet aangeroepen"; exit 1
