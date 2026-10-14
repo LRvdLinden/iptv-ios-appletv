@@ -1,5 +1,92 @@
 [
  {
+  "build": 88,
+  "version": "1.0.0",
+  "date": "2026-10-14",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web",
+     "server"
+    ],
+    "nl": "Twee abonnementen: Gratis (2 schermen tegelijk, 8 apparaten, 1 server) en Lifetime (€ 4,99 eenmalig: 6 schermen, 15 apparaten, onbeperkt servers, statistieken, Nu aan het kijken, Trakt en accentkleuren); bestaande accounts krijgen Lifetime cadeau",
+    "en": "Two plans: Free (2 screens at once, 8 devices, 1 server) and Lifetime (€4.99 one-time: 6 screens, 15 devices, unlimited servers, statistics, Watching now, Trakt and accent colours); existing accounts get Lifetime as a gift"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web"
+    ],
+    "nl": "Lifetime-functies hebben op Gratis een slotje met een vergelijking van beide abonnementen, en Mijn Bingr toont je abonnement met het aantal schermen, apparaten en servers",
+    "en": "Lifetime features show a lock with a comparison of both plans on Free, and My Bingr shows your plan with the number of screens, devices and servers"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "android",
+     "web"
+    ],
+    "nl": "Upgraden naar Lifetime opent bingr.online/upgrade in je browser",
+    "en": "Upgrading to Lifetime opens bingr.online/upgrade in your browser"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "androidtv",
+     "tizen"
+    ],
+    "nl": "Upgraden naar Lifetime op de tv: scan de QR-code met je telefoon",
+    "en": "Upgrade to Lifetime on your TV: scan the QR code with your phone"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web"
+    ],
+    "nl": "Bij te veel schermen of apparaten zie je de limiet van je abonnement en wat Lifetime toestaat",
+    "en": "When too many screens or devices are in use, you see your plan's limit and what Lifetime allows"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Op bingr.online een vergelijkingstabel Gratis en Lifetime, de pagina /upgrade/ (betalen volgt binnenkort) en een veelgestelde vraag over Lifetime",
+    "en": "On bingr.online a comparison table of Free and Lifetime, the /upgrade/ page (payment coming soon) and an FAQ about Lifetime"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Je kijktijd wordt ook bij Gratis bijgehouden, dus na het upgraden staan je statistieken er meteen",
+    "en": "Your watch time is recorded on Free too, so your statistics are there right after upgrading"
+   }
+  ]
+ },
+ {
   "build": 87,
   "version": "1.0.0",
   "date": "2026-10-14",
