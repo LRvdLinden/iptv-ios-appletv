@@ -1,5 +1,42 @@
 [
  {
+  "build": 86,
+  "version": "1.0.0",
+  "date": "2026-10-14",
+  "items": [
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web"
+    ],
+    "nl": "Categorieën staan nu in Mijn Bingr (Bibliotheek; op Samsung TV in het profielmenu) in plaats van als eigen tabblad, knop of menu-item",
+    "en": "Categories now live in My Bingr (Library; on Samsung TV in the profile menu) instead of a separate tab, button or menu item"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web"
+    ],
+    "nl": "Home: nieuwe rij Categorieën met de best gevulde genres als tegels en een tegel Alle categorieën, vijf rijen onder Nu live; aan, uit en te verplaatsen bij Startscherm",
+    "en": "Home: new Categories row with your best-filled genres as tiles and an All categories tile, five rows below Live now; turn it on or off or move it in Home screen"
+   }
+  ]
+ },
+ {
   "build": 85,
   "version": "1.0.0",
   "date": "2026-10-14",

@@ -4,6 +4,19 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 86
+_14 oktober 2026_
+
+### Alle apps en de website
+
+**Nieuw**
+
+- Home: nieuwe rij Categorieën met de best gevulde genres als tegels en een tegel Alle categorieën, vijf rijen onder Nu live; aan, uit en te verplaatsen bij Startscherm
+
+**Verbeterd**
+
+- Categorieën staan nu in Mijn Bingr (Bibliotheek; op Samsung TV in het profielmenu) in plaats van als eigen tabblad, knop of menu-item
+
 ## Versie 1.0.0 · Build 85
 _14 oktober 2026_
 
