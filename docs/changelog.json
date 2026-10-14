@@ -1,5 +1,33 @@
 [
  {
+  "build": 89,
+  "version": "1.0.0",
+  "date": "2026-10-14",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Op Mijn Bingr (bingr.online en de webspeler) maak je een ander profiel het hoofdprofiel; het huidige hoofdprofiel wordt dan een gewoon profiel",
+    "en": "In My Bingr (bingr.online and the web player) you can make another profile the main profile; the current main profile becomes a regular profile"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Een nieuw hoofdprofiel dat op een ander apparaat of op bingr.online gekozen is, wordt meteen overgenomen, met de rechten die erbij horen",
+    "en": "A new main profile chosen on another device or on bingr.online is picked up right away, with the rights that come with it"
+   }
+  ]
+ },
+ {
   "build": 88,
   "version": "1.0.0",
   "date": "2026-10-14",

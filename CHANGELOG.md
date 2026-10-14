@@ -4,6 +4,21 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 89
+_14 oktober 2026_
+
+### iOS, iPadOS, tvOS, macOS, Android en Android TV
+
+**Verbeterd**
+
+- Een nieuw hoofdprofiel dat op een ander apparaat of op bingr.online gekozen is, wordt meteen overgenomen, met de rechten die erbij horen
+
+### Website
+
+**Nieuw**
+
+- Op Mijn Bingr (bingr.online en de webspeler) maak je een ander profiel het hoofdprofiel; het huidige hoofdprofiel wordt dan een gewoon profiel
+
 ## Versie 1.0.0 · Build 88
 _14 oktober 2026_
 

@@ -311,6 +311,8 @@ final class ProfileSync {
                         if let a = r.profile.accentColor { p.accentColor = a }   // ontbreekt = niet gewijzigd (oudere app)
                         key = Double(r.order)
                         updated[p.id.uuidString] = r.updatedAt
+                        // build 89: hoofdprofiel op een ander apparaat (of op bingr.online) gewijzigd → overnemen
+                        if r.isMain && !store.isMain(p) { mainID = p.id }
                     } else if p.accentColor == nil, let a = r.profile.accentColor {
                         // lokaal nog geen kleur (bijv. net bijgewerkt): die van de server overnemen
                         p.accentColor = a
@@ -323,6 +325,7 @@ final class ProfileSync {
             for r in activeSorted where !localIDs.contains(r.profile.id) {
                 keyed.append((r.profile, Double(r.order), keyed.count))
                 updated[r.profile.id.uuidString] = r.updatedAt
+                if r.isMain { mainID = r.profile.id }
             }
             list = keyed.sorted { $0.key != $1.key ? $0.key < $1.key : $0.tie < $1.tie }.map(\.p)
         }
