@@ -4,6 +4,15 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 81
+_14 oktober 2026_
+
+### Website
+
+**Verbeterd**
+
+- Account maken op bingr.online: na het aanmaken en bevestigen ga je meteen naar Mijn Bingr in plaats van naar tv koppelen (behalve als je een koppelcode hebt ingevoerd)
+
 ## Versie 1.0.0 · Build 80
 _14 oktober 2026_
 

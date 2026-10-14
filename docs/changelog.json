@@ -1,5 +1,20 @@
 [
  {
+  "build": 81,
+  "version": "1.0.0",
+  "date": "2026-10-14",
+  "items": [
+   {
+    "type": "improved",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Account maken op bingr.online: na het aanmaken en bevestigen ga je meteen naar Mijn Bingr in plaats van naar tv koppelen (behalve als je een koppelcode hebt ingevoerd)",
+    "en": "Creating an account on bingr.online: after signing up and confirming you go straight to My Bingr instead of TV linking (unless you entered a linking code)"
+   }
+  ]
+ },
+ {
   "build": 80,
   "version": "1.0.0",
   "date": "2026-10-14",
