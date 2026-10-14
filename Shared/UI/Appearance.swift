@@ -20,6 +20,8 @@ enum AccentChoice: String, CaseIterable, Identifiable {
     static let migratedKey = "ui.accentColor.migrated.v54"
 
     static var current: AccentChoice {
+        // build 88: accentkleuren horen bij Lifetime; Gratis tekent met de standaardkleur (de keuze blijft bewaard)
+        guard EntitlementsService.themesAllowed else { return .red }
         if let c = UserDefaults.standard.string(forKey: key).flatMap(AccentChoice.init(rawValue:)) { return c }
         return legacy ?? .red
     }
@@ -163,12 +165,15 @@ struct AppIconPreview: View {
 /// Mijn Bingr → Uiterlijk: app-icoon (alleen het hoofdprofiel, waar het kan) en de accentkleur van dit profiel.
 struct AppearanceView: View {
     @EnvironmentObject var store: CloudStore
+    /// Build 88: accentkleuren horen bij Lifetime; Gratis houdt de standaardkleur
+    @ObservedObject private var ent = EntitlementsService.shared
     @State private var icon = AppIconChoice.current
+    @State private var lockTopic: LifetimeTopic?
 
     /// Hoofdprofiel (of nog geen profielen): alleen dan het app-icoon tonen
     private var isMain: Bool { store.isMainActive || store.profiles.isEmpty || store.activeProfileID == nil }
     /// De accentkleur van het actieve profiel
-    private var accent: String { AccentChoice.of(store.activeProfile).rawValue }
+    private var accent: String { ent.allows(.themes) ? AccentChoice.of(store.activeProfile).rawValue : AccentChoice.red.rawValue }
 
     var body: some View {
         List {
@@ -208,12 +213,15 @@ struct AppearanceView: View {
             }
             Section {
                 ForEach(AccentChoice.allCases) { c in
-                    Button { setAccent(c) } label: {
+                    let locked = !ent.allows(.themes) && c != .red
+                    Button { if locked { lockTopic = .feature(.themes) } else { setAccent(c) } } label: {
                         HStack(spacing: 14) {
                             Circle().fill(c.color).frame(width: tvScaled(22), height: tvScaled(22))
+                                .opacity(locked ? 0.45 : 1)
                             Text(c.title)
                             Spacer()
                             if accent == c.rawValue { Image(systemName: "checkmark").foregroundStyle(c.color) }
+                            else if locked { LifetimeBadge() }
                         }
                     }
                 }
@@ -222,6 +230,7 @@ struct AppearanceView: View {
             }
         }
         .navigationTitle(L("Appearance"))
+        .lifetimeSheet($lockTopic)
     }
 
     /// Kleur bij het actieve profiel bewaren (gaat via ProfileSync naar de account); zonder profiel alleen lokaal.

@@ -11,6 +11,8 @@ struct AppSettingsView: View {
     @EnvironmentObject var parental: ParentalControl
     /// App-sleutels van de server (build 41): opnieuw tekenen zodra ze binnen zijn
     @ObservedObject private var account = AccountService.shared
+    /// Build 88: een tweede server hoort bij Lifetime (bestaande extra servers blijven bruikbaar)
+    @ObservedObject private var ent = EntitlementsService.shared
     @AppStorage(TrackPreferences.subtitleModeKey) private var subtitleMode = TrackPreferences.SubtitleMode.whenNeeded.rawValue
     @AppStorage("playlist.refresh") private var refreshPolicy = RefreshPolicy.daily.rawValue
     @AppStorage("player.engine") private var engine = PlayerController.EngineChoice.auto.rawValue
@@ -210,7 +212,11 @@ struct AppSettingsView: View {
                         Label(L("Refresh now"), systemImage: "arrow.clockwise")
                     }
                 }
-                Button { addingServer = true } label: { Label(L("Add server"), systemImage: "plus") }
+                if ent.canAddServer(count: store.playlists.count) {
+                    Button { addingServer = true } label: { Label(L("Add server"), systemImage: "plus") }
+                } else {
+                    LifetimeLockRow(title: L("Add server"), icon: "plus", feature: .multiServer)
+                }
                 if let s = playlists.source {
                     Button(role: .destructive) { deletingServer = s } label: { Label(L("Delete server"), systemImage: "trash") }
                 }

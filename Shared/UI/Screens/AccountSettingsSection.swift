@@ -4,6 +4,8 @@ import SwiftUI
 struct AccountSettingsSection: View {
     @EnvironmentObject var account: AccountService
     @EnvironmentObject var store: CloudStore
+    /// Build 88: "Nu aan het kijken" en de kijkgeschiedenis horen bij Lifetime
+    @ObservedObject private var ent = EntitlementsService.shared
     @State private var confirmSignOut = false
     @State private var confirmDelete = false
     @State private var error: String?
@@ -18,9 +20,14 @@ struct AccountSettingsSection: View {
                 }
                 // tegelijk kijken (build 51): alleen voor het hoofdprofiel
                 if isMain {
-                    WatchingNowRow()
-                    NavigationLink { WatchLogView() } label: {
-                        Label(L("Watch history (7 days)"), systemImage: "clock.arrow.circlepath")
+                    if ent.allows(.nowWatching) {
+                        WatchingNowRow()
+                        NavigationLink { WatchLogView() } label: {
+                            Label(L("Watch history (7 days)"), systemImage: "clock.arrow.circlepath")
+                        }
+                    } else {
+                        LifetimeLockRow(title: L("Watching now"), icon: "play.tv", feature: .nowWatching)
+                        LifetimeLockRow(title: L("Watch history (7 days)"), icon: "clock.arrow.circlepath", feature: .nowWatching)
                     }
                 }
                 #if !os(tvOS)

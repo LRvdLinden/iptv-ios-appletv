@@ -249,6 +249,8 @@ final class TraktSync: ObservableObject {
             if force { lastError = L("Not signed in to Trakt.") }
             return
         }
+        // build 88: Trakt hoort bij Lifetime; op een Gratis-account staat synchroniseren stil
+        guard EntitlementsService.shared.allows(.trakt) else { return }
         guard !isSyncing else { return }
         isSyncing = true
         let started = Date()
@@ -391,7 +393,7 @@ final class TraktSync: ObservableObject {
 
     @discardableResult
     func scrobble(_ action: ScrobbleAction, item: PlayableItem, progress: Double) async -> ScrobbleResult {
-        guard isLoggedIn, Self.scrobbleEnabled, item.type != .live else { return .skipped }
+        guard isLoggedIn, Self.scrobbleEnabled, item.type != .live, EntitlementsService.shared.allows(.trakt) else { return .skipped }
         guard let imdb = await resolveIMDb(item) else {
             lastScrobble = L("Not found on Trakt: %@", item.title)
             return .notFound

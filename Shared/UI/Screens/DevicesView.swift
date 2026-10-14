@@ -414,6 +414,9 @@ struct TooManyDevicesView: View {
                 .foregroundStyle(Theme.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
+            // build 88: op Gratis de limiet van Lifetime en de vergelijking (link alleen als de server het toestaat)
+            PlanLimitNote(topic: .devices, plan: limit?.plan)
+
             VStack(spacing: 0) {
                 ForEach(limit?.devices ?? []) { d in
                     DeviceRow(device: d, busy: removing == d.id) { pending = d }

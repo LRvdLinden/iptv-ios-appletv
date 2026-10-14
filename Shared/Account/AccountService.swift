@@ -48,6 +48,8 @@ final class AccountService: ObservableObject {
     struct DeviceLimit: Equatable {
         let limit: Int
         let devices: [Device]
+        /// Abonnement (build 88): `free` of `lifetime`; nil bij oudere servers
+        var plan: String? = nil
     }
 
     /// Gezet als `register_device` 403 `device_limit` gaf; leeg zodra het apparaat alsnog geregistreerd is of na uitloggen.
@@ -359,7 +361,7 @@ final class AccountService: ObservableObject {
             if r.status == 403 || r.string("error") == "device_limit" {
                 let limit = Int(r.number("limit") ?? Double(Self.fallbackDeviceLimit))
                 let list = (r.json["devices"] as? [[String: Any]] ?? []).compactMap(Self.device)
-                deviceLimit = DeviceLimit(limit: limit, devices: list)
+                deviceLimit = DeviceLimit(limit: limit, devices: list, plan: r.string("plan"))
                 return .limit
             }
             guard r.status == 200, (r.json["ok"] as? Bool) == true else { return .failed }
@@ -395,7 +397,14 @@ final class AccountService: ObservableObject {
         do {
             let r = try await authorized { token in
                 try await self.post("/functions/v1/device-auth", ["action": "heartbeat", "device_id": self.deviceID,
-                                                                         "app_version": Self.appVersion, "os_version": Self.osVersion], bearer: token)
+                                                                         "app_version": Self.appVersion, "os_version": Self.osVersion,
+                                                                         "platform": Self.entitlementsPlatform], bearer: token)
+            }
+            // build 88: abonnement meegestuurd met de heartbeat → overnemen, anders apart ophalen (hooguit eens per 10 min)
+            if let e = r.json["entitlements"] as? [String: Any] {
+                EntitlementsService.shared.apply(e)
+            } else if r.status == 200, (r.json["revoked"] as? Bool) != true {
+                Task { @MainActor in await EntitlementsService.shared.refresh() }
             }
             if (r.json["revoked"] as? Bool) == true {
                 // build 82: ingetrokken omdat het account geblokkeerd is → met melding
@@ -512,6 +521,8 @@ final class AccountService: ObservableObject {
     struct StreamLimit: Equatable {
         let limit: Int
         let streams: [ActiveStream]
+        /// Abonnement (build 88): `free` of `lifetime`; nil bij oudere servers
+        var plan: String? = nil
     }
 
     /// Eén regel uit de kijkgeschiedenis (`watch_log`).
@@ -545,7 +556,8 @@ final class AccountService: ObservableObject {
             let r = try await authorized { token in try await self.post("/functions/v1/device-auth", body, bearer: token) }
             if r.status == 403 || r.string("error") == "stream_limit" {
                 let streams = (r.json["streams"] as? [[String: Any]] ?? []).compactMap(Self.stream)
-                return .limit(StreamLimit(limit: Int(r.number("limit") ?? Double(streams.count)), streams: streams))
+                return .limit(StreamLimit(limit: Int(r.number("limit") ?? Double(streams.count)), streams: streams,
+                                          plan: r.string("plan")))
             }
             return r.status == 200 ? .ok : .offline
         } catch {
@@ -578,6 +590,7 @@ final class AccountService: ObservableObject {
         let r = try await authorized { token in
             try await self.post("/functions/v1/device-auth", ["action": "list_streams"], bearer: token)
         }
+        try checkFeatureLocked(r)
         guard r.status == 200 else { throw AccountError.generic }
         let streams = (r.json["streams"] as? [[String: Any]] ?? []).compactMap(Self.stream)
         return StreamLimit(limit: Int(r.number("limit") ?? Double(streams.count)), streams: streams)
@@ -588,6 +601,7 @@ final class AccountService: ObservableObject {
         let r = try await authorized { token in
             try await self.post("/functions/v1/device-auth", ["action": "watch_log", "days": days], bearer: token)
         }
+        try checkFeatureLocked(r)
         guard r.status == 200 else { throw AccountError.generic }
         let rows = r.json["entries"] as? [[String: Any]] ?? []
         var out: [WatchLogEntry] = []
@@ -668,6 +682,7 @@ final class AccountService: ObservableObject {
         if let profileID { body["profile_id"] = profileID }
         let r = try await authorized { token in try await self.post("/functions/v1/device-auth", body, bearer: token) }
         if r.string("error") == "unknown_action" || r.status == 404 { throw StatsUnavailable() }
+        try checkFeatureLocked(r)
         guard r.status == 200 else { throw AccountError.generic }
         return Self.parseStats(r.json)
     }
@@ -800,7 +815,8 @@ final class AccountService: ObservableObject {
     private func performFetchConfig() async -> Bool {
         do {
             let r = try await authorized { token in
-                try await self.post("/functions/v1/device-auth", ["action": "config"], bearer: token)
+                try await self.post("/functions/v1/device-auth", ["action": "config", "platform": Self.entitlementsPlatform,
+                                                                  "device_id": self.deviceID], bearer: token)
             }
             guard r.status == 200, isSignedIn else { return false }
             var values: [Secrets.Key: String] = [:]
@@ -809,12 +825,51 @@ final class AccountService: ObservableObject {
                 if let v = r.json[k.rawValue] as? String { values[k] = v }
             }
             lastConfigFetch = Date()
+            if let e = r.json["entitlements"] as? [String: Any] { EntitlementsService.shared.apply(e) }
             Secrets.reload()
             if Secrets.setServerValues(values) { configRevision += 1 }
             return true
         } catch {
             return false   // offline: de eerder opgehaalde sleutels blijven werken
         }
+    }
+
+    // MARK: - Abonnement (build 88)
+
+    /// User-id van het ingelogde account (cache per account van het abonnement).
+    var accountID: String? { userID }
+
+    /// Platform voor `entitlements`: `ios`, `ipados`, `tvos` of `macos`.
+    static var entitlementsPlatform: String {
+        #if os(tvOS)
+        return "tvos"
+        #elseif os(macOS)
+        return "macos"
+        #else
+        return UIDevice.current.userInterfaceIdiom == .pad ? "ipados" : "ios"
+        #endif
+    }
+
+    /// device-auth `entitlements`: het antwoord (of nil bij een fout, offline of een oudere server).
+    func fetchEntitlements() async -> [String: Any]? {
+        guard Secrets.accountsConfigured, isSignedIn else { return nil }
+        do {
+            let r = try await authorized { token in
+                try await self.post("/functions/v1/device-auth", ["action": "entitlements", "platform": Self.entitlementsPlatform,
+                                                                     "device_id": self.deviceID], bearer: token)
+            }
+            guard r.status == 200, isSignedIn else { return nil }
+            return r.json
+        } catch {
+            return nil
+        }
+    }
+
+    /// 403 `feature_locked` (Gratis-account): abonnement bijwerken en `FeatureLockedError` gooien.
+    private func checkFeatureLocked(_ r: Response) throws {
+        guard r.string("error") == "feature_locked" else { return }
+        EntitlementsService.shared.serverLocked(r.string("feature"))
+        throw FeatureLockedError(feature: r.string("feature"))
     }
 
     // MARK: - Profielen per account (account_data via PostgREST)

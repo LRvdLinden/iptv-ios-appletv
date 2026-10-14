@@ -113,6 +113,8 @@ struct StatsView: View {
     @EnvironmentObject var account: AccountService
     @EnvironmentObject var store: CloudStore
     @EnvironmentObject var playlists: PlaylistService
+    /// Build 88: statistieken horen bij Lifetime
+    @ObservedObject private var ent = EntitlementsService.shared
 
     @State private var period: AccountService.StatsPeriod = .month
     @State private var offset = 0
@@ -144,6 +146,24 @@ struct StatsView: View {
     private var loadKey: String { "\(period.rawValue)|\(offset)|\(requestProfileID ?? "all")" }
 
     var body: some View {
+        if ent.allows(.stats) { unlocked } else { locked }
+    }
+
+    /// Gratis-account (of 403 `feature_locked`): uitleg in plaats van de cijfers.
+    private var locked: some View {
+        ScrollView {
+            LifetimeLockedView(feature: .stats)
+                .padding(.horizontal, Theme.edge)
+                .padding(.vertical, tvScaled(16))
+                .frame(maxWidth: tvScaled(700), alignment: .leading)
+                .frame(maxWidth: .infinity)
+        }
+        .background(Theme.bg.ignoresSafeArea())
+        .navigationTitle(L("Statistics"))
+        .task { await ent.refresh() }
+    }
+
+    private var unlocked: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: tvScaled(22)) {
                 StatsPeriodBar(period: $period, offset: $offset)
@@ -286,6 +306,9 @@ struct StatsView: View {
             stats = s
             error = nil
         } catch is CancellationError {
+        } catch is FeatureLockedError {
+            // de server zette de functie op slot: het scherm wisselt naar de uitleg
+            stats = nil
         } catch {
             stats = nil
             self.error = error.localizedDescription

@@ -19,6 +19,8 @@ struct BingrApp: App {
     @AppStorage(AccentChoice.key) private var accent = AccentChoice.current.rawValue
     /// De accentkleur waarmee nu getekend is; een wijziging (ook via de account) pas toepassen als er niets speelt
     @State private var shownAccent = AccentChoice.current.rawValue
+    /// Build 88: accentkleuren alleen met Lifetime (Gratis tekent met de standaardkleur)
+    @AppStorage(EntitlementsService.themesKey) private var themesAllowed = true
     #if os(iOS)
     /// Downloads op de achtergrond (build 52): het systeem maakt de app wakker als ze klaar zijn
     @UIApplicationDelegateAdaptor(BingrAppDelegate.self) private var appDelegate
@@ -56,11 +58,14 @@ struct BingrApp: App {
                     // gekozen app-icoon na een update gelijktrekken; Mac: in het Dock (build 52/54)
                     AppIconChoice.reconcile()
                 }
-                .onChange(of: accent) { _, v in
-                    if app.playing == nil && !app.showMultiview { shownAccent = v }
+                .onChange(of: accent) { _, _ in
+                    if app.playing == nil && !app.showMultiview { shownAccent = AccentChoice.current.rawValue }
+                }
+                .onChange(of: themesAllowed) { _, _ in
+                    if app.playing == nil && !app.showMultiview { shownAccent = AccentChoice.current.rawValue }
                 }
                 .onChange(of: app.playing) { _, p in
-                    if p == nil && shownAccent != accent { shownAccent = accent }
+                    if p == nil && shownAccent != AccentChoice.current.rawValue { shownAccent = AccentChoice.current.rawValue }
                 }
                 #if os(macOS)
                 .frame(minWidth: 900, minHeight: 600)
@@ -83,6 +88,8 @@ struct BingrApp: App {
                     await StateSync.shared.syncNow()
                     // app-sleutels: alleen opnieuw als het nog niet gelukt is (bijv. offline gestart)
                     await account.fetchConfig(force: false)
+                    // abonnement (build 88): bij terugkeer naar de voorgrond
+                    await EntitlementsService.shared.refresh(force: true)
                 }
                 // mededelingen (build 62): hooguit eens per uur, alleen in de app zelf
                 if app.stage == .main { AnnouncementCenter.shared.check() }
@@ -134,6 +141,8 @@ final class AppState: ObservableObject {
             .store(in: &bag)
         ProfileSync.shared.start()
         SourceSync.shared.start()
+        // abonnement (build 88): ophalen na het inloggen, bij de heartbeat en op de voorgrond
+        EntitlementsService.shared.start()
         StateSync.shared.start()
         // servers uit de Bingr-account geïmporteerd, gewijzigd of verwijderd → bibliotheek laden of verversen
         SourceSync.shared.changes

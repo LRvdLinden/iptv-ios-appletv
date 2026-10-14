@@ -8,6 +8,8 @@ struct MyBingrView: View {
     @EnvironmentObject var playlists: PlaylistService
     @EnvironmentObject var trakt: TraktSync
     @ObservedObject private var account = AccountService.shared
+    /// Build 88: abonnement (Gratis/Lifetime) voor de slotjes
+    @ObservedObject private var ent = EntitlementsService.shared
     /// Build 86: Categorieën (aantal in de rij bij Bibliotheek)
     @ObservedObject private var browse = BrowseIndexStore.shared
     @AppStorage("ui.showMovies") private var showMovies = true
@@ -76,7 +78,7 @@ struct MyBingrView: View {
                 row(.categories, L("Categories"), "square.grid.2x2", count: n > 0 ? n : nil)
             }
             // kijkstatistieken (build 68): per week, maand of jaar, via de Bingr-account
-            if signedIn { row(.stats, L("Statistics"), "chart.bar.xaxis") }
+            if signedIn { row(.stats, L("Statistics"), "chart.bar.xaxis", locked: !ent.allows(.stats)) }
             if isMain {
                 traktRow
                 row(.network, L("NAS & network (SMB/DLNA)"), "externaldrive.connected.to.line.below")
@@ -100,7 +102,8 @@ struct MyBingrView: View {
                     Image(systemName: "checkmark.rectangle.stack.fill").foregroundStyle(Color.purple)
                 }
                 Spacer(minLength: 8)
-                Text(traktStatus).font(.caption).foregroundStyle(Theme.secondary).lineLimit(1)
+                if !ent.allows(.trakt) { LifetimeBadge() }
+                else { Text(traktStatus).font(.caption).foregroundStyle(Theme.secondary).lineLimit(1) }
             }
         }
     }
@@ -121,7 +124,11 @@ struct MyBingrView: View {
             }
             row(.homeLayout, L("Home screen"), "rectangle.grid.1x2")
             row(.settings, L("Settings"), "gearshape")
-            if signedIn { row(.account, L("Account and devices"), "person.crop.circle") }
+            if signedIn {
+                row(.account, L("Account and devices"), "person.crop.circle")
+                // build 88: abonnement (Gratis of Lifetime) met de limieten
+                PlanRow()
+            }
             // build 75: support.bingr.online, onder Account en apparaten (ook zonder Bingr-account)
             markLast(supportRow)
         } header: { Text(L("Profile")) }
@@ -148,11 +155,12 @@ struct MyBingrView: View {
         #endif
     }
 
-    private func row(_ route: MyBingrRoute, _ title: String, _ icon: String, count: Int? = nil) -> some View {
+    private func row(_ route: MyBingrRoute, _ title: String, _ icon: String, count: Int? = nil, locked: Bool = false) -> some View {
         NavigationLink(value: route) {
             HStack {
                 Label(title, systemImage: icon)
                 Spacer(minLength: 8)
+                if locked { LifetimeBadge() }
                 if let count { Text(verbatim: "\(count)").foregroundStyle(Theme.secondary) }
             }
         }
@@ -220,6 +228,8 @@ struct ProfilesManageView: View {
 struct TraktSettingsView: View {
     @EnvironmentObject var trakt: TraktSync
     @ObservedObject private var account = AccountService.shared
+    /// Build 88: Trakt hoort bij Lifetime
+    @ObservedObject private var ent = EntitlementsService.shared
     @AppStorage("trakt.scrobble") private var traktScrobble = true
     @AppStorage("trakt.askRating") private var traktAskRating = true
     @State private var showTraktLogin = false
@@ -281,10 +291,19 @@ struct TraktSettingsView: View {
                 }
                 .disabled(trakt.isSyncing)
                 Button(role: .destructive) { Task { await trakt.logout() } } label: { Label(L("Sign out of Trakt"), systemImage: "rectangle.portrait.and.arrow.right") }
+            } else if !ent.allows(.trakt) {
+                // build 88: Gratis → geen Trakt koppelen, alleen de uitleg
+                LifetimeLockRow(title: L("Sign in to Trakt"), icon: "person.crop.circle.badge.checkmark", feature: .trakt)
             } else {
                 Button { signIn() } label: {
                     Label(L("Sign in to Trakt"), systemImage: "person.crop.circle.badge.checkmark")
                 }
+            }
+            if trakt.isLoggedIn && !ent.allows(.trakt) {
+                // al gekoppeld op een Gratis-account: synchroniseren staat stil, ontkoppelen kan wel
+                Text(L("Trakt sync is paused: Trakt is a Lifetime feature."))
+                    .font(.caption).foregroundStyle(Theme.secondary)
+                LifetimeLockRow(title: L("Compare plans"), icon: "info.circle", feature: .trakt)
             }
             if let e = trakt.lastError { Text(e).font(.caption).foregroundStyle(Theme.red) }
         } header: { Text("Trakt") } footer: {
