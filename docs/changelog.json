@@ -1,5 +1,70 @@
 [
  {
+  "build": 85,
+  "version": "1.0.0",
+  "date": "2026-10-14",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web"
+    ],
+    "nl": "Categorieën in Netflix-stijl: blader per genre (Actie, Komedie, Drama, Horror, Sci-Fi, Animatie, …) of door de categorieën van je server, met tegels vol covers; per categorie kies je Alles, Films of Series en sorteer je op Populair, Nieuwste, A–Z of Beoordeling",
+    "en": "Netflix-style Categories: browse by genre (Action, Comedy, Drama, Horror, Sci-Fi, Animation, …) or through your server's categories, with tiles full of covers; in each category choose All, Movies or Series and sort by Popular, Newest, A–Z or Rating"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "androidtv"
+    ],
+    "nl": "De trailer in de kop van film- en seriepagina's speelt nu ook op Android TV, Google TV en Fire TV automatisch af (zonder geluid); kan het niet, dan beweegt de achtergrond rustig",
+    "en": "The trailer at the top of movie and series pages now autoplays (muted) on Android TV, Google TV and Fire TV too; if it can't, the backdrop gently moves instead"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "android"
+    ],
+    "nl": "De trailer in de kop start betrouwbaarder op telefoons en tablets",
+    "en": "The header trailer starts more reliably on phones and tablets"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "tizen",
+     "web"
+    ],
+    "nl": "Trailer in de kop van de detailpagina op Samsung TV: nieuwe manier van afspelen via bingr.online, en anders een rustig bewegende achtergrond",
+    "en": "Trailer at the top of the detail page on Samsung TV: new playback via bingr.online, with a gently moving backdrop as fallback"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "tvos"
+    ],
+    "nl": "De kop van de detailpagina beweegt: langzaam inzoomen en overvloeien tussen achtergronden (stil bij Bewegingen beperken); de trailerknop opent de YouTube-app",
+    "en": "The detail page header comes alive with a slow zoom and cross-fading backdrops (still with Reduce Motion); the trailer button opens the YouTube app"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "macos"
+    ],
+    "nl": "Chips Series, Films en Categorieën bovenaan Home; Categorieën ook bovenaan Films en Series",
+    "en": "Series, Movies and Categories chips at the top of Home; Categories also at the top of Movies and Series"
+   }
+  ]
+ },
+ {
   "build": 84,
   "version": "1.0.0",
   "date": "2026-10-14",

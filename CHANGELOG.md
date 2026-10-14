@@ -4,6 +4,33 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 85
+_14 oktober 2026_
+
+### Alle apps en de website
+
+**Nieuw**
+
+- Categorieën in Netflix-stijl: blader per genre (Actie, Komedie, Drama, Horror, Sci-Fi, Animatie, …) of door de categorieën van je server, met tegels vol covers; per categorie kies je Alles, Films of Series en sorteer je op Populair, Nieuwste, A–Z of Beoordeling
+
+### iOS, iPadOS en macOS
+
+**Verbeterd**
+
+- Chips Series, Films en Categorieën bovenaan Home; Categorieën ook bovenaan Films en Series
+
+### tvOS
+
+**Verbeterd**
+
+- De kop van de detailpagina beweegt: langzaam inzoomen en overvloeien tussen achtergronden (stil bij Bewegingen beperken); de trailerknop opent de YouTube-app
+
+### Samsung TV (Tizen) en Website
+
+**Opgelost**
+
+- Trailer in de kop van de detailpagina op Samsung TV: nieuwe manier van afspelen via bingr.online, en anders een rustig bewegende achtergrond
+
 ## Versie 1.0.0 · Build 84
 _14 oktober 2026_
 
