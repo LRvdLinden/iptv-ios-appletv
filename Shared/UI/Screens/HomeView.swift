@@ -774,14 +774,11 @@ private struct HomeTopBar: View {
     let filter: HomeView.Filter
     let onSearch: () -> Void
     let onTab: (Int) -> Void
-    @AppStorage("ui.showMovies") private var showMovies = true
-    @AppStorage("ui.showSeries") private var showSeries = true
 
     var body: some View {
         let off = Double(-scroll.y)
         VStack(alignment: .leading, spacing: 8) {
             bar
-            chips
         }
         .padding(.horizontal, 16).padding(.bottom, 10)
         .background(
@@ -791,32 +788,8 @@ private struct HomeTopBar: View {
         )
     }
 
-    /// Build 85, zoals Netflix: Series / Films onder het logo (alleen op Home). Build 86: Categorieën staan in
-    /// Mijn Bingr en als rij op Home, niet meer als chip.
-    @ViewBuilder private var chips: some View {
-        if filter == .all && (showMovies || showSeries) {
-            HStack(spacing: 8) {
-                if showSeries { chip(L("Series")) { onTab(3) } }
-                if showMovies { chip(L("Movies")) { onTab(2) } }
-                Spacer(minLength: 0)
-            }
-        }
-    }
-
-    private func chip(_ title: String, icon: String? = nil, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 4) {
-                Text(title).font(.system(size: 14, weight: .semibold))
-                if let icon { Image(systemName: icon).font(.system(size: 10, weight: .bold)) }
-            }
-            .foregroundStyle(.white)
-            .padding(.horizontal, 14).padding(.vertical, 6)
-            .overlay(Capsule().stroke(.white.opacity(0.55), lineWidth: 1))
-            .contentShape(Capsule())
-        }
-        .buttonStyle(PressableStyle())
-        .tileHover()
-    }
+    // Build 87: de chips Series / Films onder het logo zijn weg (Films en Series staan in de tabbalk,
+    // Categorieën in Mijn Bingr en als rij op Home).
 
     private var bar: some View {
         HStack(spacing: 14) {
