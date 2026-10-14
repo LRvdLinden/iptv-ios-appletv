@@ -1,5 +1,29 @@
 [
  {
+  "build": 79,
+  "version": "1.0.0",
+  "date": "2026-10-14",
+  "items": [
+   {
+    "type": "improved",
+    "platforms": [
+     "web",
+     "server"
+    ],
+    "nl": "Links in account-e-mails (e-mailadres bevestigen, wachtwoord vergeten, inloggen met link, uitnodiging, e-mailadres wijzigen) gaan nu via bingr.online/bevestigen: je bevestigt met één klik op een Bingr-pagina, en virusscanners in je mailbox maken de link niet meer ongemerkt ongeldig",
+    "en": "Links in account emails (confirm email, forgot password, sign-in link, invitation, email change) now go through bingr.online/bevestigen: you confirm with one click on a Bingr page, and mailbox link scanners no longer silently use up the link"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Verlopen bevestigings- of wachtwoordlink? Vraag op dezelfde pagina meteen een nieuwe aan",
+    "en": "Expired confirmation or password link? Request a new one right on the same page"
+   }
+  ]
+ },
+ {
   "build": 78,
   "version": "1.0.0",
   "date": "2026-10-14",

@@ -4,6 +4,21 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 79
+_14 oktober 2026_
+
+### Website
+
+**Nieuw**
+
+- Verlopen bevestigings- of wachtwoordlink? Vraag op dezelfde pagina meteen een nieuwe aan
+
+### Website en Server
+
+**Verbeterd**
+
+- Links in account-e-mails (e-mailadres bevestigen, wachtwoord vergeten, inloggen met link, uitnodiging, e-mailadres wijzigen) gaan nu via bingr.online/bevestigen: je bevestigt met één klik op een Bingr-pagina, en virusscanners in je mailbox maken de link niet meer ongemerkt ongeldig
+
 ## Versie 1.0.0 · Build 78
 _14 oktober 2026_
 
