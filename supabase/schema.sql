@@ -1135,3 +1135,179 @@ do $$ begin
     insert into public.bingr_migrations (name) values ('support_site_monitor_on');
   end if;
 end $$;
+
+-- ============================================================================================================
+-- Statuspagina 2.0: meldingen (storingen en gepland onderhoud) met tijdlijn, getroffen onderdelen en abonnees.
+-- Alleen de Edge Function `status` (service role) leest en schrijft hierin; het beheer gaat via de functie admin.
+--   status_notices            één storing of onderhoud. kind: incident | maintenance.
+--                             incident:    status investigating | identified | monitoring | resolved, impact none | minor | major | critical
+--                             maintenance: status scheduled | in_progress | completed | cancelled (begin/einde volgen window_start/-end)
+--                             auto = aangemaakt door een monitor; auto_resolve = sluit vanzelf als alle gekoppelde storingen voorbij zijn;
+--                             edited = in het beheer aangepast (titel blijft dan staan)
+--   status_notice_components  getroffen onderdelen (monitor-id) met impact degraded | partial | major | maintenance
+--   status_notice_updates     tijdlijn: status + bericht (nl/en) + tijd
+--   status_subscribers        e-mailabonnees (dubbele opt-in; één token voor bevestigen en afmelden)
+--   status_mail_queue         te versturen meldingen (in porties, per run van de planning)
+create table if not exists public.status_notices (
+  id            bigserial primary key,
+  kind          text not null default 'incident',
+  title_nl      text not null,
+  title_en      text not null default '',
+  impact        text not null default 'minor',
+  status        text not null default 'investigating',
+  started_at    timestamptz not null default now(),
+  resolved_at   timestamptz,
+  window_start  timestamptz,
+  window_end    timestamptz,
+  auto          boolean not null default false,
+  auto_resolve  boolean not null default false,
+  edited        boolean not null default false,
+  notify        boolean not null default true,
+  created_at    timestamptz not null default now(),
+  updated_at    timestamptz not null default now()
+);
+do $$ begin
+  alter table public.status_notices add constraint status_notices_kind_chk check (kind in ('incident', 'maintenance'));
+exception when duplicate_object then null; end $$;
+do $$ begin
+  alter table public.status_notices add constraint status_notices_impact_chk check (impact in ('none', 'minor', 'major', 'critical', 'maintenance'));
+exception when duplicate_object then null; end $$;
+do $$ begin
+  alter table public.status_notices add constraint status_notices_status_chk check (status in
+    ('investigating', 'identified', 'monitoring', 'resolved', 'scheduled', 'in_progress', 'completed', 'cancelled'));
+exception when duplicate_object then null; end $$;
+create index if not exists status_notices_started_idx on public.status_notices (started_at desc);
+create index if not exists status_notices_open_idx on public.status_notices (kind, status) where resolved_at is null;
+alter table public.status_notices enable row level security;
+revoke all on public.status_notices from anon, authenticated;
+
+create table if not exists public.status_notice_components (
+  notice_id   bigint not null references public.status_notices(id) on delete cascade,
+  monitor_id  text not null references public.status_monitors(id) on delete cascade,
+  impact      text not null default 'major',
+  primary key (notice_id, monitor_id)
+);
+do $$ begin
+  alter table public.status_notice_components add constraint status_notice_components_impact_chk check (impact in ('degraded', 'partial', 'major', 'maintenance'));
+exception when duplicate_object then null; end $$;
+create index if not exists status_notice_components_monitor_idx on public.status_notice_components (monitor_id);
+alter table public.status_notice_components enable row level security;
+revoke all on public.status_notice_components from anon, authenticated;
+
+create table if not exists public.status_notice_updates (
+  id         bigserial primary key,
+  notice_id  bigint not null references public.status_notices(id) on delete cascade,
+  status     text not null,
+  body_nl    text not null default '',
+  body_en    text not null default '',
+  auto       boolean not null default false,
+  at         timestamptz not null default now()
+);
+create index if not exists status_notice_updates_notice_idx on public.status_notice_updates (notice_id, at desc);
+alter table public.status_notice_updates enable row level security;
+revoke all on public.status_notice_updates from anon, authenticated;
+
+-- automatische storingen per monitor hangen aan een melding
+alter table public.status_incidents add column if not exists notice_id bigint references public.status_notices(id) on delete set null;
+create index if not exists status_incidents_notice_idx on public.status_incidents (notice_id) where notice_id is not null;
+
+create table if not exists public.status_subscribers (
+  id               bigserial primary key,
+  email            text not null,
+  lang             text not null default 'nl',
+  token            text not null,
+  confirmed_at     timestamptz,
+  confirm_sent_at  timestamptz,
+  last_sent_at     timestamptz,
+  created_at       timestamptz not null default now()
+);
+create unique index if not exists status_subscribers_email_idx on public.status_subscribers (lower(email));
+create unique index if not exists status_subscribers_token_idx on public.status_subscribers (token);
+do $$ begin
+  alter table public.status_subscribers add constraint status_subscribers_lang_chk check (lang in ('nl', 'en'));
+exception when duplicate_object then null; end $$;
+alter table public.status_subscribers enable row level security;
+revoke all on public.status_subscribers from anon, authenticated;
+
+create table if not exists public.status_mail_queue (
+  id          bigserial primary key,
+  notice_id   bigint not null references public.status_notices(id) on delete cascade,
+  update_id   bigint references public.status_notice_updates(id) on delete cascade,
+  created_at  timestamptz not null default now(),
+  send_after  timestamptz not null default now(),
+  cursor      bigint not null default 0,   -- laatst gemailde abonnee (id)
+  sent        int not null default 0,
+  failed      int not null default 0,
+  cancelled   boolean not null default false,
+  done_at     timestamptz
+);
+create index if not exists status_mail_queue_todo_idx on public.status_mail_queue (send_after) where done_at is null;
+alter table public.status_mail_queue enable row level security;
+revoke all on public.status_mail_queue from anon, authenticated;
+
+-- één mailronde tegelijk (planning en beheer)
+alter table public.status_runner add column if not exists mail_until timestamptz not null default 'epoch';
+create or replace function public.bingr_status_mail_lock() returns boolean
+language plpgsql security definer set search_path = public as $$
+declare got int;
+begin
+  update public.status_runner set mail_until = now() + interval '75 seconds' where id = 1 and mail_until < now();
+  get diagnostics got = row_count;
+  return got > 0;
+end $$;
+create or replace function public.bingr_status_mail_unlock() returns void
+language sql security definer set search_path = public as $$
+  update public.status_runner set mail_until = 'epoch' where id = 1;
+$$;
+
+-- tellers voor het beheer
+create or replace function public.bingr_status_subscriber_counts() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object(
+    'confirmed', count(*) filter (where confirmed_at is not null),
+    'pending',   count(*) filter (where confirmed_at is null),
+    'nl',        count(*) filter (where confirmed_at is not null and lang = 'nl'),
+    'en',        count(*) filter (where confirmed_at is not null and lang = 'en'),
+    'last_7d',   count(*) filter (where confirmed_at > now() - interval '7 days'),
+    'queue',     (select count(*) from public.status_mail_queue where done_at is null and not cancelled))
+  from public.status_subscribers;
+$$;
+
+-- opruimen: onbevestigde aanmeldingen na 7 dagen, verwerkte mailrondes na 60 dagen
+create or replace function public.bingr_status_cleanup2() returns void
+language sql security definer set search_path = public as $$
+  delete from public.status_subscribers where confirmed_at is null and created_at < now() - interval '7 days';
+  delete from public.status_mail_queue where done_at is not null and done_at < now() - interval '60 days';
+$$;
+revoke all on function public.bingr_status_mail_lock() from public, anon, authenticated;
+revoke all on function public.bingr_status_mail_unlock() from public, anon, authenticated;
+revoke all on function public.bingr_status_subscriber_counts() from public, anon, authenticated;
+revoke all on function public.bingr_status_cleanup2() from public, anon, authenticated;
+grant execute on function public.bingr_status_mail_lock() to service_role;
+grant execute on function public.bingr_status_mail_unlock() to service_role;
+grant execute on function public.bingr_status_subscriber_counts() to service_role;
+grant execute on function public.bingr_status_cleanup2() to service_role;
+
+-- eenmalig: bestaande storingen van openbare monitors (laatste 90 dagen) als afgesloten melding, zodat de pagina
+-- en de geschiedenis niet leeg beginnen
+do $$
+declare r record; nid bigint;
+begin
+  if exists (select 1 from public.bingr_migrations where name = 'status_notices_backfill') then return; end if;
+  for r in select i.id, i.monitor_id, i.started_at, i.ended_at, m.name_nl, m.name_en
+           from public.status_incidents i join public.status_monitors m on m.id = i.monitor_id
+           where i.notice_id is null and i.ended_at is not null and i.started_at > now() - interval '90 days'
+             and m.public and m.kind <> 'devices'
+           order by i.started_at loop
+    insert into public.status_notices (kind, title_nl, title_en, impact, status, started_at, resolved_at, auto, auto_resolve, notify, created_at, updated_at)
+    values ('incident', 'Storing bij ' || r.name_nl, 'Outage affecting ' || r.name_en, 'major', 'resolved', r.started_at, r.ended_at, true, true, false, r.started_at, r.ended_at)
+    returning id into nid;
+    insert into public.status_notice_components (notice_id, monitor_id, impact) values (nid, r.monitor_id, 'major');
+    insert into public.status_notice_updates (notice_id, status, body_nl, body_en, auto, at) values
+      (nid, 'investigating', 'Onze monitoring zag dat ' || r.name_nl || ' niet bereikbaar was. We zochten het uit.',
+            'Our monitoring detected that ' || r.name_en || ' was unavailable. We looked into it.', true, r.started_at),
+      (nid, 'resolved', r.name_nl || ' werkt weer normaal.', r.name_en || ' is working normally again.', true, r.ended_at);
+    update public.status_incidents set notice_id = nid where id = r.id;
+  end loop;
+  insert into public.bingr_migrations (name) values ('status_notices_backfill');
+end $$;

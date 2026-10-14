@@ -50,7 +50,7 @@ jobs:
       - name: Unittests (statuspagina)
         continue-on-error: true
         run: |
-          deno test --allow-all supabase/functions/status/status_test.ts > status-test.log 2>&1 && exit 0
+          deno test --allow-all supabase/functions/status/status_test.ts supabase/functions/status/notices_test.ts > status-test.log 2>&1 && exit 0
           grep -E "FAILED|error|=>|AssertionError|Values are not equal|actual|expected" status-test.log | head -30 | while IFS= read -r l; do echo "::warning::${l:0:300}"; done
           exit 1
       - name: Unittests (supporttickets)
@@ -377,6 +377,75 @@ jobs:
           PY
           curl -s -X POST "$F" -H "Content-Type: application/json" -H "x-status-secret: $(cat "$RUNNER_TEMP/status_secret")" -d '{"action":"admin"}' > /tmp/adm.json
           python3 -c 'import json;a=json.load(open("/tmp/adm.json"));print("::notice::Planning:", json.dumps(a.get("scheduler")), "| alert-e-mail:", "ja" if a["alerts"]["email"] else "nee", "| smtp:", a["alerts"]["smtp"])'
+      - name: Statuspagina - meldingen, feed en abonneren testen
+        if: steps.check.outputs.skip != '1'
+        run: |
+          F="https://$REF.supabase.co/functions/v1/status"
+          H=(-H "Content-Type: application/json" -H "x-status-secret: $(cat "$RUNNER_TEMP/status_secret")")
+          # 1. openbare samenvatting: niveaus, meldingen en dagbalken met minuten; nergens een leverancier
+          curl -s "$F?action=public" > /tmp/pub.json
+          python3 - <<'PY'
+          import json, re
+          raw = open("/tmp/pub.json").read(); p = json.loads(raw)
+          lv = p.get("overall", {}).get("level")
+          if lv not in ("operational", "maintenance", "degraded", "partial", "major"): print("::error::overall.level ontbreekt:", raw[:300]); raise SystemExit(1)
+          n = p.get("notices") or {}
+          if not all(k in n for k in ("active", "upcoming", "recent")): print("::error::notices ontbreekt:", raw[:300]); raise SystemExit(1)
+          m = [x for g in p["groups"] for x in g["monitors"]]
+          if not m or "dm" not in m[0]["days"][-1] or "status" not in m[0]: print("::error::dagbalken zonder dm/status:", json.dumps(m[:1])[:300]); raise SystemExit(1)
+          if re.search(r"supabase", raw, re.I): print("::error::openbare status noemt een leverancier"); raise SystemExit(1)
+          print(f"::notice::Statuspagina: {lv}, {len(n['active'])} lopend, {len(n['upcoming'])} gepland, {len(n['recent'])} recent")
+          PY
+          # 2. feed (Atom en RSS): XML, geen leverancier
+          for fmt in atom rss; do
+            code=$(curl -s -o /tmp/feed.xml -w '%{http_code} %{content_type}' "$F?action=feed&format=$fmt")
+            python3 - "$fmt" "$code" <<'PY'
+          import sys, re, xml.dom.minidom as md
+          fmt, code = sys.argv[1], " ".join(sys.argv[2:])
+          raw = open("/tmp/feed.xml", encoding="utf-8").read()
+          try: md.parseString(raw.encode())
+          except Exception as e: print(f"::error::feed {fmt} is geen geldige XML ({code}): {e}: {raw[:200]}"); raise SystemExit(1)
+          if re.search(r"supabase", raw, re.I): print(f"::error::feed {fmt} noemt een leverancier"); raise SystemExit(1)
+          print(f"::notice::Feed {fmt}: {code}, {raw.count('<entry>') + raw.count('<item>')} items")
+          PY
+          done
+          # 3. geschiedenis en detail
+          curl -s "$F?action=history&page=1" > /tmp/h.json
+          python3 -c 'import json;h=json.load(open("/tmp/h.json"));assert "items" in h and "pages" in h, h;print("::notice::Geschiedenis:", h["total"], "meldingen,", h["pages"], "pagina(s)")'
+          code=$(curl -s -o /tmp/d.json -w '%{http_code}' "$F?action=notice&id=999999999")
+          [ "$code" = 404 ] && echo "::notice::onbekende melding: 404" || { echo "::error::notice met onbekend id gaf HTTP $code"; exit 1; }
+          # 4. abonneren: validatie (er wordt niets aangemaakt of gemaild)
+          code=$(curl -s -o /tmp/s.json -w '%{http_code}' -X POST "$F" -H "Content-Type: application/json" -d '{"action":"subscribe","email":"geen-adres"}')
+          [ "$code" = 400 ] && grep -q bad_email /tmp/s.json && echo "::notice::subscribe met ongeldig adres: 400" || { echo "::error::subscribe ongeldig adres gaf HTTP $code"; exit 1; }
+          code=$(curl -s -o /tmp/s.json -w '%{http_code}' -X POST "$F" -H "Content-Type: application/json" -d '{"action":"subscribe","email":"ci@example.com","website":"spam"}')
+          [ "$code" = 400 ] && grep -q spam /tmp/s.json && echo "::notice::subscribe lokveld: 400" || { echo "::error::subscribe lokveld gaf HTTP $code"; exit 1; }
+          code=$(curl -s -o /tmp/s.json -w '%{http_code}' -X POST "$F" -H "Content-Type: application/json" -d '{"action":"confirm","token":"x"}')
+          [ "$code" = 400 ] && echo "::notice::confirm met ongeldig token: 400" || { echo "::error::confirm gaf HTTP $code"; exit 1; }
+          code=$(curl -s -o /tmp/s.json -w '%{http_code}' -X POST "$F" -H "Content-Type: application/json" -d '{"action":"unsubscribe","token":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}')
+          [ "$code" = 200 ] && grep -q '"removed":false' /tmp/s.json && echo "::notice::unsubscribe onbekend token: ok, niets verwijderd" || { echo "::error::unsubscribe gaf HTTP $code"; exit 1; }
+          # 5. beheer: zonder geheim 403; validatie; een onderhoud aanmaken, annuleren (dan niet openbaar) en verwijderen, zonder mail
+          code=$(curl -s -o /tmp/s.json -w '%{http_code}' -X POST "$F" -H "Content-Type: application/json" -d '{"action":"notice_save"}')
+          [ "$code" = 403 ] && echo "::notice::notice_save zonder geheim: 403" || { echo "::error::notice_save zonder geheim gaf HTTP $code"; exit 1; }
+          code=$(curl -s -o /tmp/s.json -w '%{http_code}' -X POST "$F" "${H[@]}" -d '{"action":"notice_save","kind":"incident"}')
+          [ "$code" = 400 ] && grep -q title_missing /tmp/s.json || { echo "::error::notice_save zonder titel gaf HTTP $code"; exit 1; }
+          code=$(curl -s -o /tmp/s.json -w '%{http_code}' -X POST "$F" "${H[@]}" -d '{"action":"notice_save","kind":"maintenance","title_nl":"x","message_nl":"x","window_start":"2030-01-02T00:00:00Z","window_end":"2030-01-01T00:00:00Z"}')
+          [ "$code" = 400 ] && grep -q bad_window /tmp/s.json || { echo "::error::notice_save met verkeerd tijdvak gaf HTTP $code"; exit 1; }
+          curl -s -X POST "$F" "${H[@]}" -d '{"action":"notice_save","kind":"maintenance","title_nl":"CI-test (wordt meteen verwijderd)","message_nl":"CI-test","window_start":"2030-01-01T02:00:00Z","window_end":"2030-01-01T03:00:00Z","components":[{"id":"db"}],"notify":false}' > /tmp/n.json
+          NID=$(python3 -c 'import json;print(json.load(open("/tmp/n.json")).get("id",""))')
+          [ -n "$NID" ] || { echo "::error::notice_save mislukt: $(head -c 300 /tmp/n.json)"; exit 1; }
+          curl -s -X POST "$F" "${H[@]}" -d "{\"action\":\"notice_update\",\"id\":$NID,\"status\":\"cancelled\",\"message_nl\":\"CI-test geannuleerd\",\"notify\":false}" > /tmp/u.json
+          grep -q '"ok":true' /tmp/u.json || { echo "::error::notice_update mislukt: $(head -c 300 /tmp/u.json)"; curl -s -X POST "$F" "${H[@]}" -d "{\"action\":\"notice_delete\",\"id\":$NID}" >/dev/null; exit 1; }
+          curl -s -X POST "$F" "${H[@]}" -d '{"action":"admin"}' > /tmp/adm.json
+          python3 - "$NID" <<'PY'
+          import json, sys
+          a = json.load(open("/tmp/adm.json")); nid = int(sys.argv[1])
+          n = next((x for x in a.get("all_notices", []) if x["id"] == nid), None)
+          if not n or n["status"] != "cancelled" or len(n["updates"]) != 2 or n["components"] != [{"id": "db", "impact": "maintenance"}]:
+              print("::error::testmelding niet zoals verwacht:", json.dumps(n)[:400]); raise SystemExit(1)
+          print("::notice::Beheer: onderhoud aangemaakt en geannuleerd; abonnees:", json.dumps(a.get("subscribers")))
+          PY
+          curl -s -X POST "$F" "${H[@]}" -d "{\"action\":\"notice_delete\",\"id\":$NID}" | grep -q '"ok":true' && echo "::notice::testmelding verwijderd" || { echo "::error::notice_delete mislukt"; exit 1; }
+          curl -s -X POST "$F" "${H[@]}" -d '{"action":"mail_run"}' | tee /tmp/m.json; echo
       - name: Statusmonitor - planning controleren
         if: steps.check.outputs.skip != '1' && steps.cron.outputs.ok == '1' && inputs.verify_scheduler
         run: |
