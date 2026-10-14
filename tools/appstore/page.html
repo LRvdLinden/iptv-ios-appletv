@@ -1,0 +1,286 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<!-- Bingr App Store-materiaal. Wordt door make_appstore.py geopend met ?set=…&shot=…&lang=…&w=…&h=… -->
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:#000;overflow:hidden}
+body{color:#fff;font-family:Inter,-apple-system,'SF Pro Text','Helvetica Neue',Arial,sans-serif;-webkit-font-smoothing:antialiased;text-rendering:geometricPrecision}
+.app{position:relative;overflow:hidden;background:#000;color:#fff;font-family:Inter,-apple-system,'SF Pro Text',sans-serif}
+#canvas{position:relative;overflow:hidden;background:#000}
+.amb{position:absolute;pointer-events:none}
+.head{position:absolute;left:0;right:0;text-align:center}
+.head h1{font-family:'Inter Display','SF Pro Display',Inter,sans-serif;font-weight:900;letter-spacing:-.024em;word-spacing:.08em;line-height:1.0;white-space:pre;display:inline-block}
+.head .bar{display:block;margin:0 auto;border-radius:99px;background:#E50914}
+.head p{font-weight:500;color:#c4c4c4;letter-spacing:-.005em}
+</style></head>
+<body><div id="canvas"></div>
+<script src="art.js"></script>
+<script src="ui.js"></script>
+<script>
+const Q = new URLSearchParams(location.search);
+const SET = Q.get('set'), SHOT = Q.get('shot'), W = +Q.get('w'), H = +Q.get('h'), VAR = Q.get('v') || 'a';
+LANG = Q.get('lang') || 'nl';
+document.documentElement.lang = LANG;
+
+// teksten boven de schermen (kop + regel eronder), NL en EN
+const COPY = {
+  home:       { nl: ['Al je zenders, films\nen series op één plek', 'Speel je eigen IPTV-abonnement af'], en: ['Your channels, movies\nand series in one place', 'Play your own IPTV subscription'] },
+  detail:     { nl: ['Seizoenen en\nafleveringen', 'Met trailers, info en kijkvoortgang'], en: ['Seasons and\nepisodes', 'With trailers, details and progress'] },
+  guide:      { nl: ['Live tv\nmet tv-gids', 'Zie wat er nu en straks op is'], en: ['Live TV\nwith a TV guide', 'See what’s on now and next'] },
+  categories: { nl: ['Blader door\ncategorieën', 'Genres en de mappen van je server'], en: ['Browse by\ncategory', 'Genres and your server’s own folders'] },
+  profiles:   { nl: ['Wie kijkt er?', 'Profielen met elk een eigen lijst en voortgang'], en: ['Who’s watching?', 'Profiles, each with its own list and progress'] },
+  mybingr:    { nl: ['Kijk verder\nwaar je was', 'Verder kijken, Mijn lijst en favorieten'], en: ['Pick up where\nyou left off', 'Continue watching, My List and favorites'] },
+  stats:      { nl: ['Mijn Bingr en\nstatistieken', 'Collecties en wat je hebt gekeken'], en: ['My Bingr and\nstatistics', 'Collections and what you’ve watched'] },
+  pin:        { nl: ['Kinderprofiel\nmet pincode', 'Met leeftijdsgrens en kinderslot'], en: ['Kids profiles\nwith a PIN', 'With age limits and parental lock'] },
+  devices:    { nl: ['Werkt op al je\napparaten', 'iPhone, iPad, Mac en Apple TV, in sync'], en: ['Works on all\nyour devices', 'iPhone, iPad, Mac and Apple TV, in sync'] },
+  login:      { nl: ['Inloggen met\nje telefoon', 'Scan de code en je bent klaar'], en: ['Sign in with\nyour phone', 'Scan the code and you’re set'] },
+};
+// tagline van de banners
+const TAG = { nl: 'Je eigen IPTV, op elk scherm in huis.', en: 'Your own IPTV, on every screen at home.' };
+// eigen-abonnement-kaartje (scherm "devices")
+const OWN = {
+  nl: ['Gebruik je eigen IPTV-abonnement', 'Bingr is een speler en levert zelf geen zenders, films of series.'],
+  en: ['Use your own IPTV subscription', 'Bingr is a player and does not provide any channels, movies or series.'],
+};
+// sfeerlicht achter het toestel: de key art van wat er in beeld is
+const GLOW = { home: ['polder', 330, 470], detail: ['noordlicht', 400, 400], guide: ['kustlijn', 400, 400], categories: ['glas', 400, 400], profiles: ['dex', 400, 400], pin: ['zomer', 400, 400], devices: ['noordlicht', 400, 400], mybingr: ['haven', 400, 400], stats: ['stationzero', 400, 400], login: ['polder', 400, 400] };
+
+const BASE = { iphone: 1179, ipad: 2064, tv: 1920, mac: 1440, banner: 1920 }[SET];
+const Z = W / BASE, BH = H / Z;
+const cv = document.getElementById('canvas');
+document.body.style.zoom = Z;
+cv.style.width = BASE + 'px'; cv.style.height = BH + 'px';
+
+function glow(x, y, w, h, blurPx, op) {
+  const g = GLOW[SHOT] || GLOW.home;
+  return `<div class="amb" style="left:${x}px;top:${y}px;width:${w}px;height:${h}px;background:url('${sceneURL(g[0], g[1], g[2])}') center/cover;filter:blur(${blurPx}px) saturate(1.5);opacity:${op}"></div>`;
+}
+function head(top, fs, barW, barH, gapBar, subFs, maxW, oneLine) {
+  const c = COPY[SHOT][LANG];
+  const h1 = oneLine ? c[0].replace('\n', ' ') : c[0];
+  return `<div class="head" style="top:${top}px"><h1 style="font-size:${fs}px" data-max="${maxW}">${h1}</h1>
+    <i class="bar" style="width:${barW}px;height:${barH}px;margin-top:${gapBar}px;margin-bottom:${gapBar * .9}px"></i>
+    <p style="font-size:${subFs}px">${c[1]}</p></div>`;
+}
+function fitHeads() {
+  document.querySelectorAll('.head h1').forEach(h => {
+    const max = +h.dataset.max; let fs = parseFloat(h.style.fontSize);
+    while (h.getBoundingClientRect().width / Z > max && fs > 10) { fs -= 1; h.style.fontSize = fs + 'px'; }
+  });
+}
+// toestellen
+function iphone(x, y, dw, shot, rot = 0) {
+  const pad = dw * .023, ring = dw * .006, sw = dw - 2 * (pad + ring), sc = sw / 402, sh = 874 * sc;
+  return `<div style="position:absolute;left:${x}px;top:${y}px;width:${dw}px;height:${sh + 2 * (pad + ring)}px;border-radius:${dw * .155}px;padding:${ring}px;background:linear-gradient(145deg,#5a5a60,#1c1c1f 30%,#3a3a3f 60%,#141416);box-shadow:0 ${dw * .05}px ${dw * .12}px #000c${rot ? `;transform:rotate(${rot}deg)` : ''}">
+    <div style="width:100%;height:100%;border-radius:${dw * .149}px;background:#050505;padding:${pad}px">
+      <div style="position:relative;width:${sw}px;height:${sh}px;border-radius:${dw * .128}px;overflow:hidden;background:#000">
+        <div style="position:absolute;left:0;top:0;width:402px;height:874px;transform:scale(${sc});transform-origin:0 0">${PHONE[shot]()}
+          <div style="position:absolute;top:11px;left:50%;width:124px;height:36px;margin-left:-62px;border-radius:20px;background:#000;z-index:50"></div></div></div></div></div>`;
+}
+function ipad(x, y, dw, shot) {
+  const pad = dw * .028, ring = dw * .004, sw = dw - 2 * (pad + ring), sc = sw / 1032, sh = 1376 * sc;
+  return `<div style="position:absolute;left:${x}px;top:${y}px;width:${dw}px;height:${sh + 2 * (pad + ring)}px;border-radius:${dw * .06}px;padding:${ring}px;background:linear-gradient(145deg,#606066,#1d1d20 30%,#3c3c41 60%,#141416);box-shadow:0 40px 120px #000d">
+    <div style="width:100%;height:100%;border-radius:${dw * .056}px;background:#050505;padding:${pad}px">
+      <div style="position:relative;width:${sw}px;height:${sh}px;border-radius:${dw * .03}px;overflow:hidden;background:#000">
+        <div style="position:absolute;left:0;top:0;transform:scale(${sc});transform-origin:0 0">${WIDE[shot]({ w: 1032, h: 1376 })}</div></div></div></div>`;
+}
+function tvPanel(x, y, pw, shot) {
+  const sc = pw / 1920;
+  return `<div style="position:absolute;left:${x}px;top:${y}px;width:${pw}px;height:${1080 * sc}px;border-radius:${pw * .012}px;overflow:hidden;box-shadow:0 0 0 ${pw * .0014}px #ffffff2e,0 ${pw * .03}px ${pw * .07}px #000e">
+    <div style="position:absolute;left:0;top:0;transform:scale(${sc});transform-origin:0 0">${TV[shot]()}</div></div>`;
+}
+function macWin(x, y, ww, wh, shot) {
+  const tb = 52;
+  const sel = { home: 0, guide: 1, categories: 4, detail: 2, stats: 6 }[shot] ?? 0;
+  return `<div style="position:absolute;left:${x}px;top:${y}px;width:${ww}px;height:${wh}px;border-radius:12px;overflow:hidden;background:#000;box-shadow:0 0 0 1px #ffffff26,0 0 0 1.5px #000,0 30px 80px #000e">
+    <div style="position:relative;height:${tb}px;background:#1f1f22;display:flex;align-items:center;border-bottom:1px solid #000">
+      <div style="display:flex;gap:8px;padding-left:18px">${['#ff5f57', '#febc2e', '#28c840'].map(c => `<span style="width:12px;height:12px;border-radius:50%;background:${c}"></span>`).join('')}</div>
+      <div style="position:absolute;left:96px;top:15px">${logo(17)}</div>
+      <div style="position:absolute;left:0;right:0;top:12px;display:flex;justify-content:center">${macTabs(sel)}</div>
+      <div style="position:absolute;right:16px;top:12px">${avatar(PROFILES[0], 26, '6px')}</div></div>
+    <div style="position:relative;width:${ww}px;height:${wh - tb}px;overflow:hidden">${WIDE[shot]({ w: ww, h: wh - tb, mac: true })}</div></div>`;
+}
+
+// ---------- extra schermen: pincode (kinderprofiel) ----------
+function pinBox(k, sz) {
+  // sz = schaal; k = aantal ingevulde cijfers
+  const P = PROFILES[2];
+  const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'del'];
+  const key = x => x === '' ? `<div></div>` : `<div style="width:${76 * sz}px;height:${76 * sz}px;border-radius:50%;${x === 'del' ? '' : 'background:#ffffff1f;'}display:grid;place-items:center;font-size:${32 * sz}px;font-weight:500">${x === 'del' ? I('chevL', 30 * sz, '#fff') : x}</div>`;
+  return `<div style="display:flex;flex-direction:column;align-items:center">
+    ${avatar(P, 96 * sz, `${14 * sz}px`)}
+    <div style="font-size:${24 * sz}px;font-weight:700;margin-top:${16 * sz}px">${LANG === 'en' ? `PIN for ${P.nameEn}` : `Pincode voor ${P.name}`}</div>
+    <div style="font-size:${15 * sz}px;color:${SEC};margin-top:${6 * sz}px;display:flex;align-items:center;gap:${6 * sz}px">${I('lock', 14 * sz, SEC)}${t('Dit profiel is beveiligd met een pincode', 'This profile is protected with a PIN')}</div>
+    <div style="display:flex;gap:${18 * sz}px;margin:${26 * sz}px 0 ${30 * sz}px">${[0, 1, 2, 3].map(i => `<span style="width:${16 * sz}px;height:${16 * sz}px;border-radius:50%;${i < k ? 'background:#fff' : `border:${2 * sz}px solid #ffffff80`}"></span>`).join('')}</div>
+    <div style="display:grid;grid-template-columns:repeat(3,${76 * sz}px);gap:${16 * sz}px ${26 * sz}px">${keys.map(key).join('')}</div>
+    <div style="margin-top:${22 * sz}px;display:flex;gap:${8 * sz}px;align-items:center;font-size:${14 * sz}px;color:${SEC};background:#ffffff12;border-radius:99px;padding:${8 * sz}px ${14 * sz}px">${I('person', 16 * sz, SEC)}${t(`Kinderprofiel · tot en met ${P.age} jaar`, `Kids profile · up to ${P.age} years`)}</div></div>`;
+}
+PHONE.pin = () => `<div style="position:relative;width:402px;height:874px">${PHONE.profiles()}
+  <div style="position:absolute;inset:0;background:#000000d0"></div>
+  <div style="position:absolute;left:0;right:0;bottom:0;top:118px;border-radius:28px 28px 0 0;background:#161618;box-shadow:0 -10px 40px #000;padding-top:34px">
+    <div style="position:absolute;top:8px;left:50%;width:40px;height:5px;margin-left:-20px;border-radius:3px;background:#ffffff40"></div>
+    ${pinBox(2, 1)}</div>
+  <div style="position:absolute;left:50%;bottom:8px;width:134px;height:5px;margin-left:-67px;border-radius:3px;background:#fff"></div></div>`;
+WIDE.pin = o => `<div style="position:relative;width:${o.w}px;height:${o.h}px">${WIDE.profiles(o)}
+  <div style="position:absolute;inset:0;background:#000000c4"></div>
+  <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:620px;padding:52px 0 46px;border-radius:34px;background:#161618;box-shadow:0 30px 90px #000,inset 0 0 0 1px #ffffff1a">${pinBox(2, 1.4)}</div></div>`;
+
+// ---------- alle apparaten samen (getekend, geen productfoto's) ----------
+// natuurlijke maat: GW x GH (px); schaal met transform
+const GW = 1700, GH = 760;
+function tvSet(x, y, sw) {
+  const sc = sw / 1920, sh = 1080 * sc, bz = 9;
+  return `<div style="position:absolute;left:${x}px;top:${y}px;width:${sw + 2 * bz}px">
+    <div style="padding:${bz}px;border-radius:14px;background:linear-gradient(160deg,#3a3a3e,#0c0c0e 40%,#1a1a1d);box-shadow:0 0 0 2px #55555b,0 0 0 3.5px #000,0 40px 90px #000e">
+      <div style="position:relative;width:${sw}px;height:${sh}px;overflow:hidden;border-radius:4px;background:#000"><div style="position:absolute;left:0;top:0;transform:scale(${sc});transform-origin:0 0">${TV.home()}</div>
+      <div style="position:absolute;inset:0;background:linear-gradient(115deg,#ffffff14,#0000 35%)"></div></div></div>
+    <div style="margin:0 auto;width:120px;height:26px;background:linear-gradient(#1b1b1e,#0b0b0c)"></div>
+    <div style="margin:0 auto;width:420px;height:10px;border-radius:5px;background:linear-gradient(#3a3a3e,#111)"></div></div>`;
+}
+function laptop(x, y, sw) {
+  const ww = 1160, wh = 725, sc = sw / ww, sh = wh * sc, bz = 13;
+  return `<div style="position:absolute;left:${x}px;top:${y}px;width:${sw + 2 * bz}px">
+    <div style="padding:${bz}px;border-radius:18px 18px 4px 4px;background:#0b0b0c;box-shadow:0 0 0 2px #4a4a50,0 30px 70px #000d">
+      <div style="position:relative;width:${sw}px;height:${sh}px;overflow:hidden;border-radius:4px;background:#000"><div style="position:absolute;left:0;top:0;transform:scale(${sc});transform-origin:0 0">${macWin(0, 0, ww, wh, 'detail').replace('border-radius:12px', 'border-radius:0')}</div></div></div>
+    <div style="position:relative;margin-left:${-sw * .07}px;width:${(sw + 2 * bz) * 1.14}px;height:18px;border-radius:2px 2px 14px 14px;background:linear-gradient(#cfcfd4,#8c8c92 45%,#4a4a4f);box-shadow:0 18px 30px #000c">
+      <div style="position:absolute;left:50%;top:0;width:110px;height:7px;margin-left:-55px;border-radius:0 0 8px 8px;background:#6e6e74"></div></div></div>`;
+}
+function devGroup() {
+  return `<div style="position:relative;width:${GW}px;height:${GH}px">
+    ${tvSet(250, 0, 1060)}
+    ${laptop(1010, 330, 600)}
+    ${ipad(80, 250, 360, 'home')}
+    ${iphone(780, 350, 200, 'home')}</div>`;
+}
+// staande variant (iPhone/iPad-screenshots): tv boven, de rest ervoor
+const TW = 1100, TH = 1130;
+function devGroupTall() {
+  return `<div style="position:relative;width:${TW}px;height:${TH}px">
+    ${tvSet(31, 0, 1020)}
+    ${laptop(500, 600, 540)}
+    ${ipad(10, 520, 400, 'home')}
+    ${iphone(380, 660, 220, 'home')}</div>`;
+}
+function devTallAt(cx, top, width) {
+  const s = width / TW;
+  return `<div style="position:absolute;left:${cx - width / 2}px;top:${top}px;width:${TW}px;height:${TH}px;transform:scale(${s});transform-origin:0 0">${devGroupTall()}</div>`;
+}
+function devAt(cx, top, width) {
+  const s = width / GW;
+  return `<div style="position:absolute;left:${cx - width / 2}px;top:${top}px;width:${GW}px;height:${GH}px;transform:scale(${s});transform-origin:0 0">${devGroup()}</div>`;
+}
+function ownCard(cx, top, width, fs) {
+  const c = OWN[LANG];
+  const chip = x => `<span style="white-space:nowrap;font-size:${fs * .8}px;font-weight:600;padding:${fs * .32}px ${fs * .7}px;border-radius:99px;background:#ffffff14;box-shadow:inset 0 0 0 1.5px #ffffff26">${x}</span>`;
+  return `<div style="position:absolute;left:${cx - width / 2}px;top:${top}px;width:${width}px;padding:${fs * 1.3}px ${fs * 1.4}px;border-radius:${fs * 1.2}px;background:#141416ee;box-shadow:inset 0 0 0 1.5px #ffffff1c,0 30px 60px #000a;text-align:center">
+    <div style="font-size:${fs * 1.25}px;font-weight:800;letter-spacing:-.01em">${c[0]}</div>
+    <div style="display:flex;justify-content:center;gap:${fs * .5}px;margin:${fs * .8}px 0">${chip('Xtream Codes')}${chip(t('M3U-afspeellijst', 'M3U playlist'))}${chip('EPG / XMLTV')}</div>
+    <div style="font-size:${fs * .9}px;color:${SEC};line-height:1.35">${c[1]}</div></div>`;
+}
+
+// ---------- composities ----------
+let html = '';
+if (SET === 'iphone') {
+  const dw = 870, dx = (BASE - dw) / 2, dh = 874 * (dw * (1 - 2 * .029)) / 402 + dw * .058, dy = BH - dh - 66;
+  if (SHOT === 'devices') {
+    html += `<div class="amb" style="inset:0;background:radial-gradient(ellipse 80% 45% at 50% 52%,#3b0306,#000 75%)"></div>`;
+    html += head(dy * .2 + 36, 112, 116, 14, 38, 44, 1040);
+    html += devTallAt(BASE / 2, 720, 1060);
+    html += ownCard(BASE / 2, BH - 540, 1080, 38);
+  } else {
+    html += glow(dx - 330, dy - 60, dw + 660, dh * .95, 170, .75);
+    html += `<div class="amb" style="left:0;right:0;top:0;height:${dy + 200}px;background:linear-gradient(#000 35%,#0000)"></div>`;
+    html += head(dy * .2 + 36, 112, 116, 14, 38, 44, 1040);
+    html += iphone(dx, dy, dw, SHOT);
+    if (SHOT === 'stats') html += floatCards(dx, dy, dw);
+    if (SHOT === 'mybingr') html += deviceCard(dx, dy, dw);
+  }
+} else if (SET === 'ipad') {
+  const dw = 1520, dx = (BASE - dw) / 2, dh = 1376 * (dw * (1 - 2 * .032)) / 1032 + dw * .064, dy = BH - dh - 70;
+  if (SHOT === 'devices') {
+    html += `<div class="amb" style="inset:0;background:radial-gradient(ellipse 80% 45% at 50% 52%,#3b0306,#000 75%)"></div>`;
+    html += head(dy * .2 + 30, 128, 140, 16, 42, 52, 1840);
+    html += devTallAt(BASE / 2, 660, 1500);
+    html += ownCard(BASE / 2, BH - 540, 1760, 50);
+  } else {
+    html += glow(dx - 100, dy + 120, dw + 200, dh * .75, 200, .5);
+    html += head(dy * .2 + 30, 128, 140, 16, 42, 52, 1840);
+    html += ipad(dx, dy, dw, SHOT);
+  }
+} else if (SET === 'tv') {
+  // Apple TV: schermvullend, alleen een klein onderschrift linksonder
+  const c = COPY[SHOT][LANG];
+  html += `<div style="position:absolute;left:0;top:0;width:1920px;height:1080px">${TV[SHOT]()}</div>`;
+  html += `<div style="position:absolute;left:56px;bottom:48px;display:flex;align-items:center;gap:18px;padding:20px 30px 20px 22px;border-radius:22px;background:#0e0e10;box-shadow:0 20px 50px #000c,inset 0 0 0 1.5px #ffffff1f">
+    <i style="width:7px;height:62px;border-radius:4px;background:#E50914;display:block"></i>
+    <div><div style="font-family:'Inter Display','SF Pro Display',Inter,sans-serif;font-weight:800;font-size:34px;letter-spacing:-.015em">${c[0].replace('\n', ' ')}</div>
+    <div style="font-size:21px;color:#c4c4c4;margin-top:3px">${c[1]}</div></div></div>`;
+} else if (SET === 'mac') {
+  const ww = 1160, wh = 704, wx = (BASE - ww) / 2, wy = BH - wh - 30;
+  html += `<div class="amb" style="inset:0;background:radial-gradient(ellipse at 50% 120%,#3a0a0d,#000 60%)"></div>`;
+  html += head(30, 50, 56, 6, 15, 21, 1300, true);
+  if (SHOT === 'devices') {
+    html += devAt(BASE / 2 + 15, 165, 1150);
+    html += ownCard(BASE / 2, 700, 900, 22);
+  } else {
+    html += glow(wx, wy + 60, ww, wh * .8, 90, .45);
+    html += macWin(wx, wy, ww, wh, SHOT);
+  }
+} else if (SET === 'banner') {
+  html += banner(VAR);
+}
+cv.innerHTML = html;
+fitHeads();
+
+// zwevend kaartje: dezelfde voortgang op de Apple TV
+function deviceCard(dx, dy, dw) {
+  return `<div style="position:absolute;right:${dx - 70}px;top:${dy + 1030}px;width:470px;padding:18px;border-radius:30px;background:#1c1c1ef2;box-shadow:0 30px 70px #000d,inset 0 0 0 1.5px #ffffff1a;transform:rotate(2.5deg)">
+    <div style="position:relative;height:244px;border-radius:16px;overflow:hidden;${bg(sceneURL('noordlicht', 434, 244, 5))}"><div style="position:absolute;inset:0;background:linear-gradient(#0000 50%,#000b)"></div>
+      <div style="position:absolute;inset:0;display:grid;place-items:center"><div style="width:76px;height:76px;border-radius:50%;background:#0009;border:3px solid #fff;display:grid;place-items:center;padding-left:6px">${I('play', 32, '#fff')}</div></div>
+      <div style="position:absolute;left:0;right:0;bottom:0;height:8px;background:#ffffff4d"><div style="height:100%;width:62%;background:${RED}"></div></div></div>
+    <div style="display:flex;align-items:center;gap:14px;margin:16px 6px 4px">${I('tvfill', 40, '#fff')}<div><div style="font-size:30px;font-weight:700">${t('Verder op Apple TV', 'Resume on Apple TV')}</div><div style="font-size:24px;color:${SEC}">${TN('noordlicht')} · ${t('Nog 38 min', '38 min left')}</div></div></div></div>`;
+}
+// zwevende kaartjes bij de statistieken: collectie en synchronisatie
+function floatCards(dx, dy, dw) {
+  const col = ['glas', 'wolfsuur', 'zomer'];
+  return `<div style="position:absolute;left:${dx - 60}px;top:${dy + 1575}px;width:400px;padding:22px;border-radius:30px;background:#1c1c1ef2;box-shadow:0 30px 60px #000c,inset 0 0 0 1.5px #ffffff1a;transform:rotate(-3deg)">
+      <div style="display:flex;gap:10px">${col.map(id => poster(id, 110, { r: 8 })).join('')}</div>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:16px;font-size:30px;font-weight:700">${I('collection', 30, '#fff')}${t('Weekendfilms', 'Weekend movies')}</div><div style="font-size:24px;color:${SEC};margin-top:4px">${t('Collectie · 12 titels', 'Collection · 12 titles')}</div></div>
+    <div style="position:absolute;right:${dx - 60}px;top:${dy + 190}px;padding:20px 26px;border-radius:26px;background:#1c1c1ef2;box-shadow:0 30px 60px #000c,inset 0 0 0 1.5px #ffffff1a;display:flex;align-items:center;gap:16px;transform:rotate(2.5deg)">
+      <div style="width:58px;height:58px;border-radius:50%;background:#ED1C24;display:grid;place-items:center">${I('check', 34, '#fff')}</div>
+      <div><div style="font-size:30px;font-weight:700">${t('Kijkgeschiedenis', 'Watch history')}</div><div style="font-size:24px;color:${GREEN};font-weight:600">${t('Gesynchroniseerd om 20:41', 'Synced at 20:41')}</div></div></div>`;
+}
+
+// ---------- banners (featuring artwork): alleen woordmerk + beeld, taalloos ----------
+function wordmark(px) {
+  return `<div style="display:inline-flex;flex-direction:column;align-items:center;gap:${px * .1}px;filter:drop-shadow(0 0 ${px * .4}px #000) drop-shadow(0 0 ${px * .15}px #000)"><div style="font-family:'Inter Display',ui-rounded,'SF Pro Rounded',sans-serif;font-weight:900;font-size:${px}px;line-height:.82;letter-spacing:${px * .03}px;color:#fff;padding-left:${px * .03}px">BINGR</div><div style="height:${px * .095}px;align-self:stretch;margin:0 ${px * .04}px;border-radius:99px;background:#E50914;box-shadow:0 0 ${px * .3}px #E50914aa"></div></div>`;
+}
+function banner(v) {
+  // achtergrond: a = muur van fictieve affiches, b = rode lichtbundel; voorgrond: woordmerk, tagline, apparaten
+  const ids = TITLES.map(x => x.id);
+  let back = '';
+  if (v === 'a') {
+    const cols = 16, rows = 5, pw = 230, gap = 26;
+    let wall = '';
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+      const id = ids[(r * 7 + c * 3 + (r % 2) * 5) % ids.length];
+      wall += `<div style="position:absolute;left:${c * (pw + gap) + (r % 2) * (pw / 2)}px;top:${r * (pw * 1.5 + gap)}px;width:${pw}px;height:${pw * 1.5}px;border-radius:8px;background:url('${posterURL(id, LANG)}') center/cover;box-shadow:0 10px 30px #000a"></div>`;
+    }
+    const ww = cols * (pw + gap), wh = rows * (pw * 1.5 + gap);
+    back = `<div class="amb" style="left:50%;top:50%;width:${ww}px;height:${wh}px;margin:${-wh / 2}px 0 0 ${-ww / 2}px;transform:perspective(1600px) rotateX(18deg) rotateZ(-8deg) scale(${Math.max(BH / 1080, 1) * 1.05});opacity:.55"></div>`.replace('></div>', `>${wall}</div>`)
+      + `<div class="amb" style="inset:0;background:radial-gradient(ellipse 48% 58% at 50% 55%,#000000f5 0%,#000000d0 50%,#00000060 85%,#0000 100%)"></div>
+      <div class="amb" style="inset:0;background:linear-gradient(90deg,#000c,#0000 20%,#0000 80%,#000c)"></div>`;
+  } else {
+    back = `<div class="amb" style="inset:0;background:radial-gradient(ellipse 60% 80% at 50% 45%,#3b0306,#000 70%)"></div>
+      <div class="amb" style="left:50%;top:-20%;width:760px;height:140%;margin-left:-380px;background:linear-gradient(90deg,#0000,#E509142e 30%,#ff4a4a40 50%,#E509142e 70%,#0000);filter:blur(40px)"></div>`;
+  }
+  const wide = BH < 900;
+  const top = wide ? 52 : 150, wm = wide ? 112 : 150, tg = wide ? 38 : 50;
+  const devTop = wide ? 262 : 410, devH = BH - devTop - (wide ? 30 : 145), devW = devH * GW / GH;
+  return back + `<div class="amb" style="left:50%;top:${devTop + devH * .55}px;width:${devW * 1.1}px;height:${devH * .6}px;margin-left:${-devW * .55}px;background:radial-gradient(ellipse at 50% 50%,#E5091438,#0000 70%);filter:blur(30px)"></div>
+    <div style="position:absolute;left:0;right:0;top:${top}px;display:flex;flex-direction:column;align-items:center">${wordmark(wm)}
+      <div style="margin-top:${wm * .32}px;font-family:'Inter Display','SF Pro Display',Inter,sans-serif;font-weight:700;font-size:${tg}px;letter-spacing:-.012em;color:#f2f2f2;text-shadow:0 2px 20px #000">${TAG[LANG]}</div></div>
+    ${devAt(BASE / 2 + devW * .012, devTop, devW)}`;
+}
+document.title = 'ready';
+</script></body></html>

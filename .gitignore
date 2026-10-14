@@ -13,3 +13,6 @@ DerivedData/
 # Python
 __pycache__/
 *.pyc
+
+# App Store-materiaal (gegenereerd door tools/appstore/make_appstore.py)
+docs/appstore/out/
