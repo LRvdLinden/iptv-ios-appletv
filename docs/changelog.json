@@ -1,5 +1,21 @@
 [
  {
+  "build": 87,
+  "version": "1.0.0",
+  "date": "2026-10-14",
+  "items": [
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados"
+    ],
+    "nl": "Home is rustiger: de knoppen Series en Films onder het logo zijn weg (Films en Series staan in de tabbalk, Categorieën in Mijn Bingr en als rij op Home)",
+    "en": "Home is cleaner: the Series and Movies buttons below the logo are gone (Movies and Series are in the tab bar, Categories in My Bingr and as a row on Home)"
+   }
+  ]
+ },
+ {
   "build": 86,
   "version": "1.0.0",
   "date": "2026-10-14",

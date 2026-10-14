@@ -4,6 +4,15 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 87
+_14 oktober 2026_
+
+### iOS en iPadOS
+
+**Verbeterd**
+
+- Home is rustiger: de knoppen Series en Films onder het logo zijn weg (Films en Series staan in de tabbalk, Categorieën in Mijn Bingr en als rij op Home)
+
 ## Versie 1.0.0 · Build 86
 _14 oktober 2026_
 
