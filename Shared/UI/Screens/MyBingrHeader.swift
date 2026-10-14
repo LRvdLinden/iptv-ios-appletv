@@ -154,9 +154,15 @@ struct MyBingrHeader: View {
                             Button { detail = t } label: {
                                 switch t {
                                 case .movie(let m):
-                                    PosterCard(title: m.title, poster: m.poster, imdbID: trakt.imdb(for: m), progress: fraction, language: ContentLanguage.of(m))
+                                    let imdb = trakt.imdb(for: m)
+                                    PosterCard(title: m.title, poster: m.poster, imdbID: imdb,
+                                               watched: Playables.isWatched(movie: m, imdb: imdb),
+                                               progress: fraction, language: ContentLanguage.of(m))
                                 case .series(let s):
-                                    PosterCard(title: s.title, poster: s.poster, imdbID: trakt.imdb(for: s), progress: fraction, language: ContentLanguage.of(s))
+                                    let imdb = trakt.imdb(for: s)
+                                    PosterCard(title: s.title, poster: s.poster, imdbID: imdb, progress: fraction,
+                                               watchedEpisodes: Playables.watchedEpisodeCount(s, imdb: imdb),
+                                               language: ContentLanguage.of(s))
                                 }
                             }
                             .cardButton()

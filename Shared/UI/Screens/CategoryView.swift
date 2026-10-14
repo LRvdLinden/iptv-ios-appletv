@@ -29,6 +29,8 @@ struct CategoryView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var meta: MetadataService
     @EnvironmentObject var trakt: TraktSync
+    /// vinkjes en "N BEKEKEN" ook bijwerken na afvinken in Bingr (build 75)
+    @EnvironmentObject var store: CloudStore
     @AppStorage("category.sort") private var sortRaw = Sort.standard.rawValue
     @State private var detail: DetailTarget?
 
@@ -99,6 +101,14 @@ struct CategoryView: View {
                         .frame(width: g.size.width, height: g.size.width * 1.5)
                         .clipped()
                     if watched(t) { WatchedBadge().padding(6).frame(maxWidth: .infinity, alignment: .topLeading) }
+                    // serie: "N BEKEKEN" linksboven (build 75); de score staat rechtsboven
+                    if case .series(let s) = t {
+                        let n = Playables.watchedEpisodeCount(s, imdb: trakt.imdb(for: s))
+                        if n > 0 {
+                            WatchedEpisodesLabel(count: n).padding(tvScaled(6))
+                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        }
+                    }
                     // taal onderaan de poster (build 59)
                     if let l = language(t) {
                         LanguageStrip(language: l).frame(maxHeight: .infinity, alignment: .bottom)

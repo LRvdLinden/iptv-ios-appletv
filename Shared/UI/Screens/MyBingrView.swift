@@ -9,6 +9,7 @@ struct MyBingrView: View {
     @EnvironmentObject var trakt: TraktSync
     @ObservedObject private var account = AccountService.shared
     @State private var path: [MyBingrRoute] = []
+    @State private var showSupport = false
     #if os(tvOS)
     /// De footer is niet focusbaar: bij de laatste rij er zelf naartoe scrollen
     @FocusState private var lastRowFocused: Bool
@@ -43,6 +44,7 @@ struct MyBingrView: View {
             .navigationTitle(store.activeProfile?.name ?? L("My Bingr"))
             .navigationDestination(for: MyBingrRoute.self) { destination($0) }
         }
+        .supportPage(isPresented: $showSupport)
         .onAppear(perform: applyRequest)
         .onChange(of: app.myBingrRequest) { _, _ in applyRequest() }
     }
@@ -108,13 +110,24 @@ struct MyBingrView: View {
                 row(.profiles, L("Manage profiles"), "person.2", count: store.profiles.count)
             }
             row(.homeLayout, L("Home screen"), "rectangle.grid.1x2")
-            if signedIn {
-                row(.settings, L("Settings"), "gearshape")
-                markLast(row(.account, L("Account and devices"), "person.crop.circle"))
-            } else {
-                markLast(row(.settings, L("Settings"), "gearshape"))
-            }
+            row(.settings, L("Settings"), "gearshape")
+            if signedIn { row(.account, L("Account and devices"), "person.crop.circle") }
+            // build 75: support.bingr.online, onder Account en apparaten (ook zonder Bingr-account)
+            markLast(supportRow)
         } header: { Text(L("Profile")) }
+    }
+
+    private var supportRow: some View {
+        Button { showSupport = true } label: {
+            HStack {
+                Label { Text(L("Support")).foregroundStyle(Color.primary) } icon: { Image(systemName: "questionmark.circle") }
+                Spacer(minLength: 8)
+                #if !os(tvOS)
+                Image(systemName: "arrow.up.right").font(.footnote.weight(.semibold)).foregroundStyle(Theme.secondary)
+                #endif
+            }
+            .contentShape(Rectangle())
+        }
     }
 
     @ViewBuilder private func markLast<V: View>(_ v: V) -> some View {

@@ -22,7 +22,11 @@ final class CloudStore: ObservableObject {
     @Published private(set) var favorites: Set<String> = []          // "<playlistID>|<itemID>"
     @Published private(set) var myList: Set<String> = []
     @Published private(set) var progress: [String: ProgressEntry] = [:] // key: itemKey
-    @Published private(set) var localWatched: Set<String> = []       // fallback zonder Trakt
+    @Published private(set) var localWatched: Set<String> = [] {      // bekeken in Bingr (per profiel), naast Trakt
+        didSet { localEpisodeIndex = nil }
+    }
+    /// serie-id → "seizoen-aflevering" uit `localWatched` (één keer opgebouwd i.p.v. per poster de hele set door te lopen)
+    private var localEpisodeIndex: [String: Set<String>]?
     @Published private(set) var recentChannels: [String] = []
     @Published var lastSync: Date?
     /// Per afspeellijst: hernoemd, verborgen, volgorde, samengevoegd
@@ -749,9 +753,19 @@ final class CloudStore: ObservableObject {
         write(localWatched, pk(K.watched))
         edited(.profile)
     }
-    func localWatchedCount(series id: String) -> Int {
-        let prefix = "ep:\(id)|"
-        return localWatched.reduce(0) { $0 + ($1.hasPrefix(prefix) ? 1 : 0) }
+    func localWatchedCount(series id: String) -> Int { localWatchedEpisodes(series: id).count }
+
+    /// Afleveringen ("seizoen-aflevering") die dit profiel in Bingr als gezien heeft gemarkeerd of uitkeek.
+    func localWatchedEpisodes(series id: String) -> Set<String> {
+        if localEpisodeIndex == nil {
+            var idx: [String: Set<String>] = [:]
+            for k in localWatched where k.hasPrefix("ep:") {
+                guard let bar = k.lastIndex(of: "|") else { continue }
+                idx[String(k[k.index(k.startIndex, offsetBy: 3)..<bar]), default: []].insert(String(k[k.index(after: bar)...]))
+            }
+            localEpisodeIndex = idx
+        }
+        return localEpisodeIndex?[id] ?? []
     }
 
     func setLocalWatched(_ itemKey: String, _ watched: Bool) {

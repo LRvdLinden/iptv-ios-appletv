@@ -159,6 +159,8 @@ struct Movie: Identifiable, Hashable, Codable {
     var addedAt: Date?
     var stalkerCmd: String?
     var xtreamVodID: Int?
+    /// TMDB-id van de bron (Xtream "tmdb"), om Trakt-vinkjes op het juiste item te zetten (build 75)
+    var tmdbID: Int? = nil
 }
 
 struct Series: Identifiable, Hashable, Codable {
@@ -175,6 +177,8 @@ struct Series: Identifiable, Hashable, Codable {
     var xtreamSeriesID: Int?
     /// Bij M3U zitten afleveringen al in de lijst
     var episodes: [Episode] = []
+    /// TMDB-id van de bron (Xtream "tmdb"), om Trakt-vinkjes op het juiste item te zetten (build 75)
+    var tmdbID: Int? = nil
 }
 
 struct Episode: Identifiable, Hashable, Codable {

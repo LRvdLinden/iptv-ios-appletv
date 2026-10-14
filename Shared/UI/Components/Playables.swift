@@ -51,6 +51,17 @@ enum Playables {
             || CloudStore.shared.localWatched.contains(CloudStore.episodeKey(series: e.seriesID, season: e.season, episode: e.number))
     }
 
+    /// Aantal bekeken afleveringen van een serie voor het label "N BEKEKEN" (build 75): Trakt (alleen het hoofdaccount;
+    /// bij andere profielen is die leeg) samen met wat dit profiel in Bingr afvinkte of uitkeek, zonder dubbeltellingen.
+    static func watchedEpisodeCount(_ s: Series, imdb: String?) -> Int {
+        let store = CloudStore.shared
+        var keys = TraktSync.shared.watchedEpisodeKeys(show: imdb)
+        keys.formUnion(store.localWatchedEpisodes(series: s.id))
+        // oudere markeringen op aflevering-id (van vóór de sleutel per serie)
+        for e in s.episodes where store.localWatched.contains(e.id) { keys.insert("\(e.season)-\(e.number)") }
+        return keys.count
+    }
+
     static func cleanEpisodeTitle(_ e: Episode) -> String {
         let parts = e.title.components(separatedBy: " - ")
         if parts.count >= 3, let last = parts.last, TitleCleaner.parse(last).season == nil {

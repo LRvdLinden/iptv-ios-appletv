@@ -811,7 +811,10 @@
   "Not connected": "غير متصل",
   "Profile menu": "قائمة الملف الشخصي",
   "Settings": "الإعدادات",
-  "Sync failed": "فشلت المزامنة"
+  "Sync failed": "فشلت المزامنة",
+  "Support": "الدعم",
+  "%d episodes watched": "تمت مشاهدة %d حلقة",
+  "Scan the QR code with your phone to open the Bingr help center.": "امسح رمز QR بهاتفك لفتح مركز مساعدة Bingr."
  },
  "de": {
   "%@ is now signed in.": "%@ ist jetzt angemeldet.",
@@ -1625,7 +1628,10 @@
   "Not connected": "Nicht verbunden",
   "Profile menu": "Profilmenü",
   "Settings": "Einstellungen",
-  "Sync failed": "Synchronisierung fehlgeschlagen"
+  "Sync failed": "Synchronisierung fehlgeschlagen",
+  "Support": "Support",
+  "%d episodes watched": "%d Folgen gesehen",
+  "Scan the QR code with your phone to open the Bingr help center.": "Scanne den QR-Code mit deinem Telefon, um das Bingr-Hilfecenter zu öffnen."
  },
  "es": {
   "%@ is now signed in.": "%@ ya ha iniciado sesión.",
@@ -2439,7 +2445,10 @@
   "Not connected": "No conectado",
   "Profile menu": "Menú del perfil",
   "Settings": "Ajustes",
-  "Sync failed": "Error de sincronización"
+  "Sync failed": "Error de sincronización",
+  "Support": "Soporte",
+  "%d episodes watched": "%d episodios vistos",
+  "Scan the QR code with your phone to open the Bingr help center.": "Escanea el código QR con tu teléfono para abrir el centro de ayuda de Bingr."
  },
  "fr": {
   "%@ is now signed in.": "%@ est maintenant connecté.",
@@ -3253,7 +3262,10 @@
   "Not connected": "Non connecté",
   "Profile menu": "Menu du profil",
   "Settings": "Réglages",
-  "Sync failed": "Échec de la synchronisation"
+  "Sync failed": "Échec de la synchronisation",
+  "Support": "Assistance",
+  "%d episodes watched": "%d épisodes vus",
+  "Scan the QR code with your phone to open the Bingr help center.": "Scannez le code QR avec votre téléphone pour ouvrir le centre d’aide de Bingr."
  },
  "it": {
   "%@ is now signed in.": "%@ ha effettuato l’accesso.",
@@ -4067,7 +4079,10 @@
   "Not connected": "Non collegato",
   "Profile menu": "Menu del profilo",
   "Settings": "Impostazioni",
-  "Sync failed": "Sincronizzazione non riuscita"
+  "Sync failed": "Sincronizzazione non riuscita",
+  "Support": "Assistenza",
+  "%d episodes watched": "%d episodi visti",
+  "Scan the QR code with your phone to open the Bingr help center.": "Scansiona il codice QR con il telefono per aprire il centro assistenza di Bingr."
  },
  "nl": {
   "%@ is now signed in.": "%@ is nu ingelogd.",
@@ -4881,7 +4896,10 @@
   "Not connected": "Niet gekoppeld",
   "Profile menu": "Profielmenu",
   "Settings": "Instellingen",
-  "Sync failed": "Synchroniseren mislukt"
+  "Sync failed": "Synchroniseren mislukt",
+  "Support": "Support",
+  "%d episodes watched": "%d afleveringen bekeken",
+  "Scan the QR code with your phone to open the Bingr help center.": "Scan de QR-code met je telefoon om het helpcentrum van Bingr te openen."
  },
  "pl": {
   "%@ is now signed in.": "%@ jest teraz zalogowany.",
@@ -5695,7 +5713,10 @@
   "Not connected": "Nie połączono",
   "Profile menu": "Menu profilu",
   "Settings": "Ustawienia",
-  "Sync failed": "Synchronizacja nie powiodła się"
+  "Sync failed": "Synchronizacja nie powiodła się",
+  "Support": "Pomoc",
+  "%d episodes watched": "Obejrzane odcinki: %d",
+  "Scan the QR code with your phone to open the Bingr help center.": "Zeskanuj kod QR telefonem, aby otworzyć centrum pomocy Bingr."
  },
  "pt": {
   "%@ is now signed in.": "%@ já tem sessão iniciada.",
@@ -6509,7 +6530,10 @@
   "Not connected": "Não ligado",
   "Profile menu": "Menu do perfil",
   "Settings": "Definições",
-  "Sync failed": "Falha na sincronização"
+  "Sync failed": "Falha na sincronização",
+  "Support": "Suporte",
+  "%d episodes watched": "%d episódios vistos",
+  "Scan the QR code with your phone to open the Bingr help center.": "Leia o código QR com o telemóvel para abrir o centro de ajuda do Bingr."
  },
  "tr": {
   "%@ is now signed in.": "%@ artık oturum açtı.",
@@ -7323,7 +7347,10 @@
   "Not connected": "Bağlı değil",
   "Profile menu": "Profil menüsü",
   "Settings": "Ayarlar",
-  "Sync failed": "Eşitleme başarısız"
+  "Sync failed": "Eşitleme başarısız",
+  "Support": "Destek",
+  "%d episodes watched": "%d bölüm izlendi",
+  "Scan the QR code with your phone to open the Bingr help center.": "Bingr yardım merkezini açmak için QR kodunu telefonunla tara."
  },
  "zh-Hans": {
   "%@ is now signed in.": "%@ 现已登录。",
@@ -8137,6 +8164,9 @@
   "Not connected": "未连接",
   "Profile menu": "个人资料菜单",
   "Settings": "设置",
-  "Sync failed": "同步失败"
+  "Sync failed": "同步失败",
+  "Support": "支持",
+  "%d episodes watched": "已看 %d 集",
+  "Scan the QR code with your phone to open the Bingr help center.": "用手机扫描二维码，打开 Bingr 帮助中心。"
  }
 }

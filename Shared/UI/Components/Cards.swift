@@ -13,6 +13,8 @@ struct PosterCard: View {
     var watched = false
     var progress: Double?
     var badge: String?
+    /// Serie: aantal bekeken afleveringen (Bingr + Trakt), rood label "N BEKEKEN" linksboven (build 75)
+    var watchedEpisodes: Int = 0
     /// Plek van het label: onderaan in het midden (standaard) of linksboven (`.topLeading`, "Voor jou")
     var badgeAlignment: Alignment = .bottom
     var width: CGFloat = Theme.posterWidth
@@ -23,15 +25,23 @@ struct PosterCard: View {
 
     var body: some View {
         let l = lang
+        let topBadge = badge != nil && badgeAlignment == .topLeading
         ZStack(alignment: .topTrailing) {
             RemoteImage(url: poster, placeholder: ContentLanguage.displayTitle(title))
                 .frame(width: width, height: width * 1.5)
                 .clipped()
             if watched { WatchedBadge().padding(6) }
-            if let badge {
-                let label = Text(badge).font(.system(size: tvScaled(9), weight: .heavy)).foregroundStyle(.white)
-                    .padding(.horizontal, 5).padding(.vertical, 2)
-                    .background(Theme.red, in: RoundedRectangle(cornerRadius: 2))
+            // linksboven: het label van "Voor jou" (SERIE/FILM) en daaronder "N BEKEKEN" (build 75, zoals op bingr.online)
+            if topBadge || watchedEpisodes > 0 {
+                VStack(alignment: .leading, spacing: tvScaled(3)) {
+                    if topBadge, let badge { PosterLabel(text: badge) }
+                    if watchedEpisodes > 0 { WatchedEpisodesLabel(count: watchedEpisodes) }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .padding(tvScaled(6))
+            }
+            if let badge, !topBadge {
+                let label = PosterLabel(text: badge)
                 if badgeAlignment == .bottom {
                     label
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
@@ -50,6 +60,26 @@ struct PosterCard: View {
         }
         .frame(width: width, height: width * 1.5)
         .clipShape(RoundedRectangle(cornerRadius: tvScaled(4)))
+    }
+}
+
+/// Rood labeltje op een poster ("SERIE", "FILM", "Onlangs toegevoegd").
+struct PosterLabel: View {
+    let text: String
+    var body: some View {
+        Text(text).font(.system(size: tvScaled(9), weight: .heavy)).foregroundStyle(.white)
+            .lineLimit(1)
+            .padding(.horizontal, 5).padding(.vertical, 2)
+            .background(Theme.red, in: RoundedRectangle(cornerRadius: 2))
+    }
+}
+
+/// "21 BEKEKEN": aantal bekeken afleveringen van een serie, linksboven op de poster (build 75).
+struct WatchedEpisodesLabel: View {
+    let count: Int
+    var body: some View {
+        PosterLabel(text: L("%d WATCHED", count))
+            .accessibilityLabel(L("%d episodes watched", count))
     }
 }
 
@@ -131,6 +161,8 @@ struct Top10Card: View {
     /// Rood label onderaan de poster, bijv. "Onlangs toegevoegd"
     var badge: String? = nil
     var language: ContentLanguage? = nil
+    /// Serie: aantal bekeken afleveringen, onder het TOP 10-label (build 75)
+    var watchedEpisodes: Int = 0
 
     private var w: CGFloat { Theme.posterWidth * 1.08 }
     private var h: CGFloat { w * 1.5 }
@@ -141,7 +173,11 @@ struct Top10Card: View {
                 .frame(width: rank >= 10 ? h * 0.78 : h * 0.46, height: h, alignment: .trailing)
             ZStack(alignment: .topLeading) {
                 PosterCard(title: title, poster: poster, watched: watched, badge: badge, width: w, language: language)
-                Top10Badge().padding(tvScaled(5))
+                VStack(alignment: .leading, spacing: tvScaled(3)) {
+                    Top10Badge()
+                    if watchedEpisodes > 0 { WatchedEpisodesLabel(count: watchedEpisodes) }
+                }
+                .padding(tvScaled(5))
             }
             .shadow(color: .black.opacity(0.6), radius: 8, x: -4)
         }

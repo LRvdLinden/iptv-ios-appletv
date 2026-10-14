@@ -34,37 +34,76 @@ final class TraktSync: ObservableObject {
     struct TitleIndex: Codable {
         var movies: [String: String] = [:]
         var shows: [String: String] = [:]
+        /// TMDB-id → IMDb-id (build 75): veel IPTV-servers geven het TMDB-id mee, dat past beter dan de titel
+        var tmdbMovies: [Int: String] = [:]
+        var tmdbShows: [Int: String] = [:]
+        /// IMDb-id → jaar, om bij een titel zonder jaar-treffer geen remake/andere serie met dezelfde naam af te vinken
+        var years: [String: Int] = [:]
+
+        init() {}
+        private enum K: String, CodingKey { case movies, shows, tmdbMovies, tmdbShows, years }
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: K.self)
+            movies = (try? c.decodeIfPresent([String: String].self, forKey: .movies)) ?? [:]
+            shows = (try? c.decodeIfPresent([String: String].self, forKey: .shows)) ?? [:]
+            tmdbMovies = (try? c.decodeIfPresent([Int: String].self, forKey: .tmdbMovies)) ?? [:]
+            tmdbShows = (try? c.decodeIfPresent([Int: String].self, forKey: .tmdbShows)) ?? [:]
+            years = (try? c.decodeIfPresent([String: Int].self, forKey: .years)) ?? [:]
+        }
+
         static func norm(_ t: String) -> String {
             t.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: nil)
              .filter { $0.isLetter || $0.isNumber }
         }
-        mutating func add(title: String?, year: Int?, imdb: String, show: Bool) {
+        mutating func add(title: String?, year: Int?, imdb: String, show: Bool, tmdb: Int? = nil) {
+            if let tmdb, tmdb > 0 { if show { tmdbShows[tmdb] = imdb } else { tmdbMovies[tmdb] = imdb } }
+            if let year { years[imdb] = year }
             guard let title else { return }
             let n = Self.norm(title)
+            guard !n.isEmpty else { return }
             if show { shows[n] = imdb; if let year { shows["\(n)|\(year)"] = imdb } }
             else { movies[n] = imdb; if let year { movies["\(n)|\(year)"] = imdb } }
         }
+        func imdb(tmdb: Int?, show: Bool) -> String? {
+            guard let tmdb, tmdb > 0 else { return nil }
+            return show ? tmdbShows[tmdb] : tmdbMovies[tmdb]
+        }
         func imdb(title: String, year: Int?, show: Bool) -> String? {
             let n = Self.norm(title), d = show ? shows : movies
-            if let year, let i = d["\(n)|\(year)"] { return i }
-            return d[n]
+            guard !n.isEmpty else { return nil }
+            guard let year else { return d[n] }
+            // jaar klopt (of scheelt één jaar: release in het ene land, première in het andere)
+            if let i = d["\(n)|\(year)"] ?? d["\(n)|\(year - 1)"] ?? d["\(n)|\(year + 1)"] { return i }
+            // alleen op titel als het jaar van die treffer onbekend is of past: "The Office" (2001) ≠ "The Office" (2005)
+            guard let i = d[n] else { return nil }
+            if let y = years[i], abs(y - year) > 1 { return nil }
+            return i
         }
     }
 
     /// IMDb-ID van een IPTV-titel: eerst uit de Trakt-index, dan uit de metadata-cache.
     /// Ook de schone titel proberen ("NL | Reacher (2022) 4K" → "Reacher", 2022), anders vinden we je Trakt-vinkjes niet.
+    /// Volgorde (build 75): IMDb-id van de bron → TMDB-id (van de bron of uit de details) → titel+jaar uit je Trakt-geschiedenis
+    /// (een titel met een ander jaar telt niet) → IMDb-id uit de metadata (OMDb/TMDB).
     func imdb(for m: Movie) -> String? {
-        m.imdbID ?? indexed(m.title, m.year, show: false) ?? MetadataService.shared.cached(m)?.imdbID
+        m.imdbID ?? titleIndex.imdb(tmdb: m.tmdbID ?? knownTMDb(m.id), show: false)
+            ?? indexed(m.title, m.year, show: false) ?? MetadataService.shared.cached(m)?.imdbID
     }
     func imdb(for s: Series) -> String? {
-        s.imdbID ?? indexed(s.title, s.year, show: true) ?? MetadataService.shared.cached(s)?.imdbID
+        s.imdbID ?? titleIndex.imdb(tmdb: s.tmdbID ?? knownTMDb(s.id), show: true)
+            ?? indexed(s.title, s.year, show: true) ?? MetadataService.shared.cached(s)?.imdbID
+    }
+    /// TMDB-id dat Bingr eerder bij de details van deze titel vond (ContentLanguage.Facts, build 59)
+    private func knownTMDb(_ id: String) -> Int? {
+        titleIndex.tmdbMovies.isEmpty && titleIndex.tmdbShows.isEmpty ? nil : ContentLanguage.Facts.shared.tmdbID(id)
     }
     private func indexed(_ raw: String, _ year: Int?, show: Bool) -> String? {
         // niets in de index (niet ingelogd / subprofiel)? dan ook niet elke titel opschonen — scheelt veel rekenwerk bij scrollen
         guard !(show ? titleIndex.shows.isEmpty : titleIndex.movies.isEmpty) else { return nil }
-        if let i = titleIndex.imdb(title: raw, year: year, show: show) { return i }
         let c = cleaned(raw)
-        return titleIndex.imdb(title: c.title, year: year ?? c.year, show: show)
+        let y = year ?? c.year
+        if let i = titleIndex.imdb(title: raw, year: y, show: show) { return i }
+        return titleIndex.imdb(title: c.title, year: y, show: show)
     }
     private var cleanCache: [String: (title: String, year: Int?)] = [:]
     private func cleaned(_ raw: String) -> (title: String, year: Int?) {
@@ -116,8 +155,12 @@ final class TraktSync: ObservableObject {
     func applyProfile(isMain: Bool) async {
         profileAllowed = isMain
         if isMain {
-            isLoggedIn = await client.isLoggedIn
-            username = await client.tokens?.username
+            let loggedIn = await client.isLoggedIn
+            let name = await client.tokens?.username
+            // intussen naar een ander profiel gewisseld? dan niets van Trakt laten zien
+            guard profileAllowed else { return }
+            isLoggedIn = loggedIn
+            username = name
             loadCache()
             if isLoggedIn { await refresh() }
         } else {
@@ -129,8 +172,11 @@ final class TraktSync: ObservableObject {
     func bootstrap() async {
         profileAllowed = CloudStore.shared.isMainActive || CloudStore.shared.profiles.count <= 1
         guard profileAllowed else { return }
-        isLoggedIn = await client.isLoggedIn
-        username = await client.tokens?.username
+        let loggedIn = await client.isLoggedIn
+        let name = await client.tokens?.username
+        guard profileAllowed else { return }   // tijdens het opstarten al een ander profiel gekozen
+        isLoggedIn = loggedIn
+        username = name
         loadCache()
         if isLoggedIn { await refresh(); await loadProfile() }
     }
@@ -230,32 +276,38 @@ final class TraktSync: ObservableObject {
             async let w: [WatchlistItem] = client.get("/sync/watchlist")
 
             let movies = try await m
+            let shows = try await s
+            let pb = try await p
+            let wl = try await w
+            // intussen naar een ander profiel gewisseld of uitgelogd? dan de vinkjes van het hoofdaccount niet tonen
+            guard profileAllowed, isLoggedIn else { return }
             watchedMovies = Set(movies.compactMap { $0.movie.ids.imdb })
             var tIndex = titleIndex
-            for x in movies { if let i = x.movie.ids.imdb { tIndex.add(title: x.movie.title, year: x.movie.year, imdb: i, show: false) } }
+            for x in movies {
+                if let i = x.movie.ids.imdb { tIndex.add(title: x.movie.title, year: x.movie.year, imdb: i, show: false, tmdb: x.movie.ids.tmdb) }
+            }
             var eps: [String: Set<String>] = [:]
-            for show in try await s {
+            for show in shows {
                 guard let imdb = show.show.ids.imdb else { continue }
-                tIndex.add(title: show.show.title, year: show.show.year, imdb: imdb, show: true)
+                tIndex.add(title: show.show.title, year: show.show.year, imdb: imdb, show: true, tmdb: show.show.ids.tmdb)
                 var set = Set<String>()
                 for season in show.seasons ?? [] { for e in season.episodes { set.insert("\(season.number)-\(e.number)") } }
                 eps[imdb] = set
             }
             watchedEpisodes = eps
-            titleIndex = tIndex
-            playback = try await p.map { x -> PlaybackItem in
+            playback = pb.map { x -> PlaybackItem in
                 if x.type == "episode" {
                     return PlaybackItem(id: x.id, progress: x.progress, type: x.type, imdb: x.show?.ids.imdb,
                                         title: x.show?.title ?? "", season: x.episode?.season, episode: x.episode?.number)
                 }
                 return PlaybackItem(id: x.id, progress: x.progress, type: x.type, imdb: x.movie?.ids.imdb, title: x.movie?.title ?? "")
             }
-            let wl = try await w
             watchlist = Set(wl.compactMap { $0.movie?.ids.imdb ?? $0.show?.ids.imdb })
             for x in wl {
-                if let mm = x.movie, let i = mm.ids.imdb { titleIndex.add(title: mm.title, year: mm.year, imdb: i, show: false) }
-                if let ss = x.show, let i = ss.ids.imdb { titleIndex.add(title: ss.title, year: ss.year, imdb: i, show: true) }
+                if let mm = x.movie, let i = mm.ids.imdb { tIndex.add(title: mm.title, year: mm.year, imdb: i, show: false, tmdb: mm.ids.tmdb) }
+                if let ss = x.show, let i = ss.ids.imdb { tIndex.add(title: ss.title, year: ss.year, imdb: i, show: true, tmdb: ss.ids.tmdb) }
             }
+            titleIndex = tIndex
             lastActivity = act.all
             lastRefresh = Date()
             lastError = nil
@@ -275,6 +327,8 @@ final class TraktSync: ObservableObject {
         guard let imdb else { return false }; return watchedEpisodes[imdb]?.contains("\(season)-\(episode)") ?? false
     }
     func watchedCount(show imdb: String?) -> Int { imdb.flatMap { watchedEpisodes[$0]?.count } ?? 0 }
+    /// Bekeken afleveringen ("seizoen-aflevering") van een serie op Trakt.
+    func watchedEpisodeKeys(show imdb: String?) -> Set<String> { imdb.flatMap { watchedEpisodes[$0] } ?? [] }
 
     func playbackProgress(movie imdb: String?) -> Double? {
         guard let imdb else { return nil }
@@ -466,16 +520,20 @@ final class TraktSync: ObservableObject {
 
     // MARK: cache (zodat vinkjes direct zichtbaar zijn bij opstarten)
 
-    private struct Cache: Codable { var m: Set<String>; var e: [String: Set<String>]; var w: Set<String>; var a: String?; var t: TitleIndex? }
+    /// `v`: versie van de cache; bij een oudere versie alles opnieuw ophalen (build 75: TMDB-ids en jaren in de index)
+    private struct Cache: Codable { var m: Set<String>; var e: [String: Set<String>]; var w: Set<String>; var a: String?; var t: TitleIndex?; var v: Int? }
+    private static let cacheVersion = 2
     private var cacheURL: URL {
         FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("trakt-cache.json")
     }
     private func saveCache() {
-        let c = Cache(m: watchedMovies, e: watchedEpisodes, w: watchlist, a: lastActivity, t: titleIndex)
+        let c = Cache(m: watchedMovies, e: watchedEpisodes, w: watchlist, a: lastActivity, t: titleIndex, v: Self.cacheVersion)
         if let d = try? JSONEncoder().encode(c) { try? d.write(to: cacheURL) }
     }
     private func loadCache() {
-        guard isLoggedIn, let d = try? Data(contentsOf: cacheURL), let c = try? JSONDecoder().decode(Cache.self, from: d) else { return }
-        watchedMovies = c.m; watchedEpisodes = c.e; watchlist = c.w; lastActivity = c.a; titleIndex = c.t ?? TitleIndex()
+        guard isLoggedIn, profileAllowed, let d = try? Data(contentsOf: cacheURL), let c = try? JSONDecoder().decode(Cache.self, from: d) else { return }
+        watchedMovies = c.m; watchedEpisodes = c.e; watchlist = c.w; titleIndex = c.t ?? TitleIndex()
+        // oude cache (zonder TMDB-ids/jaren): de volgende verversing niet overslaan
+        lastActivity = c.v == Self.cacheVersion ? c.a : nil
     }
 }

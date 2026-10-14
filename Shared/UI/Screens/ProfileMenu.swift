@@ -22,12 +22,12 @@ extension CloudStore {
 /// Wat je in het profielmenu kunt kiezen (build 72, zoals op bingr.online).
 enum ProfileMenuAction {
     case profile(ViewerProfile)
-    case switchProfile, manageProfiles, myBingr, settings, account, signOut
+    case switchProfile, manageProfiles, myBingr, settings, account, support, signOut
 }
 
 /// Profielmenu achter de avatar: andere profielen (direct wisselen, met pincode als die er is),
 /// Wissel van profiel, Profielen beheren (alleen hoofdprofiel), Mijn Bingr, Instellingen,
-/// Account en apparaten en Uitloggen. iPhone, iPad en Mac: een gewoon menu; Apple TV: een focusbaar scherm.
+/// Account en apparaten, Support (build 75) en Uitloggen. iPhone, iPad en Mac: een gewoon menu; Apple TV: een focusbaar scherm.
 struct ProfileMenuButton<MenuLabel: View>: View {
     let label: () -> MenuLabel
     @EnvironmentObject var app: AppState
@@ -35,6 +35,7 @@ struct ProfileMenuButton<MenuLabel: View>: View {
     @ObservedObject private var account = AccountService.shared
     @State private var pinFor: ViewerProfile?
     @State private var confirmSignOut = false
+    @State private var showSupport = false
     #if os(tvOS)
     @State private var showMenu = false
     #endif
@@ -59,6 +60,7 @@ struct ProfileMenuButton<MenuLabel: View>: View {
                 Button(L("Sign out"), role: .destructive) { Task { await account.signOut() } }
                 Button(L("Cancel"), role: .cancel) {}
             }
+            .supportPage(isPresented: $showSupport)
     }
 
     #if os(tvOS)
@@ -99,6 +101,7 @@ struct ProfileMenuButton<MenuLabel: View>: View {
                 if signedIn {
                     Button { perform(.account) } label: { Label(L("Account and devices"), systemImage: "person.crop.circle") }
                 }
+                Button { perform(.support) } label: { Label(L("Support"), systemImage: "questionmark.circle") }
             }
             if signedIn {
                 Section {
@@ -125,6 +128,7 @@ struct ProfileMenuButton<MenuLabel: View>: View {
         case .myBingr: app.showMyBingr()
         case .settings: app.showMyBingr(.settings)
         case .account: app.showMyBingr(.account)
+        case .support: showSupport = true
         case .signOut: confirmSignOut = true
         }
     }
@@ -204,8 +208,9 @@ private struct TVProfileMenu: View {
                 if canManage { row(L("Manage profiles"), "pencil", .manageProfiles) }
                 row(L("My Bingr"), "person", .myBingr)
                 row(L("Settings"), "gearshape", .settings)
+                if signedIn { row(L("Account and devices"), "person.crop.circle", .account) }
+                row(L("Support"), "questionmark.circle", .support)
                 if signedIn {
-                    row(L("Account and devices"), "person.crop.circle", .account)
                     Divider().padding(.vertical, 6)
                     row(L("Sign out"), "rectangle.portrait.and.arrow.right", .signOut, destructive: true)
                 }

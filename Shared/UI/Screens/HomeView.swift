@@ -231,7 +231,9 @@ struct HomeView: View {
                                        watched: Playables.isWatched(movie: m, imdb: trakt.imdb(for: m)),
                                        progress: store.progress[m.id]?.fraction, language: ContentLanguage.of(m))
                         case .series(let se):
-                            PosterCard(title: se.title, poster: se.poster, imdbID: trakt.imdb(for: se), language: ContentLanguage.of(se))
+                            let imdb = trakt.imdb(for: se)
+                            PosterCard(title: se.title, poster: se.poster, imdbID: imdb,
+                                       watchedEpisodes: Playables.watchedEpisodeCount(se, imdb: imdb), language: ContentLanguage.of(se))
                         }
                     }
                     .cardButton()
@@ -272,7 +274,9 @@ struct HomeView: View {
                                 PosterCard(title: m.title, poster: m.poster, imdbID: trakt.imdb(for: m),
                                            watched: Playables.isWatched(movie: m, imdb: trakt.imdb(for: m)), progress: store.progress[m.id]?.fraction, language: ContentLanguage.of(m))
                             case .series(let se):
-                                PosterCard(title: se.title, poster: se.poster, imdbID: trakt.imdb(for: se), language: ContentLanguage.of(se))
+                                let imdb = trakt.imdb(for: se)
+                                PosterCard(title: se.title, poster: se.poster, imdbID: imdb,
+                                           watchedEpisodes: Playables.watchedEpisodeCount(se, imdb: imdb), language: ContentLanguage.of(se))
                             }
                         }
                         .cardButton()
@@ -349,11 +353,14 @@ struct HomeView: View {
                     Button { detail = t } label: {
                         switch t {
                         case .movie(let m):
-                            PosterCard(title: m.title, poster: m.poster, badge: L("MOVIE"), badgeAlignment: .topLeading,
-                                       language: ContentLanguage.of(m))
+                            PosterCard(title: m.title, poster: m.poster,
+                                       watched: Playables.isWatched(movie: m, imdb: trakt.imdb(for: m)),
+                                       badge: L("MOVIE"), badgeAlignment: .topLeading, language: ContentLanguage.of(m))
                         case .series(let s):
-                            PosterCard(title: s.title, poster: s.poster, badge: L("SERIES"), badgeAlignment: .topLeading,
-                                       language: ContentLanguage.of(s))
+                            // "N BEKEKEN" komt onder het label SERIE (zoals op bingr.online)
+                            PosterCard(title: s.title, poster: s.poster,
+                                       badge: L("SERIES"), watchedEpisodes: Playables.watchedEpisodeCount(s, imdb: trakt.imdb(for: s)),
+                                       badgeAlignment: .topLeading, language: ContentLanguage.of(s))
                         }
                     }
                     .cardButton()
@@ -397,11 +404,9 @@ struct HomeView: View {
         MediaRow(title: title, onSeeAll: all.map { list in { category = CategoryTarget(title: title, items: list.map { .series($0) }) } }) {
             ForEach(items) { s in
                 let imdb = trakt.imdb(for: s)
-                let count = max(trakt.watchedCount(show: imdb), store.localWatchedCount(series: s.id),
-                                s.episodes.filter { store.localWatched.contains($0.id) }.count)
                 Button { detail = .series(s) } label: {
                     PosterCard(title: s.title, poster: s.poster, imdbID: imdb,
-                               badge: count > 0 ? L("%d WATCHED", count) : nil, language: ContentLanguage.of(s))
+                               watchedEpisodes: Playables.watchedEpisodeCount(s, imdb: imdb), language: ContentLanguage.of(s))
                 }
                 .cardButton()
                 .contextMenu {
@@ -430,7 +435,10 @@ struct HomeView: View {
                 }.cardButton()
             }
             ForEach(Array(series.enumerated()), id: \.element.id) { i, s in
-                Button { detail = .series(s) } label: { Top10Card(rank: i + 1, title: s.title, poster: s.poster, language: ContentLanguage.of(s)) }.cardButton()
+                Button { detail = .series(s) } label: {
+                    Top10Card(rank: i + 1, title: s.title, poster: s.poster, language: ContentLanguage.of(s),
+                              watchedEpisodes: Playables.watchedEpisodeCount(s, imdb: trakt.imdb(for: s)))
+                }.cardButton()
             }
         }
     }

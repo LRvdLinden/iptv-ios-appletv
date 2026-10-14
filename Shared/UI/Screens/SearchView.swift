@@ -11,6 +11,8 @@ struct SearchView: View {
     @EnvironmentObject var app: AppState
     @EnvironmentObject var playlists: PlaylistService
     @EnvironmentObject var trakt: TraktSync
+    /// vinkjes en "N BEKEKEN" ook bijwerken na afvinken in Bingr (build 75)
+    @EnvironmentObject var store: CloudStore
     @State private var query = ""
     @State private var results = PlaylistService.SearchResults()
     @State private var detail: DetailTarget?
@@ -233,7 +235,8 @@ struct SearchView: View {
                                        watched: Playables.isWatched(movie: m, imdb: trakt.imdb(for: m)), language: ContentLanguage.of(m))
                                 .sourceAccent(currentSource)
                         case .series(let s):
-                            PosterCard(title: s.title, poster: s.poster, language: ContentLanguage.of(s))
+                            PosterCard(title: s.title, poster: s.poster,
+                                       watchedEpisodes: Playables.watchedEpisodeCount(s, imdb: trakt.imdb(for: s)), language: ContentLanguage.of(s))
                                 .sourceAccent(currentSource)
                         }
                     }

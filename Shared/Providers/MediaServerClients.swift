@@ -108,12 +108,13 @@ struct JellyfinClient {
         lib.movies = try await items("Movie").map { i in
             Movie(id: "jf\(i.Id)", title: i.Name ?? "?", year: i.ProductionYear, poster: image(i.Id),
                   group: i.Genres?.first ?? L("Movies"), streamURL: stream(i.Id), imdbID: i.ProviderIds?["Imdb"],
-                  rating: i.CommunityRating, plot: i.Overview, addedAt: parseISODate(i.DateCreated))
+                  rating: i.CommunityRating, plot: i.Overview, addedAt: parseISODate(i.DateCreated),
+                  tmdbID: i.ProviderIds?["Tmdb"].flatMap { Int($0) })
         }
         lib.series = try await items("Series").map { i in
             Series(id: "jfs\(i.Id)", title: i.Name ?? "?", year: i.ProductionYear, poster: image(i.Id),
                    group: i.Genres?.first ?? L("Series"), imdbID: i.ProviderIds?["Imdb"], plot: i.Overview,
-                   rating: i.CommunityRating, remoteID: i.Id)
+                   rating: i.CommunityRating, remoteID: i.Id, tmdbID: i.ProviderIds?["Tmdb"].flatMap { Int($0) })
         }
         // Live TV (optioneel)
         if let u = url("/LiveTv/Channels", ["UserId": uid, "EnableImages": "true"]),
@@ -239,6 +240,9 @@ struct PlexClient {
     private func imdb(_ m: Meta) -> String? {
         m.Guid?.first { $0.id.hasPrefix("imdb://") }.map { String($0.id.dropFirst(7)) }
     }
+    private func tmdb(_ m: Meta) -> Int? {
+        m.Guid?.first { $0.id.hasPrefix("tmdb://") }.flatMap { Int($0.id.dropFirst(7)) }
+    }
     private func image(_ path: String?) -> URL? { path.flatMap { url($0) } }
     private func stream(_ m: Meta) -> URL? { m.Media?.first?.Part?.first?.key.flatMap { url($0) } }
 
@@ -253,11 +257,12 @@ struct PlexClient {
                     lib.movies.append(Movie(id: "px\(m.ratingKey)", title: m.title ?? "?", year: m.year, poster: image(m.thumb),
                                             group: group, streamURL: stream(m), imdbID: imdb(m),
                                             rating: m.audienceRating ?? m.rating, plot: m.summary,
-                                            addedAt: m.addedAt.map { Date(timeIntervalSince1970: TimeInterval($0)) }))
+                                            addedAt: m.addedAt.map { Date(timeIntervalSince1970: TimeInterval($0)) },
+                                            tmdbID: tmdb(m)))
                 } else {
                     lib.series.append(Series(id: "pxs\(m.ratingKey)", title: m.title ?? "?", year: m.year, poster: image(m.thumb),
                                              group: group, imdbID: imdb(m), plot: m.summary,
-                                             rating: m.audienceRating ?? m.rating, remoteID: m.ratingKey))
+                                             rating: m.audienceRating ?? m.rating, remoteID: m.ratingKey, tmdbID: tmdb(m)))
                 }
             }
         }

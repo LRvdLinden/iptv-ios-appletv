@@ -53,8 +53,8 @@ struct XtreamClient {
     }
     struct Vod: Decodable {
         let stream_id: Flex; let name: String?; let stream_icon: String?; let category_id: Flex?
-        let container_extension: String?; let rating: Flex?; let added: Flex?; let year: Flex?
-        private enum K: String, CodingKey { case stream_id, name, title, stream_icon, cover, category_id, container_extension, rating, added, year }
+        let container_extension: String?; let rating: Flex?; let added: Flex?; let year: Flex?; let tmdb: Int?
+        private enum K: String, CodingKey { case stream_id, name, title, stream_icon, cover, category_id, container_extension, rating, added, year, tmdb, tmdb_id }
         init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: K.self)
             stream_id = try c.decode(Flex.self, forKey: .stream_id)
@@ -64,12 +64,13 @@ struct XtreamClient {
             container_extension = c.flexString(.container_extension).flatMap { $0.isEmpty ? nil : $0 }
             rating = try? c.decode(Flex.self, forKey: .rating); added = try? c.decode(Flex.self, forKey: .added)
             year = try? c.decode(Flex.self, forKey: .year)
+            tmdb = ((try? c.decode(Flex.self, forKey: .tmdb)) ?? (try? c.decode(Flex.self, forKey: .tmdb_id)))?.int.flatMap { $0 > 0 ? $0 : nil }
         }
     }
     struct SeriesDTO: Decodable {
         let series_id: Flex; let name: String?; let cover: String?; let category_id: Flex?
-        let plot: String?; let rating: Flex?; let releaseDate: String?; let year: Flex?
-        private enum K: String, CodingKey { case series_id, name, title, cover, category_id, plot, rating, releaseDate, release_date, year }
+        let plot: String?; let rating: Flex?; let releaseDate: String?; let year: Flex?; let tmdb: Int?
+        private enum K: String, CodingKey { case series_id, name, title, cover, category_id, plot, rating, releaseDate, release_date, year, tmdb, tmdb_id }
         init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: K.self)
             series_id = try c.decode(Flex.self, forKey: .series_id)
@@ -78,6 +79,7 @@ struct XtreamClient {
             rating = try? c.decode(Flex.self, forKey: .rating)
             releaseDate = c.flexString(.releaseDate) ?? c.flexString(.release_date)
             year = try? c.decode(Flex.self, forKey: .year)
+            tmdb = ((try? c.decode(Flex.self, forKey: .tmdb)) ?? (try? c.decode(Flex.self, forKey: .tmdb_id)))?.int.flatMap { $0 > 0 ? $0 : nil }
         }
     }
     /// Lijst waarin een kapot item wordt overgeslagen in plaats van de hele lijst te laten mislukken.
@@ -271,7 +273,7 @@ struct XtreamClient {
                          streamURL: URL(string: "\(server)/movie/\(username)/\(password)/\(sid).\(v.container_extension ?? "mp4")"),
                          rating: v.rating?.double,
                          addedAt: v.added?.double.map { Date(timeIntervalSince1970: $0) },
-                         xtreamVodID: Int(sid))
+                         xtreamVodID: Int(sid), tmdbID: v.tmdb)
         }
         lib.series = ser.compactMap { s in
             guard let sid = s.series_id.int else { return nil }
@@ -279,7 +281,7 @@ struct XtreamClient {
             let y = s.year?.int ?? s.releaseDate.flatMap { Int($0.prefix(4)) } ?? p.year
             return Series(id: "xs\(sid)", title: p.title, year: y, poster: s.cover?.urlValue,
                           group: scMap[s.category_id?.string ?? ""] ?? L("Other"),
-                          plot: s.plot, rating: s.rating?.double, xtreamSeriesID: sid)
+                          plot: s.plot, rating: s.rating?.double, xtreamSeriesID: sid, tmdbID: s.tmdb)
         }
         return lib
     }
