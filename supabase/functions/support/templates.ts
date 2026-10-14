@@ -1,7 +1,10 @@
-// Supporttickets: e-mails in de huisstijl van Bingr (zelfde opbouw als supabase/templates en de berichten uit het
-// beheer: zwart, logo met rode balk, kaart #141414 met rode rand). Tabellen met inline stijlen voor Gmail, Outlook en
-// Apple Mail, plus een platte-tekstversie. Alles wat de klant of het beheer typt gaat door esc().
+// Supporttickets: e-mails in de huisstijl van Bingr (gedeelde opbouw in ../_shared/layout.ts, net als de accountmails uit
+// supabase/templates en de berichten uit het beheer: zwart, logo met rode balk, kaart #141414 met rode rand). Tabellen met
+// inline stijlen voor Gmail, Outlook en Apple Mail, plus een platte-tekstversie. Alles wat de klant of het beheer typt gaat door esc().
 import { REPLY_MARKER } from "./mime.ts";
+import {
+  bodyHtml, button, copyLink, detailRows, esc, eyebrow, footerHtml, footerText, layout, messageBox, redBar, title, unesc,
+} from "../_shared/layout.ts";
 import {
   CATEGORY_LABEL, type Lang, PLATFORM_LABEL, STATUS_ADMIN, STATUS_COLOR, STATUS_LABEL, type Status, ticketLabel,
 } from "./logic.ts";
@@ -36,29 +39,13 @@ export type MailData = {
   replyByMail?: boolean;
 };
 
-const SITE = "https://bingr.online";
-const SUPPORT_SITE = "https://support.bingr.online";
-const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
-
-export const esc = (s: unknown) =>
-  String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
-// alleen https-links klikbaar maken, ná het escapen (dus nooit eigen HTML van de afzender)
-const linkify = (s: string) =>
-  s.replace(/https:\/\/[^\s<"']+[^\s<"'.,;:!?)]/g, (u) => `<a href="${u}" style="color:#ffffff;text-decoration:underline">${u}</a>`);
-const unesc = (s: string) => s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&");
-/** Tekst van een bericht naar veilige HTML: escapen, links, alinea's en regeleinden. */
-export function bodyHtml(text: string, color = "#e6e6e6") {
-  return String(text ?? "").split(/\n{2,}/).map((p) =>
-    `<p style="margin:0 0 14px;font-size:15px;line-height:23px;color:${color};word-break:break-word">${linkify(esc(p)).replace(/\n/g, "<br>")}</p>`
-  ).join("");
-}
+export { bodyHtml, esc };
 
 type T = Record<string, string>;
 const TXT: Record<Lang, T> = {
   nl: {
     ticket: "Supportticket", status: "Status", category: "Categorie", platform: "Platform", version: "App-versie",
     yourMsg: "Jouw bericht", reply: "Antwoord van Bingr Support", view: "Bekijk je ticket", viewReply: "Bekijk en beantwoord",
-    copy: "Werkt de knop niet? Kopieer deze link:",
     foot: "Je ontvangt deze e-mail omdat je een supportticket hebt aangemaakt bij Bingr.",
     footReply: "Reageren? Gebruik de knop hierboven, dan komt je antwoord direct bij je ticket.",
     footMail: "Reageren? Beantwoord deze e-mail of gebruik de knop hierboven; je antwoord komt direct bij je ticket.",
@@ -75,7 +62,6 @@ const TXT: Record<Lang, T> = {
   en: {
     ticket: "Support ticket", status: "Status", category: "Category", platform: "Platform", version: "App version",
     yourMsg: "Your message", reply: "Reply from Bingr Support", view: "View your ticket", viewReply: "View and reply",
-    copy: "Button not working? Copy this link:",
     foot: "You're receiving this email because you created a support ticket with Bingr.",
     footReply: "Want to reply? Use the button above so your answer goes straight to your ticket.",
     footMail: "Want to reply? Just reply to this email or use the button above; your answer goes straight to your ticket.",
@@ -109,24 +95,6 @@ function badge(status: Status, label: string) {
   const c = STATUS_COLOR[status];
   return `<span style="display:inline-block;font-size:12px;line-height:18px;font-weight:700;letter-spacing:.3px;color:#ffffff;background:${c};border-radius:999px;padding:3px 11px;white-space:nowrap">${esc(label)}</span>`;
 }
-function button(url: string, label: string) {
-  // tabel-knop: werkt ook in Outlook (geen padding op <a>)
-  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:26px 0 0"><tr><td align="center" bgcolor="#E50914" style="border-radius:6px;background:#E50914">
-<a href="${esc(url)}" style="display:inline-block;padding:14px 30px;font-family:${FONT};font-size:16px;font-weight:700;line-height:20px;color:#ffffff;text-decoration:none;border-radius:6px">${esc(label)}</a></td></tr></table>`;
-}
-function metaRows(rows: [string, string][]) {
-  const r = rows.filter(([, v]) => v).map(([k, v]) =>
-    `<tr><td style="padding:5px 16px 5px 0;font-size:13px;line-height:19px;color:#8c8c8c;white-space:nowrap;vertical-align:top">${esc(k)}</td><td style="padding:5px 0;font-size:13px;line-height:19px;color:#ffffff;word-break:break-word">${v}</td></tr>`
-  ).join("");
-  return r ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:18px 0 0;border-top:1px solid #2a2a2a;padding-top:8px">${r}</table>` : "";
-}
-function messageBox(label: string, text: string, accent: string) {
-  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:24px 0 0"><tr>
-<td style="background:#1f1f1f;border-left:3px solid ${accent};border-radius:8px;padding:18px 20px 6px">
-<div style="font-size:12px;line-height:16px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#a3a3a3;margin:0 0 10px">${esc(label)}</div>
-${bodyHtml(text)}</td></tr></table>`;
-}
-
 /** De complete e-mail: {subject, html, text}. */
 export function renderMail(d: MailData): { subject: string; html: string; text: string } {
   const toSupport = d.kind.startsWith("support_");
@@ -161,47 +129,32 @@ export function renderMail(d: MailData): { subject: string; html: string; text: 
     : [[t.category, esc(cat)], [t.platform, esc(plat)], [t.version, esc(d.appVersion ?? "")]];
 
   const card = `
-<div style="font-size:12px;line-height:16px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#8c8c8c">${esc(t.ticket)}</div>
+${eyebrow(t.ticket)}
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:6px 0 0"><tr>
 <td style="font-size:34px;line-height:40px;font-weight:900;letter-spacing:-.5px;color:#ffffff;vertical-align:middle">${esc(num)}</td>
 <td align="right" style="vertical-align:middle">${badge(d.status, statusLabel)}</td></tr></table>
 <div style="font-size:17px;line-height:24px;font-weight:700;color:#ffffff;margin:6px 0 0;word-break:break-word">${esc(d.subject)}</div>
-<div style="height:4px;width:56px;background:#E50914;border-radius:2px;margin:18px 0 22px;font-size:0;line-height:0">&nbsp;</div>
-<h1 style="margin:0 0 10px;font-size:24px;line-height:30px;font-weight:800;color:#ffffff">${esc(heading)}</h1>
+${redBar()}
+${title(heading)}
 <p style="margin:0;font-size:15px;line-height:23px;color:#d6d6d6">${esc(intro)}</p>
 ${d.body ? messageBox(boxLabel, d.body, accent) : ""}
 ${button(d.url, btn)}
-${metaRows(meta)}
-<p style="margin:22px 0 0;font-size:12px;line-height:18px;color:#8c8c8c">${esc(t.copy)}<br><a href="${esc(d.url)}" style="color:#b3b3b3;word-break:break-all">${esc(d.url)}</a></p>
+${detailRows(meta)}
+${copyLink(lang, d.url)}
 ${toSupport && d.customerUrl ? `<p style="margin:10px 0 0;font-size:12px;line-height:18px;color:#8c8c8c">Klantweergave: <a href="${esc(d.customerUrl)}" style="color:#b3b3b3;word-break:break-all">${esc(d.customerUrl)}</a></p>` : ""}`;
 
   const footReply = d.replyByMail ? t.footMail : t.footReply;
   const supportFoot = d.replyByMail
     ? `Melding van het supportsysteem van Bingr. Antwoord je met "Beantwoorden" (vanaf support@ of een adres uit BINGR_SUPPORT_AGENTS), dan komt je antwoord in het ticket en mailt het systeem het naar de klant. Schrijf boven de lijn bovenaan.`
     : `Melding van het supportsysteem van Bingr. Antwoord je met "Beantwoorden", dan gaat je mail naar de klant maar komt hij niet in het ticket; antwoord liever in het beheer.`;
-  const foot = toSupport ? supportFoot : `${esc(t.foot)} ${esc(footReply)}`;
-  // markeringsregel: alles daaronder is citaat (zo knipt de inbox-import een antwoord betrouwbaar af)
-  const marker = d.replyByMail
-    ? `<tr><td style="padding:0 4px 14px;font-size:11px;line-height:14px;color:#5c5c5c;font-family:${FONT}">${esc(REPLY_MARKER)}</td></tr>\n`
-    : "";
+  const foot = toSupport ? supportFoot : `${t.foot} ${footReply}`;
 
-  const html = `<!doctype html>
-<html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><meta name="supported-color-schemes" content="dark"><title>${esc(num)} · Bingr Support</title></head>
-<body style="margin:0;padding:0;background:#000000">
-<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:#000000">${esc(num)} · ${esc(heading)}</div>
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#000000"><tr><td align="center" style="padding:32px 16px">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;font-family:${FONT}">
-${marker}<tr><td style="padding:0 4px 24px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
-<td style="vertical-align:middle;width:56px"><img src="${SITE}/apple-touch-icon.png" width="44" height="44" alt="" style="display:block;border-radius:10px"></td>
-<td style="vertical-align:middle"><div style="font-size:30px;font-weight:900;letter-spacing:1px;color:#ffffff;line-height:30px">BINGR</div><div style="height:4px;width:74px;background:#E50914;border-radius:2px;margin-top:6px;font-size:0;line-height:0">&nbsp;</div></td>
-<td align="right" style="vertical-align:middle;font-size:14px;font-weight:700;color:#bdbdbd;letter-spacing:.3px">Support</td>
-</tr></table></td></tr>
-<tr><td style="background:#141414;border-radius:12px;padding:32px 30px 30px;border-top:4px solid #E50914">${card}
-</td></tr>
-<tr><td style="padding:24px 8px 0;font-size:12px;line-height:18px;color:#737373;text-align:center">${foot}<br><br>
-<a href="${SITE}" style="color:#b3b3b3;text-decoration:none;font-weight:700">bingr.online</a> &nbsp;·&nbsp; <a href="${SUPPORT_SITE}" style="color:#b3b3b3;text-decoration:none;font-weight:700">support.bingr.online</a> &nbsp;·&nbsp; <a href="${SITE}/privacy.html" style="color:#737373">Privacy</a><br>
-<span style="color:#5c5c5c">© Bingr</span></td></tr>
-</table></td></tr></table></body></html>`;
+  const html = layout({
+    lang, docTitle: `${num} · Bingr Support`, preheader: `${num} · ${heading}`, label: "Support",
+    // markeringsregel: alles daaronder is citaat (zo knipt de inbox-import een antwoord betrouwbaar af)
+    markerText: d.replyByMail ? REPLY_MARKER : undefined,
+    contentHtml: card, footerHtml: footerHtml({ lang, reasonHtml: esc(foot) }),
+  });
 
   const lines: string[] = [...(d.replyByMail ? [REPLY_MARKER, ""] : []), "BINGR Support", "", `${t.ticket} ${num} · ${statusLabel}`, d.subject, "", heading, intro];
   if (d.body) lines.push("", `--- ${boxLabel} ---`, d.body, "---");
@@ -209,6 +162,6 @@ ${marker}<tr><td style="padding:0 4px 24px"><table role="presentation" width="10
   if (toSupport && d.customerUrl) lines.push(`Klantweergave: ${d.customerUrl}`);
   const metaText = meta.filter(([, v]) => v).map(([k, v]) => `${k}: ${unesc(v.replace(/<[^>]+>/g, ""))}`);
   if (metaText.length) lines.push("", ...metaText);
-  lines.push("", "—", toSupport ? supportFoot : `${t.foot} ${footReply}`, "bingr.online · support.bingr.online");
+  lines.push("", footerText({ lang, reason: foot }));
   return { subject: subjectFor(d), html, text: lines.join("\n") };
 }

@@ -1,19 +1,51 @@
-<!doctype html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><meta name="supported-color-schemes" content="dark"><title>Bingr</title></head>
+{{ if and .Data.lang (eq .Data.lang "nl") }}<!doctype html>
+<html lang="nl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><meta name="supported-color-schemes" content="dark"><title>Bingr · Inloggen bij Bingr</title></head>
 <body style="margin:0;padding:0;background:#000000">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#000000"><tr><td align="center" style="padding:32px 16px">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
-<tr><td style="padding:0 4px 24px">
-  <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
-    <td style="vertical-align:middle"><img src="https://bingr.online/apple-touch-icon.png" width="44" height="44" alt="" style="display:block;border-radius:10px"></td>
-    <td style="vertical-align:middle;padding-left:12px"><div style="font-size:30px;font-weight:900;letter-spacing:1px;color:#ffffff;line-height:30px">BINGR</div><div style="height:4px;width:74px;background:#E50914;border-radius:2px;margin-top:6px"></div></td>
-  </tr></table>
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:#000000">Inloggen bij Bingr</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="background:#000000"><tr><td align="center" style="padding:32px 16px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+<tr><td style="padding:0 4px 24px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+<td style="vertical-align:middle;width:56px"><img src="https://bingr.online/apple-touch-icon.png" width="44" height="44" alt="" style="display:block;border-radius:10px"></td>
+<td style="vertical-align:middle"><div style="font-size:30px;font-weight:900;letter-spacing:1px;color:#ffffff;line-height:30px">BINGR</div><div style="height:4px;width:74px;background:#E50914;border-radius:2px;margin-top:6px;font-size:0;line-height:0">&nbsp;</div></td>
+<td align="right" style="vertical-align:middle;font-size:14px;font-weight:700;color:#bdbdbd;letter-spacing:.3px">Account</td>
+</tr></table></td></tr>
+<tr><td bgcolor="#141414" style="background:#141414;border-radius:12px;padding:32px 30px 30px;border-top:4px solid #E50914">
+<div style="font-size:12px;line-height:16px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#8c8c8c">Inloggen</div>
+<div style="height:4px;width:56px;background:#E50914;border-radius:2px;margin:12px 0 20px;font-size:0;line-height:0">&nbsp;</div>
+<h1 style="margin:0 0 10px;font-size:24px;line-height:30px;font-weight:800;color:#ffffff">Inloggen bij Bingr</h1>
+<p style="margin:0;font-size:15px;line-height:23px;color:#d6d6d6">Klik op de knop om in te loggen bij Bingr.</p>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:26px 0 0"><tr><td align="center" bgcolor="#E50914" style="border-radius:6px;background:#E50914">
+<a href="{{ .ConfirmationURL }}" style="display:inline-block;padding:14px 30px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:16px;font-weight:700;line-height:20px;color:#ffffff;text-decoration:none;border-radius:6px">Inloggen</a></td></tr></table>
+<p style="margin:22px 0 0;font-size:14px;line-height:21px;color:#b3b3b3">Deze link werkt één keer en is kort geldig. Stuur hem niet door.</p>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:22px 0 0;border-top:1px solid #2a2a2a;padding-top:8px"><tr><td width="1%" style="width:1%;padding:5px 24px 5px 0;font-size:13px;line-height:19px;color:#8c8c8c;white-space:nowrap;vertical-align:top">Account</td><td style="padding:5px 0;font-size:13px;line-height:19px;color:#ffffff;word-break:break-word"><span style="color:#ffffff">{{ .Email }}</span></td></tr></table>
+<p style="margin:22px 0 0;font-size:12px;line-height:18px;color:#8c8c8c">Werkt de knop niet? Kopieer deze link:<br><a href="{{ .ConfirmationURL }}" style="color:#b3b3b3;word-break:break-all">{{ .ConfirmationURL }}</a></p>
 </td></tr>
-<tr><td style="background:#141414;border-radius:12px;padding:36px 32px;border-top:4px solid #E50914">
-{{ if and .Data.lang (eq .Data.lang "nl") }}<h1 style="margin:0 0 16px;font-size:26px;line-height:32px;font-weight:800;color:#ffffff">Inloggen bij Bingr</h1><p style="margin:0 0 28px;font-size:16px;line-height:24px;color:#d6d6d6">Klik op de knop om in te loggen bij Bingr.</p><a href="{{ .ConfirmationURL }}" style="display:inline-block;background:#E50914;color:#ffffff;text-decoration:none;font-weight:700;font-size:16px;padding:14px 32px;border-radius:6px">Inloggen</a><p style="margin:28px 0 0;font-size:14px;line-height:21px;color:#b3b3b3">Deze link werkt één keer en is kort geldig.</p><p style="margin:28px 0 0;font-size:12px;line-height:18px;color:#8c8c8c">Werkt de knop niet? Kopieer deze link:<br><a href="{{ .ConfirmationURL }}" style="color:#b3b3b3;word-break:break-all">{{ .ConfirmationURL }}</a></p>{{ else }}<h1 style="margin:0 0 16px;font-size:26px;line-height:32px;font-weight:800;color:#ffffff">Sign in to Bingr</h1><p style="margin:0 0 28px;font-size:16px;line-height:24px;color:#d6d6d6">Click the button to sign in to Bingr.</p><a href="{{ .ConfirmationURL }}" style="display:inline-block;background:#E50914;color:#ffffff;text-decoration:none;font-weight:700;font-size:16px;padding:14px 32px;border-radius:6px">Sign in</a><p style="margin:28px 0 0;font-size:14px;line-height:21px;color:#b3b3b3">This link works once and expires soon.</p><p style="margin:28px 0 0;font-size:12px;line-height:18px;color:#8c8c8c">Button not working? Copy this link:<br><a href="{{ .ConfirmationURL }}" style="color:#b3b3b3;word-break:break-all">{{ .ConfirmationURL }}</a></p>{{ end }}
+<tr><td style="padding:24px 8px 0;font-size:12px;line-height:18px;color:#737373;text-align:center">Je ontvangt deze e-mail omdat iemand met dit e-mailadres ({{ .Email }}) wil inloggen bij Bingr. Was jij dit niet? Dan kun je deze e-mail negeren; er verandert niets en er wordt niet ingelogd.<br><br>
+<a href="https://bingr.online" style="color:#b3b3b3;text-decoration:none;font-weight:700">bingr.online</a> &nbsp;·&nbsp; <a href="https://support.bingr.online" style="color:#b3b3b3;text-decoration:none;font-weight:700">support.bingr.online</a> &nbsp;·&nbsp; <a href="https://bingr.online/privacy.html" style="color:#737373">Privacy</a><br>
+<span style="color:#5c5c5c">© 2026 Bingr</span></td></tr>
+</table></td></tr></table></body></html>{{ else }}<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><meta name="supported-color-schemes" content="dark"><title>Bingr · Sign in to Bingr</title></head>
+<body style="margin:0;padding:0;background:#000000">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:#000000">Sign in to Bingr</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="background:#000000"><tr><td align="center" style="padding:32px 16px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+<tr><td style="padding:0 4px 24px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+<td style="vertical-align:middle;width:56px"><img src="https://bingr.online/apple-touch-icon.png" width="44" height="44" alt="" style="display:block;border-radius:10px"></td>
+<td style="vertical-align:middle"><div style="font-size:30px;font-weight:900;letter-spacing:1px;color:#ffffff;line-height:30px">BINGR</div><div style="height:4px;width:74px;background:#E50914;border-radius:2px;margin-top:6px;font-size:0;line-height:0">&nbsp;</div></td>
+<td align="right" style="vertical-align:middle;font-size:14px;font-weight:700;color:#bdbdbd;letter-spacing:.3px">Account</td>
+</tr></table></td></tr>
+<tr><td bgcolor="#141414" style="background:#141414;border-radius:12px;padding:32px 30px 30px;border-top:4px solid #E50914">
+<div style="font-size:12px;line-height:16px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#8c8c8c">Sign in</div>
+<div style="height:4px;width:56px;background:#E50914;border-radius:2px;margin:12px 0 20px;font-size:0;line-height:0">&nbsp;</div>
+<h1 style="margin:0 0 10px;font-size:24px;line-height:30px;font-weight:800;color:#ffffff">Sign in to Bingr</h1>
+<p style="margin:0;font-size:15px;line-height:23px;color:#d6d6d6">Click the button to sign in to Bingr.</p>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:26px 0 0"><tr><td align="center" bgcolor="#E50914" style="border-radius:6px;background:#E50914">
+<a href="{{ .ConfirmationURL }}" style="display:inline-block;padding:14px 30px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:16px;font-weight:700;line-height:20px;color:#ffffff;text-decoration:none;border-radius:6px">Sign in</a></td></tr></table>
+<p style="margin:22px 0 0;font-size:14px;line-height:21px;color:#b3b3b3">This link works once and expires soon. Don&#39;t forward it.</p>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:22px 0 0;border-top:1px solid #2a2a2a;padding-top:8px"><tr><td width="1%" style="width:1%;padding:5px 24px 5px 0;font-size:13px;line-height:19px;color:#8c8c8c;white-space:nowrap;vertical-align:top">Account</td><td style="padding:5px 0;font-size:13px;line-height:19px;color:#ffffff;word-break:break-word"><span style="color:#ffffff">{{ .Email }}</span></td></tr></table>
+<p style="margin:22px 0 0;font-size:12px;line-height:18px;color:#8c8c8c">Button not working? Copy this link:<br><a href="{{ .ConfirmationURL }}" style="color:#b3b3b3;word-break:break-all">{{ .ConfirmationURL }}</a></p>
 </td></tr>
-<tr><td style="padding:24px 8px 0;font-size:12px;line-height:18px;color:#737373;text-align:center">
-{{ if and .Data.lang (eq .Data.lang "nl") }}Je ontvangt deze e-mail omdat iemand dit adres ({{ .Email }}) bij Bingr heeft gebruikt. Was jij dit niet? Dan kun je deze e-mail negeren.{{ else }}You received this email because this address ({{ .Email }}) was used with Bingr. If this wasn't you, you can ignore this email.{{ end }}<br><br>
-<a href="https://bingr.online" style="color:#b3b3b3;text-decoration:none;font-weight:700">bingr.online</a> &nbsp;·&nbsp; <a href="https://support.bingr.online/" style="color:#737373">Support</a> &nbsp;·&nbsp; <a href="https://bingr.online/privacy.html" style="color:#737373">Privacy</a>
-</td></tr>
-</table></td></tr></table></body></html>
+<tr><td style="padding:24px 8px 0;font-size:12px;line-height:18px;color:#737373;text-align:center">You're receiving this email because someone wants to sign in to Bingr with this email address ({{ .Email }}). If this wasn't you, you can ignore this email; nothing will change and nobody is signed in.<br><br>
+<a href="https://bingr.online" style="color:#b3b3b3;text-decoration:none;font-weight:700">bingr.online</a> &nbsp;·&nbsp; <a href="https://support.bingr.online" style="color:#b3b3b3;text-decoration:none;font-weight:700">support.bingr.online</a> &nbsp;·&nbsp; <a href="https://bingr.online/privacy.html" style="color:#737373">Privacy</a><br>
+<span style="color:#5c5c5c">© 2026 Bingr</span></td></tr>
+</table></td></tr></table></body></html>{{ end }}

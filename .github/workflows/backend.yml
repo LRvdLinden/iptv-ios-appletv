@@ -59,6 +59,12 @@ jobs:
           deno test --allow-net=127.0.0.1 supabase/functions/support/support_test.ts supabase/functions/support/inbox_test.ts > support-test.log 2>&1 && exit 0
           grep -E "FAILED|error|=>|verwacht|niet waar" support-test.log | head -30 | while IFS= read -r l; do echo "::warning::${l:0:300}"; done
           exit 1
+      - name: Unittests (e-mailhuisstijl)
+        continue-on-error: true
+        run: |
+          deno test supabase/functions/_shared/layout_test.ts > layout-test.log 2>&1 && exit 0
+          grep -E "FAILED|error|=>" layout-test.log | head -30 | while IFS= read -r l; do echo "::warning::${l:0:300}"; done
+          exit 1
       - name: Controleren
         id: check
         run: |
@@ -75,7 +81,7 @@ jobs:
       - name: E-mailtemplates (Bingr-huisstijl)
         if: steps.check.outputs.skip != '1'
         run: |
-          python3 supabase/templates/build.py
+          deno run --allow-read --allow-write supabase/templates/build.ts
           code=$(curl -s -o /tmp/r.txt -w '%{http_code}' -X PATCH "https://api.supabase.com/v1/projects/$REF/config/auth" \
             -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" --data @supabase/templates/templates.json)
           [ "$code" -lt 300 ] && echo "::notice::E-mailtemplates bijgewerkt" || { head -c 400 /tmp/r.txt; echo "::error::Templates mislukt (HTTP $code)"; exit 1; }
