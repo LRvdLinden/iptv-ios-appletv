@@ -1,5 +1,20 @@
 [
  {
+  "build": 80,
+  "version": "1.0.0",
+  "date": "2026-10-14",
+  "items": [
+   {
+    "type": "fixed",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Uitloggen op bingr.online, in de webspeler en op support.bingr.online werkt weer altijd: je bent daarna ook echt uitgelogd in deze browser (je andere apparaten blijven ingelogd)",
+    "en": "Signing out on bingr.online, in the web player and on support.bingr.online always works again: you're really signed out in this browser afterwards (your other devices stay signed in)"
+   }
+  ]
+ },
+ {
   "build": 79,
   "version": "1.0.0",
   "date": "2026-10-14",

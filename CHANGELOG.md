@@ -4,6 +4,15 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 80
+_14 oktober 2026_
+
+### Website
+
+**Opgelost**
+
+- Uitloggen op bingr.online, in de webspeler en op support.bingr.online werkt weer altijd: je bent daarna ook echt uitgelogd in deze browser (je andere apparaten blijven ingelogd)
+
 ## Versie 1.0.0 · Build 79
 _14 oktober 2026_
 
