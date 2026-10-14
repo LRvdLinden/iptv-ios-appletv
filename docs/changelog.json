@@ -1,5 +1,49 @@
 [
  {
+  "build": 92,
+  "version": "1.0.0",
+  "date": "2026-10-14",
+  "items": [
+   {
+    "type": "fixed",
+    "platforms": [
+     "android",
+     "androidtv"
+    ],
+    "nl": "Automatische ondertitels werken weer vanaf de tweede film of aflevering (de ondertitels van de vorige titel bleven hangen)",
+    "en": "Automatic subtitles work again from the second movie or episode onward (the previous title's subtitles stuck around)"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "android",
+     "androidtv",
+     "tizen"
+    ],
+    "nl": "Ondertitelinstellingen per profiel: een ander profiel verandert niet meer de instellingen van het hoofdprofiel, en na een profielwissel gelden de juiste talen",
+    "en": "Subtitle settings per profile: another profile no longer changes the main profile's settings, and the right languages apply after switching profiles"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "android",
+     "androidtv",
+     "tizen"
+    ],
+    "nl": "OpenSubtitles zoekt ook op TMDB als er geen IMDb-id is, zodat er vaker ondertitels gevonden worden",
+    "en": "OpenSubtitles also searches by TMDB when there's no IMDb id, so subtitles are found more often"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "tizen"
+    ],
+    "nl": "Samsung TV: de gekozen ondertiteltaal wordt gebruikt als de stream die heeft (ook met automatische ondertitels uit), ondertitels die later binnenkomen worden gevonden en de instellingen hebben duidelijkere namen",
+    "en": "Samsung TV: your chosen subtitle language is used when the stream has it (even with automatic subtitles off), subtitle tracks that arrive late are found and the settings have clearer names"
+   }
+  ]
+ },
+ {
   "build": 91,
   "version": "1.0.0",
   "date": "2026-10-14",
