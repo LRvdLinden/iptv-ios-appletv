@@ -4,6 +4,21 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 77
+_14 oktober 2026_
+
+### Website
+
+**Nieuw**
+
+- Supportticket aanmaken: ben je ingelogd, dan kies je bij Apparaat een van je eigen apparaten en bij App-versie een versie uit je account (vooraf ingevuld bij het gekozen apparaat); niet ingelogd kies je zoals altijd een soort apparaat, met een link om in te loggen
+
+### Server
+
+**Verbeterd**
+
+- Supporttickets bewaren het gekozen apparaat (naam, platform en systeemversie); alleen apparaten van je eigen account worden geaccepteerd
+
 ## Versie 1.0.0 · Build 76
 _14 oktober 2026_
 

@@ -1,5 +1,28 @@
 [
  {
+  "build": 77,
+  "version": "1.0.0",
+  "date": "2026-10-14",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Supportticket aanmaken: ben je ingelogd, dan kies je bij Apparaat een van je eigen apparaten en bij App-versie een versie uit je account (vooraf ingevuld bij het gekozen apparaat); niet ingelogd kies je zoals altijd een soort apparaat, met een link om in te loggen",
+    "en": "Creating a support ticket: when signed in, you pick one of your own devices under Device and a version from your account under App version (preselected for the chosen device); when not signed in you choose a device type as before, with a link to sign in"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Supporttickets bewaren het gekozen apparaat (naam, platform en systeemversie); alleen apparaten van je eigen account worden geaccepteerd",
+    "en": "Support tickets store the chosen device (name, platform and OS version); only devices from your own account are accepted"
+   }
+  ]
+ },
+ {
   "build": 76,
   "version": "1.0.0",
   "date": "2026-10-14",
