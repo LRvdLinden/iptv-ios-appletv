@@ -519,7 +519,9 @@ jobs:
               for body in ({"url": "http://127.0.0.1:8080/"}, {"url": "http://2130706433/"}, {"url": "http://[::ffff:7f00:1]/"},
                            {"action": "probe", "url": "http://169.254.169.254/latest/meta-data/"}):
                   code, r = req("POST", WP, body, user)
-                  if code != 403 or r.get("error") != "host_not_allowed": fail.append(f"web-proxy {body}: HTTP {code} {str(r)[:200]} (verwacht 403 host_not_allowed)")
+                  # 403 van de functie zelf, of al eerder van de firewall van de hosting (HTML-pagina): allebei geweigerd
+                  blocked = code == 403 and (r.get("error") == "host_not_allowed" or "raw" in r)
+                  if not blocked: fail.append(f"web-proxy {body}: HTTP {code} {str(r)[:200]} (verwacht 403)")
               if not any("web-proxy" in f for f in fail): print("::notice::web-proxy: interne adressen geweigerd (403), token werkt")
               # 3. blokkeren (zoals het beheer: ban, sessies blijven bestaan) -> de apps moeten user_banned zien
               code, r = req("PUT", f"{BASE}/auth/v1/admin/users/{uid}", {"ban_duration": "1h"}, adm)
