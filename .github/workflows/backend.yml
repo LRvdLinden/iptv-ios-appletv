@@ -337,7 +337,11 @@ jobs:
           cat /tmp/c.json; echo
           [ "$code" = 400 ] && grep -q name_missing /tmp/c.json && echo "::notice::lege create: 400 name_missing" || { echo "::error::lege create gaf HTTP $code"; exit 1; }
           code=$(curl -s -o /tmp/c.json -w '%{http_code}' -X POST "$F" -H "Content-Type: application/json" -d '{"action":"create","website":"spam","name":"x"}')
-          [ "$code" = 400 ] && grep -q spam /tmp/c.json && echo "::notice::lokveld werkt" || { echo "::error::lokveld gaf HTTP $code"; exit 1; }
+          # build 93: lokveld → schijnbaar "gelukt" (200), maar er wordt niets opgeslagen: het teruggegeven ticket bestaat niet
+          [ "$code" = 200 ] && grep -q '"ok":true' /tmp/c.json || { echo "::error::lokveld gaf HTTP $code"; exit 1; }
+          hn=$(python3 -c 'import json;print(json.load(open("/tmp/c.json"))["number"])'); ht=$(python3 -c 'import json;print(json.load(open("/tmp/c.json"))["token"])')
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$F" -H "Content-Type: application/json" -d "{\"action\":\"get\",\"n\":$hn,\"t\":\"$ht\"}")
+          [ "$code" = 404 ] && echo "::notice::lokveld werkt: stil tegengehouden, niets opgeslagen" || { echo "::error::lokveld: schijnticket gaf HTTP $code (opgeslagen?)"; exit 1; }
           # 3. zonder geheime link of inloggen geen ticket; zonder inloggen geen lijst; zonder geheim geen beheer
           code=$(curl -s -o /tmp/c.json -w '%{http_code}' -X POST "$F" -H "Content-Type: application/json" -d '{"action":"get","n":1001,"t":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}')
           [ "$code" = 404 ] && echo "::notice::get met fout token: 404" || { echo "::error::get met fout token gaf HTTP $code"; exit 1; }
