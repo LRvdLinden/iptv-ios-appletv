@@ -133,7 +133,7 @@ jobs:
           TOKEN: ${{ secrets.BINGR_BEHEER_TOKEN }}
         run: |
           TOKEN=$(printf '%s' "$TOKEN" | tr -d '[:space:]')   # spaties/regeleinde van het plakken weghalen
-          echo "::notice::BINGR_BEHEER_TOKEN: ${#TOKEN} tekens, begint met $(printf '%s' "$TOKEN" | cut -c1-4)…"
+          [ -n "$TOKEN" ] && echo "::notice::BINGR_BEHEER_TOKEN is ingesteld"   # build 95: geen lengte of begin van de token in het (openbare) log
           if [ -z "$TOKEN" ]; then echo "::warning::Secret BINGR_BEHEER_TOKEN ontbreekt: Xcode-project alleen op branch ci-logs."; exit 0; fi
           # (de werkmap is na de ci-logs-stap leeg; versie en build komen uit het project in de zip)
           mkdir -p /tmp/pkg && cd /tmp/pkg && rm -rf x && mkdir x && cd x && unzip -q "$GITHUB_WORKSPACE/report/Bingr-xcode.zip"
