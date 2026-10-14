@@ -4,6 +4,29 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 78
+_14 oktober 2026_
+
+### Website
+
+**Nieuw**
+
+- Nieuwe statuspagina: lopende storingen en gepland onderhoud met tijdlijn, onderdelen per groep met 90-dagenbalken, afgelopen incidenten en een incidentgeschiedenis
+
+### Website en Server
+
+**Nieuw**
+
+- Abonneren op statusupdates per e-mail (met bevestiging) of via een Atom/RSS-feed
+
+### Server
+
+**Verbeterd**
+
+- Storingen die de monitoring vindt, verschijnen automatisch op de statuspagina en worden vanzelf afgesloten als alles weer werkt; gepland onderhoud telt niet meer als storing
+- Alle e-mails van Bingr (account bevestigen, nieuw wachtwoord, inloggen, uitnodiging, e-mailadres wijzigen, verificatiecode, berichten en status) hebben dezelfde vormgeving als de supportmails, met onderaan een duidelijke uitleg waarom je de mail krijgt
+- Afmelden voor berichten per e-mail kan nu met één klik vanuit je mailapp
+
 ## Versie 1.0.0 · Build 77
 _14 oktober 2026_
 

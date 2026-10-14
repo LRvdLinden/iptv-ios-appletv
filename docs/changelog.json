@@ -1,5 +1,53 @@
 [
  {
+  "build": 78,
+  "version": "1.0.0",
+  "date": "2026-10-14",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Nieuwe statuspagina: lopende storingen en gepland onderhoud met tijdlijn, onderdelen per groep met 90-dagenbalken, afgelopen incidenten en een incidentgeschiedenis",
+    "en": "New status page: ongoing incidents and scheduled maintenance with a timeline, components per group with 90-day bars, past incidents and an incident history"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "web",
+     "server"
+    ],
+    "nl": "Abonneren op statusupdates per e-mail (met bevestiging) of via een Atom/RSS-feed",
+    "en": "Subscribe to status updates by email (with confirmation) or via an Atom/RSS feed"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Storingen die de monitoring vindt, verschijnen automatisch op de statuspagina en worden vanzelf afgesloten als alles weer werkt; gepland onderhoud telt niet meer als storing",
+    "en": "Outages detected by monitoring appear on the status page automatically and close themselves once everything works again; scheduled maintenance no longer counts as downtime"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Alle e-mails van Bingr (account bevestigen, nieuw wachtwoord, inloggen, uitnodiging, e-mailadres wijzigen, verificatiecode, berichten en status) hebben dezelfde vormgeving als de supportmails, met onderaan een duidelijke uitleg waarom je de mail krijgt",
+    "en": "All Bingr emails (account confirmation, password reset, sign-in, invitation, email change, verification code, announcements and status) share the look of the support emails, with a clear note at the bottom explaining why you received them"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Afmelden voor berichten per e-mail kan nu met één klik vanuit je mailapp",
+    "en": "You can now unsubscribe from email announcements with one click from your mail app"
+   }
+  ]
+ },
+ {
   "build": 77,
   "version": "1.0.0",
   "date": "2026-10-14",
