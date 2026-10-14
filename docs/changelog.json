@@ -1,5 +1,28 @@
 [
  {
+  "build": 90,
+  "version": "1.0.0",
+  "date": "2026-10-14",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "web"
+    ],
+    "nl": "De webspeler toont bij films en series dezelfde info als de apps: beschrijving in je eigen taal, genres, regisseur, speelduur, cast met foto's en aanbevelingen (wat in je bibliotheek staat, speel je meteen af)",
+    "en": "The web player shows the same info for movies and series as the apps: description in your own language, genres, director, runtime, cast with photos and recommendations (whatever's in your library plays right away)"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Eigen pagina per acteur of actrice in de webspeler: foto, biografie, wat er in Bingr te kijken is en de rest van het werk",
+    "en": "A page for each actor in the web player: photo, biography, what's available to watch in Bingr and the rest of their work"
+   }
+  ]
+ },
+ {
   "build": 89,
   "version": "1.0.0",
   "date": "2026-10-14",

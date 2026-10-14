@@ -4,6 +4,16 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 90
+_14 oktober 2026_
+
+### Website
+
+**Nieuw**
+
+- De webspeler toont bij films en series dezelfde info als de apps: beschrijving in je eigen taal, genres, regisseur, speelduur, cast met foto's en aanbevelingen (wat in je bibliotheek staat, speel je meteen af)
+- Eigen pagina per acteur of actrice in de webspeler: foto, biografie, wat er in Bingr te kijken is en de rest van het werk
+
 ## Versie 1.0.0 · Build 89
 _14 oktober 2026_
 
