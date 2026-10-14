@@ -82,9 +82,37 @@ jobs:
         if: steps.check.outputs.skip != '1'
         run: |
           deno run --allow-read --allow-write supabase/templates/build.ts
+          if grep -q "supabase\.co" supabase/templates/templates.json; then echo "::error::Templates bevatten een supabase.co-link"; exit 1; fi
+          # links in de mails gaan naar bingr.online/bevestigen/; Site URL = https://bingr.online en bevestigen/ + reset/ in de
+          # redirect-lijst. De bestaande lijst blijft staan (alleen ontbrekende adressen erbij), dus elke deploy geeft hetzelfde.
+          curl -s -o /tmp/auth.json -w '%{http_code}' "https://api.supabase.com/v1/projects/$REF/config/auth" \
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" > /tmp/auth.code || true
+          python3 - <<'PY'
+          import json
+          cfg = json.load(open("supabase/templates/templates.json"))
+          try:
+              cur = json.load(open("/tmp/auth.json")) if open("/tmp/auth.code").read().strip() == "200" else None
+          except Exception:
+              cur = None
+          if cur is None:
+              print("::warning::Auth-config niet gelezen: Site URL en redirect-lijst niet gecontroleerd")
+          else:
+              if (cur.get("site_url") or "").rstrip("/") != "https://bingr.online":
+                  cfg["site_url"] = "https://bingr.online"
+                  print("::notice::Site URL was %s, wordt https://bingr.online" % (cur.get("site_url") or "(leeg)"))
+              have = [u.strip() for u in (cur.get("uri_allow_list") or "").split(",") if u.strip()]
+              need = [u for u in ("https://bingr.online/bevestigen/", "https://bingr.online/reset/", "https://bingr.online/reset") if u not in have]
+              if need:
+                  cfg["uri_allow_list"] = ",".join(have + need)
+                  print("::notice::Redirect-lijst aangevuld met " + ", ".join(need))
+              else:
+                  print("::notice::Site URL en redirect-lijst in orde")
+          json.dump(cfg, open("/tmp/auth_patch.json", "w"))
+          PY
           code=$(curl -s -o /tmp/r.txt -w '%{http_code}' -X PATCH "https://api.supabase.com/v1/projects/$REF/config/auth" \
-            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" --data @supabase/templates/templates.json)
-          [ "$code" -lt 300 ] && echo "::notice::E-mailtemplates bijgewerkt" || { head -c 400 /tmp/r.txt; echo "::error::Templates mislukt (HTTP $code)"; exit 1; }
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" --data @/tmp/auth_patch.json)
+          rm -f /tmp/auth.json /tmp/auth.code /tmp/auth_patch.json
+          [ "$code" -lt 300 ] && echo "::notice::E-mailtemplates bijgewerkt (links via bingr.online/bevestigen/)" || { head -c 400 /tmp/r.txt; echo "::error::Templates mislukt (HTTP $code)"; exit 1; }
       - uses: supabase/setup-cli@v1
         if: steps.check.outputs.skip != '1'
         with:

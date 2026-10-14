@@ -2,13 +2,27 @@
 // supportmails) en templates.json voor de Supabase Management API (workflow Backend). Draaien:
 //   deno run --allow-read --allow-write supabase/templates/build.ts
 // Taal: user_metadata.lang ("nl", "en", ...) die de app meestuurt bij het aanmaken van het account; NL voor "nl", anders EN.
-// De Go-templatevariabelen ({{ .ConfirmationURL }}, {{ .Token }}, {{ .Email }}, {{ .NewEmail }}) vult Supabase bij het versturen.
+// De Go-templatevariabelen ({{ .TokenHash }}, {{ .RedirectTo }}, {{ .Token }}, {{ .Email }}, {{ .NewEmail }}) vult Supabase bij het versturen.
+// Links gaan nooit naar …supabase.co/auth/v1/verify, maar naar bingr.online/bevestigen/ (token_hash-patroon): die pagina
+// bevestigt pas na een klik (linkscanners zoals Outlook Safe Links openen links vooraf en zouden een eenmalige link anders
+// opmaken). `next` = de redirect_to van de app/site (bv. koppelen/?code=…) en staat altijd achteraan: de pagina neemt alles na
+// "next=" en accepteert alleen adressen op bingr.online.
 // Accountmails zijn transactioneel: geen afmeldlink, wel waarom je de mail krijgt en wat je doet als jij het niet was.
 import {
   button, codeBox, copyLink, detailRows, eyebrow, footerHtml, type Lang, layout, note, para, redBar, title,
 } from "../functions/_shared/layout.ts";
 
-const CONF_URL = "{{ .ConfirmationURL }}";
+export const SITE = "https://bingr.online";
+/** verify-type per template (reauthentication heeft alleen een code). */
+export const VERIFY_TYPE: Record<string, string> = {
+  confirmation: "signup", recovery: "recovery", invite: "invite", magic_link: "magiclink", email_change: "email_change",
+};
+/** Waar de app/site na het bevestigen heen wil (redirect_to); bij recovery en email_change niet nodig. */
+const WITH_NEXT = new Set(["confirmation", "invite", "magic_link"]);
+/** De link in de mail: bingr.online/bevestigen/ met token_hash, type en taal (en `next` als laatste parameter). */
+export const confirmUrl = (key: string, lang: Lang) =>
+  `${SITE}/bevestigen/?token_hash={{ .TokenHash }}&type=${VERIFY_TYPE[key]}&lang=${lang}` +
+  (WITH_NEXT.has(key) ? "&next={{ .RedirectTo }}" : "");
 const v = (name: string) => `<span style="color:#ffffff">{{ .${name} }}</span>`;
 
 type Text = {
@@ -127,7 +141,8 @@ export const TEMPLATES: Record<string, Template> = {
 /** Eén taalversie (volledig HTML-document) van een accountmail. */
 export function renderAuth(key: string, lang: Lang, year?: number) {
   const tpl = TEMPLATES[key], t = tpl[lang];
-  const action = tpl.code ? codeBox("{{ .Token }}") : button(CONF_URL, t.button!);
+  const url = tpl.code ? "" : confirmUrl(key, lang);
+  const action = tpl.code ? codeBox("{{ .Token }}") : button(url, t.button!);
   const content = `
 ${eyebrow(t.eyebrow)}
 ${redBar("12px 0 20px")}
@@ -136,7 +151,7 @@ ${para(t.intro, true)}
 ${action}
 ${note(t.note)}
 ${detailRows(t.details)}
-${tpl.code ? "" : copyLink(lang, CONF_URL)}`;
+${tpl.code ? "" : copyLink(lang, url)}`;
   return layout({
     lang, docTitle: `Bingr · ${t.title}`, preheader: t.title, label: "Account",
     contentHtml: content, footerHtml: footerHtml({ lang, reasonHtml: t.reason, year }),

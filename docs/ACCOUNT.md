@@ -81,7 +81,8 @@ Sign In · Create account · Email · Password · Show · Hide · Sign up now. �
 ## Website
 
 - `bingr.online/koppelen?code=XXXXXX` (oude link `bingr.online/tv` stuurt door): inloggen (of account maken) en de tv koppelen.
-- `bingr.online/reset`: nieuw wachtwoord instellen via de link uit de e-mail.
+- `bingr.online/bevestigen/?token_hash=…&type=…&lang=…[&next=…]`: alle links in de accountmails (bevestigen, wachtwoord, inloglink, uitnodiging, e-mailwijziging) gaan hierheen, nooit naar `…supabase.co/auth/v1/verify`. De pagina bevestigt pas na een klik (`POST /auth/v1/verify` met `token_hash`), zodat linkscanners de eenmalige link niet opmaken. Bij `recovery` gaat hij daarna door naar `bingr.online/reset`. `next` is de `redirect_to` van de aanvraag (bv. `koppelen/?code=…`, `web/`); alleen adressen op bingr.online worden gevolgd. De apps hoeven hiervoor niets te veranderen: de `redirect_to` bij wachtwoord vergeten mag blijven zoals hij is.
+- `bingr.online/reset`: nieuw wachtwoord instellen (na `bevestigen/`, en voor oude links met `#access_token`).
 - `assets/config.js` (`window.BINGR_SUPABASE = {url, anonKey}`) wordt bij de deploy uit de secrets gemaakt.
 
 ## Gekoppelde apparaten (max. 15, was 10 tot build 51)
