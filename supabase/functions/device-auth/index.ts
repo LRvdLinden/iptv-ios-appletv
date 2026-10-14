@@ -2,8 +2,16 @@
 // POST /functions/v1/device-auth met JSON {action, ...}; header `apikey` altijd, `Authorization: Bearer <access_token>` bij approve/delete_account.
 //   start           {device}            -> {code, poll_secret, url, expires_in, interval}
 //   poll            {code, poll_secret} -> {status: pending|approved|expired, token_hash?, email?}
+//                   Account dat de code goedkeurde is geblokkeerd -> 403 {status:"banned", error:"user_banned", banned:true}
+//   Alle acties met inloggen: geblokkeerd account -> 401 {error:"user_banned", banned:true, reason:"banned"} (docs/ACCOUNT.md)
 //                   Bij approved: POST /auth/v1/verify {type:"magiclink", token_hash} geeft de tv een eigen sessie.
-//   approve         {code}   (ingelogd)  -> {ok, device}
+//   code_info       {code}   (ingelogd)  -> {ok, device, kind, label}   (soort apparaat bij een code, voor het naamveld op /koppelen)
+//                   Ongeldige/verlopen code (of al door een ander account goedgekeurd) -> 404 {error:"invalid_code"}
+//   approve         {code, name?} (ingelogd) -> {ok, device, name}
+//                   name (optioneel, max. 40 tekens): eigen naam voor het apparaat ("Apple TV - Woonkamer"). Wordt bewaard bij
+//                   de code; zodra de tv inlogt en zich aanmeldt (register_device van dezelfde soort, binnen 15 minuten) wordt het
+//                   de naam in account_devices met custom_name = true, zodat de standaardnaam van de app hem niet overschrijft.
+//                   Te lang -> 400 {error:"name_too_long"}.
 //   delete_account  {}       (ingelogd)  -> {ok}
 //   register_device {device_id, name, platform, app_version?, os_version?} (ingelogd) -> {ok, device} | 403 {error:"device_limit", limit, devices}
 //   heartbeat       {device_id, app_version?, os_version?} (ingelogd) -> {ok} | {revoked:true}  (werkt ook "laatst gebruikt" bij)
@@ -33,6 +41,8 @@
 //                   App-sleutels staan alleen als function-secrets op de server (BINGR_*), nooit in de openbare repo.
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { buildStats, DEFAULT_TZ, periodRange, todayIn, validTz } from "./stats.ts";
+import { cleanDeviceName, deviceKind, deviceTypeLabel } from "./naming.ts";
+import { BANNED_BODY, bannedUntilActive, isBanError } from "../_shared/ban.ts";
 
 const SITE = Deno.env.get("BINGR_SITE") ?? "https://bingr.online";
 const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {
@@ -77,6 +87,24 @@ async function listDevices(userId: string, current?: string) {
   const { data } = await admin.from("account_devices").select("device_id,name,platform,created_at,last_seen_at,signed_in_at")
     .eq("user_id", userId).order("last_seen_at", { ascending: false });
   return (data ?? []).map((d) => ({ ...d, current: d.device_id === current }));
+}
+// Eigen naam uit /koppelen toepassen: de oudste klaargezette naam (< 15 min) van dezelfde soort, alleen als dit apparaat ná het
+// goedkeuren is ingelogd (signed_in_at), zodat een ander apparaat van dezelfde soort dat toevallig opstart hem niet krijgt.
+// De naam krijgt custom_name = true: de standaardnaam van de app overschrijft hem daarna niet meer. Een fout stopt het
+// aanmelden nooit.
+async function pendingName(userId: string, deviceId: string, platform: string) {
+  try {
+    const since = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+    const { data: p } = await admin.from("device_pending_names").select("id,name,created_at").eq("user_id", userId)
+      .eq("kind", deviceKind(platform)).gte("created_at", since).order("created_at", { ascending: true }).limit(1).maybeSingle();
+    if (!p) return;
+    const { data: d } = await admin.from("account_devices").select("signed_in_at,created_at").eq("user_id", userId).eq("device_id", deviceId).maybeSingle();
+    const signedIn = Date.parse(d?.signed_in_at ?? d?.created_at ?? "");
+    if (!d || !(signedIn >= Date.parse(p.created_at) - 5000)) return;
+    const { data: claimed } = await admin.from("device_pending_names").delete().eq("id", p.id).select("id");
+    if (!claimed?.length) return; // al door een gelijktijdige aanmelding gebruikt
+    await admin.from("account_devices").update({ name: p.name, custom_name: true }).eq("user_id", userId).eq("device_id", deviceId);
+  } catch (e) { console.error("pending_name", e instanceof Error ? e.message : e); }
 }
 async function removeDevice(userId: string, deviceId: string) {
   const { data: row } = await admin.from("account_devices").select("session_id").eq("user_id", userId).eq("device_id", deviceId).maybeSingle();
@@ -141,7 +169,10 @@ async function authed(req: Request): Promise<Authed | Response> {
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
   if (!token || token.split(".").length !== 3) return json({ error: "not_signed_in" }, 401);
   const { data, error } = await admin.auth.getUser(token);
-  if (!error && data?.user) return data.user;
+  // geblokkeerd account (ban uit het beheer): 401 {error:"user_banned", banned:true} -> de apps tonen de melding
+  // (Android/Samsung TV vernieuwen eerst bij 401; dat geeft door de ban ook user_banned). Zie docs/ACCOUNT.md.
+  if (!error && data?.user) return bannedUntilActive((data.user as { banned_until?: string }).banned_until) ? json(BANNED_BODY, 401) : data.user;
+  if (isBanError(error)) return json(BANNED_BODY, 401);
   const status = (error as { status?: number } | null)?.status ?? 0;
   return status >= 400 && status < 500 ? json({ error: "not_signed_in" }, 401) : json({ error: "unavailable" }, 503);
 }
@@ -218,10 +249,29 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       const { data: u } = await admin.auth.admin.getUserById(row.user_id);
       const email = u?.user?.email;
       if (!email) return json({ status: "expired" });
+      // account intussen geblokkeerd: geen sessie voor de tv, wel een duidelijke status (apps tonen de melding)
+      if (bannedUntilActive((u.user as { banned_until?: string }).banned_until)) {
+        await admin.from("device_codes").delete().eq("code", code);
+        return json({ status: "banned", ...BANNED_BODY }, 403);
+      }
       const { data: link, error } = await admin.auth.admin.generateLink({ type: "magiclink", email });
       await admin.from("device_codes").delete().eq("code", code);
+      // eigen naam uit /koppelen: klaarzetten voor de register_device van dit apparaat (zie pendingName)
+      if (!error && row.name) {
+        await admin.from("device_pending_names").delete().lt("created_at", new Date(Date.now() - 3600e3).toISOString());
+        const { error: pe } = await admin.from("device_pending_names").insert({ user_id: row.user_id, kind: deviceKind(row.device), name: row.name });
+        if (pe) console.error("pending_name", pe.message);
+      }
       if (error || !link?.properties?.hashed_token) return json({ error: "link_failed" }, 500);
       return json({ status: "approved", token_hash: link.properties.hashed_token, email });
+    }
+    case "code_info": {
+      const user = await authed(req);
+      if (user instanceof Response) return user;
+      const code = normalize(body.code).slice(0, 12);
+      const { data: row } = await admin.from("device_codes").select("device, expires_at, user_id").eq("code", code).maybeSingle();
+      if (!row || new Date(row.expires_at) < new Date() || (row.user_id && row.user_id !== user.id)) return json({ error: "invalid_code" }, 404);
+      return json({ ok: true, device: row.device ?? "TV", kind: deviceKind(row.device), label: deviceTypeLabel(row.device) });
     }
     case "approve": {
       const user = await authed(req);
@@ -230,11 +280,13 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       const { data: row } = await admin.from("device_codes").select("code, device, expires_at, user_id").eq("code", code).maybeSingle();
       if (!row || new Date(row.expires_at) < new Date()) return json({ error: "invalid_code" }, 404);
       if (row.user_id && row.user_id !== user.id) return json({ error: "invalid_code" }, 404);
+      const n = cleanDeviceName(body.name, deviceTypeLabel(row.device));
+      if ("error" in n) return json({ error: n.error }, 400);
       // alleen een nog niet goedgekeurde code (of je eigen) claimen, ook als twee accounts tegelijk goedkeuren
-      const { data: claimed } = await admin.from("device_codes").update({ user_id: user.id }).eq("code", code)
+      const { data: claimed } = await admin.from("device_codes").update({ user_id: user.id, name: n.name }).eq("code", code)
         .or(`user_id.is.null,user_id.eq.${user.id}`).select("code");
       if (!claimed?.length) return json({ error: "invalid_code" }, 404);
-      return json({ ok: true, device: row.device });
+      return json({ ok: true, device: row.device, name: n.name });
     }
     case "delete_account": {
       const user = await authed(req);
@@ -267,6 +319,7 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       });
       if (error) throw new Error(error.message);
       if (r?.error === "device_limit") return json({ error: "device_limit", limit: DEVICE_LIMIT, devices: await listDevices(user.id) }, 403);
+      await pendingName(user.id, device_id, platform);
       return json({ ok: true, limit: DEVICE_LIMIT });
     }
     case "heartbeat": {

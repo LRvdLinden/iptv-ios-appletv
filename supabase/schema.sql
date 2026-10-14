@@ -361,8 +361,9 @@ language sql security definer set search_path = public as $$
   update public.account_blocks set lifted_at = until, lifted_by = 'verlopen'
   where lifted_at is null and until is not null and until <= now();
 $$;
--- alle sessies van een account intrekken (blokkeren): refresh tokens vervallen mee en lopende access tokens worden
--- geweigerd (sessie bestaat niet meer), dus apps en website loggen uit; lopende streams tellen niet meer mee.
+-- alle sessies van een account intrekken. NIET gebruiken bij blokkeren (sinds build 83): dan blijven de sessies bestaan,
+-- zodat vernieuwen door de ban de fout user_banned geeft en de apps de melding "geblokkeerd" tonen (docs/ACCOUNT.md).
+-- Blijft beschikbaar voor het beheer (bijv. alle apparaten uitloggen zonder blokkade).
 create or replace function public.bingr_revoke_user_sessions(p_user uuid) returns int
 language plpgsql security definer set search_path = auth, public as $$
 declare n int;

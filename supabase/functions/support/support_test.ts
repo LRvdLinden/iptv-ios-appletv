@@ -1,7 +1,7 @@
 // Tests voor de supporttickets (geen database, geen netwerk, geen SMTP):
 //   deno test supabase/functions/support/support_test.ts
 import {
-  addressOf, cleanText, compareVersionsDesc, deviceKind, deviceLabel, myDevices, langOf, parseNumber, safeSearch, sameText, statusAfter, ticketUrl, validateCreate, validateMessage,
+  addressOf, cleanText, compareVersionsDesc, deviceKind, deviceLabel, knownVersions, myDevices, langOf, parseNumber, safeSearch, sameText, statusAfter, ticketUrl, validateCreate, validateMessage,
   validEmail, validToken, randomToken,
 } from "./logic.ts";
 import { bodyHtml, esc, renderMail, subjectFor, type MailData } from "./templates.ts";
@@ -83,6 +83,33 @@ Deno.test("apparaten van het account: platform, labels, volgorde en versies", ()
   eq(r.devices[1].label, "Samsung TV");
   eq(r.devices[2].name, "Browser", "naam leeg: platform");
   eq(r.versions, ["1.0.0 (75)", "1.0.0 (74)"], "uniek, nieuwste eerst");
+});
+
+Deno.test("my_devices: versies van de apparaten, lege versie telt niet mee", () => {
+  const r = myDevices([
+    { device_id: "x", name: "Apple TV - Woonkamer", platform: "Apple TV", app_version: "  ", os_version: null, last_seen_at: "2026-10-14T08:00:00Z" },
+    { device_id: "y", name: "Android TV", platform: "Android TV", app_version: null, os_version: null, last_seen_at: "2026-10-13T08:00:00Z" },
+  ]);
+  eq(r.versions, [], "geen versies: de site valt terug op de bekende builds");
+  eq(r.devices.map((d) => [d.kind, d.app_version]), [["tvos", null], ["androidtv", null]]);
+});
+
+Deno.test("bekende builds: nieuwste build per platform uit de changelog", () => {
+  const log = [
+    { build: 81, version: "1.0.0", items: [{ platforms: ["web"] }] },
+    { build: 80, version: "1.0.0", items: [{ platforms: ["server"] }] },
+    { build: 78, version: "1.0.0", items: [{ platforms: ["ios", "ipados", "tvos"] }, { platforms: ["macos"] }] },
+    { build: 75, version: "1.0.0", items: [{ platforms: ["android", "androidtv", "tizen"] }, { platforms: ["ios"] }] },
+    { build: 60, version: "1.0.0", items: [{ platforms: ["tvos", "android"] }] },
+    { build: "kapot", items: [{ platforms: ["ios"] }] }, null,
+  ];
+  eq(knownVersions(log), [
+    { version: "1.0.0 (81)", build: 81, platforms: ["web"] },
+    { version: "1.0.0 (78)", build: 78, platforms: ["ios", "tvos", "macos"] },
+    { version: "1.0.0 (75)", build: 75, platforms: ["android", "androidtv", "tizen"] },
+  ]);
+  eq(knownVersions({}), [], "geen lijst");
+  eq(knownVersions(null), []);
 });
 
 Deno.test("berichten, nummers, zoeken, taal", () => {

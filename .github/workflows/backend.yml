@@ -46,7 +46,7 @@ jobs:
         with:
           deno-version: v2.x
       - name: Unittests (statistieken)
-        run: deno test supabase/functions/device-auth/stats_test.ts
+        run: deno test supabase/functions/device-auth/stats_test.ts supabase/functions/device-auth/naming_test.ts supabase/functions/_shared/ban_test.ts
       - name: Unittests (statuspagina)
         continue-on-error: true
         run: |
@@ -370,6 +370,98 @@ jobs:
           c = row["counts"] if isinstance(row["counts"], dict) else json.loads(row["counts"])
           if row.get("inbox") != 1: print("::error::support_inbox_state ontbreekt:", str(r)[:300]); raise SystemExit(1)
           print(f"::notice::Supporttickets: {c['total']} totaal, {c['active']} open, {c['unread']} ongelezen (nummers vanaf {row['seq']})")
+          PY
+      - name: Apparaten, supportformulier, koppelnaam en blokkade end-to-end testen
+        if: steps.check.outputs.skip != '1'
+        # Met een tijdelijk testaccount (wordt altijd weer verwijderd): register_device -> support/my_devices geeft het apparaat
+        # met versie terug, en /koppelen met een eigen naam (code_info, approve {name}, poll, register_device) zet die naam.
+        # Daarna blokkeren (ban zoals het beheer): vernieuwen en inloggen geven user_banned, device-auth en support 401 user_banned.
+        # De geheime sleutel komt via de Management API en wordt gemaskeerd; hij staat nooit in de repo of het log.
+        run: |
+          python3 - <<'PY'
+          import json, os, secrets, sys, time, urllib.request, urllib.error
+          REF = os.environ["REF"]; MGMT = os.environ["SUPABASE_ACCESS_TOKEN"]
+          BASE = f"https://{REF}.supabase.co"; PUB = "sb_publishable_lpIup6Omq5kW2k3oICGZ4g_HPGac5A3"
+          def req(method, url, body=None, headers=None):
+              h = {"Content-Type": "application/json", **(headers or {})}
+              r = urllib.request.Request(url, data=None if body is None else json.dumps(body).encode(), method=method, headers=h)
+              try:
+                  with urllib.request.urlopen(r, timeout=30) as resp: raw = resp.read(); code = resp.status
+              except urllib.error.HTTPError as e: raw = e.read(); code = e.code
+              try: return code, json.loads(raw or b"{}")
+              except Exception: return code, {"raw": raw[:200].decode("utf-8", "replace")}
+          # geheime sleutel (service_role of secret) voor het aanmaken/verwijderen van het testaccount
+          code, keys = req("GET", f"https://api.supabase.com/v1/projects/{REF}/api-keys?reveal=true", headers={"Authorization": f"Bearer {MGMT}"})
+          key = None
+          for k in keys if isinstance(keys, list) else []:
+              v = k.get("api_key") or ""
+              if v and (k.get("name") == "service_role" or k.get("type") == "secret") and "·" not in v: key = v; break
+          if not key: print(f"::warning::end-to-end overgeslagen: geen geheime sleutel via de Management API (HTTP {code})"); sys.exit(0)
+          print(f"::add-mask::{key}")
+          adm = {"apikey": key, **({"Authorization": f"Bearer {key}"} if key.startswith("ey") else {})}
+          email, pw = f"ci-{secrets.token_hex(6)}@example.com", secrets.token_urlsafe(18)
+          code, u = req("POST", f"{BASE}/auth/v1/admin/users", {"email": email, "password": pw, "email_confirm": True}, adm)
+          uid = u.get("id")
+          if not uid: print(f"::error::testaccount aanmaken mislukt (HTTP {code}): {str(u)[:200]}"); sys.exit(1)
+          fail = []
+          try:
+              code, t = req("POST", f"{BASE}/auth/v1/token?grant_type=password", {"email": email, "password": pw}, {"apikey": PUB})
+              tok = t.get("access_token")
+              if not tok: raise SystemExit(f"inloggen testaccount mislukt (HTTP {code})")
+              print(f"::add-mask::{tok}")
+              user = {"apikey": PUB, "Authorization": f"Bearer {tok}"}
+              DA, SU = f"{BASE}/functions/v1/device-auth", f"{BASE}/functions/v1/support"
+              # 1. apparaat aanmelden en terugzien in het supportformulier
+              code, r = req("POST", DA, {"action": "register_device", "device_id": "ci-a", "name": "Apple TV", "platform": "Apple TV", "app_version": "1.0.0 (99)", "os_version": "tvOS 26.0"}, user)
+              if not r.get("ok"): fail.append(f"register_device HTTP {code} {r}")
+              code, r = req("POST", SU, {"action": "my_devices"}, {**user, "Origin": "https://support.bingr.online"})
+              devs = r.get("devices") or []
+              if code != 200 or not any(d.get("id") == "ci-a" and d.get("kind") == "tvos" and d.get("app_version") == "1.0.0 (99)" for d in devs):
+                  fail.append(f"my_devices HTTP {code}: {str(r)[:300]}")
+              elif "1.0.0 (99)" not in (r.get("versions") or []): fail.append(f"my_devices zonder versie: {r.get('versions')}")
+              else: print(f"::notice::my_devices werkt: {len(devs)} apparaat, versies {r.get('versions')}, bekende builds {[k.get('version') for k in r.get('known') or []]}")
+              if not r.get("known"): print("::warning::my_devices: geen bekende builds (bingr.online/assets/changelog.json niet bereikbaar?)")
+              code, r = req("POST", SU, {"action": "versions"}, {"apikey": PUB})
+              if code != 200 or "known" not in r: fail.append(f"versions HTTP {code}: {str(r)[:200]}")
+              # 2. koppelen met een eigen naam
+              code, s = req("POST", DA, {"action": "start", "device": "Apple TV"}, {"apikey": PUB})
+              c, ps = s.get("code"), s.get("poll_secret")
+              code, r = req("POST", DA, {"action": "code_info", "code": c}, user)
+              if r.get("label") != "Apple TV" or r.get("kind") != "tvos": fail.append(f"code_info HTTP {code}: {r}")
+              code, r = req("POST", DA, {"action": "approve", "code": c, "name": "x" * 41}, user)
+              if code != 400 or r.get("error") != "name_too_long": fail.append(f"approve met te lange naam HTTP {code}: {r}")
+              code, r = req("POST", DA, {"action": "approve", "code": c, "name": "  Apple TV - CI  "}, user)
+              if not r.get("ok") or r.get("name") != "Apple TV - CI": fail.append(f"approve HTTP {code}: {r}")
+              code, r = req("POST", DA, {"action": "poll", "code": c, "poll_secret": ps}, {"apikey": PUB})
+              if r.get("status") != "approved": fail.append(f"poll HTTP {code}: {str(r)[:120]}")
+              time.sleep(1)
+              code, r = req("POST", DA, {"action": "register_device", "device_id": "ci-b", "name": "Apple TV", "platform": "Apple TV", "app_version": "1.0.0 (99)"}, user)
+              code, r = req("POST", DA, {"action": "register_device", "device_id": "ci-b", "name": "Apple TV", "platform": "Apple TV"}, user)
+              code, r = req("POST", DA, {"action": "list_devices"}, user)
+              names = {d.get("device_id"): d.get("name") for d in r.get("devices") or []}
+              if names.get("ci-b") != "Apple TV - CI" or names.get("ci-a") != "Apple TV": fail.append(f"koppelnaam niet toegepast: {names}")
+              else: print(f"::notice::koppelen met eigen naam werkt: {names}")
+              # 3. blokkeren (zoals het beheer: ban, sessies blijven bestaan) -> de apps moeten user_banned zien
+              code, r = req("PUT", f"{BASE}/auth/v1/admin/users/{uid}", {"ban_duration": "1h"}, adm)
+              if code != 200: fail.append(f"ban HTTP {code}: {str(r)[:200]}")
+              else:
+                  isban = lambda r: r.get("banned") is True or "user_banned" in (str(r.get("error_code")), str(r.get("error"))) or "banned" in str(r.get("msg") or r.get("message") or "").lower()
+                  code, r = req("POST", f"{BASE}/auth/v1/token?grant_type=refresh_token", {"refresh_token": t.get("refresh_token")}, {"apikey": PUB})
+                  if code < 400 or not isban(r): fail.append(f"vernieuwen na blokkade: HTTP {code} {str(r)[:200]} (verwacht user_banned)")
+                  code, r = req("POST", f"{BASE}/auth/v1/token?grant_type=password", {"email": email, "password": pw}, {"apikey": PUB})
+                  if code < 400 or not isban(r): fail.append(f"inloggen na blokkade: HTTP {code} {str(r)[:200]}")
+                  code, r = req("POST", DA, {"action": "heartbeat", "device_id": "ci-a"}, user)
+                  if code != 401 or r.get("error") != "user_banned" or r.get("banned") is not True: fail.append(f"heartbeat na blokkade: HTTP {code} {r}")
+                  code, r = req("POST", SU, {"action": "mine"}, {**user, "Origin": "https://support.bingr.online"})
+                  if code != 401 or r.get("error") != "user_banned": fail.append(f"support/mine na blokkade: HTTP {code} {r}")
+                  if not any("blokkade" in f for f in fail): print("::notice::blokkade: vernieuwen/inloggen user_banned, device-auth en support 401 user_banned")
+          except SystemExit as e:
+              fail.append(str(e))
+          finally:
+              code, _ = req("DELETE", f"{BASE}/auth/v1/admin/users/{uid}", None, adm)
+              print("::notice::testaccount verwijderd" if code in (200, 204) else f"::warning::testaccount {email} niet verwijderd (HTTP {code})")
+          for f in fail: print(f"::error::{f[:400]}")
+          sys.exit(1 if fail else 0)
           PY
       - name: Statusmonitor testen
         if: steps.check.outputs.skip != '1'

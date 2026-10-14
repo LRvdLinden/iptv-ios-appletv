@@ -8,8 +8,12 @@
 //           device_id (ingelogd): een apparaat uit my_devices; naam, platform en systeemversie komen dan uit account_devices.
 //           Is het niet van de ingelogde gebruiker (of niet ingelogd), dan wordt device_id genegeerd.
 //   my_devices {} (ingelogd)                     -> {devices:[{id, name, platform, kind, label, app_version, os_version, last_seen_at}],
-//                                                    versions:["1.0.0 (74)", …]}  (alleen eigen apparaten; laatst gebruikt eerst)
+//                                                    versions:["1.0.0 (74)", …], known:[{version, build, platforms}]}
+//                                                (alleen eigen apparaten; laatst gebruikt eerst; known = nieuwste build per platform
+//                                                uit bingr.online/assets/changelog.json, terugval als de apparaten geen versie hebben)
+//   versions {}                                  -> {known:[{version:"1.0.0 (81)", build, platforms:["ios","tvos",…]}]}  (zonder inloggen)
 //   mine    {} (ingelogd)                        -> {items:[{number, subject, status, created_at, last_reply_at, unread, token}]}
+//           mine en my_devices met een geblokkeerd account: 401 {error:"user_banned", banned:true} (create kan dan als gast)
 //   get     {n, t} of {n} (ingelogd, eigen ticket) -> {ticket:{…}, messages:[{author, body, created_at}]}
 //   reply   {n, t?, message}                     -> {ok, status}   (gesloten ticket: 409 closed)
 //   close   {n, t?}                              -> {ok, status:"closed"}
@@ -35,10 +39,11 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { smtpConfigured, smtpFrom, transport } from "../_shared/mail.ts";
 import {
-  addressOf, beheerUrl, type DeviceRow, deviceKind, isStatus, myDevices, parseNumber, PRIORITIES, randomToken, safeSearch, sameText, type Status, statusAfter,
+  addressOf, beheerUrl, type DeviceRow, deviceKind, isStatus, type KnownVersion, knownVersions, myDevices, parseNumber, PRIORITIES, randomToken, safeSearch, sameText, type Status, statusAfter,
   ticketUrl, validateCreate, validateMessage, validToken,
 } from "./logic.ts";
 import { type MailData, renderMail } from "./templates.ts";
+import { BANNED_BODY, bannedUntilActive, isBanError } from "../_shared/ban.ts";
 import { Imap } from "./imap.ts";
 import { parseMessage, type ParsedMail } from "./mime.ts";
 import {
@@ -52,6 +57,25 @@ const BEHEER = "https://beheer.bingr.online";
 const SUPPORT_EMAIL = () => env("BINGR_SUPPORT_EMAIL") || "support@bingr.online";
 const SUPPORT_FROM = () => env("BINGR_SUPPORT_FROM") || "Bingr Support <support@bingr.online>";
 const db = createClient(env("SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"), { auth: { autoRefreshToken: false, persistSession: false } });
+
+const MAIN_SITE = env("BINGR_SITE") || "https://bingr.online";
+
+// Nieuwste build per platform (uit de changelog van bingr.online), 10 minuten in het geheugen; bij een fout de vorige lijst.
+let knownCache: { at: number; list: KnownVersion[] } | null = null;
+async function knownBuilds(): Promise<KnownVersion[]> {
+  if (knownCache && Date.now() - knownCache.at < 600_000) return knownCache.list;
+  try {
+    const r = await fetch(`${MAIN_SITE}/assets/changelog.json`, { signal: AbortSignal.timeout(4000), headers: { "Cache-Control": "no-cache" } });
+    if (!r.ok) throw new Error(`changelog ${r.status}`);
+    const list = knownVersions(await r.json());
+    knownCache = { at: Date.now(), list };
+    return list;
+  } catch (e) {
+    console.error("support known", e instanceof Error ? e.message : e);
+    if (knownCache) { knownCache.at = Date.now() - 540_000; return knownCache.list; } // over een minuut opnieuw proberen
+    return [];
+  }
+}
 
 const ORIGIN = /^https:\/\/support\.bingr\.online$|^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
 function corsFor(req: Request): Record<string, string> {
@@ -89,10 +113,18 @@ const hourAgo = () => new Date(Date.now() - 3600e3).toISOString();
 type User = { id: string; email?: string; email_confirmed_at?: string | null };
 /** Ingelogde gebruiker, null zonder (geldig) token. Een verlopen token telt als niet ingelogd. */
 async function userFrom(req: Request): Promise<User | null> {
+  const u = await userOrBanned(req);
+  return u === "banned" ? null : u;
+}
+/** Zoals userFrom, maar een geblokkeerd account geeft "banned" (mine/my_devices: 401 user_banned; de site toont de melding).
+ *  Een nieuw ticket maken kan een geblokkeerde klant wel, als gast (userFrom geeft dan null). */
+async function userOrBanned(req: Request): Promise<User | null | "banned"> {
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
   if (!token || token.split(".").length !== 3) return null;
   const { data, error } = await db.auth.getUser(token);
-  return !error && data?.user ? data.user as User : null;
+  if (isBanError(error)) return "banned";
+  if (error || !data?.user) return null;
+  return bannedUntilActive((data.user as { banned_until?: string }).banned_until) ? "banned" : data.user as User;
 }
 const ownsTicket = (u: User | null, t: Ticket) =>
   !!u && (t.user_id === u.id || (!!u.email_confirmed_at && !!u.email && u.email.toLowerCase() === t.email.toLowerCase()));
@@ -269,7 +301,8 @@ async function handleCustomer(req: Request, action: string, body: Record<string,
       return json({ ok: true, number: t.number, token, url: ticketUrl(SUPPORT_SITE, t.number, token), email_sent: c.ok });
     }
     case "mine": {
-      const user = await userFrom(req);
+      const user = await userOrBanned(req);
+      if (user === "banned") return json(BANNED_BODY, 401);
       if (!user) return json({ error: "not_signed_in" }, 401);
       let q = db.from("support_tickets").select(`${PUBLIC_FIELDS},access_token,customer_seen_at`).order("last_reply_at", { ascending: false }).limit(100);
       q = user.email_confirmed_at && user.email
@@ -286,13 +319,16 @@ async function handleCustomer(req: Request, action: string, body: Record<string,
       });
     }
     case "my_devices": {
-      const user = await userFrom(req);
+      const user = await userOrBanned(req);
+      if (user === "banned") return json(BANNED_BODY, 401);
       if (!user) return json({ error: "not_signed_in" }, 401);
       const { data, error } = await db.from("account_devices").select("device_id,name,platform,app_version,os_version,last_seen_at")
         .eq("user_id", user.id).order("last_seen_at", { ascending: false }).limit(50);
       if (error) throw new Error(error.message);
-      return json(myDevices((data ?? []) as DeviceRow[]));
+      return json({ ...myDevices((data ?? []) as DeviceRow[]), known: await knownBuilds() });
     }
+    case "versions":
+      return json({ known: await knownBuilds() });
     case "get": {
       if (!(await rateOk(`support:get:${await ipHash(ip)}`, 60))) return json({ error: "rate_limited" }, 429);
       const r = await customerTicket(req, body);

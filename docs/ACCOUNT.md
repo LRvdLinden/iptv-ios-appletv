@@ -52,7 +52,8 @@ Elke aanvraag krijgt de header `apikey: <ANON_KEY>` en `Content-Type: applicatio
 | Tv-code starten | `POST {URL}/functions/v1/device-auth` `{"action":"start","device":"Apple TV"}` | `{code, poll_secret, url, expires_in, interval}` |
 | Tv-code pollen | idem `{"action":"poll","code","poll_secret"}` om de `interval` (3) seconden | `{status:"pending"}` / `{status:"expired"}` (nieuwe code starten) / `{status:"approved", token_hash, email}` |
 | Tv-sessie ophalen | `POST {URL}/auth/v1/verify` `{"type":"magiclink","token_hash":…}` | 200: sessie |
-| Tv koppelen (telefoon/Mac) | device-auth `{"action":"approve","code"}` + `Authorization: Bearer <access_token>` | `{ok:true, device}` of 404 `{error:"invalid_code"}` |
+| Tv koppelen (telefoon/Mac) | device-auth `{"action":"approve","code","name"?}` + `Authorization: Bearer <access_token>` | `{ok:true, device, name}` of 404 `{error:"invalid_code"}` of 400 `{error:"name_too_long"}` (naam max. 40 tekens; wordt de naam van het apparaat zodra het zich aanmeldt, en blijft staan) |
+| Soort apparaat bij een code | device-auth `{"action":"code_info","code"}` + `Authorization` | `{ok:true, device, kind, label}` (voor het naamveld "Apple TV - …") of 404 `{error:"invalid_code"}` |
 | Account verwijderen | device-auth `{"action":"delete_account"}` + `Authorization: Bearer <access_token>` | `{ok:true}`, daarna lokaal uitloggen |
 
 **Sessie** = `{access_token, refresh_token, expires_in, expires_at?, user:{id, email}}`. Bewaar `refresh_token`, `access_token`, `expires_at` (nu + expires_in) en `email`. Bewaar ze **alleen op dit apparaat**: op Apple in de sleutelhanger zonder iCloud-sync (refresh tokens zijn eenmalig, dus delen tussen apparaten werkt niet), op Android in de app-opslag. Bij het starten van de app: is er een refresh_token, ga dan door naar "Wie kijkt er?" en vernieuw op de achtergrond. Komt daar 400/401 uit, ga dan terug naar het inlogscherm.
@@ -371,6 +372,35 @@ Samenvoegen: per item wint de nieuwste `updatedAt`.
 ## Wachtwoord gewijzigd: overal uitgelogd
 
 Een database-trigger op `auth.users` wist bij elke wachtwoordwijziging alle sessies, alle gekoppelde apparaten en alle lopende streams van dat account. Dat geldt ook voor wijzigingen via bingr.online/reset. De apps hoeven hier niets nieuws voor te doen. Bij de volgende heartbeat (bij openen, terugkeer naar de voorgrond of binnen 5 minuten) geeft de server `revoked`, en het verversen van de sessie geeft 400/401. Dan gaat de app naar het inlogscherm.
+
+## Geblokkeerd account (build 82 apps, server build 83)
+
+Het beheer kan een account blokkeren (met reden en einddatum, of voor onbepaalde tijd). De blokkade is de ban van het
+auth-account (`banned_until`); reden, einddatum en geschiedenis staan in `account_blocks`. De klant krijgt een mail vanaf
+support@bingr.online ("Je Bingr-account is geblokkeerd", met reden en tot wanneer), bij opheffen "weer actief" en bij
+verwijderen een bevestiging.
+
+**De sessies blijven bij een blokkade bestaan** (alleen lopende streams worden gestopt). Daardoor kan de app het verschil
+zien tussen "geblokkeerd" en "gewoon uitgelogd". Wat de server teruggeeft:
+
+| Waar | Antwoord bij een geblokkeerd account |
+|---|---|
+| Inloggen `POST /auth/v1/token?grant_type=password` | 400 `{error_code:"user_banned", msg:"User is banned"}` |
+| Vernieuwen `POST /auth/v1/token?grant_type=refresh_token` | 400 `{error_code:"user_banned", msg:"Invalid Refresh Token: User Banned"}` (de refresh token bestaat nog) |
+| Tv-sessie `POST /auth/v1/verify` (magiclink) | 403 `{error_code:"user_banned"}` |
+| device-auth, elke actie met inloggen (`heartbeat`, `register_device`, `config`, `list_devices`, `approve`, `code_info`, …) | **401** `{error:"user_banned", banned:true, reason:"banned"}`, ook met een access token van vóór de blokkade |
+| device-auth `poll` (tv-code, het goedkeurende account is geblokkeerd) | 403 `{status:"banned", error:"user_banned", banned:true}`; de code vervalt |
+| support `mine` / `my_devices` | 401 `{error:"user_banned", banned:true}`; een nieuw ticket maken kan wel (als gast) |
+
+**Herkennen in de app** (zo doen Apple, Android en Samsung TV het sinds build 82): een antwoord is "geblokkeerd" als
+`banned === true`, of `error_code`/`error`/`code`/`reason` gelijk is aan `user_banned`, `banned` of `account_blocked`, of
+de tekst (`msg`/`message`/`error_description`) "banned" bevat. Dan lokaal uitloggen (geen logout-aanroep) en op het
+inlogscherm de melding tonen: *"Je account is geblokkeerd. Je hebt een e-mail gekregen met de reden en tot wanneer.
+Vragen? Ga naar support.bingr.online."* Let op: Android en Samsung TV vernieuwen bij een 401 eerst de sessie; dat geeft
+door de ban ook `user_banned`, dus beide routes komen bij de melding uit. Na opheffen kan de klant gewoon weer inloggen.
+
+**Website:** bingr.online/account, /koppelen, de webspeler en support.bingr.online (/mijn, /nieuw) tonen dezelfde melding
+bij inloggen en als een lopende sessie `user_banned` krijgt.
 
 ## Build 52: intro-markeringen, accentkleur, deinterlacing en laatste zender
 

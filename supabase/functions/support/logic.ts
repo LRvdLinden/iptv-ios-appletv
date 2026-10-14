@@ -76,6 +76,38 @@ export function myDevices(rows: DeviceRow[]): { devices: MyDevice[]; versions: s
   return { devices, versions };
 }
 
+// ---- bekende builds (bingr.online/assets/changelog.json): terugval voor de keuzelijst App-versie ----
+// Per ticketplatform de nieuwste build waarin dat platform veranderde ("1.0.0 (81)"); ipados telt als ios, server telt niet.
+// Resultaat: één regel per versie (nieuwste eerst) met de platforms waarvoor dat de nieuwste build is.
+const CHANGELOG_KIND: Record<string, typeof PLATFORMS[number]> = {
+  ios: "ios", ipados: "ios", tvos: "tvos", macos: "macos", android: "android", androidtv: "androidtv", tizen: "tizen", web: "web",
+};
+export type KnownVersion = { version: string; build: number; platforms: string[] };
+export function knownVersions(changelog: unknown): KnownVersion[] {
+  const builds = Array.isArray(changelog) ? changelog : [];
+  const latest = new Map<string, { build: number; version: string }>();
+  for (const b of builds) {
+    const n = Number(b?.build);
+    if (!Number.isInteger(n) || n <= 0 || !Array.isArray(b?.items)) continue;
+    const ver = cleanText(b.version, 20) || "1.0.0";
+    for (const it of b.items) {
+      for (const p of Array.isArray(it?.platforms) ? it.platforms : []) {
+        const k = CHANGELOG_KIND[String(p)];
+        if (k && (!latest.has(k) || latest.get(k)!.build < n)) latest.set(k, { build: n, version: ver });
+      }
+    }
+  }
+  const byVersion = new Map<string, KnownVersion>();
+  for (const k of PLATFORMS) {
+    const l = latest.get(k);
+    if (!l) continue;
+    const v = `${l.version} (${l.build})`;
+    if (!byVersion.has(v)) byVersion.set(v, { version: v, build: l.build, platforms: [] });
+    byVersion.get(v)!.platforms.push(k);
+  }
+  return [...byVersion.values()].sort((a, b) => compareVersionsDesc(a.version, b.version));
+}
+
 export const isStatus = (v: unknown): v is Status => typeof v === "string" && (STATUSES as readonly string[]).includes(v);
 export const ticketLabel = (n: number | string) => `#${n}`;
 export const langOf = (v: unknown): Lang => (String(v ?? "").toLowerCase().startsWith("en") ? "en" : "nl");
