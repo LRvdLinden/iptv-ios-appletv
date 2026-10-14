@@ -267,6 +267,21 @@ end $$;
 revoke all on function public.bingr_register_device(uuid, text, text, text, uuid, int, text, text) from public, anon, authenticated;
 grant execute on function public.bingr_register_device(uuid, text, text, text, uuid, int, text, text) to service_role;
 
+-- Eigen naam bij het koppelen (bingr.online/koppelen): approve bewaart de naam bij de code; bij het goedkeuren (poll) komt hij
+-- in device_pending_names en register_device van dat apparaat (zelfde soort, binnen 15 minuten) neemt hem over met
+-- custom_name = true. Alleen de functie device-auth (service role) leest en schrijft hierin.
+alter table public.device_codes add column if not exists name text;
+create table if not exists public.device_pending_names (
+  id         bigint generated always as identity primary key,
+  user_id    uuid not null references auth.users(id) on delete cascade,
+  kind       text not null default 'other',
+  name       text not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists device_pending_names_user_idx on public.device_pending_names (user_id, kind, created_at);
+alter table public.device_pending_names enable row level security;
+revoke all on public.device_pending_names from anon, authenticated;
+
 -- Beheer: de tabellen announcements, account_email_prefs, admin_login_attempts en admin_audit en de functies bingr_admin_*
 -- horen bij dit gedeelde schema, maar worden gebruikt door de Edge Function admin in de privé-repo LRvdLinden/bingr-beheer
 -- (beheer.bingr.online). Alleen announcements wordt ook door device-auth gelezen (berichten in de apps).
@@ -319,6 +334,48 @@ create table if not exists public.admin_audit (
 create index if not exists admin_audit_created_idx on public.admin_audit (created_at desc);
 alter table public.admin_audit enable row level security;
 revoke all on public.admin_audit from anon, authenticated;
+
+-- Beheer: blokkades van accounts (functie admin in bingr-beheer). De inlogblokkade zelf is de ban van het auth-account
+-- (banned_until); deze tabel bewaart reden, einddatum en geschiedenis. until = null: onbepaalde tijd. Een blokkade
+-- eindigt door opheffen (lifted_by 'beheer'), door een nieuwe blokkade ('vervangen') of vanzelf na until ('verlopen',
+-- bijgewerkt bij het lezen). Gaat mee als het account wordt verwijderd.
+create table if not exists public.account_blocks (
+  id          bigserial primary key,
+  user_id     uuid not null references auth.users(id) on delete cascade,
+  reason      text not null,
+  until       timestamptz,
+  notified    boolean not null default false,
+  created_at  timestamptz not null default now(),
+  created_by  text not null default 'beheer',
+  lifted_at   timestamptz,
+  lifted_by   text
+);
+create index if not exists account_blocks_user_idx on public.account_blocks (user_id, created_at desc);
+create index if not exists account_blocks_active_idx on public.account_blocks (user_id) where lifted_at is null;
+alter table public.account_blocks enable row level security;
+revoke all on public.account_blocks from anon, authenticated;
+
+-- verlopen blokkades afsluiten (lui: bij het lezen in het beheer)
+create or replace function public.bingr_blocks_expire() returns void
+language sql security definer set search_path = public as $$
+  update public.account_blocks set lifted_at = until, lifted_by = 'verlopen'
+  where lifted_at is null and until is not null and until <= now();
+$$;
+-- alle sessies van een account intrekken (blokkeren): refresh tokens vervallen mee en lopende access tokens worden
+-- geweigerd (sessie bestaat niet meer), dus apps en website loggen uit; lopende streams tellen niet meer mee.
+create or replace function public.bingr_revoke_user_sessions(p_user uuid) returns int
+language plpgsql security definer set search_path = auth, public as $$
+declare n int;
+begin
+  delete from auth.sessions where user_id = p_user;
+  get diagnostics n = row_count;
+  delete from public.account_streams where user_id = p_user;
+  return n;
+end $$;
+revoke all on function public.bingr_blocks_expire() from public, anon, authenticated;
+revoke all on function public.bingr_revoke_user_sessions(uuid) from public, anon, authenticated;
+grant execute on function public.bingr_blocks_expire() to service_role;
+grant execute on function public.bingr_revoke_user_sessions(uuid) to service_role;
 
 -- Tellers voor limieten (webproxy): per sleutel per minuut.
 create table if not exists public.rate_limits (
@@ -391,6 +448,7 @@ create or replace function public.bingr_admin_stats() returns jsonb
 language plpgsql security definer set search_path = public, auth as $$
 declare res jsonb; days jsonb; audit_total bigint;
 begin
+  perform public.bingr_blocks_expire();
   select coalesce(sum(n), 0) into audit_total from public.bingr_audit_logins(30);
   with d as (select generate_series((now() at time zone 'utc')::date - 29, (now() at time zone 'utc')::date, interval '1 day')::date as day),
   nu as (select (created_at at time zone 'utc')::date as day, count(*) n from auth.users where created_at > now() - interval '31 days' group by 1),
@@ -408,6 +466,7 @@ begin
     'devices_total', (select count(*) from public.account_devices),
     'watching_now', (select count(*) from public.account_streams where last_ping > now() - interval '90 seconds'),
     'opted_out', (select count(*) from public.account_email_prefs where email_opt_out),
+    'blocked_users', (select count(distinct user_id) from public.account_blocks where lifted_at is null),
     'signins_source', case when audit_total > 0 then 'audit' else 'activity' end,
     'days', coalesce(days, '[]'::jsonb),
     'platforms', coalesce((select jsonb_agg(jsonb_build_object('platform', platform, 'devices', n) order by n desc)
@@ -423,12 +482,18 @@ revoke all on function public.bingr_admin_stats() from public, anon, authenticat
 grant execute on function public.bingr_admin_stats() to service_role;
 
 -- Gebruikers (hoofdaccounts), nieuwste eerst, zoeken op begin van het e-mailadres. De functie maskeert de e-mail.
-create or replace function public.bingr_admin_users(p_search text, p_limit int, p_offset int) returns jsonb
+-- p_filter: '' = alle, 'blocked' = alleen geblokkeerde accounts.
+drop function if exists public.bingr_admin_users(text, int, int);
+create or replace function public.bingr_admin_users(p_search text, p_limit int, p_offset int, p_filter text default '') returns jsonb
 language plpgsql security definer set search_path = public, auth as $$
 declare pat text := replace(replace(replace(lower(coalesce(p_search, '')), '\', '\\'), '%', '\%'), '_', '\_') || '%';
+  only_blocked boolean := coalesce(p_filter, '') = 'blocked';
 begin
+  perform public.bingr_blocks_expire();
   return jsonb_build_object(
-    'total', (select count(*) from auth.users u where lower(u.email) like pat),
+    'total', (select count(*) from auth.users u where lower(u.email) like pat
+      and (not only_blocked or exists (select 1 from public.account_blocks b where b.user_id = u.id and b.lifted_at is null))),
+    'blocked_total', (select count(distinct user_id) from public.account_blocks where lifted_at is null),
     'items', coalesce((select jsonb_agg(row_to_json(x)::jsonb order by x.created_at desc) from (
       select u.id, u.email, u.created_at, u.last_sign_in_at, u.email_confirmed_at is not null as confirmed,
         (select count(*) from public.account_devices d where d.user_id = u.id) as device_count,
@@ -437,23 +502,32 @@ begin
         (select max(d.last_seen_at) from public.account_devices d where d.user_id = u.id) as last_seen_at,
         (select count(*) from public.account_data a, jsonb_array_elements(case when jsonb_typeof(a.profiles) = 'array' then a.profiles else '[]'::jsonb end) e
           where a.user_id = u.id and coalesce(e->>'deleted', 'false') <> 'true') as profile_count,
-        coalesce((select p.email_opt_out from public.account_email_prefs p where p.user_id = u.id), false) as email_opt_out
+        coalesce((select p.email_opt_out from public.account_email_prefs p where p.user_id = u.id), false) as email_opt_out,
+        (select jsonb_build_object('until', b.until, 'created_at', b.created_at) from public.account_blocks b
+          where b.user_id = u.id and b.lifted_at is null order by b.created_at desc limit 1) as blocked
       from auth.users u where lower(u.email) like pat
+        and (not only_blocked or exists (select 1 from public.account_blocks b where b.user_id = u.id and b.lifted_at is null))
       order by u.created_at desc limit least(greatest(p_limit, 1), 100) offset greatest(p_offset, 0)) x), '[]'::jsonb)
   );
 end $$;
-revoke all on function public.bingr_admin_users(text, int, int) from public, anon, authenticated;
-grant execute on function public.bingr_admin_users(text, int, int) to service_role;
+revoke all on function public.bingr_admin_users(text, int, int, text) from public, anon, authenticated;
+grant execute on function public.bingr_admin_users(text, int, int, text) to service_role;
 
 create or replace function public.bingr_admin_user(p_id uuid) returns jsonb
 language plpgsql security definer set search_path = public, auth as $$
 declare u record;
 begin
-  select id, email, created_at, last_sign_in_at, email_confirmed_at, raw_user_meta_data->>'lang' as lang into u from auth.users where id = p_id;
+  perform public.bingr_blocks_expire();
+  select id, email, created_at, last_sign_in_at, email_confirmed_at, banned_until, raw_user_meta_data->>'lang' as lang into u from auth.users where id = p_id;
   if not found then return null; end if;
   return jsonb_build_object(
     'id', u.id, 'email', u.email, 'created_at', u.created_at, 'last_sign_in_at', u.last_sign_in_at,
-    'confirmed', u.email_confirmed_at is not null, 'lang', u.lang,
+    'confirmed', u.email_confirmed_at is not null, 'lang', u.lang, 'banned_until', u.banned_until,
+    'block', (select jsonb_build_object('id', b.id, 'reason', b.reason, 'until', b.until, 'created_at', b.created_at, 'notified', b.notified)
+      from public.account_blocks b where b.user_id = u.id and b.lifted_at is null order by b.created_at desc limit 1),
+    'blocks', coalesce((select jsonb_agg(jsonb_build_object('id', b.id, 'reason', b.reason, 'until', b.until, 'created_at', b.created_at,
+        'notified', b.notified, 'lifted_at', b.lifted_at, 'lifted_by', b.lifted_by) order by b.created_at desc)
+      from (select * from public.account_blocks where user_id = u.id order by created_at desc limit 20) b), '[]'::jsonb),
     'profile_count', (select count(*) from public.account_data a, jsonb_array_elements(case when jsonb_typeof(a.profiles) = 'array' then a.profiles else '[]'::jsonb end) e
           where a.user_id = u.id and coalesce(e->>'deleted', 'false') <> 'true'),
     'email_opt_out', coalesce((select p.email_opt_out from public.account_email_prefs p where p.user_id = u.id), false),
@@ -557,7 +631,7 @@ insert into public.status_monitors (id, name_nl, name_en, grp, kind, target, key
   ('db',         'Database',                     'Database',                     'server',  'db',          '',                                       null,         5,  true,  true, 20),
   ('api',        'API apps',                     'App API',                      'server',  'fn',          'device-auth',                            null,         5,  true,  true, 30),
   ('proxy',      'Webspeler-doorgifte',          'Web player relay',             'server',  'fn',          'web-proxy',                              null,         5,  true,  true, 40),
-  ('storage',    'Opslag (profielfoto''s)',      'Storage (profile photos)',     'server',  'storage',     'avatars',                                null,         5,  true,  true, 50),
+  ('storage',    'Opslag (profielfoto''s)',      'Storage (profile photos)',     'server',  'storage',     'avatars',                                null,         5,  false, true, 50),
   ('smtp',       'E-mail (SMTP)',                'Email (SMTP)',                 'server',  'smtp',        '',                                       null,         5,  true,  true, 60),
   ('site',       'Website',                      'Website',                      'website', 'http',        'https://bingr.online/',                  'data-build', 5,  true,  true, 10),
   ('site-web',   'Webspeler',                    'Web player',                   'website', 'http',        'https://bingr.online/web/',              null,         5,  true,  true, 20),
@@ -565,9 +639,9 @@ insert into public.status_monitors (id, name_nl, name_en, grp, kind, target, key
   ('site-link',  'Tv koppelen',                  'TV linking',                   'website', 'http',        'https://bingr.online/koppelen/',         null,         5,  true,  true, 40),
   ('site-acc',   'Mijn Bingr',                   'My Bingr',                     'website', 'http',        'https://bingr.online/account/',          null,         5,  true,  true, 50),
   ('tls',        'TLS-certificaat',              'TLS certificate',              'website', 'tls',         'bingr.online',                           null,         60, true,  true, 60),
-  ('apk',        'Android-download (APK)',       'Android download (APK)',       'apps',    'gh_asset',    'LRvdLinden/bingr-beheer|.apk',           null,         15, true,  true, 10),
-  ('wgt',        'Samsung TV-download (.wgt)',   'Samsung TV download (.wgt)',   'apps',    'gh_asset',    'LRvdLinden/bingr-beheer|.wgt',           null,         15, true,  true, 20),
-  ('apple',      'Apple-build',                  'Apple build',                  'apps',    'gh_workflow', 'LRvdLinden/iptv-ios-appletv|build.yml|main', null,     15, true,  true, 30),
+  ('apk',        'Android',                      'Android',                      'apps',    'gh_asset',    'LRvdLinden/bingr-beheer|.apk',           null,         15, true,  true, 10),
+  ('wgt',        'Samsung TV',                   'Samsung TV',                   'apps',    'gh_asset',    'LRvdLinden/bingr-beheer|.wgt',           null,         15, true,  true, 20),
+  ('apple',      'Apple (iOS, iPadOS, tvOS, macOS)', 'Apple (iOS, iPadOS, tvOS, macOS)', 'apps',    'gh_workflow', 'LRvdLinden/iptv-ios-appletv|build.yml|main', null,     15, true,  true, 30),
   ('devices',    'Actieve apparaten',            'Active devices',               'apps',    'devices',     '',                                       null,         5,  false, true, 90)
 on conflict (id) do nothing;
 -- downloads staan sinds build 69 in bingr-beheer/versions (niet meer als GitHub-release)
@@ -1133,6 +1207,17 @@ do $$ begin
   if not exists (select 1 from public.bingr_migrations where name = 'support_site_monitor_on') then
     update public.status_monitors set enabled = true where id = 'site-sup';
     insert into public.bingr_migrations (name) values ('support_site_monitor_on');
+  end if;
+end $$;
+-- Build 82: statuspagina, kortere namen voor de apps en Opslag (profielfoto's) niet meer openbaar (wel gecontroleerd, in het
+-- beheer zichtbaar). Eén keer; daarna beslist het beheer (tab Status).
+do $$ begin
+  if not exists (select 1 from public.bingr_migrations where name = 'status_names_build82') then
+    update public.status_monitors set name_nl = 'Android', name_en = 'Android' where id = 'apk';
+    update public.status_monitors set name_nl = 'Samsung TV', name_en = 'Samsung TV' where id = 'wgt';
+    update public.status_monitors set name_nl = 'Apple (iOS, iPadOS, tvOS, macOS)', name_en = 'Apple (iOS, iPadOS, tvOS, macOS)' where id = 'apple';
+    update public.status_monitors set public = false where id = 'storage';
+    insert into public.bingr_migrations (name) values ('status_names_build82');
   end if;
 end $$;
 
