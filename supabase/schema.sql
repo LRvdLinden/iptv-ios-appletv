@@ -1006,6 +1006,12 @@ do $$ begin
   alter table public.support_messages add constraint support_messages_author_chk check (author in ('customer', 'support', 'note', 'event'));
 exception when duplicate_object then null; end $$;
 
+-- Apparaat bij een ticket (support.bingr.online, ingelogd): het gekozen apparaat uit account_devices (device_id, mag later
+-- verdwijnen, dus geen foreign key) met de naam en systeemversie zoals ze bij het aanmaken waren. Zonder account: alleen platform.
+alter table public.support_tickets add column if not exists device_id text;
+alter table public.support_tickets add column if not exists device_name text;
+alter table public.support_tickets add column if not exists os_version text;
+
 -- Supporttickets per e-mail (inbox-import, actie poll_inbox van de functie support): herkomst van een bericht (web =
 -- support.bingr.online of de apps, email = per mail binnengekomen, admin = beheer), de Message-ID van de binnengekomen mail
 -- (uniek: elke mail maar één keer) en waar hij op antwoordde, en de Message-ID van de mail die wij voor dit bericht verstuurden.

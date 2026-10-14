@@ -28,7 +28,53 @@ export const PLATFORM_LABEL: Record<string, string> = {
   androidtv: "Android TV / Google TV / Fire TV", tizen: "Samsung TV", web: "Browser",
 };
 
-export const LIMITS = { name: 80, email: 254, subject: 120, message: 5000, appVersion: 40, minSubject: 3, minMessage: 10 };
+export const LIMITS = { name: 80, email: 254, subject: 120, message: 5000, appVersion: 40, minSubject: 3, minMessage: 10, deviceId: 128 };
+
+// ---- apparaten van het account (tabel account_devices, gevuld door device-auth/register_device) ----
+// De apps sturen als platform: "iPhone", "iPad", "Apple TV", "Mac" (Apple), "Android", "Android tablet", "Android TV",
+// "Google TV", "Fire TV" (Android), "tizen" (Samsung TV) en "browser" (webspeler op bingr.online).
+const DEVICE_KIND: Record<string, typeof PLATFORMS[number]> = {
+  iphone: "ios", ipad: "ios", ios: "ios", ipados: "ios", "apple tv": "tvos", tvos: "tvos", mac: "macos", macos: "macos",
+  android: "android", "android tablet": "android", "android tv": "androidtv", "google tv": "androidtv", "fire tv": "androidtv",
+  androidtv: "androidtv", tizen: "tizen", "samsung tv": "tizen", browser: "web", web: "web",
+};
+/** Platform van een apparaat (zoals de app het registreert) als platform van een ticket; onbekend: null. */
+export const deviceKind = (platform: unknown) => DEVICE_KIND[String(platform ?? "").trim().toLowerCase()] ?? null;
+/** Leesbare naam van het platform van een apparaat ("tizen" -> "Samsung TV", "browser" -> "Browser"). */
+export function deviceLabel(platform: unknown): string {
+  const p = String(platform ?? "").trim();
+  const l = p.toLowerCase();
+  return l === "tizen" ? "Samsung TV" : l === "browser" ? "Browser" : p;
+}
+/** "1.0.0 (74)" -> [1, 0, 0, 74]; alle getallen op volgorde. */
+const versionParts = (v: string) => (v.match(/\d+/g) ?? []).map(Number);
+/** Nieuwste versie eerst (op getallen; gelijk: op tekst). */
+export function compareVersionsDesc(a: string, b: string): number {
+  const x = versionParts(a), y = versionParts(b);
+  for (let i = 0; i < Math.max(x.length, y.length); i++) {
+    const d = (y[i] ?? -1) - (x[i] ?? -1);
+    if (d) return d;
+  }
+  return a.localeCompare(b);
+}
+
+export type DeviceRow = { device_id: string; name: string | null; platform: string | null; app_version: string | null; os_version: string | null; last_seen_at: string | null };
+export type MyDevice = { id: string; name: string; platform: string; kind: string | null; label: string; app_version: string | null; os_version: string | null; last_seen_at: string | null };
+/** Apparaten voor het formulier: laatst gebruikt eerst, plus de verschillende app-versies (nieuwste eerst). */
+export function myDevices(rows: DeviceRow[]): { devices: MyDevice[]; versions: string[] } {
+  const devices = rows
+    .filter((r) => r && typeof r.device_id === "string" && r.device_id)
+    .map((r) => {
+      const label = deviceLabel(r.platform);
+      return {
+        id: r.device_id, name: cleanText(r.name, LIMITS.name) || label || "?", platform: String(r.platform ?? ""), kind: deviceKind(r.platform),
+        label, app_version: cleanText(r.app_version, LIMITS.appVersion) || null, os_version: cleanText(r.os_version, 40) || null, last_seen_at: r.last_seen_at ?? null,
+      };
+    })
+    .sort((a, b) => (b.last_seen_at ?? "").localeCompare(a.last_seen_at ?? ""));
+  const versions = [...new Set(devices.map((d) => d.app_version).filter((v): v is string => !!v))].sort(compareVersionsDesc);
+  return { devices, versions };
+}
 
 export const isStatus = (v: unknown): v is Status => typeof v === "string" && (STATUSES as readonly string[]).includes(v);
 export const ticketLabel = (n: number | string) => `#${n}`;
@@ -52,6 +98,8 @@ const urlCount = (s: string) => (s.match(/https?:\/\//gi) ?? []).length;
 export type CreateInput = {
   name: string; email: string; category: string; platform: string | null; app_version: string | null;
   subject: string; message: string; lang: Lang;
+  /** gekozen apparaat van het account; de functie controleert of het van de ingelogde gebruiker is (anders genegeerd) */
+  device_id: string | null;
 };
 export type Invalid = { ok: false; error: string; field?: string };
 
@@ -68,6 +116,8 @@ export function validateCreate(b: Record<string, unknown>): { ok: true; value: C
   const category = String(b.category ?? "");
   const platform = b.platform == null || b.platform === "" ? null : String(b.platform);
   const app_version = cleanText(b.app_version, LIMITS.appVersion) || null;
+  const dev = typeof b.device_id === "string" ? b.device_id.trim() : "";
+  const device_id = dev && dev.length <= LIMITS.deviceId && /^[\x21-\x7e]+$/.test(dev) ? dev : null;
   if (!name) return { ok: false, error: "name_missing", field: "name" };
   if (!validEmail(email)) return { ok: false, error: "bad_email", field: "email" };
   if (!(CATEGORIES as readonly string[]).includes(category)) return { ok: false, error: "bad_category", field: "category" };
@@ -77,7 +127,7 @@ export function validateCreate(b: Record<string, unknown>): { ok: true; value: C
   if (message.length < LIMITS.minMessage) return { ok: false, error: "message_too_short", field: "message" };
   if (message.length > LIMITS.message) return { ok: false, error: "message_too_long", field: "message" };
   if (urlCount(message) > 6 || urlCount(subject) > 1) return { ok: false, error: "too_many_links", field: "message" };
-  return { ok: true, value: { name, email, category, platform, app_version, subject, message, lang: langOf(b.lang) } };
+  return { ok: true, value: { name, email, category, platform, app_version, subject, message, lang: langOf(b.lang), device_id } };
 }
 
 export function validateMessage(v: unknown): { ok: true; value: string } | Invalid {

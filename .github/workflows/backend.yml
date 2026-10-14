@@ -303,6 +303,10 @@ jobs:
           [ "$code" = 404 ] && echo "::notice::get met fout token: 404" || { echo "::error::get met fout token gaf HTTP $code"; exit 1; }
           code=$(curl -s -o /tmp/c.json -w '%{http_code}' -X POST "$F" -H "Content-Type: application/json" -d '{"action":"mine"}')
           [ "$code" = 401 ] && echo "::notice::mine zonder inloggen: 401" || { echo "::error::mine zonder inloggen gaf HTTP $code"; exit 1; }
+          code=$(curl -s -o /tmp/c.json -w '%{http_code}' -X POST "$F" -H "Content-Type: application/json" -d '{"action":"my_devices"}')
+          [ "$code" = 401 ] && grep -q not_signed_in /tmp/c.json && echo "::notice::my_devices zonder inloggen: 401" || { echo "::error::my_devices zonder inloggen gaf HTTP $code"; exit 1; }
+          code=$(curl -s -o /tmp/c.json -w '%{http_code}' -X POST "$F" -H "Content-Type: application/json" -H "Authorization: Bearer a.b.c" -d '{"action":"my_devices"}')
+          [ "$code" = 401 ] && echo "::notice::my_devices met ongeldig token: 401" || { echo "::error::my_devices met ongeldig token gaf HTTP $code"; exit 1; }
           code=$(curl -s -o /tmp/c.json -w '%{http_code}' -X POST "$F" -H "Content-Type: application/json" -H "x-support-secret: fout" -d '{"action":"admin_list"}')
           [ "$code" = 403 ] && echo "::notice::beheer zonder geheim: 403" || { echo "::error::admin_list zonder geheim gaf HTTP $code"; exit 1; }
           # 4. inbox-import: zonder geheim 403, met het geheim ok of skipped (IMAP niet ingesteld)

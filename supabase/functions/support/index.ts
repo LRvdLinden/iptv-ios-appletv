@@ -2,9 +2,13 @@
 // POST /functions/v1/support met JSON {action, ...}; header `apikey`; `Authorization: Bearer <access_token>` optioneel
 // (ingelogd met een Bingr-account: ticket gekoppeld aan het account, en "Mijn tickets").
 //   ping    {}                                   -> {ok:true}  (statuscontrole)
-//   create  {name, email, category, platform?, app_version?, subject, message, lang, website (lokveld), elapsed_ms?}
+//   create  {name, email, category, platform?, app_version?, device_id?, subject, message, lang, website (lokveld), elapsed_ms?}
 //                                                -> {ok, number, token, url, email_sent}
 //           Limieten: 3 nieuwe tickets per e-mailadres en 5 per IP per uur, 100 in totaal per uur.
+//           device_id (ingelogd): een apparaat uit my_devices; naam, platform en systeemversie komen dan uit account_devices.
+//           Is het niet van de ingelogde gebruiker (of niet ingelogd), dan wordt device_id genegeerd.
+//   my_devices {} (ingelogd)                     -> {devices:[{id, name, platform, kind, label, app_version, os_version, last_seen_at}],
+//                                                    versions:["1.0.0 (74)", …]}  (alleen eigen apparaten; laatst gebruikt eerst)
 //   mine    {} (ingelogd)                        -> {items:[{number, subject, status, created_at, last_reply_at, unread, token}]}
 //   get     {n, t} of {n} (ingelogd, eigen ticket) -> {ticket:{…}, messages:[{author, body, created_at}]}
 //   reply   {n, t?, message}                     -> {ok, status}   (gesloten ticket: 409 closed)
@@ -31,7 +35,7 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { smtpConfigured, smtpFrom, transport } from "../_shared/mail.ts";
 import {
-  addressOf, beheerUrl, isStatus, parseNumber, PRIORITIES, randomToken, safeSearch, sameText, type Status, statusAfter,
+  addressOf, beheerUrl, type DeviceRow, deviceKind, isStatus, myDevices, parseNumber, PRIORITIES, randomToken, safeSearch, sameText, type Status, statusAfter,
   ticketUrl, validateCreate, validateMessage, validToken,
 } from "./logic.ts";
 import { type MailData, renderMail } from "./templates.ts";
@@ -65,11 +69,11 @@ function corsFor(req: Request): Record<string, string> {
 type Json = (b: unknown, s?: number) => Response;
 type Ticket = {
   id: string; number: number; user_id: string | null; email: string; name: string; subject: string; category: string;
-  platform: string | null; app_version: string | null; status: Status; priority: string; lang: "nl" | "en";
+  platform: string | null; app_version: string | null; device_id: string | null; device_name: string | null; os_version: string | null; status: Status; priority: string; lang: "nl" | "en";
   access_token: string; created_at: string; updated_at: string; last_reply_at: string; last_customer_at: string;
   last_support_at: string | null; admin_seen_at: string | null; customer_seen_at: string | null; closed_at: string | null;
 };
-const PUBLIC_FIELDS = "number,subject,category,platform,app_version,status,lang,name,email,created_at,updated_at,last_reply_at,last_support_at,closed_at";
+const PUBLIC_FIELDS = "number,subject,category,platform,app_version,device_name,os_version,status,lang,name,email,created_at,updated_at,last_reply_at,last_support_at,closed_at";
 function clientIp(req: Request) {
   const f = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim();
   return (f || req.headers.get("cf-connecting-ip") || req.headers.get("x-real-ip") || "?").slice(0, 64);
@@ -165,6 +169,7 @@ function mailData(t: Ticket, kind: MailData["kind"], extra: Partial<MailData> = 
   return {
     kind, lang: t.lang, number: t.number, subject: t.subject, status: t.status, url: kind.startsWith("support_") ? beheerUrl(BEHEER, t.number) : customer,
     customerUrl: customer, name: t.name, email: t.email, category: t.category, platform: t.platform, appVersion: t.app_version,
+    deviceName: t.device_name, osVersion: t.os_version,
     hasAccount: !!t.user_id, createdAt: t.created_at, replyByMail: imapConfigured(), ...extra,
   };
 }
@@ -239,10 +244,19 @@ async function handleCustomer(req: Request, action: string, body: Record<string,
         countSince((q) => q.eq("ip_hash", ih)), countSince((q) => q.eq("email", input.email)), countSince((q) => q),
       ]);
       if (byIp >= 5 || byEmail >= 3 || all >= 100) return json({ error: "rate_limited" }, 429);
+      // gekozen apparaat: alleen als het van deze gebruiker is; naam, platform en systeemversie dan uit account_devices
+      let device: DeviceRow | null = null;
+      if (user && input.device_id) {
+        const { data: d } = await db.from("account_devices").select("device_id,name,platform,app_version,os_version,last_seen_at")
+          .eq("user_id", user.id).eq("device_id", input.device_id).maybeSingle();
+        device = (d as DeviceRow | null) ?? null;
+      }
       const token = randomToken();
       const { data, error } = await db.from("support_tickets").insert({
         user_id: user?.id ?? null, email: input.email, name: input.name, subject: input.subject, category: input.category,
-        platform: input.platform, app_version: input.app_version, lang: input.lang, access_token: token, ip_hash: ih,
+        platform: (device && deviceKind(device.platform)) || input.platform, app_version: input.app_version, lang: input.lang, access_token: token, ip_hash: ih,
+        device_id: device?.device_id ?? null, device_name: device ? (device.name || "").slice(0, 80) || null : null,
+        os_version: device ? (device.os_version || "").slice(0, 40) || null : null,
       }).select("*").single();
       if (error) throw new Error(error.message);
       const t = data as Ticket;
@@ -270,6 +284,14 @@ async function handleCustomer(req: Request, action: string, body: Record<string,
           unread: !!t.last_support_at && (!t.customer_seen_at || t.last_support_at > t.customer_seen_at),
         })),
       });
+    }
+    case "my_devices": {
+      const user = await userFrom(req);
+      if (!user) return json({ error: "not_signed_in" }, 401);
+      const { data, error } = await db.from("account_devices").select("device_id,name,platform,app_version,os_version,last_seen_at")
+        .eq("user_id", user.id).order("last_seen_at", { ascending: false }).limit(50);
+      if (error) throw new Error(error.message);
+      return json(myDevices((data ?? []) as DeviceRow[]));
     }
     case "get": {
       if (!(await rateOk(`support:get:${await ipHash(ip)}`, 60))) return json({ error: "rate_limited" }, 429);

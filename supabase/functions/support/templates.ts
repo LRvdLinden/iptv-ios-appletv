@@ -28,6 +28,8 @@ export type MailData = {
   category?: string;
   platform?: string | null;
   appVersion?: string | null;
+  deviceName?: string | null;
+  osVersion?: string | null;
   hasAccount?: boolean;
   createdAt?: string;
   // antwoorden per e-mail komen in het ticket (IMAP-import staat aan): markeringsregel bovenaan en andere voettekst
@@ -152,7 +154,8 @@ export function renderMail(d: MailData): { subject: string; html: string; text: 
     ? [
       ["Klant", `${esc(d.name || "—")} &lt;<a href="mailto:${esc(d.email)}" style="color:#ffffff">${esc(d.email)}</a>&gt;`],
       ["Bingr-account", d.hasAccount ? "Ja (ingelogd)" : "Nee / niet ingelogd"],
-      ["Categorie", esc(cat)], ["Platform", esc(plat)], ["App-versie", esc(d.appVersion ?? "")],
+      ["Categorie", esc(cat)], ["Platform", esc(plat)], ["Apparaat", esc([d.deviceName, d.osVersion].filter(Boolean).join(" · "))],
+      ["App-versie", esc(d.appVersion ?? "")],
       ["Taal", d.lang === "en" ? "Engels" : "Nederlands"],
     ]
     : [[t.category, esc(cat)], [t.platform, esc(plat)], [t.version, esc(d.appVersion ?? "")]];

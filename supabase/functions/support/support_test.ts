@@ -1,7 +1,7 @@
 // Tests voor de supporttickets (geen database, geen netwerk, geen SMTP):
 //   deno test supabase/functions/support/support_test.ts
 import {
-  addressOf, cleanText, langOf, parseNumber, safeSearch, sameText, statusAfter, ticketUrl, validateCreate, validateMessage,
+  addressOf, cleanText, compareVersionsDesc, deviceKind, deviceLabel, myDevices, langOf, parseNumber, safeSearch, sameText, statusAfter, ticketUrl, validateCreate, validateMessage,
   validEmail, validToken, randomToken,
 } from "./logic.ts";
 import { bodyHtml, esc, renderMail, subjectFor, type MailData } from "./templates.ts";
@@ -45,6 +45,44 @@ Deno.test("ongeldige tickets", () => {
   eq(err({ message: "x".repeat(5001) }), "message_too_long");
   eq(err({ message: "zie " + "https://a.nl ".repeat(7) }), "too_many_links");
   eq(err({ elapsed_ms: undefined }), "ok", "zonder tijd mag");
+});
+
+Deno.test("apparaat bij een ticket: device_id opgeschoond of genegeerd", () => {
+  const dev = (v: unknown) => { const r = validateCreate({ ...good, device_id: v }); return r.ok ? r.value.device_id : "fout"; };
+  eq(dev(undefined), null);
+  eq(dev(""), null);
+  eq(dev("  6F1C-ABC  "), "6F1C-ABC");
+  eq(dev("met spatie"), null, "geen spaties");
+  eq(dev("x".repeat(129)), null, "te lang");
+  eq(dev(42), null, "geen tekst");
+});
+
+Deno.test("apparaten van het account: platform, labels, volgorde en versies", () => {
+  eq(deviceKind("Apple TV"), "tvos");
+  eq(deviceKind("iPad"), "ios");
+  eq(deviceKind("iPhone"), "ios");
+  eq(deviceKind("Mac"), "macos");
+  eq(deviceKind("Google TV"), "androidtv");
+  eq(deviceKind("Fire TV"), "androidtv");
+  eq(deviceKind("Android tablet"), "android");
+  eq(deviceKind("tizen"), "tizen");
+  eq(deviceKind("browser"), "web");
+  eq(deviceKind("Windows"), null);
+  eq(deviceLabel("tizen"), "Samsung TV");
+  eq(deviceLabel("browser"), "Browser");
+  eq(deviceLabel("Apple TV"), "Apple TV");
+  eq(["1.0.0 (9)", "1.0.0 (74)", "0.9 (100)", "1.0.1 (2)", "1.0.0 (75)"].sort(compareVersionsDesc), ["1.0.1 (2)", "1.0.0 (75)", "1.0.0 (74)", "1.0.0 (9)", "0.9 (100)"]);
+  const r = myDevices([
+    { device_id: "a", name: "Woonkamer", platform: "tizen", app_version: "1.0.0 (75)", os_version: "Tizen 6.5", last_seen_at: "2026-10-01T10:00:00Z" },
+    { device_id: "b", name: "Apple TV Serre", platform: "Apple TV", app_version: "1.0.0 (74)", os_version: "tvOS 26.0", last_seen_at: "2026-10-14T08:00:00Z" },
+    { device_id: "c", name: "", platform: "browser", app_version: "1.0.0 (74)", os_version: null, last_seen_at: null },
+    { device_id: "", name: "kapot", platform: "iPhone", app_version: null, os_version: null, last_seen_at: null },
+  ]);
+  eq(r.devices.map((d) => d.id), ["b", "a", "c"], "laatst gebruikt eerst, zonder id weg");
+  eq(r.devices[0].kind, "tvos");
+  eq(r.devices[1].label, "Samsung TV");
+  eq(r.devices[2].name, "Browser", "naam leeg: platform");
+  eq(r.versions, ["1.0.0 (75)", "1.0.0 (74)"], "uniek, nieuwste eerst");
 });
 
 Deno.test("berichten, nummers, zoeken, taal", () => {
