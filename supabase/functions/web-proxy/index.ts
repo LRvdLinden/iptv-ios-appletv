@@ -5,6 +5,9 @@
 //   {url, range?}       body van `url` (http of https), gestreamd; range bv. "bytes=0-1048575"
 //   {action:"token"}    → {token, expires_at}: kort geldig (6 uur) token voor de GET-vorm
 //   {action:"ping"}     → {ok:true}: statuscontrole, zonder inloggen
+//   {action:"probe", url} → JSON voor de diagnose van de webspeler (build 82): status, content-type, lengte, of de
+//                       server Range kent, doorverwijzingen (alleen hosts, nooit het pad met inloggegevens of token)
+//                       en de eerste 64 KB als base64 (om container en codecs te herkennen; ook HLS-controle)
 // GET /functions/v1/web-proxy?u=<base64url van de URL>&t=<token>[&s=<handtekening>]
 //   voor <video>, hls.js en Safari's eigen HLS-speler (die geen headers kunnen meesturen). De Range-header van de
 //   browser gaat mee, begrensd tot 8 MB per aanvraag; negeert de server Range, dan maakt de proxy zelf de 206.
@@ -12,7 +15,12 @@
 // Alleen hosts uit de eigen servers van het account (get_sources: m3uURL, epgURL, serverURL) mogen, plus subdomeinen
 // van hetzelfde domein; of een URL die de proxy zelf in een afspeellijst zette (`s` = HMAC over gebruiker + URL).
 // Doorverwijzingen (max. 5, http of https) volgt de proxy zelf, ook naar andere hosts, maar nooit naar interne
-// adressen; het eindadres staat in `X-Final-URL`.
+// adressen; het eindadres staat in `X-Final-URL`. Build 82: dezelfde user-agent als de apps; geeft het eindadres na een
+// doorverwijzing een fout (vaak een token dat aan het IP-adres van de eerste aanvraag vastzit), dan één keer de hele
+// keten opnieuw; breekt de browser af, dan ook de aanvraag naar de server (IPTV-abonnementen staan vaak maar één
+// verbinding toe); kent de server geen Range, dan stroomt een open bereik (bytes=N-) in één keer door in plaats van
+// in stukken van 8 MB (die elk weer vanaf het begin moeten downloaden). Diagnose-headers: X-Upstream-Status,
+// X-Upstream-Range (yes/no), X-Redirect-Hosts.
 // Antwoord: de body van de server, gestreamd, met dezelfde status (200/206/4xx/5xx) en content-type, content-length,
 // content-range, accept-ranges. Fouten van de proxy zelf zijn JSON {error}:
 //   400 bad_json/bad_url/bad_range · 401 not_signed_in/bad_token · 403 host_not_allowed · 405 method_not_allowed
@@ -37,6 +45,9 @@ const TOKEN_TTL_S = 6 * 3600;
 const GET_CHUNK = 8 * 1024 * 1024;
 // negeert de server Range, dan slaat de proxy zelf hooguit zoveel over om bij het gevraagde stuk te komen
 const MAX_SKIP = 512 * 1024 * 1024;
+// zelfde user-agent als de apps (Secrets.userAgent / Http.USER_AGENT): sommige panels laten alleen bekende spelers toe
+const USER_AGENT = "Bingr v1.0.0";
+const PROBE_BYTES = 64 * 1024;
 
 function corsFor(req: Request): Record<string, string> {
   const origin = req.headers.get("Origin") ?? "";
@@ -45,7 +56,7 @@ function corsFor(req: Request): Record<string, string> {
     ...(ok ? { "Access-Control-Allow-Origin": origin } : {}),
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, range",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Expose-Headers": "content-type, content-length, content-range, accept-ranges, x-final-url",
+    "Access-Control-Expose-Headers": "content-type, content-length, content-range, accept-ranges, x-final-url, x-upstream-status, x-upstream-range, x-redirect-hosts",
     "Access-Control-Max-Age": "86400",
     "Vary": "Origin",
   };
@@ -219,14 +230,96 @@ async function resolvesPrivate(host: string): Promise<boolean> {
   return bad;
 }
 
-async function proxy(req: Request, opts: { target: URL; range: string | null; user: string; trusted: boolean; get: boolean; token?: string }) {
+type Upstream = { res: Response; url: URL; hosts: string[] } | { error: string; status: number };
+
+/**
+ * Haalt `target` op en volgt doorverwijzingen zelf (max. 5; http of https, elke publieke host, nooit intern). Geeft
+ * het eindadres na een doorverwijzing 401/403/404/410/5xx, dan één keer de hele keten opnieuw: Xtream-panels
+ * verwijzen door naar een load balancer met een token dat aan het IP-adres van de eerste aanvraag vastzit.
+ */
+async function upstream(target: URL, range: string | null, ctl: AbortController): Promise<Upstream> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    let res: Response | null = null;
+    let url = target;
+    const hosts: string[] = [];
+    try {
+      for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+        const headers: Record<string, string> = { "User-Agent": USER_AGENT, "Accept": "*/*", "Accept-Encoding": "identity" };
+        if (range) headers["Range"] = range;
+        res = await fetch(url, { method: "GET", headers, redirect: "manual", signal: ctl.signal });
+        if (res.status < 300 || res.status >= 400 || !res.headers.get("location")) break;
+        await res.body?.cancel();
+        const next = new URL(res.headers.get("location")!, url);
+        const host = next.hostname.toLowerCase();
+        if (next.protocol !== "https:" && next.protocol !== "http:") return { error: "bad_url", status: 400 };
+        if (next.username || next.password) return { error: "bad_url", status: 400 };
+        if (privateHost(host) || await resolvesPrivate(host)) return { error: "host_not_allowed", status: 403 };
+        url = next;
+        hosts.push(host + (next.port ? ":" + next.port : ""));
+        res = null;
+      }
+    } catch {
+      return ctl.signal.aborted ? { error: "timeout", status: 504 } : { error: "upstream_failed", status: 502 };
+    }
+    if (!res) return { error: "upstream_failed", status: 502 };
+    const retry = attempt === 0 && hosts.length > 0 && [401, 403, 404, 410, 500, 502, 503, 509].includes(res.status);
+    if (!retry) return { res, url, hosts };
+    await res.body?.cancel();
+    await new Promise((r) => setTimeout(r, 400));
+  }
+  return { error: "upstream_failed", status: 502 };
+}
+
+/** Diagnose (POST {action:"probe", url}): eerste 64 KB en wat de server antwoordt, als JSON. */
+async function probe(req: Request, target: URL, user: string) {
+  const json = jsonFor(req);
+  const { data: ok, error: re } = await admin.rpc("bingr_rate_hit", { p_key: `proxy:${user}`, p_max: RATE_PER_MIN });
+  if (!re && ok === false) return json({ error: "rate_limited" }, 429);
+  const host = target.hostname.toLowerCase();
+  if (privateHost(host) || !hostAllowed(host, await allowedHosts(user)) || await resolvesPrivate(host)) return json({ error: "host_not_allowed" }, 403);
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 20_000);
+  // de webspeler geeft het na een paar seconden op (HLS-controle): dan ook de aanvraag naar de server stoppen
+  try { req.signal?.addEventListener("abort", () => ctl.abort()); } catch { /* geen signal in deze runtime */ }
+  const t0 = Date.now();
+  const up = await upstream(target, `bytes=0-${PROBE_BYTES - 1}`, ctl);
+  if ("error" in up) { clearTimeout(timer); return json({ probe: true, error: up.error, ms: Date.now() - t0 }); }
+  const { res, url, hosts } = up;
+  const parts: Uint8Array[] = [];
+  let n = 0;
+  try {
+    const reader = res.body?.getReader();
+    while (reader && n < PROBE_BYTES) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      parts.push(value); n += value.byteLength;
+    }
+    await reader?.cancel();
+  } catch { /* afgebroken: wat er is */ }
+  clearTimeout(timer);
+  const all = new Uint8Array(Math.min(n, PROBE_BYTES));
+  let o = 0;
+  for (const p of parts) { const take = Math.min(p.byteLength, all.length - o); all.set(p.subarray(0, take), o); o += take; if (o >= all.length) break; }
+  let bin = "";
+  for (let i = 0; i < all.length; i += 0x8000) bin += String.fromCharCode(...all.subarray(i, i + 0x8000));
+  const cr = res.headers.get("content-range") ?? "";
+  const total = /\/(\d+)$/.exec(cr)?.[1] ?? (res.status === 200 ? res.headers.get("content-length") : null);
+  return json({
+    probe: true, status: res.status, contentType: res.headers.get("content-type") ?? "", size: total ? Number(total) : null,
+    rangeHonored: res.status === 206, acceptRanges: res.headers.get("accept-ranges") ?? "", redirects: hosts,
+    finalProtocol: url.protocol.replace(":", ""), ms: Date.now() - t0, head: btoa(bin),
+  });
+}
+
+async function proxy(req: Request, opts: { target: URL; range: string | null; user: string; trusted: boolean; get: boolean; token?: string; openRange?: boolean }) {
   const json = jsonFor(req);
   const { target, user, get } = opts;
   let range = opts.range;
+  opts.openRange = !!range && /^bytes=\d+-$/.test(range);
   const { data: ok, error: re } = await admin.rpc("bingr_rate_hit", { p_key: `proxy:${user}`, p_max: RATE_PER_MIN });
   if (!re && ok === false) return json({ error: "rate_limited" }, 429);
 
-  let host = target.hostname.toLowerCase();
+  const host = target.hostname.toLowerCase();
   if (privateHost(host)) return json({ error: "host_not_allowed" }, 403);
   if (!opts.trusted && !hostAllowed(host, await allowedHosts(user))) return json({ error: "host_not_allowed" }, 403);
   if (await resolvesPrivate(host)) return json({ error: "host_not_allowed" }, 403);
@@ -249,33 +342,17 @@ async function proxy(req: Request, opts: { target: URL; range: string | null; us
 
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), TIMEOUT_MS);
-  let res: Response | null = null;
-  let url = target;
-  try {
-    for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-      const headers: Record<string, string> = { "User-Agent": "Mozilla/5.0 (compatible; Bingr/1.0; +https://bingr.online)", "Accept": "*/*", "Accept-Encoding": "identity" };
-      if (range) headers["Range"] = range;
-      res = await fetch(url, { method: "GET", headers, redirect: "manual", signal: ctl.signal });
-      if (res.status < 300 || res.status >= 400 || !res.headers.get("location")) break;
-      await res.body?.cancel();
-      const next = new URL(res.headers.get("location")!, url);
-      host = next.hostname.toLowerCase();
-      // doorverwijzingen (bv. naar een load balancer of CDN): http of https, elke publieke host, nooit intern
-      if (next.protocol !== "https:" && next.protocol !== "http:") { clearTimeout(timer); return json({ error: "bad_url" }, 400); }
-      if (next.username || next.password) { clearTimeout(timer); return json({ error: "bad_url" }, 400); }
-      if (privateHost(host) || await resolvesPrivate(host)) { clearTimeout(timer); return json({ error: "host_not_allowed" }, 403); }
-      url = next;
-      res = null;
-    }
-  } catch {
-    clearTimeout(timer);
-    return ctl.signal.aborted ? json({ error: "timeout" }, 504) : json({ error: "upstream_failed" }, 502);
-  }
-  if (!res) { clearTimeout(timer); return json({ error: "upstream_failed" }, 502); }
+  // de browser breekt af (doorspoelen, sluiten): ook de aanvraag naar de server stoppen, anders telt die als tweede verbinding
+  try { req.signal?.addEventListener("abort", () => ctl.abort()); } catch { /* geen signal in deze runtime */ }
+  const up = await upstream(target, range, ctl);
+  if ("error" in up) { clearTimeout(timer); return json({ error: up.error }, up.status); }
+  const { res, url, hosts } = up;
 
   const len = Number(res.headers.get("content-length") ?? "");
   const ctype = res.headers.get("content-type") ?? "";
-  const out = new Headers({ ...corsFor(req), "Cache-Control": "no-store", "X-Final-URL": url.toString() });
+  const out = new Headers({ ...corsFor(req), "Cache-Control": "no-store", "X-Final-URL": url.toString(), "X-Upstream-Status": String(res.status) });
+  if (hosts.length) out.set("X-Redirect-Hosts", hosts.join(","));
+  if (range) out.set("X-Upstream-Range", res.status === 206 ? "yes" : "no");
 
   // de server negeert Range (200 met het hele bestand, komt voor bij Xtream-servers voor /movie/ en /series/):
   // zelf een 206 maken voor het gevraagde stuk (tot GET_CHUNK; vanaf een verschuiving die we kunnen overslaan),
@@ -288,7 +365,9 @@ async function proxy(req: Request, opts: { target: URL; range: string | null; us
       return new Response(null, { status: 416, headers: out });
     }
     if (rangeFrom > MAX_SKIP) { clearTimeout(timer); await res.body.cancel(); return json({ error: "range_not_supported" }, 502); }
-    const want = Math.min(GET_CHUNK, len - rangeFrom);
+    // open bereik (bytes=N-): in één keer doorstromen (tot MAX_BYTES); elk volgend stuk zou de server weer vanaf het
+    // begin laten sturen. Breekt het af (tijdslimiet), dan vraagt de browser zelf verder vanaf waar hij was.
+    const want = Math.min(opts.openRange ? MAX_BYTES : GET_CHUNK, len - rangeFrom);
     const from = rangeFrom;
     let skip = from, sent = 0;
     const slice = new TransformStream<Uint8Array, Uint8Array>({
@@ -419,6 +498,12 @@ Deno.serve(async (req) => {
 
     const target = parseTarget(String(body.url ?? ""));
     if (!target) return json({ error: "bad_url" }, 400);
+    if (body.action === "probe") {
+      const pu = await userFor(req);
+      if (pu === 401) return json({ error: "not_signed_in" }, 401);
+      if (typeof pu !== "string") return json({ error: "unavailable" }, 503);
+      return await probe(req, target, pu);
+    }
     const range = body.range == null || body.range === "" ? null : String(body.range);
     if (range && !/^bytes=\d*-\d*(,\s*\d*-\d*)*$/.test(range)) return json({ error: "bad_range" }, 400);
 
