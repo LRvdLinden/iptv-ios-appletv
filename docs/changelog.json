@@ -1,5 +1,21 @@
 [
  {
+  "build": 93,
+  "version": "1.0.0",
+  "date": "2026-10-15",
+  "items": [
+   {
+    "type": "improved",
+    "platforms": [
+     "web",
+     "server"
+    ],
+    "nl": "Betere spambescherming op het supportformulier: het verborgen lokveld wordt niet meer door de browser automatisch ingevuld en spam wordt stil tegengehouden",
+    "en": "Better spam protection on the support form: the hidden trap field is no longer filled in by browser autofill and spam is blocked silently"
+   }
+  ]
+ },
+ {
   "build": 92,
   "version": "1.0.0",
   "date": "2026-10-14",

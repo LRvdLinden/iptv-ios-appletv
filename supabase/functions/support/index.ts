@@ -265,6 +265,14 @@ async function handleCustomer(req: Request, action: string, body: Record<string,
   switch (action) {
     case "create": {
       const v = validateCreate(body);
+      if (!v.ok && v.error === "spam") {
+        // build 93: lokveld ingevuld of te snel verstuurd → niets opslaan of mailen, maar wel "gelukt" antwoorden (met
+        // dezelfde vorm en een korte wachttijd), zodat een bot niet merkt dat hij is tegengehouden en het niet anders probeert
+        console.log("support: spam tegengehouden", JSON.stringify({ hp: String(body.website ?? "").trim() !== "", ms: body.elapsed_ms ?? null }));
+        await new Promise((r) => setTimeout(r, 600 + Math.floor(Math.random() * 900)));
+        const fakeNo = 1000 + Math.floor(Math.random() * 9000), fakeTok = randomToken();
+        return json({ ok: true, number: fakeNo, token: fakeTok, url: ticketUrl(SUPPORT_SITE, fakeNo, fakeTok), email_sent: true });
+      }
       if (!v.ok) return json({ error: v.error, field: v.field }, 400);
       const user = await userFrom(req);
       const input = v.value;

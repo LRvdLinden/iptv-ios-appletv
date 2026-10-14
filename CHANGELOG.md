@@ -4,6 +4,15 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 93
+_15 oktober 2026_
+
+### Website en Server
+
+**Verbeterd**
+
+- Betere spambescherming op het supportformulier: het verborgen lokveld wordt niet meer door de browser automatisch ingevuld en spam wordt stil tegengehouden
+
 ## Versie 1.0.0 · Build 91
 _14 oktober 2026_
 
