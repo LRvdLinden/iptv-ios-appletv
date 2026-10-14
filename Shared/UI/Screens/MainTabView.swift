@@ -55,11 +55,7 @@ struct MainTabView: View {
                     HomeView(filter: .series).tag(3)
                         .tabItem { Label(L("Series"), systemImage: "rectangle.stack.fill") }
                 }
-                // Build 85: Categorieën als eigen tabblad op iPad, Mac en Apple TV (iPhone: chip bovenaan Home/Films/Series)
-                if !Self.isPhone && (showMovies || showSeries) {
-                    BrowseCategoriesView().tag(7)
-                        .tabItem { Label(L("Categories"), systemImage: "square.grid.2x2") }
-                }
+                // Build 86: Categorieën staan in Mijn Bingr (Bibliotheek) en als rij op Home, niet meer als tabblad
                 // iPhone toont max. 5 tabbladen (anders "Meer"); zoeken zit daar al als vergrootglas op Home/Films/Series
                 if !Self.isPhone {
                     SearchView().tag(4)

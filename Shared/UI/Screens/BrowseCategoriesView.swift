@@ -5,8 +5,10 @@ import SwiftUI
 /// de leeftijdsgrens van het profiel, want alles komt uit de al gefilterde bibliotheek.
 struct BrowseCategoriesView: View {
     var initialScope: BrowseScope = .all
-    /// Als blad geopend (chip op Home/Films/Series): met sluitknop
+    /// Als blad geopend (tegel "Alle categorieën" op Home): met sluitknop
     var modal = false
+    /// Build 86: geopend vanuit Mijn Bingr (in de navigatie): titel in de navigatiebalk
+    var pushed = false
 
     @EnvironmentObject var playlists: PlaylistService
     @EnvironmentObject var meta: MetadataService
@@ -40,23 +42,26 @@ struct BrowseCategoriesView: View {
             store.refresh(playlists)
         }
         .fullScreenCover(item: $open) { BrowseCategoryView(category: $0, initialScope: current) }
+        .navigationTitle(pushed ? L("Categories") : "")
     }
 
     private var header: some View {
         VStack(alignment: .leading, spacing: tvScaled(12)) {
-            HStack(spacing: 12) {
-                Text(L("Categories")).font(.system(size: tvScaled(28), weight: .heavy)).foregroundStyle(.white)
-                Spacer()
-                #if !os(tvOS)
-                if modal {
-                    Button { dismiss() } label: {
-                        Image(systemName: "xmark").font(.system(size: 17, weight: .semibold)).foregroundStyle(.white)
-                            .frame(width: 40, height: 40).background(.ultraThinMaterial, in: Circle())
+            if !pushed {
+                HStack(spacing: 12) {
+                    Text(L("Categories")).font(.system(size: tvScaled(28), weight: .heavy)).foregroundStyle(.white)
+                    Spacer()
+                    #if !os(tvOS)
+                    if modal {
+                        Button { dismiss() } label: {
+                            Image(systemName: "xmark").font(.system(size: 17, weight: .semibold)).foregroundStyle(.white)
+                                .frame(width: 40, height: 40).background(.ultraThinMaterial, in: Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(L("Close"))
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(L("Close"))
+                    #endif
                 }
-                #endif
             }
             Picker("", selection: Binding(get: { current }, set: { scope = $0 })) {
                 ForEach(BrowseScope.allCases) { s in Text(s.title).tag(s) }
@@ -156,6 +161,42 @@ struct BrowseCategoryTile: View {
         .clipShape(RoundedRectangle(cornerRadius: tvScaled(8)))
         .overlay(RoundedRectangle(cornerRadius: tvScaled(8)).stroke(.white.opacity(focused ? 0.9 : 0.08), lineWidth: focused ? 3 : 1))
         .contentShape(RoundedRectangle(cornerRadius: tvScaled(8)))
+    }
+}
+
+/// Build 86: laatste tegel van de rij Categorieën op Home, opent het overzicht.
+struct BrowseAllTile: View {
+    @Environment(\.tvFocused) private var focused
+
+    var body: some View {
+        ZStack {
+            LinearGradient(colors: [Color(hex: 0x3F3F46), Color(hex: 0x111114)], startPoint: .topLeading, endPoint: .bottomTrailing)
+            VStack(spacing: tvScaled(6)) {
+                Image(systemName: "square.grid.2x2").font(.system(size: tvScaled(24), weight: .semibold))
+                Text(L("All categories"))
+                    .font(.system(size: tvScaled(15), weight: .heavy))
+                    .lineLimit(2).minimumScaleFactor(0.7)
+                    .multilineTextAlignment(.center)
+            }
+            .foregroundStyle(.white)
+            .padding(tvScaled(10))
+        }
+        .aspectRatio(16.0 / 9.5, contentMode: .fit)
+        .clipShape(RoundedRectangle(cornerRadius: tvScaled(8)))
+        .overlay(RoundedRectangle(cornerRadius: tvScaled(8)).stroke(.white.opacity(focused ? 0.9 : 0.08), lineWidth: focused ? 3 : 1))
+        .contentShape(RoundedRectangle(cornerRadius: tvScaled(8)))
+    }
+}
+
+extension BrowseIndex {
+    /// Build 86: tegels voor de rij op Home: de genres met de meeste titels, aangevuld met de grootste categorieën
+    /// van je server.
+    func homeTiles(_ n: Int = 10) -> [BrowseCategory] {
+        var out = Array(genres.prefix(n))
+        if out.count < n {
+            out += server.sorted { $0.entries.count > $1.entries.count }.prefix(n - out.count)
+        }
+        return out
     }
 }
 

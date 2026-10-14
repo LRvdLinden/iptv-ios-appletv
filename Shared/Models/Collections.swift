@@ -230,8 +230,11 @@ struct HomeLayout: Codable, Hashable {
     var updatedAt: Date = .distantPast
 
     static let collectionPrefix = "collection:"
-    /// Vaste rijen, in de standaardvolgorde
-    static let knownKeys = ["continue", "mylist", "recent", "foryou", "top10", "live", "categories", "movies", "series"]
+    /// Vaste rijen, in de standaardvolgorde. "browse" (build 86) = de rij Categorieën met tegels; staat hij direct na
+    /// "live", dan zet Home hem vanzelf 5 rijen onder Nu live (zie `HomeView.homeSlots`).
+    static let knownKeys = ["continue", "mylist", "recent", "foryou", "top10", "live", "browse", "categories", "movies", "series"]
+    /// Build 86: de rij Categorieën komt als 5e rij onder Nu live (de rij "live")
+    static let browseOffset = 5
     /// Nieuw en standaard uit (Home ziet er na de update hetzelfde uit)
     static let defaultHidden: Set<String> = ["movies", "series"]
 
@@ -243,6 +246,7 @@ struct HomeLayout: Codable, Hashable {
         case "foryou": return L("For you")
         case "top10": return L("Top 10")
         case "live": return L("Favorite channels")
+        case "browse": return L("Categories")
         case "categories": return L("Rows per category")
         case "movies": return L("Movies")
         case "series": return L("Series")

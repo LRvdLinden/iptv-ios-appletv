@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Pagina's van Mijn Bingr die vanuit het profielmenu (of de lijst zelf) geopend worden.
 enum MyBingrRoute: Hashable {
-    case settings, account, profiles, trakt, history, collections, stats, homeLayout, network
+    case settings, account, profiles, trakt, history, collections, stats, homeLayout, network, categories
     #if os(iOS)
     case downloads
     #endif

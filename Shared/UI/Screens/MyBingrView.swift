@@ -8,6 +8,10 @@ struct MyBingrView: View {
     @EnvironmentObject var playlists: PlaylistService
     @EnvironmentObject var trakt: TraktSync
     @ObservedObject private var account = AccountService.shared
+    /// Build 86: Categorieën (aantal in de rij bij Bibliotheek)
+    @ObservedObject private var browse = BrowseIndexStore.shared
+    @AppStorage("ui.showMovies") private var showMovies = true
+    @AppStorage("ui.showSeries") private var showSeries = true
     @State private var path: [MyBingrRoute] = []
     @State private var showSupport = false
     #if os(tvOS)
@@ -45,6 +49,7 @@ struct MyBingrView: View {
             .navigationDestination(for: MyBingrRoute.self) { destination($0) }
         }
         .supportPage(isPresented: $showSupport)
+        .task(id: playlists.libraryVersion) { browse.refresh(playlists) }
         .onAppear(perform: applyRequest)
         .onChange(of: app.myBingrRequest) { _, _ in applyRequest() }
     }
@@ -65,6 +70,11 @@ struct MyBingrView: View {
             #endif
             row(.history, L("Watch history"), "clock.arrow.circlepath", count: store.history(for: playlists.source?.id).count)
             row(.collections, L("Collections"), "rectangle.stack", count: store.activeCollections.count)
+            // build 86: Categorieën (genres en de categorieën van je server), eerder een eigen tabblad
+            if showMovies || showSeries {
+                let n = browse.index.genres.count + browse.index.server.count
+                row(.categories, L("Categories"), "square.grid.2x2", count: n > 0 ? n : nil)
+            }
             // kijkstatistieken (build 68): per week, maand of jaar, via de Bingr-account
             if signedIn { row(.stats, L("Statistics"), "chart.bar.xaxis") }
             if isMain {
@@ -159,6 +169,7 @@ struct MyBingrView: View {
         case .stats: StatsView()
         case .homeLayout: HomeLayoutView()
         case .network: NetworkBrowserView()
+        case .categories: BrowseCategoriesView(pushed: true)
         #if os(iOS)
         case .downloads: DownloadsView()
         #endif

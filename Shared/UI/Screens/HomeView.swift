@@ -26,8 +26,10 @@ struct HomeView: View {
     /// Inhoud van de collecties (één keer per lijst of wijziging, op de achtergrond)
     @State private var collectionContent: [String: CollectionContent] = [:]
     @State private var collecting: CollectionTarget?
-    /// Build 85: Categorieën (chip bovenaan)
+    /// Build 86: rij Categorieën op Home (tegels) en het overzicht via "Alle categorieën"
     @State private var showCategories = false
+    @State private var browseOpen: BrowseCategory?
+    @ObservedObject private var browse = BrowseIndexStore.shared
 
     private var lib: Library { playlists.library }
     private var pid: UUID? { playlists.source?.id }
@@ -58,15 +60,12 @@ struct HomeView: View {
 
             #if !os(tvOS)
             HomeTopBar(scroll: scroll, filter: filter, onSearch: { showSearch = true },   // op Apple TV zit Zoeken al in de menubalk
-                       onCategories: { showCategories = true }, onTab: { app.selectedTab = $0 })
+                       onTab: { app.selectedTab = $0 })
             #endif
         }
         .fullScreenCover(isPresented: $showSearch) { SearchView(modal: true) }
-        #if !os(tvOS)
-        .fullScreenCover(isPresented: $showCategories) {
-            BrowseCategoriesView(initialScope: filter == .movies ? .movies : (filter == .series ? .series : .all), modal: true)
-        }
-        #endif
+        .fullScreenCover(isPresented: $showCategories) { BrowseCategoriesView(modal: true) }
+        .fullScreenCover(item: $browseOpen) { BrowseCategoryView(category: $0) }
         .background(Color.black)
         .task(id: "\(store.activeProfileID?.uuidString ?? "")-\(pid?.uuidString ?? "")-\(lib.movies.count)-\(lib.series.count)") { await prepare() }
         .task(id: playlists.libraryVersion) {
@@ -75,6 +74,8 @@ struct HomeView: View {
             matchTraktPlayback()
         }
         .onChange(of: trakt.playback.count) { _, _ in matchTraktPlayback() }
+        .task(id: playlists.libraryVersion) { if filter == .all { browse.refresh(playlists) } }
+        .onAppear { if filter == .all { browse.refresh(playlists) } }
         .task(id: CollectionsKey(version: playlists.libraryVersion, source: pid, collections: store.activeCollections)) {
             // Build 56: wijzigingen (sync, nieuwe lijst) komen vaak vlak na elkaar; even wachten, en niet midden in
             // het scrollen herberekenen. De eerste keer meteen.
@@ -105,7 +106,7 @@ struct HomeView: View {
         switch filter {
         case .all:
             // Home: de rijen zoals ingesteld bij Mijn Bingr → Startscherm (per profiel)
-            ForEach(homeRows, id: \.self) { key in homeRow(key) }
+            ForEach(homeSlots) { slot in homeSlot(slot) }
         case .movies:
             continueRow
             myListRows
@@ -142,9 +143,88 @@ struct HomeView: View {
         }
     }
 
-    /// Zichtbare rijen van het startscherm, in de eigen volgorde.
-    private var homeRows: [String] {
-        store.homeLayout.effective(collections: store.activeCollections).filter(\.visible).map(\.key)
+    /// Eén rij op Home. Build 86: de vaste rijen zijn opgesplitst tot op de rij (Top 10 = twee rijen, "Rijen per
+    /// categorie" = één rij per categorie), zodat de rij Categorieën precies 5 rijen onder Nu live kan staan.
+    enum HomeSlot: Hashable, Identifiable {
+        case key(String)
+        case top10Series, top10Movies
+        case movieGroup(String), seriesGroup(String)
+        case browse
+        var id: Self { self }
+    }
+
+    /// Rijen van het startscherm zoals ingesteld bij Mijn Bingr → Startscherm (per profiel), alleen die iets tonen.
+    /// De rij Categorieën ("browse") staat standaard direct na "live" in de indeling; dan komt hij als 5e getoonde
+    /// rij onder Nu live (zijn er minder rijen, dan onderaan; staat Nu live uit of is hij leeg, dan telt de plek
+    /// waar Nu live had gestaan). Heeft het profiel hem zelf ergens anders neergezet, dan staat hij daar.
+    private var homeSlots: [HomeSlot] {
+        let layout = store.homeLayout.effective(collections: store.activeCollections)
+        let hasBrowse = !browse.index.isEmpty
+        var slots: [(slot: HomeSlot, shown: Bool)] = []
+        var liveAt: Int?
+        var autoBrowse = false
+        for (i, r) in layout.enumerated() {
+            switch r.key {
+            case "browse":
+                if i > 0 && layout[i - 1].key == "live" { autoBrowse = r.visible }
+                else if r.visible && hasBrowse { slots.append((.browse, true)) }
+            case "live":
+                liveAt = slots.count
+                slots.append((.key("live"), r.visible && !liveChannels.list.isEmpty))
+            case "top10":
+                guard r.visible else { continue }
+                // zoals Netflix: eerst de Top 10 series, daarna de films
+                slots.append((.top10Series, !trendingSeries.isEmpty))
+                slots.append((.top10Movies, !trendingMovies.isEmpty))
+            case "categories":
+                guard r.visible else { continue }
+                for g in index.movieGroups.prefix(8) { slots.append((.movieGroup(g.id), true)) }
+                for g in index.seriesGroups.prefix(8) { slots.append((.seriesGroup(g.id), true)) }
+            default:
+                guard r.visible else { continue }
+                slots.append((.key(r.key), hasContent(r.key)))
+            }
+        }
+        if autoBrowse && hasBrowse {
+            var at = slots.count
+            var seen = 0
+            for j in ((liveAt ?? -1) + 1)..<max((liveAt ?? -1) + 1, slots.count) where slots[j].shown {
+                seen += 1
+                if seen == HomeLayout.browseOffset - 1 { at = j + 1; break }
+            }
+            slots.insert((.browse, true), at: min(at, slots.count))
+        }
+        return slots.filter { $0.shown }.map { $0.slot }
+    }
+
+    /// Toont deze vaste rij (of collectie) iets?
+    private func hasContent(_ key: String) -> Bool {
+        switch key {
+        case "continue": return !continueWatching.isEmpty
+        case "mylist": return !(myListMovies.isEmpty && myListSeries.isEmpty)
+        case "recent": return !index.recent.isEmpty
+        case "foryou": return !forYou.isEmpty
+        case "movies": return !index.popularMovies.isEmpty
+        case "series": return !index.popularSeries.isEmpty
+        default:
+            guard key.hasPrefix(HomeLayout.collectionPrefix),
+                  let c = store.collection(String(key.dropFirst(HomeLayout.collectionPrefix.count))) else { return false }
+            let content = collectionContent[c.id] ?? CollectionContent()
+            return !(content.channels.isEmpty && content.movies.isEmpty && content.series.isEmpty)
+        }
+    }
+
+    @ViewBuilder private func homeSlot(_ slot: HomeSlot) -> some View {
+        switch slot {
+        case .top10Series: top10SeriesRow
+        case .top10Movies: top10MoviesRow
+        case .movieGroup(let id):
+            if let g = index.movieGroups.first(where: { $0.id == id }) { movieRow(g.id, Array(g.items.prefix(40)), all: g.items) }
+        case .seriesGroup(let id):
+            if let g = index.seriesGroups.first(where: { $0.id == id }) { seriesRow(g.id, Array(g.items.prefix(40)), all: g.items) }
+        case .browse: browseRow
+        case .key(let key): homeRow(key)
+        }
     }
 
     @ViewBuilder private func homeRow(_ key: String) -> some View {
@@ -153,18 +233,7 @@ struct HomeView: View {
         case "mylist": myListRows
         case "recent": recentRow
         case "foryou": forYouRow
-        case "top10":
-            // zoals Netflix: eerst de Top 10 series, daarna de films
-            top10SeriesRow
-            top10MoviesRow
         case "live": favoriteChannelsRow
-        case "categories":
-            ForEach(index.movieGroups.prefix(8)) { g in
-                movieRow(g.id, Array(g.items.prefix(40)), all: g.items)
-            }
-            ForEach(index.seriesGroups.prefix(8)) { g in
-                seriesRow(g.id, Array(g.items.prefix(40)), all: g.items)
-            }
         case "movies":
             let top = index.popularMovies
             if !top.isEmpty { movieRow(L("Movies"), Array(top.prefix(30)), all: top) }
@@ -175,6 +244,29 @@ struct HomeView: View {
             if key.hasPrefix(HomeLayout.collectionPrefix),
                let c = store.collection(String(key.dropFirst(HomeLayout.collectionPrefix.count))) {
                 collectionRow(c)
+            }
+        }
+    }
+
+    /// Build 86: rij Categorieën: de grootste genres (en categorieën van je server) als tegels, met als laatste
+    /// "Alle categorieën".
+    @ViewBuilder private var browseRow: some View {
+        let tiles = browse.index.homeTiles()
+        if !tiles.isEmpty {
+            let w = Theme.landscapeWidth * 0.8
+            MediaRow(title: L("Categories"), onSeeAll: { showCategories = true }) {
+                ForEach(tiles) { c in
+                    Button { browseOpen = c } label: {
+                        BrowseCategoryTile(title: c.title, count: c.count(.all), covers: c.covers(.all), colors: c.colors)
+                            .frame(width: w)
+                    }
+                    .cardButton()
+                    .tileHover()
+                    .accessibilityLabel("\(c.title), \(L("%d titles", c.count(.all)))")
+                }
+                Button { showCategories = true } label: { BrowseAllTile().frame(width: w) }
+                    .cardButton()
+                    .tileHover()
             }
         }
     }
@@ -194,10 +286,15 @@ struct HomeView: View {
     }
 
     /// Favoriete zenders; zonder favorieten de laatst bekeken zenders.
-    @ViewBuilder private var favoriteChannelsRow: some View {
+    private var liveChannels: (list: [Channel], favs: [Channel]) {
         let favs = pid.map { p in store.favorites.compactMap { k in index.channel(forKey: k, playlist: p) } } ?? []
         let recent = favs.isEmpty ? (pid.map { p in store.recentChannels.compactMap { k in index.channel(forKey: k, playlist: p) } } ?? []) : []
-        let list = favs.isEmpty ? recent : favs
+        return (favs.isEmpty ? recent : favs, favs)
+    }
+
+    @ViewBuilder private var favoriteChannelsRow: some View {
+        let lc = liveChannels
+        let list = lc.list, favs = lc.favs
         if !list.isEmpty {
             MediaRow(title: favs.isEmpty ? L("Recently watched channels") : L("Favorite channels")) {
                 ForEach(list) { c in
@@ -676,7 +773,6 @@ private struct HomeTopBar: View {
     let scroll: ScrollTracker
     let filter: HomeView.Filter
     let onSearch: () -> Void
-    let onCategories: () -> Void
     let onTab: (Int) -> Void
     @AppStorage("ui.showMovies") private var showMovies = true
     @AppStorage("ui.showSeries") private var showSeries = true
@@ -695,15 +791,13 @@ private struct HomeTopBar: View {
         )
     }
 
-    /// Build 85, zoals Netflix: Series / Films / Categorieën ▾ onder het logo
+    /// Build 85, zoals Netflix: Series / Films onder het logo (alleen op Home). Build 86: Categorieën staan in
+    /// Mijn Bingr en als rij op Home, niet meer als chip.
     @ViewBuilder private var chips: some View {
-        if showMovies || showSeries {
+        if filter == .all && (showMovies || showSeries) {
             HStack(spacing: 8) {
-                if filter == .all {
-                    if showSeries { chip(L("Series")) { onTab(3) } }
-                    if showMovies { chip(L("Movies")) { onTab(2) } }
-                }
-                chip(L("Categories"), icon: "chevron.down", action: onCategories)
+                if showSeries { chip(L("Series")) { onTab(3) } }
+                if showMovies { chip(L("Movies")) { onTab(2) } }
                 Spacer(minLength: 0)
             }
         }
