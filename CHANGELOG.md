@@ -4,6 +4,28 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 96
+_15 oktober 2026_
+
+### Website en Server
+
+**Verbeterd**
+
+- Supportformulier: eigen controle tegen spam (zonder diensten van derden) en de bevestigingsmail voor gasten bevat geen eigen tekst meer
+
+### Server
+
+**Verbeterd**
+
+- Privacy: gesloten tickets worden na 24 maanden verwijderd, IP-gegevens na 30 dagen, en je tickets verdwijnen als je je account verwijdert
+
+**Opgelost**
+
+- Beveiliging: antwoorden van support per e-mail worden alleen nog geaccepteerd met een geldige handtekening van ons domein
+- Beveiliging: de proxy van de webspeler weigert interne adressen strenger, en een geblokkeerd account kan hem niet meer gebruiken
+- Limieten werken echt per uur, tv-koppelcodes zijn beschermd tegen misbruik en accountgegevens hebben een maximale grootte
+- Support: alle ongelezen mails komen binnen, een gesloten ticket krijgt een passende mail, citaten in mails kappen de rest niet meer af
+
 ## Versie 1.0.0 · Build 95
 _15 oktober 2026_
 

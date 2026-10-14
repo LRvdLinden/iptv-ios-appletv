@@ -2,8 +2,8 @@
 //   deno test --allow-net=127.0.0.1 supabase/functions/support/inbox_test.ts
 import { decodeWords, htmlToText, parseAddresses, parseMessage, parseParams, REPLY_MARKER, stripReply } from "./mime.ts";
 import {
-  agentList, authFailed, automatedReason, candidateNumbers, cleanSubject, decide, findFolder, guessLang, imapDate, messageBody,
-  numberFromSubject, numbersFromIds, type TicketLite,
+  agentList, authFailed, authservNames, automatedReason, candidateNumbers, cleanSubject, decide, dkimPassDomains, findFolder, guessLang, imapDate, messageBody,
+  numberFromSubject, numbersFromIds, senderVerified, type TicketLite,
 } from "./inbox.ts";
 import { Imap, type ImapConn, tokenize } from "./imap.ts";
 import { renderMail } from "./templates.ts";
@@ -205,9 +205,10 @@ Deno.test("beslissen: klant, ander adres, agent, nieuw, gesloten, eigen, automat
   eq(decide(klant, [T(1007, "iemand@anders.nl")], AGENTS), { kind: "reject", reason: "sender_mismatch" });
   eq(decide(klant, [], AGENTS), { kind: "new_ticket", followUp: null });
   eq(decide(klant, [T(1007, "klant@example.com", "closed")], AGENTS), { kind: "new_ticket", followUp: 1007 });
-  eq(decide(mailFrom("Léon <leon@prive.nl>"), [T(1007, "klant@example.com")], AGENTS).kind, "agent_reply");
-  eq(decide(mailFrom("Bingr Support <support@bingr.online>"), [T(1007, "klant@example.com")], AGENTS).kind, "agent_reply");
-  eq(decide(mailFrom("leon@prive.nl"), [], AGENTS), { kind: "reject", reason: "agent_no_ticket" });
+  // build 95: agent alleen met DKIM van het eigen domein (bovenste Authentication-Results)
+  eq(decide(mailFrom("Léon <leon@prive.nl>", "Authentication-Results: mx.h.nl; dkim=pass header.d=prive.nl"), [T(1007, "klant@example.com")], AGENTS).kind, "agent_reply");
+  eq(decide(mailFrom("Bingr Support <support@bingr.online>", "Authentication-Results: mx.h.nl; dkim=pass header.i=@bingr.online"), [T(1007, "klant@example.com")], AGENTS).kind, "agent_reply");
+  eq(decide(mailFrom("leon@prive.nl", "Authentication-Results: mx.h.nl; dkim=pass header.d=prive.nl"), [], AGENTS), { kind: "reject", reason: "agent_no_ticket" });
   // agent die zelf een ticket heeft: als klant
   eq(decide(mailFrom("leon@prive.nl"), [T(1009, "leon@prive.nl", "open")], AGENTS).kind, "customer_reply");
   eq(decide(mailFrom("Bingr Support <support@bingr.online>", "X-Bingr-Ticket: 1007"), [T(1007, "klant@example.com")], AGENTS), { kind: "ignore", reason: "own_system" });
@@ -250,6 +251,55 @@ Deno.test("uitgaande mail: markeringsregel en X-Bingr-Ticket-antwoord wordt netj
   eq(stripReply(`Bedankt, gelukt!\n\n${mail.text}`), "Bedankt, gelukt!");
   // HTML-antwoord met onze mail eronder (zonder blockquote)
   eq(stripReply(htmlToText(`<p>Gelukt</p>${mail.html}`)), "Gelukt");
+});
+
+// ---- build 95: vervalste afzender support@ ----
+const AR = (v: string) => `Authentication-Results: ${v}`;
+Deno.test("build 95: afzender support@ zonder DKIM is geen agent", () => {
+  const tk = [T(1007, "klant@example.com")];
+  // vervalst From zonder Authentication-Results
+  eq(decide(mailFrom("Bingr Support <support@bingr.online>"), tk, AGENTS), { kind: "reject", reason: "agent_unverified" });
+  // dkim=pass, maar van een ander domein (aanvaller tekent met zijn eigen domein)
+  eq(decide(mailFrom("support@bingr.online", AR("mx.h.nl; dkim=pass header.d=evil.example; spf=pass")), tk, AGENTS), { kind: "reject", reason: "agent_unverified" });
+  eq(decide(mailFrom("support@bingr.online", AR("mx.h.nl; dkim=fail header.d=bingr.online")), tk, AGENTS), { kind: "reject", reason: "agent_unverified" });
+  // subdomein telt niet als hetzelfde domein
+  eq(decide(mailFrom("support@bingr.online", AR("mx.h.nl; dkim=pass header.d=mail.bingr.online")), tk, AGENTS).kind, "reject");
+  // nooit customer_reply op het ticket van een ander, ook niet via [#1007] in het onderwerp
+  eq(decide(mailFrom("support@bingr.online", "", "Re: [#1007] x"), tk, AGENTS).kind, "reject");
+});
+Deno.test("build 95: alleen de BOVENSTE Authentication-Results telt (onze server); lagere zijn van de afzender", () => {
+  const tk = [T(1007, "klant@example.com")];
+  // onze server: dkim=none bovenaan; de afzender stuurde zelf een "dkim=pass" eronder mee
+  const injected = mailFrom("support@bingr.online", `${AR("mx.h.nl; dkim=none; spf=softfail")}\n${AR("mx.h.nl; dkim=pass header.d=bingr.online")}`);
+  eq(dkimPassDomains(injected), []);
+  eq(decide(injected, tk, AGENTS), { kind: "reject", reason: "agent_unverified" });
+  // geldig: bovenste kopregel van onze server met dkim=pass d=bingr.online (lagere kopregels doen er niet toe)
+  const valid = mailFrom("Bingr Support <support@bingr.online>", `${AR("mx2.hoster.nl 1; dkim=pass (2048-bit key; unprotected) header.d=bingr.online header.s=x header.b=AbC; spf=pass")}\n${AR("evil; dkim=fail")}`);
+  eq(dkimPassDomains(valid), ["bingr.online"]);
+  ok(senderVerified(valid, authservNames("imap.hoster.nl")), "authserv-id mx2.hoster.nl past bij imap.hoster.nl");
+  eq(decide(valid, tk, AGENTS, authservNames("imap.hoster.nl")), { kind: "agent_reply", ticket: tk[0] });
+  // authserv-id van een andere server: niet vertrouwd (onze server zette geen Authentication-Results)
+  eq(decide(valid, tk, AGENTS, authservNames("imap.anders.nl")), { kind: "reject", reason: "agent_unverified" });
+  eq(decide(valid, tk, AGENTS, authservNames("", "mx2.hoster.nl, mx.google.com")).kind, "agent_reply");
+  eq(authservNames("imap.hoster.nl"), ["imap.hoster.nl", "hoster.nl"]);
+  eq(authservNames("hoster.nl"), ["hoster.nl"]);
+  eq(authservNames("1.2.3.4"), []);
+  eq(authservNames("imap.hoster.nl", "MX.Google.com"), ["mx.google.com"]);
+  // een klant mag nog steeds gewoon reageren (geen DKIM nodig), alleen vanaf het adres van het ticket
+  eq(decide(mailFrom("klant@example.com", "", "Re: [#1007] x"), tk, AGENTS).kind, "customer_reply");
+  eq(decide(mailFrom("iemand@anders.nl", "", "Re: [#1007] x"), tk, AGENTS), { kind: "reject", reason: "sender_mismatch" });
+});
+
+Deno.test("build 95: blockquote alleen in een antwoord weghalen, en alleen het blok", () => {
+  const html = "<p>Eerst</p><blockquote>citaat<blockquote>dieper</blockquote>nog citaat</blockquote><p>Daarna</p>";
+  eq(stripReply(htmlToText(html, { reply: true })), "Eerst\n\nDaarna");
+  eq(stripReply(htmlToText(html, { reply: false })), "Eerst\n\ncitaat\ndieper\nnog citaat\n\nDaarna");
+  const mk = (extra: string) => parseMessage(crlf(`From: a@b.nl\nSubject: Vraag\n${extra}Content-Type: text/html\n\n${html}`));
+  ok(stripReply(mk("").text).includes("nog citaat\n\nDaarna"), "nieuwe mail: citaat blijft");
+  eq(stripReply(mk("In-Reply-To: <x@y>\n").text), "Eerst\n\nDaarna");
+  eq(stripReply(parseMessage(crlf(`From: a@b.nl\nSubject: Re: [#1007] x\nContent-Type: text/html\n\n${html}`)).text), "Eerst\n\nDaarna");
+  // Apple Mail onderaan geantwoord: toeschrijving + citaat weg, eigen tekst erna blijft
+  eq(stripReply(htmlToText('<div>Op ma 13 okt 2026 schreef X &lt;x@y.nl&gt;:</div><blockquote type="cite">oud</blockquote><div>Nieuw onderaan</div>')), "Nieuw onderaan");
 });
 
 // ---- IMAP ----

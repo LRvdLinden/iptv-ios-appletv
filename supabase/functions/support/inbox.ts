@@ -6,6 +6,10 @@
 //   2. automatisch (afwezigheidsmelding, bounce, nieuwsbrief, mailinglijst, spam)               -> negeren, laten staan
 //   3. SPF/DKIM/DMARC afgekeurd door de ontvangende server (Authentication-Results)             -> weigeren, laten staan
 //   4. afzender = support@ of een adres uit BINGR_SUPPORT_AGENTS:
+//        build 95: alleen met een geldige DKIM-handtekening van het domein van de afzender, volgens de BOVENSTE
+//        Authentication-Results (die zet onze eigen ontvangende server erboven; lagere kopregels kan de afzender zelf
+//        meesturen). Zonder die controle (vervalste afzender): nooit als support, alleen als klant van een eigen ticket,
+//        anders weigeren (agent_unverified).
 //        ticket gevonden -> antwoord van support: in het ticket en als gebrande mail naar de klant
 //        geen ticket     -> weigeren, laten staan
 //   5. ticket gevonden (onderwerp "[#1007]", of In-Reply-To/References van een ticketmail):
@@ -26,7 +30,7 @@ export type Decision =
   | { kind: "agent_reply"; ticket: TicketLite }
   | { kind: "new_ticket"; followUp: number | null }
   | { kind: "ignore"; reason: "own_system" | "auto" | "bulk" | "bounce" | "spam" }
-  | { kind: "reject"; reason: "no_sender" | "auth_failed" | "agent_no_ticket" | "sender_mismatch" };
+  | { kind: "reject"; reason: "no_sender" | "auth_failed" | "agent_no_ticket" | "agent_unverified" | "sender_mismatch" };
 
 const lc = (s: string) => s.trim().toLowerCase();
 
@@ -83,14 +87,61 @@ export function authFailed(mail: ParsedMail): boolean {
   return /\bspf=fail\b/.test(ar) && !/\bdkim=pass\b/.test(ar);
 }
 
+// ---- build 95: DKIM van de afzender, volgens onze eigen ontvangende server ----
+/** Bovenste Authentication-Results (RFC 8601): authserv-id en de resultaten (zonder commentaar tussen haakjes). */
+export function topAuthResults(mail: ParsedMail): { authserv: string; results: string[] } | null {
+  const first = mail.headers.find(([k]) => k === "authentication-results");
+  if (!first) return null;
+  let v = first[1], prev = "";
+  while (v !== prev) { prev = v; v = v.replace(/\([^()]*\)/g, " "); } // commentaar (ook genest) weg
+  const parts = v.split(";").map((x) => x.trim()).filter(Boolean);
+  const authserv = lc((parts.shift() ?? "").split(/\s+/)[0] ?? "");
+  return authserv ? { authserv, results: parts.map(lc) } : null;
+}
+/** Domeinen waarvoor de bovenste Authentication-Results dkim=pass meldt (header.d, of het domein van header.i). */
+export function dkimPassDomains(mail: ParsedMail): string[] {
+  const ar = topAuthResults(mail);
+  if (!ar) return [];
+  const out: string[] = [];
+  for (const r of ar.results) {
+    if (!/^dkim\s*=\s*pass\b/.test(r)) continue;
+    const d = /\bheader\.d\s*=\s*"?([a-z0-9.-]+)/.exec(r)?.[1] ?? /\bheader\.i\s*=\s*"?[^@\s;"]*@([a-z0-9.-]+)/.exec(r)?.[1];
+    if (d) out.push(d.replace(/\.$/, ""));
+  }
+  return [...new Set(out)];
+}
+/** Namen waaronder onze ontvangende server zijn Authentication-Results schrijft: BINGR_SUPPORT_AUTHSERV (komma's) als dat
+ *  gezet is, anders afgeleid van de IMAP-host (de host zelf en zijn bovenliggende domein: imap.hoster.nl -> hoster.nl, dan
+ *  telt ook mx2.hoster.nl). Leeg = onbekend: dan geldt alleen dat het de bovenste kopregel is. */
+export function authservNames(imapHost: string, configured = ""): string[] {
+  const list = configured.split(/[\s,;]+/).map(lc).filter(Boolean);
+  if (list.length) return [...new Set(list)];
+  const h = lc(imapHost).replace(/\.$/, "");
+  if (!h || !h.includes(".") || /^[\d.]+$/.test(h)) return [];
+  const labels = h.split(".");
+  return [...new Set([h, labels.length > 2 ? labels.slice(1).join(".") : h])];
+}
+const authservOk = (id: string, names: string[]) => !names.length || names.some((n) => id === n || id.endsWith("." + n));
+/** Afzender echt van zijn domein: de bovenste Authentication-Results komt van onze server (authserv-id) en meldt
+ *  dkim=pass met header.d (of header.i) gelijk aan het domein van From. */
+export function senderVerified(mail: ParsedMail, authserv: string[] = []): boolean {
+  const from = mail.from?.address ? lc(mail.from.address) : "";
+  const domain = from.includes("@") ? from.slice(from.lastIndexOf("@") + 1) : "";
+  if (!domain) return false;
+  const ar = topAuthResults(mail);
+  if (!ar || !authservOk(ar.authserv, authserv)) return false;
+  return dkimPassDomains(mail).includes(domain);
+}
+
 /** Adressen die als support mogen antwoorden: support@ zelf (en de IMAP-login) plus BINGR_SUPPORT_AGENTS (komma's/spaties). */
 export function agentList(own: string[], agentsSecret: string): string[] {
   const list = [...own, ...agentsSecret.split(/[\s,;]+/)].map(lc).filter((a) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(a));
   return [...new Set(list)];
 }
 
-/** Beslissing voor één mail. `tickets` = de gevonden tickets bij candidateNumbers/referencedIds, in volgorde. */
-export function decide(mail: ParsedMail, tickets: TicketLite[], agents: string[]): Decision {
+/** Beslissing voor één mail. `tickets` = de gevonden tickets bij candidateNumbers/referencedIds, in volgorde.
+ *  `authserv` = namen van onze ontvangende server (authservNames); leeg = alleen de bovenste kopregel telt. */
+export function decide(mail: ParsedMail, tickets: TicketLite[], agents: string[], authserv: string[] = []): Decision {
   if (isOwnSystem(mail)) return { kind: "ignore", reason: "own_system" };
   const auto = automatedReason(mail);
   if (auto) return { kind: "ignore", reason: auto };
@@ -101,6 +152,9 @@ export function decide(mail: ParsedMail, tickets: TicketLite[], agents: string[]
     // een agent die zelf ook klant is van een ticket: als klant (zijn eigen ticket), anders als support
     const own = tickets.find((t) => lc(t.email) === from);
     if (own && own.status !== "closed") return { kind: "customer_reply", ticket: own };
+    // build 95: als support alleen met DKIM van het eigen domein (anders kon iedereen met een vervalste afzender
+    // support@ namens Bingr een gebrande mail naar een klant laten sturen)
+    if (!senderVerified(mail, authserv)) return { kind: "reject", reason: "agent_unverified" };
     return tickets[0] ? { kind: "agent_reply", ticket: tickets[0] } : { kind: "reject", reason: "agent_no_ticket" };
   }
   const mine = tickets.find((t) => lc(t.email) === from);

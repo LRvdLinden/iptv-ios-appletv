@@ -2,9 +2,15 @@
 // POST /functions/v1/support met JSON {action, ...}; header `apikey`; `Authorization: Bearer <access_token>` optioneel
 // (ingelogd met een Bingr-account: ticket gekoppeld aan het account, en "Mijn tickets").
 //   ping    {}                                   -> {ok:true}  (statuscontrole)
-//   create  {name, email, category, platform?, app_version?, device_id?, subject, message, lang, website (lokveld), elapsed_ms?}
+//   challenge {}                                 -> {algorithm:"SHA-256", salt, difficulty, expires, signature}  (build 95: captcha
+//                                                   zonder derde partij, zie pow.ts; 10 minuten geldig, salt maar één keer bruikbaar)
+//   create  {name, email, category, platform?, app_version?, device_id?, subject, message, lang, website (lokveld), elapsed_ms?,
+//            pow: {salt, difficulty, expires, signature, nonce}}
 //                                                -> {ok, number, token, url, email_sent}
-//           Limieten: 3 nieuwe tickets per e-mailadres en 5 per IP per uur, 100 in totaal per uur.
+//           build 95: zonder geldige pow (of met het lokveld ingevuld) een schijnbaar "gelukt" zonder iets op te slaan.
+//           Limieten (build 95, echt per uur): 5 pogingen en 5 tickets per IP, 3 tickets per e-mailadres. Boven 500 tickets
+//           per uur in totaal worden de tickets wel opgeslagen en aan support gemeld, maar gaat er geen bevestiging naar de klant.
+//           Bevestiging aan een gast (niet ingelogd) of bij een ticket uit een mail: zonder onderwerp en bericht (geen spam-relay).
 //           device_id (ingelogd): een apparaat uit my_devices; naam, platform en systeemversie komen dan uit account_devices.
 //           Is het niet van de ingelogde gebruiker (of niet ingelogd), dan wordt device_id genegeerd.
 //   my_devices {} (ingelogd)                     -> {devices:[{id, name, platform, kind, label, app_version, os_version, last_seen_at}],
@@ -26,11 +32,13 @@
 //   admin_note   {number, message}                -> {ok}   (interne notitie, nooit zichtbaar voor de klant)
 //   admin_inbox  {}                               -> {configured, agents, state, log}  (status van de inbox-import)
 //   admin_poll   {}                               -> zoals poll_inbox  (knop "Nu ophalen" in het beheer)
-// Inbox-import (alleen met header x-support-cron = SUPPORT_CRON_SECRET; pg_cron roept dit elke 2 minuten aan):
+// Inbox-import (alleen met header x-support-cron = SUPPORT_CRON_SECRET; pg_cron roept dit elke 5 minuten aan, build 95):
 //   poll_inbox   {}  -> {ok, fetched, imported, …} of {skipped:"imap not configured"} of {ok:false, error}
 //   Haalt nieuwe mails uit de INBOX van support@ (IMAP over TLS: BINGR_IMAP_HOST, BINGR_IMAP_PORT (993), BINGR_IMAP_USER,
 //   BINGR_IMAP_PASSWORD) en zet ze in het ticket (zie inbox.ts): reacties van klanten, antwoorden van support@ of een adres
-//   uit BINGR_SUPPORT_AGENTS (die gaan als gebrande mail naar de klant), en nieuwe tickets voor mails zonder ticket.
+//   uit BINGR_SUPPORT_AGENTS (die gaan als gebrande mail naar de klant; build 95: alleen met DKIM van het afzenderdomein
+//   volgens de bovenste Authentication-Results van onze server, BINGR_SUPPORT_AUTHSERV of afgeleid van BINGR_IMAP_HOST),
+//   en nieuwe tickets voor mails zonder ticket.
 //   Staat IMAP aan, dan is de Reply-To van de meldingen aan support@ het supportadres zelf (antwoorden komen in het ticket);
 //   anders het adres van de klant (zoals vroeger).
 // E-mail via _shared/mail.ts (BINGR_SMTP_*). Afzender BINGR_SUPPORT_FROM (standaard "Bingr Support <support@bingr.online>"),
@@ -47,9 +55,11 @@ import { BANNED_BODY, bannedUntilActive, isBanError } from "../_shared/ban.ts";
 import { Imap } from "./imap.ts";
 import { parseMessage, type ParsedMail } from "./mime.ts";
 import {
-  agentList, candidateNumbers, cleanSubject, decide, type Decision, DONE_FOLDER, findFolder, FOLLOW_UP, guessLang, imapDate,
+  agentList, authservNames, candidateNumbers, cleanSubject, decide, type Decision, DONE_FOLDER, findFolder, FOLLOW_UP, guessLang, imapDate,
   MAX_FETCH_BYTES, messageBody, referencedIds, senderName, type TicketLite,
 } from "./inbox.ts";
+import { clientIp } from "../_shared/ip.ts";
+import { makeChallenge, powKey, verifyPow } from "./pow.ts";
 
 const env = (k: string) => Deno.env.get(k) ?? "";
 const SUPPORT_SITE = env("BINGR_SUPPORT_SITE") || "https://support.bingr.online";
@@ -98,10 +108,6 @@ type Ticket = {
   last_support_at: string | null; admin_seen_at: string | null; customer_seen_at: string | null; closed_at: string | null;
 };
 const PUBLIC_FIELDS = "number,subject,category,platform,app_version,device_name,os_version,status,lang,name,email,created_at,updated_at,last_reply_at,last_support_at,closed_at";
-function clientIp(req: Request) {
-  const f = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim();
-  return (f || req.headers.get("cf-connecting-ip") || req.headers.get("x-real-ip") || "?").slice(0, 64);
-}
 async function sha256hex(s: string) {
   const d = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)));
   return Array.from(d, (x) => x.toString(16).padStart(2, "0")).join("");
@@ -207,6 +213,11 @@ function mailData(t: Ticket, kind: MailData["kind"], extra: Partial<MailData> = 
 }
 const toCustomer = (t: Ticket, d: MailData) =>
   send(t.email, renderMail(d), { number: t.number, first: d.kind === "customer_created", auto: d.kind !== "customer_reply" });
+// build 95: boven dit aantal nieuwe tickets per uur (alle samen) geen bevestigingsmails meer aan klanten (tickets worden wel
+// opgeslagen en support krijgt de melding): een veiligheidsgrens tegen misbruik als mailkanon, die niemand buitensluit
+const GLOBAL_CONFIRM_CAP = 500;
+const confirmAllowed = async () => (await countSince((q) => q)) < GLOBAL_CONFIRM_CAP;
+const notSent = (error: string): Sent => ({ ok: false, error });
 // Reply-To van een melding: met de inbox-import het supportadres zelf (het antwoord van de eigenaar komt dan via de import in
 // het ticket en gaat als gebrande mail naar de klant); zonder import het adres van de klant (antwoord gaat direct naar de klant)
 const toSupport = (t: Ticket, d: MailData) =>
@@ -232,6 +243,12 @@ Deno.serve(async (req) => {
   const action = String(body.action ?? "");
   try {
     if (action === "ping") return json({ ok: true });
+    if (action === "challenge") {
+      // build 95: captcha-opgave voor het formulier (geen inloggen nodig)
+      const key = await challengeKey();
+      if (!key) return json({ error: "unavailable" }, 503);
+      return json(await makeChallenge(key));
+    }
     if (action === "poll_inbox") {
       const secret = env("SUPPORT_CRON_SECRET");
       if (!secret || !sameText(req.headers.get("x-support-cron") ?? "", secret)) return json({ error: "forbidden" }, 403);
@@ -249,10 +266,34 @@ Deno.serve(async (req) => {
   }
 });
 
-async function rateOk(key: string, max: number) {
-  const { data, error } = await db.rpc("bingr_rate_hit", { p_key: key, p_max: max });
+// build 95: p_window in seconden (standaard 60 = per minuut); de limieten hieronder zijn per uur (3600)
+async function rateOk(key: string, max: number, windowS = 60) {
+  const { data, error } = await db.rpc("bingr_rate_hit", { p_key: key, p_max: max, p_window: windowS });
   if (error) throw new Error(error.message);
   return data === true;
+}
+// build 95: sleutel voor de captcha, afgeleid van een bestaand geheim (BINGR_SOURCES_KEY, anders de service-role-sleutel)
+let powKeyCache: Promise<CryptoKey | null> | null = null;
+const challengeKey = () => (powKeyCache ??= powKey(env("BINGR_SOURCES_KEY") || env("SUPABASE_SERVICE_ROLE_KEY")));
+/** Opgeloste captcha controleren en de salt als gebruikt markeren; false = ongeldig, verlopen of al gebruikt. */
+async function powOk(pow: unknown): Promise<{ ok: boolean; reason: string }> {
+  const key = await challengeKey();
+  if (!key) return { ok: false, reason: "no_key" };
+  const r = await verifyPow(key, pow);
+  if (!r.ok) return { ok: false, reason: r.reason };
+  const { error } = await db.from("support_pow_used").insert({ salt: r.salt });
+  if (error) {
+    if (error.code === "23505") return { ok: false, reason: "reused" };
+    throw new Error(error.message);
+  }
+  return { ok: true, reason: "" };
+}
+/** Schijnbaar "gelukt" zonder iets op te slaan of te mailen (build 93: lokveld; build 95: ook zonder geldige captcha),
+ *  met dezelfde vorm en een korte wachttijd, zodat een bot niet merkt dat hij is tegengehouden. */
+async function fakeCreated(json: Json) {
+  await new Promise((r) => setTimeout(r, 600 + Math.floor(Math.random() * 900)));
+  const fakeNo = 1000 + Math.floor(Math.random() * 9000), fakeTok = randomToken();
+  return json({ ok: true, number: fakeNo, token: fakeTok, url: ticketUrl(SUPPORT_SITE, fakeNo, fakeTok), email_sent: true });
 }
 async function countSince(filter: (q: any) => any) {
   const { count, error } = await filter(db.from("support_tickets").select("id", { count: "exact", head: true }).gte("created_at", hourAgo()));
@@ -269,21 +310,26 @@ async function handleCustomer(req: Request, action: string, body: Record<string,
         // build 93: lokveld ingevuld of te snel verstuurd → niets opslaan of mailen, maar wel "gelukt" antwoorden (met
         // dezelfde vorm en een korte wachttijd), zodat een bot niet merkt dat hij is tegengehouden en het niet anders probeert
         console.log("support: spam tegengehouden", JSON.stringify({ hp: String(body.website ?? "").trim() !== "", ms: body.elapsed_ms ?? null }));
-        await new Promise((r) => setTimeout(r, 600 + Math.floor(Math.random() * 900)));
-        const fakeNo = 1000 + Math.floor(Math.random() * 9000), fakeTok = randomToken();
-        return json({ ok: true, number: fakeNo, token: fakeTok, url: ticketUrl(SUPPORT_SITE, fakeNo, fakeTok), email_sent: true });
+        return await fakeCreated(json);
       }
       if (!v.ok) return json({ error: v.error, field: v.field }, 400);
+      // build 95: captcha (proof-of-work). Geen app roept create zelf aan (de apps openen support.bingr.online), dus
+      // geen uitzondering: ontbreekt of klopt hij niet, dan net als het lokveld stil tegenhouden.
+      const pw = await powOk(body.pow);
+      if (!pw.ok) {
+        console.log("support: captcha ongeldig", JSON.stringify({ reason: pw.reason }));
+        return await fakeCreated(json);
+      }
       const user = await userFrom(req);
       const input = v.value;
       // ingelogd: altijd het (bevestigde) adres van het account, zodat "Mijn tickets" en de mails kloppen
       if (user?.email) input.email = user.email.toLowerCase();
       const ih = await ipHash(ip);
-      if (!(await rateOk(`support:create:${ih}`, 3))) return json({ error: "rate_limited" }, 429);
-      const [byIp, byEmail, all] = await Promise.all([
-        countSince((q) => q.eq("ip_hash", ih)), countSince((q) => q.eq("email", input.email)), countSince((q) => q),
-      ]);
-      if (byIp >= 5 || byEmail >= 3 || all >= 100) return json({ error: "rate_limited" }, 429);
+      // build 95: limieten echt per uur (bingr_rate_hit telde per minuut), per IP en per e-mailadres; geen globale grens
+      // meer die iedereen buitensluit (zie GLOBAL_CONFIRM_CAP)
+      if (!(await rateOk(`support:create:${ih}`, 5, 3600))) return json({ error: "rate_limited" }, 429);
+      const [byIp, byEmail] = await Promise.all([countSince((q) => q.eq("ip_hash", ih)), countSince((q) => q.eq("email", input.email))]);
+      if (byIp >= 5 || byEmail >= 3) return json({ error: "rate_limited" }, 429);
       // gekozen apparaat: alleen als het van deze gebruiker is; naam, platform en systeemversie dan uit account_devices
       let device: DeviceRow | null = null;
       if (user && input.device_id) {
@@ -300,9 +346,17 @@ async function handleCustomer(req: Request, action: string, body: Record<string,
       }).select("*").single();
       if (error) throw new Error(error.message);
       const t = data as Ticket;
-      const mid = await addMessage(t.id, "customer", input.message, "web");
+      // build 95: lukt het bericht niet, dan ook geen ticket zonder bericht (zoals bij een ticket uit een mail)
+      let mid: number;
+      try { mid = await addMessage(t.id, "customer", input.message, "web"); }
+      catch (e) { await db.from("support_tickets").delete().eq("id", t.id); throw e; }
+      // build 95: de bevestiging bevat alleen voor een ingelogde klant (bevestigd adres) het onderwerp en bericht;
+      // een gast kan een willekeurig adres invullen, die krijgt alleen nummer, een neutrale regel en de link
+      const full = !!user?.email_confirmed_at;
+      const confirm = await confirmAllowed();
+      if (!confirm) console.log("support: globale grens bereikt, geen bevestiging", t.number);
       const [c, s] = await Promise.all([
-        toCustomer(t, mailData(t, "customer_created", { body: input.message })),
+        confirm ? toCustomer(t, mailData(t, "customer_created", full ? { body: input.message } : { minimal: true })) : Promise.resolve(notSent("global_cap")),
         toSupport(t, mailData(t, "support_created", { body: input.message })),
       ]);
       await markMail(mid, { ok: c.ok && s.ok, error: [c.error && `klant: ${c.error}`, s.error && `support: ${s.error}`].filter(Boolean).join(" · ") || undefined });
@@ -338,7 +392,7 @@ async function handleCustomer(req: Request, action: string, body: Record<string,
     case "versions":
       return json({ known: await knownBuilds() });
     case "get": {
-      if (!(await rateOk(`support:get:${await ipHash(ip)}`, 60))) return json({ error: "rate_limited" }, 429);
+      if (!(await rateOk(`support:get:${await ipHash(ip)}`, 60))) return json({ error: "rate_limited" }, 429); // per minuut
       const r = await customerTicket(req, body);
       if (!r) return json({ error: "not_found" }, 404);
       const { t } = r;
@@ -353,7 +407,7 @@ async function handleCustomer(req: Request, action: string, body: Record<string,
       if (!r) return json({ error: "not_found" }, 404);
       const { t } = r;
       if (t.status === "closed") return json({ error: "closed" }, 409);
-      if (!(await rateOk(`support:reply:${t.id}`, 4))) return json({ error: "rate_limited" }, 429);
+      if (!(await rateOk(`support:reply:${t.id}`, 4))) return json({ error: "rate_limited" }, 429); // per minuut
       const { count } = await db.from("support_messages").select("id", { count: "exact", head: true })
         .eq("ticket_id", t.id).eq("author", "customer").gte("created_at", hourAgo());
       if ((count ?? 0) >= 20) return json({ error: "rate_limited" }, 429);
@@ -490,6 +544,8 @@ const IMAP_MAX_PER_RUN = 25;
 // niet BINGR_SMTP_FROM (bv. noreply@): onze eigen mails herkennen we aan X-Bingr-Ticket
 const ownAddresses = () => [SUPPORT_EMAIL(), addressOf(SUPPORT_FROM()), env("BINGR_IMAP_USER")];
 const agents = () => agentList(ownAddresses(), env("BINGR_SUPPORT_AGENTS"));
+// build 95: namen van onze ontvangende mailserver in Authentication-Results (alleen dan telt een agent-antwoord)
+const authserv = () => authservNames(env("BINGR_IMAP_HOST"), env("BINGR_SUPPORT_AUTHSERV"));
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e)).replace(/[\r\n]+/g, " ").slice(0, 300);
 
 type InboxResult = { result: string; ticket?: number | null; detail?: string; seen: boolean; move: boolean };
@@ -524,25 +580,43 @@ async function pollInbox(source: string) {
   const counts: Counts = { fetched: 0, imported: 0, agent: 0, new_tickets: 0, ignored: 0, rejected: 0, duplicates: 0, errors: 0 };
   let imap: Imap | null = null;
   const upd: Record<string, unknown> = { last_poll_at: nowIso(), last_source: source };
+  let cleanupAt: string | null = null, backlogEnd: number | null = null;
   try {
-    const { data: state } = await db.from("support_inbox_state").select("uidvalidity,last_uid,error_uid,error_count").eq("id", 1).maybeSingle();
+    const { data: state } = await db.from("support_inbox_state").select("uidvalidity,last_uid,error_uid,error_count,scan_until,scan_cursor,last_cleanup_at").eq("id", 1).maybeSingle();
+    cleanupAt = state?.last_cleanup_at ?? null;
     imap = await Imap.connect({ host: env("BINGR_IMAP_HOST"), port: Number(env("BINGR_IMAP_PORT") || 993), timeoutMs: 20000 });
     await imap.login(env("BINGR_IMAP_USER"), env("BINGR_IMAP_PASSWORD"));
     const done = findFolder(await imap.list().catch(() => []));
     const sel = await imap.select("INBOX");
     const fresh = !state?.uidvalidity || Number(state.uidvalidity) !== sel.uidvalidity || state.last_uid == null;
-    let uids: number[];
-    let lastUid = fresh ? 0 : Number(state!.last_uid);
+    // build 95: eerste ronde (of de mailbox is opnieuw opgebouwd): de ongelezen mails van de laatste 7 dagen tot nu zijn
+    // een achterstand (scan_until = hoogste UID nu) die in porties over meerdere rondes wordt verwerkt (scan_cursor);
+    // vroeger alleen de laatste 25 en de rest werd overgeslagen. Nieuwe mails (UID > last_uid) gaan gewoon door.
+    let lastUid: number, scanUntil: number | null, scanCursor: number;
     if (fresh) {
-      // eerste ronde (of de mailbox is opnieuw opgebouwd): alleen ongelezen mails van de laatste 7 dagen, daarna alles vanaf nu
-      uids = (await imap.uidSearch(`UNSEEN SINCE ${imapDate(new Date(Date.now() - 7 * 864e5))}`)).slice(-IMAP_MAX_PER_RUN);
-      lastUid = Math.max(0, (sel.uidnext ?? 1) - 1, ...uids);
+      const top = sel.uidnext ? sel.uidnext - 1 : (await imap.uidSearch("ALL")).reduce((a, b) => Math.max(a, b), 0);
+      lastUid = Math.max(0, top); scanUntil = lastUid; scanCursor = 0;
     } else {
-      uids = (await imap.uidSearch(`UID ${lastUid + 1}:*`)).filter((u) => u > lastUid).slice(0, IMAP_MAX_PER_RUN);
+      lastUid = Number(state!.last_uid);
+      scanUntil = state?.scan_until == null ? null : Number(state.scan_until);
+      scanCursor = Number(state?.scan_cursor ?? 0);
+    }
+    const queue: { uid: number; backlog: boolean }[] = [];
+    if (scanUntil != null && scanCursor < scanUntil) {
+      const back = (await imap.uidSearch(`UNSEEN SINCE ${imapDate(new Date(Date.now() - 7 * 864e5))}`))
+        .filter((u) => u > scanCursor && u <= scanUntil!).sort((a, b) => a - b);
+      if (!back.length) { scanCursor = scanUntil; }
+      for (const uid of back.slice(0, IMAP_MAX_PER_RUN)) queue.push({ uid, backlog: true });
+      // past alles in deze ronde, dan is de achterstand na afloop klaar
+      if (back.length <= IMAP_MAX_PER_RUN && back.length) backlogEnd = back[back.length - 1];
+    }
+    if (queue.length < IMAP_MAX_PER_RUN) {
+      const fresh_ = (await imap.uidSearch(`UID ${lastUid + 1}:*`)).filter((u) => u > lastUid).sort((a, b) => a - b);
+      for (const uid of fresh_.slice(0, IMAP_MAX_PER_RUN - queue.length)) queue.push({ uid, backlog: false });
     }
     const seen: number[] = [], move: number[] = [];
     let stopped = false;
-    for (const uid of uids) {
+    for (const { uid, backlog } of queue) {
       if (Date.now() - started > IMAP_BUDGET_MS) { stopped = true; break; }
       let mail: ParsedMail | null = null;
       let r: InboxResult;
@@ -581,8 +655,10 @@ async function pollInbox(source: string) {
       else counts.rejected++;
       if (r.seen) seen.push(uid);
       if (r.move) move.push(uid);
-      if (!fresh) lastUid = Math.max(lastUid, uid);
+      if (backlog) scanCursor = Math.max(scanCursor, uid);
+      else lastUid = Math.max(lastUid, uid);
     }
+    if (scanUntil != null && (scanCursor >= scanUntil || (backlogEnd != null && scanCursor >= backlogEnd))) { scanUntil = null; scanCursor = 0; }
     if (seen.length) await imap.uidStore(seen, "+FLAGS.SILENT (\\Seen)");
     let moved: string | null = null;
     if (move.length && done) moved = await imap.uidMove(move, done);
@@ -590,10 +666,11 @@ async function pollInbox(source: string) {
     imap = null;
     Object.assign(upd, {
       mailbox: done ? `INBOX → ${done}` : "INBOX", last_ok_at: nowIso(),
-      // eerste ronde met een fout: de volgende ronde is weer een eerste ronde (al verwerkte mails slaat de Message-ID over)
-      ...(fresh && stopped && counts.errors ? {} : { uidvalidity: sel.uidvalidity, last_uid: lastUid }),
+      // build 95: altijd de stand bewaren (ook in de eerste ronde): wat nog niet verwerkt is, komt via scan_cursor of
+      // last_uid de volgende ronde aan de beurt; niets wordt overgeslagen
+      uidvalidity: sel.uidvalidity, last_uid: lastUid, scan_until: scanUntil, scan_cursor: scanUntil == null ? null : scanCursor,
       ...(stopped && counts.errors ? {} : { error_uid: null, error_count: 0 }),
-      last_error: counts.errors ? "Een mail gaf een fout; volgende ronde opnieuw (zie logboek)" : null, last_error_at: counts.errors ? nowIso() : null, last_result: { ...counts, moved, more: stopped || uids.length >= IMAP_MAX_PER_RUN, ms: Date.now() - started },
+      last_error: counts.errors ? "Een mail gaf een fout; volgende ronde opnieuw (zie logboek)" : null, last_error_at: counts.errors ? nowIso() : null, last_result: { ...counts, moved, more: stopped || queue.length >= IMAP_MAX_PER_RUN || scanUntil != null, backlog: scanUntil != null, ms: Date.now() - started },
       ...(counts.imported + counts.agent + counts.new_tickets ? { last_import_at: nowIso() } : {}),
     });
     return { ok: true, ...counts, folder: done, moved, ms: Date.now() - started };
@@ -604,9 +681,12 @@ async function pollInbox(source: string) {
     return { ok: false, error: msg, ...counts };
   } finally {
     imap?.close();
+    // logboek kort houden (30 dagen); build 95: hooguit één keer per dag in plaats van elke ronde
+    if (!cleanupAt || Date.now() - Date.parse(cleanupAt) > 864e5) {
+      const { error } = await db.from("support_inbox_log").delete().lt("at", new Date(Date.now() - 30 * 864e5).toISOString());
+      if (!error) upd.last_cleanup_at = nowIso();
+    }
     await db.from("support_inbox_state").update({ ...upd, lock_until: null, updated_at: nowIso() }).eq("id", 1);
-    // logboek kort houden
-    await db.from("support_inbox_log").delete().lt("at", new Date(Date.now() - 30 * 864e5).toISOString());
   }
 }
 
@@ -639,7 +719,7 @@ async function handleMail(mail: ParsedMail): Promise<InboxResult> {
   const { data: dup } = await db.from("support_messages").select("id").eq("message_id", mail.messageId.slice(0, 300)).limit(1);
   if (dup?.length) return { result: "duplicate", seen: true, move: true };
   const tickets = await ticketsFor(mail);
-  const d: Decision = decide(mail, tickets, agents());
+  const d: Decision = decide(mail, tickets, agents(), authserv());
   const now = nowIso();
   switch (d.kind) {
     case "ignore": return { result: `ignored:${d.reason}`, seen: false, move: false };
@@ -679,8 +759,9 @@ async function handleMail(mail: ParsedMail): Promise<InboxResult> {
     case "new_ticket": {
       const email = mail.from!.address.toLowerCase().slice(0, LIMITS_EMAIL);
       if (!validEmailAddr(email)) return { result: "rejected:bad_email", seen: false, move: false };
-      const [byEmail, all] = await Promise.all([countSince((q) => q.eq("email", email)), countSince((q) => q)]);
-      if (byEmail >= 3 || all >= 100 || !(await rateOk(`support:mail:${email}`, 3))) return { result: "rejected:rate_limited", seen: false, move: false };
+      // build 95: per afzender 3 per uur (echt per uur); geen globale grens meer die alles tegenhoudt
+      const byEmail = await countSince((q) => q.eq("email", email));
+      if (byEmail >= 3 || !(await rateOk(`support:mail:${email}`, 3, 3600))) return { result: "rejected:rate_limited", seen: false, move: false };
       const lang = guessLang(mail, mail.text);
       let body = messageBody(mail, lang);
       if (!body) return { result: "rejected:empty", seen: false, move: false };
@@ -698,8 +779,9 @@ async function handleMail(mail: ParsedMail): Promise<InboxResult> {
         if (isDup(e)) return { result: "duplicate", seen: true, move: true };
         throw e;
       }
-      // bevestiging aan de afzender (met de link naar het ticket); geen melding aan support@: de mail staat daar al
-      const c = await toCustomer(t, mailData(t, "customer_created", { body }));
+      // bevestiging aan de afzender (met de link naar het ticket); geen melding aan support@: de mail staat daar al.
+      // build 95: zonder onderwerp en tekst (de afzender kan vervalst zijn), en niet boven de globale grens
+      const c = (await confirmAllowed()) ? await toCustomer(t, mailData(t, "customer_created", { minimal: true })) : notSent("global_cap");
       await markMail(mid, { ok: c.ok, error: c.error && `klant: ${c.error}`, messageId: c.messageId });
       return { result: "new_ticket", ticket: t.number, detail: d.followUp ? `vervolg op #${d.followUp}` : undefined, seen: true, move: true };
     }

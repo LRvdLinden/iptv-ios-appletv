@@ -189,3 +189,55 @@ Deno.test("e-mail: taal en inhoud", () => {
   const rep = renderMail({ ...base, kind: "customer_reply", status: "pending", body: "Probeer de VLC-speler." });
   ok(rep.html.includes("Antwoord van Bingr Support") && rep.html.includes("Wacht op jouw reactie"), "antwoord");
 });
+
+// ---- build 95 ----
+Deno.test("build 95: bevestiging aan gast of uit een mail zonder onderwerp, bericht en links", () => {
+  const m = renderMail({ ...base, minimal: true });
+  eq(m.subject, "[#1001] We hebben je vraag ontvangen");
+  ok(!m.html.includes("hapert") && !m.text.includes("hapert"), "geen onderwerp");
+  ok(!m.html.includes("alert(1)") && !m.text.includes("alert(1)"), "geen bericht");
+  ok(!m.html.includes("bingr.online/support.html") && !m.text.includes("bingr.online/support.html"), "geen links uit het bericht");
+  ok(!m.html.includes("1.0.0 (74)") && !m.text.includes("1.0.0 (74)"), "geen ingevulde app-versie");
+  ok(m.html.includes("#1001") && m.html.includes(base.url.replace(/&/g, "&amp;")) && m.text.includes(base.url), "nummer en ticketlink");
+  // ingelogd: met citaat; melding aan support altijd volledig
+  ok(renderMail(base).text.includes("Sinds") || renderMail(base).text.includes("alert(1)"), "ingelogd met bericht");
+  ok(renderMail({ ...base, kind: "support_created", minimal: true }).text.includes("alert(1)"), "support@ volledig");
+});
+
+Deno.test("build 95: antwoord met status gesloten: geen 'beantwoord', wel link voor een nieuwe vraag", () => {
+  const d: MailData = { ...base, kind: "customer_reply", status: "closed", body: "Opgelost, we sluiten het ticket.", replyByMail: true };
+  const nl = renderMail(d), en = renderMail({ ...d, lang: "en" });
+  ok(!nl.html.includes("Bekijk en beantwoord") && !nl.text.includes("Reageren?"), "geen beantwoord/reageren");
+  ok(nl.html.includes("https://support.bingr.online/nieuw/") && nl.text.includes("https://support.bingr.online/nieuw/"), "link nieuw ticket");
+  ok(nl.text.includes("Dit ticket is gesloten") && en.text.includes("This ticket is closed"), "sluittekst NL/EN");
+  ok(!en.html.includes("View and reply") && en.html.includes("Ask a new question"), "Engels");
+  ok(!nl.text.includes("Antwoord boven deze lijn"), "geen markeringsregel");
+  const open = renderMail({ ...d, status: "pending" });
+  ok(open.html.includes("Bekijk en beantwoord") && open.text.includes("Antwoord boven deze lijn"), "open ticket ongewijzigd");
+});
+
+import { leadingZeroBits, makeChallenge, powHash, powKey, verifyPow } from "./pow.ts";
+async function solve(salt: string, difficulty: number) {
+  for (let n = 0; ; n++) if (leadingZeroBits(await powHash(salt, String(n))) >= difficulty) return String(n);
+}
+Deno.test("build 95: captcha (proof-of-work): opgave, oplossing, handtekening, vervaltijd", async () => {
+  eq(leadingZeroBits(new Uint8Array([0, 0x0f, 0xff])), 12);
+  eq(leadingZeroBits(new Uint8Array([0x80])), 0);
+  eq(await powKey(""), null);
+  const key = (await powKey("geheim"))!, other = (await powKey("ander"))!;
+  const now = Date.now();
+  const c = await makeChallenge(key, now, 8);
+  eq([c.algorithm, c.difficulty, c.expires - now], ["SHA-256", 8, 600000]);
+  ok(/^[0-9a-f]{32}$/.test(c.salt) && /^[0-9a-f]{64}$/.test(c.signature), "salt en handtekening");
+  const nonce = await solve(c.salt, 8);
+  eq(await verifyPow(key, { ...c, nonce }, now, 8), { ok: true, salt: c.salt });
+  eq((await verifyPow(key, null, now, 8)), { ok: false, reason: "missing" });
+  eq((await verifyPow(key, { ...c }, now, 8)), { ok: false, reason: "malformed" });
+  eq((await verifyPow(other, { ...c, nonce }, now, 8)), { ok: false, reason: "signature" });
+  eq((await verifyPow(key, { ...c, difficulty: 1, nonce }, now, 8)), { ok: false, reason: "signature" }, "moeilijkheid aanpassen");
+  eq((await verifyPow(key, { ...c, nonce }, now + 11 * 60000, 8)), { ok: false, reason: "expired" });
+  eq((await verifyPow(key, { ...c, nonce }, now, 18)), { ok: false, reason: "difficulty" }, "te makkelijke opgave");
+  let bad = Number(nonce) + 1;
+  while (leadingZeroBits(await powHash(c.salt, String(bad))) >= 8) bad++;
+  eq((await verifyPow(key, { ...c, nonce: String(bad) }, now, 8)), { ok: false, reason: "hash" });
+});

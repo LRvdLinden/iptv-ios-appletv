@@ -1,5 +1,61 @@
 [
  {
+  "build": 96,
+  "version": "1.0.0",
+  "date": "2026-10-15",
+  "items": [
+   {
+    "type": "improved",
+    "platforms": [
+     "web",
+     "server"
+    ],
+    "nl": "Supportformulier: eigen controle tegen spam (zonder diensten van derden) en de bevestigingsmail voor gasten bevat geen eigen tekst meer",
+    "en": "Support form: built-in spam check (no third-party services) and the confirmation mail for guests no longer contains the submitted text"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Beveiliging: antwoorden van support per e-mail worden alleen nog geaccepteerd met een geldige handtekening van ons domein",
+    "en": "Security: support replies by email are only accepted with a valid signature from our domain"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Beveiliging: de proxy van de webspeler weigert interne adressen strenger, en een geblokkeerd account kan hem niet meer gebruiken",
+    "en": "Security: the web player's proxy blocks internal addresses more strictly, and a blocked account can no longer use it"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Limieten werken echt per uur, tv-koppelcodes zijn beschermd tegen misbruik en accountgegevens hebben een maximale grootte",
+    "en": "Limits really work per hour, TV linking codes are protected against abuse and account data has a maximum size"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Support: alle ongelezen mails komen binnen, een gesloten ticket krijgt een passende mail, citaten in mails kappen de rest niet meer af",
+    "en": "Support: all unread mails come in, a closed ticket gets a fitting mail, quotes in mails no longer cut off the rest"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Privacy: gesloten tickets worden na 24 maanden verwijderd, IP-gegevens na 30 dagen, en je tickets verdwijnen als je je account verwijdert",
+    "en": "Privacy: closed tickets are deleted after 24 months, IP data after 30 days, and your tickets are removed when you delete your account"
+   }
+  ]
+ },
+ {
   "build": 95,
   "version": "1.0.0",
   "date": "2026-10-15",

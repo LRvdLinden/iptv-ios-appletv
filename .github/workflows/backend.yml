@@ -15,8 +15,13 @@ name: Backend
 # Support per e-mail (optioneel): BINGR_IMAP_HOST (IMAP-server van de mailbox support@, meestal dezelfde host als SMTP),
 # BINGR_IMAP_PORT (993, IMAP over TLS), BINGR_IMAP_USER (support@bingr.online), BINGR_IMAP_PASSWORD, en BINGR_SUPPORT_AGENTS
 # (komma's: eigen adressen die per mail als Bingr Support mogen antwoorden). De pg_cron-taak bingr-support-inbox haalt elke
-# 2 minuten de nieuwe mails op (functie support, actie poll_inbox) met het geheim SUPPORT_CRON_SECRET: vast (repo-secret) of
-# per deploy nieuw, net als STATUS_CRON_SECRET. Zonder BINGR_IMAP_* doet de taak niets (skipped).
+# 5 minuten de nieuwe mails op (functie support, actie poll_inbox) met het geheim SUPPORT_CRON_SECRET: vast (repo-secret) of
+# per deploy nieuw, net als STATUS_CRON_SECRET. Zonder BINGR_IMAP_* wordt de taak niet ingepland (build 95).
+# build 95: een antwoord van een agent telt alleen met DKIM van zijn domein in de bovenste Authentication-Results van onze
+# mailserver. BINGR_SUPPORT_AUTHSERV (optioneel, komma's): de naam waaronder die server tekent (authserv-id, bv. mx.google.com);
+# zonder dit secret wordt hij afgeleid van BINGR_IMAP_HOST (imap.hoster.nl -> hoster.nl en *.hoster.nl).
+# build 95: de pg_cron-taak bingr-support-cleanup ruimt dagelijks op (AVG: gesloten tickets na 24 maanden, ip_hash na 30 dagen,
+# captcha-salts, cron.job_run_details na 7 dagen); zie bingr_support_cleanup in supabase/schema.sql.
 on:
   push:
     branches: [main]
@@ -46,7 +51,7 @@ jobs:
         with:
           deno-version: v2.x
       - name: Unittests (statistieken)
-        run: deno test supabase/functions/device-auth/stats_test.ts supabase/functions/device-auth/naming_test.ts supabase/functions/_shared/ban_test.ts
+        run: deno test supabase/functions/device-auth/stats_test.ts supabase/functions/device-auth/naming_test.ts supabase/functions/_shared/ban_test.ts supabase/functions/web-proxy/ip_test.ts
       - name: Unittests (statuspagina)
         continue-on-error: true
         run: |
@@ -167,6 +172,7 @@ jobs:
           S_IMAP_USER: ${{ secrets.BINGR_IMAP_USER_SUPPORT || secrets.BINGR_IMAP_USER }}
           S_IMAP_PASS: ${{ secrets.BINGR_IMAP_PASSWORD_SUPPORT || secrets.BINGR_IMAP_PASSWORD }}
           S_AGENTS: ${{ secrets.BINGR_SUPPORT_AGENTS_SUPPORT || secrets.BINGR_SUPPORT_AGENTS }}
+          S_AUTHSERV: ${{ secrets.BINGR_SUPPORT_AUTHSERV }}
         run: |
           # als losse argumenten (geen env-bestand), zodat tekens als # " of spaties in wachtwoorden geen probleem zijn
           args=()
@@ -184,6 +190,7 @@ jobs:
           [ -n "$S_IMAP_USER" ] && args+=("BINGR_IMAP_USER=$S_IMAP_USER")
           [ -n "$S_IMAP_PASS" ] && args+=("BINGR_IMAP_PASSWORD=$S_IMAP_PASS")
           [ -n "$S_AGENTS" ] && args+=("BINGR_SUPPORT_AGENTS=$S_AGENTS")
+          [ -n "$S_AUTHSERV" ] && args+=("BINGR_SUPPORT_AUTHSERV=$S_AUTHSERV")
           if [ ${#args[@]} -gt 0 ]; then supabase secrets set --project-ref "$REF" "${args[@]}" >/dev/null; echo "::notice::${#args[@]} mail/status-secret(s) op de server gezet"; fi
           [ -z "$S_ALERT" ] && echo "::notice::BINGR_ALERT_EMAIL ontbreekt: storingen komen alleen op de statuspagina, niet per e-mail."
           [ -n "$S_PORT" ] && { [ "$S_PORT" = 587 ] || [ "$S_PORT" = 25 ]; } && echo "::warning::Supabase blokkeert uitgaande SMTP op poort $S_PORT; gebruik 465 (SSL/TLS)."
@@ -218,27 +225,43 @@ jobs:
         run: supabase functions deploy support --project-ref "$REF" --no-verify-jwt --use-api
       - name: Support-inbox - planning (pg_cron + pg_net)
         if: steps.check.outputs.skip != '1'
+        env:
+          S_IMAP_HOST: ${{ secrets.BINGR_IMAP_HOST_SUPPORT || secrets.BINGR_IMAP_HOST }}
+          S_IMAP_USER: ${{ secrets.BINGR_IMAP_USER_SUPPORT || secrets.BINGR_IMAP_USER }}
+          S_IMAP_PASS: ${{ secrets.BINGR_IMAP_PASSWORD_SUPPORT || secrets.BINGR_IMAP_PASSWORD }}
         run: |
-          # de taak roept elke 2 minuten support/poll_inbox aan (zonder BINGR_IMAP_* antwoordt die met skipped)
-          python3 - <<'PY' > /tmp/cron.json
+          # build 95: de taak roept elke 5 minuten support/poll_inbox aan, en alleen als BINGR_IMAP_* gezet zijn (anders
+          # wordt een bestaande taak verwijderd). Daarnaast dagelijks bingr-support-cleanup (AVG-opruiming, altijd).
+          IMAP=0; [ -n "$S_IMAP_HOST" ] && [ -n "$S_IMAP_USER" ] && [ -n "$S_IMAP_PASS" ] && IMAP=1
+          IMAP=$IMAP python3 - <<'PY' > /tmp/cron.json
           import json, os
           ref = os.environ["REF"]; sec = open(os.path.join(os.environ["RUNNER_TEMP"], "support_cron_secret")).read()
           cmd = ("select net.http_post(url := 'https://%s.supabase.co/functions/v1/support', "
                  "headers := jsonb_build_object('Content-Type', 'application/json', 'x-support-cron', '%s'), "
                  "body := '{\"action\":\"poll_inbox\",\"source\":\"cron\"}'::jsonb, timeout_milliseconds := 60000);") % (ref, sec)
-          sql = ("select cron.unschedule(jobid) from cron.job where jobname = 'bingr-support-inbox';\n"
-                 "select cron.schedule('bingr-support-inbox', '*/2 * * * *', $cmd$ " + cmd + " $cmd$);\n"
-                 "select jobid, jobname, schedule, active from cron.job where jobname = 'bingr-support-inbox';")
+          sql = "select cron.unschedule(jobid) from cron.job where jobname in ('bingr-support-inbox', 'bingr-support-cleanup');\n"
+          if os.environ.get("IMAP") == "1":
+              sql += "select cron.schedule('bingr-support-inbox', '*/5 * * * *', $cmd$ " + cmd + " $cmd$);\n"
+          sql += ("select cron.schedule('bingr-support-cleanup', '23 3 * * *', $cmd$ select public.bingr_support_cleanup(); $cmd$);\n"
+                  "select jobname, schedule, active from cron.job where jobname in ('bingr-support-inbox', 'bingr-support-cleanup') order by jobname;")
           print(json.dumps({"query": sql}))
           PY
           code=$(curl -s -o /tmp/r.txt -w '%{http_code}' -X POST "https://api.supabase.com/v1/projects/$REF/database/query" \
             -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" --data @/tmp/cron.json)
           rm -f /tmp/cron.json
-          if [ "$code" -lt 300 ] && grep -Eq '"active": ?true' /tmp/r.txt; then
-            echo "::notice::Inbox-planning actief: $(cat /tmp/r.txt)"
-          else
-            echo "::warning::Inbox-planning niet gelukt (HTTP $code): $(head -c 300 /tmp/r.txt)"
-          fi
+          python3 - "$code" "$IMAP" <<'PY'
+          import json, sys
+          code, imap = sys.argv[1], sys.argv[2] == "1"
+          try: rows = json.load(open("/tmp/r.txt"))
+          except Exception: rows = None
+          jobs = {r.get("jobname"): r for r in rows} if isinstance(rows, list) else {}
+          ok_cleanup = bool(jobs.get("bingr-support-cleanup", {}).get("active"))
+          ok_inbox = bool(jobs.get("bingr-support-inbox", {}).get("active")) if imap else "bingr-support-inbox" not in jobs
+          if int(code or 0) < 300 and ok_cleanup and ok_inbox:
+              print("::notice::Support-planning: " + ("inbox elke 5 min" if imap else "inbox niet ingepland (BINGR_IMAP_* ontbreken)") + ", opruimen dagelijks 03:23 UTC")
+          else:
+              print(f"::warning::Support-planning niet gelukt (HTTP {code}): {open('/tmp/r.txt').read()[:300]}")
+          PY
       - name: Statusmonitor - geheim
         if: steps.check.outputs.skip != '1'
         env:
@@ -312,10 +335,18 @@ jobs:
               print("::error::bingr_stats_item/bingr_watch_stats onverwacht:", str(r)[:400]); raise SystemExit(1)
           print("::notice::Statistieken-SQL werkt:", json.dumps(row["item"]), "| leeg account:", json.dumps(row["stats"])[:200])
           PY
+          # build 95: groottegrens op account_data (trigger) staat er
+          echo '{"query":"select exists(select 1 from pg_trigger where tgname = $$bingr_account_data_size$$ and tgrelid = $$public.account_data$$::regclass) as ok"}' > /tmp/q.json
+          curl -s -X POST "https://api.supabase.com/v1/projects/$REF/database/query" -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" --data @/tmp/q.json > /tmp/tg.json
+          grep -Eq '"ok": ?true' /tmp/tg.json && echo "::notice::account_data-groottegrens actief" || { echo "::error::trigger bingr_account_data_size ontbreekt: $(head -c 200 /tmp/tg.json)"; exit 1; }
           for fn in device-auth web-proxy; do
             curl -s -X POST "https://$REF.supabase.co/functions/v1/$fn" -H "Content-Type: application/json" -d '{"action":"ping"}' | tee /tmp/p.json; echo
             grep -q '"ok":true' /tmp/p.json && echo "::notice::$fn ping werkt" || { echo "::error::$fn ping onverwacht"; exit 1; }
           done
+          # build 95: kan de proxy DNS opvragen en IP's vastzetten (bescherming tegen interne adressen en DNS-rebinding)?
+          curl -s -X POST "https://$REF.supabase.co/functions/v1/web-proxy" -H "Content-Type: application/json" -d '{"action":"ping"}' > /tmp/p.json
+          grep -q '"dns":true' /tmp/p.json && echo "::notice::web-proxy: DNS-controle actief" || echo "::warning::web-proxy: runtime kan geen DNS opvragen; alleen hostnaam/IP-controle"
+          grep -q '"pin":true' /tmp/p.json && echo "::notice::web-proxy: http-verbindingen naar het gecontroleerde IP" || echo "::notice::web-proxy: IP vastzetten uit (aan met BINGR_PROXY_PIN_IP=1); DNS wordt vlak voor elke aanvraag gecontroleerd"
           # admin (privé-repo bingr-beheer): alleen kijken of hij er nog staat, als waarschuwing (deze workflow deployt hem niet)
           curl -s -X POST "https://$REF.supabase.co/functions/v1/admin" -H "Content-Type: application/json" -d '{"action":"status","op":"overview"}' > /tmp/b.json || true
           grep -q not_signed_in /tmp/b.json && echo "::notice::admin (bingr-beheer) staat online" || echo "::warning::admin (bingr-beheer) gaf geen not_signed_in: $(head -c 200 /tmp/b.json)"
@@ -342,6 +373,34 @@ jobs:
           hn=$(python3 -c 'import json;print(json.load(open("/tmp/c.json"))["number"])'); ht=$(python3 -c 'import json;print(json.load(open("/tmp/c.json"))["token"])')
           code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$F" -H "Content-Type: application/json" -d "{\"action\":\"get\",\"n\":$hn,\"t\":\"$ht\"}")
           [ "$code" = 404 ] && echo "::notice::lokveld werkt: stil tegengehouden, niets opgeslagen" || { echo "::error::lokveld: schijnticket gaf HTTP $code (opgeslagen?)"; exit 1; }
+          # build 95: captcha (proof-of-work). challenge geeft een opgave; create met geldige velden maar zonder (of met een
+          # vervalste) pow geeft schijnbaar "gelukt" (200), maar er wordt niets opgeslagen of gemaild
+          python3 - "$F" <<'PY'
+          import json, sys, urllib.request, urllib.error
+          F = sys.argv[1]
+          def post(body):
+              r = urllib.request.Request(F, data=json.dumps(body).encode(), method="POST", headers={"Content-Type": "application/json", "Origin": "https://support.bingr.online"})
+              try:
+                  with urllib.request.urlopen(r, timeout=30) as resp: return resp.status, json.loads(resp.read() or b"{}")
+              except urllib.error.HTTPError as e: return e.code, json.loads(e.read() or b"{}")
+          fail = []
+          code, c = post({"action": "challenge"})
+          if code != 200 or c.get("algorithm") != "SHA-256" or not isinstance(c.get("difficulty"), int) or not (16 <= c["difficulty"] <= 24) \
+             or len(str(c.get("salt", ""))) != 32 or len(str(c.get("signature", ""))) != 64 or not isinstance(c.get("expires"), int):
+              fail.append(f"challenge HTTP {code}: {str(c)[:200]}")
+          ticket = {"action": "create", "name": "CI", "email": "ci-pow@example.com", "category": "overig", "subject": "CI captcha-test",
+                    "message": "CI-test zonder captcha; mag niet worden opgeslagen.", "lang": "nl", "website": "", "elapsed_ms": 10000}
+          cases = [("zonder pow", ticket), ("vervalste pow", {**ticket, "pow": {**{k: c.get(k) for k in ("salt", "difficulty", "expires")}, "signature": "0" * 64, "nonce": "1"}}),
+                   ("ongeldige nonce", {**ticket, "pow": {**{k: c.get(k) for k in ("salt", "difficulty", "expires", "signature")}, "nonce": "1"}})]
+          for name, body in cases:
+              code, r = post(body)
+              if code != 200 or r.get("ok") is not True or not r.get("number") or not r.get("token"): fail.append(f"create {name}: HTTP {code} {str(r)[:200]}"); continue
+              code2, g = post({"action": "get", "n": r["number"], "t": r["token"]})
+              if code2 != 404: fail.append(f"create {name}: schijnticket gaf HTTP {code2} (opgeslagen?)")
+          for f in fail: print(f"::error::{f[:300]}")
+          if fail: raise SystemExit(1)
+          print(f"::notice::captcha werkt: challenge (moeilijkheid {c['difficulty']}), create zonder/met vervalste pow stil tegengehouden")
+          PY
           # 3. zonder geheime link of inloggen geen ticket; zonder inloggen geen lijst; zonder geheim geen beheer
           code=$(curl -s -o /tmp/c.json -w '%{http_code}' -X POST "$F" -H "Content-Type: application/json" -d '{"action":"get","n":1001,"t":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}')
           [ "$code" = 404 ] && echo "::notice::get met fout token: 404" || { echo "::error::get met fout token gaf HTTP $code"; exit 1; }
@@ -451,6 +510,17 @@ jobs:
               names = {d.get("device_id"): d.get("name") for d in r.get("devices") or []}
               if names.get("ci-b") != "Apple TV - CI" or names.get("ci-a") != "Apple TV": fail.append(f"koppelnaam niet toegepast: {names}")
               else: print(f"::notice::koppelen met eigen naam werkt: {names}")
+              # build 95: web-proxy weigert interne adressen (ook numeriek geschreven en via probe); token voor de GET-vorm
+              # (die GET pas na de blokkade gebruiken: de blokkadecontrole van de GET-vorm onthoudt "in orde" 5 minuten)
+              WP = f"{BASE}/functions/v1/web-proxy"
+              code, r = req("POST", WP, {"action": "token"}, user)
+              wp_token = r.get("token")
+              if code != 200 or not wp_token: fail.append(f"web-proxy token HTTP {code}: {str(r)[:200]}")
+              for body in ({"url": "http://127.0.0.1:8080/"}, {"url": "http://2130706433/"}, {"url": "http://[::ffff:7f00:1]/"},
+                           {"action": "probe", "url": "http://169.254.169.254/latest/meta-data/"}):
+                  code, r = req("POST", WP, body, user)
+                  if code != 403 or r.get("error") != "host_not_allowed": fail.append(f"web-proxy {body}: HTTP {code} {str(r)[:200]} (verwacht 403 host_not_allowed)")
+              if not any("web-proxy" in f for f in fail): print("::notice::web-proxy: interne adressen geweigerd (403), token werkt")
               # 3. blokkeren (zoals het beheer: ban, sessies blijven bestaan) -> de apps moeten user_banned zien
               code, r = req("PUT", f"{BASE}/auth/v1/admin/users/{uid}", {"ban_duration": "1h"}, adm)
               if code != 200: fail.append(f"ban HTTP {code}: {str(r)[:200]}")
@@ -464,6 +534,12 @@ jobs:
                   if code != 401 or r.get("error") != "user_banned" or r.get("banned") is not True: fail.append(f"heartbeat na blokkade: HTTP {code} {r}")
                   code, r = req("POST", SU, {"action": "mine"}, {**user, "Origin": "https://support.bingr.online"})
                   if code != 401 or r.get("error") != "user_banned": fail.append(f"support/mine na blokkade: HTTP {code} {r}")
+                  # build 95: het web-proxy-token (GET-vorm, 6 uur) werkt niet meer voor een geblokkeerd account
+                  if wp_token:
+                      import base64, urllib.parse
+                      u64 = base64.urlsafe_b64encode(b"https://example.com/").decode().rstrip("=")
+                      code, r = req("GET", f"{WP}?u={u64}&t={urllib.parse.quote(wp_token)}")
+                      if code != 401 or r.get("error") != "user_banned": fail.append(f"web-proxy GET na blokkade: HTTP {code} {str(r)[:200]} (verwacht 401 user_banned)")
                   if not any("blokkade" in f for f in fail): print("::notice::blokkade: vernieuwen/inloggen user_banned, device-auth en support 401 user_banned")
           except SystemExit as e:
               fail.append(str(e))
@@ -709,13 +785,14 @@ jobs:
   inbox:
     needs: deploy
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 9
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       REF: ${{ secrets.SUPABASE_PROJECT_REF }}
     steps:
       - name: Wachten op een ronde van de planning
-        run: sleep 150
+        # build 95: de planning loopt elke 5 minuten
+        run: sleep 320
       - name: Support - inbox-status
         run: |
           # laatste ronde van de inbox-import (support_inbox_state); geen mailinhoud of adressen

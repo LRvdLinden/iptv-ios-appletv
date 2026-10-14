@@ -1,12 +1,14 @@
 // Bingr: tv-koppeling (QR-login) en account verwijderen.
 // POST /functions/v1/device-auth met JSON {action, ...}; header `apikey` altijd, `Authorization: Bearer <access_token>` bij approve/delete_account.
 //   start           {device}            -> {code, poll_secret, url, expires_in, interval}
+//                   build 95: max. 10 per IP per 10 minuten -> 429 {error:"rate_limited"}
 //   poll            {code, poll_secret} -> {status: pending|approved|expired, token_hash?, email?}
 //                   Account dat de code goedkeurde is geblokkeerd -> 403 {status:"banned", error:"user_banned", banned:true}
 //   Alle acties met inloggen: geblokkeerd account -> 401 {error:"user_banned", banned:true, reason:"banned"} (docs/ACCOUNT.md)
 //                   Bij approved: POST /auth/v1/verify {type:"magiclink", token_hash} geeft de tv een eigen sessie.
 //   code_info       {code}   (ingelogd)  -> {ok, device, kind, label}   (soort apparaat bij een code, voor het naamveld op /koppelen)
 //                   Ongeldige/verlopen code (of al door een ander account goedgekeurd) -> 404 {error:"invalid_code"}
+//                   build 95: code_info en approve samen max. 30 per account en 60 per IP per minuut -> 429 {error:"rate_limited"}
 //   approve         {code, name?} (ingelogd) -> {ok, device, name}
 //                   name (optioneel, max. 40 tekens): eigen naam voor het apparaat ("Apple TV - Woonkamer"). Wordt bewaard bij
 //                   de code; zodra de tv inlogt en zich aanmeldt (register_device van dezelfde soort, binnen 15 minuten) wordt het
@@ -51,6 +53,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import { buildStats, DEFAULT_TZ, periodRange, todayIn, validTz } from "./stats.ts";
 import { cleanDeviceName, deviceKind, deviceTypeLabel } from "./naming.ts";
 import { BANNED_BODY, bannedUntilActive, isBanError } from "../_shared/ban.ts";
+import { clientIp } from "../_shared/ip.ts";
 import {
   entitlements, featureLocked, limitsFor, normalizePlan, normalizePlatform, normalizeUpgradeLink, platformFromDevice,
   type PlanRow, type UpgradeLink,
@@ -221,6 +224,18 @@ async function authed(req: Request): Promise<Authed | Response> {
   const status = (error as { status?: number } | null)?.status ?? 0;
   return status >= 400 && status < 500 ? json({ error: "not_signed_in" }, 401) : json({ error: "unavailable" }, 503);
 }
+// build 95: limiet via bingr_rate_hit (schema.sql; p_window = venster in seconden). Een databasefout houdt niets tegen
+// (zoals elders: een storing mag inloggen of koppelen niet blokkeren), maar komt wel in de logs.
+async function rateLimited(key: string, max: number, windowS = 60): Promise<boolean> {
+  const { data, error } = await admin.rpc("bingr_rate_hit", { p_key: key, p_max: max, p_window: windowS });
+  if (error) { console.error("rate_hit", key.split(":")[0], error.message); return false; }
+  return data === false;
+}
+// build 95: tv-koppeling raden/afschermen: code_info en approve per account en per IP
+const CODE_PER_MIN_USER = 30, CODE_PER_MIN_IP = 60;
+async function codeLimited(req: Request, userId: string) {
+  return await rateLimited(`da-code:ip:${clientIp(req)}`, CODE_PER_MIN_IP) || await rateLimited(`da-code:u:${userId}`, CODE_PER_MIN_USER);
+}
 const isoMs = (v: unknown) => { const t = Date.parse(String(v ?? "")); return Number.isFinite(t) ? t : 0; };
 const TOMBSTONE_MS = 90 * 864e5;
 // Bronnen samenvoegen per id (hoofdletterongevoelig): nieuwste updatedAt (of deletedAt) wint, bij gelijk de nieuwe lijst.
@@ -268,6 +283,9 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
     case "ping": // statuspagina: werkt de functie (zonder inloggen, zonder database)
       return json({ ok: true });
     case "start": {
+      // build 95: zonder inloggen, dus per IP begrensd (10 per 10 minuten): niemand kan de 10.000 open codes vullen
+      if (await rateLimited(`da-start:${clientIp(req)}`, 10, 600)) return json({ error: "rate_limited" }, 429);
+      // verlopen codes eerst weg, zodat alleen echt open codes meetellen voor de grens hieronder
       await admin.from("device_codes").delete().lt("expires_at", new Date().toISOString());
       // af en toe voor alle accounts opruimen (oude streams, geschiedenis > 8 dagen)
       if (Math.random() < 0.1) await admin.rpc("bingr_cleanup");
@@ -313,6 +331,7 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
     case "code_info": {
       const user = await authed(req);
       if (user instanceof Response) return user;
+      if (await codeLimited(req, user.id)) return json({ error: "rate_limited" }, 429);
       const code = normalize(body.code).slice(0, 12);
       const { data: row } = await admin.from("device_codes").select("device, expires_at, user_id").eq("code", code).maybeSingle();
       if (!row || new Date(row.expires_at) < new Date() || (row.user_id && row.user_id !== user.id)) return json({ error: "invalid_code" }, 404);
@@ -321,6 +340,7 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
     case "approve": {
       const user = await authed(req);
       if (user instanceof Response) return user;
+      if (await codeLimited(req, user.id)) return json({ error: "rate_limited" }, 429);
       const code = normalize(body.code).slice(0, 12);
       const { data: row } = await admin.from("device_codes").select("code, device, expires_at, user_id").eq("code", code).maybeSingle();
       if (!row || new Date(row.expires_at) < new Date()) return json({ error: "invalid_code" }, 404);

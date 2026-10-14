@@ -250,7 +250,10 @@ export function parseMessage(input: Uint8Array | string, opts: { truncated?: boo
 
   const plain = texts.join("\n\n").trim();
   const fromHtml = !plain && htmls.length > 0;
-  const text = fromHtml ? htmls.map(htmlToText).join("\n\n") : plain;
+  // build 95: citaatblokken (<blockquote>) alleen weghalen in een antwoord (In-Reply-To/References of "[#1007]" in het
+  // onderwerp); in een nieuwe mail is een blockquote gewoon inhoud
+  const reply = isReplyMail(header("in-reply-to"), header("references"), header("subject"));
+  const text = fromHtml ? htmls.map((h) => htmlToText(h, { reply })).join("\n\n") : plain;
   return {
     headers, header,
     from: parseAddresses(header("from"))[0] ?? null,
@@ -311,20 +314,46 @@ export const decodeEntities = (s: string) =>
     return ENT[e] ?? ENT[e.toLowerCase()] ?? m;
   });
 
+/** build 95: antwoord op een eerdere mail: In-Reply-To/References, of een ticketnummer "[#1007]" in het onderwerp. */
+export const isReplyMail = (inReplyTo: string, references: string, subject: string) =>
+  parseIds(inReplyTo).length > 0 || parseIds(references).length > 0 || /\[#\d{1,12}\]/.test(subject);
+
+/** build 95: elk buitenste <blockquote>…</blockquote>-blok (met geneste blokken) vervangen door één citaatregel ">",
+ *  zodat stripReply alleen dat blok overslaat en de tekst erna (onderaan of tussendoor geantwoord) blijft staan.
+ *  Een niet afgesloten blok loopt tot het einde. */
+export function dropBlockquotes(html: string): string {
+  const re = /<(\/?)blockquote\b[^>]*>/gi;
+  let out = "", depth = 0, last = 0, m: RegExpExecArray | null;
+  while ((m = re.exec(html))) {
+    if (!m[1]) {
+      if (depth === 0) out += html.slice(last, m.index);
+      depth++;
+    } else if (depth > 0) {
+      depth--;
+      if (depth === 0) { out += "\n>\n"; last = re.lastIndex; }
+    }
+  }
+  if (depth > 0) return out + "\n>\n";
+  return out + html.slice(last);
+}
+
 /** Regel waarop een geciteerd bericht begint (intern; komt nooit in een ticket). */
 export const QUOTE_CUT = "⁣BINGR-QUOTE⁣";
-/** HTML naar leesbare tekst. Citaatblokken (Gmail, Outlook, Apple Mail, Thunderbird) worden gemarkeerd met QUOTE_CUT. */
-export function htmlToText(html: string): string {
-  let s = html
+/** HTML naar leesbare tekst. Citaatblokken (Gmail, Outlook, Apple Mail, Thunderbird) worden gemarkeerd met QUOTE_CUT.
+ *  build 95: een gewone <blockquote> alleen in een antwoord (reply, standaard aan) en dan alleen dat blok (dropBlockquotes);
+ *  in een nieuwe mail blijft de tekst erin gewoon staan. */
+export function htmlToText(html: string, opts: { reply?: boolean } = {}): string {
+  const reply = opts.reply !== false;
+  let s = (reply ? dropBlockquotes(html) : html)
     .replace(/<!--[\s\S]*?-->/g, "")
     .replace(/<(head|style|script|title|xml)\b[\s\S]*?<\/\1\s*>/gi, "")
     // verborgen tekst (preheader van nieuwsbrieven en van onze eigen mails) telt niet mee
     .replace(/<(div|span|p)\b[^>]*\bstyle\s*=\s*["'][^"']*display\s*:\s*none[^"']*["'][^>]*>[^<]*<\/\1\s*>/gi, "")
     // begin van een citaat: daar knippen
-    .replace(/<(div|blockquote)\b[^>]*\bclass\s*=\s*["']?[^"'>]*\b(gmail_quote|gmail_attr|yahoo_quoted|moz-cite-prefix|protonmail_quote)\b[^>]*>/gi, `\n${QUOTE_CUT}\n`)
+    .replace(/<div\b[^>]*\bclass\s*=\s*["']?[^"'>]*\b(gmail_quote|gmail_attr|yahoo_quoted|moz-cite-prefix|protonmail_quote)\b[^>]*>/gi, `\n${QUOTE_CUT}\n`)
     .replace(/<(div|hr|span)\b[^>]*\bid\s*=\s*["']?(divRplyFwdMsg|appendonsend|x_divRplyFwdMsg|reply-intro|isForwardContent)\b[^>]*>/gi, `\n${QUOTE_CUT}\n`)
-    .replace(/<blockquote\b[^>]*\btype\s*=\s*["']?cite\b[^>]*>/gi, `\n${QUOTE_CUT}\n`)
-    .replace(/<blockquote\b[^>]*>/gi, `\n${QUOTE_CUT}\n`)
+    // build 95: <blockquote> zelf knipt niet meer alles erna af (zie dropBlockquotes); hier alleen een regeleinde
+    .replace(/<blockquote\b[^>]*>/gi, "\n")
     .replace(/<br\s*\/?>/gi, "\n")
     .replace(/<li\b[^>]*>/gi, "\n- ")
     .replace(/<\/(p|div|tr|li|h[1-6]|table|ul|ol|blockquote|pre|section|article|header|footer)\s*>/gi, "\n")
@@ -361,6 +390,7 @@ const MOBILE_SIG = /^(sent from my|verzonden (vanaf|met|via) mijn|verstuurd (van
 export function stripReply(text: string): string {
   const lines = text.replace(/\r\n?/g, "\n").split("\n");
   const out: string[] = [];
+  let afterQuote = false; // build 95: na een overgeslagen citaat geen dubbele lege regel
   for (let i = 0; i < lines.length; i++) {
     const l = lines[i];
     const t = l.trim();
@@ -379,8 +409,10 @@ export function stripReply(text: string): string {
         break;
       }
     }
-    if (/^\s*>/.test(l)) continue; // geciteerde regel
+    if (/^\s*>/.test(l)) { afterQuote = true; continue; } // geciteerde regel
     if (l === "-- " || t === "--") break; // handtekening
+    if (!t && afterQuote && out.length && !out[out.length - 1].trim()) continue;
+    if (t) afterQuote = false;
     out.push(l.replace(/\s+$/, ""));
   }
   // onderaan: lege regels en "Verzonden vanaf mijn iPhone" weg

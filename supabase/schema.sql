@@ -151,6 +151,30 @@ create index if not exists account_streams_ping_idx on public.account_streams (l
 alter table public.account_data drop constraint if exists account_data_profiles_size;
 alter table public.account_data add constraint account_data_profiles_size check (octet_length(profiles::text) <= 524288) not valid;
 
+-- build 95: groottegrens voor account_data als trigger (de apps schrijven hier rechtstreeks via PostgREST/RLS). Geldt ook
+-- voor jsonb-kolommen die er later bij komen: profiles max. 512 KB, elke andere JSON-waarde (object/lijst) max. 2 MB,
+-- de hele rij max. 8 MB. Te groot -> fout 54000 "account_data_too_large". Idempotent (create or replace + drop trigger).
+create or replace function public.bingr_account_data_size() returns trigger
+language plpgsql set search_path = public as $$
+declare row_j jsonb := to_jsonb(new); k text; v jsonb; lim int;
+begin
+  if octet_length(row_j::text) > 8 * 1024 * 1024 then
+    raise exception 'account_data_too_large' using errcode = '54000', detail = 'row > 8 MB';
+  end if;
+  for k, v in select * from jsonb_each(row_j) loop
+    lim := 2 * 1024 * 1024;
+    if k = 'profiles' then lim := 512 * 1024; end if;
+    if jsonb_typeof(v) in ('object', 'array') and octet_length(v::text) > lim then
+      raise exception 'account_data_too_large' using errcode = '54000', detail = k;
+    end if;
+  end loop;
+  return new;
+end $$;
+revoke all on function public.bingr_account_data_size() from public, anon, authenticated;
+drop trigger if exists bingr_account_data_size on public.account_data;
+create trigger bingr_account_data_size before insert or update on public.account_data
+  for each row execute function public.bingr_account_data_size();
+
 -- Apparaat registreren met een slot per account: tellen + toevoegen gebeurt in één transactie.
 create or replace function public.bingr_register_device(p_user uuid, p_device text, p_name text, p_platform text, p_session uuid, p_limit int)
 returns jsonb language plpgsql security definer set search_path = public, auth as $$
@@ -388,41 +412,125 @@ create table if not exists public.rate_limits (
 alter table public.rate_limits enable row level security;
 revoke all on public.rate_limits from anon, authenticated;
 
-create or replace function public.bingr_rate_hit(p_key text, p_max int) returns boolean
+-- build 95: optioneel venster in seconden (p_window, standaard 60 = per minuut zoals vroeger). De functie support rekende
+-- met "per uur" maar telde per minuut. Een venster langer dan een minuut slaat het EINDE van het venster op als bucket:
+-- bingr_cleanup ruimt buckets 10 minuten na de bucket-tijd op, zo blijft een lopend uurvenster staan. De oude versie met
+-- twee argumenten eerst weg (anders zijn er twee versies en is een aanroep met twee argumenten dubbelzinnig).
+drop function if exists public.bingr_rate_hit(text, int);
+create or replace function public.bingr_rate_hit(p_key text, p_max int, p_window int default 60) returns boolean
 language plpgsql security definer set search_path = public as $$
-declare n int;
+declare n int; w int := greatest(coalesce(p_window, 60), 1); b timestamptz;
 begin
-  insert into public.rate_limits (key, bucket, hits) values (p_key, date_trunc('minute', now()), 1)
+  if w = 60 then b := date_trunc('minute', now());
+  else b := to_timestamp(floor(extract(epoch from now()) / w) * w + case when w > 60 then w else 0 end);
+  end if;
+  insert into public.rate_limits (key, bucket, hits) values (p_key, b, 1)
   on conflict (key, bucket) do update set hits = public.rate_limits.hits + 1
   returning hits into n;
   return n <= p_max;
 end $$;
-revoke all on function public.bingr_rate_hit(text, int) from public, anon, authenticated;
-grant execute on function public.bingr_rate_hit(text, int) to service_role;
+revoke all on function public.bingr_rate_hit(text, int, int) from public, anon, authenticated;
+grant execute on function public.bingr_rate_hit(text, int, int) to service_role;
+
+-- build 95: globale teller voor beheer-inlogpogingen (alle IP's samen), los van de teller per IP. Elke poging is een
+-- rij; die wordt nooit teruggezet als een IP geblokkeerd raakt (vroeger zette dat failures op 0, waardoor een geblokkeerd
+-- IP niet meer meetelde voor de globale grens). Meer dan 60 pogingen in een uur = alles 15 min dicht (admin_login_lock).
+create table if not exists public.admin_login_events (
+  id         bigserial primary key,
+  ip         text not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists admin_login_events_created_idx on public.admin_login_events (created_at);
+alter table public.admin_login_events enable row level security;
+revoke all on public.admin_login_events from anon, authenticated;
+-- build 95: één rij (id = 1) met de globale blokkade; ook het slot waarop alle pogingen na elkaar gaan (for update)
+create table if not exists public.admin_login_lock (
+  id           int primary key default 1 check (id = 1),
+  locked_until timestamptz
+);
+alter table public.admin_login_lock enable row level security;
+revoke all on public.admin_login_lock from anon, authenticated;
+insert into public.admin_login_lock (id) values (1) on conflict do nothing;
+
+-- build 95: één atomaire stap vóór de wachtwoordcontrole. Telt de poging alvast als fout (per IP en globaal) en zegt of
+-- hij door mag; gelukt daarna = bingr_admin_result(ip, true) zet het IP terug. Alle pogingen gaan via de rij in
+-- admin_login_lock na elkaar, dus parallelle verzoeken kunnen de grenzen niet omzeilen.
+-- Per IP: 5 pogingen per 15 min; de 5e zet de blokkade van 15 min meteen (gaat die 5e goed, dan vervalt hij weer).
+-- Globaal: meer dan 60 pogingen in het laatste uur (sinds het einde van de vorige globale blokkade) = alles 15 min dicht.
+create or replace function public.bingr_admin_attempt(p_ip text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare g timestamptz; r public.admin_login_attempts%rowtype; total int;
+begin
+  insert into public.admin_login_lock (id) values (1) on conflict do nothing;
+  select locked_until into g from public.admin_login_lock where id = 1 for update;
+  if g is not null and g > now() then
+    return jsonb_build_object('allowed', false, 'locked', true, 'retry_after', ceil(extract(epoch from g - now())));
+  end if;
+  insert into public.admin_login_attempts (ip, failures, window_start) values (p_ip, 0, now()) on conflict (ip) do nothing;
+  select * into r from public.admin_login_attempts where ip = p_ip for update;
+  if r.locked_until is not null and r.locked_until > now() then
+    return jsonb_build_object('allowed', false, 'locked', true, 'retry_after', ceil(extract(epoch from r.locked_until - now())));
+  end if;
+  if r.window_start < now() - interval '15 minutes' or r.locked_until is not null then
+    r.failures := 0; r.window_start := now();
+  end if;
+  delete from public.admin_login_events where created_at < now() - interval '1 day';
+  select count(*) into total from public.admin_login_events
+  where created_at > greatest(now() - interval '1 hour', coalesce(g, '-infinity'::timestamptz));
+  if total >= 60 then
+    update public.admin_login_lock set locked_until = now() + interval '15 minutes' where id = 1;
+    return jsonb_build_object('allowed', false, 'locked', true, 'retry_after', 900);
+  end if;
+  insert into public.admin_login_events (ip) values (p_ip);
+  update public.admin_login_attempts set failures = r.failures + 1, window_start = r.window_start,
+    locked_until = case when r.failures + 1 >= 5 then now() + interval '15 minutes' else null end
+  where ip = p_ip;
+  return jsonb_build_object('allowed', true, 'locked', false);
+end $$;
+revoke all on function public.bingr_admin_attempt(text) from public, anon, authenticated;
+grant execute on function public.bingr_admin_attempt(text) to service_role;
 
 -- Beheer-login: is dit IP (of alles samen, bij een aanval van veel IP's) geblokkeerd?
+-- build 95: alleen nog voor een oudere functie `admin`; de nieuwe gebruikt bingr_admin_attempt. Kijkt nu ook naar de
+-- globale blokkade en de globale teller (admin_login_events), die niet terugspringt als een IP geblokkeerd raakt.
 create or replace function public.bingr_admin_gate(p_ip text) returns jsonb
 language plpgsql security definer set search_path = public as $$
-declare until_ts timestamptz; total int;
+declare until_ts timestamptz; g timestamptz; total int;
 begin
+  select locked_until into g from public.admin_login_lock where id = 1;
+  if g is not null and g > now() then
+    return jsonb_build_object('locked', true, 'retry_after', ceil(extract(epoch from g - now())));
+  end if;
   select locked_until into until_ts from public.admin_login_attempts where ip = p_ip;
   if until_ts is not null and until_ts > now() then
     return jsonb_build_object('locked', true, 'retry_after', ceil(extract(epoch from until_ts - now())));
   end if;
-  select coalesce(sum(failures), 0) into total from public.admin_login_attempts where window_start > now() - interval '15 minutes';
-  if total >= 50 then return jsonb_build_object('locked', true, 'retry_after', 900); end if;
+  select count(*) into total from public.admin_login_events
+  where created_at > greatest(now() - interval '1 hour', coalesce(g, '-infinity'::timestamptz));
+  if total >= 60 then
+    update public.admin_login_lock set locked_until = now() + interval '15 minutes' where id = 1;
+    return jsonb_build_object('locked', true, 'retry_after', 900);
+  end if;
   return jsonb_build_object('locked', false);
 end $$;
 -- Resultaat van een poging: na 5 fouten binnen 15 min is het IP 15 min geblokkeerd; gelukt = teller weg.
+-- build 95: gelukt haalt ook de laatste globale poging van dit IP weg; mislukt (alleen nog van een oudere functie
+-- `admin`) telt ook globaal mee, en de blokkade zet failures niet meer op 0.
 create or replace function public.bingr_admin_result(p_ip text, p_ok boolean) returns void
 language plpgsql security definer set search_path = public as $$
 begin
-  if p_ok then delete from public.admin_login_attempts where ip = p_ip; return; end if;
+  if p_ok then
+    delete from public.admin_login_attempts where ip = p_ip;
+    delete from public.admin_login_events where id = (select max(id) from public.admin_login_events where ip = p_ip);
+    return;
+  end if;
+  insert into public.admin_login_events (ip) values (p_ip);
   insert into public.admin_login_attempts as a (ip, failures, window_start) values (p_ip, 1, now())
   on conflict (ip) do update set
-    failures = case when a.window_start < now() - interval '15 minutes' then 1 else a.failures + 1 end,
-    window_start = case when a.window_start < now() - interval '15 minutes' then now() else a.window_start end;
-  update public.admin_login_attempts set locked_until = now() + interval '15 minutes', failures = 0, window_start = now()
+    failures = case when a.window_start < now() - interval '15 minutes' or a.locked_until is not null then 1 else a.failures + 1 end,
+    window_start = case when a.window_start < now() - interval '15 minutes' or a.locked_until is not null then now() else a.window_start end,
+    locked_until = null;
+  update public.admin_login_attempts set locked_until = now() + interval '15 minutes'
   where ip = p_ip and failures >= 5;
 end $$;
 revoke all on function public.bingr_admin_gate(text) from public, anon, authenticated;
@@ -1218,6 +1326,89 @@ revoke all on function public.bingr_support_counts() from public, anon, authenti
 revoke all on function public.bingr_support_account(uuid, text) from public, anon, authenticated;
 grant execute on function public.bingr_support_counts() to service_role;
 grant execute on function public.bingr_support_account(uuid, text) to service_role;
+
+-- build 95: e-mailadressen van tickets altijd in kleine letters (de functie support schrijft ze zo), zodat de filters
+-- email = '…' een gewone index gebruiken (support_tickets_email_idx op lower(email) blijft voor bingr_support_account).
+update public.support_tickets set email = lower(email) where email <> lower(email);
+do $$ begin
+  alter table public.support_tickets add constraint support_tickets_email_lower_chk check (email = lower(email));
+exception when duplicate_object then null; end $$;
+create index if not exists support_tickets_email_created_idx on public.support_tickets (email, created_at);
+
+-- build 95: inbox-import: oude ongelezen mails (eerste ronde of nieuwe UIDVALIDITY) in porties over meerdere rondes
+-- (scan_until = hoogste UID van die achterstand, scan_cursor = laatst verwerkte UID daarin; null = geen achterstand), en
+-- het inbox-logboek hooguit één keer per dag opruimen (last_cleanup_at).
+alter table public.support_inbox_state add column if not exists scan_until bigint;
+alter table public.support_inbox_state add column if not exists scan_cursor bigint;
+alter table public.support_inbox_state add column if not exists last_cleanup_at timestamptz;
+
+-- build 95: captcha zonder derde partij (proof-of-work, actie challenge van de functie support): elke salt mag maar één
+-- keer een ticket maken. Alleen de functie (service role); dagelijks opgeruimd door bingr_support_cleanup.
+create table if not exists public.support_pow_used (
+  salt    text primary key,
+  used_at timestamptz not null default now()
+);
+create index if not exists support_pow_used_at_idx on public.support_pow_used (used_at);
+alter table public.support_pow_used enable row level security;
+revoke all on public.support_pow_used from anon, authenticated;
+
+-- build 95: AVG. Dagelijks (pg_cron-taak bingr-support-cleanup, klaargezet door de Backend-workflow):
+--   gesloten tickets (met berichten, via on delete cascade) 24 maanden na de laatste activiteit weg;
+--   ip_hash na 30 dagen leeg (alleen nodig voor de limieten van het afgelopen uur);
+--   gebruikte captcha-salts na 1 dag weg; het logboek van pg_cron (cron.job_run_details) na 7 dagen weg.
+create or replace function public.bingr_support_cleanup() returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare t int := 0; i int := 0; p int := 0; c int := 0;
+begin
+  delete from public.support_tickets
+  where status = 'closed' and greatest(last_reply_at, updated_at, coalesce(closed_at, updated_at)) < now() - interval '24 months';
+  get diagnostics t = row_count;
+  update public.support_tickets set ip_hash = null where ip_hash is not null and created_at < now() - interval '30 days';
+  get diagnostics i = row_count;
+  delete from public.support_pow_used where used_at < now() - interval '1 day';
+  get diagnostics p = row_count;
+  begin
+    execute 'delete from cron.job_run_details where coalesce(end_time, start_time) < now() - interval ''7 days''';
+    get diagnostics c = row_count;
+  exception when others then
+    raise notice 'cron.job_run_details niet opgeruimd: %', sqlerrm;
+  end;
+  return jsonb_build_object('tickets', t, 'ip_hash', i, 'pow', p, 'cron_runs', c);
+end $$;
+revoke all on function public.bingr_support_cleanup() from public, anon, authenticated;
+grant execute on function public.bingr_support_cleanup() to service_role;
+
+-- build 95: account verwijderd -> ook de supporttickets (met berichten) van dat account: gekoppeld via user_id, of (bij
+-- een bevestigd e-mailadres) met hetzelfde adres. Aan te roepen door het beheer vóór het verwijderen van de gebruiker; de
+-- trigger hieronder doet het ook vanzelf bij elk verwijderen uit auth.users (device-auth delete_account en het beheer).
+create or replace function public.bingr_support_delete_user(uid uuid) returns int
+language plpgsql security definer set search_path = public as $$
+declare mail text; ok boolean; n int;
+begin
+  if uid is null then return 0; end if;
+  select lower(u.email), u.email_confirmed_at is not null into mail, ok from auth.users u where u.id = uid;
+  delete from public.support_tickets t
+  where t.user_id = uid or (coalesce(ok, false) and mail is not null and mail <> '' and t.email = mail);
+  get diagnostics n = row_count;
+  return n;
+end $$;
+revoke all on function public.bingr_support_delete_user(uuid) from public, anon, authenticated;
+grant execute on function public.bingr_support_delete_user(uuid) to service_role;
+create or replace function public.bingr_support_user_deleted() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  begin
+    perform public.bingr_support_delete_user(old.id);
+  exception when others then
+    -- het verwijderen van het account mag hier nooit op vastlopen
+    raise warning 'supporttickets van % niet verwijderd: %', old.id, sqlerrm;
+  end;
+  return old;
+end $$;
+revoke all on function public.bingr_support_user_deleted() from public, anon, authenticated;
+drop trigger if exists bingr_support_user_deleted on auth.users;
+create trigger bingr_support_user_deleted before delete on auth.users
+  for each row execute function public.bingr_support_user_deleted();
 
 -- Statusmonitors voor support: de functie (meteen actief) en de site (staat uit tot support.bingr.online online is;
 -- aanzetten in het beheer, tab Status).

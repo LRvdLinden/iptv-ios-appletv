@@ -28,11 +28,16 @@
 // X-Upstream-Range (yes/no), X-Redirect-Hosts.
 // Antwoord: de body van de server, gestreamd, met dezelfde status (200/206/4xx/5xx) en content-type, content-length,
 // content-range, accept-ranges. Fouten van de proxy zelf zijn JSON {error}:
-//   400 bad_json/bad_url/bad_range · 401 not_signed_in/bad_token · 403 host_not_allowed · 405 method_not_allowed
+//   400 bad_json/bad_url/bad_range · 401 not_signed_in/bad_token/user_banned · 403 host_not_allowed · 405 method_not_allowed
 //   413 too_large (> 200 MB) · 416 (bereik voorbij het einde) · 429 rate_limited · 502 upstream_failed/range_not_supported
 //   · 503 unavailable · 504 timeout
+// build 95: geblokkeerd account (ban uit het beheer) -> 401 {error:"user_banned", banned:true} (ook de GET-vorm, binnen 5 min);
+// elke aanvraag naar een server (ook elke doorverwijzing, probe en osfile) controleert vlak ervoor de DNS (A en AAAA; een
+// DNS-fout of time-out = weigeren) en http-doelen gaan naar het gecontroleerde IP-adres met de eigen Host-header (geen DNS-rebinding).
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { b64url, isHlsPlaylist, rewritePlaylist, unb64url } from "./hls.ts";
+import { ipLiteral, isBlockedIP } from "./ip.ts";
+import { BANNED_BODY, bannedUntilActive, isBanError } from "../_shared/ban.ts";
 
 const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {
   auth: { autoRefreshToken: false, persistSession: false },
@@ -58,12 +63,24 @@ const PROBE_BYTES = 64 * 1024;
 const OS_HOSTS = new Set(["api.opensubtitles.com", "vip-api.opensubtitles.com"]);
 const OS_PATHS = /^\/(login|logout|subtitles|download|infos\/user)$/;
 const OS_PER_MIN = 40;
-const osHits = new Map<string, { n: number; until: number }>();
-function osLimited(user: string) {
-  const now = Date.now(), h = osHits.get(user);
-  if (!h || h.until < now) { if (osHits.size > 5000) osHits.clear(); osHits.set(user, { n: 1, until: now + 60_000 }); return false; }
-  return ++h.n > OS_PER_MIN;
+// build 95: tellers per account per minuut in het geheugen (begrensd), in plaats van een databaseschrijfactie per
+// HLS-segment (bingr_rate_hit). Geldt per instantie van de functie; zelfde grenzen als voorheen.
+type Hits = Map<string, { n: number; until: number }>;
+const MAX_COUNTERS = 10_000;
+function minuteLimited(map: Hits, key: string, max: number) {
+  const now = Date.now(), h = map.get(key);
+  if (h && h.until >= now) return ++h.n > max;
+  if (map.size >= MAX_COUNTERS) {
+    for (const [k, v] of map) if (v.until < now) map.delete(k);
+    if (map.size >= MAX_COUNTERS) map.clear();
+  }
+  map.set(key, { n: 1, until: now + 60_000 });
+  return false;
 }
+const osHits: Hits = new Map();
+const osLimited = (user: string) => minuteLimited(osHits, user, OS_PER_MIN);
+const proxyHits: Hits = new Map();
+const proxyLimited = (user: string) => minuteLimited(proxyHits, user, RATE_PER_MIN);
 async function osApi(req: Request, b: Record<string, unknown>) {
   const json = jsonFor(req);
   const key = Deno.env.get("BINGR_OPENSUBTITLES_API_KEY") ?? "";
@@ -90,14 +107,28 @@ async function osApi(req: Request, b: Record<string, unknown>) {
   } catch { return json({ error: "upstream_failed" }, 502); }
   finally { clearTimeout(timer); }
 }
+const osHost = (u: URL) => u.protocol === "https:" && /(^|\.)opensubtitles\.(org|com)$/i.test(u.hostname);
 async function osFile(req: Request, raw: string) {
   const json = jsonFor(req);
   const t = parseTarget(raw);
-  if (!t || t.protocol !== "https:" || !/(^|\.)opensubtitles\.(org|com)$/i.test(t.hostname)) return json({ error: "host_not_allowed" }, 403);
+  if (!t || !osHost(t)) return json({ error: "host_not_allowed" }, 403);
   const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 20_000);
   try {
-    const r = await fetch(t, { headers: { "User-Agent": USER_AGENT }, signal: ctl.signal, redirect: "follow" });
-    if (!/(^|\.)opensubtitles\.(org|com)$/i.test(new URL(r.url || t.toString()).hostname)) return json({ error: "host_not_allowed" }, 403);
+    // build 95: doorverwijzingen zelf volgen (max. 5), elke stap alleen naar opensubtitles.org/.com over https en met
+    // een verse DNS-controle (guardedFetch), zodat een doorverwijzing nooit bij een intern adres uitkomt
+    let url = t, r: Response | null = null;
+    for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+      const got = await guardedFetch(url, { "User-Agent": USER_AGENT }, ctl.signal);
+      if ("error" in got) return json({ error: got.error }, got.status);
+      r = got;
+      const loc = r.headers.get("location");
+      if (r.status < 300 || r.status >= 400 || !loc) break;
+      await r.body?.cancel();
+      const next = new URL(loc, url);
+      if (!osHost(next) || next.username || next.password) return json({ error: "host_not_allowed" }, 403);
+      url = next; r = null;
+    }
+    if (!r) return json({ error: "upstream_failed" }, 502);
     const buf = new Uint8Array(await r.arrayBuffer());
     if (buf.length > 5 * 1024 * 1024) return json({ error: "too_large" }, 413);
     return new Response(buf, { status: r.status,
@@ -134,22 +165,60 @@ function jwtExp(token: string): number {
     return typeof c.exp === "number" ? c.exp * 1000 : 0;
   } catch { return 0; }
 }
-async function userFor(req: Request): Promise<string | number> {
+// build 95: geblokkeerd account (banned_until in de toekomst, of de auth-server zegt user_banned) -> 401 BANNED_BODY.
+// Alleen een niet-geblokkeerd account komt in de cache (max. 5 min), dus een nieuwe blokkade werkt binnen 5 minuten.
+async function userFor(req: Request): Promise<string | Response> {
+  const json = jsonFor(req);
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
-  if (!token || token.split(".").length !== 3) return 401;
+  if (!token || token.split(".").length !== 3) return json({ error: "not_signed_in" }, 401);
   const exp = jwtExp(token);
-  if (exp && exp < Date.now()) return 401;
+  if (exp && exp < Date.now()) return json({ error: "not_signed_in" }, 401);
   const key = await sha256hex(token);
   const hit = authCache.get(key);
   if (hit && hit.until > Date.now()) return hit.id;
   const { data, error } = await admin.auth.getUser(token);
   if (!error && data?.user) {
+    const until = Math.min(Date.now() + BAN_TTL_MS, exp || Infinity);
+    if (bannedUntilActive((data.user as { banned_until?: string }).banned_until)) {
+      rememberBan(data.user.id, true, until);
+      return json(BANNED_BODY, 401);
+    }
     if (authCache.size > 5000) authCache.clear();
-    authCache.set(key, { id: data.user.id, until: Math.min(Date.now() + 5 * 60_000, exp || Infinity) });
+    authCache.set(key, { id: data.user.id, until });
     return data.user.id;
   }
+  if (isBanError(error)) return json(BANNED_BODY, 401);
   const status = (error as { status?: number } | null)?.status ?? 0;
-  return status >= 400 && status < 500 ? 401 : 503;
+  return status >= 400 && status < 500 ? json({ error: "not_signed_in" }, 401) : json({ error: "unavailable" }, 503);
+}
+
+// build 95: blokkade voor de GET-vorm (token van 6 uur, zonder access token): opzoeken per account, max. 5 min in het
+// geheugen. Verwijderd account -> "gone" (token ongeldig). Auth-server onbereikbaar -> niet tegenhouden (30 s), zodat een
+// storing het afspelen niet stopt.
+const BAN_TTL_MS = 5 * 60_000;
+const banCache = new Map<string, { state: "ok" | "banned" | "gone"; until: number }>();
+// alleen "geblokkeerd" overnemen uit userFor; "in orde" zoekt de GET-vorm zelf op
+function rememberBan(id: string, banned: boolean, until = Date.now() + BAN_TTL_MS) {
+  if (banCache.size > 5000) banCache.clear();
+  banCache.set(id, { state: banned ? "banned" : "ok", until: Math.min(until, Date.now() + BAN_TTL_MS) });
+}
+async function banState(userId: string): Promise<"ok" | "banned" | "gone"> {
+  const hit = banCache.get(userId);
+  if (hit && hit.until > Date.now()) return hit.state;
+  let state: "ok" | "banned" | "gone" = "ok", ttl = BAN_TTL_MS;
+  try {
+    const { data, error } = await admin.auth.admin.getUserById(userId);
+    if (!error && data?.user) state = bannedUntilActive((data.user as { banned_until?: string }).banned_until) ? "banned" : "ok";
+    else if (isBanError(error)) state = "banned";
+    else {
+      const status = (error as { status?: number } | null)?.status ?? 0;
+      if (status === 404) state = "gone";
+      else ttl = 30_000; // storing: niet tegenhouden, straks opnieuw kijken
+    }
+  } catch { ttl = 30_000; }
+  if (banCache.size > 5000) banCache.clear();
+  banCache.set(userId, { state, until: Date.now() + ttl });
+  return state;
 }
 
 // ---- sleutels: afgeleid van BINGR_SOURCES_KEY (staat alleen op de server) ----
@@ -246,45 +315,102 @@ async function allowedHosts(userId: string): Promise<Set<string>> {
 function hostAllowed(host: string, hosts: Set<string>) {
   return hosts.has(host) || hosts.has("*." + baseDomain(host));
 }
-// nooit naar interne adressen, ook niet via een doorverwijzing
-function privateIPv4(ip: string) {
-  const m = ip.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
-  if (!m) return false;
-  const [a, b] = [Number(m[1]), Number(m[2])];
-  return a === 10 || a === 127 || a === 0 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) ||
-    (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127) || (a === 198 && (b === 18 || b === 19)) || a >= 224;
-}
-function privateIPv6(ip: string) {
-  const v = ip.toLowerCase();
-  if (v === "::" || v === "::1") return true;
-  if (/^f[cd]/.test(v) || /^fe[89ab]/.test(v)) return true; // ULA en link-local
-  const mapped = v.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
-  return mapped ? privateIPv4(mapped[1]) : false;
-}
+// nooit naar interne adressen, ook niet via een doorverwijzing. build 95: IP-controle in ip.ts (isBlockedIP, getest).
 function privateHost(host: string) {
-  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") || host.endsWith(".internal")) return true;
-  if (host.startsWith("[") || host.includes(":")) return true; // IPv6-literals niet nodig voor IPTV-servers
-  if (/^\d+$/.test(host) || /^0x/i.test(host)) return true; // 2130706433, 0x7f000001
-  return privateIPv4(host);
+  const h = host.toLowerCase().replace(/\.$/, "");
+  if (h === "localhost" || h.endsWith(".localhost") || h.endsWith(".local") || h.endsWith(".internal")) return true;
+  if (h.startsWith("[") || h.includes(":")) return true; // IPv6-literals niet nodig voor IPTV-servers
+  const lit = ipLiteral(h); // new URL() maakt van 2130706433 / 0x7f.1 / 017700000001 al 127.0.0.1; de rest weigeren
+  if (lit) return "bad" in lit || isBlockedIP(lit.ip);
+  return false;
 }
-// na DNS: wijst de naam naar een intern adres? (als de runtime geen DNS-opvraging kent, telt alleen de naamcontrole)
-const dnsCache = new Map<string, { bad: boolean; until: number }>();
-async function resolvesPrivate(host: string): Promise<boolean> {
-  if (/^[\d.]+$/.test(host)) return privateIPv4(host);
-  const hit = dnsCache.get(host);
-  if (hit && hit.until > Date.now()) return hit.bad;
-  let bad = false;
+
+// build 95: DNS vlak voor elke aanvraag. A én AAAA; elk adres moet publiek zijn. Een DNS-fout of time-out (anders dan
+// "geen records van dit type") = weigeren; geen enkel adres = weigeren. Vroeger telde een fout als "in orde".
+type Blocked = { error: string; status: number };
+type Lookup = { addrs: string[] } | Blocked;
+const DNS_TIMEOUT_MS = 2500;
+let dnsMissingLogged = false;
+/** build 95: voor ping/statuscontrole: kan deze runtime DNS opvragen en IP's vastzetten? */
+export function proxyCaps() { return { dns: typeof Deno.resolveDns === "function", pin: !!pinnedClient() }; }
+// alleen goedgekeurde adressen, kort: wordt alleen gebruikt voor http-doelen, die naar het IP zelf gaan (vastgezet)
+const dnsCache = new Map<string, { addrs: string[]; until: number }>();
+async function resolveOne(host: string, type: "A" | "AAAA"): Promise<string[] | null> {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), DNS_TIMEOUT_MS);
   try {
-    const look = (t: "A" | "AAAA") => Promise.race([
-      Deno.resolveDns(host, t).catch(() => [] as string[]),
-      new Promise<string[]>((r) => setTimeout(() => r([]), 2500)),
-    ]);
-    const [a, aaaa] = await Promise.all([look("A"), look("AAAA")]);
-    bad = a.some(privateIPv4) || aaaa.some(privateIPv6);
-  } catch { /* geen DNS in deze runtime */ }
+    return await Deno.resolveDns(host, type, { signal: ctl.signal });
+  } catch (e) {
+    // NotFound = deze naam heeft geen records van dit type (bv. geen AAAA): gewoon leeg
+    if (!ctl.signal.aborted && e instanceof Deno.errors.NotFound) return [];
+    return null; // time-out of andere DNS-fout
+  } finally { clearTimeout(timer); }
+}
+async function lookup(hostIn: string, useCache: boolean): Promise<Lookup> {
+  const host = hostIn.toLowerCase().replace(/\.$/, "");
+  if (privateHost(host)) return { error: "host_not_allowed", status: 403 };
+  const lit = ipLiteral(host);
+  if (lit && "ip" in lit) return { addrs: [lit.ip] }; // publiek IP-literal (privateHost keurde het al)
+  if (useCache) {
+    const hit = dnsCache.get(host);
+    if (hit && hit.until > Date.now()) return { addrs: hit.addrs };
+  }
+  if (typeof Deno.resolveDns !== "function") {
+    // build 95: deze runtime kan geen DNS opvragen: niet alles weigeren (dan speelt de webspeler niets meer af);
+    // interne namen en IP-adressen zijn hierboven al geweigerd. Leeg = niet vastzetten, op hostnaam ophalen.
+    if (!dnsMissingLogged) { dnsMissingLogged = true; console.error("web-proxy: geen Deno.resolveDns; alleen hostnaam/IP-controle"); }
+    return { addrs: [] };
+  }
+  const [a, aaaa] = await Promise.all([resolveOne(host, "A"), resolveOne(host, "AAAA")]);
+  // een fout bij één van beide (bv. een kapotte AAAA-server) mag; beide fout = weigeren
+  if (a == null && aaaa == null) return { error: "upstream_failed", status: 502 };
+  const addrs = [...(a ?? []), ...(aaaa ?? [])];
+  if (!addrs.length) return { error: "upstream_failed", status: 502 };
+  if (addrs.some(isBlockedIP)) return { error: "host_not_allowed", status: 403 };
   if (dnsCache.size > 5000) dnsCache.clear();
-  dnsCache.set(host, { bad, until: Date.now() + 5 * 60_000 });
-  return bad;
+  dnsCache.set(host, { addrs, until: Date.now() + 60_000 });
+  return { addrs };
+}
+
+// build 95: http-doelen naar het gecontroleerde IP-adres, met de eigen Host-header (geen DNS-rebinding tussen controle
+// en verbinding). Deno's fetch negeert een eigen Host-header, behalve met een client met allowHost (Deno >= 1.44).
+// Standaard UIT (aan met function-secret BINGR_PROXY_PIN_IP=1): of de runtime van de server die Host-header echt
+// meestuurt is niet zeker, en zonder zou een IPTV-server met meerdere sites op één IP de verkeerde site geven. Uit:
+// vlak voor elke aanvraag opnieuw DNS opvragen, en elk adres moet publiek zijn.
+let pinClient: Deno.HttpClient | null | undefined;
+function pinnedClient(): Deno.HttpClient | null {
+  if (pinClient !== undefined) return pinClient;
+  pinClient = null;
+  if (Deno.env.get("BINGR_PROXY_PIN_IP") !== "1") return pinClient;
+  try {
+    if (typeof Deno.createHttpClient === "function") pinClient = Deno.createHttpClient({ allowHost: true });
+  } catch (e) { console.error("web-proxy: createHttpClient", e instanceof Error ? e.message : e); }
+  if (!pinClient) console.error("web-proxy: geen allowHost-client; http-doelen met een tweede DNS-controle in plaats van een vast IP");
+  return pinClient;
+}
+
+/**
+ * build 95: één aanvraag (GET, redirect: manual) met een DNS-controle vlak ervoor. http: naar het gecontroleerde IP
+ * (Host-header = de echte host), https: hostnaam blijft (TLS/SNI), maar de DNS is net opnieuw gecontroleerd.
+ */
+async function guardedFetch(url: URL, headers: Record<string, string>, signal: AbortSignal): Promise<Response | Blocked> {
+  const host = url.hostname;
+  const client = url.protocol === "http:" ? pinnedClient() : null;
+  const r = await lookup(host, !!client);
+  if ("error" in r) return r;
+  if (client && r.addrs.length) {
+    const ip = r.addrs.find((x) => !x.includes(":")) ?? r.addrs[0]; // IPv4 eerst
+    const pinned = new URL(url.toString());
+    pinned.hostname = ip.includes(":") ? `[${ip}]` : ip;
+    return await fetch(pinned, { method: "GET", headers: { ...headers, Host: url.host }, redirect: "manual", signal, client });
+  }
+  if (url.protocol === "http:") {
+    // geen vast IP mogelijk: vlak ervoor nog een keer opvragen; ook dan moet elk adres publiek zijn. Niet dezelfde set
+    // eisen: CDN's en round-robin-DNS geven bij elke vraag andere adressen (dat zou echte streams weigeren).
+    const again = await lookup(host, false);
+    if ("error" in again) return again;
+  }
+  return await fetch(url, { method: "GET", headers, redirect: "manual", signal });
 }
 
 type Upstream = { res: Response; url: URL; hosts: string[] } | { error: string; status: number };
@@ -303,14 +429,16 @@ async function upstream(target: URL, range: string | null, ctl: AbortController)
       for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
         const headers: Record<string, string> = { "User-Agent": USER_AGENT, "Accept": "*/*", "Accept-Encoding": "identity" };
         if (range) headers["Range"] = range;
-        res = await fetch(url, { method: "GET", headers, redirect: "manual", signal: ctl.signal });
+        const got = await guardedFetch(url, headers, ctl.signal);
+        if ("error" in got) return got;
+        res = got;
         if (res.status < 300 || res.status >= 400 || !res.headers.get("location")) break;
         await res.body?.cancel();
         const next = new URL(res.headers.get("location")!, url);
         const host = next.hostname.toLowerCase();
         if (next.protocol !== "https:" && next.protocol !== "http:") return { error: "bad_url", status: 400 };
         if (next.username || next.password) return { error: "bad_url", status: 400 };
-        if (privateHost(host) || await resolvesPrivate(host)) return { error: "host_not_allowed", status: 403 };
+        if (privateHost(host)) return { error: "host_not_allowed", status: 403 }; // DNS: guardedFetch bij de volgende stap
         url = next;
         hosts.push(host + (next.port ? ":" + next.port : ""));
         res = null;
@@ -330,17 +458,22 @@ async function upstream(target: URL, range: string | null, ctl: AbortController)
 /** Diagnose (POST {action:"probe", url}): eerste 64 KB en wat de server antwoordt, als JSON. */
 async function probe(req: Request, target: URL, user: string) {
   const json = jsonFor(req);
-  const { data: ok, error: re } = await admin.rpc("bingr_rate_hit", { p_key: `proxy:${user}`, p_max: RATE_PER_MIN });
-  if (!re && ok === false) return json({ error: "rate_limited" }, 429);
+  if (proxyLimited(user)) return json({ error: "rate_limited" }, 429);
   const host = target.hostname.toLowerCase();
-  if (privateHost(host) || !hostAllowed(host, await allowedHosts(user)) || await resolvesPrivate(host)) return json({ error: "host_not_allowed" }, 403);
+  // DNS-controle volgt in guardedFetch, vlak voor elke aanvraag
+  if (privateHost(host) || !hostAllowed(host, await allowedHosts(user))) return json({ error: "host_not_allowed" }, 403);
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), 20_000);
   // de webspeler geeft het na een paar seconden op (HLS-controle): dan ook de aanvraag naar de server stoppen
   try { req.signal?.addEventListener("abort", () => ctl.abort()); } catch { /* geen signal in deze runtime */ }
   const t0 = Date.now();
   const up = await upstream(target, `bytes=0-${PROBE_BYTES - 1}`, ctl);
-  if ("error" in up) { clearTimeout(timer); return json({ probe: true, error: up.error, ms: Date.now() - t0 }); }
+  if ("error" in up) {
+    clearTimeout(timer);
+    // build 95: intern adres (na DNS, ook via een doorverwijzing) blijft een 403, zoals vóór de DNS-controle in guardedFetch
+    if (up.error === "host_not_allowed") return json({ error: "host_not_allowed" }, 403);
+    return json({ probe: true, error: up.error, ms: Date.now() - t0 });
+  }
   const { res, url, hosts } = up;
   const parts: Uint8Array[] = [];
   let n = 0;
@@ -373,13 +506,13 @@ async function proxy(req: Request, opts: { target: URL; range: string | null; us
   const { target, user, get } = opts;
   let range = opts.range;
   opts.openRange = !!range && /^bytes=\d+-$/.test(range);
-  const { data: ok, error: re } = await admin.rpc("bingr_rate_hit", { p_key: `proxy:${user}`, p_max: RATE_PER_MIN });
-  if (!re && ok === false) return json({ error: "rate_limited" }, 429);
+  // build 95: teller in het geheugen in plaats van een databaseschrijfactie per HLS-segment
+  if (proxyLimited(user)) return json({ error: "rate_limited" }, 429);
 
   const host = target.hostname.toLowerCase();
   if (privateHost(host)) return json({ error: "host_not_allowed" }, 403);
   if (!opts.trusted && !hostAllowed(host, await allowedHosts(user))) return json({ error: "host_not_allowed" }, 403);
-  if (await resolvesPrivate(host)) return json({ error: "host_not_allowed" }, 403);
+  // DNS (intern adres?) controleert guardedFetch vlak voor elke aanvraag, ook bij elke doorverwijzing
 
   // GET-bereik voor iets dat geen afspeellijst is: begrenzen tot GET_CHUNK. Open (bytes=N-, Chrome/Firefox) én gesloten
   // bereiken die groter zijn (Safari vraagt bytes=0-<eind>): anders loopt een film van > 200 MB op too_large (413)
@@ -528,6 +661,10 @@ Deno.serve(async (req) => {
       const t = q.get("t") ?? "";
       const user = await tokenUser(t);
       if (!user) return json({ error: "bad_token" }, 401);
+      // build 95: geblokkeerd of verwijderd account: het token (6 uur) werkt niet meer (opgezocht, max. 5 min in het geheugen)
+      const bs = await banState(user);
+      if (bs === "banned") return json(BANNED_BODY, 401);
+      if (bs === "gone") return json({ error: "bad_token" }, 401);
       const range = req.headers.get("Range");
       if (range && !/^bytes=\d*-\d*(,\s*\d*-\d*)*$/.test(range)) return json({ error: "bad_range" }, 400);
       const s = q.get("s") ?? "";
@@ -544,19 +681,17 @@ Deno.serve(async (req) => {
       if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error();
     } catch { return json({ error: "bad_json" }, 400); }
 
-    if (body.action === "ping") return json({ ok: true }); // statuspagina: werkt de proxy (zonder inloggen)
+    if (body.action === "ping") return json({ ok: true, ...proxyCaps() }); // statuspagina: werkt de proxy (zonder inloggen)
 
     if (body.action === "token") {
       const user = await userFor(req);
-      if (user === 401) return json({ error: "not_signed_in" }, 401);
-      if (typeof user !== "string") return json({ error: "unavailable" }, 503);
+      if (user instanceof Response) return user;
       return json(await makeToken(user));
     }
 
     if (body.action === "os" || body.action === "osfile") {
       const ou = await userFor(req);
-      if (ou === 401) return json({ error: "not_signed_in" }, 401);
-      if (typeof ou !== "string") return json({ error: "unavailable" }, 503);
+      if (ou instanceof Response) return ou;
       if (osLimited(ou)) return json({ error: "rate_limited" }, 429);
       return body.action === "os" ? await osApi(req, body) : await osFile(req, String(body.url ?? ""));
     }
@@ -565,16 +700,14 @@ Deno.serve(async (req) => {
     if (!target) return json({ error: "bad_url" }, 400);
     if (body.action === "probe") {
       const pu = await userFor(req);
-      if (pu === 401) return json({ error: "not_signed_in" }, 401);
-      if (typeof pu !== "string") return json({ error: "unavailable" }, 503);
+      if (pu instanceof Response) return pu;
       return await probe(req, target, pu);
     }
     const range = body.range == null || body.range === "" ? null : String(body.range);
     if (range && !/^bytes=\d*-\d*(,\s*\d*-\d*)*$/.test(range)) return json({ error: "bad_range" }, 400);
 
     const user = await userFor(req);
-    if (user === 401) return json({ error: "not_signed_in" }, 401);
-    if (typeof user !== "string") return json({ error: "unavailable" }, 503);
+    if (user instanceof Response) return user;
     return await proxy(req, { target, range, user, trusted: false, get: false });
   } catch (e) {
     console.error("web-proxy", e instanceof Error ? e.message : e);

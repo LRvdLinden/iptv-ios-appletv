@@ -26,6 +26,7 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { smtpConfigured, smtpFrom, transport } from "../_shared/mail.ts";
 import { button, esc, eyebrow, footerHtml, layout, redBar, title } from "../_shared/layout.ts";
+import { clientIp } from "../_shared/ip.ts"; // build 95: laatste X-Forwarded-For-waarde, niet de eerste
 import { type Monitor, runCheck } from "./checks.ts";
 import { type DayRow, daySeries, durationS, evaluate, isDue, type State, uptimePct, windowUptime } from "./logic.ts";
 import {
@@ -732,11 +733,6 @@ async function unsubscribe(b: Record<string, unknown>) {
   if (!validToken(b.token)) return { status: 400, body: { error: "bad_token" } };
   const { data } = await db.from("status_subscribers").delete().eq("token", b.token as string).select("id");
   return { status: 200, body: { ok: true, removed: (data ?? []).length > 0 } };
-}
-
-function clientIp(req: Request) {
-  const f = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim();
-  return (f || req.headers.get("cf-connecting-ip") || req.headers.get("x-real-ip") || "?").slice(0, 64);
 }
 
 // ---- beheer van monitors ----

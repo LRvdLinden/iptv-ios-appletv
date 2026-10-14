@@ -37,7 +37,14 @@ export type MailData = {
   createdAt?: string;
   // antwoorden per e-mail komen in het ticket (IMAP-import staat aan): markeringsregel bovenaan en andere voettekst
   replyByMail?: boolean;
+  // build 95: customer_created zonder onderwerp, bericht en andere ingevulde tekst (alleen nummer, een neutrale regel en
+  // de link naar het ticket): voor gasten en tickets uit een binnengekomen mail, zodat niemand via het formulier eigen
+  // tekst of links in een mail van Bingr naar een willekeurig adres kan laten sturen
+  minimal?: boolean;
+  // build 95: link voor een nieuwe vraag (gesloten ticket); standaard https://support.bingr.online/nieuw/
+  newUrl?: string;
 };
+export const NEW_TICKET_URL = "https://support.bingr.online/nieuw/";
 
 export { bodyHtml, esc };
 
@@ -58,6 +65,11 @@ const TXT: Record<Lang, T> = {
     closed_h: "Je ticket is gesloten",
     closed_p: "Je ticket is gesloten. Heb je een nieuwe vraag? Maak dan een nieuw ticket aan op support.bingr.online.",
     open_h: "De status van je ticket is gewijzigd", open_p: "De status van je ticket is bijgewerkt.",
+    // build 95
+    createdMin_p: "We hebben je vraag ontvangen en reageren zo snel mogelijk, meestal binnen één werkdag. Met de knop hieronder bekijk je je ticket.",
+    replyClosed_p: "Bingr Support heeft gereageerd en je ticket daarna gesloten.",
+    closedFoot: "Dit ticket is gesloten; reageren kan niet meer. Heb je een nieuwe vraag? Maak een nieuw ticket aan:",
+    newTicket: "Nieuwe vraag stellen",
   },
   en: {
     ticket: "Support ticket", status: "Status", category: "Category", platform: "Platform", version: "App version",
@@ -74,6 +86,11 @@ const TXT: Record<Lang, T> = {
     closed_h: "Your ticket has been closed",
     closed_p: "Your ticket has been closed. Got a new question? Create a new ticket at support.bingr.online.",
     open_h: "Your ticket status has changed", open_p: "The status of your ticket has been updated.",
+    // build 95
+    createdMin_p: "We've received your request and will get back to you as soon as possible, usually within one business day. Use the button below to view your ticket.",
+    replyClosed_p: "Bingr Support has replied and then closed your ticket.",
+    closedFoot: "This ticket is closed, so replies are no longer possible. Got a new question? Create a new ticket:",
+    newTicket: "Ask a new question",
   },
 };
 
@@ -82,7 +99,9 @@ export function subjectFor(d: MailData): string {
   const s = d.subject.replace(/[\r\n]+/g, " ").slice(0, 120);
   const nl = d.lang === "nl";
   switch (d.kind) {
-    case "customer_created": return `${n} ${nl ? "We hebben je vraag ontvangen" : "We've received your request"}: ${s}`;
+    case "customer_created":
+      // build 95: minimale bevestiging zonder het (door de afzender gekozen) onderwerp
+      return d.minimal ? `${n} ${nl ? "We hebben je vraag ontvangen" : "We've received your request"}` : `${n} ${nl ? "We hebben je vraag ontvangen" : "We've received your request"}: ${s}`;
     case "customer_reply": return `${n} ${nl ? "Nieuw antwoord" : "New reply"}: ${s}`;
     case "customer_status": return `${n} ${STATUS_LABEL[d.lang][d.status]}: ${s}`;
     case "support_created": return `${n} Nieuw ticket: ${s}`;
@@ -105,10 +124,14 @@ export function renderMail(d: MailData): { subject: string; html: string; text: 
   const cat = d.category ? (CATEGORY_LABEL[lang][d.category] ?? d.category) : "";
   const plat = d.platform ? (PLATFORM_LABEL[d.platform] ?? d.platform) : "";
 
+  const minimal = d.kind === "customer_created" && !!d.minimal;
+  // build 95: gesloten ticket (antwoord met status gesloten, of de statusmail): geen "beantwoord", wel een link voor een nieuwe vraag
+  const closed = !toSupport && d.status === "closed" && (d.kind === "customer_reply" || d.kind === "customer_status");
+  const newUrl = d.newUrl || NEW_TICKET_URL;
   let heading = "", intro = "", boxLabel = "", accent = "#E50914", btn = t.view;
   switch (d.kind) {
-    case "customer_created": heading = t.created_h; intro = t.created_p; boxLabel = t.yourMsg; accent = "#5a5a5a"; break;
-    case "customer_reply": heading = t.reply_h; intro = t.reply_p; boxLabel = t.reply; btn = t.viewReply; break;
+    case "customer_created": heading = t.created_h; intro = minimal ? t.createdMin_p : t.created_p; boxLabel = t.yourMsg; accent = "#5a5a5a"; break;
+    case "customer_reply": heading = t.reply_h; intro = closed ? t.replyClosed_p : t.reply_p; boxLabel = t.reply; btn = closed ? t.view : t.viewReply; break;
     case "customer_status":
       heading = d.status === "resolved" ? t.resolved_h : d.status === "closed" ? t.closed_h : t.open_h;
       intro = d.status === "resolved" ? t.resolved_p : d.status === "closed" ? t.closed_p : t.open_p;
@@ -126,24 +149,31 @@ export function renderMail(d: MailData): { subject: string; html: string; text: 
       ["App-versie", esc(d.appVersion ?? "")],
       ["Taal", d.lang === "en" ? "Engels" : "Nederlands"],
     ]
-    : [[t.category, esc(cat)], [t.platform, esc(plat)], [t.version, esc(d.appVersion ?? "")]];
+    : minimal ? [] : [[t.category, esc(cat)], [t.platform, esc(plat)], [t.version, esc(d.appVersion ?? "")]];
+  const body = minimal ? "" : d.body;
+  const closedHtml = closed && d.kind === "customer_reply"
+    ? `<p style="margin:16px 0 0;font-size:14px;line-height:21px;color:#d6d6d6">${esc(t.closedFoot)} <a href="${esc(newUrl)}" style="color:#ffffff;font-weight:700">${esc(t.newTicket)}</a></p>`
+    : "";
 
   const card = `
 ${eyebrow(t.ticket)}
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:6px 0 0"><tr>
 <td style="font-size:34px;line-height:40px;font-weight:900;letter-spacing:-.5px;color:#ffffff;vertical-align:middle">${esc(num)}</td>
 <td align="right" style="vertical-align:middle">${badge(d.status, statusLabel)}</td></tr></table>
-<div style="font-size:17px;line-height:24px;font-weight:700;color:#ffffff;margin:6px 0 0;word-break:break-word">${esc(d.subject)}</div>
+${minimal ? "" : `<div style="font-size:17px;line-height:24px;font-weight:700;color:#ffffff;margin:6px 0 0;word-break:break-word">${esc(d.subject)}</div>`}
 ${redBar()}
 ${title(heading)}
 <p style="margin:0;font-size:15px;line-height:23px;color:#d6d6d6">${esc(intro)}</p>
-${d.body ? messageBox(boxLabel, d.body, accent) : ""}
+${body ? messageBox(boxLabel, body, accent) : ""}
 ${button(d.url, btn)}
+${closedHtml}
 ${detailRows(meta)}
 ${copyLink(lang, d.url)}
 ${toSupport && d.customerUrl ? `<p style="margin:10px 0 0;font-size:12px;line-height:18px;color:#8c8c8c">Klantweergave: <a href="${esc(d.customerUrl)}" style="color:#b3b3b3;word-break:break-all">${esc(d.customerUrl)}</a></p>` : ""}`;
 
-  const footReply = d.replyByMail ? t.footMail : t.footReply;
+  const footReply = closed ? `${t.closedFoot} ${newUrl}` : d.replyByMail ? t.footMail : t.footReply;
+  // gesloten: geen markeringsregel "Antwoord boven deze lijn" (reageren op dit ticket kan niet meer)
+  const marker = d.replyByMail && !closed;
   const supportFoot = d.replyByMail
     ? `Melding van het supportsysteem van Bingr. Antwoord je met "Beantwoorden" (vanaf support@ of een adres uit BINGR_SUPPORT_AGENTS), dan komt je antwoord in het ticket en mailt het systeem het naar de klant. Schrijf boven de lijn bovenaan.`
     : `Melding van het supportsysteem van Bingr. Antwoord je met "Beantwoorden", dan gaat je mail naar de klant maar komt hij niet in het ticket; antwoord liever in het beheer.`;
@@ -152,13 +182,14 @@ ${toSupport && d.customerUrl ? `<p style="margin:10px 0 0;font-size:12px;line-he
   const html = layout({
     lang, docTitle: `${num} · Bingr Support`, preheader: `${num} · ${heading}`, label: "Support",
     // markeringsregel: alles daaronder is citaat (zo knipt de inbox-import een antwoord betrouwbaar af)
-    markerText: d.replyByMail ? REPLY_MARKER : undefined,
+    markerText: marker ? REPLY_MARKER : undefined,
     contentHtml: card, footerHtml: footerHtml({ lang, reasonHtml: esc(foot) }),
   });
 
-  const lines: string[] = [...(d.replyByMail ? [REPLY_MARKER, ""] : []), "BINGR Support", "", `${t.ticket} ${num} · ${statusLabel}`, d.subject, "", heading, intro];
-  if (d.body) lines.push("", `--- ${boxLabel} ---`, d.body, "---");
+  const lines: string[] = [...(marker ? [REPLY_MARKER, ""] : []), "BINGR Support", "", `${t.ticket} ${num} · ${statusLabel}`, ...(minimal ? [] : [d.subject]), "", heading, intro];
+  if (body) lines.push("", `--- ${boxLabel} ---`, body, "---");
   lines.push("", `${btn}: ${d.url}`);
+  if (closed) lines.push(`${t.newTicket}: ${newUrl}`);
   if (toSupport && d.customerUrl) lines.push(`Klantweergave: ${d.customerUrl}`);
   const metaText = meta.filter(([, v]) => v).map(([k, v]) => `${k}: ${unesc(v.replace(/<[^>]+>/g, ""))}`);
   if (metaText.length) lines.push("", ...metaText);
