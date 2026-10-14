@@ -4,6 +4,25 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 76
+_14 oktober 2026_
+
+### Website
+
+**Verbeterd**
+
+- De hulp staat nu op support.bingr.online: artikelen per onderwerp (inloggen en koppelen, je afspeellijst, profielen, installeren op Android, Android TV, Fire TV en Samsung TV, en de webspeler) met direct een knop voor een nieuw ticket; bingr.online/support.html stuurt automatisch door en de footer linkt naar Support
+
+### Server
+
+**Nieuw**
+
+- Support per e-mail: antwoord je op een mail van Bingr Support, dan komt je reactie direct bij je ticket; een mail aan support@bingr.online wordt automatisch een nieuw ticket met bevestiging
+
+**Verbeterd**
+
+- Supportmails hebben een duidelijke regel om boven te antwoorden; geciteerde tekst, handtekeningen en automatische antwoorden worden genegeerd, en de account-mails linken in de footer naar support.bingr.online
+
 ## Versie 1.0.0 · Build 75
 _14 oktober 2026_
 

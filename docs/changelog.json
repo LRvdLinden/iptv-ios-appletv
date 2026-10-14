@@ -1,5 +1,36 @@
 [
  {
+  "build": 76,
+  "version": "1.0.0",
+  "date": "2026-10-14",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Support per e-mail: antwoord je op een mail van Bingr Support, dan komt je reactie direct bij je ticket; een mail aan support@bingr.online wordt automatisch een nieuw ticket met bevestiging",
+    "en": "Email support: replying to a Bingr Support email adds your reply straight to your ticket; an email to support@bingr.online automatically becomes a new ticket with a confirmation"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Supportmails hebben een duidelijke regel om boven te antwoorden; geciteerde tekst, handtekeningen en automatische antwoorden worden genegeerd, en de account-mails linken in de footer naar support.bingr.online",
+    "en": "Support emails have a clear 'reply above this line' marker; quoted text, signatures and auto-replies are ignored, and account emails link to support.bingr.online in the footer"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "web"
+    ],
+    "nl": "De hulp staat nu op support.bingr.online: artikelen per onderwerp (inloggen en koppelen, je afspeellijst, profielen, installeren op Android, Android TV, Fire TV en Samsung TV, en de webspeler) met direct een knop voor een nieuw ticket; bingr.online/support.html stuurt automatisch door en de footer linkt naar Support",
+    "en": "Help now lives at support.bingr.online: articles per topic (signing in and linking, your playlist, profiles, installing on Android, Android TV, Fire TV and Samsung TV, and the web player) with a button for a new ticket; bingr.online/support.html redirects automatically and the footer links to Support"
+   }
+  ]
+ },
+ {
   "build": 75,
   "version": "1.0.0",
   "date": "2026-10-14",

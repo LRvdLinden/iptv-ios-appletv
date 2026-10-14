@@ -33,7 +33,7 @@ def page(nl, en, button_nl, button_en, url="{{ .ConfirmationURL }}", code=False)
 </td></tr>
 <tr><td style="padding:24px 8px 0;font-size:12px;line-height:18px;color:#737373;text-align:center">
 {{{{ if and .Data.lang (eq .Data.lang "nl") }}}}{foot_nl}{{{{ else }}}}{foot_en}{{{{ end }}}}<br><br>
-<a href="https://bingr.online" style="color:#b3b3b3;text-decoration:none;font-weight:700">bingr.online</a> &nbsp;·&nbsp; <a href="https://bingr.online/support.html" style="color:#737373">Support</a> &nbsp;·&nbsp; <a href="https://bingr.online/privacy.html" style="color:#737373">Privacy</a>
+<a href="https://bingr.online" style="color:#b3b3b3;text-decoration:none;font-weight:700">bingr.online</a> &nbsp;·&nbsp; <a href="https://support.bingr.online/" style="color:#737373">Support</a> &nbsp;·&nbsp; <a href="https://bingr.online/privacy.html" style="color:#737373">Privacy</a>
 </td></tr>
 </table></td></tr></table></body></html>'''
 
