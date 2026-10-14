@@ -143,9 +143,11 @@ jobs:
           zip -qr "/tmp/pkg/Bingr-$V-build$B-Xcode.zip" .
           cd /tmp/pkg
           git clone -q --depth 1 "https://x-access-token:${TOKEN}@github.com/LRvdLinden/bingr-beheer.git" beheer
-          # één pakket per Apple-build: staat deze build er al, dan niets doen (een nieuwe Apple-versie krijgt een nieuw buildnummer)
-          if [ -d "beheer/versions/apple/$V-build$B" ]; then echo "::notice::Apple $V build $B staat al in versions/"; exit 0; fi
-          python3 beheer/tools/add_version.py apple "$B" "/tmp/pkg/Bingr-$V-build$B-Xcode.zip" --version "$V"
+          # per platform alleen de nieuwste build (versions/Apple/v<versie>/); staat deze build er al, dan niets doen
+          CUR=$(python3 -c "import json;print(json.load(open('beheer/versions/latest.json')).get('apple',{}).get('build',0))" 2>/dev/null || echo 0)
+          if [ "$CUR" -ge "$B" ]; then echo "::notice::Apple $V build $B staat al in versions/"; exit 0; fi
+          awk -v b="Build $B" '/^## /{f=($0 ~ (b "$"))?1:0; next} f && !/^_.*_$/' x/CHANGELOG.md > notes.md || true
+          python3 beheer/tools/add_version.py apple "$B" "/tmp/pkg/Bingr-$V-build$B-Xcode.zip" --notes notes.md --version "$V"
           cd beheer && git add -A versions
           if git diff --cached --quiet; then echo "::notice::Niets nieuws voor versions/"; exit 0; fi
           git -c user.name=github-actions -c user.email=actions@github.com commit -qm "Versies: Apple $V build $B ($(echo $GITHUB_SHA | cut -c1-7))"
