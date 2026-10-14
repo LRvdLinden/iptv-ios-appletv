@@ -814,7 +814,14 @@
   "Sync failed": "فشلت المزامنة",
   "Support": "الدعم",
   "%d episodes watched": "تمت مشاهدة %d حلقة",
-  "Scan the QR code with your phone to open the Bingr help center.": "امسح رمز QR بهاتفك لفتح مركز مساعدة Bingr."
+  "Scan the QR code with your phone to open the Bingr help center.": "امسح رمز QR بهاتفك لفتح مركز مساعدة Bingr.",
+  "Account blocked": "تم حظر الحساب",
+  "Your account has been blocked. You received an email with the reason and until when. Questions? Go to support.bingr.online.": "تم حظر حسابك. تلقيت رسالة بريد إلكتروني توضح السبب ومدة الحظر. أسئلة؟ تفضل بزيارة support.bingr.online.",
+  "Play trailers automatically": "تشغيل الإعلانات تلقائيًا",
+  "Muted, on movie and series pages. Not in Low Data Mode or with Reduce Motion on.": "بدون صوت، في صفحات الأفلام والمسلسلات. لا يعمل في وضع البيانات المنخفضة أو عند تفعيل تقليل الحركة.",
+  "Sound on": "تشغيل الصوت",
+  "Sound off": "كتم الصوت",
+  "Play trailer again": "إعادة تشغيل الإعلان"
  },
  "de": {
   "%@ is now signed in.": "%@ ist jetzt angemeldet.",
@@ -1631,7 +1638,14 @@
   "Sync failed": "Synchronisierung fehlgeschlagen",
   "Support": "Support",
   "%d episodes watched": "%d Folgen gesehen",
-  "Scan the QR code with your phone to open the Bingr help center.": "Scanne den QR-Code mit deinem Telefon, um das Bingr-Hilfecenter zu öffnen."
+  "Scan the QR code with your phone to open the Bingr help center.": "Scanne den QR-Code mit deinem Telefon, um das Bingr-Hilfecenter zu öffnen.",
+  "Account blocked": "Konto gesperrt",
+  "Your account has been blocked. You received an email with the reason and until when. Questions? Go to support.bingr.online.": "Dein Konto wurde gesperrt. Du hast eine E-Mail mit dem Grund und der Dauer erhalten. Fragen? Besuche support.bingr.online.",
+  "Play trailers automatically": "Trailer automatisch abspielen",
+  "Muted, on movie and series pages. Not in Low Data Mode or with Reduce Motion on.": "Ohne Ton, auf Film- und Serienseiten. Nicht im Modus „Wenig Daten“ oder bei aktivierter Option „Bewegung reduzieren“.",
+  "Sound on": "Ton an",
+  "Sound off": "Ton aus",
+  "Play trailer again": "Trailer erneut abspielen"
  },
  "es": {
   "%@ is now signed in.": "%@ ya ha iniciado sesión.",
@@ -2448,7 +2462,14 @@
   "Sync failed": "Error de sincronización",
   "Support": "Soporte",
   "%d episodes watched": "%d episodios vistos",
-  "Scan the QR code with your phone to open the Bingr help center.": "Escanea el código QR con tu teléfono para abrir el centro de ayuda de Bingr."
+  "Scan the QR code with your phone to open the Bingr help center.": "Escanea el código QR con tu teléfono para abrir el centro de ayuda de Bingr.",
+  "Account blocked": "Cuenta bloqueada",
+  "Your account has been blocked. You received an email with the reason and until when. Questions? Go to support.bingr.online.": "Tu cuenta ha sido bloqueada. Has recibido un correo con el motivo y hasta cuándo. ¿Preguntas? Visita support.bingr.online.",
+  "Play trailers automatically": "Reproducir tráileres automáticamente",
+  "Muted, on movie and series pages. Not in Low Data Mode or with Reduce Motion on.": "Sin sonido, en las páginas de películas y series. No en el modo de datos reducidos ni con Reducir movimiento activado.",
+  "Sound on": "Activar sonido",
+  "Sound off": "Silenciar",
+  "Play trailer again": "Volver a reproducir el tráiler"
  },
  "fr": {
   "%@ is now signed in.": "%@ est maintenant connecté.",
@@ -3265,7 +3286,14 @@
   "Sync failed": "Échec de la synchronisation",
   "Support": "Assistance",
   "%d episodes watched": "%d épisodes vus",
-  "Scan the QR code with your phone to open the Bingr help center.": "Scannez le code QR avec votre téléphone pour ouvrir le centre d’aide de Bingr."
+  "Scan the QR code with your phone to open the Bingr help center.": "Scannez le code QR avec votre téléphone pour ouvrir le centre d’aide de Bingr.",
+  "Account blocked": "Compte bloqué",
+  "Your account has been blocked. You received an email with the reason and until when. Questions? Go to support.bingr.online.": "Votre compte a été bloqué. Vous avez reçu un e-mail indiquant la raison et la durée. Des questions ? Rendez-vous sur support.bingr.online.",
+  "Play trailers automatically": "Lire les bandes-annonces automatiquement",
+  "Muted, on movie and series pages. Not in Low Data Mode or with Reduce Motion on.": "Sans le son, sur les pages des films et séries. Pas en mode Données réduites ni avec Réduire les animations activé.",
+  "Sound on": "Activer le son",
+  "Sound off": "Couper le son",
+  "Play trailer again": "Revoir la bande-annonce"
  },
  "it": {
   "%@ is now signed in.": "%@ ha effettuato l’accesso.",
@@ -4082,7 +4110,14 @@
   "Sync failed": "Sincronizzazione non riuscita",
   "Support": "Assistenza",
   "%d episodes watched": "%d episodi visti",
-  "Scan the QR code with your phone to open the Bingr help center.": "Scansiona il codice QR con il telefono per aprire il centro assistenza di Bingr."
+  "Scan the QR code with your phone to open the Bingr help center.": "Scansiona il codice QR con il telefono per aprire il centro assistenza di Bingr.",
+  "Account blocked": "Account bloccato",
+  "Your account has been blocked. You received an email with the reason and until when. Questions? Go to support.bingr.online.": "Il tuo account è stato bloccato. Hai ricevuto un'email con il motivo e la durata. Domande? Vai su support.bingr.online.",
+  "Play trailers automatically": "Riproduci trailer automaticamente",
+  "Muted, on movie and series pages. Not in Low Data Mode or with Reduce Motion on.": "Senza audio, nelle pagine di film e serie. Non in modalità Dati ridotti né con Riduci movimento attivo.",
+  "Sound on": "Audio attivo",
+  "Sound off": "Audio disattivato",
+  "Play trailer again": "Riproduci di nuovo il trailer"
  },
  "nl": {
   "%@ is now signed in.": "%@ is nu ingelogd.",
@@ -4899,7 +4934,14 @@
   "Sync failed": "Synchroniseren mislukt",
   "Support": "Support",
   "%d episodes watched": "%d afleveringen bekeken",
-  "Scan the QR code with your phone to open the Bingr help center.": "Scan de QR-code met je telefoon om het helpcentrum van Bingr te openen."
+  "Scan the QR code with your phone to open the Bingr help center.": "Scan de QR-code met je telefoon om het helpcentrum van Bingr te openen.",
+  "Account blocked": "Account geblokkeerd",
+  "Your account has been blocked. You received an email with the reason and until when. Questions? Go to support.bingr.online.": "Je account is geblokkeerd. Je hebt een e-mail gekregen met de reden en tot wanneer. Vragen? Ga naar support.bingr.online.",
+  "Play trailers automatically": "Trailers automatisch afspelen",
+  "Muted, on movie and series pages. Not in Low Data Mode or with Reduce Motion on.": "Zonder geluid, op film- en seriepagina's. Niet in de modus voor weinig data of met Beperk beweging aan.",
+  "Sound on": "Geluid aan",
+  "Sound off": "Geluid uit",
+  "Play trailer again": "Trailer opnieuw afspelen"
  },
  "pl": {
   "%@ is now signed in.": "%@ jest teraz zalogowany.",
@@ -5716,7 +5758,14 @@
   "Sync failed": "Synchronizacja nie powiodła się",
   "Support": "Pomoc",
   "%d episodes watched": "Obejrzane odcinki: %d",
-  "Scan the QR code with your phone to open the Bingr help center.": "Zeskanuj kod QR telefonem, aby otworzyć centrum pomocy Bingr."
+  "Scan the QR code with your phone to open the Bingr help center.": "Zeskanuj kod QR telefonem, aby otworzyć centrum pomocy Bingr.",
+  "Account blocked": "Konto zablokowane",
+  "Your account has been blocked. You received an email with the reason and until when. Questions? Go to support.bingr.online.": "Twoje konto zostało zablokowane. Otrzymałeś e-mail z powodem i datą zakończenia blokady. Pytania? Wejdź na support.bingr.online.",
+  "Play trailers automatically": "Automatycznie odtwarzaj zwiastuny",
+  "Muted, on movie and series pages. Not in Low Data Mode or with Reduce Motion on.": "Bez dźwięku, na stronach filmów i seriali. Nie w trybie niskiego zużycia danych ani przy włączonym ograniczeniu ruchu.",
+  "Sound on": "Włącz dźwięk",
+  "Sound off": "Wyłącz dźwięk",
+  "Play trailer again": "Odtwórz zwiastun ponownie"
  },
  "pt": {
   "%@ is now signed in.": "%@ já tem sessão iniciada.",
@@ -6533,7 +6582,14 @@
   "Sync failed": "Falha na sincronização",
   "Support": "Suporte",
   "%d episodes watched": "%d episódios vistos",
-  "Scan the QR code with your phone to open the Bingr help center.": "Leia o código QR com o telemóvel para abrir o centro de ajuda do Bingr."
+  "Scan the QR code with your phone to open the Bingr help center.": "Leia o código QR com o telemóvel para abrir o centro de ajuda do Bingr.",
+  "Account blocked": "Conta bloqueada",
+  "Your account has been blocked. You received an email with the reason and until when. Questions? Go to support.bingr.online.": "A tua conta foi bloqueada. Recebeste um e-mail com o motivo e até quando. Dúvidas? Vai a support.bingr.online.",
+  "Play trailers automatically": "Reproduzir trailers automaticamente",
+  "Muted, on movie and series pages. Not in Low Data Mode or with Reduce Motion on.": "Sem som, nas páginas de filmes e séries. Não no modo de poucos dados nem com Reduzir movimento ativado.",
+  "Sound on": "Ligar som",
+  "Sound off": "Desligar som",
+  "Play trailer again": "Reproduzir trailer novamente"
  },
  "tr": {
   "%@ is now signed in.": "%@ artık oturum açtı.",
@@ -7350,7 +7406,14 @@
   "Sync failed": "Eşitleme başarısız",
   "Support": "Destek",
   "%d episodes watched": "%d bölüm izlendi",
-  "Scan the QR code with your phone to open the Bingr help center.": "Bingr yardım merkezini açmak için QR kodunu telefonunla tara."
+  "Scan the QR code with your phone to open the Bingr help center.": "Bingr yardım merkezini açmak için QR kodunu telefonunla tara.",
+  "Account blocked": "Hesap engellendi",
+  "Your account has been blocked. You received an email with the reason and until when. Questions? Go to support.bingr.online.": "Hesabın engellendi. Nedenini ve ne zamana kadar sürdüğünü içeren bir e-posta aldın. Sorun mu var? support.bingr.online adresine git.",
+  "Play trailers automatically": "Fragmanları otomatik oynat",
+  "Muted, on movie and series pages. Not in Low Data Mode or with Reduce Motion on.": "Sessiz, film ve dizi sayfalarında. Düşük Veri Modu'nda veya Hareketi Azalt açıkken değil.",
+  "Sound on": "Sesi aç",
+  "Sound off": "Sesi kapat",
+  "Play trailer again": "Fragmanı tekrar oynat"
  },
  "zh-Hans": {
   "%@ is now signed in.": "%@ 现已登录。",
@@ -8167,6 +8230,13 @@
   "Sync failed": "同步失败",
   "Support": "支持",
   "%d episodes watched": "已看 %d 集",
-  "Scan the QR code with your phone to open the Bingr help center.": "用手机扫描二维码，打开 Bingr 帮助中心。"
+  "Scan the QR code with your phone to open the Bingr help center.": "用手机扫描二维码，打开 Bingr 帮助中心。",
+  "Account blocked": "账户已被封禁",
+  "Your account has been blocked. You received an email with the reason and until when. Questions? Go to support.bingr.online.": "你的账户已被封禁。你已收到一封说明原因和封禁期限的电子邮件。有疑问？请访问 support.bingr.online。",
+  "Play trailers automatically": "自动播放预告片",
+  "Muted, on movie and series pages. Not in Low Data Mode or with Reduce Motion on.": "静音播放，在电影和剧集页面。低数据模式或开启“减弱动态效果”时不播放。",
+  "Sound on": "打开声音",
+  "Sound off": "关闭声音",
+  "Play trailer again": "重新播放预告片"
  }
 }

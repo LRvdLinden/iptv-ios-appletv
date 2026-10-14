@@ -36,6 +36,12 @@ struct AuthView: View {
         .onAppear {
             if Secrets.accountsConfigured && account.isSignedIn { finish() }
         }
+        // build 82: account geblokkeerd door de beheerder (bij inloggen via de tv-code of een vervallen sessie)
+        .alert(L("Account blocked"), isPresented: $account.blockedNotice) {
+            Button(L("OK"), role: .cancel) {}
+        } message: {
+            Text(AccountService.bannedMessage)
+        }
     }
 
     @ViewBuilder private var content: some View {

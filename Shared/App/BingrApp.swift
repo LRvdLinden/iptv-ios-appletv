@@ -124,6 +124,11 @@ final class AppState: ObservableObject {
             .sink { [weak self] signedIn in
                 guard let self, !signedIn else { return }
                 AnnouncementCenter.shared.reset()
+                // build 82: account geblokkeerd → speler/multiview sluiten, zodat de melding op het inlogscherm te zien is
+                if AccountService.shared.blockedNotice {
+                    self.playing = nil
+                    self.showMultiview = false
+                }
                 self.showAuthIfNeeded()
             }
             .store(in: &bag)

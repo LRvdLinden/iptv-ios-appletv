@@ -27,6 +27,7 @@ struct AppSettingsView: View {
     @AppStorage(PlayerSettings.externalKey) private var externalDisplay = true
     @AppStorage(DeinterlaceMode.key) private var deinterlace = DeinterlaceMode.auto.rawValue
     @AppStorage(PlayerSettings.resumeLastChannelKey) private var resumeLastChannel = false
+    @AppStorage(Trailer.autoplayKey) private var autoplayTrailers = true
     @State private var showOSLogin = false
     @State private var editing: PlaylistSource?
     @State private var editingProfile: ViewerProfile?
@@ -383,6 +384,14 @@ struct AppSettingsView: View {
                 }
             }
             Toggle(L("Intro sound"), isOn: Binding(get: { SplashTune.enabled }, set: { SplashTune.enabled = $0 }))
+            #if !os(tvOS)
+            // build 82: trailer zonder geluid in de kop van film- en seriepagina's
+            Toggle(L("Play trailers automatically"), isOn: $autoplayTrailers)
+            if autoplayTrailers {
+                Text(L("Muted, on movie and series pages. Not in Low Data Mode or with Reduce Motion on."))
+                    .font(.caption).foregroundStyle(Theme.secondary)
+            }
+            #endif
             Toggle(L("Show Live TV"), isOn: $showLive)
             Toggle(L("Show Movies"), isOn: $showMovies)
             Toggle(L("Show Series"), isOn: $showSeries)

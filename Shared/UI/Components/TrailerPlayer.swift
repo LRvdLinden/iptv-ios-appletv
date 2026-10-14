@@ -7,6 +7,11 @@ import WebKit
 enum Trailer {
     static func appURL(_ id: String) -> URL? { URL(string: "youtube://www.youtube.com/watch?v=\(id)") }
     static func webURL(_ id: String) -> URL? { URL(string: "https://www.youtube.com/watch?v=\(id)") }
+
+    /// Build 82: trailer automatisch (zonder geluid) in de kop van de detailpagina. Standaard aan.
+    /// Apple TV heeft geen WebKit en geen eigen YouTube-stream, daar blijft de kopafbeelding staan.
+    static let autoplayKey = "ui.autoplayTrailers"
+    static var autoplayEnabled: Bool { UserDefaults.standard.object(forKey: autoplayKey) as? Bool ?? true }
 }
 
 #if !os(tvOS)
@@ -28,6 +33,161 @@ struct TrailerSheet: View {
         }
     }
 }
+
+// MARK: - Trailer in de kop (build 82)
+
+/// Stand van de trailer in de kop van de detailpagina. De webweergave bestaat alleen zolang `videoID` gezet is;
+/// stoppen haalt hem weg (geen geluid of data meer), opnieuw afspelen maakt een nieuwe.
+@MainActor
+final class HeroTrailerModel: ObservableObject {
+    enum Phase: Equatable { case idle, loading, playing, finished }
+    @Published private(set) var phase: Phase = .idle
+    @Published private(set) var videoID: String?
+    @Published private(set) var muted = true
+    /// Nieuwe waarde = nieuwe webweergave (opnieuw afspelen)
+    @Published private(set) var token = UUID()
+    /// Laatst gestarte trailer, voor "Opnieuw afspelen"
+    private(set) var lastID: String?
+    weak var webView: WKWebView?
+    private var timeout: Task<Void, Never>?
+
+    var isVisible: Bool { phase == .playing }
+
+    func start(_ id: String) {
+        lastID = id
+        muted = true
+        videoID = id
+        token = UUID()
+        phase = .loading
+        // speelt hij na 10 s nog niet (geblokkeerd, geen internet): stil terug naar de afbeelding
+        timeout?.cancel()
+        timeout = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 10_000_000_000)
+            guard !Task.isCancelled, let self, self.phase == .loading else { return }
+            self.stop()
+        }
+    }
+
+    func replay() { if let lastID { start(lastID) } }
+
+    /// Stoppen (afspelen, aflevering, ander scherm, achtergrond). Daarna kan "Opnieuw afspelen".
+    func stop() {
+        timeout?.cancel()
+        guard videoID != nil else { return }
+        webView?.evaluateJavaScript("try{player&&player.stopVideo()}catch(e){}", completionHandler: nil)
+        videoID = nil
+        webView = nil
+        phase = lastID == nil ? .idle : .finished
+    }
+
+    func toggleMute() {
+        muted.toggle()
+        webView?.evaluateJavaScript("setMuted(\(muted))", completionHandler: nil)
+    }
+
+    fileprivate func event(_ name: String) {
+        switch name {
+        case "playing": if videoID != nil { timeout?.cancel(); phase = .playing }
+        case "ended", "error": stop()
+        default: break
+        }
+    }
+
+    /// Pagina met de YouTube IFrame-API: zonder knoppen, titel of eindscherm, beeldvullend (16:9 bijgesneden)
+    /// en iets ingezoomd zodat randen met YouTube-logo of titel buiten beeld vallen. Seintjes naar de app:
+    /// `playing`, `ended` (1 s voor het einde, vóór het eindscherm) en `error`.
+    static func html(_ id: String) -> String {
+        let safe = id.filter { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }
+        return """
+        <!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+        <style>html,body{margin:0;height:100%;overflow:hidden;background:#000}
+        #w{position:absolute;top:50%;left:50%;width:max(100vw,177.78vh);height:max(100vh,56.25vw);
+        transform:translate(-50%,-50%) scale(1.15);pointer-events:none}#p{width:100%;height:100%;border:0}</style>
+        </head><body><div id="w"><div id="p"></div></div>
+        <script>
+        var player=null,timer=null;
+        function post(m){try{window.webkit.messageHandlers.bingr.postMessage(m)}catch(e){}}
+        function setMuted(m){if(!player)return;try{if(m){player.mute()}else{player.unMute();player.setVolume(100)}}catch(e){}}
+        function watch(){clearInterval(timer);timer=setInterval(function(){try{var d=player.getDuration(),c=player.getCurrentTime();
+        if(d>0&&d-c<1.2){clearInterval(timer);player.pauseVideo();post('ended')}}catch(e){}},400)}
+        function onYouTubeIframeAPIReady(){player=new YT.Player('p',{host:'https://www.youtube-nocookie.com',videoId:'\(safe)',
+        playerVars:{autoplay:1,mute:1,playsinline:1,controls:0,disablekb:1,fs:0,rel:0,modestbranding:1,iv_load_policy:3,
+        cc_load_policy:0,showinfo:0,enablejsapi:1,origin:'https://www.youtube-nocookie.com'},
+        events:{onReady:function(e){e.target.mute();e.target.playVideo()},
+        onStateChange:function(e){if(e.data===1){post('playing');watch()}else if(e.data===0){post('ended')}},
+        onError:function(){post('error')}}})}
+        </script><script src="https://www.youtube.com/iframe_api" onerror="post('error')"></script>
+        </body></html>
+        """
+    }
+}
+
+/// Doorgeefluik voor seintjes uit de pagina (zwak, anders houdt WebKit het model vast).
+@MainActor
+private final class TrailerMessageProxy: NSObject, WKScriptMessageHandler {
+    weak var model: HeroTrailerModel?
+    init(_ model: HeroTrailerModel) { self.model = model }
+    func userContentController(_ c: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard let name = message.body as? String else { return }
+        model?.event(name)
+    }
+}
+
+@MainActor private func makeHeroWebView(_ model: HeroTrailerModel, id: String) -> WKWebView {
+    let c = WKWebViewConfiguration()
+    #if os(iOS)
+    c.allowsInlineMediaPlayback = true
+    c.allowsPictureInPictureMediaPlayback = false
+    #endif
+    c.mediaTypesRequiringUserActionForPlayback = []
+    c.userContentController.add(TrailerMessageProxy(model), name: "bingr")
+    #if os(macOS)
+    let w: WKWebView = PassThroughWebView(frame: .zero, configuration: c)
+    #else
+    let w = WKWebView(frame: .zero, configuration: c)
+    #endif
+    #if os(iOS)
+    w.isOpaque = false
+    w.backgroundColor = .black
+    w.scrollView.isScrollEnabled = false
+    w.isUserInteractionEnabled = false
+    #else
+    w.setValue(false, forKey: "drawsBackground")
+    #endif
+    model.webView = w
+    w.loadHTMLString(HeroTrailerModel.html(id), baseURL: URL(string: "https://www.youtube-nocookie.com"))
+    return w
+}
+
+@MainActor private func tearDown(_ w: WKWebView) {
+    w.configuration.userContentController.removeScriptMessageHandler(forName: "bingr")
+    w.stopLoading()
+    w.loadHTMLString("", baseURL: nil)
+}
+
+#if os(macOS)
+/// Geen klikken of scrollen opvangen: die horen bij de pagina en de knoppen.
+private final class PassThroughWebView: WKWebView {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
+/// Trailer in de kop; vangt geen klikken (die gaan naar de knoppen erboven).
+struct HeroTrailerView: NSViewRepresentable {
+    let id: String
+    let model: HeroTrailerModel
+    func makeNSView(context: Context) -> WKWebView { makeHeroWebView(model, id: id) }
+    func updateNSView(_ nsView: WKWebView, context: Context) {}
+    static func dismantleNSView(_ nsView: WKWebView, coordinator: ()) { tearDown(nsView) }
+}
+#else
+struct HeroTrailerView: UIViewRepresentable {
+    let id: String
+    let model: HeroTrailerModel
+    func makeUIView(context: Context) -> WKWebView { makeHeroWebView(model, id: id) }
+    func updateUIView(_ uiView: WKWebView, context: Context) {}
+    static func dismantleUIView(_ uiView: WKWebView, coordinator: ()) { tearDown(uiView) }
+}
+#endif
 
 #if os(macOS)
 struct YouTubeEmbed: NSViewRepresentable {

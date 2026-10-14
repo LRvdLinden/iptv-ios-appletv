@@ -21,6 +21,9 @@ final class AccountService: ObservableObject {
     @Published private(set) var tvCode: String?
     @Published private(set) var tvURL: String?
     @Published private(set) var tvError: String?
+    /// Build 82: het account is door de beheerder geblokkeerd (Supabase `user_banned`). Het inlogscherm toont
+    /// dan een melding; wordt weer `false` als die gesloten is.
+    @Published var blockedNotice = false
 
     enum RefreshResult { case ok, invalid, offline, noSession }
     enum SignUpResult { case signedIn, confirmEmail }
@@ -104,6 +107,30 @@ final class AccountService: ObservableObject {
 
     // MARK: - Fouten
 
+    /// Melding bij een geblokkeerd account (build 82).
+    nonisolated static var bannedMessage: String {
+        L("Your account has been blocked. You received an email with the reason and until when. Questions? Go to support.bingr.online.")
+    }
+
+    /// Geblokkeerd account? Supabase Auth: `error_code` `user_banned` (400/403, oudere versies "User is banned"
+    /// of "User Banned" in de tekst); eigen functies mogen `error: "user_banned"` of `banned: true` geven.
+    private static func isBanned(_ r: Response) -> Bool {
+        guard r.status >= 400 || (r.json["banned"] as? Bool) == true else { return false }
+        if (r.json["banned"] as? Bool) == true { return true }
+        let codes = [r.string("error_code"), r.string("error"), r.string("code"), r.string("reason")]
+            .compactMap { $0?.lowercased() }
+        if codes.contains(where: { $0 == "user_banned" || $0 == "banned" || $0 == "account_blocked" }) { return true }
+        let msg = (r.string("msg") ?? r.string("message") ?? r.string("error_description") ?? "").lowercased()
+        return msg.contains("banned")
+    }
+
+    /// Geblokkeerd tijdens een sessie: lokaal uitloggen (zonder logout-aanroep, die mag toch niet meer) en de melding tonen.
+    private func blockedLocally() {
+        stopTVLogin()
+        clearLocal()
+        blockedNotice = true
+    }
+
     enum AccountError: LocalizedError {
         case offline
         case message(String)
@@ -116,6 +143,7 @@ final class AccountService: ObservableObject {
         }
 
         static var generic: AccountError { .message(L("Something went wrong. Please try again.")) }
+        static var banned: AccountError { .message(AccountService.bannedMessage) }
     }
 
     struct Response {
@@ -191,6 +219,11 @@ final class AccountService: ObservableObject {
         do {
             let r = try await post("/auth/v1/token?grant_type=refresh_token", ["refresh_token": token])
             if r.status == 200, storeSession(r.json, fallbackEmail: email) { return .ok }
+            // build 82: account geblokkeerd → uitloggen met melding
+            if Self.isBanned(r) {
+                blockedLocally()
+                return .invalid
+            }
             if r.status == 400 || r.status == 401 {
                 // intussen al vernieuwd (bijv. door een andere aanvraag)? dan niet uitloggen
                 if refreshToken != token { return .ok }
@@ -213,7 +246,7 @@ final class AccountService: ObservableObject {
         case .offline:
             throw AccountError.offline
         case .invalid, .noSession:
-            throw AccountError.generic
+            throw blockedNotice ? AccountError.banned : AccountError.generic
         }
     }
 
@@ -364,7 +397,11 @@ final class AccountService: ObservableObject {
                 try await self.post("/functions/v1/device-auth", ["action": "heartbeat", "device_id": self.deviceID,
                                                                          "app_version": Self.appVersion, "os_version": Self.osVersion], bearer: token)
             }
-            if (r.json["revoked"] as? Bool) == true { revokedLocally() }
+            if (r.json["revoked"] as? Bool) == true {
+                // build 82: ingetrokken omdat het account geblokkeerd is → met melding
+                if (r.json["banned"] as? Bool) == true || r.string("reason")?.lowercased() == "banned" { blockedLocally() }
+                else { revokedLocally() }
+            }
         } catch {
             // offline of tijdelijke fout: niets doen (de app blijft werken)
         }
@@ -960,9 +997,12 @@ final class AccountService: ObservableObject {
     /// Aanvraag met een geldig access token; bij 401 één keer vernieuwen en opnieuw proberen.
     private func authorized(_ make: (String) async throws -> Response) async throws -> Response {
         let r = try await make(try await validAccessToken())
+        if Self.isBanned(r) { blockedLocally(); throw AccountError.banned }
         guard r.status == 401 else { return r }
         expiresAt = 0
-        return try await make(try await validAccessToken())
+        let again = try await make(try await validAccessToken())
+        if Self.isBanned(again) { blockedLocally(); throw AccountError.banned }
+        return again
     }
 
     // MARK: - Tv: inloggen met je telefoon
@@ -1004,6 +1044,12 @@ final class AccountService: ObservableObject {
                         tvError = L("No internet connection.")
                         continue poll
                     }
+                    // build 82: geblokkeerd account (de koppeling of het inloggen geeft `user_banned`)
+                    if p.string("status") == "banned" || Self.isBanned(p) {
+                        tvBlocked()
+                        try await Task.sleep(nanoseconds: 8_000_000_000)
+                        break poll
+                    }
                     switch p.string("status") {
                     case "approved":
                         guard let hash = p.string("token_hash") else { break poll }
@@ -1011,6 +1057,10 @@ final class AccountService: ObservableObject {
                         if v.status == 200, storeSession(v.json, fallbackEmail: p.string("email")) {
                             tvCode = nil
                             return
+                        }
+                        if Self.isBanned(v) {
+                            tvBlocked()
+                            try await Task.sleep(nanoseconds: 8_000_000_000)
                         }
                         break poll   // mislukt: nieuwe code
                     case "expired":
@@ -1026,6 +1076,12 @@ final class AccountService: ObservableObject {
                 try? await Task.sleep(nanoseconds: 5_000_000_000)
             }
         }
+    }
+
+    /// Apple TV: het account dat de code goedkeurde is geblokkeerd. Melding onder de code én als venster.
+    private func tvBlocked() {
+        tvError = Self.bannedMessage
+        blockedNotice = true
     }
 
     /// `K7Q4MX` → `K7Q-4MX`
@@ -1153,6 +1209,7 @@ final class AccountService: ObservableObject {
 
     /// Supabase-foutcodes → teksten uit het contract.
     private static func authError(_ r: Response) -> AccountError {
+        if isBanned(r) { return .banned }
         let code = (r.string("error_code") ?? r.string("error") ?? "").lowercased()
         let msg = (r.string("msg") ?? r.string("message") ?? r.string("error_description") ?? "").lowercased()
         switch code {

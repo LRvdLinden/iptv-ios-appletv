@@ -49,6 +49,7 @@ final class NetworkStatus: @unchecked Sendable {
     private let monitor = NWPathMonitor()
     private let lock = NSLock()
     private var cellular = false
+    private var constrained = false
 
     private init() {
         monitor.pathUpdateHandler = { [weak self] path in
@@ -56,6 +57,7 @@ final class NetworkStatus: @unchecked Sendable {
             self.lock.lock()
             self.cellular = path.usesInterfaceType(.cellular) && !path.usesInterfaceType(.wifi)
                 && !path.usesInterfaceType(.wiredEthernet)
+            self.constrained = path.isConstrained
             self.lock.unlock()
         }
         monitor.start(queue: DispatchQueue(label: "bingr.network"))
@@ -64,6 +66,12 @@ final class NetworkStatus: @unchecked Sendable {
     var isCellular: Bool {
         lock.lock(); defer { lock.unlock() }
         return cellular
+    }
+
+    /// Modus voor weinig data (build 82: dan geen trailers automatisch)
+    var isConstrained: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return constrained
     }
 }
 

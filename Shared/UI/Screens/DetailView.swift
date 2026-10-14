@@ -41,6 +41,13 @@ struct DetailView: View {
     /// Build 59: dezelfde titel in andere talen in je bibliotheek
     @State private var languageVersions: [LanguageVersion] = []
     @State private var showLanguages = false
+    #if !os(tvOS)
+    /// Build 82: trailer automatisch (zonder geluid) in de kop
+    @StateObject private var heroTrailer = HeroTrailerModel()
+    @AppStorage(Trailer.autoplayKey) private var autoplayTrailers = true
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
+    #endif
     #if os(tvOS)
     /// Apple TV: focus in de afleveringenrij begint bij de aflevering waar je bent
     @FocusState private var focusedEpisode: String?
@@ -139,6 +146,12 @@ struct DetailView: View {
         .task(id: target.id) { await load() }
         .task(id: "\(target.id)-\(playlists.libraryVersion)") { await loadLanguageVersions() }
         .task(id: d?.recommendations.map(\.id) ?? []) { await matchRecommendations() }
+        #if !os(tvOS)
+        .task(id: "\(target.id)-\(loading)-\(seasons.last ?? 0)") { await autoplayTrailer() }
+        .onChange(of: trailerBlocked) { _, blocked in if blocked { heroTrailer.stop() } }
+        .onChange(of: autoplayTrailers) { _, on in if !on { heroTrailer.stop() } }
+        .onDisappear { heroTrailer.stop() }
+        #endif
         .sheet(isPresented: $showSources) { sourcesSheet }
         .sheet(isPresented: $showLanguages) { languagesSheet }
         .sheet(item: $collecting) { AddToCollectionSheet(target: $0) }
@@ -174,6 +187,9 @@ struct DetailView: View {
     private var header: some View {
         ZStack(alignment: .bottom) {
             ParallaxImage(url: heroImage, height: headerHeight, scroll: scroll)
+            #if !os(tvOS)
+            heroTrailerLayer
+            #endif
             LinearGradient(stops: [.init(color: .clear, location: 0.35), .init(color: .black.opacity(0.65), location: 0.75),
                                    .init(color: .black, location: 1)], startPoint: .top, endPoint: .bottom)
             #if os(tvOS)
@@ -188,10 +204,90 @@ struct DetailView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
             .padding(.top, 58).padding(.trailing, 16)
+            heroTrailerControls
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .padding(.top, 58).padding(.leading, 16)
             #endif
         }
         .frame(height: headerHeight)
     }
+
+    #if !os(tvOS)
+    // MARK: trailer in de kop (build 82)
+
+    /// De trailer over de kopafbeelding; komt pas in beeld (overvloeiend) als hij echt speelt.
+    @ViewBuilder private var heroTrailerLayer: some View {
+        if let id = heroTrailer.videoID {
+            HeroTrailerView(id: id, model: heroTrailer)
+                .id(heroTrailer.token)
+                .frame(height: headerHeight)
+                .frame(maxWidth: .infinity)
+                .clipped()
+                .allowsHitTesting(false)
+                .opacity(heroTrailer.isVisible ? 1 : 0)
+                .animation(.easeInOut(duration: 0.8), value: heroTrailer.isVisible)
+                .accessibilityHidden(true)
+                .transition(.opacity.animation(.easeInOut(duration: 0.6)))
+        }
+    }
+
+    /// Geluid aan/uit tijdens de trailer, daarna "Opnieuw afspelen".
+    @ViewBuilder private var heroTrailerControls: some View {
+        if heroTrailer.isVisible {
+            heroControlButton(heroTrailer.muted ? "speaker.slash.fill" : "speaker.wave.2.fill") { heroTrailer.toggleMute() }
+                .accessibilityLabel(heroTrailer.muted ? L("Sound on") : L("Sound off"))
+                .transition(.opacity)
+        } else if heroTrailer.phase == .finished, autoplayTrailers {
+            heroControlButton("arrow.counterclockwise") { heroTrailer.replay() }
+                .accessibilityLabel(L("Play trailer again"))
+                .transition(.opacity)
+        }
+    }
+
+    private func heroControlButton(_ icon: String, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon).font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
+                .frame(width: 44, height: 44).background(.ultraThinMaterial, in: Circle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Trailer die automatisch speelt: film → die van de film; serie → die van het nieuwste seizoen,
+    /// anders die van de serie.
+    private func autoplayTrailerID() async -> String? {
+        guard let d else { return nil }
+        if isMovie { return d.trailerYouTubeID }
+        if let newest = seasons.last {
+            if let t = seasonTrailers[newest] { return t }
+            if let tv = d.tmdbID, let t = await TMDB.seasonTrailer(tvID: tv, season: newest) {
+                seasonTrailers[newest] = t
+                return t
+            }
+        }
+        return d.trailerYouTubeID
+    }
+
+    /// Mag de trailer nu (automatisch) spelen? Niet bij de instelling uit, Bewegingen beperken,
+    /// de modus voor weinig data, iets wat speelt, een blad erover of de app op de achtergrond.
+    private var trailerAllowed: Bool {
+        autoplayTrailers && !reduceMotion && !NetworkStatus.shared.isConstrained && !trailerBlocked
+    }
+
+    private var trailerBlocked: Bool {
+        app.playing != nil || scenePhase != .active || showTrailer || showSources || showLanguages
+            || nested != nil || person != nil || collecting != nil || ageGate
+    }
+
+    private func autoplayTrailer() async {
+        _ = NetworkStatus.shared   // monitor alvast starten
+        guard !loading, d != nil, heroTrailer.phase == .idle, trailerAllowed else { return }
+        guard let id = await autoplayTrailerID() else { return }
+        // even wachten zoals streamingdiensten; daarna opnieuw controleren
+        try? await Task.sleep(nanoseconds: 1_500_000_000)
+        guard !Task.isCancelled, heroTrailer.phase == .idle, trailerAllowed else { return }
+        heroTrailer.start(id)
+    }
+    #endif
 
     @ViewBuilder private var titleArt: some View {
         let align = alignLeadingOnTV
@@ -943,6 +1039,9 @@ struct DetailView: View {
     }
 
     private func play() {
+        #if !os(tvOS)
+        heroTrailer.stop()
+        #endif
         if store.activeProfile?.effectiveAgeLimit == nil { PlaybackTiming.begin(title) }
         ageChecked(playNow)
     }
@@ -977,6 +1076,7 @@ struct DetailView: View {
 
     private func openTrailer(_ t: String) {
         #if !os(tvOS)
+        heroTrailer.stop()
         trailerID = t
         showTrailer = true
         #else
