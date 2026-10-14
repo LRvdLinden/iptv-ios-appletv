@@ -49,6 +49,8 @@ struct DetailView: View {
     @Environment(\.scenePhase) private var scenePhase
     #endif
     #if os(tvOS)
+    /// Build 85: de kop beweegt (Ken Burns) zolang de pagina echt in beeld is
+    @Environment(\.scenePhase) private var scenePhase
     /// Apple TV: focus in de afleveringenrij begint bij de aflevering waar je bent
     @FocusState private var focusedEpisode: String?
     @Namespace private var episodeNS
@@ -79,6 +81,18 @@ struct DetailView: View {
         return d?.poster ?? basePoster ?? d?.backdrop
         #endif
     }
+    #if os(tvOS)
+    /// Build 85: de hoofdafbeelding plus maximaal twee andere achtergronden (TMDB/server) voor de bewegende kop
+    private var heroBackdrops: [URL] {
+        let extra = d?.backdrop == nil ? [] : (d?.backdrops ?? [])
+        return Array(orderedUnique([heroImage].compactMap { $0 } + extra).prefix(3))
+    }
+    /// Niet wisselen als er iets speelt of een ander scherm erover ligt
+    private var heroActive: Bool {
+        app.playing == nil && scenePhase == .active && nested == nil && person == nil && !showSources
+            && !showLanguages && collecting == nil && !ageGate
+    }
+    #endif
     private var basePoster: URL? { switch target { case .movie(let m): return m.poster; case .series(let s): return s.poster } }
     private var seasons: [Int] { orderedUnique(episodes.map(\.season)).sorted() }
     private var isMovie: Bool { if case .movie = target { return true }; return false }
@@ -186,8 +200,10 @@ struct DetailView: View {
 
     private var header: some View {
         ZStack(alignment: .bottom) {
+            #if os(tvOS)
+            KenBurnsBackdrop(urls: heroBackdrops, height: headerHeight, active: heroActive, maxPixel: 1600)
+            #else
             ParallaxImage(url: heroImage, height: headerHeight, scroll: scroll)
-            #if !os(tvOS)
             heroTrailerLayer
             #endif
             LinearGradient(stops: [.init(color: .clear, location: 0.35), .init(color: .black.opacity(0.65), location: 0.75),

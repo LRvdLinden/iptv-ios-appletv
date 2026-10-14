@@ -14,6 +14,8 @@ struct TitleDetails: Hashable {
     var certification: String?
     var poster: URL?
     var backdrop: URL?
+    /// Meer achtergronden (TMDB, Xtream), voor de bewegende kop op Apple TV (build 85)
+    var backdrops: [URL] = []
     var logo: URL?
     var trailerYouTubeID: String?
     var imdbID: String?
@@ -120,7 +122,9 @@ final class DetailsService: ObservableObject {
             d.imdbID = d.imdbID ?? tm.imdb
             d.tmdbID = tm.id
             d.originalLanguage = tm.originalLanguage
+            d.backdrops += tm.backdrops
         }
+        d.backdrops = orderedUnique(([d.backdrop].compactMap { $0 } + d.backdrops)).filter { $0 != d.backdrop }
         // originele taal en TMDB-id onthouden voor de cover en voor automatische ondertitels (build 59)
         ContentLanguage.Facts.shared.set(id: target.id, original: d.originalLanguage, tmdbID: d.tmdbID)
         tmdbHint = nil
@@ -140,6 +144,7 @@ final class DetailsService: ObservableObject {
         if let p = vi.plot ?? vi.description, !p.isEmpty { d.overview = p }
         if let i = vi.imdb_id, i.hasPrefix("tt") { d.imdbID = d.imdbID ?? i }
         d.backdrop = vi.backdrop_path?.first?.urlValue
+        d.backdrops = vi.backdrop_path?.values.compactMap(\.urlValue) ?? []
         d.poster = d.poster ?? (vi.cover_big ?? vi.movie_image)?.urlValue
         if let g = vi.genre, !g.isEmpty { d.genres = g.components(separatedBy: CharacterSet(charactersIn: ",/")).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty } }
         if let c = vi.cast ?? vi.actors, !c.isEmpty { d.cast = c.components(separatedBy: ",").map { TitleDetails.CastMember(name: $0.trimmingCharacters(in: .whitespaces)) }.filter { !$0.name.isEmpty } }
@@ -154,6 +159,7 @@ final class DetailsService: ObservableObject {
         if let i = si.info {
             if let p = i.plot, !p.isEmpty { d.overview = p }
             d.backdrop = i.backdrop_path?.first?.urlValue
+            d.backdrops = i.backdrop_path?.values.compactMap(\.urlValue) ?? []
             if let g = i.genre, !g.isEmpty { d.genres = g.components(separatedBy: CharacterSet(charactersIn: ",/")).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty } }
             if let c = i.cast, !c.isEmpty { d.cast = c.components(separatedBy: ",").map { TitleDetails.CastMember(name: $0.trimmingCharacters(in: .whitespaces)) }.filter { !$0.name.isEmpty } }
             d.director = i.director.flatMap { $0.isEmpty ? nil : $0 }

@@ -26,6 +26,8 @@ struct HomeView: View {
     /// Inhoud van de collecties (één keer per lijst of wijziging, op de achtergrond)
     @State private var collectionContent: [String: CollectionContent] = [:]
     @State private var collecting: CollectionTarget?
+    /// Build 85: Categorieën (chip bovenaan)
+    @State private var showCategories = false
 
     private var lib: Library { playlists.library }
     private var pid: UUID? { playlists.source?.id }
@@ -55,10 +57,16 @@ struct HomeView: View {
             .ignoresSafeArea(edges: .top)
 
             #if !os(tvOS)
-            HomeTopBar(scroll: scroll, onSearch: { showSearch = true })   // op Apple TV zit Zoeken al in de menubalk
+            HomeTopBar(scroll: scroll, filter: filter, onSearch: { showSearch = true },   // op Apple TV zit Zoeken al in de menubalk
+                       onCategories: { showCategories = true }, onTab: { app.selectedTab = $0 })
             #endif
         }
         .fullScreenCover(isPresented: $showSearch) { SearchView(modal: true) }
+        #if !os(tvOS)
+        .fullScreenCover(isPresented: $showCategories) {
+            BrowseCategoriesView(initialScope: filter == .movies ? .movies : (filter == .series ? .series : .all), modal: true)
+        }
+        #endif
         .background(Color.black)
         .task(id: "\(store.activeProfileID?.uuidString ?? "")-\(pid?.uuidString ?? "")-\(lib.movies.count)-\(lib.series.count)") { await prepare() }
         .task(id: playlists.libraryVersion) {
@@ -666,10 +674,57 @@ private struct CollectionsKey: Equatable {
 /// iOS bovenbalk (wordt donker bij scrollen, zoals Netflix).
 private struct HomeTopBar: View {
     let scroll: ScrollTracker
+    let filter: HomeView.Filter
     let onSearch: () -> Void
+    let onCategories: () -> Void
+    let onTab: (Int) -> Void
+    @AppStorage("ui.showMovies") private var showMovies = true
+    @AppStorage("ui.showSeries") private var showSeries = true
 
     var body: some View {
         let off = Double(-scroll.y)
+        VStack(alignment: .leading, spacing: 8) {
+            bar
+            chips
+        }
+        .padding(.horizontal, 16).padding(.bottom, 10)
+        .background(
+            LinearGradient(colors: [.black.opacity(min(0.95, 0.55 + off / 300)), .black.opacity(min(0.9, off / 300))],
+                           startPoint: .top, endPoint: .bottom)
+                .ignoresSafeArea(edges: .top)
+        )
+    }
+
+    /// Build 85, zoals Netflix: Series / Films / Categorieën ▾ onder het logo
+    @ViewBuilder private var chips: some View {
+        if showMovies || showSeries {
+            HStack(spacing: 8) {
+                if filter == .all {
+                    if showSeries { chip(L("Series")) { onTab(3) } }
+                    if showMovies { chip(L("Movies")) { onTab(2) } }
+                }
+                chip(L("Categories"), icon: "chevron.down", action: onCategories)
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    private func chip(_ title: String, icon: String? = nil, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Text(title).font(.system(size: 14, weight: .semibold))
+                if let icon { Image(systemName: icon).font(.system(size: 10, weight: .bold)) }
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 14).padding(.vertical, 6)
+            .overlay(Capsule().stroke(.white.opacity(0.55), lineWidth: 1))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(PressableStyle())
+        .tileHover()
+    }
+
+    private var bar: some View {
         HStack(spacing: 14) {
             BingrLogo(size: 26)
             Spacer()
@@ -688,12 +743,6 @@ private struct HomeTopBar: View {
                 .contentShape(Rectangle())
             }
         }
-        .padding(.horizontal, 16).padding(.bottom, 10)
-        .background(
-            LinearGradient(colors: [.black.opacity(min(0.95, 0.55 + off / 300)), .black.opacity(min(0.9, off / 300))],
-                           startPoint: .top, endPoint: .bottom)
-                .ignoresSafeArea(edges: .top)
-        )
     }
 }
 #endif

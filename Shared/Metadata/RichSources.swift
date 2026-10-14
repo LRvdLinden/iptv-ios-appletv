@@ -92,6 +92,8 @@ enum TMDB {
         var trailer: String?; var cast: [TitleDetails.CastMember] = []; var recommendations: [TitleDetails.Recommendation] = []
         /// Originele taal (ISO 639-1), build 59
         var originalLanguage: String? = nil
+        /// Extra achtergronden (zonder tekst eerst) voor de bewegende kop op Apple TV, build 85
+        var backdrops: [URL] = []
     }
 
     static var language: String {
@@ -223,6 +225,10 @@ enum TMDB {
                       poster: img(r.poster_path, "w342"), imdbID: nil, isShow: isShow)
             })
         result.originalLanguage = f.original_language
+        // achtergronden zonder tekst (iso_639_1 = null) eerst, dan de rest; max. 4 naast de hoofdafbeelding
+        let bds = f.images?.backdrops ?? []
+        let ordered = bds.filter { $0.iso_639_1 == nil } + bds.filter { $0.iso_639_1 != nil }
+        result.backdrops = Array(ordered.compactMap { img($0.file_path, "w1280") }.filter { $0 != result.backdrop }.prefix(4))
         return result
     }
 
