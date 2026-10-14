@@ -144,7 +144,7 @@ struct HomeView: View {
     }
 
     /// Eén rij op Home. Build 86: de vaste rijen zijn opgesplitst tot op de rij (Top 10 = twee rijen, "Rijen per
-    /// categorie" = één rij per categorie), zodat de rij Categorieën precies 5 rijen onder Nu live kan staan.
+    /// categorie" = één rij per categorie), zodat er precies 5 rijen tussen Nu live en de rij Categorieën kunnen staan.
     enum HomeSlot: Hashable, Identifiable {
         case key(String)
         case top10Series, top10Movies
@@ -154,8 +154,8 @@ struct HomeView: View {
     }
 
     /// Rijen van het startscherm zoals ingesteld bij Mijn Bingr → Startscherm (per profiel), alleen die iets tonen.
-    /// De rij Categorieën ("browse") staat standaard direct na "live" in de indeling; dan komt hij als 5e getoonde
-    /// rij onder Nu live (zijn er minder rijen, dan onderaan; staat Nu live uit of is hij leeg, dan telt de plek
+    /// De rij Categorieën ("browse") staat standaard direct na "live" in de indeling; dan staan er precies 5 getoonde
+    /// rijen tussen Nu live en Categorieën (hij is de 6e rij eronder; zijn er minder rijen, dan onderaan; staat Nu live uit of is hij leeg, dan telt de plek
     /// waar Nu live had gestaan). Heeft het profiel hem zelf ergens anders neergezet, dan staat hij daar.
     private var homeSlots: [HomeSlot] {
         let layout = store.homeLayout.effective(collections: store.activeCollections)
@@ -190,7 +190,7 @@ struct HomeView: View {
             var seen = 0
             for j in ((liveAt ?? -1) + 1)..<max((liveAt ?? -1) + 1, slots.count) where slots[j].shown {
                 seen += 1
-                if seen == HomeLayout.browseOffset - 1 { at = j + 1; break }
+                if seen == HomeLayout.browseOffset { at = j + 1; break }
             }
             slots.insert((.browse, true), at: min(at, slots.count))
         }

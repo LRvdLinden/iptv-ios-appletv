@@ -231,9 +231,12 @@ struct HomeLayout: Codable, Hashable {
 
     static let collectionPrefix = "collection:"
     /// Vaste rijen, in de standaardvolgorde. "browse" (build 86) = de rij Categorieën met tegels; staat hij direct na
-    /// "live", dan zet Home hem vanzelf 5 rijen onder Nu live (zie `HomeView.homeSlots`).
+    /// "live", dan zet Home hem vanzelf 5 rijen onder Nu live (zie `HomeView.homeSlots`). Zelfde sleutel op web en
+    /// Android/Samsung TV; de oudere sleutels "genres" (web) en "categorytiles" (Android) lezen we als "browse".
     static let knownKeys = ["continue", "mylist", "recent", "foryou", "top10", "live", "browse", "categories", "movies", "series"]
-    /// Build 86: de rij Categorieën komt als 5e rij onder Nu live (de rij "live")
+    /// Oudere sleutels van andere apps → huidige sleutel (plek en aan/uit blijven; dubbele vervallen)
+    static let keyAliases = ["genres": "browse", "categorytiles": "browse"]
+    /// Build 86: precies 5 getoonde rijen tussen Nu live (de rij "live") en de rij Categorieën (= de 6e rij eronder)
     static let browseOffset = 5
     /// Nieuw en standaard uit (Home ziet er na de update hetzelfde uit)
     static let defaultHidden: Set<String> = ["movies", "series"]
@@ -266,7 +269,10 @@ struct HomeLayout: Codable, Hashable {
         let valid = Set(Self.knownKeys).union(collectionKeys)
         var out: [Row] = []
         var seen = Set<String>()
-        for r in rows where valid.contains(r.key) && seen.insert(r.key).inserted { out.append(r) }
+        for var r in rows {
+            r.key = Self.keyAliases[r.key] ?? r.key
+            if valid.contains(r.key) && seen.insert(r.key).inserted { out.append(r) }
+        }
         for k in Self.knownKeys where !seen.contains(k) {
             seen.insert(k)
             // een vaste rij die ontbreekt op zijn standaardplek (na de vorige vaste rij) invoegen
@@ -290,7 +296,7 @@ struct HomeLayout: Codable, Hashable {
         var l = self
         let editedKeys = Set(edited.map(\.key))
         l.rows = edited + rows.filter { !editedKeys.contains($0.key) && !Self.knownKeys.contains($0.key)
-            && !$0.key.hasPrefix(Self.collectionPrefix) }
+            && Self.keyAliases[$0.key] == nil && !$0.key.hasPrefix(Self.collectionPrefix) }
         l.updatedAt = Date()
         return l
     }
