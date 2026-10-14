@@ -110,6 +110,8 @@ final class PlayerController: ObservableObject {
     private var subtitleCheck: Task<Void, Never>?
     /// Voor welke titel de automatische ondertitels al bekeken zijn (één keer per titel, niet na elke herverbinding)
     private var autoSubtitlesFor: String?
+    /// build 91: zelf een ondertitel gekozen (of uitgezet) voor deze titel: de automatische ondertitels niet meer aanzetten
+    private(set) var userPickedSubtitle = false
 
     var isLive: Bool { item.type == .live }
     var canTimeshift: Bool { isLive && (catchupProvider != nil || ((engine as? AVEngine)?.liveWindow ?? 0) > 30) }
@@ -169,6 +171,7 @@ final class PlayerController: ObservableObject {
         // de automatische ondertitels opnieuw op (de ingeladen ondertitels zijn hierboven gewist)
         carrySubtitle = nil
         autoSubtitlesFor = nil
+        userPickedSubtitle = false
     }
 
     /// Opnieuw beginnen met foutherstel (andere bron of andere speler gekozen).
@@ -660,7 +663,7 @@ final class PlayerController: ObservableObject {
         subtitleCheck?.cancel()
         subtitleCheck = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: 2_000_000_000)
-            guard let self, !Task.isCancelled, !self.stopped, self.item.id == id,
+            guard let self, !Task.isCancelled, !self.stopped, self.item.id == id, !self.userPickedSubtitle,
                   self.externalSubtitleFile == nil, self.externalCues.isEmpty else { return }
             if let t = self.engine.subtitleTracks.first(where: { TrackPreferences.matches($0, code: want) }) {
                 self.engine.selectSubtitle(t)
@@ -716,6 +719,10 @@ final class PlayerController: ObservableObject {
         }
     }
     func selectSubtitle(_ t: MediaTrack?) {
+        // build 91: eigen keuze gaat voor: geen automatische ondertitels meer (ook niet als die nog onderweg zijn)
+        subtitleCheck?.cancel(); subtitleCheck = nil
+        autoSubtitlesFor = item.id
+        userPickedSubtitle = true
         externalCues = []; subtitleText = nil; externalSubtitleName = nil
         externalSubtitleFile = nil; externalSubtitleLanguage = nil
         engine.selectSubtitle(t); objectWillChange.send()

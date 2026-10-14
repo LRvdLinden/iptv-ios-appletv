@@ -5,6 +5,11 @@
 //   {url, range?}       body van `url` (http of https), gestreamd; range bv. "bytes=0-1048575"
 //   {action:"token"}    → {token, expires_at}: kort geldig (6 uur) token voor de GET-vorm
 //   {action:"ping"}     → {ok:true}: statuscontrole, zonder inloggen
+//   {action:"os", path, method?, query?, body?, token?, host?} (build 91) → doorgeefluik naar de OpenSubtitles-API
+//                       (de browser mag die zelf niet aanroepen: geen CORS). Alleen api./vip-api.opensubtitles.com en
+//                       de paden /login, /logout, /subtitles, /download en /infos/user; de API-sleutel en user-agent
+//                       zet de proxy zelf (BINGR_OPENSUBTITLES_API_KEY). Antwoord: status en body van OpenSubtitles.
+//   {action:"osfile", url} (build 91) → ondertitelbestand van een downloadlink van OpenSubtitles (max. 5 MB)
 //   {action:"probe", url} → JSON voor de diagnose van de webspeler (build 82): status, content-type, lengte, of de
 //                       server Range kent, doorverwijzingen (alleen hosts, nooit het pad met inloggegevens of token)
 //                       en de eerste 64 KB als base64 (om container en codecs te herkennen; ook HLS-controle)
@@ -48,6 +53,58 @@ const MAX_SKIP = 512 * 1024 * 1024;
 // zelfde user-agent als de apps (Secrets.userAgent / Http.USER_AGENT): sommige panels laten alleen bekende spelers toe
 const USER_AGENT = "Bingr v1.0.0";
 const PROBE_BYTES = 64 * 1024;
+
+// ---- OpenSubtitles (build 91) ----
+const OS_HOSTS = new Set(["api.opensubtitles.com", "vip-api.opensubtitles.com"]);
+const OS_PATHS = /^\/(login|logout|subtitles|download|infos\/user)$/;
+const OS_PER_MIN = 40;
+const osHits = new Map<string, { n: number; until: number }>();
+function osLimited(user: string) {
+  const now = Date.now(), h = osHits.get(user);
+  if (!h || h.until < now) { if (osHits.size > 5000) osHits.clear(); osHits.set(user, { n: 1, until: now + 60_000 }); return false; }
+  return ++h.n > OS_PER_MIN;
+}
+async function osApi(req: Request, b: Record<string, unknown>) {
+  const json = jsonFor(req);
+  const key = Deno.env.get("BINGR_OPENSUBTITLES_API_KEY") ?? "";
+  if (!key) return json({ error: "unavailable" }, 503);
+  const host = String(b.host || "api.opensubtitles.com").replace(/^https?:\/\//, "").replace(/\/+$/, "").toLowerCase();
+  const path = String(b.path ?? "");
+  const method = String(b.method || "GET").toUpperCase();
+  if (!OS_HOSTS.has(host) || !OS_PATHS.test(path)) return json({ error: "host_not_allowed" }, 403);
+  if (method !== "GET" && method !== "POST" && method !== "DELETE") return json({ error: "method_not_allowed" }, 405);
+  const u = new URL("https://" + host + "/api/v1" + path);
+  const q = b.query && typeof b.query === "object" ? b.query as Record<string, unknown> : {};
+  for (const k of Object.keys(q).sort()) if (q[k] != null && q[k] !== "") u.searchParams.set(k, String(q[k]));
+  const headers: Record<string, string> = { "Api-Key": key, "User-Agent": USER_AGENT, "Accept": "application/json" };
+  const tok = typeof b.token === "string" ? b.token : "";
+  if (tok) headers["Authorization"] = "Bearer " + tok;
+  let payload: string | undefined;
+  if (method === "POST" && b.body != null) { headers["Content-Type"] = "application/json"; payload = JSON.stringify(b.body); }
+  const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 20_000);
+  try {
+    const r = await fetch(u, { method, headers, body: payload, signal: ctl.signal, redirect: "follow" });
+    const text = await r.text();
+    return new Response(text.slice(0, 2 * 1024 * 1024), { status: r.status,
+      headers: { ...corsFor(req), "Content-Type": r.headers.get("content-type") ?? "application/json", "Cache-Control": "no-store" } });
+  } catch { return json({ error: "upstream_failed" }, 502); }
+  finally { clearTimeout(timer); }
+}
+async function osFile(req: Request, raw: string) {
+  const json = jsonFor(req);
+  const t = parseTarget(raw);
+  if (!t || t.protocol !== "https:" || !/(^|\.)opensubtitles\.(org|com)$/i.test(t.hostname)) return json({ error: "host_not_allowed" }, 403);
+  const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 20_000);
+  try {
+    const r = await fetch(t, { headers: { "User-Agent": USER_AGENT }, signal: ctl.signal, redirect: "follow" });
+    if (!/(^|\.)opensubtitles\.(org|com)$/i.test(new URL(r.url || t.toString()).hostname)) return json({ error: "host_not_allowed" }, 403);
+    const buf = new Uint8Array(await r.arrayBuffer());
+    if (buf.length > 5 * 1024 * 1024) return json({ error: "too_large" }, 413);
+    return new Response(buf, { status: r.status,
+      headers: { ...corsFor(req), "Content-Type": r.headers.get("content-type") ?? "application/octet-stream", "Cache-Control": "no-store" } });
+  } catch { return json({ error: "upstream_failed" }, 502); }
+  finally { clearTimeout(timer); }
+}
 
 function corsFor(req: Request): Record<string, string> {
   const origin = req.headers.get("Origin") ?? "";
@@ -494,6 +551,14 @@ Deno.serve(async (req) => {
       if (user === 401) return json({ error: "not_signed_in" }, 401);
       if (typeof user !== "string") return json({ error: "unavailable" }, 503);
       return json(await makeToken(user));
+    }
+
+    if (body.action === "os" || body.action === "osfile") {
+      const ou = await userFor(req);
+      if (ou === 401) return json({ error: "not_signed_in" }, 401);
+      if (typeof ou !== "string") return json({ error: "unavailable" }, 503);
+      if (osLimited(ou)) return json({ error: "rate_limited" }, 429);
+      return body.action === "os" ? await osApi(req, body) : await osFile(req, String(body.url ?? ""));
     }
 
     const target = parseTarget(String(body.url ?? ""));

@@ -1,5 +1,65 @@
 [
  {
+  "build": 91,
+  "version": "1.0.0",
+  "date": "2026-10-14",
+  "items": [
+   {
+    "type": "fixed",
+    "platforms": [
+     "web",
+     "server"
+    ],
+    "nl": "OpenSubtitles werkt nu in de webspeler: inloggen, zoeken en downloaden lopen via de Bingr-server, zodat de browser ze niet meer blokkeert",
+    "en": "OpenSubtitles now works in the web player: signing in, searching and downloading go through the Bingr server, so the browser no longer blocks them"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Webspeler: de gekozen ondertiteltaal wordt meteen gebruikt als de stream die heeft, ondertitels die later binnenkomen worden nog gevonden, OpenSubtitles zoekt ook op TMDB, gedownloade ondertitels worden bewaard (spaart je dagquotum) en ze staan ook in beeld bij volledig scherm op de iPhone",
+    "en": "Web player: your chosen subtitle language is used right away when the stream has it, subtitle tracks that arrive late are still found, OpenSubtitles also searches by TMDB, downloaded subtitles are kept (saving your daily quota) and they also show in fullscreen on iPhone"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "web"
+    ],
+    "nl": "Ondertitels die je zelf kiest of uitzet, worden niet meer overschreven door de automatische ondertitels",
+    "en": "Subtitles you pick or turn off yourself are no longer overridden by automatic subtitles"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "web"
+    ],
+    "nl": "Ondertitelinstellingen per profiel: een ander profiel verandert niet meer de instellingen van het hoofdprofiel, en na een profielwissel gelden de juiste talen",
+    "en": "Subtitle settings per profile: another profile no longer changes the main profile's settings, and the right languages apply after switching profiles"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "web"
+    ],
+    "nl": "OpenSubtitles logt je niet meer onterecht uit op al je apparaten, en je ziet een melding als je niet bent ingelogd of je downloads voor vandaag op zijn",
+    "en": "OpenSubtitles no longer wrongly signs you out on all your devices, and you see a message when you're not signed in or have no downloads left today"
+   }
+  ]
+ },
+ {
   "build": 90,
   "version": "1.0.0",
   "date": "2026-10-14",

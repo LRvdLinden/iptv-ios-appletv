@@ -1144,8 +1144,13 @@ final class StateSync {
             if prefsAt == nil || spAt > prefsAt! {
                 store.setSyncedPreferences(id) { p in
                     if sp.keys.contains("autoSubtitles") {
-                        p.subtitleMode = TrackPreferences.mode(fromSynced: sp["autoSubtitles"])?.rawValue
-                        if p.subtitleMode == nil { p.autoSubtitles = nil }
+                        if (sp["autoSubtitles"] as? Bool) == false {
+                            // build 91: oud `false` in `prefs` = niet ingesteld (docs/ACCOUNT.md), niet "wanneer nodig"
+                            p.subtitleMode = nil; p.autoSubtitles = nil
+                        } else {
+                            p.subtitleMode = TrackPreferences.mode(fromSynced: sp["autoSubtitles"])?.rawValue
+                            if p.subtitleMode == nil { p.autoSubtitles = nil }
+                        }
                     }
                     if sp.keys.contains("subtitleLanguage") { p.subtitleLanguage = sp["subtitleLanguage"] as? String }
                     if sp.keys.contains("audioLanguage") { p.audioLanguage = sp["audioLanguage"] as? String }

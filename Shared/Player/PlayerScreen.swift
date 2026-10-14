@@ -53,6 +53,8 @@ struct PlayerScreen: View {
     /// Build 59: dezelfde film/serie in andere talen (om naar te wisselen vanuit Audio & ondertitels)
     @State private var languageVersions: [LanguageVersion] = []
     @State private var versionsFor: String?
+    /// build 91: de melding "log in bij OpenSubtitles" is in deze spelersessie al getoond (niet bij elke titel opnieuw)
+    @State private var osSignInHinted = false
 
     enum Panel: String, Identifiable { case audioSubs, opensubs, options, cast, sources, rate, intro, alternatives; var id: String { rawValue } }
 
@@ -575,19 +577,48 @@ struct PlayerScreen: View {
     /// Build 59: beste ondertitel van OpenSubtitles in deze taal, op de achtergrond (IMDb- of TMDB-id, seizoen/aflevering
     /// en de hash van het bestand als dat kan), en meteen aanzetten met een korte melding.
     private func fetchSubtitles(_ it: PlayableItem, language lang: String) async {
-        guard subs.isLoggedIn, player.item.id == it.id, !player.hasExternalSubtitle else { return }
+        guard player.item.id == it.id, !player.hasExternalSubtitle, !player.userPickedSubtitle else { return }
+        // build 91: niet meer stil overslaan: zonder inlog één keer per spelersessie een melding
+        guard subs.isLoggedIn else {
+            if !osSignInHinted {
+                osSignInHinted = true
+                flash(L("Sign in to OpenSubtitles under My Bingr → OpenSubtitles to download subtitles."))
+            }
+            return
+        }
+        // build 91: app-sleutel van de server nog niet binnen → eerst ophalen, anders stil overslaan (de gebruiker kan er niets aan doen)
+        if !Secrets.openSubtitlesReady { await AccountService.shared.fetchConfig(force: false) }
+        guard Secrets.openSubtitlesReady else { return }
         let tmdb = ContentLanguage.Facts.shared.tmdbID(it.seriesID ?? it.id)
         let hash = await OpenSubtitles.movieHash(player.url)
         do {
             let found = try await subs.search(imdbID: it.imdbID, tmdbID: tmdb, title: ContentLanguage.searchTitle(it.title),
                                               year: it.subtitle.flatMap { Int($0) }, season: it.season, episode: it.episode,
                                               languages: [lang], movieHash: hash)
-            guard let best = found.first, player.item.id == it.id, !player.hasExternalSubtitle else { return }
+            guard let best = found.first, player.item.id == it.id, !player.hasExternalSubtitle,
+                  !player.userPickedSubtitle else { return }
             let file = try await subs.download(best)
-            guard player.item.id == it.id, !player.hasExternalSubtitle else { return }
+            guard player.item.id == it.id, !player.hasExternalSubtitle, !player.userPickedSubtitle else { return }
             player.addSubtitle(file: file, name: "\(TrackPreferences.flag(best.language)) \(best.release)", language: best.language)
             flash(L("Subtitles: %@ (OpenSubtitles)", TrackPreferences.name(lang)))
-        } catch {}
+        } catch {
+            // build 91: fouten tonen (één keer per titel: de automatische ondertitels lopen maar één keer per titel)
+            guard player.item.id == it.id, !player.userPickedSubtitle else { return }
+            flash(Self.openSubtitlesMessage(error))
+        }
+    }
+
+    /// build 91: foutmelding van OpenSubtitles voor de speler (downloadlimiet apart, anders de melding van de server)
+    private static func openSubtitlesMessage(_ error: Error) -> String {
+        if let h = error as? HTTPError, case .status(let code, let msg) = h {
+            let m = msg.lowercased()
+            if code == 406 || m.contains("quota") || (m.contains("allowed") && m.contains("download")) {
+                return L("OpenSubtitles: no downloads left today.")
+            }
+            let text = msg.trimmingCharacters(in: .whitespacesAndNewlines)
+            return L("OpenSubtitles: %@", text.isEmpty ? "HTTP \(code)" : String(text.prefix(160)))
+        }
+        return L("OpenSubtitles: %@", error.localizedDescription)
     }
 
     // MARK: andere taal (build 59)

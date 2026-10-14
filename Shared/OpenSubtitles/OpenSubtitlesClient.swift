@@ -36,6 +36,8 @@ final class OpenSubtitles: ObservableObject {
 
     private func request(_ path: String, method: String = "GET", query: [String: String] = [:], body: [String: Any]? = nil,
                          base: String? = nil) async throws -> Data {
+        // build 91: zonder app-sleutel (nog niet van de server) niet aanroepen: dat geeft een 401/403 die niets met je inlog te maken heeft
+        guard Secrets.openSubtitlesReady else { throw OSError.notReady }
         var c = URLComponents(string: "https://\(base ?? session?.baseURL ?? "api.opensubtitles.com")/api/v1\(path)")!
         if !query.isEmpty { c.queryItems = query.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) } }
         var r = URLRequest(url: c.url!)
@@ -47,7 +49,14 @@ final class OpenSubtitles: ObservableObject {
         if let t = session?.token { r.setValue("Bearer \(t)", forHTTPHeaderField: "Authorization") }
         if let body { r.httpBody = try JSONSerialization.data(withJSONObject: body) }
         let (d, h) = try await HTTP.data(r)
-        if h.statusCode == 401 && session != nil && path != "/login" { session = nil }
+        // build 91: alleen bij aanroepen die echt de inlog gebruiken de sessie wissen (dat logt via de account ook je
+        // andere apparaten uit); een 401 bij zoeken zegt niets over het token. Er wordt geen wachtwoord bewaard,
+        // dus opnieuw inloggen kan hier niet: dan moet de gebruiker zelf opnieuw inloggen.
+        if h.statusCode == 401 && session != nil && Self.authenticatedPaths.contains(path) {
+            session = nil
+            remainingDownloads = nil
+            throw OSError.notLoggedIn   // niet de melding over de afspeellijst (HTTPError 401)
+        }
         guard (200..<300).contains(h.statusCode) else {
             struct E: Decodable { let message: String? }
             let msg = (try? JSONDecoder().decode(E.self, from: d).message) ?? String(decoding: d, as: UTF8.self)
@@ -55,6 +64,9 @@ final class OpenSubtitles: ObservableObject {
         }
         return d
     }
+
+    /// build 91: aanroepen waarbij een 401 betekent dat het token niet meer geldig is
+    private static let authenticatedPaths: Set<String> = ["/download", "/infos/user"]
 
     // MARK: account
 
@@ -268,5 +280,12 @@ final class OpenSubtitles: ObservableObject {
 
 enum OSError: LocalizedError {
     case notLoggedIn
-    var errorDescription: String? { L("Sign in to OpenSubtitles first (My Bingr).") }
+    /// build 91: de app-sleutel voor OpenSubtitles is er (nog) niet
+    case notReady
+    var errorDescription: String? {
+        switch self {
+        case .notLoggedIn: return L("Sign in to OpenSubtitles first (My Bingr).")
+        case .notReady: return L("OpenSubtitles isn't available yet. Try again in a moment.")
+        }
+    }
 }

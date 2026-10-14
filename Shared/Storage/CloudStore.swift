@@ -109,6 +109,16 @@ final class CloudStore: ObservableObject {
     }
 
     func selectProfile(_ p: ViewerProfile) {
+        // build 91: het hoofdprofiel verlaten → zijn huidige kijkvoorkeuren vastleggen; anders neemt het bij terugkeer
+        // de voorkeuren van het andere profiel over (lege velden = de globale waarden, die dat profiel heeft overschreven)
+        if let cur = activeProfile, isMain(cur), p.id != cur.id {
+            var m = cur
+            if m.effectiveSubtitleMode == nil { m.subtitleMode = TrackPreferences.subtitleMode.rawValue }
+            if m.streamSubtitleLanguage == nil { m.streamSubtitleLanguage = TrackPreferences.subtitle == "off" ? "" : TrackPreferences.subtitle }
+            if m.audioLanguage == nil { m.audioLanguage = TrackPreferences.audio }
+            if m.subtitleLanguage == nil { m.subtitleLanguage = OpenSubtitles.shared.defaultLanguage }
+            if m != cur { upsertProfile(m) }
+        }
         activeProfileID = p.id
         UserDefaults.standard.set(p.id.uuidString, forKey: "activeProfileID")
         applyPreferences(of: p)
@@ -136,7 +146,10 @@ final class CloudStore: ObservableObject {
     /// Kijkvoorkeur van het actieve profiel opslaan.
     func updateActivePreferences(_ change: (inout ViewerProfile) -> Void) {
         guard var p = activeProfile else { return }
+        let old = p
         change(&p)
+        // build 91: niets veranderd (bijv. een waarde die net uit de sync of een profielwissel kwam) → niet opnieuw uploaden
+        guard p != old else { return }
         upsertProfile(p)
     }
 

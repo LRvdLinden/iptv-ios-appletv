@@ -877,7 +877,10 @@
   "Your Bingr account has Lifetime. All features are unlocked. Thank you for supporting Bingr!": "حسابك في Bingr لديه Lifetime. جميع الميزات مفعّلة. شكرًا لدعمك Bingr!",
   "Your Bingr account uses the Free plan. Lifetime unlocks every feature of Bingr for your account.": "حسابك في Bingr يستخدم الخطة المجانية. يفتح Lifetime جميع ميزات Bingr لحسابك.",
   "Your plan allows %d devices.": "تسمح خطتك بـ %d أجهزة.",
-  "Your plan allows %d screens at the same time.": "تسمح خطتك بـ %d شاشات في الوقت نفسه."
+  "Your plan allows %d screens at the same time.": "تسمح خطتك بـ %d شاشات في الوقت نفسه.",
+  "OpenSubtitles: %@": "OpenSubtitles: %@",
+  "OpenSubtitles: no downloads left today.": "OpenSubtitles: لم يتبقَّ لك أي تنزيلات اليوم.",
+  "OpenSubtitles isn't available yet. Try again in a moment.": "OpenSubtitles غير متاح بعد. حاول مرة أخرى بعد قليل."
  },
  "de": {
   "%@ is now signed in.": "%@ ist jetzt angemeldet.",
@@ -1757,7 +1760,10 @@
   "Your Bingr account has Lifetime. All features are unlocked. Thank you for supporting Bingr!": "Dein Bingr-Konto hat Lifetime. Alle Funktionen sind freigeschaltet. Danke für deine Unterstützung!",
   "Your Bingr account uses the Free plan. Lifetime unlocks every feature of Bingr for your account.": "Dein Bingr-Konto nutzt den Gratis-Tarif. Lifetime schaltet alle Funktionen von Bingr für dein Konto frei.",
   "Your plan allows %d devices.": "Dein Tarif erlaubt %d Geräte.",
-  "Your plan allows %d screens at the same time.": "Dein Tarif erlaubt %d Bildschirme gleichzeitig."
+  "Your plan allows %d screens at the same time.": "Dein Tarif erlaubt %d Bildschirme gleichzeitig.",
+  "OpenSubtitles: %@": "OpenSubtitles: %@",
+  "OpenSubtitles: no downloads left today.": "OpenSubtitles: Für heute sind keine Downloads mehr übrig.",
+  "OpenSubtitles isn't available yet. Try again in a moment.": "OpenSubtitles ist noch nicht verfügbar. Versuche es gleich noch einmal."
  },
  "es": {
   "%@ is now signed in.": "%@ ya ha iniciado sesión.",
@@ -2637,7 +2643,10 @@
   "Your Bingr account has Lifetime. All features are unlocked. Thank you for supporting Bingr!": "Tu cuenta de Bingr tiene Lifetime. Todas las funciones están desbloqueadas. ¡Gracias por apoyar Bingr!",
   "Your Bingr account uses the Free plan. Lifetime unlocks every feature of Bingr for your account.": "Tu cuenta de Bingr usa el plan Gratis. Lifetime desbloquea todas las funciones de Bingr para tu cuenta.",
   "Your plan allows %d devices.": "Tu plan permite %d dispositivos.",
-  "Your plan allows %d screens at the same time.": "Tu plan permite %d pantallas a la vez."
+  "Your plan allows %d screens at the same time.": "Tu plan permite %d pantallas a la vez.",
+  "OpenSubtitles: %@": "OpenSubtitles: %@",
+  "OpenSubtitles: no downloads left today.": "OpenSubtitles: no te quedan descargas por hoy.",
+  "OpenSubtitles isn't available yet. Try again in a moment.": "OpenSubtitles aún no está disponible. Vuelve a intentarlo en un momento."
  },
  "fr": {
   "%@ is now signed in.": "%@ est maintenant connecté.",
@@ -3517,7 +3526,10 @@
   "Your Bingr account has Lifetime. All features are unlocked. Thank you for supporting Bingr!": "Votre compte Bingr a Lifetime. Toutes les fonctions sont débloquées. Merci de soutenir Bingr !",
   "Your Bingr account uses the Free plan. Lifetime unlocks every feature of Bingr for your account.": "Votre compte Bingr utilise l’offre Gratuite. Lifetime débloque toutes les fonctions de Bingr pour votre compte.",
   "Your plan allows %d devices.": "Votre offre permet %d appareils.",
-  "Your plan allows %d screens at the same time.": "Votre offre permet %d écrans en même temps."
+  "Your plan allows %d screens at the same time.": "Votre offre permet %d écrans en même temps.",
+  "OpenSubtitles: %@": "OpenSubtitles : %@",
+  "OpenSubtitles: no downloads left today.": "OpenSubtitles : plus aucun téléchargement disponible aujourd’hui.",
+  "OpenSubtitles isn't available yet. Try again in a moment.": "OpenSubtitles n’est pas encore disponible. Réessaie dans un instant."
  },
  "it": {
   "%@ is now signed in.": "%@ ha effettuato l’accesso.",
@@ -4397,7 +4409,10 @@
   "Your Bingr account has Lifetime. All features are unlocked. Thank you for supporting Bingr!": "Il tuo account Bingr ha Lifetime. Tutte le funzioni sono sbloccate. Grazie per il supporto a Bingr!",
   "Your Bingr account uses the Free plan. Lifetime unlocks every feature of Bingr for your account.": "Il tuo account Bingr usa il piano Gratis. Lifetime sblocca tutte le funzioni di Bingr per il tuo account.",
   "Your plan allows %d devices.": "Il tuo piano consente %d dispositivi.",
-  "Your plan allows %d screens at the same time.": "Il tuo piano consente %d schermi contemporaneamente."
+  "Your plan allows %d screens at the same time.": "Il tuo piano consente %d schermi contemporaneamente.",
+  "OpenSubtitles: %@": "OpenSubtitles: %@",
+  "OpenSubtitles: no downloads left today.": "OpenSubtitles: non hai più download disponibili oggi.",
+  "OpenSubtitles isn't available yet. Try again in a moment.": "OpenSubtitles non è ancora disponibile. Riprova tra poco."
  },
  "nl": {
   "%@ is now signed in.": "%@ is nu ingelogd.",
@@ -5277,7 +5292,10 @@
   "Your Bingr account has Lifetime. All features are unlocked. Thank you for supporting Bingr!": "Je Bingr-account heeft Lifetime. Alle functies zijn beschikbaar. Bedankt voor je steun aan Bingr!",
   "Your Bingr account uses the Free plan. Lifetime unlocks every feature of Bingr for your account.": "Je Bingr-account heeft het abonnement Gratis. Met Lifetime krijgt je account alle functies van Bingr.",
   "Your plan allows %d devices.": "Je abonnement staat %d apparaten toe.",
-  "Your plan allows %d screens at the same time.": "Je abonnement staat %d schermen tegelijk toe."
+  "Your plan allows %d screens at the same time.": "Je abonnement staat %d schermen tegelijk toe.",
+  "OpenSubtitles: %@": "OpenSubtitles: %@",
+  "OpenSubtitles: no downloads left today.": "OpenSubtitles: geen downloads meer over vandaag.",
+  "OpenSubtitles isn't available yet. Try again in a moment.": "OpenSubtitles is nog niet beschikbaar. Probeer het zo opnieuw."
  },
  "pl": {
   "%@ is now signed in.": "%@ jest teraz zalogowany.",
@@ -6157,7 +6175,10 @@
   "Your Bingr account has Lifetime. All features are unlocked. Thank you for supporting Bingr!": "Twoje konto Bingr ma Lifetime. Wszystkie funkcje są odblokowane. Dziękujemy za wsparcie Bingr!",
   "Your Bingr account uses the Free plan. Lifetime unlocks every feature of Bingr for your account.": "Twoje konto Bingr korzysta z planu Darmowy. Lifetime odblokowuje wszystkie funkcje Bingr dla Twojego konta.",
   "Your plan allows %d devices.": "Twój plan pozwala na %d urządzeń.",
-  "Your plan allows %d screens at the same time.": "Twój plan pozwala na %d ekranów jednocześnie."
+  "Your plan allows %d screens at the same time.": "Twój plan pozwala na %d ekranów jednocześnie.",
+  "OpenSubtitles: %@": "OpenSubtitles: %@",
+  "OpenSubtitles: no downloads left today.": "OpenSubtitles: na dziś nie zostało już żadnych pobrań.",
+  "OpenSubtitles isn't available yet. Try again in a moment.": "OpenSubtitles nie jest jeszcze dostępny. Spróbuj ponownie za chwilę."
  },
  "pt": {
   "%@ is now signed in.": "%@ já tem sessão iniciada.",
@@ -7037,7 +7058,10 @@
   "Your Bingr account has Lifetime. All features are unlocked. Thank you for supporting Bingr!": "A tua conta Bingr tem Lifetime. Todas as funcionalidades estão desbloqueadas. Obrigado por apoiares o Bingr!",
   "Your Bingr account uses the Free plan. Lifetime unlocks every feature of Bingr for your account.": "A tua conta Bingr usa o plano Grátis. O Lifetime desbloqueia todas as funcionalidades do Bingr para a tua conta.",
   "Your plan allows %d devices.": "O teu plano permite %d dispositivos.",
-  "Your plan allows %d screens at the same time.": "O teu plano permite %d ecrãs ao mesmo tempo."
+  "Your plan allows %d screens at the same time.": "O teu plano permite %d ecrãs ao mesmo tempo.",
+  "OpenSubtitles: %@": "OpenSubtitles: %@",
+  "OpenSubtitles: no downloads left today.": "OpenSubtitles: já não tens transferências disponíveis hoje.",
+  "OpenSubtitles isn't available yet. Try again in a moment.": "O OpenSubtitles ainda não está disponível. Tenta novamente daqui a pouco."
  },
  "tr": {
   "%@ is now signed in.": "%@ artık oturum açtı.",
@@ -7917,7 +7941,10 @@
   "Your Bingr account has Lifetime. All features are unlocked. Thank you for supporting Bingr!": "Bingr hesabında Lifetime var. Tüm özellikler açık. Bingr’ı desteklediğin için teşekkürler!",
   "Your Bingr account uses the Free plan. Lifetime unlocks every feature of Bingr for your account.": "Bingr hesabın Ücretsiz planı kullanıyor. Lifetime, hesabın için Bingr’ın tüm özelliklerini açar.",
   "Your plan allows %d devices.": "Planın %d cihaza izin veriyor.",
-  "Your plan allows %d screens at the same time.": "Planın aynı anda %d ekrana izin veriyor."
+  "Your plan allows %d screens at the same time.": "Planın aynı anda %d ekrana izin veriyor.",
+  "OpenSubtitles: %@": "OpenSubtitles: %@",
+  "OpenSubtitles: no downloads left today.": "OpenSubtitles: Bugün için indirme hakkın kalmadı.",
+  "OpenSubtitles isn't available yet. Try again in a moment.": "OpenSubtitles henüz kullanılamıyor. Birazdan tekrar dene."
  },
  "zh-Hans": {
   "%@ is now signed in.": "%@ 现已登录。",
@@ -8797,6 +8824,9 @@
   "Your Bingr account has Lifetime. All features are unlocked. Thank you for supporting Bingr!": "你的 Bingr 账户已开通 Lifetime，所有功能均已解锁。感谢你对 Bingr 的支持！",
   "Your Bingr account uses the Free plan. Lifetime unlocks every feature of Bingr for your account.": "你的 Bingr 账户使用的是免费方案。Lifetime 为你的账户解锁 Bingr 的全部功能。",
   "Your plan allows %d devices.": "你的方案允许 %d 台设备。",
-  "Your plan allows %d screens at the same time.": "你的方案允许同时使用 %d 个屏幕。"
+  "Your plan allows %d screens at the same time.": "你的方案允许同时使用 %d 个屏幕。",
+  "OpenSubtitles: %@": "OpenSubtitles：%@",
+  "OpenSubtitles: no downloads left today.": "OpenSubtitles：今天的下载次数已用完。",
+  "OpenSubtitles isn't available yet. Try again in a moment.": "OpenSubtitles 暂不可用，请稍后再试。"
  }
 }
