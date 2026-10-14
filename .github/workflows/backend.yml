@@ -1,7 +1,7 @@
 name: Backend
 
 # Zet de Bingr-accounts in Supabase klaar: tabel (supabase/schema.sql), e-mailtemplates (supabase/templates) en de Edge Functions
-# device-auth (accounts, tv-koppeling), web-proxy (webspeler) en status (bingr.online/status). De functie admin (beheer-dashboard)
+# device-auth (accounts, tv-koppeling), web-proxy (webspeler), status (bingr.online/status) en support (support.bingr.online). De functie admin (beheer-dashboard)
 # staat in de privé-repo LRvdLinden/bingr-beheer en wordt daar gedeployd; deze workflow raakt of verwijdert hem nooit.
 # Secrets: SUPABASE_ACCESS_TOKEN (supabase.com/dashboard/account/tokens) en SUPABASE_PROJECT_REF (bv. abcd1234 uit https://abcd1234.supabase.co).
 # Mail (optioneel, ook gebruikt door admin): BINGR_SMTP_HOST, BINGR_SMTP_PORT (465), BINGR_SMTP_USER,
@@ -9,6 +9,9 @@ name: Backend
 # Status (optioneel): BINGR_ALERT_EMAIL (storingsmeldingen per e-mail, via de SMTP hierboven), BINGR_GITHUB_TOKEN (alleen-lezen
 # token tegen de GitHub-limiet; zonder token valt de controle terug op de webpagina), STATUS_CRON_SECRET (vast geheim voor
 # de planning; zonder dit secret maakt elke deploy een nieuw geheim en zet het de pg_cron-taak opnieuw klaar).
+# Support (optioneel): BINGR_SUPPORT_FROM (afzender, standaard "Bingr Support <support@bingr.online>") en BINGR_SUPPORT_EMAIL
+# (meldingen van nieuwe tickets en reacties, standaard support@bingr.online). Het geheim SUPPORT_ADMIN_SECRET (waarmee de functie
+# admin uit bingr-beheer de supporttickets beheert) maakt deze workflow één keer zelf aan; het staat nooit in de repo of het log.
 on:
   push:
     branches: [main]
@@ -44,6 +47,12 @@ jobs:
         run: |
           deno test --allow-all supabase/functions/status/status_test.ts > status-test.log 2>&1 && exit 0
           grep -E "FAILED|error|=>|AssertionError|Values are not equal|actual|expected" status-test.log | head -30 | while IFS= read -r l; do echo "::warning::${l:0:300}"; done
+          exit 1
+      - name: Unittests (supporttickets)
+        continue-on-error: true
+        run: |
+          deno test supabase/functions/support/support_test.ts > support-test.log 2>&1 && exit 0
+          grep -E "FAILED|error|=>|verwacht|niet waar" support-test.log | head -30 | while IFS= read -r l; do echo "::warning::${l:0:300}"; done
           exit 1
       - name: Controleren
         id: check
@@ -91,6 +100,11 @@ jobs:
             supabase secrets set --project-ref "$REF" BINGR_SOURCES_KEY="$(openssl rand -base64 32)" >/dev/null
             echo "::notice::Versleutelsleutel voor servers aangemaakt"
           fi
+          # geheim tussen de functies admin (bingr-beheer) en support: alleen aanmaken als het nog niet bestaat
+          if ! supabase secrets list --project-ref "$REF" 2>/dev/null | grep -q SUPPORT_ADMIN_SECRET; then
+            supabase secrets set --project-ref "$REF" SUPPORT_ADMIN_SECRET="$(openssl rand -hex 32)" >/dev/null
+            echo "::notice::SUPPORT_ADMIN_SECRET aangemaakt (beheer van supporttickets)"
+          fi
       - name: Mail- en statusgegevens als function-secrets
         if: steps.check.outputs.skip != '1'
         env:
@@ -101,6 +115,8 @@ jobs:
           S_FROM: ${{ secrets.BINGR_SMTP_FROM }}
           S_ALERT: ${{ secrets.BINGR_ALERT_EMAIL }}
           S_GH: ${{ secrets.BINGR_GITHUB_TOKEN }}
+          S_SUP_FROM: ${{ secrets.BINGR_SUPPORT_FROM }}
+          S_SUP_EMAIL: ${{ secrets.BINGR_SUPPORT_EMAIL }}
         run: |
           # als losse argumenten (geen env-bestand), zodat tekens als # " of spaties in wachtwoorden geen probleem zijn
           args=()
@@ -111,6 +127,8 @@ jobs:
           [ -n "$S_FROM" ] && args+=("BINGR_SMTP_FROM=$S_FROM")
           [ -n "$S_ALERT" ] && args+=("BINGR_ALERT_EMAIL=$S_ALERT")
           [ -n "$S_GH" ] && args+=("BINGR_GITHUB_TOKEN=$S_GH")
+          [ -n "$S_SUP_FROM" ] && args+=("BINGR_SUPPORT_FROM=$S_SUP_FROM")
+          [ -n "$S_SUP_EMAIL" ] && args+=("BINGR_SUPPORT_EMAIL=$S_SUP_EMAIL")
           if [ ${#args[@]} -gt 0 ]; then supabase secrets set --project-ref "$REF" "${args[@]}" >/dev/null; echo "::notice::${#args[@]} mail/status-secret(s) op de server gezet"; fi
           [ -z "$S_ALERT" ] && echo "::notice::BINGR_ALERT_EMAIL ontbreekt: storingen komen alleen op de statuspagina, niet per e-mail."
           [ -n "$S_PORT" ] && { [ "$S_PORT" = 587 ] || [ "$S_PORT" = 25 ]; } && echo "::warning::Supabase blokkeert uitgaande SMTP op poort $S_PORT; gebruik 465 (SSL/TLS)."
@@ -121,6 +139,9 @@ jobs:
       - name: Edge Function web-proxy
         if: steps.check.outputs.skip != '1'
         run: supabase functions deploy web-proxy --project-ref "$REF" --no-verify-jwt --use-api
+      - name: Edge Function support
+        if: steps.check.outputs.skip != '1'
+        run: supabase functions deploy support --project-ref "$REF" --no-verify-jwt --use-api
       - name: Statusmonitor - geheim
         if: steps.check.outputs.skip != '1'
         env:
@@ -201,6 +222,43 @@ jobs:
           # admin (privé-repo bingr-beheer): alleen kijken of hij er nog staat, als waarschuwing (deze workflow deployt hem niet)
           curl -s -X POST "https://$REF.supabase.co/functions/v1/admin" -H "Content-Type: application/json" -d '{"action":"status","op":"overview"}' > /tmp/b.json || true
           grep -q not_signed_in /tmp/b.json && echo "::notice::admin (bingr-beheer) staat online" || echo "::warning::admin (bingr-beheer) gaf geen not_signed_in: $(head -c 200 /tmp/b.json)"
+      - name: Supporttickets testen
+        if: steps.check.outputs.skip != '1'
+        run: |
+          F="https://$REF.supabase.co/functions/v1/support"
+          sleep 3
+          # 1. ping en preflight vanaf support.bingr.online
+          curl -s -X POST "$F" -H "Content-Type: application/json" -d '{"action":"ping"}' | tee /tmp/p.json; echo
+          grep -q '"ok":true' /tmp/p.json && echo "::notice::support ping werkt" || { echo "::error::support ping onverwacht"; exit 1; }
+          acao=$(curl -s -D - -o /dev/null -X OPTIONS "$F" -H "Origin: https://support.bingr.online" -H "Access-Control-Request-Method: POST" \
+            | grep -i '^access-control-allow-origin:' | tr -d '\r' | cut -d' ' -f2-)
+          [ "$acao" = "https://support.bingr.online" ] && echo "::notice::support preflight met CORS voor https://support.bingr.online" || { echo "::error::support preflight zonder CORS ('$acao')"; exit 1; }
+          acao=$(curl -s -D - -o /dev/null -X OPTIONS "$F" -H "Origin: https://example.com" -H "Access-Control-Request-Method: POST" | grep -ci '^access-control-allow-origin:' || true)
+          [ "$acao" = 0 ] && echo "::notice::andere sites krijgen geen CORS" || { echo "::error::support geeft CORS aan een andere site"; exit 1; }
+          # 2. leeg ticket: validatiefout (er wordt niets aangemaakt of gemaild)
+          code=$(curl -s -o /tmp/c.json -w '%{http_code}' -X POST "$F" -H "Origin: https://support.bingr.online" -H "Content-Type: application/json" -d '{"action":"create"}')
+          cat /tmp/c.json; echo
+          [ "$code" = 400 ] && grep -q name_missing /tmp/c.json && echo "::notice::lege create: 400 name_missing" || { echo "::error::lege create gaf HTTP $code"; exit 1; }
+          code=$(curl -s -o /tmp/c.json -w '%{http_code}' -X POST "$F" -H "Content-Type: application/json" -d '{"action":"create","website":"spam","name":"x"}')
+          [ "$code" = 400 ] && grep -q spam /tmp/c.json && echo "::notice::lokveld werkt" || { echo "::error::lokveld gaf HTTP $code"; exit 1; }
+          # 3. zonder geheime link of inloggen geen ticket; zonder inloggen geen lijst; zonder geheim geen beheer
+          code=$(curl -s -o /tmp/c.json -w '%{http_code}' -X POST "$F" -H "Content-Type: application/json" -d '{"action":"get","n":1001,"t":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}')
+          [ "$code" = 404 ] && echo "::notice::get met fout token: 404" || { echo "::error::get met fout token gaf HTTP $code"; exit 1; }
+          code=$(curl -s -o /tmp/c.json -w '%{http_code}' -X POST "$F" -H "Content-Type: application/json" -d '{"action":"mine"}')
+          [ "$code" = 401 ] && echo "::notice::mine zonder inloggen: 401" || { echo "::error::mine zonder inloggen gaf HTTP $code"; exit 1; }
+          code=$(curl -s -o /tmp/c.json -w '%{http_code}' -X POST "$F" -H "Content-Type: application/json" -H "x-support-secret: fout" -d '{"action":"admin_list"}')
+          [ "$code" = 403 ] && echo "::notice::beheer zonder geheim: 403" || { echo "::error::admin_list zonder geheim gaf HTTP $code"; exit 1; }
+          # 4. tabellen en tellers in de database
+          python3 -c 'import json;print(json.dumps({"query":"select public.bingr_support_counts() as counts, (select last_value from public.support_ticket_number_seq) as seq"}))' > /tmp/q.json
+          curl -s -X POST "https://api.supabase.com/v1/projects/$REF/database/query" -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" --data @/tmp/q.json > /tmp/sq.json
+          python3 - <<'PY'
+          import json
+          r = json.load(open("/tmp/sq.json"))
+          row = r[0] if isinstance(r, list) and r else None
+          if not row or "active" not in json.dumps(row.get("counts")): print("::error::bingr_support_counts onverwacht:", str(r)[:300]); raise SystemExit(1)
+          c = row["counts"] if isinstance(row["counts"], dict) else json.loads(row["counts"])
+          print(f"::notice::Supporttickets: {c['total']} totaal, {c['active']} open, {c['unread']} ongelezen (nummers vanaf {row['seq']})")
+          PY
       - name: Statusmonitor testen
         if: steps.check.outputs.skip != '1'
         run: |

@@ -14,5 +14,6 @@
   - Draai `python3 tools/sync_website.py --site ../bingr-website` (screenshots, buildnummer, changelog), en commit en push daarna ook de website-repo.
   - Controleer daarna dat de workflow `Website` in bingr-website geslaagd is en dat bingr.online het nieuwe buildnummer toont. Is de upload mislukt, start hem dan opnieuw. Elke build hoort in de changelog op de website te staan.
 - Accounts (Supabase): het contract staat in `docs/ACCOUNT.md`, de backend in `supabase/`. De workflow `Backend` zet schema, functie, e-mailtemplates en app-sleutels klaar.
+- Supporttickets: de functie `support` en de tabellen `support_tickets` / `support_messages` staan hier (`supabase/`, workflow `Backend`); de site support.bingr.online staat in LRvdLinden/bingr-support, het beantwoorden in het beheer (bingr-beheer, functie `admin` via het geheim SUPPORT_ADMIN_SECRET). Wijzigingen aan de supportsite of -functie krijgen een changelog-item met platform `web` (site) en/of `server` (functie, mails, database); beheerkant nooit. `_shared/mail.ts` is gelijk aan die in bingr-beheer.
 - Geheime sleutels nooit in de repo; de repo is openbaar. De Supabase-URL en de publishable key mogen er wel in.
 - Admin-dashboard: staat in de privé-repo LRvdLinden/bingr-beheer (https://beheer.bingr.online, functie `admin`). Wijzigingen daaraan nooit in de changelog.

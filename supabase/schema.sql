@@ -937,3 +937,123 @@ language sql security definer set search_path = public as $$
 $$;
 revoke all on function public.bingr_cleanup() from public, anon, authenticated;
 grant execute on function public.bingr_cleanup() to service_role;
+
+-- ============================================================================================================
+-- Supporttickets (support.bingr.online). Alleen de Edge Function `support` (service role) leest en schrijft hierin;
+-- het beheer (functie admin in bingr-beheer) gaat via `support` met het geheim SUPPORT_ADMIN_SECRET.
+-- Ticketnummers beginnen bij 1001 en worden getoond als #1001. Een ticket zonder account is te openen met de
+-- geheime link uit de e-mail (access_token); met een Bingr-account ook via "Mijn tickets".
+create sequence if not exists public.support_ticket_number_seq start with 1001;
+create table if not exists public.support_tickets (
+  id               uuid primary key default gen_random_uuid(),
+  number           bigint not null unique default nextval('public.support_ticket_number_seq'),
+  user_id          uuid references auth.users(id) on delete set null,
+  email            text not null,
+  name             text not null default '',
+  subject          text not null,
+  category         text not null default 'overig',
+  platform         text,
+  app_version      text,
+  status           text not null default 'new',
+  priority         text not null default 'normal',
+  lang             text not null default 'nl',
+  access_token     text not null,
+  ip_hash          text,
+  created_at       timestamptz not null default now(),
+  updated_at       timestamptz not null default now(),
+  last_reply_at    timestamptz not null default now(),
+  last_customer_at timestamptz not null default now(),
+  last_support_at  timestamptz,
+  admin_seen_at    timestamptz,
+  customer_seen_at timestamptz,
+  closed_at        timestamptz
+);
+alter sequence public.support_ticket_number_seq owned by public.support_tickets.number;
+create index if not exists support_tickets_status_idx on public.support_tickets (status, last_reply_at desc);
+create index if not exists support_tickets_email_idx on public.support_tickets (lower(email));
+create index if not exists support_tickets_user_idx on public.support_tickets (user_id);
+create index if not exists support_tickets_ip_idx on public.support_tickets (ip_hash, created_at);
+create index if not exists support_tickets_created_idx on public.support_tickets (created_at desc);
+alter table public.support_tickets enable row level security;
+revoke all on public.support_tickets from anon, authenticated;
+do $$ begin
+  alter table public.support_tickets add constraint support_tickets_status_chk check (status in ('new', 'open', 'pending', 'resolved', 'closed'));
+exception when duplicate_object then null; end $$;
+do $$ begin
+  alter table public.support_tickets add constraint support_tickets_priority_chk check (priority in ('low', 'normal', 'high', 'urgent'));
+exception when duplicate_object then null; end $$;
+do $$ begin
+  alter table public.support_tickets add constraint support_tickets_lang_chk check (lang in ('nl', 'en'));
+exception when duplicate_object then null; end $$;
+
+-- Berichten per ticket: customer (klant), support (antwoord, gemaild), note (interne notitie, nooit zichtbaar voor de
+-- klant) en event (statuswijziging, body = de nieuwe status).
+create table if not exists public.support_messages (
+  id          bigserial primary key,
+  ticket_id   uuid not null references public.support_tickets(id) on delete cascade,
+  author      text not null,
+  body        text not null,
+  created_at  timestamptz not null default now(),
+  email_sent  boolean not null default false,
+  email_error text
+);
+create index if not exists support_messages_ticket_idx on public.support_messages (ticket_id, created_at);
+alter table public.support_messages enable row level security;
+revoke all on public.support_messages from anon, authenticated;
+revoke all on sequence public.support_messages_id_seq from anon, authenticated;
+revoke all on sequence public.support_ticket_number_seq from anon, authenticated;
+do $$ begin
+  alter table public.support_messages add constraint support_messages_author_chk check (author in ('customer', 'support', 'note', 'event'));
+exception when duplicate_object then null; end $$;
+
+-- Aantallen per status voor het beheer (tab Support en de tegel "Open tickets"); unread = klant wacht op een reactie
+-- die het beheer nog niet heeft gezien.
+create or replace function public.bingr_support_counts() returns jsonb
+language sql security definer set search_path = public as $$
+  select jsonb_build_object(
+    'new',      count(*) filter (where status = 'new'),
+    'open',     count(*) filter (where status = 'open'),
+    'pending',  count(*) filter (where status = 'pending'),
+    'resolved', count(*) filter (where status = 'resolved'),
+    'closed',   count(*) filter (where status = 'closed'),
+    'active',   count(*) filter (where status in ('new', 'open', 'pending')),
+    'unread',   count(*) filter (where status in ('new', 'open') and (admin_seen_at is null or last_customer_at > admin_seen_at)),
+    'total',    count(*),
+    'last_7d',  count(*) filter (where created_at > now() - interval '7 days'))
+  from public.support_tickets;
+$$;
+-- Bingr-account bij een ticket (op user_id, anders op e-mailadres): alleen een samenvatting voor het beheer.
+create or replace function public.bingr_support_account(p_user uuid, p_email text) returns jsonb
+language plpgsql security definer set search_path = public, auth as $$
+declare u record; found_it boolean := false;
+begin
+  if p_user is not null then
+    select id, email, created_at, last_sign_in_at, email_confirmed_at into u from auth.users where id = p_user;
+    found_it := found;
+  end if;
+  if not found_it and coalesce(p_email, '') <> '' then
+    select id, email, created_at, last_sign_in_at, email_confirmed_at into u from auth.users where lower(email) = lower(p_email) limit 1;
+    found_it := found;
+  end if;
+  if not found_it then return null; end if;
+  return jsonb_build_object(
+    'id', u.id, 'email', u.email, 'created_at', u.created_at, 'last_sign_in_at', u.last_sign_in_at,
+    'confirmed', u.email_confirmed_at is not null, 'linked', p_user is not null and u.id = p_user,
+    'device_count', (select count(*) from public.account_devices d where d.user_id = u.id),
+    'platforms', (select coalesce(jsonb_agg(distinct d.platform), '[]'::jsonb) from public.account_devices d where d.user_id = u.id and d.platform <> ''),
+    'app_versions', (select coalesce(jsonb_agg(distinct d.app_version), '[]'::jsonb) from public.account_devices d where d.user_id = u.id and d.app_version is not null),
+    'last_seen_at', (select max(d.last_seen_at) from public.account_devices d where d.user_id = u.id),
+    'tickets', (select count(*) from public.support_tickets t where t.user_id = u.id or lower(t.email) = lower(u.email))
+  );
+end $$;
+revoke all on function public.bingr_support_counts() from public, anon, authenticated;
+revoke all on function public.bingr_support_account(uuid, text) from public, anon, authenticated;
+grant execute on function public.bingr_support_counts() to service_role;
+grant execute on function public.bingr_support_account(uuid, text) to service_role;
+
+-- Statusmonitors voor support: de functie (meteen actief) en de site (staat uit tot support.bingr.online online is;
+-- aanzetten in het beheer, tab Status).
+insert into public.status_monitors (id, name_nl, name_en, grp, kind, target, keyword, interval_min, public, enabled, builtin, sort) values
+  ('support',   'Supporttickets',               'Support tickets',              'server',  'fn',          'support',                                null,         5,  true,  true,  true, 45),
+  ('site-sup',  'Supportsite',                  'Support site',                 'website', 'http',        'https://support.bingr.online/',          'content="support"', 5, true, false, true, 55)
+on conflict (id) do nothing;
