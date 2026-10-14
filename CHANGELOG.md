@@ -4,6 +4,15 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 84
+_14 oktober 2026_
+
+### Website
+
+**Verbeterd**
+
+- Homepage: de tekst bij Kijk op elk scherm is korter
+
 ## Versie 1.0.0 · Build 83
 _14 oktober 2026_
 

@@ -1,5 +1,20 @@
 [
  {
+  "build": 84,
+  "version": "1.0.0",
+  "date": "2026-10-14",
+  "items": [
+   {
+    "type": "improved",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Homepage: de tekst bij Kijk op elk scherm is korter",
+    "en": "Homepage: shorter text under Watch on every screen"
+   }
+  ]
+ },
+ {
   "build": 83,
   "version": "1.0.0",
   "date": "2026-10-14",
