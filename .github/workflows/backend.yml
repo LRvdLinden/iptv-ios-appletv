@@ -156,11 +156,11 @@ jobs:
           S_GH: ${{ secrets.BINGR_GITHUB_TOKEN }}
           S_SUP_FROM: ${{ secrets.BINGR_SUPPORT_FROM }}
           S_SUP_EMAIL: ${{ secrets.BINGR_SUPPORT_EMAIL }}
-          S_IMAP_HOST: ${{ secrets.BINGR_IMAP_HOST }}
-          S_IMAP_PORT: ${{ secrets.BINGR_IMAP_PORT }}
-          S_IMAP_USER: ${{ secrets.BINGR_IMAP_USER }}
-          S_IMAP_PASS: ${{ secrets.BINGR_IMAP_PASSWORD }}
-          S_AGENTS: ${{ secrets.BINGR_SUPPORT_AGENTS }}
+          S_IMAP_HOST: ${{ secrets.BINGR_IMAP_HOST_SUPPORT || secrets.BINGR_IMAP_HOST }}
+          S_IMAP_PORT: ${{ secrets.BINGR_IMAP_PORT_SUPPORT || secrets.BINGR_IMAP_PORT }}
+          S_IMAP_USER: ${{ secrets.BINGR_IMAP_USER_SUPPORT || secrets.BINGR_IMAP_USER }}
+          S_IMAP_PASS: ${{ secrets.BINGR_IMAP_PASSWORD_SUPPORT || secrets.BINGR_IMAP_PASSWORD }}
+          S_AGENTS: ${{ secrets.BINGR_SUPPORT_AGENTS_SUPPORT || secrets.BINGR_SUPPORT_AGENTS }}
         run: |
           # als losse argumenten (geen env-bestand), zodat tekens als # " of spaties in wachtwoorden geen probleem zijn
           args=()
