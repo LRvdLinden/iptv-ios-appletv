@@ -144,7 +144,7 @@ jobs:
           cd /tmp/pkg
           git clone -q --depth 1 "https://x-access-token:${TOKEN}@github.com/LRvdLinden/bingr-beheer.git" beheer
           # schrijfrechten van het token meteen controleren (ook als er niets nieuws is)
-          git -C beheer push --dry-run -q origin HEAD:main 2>/dev/null && echo "::notice::BINGR_BEHEER_TOKEN: schrijven naar bingr-beheer werkt" || { echo "::error::BINGR_BEHEER_TOKEN mag niet schrijven naar bingr-beheer (Contents: Read and write nodig)"; exit 1; }
+          git -C beheer push --dry-run -q origin HEAD:main 2>dry.err && echo "::notice::BINGR_BEHEER_TOKEN: schrijven naar bingr-beheer werkt" || { echo "::error::BINGR_BEHEER_TOKEN mag niet schrijven naar bingr-beheer: $(tr '\n' ' ' < dry.err | sed 's#x-access-token:[^@]*@#***@#g' | head -c 300)"; exit 1; }
           # per platform alleen de nieuwste build (versions/Apple/v<versie>/); staat deze build er al, dan niets doen
           CUR=$(python3 -c "import json;print(json.load(open('beheer/versions/latest.json')).get('apple',{}).get('build',0))" 2>/dev/null || echo 0)
           if [ "$CUR" -ge "$B" ]; then echo "::notice::Apple $V build $B staat al in versions/"; exit 0; fi
