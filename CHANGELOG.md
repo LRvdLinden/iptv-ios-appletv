@@ -4,6 +4,15 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 94
+_15 oktober 2026_
+
+### Website
+
+**Opgelost**
+
+- Beveiliging: het profielpoppetje rechtsboven op bingr.online en support.bingr.online wordt veilig getekend, zodat profielgegevens nooit als code kunnen worden uitgevoerd
+
 ## Versie 1.0.0 · Build 93
 _15 oktober 2026_
 

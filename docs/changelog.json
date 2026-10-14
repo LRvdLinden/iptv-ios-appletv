@@ -1,5 +1,20 @@
 [
  {
+  "build": 94,
+  "version": "1.0.0",
+  "date": "2026-10-15",
+  "items": [
+   {
+    "type": "fixed",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Beveiliging: het profielpoppetje rechtsboven op bingr.online en support.bingr.online wordt veilig getekend, zodat profielgegevens nooit als code kunnen worden uitgevoerd",
+    "en": "Security: the profile icon at the top right of bingr.online and support.bingr.online is drawn safely, so profile data can never run as code"
+   }
+  ]
+ },
+ {
   "build": 93,
   "version": "1.0.0",
   "date": "2026-10-15",
