@@ -587,3 +587,22 @@ jobs:
           echo "::warning::cron.job_run_details: $(q "select status, start_time, return_message from cron.job_run_details order by start_time desc limit 4")"
           echo "::warning::net._http_response: $(q "select status_code, timed_out, error_msg, left(content, 120) as content, created from net._http_response order by created desc limit 4")"
           echo "::error::De planning heeft binnen 9 minuten de functie niet aangeroepen"; exit 1
+
+      - name: Support - inbox-status
+        if: steps.check.outputs.skip != '1'
+        run: |
+          # laatste ronde van de inbox-import (support_inbox_state); geen mailinhoud of adressen
+          python3 -c 'import json;print(json.dumps({"query":"select mailbox, last_poll_at, last_ok_at, last_error_at, left(coalesce(last_error,\x27\x27),200) as last_error, last_result, last_source from public.support_inbox_state where id = 1"}))' > /tmp/q.json
+          curl -s -X POST "https://api.supabase.com/v1/projects/$REF/database/query" -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" --data @/tmp/q.json > /tmp/inbox.json
+          python3 - <<'PY'
+          import json
+          try: r = json.load(open("/tmp/inbox.json")); row = r[0] if isinstance(r, list) and r else {}
+          except Exception: row = {}
+          res = row.get("last_result")
+          if isinstance(res, str):
+              try: res = json.loads(res)
+              except Exception: pass
+          print(f"::notice::Inbox: map {row.get('mailbox') or '-'} · laatste ronde {row.get('last_poll_at') or 'nooit'} ({row.get('last_source') or '-'}) · laatst gelukt {row.get('last_ok_at') or 'nooit'}")
+          if isinstance(res, dict): print("::notice::Inbox-resultaat: " + ", ".join(f"{k}={v}" for k, v in res.items() if k not in ("log",))[:400])
+          if row.get("last_error"): print(f"::warning::Inbox-fout ({row.get('last_error_at')}): {row['last_error']}")
+          PY
