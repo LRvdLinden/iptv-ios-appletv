@@ -1,5 +1,101 @@
 [
  {
+  "build": 75,
+  "version": "1.0.0",
+  "date": "2026-10-14",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Nieuwe supportsite support.bingr.online: maak een supportticket aan, volg je ticket en reageer via de link in je e-mail, of bekijk al je tickets met je Bingr-account",
+    "en": "New support site support.bingr.online: create a support ticket, follow it and reply via the link in your email, or see all your tickets with your Bingr account"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Supporttickets met een eigen nummer (#1001) en gebrande e-mails bij ontvangst, antwoord en oplossing, in het Nederlands of Engels",
+    "en": "Support tickets with their own number (#1001) and branded emails when received, answered and resolved, in Dutch or English"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web"
+    ],
+    "nl": "Support onder Account en apparaten en in het profielmenu: opent support.bingr.online (op Apple TV, Android TV en Samsung TV met een QR-code); op bingr.online staat Support in het menu",
+    "en": "Support under Account and devices and in the profile menu: opens support.bingr.online (with a QR code on Apple TV, Android TV and Samsung TV); Support is also in the bingr.online menu"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen"
+    ],
+    "nl": "Seriecovers tonen linksboven in een rood label hoeveel afleveringen je hebt bekeken (\"21 BEKEKEN\"), op Home, Series, zoeken, collecties, Mijn lijst en Voor jou; films in Voor jou krijgen ook een bekeken-vinkje",
+    "en": "Series posters show a red label in the top-left corner with how many episodes you've watched (\"21 WATCHED\"), on Home, Series, search, collections, My List and For you; movies in For you also get a watched checkmark"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web"
+    ],
+    "nl": "Bekeken-vinkjes kloppen beter: Trakt en Bingr tellen samen, Trakt wordt eerst op TMDB-id gekoppeld en niet meer aan een remake of serie met dezelfde naam uit een ander jaar, en covers werken meteen bij na een Trakt-sync of afvinken",
+    "en": "Watched marks are more accurate: Trakt and Bingr are counted together, Trakt is matched by TMDB id first and no longer to a remake or show with the same name from another year, and posters update right after a Trakt sync or marking watched"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "Andere profielen zien nooit meer de Trakt-vinkjes van het hoofdprofiel, ook niet direct na het wisselen van profiel",
+    "en": "Other profiles never see the main profile's Trakt watched marks anymore, not even right after switching profiles"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "android",
+     "androidtv",
+     "tizen"
+    ],
+    "nl": "Trakt wordt bijgewerkt als je de app weer opent, en op Samsung TV krijgen bekeken films een vinkje en series het aantal bekeken afleveringen",
+    "en": "Trakt refreshes when you return to the app, and on Samsung TV watched movies get a checkmark and series the number of watched episodes"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Webspeler: de labels Serie, Film en \"x bekeken\" zijn weer rood (of de accentkleur van je profiel) en \"Bekijk allemaal\" is wit, net als in de app; vinkjes ook bij titels als Spider-Man",
+    "en": "Web player: the Series, Movie and \"x watched\" labels are red again (or your profile's accent colour) and \"See all\" is white, like in the app; checkmarks also for titles like Spider-Man"
+   }
+  ]
+ },
+ {
   "build": 74,
   "version": "1.0.0",
   "date": "2026-10-14",

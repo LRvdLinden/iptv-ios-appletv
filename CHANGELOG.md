@@ -4,6 +4,47 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 75
+_14 oktober 2026_
+
+### Alle apps en de website
+
+**Nieuw**
+
+- Support onder Account en apparaten en in het profielmenu: opent support.bingr.online (op Apple TV, Android TV en Samsung TV met een QR-code); op bingr.online staat Support in het menu
+
+**Opgelost**
+
+- Bekeken-vinkjes kloppen beter: Trakt en Bingr tellen samen, Trakt wordt eerst op TMDB-id gekoppeld en niet meer aan een remake of serie met dezelfde naam uit een ander jaar, en covers werken meteen bij na een Trakt-sync of afvinken
+
+### Alle apps
+
+**Nieuw**
+
+- Seriecovers tonen linksboven in een rood label hoeveel afleveringen je hebt bekeken ("21 BEKEKEN"), op Home, Series, zoeken, collecties, Mijn lijst en Voor jou; films in Voor jou krijgen ook een bekeken-vinkje
+
+### iOS, iPadOS, tvOS en macOS
+
+**Opgelost**
+
+- Andere profielen zien nooit meer de Trakt-vinkjes van het hoofdprofiel, ook niet direct na het wisselen van profiel
+
+### Website
+
+**Nieuw**
+
+- Nieuwe supportsite support.bingr.online: maak een supportticket aan, volg je ticket en reageer via de link in je e-mail, of bekijk al je tickets met je Bingr-account
+
+**Verbeterd**
+
+- Webspeler: de labels Serie, Film en "x bekeken" zijn weer rood (of de accentkleur van je profiel) en "Bekijk allemaal" is wit, net als in de app; vinkjes ook bij titels als Spider-Man
+
+### Server
+
+**Nieuw**
+
+- Supporttickets met een eigen nummer (#1001) en gebrande e-mails bij ontvangst, antwoord en oplossing, in het Nederlands of Engels
+
 ## Versie 1.0.0 · Build 74
 _14 oktober 2026_
 
