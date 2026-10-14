@@ -588,8 +588,19 @@ jobs:
           echo "::warning::net._http_response: $(q "select status_code, timed_out, error_msg, left(content, 120) as content, created from net._http_response order by created desc limit 4")"
           echo "::error::De planning heeft binnen 9 minuten de functie niet aangeroepen"; exit 1
 
+
+  # aparte job: de deploy-job zit aan het maximum van 50 meldingen
+  inbox:
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+    steps:
+      - name: Wachten op een ronde van de planning
+        run: sleep 150
       - name: Support - inbox-status
-        if: steps.check.outputs.skip != '1'
         run: |
           # laatste ronde van de inbox-import (support_inbox_state); geen mailinhoud of adressen
           python3 -c 'import json;print(json.dumps({"query":"select mailbox, last_poll_at, last_ok_at, last_error_at, left(coalesce(last_error,\x27\x27),200) as last_error, last_result, last_source from public.support_inbox_state where id = 1"}))' > /tmp/q.json
