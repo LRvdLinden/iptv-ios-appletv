@@ -1,5 +1,44 @@
 [
  {
+  "build": 95,
+  "version": "1.0.0",
+  "date": "2026-10-15",
+  "items": [
+   {
+    "type": "improved",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Beveiliging: de website wordt alleen nog versleuteld en met een gecontroleerd certificaat geüpload, en laadt zijn scripts van de eigen server",
+    "en": "Security: the website is only uploaded encrypted with a verified certificate, and loads its scripts from its own server"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Menu op telefoon en tablet, algemene voorwaarden en een uitgebreidere privacyverklaring (verantwoordelijke, grondslagen, bewaartermijnen, je rechten)",
+    "en": "Menu on phone and tablet, terms of use and a more complete privacy policy (controller, legal bases, retention, your rights)"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Downloadlinks voor Android en Samsung TV werken ook zonder JavaScript; \"Wachtwoord vergeten\" meldt fouten echt en knoppen blijven niet meer hangen",
+    "en": "Download links for Android and Samsung TV also work without JavaScript; \"Forgot password\" reports real errors and buttons no longer get stuck"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Snellere homepage (lichtere afbeeldingen), betere toegankelijkheid van de cookiemelding en vermelding van TMDB",
+    "en": "Faster homepage (lighter images), more accessible cookie notice and TMDB attribution"
+   }
+  ]
+ },
+ {
   "build": 94,
   "version": "1.0.0",
   "date": "2026-10-15",

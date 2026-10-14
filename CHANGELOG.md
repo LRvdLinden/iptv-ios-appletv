@@ -4,6 +4,24 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 95
+_15 oktober 2026_
+
+### Website
+
+**Nieuw**
+
+- Menu op telefoon en tablet, algemene voorwaarden en een uitgebreidere privacyverklaring (verantwoordelijke, grondslagen, bewaartermijnen, je rechten)
+
+**Verbeterd**
+
+- Beveiliging: de website wordt alleen nog versleuteld en met een gecontroleerd certificaat geüpload, en laadt zijn scripts van de eigen server
+- Snellere homepage (lichtere afbeeldingen), betere toegankelijkheid van de cookiemelding en vermelding van TMDB
+
+**Opgelost**
+
+- Downloadlinks voor Android en Samsung TV werken ook zonder JavaScript; "Wachtwoord vergeten" meldt fouten echt en knoppen blijven niet meer hangen
+
 ## Versie 1.0.0 · Build 94
 _15 oktober 2026_
 
