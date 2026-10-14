@@ -1006,6 +1006,71 @@ do $$ begin
   alter table public.support_messages add constraint support_messages_author_chk check (author in ('customer', 'support', 'note', 'event'));
 exception when duplicate_object then null; end $$;
 
+-- Supporttickets per e-mail (inbox-import, actie poll_inbox van de functie support): herkomst van een bericht (web =
+-- support.bingr.online of de apps, email = per mail binnengekomen, admin = beheer), de Message-ID van de binnengekomen mail
+-- (uniek: elke mail maar één keer) en waar hij op antwoordde, en de Message-ID van de mail die wij voor dit bericht verstuurden.
+alter table public.support_messages add column if not exists source text;
+alter table public.support_messages add column if not exists message_id text;
+alter table public.support_messages add column if not exists in_reply_to text;
+alter table public.support_messages add column if not exists mail_message_id text;
+do $$ begin
+  alter table public.support_messages add constraint support_messages_source_chk check (source is null or source in ('web', 'email', 'admin'));
+exception when duplicate_object then null; end $$;
+create unique index if not exists support_messages_message_id_key on public.support_messages (message_id) where message_id is not null;
+create index if not exists support_messages_mail_id_idx on public.support_messages (mail_message_id) where mail_message_id is not null;
+-- bestaande berichten: klant via de site, support en notities via het beheer
+update public.support_messages set source = case when author = 'customer' then 'web' else 'admin' end
+  where source is null and author in ('customer', 'support', 'note');
+
+-- Toestand van de inbox-import (één rij): laatste verwerkte UID per UIDVALIDITY, laatste ronde en fout, en een korte lease
+-- (lock_until) zodat de planning en de knop in het beheer nooit tegelijk lopen.
+create table if not exists public.support_inbox_state (
+  id             int primary key default 1 check (id = 1),
+  mailbox        text,
+  uidvalidity    bigint,
+  last_uid       bigint,
+  error_uid      bigint,
+  error_count    int not null default 0,
+  lock_until     timestamptz,
+  last_poll_at   timestamptz,
+  last_ok_at     timestamptz,
+  last_import_at timestamptz,
+  last_error     text,
+  last_error_at  timestamptz,
+  last_result    jsonb,
+  last_source    text,
+  updated_at     timestamptz not null default now()
+);
+insert into public.support_inbox_state (id) values (1) on conflict (id) do nothing;
+alter table public.support_inbox_state enable row level security;
+revoke all on public.support_inbox_state from anon, authenticated;
+-- Logboek van de inbox-import (30 dagen): wat er met elke mail gebeurde (geen berichttekst)
+create table if not exists public.support_inbox_log (
+  id            bigserial primary key,
+  at            timestamptz not null default now(),
+  uid           bigint,
+  message_id    text,
+  sender        text,
+  subject       text,
+  result        text not null,
+  ticket_number bigint,
+  detail        text
+);
+create index if not exists support_inbox_log_at_idx on public.support_inbox_log (at desc);
+alter table public.support_inbox_log enable row level security;
+revoke all on public.support_inbox_log from anon, authenticated;
+revoke all on sequence public.support_inbox_log_id_seq from anon, authenticated;
+create or replace function public.bingr_support_inbox_lock(p_seconds int) returns boolean
+language plpgsql security definer set search_path = public as $$
+begin
+  insert into public.support_inbox_state (id) values (1) on conflict (id) do nothing;
+  update public.support_inbox_state set lock_until = now() + make_interval(secs => greatest(10, least(p_seconds, 600)))
+    where id = 1 and (lock_until is null or lock_until < now());
+  return found;
+end $$;
+revoke all on function public.bingr_support_inbox_lock(int) from public, anon, authenticated;
+grant execute on function public.bingr_support_inbox_lock(int) to service_role;
+
 -- Aantallen per status voor het beheer (tab Support en de tegel "Open tickets"); unread = klant wacht op een reactie
 -- die het beheer nog niet heeft gezien.
 create or replace function public.bingr_support_counts() returns jsonb

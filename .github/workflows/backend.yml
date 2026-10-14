@@ -12,6 +12,11 @@ name: Backend
 # Support (optioneel): BINGR_SUPPORT_FROM (afzender, standaard "Bingr Support <support@bingr.online>") en BINGR_SUPPORT_EMAIL
 # (meldingen van nieuwe tickets en reacties, standaard support@bingr.online). Het geheim SUPPORT_ADMIN_SECRET (waarmee de functie
 # admin uit bingr-beheer de supporttickets beheert) maakt deze workflow één keer zelf aan; het staat nooit in de repo of het log.
+# Support per e-mail (optioneel): BINGR_IMAP_HOST (IMAP-server van de mailbox support@, meestal dezelfde host als SMTP),
+# BINGR_IMAP_PORT (993, IMAP over TLS), BINGR_IMAP_USER (support@bingr.online), BINGR_IMAP_PASSWORD, en BINGR_SUPPORT_AGENTS
+# (komma's: eigen adressen die per mail als Bingr Support mogen antwoorden). De pg_cron-taak bingr-support-inbox haalt elke
+# 2 minuten de nieuwe mails op (functie support, actie poll_inbox) met het geheim SUPPORT_CRON_SECRET: vast (repo-secret) of
+# per deploy nieuw, net als STATUS_CRON_SECRET. Zonder BINGR_IMAP_* doet de taak niets (skipped).
 on:
   push:
     branches: [main]
@@ -51,7 +56,7 @@ jobs:
       - name: Unittests (supporttickets)
         continue-on-error: true
         run: |
-          deno test supabase/functions/support/support_test.ts > support-test.log 2>&1 && exit 0
+          deno test --allow-net=127.0.0.1 supabase/functions/support/support_test.ts supabase/functions/support/inbox_test.ts > support-test.log 2>&1 && exit 0
           grep -E "FAILED|error|=>|verwacht|niet waar" support-test.log | head -30 | while IFS= read -r l; do echo "::warning::${l:0:300}"; done
           exit 1
       - name: Controleren
@@ -117,6 +122,11 @@ jobs:
           S_GH: ${{ secrets.BINGR_GITHUB_TOKEN }}
           S_SUP_FROM: ${{ secrets.BINGR_SUPPORT_FROM }}
           S_SUP_EMAIL: ${{ secrets.BINGR_SUPPORT_EMAIL }}
+          S_IMAP_HOST: ${{ secrets.BINGR_IMAP_HOST }}
+          S_IMAP_PORT: ${{ secrets.BINGR_IMAP_PORT }}
+          S_IMAP_USER: ${{ secrets.BINGR_IMAP_USER }}
+          S_IMAP_PASS: ${{ secrets.BINGR_IMAP_PASSWORD }}
+          S_AGENTS: ${{ secrets.BINGR_SUPPORT_AGENTS }}
         run: |
           # als losse argumenten (geen env-bestand), zodat tekens als # " of spaties in wachtwoorden geen probleem zijn
           args=()
@@ -129,9 +139,21 @@ jobs:
           [ -n "$S_GH" ] && args+=("BINGR_GITHUB_TOKEN=$S_GH")
           [ -n "$S_SUP_FROM" ] && args+=("BINGR_SUPPORT_FROM=$S_SUP_FROM")
           [ -n "$S_SUP_EMAIL" ] && args+=("BINGR_SUPPORT_EMAIL=$S_SUP_EMAIL")
+          [ -n "$S_IMAP_HOST" ] && args+=("BINGR_IMAP_HOST=$S_IMAP_HOST")
+          [ -n "$S_IMAP_PORT" ] && args+=("BINGR_IMAP_PORT=$S_IMAP_PORT")
+          [ -n "$S_IMAP_USER" ] && args+=("BINGR_IMAP_USER=$S_IMAP_USER")
+          [ -n "$S_IMAP_PASS" ] && args+=("BINGR_IMAP_PASSWORD=$S_IMAP_PASS")
+          [ -n "$S_AGENTS" ] && args+=("BINGR_SUPPORT_AGENTS=$S_AGENTS")
           if [ ${#args[@]} -gt 0 ]; then supabase secrets set --project-ref "$REF" "${args[@]}" >/dev/null; echo "::notice::${#args[@]} mail/status-secret(s) op de server gezet"; fi
           [ -z "$S_ALERT" ] && echo "::notice::BINGR_ALERT_EMAIL ontbreekt: storingen komen alleen op de statuspagina, niet per e-mail."
           [ -n "$S_PORT" ] && { [ "$S_PORT" = 587 ] || [ "$S_PORT" = 25 ]; } && echo "::warning::Supabase blokkeert uitgaande SMTP op poort $S_PORT; gebruik 465 (SSL/TLS)."
+          if [ -z "$S_IMAP_HOST" ] || [ -z "$S_IMAP_USER" ] || [ -z "$S_IMAP_PASS" ]; then
+            echo "::notice::BINGR_IMAP_HOST/USER/PASSWORD ontbreken: antwoorden per e-mail komen niet in de tickets (alleen via de site)."
+          else
+            echo "::notice::Inbox-import aan voor $(echo "$S_IMAP_USER" | sed 's/^[^@]*/…/') op poort ${S_IMAP_PORT:-993}"
+            [ -n "$S_IMAP_PORT" ] && [ "$S_IMAP_PORT" = 143 ] && echo "::warning::BINGR_IMAP_PORT 143 is zonder TLS; de functie gebruikt alleen IMAP over TLS (meestal 993)."
+            [ -z "$S_AGENTS" ] && echo "::notice::BINGR_SUPPORT_AGENTS ontbreekt: alleen antwoorden vanaf het supportadres zelf gaan per mail naar de klant."
+          fi
           true
       - name: Edge Function device-auth
         if: steps.check.outputs.skip != '1'
@@ -139,9 +161,44 @@ jobs:
       - name: Edge Function web-proxy
         if: steps.check.outputs.skip != '1'
         run: supabase functions deploy web-proxy --project-ref "$REF" --no-verify-jwt --use-api
+      - name: Support-inbox - geheim
+        if: steps.check.outputs.skip != '1'
+        env:
+          S_CRON: ${{ secrets.SUPPORT_CRON_SECRET }}
+        run: |
+          # geheim voor de planning van de inbox-import: vast (repo-secret) of per deploy nieuw; nooit in de repo of het log
+          SECRET="${S_CRON:-$(openssl rand -hex 32)}"
+          echo "::add-mask::$SECRET"
+          [[ "$SECRET" =~ ^[A-Za-z0-9_-]{24,128}$ ]] || { echo "::error::SUPPORT_CRON_SECRET: 24-128 tekens, alleen letters, cijfers, - en _"; exit 1; }
+          supabase secrets set --project-ref "$REF" SUPPORT_CRON_SECRET="$SECRET" >/dev/null
+          umask 077; printf '%s' "$SECRET" > "$RUNNER_TEMP/support_cron_secret"
+          echo "::notice::SUPPORT_CRON_SECRET ${S_CRON:+(vast) }op de server gezet"
       - name: Edge Function support
         if: steps.check.outputs.skip != '1'
         run: supabase functions deploy support --project-ref "$REF" --no-verify-jwt --use-api
+      - name: Support-inbox - planning (pg_cron + pg_net)
+        if: steps.check.outputs.skip != '1'
+        run: |
+          # de taak roept elke 2 minuten support/poll_inbox aan (zonder BINGR_IMAP_* antwoordt die met skipped)
+          python3 - <<'PY' > /tmp/cron.json
+          import json, os
+          ref = os.environ["REF"]; sec = open(os.path.join(os.environ["RUNNER_TEMP"], "support_cron_secret")).read()
+          cmd = ("select net.http_post(url := 'https://%s.supabase.co/functions/v1/support', "
+                 "headers := jsonb_build_object('Content-Type', 'application/json', 'x-support-cron', '%s'), "
+                 "body := '{\"action\":\"poll_inbox\",\"source\":\"cron\"}'::jsonb, timeout_milliseconds := 60000);") % (ref, sec)
+          sql = ("select cron.unschedule(jobid) from cron.job where jobname = 'bingr-support-inbox';\n"
+                 "select cron.schedule('bingr-support-inbox', '*/2 * * * *', $cmd$ " + cmd + " $cmd$);\n"
+                 "select jobid, jobname, schedule, active from cron.job where jobname = 'bingr-support-inbox';")
+          print(json.dumps({"query": sql}))
+          PY
+          code=$(curl -s -o /tmp/r.txt -w '%{http_code}' -X POST "https://api.supabase.com/v1/projects/$REF/database/query" \
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" --data @/tmp/cron.json)
+          rm -f /tmp/cron.json
+          if [ "$code" -lt 300 ] && grep -Eq '"active": ?true' /tmp/r.txt; then
+            echo "::notice::Inbox-planning actief: $(cat /tmp/r.txt)"
+          else
+            echo "::warning::Inbox-planning niet gelukt (HTTP $code): $(head -c 300 /tmp/r.txt)"
+          fi
       - name: Statusmonitor - geheim
         if: steps.check.outputs.skip != '1'
         env:
@@ -248,8 +305,24 @@ jobs:
           [ "$code" = 401 ] && echo "::notice::mine zonder inloggen: 401" || { echo "::error::mine zonder inloggen gaf HTTP $code"; exit 1; }
           code=$(curl -s -o /tmp/c.json -w '%{http_code}' -X POST "$F" -H "Content-Type: application/json" -H "x-support-secret: fout" -d '{"action":"admin_list"}')
           [ "$code" = 403 ] && echo "::notice::beheer zonder geheim: 403" || { echo "::error::admin_list zonder geheim gaf HTTP $code"; exit 1; }
-          # 4. tabellen en tellers in de database
-          python3 -c 'import json;print(json.dumps({"query":"select public.bingr_support_counts() as counts, (select last_value from public.support_ticket_number_seq) as seq"}))' > /tmp/q.json
+          # 4. inbox-import: zonder geheim 403, met het geheim ok of skipped (IMAP niet ingesteld)
+          code=$(curl -s -o /tmp/c.json -w '%{http_code}' -X POST "$F" -H "Content-Type: application/json" -d '{"action":"poll_inbox"}')
+          [ "$code" = 403 ] && echo "::notice::poll_inbox zonder geheim: 403" || { echo "::error::poll_inbox zonder geheim gaf HTTP $code"; exit 1; }
+          code=$(curl -s -o /tmp/c.json -w '%{http_code}' --max-time 90 -X POST "$F" -H "Content-Type: application/json" \
+            -H "x-support-cron: $(cat "$RUNNER_TEMP/support_cron_secret")" -d '{"action":"poll_inbox","source":"deploy"}')
+          python3 - "$code" <<'PY'
+          import json, sys
+          code = sys.argv[1]
+          try: r = json.load(open("/tmp/c.json"))
+          except Exception: r = {}
+          if code != "200": print(f"::error::poll_inbox gaf HTTP {code}: {str(r)[:300]}"); raise SystemExit(1)
+          if r.get("skipped"): print(f"::notice::Inbox-import: {r['skipped']} (BINGR_IMAP_* niet gezet)")
+          elif r.get("busy"): print("::notice::Inbox-import: er liep al een ronde (planning)")
+          elif r.get("ok"): print(f"::notice::Inbox-import werkt: {r.get('fetched',0)} opgehaald, {r.get('imported',0)} reacties, {r.get('agent',0)} antwoorden support, {r.get('new_tickets',0)} nieuwe tickets, {r.get('ignored',0)} genegeerd, {r.get('rejected',0)} geweigerd ({r.get('ms')} ms, map: {r.get('folder') or 'geen Bingr-verwerkt'})")
+          else: print(f"::warning::Inbox-import gaf een fout: {r.get('error','?')} — controleer BINGR_IMAP_*")
+          PY
+          # 5. tabellen en tellers in de database
+          python3 -c 'import json;print(json.dumps({"query":"select public.bingr_support_counts() as counts, (select last_value from public.support_ticket_number_seq) as seq, (select count(*) from public.support_inbox_state) as inbox"}))' > /tmp/q.json
           curl -s -X POST "https://api.supabase.com/v1/projects/$REF/database/query" -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" --data @/tmp/q.json > /tmp/sq.json
           python3 - <<'PY'
           import json
@@ -257,6 +330,7 @@ jobs:
           row = r[0] if isinstance(r, list) and r else None
           if not row or "active" not in json.dumps(row.get("counts")): print("::error::bingr_support_counts onverwacht:", str(r)[:300]); raise SystemExit(1)
           c = row["counts"] if isinstance(row["counts"], dict) else json.loads(row["counts"])
+          if row.get("inbox") != 1: print("::error::support_inbox_state ontbreekt:", str(r)[:300]); raise SystemExit(1)
           print(f"::notice::Supporttickets: {c['total']} totaal, {c['active']} open, {c['unread']} ongelezen (nummers vanaf {row['seq']})")
           PY
       - name: Statusmonitor testen

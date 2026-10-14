@@ -1,6 +1,7 @@
 // Supporttickets: e-mails in de huisstijl van Bingr (zelfde opbouw als supabase/templates en de berichten uit het
 // beheer: zwart, logo met rode balk, kaart #141414 met rode rand). Tabellen met inline stijlen voor Gmail, Outlook en
 // Apple Mail, plus een platte-tekstversie. Alles wat de klant of het beheer typt gaat door esc().
+import { REPLY_MARKER } from "./mime.ts";
 import {
   CATEGORY_LABEL, type Lang, PLATFORM_LABEL, STATUS_ADMIN, STATUS_COLOR, STATUS_LABEL, type Status, ticketLabel,
 } from "./logic.ts";
@@ -29,6 +30,8 @@ export type MailData = {
   appVersion?: string | null;
   hasAccount?: boolean;
   createdAt?: string;
+  // antwoorden per e-mail komen in het ticket (IMAP-import staat aan): markeringsregel bovenaan en andere voettekst
+  replyByMail?: boolean;
 };
 
 const SITE = "https://bingr.online";
@@ -56,6 +59,7 @@ const TXT: Record<Lang, T> = {
     copy: "Werkt de knop niet? Kopieer deze link:",
     foot: "Je ontvangt deze e-mail omdat je een supportticket hebt aangemaakt bij Bingr.",
     footReply: "Reageren? Gebruik de knop hierboven, dan komt je antwoord direct bij je ticket.",
+    footMail: "Reageren? Beantwoord deze e-mail of gebruik de knop hierboven; je antwoord komt direct bij je ticket.",
     created_h: "We hebben je vraag ontvangen",
     created_p: "Bedankt voor je bericht. Je ticket is aangemaakt en we reageren zo snel mogelijk, meestal binnen één werkdag. Bewaar deze e-mail: met de knop hieronder bekijk je je ticket en kun je reageren.",
     reply_h: "Nieuw antwoord op je ticket",
@@ -72,6 +76,7 @@ const TXT: Record<Lang, T> = {
     copy: "Button not working? Copy this link:",
     foot: "You're receiving this email because you created a support ticket with Bingr.",
     footReply: "Want to reply? Use the button above so your answer goes straight to your ticket.",
+    footMail: "Want to reply? Just reply to this email or use the button above; your answer goes straight to your ticket.",
     created_h: "We've received your request",
     created_p: "Thanks for your message. Your ticket has been created and we'll get back to you as soon as possible, usually within one business day. Keep this email: use the button below to view your ticket and reply.",
     reply_h: "New reply to your ticket",
@@ -167,9 +172,15 @@ ${metaRows(meta)}
 <p style="margin:22px 0 0;font-size:12px;line-height:18px;color:#8c8c8c">${esc(t.copy)}<br><a href="${esc(d.url)}" style="color:#b3b3b3;word-break:break-all">${esc(d.url)}</a></p>
 ${toSupport && d.customerUrl ? `<p style="margin:10px 0 0;font-size:12px;line-height:18px;color:#8c8c8c">Klantweergave: <a href="${esc(d.customerUrl)}" style="color:#b3b3b3;word-break:break-all">${esc(d.customerUrl)}</a></p>` : ""}`;
 
-  const foot = toSupport
-    ? `Melding van het supportsysteem van Bingr. Antwoord je met "Beantwoorden", dan gaat je mail naar de klant maar komt hij niet in het ticket; antwoord liever in het beheer.`
-    : `${esc(t.foot)} ${esc(t.footReply)}`;
+  const footReply = d.replyByMail ? t.footMail : t.footReply;
+  const supportFoot = d.replyByMail
+    ? `Melding van het supportsysteem van Bingr. Antwoord je met "Beantwoorden" (vanaf support@ of een adres uit BINGR_SUPPORT_AGENTS), dan komt je antwoord in het ticket en mailt het systeem het naar de klant. Schrijf boven de lijn bovenaan.`
+    : `Melding van het supportsysteem van Bingr. Antwoord je met "Beantwoorden", dan gaat je mail naar de klant maar komt hij niet in het ticket; antwoord liever in het beheer.`;
+  const foot = toSupport ? supportFoot : `${esc(t.foot)} ${esc(footReply)}`;
+  // markeringsregel: alles daaronder is citaat (zo knipt de inbox-import een antwoord betrouwbaar af)
+  const marker = d.replyByMail
+    ? `<tr><td style="padding:0 4px 14px;font-size:11px;line-height:14px;color:#5c5c5c;font-family:${FONT}">${esc(REPLY_MARKER)}</td></tr>\n`
+    : "";
 
   const html = `<!doctype html>
 <html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><meta name="supported-color-schemes" content="dark"><title>${esc(num)} · Bingr Support</title></head>
@@ -177,7 +188,7 @@ ${toSupport && d.customerUrl ? `<p style="margin:10px 0 0;font-size:12px;line-he
 <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:#000000">${esc(num)} · ${esc(heading)}</div>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#000000"><tr><td align="center" style="padding:32px 16px">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;font-family:${FONT}">
-<tr><td style="padding:0 4px 24px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+${marker}<tr><td style="padding:0 4px 24px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
 <td style="vertical-align:middle;width:56px"><img src="${SITE}/apple-touch-icon.png" width="44" height="44" alt="" style="display:block;border-radius:10px"></td>
 <td style="vertical-align:middle"><div style="font-size:30px;font-weight:900;letter-spacing:1px;color:#ffffff;line-height:30px">BINGR</div><div style="height:4px;width:74px;background:#E50914;border-radius:2px;margin-top:6px;font-size:0;line-height:0">&nbsp;</div></td>
 <td align="right" style="vertical-align:middle;font-size:14px;font-weight:700;color:#bdbdbd;letter-spacing:.3px">Support</td>
@@ -189,12 +200,12 @@ ${toSupport && d.customerUrl ? `<p style="margin:10px 0 0;font-size:12px;line-he
 <span style="color:#5c5c5c">© Bingr</span></td></tr>
 </table></td></tr></table></body></html>`;
 
-  const lines: string[] = ["BINGR Support", "", `${t.ticket} ${num} · ${statusLabel}`, d.subject, "", heading, intro];
+  const lines: string[] = [...(d.replyByMail ? [REPLY_MARKER, ""] : []), "BINGR Support", "", `${t.ticket} ${num} · ${statusLabel}`, d.subject, "", heading, intro];
   if (d.body) lines.push("", `--- ${boxLabel} ---`, d.body, "---");
   lines.push("", `${btn}: ${d.url}`);
   if (toSupport && d.customerUrl) lines.push(`Klantweergave: ${d.customerUrl}`);
   const metaText = meta.filter(([, v]) => v).map(([k, v]) => `${k}: ${unesc(v.replace(/<[^>]+>/g, ""))}`);
   if (metaText.length) lines.push("", ...metaText);
-  lines.push("", "—", toSupport ? "Melding van het supportsysteem van Bingr." : `${t.foot} ${t.footReply}`, "bingr.online · support.bingr.online");
+  lines.push("", "—", toSupport ? supportFoot : `${t.foot} ${footReply}`, "bingr.online · support.bingr.online");
   return { subject: subjectFor(d), html, text: lines.join("\n") };
 }
