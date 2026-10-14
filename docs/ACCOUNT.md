@@ -511,7 +511,7 @@ Dezelfde titel in een andere taal: zelfde TMDB-id als die van beide bekend is, a
 
 ### Server (device-auth)
 
-- **Fouten** zijn altijd JSON `{error}` zonder interne details: 400 `bad_json` / `bad_section` / `bad_sources` / `device_id_missing` / `name_missing`, 401 `not_signed_in`, 403 `device_limit` / `stream_limit`, 404 `invalid_code`, 413 `too_large` / `too_many_sections`, 500 `server_error` / `decrypt_failed` / `delete_failed`, 503 `unavailable` / `try_again`. Een aanvraag mag maximaal 2 MB zijn.
+- **Fouten** zijn altijd JSON `{error}` zonder interne details: 400 `bad_json` / `bad_section` / `bad_sources` / `device_id_missing` / `name_missing`, 401 `not_signed_in`, 403 `device_limit` / `stream_limit` / `feature_locked` (abonnementen), 404 `invalid_code`, 413 `too_large` / `too_many_sections`, 500 `server_error` / `decrypt_failed` / `delete_failed`, 503 `unavailable` / `try_again`. Een aanvraag mag maximaal 2 MB zijn.
 - **401 = token ongeldig of verlopen**, voor alle acties met inloggen (ook `heartbeat` en `stream_ping`, die gaven eerder `revoked`/`stopped`): sessie vernieuwen en één keer opnieuw proberen. **503** = de server kon het token tijdelijk niet controleren: niets doen, niet uitloggen.
 - **Limieten atomair:** `register_device` (15 apparaten) en `stream_start` (6 streams) tellen en schrijven in één databasetransactie met een slot per account. Gelijktijdige aanvragen kunnen de limiet niet meer overschrijden.
 - **Opruimen:** verlopen tv-codes, streams zonder ping (> 1 dag) en kijkgeschiedenis ouder dan 8 dagen worden voor alle accounts opgeruimd, niet alleen bij een nieuwe stream van hetzelfde account.
@@ -722,3 +722,60 @@ Body: `{period: "week"|"month"|"year" (standaard "month"), offset: 0 (0 = huidig
 ### Scherm (alle platforms)
 
 Periode **Week / Maand (standaard) / Jaar** met ‹ › om terug en (tot de huidige periode) vooruit te gaan; tegels **Uren gekeken**, **Films** (aantal + uren), **Series** (series, afleveringen, uren), **Live TV** (zenders, uren); een staafgrafiek per dag (week/maand) of per maand (jaar), gestapeld: films in de accentkleur (rood), series blauw `#3B82F6`, live oranje `#F59E0B`; toplijsten series, films en zenders; **Statistieken wissen** met bevestiging.
+
+## Abonnementen: Gratis en Lifetime
+
+Er zijn twee abonnementen. Betalen kan nog niet (de betaalpagina komt later op bingr.online/upgrade/); de server regelt wat elk abonnement mag.
+
+| | **Gratis** (€ 0) | **Lifetime** (€ 4,99 eenmalig) |
+|---|---|---|
+| Tegelijk kijken (`limits.streams`) | 2 | 6 |
+| Ingelogde apparaten (`limits.devices`) | 8 | 15 |
+| Servers (`limits.servers`) | 1 | onbeperkt (`null`) |
+| Statistieken (`features.stats`) | – | ✓ |
+| Nu aan het kijken + kijkgeschiedenis 7 dagen (`features.now_watching`) | – | ✓ |
+| Trakt-koppeling (`features.trakt`) | – | ✓ |
+| Meer dan één server (`features.multi_server`) | – | ✓ |
+| Thema's en accentkleuren (`features.themes`) | – | ✓ |
+
+- **Opslag:** tabel `account_plans` (`user_id` pk → `auth.users` on delete cascade, `plan` `'free'|'lifetime'` standaard `'free'`, `max_streams` / `max_devices` (null = standaard van het abonnement), `source` `'legacy'|'admin'|'purchase'`, `note`, `granted_by`, `created_at`, `updated_at`). RLS: de gebruiker leest alleen zijn eigen rij; schrijven alleen de functies (service role). **Geen rij = Gratis.**
+- **Bestaande accounts:** alle accounts die bestonden toen de abonnementen werden ingevoerd, kregen Lifetime cadeau (`source:'legacy'`). Dat gebeurt één keer (markering `plans_legacy_done` in `app_settings`); nieuwe accounts daarna beginnen op Gratis.
+- **Beheer:** kan een account Lifetime geven (`source:'admin'`, gratis) en per account `max_streams` (1–50) en `max_devices` (1–200) verhogen, ook bij Gratis.
+- **Standaardwaarden** staan in `supabase/functions/_shared/plans.ts` (met unittests in `plans_test.ts`); apps gebruiken altijd de getallen uit `entitlements`, nooit een vast getal.
+
+### `entitlements` (device-auth, ingelogd)
+
+Body `{platform?, device_id?}`; `platform` is één van `ios`, `ipados`, `tvos`, `macos`, `android`, `androidtv`, `tizen`, `web`. Zonder `platform` neemt de server het platform van het geregistreerde apparaat (`device_id`); onbekend = geen upgrade-link.
+
+```json
+{
+  "plan": "free",
+  "limits": { "streams": 2, "devices": 8, "servers": 1 },
+  "features": { "stats": false, "now_watching": false, "trakt": false, "multi_server": false, "themes": false },
+  "upgrade": { "url": "https://bingr.online/upgrade/", "link": true, "price": "€ 4,99", "price_en": "€4.99" }
+}
+```
+
+- Hetzelfde object staat als `entitlements` in het antwoord van **`heartbeat`** (platform van dat apparaat, of `platform` in de body) en **`config`** (met `platform`/`device_id` in de body). Kon de server het niet bepalen, dan ontbreekt het veld: houd dan de laatst bekende waarde aan.
+- **`upgrade.link`**: per platform in te stellen in het beheer (`app_settings`, sleutel `upgrade_link` = `{"apple": false, "android": true, "androidtv": true, "tizen": true, "web": true}`; `apple` geldt voor ios, ipados, tvos en macos). Standaard **uit voor Apple**: de Apple-apps tonen dan wel de vergelijking Gratis/Lifetime, maar **geen link, knop of QR-code** naar de betaalpagina. Staat het aan, dan opent de app `upgrade.url` (mag `?from=app&platform=<platform>` meegeven; op een tv als QR-code).
+- Prijs: `price` (Nederlands) en `price_en` (Engels).
+
+### Afdwingen
+
+| Wat | Waar | Gratis-account |
+|---|---|---|
+| Tegelijk kijken | server: `stream_start` | **403** `{error:"stream_limit", limit, plan, streams:[…]}` (zelfde vorm als voorheen, plus `plan`) |
+| Ingelogde apparaten | server: `register_device` | **403** `{error:"device_limit", limit, plan, devices:[…]}` (bestaande apparaten blijven ingelogd) |
+| Statistieken | server: `watch_stats` | **403** `{error:"feature_locked", feature:"stats", plan:"free"}` |
+| Nu aan het kijken / kijkgeschiedenis | server: `list_streams`, `watch_log` | **403** `{error:"feature_locked", feature:"now_watching", plan:"free"}` |
+| Trakt, aantal servers, thema's en accentkleuren | alleen in de apps, op `features` / `limits.servers` | – |
+
+- `register_device`, `list_devices`, `stream_start` en `list_streams` geven `limit` = de limiet van het abonnement (of de eigen limiet).
+- De kijktijd wordt ook voor Gratis-accounts bijgehouden (`stream_start/ping/stop`), zodat de statistieken er na het upgraden meteen zijn. `delete_watch_stats` werkt altijd.
+- **In de apps bij `feature_locked`:** een slotje met de vergelijking en (als `upgrade.link`) de knop **Upgrade naar Lifetime**. Bij Gratis met meer servers dan `limits.servers`: alleen de hoofdserver gebruiken; servers worden nooit gewist.
+
+### Website
+
+- **bingr.online** (homepage): vergelijkingstabel Gratis / Lifetime met **Maak gratis een account** en **Upgrade naar Lifetime** (→ /upgrade/).
+- **bingr.online/upgrade/**: ingelogd het huidige abonnement (`entitlements` met `platform:"web"`) en de vergelijking; zolang betalen niet gekoppeld is een uitgeschakelde knop "Betalen — binnenkort beschikbaar". Niet ingelogd: eerst inloggen, daarna terug naar /upgrade/. Parameters `?from=app&platform=…` worden geaccepteerd.
+- **Mijn Bingr** (/account/): "Abonnement: Gratis/Lifetime" met de limieten en een Upgrade-link; Statistieken en Nu aan het kijken met een slotje voor Gratis.

@@ -468,6 +468,10 @@ begin
     'watching_now', (select count(*) from public.account_streams where last_ping > now() - interval '90 seconds'),
     'opted_out', (select count(*) from public.account_email_prefs where email_opt_out),
     'blocked_users', (select count(distinct user_id) from public.account_blocks where lifted_at is null),
+    -- abonnementen: geen rij = gratis (account_plans staat onderaan dit bestand)
+    'plan_lifetime', (select count(*) from public.account_plans p join auth.users u on u.id = p.user_id where p.plan = 'lifetime'),
+    'plan_free', (select count(*) from auth.users u where not exists (select 1 from public.account_plans p where p.user_id = u.id and p.plan = 'lifetime')),
+    'plan_custom', (select count(*) from public.account_plans p where p.max_streams is not null or p.max_devices is not null),
     'signins_source', case when audit_total > 0 then 'audit' else 'activity' end,
     'days', coalesce(days, '[]'::jsonb),
     'platforms', coalesce((select jsonb_agg(jsonb_build_object('platform', platform, 'devices', n) order by n desc)
@@ -483,18 +487,32 @@ revoke all on function public.bingr_admin_stats() from public, anon, authenticat
 grant execute on function public.bingr_admin_stats() to service_role;
 
 -- Gebruikers (hoofdaccounts), nieuwste eerst, zoeken op begin van het e-mailadres. De functie maskeert de e-mail.
--- p_filter: '' = alle, 'blocked' = alleen geblokkeerde accounts.
+-- p_filter: '' = alle, 'blocked' = alleen geblokkeerde accounts, 'free' / 'lifetime' = abonnement, 'custom' = eigen limieten.
 drop function if exists public.bingr_admin_users(text, int, int);
+-- Filter van de gebruikerslijst (beheer). account_plans staat onderaan dit bestand (plpgsql controleert dat pas bij het uitvoeren).
+create or replace function public.bingr_admin_user_match(p_user uuid, p_filter text) returns boolean
+language plpgsql stable security definer set search_path = public, auth as $$
+begin
+  return case coalesce(p_filter, '')
+    when 'blocked' then exists (select 1 from public.account_blocks b where b.user_id = p_user and b.lifted_at is null)
+    when 'lifetime' then exists (select 1 from public.account_plans p where p.user_id = p_user and p.plan = 'lifetime')
+    when 'free' then not exists (select 1 from public.account_plans p where p.user_id = p_user and p.plan = 'lifetime')
+    when 'custom' then exists (select 1 from public.account_plans p where p.user_id = p_user and (p.max_streams is not null or p.max_devices is not null))
+    else true end;
+end $$;
+revoke all on function public.bingr_admin_user_match(uuid, text) from public, anon, authenticated;
+grant execute on function public.bingr_admin_user_match(uuid, text) to service_role;
 create or replace function public.bingr_admin_users(p_search text, p_limit int, p_offset int, p_filter text default '') returns jsonb
 language plpgsql security definer set search_path = public, auth as $$
 declare pat text := replace(replace(replace(lower(coalesce(p_search, '')), '\', '\\'), '%', '\%'), '_', '\_') || '%';
-  only_blocked boolean := coalesce(p_filter, '') = 'blocked';
+  f text := coalesce(p_filter, '');
 begin
   perform public.bingr_blocks_expire();
   return jsonb_build_object(
-    'total', (select count(*) from auth.users u where lower(u.email) like pat
-      and (not only_blocked or exists (select 1 from public.account_blocks b where b.user_id = u.id and b.lifted_at is null))),
+    'total', (select count(*) from auth.users u where lower(u.email) like pat and public.bingr_admin_user_match(u.id, f)),
     'blocked_total', (select count(distinct user_id) from public.account_blocks where lifted_at is null),
+    'lifetime_total', (select count(*) from public.account_plans p join auth.users u on u.id = p.user_id where p.plan = 'lifetime'),
+    'free_total', (select count(*) from auth.users u where not exists (select 1 from public.account_plans p where p.user_id = u.id and p.plan = 'lifetime')),
     'items', coalesce((select jsonb_agg(row_to_json(x)::jsonb order by x.created_at desc) from (
       select u.id, u.email, u.created_at, u.last_sign_in_at, u.email_confirmed_at is not null as confirmed,
         (select count(*) from public.account_devices d where d.user_id = u.id) as device_count,
@@ -505,9 +523,10 @@ begin
           where a.user_id = u.id and coalesce(e->>'deleted', 'false') <> 'true') as profile_count,
         coalesce((select p.email_opt_out from public.account_email_prefs p where p.user_id = u.id), false) as email_opt_out,
         (select jsonb_build_object('until', b.until, 'created_at', b.created_at) from public.account_blocks b
-          where b.user_id = u.id and b.lifted_at is null order by b.created_at desc limit 1) as blocked
-      from auth.users u where lower(u.email) like pat
-        and (not only_blocked or exists (select 1 from public.account_blocks b where b.user_id = u.id and b.lifted_at is null))
+          where b.user_id = u.id and b.lifted_at is null order by b.created_at desc limit 1) as blocked,
+        coalesce((select jsonb_build_object('plan', p.plan, 'max_streams', p.max_streams, 'max_devices', p.max_devices, 'source', p.source)
+          from public.account_plans p where p.user_id = u.id), jsonb_build_object('plan', 'free')) as plan
+      from auth.users u where lower(u.email) like pat and public.bingr_admin_user_match(u.id, f)
       order by u.created_at desc limit least(greatest(p_limit, 1), 100) offset greatest(p_offset, 0)) x), '[]'::jsonb)
   );
 end $$;
@@ -532,6 +551,9 @@ begin
     'profile_count', (select count(*) from public.account_data a, jsonb_array_elements(case when jsonb_typeof(a.profiles) = 'array' then a.profiles else '[]'::jsonb end) e
           where a.user_id = u.id and coalesce(e->>'deleted', 'false') <> 'true'),
     'email_opt_out', coalesce((select p.email_opt_out from public.account_email_prefs p where p.user_id = u.id), false),
+    'plan', coalesce((select jsonb_build_object('plan', p.plan, 'max_streams', p.max_streams, 'max_devices', p.max_devices, 'source', p.source,
+        'note', p.note, 'granted_by', p.granted_by, 'created_at', p.created_at, 'updated_at', p.updated_at)
+      from public.account_plans p where p.user_id = u.id), jsonb_build_object('plan', 'free')),
     'watching_now', (select count(*) from public.account_streams s where s.user_id = u.id and s.last_ping > now() - interval '90 seconds'),
     'active_days_30d', (select count(*) from public.account_logins l where l.user_id = u.id and l.day > (now() at time zone 'utc')::date - 30),
     'devices', coalesce((select jsonb_agg(jsonb_build_object('name', d.name, 'platform', d.platform, 'app_version', d.app_version,
@@ -1396,4 +1418,56 @@ begin
     update public.status_incidents set notice_id = nid where id = r.id;
   end loop;
   insert into public.bingr_migrations (name) values ('status_notices_backfill');
+end $$;
+
+-- ============================================================================================================
+-- Abonnementen: Gratis en Lifetime (€ 4,99 eenmalig). Contract in docs/ACCOUNT.md ("Abonnementen").
+-- Eén rij per account met een abonnement of eigen limieten; geen rij = gratis. Standaardlimieten staan in
+-- supabase/functions/_shared/plans.ts (gratis: 2 streams, 8 apparaten, 1 server; lifetime: 6, 15, onbeperkt);
+-- max_streams / max_devices = eigen limiet uit het beheer (null = standaard van het abonnement).
+-- source: 'legacy' (bestaand account, cadeau bij de invoering), 'admin' (beheer) of 'purchase' (betaald).
+-- De gebruiker leest alleen zijn eigen rij; schrijven doen alleen device-auth en admin (service role).
+create table if not exists public.account_plans (
+  user_id     uuid primary key references auth.users(id) on delete cascade,
+  plan        text not null default 'free' check (plan in ('free', 'lifetime')),
+  max_streams int check (max_streams is null or max_streams between 1 and 50),
+  max_devices int check (max_devices is null or max_devices between 1 and 200),
+  source      text check (source is null or source in ('legacy', 'admin', 'purchase')),
+  note        text check (note is null or char_length(note) <= 500),
+  granted_by  text,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now()
+);
+alter table public.account_plans enable row level security;
+revoke all on public.account_plans from anon, authenticated;
+grant select on public.account_plans to authenticated;
+drop policy if exists "eigen abonnement lezen" on public.account_plans;
+create policy "eigen abonnement lezen" on public.account_plans for select to authenticated using (user_id = auth.uid());
+create index if not exists account_plans_plan_idx on public.account_plans (plan);
+
+-- Instellingen van de apps (sleutel -> jsonb), alleen voor de functies (service role). upgrade_link: per platform of de
+-- apps een link/knop naar bingr.online/upgrade/ tonen (apple = ios, ipados, tvos, macos). Bestaande waarden blijven staan.
+create table if not exists public.app_settings (
+  key        text primary key,
+  value      jsonb not null,
+  updated_at timestamptz not null default now()
+);
+alter table public.app_settings enable row level security;
+revoke all on public.app_settings from anon, authenticated;
+insert into public.app_settings (key, value) values
+  ('upgrade_link', '{"apple": false, "android": true, "androidtv": true, "tizen": true, "web": true}'::jsonb)
+on conflict (key) do nothing;
+
+-- Eenmalig: alle accounts die bij de invoering al bestaan krijgen Lifetime cadeau (source 'legacy'). De markering
+-- plans_legacy_done in app_settings zorgt dat een latere deploy nieuwe accounts (gratis) nooit Lifetime geeft.
+do $$
+declare n int;
+begin
+  if exists (select 1 from public.app_settings where key = 'plans_legacy_done') then return; end if;
+  insert into public.account_plans (user_id, plan, source, note, granted_by)
+  select u.id, 'lifetime', 'legacy', 'Bestaand account bij de invoering van abonnementen', 'systeem'
+  from auth.users u where not exists (select 1 from public.account_plans p where p.user_id = u.id);
+  get diagnostics n = row_count;
+  insert into public.app_settings (key, value) values ('plans_legacy_done', jsonb_build_object('at', now(), 'accounts', n));
+  raise notice 'Abonnementen: % bestaande accounts kregen Lifetime (legacy)', n;
 end $$;

@@ -13,8 +13,9 @@
 //                   de naam in account_devices met custom_name = true, zodat de standaardnaam van de app hem niet overschrijft.
 //                   Te lang -> 400 {error:"name_too_long"}.
 //   delete_account  {}       (ingelogd)  -> {ok}
-//   register_device {device_id, name, platform, app_version?, os_version?} (ingelogd) -> {ok, device} | 403 {error:"device_limit", limit, devices}
-//   heartbeat       {device_id, app_version?, os_version?} (ingelogd) -> {ok} | {revoked:true}  (werkt ook "laatst gebruikt" bij)
+//   register_device {device_id, name, platform, app_version?, os_version?} (ingelogd) -> {ok, limit} | 403 {error:"device_limit", limit, plan, devices}
+//                   limit = apparatenlimiet van het abonnement (gratis 8, lifetime 15, of eigen limiet uit het beheer)
+//   heartbeat       {device_id, app_version?, os_version?, platform?} (ingelogd) -> {ok, entitlements} | {revoked:true}  (werkt ook "laatst gebruikt" bij)
 //                   Ongeldig/verlopen token -> 401 {error:"not_signed_in"} (app ververst en probeert opnieuw); auth-server onbereikbaar -> 503.
 //   list_devices    {device_id?} (ingelogd) -> {limit, devices:[{device_id,name,platform,created_at,last_seen_at,current}]}
 //   rename_device   {device_id, name} (ingelogd) -> {ok}   (eigen naam; register_device overschrijft die niet meer)
@@ -27,7 +28,8 @@
 //   put_state       {section, data}      (ingelogd) -> {ok, updatedAt}     (versleuteld; data = willekeurige JSON)
 //   delete_state    {section}            (ingelogd) -> {ok}
 //   stream_start    {device_id, profile_id, profile_name, title, kind, content_id, series_id?, series_title?, tz?} (ingelogd)
-//                   -> {ok} | 403 {error:"stream_limit", limit:6, streams:[…]}   (build 68: series_id/series_title/tz voor statistieken)
+//                   -> {ok, limit} | 403 {error:"stream_limit", limit, plan, streams:[…]}   (limit: gratis 2, lifetime 6, of eigen limiet;
+//                   build 68: series_id/series_title/tz voor statistieken)
 //   stream_ping     {device_id, title?, kind?, content_id?, series_id?, series_title?} (ingelogd, elke 30 s) -> {ok} | {stopped:true}
 //   stream_stop     {device_id} (ingelogd) -> {ok}
 //                   start/ping/stop schrijven de kijktijd bij in account_watch_stats (max. 3 min per keer).
@@ -37,12 +39,22 @@
 //   delete_watch_stats {profile_id?} (ingelogd) -> {ok}   (zonder profile_id: alle profielen)
 //   announcements   {lang?:"nl"|"en"} (ingelogd) -> {items:[{id, title, body, created_at}]}  (build 62; max. 5, nieuwste eerst)
 //   ping            {}                  -> {ok:true}  (statuscontrole, zonder inloggen)
-//   config          {}       (ingelogd)  -> {traktClientID, traktClientSecret, openSubtitlesAPIKey, omdbAPIKey, tmdbAPIKey}
+//   config          {platform?, device_id?} (ingelogd) -> {traktClientID, traktClientSecret, openSubtitlesAPIKey, omdbAPIKey, tmdbAPIKey, entitlements}
 //                   App-sleutels staan alleen als function-secrets op de server (BINGR_*), nooit in de openbare repo.
+//   entitlements    {platform?, device_id?} (ingelogd) -> {plan:"free"|"lifetime", limits:{streams, devices, servers|null},
+//                   features:{stats, now_watching, trakt, multi_server, themes}, upgrade:{url, link, price, price_en}}
+//                   Abonnementen (Gratis / Lifetime, docs/ACCOUNT.md): limieten en functies uit account_plans (geen rij = gratis),
+//                   upgrade.link per platform uit app_settings.upgrade_link (platform uit de aanvraag, anders van het apparaat).
+//                   heartbeat geeft hetzelfde object als `entitlements`. Gratis: list_streams, watch_log -> 403
+//                   {error:"feature_locked", feature:"now_watching", plan:"free"}; watch_stats -> 403 {…, feature:"stats"}.
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { buildStats, DEFAULT_TZ, periodRange, todayIn, validTz } from "./stats.ts";
 import { cleanDeviceName, deviceKind, deviceTypeLabel } from "./naming.ts";
 import { BANNED_BODY, bannedUntilActive, isBanError } from "../_shared/ban.ts";
+import {
+  entitlements, featureLocked, limitsFor, normalizePlan, normalizePlatform, normalizeUpgradeLink, platformFromDevice,
+  type PlanRow, type UpgradeLink,
+} from "../_shared/plans.ts";
 
 const SITE = Deno.env.get("BINGR_SITE") ?? "https://bingr.online";
 const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {
@@ -72,8 +84,6 @@ function same(a: string, b: string) {
   for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i);
   return d === 0;
 }
-const DEVICE_LIMIT = 15;
-const STREAM_LIMIT = 6;
 const STREAM_TTL_MS = 90 * 1000; // een stream zonder ping na 90 s telt niet meer mee
 function sessionIdFrom(req: Request): string | null {
   try {
@@ -82,6 +92,41 @@ function sessionIdFrom(req: Request): string | null {
     const claims = JSON.parse(atob(part + "===".slice((part.length + 3) % 4)));
     return typeof claims.session_id === "string" ? claims.session_id : null;
   } catch { return null; }
+}
+// Abonnement van een account (account_plans; geen rij = gratis). strict: bij een databasefout een fout gooien
+// (entitlements -> 500); anders ruim rekenen (lifetime), zodat een storing nooit afspelen of inloggen tegenhoudt.
+async function planRow(userId: string, strict = false): Promise<PlanRow> {
+  const { data, error } = await admin.from("account_plans").select("plan,max_streams,max_devices").eq("user_id", userId).maybeSingle();
+  if (error) {
+    console.error("account_plans", error.message);
+    if (strict) throw new Error(error.message);
+    return { plan: "lifetime" };
+  }
+  return data ?? null;
+}
+// Upgrade-link per platform (app_settings.upgrade_link), 60 s in het geheugen; bij een fout de standaard.
+let linkCache: { at: number; value: UpgradeLink } | null = null;
+async function upgradeLinks(): Promise<UpgradeLink> {
+  if (linkCache && Date.now() - linkCache.at < 60_000) return linkCache.value;
+  const { data, error } = await admin.from("app_settings").select("value").eq("key", "upgrade_link").maybeSingle();
+  if (error) console.error("app_settings", error.message);
+  const value = normalizeUpgradeLink(data?.value);
+  if (!error) linkCache = { at: Date.now(), value };
+  return value;
+}
+// Platform van de aanvraag (body.platform), anders van het geregistreerde apparaat (body.device_id of het opgegeven platform).
+async function callerPlatform(userId: string, body: Record<string, unknown>, devicePlatform?: string | null) {
+  const p = normalizePlatform(body.platform);
+  if (p) return p;
+  if (devicePlatform !== undefined) return platformFromDevice(devicePlatform);
+  if (!body.device_id) return null;
+  const { data } = await admin.from("account_devices").select("platform").eq("user_id", userId)
+    .eq("device_id", String(body.device_id).slice(0, 80)).maybeSingle();
+  return platformFromDevice(data?.platform);
+}
+async function entitlementsFor(userId: string, body: Record<string, unknown>, devicePlatform?: string | null, strict = false) {
+  const [row, links, platform] = await Promise.all([planRow(userId, strict), upgradeLinks(), callerPlatform(userId, body, devicePlatform)]);
+  return entitlements(row, links, platform);
 }
 async function listDevices(userId: string, current?: string) {
   const { data } = await admin.from("account_devices").select("device_id,name,platform,created_at,last_seen_at,signed_in_at")
@@ -312,21 +357,25 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       const name = String(body.name ?? "").slice(0, 80), platform = String(body.platform ?? "").slice(0, 40);
       const sid = sessionIdFrom(req);
       const session_id = sid && /^[0-9a-f-]{36}$/i.test(sid) ? sid : null;
+      // apparatenlimiet van het abonnement (gratis 8, lifetime 15, of eigen limiet uit het beheer)
+      const row = await planRow(user.id), limit = limitsFor(row).devices;
       // tellen + toevoegen atomair in de database (slot per account), zodat gelijktijdige logins de limiet niet passeren
       const { data: r, error } = await admin.rpc("bingr_register_device", {
-        p_user: user.id, p_device: device_id, p_name: name, p_platform: platform, p_session: session_id, p_limit: DEVICE_LIMIT,
+        p_user: user.id, p_device: device_id, p_name: name, p_platform: platform, p_session: session_id, p_limit: limit,
         p_app_version: s40(body.app_version), p_os_version: s40(body.os_version),
       });
       if (error) throw new Error(error.message);
-      if (r?.error === "device_limit") return json({ error: "device_limit", limit: DEVICE_LIMIT, devices: await listDevices(user.id) }, 403);
+      if (r?.error === "device_limit") {
+        return json({ error: "device_limit", limit, plan: normalizePlan(row?.plan), devices: await listDevices(user.id) }, 403);
+      }
       await pendingName(user.id, device_id, platform);
-      return json({ ok: true, limit: DEVICE_LIMIT });
+      return json({ ok: true, limit });
     }
     case "heartbeat": {
       const user = await authed(req);
       if (user instanceof Response) return user;
       const device_id = String(body.device_id ?? "").slice(0, 80);
-      const { data: row } = await admin.from("account_devices").select("session_id").eq("user_id", user.id).eq("device_id", device_id).maybeSingle();
+      const { data: row } = await admin.from("account_devices").select("session_id,platform").eq("user_id", user.id).eq("device_id", device_id).maybeSingle();
       if (!row) return json({ revoked: true });
       const sid = sessionIdFrom(req);
       const patch: Record<string, unknown> = { last_seen_at: new Date().toISOString() };
@@ -338,12 +387,16 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       // actief vandaag (statistieken); één rij per account per dag
       await admin.from("account_logins").upsert({ user_id: user.id, day: new Date().toISOString().slice(0, 10) },
         { onConflict: "user_id,day", ignoreDuplicates: true });
-      return json({ ok: true });
+      // abonnement mee (limieten, functies, upgrade-link): de apps passen het zonder extra aanvraag toe
+      let ent: unknown = undefined;
+      try { ent = await entitlementsFor(user.id, body, row.platform ?? null); } catch (e) { console.error("heartbeat entitlements", e instanceof Error ? e.message : e); }
+      return json({ ok: true, entitlements: ent });
     }
     case "list_devices": {
       const user = await authed(req);
       if (user instanceof Response) return user;
-      return json({ limit: DEVICE_LIMIT, devices: await listDevices(user.id, body.device_id ? String(body.device_id).slice(0, 80) : undefined) });
+      const limit = limitsFor(await planRow(user.id)).devices;
+      return json({ limit, devices: await listDevices(user.id, body.device_id ? String(body.device_id).slice(0, 80) : undefined) });
     }
     case "rename_device": {
       const user = await authed(req);
@@ -428,19 +481,23 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       if (user instanceof Response) return user;
       const device_id = String(body.device_id ?? "").slice(0, 80);
       if (!device_id) return json({ error: "device_id_missing" }, 400);
+      // streamlimiet van het abonnement (gratis 2, lifetime 6, of eigen limiet uit het beheer)
+      const row = await planRow(user.id), limit = limitsFor(row).streams;
       // verlopen streams weg, tellen, geschiedenis en stream in één transactie met een slot per account,
       // zodat gelijktijdige starts nooit boven de limiet uitkomen
       const { data: r, error } = await admin.rpc("bingr_stream_start", {
         p_user: user.id, p_device: device_id, p_profile_id: s80(body.profile_id), p_profile_name: s80(body.profile_name),
         p_title: s200(body.title), p_kind: s80(body.kind), p_content_id: s200(body.content_id),
-        p_limit: STREAM_LIMIT, p_ttl_seconds: Math.round(STREAM_TTL_MS / 1000),
+        p_limit: limit, p_ttl_seconds: Math.round(STREAM_TTL_MS / 1000),
         p_series_id: s200(body.series_id || null), p_series_title: s200(body.series_title || null), p_tz: validTz(body.tz),
       });
       if (error) throw new Error(error.message);
-      if (r?.error === "stream_limit") return json({ error: "stream_limit", limit: STREAM_LIMIT, streams: await activeStreams(user.id) }, 403);
+      if (r?.error === "stream_limit") {
+        return json({ error: "stream_limit", limit, plan: normalizePlan(row?.plan), streams: await activeStreams(user.id) }, 403);
+      }
       // af en toe voor alle accounts opruimen (geschiedenis > 8 dagen, oude streams, verlopen tv-codes)
       if (Math.random() < 0.05) await admin.rpc("bingr_cleanup");
-      return json({ ok: true, limit: STREAM_LIMIT });
+      return json({ ok: true, limit });
     }
     case "stream_ping": {
       const user = await authed(req);
@@ -474,11 +531,16 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
     case "list_streams": {
       const user = await authed(req);
       if (user instanceof Response) return user;
-      return json({ limit: STREAM_LIMIT, streams: await activeStreams(user.id) });
+      // "Wie kijkt er nu": alleen Lifetime
+      const row = await planRow(user.id);
+      if (normalizePlan(row?.plan) !== "lifetime") return json(featureLocked("now_watching", "free"), 403);
+      return json({ limit: limitsFor(row).streams, streams: await activeStreams(user.id) });
     }
     case "watch_log": {
       const user = await authed(req);
       if (user instanceof Response) return user;
+      // kijkgeschiedenis (7 dagen) hoort bij "Nu aan het kijken": alleen Lifetime
+      if (normalizePlan((await planRow(user.id))?.plan) !== "lifetime") return json(featureLocked("now_watching", "free"), 403);
       const days = Math.min(Math.max(Number(body.days ?? 7) || 7, 1), 7);
       const since = new Date(Date.now() - days * 864e5).toISOString();
       const { data } = await admin.from("account_watch_log")
@@ -492,6 +554,8 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
     case "watch_stats": {
       const user = await authed(req);
       if (user instanceof Response) return user;
+      // statistieken: alleen Lifetime (de kijktijd wordt voor iedereen bijgehouden, dus na upgraden staat alles er al)
+      if (normalizePlan((await planRow(user.id))?.plan) !== "lifetime") return json(featureLocked("stats", "free"), 403);
       const tz = validTz(body.tz) ?? DEFAULT_TZ;
       const range = periodRange(body.period, body.offset, todayIn(tz));
       const profileId = body.profile_id == null || body.profile_id === "" ? null : String(body.profile_id).slice(0, 80);
@@ -537,13 +601,21 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       const user = await authed(req);
       if (user instanceof Response) return user;
       const env = (k: string) => Deno.env.get(k) ?? "";
+      let ent: unknown = undefined;
+      try { ent = await entitlementsFor(user.id, body); } catch (e) { console.error("config entitlements", e instanceof Error ? e.message : e); }
       return json({
         traktClientID: env("BINGR_TRAKT_CLIENT_ID"),
         traktClientSecret: env("BINGR_TRAKT_CLIENT_SECRET"),
         openSubtitlesAPIKey: env("BINGR_OPENSUBTITLES_API_KEY"),
         omdbAPIKey: env("BINGR_OMDB_API_KEY"),
         tmdbAPIKey: env("BINGR_TMDB_API_KEY"),
+        entitlements: ent,
       });
+    }
+    case "entitlements": {
+      const user = await authed(req);
+      if (user instanceof Response) return user;
+      return json(await entitlementsFor(user.id, body, undefined, true));
     }
     default:
       return json({ error: "unknown_action" }, 400);
