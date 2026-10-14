@@ -4,6 +4,44 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 83
+_14 oktober 2026_
+
+### Website
+
+**Nieuw**
+
+- Webspeler: film- en seriepagina's spelen na 1,5 seconde de trailer zonder geluid in de kop, met geluid aan/uit; instelling Trailers automatisch afspelen
+
+### Website en Server
+
+**Nieuw**
+
+- Tv koppelen op bingr.online/koppelen: geef het apparaat meteen een eigen naam, bijvoorbeeld "Apple TV - Woonkamer"
+
+**Verbeterd**
+
+- Films en series spelen in de browser vaker af: levert je server ze ook als HLS, dan gebruikt Bingr die, ook in Safari (MKV kan Safari zelf niet openen)
+- Speelt iets niet in de browser, dan zegt de melding precies waarom (bijv. MKV in Safari, HEVC-beeld of AC3-geluid, te veel verbindingen), met een knop Details
+- Supportformulier: kies je apparaat en app-versie uit je account (ook als je al was ingelogd, en je kunt op het formulier zelf inloggen); zonder versies staan de nieuwste builds per platform klaar
+- Is je account geblokkeerd, dan zeggen de website, de webspeler en support.bingr.online dat duidelijk, ook als je al was ingelogd; je kunt dan nog wel een supportticket sturen
+- Statuspagina: kortere namen (Android, Samsung TV, Apple (iOS, iPadOS, tvOS, macOS)) en geen aparte regel meer voor opslag
+
+## Versie 1.0.0 · Build 82
+_14 oktober 2026_
+
+### Alle apps
+
+**Nieuw**
+
+- Is je account geblokkeerd, dan zegt de app dat duidelijk bij het inloggen, bij het koppelen met een code en als je al was ingelogd, met de melding dat je een e-mail hebt gekregen met de reden en tot wanneer
+
+### iOS, iPadOS, macOS, Android, Android TV en Samsung TV (Tizen)
+
+**Nieuw**
+
+- Trailer automatisch: op de pagina van een film of serie speelt na 1,5 seconde de trailer zonder geluid in de kop, met geluid aan/uit; bij series de trailer van het nieuwste seizoen. Uit te zetten met Trailers automatisch afspelen; niet bij weinig data of minder beweging
+
 ## Versie 1.0.0 · Build 81
 _14 oktober 2026_
 

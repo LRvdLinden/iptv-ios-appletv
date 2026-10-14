@@ -1,5 +1,108 @@
 [
  {
+  "build": 83,
+  "version": "1.0.0",
+  "date": "2026-10-14",
+  "items": [
+   {
+    "type": "improved",
+    "platforms": [
+     "web",
+     "server"
+    ],
+    "nl": "Films en series spelen in de browser vaker af: levert je server ze ook als HLS, dan gebruikt Bingr die, ook in Safari (MKV kan Safari zelf niet openen)",
+    "en": "Movies and series play in the browser more often: if your server also offers them as HLS, Bingr uses that, Safari included (Safari can't open MKV itself)"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "web",
+     "server"
+    ],
+    "nl": "Speelt iets niet in de browser, dan zegt de melding precies waarom (bijv. MKV in Safari, HEVC-beeld of AC3-geluid, te veel verbindingen), met een knop Details",
+    "en": "If something doesn't play in the browser, the message now says exactly why (e.g. MKV in Safari, HEVC video or AC3 audio, too many connections), with a Details button"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Webspeler: film- en seriepagina's spelen na 1,5 seconde de trailer zonder geluid in de kop, met geluid aan/uit; instelling Trailers automatisch afspelen",
+    "en": "Web player: movie and series pages play the trailer muted in the header after 1.5 seconds, with sound on/off; setting Play trailers automatically"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "web",
+     "server"
+    ],
+    "nl": "Tv koppelen op bingr.online/koppelen: geef het apparaat meteen een eigen naam, bijvoorbeeld \"Apple TV - Woonkamer\"",
+    "en": "Linking a TV at bingr.online/koppelen: give the device its own name right away, e.g. \"Apple TV - Living room\""
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "web",
+     "server"
+    ],
+    "nl": "Supportformulier: kies je apparaat en app-versie uit je account (ook als je al was ingelogd, en je kunt op het formulier zelf inloggen); zonder versies staan de nieuwste builds per platform klaar",
+    "en": "Support form: pick your device and app version from your account (also when already signed in, and you can sign in on the form itself); without versions the latest builds per platform are listed"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "web",
+     "server"
+    ],
+    "nl": "Is je account geblokkeerd, dan zeggen de website, de webspeler en support.bingr.online dat duidelijk, ook als je al was ingelogd; je kunt dan nog wel een supportticket sturen",
+    "en": "If your account is blocked, the website, web player and support.bingr.online say so clearly, even if you were already signed in; you can still send a support ticket"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "web",
+     "server"
+    ],
+    "nl": "Statuspagina: kortere namen (Android, Samsung TV, Apple (iOS, iPadOS, tvOS, macOS)) en geen aparte regel meer voor opslag",
+    "en": "Status page: shorter names (Android, Samsung TV, Apple (iOS, iPadOS, tvOS, macOS)) and no separate storage row"
+   }
+  ]
+ },
+ {
+  "build": 82,
+  "version": "1.0.0",
+  "date": "2026-10-14",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen"
+    ],
+    "nl": "Trailer automatisch: op de pagina van een film of serie speelt na 1,5 seconde de trailer zonder geluid in de kop, met geluid aan/uit; bij series de trailer van het nieuwste seizoen. Uit te zetten met Trailers automatisch afspelen; niet bij weinig data of minder beweging",
+    "en": "Automatic trailer: on a movie or series page the trailer plays muted in the header after 1.5 seconds, with sound on/off; for series the newest season's trailer. Can be turned off with Play trailers automatically; not with low data or reduced motion"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen"
+    ],
+    "nl": "Is je account geblokkeerd, dan zegt de app dat duidelijk bij het inloggen, bij het koppelen met een code en als je al was ingelogd, met de melding dat je een e-mail hebt gekregen met de reden en tot wanneer",
+    "en": "If your account is blocked, the app says so clearly when signing in, when linking with a code and if you were already signed in, with a note that you received an email with the reason and until when"
+   }
+  ]
+ },
+ {
   "build": 81,
   "version": "1.0.0",
   "date": "2026-10-14",
