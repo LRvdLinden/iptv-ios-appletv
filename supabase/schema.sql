@@ -1057,3 +1057,10 @@ insert into public.status_monitors (id, name_nl, name_en, grp, kind, target, key
   ('support',   'Supporttickets',               'Support tickets',              'server',  'fn',          'support',                                null,         5,  true,  true,  true, 45),
   ('site-sup',  'Supportsite',                  'Support site',                 'website', 'http',        'https://support.bingr.online/',          'content="support"', 5, true, false, true, 55)
 on conflict (id) do nothing;
+-- support.bingr.online staat online: de monitor Supportsite één keer aanzetten (daarna beslist het beheer)
+do $$ begin
+  if not exists (select 1 from public.bingr_migrations where name = 'support_site_monitor_on') then
+    update public.status_monitors set enabled = true where id = 'site-sup';
+    insert into public.bingr_migrations (name) values ('support_site_monitor_on');
+  end if;
+end $$;
