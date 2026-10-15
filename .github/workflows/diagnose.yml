@@ -1,0 +1,67 @@
+name: Diagnose
+
+# Handmatige diagnose van de backend. Het log is OPENBAAR: alleen tellingen, leeftijden en foutsoorten, nooit
+# e-mailadressen, namen, account-id's, titels of andere gebruikersgegevens.
+# Secrets: SUPABASE_ACCESS_TOKEN en SUPABASE_PROJECT_REF (zoals de workflow Backend).
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  streams:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+    steps:
+      - name: Kijksessies (Nu aan het kijken)
+        shell: bash
+        run: |
+          set -uo pipefail
+          q() {
+            python3 -c 'import json,sys; print(json.dumps({"query": sys.argv[1]}))' "$1" > /tmp/q.json
+            curl -s -X POST "https://api.supabase.com/v1/projects/$REF/database/query" \
+              -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" --data @/tmp/q.json
+          }
+          echo "== account_streams (alle accounts samen) =="
+          q "select count(*) as rijen, count(*) filter (where last_ping > now() - interval '90 seconds') as actief,
+                    round(extract(epoch from now() - max(last_ping))) as sec_sinds_laatste_ping,
+                    round(extract(epoch from now() - max(started_at))) as sec_sinds_laatste_start
+             from public.account_streams"; echo
+          echo "== account_watch_log, laatste 6 uur =="
+          q "select count(*) as starts, round(extract(epoch from now() - max(started_at))) as sec_sinds_laatste
+             from public.account_watch_log where started_at > now() - interval '6 hours'"; echo
+          echo "== functies bingr_stream_* en bingr_stats_* (alleen namen en argumenten) =="
+          q "select p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')' as functie
+             from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+             where n.nspname = 'public' and (p.proname like 'bingr_stream%' or p.proname like 'bingr_stats%' or p.proname like 'bingr_local_day%')
+             order by 1"; echo
+          echo "== proefaanroep bingr_stream_start in een transactie die wordt teruggedraaid (bestaand account met stream) =="
+          # neemt het account met de meest recente stream, roept de functie aan zoals device-auth en draait alles terug;
+          # toont alleen of het lukt of de foutmelding (zonder waarden)
+          q "do \$\$ declare u uuid; d text; r jsonb; begin
+               select user_id, device_id into u, d from public.account_streams order by last_ping desc limit 1;
+               if u is null then raise notice 'geen bestaande stream om mee te testen'; return; end if;
+               r := public.bingr_stream_start(u, d, 'p', 'p', 't', 'movie', 'c', 6, 90, null, null, 'Europe/Amsterdam');
+               raise exception 'TERUGDRAAIEN ok=%', r->>'ok';
+             end \$\$" | python3 -c 'import sys,re; s=sys.stdin.read(); print(re.sub(r"[0-9a-f]{8}-[0-9a-f-]{27}","<id>",s)[:600])'
+          echo
+          echo "== edge-functie device-auth: statuscodes laatste 6 uur =="
+          SQL="select response.status_code as status, count(*) as n from function_edge_logs cross join unnest(metadata) as m cross join unnest(m.response) as response cross join unnest(m.request) as request where request.url like '%/device-auth%' group by 1 order by 1"
+          curl -s -G "https://api.supabase.com/v1/projects/$REF/analytics/endpoints/logs.all" \
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --data-urlencode "sql=$SQL" \
+            --data-urlencode "iso_timestamp_start=$(date -u -d '-6 hours' +%FT%TZ)" \
+            --data-urlencode "iso_timestamp_end=$(date -u +%FT%TZ)" | head -c 1500; echo
+          echo "== postgres-fouten met bingr_stream/stats, laatste 6 uur (zonder waarden) =="
+          SQL2="select event_message from postgres_logs cross join unnest(metadata) as m cross join unnest(m.parsed) as p where p.error_severity in ('ERROR','FATAL') and (event_message like '%bingr_stream%' or event_message like '%bingr_stats%' or event_message like '%account_watch%' or event_message like '%account_streams%') limit 20"
+          curl -s -G "https://api.supabase.com/v1/projects/$REF/analytics/endpoints/logs.all" \
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+            --data-urlencode "sql=$SQL2" \
+            --data-urlencode "iso_timestamp_start=$(date -u -d '-6 hours' +%FT%TZ)" \
+            --data-urlencode "iso_timestamp_end=$(date -u +%FT%TZ)" \
+            | python3 -c 'import sys,re; s=sys.stdin.read(); s=re.sub(r"\"[^\"]*@[^\"]*\"","\"<e>\"",s); s=re.sub(r"[0-9a-f]{8}-[0-9a-f-]{27}","<id>",s); s=re.sub(r"\(([^()]{0,200})\)=\(([^()]*)\)",r"(\1)=(<waarde>)",s); print(s[:3000])'
