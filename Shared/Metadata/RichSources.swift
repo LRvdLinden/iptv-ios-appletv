@@ -96,9 +96,13 @@ enum TMDB {
         var backdrops: [URL] = []
     }
 
+    /// TMDB-locale voor de app-taal. build 97: geldige codes (vroeger "en-EN" en "ar-AR", die TMDB niet kent;
+    /// daardoor werkte ook de Engelse terugval `lang != "en-US"` in PersonService niet goed).
     static var language: String {
         let l = Localizer.shared.language
         switch l {
+        case "en": return "en-US"
+        case "ar": return "ar-SA"
         case "zh-Hans": return "zh-CN"
         case "pt": return "pt-PT"
         default: return l.count == 2 ? "\(l)-\(l.uppercased())" : l

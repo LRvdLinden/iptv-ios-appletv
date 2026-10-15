@@ -307,7 +307,7 @@ alter table public.device_pending_names enable row level security;
 revoke all on public.device_pending_names from anon, authenticated;
 
 -- Beheer: de tabellen announcements, account_email_prefs, admin_login_attempts en admin_audit en de functies bingr_admin_*
--- horen bij dit gedeelde schema, maar worden gebruikt door de Edge Function admin in de privé-repo LRvdLinden/bingr-beheer
+-- horen bij dit gedeelde schema, maar worden gebruikt door de Edge Function admin in de (sinds build 97 openbare) repo LRvdLinden/bingr-beheer
 -- (beheer.bingr.online). Alleen announcements wordt ook door device-auth gelezen (berichten in de apps).
 -- Berichten van de beheerder aan alle gebruikers (in de apps één keer getoond; eventueel ook per e-mail).
 create table if not exists public.announcements (
@@ -552,7 +552,7 @@ end $$;
 revoke all on function public.bingr_audit_logins(int) from public, anon, authenticated;
 grant execute on function public.bingr_audit_logins(int) to service_role;
 
--- Statistieken voor het beheer-dashboard (functie admin, privé-repo bingr-beheer).
+-- Statistieken voor het beheer-dashboard (functie admin, repo bingr-beheer).
 create or replace function public.bingr_admin_stats() returns jsonb
 language plpgsql security definer set search_path = public, auth as $$
 declare res jsonb; days jsonb; audit_total bigint;
@@ -673,6 +673,8 @@ revoke all on function public.bingr_admin_user(uuid) from public, anon, authenti
 grant execute on function public.bingr_admin_user(uuid) to service_role;
 
 -- Bulkmail: de volgende ontvangers claimen (cursor schuift meteen door, dus twee tabbladen versturen nooit dubbel).
+-- build 97: verouderd, alleen nog voor een oudere functie admin; de nieuwe gebruikt bingr_announce_take / bingr_announce_mark
+-- (onderaan dit bestand), die per ontvanger bijhouden wat verstuurd is.
 create or replace function public.bingr_announce_claim(p_id uuid, p_batch int) returns jsonb
 language plpgsql security definer set search_path = public, auth as $$
 declare a record; rows jsonb; last_id uuid;
@@ -1662,3 +1664,136 @@ begin
   insert into public.app_settings (key, value) values ('plans_legacy_done', jsonb_build_object('at', now(), 'accounts', n));
   raise notice 'Abonnementen: % bestaande accounts kregen Lifetime (legacy)', n;
 end $$;
+
+-- build 97: beheer (functie admin in LRvdLinden/bingr-beheer). Tokenversie: elk beheer-token draagt de versie v; de functie
+-- admin vergelijkt die bij elk verzoek met deze rij. "Overal uitloggen" (actie logout_all) verhoogt de versie, en een ander
+-- wachtwoord ook vanzelf: pw_hash is een sleutel-hash (HMAC met de service-role-sleutel) van BINGR_ADMIN_PASSWORD, nooit het
+-- wachtwoord zelf. Eén rij (id = 1); alleen de service role.
+create table if not exists public.admin_token_state (
+  id         int primary key default 1 check (id = 1),
+  version    int not null default 1,
+  pw_hash    text,
+  updated_at timestamptz not null default now()
+);
+alter table public.admin_token_state enable row level security;
+revoke all on public.admin_token_state from anon, authenticated;
+insert into public.admin_token_state (id) values (1) on conflict do nothing;
+
+-- build 97: huidige tokenversie; is het wachtwoord (p_pw_hash) anders dan het opgeslagen, dan eerst de versie ophogen
+-- (alle bestaande tokens vervallen). Gewoonlijk alleen een lees-actie zonder slot.
+create or replace function public.bingr_admin_token_version(p_pw_hash text) returns int
+language plpgsql security definer set search_path = public as $$
+declare r public.admin_token_state%rowtype;
+begin
+  select * into r from public.admin_token_state where id = 1;
+  if found and (p_pw_hash is null or r.pw_hash = p_pw_hash) then return r.version; end if;
+  insert into public.admin_token_state (id) values (1) on conflict do nothing;
+  select * into r from public.admin_token_state where id = 1 for update;
+  if p_pw_hash is null or r.pw_hash = p_pw_hash then return r.version; end if;
+  if r.pw_hash is null then
+    update public.admin_token_state set pw_hash = p_pw_hash, updated_at = now() where id = 1;
+    return r.version;
+  end if;
+  update public.admin_token_state set version = version + 1, pw_hash = p_pw_hash, updated_at = now() where id = 1
+  returning version into r.version;
+  return r.version;
+end $$;
+-- build 97: overal uitloggen: versie + 1, alle beheer-tokens (web en app) vervallen meteen
+create or replace function public.bingr_admin_logout_all() returns int
+language plpgsql security definer set search_path = public as $$
+declare v int;
+begin
+  insert into public.admin_token_state (id) values (1) on conflict do nothing;
+  update public.admin_token_state set version = version + 1, updated_at = now() where id = 1 returning version into v;
+  return v;
+end $$;
+revoke all on function public.bingr_admin_token_version(text) from public, anon, authenticated;
+revoke all on function public.bingr_admin_logout_all() from public, anon, authenticated;
+grant execute on function public.bingr_admin_token_version(text) to service_role;
+grant execute on function public.bingr_admin_logout_all() to service_role;
+
+-- build 97: bulkmail per ontvanger bijhouden. bingr_announce_claim schoof de cursor meteen door: stopte de functie midden
+-- in een batch, dan kreeg de rest van die batch nooit een mail. Nu krijgt elke geclaimde ontvanger een rij 'sending' met
+-- tijdstip; na elke verzonden mail zet bingr_announce_mark hem op 'sent' of 'failed' (en telt mee). Een rij die langer dan
+-- 10 minuten op 'sending' staat (functie gestopt), komt in een volgende batch opnieuw aan de beurt. 'skipped' = intussen
+-- afgemeld of zonder bevestigd adres. Gaat mee met het bericht (en met het account).
+create table if not exists public.announcement_sends (
+  announcement_id uuid not null references public.announcements(id) on delete cascade,
+  user_id         uuid not null references auth.users(id) on delete cascade,
+  state           text not null default 'sending' check (state in ('sending', 'sent', 'failed', 'skipped')),
+  claimed_at      timestamptz not null default now(),
+  done_at         timestamptz,
+  primary key (announcement_id, user_id)
+);
+create index if not exists announcement_sends_sending_idx on public.announcement_sends (announcement_id, claimed_at) where state = 'sending';
+alter table public.announcement_sends enable row level security;
+revoke all on public.announcement_sends from anon, authenticated;
+
+-- build 97: volgende batch: eerst vastgelopen rijen (> 10 min 'sending'), dan nieuwe ontvangers vanaf de cursor.
+-- -> {items:[{id,email,lang}], done, busy}. busy = er lopen nog verzendingen van een andere aanroep (even wachten).
+-- Klaar (email_done_at) pas als de cursor op is en niemand meer op 'sending' staat.
+create or replace function public.bingr_announce_take(p_id uuid, p_batch int) returns jsonb
+language plpgsql security definer set search_path = public, auth as $$
+declare a record; n int := greatest(least(coalesce(p_batch, 25), 100), 1); ids uuid[] := '{}'; more uuid[]; last_id uuid; rows jsonb;
+begin
+  select * into a from public.announcements where id = p_id for update;
+  if not found or not a.email or a.email_done_at is not null then
+    return jsonb_build_object('items', '[]'::jsonb, 'done', true, 'busy', false);
+  end if;
+  -- 1. vastgelopen rijen opnieuw claimen
+  with s as (
+    select user_id from public.announcement_sends
+    where announcement_id = p_id and state = 'sending' and claimed_at < now() - interval '10 minutes'
+    order by claimed_at limit n for update skip locked),
+  u as (
+    update public.announcement_sends x set claimed_at = now() from s
+    where x.announcement_id = p_id and x.user_id = s.user_id returning x.user_id)
+  select coalesce(array_agg(u.user_id), '{}') into ids from u;
+  -- 2. aanvullen met nieuwe ontvangers vanaf de cursor
+  if coalesce(array_length(ids, 1), 0) < n then
+    select coalesce(array_agg(r.id order by r.id), '{}'), max(r.id::text)::uuid into more, last_id from (
+      select u.id from auth.users u
+      where u.email is not null and u.email_confirmed_at is not null
+        and (a.email_cursor is null or u.id > a.email_cursor)
+        and not exists (select 1 from public.account_email_prefs p where p.user_id = u.id and p.email_opt_out)
+      order by u.id limit n - coalesce(array_length(ids, 1), 0)) r;
+    if last_id is not null then
+      insert into public.announcement_sends (announcement_id, user_id) select p_id, x from unnest(more) x
+      on conflict (announcement_id, user_id) do nothing;
+      update public.announcements set email_cursor = last_id where id = p_id;
+      ids := ids || more;
+    end if;
+  end if;
+  -- intussen afgemeld of zonder bevestigd adres: overslaan
+  update public.announcement_sends s set state = 'skipped', done_at = now()
+  where s.announcement_id = p_id and s.user_id = any(ids) and s.state = 'sending'
+    and not exists (select 1 from auth.users u where u.id = s.user_id and u.email is not null and u.email_confirmed_at is not null
+                    and not exists (select 1 from public.account_email_prefs p where p.user_id = u.id and p.email_opt_out));
+  select jsonb_agg(jsonb_build_object('id', u.id, 'email', u.email, 'lang', u.raw_user_meta_data->>'lang') order by u.id) into rows
+  from auth.users u join public.announcement_sends s on s.user_id = u.id and s.announcement_id = p_id and s.state = 'sending'
+  where u.id = any(ids);
+  if rows is not null then return jsonb_build_object('items', rows, 'done', false, 'busy', false); end if;
+  if exists (select 1 from public.announcement_sends where announcement_id = p_id and state = 'sending') then
+    return jsonb_build_object('items', '[]'::jsonb, 'done', false, 'busy', true);
+  end if;
+  update public.announcements set email_done_at = now() where id = p_id;
+  return jsonb_build_object('items', '[]'::jsonb, 'done', true, 'busy', false);
+end $$;
+-- build 97: resultaat per ontvanger (na elke mail): 'sending' -> 'sent' / 'failed', en de tellers van het bericht.
+-- Alleen rijen die nog op 'sending' staan tellen (dubbel melden telt niet dubbel). -> zelfde vorm als bingr_announce_report.
+create or replace function public.bingr_announce_mark(p_id uuid, p_sent uuid[], p_failed uuid[]) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare ns int; nf int;
+begin
+  update public.announcement_sends set state = 'sent', done_at = now()
+  where announcement_id = p_id and state = 'sending' and user_id = any(coalesce(p_sent, '{}'));
+  get diagnostics ns = row_count;
+  update public.announcement_sends set state = 'failed', done_at = now()
+  where announcement_id = p_id and state = 'sending' and user_id = any(coalesce(p_failed, '{}'));
+  get diagnostics nf = row_count;
+  return public.bingr_announce_report(p_id, ns, nf);
+end $$;
+revoke all on function public.bingr_announce_take(uuid, int) from public, anon, authenticated;
+revoke all on function public.bingr_announce_mark(uuid, uuid[], uuid[]) from public, anon, authenticated;
+grant execute on function public.bingr_announce_take(uuid, int) to service_role;
+grant execute on function public.bingr_announce_mark(uuid, uuid[], uuid[]) to service_role;

@@ -127,7 +127,7 @@ struct ChannelCard: View {
                     .padding(tvScaled(18))
                 HStack(spacing: 4) {
                     Circle().fill(Theme.red).frame(width: tvScaled(6), height: tvScaled(6))
-                    Text("LIVE").font(.system(size: tvScaled(9), weight: .heavy))
+                    Text(L("LIVE")).font(.system(size: tvScaled(9), weight: .heavy))   // build 97: vertaald
                 }
                 .padding(.horizontal, 6).padding(.vertical, 3)
                 .background(.black.opacity(0.6), in: Capsule()).padding(6)

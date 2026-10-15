@@ -78,18 +78,23 @@ struct BingrApp: App {
             if p == .active {
                 Secrets.reload()
                 store.load(mergeProgress: true)
-                Task { await trakt.refresh() }
+                // build 97: Trakt en de account-sync hooguit eens per minuut (op de Mac wordt de app bij elke
+                // wissel tussen apps weer actief)
+                if app.traktRefreshDue() { Task { await trakt.refresh() } }
                 Task { await app.playlists.refreshIfDue() }
                 // gekoppelde apparaten: heartbeat (of registreren) bij terugkeer naar de voorgrond
-                Task {
-                    await account.checkDevice()
-                    await ProfileSync.shared.syncNow(periodic: true)
-                    await SourceSync.shared.syncNow()
-                    await StateSync.shared.syncNow()
-                    // app-sleutels: alleen opnieuw als het nog niet gelukt is (bijv. offline gestart)
-                    await account.fetchConfig(force: false)
-                    // abonnement (build 88): bij terugkeer naar de voorgrond
-                    await EntitlementsService.shared.refresh(force: true)
+                if app.accountRefreshDue() {
+                    Task {
+                        await account.checkDevice()
+                        await ProfileSync.shared.syncNow()
+                        await SourceSync.shared.syncNow()
+                        await StateSync.shared.syncNow()
+                        // app-sleutels: alleen opnieuw als het nog niet gelukt is (bijv. offline gestart)
+                        await account.fetchConfig(force: false)
+                        // abonnement (build 88): bij terugkeer naar de voorgrond; build 97: niet als de heartbeat
+                        // hierboven het abonnement net al meestuurde
+                        await EntitlementsService.shared.refreshUnlessRecent(60)
+                    }
                 }
                 // mededelingen (build 62): hooguit eens per uur, alleen in de app zelf
                 if app.stage == .main { AnnouncementCenter.shared.check() }
@@ -114,6 +119,21 @@ final class AppState: ObservableObject {
     @Published var selectedTab: Int?
     /// Profielmenu (build 72): Mijn Bingr openen, eventueel meteen op een pagina (Instellingen, Account…)
     @Published var myBingrRequest: MyBingrRequest?
+    /// build 97: laatste keer dat Trakt en de account-sync bij het actief worden van de app liepen (of bij het starten)
+    var lastTraktRefresh: Date = .distantPast
+    var lastAccountRefresh: Date = .distantPast
+
+    /// build 97: minstens 60 seconden geleden? Dan nu (en het tijdstip bijwerken).
+    func traktRefreshDue() -> Bool {
+        guard Date().timeIntervalSince(lastTraktRefresh) >= 60 else { return false }
+        lastTraktRefresh = Date()
+        return true
+    }
+    func accountRefreshDue() -> Bool {
+        guard Date().timeIntervalSince(lastAccountRefresh) >= 60 else { return false }
+        lastAccountRefresh = Date()
+        return true
+    }
     let playlists = PlaylistService()
 
     private let lastKey = "lastPlaylistID"
@@ -131,11 +151,12 @@ final class AppState: ObservableObject {
             .sink { [weak self] signedIn in
                 guard let self, !signedIn else { return }
                 AnnouncementCenter.shared.reset()
-                // build 82: account geblokkeerd → speler/multiview sluiten, zodat de melding op het inlogscherm te zien is
-                if AccountService.shared.blockedNotice {
-                    self.playing = nil
-                    self.showMultiview = false
-                }
+                // build 82: account geblokkeerd → speler/multiview sluiten, zodat de melding op het inlogscherm te zien is.
+                // build 97: ook bij een ingetrokken apparaat (en elk ander uitloggen) alles stoppen, inclusief
+                // beeld-in-beeld (dat speelde anders gewoon door)
+                self.playing = nil
+                self.showMultiview = false
+                PiPCenter.shared.stopActive()
                 self.showAuthIfNeeded()
             }
             .store(in: &bag)
@@ -161,6 +182,8 @@ final class AppState: ObservableObject {
             }
             .store(in: &bag)
         // met een sessie meteen door naar "Wie kijkt er?" en op de achtergrond vernieuwen + profielen synchroniseren
+        // build 97: de start telt als volledige ronde (het eerste "actief" vlak daarna slaat de account-sync over)
+        if Secrets.accountsConfigured, AccountService.shared.isSignedIn { lastAccountRefresh = Date() }
         Task {
             guard Secrets.accountsConfigured, AccountService.shared.isSignedIn else { return }
             let r = await AccountService.shared.refresh()
@@ -180,7 +203,7 @@ final class AppState: ObservableObject {
                 try? await Task.sleep(nanoseconds: 300 * 1_000_000_000)
                 await AccountService.shared.checkDevice(force: true)
                 // account_data opnieuw lezen: nieuwe of verwijderde profielfoto's van andere apparaten
-                await ProfileSync.shared.syncNow(periodic: true)
+                await ProfileSync.shared.syncNow()
                 await SourceSync.shared.syncNow()
                 await StateSync.shared.syncNow()
                 await AccountService.shared.fetchConfig(force: false)

@@ -1,7 +1,7 @@
 import Foundation
 import SwiftUI
 import AVKit
-#if os(tvOS)
+#if os(iOS) || os(tvOS)
 import UIKit
 #endif
 
@@ -37,6 +37,11 @@ final class PlayerController: ObservableObject {
     private var pendingPiP = 0
     private var restoringFromPiP = false
     private var stopped = false
+    /// build 97: deze speler houdt nu het scherm wakker (geen slaapstand/schermbeveiliging tijdens het afspelen)
+    private var holdsAwake = false
+    /// build 97: het profiel dat keek toen het afspelen begon; voortgang en geschiedenis gaan daarheen, ook als er
+    /// intussen (bijv. tijdens beeld-in-beeld) een ander profiel gekozen is
+    private var playbackProfileID: UUID?
 
     /// Echte afspeel-URL (na Stalker/Stremio-resolutie)
     private(set) var url: URL?
@@ -207,7 +212,11 @@ final class PlayerController: ObservableObject {
         #if os(tvOS)
         displayTicks = 0; displayMatched = false
         #endif
-        if stopped || timer == nil { watchedSeconds = 0; recordedHistory = false }
+        if stopped || timer == nil {
+            watchedSeconds = 0; recordedHistory = false
+            // build 97: nieuwe afspeelsessie: het profiel van nu vastleggen
+            playbackProfileID = CloudStore.shared.activeProfileID
+        }
         stopped = false
         let apple = forceApple ?? Self.prefersApple(url)
         let switching = apple != usingApple
@@ -248,6 +257,7 @@ final class PlayerController: ObservableObject {
                 if self.engine.state == .playing && self.engine.isPlaying {
                     if self.isBuffering { self.isBuffering = false }
                     if !self.isPlaying { self.isPlaying = true }
+                    self.updateAwake()
                     if log { PlaybackTiming.end("first frame (\(self.usingApple ? "Apple" : "VLC"))") }
                     return
                 }
@@ -331,6 +341,7 @@ final class PlayerController: ObservableObject {
             else if pendingPiP > 30 { pendingPiP = 0; notice = L("Picture in Picture isn't available for this stream.") }
         }
         if st == .playing { watchedSeconds += 0.5 }
+        updateAwake()
         #if os(tvOS)
         // na een seconde echt afspelen: het scherm aanpassen aan framerate en dynamisch bereik van de stream
         if st == .playing && !isPreview && !silent && !displayMatched {
@@ -405,6 +416,7 @@ final class PlayerController: ObservableObject {
 
     func pause() {
         engine.pause()
+        releaseAwake()
         if isLive { pausedAt = Date() }
         saveProgress()
         if !isPreview { let it = item, p = position; Task { await TraktSync.shared.scrobble(.pause, item: it, progress: p) } }
@@ -460,6 +472,7 @@ final class PlayerController: ObservableObject {
         timer?.invalidate(); timer = nil
         keepEngine = true
         engine.stop()
+        releaseAwake()
         if isPlaying { isPlaying = false }
         if !isBuffering { isBuffering = true }
     }
@@ -478,12 +491,31 @@ final class PlayerController: ObservableObject {
         saveProgress()
         if !isPreview { let p = position, it = item; Task { await TraktSync.shared.scrobble(.stop, item: it, progress: p) } }
         // voortgang bij stoppen meteen naar de Bingr-account
-        if !isPreview { StateSync.shared.playbackStopped() }
+        if !isPreview { StateSync.shared.playbackStopped(profile: playbackProfileID) }
         engine.stop()
+        releaseAwake()
         #if !os(tvOS)
         if airPlayServing { AirPlaySubtitles.stop(); airPlayServing = false }
         airPlayWrapped = false
         #endif
+    }
+
+    // MARK: scherm wakker houden (build 97)
+
+    /// build 97: zolang er echt beeld speelt (ook VLC, Multiview-tegels en beeld-in-beeld) het scherm wakker houden;
+    /// een stil zendervoorbeeld telt niet mee. Alleen bij een verandering naar `DisplayAwake`.
+    private func updateAwake() {
+        let want = isPlaying && !silent && !stopped && errorText == nil
+        guard want != holdsAwake else { return }
+        holdsAwake = want
+        DisplayAwake.shared.set(self, awake: want)
+    }
+
+    /// build 97: pauze, stoppen, einde of halt: het scherm mag weer slapen (als geen andere speler nog speelt)
+    private func releaseAwake() {
+        guard holdsAwake else { return }
+        holdsAwake = false
+        DisplayAwake.shared.set(self, awake: false)
     }
 
     // MARK: Apple TV: framerate en dynamisch bereik (Match Content)
@@ -559,10 +591,11 @@ final class PlayerController: ObservableObject {
     private func finish() {
         recordHistory()
         timer?.invalidate(); timer = nil
+        releaseAwake()
         position = 1
         saveProgress()
         if !isPreview { let it = item; Task { await TraktSync.shared.scrobble(.stop, item: it, progress: 1) } }
-        if !isPreview { StateSync.shared.playbackStopped() }
+        if !isPreview { StateSync.shared.playbackStopped(profile: playbackProfileID) }
         onFinished?()
     }
 
@@ -575,25 +608,27 @@ final class PlayerController: ObservableObject {
         CloudStore.shared.addHistory(HistoryEntry(itemID: it.channelID ?? it.id, playlistID: CloudStore.shared.activePlaylistID,
                                                   title: it.title, subtitle: it.subtitle, artwork: it.artwork,
                                                   type: it.type, channelID: it.channelID, date: Date(),
-                                                  profileID: CloudStore.shared.activeProfileID))
+                                                  profileID: playbackProfileID ?? CloudStore.shared.activeProfileID))
     }
 
     private func saveProgress() {
         lastSaved = Date()
         guard !isPreview, item.type != .live, item.channelID == nil, !item.id.contains("-cu-"), duration > 60 else { return }
         let store = CloudStore.shared
+        // build 97: voor het profiel dat keek toen het afspelen begon (niet het profiel dat nu toevallig actief is)
+        let prof = playbackProfileID ?? store.activeProfileID
         // gezien: bijna uitgekeken, of alleen de aftiteling nog over — per profiel, ook zonder Trakt
         let left = duration - currentTime
         if position >= 0.85 || (duration > 600 && left < 180 && position > 0.7) {
-            store.clearProgress(item.id)
-            store.setLocalWatched(item.id, true)
+            store.clearProgress(item.id, profile: prof)
+            store.setLocalWatched(item.id, true, profile: prof)
             if item.type == .episode, let sid = item.seriesID, let s = item.season, let e = item.episode {
-                store.setLocalWatched(CloudStore.episodeKey(series: sid, season: s, episode: e), true)
+                store.setLocalWatched(CloudStore.episodeKey(series: sid, season: s, episode: e), true, profile: prof)
             }
         } else if position > 0.02 {
             store.setProgress(item.id, ProgressEntry(fraction: position, position: currentTime, updated: Date(),
                                                      title: item.title, artwork: item.artwork, playlistID: store.activePlaylistID,
-                                                     profileID: store.activeProfileID))
+                                                     profileID: prof), profile: prof)
         }
     }
 
@@ -871,6 +906,84 @@ final class PiPCenter {
         (a.engine as? AVEngine)?.stopPiP()
         a.stop()
         StreamSession.shared.stop(owner: a)
+    }
+}
+
+/// build 97: houdt het scherm wakker zolang minstens één speler afspeelt. iPhone, iPad en Apple TV via
+/// `isIdleTimerDisabled` (terug bij pauze/stop en naar de achtergrond), de Mac via een activiteit die de
+/// slaapstand van het scherm (en de schermbeveiliging) tegenhoudt. De Apple-speler doet dit zelf al, VLC niet.
+@MainActor
+final class DisplayAwake {
+    static let shared = DisplayAwake()
+
+    private final class Weak { weak var ref: PlayerController?; init(_ r: PlayerController) { ref = r } }
+    /// build 97: spelers die nu wakker houden (zwak vast: een opgeruimde speler telt vanzelf niet meer mee)
+    private var holders: [ObjectIdentifier: Weak] = [:]
+    private var applied = false
+    private var prune: Timer?
+    #if os(macOS)
+    private var activity: NSObjectProtocol?
+    #else
+    private var observers: [NSObjectProtocol] = []
+    #endif
+
+    private init() {
+        #if os(iOS) || os(tvOS)
+        let nc = NotificationCenter.default
+        // build 97: op de achtergrond (ook beeld-in-beeld) de gewone instelling terug; weer actief → opnieuw toepassen
+        observers.append(nc.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { UIApplication.shared.isIdleTimerDisabled = false }
+        })
+        observers.append(nc.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { DisplayAwake.shared.reapply() }
+        })
+        #endif
+    }
+
+    func set(_ player: PlayerController, awake: Bool) {
+        let key = ObjectIdentifier(player)
+        if awake { holders[key] = Weak(player) } else { holders[key] = nil }
+        refresh()
+    }
+
+    private func refresh() {
+        holders = holders.filter { $0.value.ref != nil }
+        apply(!holders.isEmpty)
+        // build 97: een speler die zonder stop() opgeruimd is, mag het scherm niet eeuwig wakker houden
+        if holders.isEmpty {
+            prune?.invalidate(); prune = nil
+        } else if prune == nil {
+            prune = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { _ in
+                Task { @MainActor in DisplayAwake.shared.refresh() }
+            }
+        }
+    }
+
+    private func reapply() {
+        applied = false
+        refresh()
+    }
+
+    private func apply(_ on: Bool) {
+        #if os(iOS) || os(tvOS)
+        // build 97: alleen als de app voorop staat; op de achtergrond doet de instelling niets
+        let foreground = UIApplication.shared.applicationState != .background
+        let target = on && foreground
+        if UIApplication.shared.isIdleTimerDisabled != target { UIApplication.shared.isIdleTimerDisabled = target }
+        applied = on
+        #else
+        guard on != applied else { return }
+        applied = on
+        if on {
+            if activity == nil {
+                activity = ProcessInfo.processInfo.beginActivity(options: [.idleDisplaySleepDisabled, .userInitiated],
+                                                                 reason: "Bingr speelt video af")
+            }
+        } else if let a = activity {
+            ProcessInfo.processInfo.endActivity(a)
+            activity = nil
+        }
+        #endif
     }
 }
 

@@ -346,12 +346,20 @@ struct PlayerScreen: View {
                 Spacer()
 
                 #if !os(tvOS)
+                // build 97: knoppen met alleen een icoon krijgen een VoiceOver-label
                 HStack(spacing: 56) {
-                    if player.isLive && !player.canTimeshift { roundButton("chevron.up", size: 24) { zap(-1) } }
-                    else { roundButton("gobackward.10", size: 30) { player.seek(by: -10); poke() } }
+                    if player.isLive && !player.canTimeshift {
+                        roundButton("chevron.up", size: 24) { zap(-1) }.accessibilityLabel(L("Previous channel"))
+                    } else {
+                        roundButton("gobackward.10", size: 30) { player.seek(by: -10); poke() }.accessibilityLabel(L("Back 10 seconds"))
+                    }
                     roundButton(player.isPlaying ? "pause.fill" : "play.fill", size: 44) { player.togglePlay(); poke() }
-                    if player.isLive && !player.canTimeshift { roundButton("chevron.down", size: 24) { zap(1) } }
-                    else { roundButton("goforward.10", size: 30) { player.seek(by: 10); poke() } }
+                        .accessibilityLabel(player.isPlaying ? L("Pause") : L("Play"))
+                    if player.isLive && !player.canTimeshift {
+                        roundButton("chevron.down", size: 24) { zap(1) }.accessibilityLabel(L("Next channel"))
+                    } else {
+                        roundButton("goforward.10", size: 30) { player.seek(by: 10); poke() }.accessibilityLabel(L("Forward 10 seconds"))
+                    }
                 }
                 Spacer()
                 #endif

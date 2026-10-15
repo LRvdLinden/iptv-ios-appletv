@@ -85,7 +85,8 @@ final class SourceSync {
         start()
         if let running {
             again = true
-            await withTaskCancellationHandler { await running.value } onCancel: { running.cancel() }
+            // build 97: een wachter die stopt annuleert de gedeelde ronde niet meer (zie `SharedRound`)
+            await SharedRound.wait(running)
             return
         }
         let t = Task { @MainActor in
@@ -93,10 +94,11 @@ final class SourceSync {
                 self.again = false
                 await self.performSync()
             } while self.again && !Task.isCancelled
+            // build 97: pas vrijgeven als de ronde echt klaar is (de aanroeper kan eerder stoppen met wachten)
+            self.running = nil
         }
         running = t
-        await withTaskCancellationHandler { await t.value } onCancel: { t.cancel() }
-        running = nil
+        await SharedRound.wait(t)
     }
 
     private func reset() {

@@ -1,9 +1,8 @@
 import SwiftUI
 
-/// Abonnementen (build 88): slotje "Lifetime", uitleg met de vergelijking Gratis/Lifetime en (alleen als de
-/// server `upgrade.link` toestaat) de weg naar de website: iPhone, iPad en Mac openen de link in de browser,
-/// Apple TV toont een QR-code. Zonder `upgrade.link` geen link, knop, QR-code, prijs of verwijzing naar de website
-/// (App Store-regels 3.1.1/3.1.3).
+/// Abonnementen (build 88): slotje "Lifetime" en uitleg met de vergelijking Gratis/Lifetime.
+/// build 97: op alle Apple-platforms nooit een prijs, link, knop of QR-code om te kopen, ook niet als de server
+/// `upgrade.link` aanzet (App Store-regels 3.1.1/3.1.3). Alleen een neutrale regel over het account.
 
 /// Waar de uitleg over gaat.
 enum LifetimeTopic: Identifiable, Equatable {
@@ -93,7 +92,7 @@ extension View {
     }
 }
 
-/// Uitleg in een venster: titel, tekst, vergelijking en (als het mag) de weg naar de website.
+/// Uitleg in een venster: titel, tekst en vergelijking (build 97: zonder weg naar een aankoop).
 struct LifetimeInfoView: View {
     let topic: LifetimeTopic
     @ObservedObject private var ent = EntitlementsService.shared
@@ -129,7 +128,7 @@ struct LifetimeLockedView: View {
     }
 }
 
-/// Kop, tekst, vergelijking en de weg naar de website (alleen met `upgrade.link`).
+/// Kop, tekst, vergelijking en een neutrale regel over het account (build 97).
 struct LifetimeExplanation: View {
     let topic: LifetimeTopic
     @ObservedObject private var ent = EntitlementsService.shared
@@ -238,47 +237,22 @@ struct PlanComparison: View {
     }
 }
 
-/// De weg naar de website: alleen op een Gratis-account én als de server `upgrade.link` toestaat.
-/// iPhone, iPad en Mac: de link in de browser (Safari, niet in de app); Apple TV: QR-code.
+/// build 97: neutrale regel op een Gratis-account: "Beschikbaar met Lifetime" en "Je beheert je account op
+/// bingr.online", zonder link, knop, QR-code of prijs (hard uit, los van `upgrade` van de server).
 struct LifetimeUpgradeCTA: View {
     @ObservedObject private var ent = EntitlementsService.shared
-    #if !os(tvOS)
-    @Environment(\.openURL) private var openURL
-    #endif
 
     var body: some View {
-        if ent.isFree, let url = ent.upgradeURL {
-            #if os(tvOS)
-            HStack(alignment: .center, spacing: tvScaled(24)) {
-                if let qr = QRCode.image(url.absoluteString) {
-                    Image(uiImage: qr).interpolation(.none).resizable().frame(width: 220, height: 220)
-                        .padding(12).background(.white, in: RoundedRectangle(cornerRadius: 12))
-                }
-                VStack(alignment: .leading, spacing: 10) {
-                    Text(L("Scan the QR code with your phone to upgrade to Lifetime."))
-                        .font(.system(size: 24)).foregroundStyle(.white)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text(verbatim: displayURL(url)).font(.system(size: 26, weight: .semibold)).foregroundStyle(.white)
-                    if let p = ent.upgradePrice {
-                        Text(L("One-time %@", p)).font(.system(size: 22)).foregroundStyle(Theme.secondary)
-                    }
-                }
+        if ent.isFree {
+            VStack(alignment: .leading, spacing: tvScaled(4)) {
+                Text(L("Available with Lifetime"))
+                    .font(.system(size: tvScaled(15), weight: .semibold)).foregroundStyle(.white)
+                Text(L("You manage your account at bingr.online."))
+                    .font(.system(size: tvScaled(13))).foregroundStyle(Theme.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            #else
-            VStack(alignment: .leading, spacing: tvScaled(8)) {
-                NetflixButton(title: ent.upgradePrice.map { L("Upgrade to Lifetime · %@", $0) } ?? L("Upgrade to Lifetime"),
-                              icon: "arrow.up.right", kind: .accent) { openURL(url) }
-                Text(L("Opens %@ in your browser.", displayURL(url)))
-                    .font(.system(size: tvScaled(12))).foregroundStyle(Theme.secondary)
-            }
-            #endif
+            .accessibilityElement(children: .combine)
         }
-    }
-
-    private func displayURL(_ u: URL) -> String {
-        var s = u.absoluteString.replacingOccurrences(of: "https://", with: "")
-        if s.hasSuffix("/") { s.removeLast() }
-        return s
     }
 }
 

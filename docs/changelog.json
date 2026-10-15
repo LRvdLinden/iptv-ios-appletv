@@ -1,5 +1,67 @@
 [
  {
+  "build": 98,
+  "version": "1.0.0",
+  "date": "2026-10-15",
+  "items": [
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "Het scherm blijft aan tijdens het kijken, ook met de VLC-speler, in multiview en beeld-in-beeld: geen vergrendeling of schermbeveiliging meer midden in een film",
+    "en": "The screen stays on while watching, also with the VLC player, in multiview and picture-in-picture: no more lock or screensaver in the middle of a movie"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "Beveiliging: wachtwoorden, tokens en pincodes staan alleen nog in de iCloud-sleutelhanger (versleuteld), niet meer in de gewone iCloud-opslag; die raakt ook niet meer vol",
+    "en": "Security: passwords, tokens and PINs are only kept in iCloud Keychain (encrypted), no longer in regular iCloud storage, which also no longer fills up"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "Synchroniseren gaat niet meer halverwege mis als Trakt traag is, een Lifetime-account valt niet meer onterecht terug naar Gratis, en een geblokkeerd apparaat stopt ook beeld-in-beeld",
+    "en": "Syncing no longer stops halfway when Trakt is slow, a Lifetime account no longer wrongly falls back to Free, and a blocked device also stops picture-in-picture"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "Voortgang komt bij het juiste profiel, ook als je wisselt tijdens beeld-in-beeld; een nieuw hoofdprofiel wordt betrouwbaarder overgenomen; een verkeerde klok op het apparaat verstoort de sync niet meer",
+    "en": "Progress goes to the right profile, also when switching during picture-in-picture; a new main profile is picked up more reliably; a wrong device clock no longer disturbs sync"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "Minder werk bij terugkeren naar de app, betere zoekresultaten in de tv-gids, betere VoiceOver-labels en juiste vertalingen (o.a. \"Cast\" in het Arabisch)",
+    "en": "Less work when returning to the app, better TV guide search results, better VoiceOver labels and correct translations (including \"Cast\" in Arabic)"
+   }
+  ]
+ },
+ {
   "build": 97,
   "version": "1.0.0",
   "date": "2026-10-15",

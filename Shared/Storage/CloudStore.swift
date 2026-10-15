@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import os
 
 struct ProgressEntry: Codable, Hashable {
     var fraction: Double
@@ -257,8 +258,14 @@ final class CloudStore: ObservableObject {
     private init() {
         observer = NotificationCenter.default.addObserver(
             forName: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
-            object: kv, queue: .main) { [weak self] _ in
-                Task { @MainActor [weak self] in self?.load(mergeProgress: true) }
+            object: kv, queue: .main) { [weak self] n in
+                // build 97: iCloud KV is vol (1 MB): loggen en het oudste weggooien
+                let reason = n.userInfo?[NSUbiquitousKeyValueStoreChangeReasonKey] as? Int
+                let quota = reason == NSUbiquitousKeyValueStoreQuotaViolationChange
+                Task { @MainActor [weak self] in
+                    if quota { self?.trimCloudForQuota() }
+                    self?.load(mergeProgress: true)
+                }
             }
         kv.synchronize()
         load(mergeProgress: false)
@@ -266,14 +273,80 @@ final class CloudStore: ObservableObject {
 
     // MARK: laden / opslaan
 
-    private func data(_ key: String) -> Data? { kv.data(forKey: key) ?? local.data(forKey: key) }
+    private func data(_ key: String) -> Data? {
+        // build 97: met een Bingr-account staan voortgang, geschiedenis en foto's alleen lokaal (de account-sync
+        // brengt ze mee); een oude of andermans kopie in iCloud KV dan niet lezen
+        if accountCarriesBulk && Self.isBulkKey(key) { return local.data(forKey: key) }
+        return kv.data(forKey: key) ?? local.data(forKey: key)
+    }
 
     private func write<T: Encodable>(_ value: T, _ key: String) {
         guard let d = try? JSONEncoder().encode(value) else { return }
-        kv.set(d, forKey: key)
         local.set(d, forKey: key)
-        kv.synchronize()
+        if accountCarriesBulk && Self.isBulkKey(key) {
+            // build 97: niet (meer) in iCloud KV (max 1 MB); een oude kopie opruimen
+            if kv.object(forKey: key) != nil { kv.removeObject(forKey: key); kv.synchronize() }
+        } else if key == K.photos, let photos = value as? [UUID: Data] {
+            // build 97: zonder account geen grote foto's in iCloud KV (lokaal blijven ze bewaard)
+            let small = photos.filter { $0.value.count <= Self.maxCloudPhotoBytes }
+            if let sd = try? JSONEncoder().encode(small) { kv.set(sd, forKey: key) }
+            kv.synchronize()
+        } else {
+            kv.set(d, forKey: key)
+            kv.synchronize()
+        }
         touchLastSync()
+    }
+
+    // MARK: grootte van iCloud KV (build 97)
+
+    private static let log = Logger(subsystem: "nl.lrvdlinden.bingr", category: "icloud")
+    /// build 97: zonder account: maximaal zoveel voortgang en geschiedenis per profiel, foto's tot 64 KB in iCloud KV
+    static let maxCloudProgress = 100
+    static let maxCloudHistory = 100
+    static let maxCloudPhotoBytes = 64 * 1024
+
+    /// build 97: ingelogd bij een Bingr-account: voortgang, geschiedenis en foto's gaan via de account-sync,
+    /// niet via iCloud KV
+    private var accountCarriesBulk: Bool { Secrets.accountsConfigured && AccountService.shared.isSignedIn }
+
+    /// Voortgang, geschiedenis (per profiel) en foto's
+    private static func isBulkKey(_ key: String) -> Bool {
+        [K.progress, K.history, K.photos].contains { key == $0 || key.hasPrefix($0 + ".") }
+    }
+
+    /// Foto's: zonder account de kleine uit iCloud, aangevuld met de grote die alleen lokaal staan (build 97).
+    private func loadPhotos() -> [UUID: Data] {
+        func dec(_ d: Data?) -> [UUID: Data]? { d.flatMap { try? JSONDecoder().decode([UUID: Data].self, from: $0) } }
+        let localAll = dec(local.data(forKey: K.photos))
+        if accountCarriesBulk { return localAll ?? [:] }
+        guard var cloud = dec(kv.data(forKey: K.photos)) else { return localAll ?? [:] }
+        for (id, d) in localAll ?? [:] where cloud[id] == nil && d.count > Self.maxCloudPhotoBytes { cloud[id] = d }
+        return cloud
+    }
+
+    /// build 97: iCloud KV meldt dat de 1 MB vol is: het oudste van voortgang en geschiedenis weghalen en grote
+    /// foto's uit iCloud halen (lokaal blijft alles staan).
+    private func trimCloudForQuota() {
+        Self.log.error("iCloud KV quota violation: trimming progress, history and photos")
+        let keep = 50
+        for key in kv.dictionaryRepresentation.keys {
+            if key == K.progress || key.hasPrefix(K.progress + "."),
+               let d = kv.data(forKey: key), let p = try? JSONDecoder().decode([String: ProgressEntry].self, from: d) {
+                let newest = p.sorted { $0.value.updated > $1.value.updated }.prefix(keep)
+                let trimmed = Dictionary(uniqueKeysWithValues: newest.map { ($0.key, $0.value) })
+                if let e = try? JSONEncoder().encode(trimmed) { kv.set(e, forKey: key) }
+            } else if key == K.history || key.hasPrefix(K.history + "."),
+                      let d = kv.data(forKey: key), let h = try? JSONDecoder().decode([HistoryEntry].self, from: d) {
+                let newest = Array(h.sorted { $0.date > $1.date }.prefix(keep))
+                if let e = try? JSONEncoder().encode(newest) { kv.set(e, forKey: key) }
+            } else if key == K.photos, let d = kv.data(forKey: key),
+                      let ph = try? JSONDecoder().decode([UUID: Data].self, from: d) {
+                let small = ph.filter { $0.value.count <= Self.maxCloudPhotoBytes / 2 }
+                if let e = try? JSONEncoder().encode(small) { kv.set(e, forKey: key) }
+            }
+        }
+        kv.synchronize()
     }
 
     /// "Laatst gesynchroniseerd" toont alleen uren en minuten: niet bij elke opslag (bijv. voortgang tijdens het
@@ -308,19 +381,15 @@ final class CloudStore: ObservableObject {
         applyActiveAccent()
         assign(\.customizations, decode([UUID: Customization].self, K.custom) ?? [:])
         assign(\.parental, decode(ParentalSettings.self, K.parental) ?? ParentalSettings())
-        assign(\.photos, decode([UUID: Data].self, K.photos) ?? [:])
+        assign(\.photos, loadPhotos())
         assign(\.collections, decode([BingrCollection].self, K.collections) ?? collections)
         assign(\.homeLayouts, decode([String: HomeLayout].self, K.homeLayout) ?? homeLayouts)
         if !Secrets.accountsConfigured { migrateLegacyCollections() }
-        // wachtwoorden/tokens ook via iCloud KV delen (Apple TV krijgt ze anders niet) — op de achtergrond,
-        // sleutelhanger-acties zijn traag en blokkeerden het wisselen van profiel
-        let secretKeys = playlists.flatMap { [$0.passwordKey, "playlist.\($0.id.uuidString).session"] }
-            + ["trakt.tokens", "opensubtitles.session", "parental.pin"]
-            + profiles.map { "profile.\($0.id.uuidString).pin" }
-            + Secrets.Key.allCases.filter { !$0.builtInOnly }.map { "apikey.\($0.rawValue)" }
+        // build 97: geheimen staan niet meer in iCloud KV maar in de iCloud-sleutelhanger; wat er van een oudere
+        // versie nog in KV staat, overzetten en uit KV halen — op de achtergrond, sleutelhanger-acties zijn traag
         DispatchQueue.global(qos: .utility).async {
-            Keychain.syncFromCloud()
-            Keychain.pushToCloud(keys: secretKeys)
+            Keychain.migrateFromCloud()
+            // eigen API-sleutels kunnen ook via de iCloud-sleutelhanger veranderd zijn: de cache opnieuw lezen
             DispatchQueue.main.async { Secrets.reload() }
         }
         assign(\.reminders, (decode([ProgramReminder].self, K.reminders) ?? []).filter { $0.start > Date().addingTimeInterval(-3600) })
@@ -744,16 +813,48 @@ final class CloudStore: ObservableObject {
 
     // MARK: voortgang
 
-    func setProgress(_ itemKey: String, _ entry: ProgressEntry) {
-        progress[itemKey] = entry
-        if progress.count > 300 {   // oudste weggooien
-            let keep = progress.sorted { $0.value.updated > $1.value.updated }.prefix(250)
-            progress = Dictionary(uniqueKeysWithValues: keep.map { ($0.key, $0.value) })
+    /// `profile`: build 97: het profiel dat aan het kijken was toen het afspelen begon (bijv. wisselen tijdens
+    /// beeld-in-beeld); nil of het actieve profiel = zoals altijd.
+    func setProgress(_ itemKey: String, _ entry: ProgressEntry, profile: UUID? = nil) {
+        if let other = otherProfile(profile) {
+            var d = profileData(other)
+            d.progress[itemKey] = entry
+            d.progress = cappedProgress(d.progress)
+            setProfileData(other, d)
+            stateEdited.send((other, .progress))
+            return
         }
+        progress[itemKey] = entry
+        let capped = cappedProgress(progress)
+        if capped.count != progress.count { progress = capped }
         write(progress, pk(K.progress))
         edited(.progress)
     }
-    func clearProgress(_ itemKey: String) { progress[itemKey] = nil; write(progress, pk(K.progress)); edited(.profile) }
+    func clearProgress(_ itemKey: String, profile: UUID? = nil) {
+        if let other = otherProfile(profile) {
+            var d = profileData(other)
+            guard d.progress[itemKey] != nil else { return }
+            d.progress[itemKey] = nil
+            setProfileData(other, d)
+            stateEdited.send((other, .profile))
+            return
+        }
+        progress[itemKey] = nil; write(progress, pk(K.progress)); edited(.profile)
+    }
+
+    /// build 97: een ander (bestaand) profiel dan het actieve, anders nil
+    private func otherProfile(_ id: UUID?) -> UUID? {
+        guard let id, id != activeProfileID, profiles.contains(where: { $0.id == id }) else { return nil }
+        return id
+    }
+
+    /// Oudste weggooien. build 97: zonder account (iCloud KV, max 1 MB) hooguit 100 per profiel.
+    private func cappedProgress(_ p: [String: ProgressEntry]) -> [String: ProgressEntry] {
+        let (limit, keepCount) = accountCarriesBulk ? (300, 250) : (Self.maxCloudProgress, Self.maxCloudProgress)
+        guard p.count > limit else { return p }
+        let keep = p.sorted { $0.value.updated > $1.value.updated }.prefix(keepCount)
+        return Dictionary(uniqueKeysWithValues: keep.map { ($0.key, $0.value) })
+    }
 
     // MARK: lokaal bekeken (als Trakt niet gekoppeld is)
 
@@ -781,7 +882,15 @@ final class CloudStore: ObservableObject {
         return localEpisodeIndex?[id] ?? []
     }
 
-    func setLocalWatched(_ itemKey: String, _ watched: Bool) {
+    func setLocalWatched(_ itemKey: String, _ watched: Bool, profile: UUID? = nil) {
+        // build 97: voor het profiel dat aan het kijken was (zie `setProgress`)
+        if let other = otherProfile(profile) {
+            var d = profileData(other)
+            if watched { d.watched.insert(itemKey) } else { d.watched.remove(itemKey) }
+            setProfileData(other, d)
+            stateEdited.send((other, .profile))
+            return
+        }
         if watched { localWatched.insert(itemKey) } else { localWatched.remove(itemKey) }
         write(localWatched, pk(K.watched))
         edited(.profile)
@@ -818,9 +927,21 @@ final class CloudStore: ObservableObject {
     // MARK: kijkgeschiedenis
 
     func addHistory(_ e: HistoryEntry) {
+        // build 97: met een account hetzelfde maximum als in de account; zonder (iCloud KV, max 1 MB) 100
+        let limit = accountCarriesBulk ? 500 : Self.maxCloudHistory
+        // build 97: voor het profiel van de vermelding (wisselen tijdens beeld-in-beeld)
+        if let other = otherProfile(e.profileID) {
+            var d = profileData(other)
+            d.history.removeAll { $0.itemID == e.itemID && $0.playlistID == e.playlistID }
+            d.history.insert(e, at: 0)
+            if d.history.count > limit { d.history = Array(d.history.prefix(limit)) }
+            setProfileData(other, d)
+            stateEdited.send((other, .profile))
+            return
+        }
         history.removeAll { $0.itemID == e.itemID && $0.playlistID == e.playlistID }
         history.insert(e, at: 0)
-        if history.count > 500 { history = Array(history.prefix(500)) }   // zelfde maximum als in de account
+        if history.count > limit { history = Array(history.prefix(limit)) }
         write(history, pk(K.history))
         edited(.profile)
     }

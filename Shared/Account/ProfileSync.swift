@@ -80,13 +80,14 @@ final class ProfileSync {
     }
 
     /// Lezen + serverstand toepassen (tombstones, toevoegen, wijzigen, volgorde) + foto's + zo nodig uploaden.
-    /// Stil bij fouten. `periodic` wordt niet meer anders behandeld: er gaat alleen iets naar de server als
-    /// lokaal iets nieuwer is of op de server ontbreekt.
-    func syncNow(periodic: Bool = false) async {
+    /// Stil bij fouten. Er gaat alleen iets naar de server als lokaal iets nieuwer is of op de server ontbreekt
+    /// (build 97: de parameter `periodic` deed niets meer en is weg).
+    func syncNow() async {
         start()
         if let running {
             again = true
-            await withTaskCancellationHandler { await running.value } onCancel: { running.cancel() }
+            // build 97: een wachter die stopt annuleert de gedeelde ronde niet meer (zie `SharedRound`)
+            await SharedRound.wait(running)
             return
         }
         let t = Task { @MainActor in
@@ -94,10 +95,11 @@ final class ProfileSync {
                 self.again = false
                 await self.performSync()
             } while self.again && !Task.isCancelled
+            // build 97: pas vrijgeven als de ronde echt klaar is (de aanroeper kan eerder stoppen met wachten)
+            self.running = nil
         }
         running = t
-        await withTaskCancellationHandler { await t.value } onCancel: { t.cancel() }
-        running = nil
+        await SharedRound.wait(t)
     }
 
     private func reset() {
@@ -296,6 +298,8 @@ final class ProfileSync {
             for r in activeSorted { updated[r.profile.id.uuidString] = r.updatedAt }
         } else {
             // samenvoegen op id
+            // build 97: stand van vóór deze ronde (voor het hoofdprofiel hieronder)
+            let updatedBefore = updated
             var keyed: [(p: ViewerProfile, key: Double, tie: Int)] = []
             for (i, p) in remaining.enumerated() {
                 var p = p
@@ -311,14 +315,23 @@ final class ProfileSync {
                         if let a = r.profile.accentColor { p.accentColor = a }   // ontbreekt = niet gewijzigd (oudere app)
                         key = Double(r.order)
                         updated[p.id.uuidString] = r.updatedAt
-                        // build 89: hoofdprofiel op een ander apparaat (of op bingr.online) gewijzigd → overnemen
-                        if r.isMain && !store.isMain(p) { mainID = p.id }
                     } else if p.accentColor == nil, let a = r.profile.accentColor {
                         // lokaal nog geen kleur (bijv. net bijgewerkt): die van de server overnemen
                         p.accentColor = a
                     }
                 }
                 keyed.append((p, key, i))
+            }
+            // build 89/97: hoofdprofiel op een ander apparaat (of op bingr.online) gewijzigd → overnemen als de
+            // serverrij van het nieuwe óf van het oude hoofdprofiel nieuwer is dan lokaal (soms is alleen de oude
+            // rij bijgewerkt, met isMain = false)
+            if let newMain = activeSorted.first(where: \.isMain)?.profile.id,
+               newMain != store.mainProfileID, remaining.contains(where: { $0.id == newMain }) {
+                func serverNewer(_ id: UUID?) -> Bool {
+                    guard let id, let r = active[id], let theirs = Self.date(r.updatedAt) else { return false }
+                    return theirs > (Self.date(updatedBefore[id.uuidString]) ?? .distantPast)
+                }
+                if serverNewer(newMain) || serverNewer(store.mainProfileID) { mainID = newMain }
             }
             // alleen op de server (en niet verwijderd): toevoegen, zonder pincode
             let localIDs = Set(remaining.map(\.id))

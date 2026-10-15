@@ -163,7 +163,7 @@ struct StreamLimitView: View {
                             if s.id != limit.streams.last?.id { Divider().overlay(Color.white.opacity(0.12)) }
                         }
                     }
-                    // build 88: op Gratis de limiet van Lifetime en de vergelijking (link alleen als de server het toestaat)
+                    // build 88: op Gratis de limiet van Lifetime en de vergelijking (build 97: nooit een aankooplink op Apple)
                     PlanLimitNote(topic: .streams, plan: limit.plan)
                     HStack(spacing: tvScaled(14)) {
                         NetflixButton(title: L("Try again"), icon: "arrow.clockwise") { onRetry() }

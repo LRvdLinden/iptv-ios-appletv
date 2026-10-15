@@ -10,8 +10,8 @@ enum Trailer {
 
     /// Build 82: trailer automatisch (zonder geluid) in de kop van de detailpagina. Standaard aan.
     /// Apple TV heeft geen WebKit en geen eigen YouTube-stream, daar blijft de kopafbeelding staan.
+    /// build 97: gelezen via `@AppStorage(Trailer.autoplayKey)` (de ongebruikte `autoplayEnabled` is weg)
     static let autoplayKey = "ui.autoplayTrailers"
-    static var autoplayEnabled: Bool { UserDefaults.standard.object(forKey: autoplayKey) as? Bool ?? true }
 }
 
 #if !os(tvOS)

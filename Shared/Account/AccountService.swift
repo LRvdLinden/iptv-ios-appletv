@@ -148,6 +148,17 @@ final class AccountService: ObservableObject {
         static var banned: AccountError { .message(AccountService.bannedMessage) }
     }
 
+    /// build 97: serverklok − apparaatklok in seconden (uit de Date-header van het laatste antwoord); nil = onbekend
+    private(set) var serverClockOffset: TimeInterval?
+    /// build 97: "Wed, 15 Oct 2026 12:00:00 GMT"
+    private static let httpDate: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "GMT")
+        f.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
+        return f
+    }()
+
     struct Response {
         let status: Int
         let data: Data
@@ -1258,6 +1269,10 @@ final class AccountService: ObservableObject {
             throw AccountError.offline
         }
         let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        // build 97: serverklok uit de Date-header onthouden (tegen een apparaatklok die voorloopt, zie StateSync)
+        if let h = (resp as? HTTPURLResponse)?.value(forHTTPHeaderField: "Date"), let d = Self.httpDate.date(from: h) {
+            serverClockOffset = d.timeIntervalSinceNow
+        }
         let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
         return Response(status: status, data: data, json: json)
     }

@@ -171,22 +171,27 @@ struct SearchView: View {
     nonisolated static func searchGuide(_ q: String, in lib: Library) async -> [ProgramHit] {
         await Task.detached(priority: .userInitiated) {
             let now = Date()
-            var hits: [ProgramHit] = []
-            for c in lib.channels {
-                guard let list = lib.epg[c.epgID ?? c.id] else { continue }
-                let from = now.addingTimeInterval(-Double(max(c.catchupDays, 0)) * 86400)
-                for p in list where p.end > from && p.title.localizedCaseInsensitiveContains(q) {
-                    hits.append(ProgramHit(channel: c, p: p))
-                }
-                if hits.count > 400 { break }
-            }
             // eerst wat nu speelt, dan de toekomst, dan terugkijken
-            return hits.sorted { a, b in
+            func before(_ a: ProgramHit, _ b: ProgramHit) -> Bool {
                 let ra = a.p.isNow ? 0 : (a.p.start > now ? 1 : 2), rb = b.p.isNow ? 0 : (b.p.start > now ? 1 : 2)
                 if ra != rb { return ra < rb }
                 return ra == 2 ? a.p.start > b.p.start : a.p.start < b.p.start
             }
-            .prefix(60).map { $0 }
+            // build 97: per zender sorteren en de beste paar houden (vroeger stopte het bij 400 treffers vóór het
+            // sorteren, waardoor de eerste zenders in de lijst altijd voorgingen)
+            let perChannel = 8
+            var hits: [ProgramHit] = []
+            for c in lib.channels {
+                guard let list = lib.epg[c.epgID ?? c.id] else { continue }
+                let from = now.addingTimeInterval(-Double(max(c.catchupDays, 0)) * 86400)
+                var mine: [ProgramHit] = []
+                for p in list where p.end > from && p.title.localizedCaseInsensitiveContains(q) {
+                    mine.append(ProgramHit(channel: c, p: p))
+                }
+                guard !mine.isEmpty else { continue }
+                hits.append(contentsOf: mine.sorted(by: before).prefix(perChannel))
+            }
+            return Array(hits.sorted(by: before).prefix(60))
         }.value
     }
 

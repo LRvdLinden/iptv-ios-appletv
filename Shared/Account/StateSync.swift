@@ -137,7 +137,9 @@ final class StateSync {
         if let sections, var r = requested { r.formUnion(sections); requested = r } else { requested = nil }
         if let running {
             again = true
-            await withTaskCancellationHandler { await running.value } onCancel: { running.cancel() }
+            // build 97: een wachter die stopt (bijv. de time-out vóór het verversen van Trakt) annuleert de gedeelde
+            // ronde niet meer; hij stopt alleen met wachten
+            await SharedRound.wait(running)
             // de lopende ronde was net klaar: wat er nog gevraagd is alsnog doen
             if self.running == nil, requested?.isEmpty != true, !Task.isCancelled { await run([]) }
             return
@@ -153,7 +155,8 @@ final class StateSync {
             self.running = nil
         }
         running = t
-        await withTaskCancellationHandler { await t.value } onCancel: { t.cancel() }
+        // build 97: annuleren van deze aanroep stopt alleen het wachten, niet de ronde (anderen wachten er ook op)
+        await SharedRound.wait(t)
     }
 
     private func reset() {
@@ -203,10 +206,22 @@ final class StateSync {
         }
     }
 
-    /// Afspelen gestopt: de voortgang meteen uploaden.
-    func playbackStopped() {
+    // MARK: - Klok (build 97)
+
+    /// build 97: lokaal tijdstip dat meer dan 60 s voor de serverklok ligt (apparaatklok loopt voor) → de servertijd.
+    /// Zonder bekende servertijd ongewijzigd.
+    private func trusted(_ t: Double) -> Double {
+        guard let offset = AccountService.shared.serverClockOffset else { return t }
+        let serverNow = Date().timeIntervalSince1970 + offset
+        return t > serverNow + 60 ? serverNow : t
+    }
+
+    private func trustedNow() -> Double { trusted(Date().timeIntervalSince1970) }
+
+    /// Afspelen gestopt: de voortgang meteen uploaden. build 97: `profile` = het profiel dat keek (anders het actieve).
+    func playbackStopped(profile: UUID? = nil) {
         let store = CloudStore.shared
-        guard let id = store.activeProfileID ?? store.mainProfileID else { return }
+        guard let id = profile ?? store.activeProfileID ?? store.mainProfileID else { return }
         schedule([profileSection(id)], delay: 0.5)
     }
 
@@ -273,6 +288,7 @@ final class StateSync {
         let t = Task { @MainActor in await me.run(["connections"]) }
         let timeout = Task { @MainActor in
             try? await Task.sleep(nanoseconds: 6_000_000_000)
+            // build 97: stopt alleen het wachten van `t`; de sync-ronde zelf loopt door
             t.cancel()
         }
         await t.value
@@ -369,7 +385,7 @@ final class StateSync {
     private func noteConnections(force: Bool = false) -> Bool {
         let fp = Self.fingerprint(localConnections())
         guard force || fp != meta.connections.fp else { return false }
-        let at: Double? = (meta.connectionsSeeded || force) ? Date().timeIntervalSince1970 : meta.connections.at
+        let at: Double? = (meta.connectionsSeeded || force) ? trustedNow() : meta.connections.at
         meta.connections = Stamp(fp: fp, at: at)
         return true
     }
@@ -380,7 +396,7 @@ final class StateSync {
         guard let remote, let data = remote.data as? [String: Any] else {
             // migratie: server leeg en lokaal een koppeling → uploaden
             guard hasLocal else { return nil }
-            let at = meta.connections.at ?? Date().timeIntervalSince1970
+            let at = meta.connections.at ?? trustedNow()
             meta.connections.at = at
             return connectionsPayload(local, extras: [:], at: at)
         }
@@ -396,7 +412,7 @@ final class StateSync {
                 if let v = data[k], !(v is NSNull), Self.validConnection(k, v) { result[k] = v }
                 else if !(local[k] is NSNull) { keptLocal = true }
             }
-            resultAt = keptLocal ? Date().timeIntervalSince1970 : serverAt
+            resultAt = keptLocal ? trustedNow() : serverAt
         } else if serverAt > localAt! {
             for k in ["trakt", "opensubtitles"] {
                 let v = data[k] ?? NSNull()
@@ -532,7 +548,7 @@ final class StateSync {
             return false
         }
         guard fp != meta.settings.fp else { return false }
-        meta.settings = Stamp(fp: fp, at: meta.settingsSeeded ? Date().timeIntervalSince1970 : meta.settings.at)
+        meta.settings = Stamp(fp: fp, at: meta.settingsSeeded ? trustedNow() : meta.settings.at)
         saveMeta()
         return true
     }
@@ -553,7 +569,7 @@ final class StateSync {
             return out
         }
         // lokaal wint (of de server is leeg: migratie)
-        let at = localAt ?? Date().timeIntervalSince1970
+        let at = localAt ?? trustedNow()
         let s = localSettings()
         meta.settings = Stamp(fp: Self.fingerprint(["shared": s.shared, "apple": s.apple]), at: at)
         var out = data ?? [:]
@@ -677,7 +693,7 @@ final class StateSync {
 
     private func noteReminders() {
         var m = meta.reminders
-        let now = m.seeded ? Date().timeIntervalSince1970 : 0
+        let now = m.seeded ? trustedNow() : 0
         let current = Dictionary(CloudStore.shared.reminders.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         Self.diff(&m, "reminders", Set(current.keys), now: now)
         meta.reminders = m
@@ -742,7 +758,7 @@ final class StateSync {
                 },
             removed: Self.pruned(serverRemoved), extras: data, at: sectionAt)
         let payload = remindersPayload(items, removed: m.removed["reminders"] ?? [:], extras: data,
-                                       at: Date().timeIntervalSince1970)
+                                       at: trustedNow())
         if remote != nil, Self.same(Self.withoutUpdatedAt(payload), Self.withoutUpdatedAt(normalizedServer)) { return nil }
         if remote == nil && items.isEmpty && (m.removed["reminders"] ?? [:]).isEmpty { return nil }
         return payload
@@ -934,8 +950,8 @@ final class StateSync {
         var out = data
         out["version"] = 2
         out["profiles"] = buckets
-        if out["migratedAt"] == nil { out["migratedAt"] = Self.iso(Date().timeIntervalSince1970) }
-        out["updatedAt"] = Self.iso(Date().timeIntervalSince1970)
+        if out["migratedAt"] == nil { out["migratedAt"] = Self.iso(trustedNow()) }
+        out["updatedAt"] = Self.iso(trustedNow())
         return out
     }
 
@@ -1035,7 +1051,7 @@ final class StateSync {
         guard let profile = store.profiles.first(where: { $0.id == id }) else { return }
         var m = meta.profiles[id.uuidString] ?? ListMeta()
         let first = !m.seeded
-        let now = first ? 0 : Date().timeIntervalSince1970
+        let now = first ? 0 : trustedNow()
         let d = store.profileData(id)
         Self.diff(&m, "myList", d.myList, now: now)
         Self.diff(&m, "favorites", d.favorites, now: now)
@@ -1099,7 +1115,8 @@ final class StateSync {
         var progressRemoved = m.removed["progress"] ?? [:]
         for (k, v) in serverProgressRemoved { progressRemoved[k] = max(progressRemoved[k] ?? 0, v) }
         for (k, e) in local.progress {
-            progress[k] = ProgressItem(at: e.updated.timeIntervalSince1970, entry: e, raw: Self.progressRaw(e))
+            // build 97: een apparaatklok die voorloopt mag niet altijd winnen
+            progress[k] = ProgressItem(at: trusted(e.updated.timeIntervalSince1970), entry: e, raw: Self.progressRaw(e))
         }
         for (k, s) in serverProgress where s.at > (progress[k]?.at ?? -1) {
             var s = s
@@ -1123,8 +1140,8 @@ final class StateSync {
             serverHistory[h.entry.id] = h
         }
         var history: [String: HistoryItem] = [:]
-        for e in local.history where (history[e.id]?.at ?? -1) < e.date.timeIntervalSince1970 {
-            history[e.id] = HistoryItem(at: e.date.timeIntervalSince1970, entry: e, raw: Self.historyRaw(e))
+        for e in local.history where (history[e.id]?.at ?? -1) < trusted(e.date.timeIntervalSince1970) {
+            history[e.id] = HistoryItem(at: trusted(e.date.timeIntervalSince1970), entry: e, raw: Self.historyRaw(e))
         }
         for (k, h) in serverHistory where h.at > (history[k]?.at ?? -1) { history[k] = h }
         var historyRemoved = m.removed["history"] ?? [:]
@@ -1178,7 +1195,7 @@ final class StateSync {
                 take = true   // eerste keer: de server weet het (of de pincode is elders bewust verwijderd)
             } else {
                 take = false
-                if pin != nil { pinAt = Date().timeIntervalSince1970 }   // migratie: lokale pincode naar de server
+                if pin != nil { pinAt = trustedNow() }   // migratie: lokale pincode naar de server
             }
             if take {
                 if sp != pin {
@@ -1302,7 +1319,7 @@ final class StateSync {
         out["prefs"] = p
         out["pin"] = Self.orNull(pin)
         out["pinUpdatedAt"] = Self.iso(pinAt ?? 0)
-        out["updatedAt"] = Self.iso(Date().timeIntervalSince1970)
+        out["updatedAt"] = Self.iso(trustedNow())
         return out
     }
 
@@ -1517,5 +1534,48 @@ final class StateSync {
         var d = d
         d["updatedAt"] = nil
         return d
+    }
+}
+
+/// build 97: wachten op een gedeelde sync-ronde (`Task`) die meerdere aanroepers delen. Wordt de wachter
+/// geannuleerd, dan stopt alleen het wachten; de ronde zelf loopt door (die wordt alleen bij uitloggen of een
+/// accountwissel bewust geannuleerd).
+enum SharedRound {
+    /// Eén keer hervatten, wat er ook eerst gebeurt: de ronde is klaar of de wachter is geannuleerd.
+    private final class Once: @unchecked Sendable {
+        private let lock = NSLock()
+        private var done = false
+        private var continuation: CheckedContinuation<Void, Never>?
+
+        func set(_ c: CheckedContinuation<Void, Never>) {
+            lock.lock()
+            if done { lock.unlock(); c.resume(); return }
+            continuation = c
+            lock.unlock()
+        }
+
+        func resume() {
+            lock.lock()
+            done = true
+            let c = continuation
+            continuation = nil
+            lock.unlock()
+            c?.resume()
+        }
+    }
+
+    static func wait(_ round: Task<Void, Never>) async {
+        let once = Once()
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+                once.set(c)
+                Task.detached {
+                    await round.value
+                    once.resume()
+                }
+            }
+        } onCancel: {
+            once.resume()
+        }
     }
 }

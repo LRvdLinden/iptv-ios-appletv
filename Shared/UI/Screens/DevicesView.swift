@@ -414,7 +414,7 @@ struct TooManyDevicesView: View {
                 .foregroundStyle(Theme.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            // build 88: op Gratis de limiet van Lifetime en de vergelijking (link alleen als de server het toestaat)
+            // build 88: op Gratis de limiet van Lifetime en de vergelijking (build 97: nooit een aankooplink op Apple)
             PlanLimitNote(topic: .devices, plan: limit?.plan)
 
             VStack(spacing: 0) {

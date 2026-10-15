@@ -13,6 +13,8 @@ struct KenBurnsBackdrop: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var index = 0
+    /// build 97: afbeeldingen die niet laden (overslaan in plaats van steeds opnieuw proberen)
+    @State private var failed: Set<URL> = []
 
     /// Elke afbeelding zo lang in beeld; de beweging duurt iets langer, zodat hij nooit stilvalt voor de wissel
     private static let hold: Double = 9
@@ -45,9 +47,23 @@ struct KenBurnsBackdrop: View {
         while !Task.isCancelled {
             try? await Task.sleep(nanoseconds: UInt64(Self.hold * 1_000_000_000))
             guard !Task.isCancelled else { return }
-            let next = (index + 1) % urls.count
-            guard await ImagePipeline.shared.load(urls[next], maxPixel: maxPixel) != nil, !Task.isCancelled else { continue }
-            withAnimation(.easeInOut(duration: Self.fade)) { index = next }
+            // build 97: de eerstvolgende die laadt; mislukte onthouden en overslaan
+            var shown = false
+            for step in 1..<urls.count {
+                let next = (index + step) % urls.count
+                let u = urls[next]
+                if failed.contains(u) { continue }
+                if await ImagePipeline.shared.load(u, maxPixel: maxPixel) != nil {
+                    guard !Task.isCancelled else { return }
+                    withAnimation(.easeInOut(duration: Self.fade)) { index = next }
+                    shown = true
+                    break
+                }
+                guard !Task.isCancelled else { return }
+                failed.insert(u)
+            }
+            // geen enkele andere afbeelding laadt: blijven staan op de huidige
+            if !shown && urls.indices.allSatisfy({ $0 == index || failed.contains(urls[$0]) }) { return }
         }
     }
 }

@@ -56,6 +56,7 @@ final class EntitlementsService: ObservableObject {
     struct Upgrade: Codable, Equatable {
         var url: String?
         /// Mag de app naar de website linken (knop, link of QR)? Standaard niet (App Store-regels 3.1.1/3.1.3).
+        /// build 97: op Apple genegeerd (zie `externalPurchaseAllowed`).
         var link = false
         var price: String?
         var priceEN: String?
@@ -113,20 +114,10 @@ final class EntitlementsService: ObservableObject {
         return count < max
     }
 
-    /// Link naar de website (alleen als de server het toestaat en de URL https is).
-    var upgradeURL: URL? {
-        guard let c = current, c.upgrade.link, let s = c.upgrade.url, let u = URL(string: s),
-              u.scheme?.lowercased() == "https" else { return nil }
-        return u
-    }
-
-    /// Prijs in de taal van de app; alleen samen met een link getoond.
-    var upgradePrice: String? {
-        guard let c = current else { return nil }
-        let p = Localizer.shared.language == "nl" ? (c.upgrade.price ?? c.upgrade.priceEN) : (c.upgrade.priceEN ?? c.upgrade.price)
-        guard let p, !p.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
-        return p
-    }
+    /// build 97: Apple-apps tonen nooit een prijs, een externe aankooplink, een knop of een QR-code om te kopen,
+    /// wat de server ook in `upgrade` (link, url, price) zet (App Store-regels 3.1.1/3.1.3). Het veld wordt nog
+    /// gelezen (zelfde contract als Android), maar hier bewust niet gebruikt; daarom ook geen prijsopmaak meer.
+    static let externalPurchaseAllowed = false
 
     // MARK: Ophalen
 
@@ -167,6 +158,13 @@ final class EntitlementsService: ObservableObject {
         task = nil
     }
 
+    /// build 97: geforceerd ophalen, behalve als er de laatste `seconds` al een abonnement binnenkwam
+    /// (bijv. met de heartbeat).
+    func refreshUnlessRecent(_ seconds: TimeInterval) async {
+        if Date().timeIntervalSince(lastFetch) < seconds { return }
+        await refresh(force: true)
+    }
+
     /// `entitlements` uit een antwoord (`entitlements`, `config` of `heartbeat`) overnemen.
     func apply(_ j: [String: Any]) {
         guard let e = Self.parse(j) else { return }
@@ -174,19 +172,21 @@ final class EntitlementsService: ObservableObject {
         set(e, store: true)
     }
 
-    /// De server weigerde een functie (403 `feature_locked`): meteen op slot, daarna opnieuw ophalen.
+    /// De server weigerde een functie (403 `feature_locked`). build 97: één 403 verandert het abonnement niet en
+    /// wordt niet bewaard: alleen die functie tijdelijk (in het geheugen) op slot, en opnieuw ophalen. Alleen een
+    /// geslaagd `entitlements`-antwoord (`apply`) mag het abonnement veranderen.
     func serverLocked(_ feature: String?) {
-        var e = current ?? Entitlements(plan: .free, limits: Self.freeLimits, features: Features(), upgrade: Upgrade())
-        switch feature {
-        case "stats": e.features.stats = false
-        case "now_watching", "watch_log", "list_streams": e.features.nowWatching = false
-        case "trakt": e.features.trakt = false
-        case "multi_server", "servers": e.features.multiServer = false
-        case "themes": e.features.themes = false
-        default: break
+        if var e = current {
+            switch feature {
+            case "stats": e.features.stats = false
+            case "now_watching", "watch_log", "list_streams": e.features.nowWatching = false
+            case "trakt": e.features.trakt = false
+            case "multi_server", "servers": e.features.multiServer = false
+            case "themes": e.features.themes = false
+            default: break
+            }
+            set(e, store: false)
         }
-        if e.plan == .lifetime { e.plan = .free }
-        set(e, store: true)
         Task { await refresh(force: true) }
     }
 

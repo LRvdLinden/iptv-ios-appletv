@@ -3,23 +3,42 @@ import Security
 
 /// Wachtwoorden, tokens en app-sleutels.
 ///
-/// Lokaal in de sleutelhanger, én gespiegeld in je privé iCloud Key-Value Store.
-/// Die spiegel is nodig omdat Apple TV synchroniseerbare sleutelhanger-items van
-/// apps niet betrouwbaar via iCloud ontvangt; zonder spiegel zag de Apple TV wel je
-/// afspeellijst, maar niet het wachtwoord (→ serverfout 511 / inloggen mislukt).
+/// build 97: alleen in de sleutelhanger, als synchroniseerbaar item (iCloud-sleutelhanger, end-to-end versleuteld),
+/// zodat iPhone, iPad, Apple TV en Mac ze delen. Ze staan niet meer onversleuteld in de iCloud Key-Value Store
+/// (`secrets.v1`): wat daar nog staat, wordt bij het starten (en na een iCloud-wijziging van een oudere versie)
+/// naar de sleutelhanger overgezet en daarna uit de Key-Value Store verwijderd (`migrateFromCloud`).
+///
+/// build 97: alle lees- en schrijfacties lopen via één seriële wachtrij, zodat de hoofdthread en de achtergrond
+/// elkaar niet in de weg zitten (verwijderen + toevoegen is anders niet atomair).
 enum Keychain {
     private static let service = "nl.lrvdlinden.bingr"
+    /// build 97: oude spiegel in iCloud KV (alleen nog lezen om over te zetten, daarna weg)
     private static let cloudKey = "secrets.v1"
     private static var kv: NSUbiquitousKeyValueStore { .default }
 
+    // MARK: seriële wachtrij (build 97)
+
+    private static let queueKey = DispatchSpecificKey<Bool>()
+    private static let queue: DispatchQueue = {
+        let q = DispatchQueue(label: "nl.lrvdlinden.bingr.keychain", qos: .userInitiated)
+        q.setSpecific(key: queueKey, value: true)
+        return q
+    }()
+
+    /// build 97: werk op de wachtrij; al op de wachtrij (geneste aanroep) → direct, anders een deadlock
+    private static func serial<T>(_ work: () -> T) -> T {
+        if DispatchQueue.getSpecific(key: queueKey) == true { return work() }
+        return queue.sync(execute: work)
+    }
+
+    // MARK: openbaar
+
     static func set(_ value: String?, for key: String) {
-        setLocal(value, for: key)
-        var d = cloud()
-        // verwijderen = een lege waarde laten staan ("grafsteen"), zodat andere apparaten het ook wissen
-        // en hun oude kopie niet terugzetten (anders kwam bijv. een verwijderde pincode steeds terug)
-        if let value, !value.isEmpty { d[key] = value } else { d[key] = "" }
-        kv.set(d, forKey: cloudKey)
-        kv.synchronize()
+        serial { () -> Void in
+            if let value, !value.isEmpty { writeSynced(value, for: key) } else { deleteAll(key) }
+            // build 97: een oude kopie in iCloud KV mag de wijziging niet later terugzetten
+            purgeCloudCopy(key)
+        }
         // StateSync volgt o.a. Trakt, OpenSubtitles en pincodes (zie "Alle overige gegevens via het account")
         DispatchQueue.main.async { NotificationCenter.default.post(name: didChange, object: nil, userInfo: ["key": key]) }
     }
@@ -28,143 +47,207 @@ enum Keychain {
     static let didChange = Notification.Name("bingr.keychain.didChange")
 
     static func get(_ key: String) -> String? {
-        let c = cloud()
-        if let v = c[key], v.isEmpty {           // elders verwijderd → hier ook weg
-            if getLocal(key) != nil { setLocal(nil, for: key) }
-            return nil
-        }
-        if let v = getLocal(key) { return v }
-        // nog niet lokaal (bijv. eerste keer op Apple TV): uit iCloud halen en lokaal bewaren
-        if let v = c[key], !v.isEmpty {
-            setLocal(v, for: key)
-            return v
-        }
-        return nil
+        serial { read(key) }
     }
 
-    /// Zet lokale geheimen die nog niet in iCloud staan erbij (eenmalig na een update).
-    static func pushToCloud(keys: [String]) {
-        var d = cloud()
-        var changed = false
-        for k in keys where d[k] == nil {
-            if let v = getLocal(k), !v.isEmpty { d[k] = v; changed = true }
+    /// build 97: eenmalige (en herhaalbare) overzetting naar de iCloud-sleutelhanger:
+    /// 1. geheimen die nog in iCloud KV staan (oude versie of een ander apparaat met een oude build) naar de
+    ///    synchroniseerbare sleutelhanger, als die er hier nog geen waarde voor heeft (de sleutelhanger gaat voor);
+    /// 2. oude, alleen-lokale items van eerdere builds omzetten naar synchroniseerbaar;
+    /// 3. de spiegel uit iCloud KV verwijderen.
+    /// Geeft de sleutels terug die veranderd zijn. Niet op de hoofdthread aanroepen (sleutelhanger is traag).
+    @discardableResult
+    static func migrateFromCloud() -> [String] {
+        var changed: [String] = []
+        let legacy = (kv.dictionary(forKey: cloudKey) as? [String: String]) ?? [:]
+        for (k, v) in legacy where !v.isEmpty {
+            // per item op de wachtrij, zodat de hoofdthread tussendoor kan lezen
+            let did: Bool = serial { () -> Bool in
+                guard read(k) == nil else { return false }
+                writeSynced(v, for: k)
+                return true
+            }
+            if did { changed.append(k) }
         }
-        if changed { kv.set(d, forKey: cloudKey); kv.synchronize() }
-    }
-
-    /// Na een iCloud-wijziging: nieuwe of gewijzigde geheimen lokaal overnemen.
-    static func syncFromCloud() {
-        for (k, v) in cloud() {
-            if v.isEmpty { if getLocal(k) != nil { setLocal(nil, for: k) } }
-            else if getLocal(k) != v { setLocal(v, for: k) }
-        }
-    }
-
-    /// Alle sleutels (lokaal en in de iCloud-spiegel) met dit voorvoegsel die een waarde hebben,
-    /// bijv. `playlist.<id>.` voor de wachtwoorden en tokens van één bron.
-    static func keys(withPrefix prefix: String) -> [String] {
-        var out = Set<String>()
-        let q: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrSynchronizable as String: kSecAttrSynchronizableAny,
-            kSecReturnAttributes as String: true,
-            kSecMatchLimit as String: kSecMatchLimitAll
-        ]
-        var res: AnyObject?
-        if SecItemCopyMatching(q as CFDictionary, &res) == errSecSuccess, let items = res as? [[String: Any]] {
-            for i in items {
-                if let a = i[kSecAttrAccount as String] as? String, a.hasPrefix(prefix) { out.insert(a) }
+        for k in serial({ localOnlyAccounts() }) {
+            serial { () -> Void in
+                guard let v = readLegacyLocal(k) else { return }
+                if readSynced(k) == nil { writeSynced(v, for: k) }
+                deleteLegacyLocal(k)
             }
         }
-        for (k, v) in cloud() where k.hasPrefix(prefix) && !v.isEmpty { out.insert(k) }
-        return out.sorted()
+        if kv.object(forKey: cloudKey) != nil {
+            serial { () -> Void in
+                kv.removeObject(forKey: cloudKey)
+                kv.synchronize()
+            }
+        }
+        if !changed.isEmpty {
+            DispatchQueue.main.async {
+                for k in changed { NotificationCenter.default.post(name: didChange, object: nil, userInfo: ["key": k]) }
+            }
+        }
+        return changed
     }
 
-    private static func cloud() -> [String: String] {
-        (kv.dictionary(forKey: cloudKey) as? [String: String]) ?? [:]
+    /// Alle sleutels in de sleutelhanger met dit voorvoegsel die een waarde hebben,
+    /// bijv. `playlist.<id>.` voor de wachtwoorden en tokens van één bron.
+    static func keys(withPrefix prefix: String) -> [String] {
+        serial { () -> [String] in
+            var out = Set<String>()
+            for q in [syncedQuery(nil), legacyQuery(nil)] {
+                var q = q
+                q[kSecReturnAttributes as String] = true
+                q[kSecMatchLimit as String] = kSecMatchLimitAll
+                var res: AnyObject?
+                if SecItemCopyMatching(q as CFDictionary, &res) == errSecSuccess, let items = res as? [[String: Any]] {
+                    for i in items {
+                        if let a = i[kSecAttrAccount as String] as? String, a.hasPrefix(prefix) { out.insert(a) }
+                    }
+                }
+            }
+            // nog niet overgezet (oude spiegel): ook meetellen, zodat verwijderen ook die kopie opruimt
+            let legacy = (kv.dictionary(forKey: cloudKey) as? [String: String]) ?? [:]
+            for (k, v) in legacy where k.hasPrefix(prefix) && !v.isEmpty { out.insert(k) }
+            return out.sorted()
+        }
     }
 
-    // MARK: lokale sleutelhanger
+    // MARK: sleutelhanger (alleen aanroepen op de wachtrij)
 
-    private static func setLocal(_ value: String?, for key: String) {
-        let base: [String: Any] = [
+    /// build 97: synchroniseerbaar item (iCloud-sleutelhanger). Op de Mac in de data-protection-sleutelhanger
+    /// (vereist voor synchroniseerbare items).
+    private static func syncedQuery(_ key: String?) -> [String: Any] {
+        var q: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: key,
-            kSecAttrSynchronizable as String: kSecAttrSynchronizableAny
+            kSecAttrSynchronizable as String: kCFBooleanTrue as Any
         ]
-        SecItemDelete(base as CFDictionary)
-        guard let value, let data = value.data(using: .utf8) else { return }
-        let add: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: key,
-            kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock
-        ]
-        SecItemAdd(add as CFDictionary, nil)
+        if let key { q[kSecAttrAccount as String] = key }
+        #if os(macOS)
+        q[kSecUseDataProtectionKeychain as String] = true
+        #endif
+        return q
     }
 
-    private static func getLocal(_ key: String) -> String? {
-        let q: [String: Any] = [
+    /// build 97: oude, alleen-lokale items van eerdere builds (niet synchroniseerbaar)
+    private static func legacyQuery(_ key: String?) -> [String: Any] {
+        var q: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: key,
-            kSecAttrSynchronizable as String: kSecAttrSynchronizableAny,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
+            kSecAttrSynchronizable as String: kCFBooleanFalse as Any
         ]
+        if let key { q[kSecAttrAccount as String] = key }
+        return q
+    }
+
+    private static func readData(_ query: [String: Any]) -> String? {
+        var q = query
+        q[kSecReturnData as String] = true
+        q[kSecMatchLimit as String] = kSecMatchLimitOne
         var out: AnyObject?
         guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess,
               let data = out as? Data else { return nil }
         return String(data: data, encoding: .utf8)
+    }
+
+    private static func readSynced(_ key: String) -> String? { readData(syncedQuery(key)) }
+    private static func readLegacyLocal(_ key: String) -> String? { readData(legacyQuery(key)) }
+
+    /// Eerst het synchroniseerbare item, anders een oud lokaal item (nog niet omgezet).
+    private static func read(_ key: String) -> String? {
+        if let v = readSynced(key), !v.isEmpty { return v }
+        if let v = readLegacyLocal(key), !v.isEmpty { return v }
+        return nil
+    }
+
+    private static func writeSynced(_ value: String, for key: String) {
+        guard let data = value.data(using: .utf8) else { return }
+        SecItemDelete(syncedQuery(key) as CFDictionary)
+        // het oude lokale item ook weg, anders kan het later een nieuwere waarde overschaduwen
+        SecItemDelete(legacyQuery(key) as CFDictionary)
+        var add = syncedQuery(key)
+        add[kSecValueData as String] = data
+        // synchroniseerbare items mogen geen "ThisDeviceOnly" zijn
+        add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+        SecItemAdd(add as CFDictionary, nil)
+    }
+
+    private static func deleteAll(_ key: String) {
+        SecItemDelete(syncedQuery(key) as CFDictionary)
+        SecItemDelete(legacyQuery(key) as CFDictionary)
+    }
+
+    private static func deleteLegacyLocal(_ key: String) {
+        SecItemDelete(legacyQuery(key) as CFDictionary)
+    }
+
+    /// Sleutels van oude, alleen-lokale items.
+    private static func localOnlyAccounts() -> [String] {
+        var q = legacyQuery(nil)
+        q[kSecReturnAttributes as String] = true
+        q[kSecMatchLimit as String] = kSecMatchLimitAll
+        var res: AnyObject?
+        guard SecItemCopyMatching(q as CFDictionary, &res) == errSecSuccess, let items = res as? [[String: Any]] else { return [] }
+        return items.compactMap { $0[kSecAttrAccount as String] as? String }
+    }
+
+    /// build 97: deze sleutel uit de oude iCloud KV-spiegel halen (als die nog bestaat).
+    private static func purgeCloudCopy(_ key: String) {
+        guard var d = kv.dictionary(forKey: cloudKey) as? [String: String], d[key] != nil else { return }
+        d[key] = nil
+        if d.isEmpty { kv.removeObject(forKey: cloudKey) } else { kv.set(d, forKey: cloudKey) }
+        kv.synchronize()
     }
 
     // MARK: alleen op dit apparaat (Bingr-account)
 
-    /// Eigen service, dus `pushToCloud`/`syncFromCloud` (die alleen `service` en de iCloud-spiegel kennen)
-    /// raken deze items nooit aan. Niet-synchroniseerbaar: refresh tokens zijn eenmalig en horen bij één apparaat.
+    /// Eigen service, dus de overzetting naar de iCloud-sleutelhanger raakt deze items nooit aan.
+    /// Niet-synchroniseerbaar: refresh tokens zijn eenmalig en horen bij één apparaat.
     private static let localOnlyService = "nl.lrvdlinden.bingr.device"
 
     static func setLocalOnly(_ value: String?, for key: String) {
-        let base: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: localOnlyService,
-            kSecAttrAccount as String: key,
-            kSecAttrSynchronizable as String: kSecAttrSynchronizableAny
-        ]
-        SecItemDelete(base as CFDictionary)
-        guard let value, !value.isEmpty, let data = value.data(using: .utf8) else { return }
-        #if os(macOS)
-        // Mac: gewone (lokale) sleutelhanger, zoals de rest van de app
-        let accessible = kSecAttrAccessibleAfterFirstUnlock
-        #else
-        let accessible = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-        #endif
-        let add: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: localOnlyService,
-            kSecAttrAccount as String: key,
-            kSecValueData as String: data,
-            kSecAttrSynchronizable as String: kCFBooleanFalse as Any,
-            kSecAttrAccessible as String: accessible
-        ]
-        SecItemAdd(add as CFDictionary, nil)
+        serial { () -> Void in
+            let base: [String: Any] = [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrService as String: localOnlyService,
+                kSecAttrAccount as String: key,
+                kSecAttrSynchronizable as String: kSecAttrSynchronizableAny
+            ]
+            SecItemDelete(base as CFDictionary)
+            guard let value, !value.isEmpty, let data = value.data(using: .utf8) else { return }
+            #if os(macOS)
+            // Mac: gewone (lokale) sleutelhanger, zoals de rest van de app
+            let accessible = kSecAttrAccessibleAfterFirstUnlock
+            #else
+            let accessible = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+            #endif
+            let add: [String: Any] = [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrService as String: localOnlyService,
+                kSecAttrAccount as String: key,
+                kSecValueData as String: data,
+                kSecAttrSynchronizable as String: kCFBooleanFalse as Any,
+                kSecAttrAccessible as String: accessible
+            ]
+            SecItemAdd(add as CFDictionary, nil)
+        }
     }
 
     static func getLocalOnly(_ key: String) -> String? {
-        let q: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: localOnlyService,
-            kSecAttrAccount as String: key,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
-        ]
-        var out: AnyObject?
-        guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess,
-              let data = out as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
+        serial { () -> String? in
+            let q: [String: Any] = [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrService as String: localOnlyService,
+                kSecAttrAccount as String: key,
+                kSecReturnData as String: true,
+                kSecMatchLimit as String: kSecMatchLimitOne
+            ]
+            var out: AnyObject?
+            guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess,
+                  let data = out as? Data else { return nil }
+            return String(data: data, encoding: .utf8)
+        }
     }
 
     static func setCodable<T: Encodable>(_ value: T?, for key: String) {

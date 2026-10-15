@@ -30,7 +30,7 @@ struct ConnectionsSetupView: View {
                         step(2, L("Name: Bingr. Redirect URI: paste the text below. Leave the rest empty and save."))
                         copyRow(redirect)
                         step(3, L("Copy the Client ID and Client Secret into the fields below."))
-                        TextField("Client ID", text: $traktID).textInputAutocapitalization(.never).autocorrectionDisabled()
+                        TextField(L("Client ID"), text: $traktID).textInputAutocapitalization(.never).autocorrectionDisabled()
                         TextField(L("Client Secret (optional)"), text: $traktSecret).textInputAutocapitalization(.never).autocorrectionDisabled()
                     } header: { Text("Trakt") } footer: {
                         Text(L("Trakt requires every app to register once. After that you simply sign in with your Trakt account."))
@@ -41,7 +41,7 @@ struct ConnectionsSetupView: View {
                         step(1, L("Open the OpenSubtitles page below and sign in with your account."))
                         link(osURL)
                         step(2, L("Create a new consumer called Bingr and copy the API key into the field below."))
-                        TextField("API key", text: $osKey).textInputAutocapitalization(.never).autocorrectionDisabled()
+                        TextField(L("API key"), text: $osKey).textInputAutocapitalization(.never).autocorrectionDisabled()
                     } header: { Text("OpenSubtitles") } footer: {
                         Text(L("Then sign in with your OpenSubtitles username and password."))
                     }

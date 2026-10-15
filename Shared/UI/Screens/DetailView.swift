@@ -366,6 +366,7 @@ struct DetailView: View {
             playButton
             HStack(spacing: tvScaled(12)) {
                 circleButton(inMyList ? "heart.fill" : "heart") { toggleMyList() }
+                    .accessibilityLabel(inMyList ? L("Remove from My List") : L("Add to My List"))   // build 97
                 circleButton(inAnyCollection ? "rectangle.stack.fill.badge.plus" : "rectangle.stack.badge.plus") {
                     collecting = .detail(target)
                 }
@@ -374,7 +375,10 @@ struct DetailView: View {
                     circleButton("film") { openTrailer(t) }
                         .accessibilityLabel(hasSeasonTrailer ? L("Trailer season %d", season) : L("Trailer"))
                 }
-                if isMovie { circleButton(isWatchedTitle ? "checkmark.circle.fill" : "checkmark.circle") { toggleWatchedMovie() } }
+                if isMovie {
+                    circleButton(isWatchedTitle ? "checkmark.circle.fill" : "checkmark.circle") { toggleWatchedMovie() }
+                        .accessibilityLabel(isWatchedTitle ? L("Mark as unwatched") : L("Mark as watched"))   // build 97
+                }
                 #if os(iOS)
                 // offline kijken (build 52)
                 if case .movie(let m) = target, DownloadManager.canDownload(Playables.movie(m, imdb: imdb)) {
@@ -803,7 +807,7 @@ struct DetailView: View {
 
     private func castSection(_ cast: [TitleDetails.CastMember]) -> some View {
         VStack(alignment: .leading, spacing: tvScaled(12)) {
-            sectionTitle(L("Cast"))
+            sectionTitle(L("Actors"))   // build 97: eigen sleutel ("Cast" is voor Chromecast)
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHGrid(rows: [GridItem(.fixed(tvScaled(76)), spacing: tvScaled(14)),
                                  GridItem(.fixed(tvScaled(76)), spacing: tvScaled(14))], spacing: tvScaled(26)) {
