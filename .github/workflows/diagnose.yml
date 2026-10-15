@@ -33,6 +33,14 @@ jobs:
                     round(extract(epoch from now() - max(last_ping))) as sec_sinds_laatste_ping,
                     round(extract(epoch from now() - max(started_at))) as sec_sinds_laatste_start
              from public.account_streams" | note streams
+          q "select coalesce(d.platform,'?') as platform, s.kind, (s.profile_id is not null and s.profile_id <> '') as met_profiel,
+                    round(extract(epoch from now() - s.started_at)) as sec_sinds_start, round(extract(epoch from now() - s.last_ping)) as sec_sinds_ping
+             from public.account_streams s left join public.account_devices d on d.user_id = s.user_id and d.device_id = s.device_id
+             order by s.started_at desc limit 8" | note streamrijen
+          q "select coalesce(platform,'?') as platform, kind, (profile_id is not null and profile_id <> '') as met_profiel,
+                    round(extract(epoch from now() - started_at)) as sec_sinds_start,
+                    case when ended_at is null then null else round(extract(epoch from ended_at - started_at)) end as duur_sec
+             from public.account_watch_log order by started_at desc limit 10" | note laatste_logs
           q "select count(*) as starts, round(extract(epoch from now() - max(started_at))) as sec_sinds_laatste
              from public.account_watch_log where started_at > now() - interval '6 hours'" | note watchlog
           q "select coalesce(platform,'?') as platform, count(*) as starts,
