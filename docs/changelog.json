@@ -1,5 +1,52 @@
 [
  {
+  "build": 103,
+  "version": "1.0.0",
+  "date": "2026-10-15",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "tizen"
+    ],
+    "nl": "Samsung TV: rijke detailpagina's zoals op Apple TV: beschrijving in je eigen taal, genres, regisseur, beoordelingen (IMDb, TMDB, Trakt), acteurs met foto's, aanbevelingen, andere bronnen, trailerknop, voortgang per serie en seizoen, en een acteurspagina",
+    "en": "Samsung TV: rich detail pages like on Apple TV: description in your own language, genres, director, ratings (IMDb, TMDB, Trakt), actors with photos, recommendations, other sources, trailer button, progress per series and season, and an actor page"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "tizen"
+    ],
+    "nl": "Samsung TV: houd OK ingedrukt voor een menu: Mijn lijst, aan collectie toevoegen, bekeken markeren (ook naar Trakt), uit Verder kijken halen, favoriete zender, multiview",
+    "en": "Samsung TV: hold OK for a menu: My List, add to collection, mark as watched (also to Trakt), remove from Continue watching, favourite channel, multiview"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "tizen"
+    ],
+    "nl": "Samsung TV: rij Voor jou, Top 10 uit wat nu populair is, Bekijk alles met sorteren, en zoeken naar personen, tv-gids, categorieën en titels in je andere afspeellijsten; in Live TV zoeken, Evenementen en collecties als groep",
+    "en": "Samsung TV: For you row, Top 10 from what's trending now, See all with sorting, and search for people, TV guide, categories and titles in your other playlists; Live TV search, Events and collections as groups"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "tizen"
+    ],
+    "nl": "Samsung TV speler: opties voor snelheid, ondertitelgrootte, beeldverhouding en slaaptimer, live pauzeren en terugspoelen met Terug naar live, en timing van ingebouwde ondertitels",
+    "en": "Samsung TV player: options for speed, subtitle size, aspect ratio and sleep timer, live pause and rewind with Back to live, and timing of embedded subtitles"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "tizen"
+    ],
+    "nl": "Samsung TV: ronde profielfoto's zoals op Apple TV, startscherm en tabbladen instellen, afspeellijsten automatisch bijwerken en het introgeluid",
+    "en": "Samsung TV: round profile photos like on Apple TV, set start screen and tabs, update playlists automatically and the intro sound"
+   }
+  ]
+ },
+ {
   "build": 102,
   "version": "1.0.0",
   "date": "2026-10-15",
