@@ -102,7 +102,7 @@ struct MyBingrView: View {
                     Image(systemName: "checkmark.rectangle.stack.fill").foregroundStyle(Color.purple)
                 }
                 Spacer(minLength: 8)
-                if !ent.allows(.trakt) { LifetimeBadge() }
+                if !ent.allows(.trakt) { LifetimePill() }
                 else { Text(traktStatus).font(.caption).foregroundStyle(Theme.secondary).lineLimit(1) }
             }
         }
@@ -160,7 +160,7 @@ struct MyBingrView: View {
             HStack {
                 Label(title, systemImage: icon)
                 Spacer(minLength: 8)
-                if locked { LifetimeBadge() }
+                if locked { LifetimePill() }
                 if let count { Text(verbatim: "\(count)").foregroundStyle(Theme.secondary) }
             }
         }

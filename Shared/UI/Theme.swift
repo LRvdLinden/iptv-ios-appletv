@@ -6,6 +6,8 @@ enum Theme {
     static var red: Color { AccentChoice.current.color }
     /// Altijd rood (foutmeldingen e.d.)
     static let alert = Color(hex: 0xE50914)
+    /// Bingr-rood, vast (ook als het profiel een andere accentkleur heeft): o.a. het Lifetime-icoon
+    static let brandRed = Color(hex: 0xE50914)
     static let bg = Color.black
     static let card = Color(hex: 0x181818)
     static let elevated = Color(hex: 0x232323)

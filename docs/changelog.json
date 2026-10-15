@@ -1,5 +1,27 @@
 [
  {
+  "build": 104,
+  "version": "1.0.0",
+  "date": "2026-10-15",
+  "items": [
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web"
+    ],
+    "nl": "Nieuw Lifetime-icoon: een rode badge met vinkje bij je abonnement, de Lifetime-labels en de knop om te upgraden",
+    "en": "New Lifetime icon: a red badge with a check mark next to your plan, the Lifetime labels and the upgrade button"
+   }
+  ]
+ },
+ {
   "build": 103,
   "version": "1.0.0",
   "date": "2026-10-15",

@@ -221,7 +221,7 @@ struct AppearanceView: View {
                             Text(c.title)
                             Spacer()
                             if accent == c.rawValue { Image(systemName: "checkmark").foregroundStyle(c.color) }
-                            else if locked { LifetimeBadge() }
+                            else if locked { LifetimePill() }
                         }
                     }
                 }
