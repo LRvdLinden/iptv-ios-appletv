@@ -1,5 +1,20 @@
 [
  {
+  "build": 100,
+  "version": "1.0.0",
+  "date": "2026-10-15",
+  "items": [
+   {
+    "type": "fixed",
+    "platforms": [
+     "tizen"
+    ],
+    "nl": "Samsung TV: profielfoto's uit je account worden weer getoond; lukt het ophalen bij het opstarten niet, dan probeert de app het vanzelf opnieuw",
+    "en": "Samsung TV: profile photos from your account are shown again; if loading fails at startup, the app tries again on its own"
+   }
+  ]
+ },
+ {
   "build": 99,
   "version": "1.0.0",
   "date": "2026-10-15",
