@@ -35,6 +35,13 @@ jobs:
              from public.account_streams" | note streams
           q "select count(*) as starts, round(extract(epoch from now() - max(started_at))) as sec_sinds_laatste
              from public.account_watch_log where started_at > now() - interval '6 hours'" | note watchlog
+          q "select coalesce(platform,'?') as platform, count(*) as starts,
+                    count(*) filter (where ended_at is null) as niet_afgesloten,
+                    count(*) filter (where ended_at is not null and ended_at - started_at < interval '20 seconds') as binnen_20s,
+                    count(*) filter (where ended_at is not null and ended_at - started_at between interval '20 seconds' and interval '3 minutes') as tot_3min,
+                    count(*) filter (where ended_at - started_at > interval '3 minutes') as langer,
+                    round(avg(extract(epoch from ended_at - started_at))) as gem_sec
+             from public.account_watch_log where started_at > now() - interval '6 hours' group by 1 order by 1" | note duur
           q "select p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')' as functie
              from pg_proc p join pg_namespace n on n.oid = p.pronamespace
              where n.nspname = 'public' and (p.proname like 'bingr_stream%' or p.proname like 'bingr_stats%' or p.proname like 'bingr_local_day%')
