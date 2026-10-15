@@ -1,5 +1,63 @@
 [
  {
+  "build": 99,
+  "version": "1.0.0",
+  "date": "2026-10-15",
+  "items": [
+   {
+    "type": "fixed",
+    "platforms": [
+     "android",
+     "androidtv"
+    ],
+    "nl": "Beveiliging: inlog, apparaat-ID en IPTV-wachtwoorden gaan niet meer mee in een Google-back-up naar een nieuw toestel, en wachtwoorden staan versleuteld op het toestel",
+    "en": "Security: sign-in, device ID and IPTV passwords are no longer copied to a new device through Google backup, and passwords are stored encrypted on the device"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "android",
+     "androidtv"
+    ],
+    "nl": "Soepeler: synchroniseren gebeurt op de achtergrond in plaats van op het scherm (geen haperingen meer tijdens het kijken, vooral op Fire TV), snellere start en categoriepagina's die niet meer verspringen",
+    "en": "Smoother: syncing happens in the background instead of on the screen (no more stutter while watching, especially on Fire TV), faster start and category pages that no longer jump"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "android",
+     "androidtv"
+    ],
+    "nl": "Op tv komt de focus terug op de titel waar je vandaan kwam, een blokkade wordt direct opgemerkt, instellingen van een ander apparaat worden niet meer overschreven, en beeld-in-beeld heeft een afspeel/pauzeknop",
+    "en": "On TV, focus returns to the title you came from, a block is noticed right away, settings from another device are no longer overwritten, and picture-in-picture has a play/pause button"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "tizen"
+    ],
+    "nl": "M3U-lijsten zonder tv-gids laden weer, voortgang gaat niet meer verloren bij een profielwissel, afspeelfouten tijdens het kijken schakelen naar een reservebron, en de pijltjes springen niet meer naar onzichtbare knoppen",
+    "en": "M3U playlists without a TV guide load again, progress is no longer lost when switching profiles, playback errors while watching switch to a backup source, and the arrows no longer jump to invisible buttons"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "tizen"
+    ],
+    "nl": "Speler: geen eeuwige laadcirkel meer, \"Probeer opnieuw\" gaat verder waar je was, multiview stabieler, herinneringen gaan niet meer verloren als de app op de achtergrond staat",
+    "en": "Player: no more endless spinner, \"Try again\" continues where you were, steadier multiview, reminders are no longer lost while the app is in the background"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "tizen"
+    ],
+    "nl": "Sneller opstarten (één gebundeld script, alleen je eigen taal), lichter op oudere tv's, minder geheugengebruik bij lang kijken, en Terug werkt overal hetzelfde",
+    "en": "Faster start (one bundled script, only your own language), lighter on older TVs, less memory use during long sessions, and Back works the same everywhere"
+   }
+  ]
+ },
+ {
   "build": 98,
   "version": "1.0.0",
   "date": "2026-10-15",
