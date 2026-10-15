@@ -17,6 +17,7 @@
 //   voor <video>, hls.js en Safari's eigen HLS-speler (die geen headers kunnen meesturen). De Range-header van de
 //   browser gaat mee, begrensd tot 8 MB per aanvraag; negeert de server Range, dan maakt de proxy zelf de 206.
 //   HLS-afspeellijsten worden herschreven: elke URI wordt een GET-URL van de proxy (met `s`).
+//   build 102: CORS `*` voor de GET-vorm (en de preflight ervan), voor AirPlay/Chromecast-ontvangers; POST blijft beperkt.
 // Alleen hosts uit de eigen servers van het account (get_sources: m3uURL, epgURL, serverURL) mogen, plus subdomeinen
 // van hetzelfde domein; of een URL die de proxy zelf in een afspeellijst zette (`s` = HMAC over gebruiker + URL).
 // Doorverwijzingen (max. 5, http of https) volgt de proxy zelf, ook naar andere hosts, maar nooit naar interne
@@ -137,7 +138,24 @@ async function osFile(req: Request, raw: string) {
   finally { clearTimeout(timer); }
 }
 
+// build 102: de GET-vorm (?u=&t=) is open voor elke origin (Access-Control-Allow-Origin: *): het token in de URL is
+// de sleutel (geen cookies of andere inloggegevens), en een Chromecast-ontvanger (eigen origin, haalt HLS met MSE op)
+// heeft CORS nodig op afspeellijsten en segmenten. Ook de preflight (OPTIONS) voor een GET met Range-header.
+// POST (token, os, probe, …) blijft beperkt tot bingr.online en localhost. Het token (6 uur) is ruim genoeg om te casten.
+function isOpenGet(req: Request) {
+  if (req.method === "GET") return true;
+  return req.method === "OPTIONS" && (req.headers.get("Access-Control-Request-Method") ?? "").toUpperCase() === "GET";
+}
+const OPEN_GET_CORS: Record<string, string> = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "range",
+  "Access-Control-Allow-Methods": "GET, OPTIONS",
+  "Access-Control-Expose-Headers": "content-type, content-length, content-range, accept-ranges, x-upstream-status, x-upstream-range",
+  "Access-Control-Max-Age": "86400",
+};
+
 function corsFor(req: Request): Record<string, string> {
+  if (isOpenGet(req)) return { ...OPEN_GET_CORS }; // build 102
   const origin = req.headers.get("Origin") ?? "";
   const ok = /^https:\/\/(www\.)?bingr\.online$/.test(origin) || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
   return {

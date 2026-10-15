@@ -1,5 +1,28 @@
 [
  {
+  "build": 102,
+  "version": "1.0.0",
+  "date": "2026-10-15",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Webspeler: AirPlay (Safari) en casten naar een Chromecast (Chrome) met een knop in de speler, zonder extra software; bediening, voortgang en Trakt blijven werken, en bij stoppen kijk je verder op dezelfde plek",
+    "en": "Web player: AirPlay (Safari) and casting to a Chromecast (Chrome) with a button in the player, without extra software; controls, progress and Trakt keep working, and when you stop you continue at the same spot"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "server"
+    ],
+    "nl": "De proxy van de webspeler levert streams ook aan een Chromecast of Apple TV",
+    "en": "The web player's proxy also delivers streams to a Chromecast or Apple TV"
+   }
+  ]
+ },
+ {
   "build": 101,
   "version": "1.0.0",
   "date": "2026-10-15",

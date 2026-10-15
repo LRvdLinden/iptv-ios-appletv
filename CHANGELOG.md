@@ -4,6 +4,21 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 102
+_15 oktober 2026_
+
+### Website
+
+**Nieuw**
+
+- Webspeler: AirPlay (Safari) en casten naar een Chromecast (Chrome) met een knop in de speler, zonder extra software; bediening, voortgang en Trakt blijven werken, en bij stoppen kijk je verder op dezelfde plek
+
+### Server
+
+**Verbeterd**
+
+- De proxy van de webspeler levert streams ook aan een Chromecast of Apple TV
+
 ## Versie 1.0.0 · Build 98
 _15 oktober 2026_
 
