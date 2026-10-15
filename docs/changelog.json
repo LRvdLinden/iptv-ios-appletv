@@ -1,5 +1,36 @@
 [
  {
+  "build": 97,
+  "version": "1.0.0",
+  "date": "2026-10-15",
+  "items": [
+   {
+    "type": "fixed",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Webspeler: bij snel zappen of sluiten blijft de vorige stream niet meer doorspelen of een verbinding bezet houden",
+    "en": "Web player: when zapping quickly or closing, the previous stream no longer keeps playing or holding a connection"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Webspeler: de zenderlijst springt niet meer terug naar boven, Terug werkt na \"Vanaf het begin\", groepsnamen van de provider laten pagina's niet meer vastlopen en dialogen passen op de iPhone",
+    "en": "Web player: the channel list no longer jumps to the top, Back works after \"From the start\", provider group names no longer break pages and dialogs fit on iPhone"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Webspeler: sneller bij grote bibliotheken, minder werk op de achtergrond tijdens het kijken, Arabisch van rechts naar links en juiste vertaling van \"Cast\"",
+    "en": "Web player: faster with large libraries, less background work while watching, right-to-left Arabic and the correct translation of \"Cast\""
+   }
+  ]
+ },
+ {
   "build": 96,
   "version": "1.0.0",
   "date": "2026-10-15",

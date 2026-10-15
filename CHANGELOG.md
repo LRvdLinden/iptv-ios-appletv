@@ -4,6 +4,20 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 97
+_15 oktober 2026_
+
+### Website
+
+**Verbeterd**
+
+- Webspeler: sneller bij grote bibliotheken, minder werk op de achtergrond tijdens het kijken, Arabisch van rechts naar links en juiste vertaling van "Cast"
+
+**Opgelost**
+
+- Webspeler: bij snel zappen of sluiten blijft de vorige stream niet meer doorspelen of een verbinding bezet houden
+- Webspeler: de zenderlijst springt niet meer terug naar boven, Terug werkt na "Vanaf het begin", groepsnamen van de provider laten pagina's niet meer vastlopen en dialogen passen op de iPhone
+
 ## Versie 1.0.0 · Build 96
 _15 oktober 2026_
 
