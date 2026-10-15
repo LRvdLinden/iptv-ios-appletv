@@ -1,5 +1,20 @@
 [
  {
+  "build": 101,
+  "version": "1.0.0",
+  "date": "2026-10-15",
+  "items": [
+   {
+    "type": "fixed",
+    "platforms": [
+     "tizen"
+    ],
+    "nl": "Samsung TV: in het ondertitelmenu staat weer welke taal elk spoor is (en anders het soort ondertitel), ook op tv's die de taalgegevens anders aanleveren",
+    "en": "Samsung TV: the subtitle menu shows each track's language again (or else the subtitle type), also on TVs that report language data differently"
+   }
+  ]
+ },
+ {
   "build": 100,
   "version": "1.0.0",
   "date": "2026-10-15",
