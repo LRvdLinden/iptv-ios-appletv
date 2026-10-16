@@ -112,29 +112,22 @@ jobs:
           git rm -rf --quiet . || true
           cp report/*.txt .
           git add latest.txt ios-tail.txt tvos-tail.txt macos-tail.txt
-          # het nieuwste Xcode-project ook op ci-logs (overschreven per build; de vaste versies staan in bingr-beheer/versions)
-          cp report/Bingr-xcode.zip . && git add Bingr-xcode.zip
+          # build 105: het Xcode-project staat niet meer op ci-logs (de branch is openbaar); alleen de logs
           git commit -m "build $GITHUB_SHA ios=${{ steps.ios.outcome }} tvos=${{ steps.tvos.outcome }} macos=${{ steps.macos.outcome }}"
           git push -f origin HEAD:ci-logs
 
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: Bingr-xcode
-          path: report/Bingr-xcode.zip
-          if-no-files-found: ignore
-          retention-days: 30
-
-      # Xcode-project naar bingr-beheer/versions/apple/<versie>-build<N>/ (alleen als iOS, tvOS en macOS slagen).
+      # Xcode-project versleuteld naar bingr-beheer (tools/seal_build.sh, branch inbox-apple); de workflow Builds daar zet het
+      # in de afgesloten map builds/ op de server van beheer.bingr.online (alleen als iOS, tvOS en macOS slagen).
+      # Nooit onversleuteld op GitHub: geen artefact, geen release, niet op ci-logs.
       # Nodig: secret BINGR_BEHEER_TOKEN (fine-grained token met Contents: Read and write op LRvdLinden/bingr-beheer).
-      - name: In bingr-beheer/versions zetten
+      - name: Xcode-project versleuteld aanleveren voor beheer.bingr.online
         if: steps.ios.outcome == 'success' && steps.tvos.outcome == 'success' && steps.macos.outcome == 'success'
         env:
           TOKEN: ${{ secrets.BINGR_BEHEER_TOKEN }}
         run: |
+          set -euo pipefail
           TOKEN=$(printf '%s' "$TOKEN" | tr -d '[:space:]')   # spaties/regeleinde van het plakken weghalen
-          [ -n "$TOKEN" ] && echo "::notice::BINGR_BEHEER_TOKEN is ingesteld"   # build 95: geen lengte of begin van de token in het (openbare) log
-          if [ -z "$TOKEN" ]; then echo "::warning::Secret BINGR_BEHEER_TOKEN ontbreekt: Xcode-project alleen op branch ci-logs."; exit 0; fi
+          if [ -z "$TOKEN" ]; then echo "::warning::Secret BINGR_BEHEER_TOKEN ontbreekt: Xcode-project niet aangeleverd."; exit 0; fi
           # (de werkmap is na de ci-logs-stap leeg; versie en build komen uit het project in de zip)
           mkdir -p /tmp/pkg && cd /tmp/pkg && rm -rf x && mkdir x && cd x && unzip -q "$GITHUB_WORKSPACE/report/Bingr-xcode.zip"
           B=$(grep -m1 'CURRENT_PROJECT_VERSION' project.yml | grep -o '[0-9]\+'); V=$(grep -m1 'MARKETING_VERSION' project.yml | grep -o '[0-9.]\+' || echo 1.0.0)
@@ -142,25 +135,11 @@ jobs:
           rm -rf docs/screenshots docs/covers
           zip -qr "/tmp/pkg/Bingr-$V-build$B-Xcode.zip" .
           cd /tmp/pkg
-          git clone -q --depth 1 "https://x-access-token:${TOKEN}@github.com/LRvdLinden/bingr-beheer.git" beheer
-          # schrijfrechten van het token meteen controleren (ook als er niets nieuws is)
-          git -C beheer push --dry-run -q origin HEAD:main 2>dry.err && echo "::notice::BINGR_BEHEER_TOKEN: schrijven naar bingr-beheer werkt" || { echo "::error::BINGR_BEHEER_TOKEN mag niet schrijven naar bingr-beheer: $(tr '\n' ' ' < dry.err | sed 's#x-access-token:[^@]*@#***@#g' | head -c 300)"; exit 1; }
-          # per platform alleen de nieuwste build (versions/Apple/v<versie>/); staat deze build er al, dan niets doen
-          CUR=$(python3 -c "import json;print(json.load(open('beheer/versions/latest.json')).get('apple',{}).get('build',0))" 2>/dev/null || echo 0)
-          if [ "$CUR" -ge "$B" ]; then echo "::notice::Apple $V build $B staat al in versions/"; exit 0; fi
           awk -v b="Build $B" '/^## /{f=($0 ~ (b "$"))?1:0; next} f && !/^_.*_$/' x/CHANGELOG.md > notes.md || true
-          python3 beheer/tools/add_version.py apple "$B" "/tmp/pkg/Bingr-$V-build$B-Xcode.zip" --notes notes.md --version "$V"
-          cd beheer && git add -A versions
-          if git diff --cached --quiet; then echo "::notice::Niets nieuws voor versions/"; exit 0; fi
-          git -c user.name=github-actions -c user.email=actions@github.com commit -qm "Versies: Apple $V build $B ($(echo $GITHUB_SHA | cut -c1-7))"
-          ok=""
-          for i in 1 2 3; do
-            if git push -q 2>push.err; then ok=1; break; fi
-            echo "::warning::Push naar bingr-beheer mislukt (poging $i): $(tr '\n' ' ' < push.err | sed 's#x-access-token:[^@]*@#***@#g' | head -c 300)"
-            git pull -q --rebase || { git fetch -q --depth 20 origin main && git rebase -q origin/main; }
-          done
-          [ -n "$ok" ] || { echo "::error::Niet in bingr-beheer/versions gezet: push mislukt. Heeft BINGR_BEHEER_TOKEN Contents: Read and write op LRvdLinden/bingr-beheer?"; exit 1; }
-          echo "::notice::In bingr-beheer/versions gezet: Apple $V build $B"
+          git clone -q --depth 1 "https://x-access-token:${TOKEN}@github.com/LRvdLinden/bingr-beheer.git" beheer 2>/dev/null \
+            || { echo "::error::bingr-beheer niet op te halen met BINGR_BEHEER_TOKEN."; exit 1; }
+          TOKEN="$TOKEN" beheer/tools/seal_build.sh apple "/tmp/pkg/Bingr-$V-build$B-Xcode.zip" "$V" "$B" notes.md
+          rm -rf /tmp/pkg
 
       - name: Status
         if: steps.ios.outcome != 'success' || steps.tvos.outcome != 'success' || steps.macos.outcome != 'success'

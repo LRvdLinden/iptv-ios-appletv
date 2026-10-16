@@ -30,7 +30,7 @@
 //   put_state       {section, data}      (ingelogd) -> {ok, updatedAt}     (versleuteld; data = willekeurige JSON)
 //   delete_state    {section}            (ingelogd) -> {ok}
 //   stream_start    {device_id, profile_id, profile_name, title, kind, content_id, series_id?, series_title?, tz?} (ingelogd)
-//                   -> {ok, limit} | 403 {error:"stream_limit", limit, plan, streams:[…]}   (limit: gratis 2, lifetime 6, of eigen limiet;
+//                   -> {ok, limit} | 403 {error:"stream_limit", limit, plan, streams:[…]}   (limit: gratis 1, lifetime 3, of eigen limiet;
 //                   build 68: series_id/series_title/tz voor statistieken)
 //   stream_ping     {device_id, title?, kind?, content_id?, series_id?, series_title?} (ingelogd, elke 30 s) -> {ok} | {stopped:true}
 //   stream_stop     {device_id} (ingelogd) -> {ok}
@@ -501,7 +501,8 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       if (user instanceof Response) return user;
       const device_id = String(body.device_id ?? "").slice(0, 80);
       if (!device_id) return json({ error: "device_id_missing" }, 400);
-      // streamlimiet van het abonnement (gratis 2, lifetime 6, of eigen limiet uit het beheer)
+      // streamlimiet van het abonnement (gratis 1, lifetime 3, of eigen limiet uit het beheer); Bingr-telling,
+      // los van de limiet van de IPTV-provider (die controleren de apps zelf bij het afspelen)
       const row = await planRow(user.id), limit = limitsFor(row).streams;
       // verlopen streams weg, tellen, geschiedenis en stream in één transactie met een slot per account,
       // zodat gelijktijdige starts nooit boven de limiet uitkomen

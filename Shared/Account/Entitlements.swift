@@ -70,8 +70,8 @@ final class EntitlementsService: ObservableObject {
     }
 
     /// Standaardlimieten per abonnement (als de server een veld niet meestuurt; de vergelijking toont deze).
-    static let freeLimits = Limits(streams: 2, devices: 8, servers: 1)
-    static let lifetimeLimits = Limits(streams: 6, devices: 15, servers: nil)
+    static let freeLimits = Limits(streams: 1, devices: 8, servers: 1)
+    static let lifetimeLimits = Limits(streams: 3, devices: 15, servers: nil)
 
     /// nil = (nog) onbekend: alles toegestaan.
     @Published private(set) var current: Entitlements?

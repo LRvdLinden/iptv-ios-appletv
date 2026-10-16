@@ -356,6 +356,7 @@ Samenvoegen: per item wint de nieuwste `updatedAt`.
 - **Tijdens het afspelen**, ook bij pauze: elke 30 s `stream_ping`.
 - **Bij stoppen of sluiten** en als de app naar de achtergrond gaat (behalve bij beeld-in-beeld of AirPlay/Chromecast): `stream_stop`.
 - **Multiview** telt als één stream per apparaat.
+- **Limiet van de IPTV-provider (los van Bingr):** de streamlimiet van Bingr is onze eigen telling (`account_streams`) en geldt ongeacht wat de IPTV-provider toestaat; de providerlimiet wordt nooit als Bingr-limiet gebruikt. Een Xtream-provider heeft daarnaast een eigen limiet (`player_api.php` → `user_info.max_connections` / `user_info.active_cons`). De apps lezen die bij het ophalen van de accountinfo en tonen hem in de serverinfo ("Provider: max X verbindingen"). **Mislukt het afspelen** (HTTP 401/403/458/509 of de stream start niet) én is `active_cons >= max_connections` (met `max_connections > 0`), dan toont de app in plaats van een algemene fout: "Je IPTV-abonnement staat maximaal %d verbinding(en) tegelijk toe en die zijn in gebruik. Dit is een limiet van je provider, niet van Bingr." / "Your IPTV subscription allows up to %d connection(s) at the same time and they are all in use. This is a limit of your provider, not of Bingr." Er wordt **niet** vooraf geblokkeerd op `active_cons` (die telling van de provider loopt achter). Bij M3U-bronnen is er geen providerinfo en dus geen controle.
 
 **Alleen voor het hoofdprofiel** in Mijn Bingr → Account:
 - **Nu aan het kijken**: de rij toont "%d van %d kijken nu". Een tik opent een detailscherm met per stream:
@@ -513,7 +514,7 @@ Dezelfde titel in een andere taal: zelfde TMDB-id als die van beide bekend is, a
 
 - **Fouten** zijn altijd JSON `{error}` zonder interne details: 400 `bad_json` / `bad_section` / `bad_sources` / `device_id_missing` / `name_missing`, 401 `not_signed_in`, 403 `device_limit` / `stream_limit` / `feature_locked` (abonnementen), 404 `invalid_code`, 413 `too_large` / `too_many_sections`, 500 `server_error` / `decrypt_failed` / `delete_failed`, 503 `unavailable` / `try_again`. Een aanvraag mag maximaal 2 MB zijn.
 - **401 = token ongeldig of verlopen**, voor alle acties met inloggen (ook `heartbeat` en `stream_ping`, die gaven eerder `revoked`/`stopped`): sessie vernieuwen en één keer opnieuw proberen. **503** = de server kon het token tijdelijk niet controleren: niets doen, niet uitloggen.
-- **Limieten atomair:** `register_device` (15 apparaten) en `stream_start` (6 streams) tellen en schrijven in één databasetransactie met een slot per account. Gelijktijdige aanvragen kunnen de limiet niet meer overschrijden.
+- **Limieten atomair:** `register_device` (apparatenlimiet) en `stream_start` (streamlimiet) tellen en schrijven in één databasetransactie met een slot per account. Gelijktijdige aanvragen kunnen de limiet niet meer overschrijden.
 - **Opruimen:** verlopen tv-codes, streams zonder ping (> 1 dag) en kijkgeschiedenis ouder dan 8 dagen worden voor alle accounts opgeruimd, niet alleen bij een nieuwe stream van hetzelfde account.
 - **`approve`** claimt een code alleen als hij nog vrij is (of al van jou); twee accounts kunnen niet dezelfde tv koppelen.
 - **`delete_account`** verwijdert alle profielfoto's in Storage en daarna de gebruiker; alle tabellen (profielen, servers, onderdelen, apparaten, streams, geschiedenis, tv-codes) gaan mee.
@@ -729,7 +730,7 @@ Er zijn twee abonnementen. Betalen kan nog niet (de betaalpagina komt later op b
 
 | | **Gratis** (€ 0) | **Lifetime** (€ 4,99 eenmalig) |
 |---|---|---|
-| Tegelijk kijken (`limits.streams`) | 2 | 6 |
+| Tegelijk kijken (`limits.streams`) | 1 | 3 |
 | Ingelogde apparaten (`limits.devices`) | 8 | 15 |
 | Servers (`limits.servers`) | 1 | onbeperkt (`null`) |
 | Statistieken (`features.stats`) | – | ✓ |
@@ -750,7 +751,7 @@ Body `{platform?, device_id?}`; `platform` is één van `ios`, `ipados`, `tvos`,
 ```json
 {
   "plan": "free",
-  "limits": { "streams": 2, "devices": 8, "servers": 1 },
+  "limits": { "streams": 1, "devices": 8, "servers": 1 },
   "features": { "stats": false, "now_watching": false, "trakt": false, "multi_server": false, "themes": false },
   "upgrade": { "url": "https://bingr.online/upgrade/", "link": true, "price": "€ 4,99", "price_en": "€4.99" }
 }

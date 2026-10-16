@@ -499,6 +499,9 @@ struct PlayerScreen: View {
         }
         // build 52: live → automatisch naar een back-upbron; anders de foutmelding met keuzes
         player.onGiveUp = { autoFailover() }
+        // limiet van de IPTV-provider (alleen Xtream; bij M3U e.d. geeft dit nil)
+        let src = providerSource(it)
+        player.providerLimitCheck = { await ProviderLimit.failureMessage(src) }
         player.onFinished = {
             if let n = nextUp { playNext(n); return }   // zoals Netflix: gewoon door naar de volgende aflevering
             if TraktSync.askRating, TraktSync.shared.isLoggedIn, it.imdbID != nil, it.type != .live {
@@ -524,6 +527,8 @@ struct PlayerScreen: View {
         }
         bind(it)
         registerStream(it)
+        // vóór het afspelen: de verbindingslimiet van de provider alvast ophalen (blokkeert niets)
+        ProviderLimit.prime(providerSource(it))
         if it.type == .live, let cid = it.channelID {
             let pl = playlists
             player.catchupProvider = { from, to in pl.catchupURL(channelID: cid, start: from, end: to) }
@@ -856,6 +861,12 @@ struct PlayerScreen: View {
             it.resumeSeconds = player.duration > 0 ? player.lastGoodPosition * player.duration : nil
         }
         Task { await start(it) }
+    }
+
+    /// De bron van deze titel als dat de open bron is (anders onbekend: geen providercontrole).
+    private func providerSource(_ it: PlayableItem) -> PlaylistSource? {
+        guard let s = playlists.source, it.sourceID == nil || it.sourceID == s.id else { return nil }
+        return s
     }
 
     /// Live: de zender is weggevallen (ook na een nieuwe poging) → zelf naar de volgende back-upbron.

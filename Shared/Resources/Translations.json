@@ -882,7 +882,12 @@
   "Forward 10 seconds": "تقديم 10 ثوانٍ",
   "API key": "مفتاح API",
   "Client ID": "معرّف العميل",
-  "Actors": "طاقم التمثيل"
+  "Actors": "طاقم التمثيل",
+  "1 screen": "شاشة واحدة",
+  "Your plan allows 1 screen at a time.": "تسمح خطتك بشاشة واحدة في كل مرة.",
+  "Your account can be used on 1 screen at a time.": "يمكن استخدام حسابك على شاشة واحدة في كل مرة.",
+  "Your IPTV subscription allows 1 connection at a time and it is in use. This is a limit of your provider, not of Bingr.": "يسمح اشتراك IPTV الخاص بك باتصال واحد في كل مرة وهو قيد الاستخدام. هذا حد من مزوّدك وليس من Bingr.",
+  "Your IPTV subscription allows up to %d connections at the same time and they are all in use. This is a limit of your provider, not of Bingr.": "يسمح اشتراك IPTV الخاص بك بما يصل إلى %d اتصالات في الوقت نفسه وجميعها قيد الاستخدام. هذا حد من مزوّدك وليس من Bingr."
  },
  "de": {
   "%@ is now signed in.": "%@ ist jetzt angemeldet.",
@@ -1767,7 +1772,12 @@
   "Forward 10 seconds": "10 Sekunden vor",
   "API key": "API-Schlüssel",
   "Client ID": "Client-ID",
-  "Actors": "Besetzung"
+  "Actors": "Besetzung",
+  "1 screen": "1 Bildschirm",
+  "Your plan allows 1 screen at a time.": "Dein Tarif erlaubt 1 Bildschirm gleichzeitig.",
+  "Your account can be used on 1 screen at a time.": "Dein Konto kann auf 1 Bildschirm gleichzeitig genutzt werden.",
+  "Your IPTV subscription allows 1 connection at a time and it is in use. This is a limit of your provider, not of Bingr.": "Dein IPTV-Abo erlaubt 1 Verbindung gleichzeitig und diese ist belegt. Das ist ein Limit deines Anbieters, nicht von Bingr.",
+  "Your IPTV subscription allows up to %d connections at the same time and they are all in use. This is a limit of your provider, not of Bingr.": "Dein IPTV-Abo erlaubt bis zu %d Verbindungen gleichzeitig und alle sind belegt. Das ist ein Limit deines Anbieters, nicht von Bingr."
  },
  "es": {
   "%@ is now signed in.": "%@ ya ha iniciado sesión.",
@@ -2652,7 +2662,12 @@
   "Forward 10 seconds": "Avanzar 10 segundos",
   "API key": "Clave de API",
   "Client ID": "ID de cliente",
-  "Actors": "Reparto"
+  "Actors": "Reparto",
+  "1 screen": "1 pantalla",
+  "Your plan allows 1 screen at a time.": "Tu plan permite 1 pantalla a la vez.",
+  "Your account can be used on 1 screen at a time.": "Tu cuenta puede usarse en 1 pantalla a la vez.",
+  "Your IPTV subscription allows 1 connection at a time and it is in use. This is a limit of your provider, not of Bingr.": "Tu suscripción IPTV permite 1 conexión a la vez y está en uso. Es un límite de tu proveedor, no de Bingr.",
+  "Your IPTV subscription allows up to %d connections at the same time and they are all in use. This is a limit of your provider, not of Bingr.": "Tu suscripción IPTV permite hasta %d conexiones a la vez y están todas en uso. Es un límite de tu proveedor, no de Bingr."
  },
  "fr": {
   "%@ is now signed in.": "%@ est maintenant connecté.",
@@ -3537,7 +3552,12 @@
   "Forward 10 seconds": "Avancer de 10 secondes",
   "API key": "Clé API",
   "Client ID": "ID client",
-  "Actors": "Distribution"
+  "Actors": "Distribution",
+  "1 screen": "1 écran",
+  "Your plan allows 1 screen at a time.": "Votre offre permet 1 écran à la fois.",
+  "Your account can be used on 1 screen at a time.": "Votre compte peut être utilisé sur 1 écran à la fois.",
+  "Your IPTV subscription allows 1 connection at a time and it is in use. This is a limit of your provider, not of Bingr.": "Votre abonnement IPTV autorise 1 connexion à la fois et elle est utilisée. C'est une limite de votre fournisseur, pas de Bingr.",
+  "Your IPTV subscription allows up to %d connections at the same time and they are all in use. This is a limit of your provider, not of Bingr.": "Votre abonnement IPTV autorise jusqu'à %d connexions simultanées et elles sont toutes utilisées. C'est une limite de votre fournisseur, pas de Bingr."
  },
  "it": {
   "%@ is now signed in.": "%@ ha effettuato l’accesso.",
@@ -4422,7 +4442,12 @@
   "Forward 10 seconds": "Avanti di 10 secondi",
   "API key": "Chiave API",
   "Client ID": "ID client",
-  "Actors": "Cast"
+  "Actors": "Cast",
+  "1 screen": "1 schermo",
+  "Your plan allows 1 screen at a time.": "Il tuo piano consente 1 schermo alla volta.",
+  "Your account can be used on 1 screen at a time.": "Il tuo account può essere usato su 1 schermo alla volta.",
+  "Your IPTV subscription allows 1 connection at a time and it is in use. This is a limit of your provider, not of Bingr.": "Il tuo abbonamento IPTV consente 1 connessione alla volta ed è in uso. È un limite del tuo provider, non di Bingr.",
+  "Your IPTV subscription allows up to %d connections at the same time and they are all in use. This is a limit of your provider, not of Bingr.": "Il tuo abbonamento IPTV consente fino a %d connessioni contemporaneamente e sono tutte in uso. È un limite del tuo provider, non di Bingr."
  },
  "nl": {
   "%@ is now signed in.": "%@ is nu ingelogd.",
@@ -5307,7 +5332,12 @@
   "Forward 10 seconds": "10 seconden vooruit",
   "API key": "API-sleutel",
   "Client ID": "Client ID",
-  "Actors": "Cast"
+  "Actors": "Cast",
+  "1 screen": "1 scherm",
+  "Your plan allows 1 screen at a time.": "Je abonnement staat 1 scherm tegelijk toe.",
+  "Your account can be used on 1 screen at a time.": "Je account kan op 1 scherm tegelijk worden gebruikt.",
+  "Your IPTV subscription allows 1 connection at a time and it is in use. This is a limit of your provider, not of Bingr.": "Je IPTV-abonnement staat maximaal 1 verbinding tegelijk toe en die is in gebruik. Dit is een limiet van je provider, niet van Bingr.",
+  "Your IPTV subscription allows up to %d connections at the same time and they are all in use. This is a limit of your provider, not of Bingr.": "Je IPTV-abonnement staat maximaal %d verbindingen tegelijk toe en die zijn allemaal in gebruik. Dit is een limiet van je provider, niet van Bingr."
  },
  "pl": {
   "%@ is now signed in.": "%@ jest teraz zalogowany.",
@@ -6192,7 +6222,12 @@
   "Forward 10 seconds": "10 sekund do przodu",
   "API key": "Klucz API",
   "Client ID": "Identyfikator klienta",
-  "Actors": "Obsada"
+  "Actors": "Obsada",
+  "1 screen": "1 ekran",
+  "Your plan allows 1 screen at a time.": "Twój plan pozwala na 1 ekran jednocześnie.",
+  "Your account can be used on 1 screen at a time.": "Z konta można korzystać jednocześnie na 1 ekranie.",
+  "Your IPTV subscription allows 1 connection at a time and it is in use. This is a limit of your provider, not of Bingr.": "Twoja subskrypcja IPTV pozwala na 1 połączenie naraz i jest ono w użyciu. To limit Twojego dostawcy, nie Bingr.",
+  "Your IPTV subscription allows up to %d connections at the same time and they are all in use. This is a limit of your provider, not of Bingr.": "Twoja subskrypcja IPTV pozwala na maksymalnie %d połączeń naraz i wszystkie są w użyciu. To limit Twojego dostawcy, nie Bingr."
  },
  "pt": {
   "%@ is now signed in.": "%@ já tem sessão iniciada.",
@@ -7077,7 +7112,12 @@
   "Forward 10 seconds": "Avançar 10 segundos",
   "API key": "Chave de API",
   "Client ID": "ID de cliente",
-  "Actors": "Elenco"
+  "Actors": "Elenco",
+  "1 screen": "1 ecrã",
+  "Your plan allows 1 screen at a time.": "O teu plano permite 1 ecrã de cada vez.",
+  "Your account can be used on 1 screen at a time.": "A tua conta pode ser usada em 1 ecrã de cada vez.",
+  "Your IPTV subscription allows 1 connection at a time and it is in use. This is a limit of your provider, not of Bingr.": "A tua subscrição IPTV permite 1 ligação de cada vez e está em uso. É um limite do teu fornecedor, não do Bingr.",
+  "Your IPTV subscription allows up to %d connections at the same time and they are all in use. This is a limit of your provider, not of Bingr.": "A tua subscrição IPTV permite até %d ligações ao mesmo tempo e estão todas em uso. É um limite do teu fornecedor, não do Bingr."
  },
  "tr": {
   "%@ is now signed in.": "%@ artık oturum açtı.",
@@ -7962,7 +8002,12 @@
   "Forward 10 seconds": "10 saniye ileri",
   "API key": "API anahtarı",
   "Client ID": "İstemci kimliği",
-  "Actors": "Oyuncular"
+  "Actors": "Oyuncular",
+  "1 screen": "1 ekran",
+  "Your plan allows 1 screen at a time.": "Planın aynı anda 1 ekrana izin veriyor.",
+  "Your account can be used on 1 screen at a time.": "Hesabın aynı anda 1 ekranda kullanılabilir.",
+  "Your IPTV subscription allows 1 connection at a time and it is in use. This is a limit of your provider, not of Bingr.": "IPTV aboneliğin aynı anda 1 bağlantıya izin veriyor ve bu bağlantı kullanımda. Bu, Bingr'ın değil sağlayıcının bir sınırıdır.",
+  "Your IPTV subscription allows up to %d connections at the same time and they are all in use. This is a limit of your provider, not of Bingr.": "IPTV aboneliğin aynı anda en fazla %d bağlantıya izin veriyor ve hepsi kullanımda. Bu, Bingr'ın değil sağlayıcının bir sınırıdır."
  },
  "zh-Hans": {
   "%@ is now signed in.": "%@ 现已登录。",
@@ -8847,6 +8892,11 @@
   "Forward 10 seconds": "前进 10 秒",
   "API key": "API 密钥",
   "Client ID": "客户端 ID",
-  "Actors": "演员"
+  "Actors": "演员",
+  "1 screen": "1 个屏幕",
+  "Your plan allows 1 screen at a time.": "你的方案一次允许使用 1 个屏幕。",
+  "Your account can be used on 1 screen at a time.": "你的账户一次可在 1 个屏幕上使用。",
+  "Your IPTV subscription allows 1 connection at a time and it is in use. This is a limit of your provider, not of Bingr.": "你的 IPTV 订阅一次只允许 1 个连接，且该连接正在使用中。这是你的服务商的限制，而不是 Bingr 的限制。",
+  "Your IPTV subscription allows up to %d connections at the same time and they are all in use. This is a limit of your provider, not of Bingr.": "你的 IPTV 订阅最多允许同时 %d 个连接，且全部正在使用中。这是你的服务商的限制，而不是 Bingr 的限制。"
  }
 }

@@ -59,7 +59,7 @@ jobs:
           q "do \$\$ declare u uuid; d text; r jsonb; begin
                select user_id, device_id into u, d from public.account_streams order by last_ping desc limit 1;
                if u is null then raise notice 'geen bestaande stream om mee te testen'; return; end if;
-               r := public.bingr_stream_start(u, d, 'p', 'p', 't', 'movie', 'c', 6, 90, null, null, 'Europe/Amsterdam');
+               r := public.bingr_stream_start(u, d, 'p', 'p', 't', 'movie', 'c', 3, 90, null, null, 'Europe/Amsterdam');
                raise exception 'TERUGDRAAIEN ok=%', r->>'ok';
              end \$\$" | python3 -c 'import sys,re; s=sys.stdin.read(); print(re.sub(r"[0-9a-f]{8}-[0-9a-f-]{27}","<id>",s)[:600])' | note proefaanroep
           SQL="select response.status_code as status, count(*) as n from function_edge_logs cross join unnest(metadata) as m cross join unnest(m.response) as response cross join unnest(m.request) as request where request.url like '%/device-auth%' group by 1 order by 1"

@@ -21,6 +21,8 @@ struct LiveTVView: View {
     @State private var shownKey: ListKey?
     @State private var collecting: CollectionTarget?
     @State private var offsetFor: Channel?
+    /// Voor welke lijstversie groepen en evenementen klaar zijn (niet bij elke terugkeer naar Live TV opnieuw)
+    @State private var groupsVersion = -1
 
     enum Mode: String { case list, grid }
     struct ProgramTarget: Identifiable { var id: String { channel.id + p.id }; let channel: Channel; let p: EPGProgram }
@@ -30,8 +32,9 @@ struct LiveTVView: View {
     private var pid: UUID { playlists.source?.id ?? UUID() }
 
     private var groups: [String] {
-        [Self.allKey, Self.favKey, Self.recentKey] + (events.isEmpty ? [] : [Self.eventsKey])
-            + channelCollections.map { Self.collectionPrefix + $0.id } + channelGroups
+        // uniek: een groep die toevallig zo heet als een vaste sleutel gaf een dubbele id in de ForEach
+        orderedUnique([Self.allKey, Self.favKey, Self.recentKey] + (events.isEmpty ? [] : [Self.eventsKey])
+            + channelCollections.map { Self.collectionPrefix + $0.id } + channelGroups)
     }
 
     /// Collecties waar zenders in (kunnen) staan
@@ -87,15 +90,18 @@ struct LiveTVView: View {
                        collection: searching ? nil : collection(for: group))
     }
 
-    /// De zenders die nu in beeld staan. Alle zenders en Evenementen zijn al klaar; de rest komt uit `shown`.
+    /// De zenders die nu in beeld staan. Evenementen zijn al klaar; de rest (ook Alle zenders) komt uit `shown`.
+    /// P0-fix: Alle zenders was `lib.channels` rechtstreeks; staat dezelfde zender (zelfde stream/id) twee keer in
+    /// de lijst, dan kreeg de ForEach in de LazyVStack dubbele id's en liep SwiftUI vast (vooral tvOS-focus).
     private var visibleChannels: [Channel] {
-        if !searching && group == Self.allKey { return lib.channels }
         if !searching && group == Self.eventsKey { return events.map { $0.channel } }
         return shown
     }
 
     /// Lijst samenstellen buiten de hoofdthread (filteren door tienduizenden zenders, slimme collecties, zoeken).
     private func rebuildList(_ key: ListKey) async {
+        // al samengesteld (bijv. terug naar Live TV): niet opnieuw door alle zenders
+        if key == shownKey { return }
         if !key.query.isEmpty {
             // tijdens het typen: pas zoeken als er even niet getypt wordt
             try? await Task.sleep(nanoseconds: 200_000_000)
@@ -115,28 +121,31 @@ struct LiveTVView: View {
                     !nameIDs.contains(c.id) && (c.group.localizedCaseInsensitiveContains(q)
                         || (l.nowPlaying(c, at: now)?.title.localizedCaseInsensitiveContains(q) ?? false))
                 }
-                return byName + byOther
+                return uniqueByID(byName + byOther)
             }.value
         } else if let c = key.collection {
             // slimme collecties: zelfde bewaarde uitkomst als op Home (per lijst, server en collectie)
-            result = await CollectionCache.shared.channels(c, lib: l, version: key.version, source: key.source)
+            let chans = await CollectionCache.shared.channels(c, lib: l, version: key.version, source: key.source)
+            result = await Task.detached(priority: .userInitiated) { uniqueByID(chans) }.value
         } else {
-            enum Pick { case favorites(Set<String>), recent([String]), group(String), none }
+            enum Pick { case favorites(Set<String>), recent([String]), group(String), all, none }
             let pick: Pick
             switch key.group {
             case Self.favKey: pick = .favorites(key.favorites)
             case Self.recentKey: pick = .recent(key.recent)
-            case Self.allKey, Self.eventsKey: pick = .none   // staan al klaar (zie `visibleChannels`)
+            case Self.allKey: pick = .all
+            case Self.eventsKey: pick = .none   // staat al klaar (zie `visibleChannels`)
             default: pick = .group(key.group)
             }
             result = await Task.detached(priority: .userInitiated) { () -> [Channel] in
                 switch pick {
-                case .favorites(let favs): return l.channels.filter { favs.contains($0.id) }
+                case .favorites(let favs): return uniqueByID(l.channels.filter { favs.contains($0.id) })
                 case .recent(let recent):
                     var byID: [String: Channel] = [:]
                     for ch in l.channels where byID[ch.id] == nil { byID[ch.id] = ch }
-                    return recent.compactMap { byID[$0] }
-                case .group(let g): return l.channels.filter { $0.group == g }
+                    return uniqueByID(recent.compactMap { byID[$0] })
+                case .group(let g): return uniqueByID(l.channels.filter { $0.group == g })
+                case .all: return uniqueByID(l.channels)
                 case .none: return []
                 }
             }.value
@@ -175,13 +184,20 @@ struct LiveTVView: View {
         .sheet(item: $collecting) { AddToCollectionSheet(target: $0) }
         .sheet(item: $offsetFor) { CatchupOffsetSheet(channel: $0) }
         .task(id: playlists.libraryVersion) {
+            let v = playlists.libraryVersion
+            guard groupsVersion != v else { return }   // al klaar: niet bij elke terugkeer naar Live TV
             let chans = lib.channels
-            let (found, groups) = await Task.detached(priority: .utility) {
-                (EventChannels.events(chans), orderedUnique(chans.map(\.group)))
+            let (found, groups) = await Task.detached(priority: .utility) { () -> ([(channel: Channel, info: EventInfo)], [String]) in
+                var seen = Set<String>()
+                // elke zender één keer (dubbele id's laten de lijst vastlopen)
+                let ev = EventChannels.events(chans).filter { seen.insert($0.channel.id).inserted }
+                return (ev, orderedUnique(chans.map(\.group)))
             }.value
+            guard !Task.isCancelled else { return }
             if groups != channelGroups { channelGroups = groups }
             events = found
             if group == Self.eventsKey && found.isEmpty { group = Self.allKey }
+            groupsVersion = v
         }
         .task(id: listKey) { await rebuildList(listKey) }
         .onChange(of: group) { _, _ in preview.stop() }
@@ -285,7 +301,7 @@ struct LiveTVView: View {
                         .font(.system(size: tvScaled(13), weight: .semibold)).foregroundStyle(Theme.secondary)
                         .padding(.horizontal, tvScaled(8)).padding(.top, tvScaled(6))
                 }
-                if list.isEmpty && (shownKey == listKey || (!searching && (group == Self.allKey || group == Self.eventsKey))) {
+                if list.isEmpty && (shownKey == listKey || (!searching && group == Self.eventsKey)) {
                     Text(searching ? L("No channels found.") :
                          group == Self.favKey ? L("No favorites yet. Hold a channel to add it.") : L("No channels."))
                         .foregroundStyle(Theme.secondary).padding(.top, 40)

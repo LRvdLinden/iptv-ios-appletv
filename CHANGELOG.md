@@ -4,6 +4,34 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 105
+_16 oktober 2026_
+
+### Alle apps, de website en de server
+
+**Verbeterd**
+
+- Nieuwe kijklimieten: met Gratis kijk je op 1 scherm tegelijk, met Lifetime op 3 schermen tegelijk
+
+### Alle apps en de website
+
+**Nieuw**
+
+- Start een stream niet omdat alle verbindingen van je IPTV-abonnement in gebruik zijn, dan zegt Bingr dat nu duidelijk: het is een limiet van je provider, niet van Bingr
+
+### iOS, iPadOS, tvOS en macOS
+
+**Opgelost**
+
+- De app loopt niet meer vast als je teruggaat naar Home of Live TV, Films of Series opent: de overzichten worden op de achtergrond voorbereid en niet bij elke terugkeer opnieuw opgebouwd
+- Dubbele zenders of titels in een lijst laten de app niet meer haperen; ze staan er nog maar één keer in
+
+### Website
+
+**Verbeterd**
+
+- De apps zijn voorlopig niet te downloaden (Coming Soon); kijken kan meteen in je browser. De knop 'Kijk in je browser' is uit de bovenbalk van bingr.online en support.bingr.online gehaald
+
 ## Versie 1.0.0 · Build 104
 _15 oktober 2026_
 

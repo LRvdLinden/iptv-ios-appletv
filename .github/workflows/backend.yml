@@ -746,34 +746,41 @@ jobs:
               DA = f"{BASE}/functions/v1/device-auth"
               # gratis
               code, e = req("POST", DA, {"action": "entitlements", "platform": "web"}, user)
-              if code != 200 or e.get("plan") != "free" or e.get("limits") != {"streams": 2, "devices": 8, "servers": 1} or e.get("features", {}).get("stats") is not False or e.get("upgrade", {}).get("link") is not True:
+              if code != 200 or e.get("plan") != "free" or e.get("limits") != {"streams": 1, "devices": 8, "servers": 1} or e.get("features", {}).get("stats") is not False or e.get("upgrade", {}).get("link") is not True:
                   fail.append(f"entitlements gratis/web: HTTP {code} {e}")
               code, e = req("POST", DA, {"action": "entitlements", "platform": "tvos"}, user)
               if e.get("upgrade", {}).get("link") is not False: fail.append(f"entitlements tvos: link {e.get('upgrade')}")
               for a, f in (("watch_stats", "stats"), ("list_streams", "now_watching"), ("watch_log", "now_watching")):
                   code, r = req("POST", DA, {"action": a}, user)
                   if code != 403 or r != {"error": "feature_locked", "feature": f, "plan": "free"}: fail.append(f"{a} gratis: HTTP {code} {r}")
-              for i in range(3):
+              for i in range(5):
                   req("POST", DA, {"action": "register_device", "device_id": f"ci-p{i}", "name": "CI", "platform": "browser"}, user)
               code, r = req("POST", DA, {"action": "heartbeat", "device_id": "ci-p0"}, user)
               if (r.get("entitlements") or {}).get("plan") != "free" or (r.get("entitlements") or {}).get("upgrade", {}).get("link") is not True: fail.append(f"heartbeat zonder entitlements: {r}")
-              res = [req("POST", DA, {"action": "stream_start", "device_id": f"ci-p{i}", "title": "CI", "kind": "live"}, user) for i in range(3)]
-              if res[0][0] != 200 or res[1][0] != 200 or res[2][0] != 403 or res[2][1].get("error") != "stream_limit" or res[2][1].get("limit") != 2 or res[2][1].get("plan") != "free":
+              # gratis: 1 gelijktijdige kijker (Bingr-telling, los van de IPTV-provider)
+              res = [req("POST", DA, {"action": "stream_start", "device_id": f"ci-p{i}", "title": "CI", "kind": "live"}, user) for i in range(2)]
+              if res[0][0] != 200 or res[1][0] != 403 or res[1][1].get("error") != "stream_limit" or res[1][1].get("limit") != 1 or res[1][1].get("plan") != "free":
                   fail.append(f"streamlimiet gratis: {[(c, {k: v for k, v in r.items() if k != 'streams'}) for c, r in res]}")
-              else: print("::notice::gratis: entitlements, feature_locked (stats, now_watching) en streamlimiet 2 werken")
-              # lifetime met eigen streamlimiet (zoals plan_set in het beheer)
-              code, r = sql(f"insert into public.account_plans (user_id, plan, max_streams, source, granted_by) values ('{uid}', 'lifetime', 3, 'admin', 'ci') on conflict (user_id) do update set plan = 'lifetime', max_streams = 3")
+              else: print("::notice::gratis: entitlements, feature_locked (stats, now_watching) en streamlimiet 1 werken")
+              # lifetime met de standaardlimiet (3 gelijktijdige kijkers, zoals plan_set in het beheer zonder eigen limiet)
+              code, r = sql(f"insert into public.account_plans (user_id, plan, max_streams, source, granted_by) values ('{uid}', 'lifetime', null, 'admin', 'ci') on conflict (user_id) do update set plan = 'lifetime', max_streams = null")
               if code >= 300: fail.append(f"account_plans schrijven: HTTP {code} {str(r)[:200]}")
               code, e = req("POST", DA, {"action": "entitlements", "platform": "android"}, user)
               if e.get("plan") != "lifetime" or e.get("limits") != {"streams": 3, "devices": 15, "servers": None} or e.get("features", {}).get("trakt") is not True:
                   fail.append(f"entitlements lifetime: HTTP {code} {e}")
-              code, r = req("POST", DA, {"action": "stream_start", "device_id": "ci-p2", "title": "CI", "kind": "live"}, user)
-              if code != 200: fail.append(f"stream_start lifetime (limiet 3): HTTP {code} {r}")
+              res = [req("POST", DA, {"action": "stream_start", "device_id": f"ci-p{i}", "title": "CI", "kind": "live"}, user) for i in (1, 2, 3)]
+              if res[0][0] != 200 or res[1][0] != 200 or res[2][0] != 403 or res[2][1].get("error") != "stream_limit" or res[2][1].get("limit") != 3 or res[2][1].get("plan") != "lifetime":
+                  fail.append(f"streamlimiet lifetime (3): {[(c, {k: v for k, v in r.items() if k != 'streams'}) for c, r in res]}")
               code, r = req("POST", DA, {"action": "list_streams"}, user)
               if code != 200 or r.get("limit") != 3 or len(r.get("streams") or []) != 3: fail.append(f"list_streams lifetime: HTTP {code} {str(r)[:200]}")
+              # eigen limiet uit het beheer gaat boven de standaard
+              code, r = sql(f"update public.account_plans set max_streams = 4 where user_id = '{uid}'")
+              if code >= 300: fail.append(f"account_plans eigen limiet: HTTP {code} {str(r)[:200]}")
+              code, r = req("POST", DA, {"action": "stream_start", "device_id": "ci-p3", "title": "CI", "kind": "live"}, user)
+              if code != 200 or r.get("limit") != 4: fail.append(f"stream_start lifetime eigen limiet 4: HTTP {code} {str(r)[:200]}")
               code, r = req("POST", DA, {"action": "watch_stats", "period": "week"}, user)
               if code != 200: fail.append(f"watch_stats lifetime: HTTP {code} {str(r)[:200]}")
-              if not any("lifetime" in f for f in fail): print("::notice::lifetime: entitlements, eigen streamlimiet 3, list_streams en watch_stats werken")
+              if not any("lifetime" in f for f in fail): print("::notice::lifetime: entitlements, streamlimiet 3, eigen limiet 4, list_streams en watch_stats werken")
           except SystemExit as e:
               fail.append(str(e))
           finally:

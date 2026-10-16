@@ -154,7 +154,8 @@ struct StreamLimitView: View {
                     Image(systemName: "person.3.fill").font(.system(size: tvScaled(34))).foregroundStyle(Theme.red)
                     Text(L("Too many people are watching"))
                         .font(.system(size: tvScaled(26), weight: .bold)).foregroundStyle(.white)
-                    Text(L("Your account can be used on up to %d screens at the same time.", limit.limit))
+                    Text(limit.limit == 1 ? L("Your account can be used on 1 screen at a time.")
+                         : L("Your account can be used on up to %d screens at the same time.", limit.limit))
                         .font(.system(size: tvScaled(15))).foregroundStyle(Theme.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                     VStack(spacing: 0) {

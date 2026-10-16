@@ -5,7 +5,8 @@
   - Android, Android TV en Samsung TV (Tizen): `BINGR_BUILD` in `gradle.properties` van bingr-android, alleen verhogen als die apps veranderen (APK en .wgt komen in één release).
   - Website (`web`) en server (`server`): geen buildnummer in een bestand; hun build is het nummer van de changelog-build waarin ze veranderen. De website toont de nieuwste build met een punt voor `web`.
   - Een build die alleen de website en/of server raakt, verhoogt dus niets in `project.yml` of `gradle.properties`.
-- iOS, tvOS en macOS gaan altijd samen mee in een Apple-build. GitHub Actions bouwt ze bij elke push naar `main`; het resultaat komt op de branch `ci-logs` (`latest.txt`, `Bingr-xcode.zip`).
+- iOS, tvOS en macOS gaan altijd samen mee in een Apple-build. GitHub Actions bouwt ze bij elke push naar `main`; de logs komen op de branch `ci-logs` (`latest.txt`).
+- Buildpakketten (Xcode-zip, APK, .wgt) nooit openbaar op GitHub (niet in een repo, niet als release, niet als onversleuteld artefact): de workflows leveren ze versleuteld aan bij bingr-beheer (`tools/seal_build.sh`); de workflow *Builds* daar zet ze in de afgesloten map `builds/` op de server van beheer.bingr.online. Downloaden alleen via het beheer.
 - Bij elke build:
   - Zet een item in `docs/changelog.json` (één item per build, alleen met punten voor de platforms in die build): per build `items` met per punt `type` (`new`, `improved` of `fixed`), `platforms` (`ios`, `ipados`, `tvos`, `macos`, `android`, `androidtv` (= Android TV, Google TV en Fire TV), `tizen` (= Samsung TV, vanaf build 55), `web` (= de website bingr.online), `server` (= de backend: Supabase, accounts, sync en limieten)) en de tekst in `nl` en `en`. Kies de platforms per punt precies: alleen waar het echt voor geldt.
   - Draai `python3 tools/make_changelog.py` voor `CHANGELOG.md` hier.

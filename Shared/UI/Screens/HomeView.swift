@@ -30,9 +30,24 @@ struct HomeView: View {
     @State private var showCategories = false
     @State private var browseOpen: BrowseCategory?
     @ObservedObject private var browse = BrowseIndexStore.shared
+    /// P0-fix: `.task` start bij elke terugkeer naar het tabblad opnieuw. Onthouden wat al klaar is, zodat Home,
+    /// Films en Series dan niet opnieuw door de hele bibliotheek lopen (dat bevroor de app).
+    @State private var indexVersion = -1
+    @State private var preparedKey: String?
+    @State private var preparedAt = Date.distantPast
+    @State private var traktMatchedKey: TraktMatchKey?
+    @State private var collectionsDone: CollectionsKey?
 
     private var lib: Library { playlists.library }
     private var pid: UUID? { playlists.source?.id }
+    private var prepareKey: String {
+        "\(store.activeProfileID?.uuidString ?? "")-\(pid?.uuidString ?? "")-\(lib.movies.count)-\(lib.series.count)"
+    }
+    /// Zelfde sleutel als de gedeelde titel-index (MatcherCache)
+    private var matcherKey: String { "\(pid?.uuidString ?? "")-\(lib.movies.count)-\(lib.series.count)" }
+    private var collectionsKey: CollectionsKey {
+        CollectionsKey(version: playlists.libraryVersion, source: pid, collections: store.activeCollections)
+    }
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -67,16 +82,23 @@ struct HomeView: View {
         .fullScreenCover(isPresented: $showCategories) { BrowseCategoriesView(modal: true) }
         .fullScreenCover(item: $browseOpen) { BrowseCategoryView(category: $0) }
         .background(Color.black)
-        .task(id: "\(store.activeProfileID?.uuidString ?? "")-\(pid?.uuidString ?? "")-\(lib.movies.count)-\(lib.series.count)") { await prepare() }
+        .task(id: prepareKey) { await prepare() }
         .task(id: playlists.libraryVersion) {
-            let l = lib
-            index = await Task.detached(priority: .userInitiated) { HomeIndex.build(l) }.value
-            matchTraktPlayback()
+            let v = playlists.libraryVersion
+            guard indexVersion != v else { return }   // al gebouwd: niet bij elke terugkeer naar het tabblad
+            // één keer per lijstversie gebouwd en gedeeld door Home, Films en Series
+            let built = await HomeIndexCache.shared.index(for: lib, version: v)
+            guard !Task.isCancelled else { return }
+            index = built
+            indexVersion = v
         }
-        .onChange(of: trakt.playback.count) { _, _ in matchTraktPlayback() }
+        // Trakt-voortgang koppelen zodra de index er is of Trakt iets nieuws heeft (ook bij gewijzigd percentage)
+        .task(id: TraktMatchKey(version: indexVersion, playback: trakt.playback)) { await matchTraktPlayback() }
         .task(id: playlists.libraryVersion) { if filter == .all { browse.refresh(playlists) } }
         .onAppear { if filter == .all { browse.refresh(playlists) } }
-        .task(id: CollectionsKey(version: playlists.libraryVersion, source: pid, collections: store.activeCollections)) {
+        .task(id: collectionsKey) {
+            let key = collectionsKey
+            guard key != collectionsDone else { return }   // al bijgewerkt: niet bij elke terugkeer opnieuw
             // Build 56: wijzigingen (sync, nieuwe lijst) komen vaak vlak na elkaar; even wachten, en niet midden in
             // het scrollen herberekenen. De eerste keer meteen.
             if !collectionContent.isEmpty {
@@ -86,9 +108,16 @@ struct HomeView: View {
             }
             let l = lib, list = store.activeCollections, src = pid, version = playlists.libraryVersion
             // buiten de hoofdthread, en per (lijst, server, collectie) bewaard: alleen gewijzigde collecties rekenen opnieuw
-            let out = await CollectionCache.shared.content(for: list, lib: l, version: version, source: src)
+            let raw = await CollectionCache.shared.content(for: list, lib: l, version: version, source: src)
+            // geen dubbele id's in de rijen (op de achtergrond)
+            let out = await Task.detached(priority: .userInitiated) {
+                raw.mapValues { c in
+                    CollectionContent(channels: uniqueByID(c.channels), movies: uniqueByID(c.movies), series: uniqueByID(c.series))
+                }
+            }.value
             guard !Task.isCancelled else { return }
             if out != collectionContent { collectionContent = out }   // gelijk = Home niet opnieuw tekenen
+            collectionsDone = key
         }
         .sheet(item: $collecting) { AddToCollectionSheet(target: $0) }
         .fullScreenCover(item: $category) { CategoryView(target: $0) }
@@ -414,15 +443,39 @@ struct HomeView: View {
         return store.myList.compactMap { index.series(forKey: $0, playlist: pid) }.sorted { $0.title < $1.title }
     }
 
-    private func matchTraktPlayback() {
-        guard !trakt.playback.isEmpty else { traktContinue = []; return }
+    /// P0-fix: voorheen `lib.movies.first(where: { trakt.imdb(for: $0) == imdb })` op de hoofdthread: per Trakt-item
+    /// de hele bibliotheek door, met titel-opschoning (regex) per film. Bij tienduizenden films seconden vast, en dat
+    /// in alle drie de tabbladen bij elke terugkeer en na elke Trakt-sync (bijv. na het kijken). Nu: IMDb-index, dan
+    /// de gedeelde titel-index (op de achtergrond gebouwd) en alleen die ene kandidaat controleren.
+    private func matchTraktPlayback() async {
+        let key = TraktMatchKey(version: indexVersion, playback: trakt.playback)
+        guard key != traktMatchedKey else { return }
+        let items = trakt.playback.filter { $0.type == "movie" }
+        guard !items.isEmpty else {
+            if !traktContinue.isEmpty { traktContinue = [] }
+            traktMatchedKey = key
+            return
+        }
+        guard indexVersion >= 0 else { return }   // eerst de index
+        let idx = index, l = lib, mk = matcherKey
+        var matcher: TitleMatcher?
         var out: [ContinueItem] = []
-        for p in trakt.playback where p.type == "movie" {
-            guard let imdb = p.imdb, let m = index.movie(imdb: imdb) ?? lib.movies.first(where: { trakt.imdb(for: $0) == imdb }) else { continue }
+        var seen = Set<String>()
+        for p in items {
+            guard let imdb = p.imdb else { continue }
+            var found = idx.movie(imdb: imdb)
+            if found == nil, !p.title.isEmpty {
+                if matcher == nil { matcher = await MatcherCache.shared.matcher(for: l, key: mk) }
+                if Task.isCancelled { return }
+                if let c = matcher?.movie(ExternalTitle(titles: [p.title], year: nil)), trakt.imdb(for: c) == imdb { found = c }
+            }
+            guard let m = found, seen.insert(m.id).inserted else { continue }   // geen dubbele id's in de rij
             out.append(ContinueItem(id: m.id, title: m.title, subtitle: "Trakt · \(Int(p.progress))%", artwork: m.poster,
                                     fraction: p.progress / 100, updated: .distantPast, isMovie: true, traktPlaybackID: p.id))
         }
+        guard !Task.isCancelled else { return }
         traktContinue = out
+        traktMatchedKey = key
     }
 
     @ViewBuilder private var continueRow: some View {
@@ -622,54 +675,70 @@ struct HomeView: View {
         }
     }
 
+    /// P0-fix: liep bij elke terugkeer naar het tabblad opnieuw, met meerdere lussen door de hele bibliotheek op de
+    /// hoofdthread (Sets van alle id's, Top 10-aanvulling sorteren, groepen filteren). Nu: niet opnieuw voor dezelfde
+    /// lijst/profiel binnen 15 minuten, en de opzoekingen via de (op de achtergrond gebouwde) HomeIndex.
     private func prepare() async {
+        let pkey = prepareKey
+        if preparedKey == pkey && Date().timeIntervalSince(preparedAt) < 15 * 60 { return }
         guard !lib.movies.isEmpty || !lib.series.isEmpty else { hero = nil; return }
-        let key = "\(pid?.uuidString ?? "")-\(lib.movies.count)-\(lib.series.count)"
+        let l = lib, key = matcherKey
+        let idx = await HomeIndexCache.shared.index(for: l, version: playlists.libraryVersion)
+        guard !Task.isCancelled else { return }
         // 0. wat niet (meer) in de gefilterde lijst staat weghalen (ander profiel, leeftijdsgrens, verborgen groep)
-        let movieIDs = Set(lib.movies.map(\.id)), seriesIDs = Set(lib.series.map(\.id))
-        if let h = hero, !(h.isSeries ? seriesIDs : movieIDs).contains(h.id) { hero = nil }
-        trendingMovies.removeAll { !movieIDs.contains($0.id) }
-        trendingSeries.removeAll { !seriesIDs.contains($0.id) }
-        forYou.removeAll { !($0.isSeries ? seriesIDs : movieIDs).contains($0.id) }
+        func known(_ t: DetailTarget) -> Bool { t.isSeries ? idx.seriesByID[t.id] != nil : idx.movieByID[t.id] != nil }
+        if let h = hero, !known(h) { hero = nil }
+        trendingMovies.removeAll { idx.movieByID[$0.id] == nil }
+        trendingSeries.removeAll { idx.seriesByID[$0.id] == nil }
+        forYou.removeAll { !known($0) }
         // 1. meteen iets laten zien: billboard en Top 10 uit de cache van vandaag (of je eigen lijst)
-        if hero == nil { withAnimation(.easeInOut(duration: 0.4)) { hero = quickHero() } }
-        let matcher = await MatcherCache.shared.matcher(for: lib, key: key)   // op de achtergrond gebouwd
+        if hero == nil { withAnimation(.easeInOut(duration: 0.4)) { hero = quickHero(l) } }
+        let matcher = await MatcherCache.shared.matcher(for: l, key: key)   // op de achtergrond gebouwd
+        guard !Task.isCancelled else { return }
         let kids = store.activeProfile?.kids ?? false
-        applyTrending(matcher, movies: TrendingStore.cached(shows: false, kids: kids), series: TrendingStore.cached(shows: true, kids: kids))
-        if forYou.isEmpty { forYou = await buildForYou(useNetwork: false, matcher: matcher) }
+        applyTrending(matcher, idx, movies: TrendingStore.cached(shows: false, kids: kids), series: TrendingStore.cached(shows: true, kids: kids))
+        if forYou.isEmpty { forYou = await buildForYou(useNetwork: false, matcher: matcher, idx: idx, lib: l) }
+        guard !Task.isCancelled else { return }
 
         // 2. daarna pas het netwerk (gedeeld door alle tabbladen, 6 uur bewaard)
         async let mv = TrendingStore.shared.get(shows: false, kids: kids)
         async let sv = TrendingStore.shared.get(shows: true, kids: kids)
         let (m, s) = await (mv, sv)
-        applyTrending(matcher, movies: m, series: s)
-        forYou = await buildForYou(useNetwork: true, matcher: matcher)
+        guard !Task.isCancelled else { return }
+        applyTrending(matcher, idx, movies: m, series: s)
+        let fy = await buildForYou(useNetwork: true, matcher: matcher, idx: idx, lib: l)
+        guard !Task.isCancelled else { return }
+        forYou = fy
+        preparedKey = pkey
+        preparedAt = Date()
     }
 
-    /// Billboard zonder te wachten: iets uit de Top 10-cache, anders willekeurig met poster.
-    private func quickHero() -> DetailTarget? {
+    /// Billboard zonder te wachten: iets uit de Top 10-cache, anders willekeurig met poster (steekproef, niet de
+    /// hele lijst filteren).
+    private func quickHero(_ l: Library) -> DetailTarget? {
         switch filter {
-        case .series: return (trendingSeries.first ?? lib.series.filter { $0.poster != nil }.randomElement()).map { .series($0) }
-        case .movies: return (trendingMovies.first ?? lib.movies.filter { $0.poster != nil }.randomElement()).map { .movie($0) }
+        case .series: return (trendingSeries.first ?? HomeIndex.randomWithPoster(l.series)).map { .series($0) }
+        case .movies: return (trendingMovies.first ?? HomeIndex.randomWithPoster(l.movies)).map { .movie($0) }
         case .all:
-            if let m = trendingMovies.randomElement() ?? lib.movies.filter({ $0.poster != nil }).randomElement() { return .movie(m) }
-            return lib.series.randomElement().map { .series($0) }
+            if let m = trendingMovies.randomElement() ?? HomeIndex.randomWithPoster(l.movies) { return .movie(m) }
+            return l.series.randomElement().map { .series($0) }
         }
     }
 
-    /// Top 10: trending gekoppeld aan je lijst; te weinig treffers → aanvullen met je best beoordeelde/nieuwste titels.
-    private func applyTrending(_ matcher: TitleMatcher, movies: [ExternalTitle], series: [ExternalTitle]) {
+    /// Top 10: trending gekoppeld aan je lijst; te weinig treffers → aanvullen met je best beoordeelde/nieuwste titels
+    /// (vooraf berekend in de HomeIndex; geen dubbele id's in de rij).
+    private func applyTrending(_ matcher: TitleMatcher, _ idx: HomeIndex, movies: [ExternalTitle], series: [ExternalTitle]) {
         if filter != .series {
-            let found = matcher.movies(movies)
+            let found = uniqueByID(matcher.movies(movies))
             if found.count >= 5 || trendingMovies.isEmpty {
-                trendingMovies = found.count >= 5 ? found : found + localTop(lib.movies, rating: \.rating, added: \.addedAt, poster: \.poster)
+                trendingMovies = found.count >= 5 ? found : found + idx.localTopMovies
                     .filter { m in !found.contains { $0.id == m.id } }
             }
         }
         if filter != .movies {
-            let found = matcher.series(series)
+            let found = uniqueByID(matcher.series(series))
             if found.count >= 5 || trendingSeries.isEmpty {
-                trendingSeries = found.count >= 5 ? found : found + localTop(lib.series, rating: \.rating, added: nil, poster: \.poster)
+                trendingSeries = found.count >= 5 ? found : found + idx.localTopSeries
                     .filter { s in !found.contains { $0.id == s.id } }
             }
         }
@@ -677,7 +746,8 @@ struct HomeView: View {
 
     /// "Voor jou": Trakt-aanbevelingen die in je lijst staan, aangevuld met
     /// onbekeken titels uit de groepen waar je het meest kijkt, en trending.
-    private func buildForYou(useNetwork: Bool = true, matcher: TitleMatcher) async -> [DetailTarget] {
+    /// P0-fix: opzoekingen via de HomeIndex in plaats van lussen door de hele bibliotheek op de hoofdthread.
+    private func buildForYou(useNetwork: Bool = true, matcher: TitleMatcher, idx: HomeIndex, lib: Library) async -> [DetailTarget] {
         func ext(_ l: [TraktSync.TraktMedia]) -> [ExternalTitle] { l.compactMap { t in t.title.map { ExternalTitle(titles: [$0], year: t.year) } } }
         var out: [DetailTarget] = []
         var seen = Set<String>()
@@ -692,10 +762,11 @@ struct HomeView: View {
         // 1. vergelijkbaar met wat je (half) gekeken hebt
         var seeds: [(imdb: String, show: Bool)] = []
         let recentKeys = store.progress.sorted { $0.value.updated > $1.value.updated }.map(\.key)
-        let movieByID = Dictionary(lib.movies.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        let movieByID = idx.movieByID
         for k in recentKeys {
             if let m = movieByID[k], let i = trakt.imdb(for: m) { seeds.append((i, false)) }
-            else if let se = lib.series.first(where: { $0.title == store.progress[k]?.title }), let i = trakt.imdb(for: se) { seeds.append((i, true)) }
+            // was `lib.series.first(where:)` per voortgangsitem: voortgang × series op de hoofdthread
+            else if let t = store.progress[k]?.title, let se = idx.seriesByTitle[t], let i = trakt.imdb(for: se) { seeds.append((i, true)) }
             if seeds.count >= 4 { break }
         }
         for i in trakt.watchedEpisodes.keys.shuffled().prefix(2) { seeds.append((i, true)) }
@@ -724,36 +795,24 @@ struct HomeView: View {
         let keys = Set(store.progress.keys).union(store.localWatched)
         for k in keys { if let m = movieByID[k] { groupScore[m.group, default: 0] += 1 } }
         if let pid {
-            for m in lib.movies where store.inMyList(pid, m.id) { groupScore[m.group, default: 0] += 1 }
-            for s in lib.series where store.inMyList(pid, s.id) { groupScore[s.group, default: 0] += 2 }
+            // via de sleutels van Mijn lijst (klein), niet per titel van de hele bibliotheek
+            for k in store.myList {
+                if let m = idx.movie(forKey: k, playlist: pid) { groupScore[m.group, default: 0] += 1 }
+                else if let s = idx.series(forKey: k, playlist: pid) { groupScore[s.group, default: 0] += 2 }
+            }
         }
         let topGroups = groupScore.sorted { $0.value > $1.value }.prefix(4).map(\.key)
         for g in topGroups {
-            lib.movies.filter { $0.group == g }.shuffled().prefix(5).forEach { add(.movie($0)) }
-            lib.series.filter { $0.group == g }.shuffled().prefix(5).forEach { add(.series($0)) }
+            HomeIndex.sample(idx.movieGroupItems[g] ?? [], 5).forEach { add(.movie($0)) }
+            HomeIndex.sample(idx.seriesGroupItems[g] ?? [], 5).forEach { add(.series($0)) }
         }
         // aanvullen met trending
         for (a, b) in zip(trendingMovies.prefix(8), trendingSeries.prefix(8)) { add(.movie(a)); add(.series(b)) }
         if out.count < 8 {
-            lib.movies.filter { $0.poster != nil }.shuffled().prefix(6).forEach { add(.movie($0)) }
-            lib.series.filter { $0.poster != nil }.shuffled().prefix(6).forEach { add(.series($0)) }
+            HomeIndex.sample(lib.movies, 6, where: { $0.poster != nil }).forEach { add(.movie($0)) }
+            HomeIndex.sample(lib.series, 6, where: { $0.poster != nil }).forEach { add(.series($0)) }
         }
         return Array(out.prefix(30))
-    }
-
-    /// Eigen Top 10 als er (nog) geen trending-gegevens zijn: hoogste score, dan nieuwste, met poster.
-    private func localTop<T>(_ items: [T], rating: KeyPath<T, Double?>, added: KeyPath<T, Date?>?, poster: KeyPath<T, URL?>) -> [T] {
-        let withPoster = items.filter { $0[keyPath: poster] != nil }
-        let pool = withPoster.isEmpty ? items : withPoster
-        let rated = pool.filter { ($0[keyPath: rating] ?? 0) > 0 }
-        if rated.count >= 10 {
-            return Array(rated.sorted { ($0[keyPath: rating] ?? 0) > ($1[keyPath: rating] ?? 0) }.prefix(10))
-        }
-        if let added {
-            let recent = pool.filter { $0[keyPath: added] != nil }.sorted { $0[keyPath: added]! > $1[keyPath: added]! }
-            if recent.count >= 10 { return Array(recent.prefix(10)) }
-        }
-        return Array(pool.prefix(10))
     }
 
 }
@@ -765,6 +824,42 @@ private struct CollectionsKey: Equatable {
     let version: Int
     let source: UUID?
     let collections: [BingrCollection]
+}
+
+/// Trakt-voortgang opnieuw koppelen als de index of de Trakt-lijst verandert.
+private struct TraktMatchKey: Equatable {
+    let version: Int
+    let playback: [TraktSync.PlaybackItem]
+}
+
+/// Elke id één keer (de eerste blijft). Dubbele id's (bijv. dezelfde stream twee keer in een M3U-lijst) in een
+/// ForEach in een Lazy-stack geven in SwiftUI ongedefinieerd gedrag: haperen of vastlopen, vooral met de focus op Apple TV.
+func uniqueByID<T: Identifiable>(_ xs: [T]) -> [T] {
+    var seen = Set<T.ID>()
+    seen.reserveCapacity(xs.count)
+    return xs.filter { seen.insert($0.id).inserted }
+}
+
+/// Eén HomeIndex per lijstversie, op de achtergrond gebouwd en gedeeld door Home, Films en Series
+/// (voorheen bouwde elk tabblad hem bij elke terugkeer opnieuw).
+@MainActor
+final class HomeIndexCache {
+    static let shared = HomeIndexCache()
+    private var version = -1
+    private var current: HomeIndex?
+    private var building: Task<HomeIndex, Never>?
+
+    func index(for lib: Library, version v: Int) async -> HomeIndex {
+        if v == version, let current { return current }
+        if v == version, let building { return await building.value }
+        version = v
+        current = nil
+        let t = Task.detached(priority: .userInitiated) { HomeIndex.build(lib) }
+        building = t
+        let x = await t.value
+        if version == v { current = x; building = nil }
+        return x
+    }
 }
 
 #if !os(tvOS)
@@ -833,9 +928,17 @@ struct HomeIndex {
     /// Rij "Films"/"Series" op het startscherm: best beoordeeld, anders nieuwst
     var popularMovies: [Movie] = []
     var popularSeries: [Series] = []
+    /// Voor "Voor jou" en de Top 10-aanvulling (voorheen per keer op de hoofdthread door de hele lijst)
+    var seriesByTitle: [String: Series] = [:]
+    var movieGroupItems: [String: [Movie]] = [:]
+    var seriesGroupItems: [String: [Series]] = [:]
+    var localTopMovies: [Movie] = []
+    var localTopSeries: [Series] = []
 
     static func build(_ lib: Library) -> HomeIndex {
         var x = HomeIndex()
+        // zelfde id meer dan eens (dezelfde stream twee keer in de lijst): één keer per rij, anders loopt SwiftUI vast
+        let movies = uniqueByID(lib.movies), series = uniqueByID(lib.series)
         var mOrder: [String] = [], mGroups: [String: [Movie]] = [:]
         for m in lib.movies {
             if mGroups[m.group] == nil { mOrder.append(m.group) }
@@ -843,22 +946,65 @@ struct HomeIndex {
             x.movieByID[m.id] = m
             if let i = m.imdbID, !i.isEmpty { x.movieByIMDb[i] = m }
         }
+        for g in mOrder { mGroups[g] = uniqueByID(mGroups[g] ?? []) }
         x.movieGroups = mOrder.map { Group(id: $0, items: mGroups[$0] ?? []) }
+        x.movieGroupItems = mGroups
         var sOrder: [String] = [], sGroups: [String: [Series]] = [:]
         for s in lib.series {
             if sGroups[s.group] == nil { sOrder.append(s.group) }
             sGroups[s.group, default: []].append(s)
             x.seriesByID[s.id] = s
             x.seriesTitles.insert(s.title)
+            if x.seriesByTitle[s.title] == nil { x.seriesByTitle[s.title] = s }
         }
+        for g in sOrder { sGroups[g] = uniqueByID(sGroups[g] ?? []) }
         x.seriesGroups = sOrder.map { Group(id: $0, items: sGroups[$0] ?? []) }
+        x.seriesGroupItems = sGroups
         for c in lib.channels { x.channelByID[c.id] = c }
-        x.recent = lib.movies.filter { $0.addedAt != nil }.sorted { ($0.addedAt ?? .distantPast) > ($1.addedAt ?? .distantPast) }
-        x.popularMovies = Array(lib.movies.filter { $0.poster != nil }
+        x.recent = movies.filter { $0.addedAt != nil }.sorted { ($0.addedAt ?? .distantPast) > ($1.addedAt ?? .distantPast) }
+        x.popularMovies = Array(movies.filter { $0.poster != nil }
             .sorted { ($0.rating ?? 0, $0.addedAt ?? .distantPast) > ($1.rating ?? 0, $1.addedAt ?? .distantPast) }.prefix(60))
-        x.popularSeries = Array(lib.series.filter { $0.poster != nil }.sorted { ($0.rating ?? 0) > ($1.rating ?? 0) }.prefix(60))
+        x.popularSeries = Array(series.filter { $0.poster != nil }.sorted { ($0.rating ?? 0) > ($1.rating ?? 0) }.prefix(60))
+        x.localTopMovies = localTop(movies, rating: \.rating, added: \.addedAt, poster: \.poster)
+        x.localTopSeries = localTop(series, rating: \.rating, added: nil, poster: \.poster)
         return x
     }
+
+    /// Eigen Top 10 als er (nog) geen trending-gegevens zijn: hoogste score, dan nieuwste, met poster.
+    static func localTop<T>(_ items: [T], rating: KeyPath<T, Double?>, added: KeyPath<T, Date?>?, poster: KeyPath<T, URL?>) -> [T] {
+        let withPoster = items.filter { $0[keyPath: poster] != nil }
+        let pool = withPoster.isEmpty ? items : withPoster
+        let rated = pool.filter { ($0[keyPath: rating] ?? 0) > 0 }
+        if rated.count >= 10 {
+            return Array(rated.sorted { ($0[keyPath: rating] ?? 0) > ($1[keyPath: rating] ?? 0) }.prefix(10))
+        }
+        if let added {
+            let recent = pool.filter { $0[keyPath: added] != nil }.sorted { $0[keyPath: added]! > $1[keyPath: added]! }
+            if recent.count >= 10 { return Array(recent.prefix(10)) }
+        }
+        return Array(pool.prefix(10))
+    }
+
+    /// `n` willekeurige elementen (zonder herhaling) die aan `ok` voldoen, zonder de hele lijst te filteren en te
+    /// schudden; alleen als de steekproef te weinig oplevert, de hele lijst.
+    static func sample<T>(_ xs: [T], _ n: Int, where ok: (T) -> Bool = { _ in true }) -> [T] {
+        guard n > 0, !xs.isEmpty else { return [] }
+        if xs.count > n * 4 {
+            var out: [T] = [], picked = Set<Int>()
+            var tries = 0
+            while out.count < n && tries < n * 20 {
+                tries += 1
+                let i = Int.random(in: 0..<xs.count)
+                if picked.insert(i).inserted && ok(xs[i]) { out.append(xs[i]) }
+            }
+            if out.count == n { return out }
+        }
+        return Array(xs.filter(ok).shuffled().prefix(n))
+    }
+
+    /// Willekeurig item met poster (steekproef; alleen bij weinig posters de hele lijst).
+    static func randomWithPoster(_ xs: [Movie]) -> Movie? { sample(xs, 1, where: { $0.poster != nil }).first }
+    static func randomWithPoster(_ xs: [Series]) -> Series? { sample(xs, 1, where: { $0.poster != nil }).first }
 
     private func itemID(_ key: String, _ playlist: UUID) -> Substring? {
         let p = playlist.uuidString

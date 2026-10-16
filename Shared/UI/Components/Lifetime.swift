@@ -31,10 +31,20 @@ enum PlanText {
         return n == 1 ? L("1 server") : L("%d servers", n)
     }
 
-    /// "2 screens · 8 devices · 1 server"
+    /// "1 screen" / "3 screens" (gelijktijdige kijkers)
+    static func screens(_ n: Int) -> String {
+        n == 1 ? L("1 screen") : L("%d screens", n)
+    }
+
+    /// "Your plan allows 1 screen at a time." / "… %d screens at the same time."
+    static func planAllows(_ n: Int) -> String {
+        n == 1 ? L("Your plan allows 1 screen at a time.") : L("Your plan allows %d screens at the same time.", n)
+    }
+
+    /// "1 screen · 8 devices · 1 server"
     static func limits(_ l: EntitlementsService.Limits) -> String {
         var parts: [String] = []
-        if let s = l.streams { parts.append(L("%d screens", s)) }
+        if let s = l.streams { parts.append(screens(s)) }
         if let d = l.devices { parts.append(L("%d devices", d)) }
         parts.append(servers(l.servers))
         return parts.joined(separator: " · ")
@@ -267,7 +277,7 @@ struct LifetimeExplanation: View {
             return ent.isFree ? L("Your Bingr account uses the Free plan. Lifetime unlocks every feature of Bingr for your account.")
                               : L("Your Bingr account has Lifetime. All features are unlocked. Thank you for supporting Bingr!")
         case .streams:
-            return L("Your plan allows %d screens at the same time.", ent.limits.streams ?? 0)
+            return PlanText.planAllows(ent.limits.streams ?? 0)
         case .devices:
             return L("Your plan allows %d devices.", ent.limits.devices ?? 0)
         }
@@ -418,7 +428,7 @@ struct PlanLimitNote: View {
     private var text: String {
         switch topic {
         case .streams:
-            return L("Lifetime allows %d screens at the same time.", EntitlementsService.lifetimeLimits.streams ?? 6)
+            return L("Lifetime allows %d screens at the same time.", EntitlementsService.lifetimeLimits.streams ?? 3)
         case .devices:
             return L("Lifetime allows %d devices.", EntitlementsService.lifetimeLimits.devices ?? 15)
         default:

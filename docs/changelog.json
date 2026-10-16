@@ -1,5 +1,73 @@
 [
  {
+  "build": 105,
+  "version": "1.0.0",
+  "date": "2026-10-16",
+  "items": [
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "De app loopt niet meer vast als je teruggaat naar Home of Live TV, Films of Series opent: de overzichten worden op de achtergrond voorbereid en niet bij elke terugkeer opnieuw opgebouwd",
+    "en": "The app no longer freezes when you go back to Home or open Live TV, Movies or Series: the overviews are prepared in the background instead of being rebuilt every time you return"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "Dubbele zenders of titels in een lijst laten de app niet meer haperen; ze staan er nog maar één keer in",
+    "en": "Duplicate channels or titles in a list no longer make the app stutter; they now appear only once"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web",
+     "server"
+    ],
+    "nl": "Nieuwe kijklimieten: met Gratis kijk je op 1 scherm tegelijk, met Lifetime op 3 schermen tegelijk",
+    "en": "New viewing limits: with Free you watch on 1 screen at a time, with Lifetime on 3 screens at a time"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web"
+    ],
+    "nl": "Start een stream niet omdat alle verbindingen van je IPTV-abonnement in gebruik zijn, dan zegt Bingr dat nu duidelijk: het is een limiet van je provider, niet van Bingr",
+    "en": "If a stream doesn't start because all connections of your IPTV subscription are in use, Bingr now tells you clearly: it's a limit of your provider, not of Bingr"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "web"
+    ],
+    "nl": "De apps zijn voorlopig niet te downloaden (Coming Soon); kijken kan meteen in je browser. De knop 'Kijk in je browser' is uit de bovenbalk van bingr.online en support.bingr.online gehaald",
+    "en": "The apps can't be downloaded for now (Coming Soon); you can watch right away in your browser. The 'Watch in your browser' button was removed from the top bar of bingr.online and support.bingr.online"
+   }
+  ]
+ },
+ {
   "build": 104,
   "version": "1.0.0",
   "date": "2026-10-15",

@@ -1,7 +1,9 @@
 // Bingr-abonnementen: Gratis en Lifetime (docs/ACCOUNT.md, "Abonnementen"). Pure logica zonder database, zodat
 // device-auth (limieten, functies, upgrade-link) en de unittests (plans_test.ts) precies hetzelfde rekenen.
-//   free     -> 2 streams, 8 apparaten, 1 server, geen statistieken / nu aan het kijken / Trakt / meerdere servers / thema's
-//   lifetime -> 6 streams, 15 apparaten, onbeperkt servers, alles aan
+//   free     -> 1 stream (gelijktijdige kijker), 8 apparaten, 1 server, geen statistieken / nu aan het kijken / Trakt / meerdere servers / thema's
+//   lifetime -> 3 streams, 15 apparaten, onbeperkt servers, alles aan
+// De streamlimiet is Bingr's eigen telling (account_streams), los van de limiet van de IPTV-provider
+// (Xtream max_connections); die controleren de apps apart bij het afspelen.
 // Per account kan het beheer max_streams / max_devices verhogen (null = standaard van het abonnement).
 
 export type Plan = "free" | "lifetime";
@@ -18,8 +20,8 @@ export type Entitlements = {
 };
 
 export const PLAN_DEFAULTS: Record<Plan, Limits> = {
-  free: { streams: 2, devices: 8, servers: 1 },
-  lifetime: { streams: 6, devices: 15, servers: null },
+  free: { streams: 1, devices: 8, servers: 1 },
+  lifetime: { streams: 3, devices: 15, servers: null },
 };
 export const UPGRADE_URL = "https://bingr.online/upgrade/";
 export const PRICE_NL = "€ 4,99";

@@ -33,6 +33,10 @@ struct CategoryView: View {
     @EnvironmentObject var store: CloudStore
     @AppStorage("category.sort") private var sortRaw = Sort.standard.rawValue
     @State private var detail: DetailTarget?
+    /// P0-fix: gesorteerde titels één keer per sortering, op de achtergrond. Voorheen sorteerde `body` bij elke
+    /// verversing (bijv. elke binnenkomende IMDb-score) duizenden titels op de hoofdthread.
+    @State private var sorted: [DetailTarget] = []
+    @State private var sortedFor: Sort?
 
     private var sort: Sort { Sort(rawValue: sortRaw) ?? .standard }
 
@@ -58,6 +62,7 @@ struct CategoryView: View {
         }
         .background(Theme.bg.ignoresSafeArea())
         .preferredColorScheme(.dark)
+        .task(id: sortRaw) { await resort() }
         #if !os(tvOS)
         .sheet(item: $detail) { DetailView(target: $0).presentationDragIndicator(.visible) }
         #else
@@ -137,15 +142,17 @@ struct CategoryView: View {
 
     // MARK: gegevens
 
-    private var sorted: [DetailTarget] {
+    private func resort() async {
+        let s = sort
+        guard s != sortedFor else { return }
         let items = target.items
-        switch sort {
-        case .standard: return items
-        case .az: return items.sorted { title($0).localizedStandardCompare(title($1)) == .orderedAscending }
-        case .za: return items.sorted { title($0).localizedStandardCompare(title($1)) == .orderedDescending }
-        case .newest: return items.sorted { (added($0) ?? .distantPast) > (added($1) ?? .distantPast) }
-        case .rating: return items.sorted { (rating($0) ?? -1) > (rating($1) ?? -1) }
-        }
+        // scores komen uit de metadata (hoofdthread); alleen opzoeken, het sorteren gebeurt op de achtergrond
+        var ratings: [String: Double] = [:]
+        if s == .rating { for t in items where ratings[t.id] == nil { ratings[t.id] = rating(t) ?? -1 } }
+        let out = await Task.detached(priority: .userInitiated) { CategorySorter.sort(items, s, ratings: ratings) }.value
+        guard !Task.isCancelled else { return }
+        sorted = out
+        sortedFor = s
     }
 
     /// Titel zonder taallabel ("Animal (IT)" → "Animal"); de taal staat op de poster (build 59)
@@ -164,12 +171,6 @@ struct CategoryView: View {
         case .series(let s): return s.poster ?? meta.cached(s)?.poster
         }
     }
-    private func added(_ t: DetailTarget) -> Date? {
-        switch t {
-        case .movie(let m): return m.addedAt
-        case .series: return nil
-        }
-    }
     private func rating(_ t: DetailTarget) -> Double? {
         let imdb: String?
         switch t {
@@ -181,5 +182,37 @@ struct CategoryView: View {
     private func watched(_ t: DetailTarget) -> Bool {
         if case .movie(let m) = t { return Playables.isWatched(movie: m, imdb: trakt.imdb(for: m)) }
         return false
+    }
+}
+
+/// Sorteren van een categorie buiten de hoofdthread; elke titel één keer (dubbele id's laten het raster vastlopen).
+private enum CategorySorter {
+    static func sort(_ items: [DetailTarget], _ s: CategoryView.Sort, ratings: [String: Double]) -> [DetailTarget] {
+        let unique = uniqueByID(items)
+        switch s {
+        case .standard: return unique
+        case .az, .za:
+            // titel zonder taallabel één keer per titel, niet per vergelijking
+            let keyed = unique.map { (t: $0, title: title($0)) }
+            let asc = s == .az
+            return keyed.sorted {
+                let r = $0.title.localizedStandardCompare($1.title)
+                return asc ? r == .orderedAscending : r == .orderedDescending
+            }.map { $0.t }
+        case .newest: return unique.sorted { (added($0) ?? .distantPast) > (added($1) ?? .distantPast) }
+        case .rating: return unique.sorted { (ratings[$0.id] ?? -1) > (ratings[$1.id] ?? -1) }
+        }
+    }
+
+    private static func title(_ t: DetailTarget) -> String {
+        switch t {
+        case .movie(let m): return ContentLanguage.displayTitle(m.title)
+        case .series(let s): return ContentLanguage.displayTitle(s.title)
+        }
+    }
+
+    private static func added(_ t: DetailTarget) -> Date? {
+        if case .movie(let m) = t { return m.addedAt }
+        return nil
     }
 }

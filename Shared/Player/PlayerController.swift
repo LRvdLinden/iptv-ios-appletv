@@ -88,6 +88,9 @@ final class PlayerController: ObservableObject {
     /// Afspelen lukt niet (ook niet na één stille nieuwe poging). `true` = afgehandeld (bijv. overgeschakeld
     /// naar een andere bron); anders verschijnt de foutmelding met Opnieuw / Andere bron / Andere speler.
     var onGiveUp: (@MainActor () -> Bool)?
+    /// Limiet van de IPTV-provider controleren als het afspelen mislukt: geeft een melding als alle verbindingen van
+    /// de provider (Xtream) in gebruik zijn, anders nil. Staat los van de streamlimiet van Bingr.
+    var providerLimitCheck: (@MainActor () async -> String?)?
 
     static var choice: EngineChoice {
         EngineChoice(rawValue: UserDefaults.standard.string(forKey: "player.engine") ?? "") ?? .auto
@@ -407,9 +410,17 @@ final class PlayerController: ObservableObject {
             reloadPending = true; reconnecting = true
             return
         }
-        errorText = L("This stream can't be played right now.")
+        let generic = L("This stream can't be played right now.")
+        errorText = generic
         isBuffering = false
         engine.pause()
+        // provider vol (alle verbindingen in gebruik)? Dan die melding in plaats van de algemene fout
+        if !url.isFileURL, let check = providerLimitCheck {
+            Task { @MainActor [weak self] in
+                guard let m = await check(), let self, !self.stopped, self.url == url, self.errorText == generic else { return }
+                self.errorText = m
+            }
+        }
     }
 
     func togglePlay() { engine.isPlaying ? pause() : resume() }

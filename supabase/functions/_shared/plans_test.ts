@@ -1,6 +1,6 @@
 // deno test supabase/functions/_shared/plans_test.ts
 import {
-  DEFAULT_UPGRADE_LINK, entitlements, featuresFor, limitsFor, normalizePlan, normalizePlatform, normalizeUpgradeLink,
+  DEFAULT_UPGRADE_LINK, entitlements, PLAN_DEFAULTS, featuresFor, limitsFor, normalizePlan, normalizePlatform, normalizeUpgradeLink,
   override, platformFromDevice, upgradeLinkFor,
 } from "./plans.ts";
 function eq(a: unknown, b: unknown, msg = "") {
@@ -12,16 +12,22 @@ Deno.test("abonnement: geen rij of onbekend = gratis", () => {
   eq(normalizePlan(undefined), "free");
   eq(normalizePlan("pro"), "free");
   eq(normalizePlan("lifetime"), "lifetime");
-  eq(limitsFor(null), { streams: 2, devices: 8, servers: 1 });
-  eq(limitsFor({ plan: "free" }), { streams: 2, devices: 8, servers: 1 });
+  eq(limitsFor(null), { streams: 1, devices: 8, servers: 1 });
+  eq(limitsFor({ plan: "free" }), { streams: 1, devices: 8, servers: 1 });
 });
 
 Deno.test("abonnement: lifetime-standaard en eigen limieten", () => {
-  eq(limitsFor({ plan: "lifetime" }), { streams: 6, devices: 15, servers: null });
+  eq(limitsFor({ plan: "lifetime" }), { streams: 3, devices: 15, servers: null });
   eq(limitsFor({ plan: "lifetime", max_streams: 10, max_devices: 25 }), { streams: 10, devices: 25, servers: null });
   eq(limitsFor({ plan: "free", max_streams: 4, max_devices: null }), { streams: 4, devices: 8, servers: 1 }, "gratis met meer streams");
-  eq(limitsFor({ plan: "lifetime", max_streams: 0, max_devices: -3 }), { streams: 6, devices: 15, servers: null }, "ongeldig = standaard");
+  eq(limitsFor({ plan: "lifetime", max_streams: 0, max_devices: -3 }), { streams: 3, devices: 15, servers: null }, "ongeldig = standaard");
   eq(limitsFor({ plan: "lifetime", max_streams: "8" }), { streams: 8, devices: 15, servers: null }, "getal als tekst");
+});
+
+Deno.test("standaard: gratis 1 en lifetime 3 gelijktijdige kijkers", () => {
+  eq(PLAN_DEFAULTS.free.streams, 1);
+  eq(PLAN_DEFAULTS.lifetime.streams, 3);
+  eq(limitsFor({ plan: "lifetime", max_streams: null }).streams, 3, "geen eigen limiet = standaard");
 });
 
 Deno.test("eigen limiet: alleen hele getallen binnen de grens", () => {
@@ -72,13 +78,13 @@ Deno.test("upgrade-link per platform", () => {
 
 Deno.test("entitlements: volledig antwoord", () => {
   eq(entitlements(null, DEFAULT_UPGRADE_LINK, "web"), {
-    plan: "free", limits: { streams: 2, devices: 8, servers: 1 },
+    plan: "free", limits: { streams: 1, devices: 8, servers: 1 },
     features: { stats: false, now_watching: false, trakt: false, multi_server: false, themes: false },
     upgrade: { url: "https://bingr.online/upgrade/", link: true, price: "€ 4,99", price_en: "€4.99" },
   });
   const e = entitlements({ plan: "lifetime", max_devices: 20 }, DEFAULT_UPGRADE_LINK, "ios");
   eq(e.plan, "lifetime");
-  eq(e.limits, { streams: 6, devices: 20, servers: null });
+  eq(e.limits, { streams: 3, devices: 20, servers: null });
   eq(e.features.trakt, true);
   eq(e.upgrade.link, false, "Apple standaard zonder link");
 });

@@ -25,7 +25,11 @@ struct XtreamClient {
     // MARK: DTO's
 
     struct AuthResponse: Decodable {
-        struct UserInfo: Decodable { let auth: Flex?; let status: String?; let exp_date: Flex?; let max_connections: Flex? }
+        struct UserInfo: Decodable {
+            let auth: Flex?; let status: String?; let exp_date: Flex?; let max_connections: Flex?
+            /// Lopende verbindingen volgens de provider (loopt vaak achter)
+            let active_cons: Flex?
+        }
         let user_info: UserInfo?
     }
     // Lijsten en velden worden tolerant gelezen: servers sturen tekst soms als getal (of andersom), lege
@@ -227,6 +231,19 @@ struct XtreamClient {
         guard let u = api() else { throw HTTPError.badURL }
         let r = try await HTTP.json(AuthResponse.self, u)
         guard r.user_info?.auth?.int == 1 else { throw XtreamError.auth }
+        if let c = ProviderConnections(r.user_info) { await ProviderLimit.store(c, server: server, username: username) }
+    }
+
+    /// Verbindingslimiet van de provider (user_info.max_connections / active_cons), of nil als de server die niet
+    /// meestuurt. Korte time-out: wordt alleen gebruikt om de juiste foutmelding te kiezen.
+    func connections() async -> ProviderConnections? {
+        guard let u = api() else { return nil }
+        var req = URLRequest(url: u); req.timeoutInterval = 6
+        guard let res = try? await HTTP.data(req), (200..<300).contains(res.1.statusCode),
+              let r = try? JSONDecoder.lenient.decode(AuthResponse.self, from: res.0),
+              let c = ProviderConnections(r.user_info) else { return nil }
+        await ProviderLimit.store(c, server: server, username: username)
+        return c
     }
 
     func library(playlistID: UUID) async throws -> Library {
@@ -361,6 +378,63 @@ struct XtreamClient {
         let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd:HH-mm"; f.timeZone = .current
         let minutes = Int(program.end.timeIntervalSince(program.start) / 60)
         return URL(string: "\(server)/timeshift/\(username)/\(password)/\(minutes)/\(f.string(from: program.start))/\(sid).ts")
+    }
+}
+
+/// Limiet van de IPTV-provider (Xtream). Staat los van de streamlimiet van Bingr (eigen telling op de server,
+/// docs/ACCOUNT.md): die wordt hier nooit uit afgeleid. Alleen om bij een mislukte stream te kunnen zeggen dat de
+/// provider vol zit, in plaats van een algemene fout. Niet vooraf blokkeren: `active` loopt bij providers achter.
+struct ProviderConnections: Equatable {
+    /// max_connections; 0 = onbekend of onbeperkt
+    let max: Int
+    /// active_cons
+    let active: Int
+
+    init?(_ u: XtreamClient.AuthResponse.UserInfo?) {
+        guard let u, let m = u.max_connections?.int else { return nil }
+        max = m; active = u.active_cons?.int ?? 0
+    }
+
+    /// Alle verbindingen van de provider in gebruik
+    var atLimit: Bool { max > 0 && active >= max }
+
+    /// Melding als het afspelen mislukt en de provider vol zit
+    var message: String {
+        max == 1
+            ? L("Your IPTV subscription allows 1 connection at a time and it is in use. This is a limit of your provider, not of Bingr.")
+            : L("Your IPTV subscription allows up to %d connections at the same time and they are all in use. This is a limit of your provider, not of Bingr.", max)
+    }
+}
+
+/// Laatst bekende providerlimiet per server + gebruikersnaam (geheugen, niet bewaard).
+@MainActor
+enum ProviderLimit {
+    private static var cache: [String: (ProviderConnections, Date)] = [:]
+
+    static func store(_ c: ProviderConnections, server: String, username: String) {
+        cache[server + "|" + username] = (c, Date())
+    }
+
+    static func cached(server: String, username: String) -> ProviderConnections? {
+        cache[server + "|" + username]?.0
+    }
+
+    /// Vóór het afspelen: de limiet van de provider alvast (op de achtergrond) ophalen, alleen voor Xtream.
+    static func prime(_ source: PlaylistSource?) {
+        guard let s = source, s.kind == .xtream else { return }
+        let x = XtreamClient(source: s, password: Keychain.get(s.passwordKey) ?? "")
+        if let t = cache[x.server + "|" + x.username]?.1, Date().timeIntervalSince(t) < 60 { return }
+        Task { _ = await x.connections() }
+    }
+
+    /// Na een mislukte stream: de providerlimiet opnieuw controleren. Geeft de melding als alle verbindingen van de
+    /// provider in gebruik zijn, anders nil (dan blijft de gewone foutmelding staan). M3U e.d.: altijd nil.
+    static func failureMessage(_ source: PlaylistSource?) async -> String? {
+        guard let s = source, s.kind == .xtream else { return nil }
+        let x = XtreamClient(source: s, password: Keychain.get(s.passwordKey) ?? "")
+        let c = await x.connections() ?? cached(server: x.server, username: x.username)
+        guard let c, c.atLimit else { return nil }
+        return c.message
     }
 }
 
