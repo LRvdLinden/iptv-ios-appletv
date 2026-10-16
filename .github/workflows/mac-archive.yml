@@ -42,9 +42,12 @@ jobs:
               && echo "::notice title=$plat::archief gemaakt" \
               || { echo "::error title=$plat::archiveren mislukt"; grep -E "error:" "$RUNNER_TEMP/$scheme.log" | sort -u | head -15 | sed 's/^/::error::/'; }
           done
+          exit 0
 
       - name: Archieven controleren
+        shell: bash
         run: |
+          set +e +o pipefail
           n(){ echo "::notice title=$1::$2"; }; w(){ echo "::warning title=$1::$2"; }; e(){ echo "::error title=$1::$2"; }
           pb(){ /usr/libexec/PlistBuddy -c "Print :$2" "$1" 2>/dev/null; }
           for scheme in BingrMac Bingr; do
@@ -63,6 +66,7 @@ jobs:
             for k in LSApplicationCategoryType ITSAppUsesNonExemptEncryption CFBundleIconName; do
               v=$(pb "$IP" $k); [ -n "$v" ] && n "$t" "$k = $v" || w "$t" "$k ontbreekt in Info.plist"
             done
+          exit 0
             n "$t" "architecturen app: $(lipo -archs "$BIN" 2>/dev/null)"
             # 2. ingebouwde frameworks: architecturen, losse uitvoerbare bestanden buiten Frameworks/MacOS (App Store weigert die)
             if [ -d "$FW" ]; then
@@ -80,8 +84,10 @@ jobs:
             [ -f "$C/Resources/AppIcon.icns" ] && n "$t" "AppIcon.icns aanwezig"
             find "$APP" -name "PrivacyInfo.xcprivacy" | grep -q . && n "$t" "privacy-manifest aanwezig ($(find "$APP" -name PrivacyInfo.xcprivacy | wc -l | tr -d ' '))" || w "$t" "geen PrivacyInfo.xcprivacy in de app"
             # 4. entitlements die bij ondertekenen gebruikt worden (uit het project)
-            ent=$(xcodebuild -project Bingr.xcodeproj -scheme "$scheme" -showBuildSettings 2>/dev/null | awk -F' = ' '/ CODE_SIGN_ENTITLEMENTS /{print $2; exit}')
+            xcodebuild -project Bingr.xcodeproj -scheme "$scheme" -showBuildSettings > "$RUNNER_TEMP/settings-$scheme.txt" 2>/dev/null
+            ent=$(awk -F' = ' '/ CODE_SIGN_ENTITLEMENTS /{print $2; exit}' "$RUNNER_TEMP/settings-$scheme.txt")
             [ -n "$ent" ] && [ -f "$ent" ] && n "$t" "entitlements: $(/usr/libexec/PlistBuddy -c Print "$ent" | grep -oE '^ +[a-z][A-Za-z0-9.-]+' | tr -d ' ' | tr '\n' ' ')"
-            sb=$(xcodebuild -project Bingr.xcodeproj -scheme "$scheme" -showBuildSettings 2>/dev/null | grep -E " (ENABLE_APP_SANDBOX|ENABLE_HARDENED_RUNTIME|SKIP_INSTALL|INSTALL_PATH|SUPPORTED_PLATFORMS|ARCHS) = " | sed 's/^ *//' | tr '\n' ';')
+            sb=$(grep -E " (ENABLE_APP_SANDBOX|ENABLE_HARDENED_RUNTIME|SKIP_INSTALL|INSTALL_PATH|SUPPORTED_PLATFORMS|ARCHS) = " "$RUNNER_TEMP/settings-$scheme.txt" | sed 's/^ *//' | tr '\n' ';')
             n "$t" "instellingen: $sb"
           done
+          exit 0

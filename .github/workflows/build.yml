@@ -3,7 +3,7 @@ name: Build
 on:
   push:
     branches: [main]
-    paths-ignore: ['docs/**', '**/*.md', '.github/workflows/covers.yml', 'tools/fetch_covers.py', 'tools/make_screenshots.py', 'tools/sync_website.py']
+    paths-ignore: ['docs/**', '**/*.md', '.github/workflows/covers.yml', 'tools/fetch_covers.py', 'tools/make_screenshots.py', 'tools/sync_website.py', '.github/workflows/mac-archive.yml']
   workflow_dispatch:
 
 permissions:
