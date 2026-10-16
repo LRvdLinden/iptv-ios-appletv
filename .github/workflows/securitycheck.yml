@@ -1,0 +1,110 @@
+name: Securitycheck
+
+# Handmatige, ALLEEN-LEZENDE securitycontrole van bingr.online, support.bingr.online en beheer.bingr.online plus de
+# database-rechten. Het log is OPENBAAR: alleen statuscodes, namen van tabellen/functies/policies en aantallen, nooit
+# inhoud van bestanden, rijen of sleutels.
+# Secrets: SUPABASE_ACCESS_TOKEN, SUPABASE_PROJECT_REF, SUPABASE_URL, SUPABASE_ANON_KEY (de publieke sleutel).
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Security-headers
+        shell: bash
+        run: |
+          set +e
+          for u in https://bingr.online/ https://bingr.online/web/ https://support.bingr.online/ https://beheer.bingr.online/; do
+            h=$(curl -s -D - -o /dev/null -m 20 "$u" | tr -d '\r' | tr 'A-Z' 'a-z')
+            miss=""
+            for k in strict-transport-security content-security-policy x-content-type-options referrer-policy permissions-policy; do
+              echo "$h" | grep -q "^$k:" || miss="$miss $k"
+            done
+            echo "$h" | grep -qE "^x-frame-options:|frame-ancestors" || miss="$miss frame-ancestors/x-frame-options"
+            srv=$(echo "$h" | grep -E "^(server|x-powered-by):" | tr '\n' ' ')
+            echo "::notice title=headers $u::ontbreekt:${miss:- niets}; ${srv:+serververmelding: $srv}"
+          done
+          for d in bingr.online support.bingr.online beheer.bingr.online; do
+            c=$(curl -s -o /dev/null -m 15 -w '%{http_code} -> %{redirect_url}' "http://$d/")
+            echo "::notice title=http $d::$c"
+          done
+
+      - name: Bestanden die niet openbaar horen te zijn
+        shell: bash
+        run: |
+          set +e
+          P=".git/HEAD .git/config .env .env.local README.md CLAUDE.md .github/workflows/deploy.yml tools/ supabase/ docs/ package.json composer.json .DS_Store .htaccess backup.zip site.zip phpinfo.php info.php server-status error_log robots.txt sitemap.xml"
+          for d in https://bingr.online https://support.bingr.online https://beheer.bingr.online; do
+            hit=""
+            for p in $P web/js/app.js.map assets/js/site.js.map builds/ builds/manifest.json builds/key.php builds/private.pem dl.php; do
+              c=$(curl -s -o /tmp/b -m 15 -w '%{http_code}' "$d/$p")
+              # 200 met een HTML-foutpagina telt niet als lek; alleen echte bestanden
+              if [ "$c" = 200 ] && ! head -c 400 /tmp/b | grep -qi "<!doctype html\|<html"; then hit="$hit $p"; fi
+            done
+            echo "::notice title=bereikbaar op $d::${hit:- niets gevoeligs bereikbaar}"
+          done
+
+  database:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+    steps:
+      - name: RLS, grants en functies
+        shell: bash
+        run: |
+          set +e
+          note() { printf '::notice title=%s::%s\n' "$1" "$(tr '\n' ' ' | head -c 3800)"; }
+          q() {
+            python3 -c 'import json,sys; print(json.dumps({"query": sys.argv[1]}))' "$1" > /tmp/q.json
+            curl -s -X POST "https://api.supabase.com/v1/projects/$REF/database/query" \
+              -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" --data @/tmp/q.json
+          }
+          q "select c.relname from pg_class c join pg_namespace n on n.oid=c.relnamespace
+             where n.nspname='public' and c.relkind in ('r','p') and not c.relrowsecurity order by 1" | note "tabellen zonder RLS"
+          q "select tablename, policyname, roles::text, cmd, left(coalesce(qual,''),120) as using, left(coalesce(with_check,''),80) as check
+             from pg_policies where schemaname in ('public','storage') order by 1,2" | note "policies"
+          q "select table_name, string_agg(distinct grantee||':'||privilege_type, ',') as rechten
+             from information_schema.role_table_grants where table_schema='public' and grantee in ('anon','authenticated')
+             group by 1 order by 1" | note "grants anon/authenticated"
+          q "select p.proname, p.prosecdef as definer,
+                    coalesce(array_to_string(p.proconfig, ','), '') as config,
+                    has_function_privilege('anon', p.oid, 'execute') as anon,
+                    has_function_privilege('authenticated', p.oid, 'execute') as auth
+             from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+             where n.nspname='public' and (has_function_privilege('anon', p.oid, 'execute') or has_function_privilege('authenticated', p.oid, 'execute'))
+             order by 1" | note "functies uitvoerbaar door anon/authenticated"
+          q "select p.proname from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+             where n.nspname='public' and p.prosecdef and not exists (select 1 from unnest(coalesce(p.proconfig,'{}')) c where c like 'search_path=%') order by 1" \
+             | note "security definer zonder vaste search_path"
+          q "select c.relname, coalesce(array_to_string(c.reloptions, ','), '') as opties from pg_class c join pg_namespace n on n.oid=c.relnamespace
+             where n.nspname='public' and c.relkind='v' order by 1" | note "views"
+          q "select id, public, file_size_limit, coalesce(array_to_string(allowed_mime_types, ','), '') as mime from storage.buckets order by 1" | note "storage-buckets"
+
+      - name: Wat de publieke sleutel kan lezen (PostgREST)
+        shell: bash
+        env:
+          URL: ${{ secrets.SUPABASE_URL }}
+          KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          set +e
+          [ -n "$URL" ] && [ -n "$KEY" ] || { echo "::warning::SUPABASE_URL of SUPABASE_ANON_KEY ontbreekt"; exit 0; }
+          python3 -c 'import json,sys; print(json.dumps({"query": "select c.relname from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='"'"'public'"'"' and c.relkind in ('"'"'r'"'"','"'"'v'"'"','"'"'p'"'"') order by 1"}))' > /tmp/q.json
+          tabs=$(curl -s -X POST "https://api.supabase.com/v1/projects/${{ secrets.SUPABASE_PROJECT_REF }}/database/query" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ACCESS_TOKEN }}" -H "Content-Type: application/json" --data @/tmp/q.json \
+            | python3 -c 'import json,sys; print(" ".join(r["relname"] for r in json.load(sys.stdin)))')
+          open=""; closed=0
+          for t in $tabs; do
+            code=$(curl -s -o /tmp/r.json -m 15 -w '%{http_code}' "$URL/rest/v1/$t?select=*&limit=1" -H "apikey: $KEY" -H "Authorization: Bearer $KEY")
+            n=$(python3 -c 'import json; d=json.load(open("/tmp/r.json")); print(len(d) if isinstance(d,list) else -1)' 2>/dev/null || echo -1)
+            if [ "$code" = 200 ] && [ "$n" -gt 0 ]; then open="$open $t"; else closed=$((closed+1)); fi
+          done
+          rm -f /tmp/r.json
+          echo "::notice title=anon kan rijen lezen uit::${open:- geen enkele tabel} (dicht of leeg voor anon: $closed)"
