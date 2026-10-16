@@ -247,8 +247,8 @@ struct HomeLayout: Codable, Hashable {
         case "continue": return L("Continue watching")
         case "mylist": return L("My List")
         case "recent": return L("Recently added")
-        case "upcoming": return L("Coming soon")
-        case "streaming": return L("New on streaming")
+        case "upcoming": return L("Coming soon to Bingr")   // build 112: was "Binnenkort"
+        case "streaming": return L("New on Bingr")          // build 112: was "Nieuw op streamingdiensten"
         case "foryou": return L("For you")
         case "top10": return L("Top 10")
         case "live": return L("Favorite channels")

@@ -121,8 +121,8 @@ struct DetailView: View {
                             ProgressView().tint(.white).frame(maxWidth: .infinity)
                         }
                         if !(d?.genres.isEmpty ?? true) || d?.director != nil { creditsBlock }
-                        // build 111: titel uit TMDB (Binnenkort / Nieuw op streamingdiensten): niet in je afspeellijst,
-                        // datum en de verplichte bronvermelding
+                        // build 111: titel uit TMDB (Binnenkort op Bingr / Nieuw op Bingr): niet in je afspeellijst en
+                        // de datum (build 112: bronvermelding staat in Instellingen → Over)
                         if let note = DiscoverStore.detailNote(for: target.id) {
                             Text(note).font(.system(size: tvScaled(12))).foregroundStyle(Theme.secondary)
                                 .fixedSize(horizontal: false, vertical: true)

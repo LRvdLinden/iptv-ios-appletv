@@ -1,5 +1,39 @@
 [
  {
+  "build": 112,
+  "version": "1.0.0",
+  "date": "2026-10-16",
+  "items": [
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web"
+    ],
+    "nl": "Home: Binnenkort heet nu Binnenkort op Bingr, met de releasedatum als rood label linksboven op de poster. Nieuw op streamingdiensten heet nu Nieuw op Bingr en toont alleen titels die je meteen kunt afspelen. De bronvermelding van TMDB en JustWatch staat nu onder Instellingen → Over",
+    "en": "Home: Coming soon is now Coming soon to Bingr, with the release date as a red label in the top-left corner of the poster. New on streaming is now New on Bingr and only shows titles you can play right away. The TMDB and JustWatch credits are now under Settings → About"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "tizen"
+    ],
+    "nl": "De intromuziek speelt nu altijd bij het opstarten; de instelling om hem uit te zetten is vervallen",
+    "en": "The intro music now always plays at startup; the setting to turn it off has been removed"
+   }
+  ]
+ },
+ {
   "build": 111,
   "version": "1.0.0",
   "date": "2026-10-16",

@@ -37,7 +37,7 @@ struct HomeView: View {
     @State private var preparedAt = Date.distantPast
     @State private var traktMatchedKey: TraktMatchKey?
     @State private var collectionsDone: CollectionsKey?
-    /// Build 111: rijen Binnenkort / Nieuw op streamingdiensten (TMDB, gekoppeld aan je bibliotheek op de achtergrond)
+    /// Build 111: rijen Binnenkort op Bingr / Nieuw op Bingr (TMDB, gekoppeld aan je bibliotheek op de achtergrond)
     @State private var discover: [DiscoverKind: [DiscoverEntry]] = [:]
     /// Build 111: telt op als TMDB-titels uit Mijn lijst (van een ander apparaat) opgezocht zijn
     @State private var discoverKnownTick = 0
@@ -479,7 +479,7 @@ struct HomeView: View {
         return store.activeProfile?.effectiveAgeLimit == nil
     }
 
-    // MARK: build 111: Binnenkort / Nieuw op streamingdiensten (TMDB)
+    // MARK: build 111: Binnenkort op Bingr / Nieuw op Bingr (TMDB; namen sinds build 112)
 
     /// Rijen die in de Home-indeling aan staan (alleen die worden opgehaald)
     private var discoverKinds: [DiscoverKind] {
@@ -498,7 +498,9 @@ struct HomeView: View {
                             titleButton(m)
                         } else {
                             Button { detail = e.item.target } label: {
-                                PosterCard(title: e.item.title, poster: e.item.poster, badge: e.item.dateLabel)
+                                // build 112: datum als rood label linksboven (zoals SERIE/FILM)
+                                PosterCard(title: e.item.title, poster: e.item.poster, badge: e.item.dateLabel,
+                                           badgeAlignment: .topLeading)
                             }
                             .cardButton()
                             .contextMenu {
@@ -511,11 +513,7 @@ struct HomeView: View {
                         }
                     }
                 }
-                // verplichte bronvermelding (TMDB; watch providers via JustWatch), klein onder de rij
-                Text(kind.attribution)
-                    .font(.system(size: tvScaled(11)))
-                    .foregroundStyle(Theme.secondary)
-                    .padding(.horizontal, Theme.edge)
+                // build 112: geen bronvermelding meer onder de rij (staat in Instellingen → Over)
             }
         }
     }
@@ -567,14 +565,15 @@ struct HomeView: View {
         var out: [DiscoverKind: [DiscoverEntry]] = [:]
         for k in kinds {
             let cached = await Task.detached(priority: .utility) { DiscoverStore.cached(k, kids: kids) }.value
-            if !cached.isEmpty { out[k] = await DiscoverStore.match(cached, matcher: matcher, index: idx, onlyLibrary: onlyLibrary) }
+            // build 112: Nieuw op Bingr alleen met titels uit je bibliotheek (k.onlyLibrary)
+            if !cached.isEmpty { out[k] = await DiscoverStore.match(cached, matcher: matcher, index: idx, onlyLibrary: onlyLibrary || k.onlyLibrary) }
         }
         guard !Task.isCancelled else { return }
         if out != discover { discover = out }
         for k in kinds {
             let items = await DiscoverStore.shared.get(k, kids: kids)
             guard !Task.isCancelled else { return }
-            out[k] = await DiscoverStore.match(items, matcher: matcher, index: idx, onlyLibrary: onlyLibrary)
+            out[k] = await DiscoverStore.match(items, matcher: matcher, index: idx, onlyLibrary: onlyLibrary || k.onlyLibrary)
         }
         guard !Task.isCancelled else { return }
         if out != discover { discover = out }

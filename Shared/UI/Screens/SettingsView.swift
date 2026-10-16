@@ -58,6 +58,11 @@ struct AppSettingsView: View {
             if isMain { adminFooterSections }
             Section(L("About")) {
                 LabeledContent(L("IMDb data"), value: Secrets.isSet(Secrets.omdbAPIKey) ? L("Active (OMDb)") : L("No OMDb key"))
+                // build 112: verplichte bronvermelding van TMDB en JustWatch (stond eerder onder de Home-rijen)
+                Text(DiscoverKind.attribution)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             if isMain { advancedSection }
         }
@@ -389,7 +394,6 @@ struct AppSettingsView: View {
                     Label(L("Categories on/off (NL, BE, DE…)"), systemImage: "line.3.horizontal.decrease.circle")
                 }
             }
-            Toggle(L("Intro sound"), isOn: Binding(get: { SplashTune.enabled }, set: { SplashTune.enabled = $0 }))
             #if !os(tvOS)
             // build 82: trailer zonder geluid in de kop van film- en seriepagina's
             Toggle(L("Play trailers automatically"), isOn: $autoplayTrailers)

@@ -183,16 +183,13 @@ private struct SeededRandom {
 
 
 /// De Bingr-intro-tune (Shared/Resources/bingr_tune.m4a, gemaakt met tools/make_tune.py).
-/// Speelt mee met andere audio. Uit te zetten in Mijn Bingr → Weergave → Intromuziek.
+/// Speelt mee met andere audio. Staat altijd aan: de instelling is vervallen, een oude
+/// waarde "splash.sound" = false (lokaal of via sync) wordt genegeerd.
 enum SplashTune {
     private static var player: AVAudioPlayer?
-    static var enabled: Bool {
-        get { UserDefaults.standard.object(forKey: "splash.sound") as? Bool ?? true }
-        set { UserDefaults.standard.set(newValue, forKey: "splash.sound") }
-    }
 
     static func play() {
-        guard enabled, let url = Bundle.main.url(forResource: "bingr_tune", withExtension: "m4a") else { return }
+        guard let url = Bundle.main.url(forResource: "bingr_tune", withExtension: "m4a") else { return }
         // .playback: ook hoorbaar met de stil-schakelaar aan (zoals de Netflix-intro); mengt met andere audio
         #if !os(macOS)
         let session = AVAudioSession.sharedInstance()

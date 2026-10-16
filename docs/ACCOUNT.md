@@ -260,7 +260,7 @@ Alles wat iemand in Bingr instelt of opbouwt, komt na het (opnieuw) installeren 
 | Section | Inhoud |
 |---|---|
 | `connections` | `trakt: {accessToken, refreshToken, expiresAt (ISO), username}` of `null`; `opensubtitles: {token, username, password?, baseURL?}` of `null` (precies wat de app nu lokaal bewaart om ingelogd te blijven). Plus `updatedAt`. |
-| `settings` | `shared`: instellingen met dezelfde betekenis op beide platforms, zoals app-taal, speler-engine (`auto`/`apple`/`exo`/`vlc`, elk platform vertaalt naar wat het heeft), ondertitelgrootte, standaard audio- en ondertiteltaal, automatisch ondertitels, OpenSubtitles-standaardtaal, startscherm, verborgen tabbladen, intromuziek, verversinterval en kinderslot-instellingen die niet per server zijn. Daarnaast `apple: {…}` en `android: {…}` met de rest. Plus `updatedAt`. |
+| `settings` | `shared`: instellingen met dezelfde betekenis op beide platforms, zoals app-taal, speler-engine (`auto`/`apple`/`exo`/`vlc`, elk platform vertaalt naar wat het heeft), ondertitelgrootte, standaard audio- en ondertiteltaal, automatisch ondertitels, OpenSubtitles-standaardtaal, startscherm, verborgen tabbladen, intromuziek (vervallen, altijd `true`), verversinterval en kinderslot-instellingen die niet per server zijn. Daarnaast `apple: {…}` en `android: {…}` met de rest. Plus `updatedAt`. |
 | `profile.<profielID>` | per profiel: `myList`, `favorites`, `progress` (`{key: {position, duration, updatedAt, …}}`), `watched` (set van sleutels), `history` (lijst met tijd), `recentChannels`, `prefs` (kijkvoorkeuren), `pin` (de pincode zoals de app hem nu bewaart, of `null`), `updatedAt`. Sleutels voor inhoud zijn op iOS en Android al gelijk (bijvoorbeeld `ep:<serieID>\|s-e`). Het precieze formaat staat bij "Build 60". |
 | `reminders` | lijst met herinneringen van alle profielen, plus `updatedAt` (formaat: zie "Herinneringen per profiel") |
 
@@ -556,7 +556,7 @@ De apps hoeven hier niets voor te veranderen. De website haalt vóór elke wijzi
 | `openSubtitlesLanguages` | lijst met taalcodes |
 | `startScreen` | `"home"`, `"live"`, `"movies"` of `"series"` |
 | `hiddenTabs` | lijst met `"live"`, `"movies"`, `"series"` |
-| `introMusic` | true/false |
+| `introMusic` | vervallen: de intromuziek staat altijd aan. Nieuwe apps lezen dit veld niet meer en schrijven altijd `true` (oudere apps lezen het nog); niet verwijderen |
 | `refreshInterval` | de raw value van het verversbeleid (gelijk op iOS en Android) |
 | `categorySort` | `"standard"` of een andere sorteerwijze |
 | `parentalControl`, `parentalAutoLockAdult` | true/false (lezen: ook een object `parentalControl: {enabled, autoLockAdult}`) |

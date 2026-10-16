@@ -1,12 +1,14 @@
 import Foundation
 
-// MARK: - Home: "Binnenkort" en "Nieuw op streamingdiensten" (TMDB) --------------------------------
+// MARK: - Home: "Binnenkort op Bingr" en "Nieuw op Bingr" (TMDB) ------------------------------------
 //
 // Twee rijen op Home met titels uit TMDB: wat binnenkort uitkomt (films in de bioscoop/regio, nieuwe series) en wat
 // net nieuw is op streamingdiensten in de regio (TMDB watch providers, gegevens van JustWatch). Nooit namen of logo's
 // van streamingdiensten: we vragen alleen "flatrate" op, zonder de aanbieders zelf te tonen.
 // Staat een titel in de eigen bibliotheek (TMDB-id van de bron, anders titel + jaar), dan opent die; anders een
-// detailpagina met Mijn lijst. De resultaten worden 12 uur bewaard; netwerk en koppelen gebeuren op de achtergrond.
+// detailpagina met Mijn lijst. Build 112: "Nieuw op Bingr" toont alleen titels uit de eigen bibliotheek (meteen
+// afspeelbaar; geen match = weg, niets = geen rij). De bronvermelding (TMDB, JustWatch) staat niet meer onder de rijen
+// maar één keer in Instellingen → Over. De resultaten worden 12 uur bewaard; netwerk en koppelen op de achtergrond.
 // Zelfde sleutels en regels op Android, Samsung TV en de webspeler.
 
 enum DiscoverKind: String, CaseIterable, Codable, Hashable, Sendable {
@@ -14,9 +16,14 @@ enum DiscoverKind: String, CaseIterable, Codable, Hashable, Sendable {
 
     /// Sleutel in de Home-indeling (HomeLayout), gelijk op alle platforms
     var homeKey: String { rawValue }
-    var title: String { self == .upcoming ? L("Coming soon") : L("New on streaming") }
-    /// Verplichte bronvermelding (TMDB-voorwaarden); watch-provider-gegevens komen van JustWatch
-    var attribution: String { self == .upcoming ? L("Data: TMDB") : L("Data: TMDB · via JustWatch") }
+    /// Getoonde naam (build 112: "Binnenkort op Bingr" / "Nieuw op Bingr"); de sleutels blijven upcoming/streaming
+    var title: String { self == .upcoming ? L("Coming soon to Bingr") : L("New on Bingr") }
+    /// Build 112: "Nieuw op Bingr" alleen met titels uit de eigen bibliotheek (meteen afspeelbaar)
+    var onlyLibrary: Bool { self == .streaming }
+    /// Build 112: bronvermelding van TMDB en JustWatch, één keer in Instellingen → Over (niet meer onder de rijen)
+    static var attribution: String {
+        L("Movie and series data: TMDB. This app uses the TMDB API but is not endorsed or certified by TMDB. Availability data: JustWatch.")
+    }
 }
 
 /// Eén titel uit TMDB (niet per se in je bibliotheek).
@@ -58,10 +65,13 @@ struct DiscoverItem: Codable, Hashable, Identifiable, Sendable {
     static func day(_ d: Date) -> String { dayFormat.string(from: d) }
     var releaseDate: Date? { date.flatMap { Self.dayFormat.date(from: String($0.prefix(10))) } }
 
-    /// Korte datum op de poster ("14 nov."), alleen bij Binnenkort
+    /// Korte datum op de poster ("17 okt", "Oct 17"; in de app-taal), alleen bij Binnenkort op Bingr. Build 112: als
+    /// rood label linksboven (PosterLabel, zoals SERIE/FILM), zonder punt achter de afgekorte maand.
     var dateLabel: String? {
         guard kind == .upcoming, let d = releaseDate else { return nil }
-        return d.formatted(.dateTime.day().month(.abbreviated))
+        var s = d.formatted(.dateTime.day().month(.abbreviated).locale(Localizer.shared.locale))
+        if s.hasSuffix(".") { s.removeLast() }
+        return s
     }
 
     /// Detailpagina voor een titel die niet in je bibliotheek staat (zoals de aanbevelingen in DetailView)
@@ -315,14 +325,14 @@ actor DiscoverStore {
         return !found.isEmpty
     }
 
-    /// Regel onder de beschrijving op de detailpagina van een TMDB-titel: niet in je afspeellijst, de datum en de
-    /// bronvermelding. nil voor titels uit je bibliotheek.
+    /// Regel onder de beschrijving op de detailpagina van een TMDB-titel: niet in je afspeellijst en de datum (build 112:
+    /// zonder bronvermelding; die staat in Instellingen → Over). nil voor titels uit je bibliotheek.
     nonisolated static func detailNote(for id: String) -> String? {
         guard DiscoverItem.isExternal(id) else { return nil }
-        let item = DiscoverKnown.shared.item(id)
-        var lines = [L("Not in your playlists")]
-        if let d = item?.releaseDate { lines[0] += " · " + L("Release date: %@", d.formatted(date: .long, time: .omitted)) }
-        lines.append(item?.kind == .streaming ? DiscoverKind.streaming.attribution : DiscoverKind.upcoming.attribution)
-        return lines.joined(separator: "\n")
+        var note = L("Not in your playlists")
+        if let d = DiscoverKnown.shared.item(id)?.releaseDate {
+            note += " · " + L("Release date: %@", d.formatted(date: .long, time: .omitted))
+        }
+        return note
     }
 }

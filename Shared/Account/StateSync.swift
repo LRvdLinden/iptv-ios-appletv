@@ -557,7 +557,7 @@ final class StateSync {
         if !(d.object(forKey: "ui.showMovies") as? Bool ?? true) { hidden.append("movies") }
         if !(d.object(forKey: "ui.showSeries") as? Bool ?? true) { hidden.append("series") }
         shared["hiddenTabs"] = hidden
-        shared["introMusic"] = d.object(forKey: "splash.sound") as? Bool ?? true
+        shared["introMusic"] = true   // instelling vervallen: altijd aan (oudere apps lezen dit veld nog)
         shared["refreshInterval"] = RefreshPolicy.current.rawValue
         shared["parentalControl"] = store.parental.enabled
         shared["parentalAutoLockAdult"] = store.parental.autoLockAdult
@@ -660,7 +660,7 @@ final class StateSync {
             setIfChanged(!v.contains("movies"), "ui.showMovies")
             setIfChanged(!v.contains("series"), "ui.showSeries")
         }
-        if let v = shared["introMusic"] as? Bool { setIfChanged(v, "splash.sound") }
+        // introMusic: niet meer lezen (intromuziek staat altijd aan)
         if let v = shared["refreshInterval"] as? String, RefreshPolicy(rawValue: v) != nil { setIfChanged(v, "playlist.refresh") }
         if let p = shared["parentalControl"] as? [String: Any] {
             store.setSyncedParental(enabled: p["enabled"] as? Bool ?? store.parental.enabled,

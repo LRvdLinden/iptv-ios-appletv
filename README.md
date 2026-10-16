@@ -83,7 +83,7 @@ Wat er nieuw is per build: [CHANGELOG.md](CHANGELOG.md) · [bingr.online/changel
 - **Gezien per profiel, ook zonder Trakt**: Bingr houdt zelf bij wat elk profiel (hoofdaccount én subprofielen) heeft gezien — vinkjes op films en afleveringen en "X GEZIEN" op series, ook als de afleveringen pas later laden
 - **Kijkgeschiedenis per profiel**, per dag, met verwijderen en wissen
 - **Mijn Bingr** zoals "Mijn Netflix": je profiel bovenaan (tik om te wisselen), met Verder kijken en Mijn lijst; op iPhone je profielfoto als tabbladicoon
-- **Weergave**: startscherm kiezen, tabbladen verbergen, intromuziek aan/uit; alle keuzes als dropdown
+- **Weergave**: startscherm kiezen, tabbladen verbergen; alle keuzes als dropdown
 - **Speler op Apple TV**: klik = bediening, ←/→ = 10 s spoelen, ↑/↓ = zappen; in de bediening navigeer je vrij naar pauze, spoelen, audio & ondertitels en opties (blijft zichtbaar zolang je rondkijkt)
 - **Apple TV-bediening** zonder grijze vlakken: geselecteerde posters worden groter, knoppen wit (zoals Netflix)
 
@@ -98,7 +98,7 @@ Wat er nieuw is per build: [CHANGELOG.md](CHANGELOG.md) · [bingr.online/changel
 - Werkt zonder sleutels met de info van je Xtream-server; IMDb, Trakt en TMDB vullen aan
 
 **Netflix-ervaring**
-- Geanimeerde splash met een eigen **Bingr-intro-tune** (`tools/make_tune.py`, uit te zetten), profielkeuze met ronde avatars (op Apple TV vergroot de geselecteerde), billboard, rijen
+- Geanimeerde splash met een eigen **Bingr-intro-tune** (`tools/make_tune.py`, altijd aan), profielkeuze met ronde avatars (op Apple TV vergroot de geselecteerde), billboard, rijen
 - **Top 10 zoals Netflix** (grote omlijnde cijfers; trending vandaag via TMDB en Trakt, gekoppeld aan jouw lijst, anders je best beoordeelde titels) onder Voor jou: series en films op Home, films bij Films, series bij Series
 - **Verder kijken** met voortgangsbalk en resterende tijd; aantikken geeft de keuze **Hervatten (vanaf 23:14)** of **Opnieuw bekijken** (verwijderbaar, zonder live tv), **Voor jou** (vergelijkbaar met wat je keek)
 - **Mijn lijst** (hartje op de detailpagina): films én series op Home en in Mijn Bingr, per profiel; bij het hoofdaccount loopt de Trakt-watchlist mee. Favoriete zenders staan ook in Mijn Bingr

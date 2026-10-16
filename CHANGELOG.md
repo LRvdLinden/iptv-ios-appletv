@@ -4,6 +4,21 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 112
+_16 oktober 2026_
+
+### Alle apps en de website
+
+**Verbeterd**
+
+- Home: Binnenkort heet nu Binnenkort op Bingr, met de releasedatum als rood label linksboven op de poster. Nieuw op streamingdiensten heet nu Nieuw op Bingr en toont alleen titels die je meteen kunt afspelen. De bronvermelding van TMDB en JustWatch staat nu onder Instellingen → Over
+
+### iOS, iPadOS, tvOS, macOS en Samsung TV (Tizen)
+
+**Verbeterd**
+
+- De intromuziek speelt nu altijd bij het opstarten; de instelling om hem uit te zetten is vervallen
+
 ## Versie 1.0.0 · Build 111
 _16 oktober 2026_
 
