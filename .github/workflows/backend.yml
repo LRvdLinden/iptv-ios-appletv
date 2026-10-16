@@ -896,8 +896,11 @@ jobs:
               if not tok: raise SystemExit(f"inloggen testaccount mislukt (HTTP {code})")
               print(f"::add-mask::{tok}")
               code, r = req("PUT", f"{BASE}/auth/v1/user", {"data": {"first_name": " Anna ", "last_name": "Bingr"}}, {"apikey": PUB, "Authorization": f"Bearer {tok}"})
+              # het antwoord van PUT toont de invoer van vóór de trigger; de opgeschoonde naam staat daarna in de database
+              if code != 200: fail.append(f"naam wijzigen: HTTP {code}")
+              code, r = req("GET", f"{BASE}/auth/v1/admin/users/{uid}", None, adm)
               m = (r or {}).get("user_metadata") or {}
-              if code != 200 or m.get("first_name") != "Anna" or m.get("last_name") != "Bingr": fail.append(f"naam wijzigen: HTTP {code} {m}")
+              if m.get("first_name") != "Anna" or m.get("last_name") != "Bingr": fail.append(f"naam wijzigen niet opgeschoond: {m}")
               code, r = req("PUT", f"{BASE}/auth/v1/user", {"data": {"first_name": "<b>x</b>"}}, {"apikey": PUB, "Authorization": f"Bearer {tok}"})
               if code < 400: fail.append(f"naam met HTML niet geweigerd (HTTP {code})")
               code, r = sql(f"select first_name from public.bingr_first_names(array['{email.upper()}'])")
