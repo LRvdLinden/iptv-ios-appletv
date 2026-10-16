@@ -521,6 +521,8 @@ final class PlaylistService: ObservableObject {
         var title: String
         var subtitle: String
         var artwork: URL?
+        /// zender (Live TV): in de zoekresultaten altijd na films en series
+        var isLive = false
     }
 
     nonisolated static func normTitle(_ t: String) -> String { fold(t).filter { $0.isLetter || $0.isNumber } }
@@ -546,7 +548,7 @@ final class PlaylistService: ObservableObject {
                 guard let raw = Self.readCache(p) else { continue }
                 let lib = ageCtx[p.id].map { Self.apply(raw, $0) } ?? raw
                 for c in lib.channels where Self.fold(c.name).contains(t) {
-                    hits.append(OtherHit(playlist: p, itemID: c.id, title: c.name, subtitle: liveLabel, artwork: c.logo))
+                    hits.append(OtherHit(playlist: p, itemID: c.id, title: c.name, subtitle: liveLabel, artwork: c.logo, isLive: true))
                     if hits.count > 80 { break }
                 }
                 for mv in lib.movies where Self.fold(mv.title).contains(t) {
@@ -556,7 +558,9 @@ final class PlaylistService: ObservableObject {
                     hits.append(OtherHit(playlist: p, itemID: se.id, title: se.title, subtitle: se.year.map(String.init) ?? "", artwork: se.poster))
                 }
             }
-            return Array(hits.prefix(120))
+            // Live TV altijd als laatste; verder de volgorde houden (stabiel)
+            let kept = hits.prefix(120)
+            return kept.filter { !$0.isLive } + kept.filter { $0.isLive }
         }.value
         return r
     }

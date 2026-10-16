@@ -1,5 +1,42 @@
 [
  {
+  "build": 114,
+  "version": "1.0.0",
+  "date": "2026-10-16",
+  "items": [
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web"
+    ],
+    "nl": "Mijn lijst en favoriete zenders: een plus om toe te voegen en een vinkje als de titel of zender er al in staat (was een hartje of ster), met een korte animatie die rekening houdt met 'beweging verminderen'",
+    "en": "My List and favourite channels: a plus to add and a checkmark when the title or channel is already in it (was a heart or star), with a short animation that respects Reduce Motion"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web"
+    ],
+    "nl": "Zoeken: Live TV-resultaten (zenders en de tv-gids) staan nu altijd onderaan, na films en series",
+    "en": "Search: Live TV results (channels and the TV guide) now always appear last, after movies and series"
+   }
+  ]
+ },
+ {
   "build": 113,
   "version": "1.0.0",
   "date": "2026-10-16",

@@ -64,7 +64,7 @@ struct HomeLayoutView: View {
     private func icon(_ key: String) -> String {
         switch key {
         case "continue": return "play.circle"
-        case "mylist": return "heart"
+        case "mylist": return "plus"   // Mijn lijst = plus (was een hartje), zoals de knop op de detailpagina
         case "recent": return "sparkles"
         case "upcoming": return "calendar"
         case "streaming": return "play.tv"

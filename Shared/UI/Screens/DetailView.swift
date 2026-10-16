@@ -371,8 +371,7 @@ struct DetailView: View {
         VStack(spacing: tvScaled(12)) {
             playButton
             HStack(spacing: tvScaled(12)) {
-                circleButton(inMyList ? "heart.fill" : "heart") { toggleMyList() }
-                    .accessibilityLabel(inMyList ? L("Remove from My List") : L("Add to My List"))   // build 97
+                myListButton
                 if !DiscoverItem.isExternal(target.id) {   // build 111: TMDB-titels niet in collecties
                     circleButton(inAnyCollection ? "rectangle.stack.fill.badge.plus" : "rectangle.stack.badge.plus") {
                         collecting = .detail(target)
@@ -500,10 +499,26 @@ struct DetailView: View {
     }
     #endif
 
+    /// Mijn lijst: plus als de titel er niet in staat, vinkje (accentkleur) als hij er wel in staat, met een korte
+    /// animatie van plus naar vinkje (en terug) en een lichte tik op iPhone/iPad. Was tot nu toe een hartje.
+    private var myListButton: some View {
+        Button { toggleMyList() } label: {
+            PlusCheckGlyph(inList: inMyList, size: tvScaled(19))
+                .foregroundStyle(inMyList ? Theme.red : .white)
+                .frame(width: tvScaled(50), height: tvScaled(50))
+                .background(Color.white.opacity(0.12), in: Circle())
+                .overlay(Circle().stroke(.white.opacity(0.12)))
+                .contentShape(Circle())
+        }
+        .plainTVButton()
+        .accessibilityLabel(inMyList ? L("In My List") : L("Add to My List"))
+        .accessibilityAddTraits(inMyList ? .isSelected : [])
+    }
+
     private func circleButton(_ icon: String, _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: icon).font(.system(size: tvScaled(19), weight: .semibold))
-                .foregroundStyle(icon.hasPrefix("heart.fill") ? Theme.red : .white)
+                .foregroundStyle(.white)
                 .frame(width: tvScaled(50), height: tvScaled(50))
                 .background(Color.white.opacity(0.12), in: Circle())
                 .overlay(Circle().stroke(.white.opacity(0.12)))
@@ -1092,6 +1107,7 @@ struct DetailView: View {
         guard let pid else { return }
         let on = !inMyList
         store.setMyList(pid, target.id, on)
+        PlusCheckFeedback.toggled()
         if let imdb, store.isMainActive { Task { await trakt.setWatchlist(imdb: imdb, isShow: target.isSeries, on) } }
         flash(on ? L("Added to My List") : L("Removed from My List"))
     }

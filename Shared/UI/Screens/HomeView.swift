@@ -505,8 +505,9 @@ struct HomeView: View {
                             .cardButton()
                             .contextMenu {
                                 if let pid {
-                                    Button { store.toggleMyList(pid, e.item.id) } label: {
-                                        Label(store.inMyList(pid, e.item.id) ? L("Remove from My List") : L("Add to My List"), systemImage: "plus")
+                                    Button { store.toggleMyList(pid, e.item.id); PlusCheckFeedback.toggled() } label: {
+                                        Label(store.inMyList(pid, e.item.id) ? L("Remove from My List") : L("Add to My List"),
+                                              systemImage: PlusCheckGlyph.symbol(store.inMyList(pid, e.item.id)))
                                     }
                                 }
                             }
@@ -539,8 +540,9 @@ struct HomeView: View {
             .cardButton()
             .contextMenu {
                 if let pid {
-                    Button { store.toggleMyList(pid, s.id) } label: {
-                        Label(store.inMyList(pid, s.id) ? L("Remove from My List") : L("Add to My List"), systemImage: "plus")
+                    Button { store.toggleMyList(pid, s.id); PlusCheckFeedback.toggled() } label: {
+                        Label(store.inMyList(pid, s.id) ? L("Remove from My List") : L("Add to My List"),
+                              systemImage: PlusCheckGlyph.symbol(store.inMyList(pid, s.id)))
                     }
                 }
                 Button { collecting = .series(s) } label: {
@@ -719,8 +721,9 @@ struct HomeView: View {
                 .cardButton()
                 .contextMenu {
                     if let pid {
-                        Button { store.toggleMyList(pid, s.id) } label: {
-                            Label(store.inMyList(pid, s.id) ? L("Remove from My List") : L("Add to My List"), systemImage: "plus")
+                        Button { store.toggleMyList(pid, s.id); PlusCheckFeedback.toggled() } label: {
+                            Label(store.inMyList(pid, s.id) ? L("Remove from My List") : L("Add to My List"),
+                                  systemImage: PlusCheckGlyph.symbol(store.inMyList(pid, s.id)))
                         }
                     }
                     Button { collecting = .series(s) } label: {
@@ -759,8 +762,9 @@ struct HomeView: View {
             Task { await trakt.setWatched(Playables.movie(m, imdb: imdb), !watched) }
         } label: { Label(watched ? L("Mark as unwatched") : L("Mark as watched"), systemImage: watched ? "eye.slash" : "checkmark.circle") }
         if let pid {
-            Button { store.toggleMyList(pid, m.id) } label: {
-                Label(store.inMyList(pid, m.id) ? L("Remove from My List") : L("Add to My List"), systemImage: "plus")
+            Button { store.toggleMyList(pid, m.id); PlusCheckFeedback.toggled() } label: {
+                Label(store.inMyList(pid, m.id) ? L("Remove from My List") : L("Add to My List"),
+                      systemImage: PlusCheckGlyph.symbol(store.inMyList(pid, m.id)))
             }
         }
         Button { collecting = .movie(m) } label: {

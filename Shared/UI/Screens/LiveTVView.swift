@@ -347,8 +347,9 @@ struct LiveTVView: View {
     }
 
     @ViewBuilder private func channelMenu(_ c: Channel, list: [Channel]) -> some View {
-        Button { store.toggleFavorite(pid, c.id) } label: {
-            Label(store.isFavorite(pid, c.id) ? L("Remove from favorites") : L("Add to favorites"), systemImage: "star")
+        Button { store.toggleFavorite(pid, c.id); PlusCheckFeedback.toggled() } label: {
+            Label(store.isFavorite(pid, c.id) ? L("Remove from favorites") : L("Add to favorites"),
+                  systemImage: PlusCheckGlyph.symbol(store.isFavorite(pid, c.id)))   // plus / vinkje (was een ster)
         }
         Button { guideFor = c } label: {
             Label(c.catchupDays > 0 ? L("Guide & catch-up") : L("Guide"), systemImage: "list.bullet.rectangle")

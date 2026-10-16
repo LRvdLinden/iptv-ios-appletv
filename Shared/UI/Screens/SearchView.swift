@@ -47,22 +47,14 @@ struct SearchView: View {
                         Text(L("Nothing found for “%@”.", query)).foregroundStyle(Theme.secondary)
                             .frame(maxWidth: .infinity).padding(.top, 80)
                     }
-                    if !results.channels.isEmpty {
-                        MediaRow(title: L("Channels")) {
-                            ForEach(results.channels) { c in
-                                Button { app.play(Playables.channel(c, now: playlists.library.nowPlaying(c)), zap: results.channels) } label: {
-                                    ChannelCard(channel: c, now: playlists.library.nowPlaying(c))
-                                        .sourceAccent(currentSource)
-                                }.cardButton()
-                            }
-                        }
-                    }
                     if !people.isEmpty { peopleRow }
                     if !groupHits.isEmpty { categoryList }
-                    if !programs.isEmpty { programList }
                     if !results.movies.isEmpty { grid(L("Movies"), results.movies.map { .movie($0) }) }
                     if !results.series.isEmpty { grid(L("Series"), results.series.map { .series($0) }) }
                     if !results.other.isEmpty && CloudStore.shared.isMainActive { otherPlaylists }
+                    // Live TV (zenders en tv-gids) altijd als laatste, na films en series; de tvOS-focus volgt deze volgorde
+                    if !results.channels.isEmpty { channelRow }
+                    if !programs.isEmpty { programList }
                 }
                 .padding(.vertical)
             }
@@ -98,6 +90,18 @@ struct SearchView: View {
         #else
         .fullScreenCover(item: $detail) { DetailView(target: $0) }
         #endif
+    }
+
+    /// Zenders (Live TV): staan onderaan, na films en series.
+    private var channelRow: some View {
+        MediaRow(title: L("Channels")) {
+            ForEach(results.channels) { c in
+                Button { app.play(Playables.channel(c, now: playlists.library.nowPlaying(c)), zap: results.channels) } label: {
+                    ChannelCard(channel: c, now: playlists.library.nowPlaying(c))
+                        .sourceAccent(currentSource)
+                }.cardButton()
+            }
+        }
     }
 
     // MARK: personen (TMDB)

@@ -373,8 +373,9 @@ struct BrowseCategoryView: View {
             Button { detail = t } label: { Label(L("More info"), systemImage: "info.circle") }
         }
         if let pid {
-            Button { store.toggleMyList(pid, t.id) } label: {
-                Label(store.inMyList(pid, t.id) ? L("Remove from My List") : L("Add to My List"), systemImage: "plus")
+            Button { store.toggleMyList(pid, t.id); PlusCheckFeedback.toggled() } label: {
+                Label(store.inMyList(pid, t.id) ? L("Remove from My List") : L("Add to My List"),
+                      systemImage: PlusCheckGlyph.symbol(store.inMyList(pid, t.id)))
             }
         }
         Button { collecting = .detail(t) } label: {
