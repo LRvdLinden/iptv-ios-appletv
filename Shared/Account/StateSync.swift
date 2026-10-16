@@ -9,7 +9,7 @@ import CryptoKit
 /// - `connections`: Trakt-tokens en de OpenSubtitles-sessie (geheel: nieuwste `updatedAt` wint).
 /// - `settings`: `shared` (zelfde betekenis op iOS en Android), `apple` (de rest); `android` blijft onaangeroerd.
 /// - `profile.<id>`: Mijn lijst, favorieten, voortgang, bekeken, geschiedenis, recente zenders, kijkvoorkeuren, pincode.
-/// - `reminders`: herinneringen.
+/// - `reminders`: herinneringen (van alle profielen; per herinnering `profileID`, zie docs/ACCOUNT.md).
 /// - `collections`: eigen collecties (build 51), sinds build 54 per profiel (`profiles.<profielID>.items`); per item
 ///   wint de nieuwste `updatedAt`; in `profile.<id>` ook `homeLayout`.
 ///
@@ -706,7 +706,9 @@ final class StateSync {
         else if let a = remote?.data as? [Any] { data = ["reminders": a] }
         else { data = [:] }
         let sectionAt = Self.time(data["updatedAt"]) ?? Self.time(remote?.updatedAt) ?? 0
-        let raw = (data["reminders"] ?? data["items"] ?? data["list"]) as? [Any] ?? []
+        // `items` eerst: Android en Tizen schrijven `items`; Android-apps tot nu toe laten daarbij een oudere `reminders`
+        // (van iOS) staan. iOS schrijft `reminders` en haalt `items` weg, dus staan ze er allebei, dan is `items` het nieuwst.
+        let raw = (data["items"] ?? data["reminders"] ?? data["list"]) as? [Any] ?? []
         var serverItems: [String: ProgramReminder] = [:]
         var serverPresent: [String: Double] = [:]
         var serverRemoved: [String: Double] = Self.timeMap(data["removed"])
@@ -743,9 +745,7 @@ final class StateSync {
         meta.reminders = m
 
         let items: [[String: Any]] = list.map { r in
-            var j = ["id": r.id, "playlistID": r.playlistID.uuidString, "channelID": r.channelID,
-                     "channelName": r.channelName, "title": r.title,
-                     "start": Self.iso(r.start.timeIntervalSince1970)] as [String: Any]
+            var j = Self.reminderJSON(r, id: r.id)
             j["at"] = Self.iso(present[r.id] ?? 0)
             return j
         }
@@ -753,8 +753,9 @@ final class StateSync {
             serverItems.filter { serverPresent[$0.key] != nil && $0.value.start > cutoff }
                 .sorted { $0.value.start != $1.value.start ? $0.value.start < $1.value.start : $0.key < $1.key }
                 .map { id, r -> [String: Any] in
-                    ["id": id, "playlistID": r.playlistID.uuidString, "channelID": r.channelID, "channelName": r.channelName,
-                     "title": r.title, "start": Self.iso(r.start.timeIntervalSince1970), "at": Self.iso(serverPresent[id] ?? 0)]
+                    var j = Self.reminderJSON(r, id: id)
+                    j["at"] = Self.iso(serverPresent[id] ?? 0)
+                    return j
                 },
             removed: Self.pruned(serverRemoved), extras: data, at: sectionAt)
         let payload = remindersPayload(items, removed: m.removed["reminders"] ?? [:], extras: data,
@@ -778,9 +779,21 @@ final class StateSync {
         guard let pl = string(j["playlistID"]).flatMap(UUID.init(uuidString:)),
               let channel = string(j["channelID"]),
               let start = time(j["start"]) else { return nil }
+        // profiel: het veld `profileID`, anders uit de ID ("p:<profiel>:…"), anders het hoofdprofiel (nil)
+        let profile = string(j["profileID"]).flatMap(UUID.init(uuidString:)) ?? ProgramReminder.profile(fromID: id)
         return ProgramReminder(id: id, playlistID: pl, channelID: channel,
                                channelName: j["channelName"] as? String ?? "", title: j["title"] as? String ?? "",
-                               start: Date(timeIntervalSince1970: start))
+                               start: Date(timeIntervalSince1970: start), profileID: profile)
+    }
+
+    /// Eén herinnering voor de server (zonder `at`). `profileID` in kleine letters, alleen bij een ander profiel dan het
+    /// hoofdprofiel (zie docs/ACCOUNT.md → "Herinneringen per profiel").
+    private static func reminderJSON(_ r: ProgramReminder, id: String) -> [String: Any] {
+        var j: [String: Any] = ["id": id, "playlistID": r.playlistID.uuidString, "channelID": r.channelID,
+                                "channelName": r.channelName, "title": r.title,
+                                "start": iso(r.start.timeIntervalSince1970)]
+        if let p = r.profileID { j["profileID"] = p.uuidString.lowercased() }
+        return j
     }
 
     // MARK: - collections (build 51, per profiel sinds build 54)

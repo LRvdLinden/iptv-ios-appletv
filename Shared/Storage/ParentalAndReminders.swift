@@ -256,6 +256,8 @@ struct PINPad: View {
 }
 
 /// Herinneringen voor programma's: melding op iPhone/iPad, banner in de app op Apple TV.
+/// Per profiel: elk profiel zet, ziet en verwijdert alleen zijn eigen herinneringen (`CloudStore.reminderID`), maar
+/// meldingen en de banner komen voor de herinneringen van álle profielen, met de profielnaam erbij.
 @MainActor
 final class ReminderCenter: ObservableObject {
     static let shared = ReminderCenter()
@@ -278,11 +280,29 @@ final class ReminderCenter: ObservableObject {
         }
     }
 
+    /// Herinnering voor het actieve profiel (elk profiel heeft zijn eigen herinneringen, ook een kinderprofiel).
     func add(channel: Channel, program: EPGProgram, playlist: UUID) async {
-        let r = ProgramReminder(id: "\(channel.id)-\(Int(program.start.timeIntervalSince1970))", playlistID: playlist,
-                                channelID: channel.id, channelName: channel.name, title: program.title, start: program.start)
-        CloudStore.shared.addReminder(r)
+        let store = CloudStore.shared
+        let owner = store.activeProfileID ?? store.mainProfileID
+        let r = ProgramReminder(id: store.reminderID(channelID: channel.id, start: program.start), playlistID: playlist,
+                                channelID: channel.id, channelName: channel.name, title: program.title, start: program.start,
+                                profileID: owner == store.mainProfileID ? nil : owner)
+        store.addReminder(r)
         await scheduleNotification(r)
+    }
+
+    /// Titel van de melding/banner: met de profielnaam als het account meer profielen heeft ("Voor Emma: Journaal").
+    func displayTitle(_ r: ProgramReminder) -> String {
+        guard let name = CloudStore.shared.reminderProfileName(r) else { return r.title }
+        return L("For %@: %@", name, r.title)
+    }
+
+    /// Mag de "Kijk"-knop van de banner deze zender openen? Eigen herinnering altijd (de bibliotheek is al gefilterd);
+    /// die van een ander profiel niet als het actieve profiel een leeftijdsgrens heeft.
+    func canWatch(_ r: ProgramReminder) -> Bool {
+        let store = CloudStore.shared
+        if store.belongsToActive(r.owner) { return true }
+        return store.activeProfile?.effectiveAgeLimit == nil
     }
 
     /// Melding 2 minuten voor de start (iPhone, iPad, Mac). Ook voor herinneringen uit de Bingr-account.
@@ -298,10 +318,13 @@ final class ReminderCenter: ObservableObject {
         }
         guard granted, r.start > Date() else { return }
         let content = UNMutableNotificationContent()
-        content.title = r.title
+        // ook voor herinneringen van een ander profiel dan het actieve: dan met de naam van dat profiel
+        content.title = displayTitle(r)
         content.body = L("Starts in 2 minutes on %@", r.channelName)
         content.sound = .default
-        content.userInfo = ["channelID": r.channelID, "playlistID": r.playlistID.uuidString]
+        var info: [String: String] = ["channelID": r.channelID, "playlistID": r.playlistID.uuidString]
+        if let p = r.owner { info["profileID"] = p.uuidString }
+        content.userInfo = info
         let fire = max(r.start.addingTimeInterval(-120).timeIntervalSinceNow, 1)
         let req = UNNotificationRequest(identifier: r.id, content: content,
                                         trigger: UNTimeIntervalNotificationTrigger(timeInterval: fire, repeats: false))

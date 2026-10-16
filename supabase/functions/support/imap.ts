@@ -40,7 +40,7 @@ export class Imap {
   static async connect(o: { host: string; port?: number; tls?: boolean; caCerts?: string[]; timeoutMs?: number }): Promise<Imap> {
     const port = o.port ?? 993;
     const ms = o.timeoutMs ?? 20000;
-    let timer: number | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const conn = await Promise.race([
       o.tls === false ? Deno.connect({ hostname: o.host, port }) : Deno.connectTls({ hostname: o.host, port, ...(o.caCerts ? { caCerts: o.caCerts } : {}) }),
       new Promise<never>((_, rej) => { timer = setTimeout(() => rej(new ImapError(`verbinden met ${o.host}:${port} duurde te lang`, "timeout")), ms); }),
@@ -51,7 +51,7 @@ export class Imap {
   }
 
   private async timed<T>(p: Promise<T>, what: string): Promise<T> {
-    let timer: number | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       return await Promise.race([p, new Promise<never>((_, rej) => {
         timer = setTimeout(() => { this.close(); rej(new ImapError(`time-out (${what})`, "timeout")); }, this.timeoutMs);

@@ -216,6 +216,8 @@ final class CloudStore: ObservableObject {
             collections.removeAll { $0.owner == id }
             write(collections, K.collections)
         }
+        // en zijn herinneringen
+        purgeReminders(of: id)
     }
 
     /// Profielen uit de Bingr-account overnemen (importeren/samenvoegen, zie ProfileSync).
@@ -987,6 +989,34 @@ final class CloudStore: ObservableObject {
         write(reminders, K.reminders)
     }
     func hasReminder(_ id: String) -> Bool { reminders.contains { $0.id == id } }
+
+    // Herinneringen per profiel: elk profiel ziet en wijzigt alleen zijn eigen herinneringen (via de ID per profiel).
+    // `reminders` bevat die van alle profielen: meldingen komen voor elk profiel, ook als een ander profiel open staat.
+    // Oude herinneringen zonder profiel horen bij het hoofdprofiel.
+
+    /// ID van de herinnering van het actieve profiel voor dit programma.
+    func reminderID(channelID: String, start: Date) -> String {
+        ProgramReminder.makeID(channelID: channelID, start: start, profile: activeProfileID ?? mainProfileID, main: mainProfileID)
+    }
+    /// Heeft het actieve profiel een herinnering voor dit programma?
+    func hasReminder(channelID: String, start: Date) -> Bool { hasReminder(reminderID(channelID: channelID, start: start)) }
+
+    /// Naam van het profiel van deze herinnering, alleen als het account meer dan één profiel heeft (voor de melding).
+    func reminderProfileName(_ r: ProgramReminder) -> String? {
+        guard profiles.count > 1, let id = r.owner ?? mainProfileID else { return nil }
+        let name = profiles.first { $0.id == id }?.name.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return name.isEmpty ? nil : name
+    }
+
+    /// Herinneringen van een verwijderd profiel weghalen (ook de geplande meldingen); de verwijdering gaat mee naar de account.
+    private func purgeReminders(of id: UUID) {
+        let gone = reminders.filter { $0.owner == id }
+        guard !gone.isEmpty else { return }
+        reminders.removeAll { $0.owner == id }
+        write(reminders, K.reminders)
+        for r in gone { ReminderCenter.shared.cancelNotification(r.id) }
+        edited(.reminders)
+    }
 }
 
 /// Eén keer kijken: film, aflevering of zender.
@@ -1022,10 +1052,35 @@ struct ParentalSettings: Codable, Hashable {
 }
 
 struct ProgramReminder: Codable, Hashable, Identifiable {
-    var id: String               // channelID + start
+    var id: String               // channelID + start; bij een ander profiel dan het hoofdprofiel met "p:<profiel>:" ervoor
     var playlistID: UUID
     var channelID: String
     var channelName: String
     var title: String
     var start: Date
+    /// Van welk profiel (nil = hoofdprofiel, of van vóór de herinneringen per profiel)
+    var profileID: UUID? = nil
+}
+
+extension ProgramReminder {
+    /// ID per profiel (zie docs/ACCOUNT.md → "Herinneringen per profiel"): het hoofdprofiel houdt
+    /// "<zender>-<start in s>" (zoals oudere apps), een ander profiel "p:<profiel-ID in kleine letters>:<zender>-<start>".
+    /// Zo kunnen twee profielen een herinnering voor hetzelfde programma hebben, en blijft het profiel bekend
+    /// als een oudere app het veld `profileID` niet meeschrijft.
+    static func makeID(channelID: String, start: Date, profile: UUID?, main: UUID?) -> String {
+        let base = "\(channelID)-\(Int(start.timeIntervalSince1970))"
+        guard let profile, profile != main else { return base }
+        return "p:\(profile.uuidString.lowercased()):\(base)"
+    }
+
+    /// Profiel uit de ID ("p:<profiel>:…"), nil = geen profiel in de ID.
+    static func profile(fromID id: String) -> UUID? {
+        guard id.hasPrefix("p:") else { return nil }
+        let rest = id.dropFirst(2)
+        guard let colon = rest.firstIndex(of: ":") else { return nil }
+        return UUID(uuidString: String(rest[..<colon]))
+    }
+
+    /// Het profiel van deze herinnering (nil = hoofdprofiel).
+    var owner: UUID? { profileID ?? Self.profile(fromID: id) }
 }

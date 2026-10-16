@@ -1,5 +1,61 @@
 [
  {
+  "build": 106,
+  "version": "1.0.0",
+  "date": "2026-10-16",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen"
+    ],
+    "nl": "Herinneringen per profiel: elk profiel, ook een kinderprofiel, zet, ziet en verwijdert zijn eigen herinneringen. De melding komt ook als een ander profiel open staat, met de naam erbij (\"Voor Emma: …\")",
+    "en": "Reminders per profile: every profile, including kids profiles, sets, sees and removes its own reminders. The alert still comes when another profile is open, with the profile's name (\"For Emma: …\")"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Herinneringen die je op Android zet, verdwijnen niet meer na het synchroniseren met een iPhone, iPad, Mac of Apple TV",
+    "en": "Reminders set on Android no longer disappear after syncing with an iPhone, iPad, Mac or Apple TV"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "android",
+     "androidtv"
+    ],
+    "nl": "Begint een programma met een herinnering, dan verschijnt er een melding in beeld met Kijk, ook op Android TV, Google TV en Fire TV",
+    "en": "When a program with a reminder starts, a banner with Watch appears in the app, also on Android TV, Google TV and Fire TV"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Verwijder je een profiel, dan gaan ook zijn herinneringen weg",
+    "en": "Deleting a profile also removes its reminders"
+   }
+  ]
+ },
+ {
   "build": 105,
   "version": "1.0.0",
   "date": "2026-10-16",

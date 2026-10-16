@@ -403,19 +403,24 @@ struct RootView: View {
             HStack(spacing: tvScaled(14)) {
                 Image(systemName: "bell.fill").foregroundStyle(Theme.red)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(r.title).font(.system(size: tvScaled(15), weight: .bold)).lineLimit(1)
+                    // herinnering van een ander profiel: met de naam van dat profiel ("Voor Emma: …")
+                    Text(reminders.displayTitle(r)).font(.system(size: tvScaled(15), weight: .bold)).lineLimit(1)
                     Text(L("Starts now on %@", r.channelName)).font(.system(size: tvScaled(12))).foregroundStyle(Theme.secondary)
                 }
                 Spacer()
-                Button(L("Watch")) {
-                    reminders.due = nil
-                    if let c = playlists.library.channels.first(where: { $0.id == r.channelID }) {
-                        app.play(Playables.channel(c, now: playlists.library.nowPlaying(c)))
-                    } else if let p = CloudStore.shared.playlists.first(where: { $0.id == r.playlistID }) {
-                        app.open(p, thenShow: r.channelID)
+                // niet via de banner langs het leeftijdsfilter: een herinnering van een ander profiel opent
+                // de zender alleen als het actieve profiel geen leeftijdsgrens heeft
+                if reminders.canWatch(r) {
+                    Button(L("Watch")) {
+                        reminders.due = nil
+                        if let c = playlists.library.channels.first(where: { $0.id == r.channelID }) {
+                            app.play(Playables.channel(c, now: playlists.library.nowPlaying(c)))
+                        } else if let p = CloudStore.shared.playlists.first(where: { $0.id == r.playlistID }) {
+                            app.open(p, thenShow: r.channelID)
+                        }
                     }
+                    .buttonStyle(.borderedProminent)
                 }
-                .buttonStyle(.borderedProminent)
                 Button { reminders.due = nil } label: { Image(systemName: "xmark") }.plainTVButton()
             }
             .padding(tvScaled(14))

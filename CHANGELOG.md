@@ -4,6 +4,22 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 106
+_16 oktober 2026_
+
+### Alle apps
+
+**Nieuw**
+
+- Herinneringen per profiel: elk profiel, ook een kinderprofiel, zet, ziet en verwijdert zijn eigen herinneringen. De melding komt ook als een ander profiel open staat, met de naam erbij ("Voor Emma: …")
+
+### iOS, iPadOS, tvOS, macOS, Android en Android TV
+
+**Opgelost**
+
+- Herinneringen die je op Android zet, verdwijnen niet meer na het synchroniseren met een iPhone, iPad, Mac of Apple TV
+- Verwijder je een profiel, dan gaan ook zijn herinneringen weg
+
 ## Versie 1.0.0 · Build 105
 _16 oktober 2026_
 

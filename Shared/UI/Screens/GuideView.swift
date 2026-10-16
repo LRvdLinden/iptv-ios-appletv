@@ -127,7 +127,7 @@ struct GuideGridView: View {
                         .frame(width: x1 - x0 - 2, height: rowHeight - 4, alignment: .leading)
                         .background(p.isNow ? Color(hex: 0x3A1418) : Theme.elevated, in: RoundedRectangle(cornerRadius: 4))
                         .overlay(alignment: .topTrailing) {
-                            if CloudStore.shared.hasReminder("\(c.id)-\(Int(p.start.timeIntervalSince1970))") {
+                            if CloudStore.shared.hasReminder(channelID: c.id, start: p.start) {
                                 Image(systemName: "bell.fill").font(.system(size: tvScaled(9))).foregroundStyle(Theme.imdb).padding(4)
                             }
                         }
@@ -162,7 +162,8 @@ struct ProgramSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var editOffset = false
 
-    private var reminderID: String { "\(channel.id)-\(Int(program.start.timeIntervalSince1970))" }
+    /// Herinnering van het actieve profiel (elk profiel heeft zijn eigen herinneringen)
+    private var reminderID: String { store.reminderID(channelID: channel.id, start: program.start) }
     private var canCatchup: Bool {
         program.end < Date() && channel.catchupDays > 0
             && program.start > Date().addingTimeInterval(-Double(channel.catchupDays) * 86400)

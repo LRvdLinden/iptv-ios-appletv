@@ -28,7 +28,7 @@ const since = (t: number) => Math.round(performance.now() - t);
 /** Alles binnen TIMEOUT_MS; daarna een fout "timeout". */
 export function withTimeout<T>(p: (signal: AbortSignal) => Promise<T>, ms = TIMEOUT_MS): Promise<T> {
   const ctl = new AbortController();
-  let timer: number | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   return Promise.race([
     p(ctl.signal),
     new Promise<T>((_, rej) => { timer = setTimeout(() => { ctl.abort(); rej(new Error("timeout")); }, ms); }),

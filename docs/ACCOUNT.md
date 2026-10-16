@@ -253,7 +253,7 @@ Alles wat iemand in Bingr instelt of opbouwt, komt na het (opnieuw) installeren 
 | `connections` | `trakt: {accessToken, refreshToken, expiresAt (ISO), username}` of `null`; `opensubtitles: {token, username, password?, baseURL?}` of `null` (precies wat de app nu lokaal bewaart om ingelogd te blijven). Plus `updatedAt`. |
 | `settings` | `shared`: instellingen met dezelfde betekenis op beide platforms, zoals app-taal, speler-engine (`auto`/`apple`/`exo`/`vlc`, elk platform vertaalt naar wat het heeft), ondertitelgrootte, standaard audio- en ondertiteltaal, automatisch ondertitels, OpenSubtitles-standaardtaal, startscherm, verborgen tabbladen, intromuziek, verversinterval en kinderslot-instellingen die niet per server zijn. Daarnaast `apple: {…}` en `android: {…}` met de rest. Plus `updatedAt`. |
 | `profile.<profielID>` | per profiel: `myList`, `favorites`, `progress` (`{key: {position, duration, updatedAt, …}}`), `watched` (set van sleutels), `history` (lijst met tijd), `recentChannels`, `prefs` (kijkvoorkeuren), `pin` (de pincode zoals de app hem nu bewaart, of `null`), `updatedAt`. Sleutels voor inhoud zijn op iOS en Android al gelijk (bijvoorbeeld `ep:<serieID>\|s-e`). Het precieze formaat staat bij "Build 60". |
-| `reminders` | lijst met herinneringen, plus `updatedAt` |
+| `reminders` | lijst met herinneringen van alle profielen, plus `updatedAt` (formaat: zie "Herinneringen per profiel") |
 
 **Samenvoegen** (bij lezen: na login, bij het starten, bij terugkeer naar de voorgrond en bij elke heartbeat):
 - **Lijsten en sets** (`myList`, `favorites`, `watched`, `recentChannels`): samenvoegen, maar een **verwijdering** moet doorkomen. Houd daarom per item `{id, removed?, at}` bij, of een aparte lijst `removed: {id: at}`. Per item wint de nieuwste `at`.
@@ -780,3 +780,27 @@ Body `{platform?, device_id?}`; `platform` is één van `ios`, `ipados`, `tvos`,
 - **bingr.online** (homepage): vergelijkingstabel Gratis / Lifetime met **Maak gratis een account** en **Upgrade naar Lifetime** (→ /upgrade/).
 - **bingr.online/upgrade/**: ingelogd het huidige abonnement (`entitlements` met `platform:"web"`) en de vergelijking; zolang betalen niet gekoppeld is een uitgeschakelde knop "Betalen — binnenkort beschikbaar". Niet ingelogd: eerst inloggen, daarna terug naar /upgrade/. Parameters `?from=app&platform=…` worden geaccepteerd.
 - **Mijn Bingr** (/account/): "Abonnement: Gratis/Lifetime" met de limieten en een Upgrade-link; Statistieken en Nu aan het kijken met een slotje voor Gratis.
+
+## Herinneringen per profiel
+
+Elk profiel (ook een kinderprofiel of een profiel met pincode) zet, ziet en verwijdert alleen zijn **eigen** herinneringen. Meldingen komen wel voor de herinneringen van **alle** profielen op het apparaat, ook als een ander profiel open staat of als niemand gekozen is.
+
+State-section `reminders` (één lijst voor het hele account, zoals sinds build 44):
+
+```json
+{
+  "items": [ { "id": "p:<profiel-id>:<zender-id>-<start in s>", "profileID": "<profiel-id>", "playlistID": "…",
+               "channelID": "…", "channelName": "…", "title": "…", "start": "ISO-8601", "at": "ISO-8601" } ],
+  "removed": { "<id>": "ISO-8601" },
+  "updatedAt": "ISO-8601"
+}
+```
+
+- **`id`**: hoofdprofiel `"<zender-id>-<start in seconden>"` (ongewijzigd, zodat oudere apps hem herkennen); elk ander profiel `"p:<profiel-id in kleine letters>:<zender-id>-<start>"`. Zo kunnen twee profielen een herinnering voor hetzelfde programma hebben.
+- **`profileID`** (nieuw, optioneel): het profiel-ID in kleine letters, alleen bij een ander profiel dan het hoofdprofiel. Oudere apps schrijven het veld niet mee; lees daarom: `profileID`, anders het profiel uit de `id` (`p:<profiel>:`), anders het **hoofdprofiel**. Profiel-ID's altijd zonder onderscheid tussen hoofd- en kleine letters vergelijken.
+- **Lijst:** Android en Samsung TV schrijven `items`, iOS schreef `reminders`. Lees `items`, anders `reminders`, anders `list` (staan `items` en `reminders` er allebei, dan is `items` het nieuwst). Wie schrijft, zet één lijst en laat de andere weg; andere onbekende sleutels (zoals `removed`) blijven staan.
+- **In de apps:** het belletje in de tv-gids, de knop "Herinner me"/"Herinnering staat aan" en de lijst met herinneringen (Samsung TV) tonen alleen de herinneringen van het actieve profiel. Een nieuwe herinnering krijgt het actieve profiel.
+- **Melding/banner:** voor elke herinnering op het apparaat (iPhone, iPad en Mac: lokale melding 2 minuten van tevoren; Apple TV, Android TV en Samsung TV: banner in de app; Android-telefoon: melding en banner). Heeft het account meer dan één profiel, dan staat de profielnaam ervoor: "For %@: %@" (bijv. "Voor Emma: Journaal"). Na het tonen van de banner gaat de herinnering uit de lijst, zoals altijd (dus ook op de andere apparaten).
+- **Kijken vanuit de banner** opent de zender alleen bij een eigen herinnering, of als het actieve profiel geen leeftijdsgrens heeft (anders alleen de melding), zodat een kinderprofiel niet via de herinnering van een ander profiel langs het leeftijdsfilter gaat.
+- **Profiel verwijderd** (hier of via een tombstone van een ander apparaat): zijn herinneringen gaan weg, met hun meldingen/alarmen, en de verwijdering gaat mee naar de account.
+- **Server:** geen schemawijziging; de section blijft versleutelde JSON.

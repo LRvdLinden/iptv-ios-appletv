@@ -601,7 +601,7 @@ struct GuideSheet: View {
                                 if p.end < Date() && channel.catchupDays > 0 {
                                     Image(systemName: "clock.arrow.circlepath").font(.caption).foregroundStyle(Theme.secondary)
                                 }
-                                if CloudStore.shared.hasReminder("\(channel.id)-\(Int(p.start.timeIntervalSince1970))") {
+                                if CloudStore.shared.hasReminder(channelID: channel.id, start: p.start) {
                                     Image(systemName: "bell.fill").font(.caption).foregroundStyle(Theme.imdb)
                                 }
                             }
