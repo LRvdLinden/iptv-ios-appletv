@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.support]
 verify_jwt = false
+
+[functions.push]
+verify_jwt = false

@@ -1,7 +1,8 @@
 name: Backend
 
 # Zet de Bingr-accounts in Supabase klaar: tabel (supabase/schema.sql), e-mailtemplates (supabase/templates) en de Edge Functions
-# device-auth (accounts, tv-koppeling), web-proxy (webspeler), status (bingr.online/status) en support (support.bingr.online). De functie admin (beheer-dashboard)
+# device-auth (accounts, tv-koppeling), web-proxy (webspeler), status (bingr.online/status), support (support.bingr.online) en push
+# (pushmeldingen). De functie admin (beheer-dashboard)
 # staat in de privé-repo LRvdLinden/bingr-beheer en wordt daar gedeployd; deze workflow raakt of verwijdert hem nooit.
 # Secrets: SUPABASE_ACCESS_TOKEN (supabase.com/dashboard/account/tokens) en SUPABASE_PROJECT_REF (bv. abcd1234 uit https://abcd1234.supabase.co).
 # Mail (optioneel, ook gebruikt door admin): BINGR_SMTP_HOST, BINGR_SMTP_PORT (465), BINGR_SMTP_USER,
@@ -22,6 +23,11 @@ name: Backend
 # zonder dit secret wordt hij afgeleid van BINGR_IMAP_HOST (imap.hoster.nl -> hoster.nl en *.hoster.nl).
 # build 95: de pg_cron-taak bingr-support-cleanup ruimt dagelijks op (AVG: gesloten tickets na 24 maanden, ip_hash na 30 dagen,
 # captcha-salts, cron.job_run_details na 7 dagen); zie bingr_support_cleanup in supabase/schema.sql.
+# Pushmeldingen (docs/PUSH.md, functie push): APNS_KEY_P8 (inhoud van de .p8), APNS_KEY_ID, APNS_TEAM_ID, APNS_TOPIC,
+# FCM_SERVICE_ACCOUNT (JSON van het Firebase-serviceaccount), FCM_PROJECT_ID en PUSH_RELEASE_SECRET (zelfde waarde als in
+# bingr-beheer, voor de releasemelding uit de workflow Builds) worden doorgezet als ze bestaan; ontbreken ze: waarschuwing.
+# PUSH_ADMIN_SECRET en het VAPID-sleutelpaar maakt deze workflow één keer zelf aan; PUSH_CRON_SECRET (optioneel vast) zoals
+# STATUS_CRON_SECRET. De pg_cron-taak bingr-push roept elke minuut push/cron aan, bingr-push-cleanup ruimt dagelijks op.
 on:
   push:
     branches: [main]
@@ -52,6 +58,9 @@ jobs:
           deno-version: v2.x
       - name: Unittests (statistieken)
         run: deno test supabase/functions/device-auth/stats_test.ts supabase/functions/device-auth/naming_test.ts supabase/functions/device-auth/password_test.ts supabase/functions/_shared/ban_test.ts supabase/functions/web-proxy/ip_test.ts
+      - name: Unittests (pushmeldingen)
+        # blokkeert de deploy: JWT (APNs/FCM/VAPID), Web Push-versleuteling (RFC 8291-testvector), payloads, taal, dedup
+        run: deno test supabase/functions/push/push_test.ts
       - name: Unittests (statuspagina)
         continue-on-error: true
         run: |
@@ -301,6 +310,120 @@ jobs:
           else
             echo "::warning::pg_cron/pg_net niet beschikbaar (HTTP $code): $(head -c 300 /tmp/r.txt)"; echo "ok=0" >> $GITHUB_OUTPUT
           fi
+      - name: Pushmeldingen - geheimen
+        if: steps.check.outputs.skip != '1'
+        env:
+          P_APNS_P8: ${{ secrets.APNS_KEY_P8 }}
+          P_APNS_KID: ${{ secrets.APNS_KEY_ID }}
+          P_APNS_TEAM: ${{ secrets.APNS_TEAM_ID }}
+          P_APNS_TOPIC: ${{ secrets.APNS_TOPIC }}
+          P_FCM_SA: ${{ secrets.FCM_SERVICE_ACCOUNT }}
+          P_FCM_PROJECT: ${{ secrets.FCM_PROJECT_ID }}
+          P_RELEASE: ${{ secrets.PUSH_RELEASE_SECRET }}
+          P_CRON: ${{ secrets.PUSH_CRON_SECRET }}
+        run: |
+          # docs/PUSH.md. Kanaalgeheimen alleen doorzetten als ze als GitHub-secret bestaan (ontbreekt er een: waarschuwing,
+          # de functie slaat dat kanaal over en meldt het in de geschiedenis). Waarden nooit in het log.
+          list=$(supabase secrets list --project-ref "$REF" 2>/dev/null || true)
+          has() { grep -qw "$1" <<<"$list"; }
+          args=()
+          # .p8 en serviceaccount op één regel (de functie leest "\n" in de PEM-sleutel)
+          [ -n "$P_APNS_P8" ] && args+=("APNS_KEY_P8=${P_APNS_P8//$'\n'/\\n}")
+          [ -n "$P_APNS_KID" ] && args+=("APNS_KEY_ID=$P_APNS_KID")
+          [ -n "$P_APNS_TEAM" ] && args+=("APNS_TEAM_ID=$P_APNS_TEAM")
+          [ -n "$P_APNS_TOPIC" ] && args+=("APNS_TOPIC=$P_APNS_TOPIC")
+          if [ -n "$P_FCM_SA" ]; then
+            SA=$(printf '%s' "$P_FCM_SA" | python3 -c 'import json,sys; print(json.dumps(json.loads(sys.stdin.read()), separators=(",", ":")))' 2>/dev/null) \
+              && args+=("FCM_SERVICE_ACCOUNT=$SA") || echo "::warning::FCM_SERVICE_ACCOUNT is geen geldige JSON; niet doorgezet"
+          fi
+          [ -n "$P_FCM_PROJECT" ] && args+=("FCM_PROJECT_ID=$P_FCM_PROJECT")
+          if [ -n "$P_RELEASE" ]; then
+            [ ${#P_RELEASE} -ge 16 ] && args+=("PUSH_RELEASE_SECRET=$P_RELEASE") || echo "::warning::PUSH_RELEASE_SECRET is korter dan 16 tekens; niet doorgezet"
+          fi
+          if [ ${#args[@]} -gt 0 ]; then supabase secrets set --project-ref "$REF" "${args[@]}" >/dev/null; echo "::notice::${#args[@]} push-secret(s) op de server gezet"; fi
+          unset SA args
+          { [ -n "$P_APNS_P8" ] && [ -n "$P_APNS_KID" ] && [ -n "$P_APNS_TEAM" ]; } || has APNS_KEY_P8 \
+            || echo "::warning::APNS_KEY_P8/APNS_KEY_ID/APNS_TEAM_ID ontbreken: geen pushmeldingen naar iPhone, iPad en Mac."
+          [ -n "$P_FCM_SA" ] || has FCM_SERVICE_ACCOUNT || echo "::warning::FCM_SERVICE_ACCOUNT ontbreekt: geen pushmeldingen naar Android."
+          [ -n "$P_RELEASE" ] || has PUSH_RELEASE_SECRET || echo "::warning::PUSH_RELEASE_SECRET ontbreekt: de workflow Builds (bingr-beheer) kan geen releasemeldingen sturen."
+          # geheim tussen admin (bingr-beheer) en push: alleen aanmaken als het nog niet bestaat
+          if ! has PUSH_ADMIN_SECRET; then
+            supabase secrets set --project-ref "$REF" PUSH_ADMIN_SECRET="$(openssl rand -hex 32)" >/dev/null
+            echo "::notice::PUSH_ADMIN_SECRET aangemaakt (beheerberichten)"
+          fi
+          # VAPID-sleutelpaar (Web Push): alleen aanmaken als het ontbreekt; een nieuw paar maakt bestaande abonnementen ongeldig
+          if ! has VAPID_PUBLIC_KEY || ! has VAPID_PRIVATE_KEY; then
+            umask 077
+            OUT="$RUNNER_TEMP/vapid.env" deno eval 'import { generateVapidKeys } from "./supabase/functions/push/crypto.ts";
+              const k = await generateVapidKeys();
+              Deno.writeTextFileSync(Deno.env.get("OUT")!, `VAPID_PRIVATE_KEY=${k.privateKey}\nVAPID_PUBLIC_KEY=${k.publicKey}\nVAPID_SUBJECT=mailto:support@bingr.online\n`);'
+            supabase secrets set --project-ref "$REF" --env-file "$RUNNER_TEMP/vapid.env" >/dev/null
+            rm -f "$RUNNER_TEMP/vapid.env"
+            echo "::notice::VAPID-sleutelpaar aangemaakt (Web Push)"
+          fi
+          # geheim voor de planning (cron): vast (repo-secret) of per deploy nieuw, zoals STATUS_CRON_SECRET
+          SECRET="${P_CRON:-$(openssl rand -hex 32)}"
+          echo "::add-mask::$SECRET"
+          [[ "$SECRET" =~ ^[A-Za-z0-9_-]{24,128}$ ]] || { echo "::error::PUSH_CRON_SECRET: 24-128 tekens, alleen letters, cijfers, - en _"; exit 1; }
+          supabase secrets set --project-ref "$REF" PUSH_CRON_SECRET="$SECRET" >/dev/null
+          umask 077; printf '%s' "$SECRET" > "$RUNNER_TEMP/push_cron_secret"
+          echo "::notice::PUSH_CRON_SECRET ${P_CRON:+(vast) }op de server gezet"
+      - name: Edge Function push
+        if: steps.check.outputs.skip != '1'
+        run: supabase functions deploy push --project-ref "$REF" --no-verify-jwt --use-api
+      - name: Pushmeldingen - planning (pg_cron + pg_net)
+        if: steps.check.outputs.skip != '1'
+        run: |
+          # elke minuut push/cron (herinneringen 2 minuten voor de start + resterende batches); dagelijks opruimen
+          python3 - <<'PY' > /tmp/cron.json
+          import json, os
+          ref = os.environ["REF"]; sec = open(os.path.join(os.environ["RUNNER_TEMP"], "push_cron_secret")).read()
+          cmd = ("select net.http_post(url := 'https://%s.supabase.co/functions/v1/push', "
+                 "headers := jsonb_build_object('Content-Type', 'application/json', 'x-push-secret', '%s'), "
+                 "body := '{\"action\":\"cron\"}'::jsonb, timeout_milliseconds := 60000);") % (ref, sec)
+          sql = ("select cron.unschedule(jobid) from cron.job where jobname in ('bingr-push', 'bingr-push-cleanup');\n"
+                 "select cron.schedule('bingr-push', '* * * * *', $cmd$ " + cmd + " $cmd$);\n"
+                 "select cron.schedule('bingr-push-cleanup', '41 3 * * *', $cmd$ select public.bingr_push_cleanup(); $cmd$);\n"
+                 "select jobname, schedule, active from cron.job where jobname in ('bingr-push', 'bingr-push-cleanup') order by jobname;")
+          print(json.dumps({"query": sql}))
+          PY
+          code=$(curl -s -o /tmp/r.txt -w '%{http_code}' -X POST "https://api.supabase.com/v1/projects/$REF/database/query" \
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" --data @/tmp/cron.json)
+          rm -f /tmp/cron.json
+          python3 - "$code" <<'PY'
+          import json, sys
+          try: rows = json.load(open("/tmp/r.txt"))
+          except Exception: rows = None
+          jobs = {r.get("jobname"): r for r in rows} if isinstance(rows, list) else {}
+          if int(sys.argv[1] or 0) < 300 and all(jobs.get(j, {}).get("active") for j in ("bingr-push", "bingr-push-cleanup")):
+              print("::notice::Push-planning: elke minuut (herinneringen en batches), opruimen dagelijks 03:41 UTC")
+          else:
+              print(f"::warning::Push-planning niet gelukt (HTTP {sys.argv[1]}): {open('/tmp/r.txt').read()[:300]}")
+          PY
+      - name: Pushmeldingen testen
+        if: steps.check.outputs.skip != '1'
+        run: |
+          sleep 3
+          F="https://$REF.supabase.co/functions/v1/push"
+          J=(-H "Content-Type: application/json")
+          # 1. vapid_key (zonder inloggen) geeft een publieke sleutel van 65 bytes (87 tekens base64url)
+          curl -s -X POST "$F" "${J[@]}" -d '{"action":"vapid_key"}' > /tmp/v.json
+          python3 -c 'import json,sys; k=json.load(open("/tmp/v.json")).get("key") or ""; sys.exit(0 if len(k) == 87 else 1)' \
+            && echo "::notice::push vapid_key geeft een sleutel" || { echo "::error::push vapid_key: $(head -c 200 /tmp/v.json)"; exit 1; }
+          # 2. register zonder inloggen -> 401
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$F" "${J[@]}" -d '{"action":"register","device_id":"x","platform":"ios","channel":"apns","token":"00"}')
+          [ "$code" = 401 ] && echo "::notice::push register zonder inloggen geweigerd (401)" || { echo "::error::push register zonder inloggen gaf HTTP $code"; exit 1; }
+          # 3. admin_send, release en cron zonder (of met fout) geheim -> 403
+          for a in admin_send admin_history release cron; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$F" "${J[@]}" -H "x-push-secret: fout-geheim-0000000000000000" -d "{\"action\":\"$a\"}")
+            [ "$code" = 403 ] || { echo "::error::push $a met fout geheim gaf HTTP $code"; exit 1; }
+            code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$F" "${J[@]}" -d "{\"action\":\"$a\"}")
+            [ "$code" = 403 ] || { echo "::error::push $a zonder geheim gaf HTTP $code"; exit 1; }
+          done
+          echo "::notice::push admin_send/admin_history/release/cron zonder geheim geweigerd (403)"
+          # 4. één cron-ronde met het geheim
+          curl -s -X POST "$F" "${J[@]}" -H "x-push-secret: $(cat "$RUNNER_TEMP/push_cron_secret")" -d '{"action":"cron"}' > /tmp/c.json
+          grep -Eq '"ok": ?true' /tmp/c.json && echo "::notice::push cron: $(cat /tmp/c.json)" || { echo "::error::push cron: $(head -c 300 /tmp/c.json)"; exit 1; }
       - name: Testen
         if: steps.check.outputs.skip != '1'
         run: |

@@ -4,6 +4,8 @@ Inloggen is **verplicht**. Flow: **splash → (geen geldige sessie) inlogscherm 
 
 De account regelt het inloggen en bewaart de **profielen** (zonder pincodes en eigen foto's). Servers, voortgang, lijsten en pincodes blijven zoals ze zijn (iCloud op Apple, lokaal op Android).
 
+**Pushmeldingen** (registreren van apparaten, releasemeldingen, berichten uit het beheer en herinneringen via de functie `push`): zie [PUSH.md](PUSH.md).
+
 ## Profielen migreren en delen
 
 Bestaande gebruikers houden al hun profielen: het inlogscherm komt vóór "Wie kijkt er?" en raakt geen lokale gegevens aan.
@@ -818,3 +820,4 @@ State-section `reminders` (één lijst voor het hele account, zoals sinds build 
 - **Kijken vanuit de banner** opent de zender alleen bij een eigen herinnering, of als het actieve profiel geen leeftijdsgrens heeft (anders alleen de melding), zodat een kinderprofiel niet via de herinnering van een ander profiel langs het leeftijdsfilter gaat.
 - **Profiel verwijderd** (hier of via een tombstone van een ander apparaat): zijn herinneringen gaan weg, met hun meldingen/alarmen, en de verwijdering gaat mee naar de account.
 - **Server:** geen schemawijziging; de section blijft versleutelde JSON.
+- **Push:** de functie `push` leest deze section (alleen lezen) en stuurt 2 minuten voor de start een systeem-push naar de apparaten van het account met push (PUSH.md, "Herinneringen"). Een app met geregistreerde push plant dan zelf geen lokale melding meer.

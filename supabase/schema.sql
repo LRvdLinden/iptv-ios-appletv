@@ -1871,3 +1871,210 @@ language sql stable security definer set search_path = public, auth as $$
 $$;
 revoke all on function public.bingr_first_names(text[]) from public, anon, authenticated;
 grant execute on function public.bingr_first_names(text[]) to service_role;
+
+-- ============================================================================================================
+-- Pushmeldingen (docs/PUSH.md): APNs, FCM en Web Push via de Edge Function `push`. Alleen de service role (de functie)
+-- leest en schrijft hierin; RLS staat aan zonder policies en anon/authenticated hebben geen rechten.
+create table if not exists public.push_devices (
+  id          bigint generated always as identity primary key,
+  user_id     uuid not null references auth.users(id) on delete cascade,
+  device_id   text not null,
+  platform    text not null,
+  channel     text not null check (channel in ('apns', 'fcm', 'webpush')),
+  token       text not null,
+  lang        text not null default 'en',
+  tz          text,
+  app_version text,
+  app_build   int,
+  sandbox     boolean not null default false,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now(),
+  last_error  text,
+  unique (user_id, device_id),
+  unique (channel, token)
+);
+alter table public.push_devices enable row level security;
+revoke all on public.push_devices from anon, authenticated;
+
+-- Eén rij per bericht. dedup_key: release:<groep>:<build> (één releasemelding per build) of reminder:<account>:<herinnering-id>.
+-- counts = {queued, sent, failed, invalid, errors:{code: aantal}}, bijgewerkt na elke batch (bingr_push_refresh).
+create table if not exists public.push_messages (
+  id             bigint generated always as identity primary key,
+  kind           text not null check (kind in ('release', 'admin', 'reminder')),
+  title_nl       text,
+  body_nl        text,
+  title_en       text,
+  body_en        text,
+  url            text,
+  payload        jsonb not null default '{}'::jsonb,
+  target         jsonb not null default '{}'::jsonb,
+  platform_group text,
+  build          int,
+  dedup_key      text unique,
+  devices        int not null default 0,
+  counts         jsonb not null default '{}'::jsonb,
+  created_at     timestamptz not null default now(),
+  created_by     text,
+  finished_at    timestamptz
+);
+create index if not exists push_messages_kind_idx on public.push_messages (kind, id desc);
+alter table public.push_messages enable row level security;
+revoke all on public.push_messages from anon, authenticated;
+
+-- Eén rij per bericht per apparaat; uniek per (bericht, apparaat), dus ook per (herinnering, apparaat).
+-- state: queued -> (sending) -> sent | failed | invalid (token verlopen, apparaat opgeruimd).
+create table if not exists public.push_deliveries (
+  id          bigint generated always as identity primary key,
+  message_id  bigint not null references public.push_messages(id) on delete cascade,
+  device_ref  bigint references public.push_devices(id) on delete set null,
+  user_id     uuid references auth.users(id) on delete cascade,
+  platform    text not null,
+  channel     text not null,
+  state       text not null default 'queued' check (state in ('queued', 'sending', 'sent', 'failed', 'invalid')),
+  attempts    int not null default 0,
+  error       text,
+  claimed_at  timestamptz,
+  next_at     timestamptz,
+  sent_at     timestamptz,
+  created_at  timestamptz not null default now(),
+  unique (message_id, device_ref)
+);
+create index if not exists push_deliveries_open_idx on public.push_deliveries (id) where state in ('queued', 'sending');
+create index if not exists push_deliveries_msg_idx on public.push_deliveries (message_id, state);
+create index if not exists push_deliveries_dev_idx on public.push_deliveries (device_ref);
+alter table public.push_deliveries enable row level security;
+revoke all on public.push_deliveries from anon, authenticated;
+
+-- Apparaat uit het account verwijderd (device-auth remove_device, beheer): zijn push-registratie gaat mee.
+-- Account verwijderd: cascade via auth.users.
+create or replace function public.bingr_push_device_removed() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  delete from public.push_devices where user_id = old.user_id and device_id = old.device_id;
+  return old;
+end $$;
+revoke all on function public.bingr_push_device_removed() from public, anon, authenticated;
+drop trigger if exists bingr_push_device_removed on public.account_devices;
+create trigger bingr_push_device_removed after delete on public.account_devices
+  for each row execute function public.bingr_push_device_removed();
+
+-- Apparaten van de doelgroep in de wachtrij zetten (idempotent). p_below_build: alleen app_build < build (onbekend telt als 0).
+create or replace function public.bingr_push_enqueue(p_message bigint, p_all boolean, p_accounts uuid[], p_platforms text[], p_below_build int)
+returns int language plpgsql security definer set search_path = public as $$
+declare n int;
+begin
+  insert into public.push_deliveries (message_id, device_ref, user_id, platform, channel)
+  select p_message, d.id, d.user_id, d.platform, d.channel
+  from public.push_devices d
+  where (coalesce(p_all, false) or p_accounts is not null or p_platforms is not null)
+    and (p_accounts is null or d.user_id = any (p_accounts))
+    and (p_platforms is null or d.platform = any (p_platforms))
+    and (p_below_build is null or coalesce(d.app_build, 0) < p_below_build)
+  on conflict (message_id, device_ref) do nothing;
+  get diagnostics n = row_count;
+  update public.push_messages set devices = devices + n, finished_at = null where id = p_message and n > 0;
+  return n;
+end $$;
+
+-- Een batch claimen (skip locked: twee gelijktijdige aanroepen pakken nooit dezelfde rij). Een rij die langer dan 3 minuten
+-- op 'sending' staat (functie afgebroken) komt opnieuw aan de beurt.
+create or replace function public.bingr_push_claim(p_limit int, p_message bigint default null)
+returns table (id bigint, message_id bigint, device_ref bigint, attempts int)
+language plpgsql security definer set search_path = public as $$
+begin
+  return query
+  with c as (
+    select q.id from public.push_deliveries q
+    where ((q.state = 'queued' and (q.next_at is null or q.next_at <= now()))
+           or (q.state = 'sending' and q.claimed_at < now() - interval '3 minutes'))
+      and (p_message is null or q.message_id = p_message)
+    order by q.id
+    limit greatest(1, least(coalesce(p_limit, 200), 1000))
+    for update skip locked
+  )
+  update public.push_deliveries d set state = 'sending', claimed_at = now(), attempts = d.attempts + 1
+  from c where d.id = c.id
+  returning d.id, d.message_id, d.device_ref, d.attempts;
+end $$;
+
+-- Tellingen per bericht bijwerken (en finished_at zodra niets meer wacht).
+create or replace function public.bingr_push_refresh(p_ids bigint[]) returns void
+language sql security definer set search_path = public as $$
+  update public.push_messages m set
+    counts = s.counts,
+    finished_at = case when (s.counts->>'queued')::int = 0 then coalesce(m.finished_at, now()) else null end
+  from (
+    select m2.id,
+      jsonb_build_object(
+        'queued',  count(d.id) filter (where d.state in ('queued', 'sending')),
+        'sent',    count(d.id) filter (where d.state = 'sent'),
+        'failed',  count(d.id) filter (where d.state = 'failed'),
+        'invalid', count(d.id) filter (where d.state = 'invalid'),
+        'errors',  coalesce((select jsonb_object_agg(e.error, e.n) from (
+                     select d2.error, count(*) n from public.push_deliveries d2
+                     where d2.message_id = m2.id and d2.error is not null and d2.state in ('failed', 'invalid')
+                     group by d2.error order by count(*) desc limit 10) e), '{}'::jsonb)
+      ) counts
+    from public.push_messages m2 left join public.push_deliveries d on d.message_id = m2.id
+    where m2.id = any (p_ids)
+    group by m2.id
+  ) s
+  where m.id = s.id;
+$$;
+
+-- Resultaten van een batch in één keer verwerken: [{id, state, error, tok?}] (state sent|failed|invalid|queued).
+-- invalid: het apparaat (token) wordt verwijderd; de bezorging blijft staan voor de telling.
+create or replace function public.bingr_push_finish(p_results jsonb) returns void
+language plpgsql security definer set search_path = public as $$
+declare ids bigint[];
+begin
+  with r as (select * from jsonb_to_recordset(coalesce(p_results, '[]'::jsonb)) as x(id bigint, state text, error text))
+  update public.push_deliveries d set
+    state = case when r.state in ('sent', 'failed', 'invalid', 'queued') then r.state else 'failed' end,
+    error = left(r.error, 120),
+    sent_at = case when r.state = 'sent' then now() else d.sent_at end,
+    next_at = case when r.state = 'queued' then now() + interval '1 minute' else null end,  -- tijdelijke fout: over een minuut opnieuw
+    claimed_at = null
+  from r where d.id = r.id;
+  update public.push_devices p set last_error = left(x.error, 120)
+  from public.push_deliveries d, jsonb_to_recordset(coalesce(p_results, '[]'::jsonb)) as x(id bigint, state text, error text)
+  where d.id = x.id and p.id = d.device_ref and x.state = 'failed';
+  -- alleen als de token intussen niet vernieuwd is (tok = de token waarmee verstuurd is)
+  delete from public.push_devices p using public.push_deliveries d, jsonb_to_recordset(coalesce(p_results, '[]'::jsonb)) as x(id bigint, state text, error text, tok text)
+  where d.id = x.id and p.id = d.device_ref and x.state = 'invalid' and p.token = x.tok;
+  select array_agg(distinct d.message_id) into ids from public.push_deliveries d
+  where d.id in (select (e->>'id')::bigint from jsonb_array_elements(coalesce(p_results, '[]'::jsonb)) e);
+  if ids is not null then perform public.bingr_push_refresh(ids); end if;
+end $$;
+
+-- Accounts met minstens één push-apparaat (voor de herinneringen in de cron), in pagina's.
+create or replace function public.bingr_push_users(p_after uuid default null, p_limit int default 500) returns table (user_id uuid)
+language sql stable security definer set search_path = public as $$
+  select distinct d.user_id from public.push_devices d
+  where p_after is null or d.user_id > p_after
+  order by d.user_id limit greatest(1, least(coalesce(p_limit, 500), 2000));
+$$;
+
+-- Opruimen (dagelijks, pg_cron bingr-push-cleanup): herinneringsberichten na 3 dagen, overige berichten na 400 dagen,
+-- details per apparaat na 30 dagen (de tellingen blijven op het bericht), apparaten die 270 dagen niet registreerden.
+create or replace function public.bingr_push_cleanup() returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  delete from public.push_messages where kind = 'reminder' and created_at < now() - interval '3 days';
+  delete from public.push_messages where created_at < now() - interval '400 days';
+  delete from public.push_deliveries where created_at < now() - interval '30 days' and state not in ('queued', 'sending');
+  delete from public.push_devices where updated_at < now() - interval '270 days';
+end $$;
+
+revoke all on function public.bingr_push_enqueue(bigint, boolean, uuid[], text[], int) from public, anon, authenticated;
+revoke all on function public.bingr_push_claim(int, bigint) from public, anon, authenticated;
+revoke all on function public.bingr_push_refresh(bigint[]) from public, anon, authenticated;
+revoke all on function public.bingr_push_finish(jsonb) from public, anon, authenticated;
+revoke all on function public.bingr_push_users(uuid, int) from public, anon, authenticated;
+revoke all on function public.bingr_push_cleanup() from public, anon, authenticated;
+grant execute on function public.bingr_push_enqueue(bigint, boolean, uuid[], text[], int) to service_role;
+grant execute on function public.bingr_push_claim(int, bigint) to service_role;
+grant execute on function public.bingr_push_refresh(bigint[]) to service_role;
+grant execute on function public.bingr_push_finish(jsonb) to service_role;
+grant execute on function public.bingr_push_users(uuid, int) to service_role;
+grant execute on function public.bingr_push_cleanup() to service_role;

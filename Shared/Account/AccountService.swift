@@ -286,6 +286,10 @@ final class AccountService: ObservableObject {
         stopTVLogin()
         isBusy = true; defer { isBusy = false }
         if accessToken != nil, let token = try? await validAccessToken() {
+            #if !os(tvOS)
+            // pushmeldingen voor dit apparaat stoppen (remove_device ruimt push_devices ook op, dit is de expliciete afmelding)
+            _ = try? await post("/functions/v1/push", ["action": "unregister", "device_id": deviceID], bearer: token)
+            #endif
             _ = try? await post("/functions/v1/device-auth", ["action": "remove_device", "device_id": deviceID], bearer: token)
         }
         if let a = accessToken {
@@ -448,32 +452,39 @@ final class AccountService: ObservableObject {
         }
     }
 
-    /// Mededeling van de beheerder (device-auth `announcements`, build 62).
-    struct Announcement: Identifiable, Equatable {
-        let id: String
-        let title: String
-        let body: String
-        let createdAt: Date?
+    // Mededelingen van de beheerder (device-auth `announcements`, build 62) zijn vervallen: berichten uit het beheer
+    // komen voortaan als pushmelding (docs/PUSH.md). De app vraagt `announcements` niet meer op.
+
+    // MARK: - Pushmeldingen (docs/PUSH.md, functie `push`)
+
+    /// Dit apparaat aanmelden voor pushmeldingen (APNs). `true` als de server het aannam; een fout, offline of een
+    /// server zonder `push` geeft `false` (stil, PushService probeert het later opnieuw).
+    func pushRegister(token apnsToken: String, platform: String, lang: String, appVersion: String, appBuild: Int,
+                      sandbox: Bool) async -> Bool {
+        guard Secrets.accountsConfigured, isSignedIn else { return false }
+        var body: [String: Any] = ["action": "register", "device_id": deviceID, "platform": platform, "channel": "apns",
+                                   "token": apnsToken, "lang": lang, "app_version": appVersion, "app_build": appBuild]
+        if sandbox { body["sandbox"] = true }
+        do {
+            let r = try await authorized { bearer in
+                try await self.post("/functions/v1/push", body, bearer: bearer)
+            }
+            return (200..<300).contains(r.status) && (r.json["ok"] as? Bool) != false
+        } catch {
+            return false
+        }
     }
 
-    /// Mededelingen in de taal van de app (`nl`, anders `en`). nil bij een fout of een oudere server zonder deze actie.
-    func fetchAnnouncements() async -> [Announcement]? {
-        guard Secrets.accountsConfigured, isSignedIn else { return nil }
-        let lang = Localizer.shared.language == "nl" ? "nl" : "en"
+    /// Dit apparaat afmelden voor pushmeldingen (push uitgezet of toestemming ingetrokken). `true` als het gelukt is.
+    func pushUnregister() async -> Bool {
+        guard Secrets.accountsConfigured, isSignedIn else { return false }
         do {
-            let r = try await authorized { token in
-                try await self.post("/functions/v1/device-auth", ["action": "announcements", "device_id": self.deviceID, "lang": lang], bearer: token)
+            let r = try await authorized { bearer in
+                try await self.post("/functions/v1/push", ["action": "unregister", "device_id": self.deviceID], bearer: bearer)
             }
-            guard r.status == 200, let items = r.json["items"] as? [[String: Any]] else { return nil }
-            return items.compactMap { j in
-                guard let id = (j["id"] as? String) ?? (j["id"] as? NSNumber)?.stringValue, !id.isEmpty else { return nil }
-                let title = (j["title"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-                let body = (j["body"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !title.isEmpty || !body.isEmpty else { return nil }
-                return Announcement(id: id, title: title, body: body, createdAt: Self.parseDate(j["created_at"]))
-            }
+            return (200..<300).contains(r.status)
         } catch {
-            return nil
+            return false
         }
     }
 

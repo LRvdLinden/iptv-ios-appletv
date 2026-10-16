@@ -117,6 +117,10 @@ Wat er nieuw is per build: [CHANGELOG.md](CHANGELOG.md) · [bingr.online/changel
 
 Op [bingr.online](https://bingr.online) vind je de downloads, de [hulppagina](https://support.bingr.online/hulp/) (ook voor installeren), de webspeler [bingr.online/web](https://bingr.online/web/) en [bingr.online/koppelen](https://bingr.online/koppelen/) om een tv aan je account te koppelen. De broncode van de site staat in [LRvdLinden/bingr-website](https://github.com/LRvdLinden/bingr-website).
 
+## Pushmeldingen
+
+Bingr stuurt zelf echte systeemmeldingen (nieuwe build, berichten uit het beheer, programmaherinneringen): APNs voor iPhone, iPad en Mac, FCM voor Android en Web Push voor de webspeler, zonder externe pushdienst. Server: Edge Function `supabase/functions/push`; contract in [docs/PUSH.md](docs/PUSH.md).
+
 ## Android
 
 De Android-versie (telefoon, tablet, Android TV / Google TV / Fire TV) staat in een eigen repo: [LRvdLinden/bingr-android](https://github.com/LRvdLinden/bingr-android).

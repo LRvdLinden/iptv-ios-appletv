@@ -299,15 +299,20 @@ final class ReminderCenter: ObservableObject {
 
     /// Mag de "Kijk"-knop van de banner deze zender openen? Eigen herinnering altijd (de bibliotheek is al gefilterd);
     /// die van een ander profiel niet als het actieve profiel een leeftijdsgrens heeft.
-    func canWatch(_ r: ProgramReminder) -> Bool {
+    func canWatch(_ r: ProgramReminder) -> Bool { canWatch(owner: r.owner) }
+
+    /// Zelfde controle voor een herinnering van het profiel `owner` (nil = hoofdprofiel), ook vanuit een pushmelding.
+    func canWatch(owner: UUID?) -> Bool {
         let store = CloudStore.shared
-        if store.belongsToActive(r.owner) { return true }
+        if store.belongsToActive(owner) { return true }
         return store.activeProfile?.effectiveAgeLimit == nil
     }
 
     /// Melding 2 minuten voor de start (iPhone, iPad, Mac). Ook voor herinneringen uit de Bingr-account.
+    /// Met pushmeldingen voor dit account (docs/PUSH.md) stuurt de server de herinnering: dan hier niets plannen.
     func scheduleNotification(_ r: ProgramReminder, ask: Bool = true) async {
         #if !os(tvOS)
+        guard !PushService.shared.handlesReminders else { return }
         let center = UNUserNotificationCenter.current()
         let granted: Bool
         if ask {
@@ -336,6 +341,27 @@ final class ReminderCenter: ObservableObject {
     func cancelNotification(_ id: String) {
         #if !os(tvOS)
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [id])
+        #endif
+    }
+
+    /// Overstap tussen herinneringen via push en lokaal (PushService). Naar push: de geplande lokale herinneringen
+    /// opruimen (anders dubbel). Terug naar lokaal (push uit, uitgelogd, geen toestemming): opnieuw plannen.
+    func pushModeChanged(_ viaPush: Bool) {
+        #if !os(tvOS)
+        let center = UNUserNotificationCenter.current()
+        if viaPush {
+            Task {
+                let pending = await center.pendingNotificationRequests()
+                // alleen herinneringen (die hebben een channelID), geen downloadmeldingen
+                let ids = pending.filter { $0.content.userInfo["channelID"] != nil }.map(\.identifier)
+                if !ids.isEmpty { center.removePendingNotificationRequests(withIdentifiers: ids) }
+            }
+        } else {
+            let upcoming = CloudStore.shared.reminders.filter { $0.start.addingTimeInterval(-120) > Date() }
+            Task { @MainActor in
+                for r in upcoming { await self.scheduleNotification(r, ask: false) }
+            }
+        }
         #endif
     }
 

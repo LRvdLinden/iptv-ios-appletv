@@ -13,6 +13,8 @@ struct AppSettingsView: View {
     @ObservedObject private var account = AccountService.shared
     /// Build 88: een tweede server hoort bij Lifetime (bestaande extra servers blijven bruikbaar)
     @ObservedObject private var ent = EntitlementsService.shared
+    /// Pushmeldingen (docs/PUSH.md): schakelaar met de systeemstatus (niet op Apple TV)
+    @ObservedObject private var push = PushService.shared
     @AppStorage(TrackPreferences.subtitleModeKey) private var subtitleMode = TrackPreferences.SubtitleMode.whenNeeded.rawValue
     @AppStorage("playlist.refresh") private var refreshPolicy = RefreshPolicy.daily.rawValue
     @AppStorage("player.engine") private var engine = PlayerController.EngineChoice.auto.rawValue
@@ -54,6 +56,9 @@ struct AppSettingsView: View {
             playerSection
             parentalSection
             interfaceSection
+            #if !os(tvOS)
+            if Secrets.accountsConfigured && account.isSignedIn { notificationsSection }
+            #endif
             languageSection
             if isMain { adminFooterSections }
             Section(L("About")) {
@@ -412,6 +417,37 @@ struct AppSettingsView: View {
             }
         } header: { Text(L("Interface")) }
     }
+
+    #if !os(tvOS)
+    /// Pushmeldingen: nieuwe versies, herinneringen en berichten van Bingr. Weigert het systeem meldingen, dan een
+    /// knop naar de systeeminstellingen.
+    private var notificationsSection: some View {
+        Section {
+            Toggle(L("Push notifications"), isOn: Binding(get: { push.isOn }, set: { push.setEnabled($0) }))
+                .disabled(push.status == .denied)
+            LabeledContent(L("System setting"), value: systemStatusText)
+            if push.status == .denied {
+                Text(L("Notifications for Bingr are turned off in your system settings."))
+                    .font(.caption).foregroundStyle(Theme.secondary)
+                Button { push.openSystemSettings() } label: {
+                    Label(L("Open system settings"), systemImage: "gear")
+                }
+            }
+        } header: { Text(L("Notifications")) } footer: {
+            Text(L("Get a notification when a new version of Bingr is available, when a program you set a reminder for is about to start, and for news from Bingr."))
+        }
+        .onAppear { push.appBecameActive() }
+    }
+
+    private var systemStatusText: String {
+        switch push.status {
+        case .allowed: return L("Allowed")
+        case .denied: return L("Not allowed")
+        case .notDetermined: return L("Not asked yet")
+        case .unknown: return "…"
+        }
+    }
+    #endif
 
     private var languageSection: some View {
         Section(L("Language")) {

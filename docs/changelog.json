@@ -1,5 +1,60 @@
 [
  {
+  "build": 113,
+  "version": "1.0.0",
+  "date": "2026-10-16",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "macos"
+    ],
+    "nl": "Pushmeldingen: krijg een melding bij een nieuwe versie (tik om te zien wat er nieuw is in precies die build), bij je programmaherinneringen en bij berichten van Bingr. Aan of uit in Instellingen",
+    "en": "Push notifications: get notified about new versions (tap to see what's new in that exact build), your program reminders and messages from Bingr. Turn them on or off in Settings"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "android"
+    ],
+    "nl": "Pushmeldingen op telefoon en tablet: bij een nieuwe versie, je programmaherinneringen en berichten van Bingr. Aan of uit in Instellingen → Meldingen; op Android 13 en nieuwer vraagt Bingr na het inloggen om toestemming",
+    "en": "Push notifications on phones and tablets: for new versions, your program reminders and messages from Bingr. Turn them on or off in Settings → Notifications; on Android 13 and later Bingr asks for permission after you sign in"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Webspeler: pushmeldingen. Zet ze aan in Instellingen → Pushmeldingen en krijg berichten van Bingr en je herinneringen, ook als het tabblad dicht is (iPhone en iPad: als web-app op het beginscherm)",
+    "en": "Web player: push notifications. Turn them on in Settings → Push notifications to get messages from Bingr and your reminders, even with the tab closed (iPhone and iPad: as a web app on the Home Screen)"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen"
+    ],
+    "nl": "Berichten van Bingr verschijnen niet meer als venster in de app; ze komen als pushmelding waar je apparaat dat ondersteunt",
+    "en": "Messages from Bingr no longer appear as a pop-up in the app; they arrive as push notifications where your device supports them"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Eigen pushdienst voor Apple, Android en web, met automatische meldingen bij een nieuwe versie en herinneringen per profiel",
+    "en": "Bingr's own push service for Apple, Android and web, with automatic notifications for new versions and reminders per profile"
+   }
+  ]
+ },
+ {
   "build": 112,
   "version": "1.0.0",
   "date": "2026-10-16",

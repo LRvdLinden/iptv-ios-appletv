@@ -4,6 +4,33 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 113
+_16 oktober 2026_
+
+### Alle apps
+
+**Verbeterd**
+
+- Berichten van Bingr verschijnen niet meer als venster in de app; ze komen als pushmelding waar je apparaat dat ondersteunt
+
+### iOS, iPadOS en macOS
+
+**Nieuw**
+
+- Pushmeldingen: krijg een melding bij een nieuwe versie (tik om te zien wat er nieuw is in precies die build), bij je programmaherinneringen en bij berichten van Bingr. Aan of uit in Instellingen
+
+### Website
+
+**Nieuw**
+
+- Webspeler: pushmeldingen. Zet ze aan in Instellingen → Pushmeldingen en krijg berichten van Bingr en je herinneringen, ook als het tabblad dicht is (iPhone en iPad: als web-app op het beginscherm)
+
+### Server
+
+**Nieuw**
+
+- Eigen pushdienst voor Apple, Android en web, met automatische meldingen bij een nieuwe versie en herinneringen per profiel
+
 ## Versie 1.0.0 · Build 112
 _16 oktober 2026_
 

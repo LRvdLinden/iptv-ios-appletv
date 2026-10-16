@@ -24,6 +24,9 @@ struct BingrApp: App {
     #if os(iOS)
     /// Downloads op de achtergrond (build 52): het systeem maakt de app wakker als ze klaar zijn
     @UIApplicationDelegateAdaptor(BingrAppDelegate.self) private var appDelegate
+    #elseif os(macOS)
+    /// Pushmeldingen op de Mac (APNs-devicetoken via AppKit)
+    @NSApplicationDelegateAdaptor(BingrMacAppDelegate.self) private var appDelegate
     #endif
 
     init() {
@@ -96,8 +99,8 @@ struct BingrApp: App {
                         await EntitlementsService.shared.refreshUnlessRecent(60)
                     }
                 }
-                // mededelingen (build 62): hooguit eens per uur, alleen in de app zelf
-                if app.stage == .main { AnnouncementCenter.shared.check() }
+                // pushmeldingen: toestemming kan in de systeeminstellingen gewijzigd zijn; token/taal/build bijwerken
+                PushService.shared.appBecameActive()
             }
         }
     }
@@ -150,7 +153,6 @@ final class AppState: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] signedIn in
                 guard let self, !signedIn else { return }
-                AnnouncementCenter.shared.reset()
                 // build 82: account geblokkeerd → speler/multiview sluiten, zodat de melding op het inlogscherm te zien is.
                 // build 97: ook bij een ingetrokken apparaat (en elk ander uitloggen) alles stoppen, inclusief
                 // beeld-in-beeld (dat speelde anders gewoon door)
@@ -345,17 +347,18 @@ struct RootView: View {
     @EnvironmentObject var reminders: ReminderCenter
     @EnvironmentObject var playlists: PlaylistService
     @EnvironmentObject var account: AccountService
-    @ObservedObject private var announcements = AnnouncementCenter.shared
-    /// Mededelingen bij het eerste "in de app" na het starten altijd ophalen (daarna hooguit eens per uur)
-    @State private var announcementsChecked = false
+    /// Pushmeldingen (docs/PUSH.md): uitleg na het inloggen en tikken op een melding. Beheerberichten komen als push;
+    /// de in-app mededelingen (build 62) zijn vervallen.
+    @ObservedObject private var push = PushService.shared
 
-    /// Mededeling alleen tonen in de app zelf, niet tijdens het kijken of op andere schermen.
-    private var showAnnouncement: Binding<AccountService.Announcement?> {
+    /// Uitleg over pushmeldingen alleen in de app zelf, niet tijdens het kijken of op andere schermen.
+    private var showPushPrompt: Binding<Bool> {
         Binding(get: {
-            guard app.stage == .main, app.playing == nil, !app.showMultiview, account.deviceLimit == nil else { return nil }
-            return announcements.current
-        }, set: { v in
-            if v == nil, announcements.current != nil { announcements.dismiss() }
+            guard app.stage == .main, app.playing == nil, !app.showMultiview, account.deviceLimit == nil else { return false }
+            return push.showPrompt
+        }, set: { _ in
+            // alleen de knoppen sluiten het venster (answerPrompt); verdwijnt het omdat er iets gaat spelen,
+            // dan komt het daarna terug
         })
     }
 
@@ -381,20 +384,45 @@ struct RootView: View {
                 }
             }
             .fullScreenCover(isPresented: $app.showMultiview) { MultiviewScreen() }
-            .sheet(item: showAnnouncement) { a in
-                AnnouncementSheet(announcement: a) { announcements.dismiss() }
-            }
+            #if !os(tvOS)
+            .sheet(isPresented: showPushPrompt) { PushPromptView() }
+            #endif
             .onChange(of: app.stage) { _, stage in
-                // na inloggen en het kiezen van een profiel (build 62)
+                // na inloggen en het kiezen van een profiel: uitleg over pushmeldingen (eenmalig), en een melding
+                // waarop getikt is terwijl de app nog niet in het hoofdscherm was
                 guard stage == .main else { return }
-                AnnouncementCenter.shared.check(force: !announcementsChecked)
-                announcementsChecked = true
+                push.offerPromptIfNeeded()
+                handlePushRoute()
             }
+            .onChange(of: push.pendingRoute) { _, _ in handlePushRoute() }
+            .onChange(of: account.deviceLimit) { _, _ in handlePushRoute() }
 
             if let r = reminders.due { reminderBanner(r) }
         }
         .fullScreenCover(item: $app.playing) { item in
             PlayerScreen(item: item, existing: PiPCenter.shared.takeReuse(for: item))
+        }
+    }
+
+    /// Tik op een herinnering (push of lokale melding): de zender openen, zoals de knop "Watch" van de banner en
+    /// met dezelfde profielcontrole. Wacht tot de app in het hoofdscherm is (na "Wie kijkt er?").
+    private func handlePushRoute() {
+        guard let route = push.pendingRoute, app.stage == .main, account.deviceLimit == nil else { return }
+        push.pendingRoute = nil
+        switch route {
+        case let .reminder(channelID, profileID, playlistID):
+            let store = CloudStore.shared
+            // profiel-id van het hoofdprofiel telt als hoofdprofiel (nil), net als bij de herinneringen zelf
+            let owner = profileID == store.mainProfileID ? nil : profileID
+            guard reminders.canWatch(owner: owner) else { return }
+            let known = store.reminders.first { $0.channelID == channelID && $0.owner == owner }
+            if let c = playlists.library.channels.first(where: { $0.id == channelID }) {
+                app.play(Playables.channel(c, now: playlists.library.nowPlaying(c)))
+            } else if let p = (playlistID ?? known?.playlistID).flatMap({ id in store.playlists.first { $0.id == id } })
+                        ?? store.mainSource {
+                // bibliotheek nog aan het laden, of een andere server: openen zodra de zender er is (MainTabView)
+                if playlists.source?.id == p.id { app.pendingItemID = channelID } else { app.open(p, thenShow: channelID) }
+            }
         }
     }
 
