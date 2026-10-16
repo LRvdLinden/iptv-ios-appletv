@@ -4,6 +4,15 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 109
+_16 oktober 2026_
+
+### macOS
+
+**Opgelost**
+
+- De Mac-app wordt niet meer afgekeurd voor TestFlight en de App Store: bestanden in de app dragen geen quarantaine-kenmerk meer (ITMS-91109)
+
 ## Versie 1.0.0 · Build 108
 _16 oktober 2026_
 

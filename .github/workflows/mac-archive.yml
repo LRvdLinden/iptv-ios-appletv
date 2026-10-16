@@ -31,6 +31,11 @@ jobs:
           xcodegen generate
           xcodebuild -resolvePackageDependencies -project Bingr.xcodeproj > /dev/null
 
+      - name: Download nabootsen (quarantaine-kenmerk op alle bronbestanden, zoals na het uitpakken van een gedownloade zip)
+        run: |
+          find Shared macOS iOS -type f -exec xattr -w com.apple.quarantine "0083;00000000;Safari;" {} \; 2>/dev/null
+          echo "::notice title=quarantaine::$(find Shared macOS -type f -xattrname com.apple.quarantine 2>/dev/null | wc -l | tr -d ' ') bestanden gemarkeerd"
+
       - name: Archief macOS en iOS (zonder ondertekening)
         run: |
           set -o pipefail
@@ -82,6 +87,8 @@ jobs:
               xcrun --sdk macosx assetutil --info "$car" 2>/dev/null | grep -q '"Name" : "AppIcon"' && n "$t" "AppIcon in Assets.car" || w "$t" "geen AppIcon in Assets.car"
             fi
             [ -f "$C/Resources/AppIcon.icns" ] && n "$t" "AppIcon.icns aanwezig"
+            q=$(xattr -lr "$APP" 2>/dev/null | grep -c com.apple.quarantine)
+            if [ "$q" -gt 0 ]; then e "$t" "ITMS-91109: $q bestand(en) met com.apple.quarantine in de app"; else n "$t" "geen quarantaine-kenmerken in de app (ITMS-91109 in orde)"; fi
             find "$APP" -name "PrivacyInfo.xcprivacy" | grep -q . && n "$t" "privacy-manifest aanwezig ($(find "$APP" -name PrivacyInfo.xcprivacy | wc -l | tr -d ' '))" || w "$t" "geen PrivacyInfo.xcprivacy in de app"
             # 4. entitlements die bij ondertekenen gebruikt worden (uit het project)
             xcodebuild -project Bingr.xcodeproj -scheme "$scheme" -showBuildSettings > "$RUNNER_TEMP/settings-$scheme.txt" 2>/dev/null

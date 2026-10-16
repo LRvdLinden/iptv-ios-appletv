@@ -10,7 +10,7 @@ settings:
   base:
     SWIFT_VERSION: "5.9"
     MARKETING_VERSION: "1.0.0"
-    CURRENT_PROJECT_VERSION: "108"
+    CURRENT_PROJECT_VERSION: "109"
     # Team van Léon van der Linden; automatisch ondertekenen voor iOS, tvOS en macOS
     DEVELOPMENT_TEAM: EU3UY476T6
     CODE_SIGN_STYLE: Automatic
@@ -189,3 +189,16 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ENABLE_HARDENED_RUNTIME: YES
         COMBINE_HIDPI_IMAGES: YES
+        # nodig voor de bouwstap hieronder (die past de gebouwde app aan)
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+    postBuildScripts:
+      # build 109: ITMS-91109 - macOS-apps voor TestFlight/App Store mogen geen bestanden met het kenmerk
+      # com.apple.quarantine bevatten. Dat kenmerk zet macOS op alles uit een gedownloade zip (bv. het Xcode-project
+      # uit het beheer) en Xcode kopieert het mee. Hier gaan alle uitgebreide kenmerken eraf, vóór het ondertekenen.
+      - name: Quarantaine-kenmerken verwijderen
+        basedOnDependencyAnalysis: false
+        script: |
+          xattr -cr "${TARGET_BUILD_DIR}/${WRAPPER_NAME}" 2>/dev/null || true
+          if xattr -lr "${TARGET_BUILD_DIR}/${WRAPPER_NAME}" 2>/dev/null | grep -q com.apple.quarantine; then
+            echo "error: er staan nog bestanden met com.apple.quarantine in de app (ITMS-91109)"; exit 1
+          fi

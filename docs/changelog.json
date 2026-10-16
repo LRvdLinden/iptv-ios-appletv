@@ -1,5 +1,20 @@
 [
  {
+  "build": 109,
+  "version": "1.0.0",
+  "date": "2026-10-16",
+  "items": [
+   {
+    "type": "fixed",
+    "platforms": [
+     "macos"
+    ],
+    "nl": "De Mac-app wordt niet meer afgekeurd voor TestFlight en de App Store: bestanden in de app dragen geen quarantaine-kenmerk meer (ITMS-91109)",
+    "en": "The Mac app is no longer rejected for TestFlight and the App Store: files in the app no longer carry the quarantine attribute (ITMS-91109)"
+   }
+  ]
+ },
+ {
   "build": 108,
   "version": "1.0.0",
   "date": "2026-10-16",
