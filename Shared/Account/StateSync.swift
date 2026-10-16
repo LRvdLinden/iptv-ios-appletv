@@ -103,6 +103,13 @@ final class StateSync {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] e in self?.edited(profile: e.0, e.1) }
             .store(in: &bag)
+        // bewust uit Verder kijken gehaald: meteen (synchroon) als verwijdering vastleggen, vóór een volgende sync-ronde
+        store.progressCleared
+            .sink { [weak self] e in self?.recordRemoved("progress", profile: e.0, keys: [e.1], at: e.2) }
+            .store(in: &bag)
+        store.historyRemoved
+            .sink { [weak self] e in self?.recordRemoved("history", profile: e.0, keys: Self.historyVariants(e.1), at: e.2) }
+            .store(in: &bag)
         store.profileDeleted
             .receive(on: DispatchQueue.main)
             .sink { [weak self] id in self?.profileDeleted(id) }
@@ -264,6 +271,47 @@ final class StateSync {
             if s.contains(where: { $0.hasPrefix("profile.") }) { self.lastProgressUpload = Date() }
             await self.run(s)
         }
+    }
+
+    /// Bewust uit Verder kijken gehaald (zie `CloudStore.progressCleared`): de verwijdering met haar tijd in de meta
+    /// zetten. Alleen zo ontstaat een verwijdering van voortgang; `noteProfile` leidt ze niet meer af uit een sleutel die
+    /// lokaal ontbreekt (een onvolledige lokale kopie wiste anders bij de eerstvolgende ronde, bijv. na "Mijn lijst",
+    /// Verder kijken op alle apparaten).
+    /// Geldt ook voor de kijkgeschiedenis (`CloudStore.historyRemoved`).
+    private func recordRemoved(_ field: String, profile id: UUID, keys: [String], at: Date) {
+        guard Secrets.accountsConfigured, AccountService.shared.isSignedIn, !keys.isEmpty else { return }
+        var m = meta.profiles[id.uuidString] ?? ListMeta()
+        var removed = m.removed[field] ?? [:]
+        let t = trusted(at.timeIntervalSince1970)
+        for key in keys {
+            removed[key] = max(removed[key] ?? 0, t)
+            m.present[field]?[key] = nil
+        }
+        m.removed[field] = removed
+        meta.profiles[id.uuidString] = m
+        saveMeta()
+    }
+
+    /// Id van een geschiedenis-vermelding ("<server-id>|<item>") ook met de server-id in kleine letters: web en Samsung
+    /// TV gebruiken de id zoals de server hem kreeg (soms kleine letters), deze app hoofdletters. Zo raakt een
+    /// verwijdering hier ook hun vermelding.
+    private static func historyVariants(_ ids: [String]) -> [String] {
+        var out: [String] = []
+        for k in ids {
+            out.append(k)
+            if let bar = k.firstIndex(of: "|") {
+                let lower = k[..<bar].lowercased() + k[bar...]
+                if lower != k { out.append(lower) }
+            }
+        }
+        return out
+    }
+
+    /// Geschiedenis-id van de server naar de vorm van deze app: een server-id die een UUID is, met hoofdletters
+    /// (`HistoryEntry.id`). Zo raakt een verwijdering van web/Samsung TV ("<kleine letters>|<item>") de vermelding hier.
+    private static func historyKey(_ k: String) -> String {
+        guard let bar = k.firstIndex(of: "|"), let u = UUID(uuidString: String(k[..<bar])) else { return k }
+        return u.uuidString + String(k[bar...])
     }
 
     private func profileDeleted(_ id: UUID) {
@@ -1070,10 +1118,12 @@ final class StateSync {
         Self.diff(&m, "favorites", d.favorites, now: now)
         Self.diff(&m, "watched", d.watched, now: now)
         Self.diffOrdered(&m, "recentChannels", d.recentChannels, now: now)
-        Self.diffTimed(&m, "progress", d.progress.mapValues { $0.updated.timeIntervalSince1970 }, now: now)
+        // voortgang: alleen bewuste verwijderingen tellen (`progressCleared`), niet een sleutel die hier ontbreekt
+        Self.diffTimed(&m, "progress", d.progress.mapValues { $0.updated.timeIntervalSince1970 }, now: now, inferRemovals: false)
         var hist: [String: Double] = [:]
         for e in d.history { hist[e.id] = max(hist[e.id] ?? 0, e.date.timeIntervalSince1970) }
-        Self.diffTimed(&m, "history", hist, now: now)
+        // geschiedenis: idem, alleen bewuste verwijderingen (`CloudStore.historyRemoved`)
+        Self.diffTimed(&m, "history", hist, now: now, inferRemovals: false)
         let pfp = Self.fingerprint(Self.prefs(of: profile))
         if pfp != m.prefs.fp { m.prefs = Stamp(fp: pfp, at: first || m.prefs.fp == nil ? m.prefs.at : now) }
         let pin = Keychain.get(ParentalControl.pinKey(for: id))
@@ -1158,7 +1208,10 @@ final class StateSync {
         }
         for (k, h) in serverHistory where h.at > (history[k]?.at ?? -1) { history[k] = h }
         var historyRemoved = m.removed["history"] ?? [:]
-        for (k, v) in serverRemoved("history") { historyRemoved[k] = max(historyRemoved[k] ?? 0, v) }
+        // ook in de vorm van deze app (server-id met hoofdletters), zodat een verwijdering van web/Samsung TV hier telt
+        for (k, v) in serverRemoved("history") {
+            for kk in Set([k, Self.historyKey(k)]) { historyRemoved[kk] = max(historyRemoved[kk] ?? 0, v) }
+        }
         for (k, at) in historyRemoved {
             if let h = history[k], h.at > at { historyRemoved[k] = nil } else { history[k] = nil }
         }
@@ -1428,7 +1481,10 @@ final class StateSync {
     }
 
     /// Items met een eigen tijd (voortgang, geschiedenis): verdwenen → verwijderd met `at` = nu.
-    private static func diffTimed(_ m: inout ListMeta, _ name: String, _ current: [String: Double], now: Double) {
+    /// `inferRemovals: false` (voortgang): verdwenen → alleen uit de bekende stand; de verwijdering zelf komt dan van
+    /// `progressCleared`, en wat de server nog heeft komt bij het samenvoegen gewoon terug.
+    private static func diffTimed(_ m: inout ListMeta, _ name: String, _ current: [String: Double], now: Double,
+                                  inferRemovals: Bool = true) {
         var present = m.present[name] ?? [:]
         var removed = m.removed[name] ?? [:]
         for (k, at) in current {
@@ -1437,7 +1493,7 @@ final class StateSync {
         }
         for k in present.keys where current[k] == nil {
             present[k] = nil
-            if now > 0 { removed[k] = now }
+            if now > 0 && inferRemovals { removed[k] = now }
         }
         m.present[name] = present
         m.removed[name] = removed

@@ -82,7 +82,13 @@ struct LiveTVView: View {
     private var listKey: ListKey {
         let prefix = store.key(pid, "")
         func ids<S: Sequence>(_ keys: S) -> [String] where S.Element == String {
-            keys.compactMap { $0.hasPrefix(prefix) ? String($0.dropFirst(prefix.count)) : nil }
+            // server-id hoofdletterongevoelig (web/Android/Samsung TV: soms kleine letters); elke zender één keer
+            var seen = Set<String>()
+            return keys.compactMap { k -> String? in
+                guard k.count > prefix.count, k.prefix(prefix.count).caseInsensitiveCompare(prefix) == .orderedSame else { return nil }
+                let id = String(k.dropFirst(prefix.count))
+                return seen.insert(id).inserted ? id : nil
+            }
         }
         return ListKey(version: playlists.libraryVersion, source: playlists.source?.id, group: group, query: query,
                        favorites: !searching && group == Self.favKey ? Set(ids(store.favorites)) : [],
@@ -468,6 +474,7 @@ private struct EventRow: View {
                 HStack(spacing: 8) {
                     if live {
                         Text(L("LIVE")).font(.system(size: tvScaled(10), weight: .heavy))
+                            .foregroundStyle(Theme.onAccent)
                             .padding(.horizontal, 6).padding(.vertical, 2)
                             .background(Theme.red, in: Capsule())
                     }

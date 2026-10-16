@@ -334,6 +334,7 @@ struct PlayerScreen: View {
                             Label(player.behindLive > 5 ? "−\(PlayerController.format(player.behindLive))" : L("LIVE"),
                                   systemImage: "dot.radiowaves.left.and.right")
                                 .font(.system(size: tvScaled(12), weight: .heavy))
+                                .foregroundStyle(player.behindLive > 5 ? Color.white : Theme.onAccent)
                                 .padding(.horizontal, 10).padding(.vertical, 5)
                                 .background(player.behindLive > 5 ? Theme.elevated : Theme.red, in: Capsule())
                         }

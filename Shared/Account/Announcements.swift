@@ -122,6 +122,7 @@ struct AnnouncementSheet: View {
                 .font(.system(size: tvScaled(16), weight: .semibold))
                 .frame(minWidth: tvScaled(140))
                 .padding(.vertical, tvScaled(4))
+                .onAccentLabel()   // goud: donkere tekst op de knop
         }
         .buttonStyle(.borderedProminent)
         .tint(Theme.red)

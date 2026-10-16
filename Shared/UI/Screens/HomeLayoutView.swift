@@ -66,6 +66,8 @@ struct HomeLayoutView: View {
         case "continue": return "play.circle"
         case "mylist": return "heart"
         case "recent": return "sparkles"
+        case "upcoming": return "calendar"
+        case "streaming": return "play.tv"
         case "foryou": return "hand.thumbsup"
         case "top10": return "chart.bar"
         case "live": return "dot.radiowaves.left.and.right"

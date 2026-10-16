@@ -233,7 +233,8 @@ struct HomeLayout: Codable, Hashable {
     /// Vaste rijen, in de standaardvolgorde. "browse" (build 86) = de rij Categorieën met tegels; staat hij direct na
     /// "live", dan zet Home hem vanzelf 5 rijen onder Nu live (zie `HomeView.homeSlots`). Zelfde sleutel op web en
     /// Android/Samsung TV; de oudere sleutels "genres" (web) en "categorytiles" (Android) lezen we als "browse".
-    static let knownKeys = ["continue", "mylist", "recent", "foryou", "top10", "live", "browse", "categories", "movies", "series"]
+    /// Build 111: "upcoming" (Binnenkort) en "streaming" (Nieuw op streamingdiensten), TMDB; standaard aan, na "recent".
+    static let knownKeys = ["continue", "mylist", "recent", "upcoming", "streaming", "foryou", "top10", "live", "browse", "categories", "movies", "series"]
     /// Oudere sleutels van andere apps → huidige sleutel (plek en aan/uit blijven; dubbele vervallen)
     static let keyAliases = ["genres": "browse", "categorytiles": "browse"]
     /// Build 86: precies 5 getoonde rijen tussen Nu live (de rij "live") en de rij Categorieën (= de 6e rij eronder)
@@ -246,6 +247,8 @@ struct HomeLayout: Codable, Hashable {
         case "continue": return L("Continue watching")
         case "mylist": return L("My List")
         case "recent": return L("Recently added")
+        case "upcoming": return L("Coming soon")
+        case "streaming": return L("New on streaming")
         case "foryou": return L("For you")
         case "top10": return L("Top 10")
         case "live": return L("Favorite channels")

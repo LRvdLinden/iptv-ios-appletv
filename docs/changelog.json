@@ -1,5 +1,92 @@
 [
  {
+  "build": 111,
+  "version": "1.0.0",
+  "date": "2026-10-16",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web"
+    ],
+    "nl": "Home heeft drie nieuwe rijen: Nieuw toegevoegd (films en series van je eigen bron uit de laatste 30 dagen), Binnenkort en Nieuw op streamingdiensten (gegevens: TMDB). Titels die je al hebt openen direct; andere kun je op Mijn lijst zetten. Aan of uit en in volgorde te zetten via Startscherm",
+    "en": "Home has three new rows: Recently added (movies and series from your own source from the last 30 days), Coming soon and New on streaming (data: TMDB). Titles you already have open directly; others can be added to My List. Turn them on or off and reorder them in Home screen"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web"
+    ],
+    "nl": "Nieuwe accentkleur Goud, passend bij het gouden app-icoon. Knoppen en labels in goud krijgen donkere tekst, zodat alles goed leesbaar blijft",
+    "en": "New accent color Gold, matching the gold app icon. Buttons and labels in gold get dark text so everything stays easy to read"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Iets in Mijn lijst zetten wist Verder kijken niet meer. Alleen wat je zelf uit Verder kijken haalt of uitkijkt, verdwijnt ook op je andere apparaten",
+    "en": "Adding a title to My List no longer clears Continue Watching. Only titles you remove from Continue Watching or finish disappear on your other devices too"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Kijkgeschiedenis verdwijnt niet meer vanzelf; alleen wat je zelf verwijdert of wist",
+    "en": "Watch history no longer disappears on its own; only what you remove or clear yourself"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web"
+    ],
+    "nl": "Mijn lijst, favorieten, recente zenders en kijkgeschiedenis zijn nu overal gelijk, ook als de server op een ander apparaat is toegevoegd",
+    "en": "My List, favourites, recent channels and watch history now match on all your devices, also when the server was added on another device"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "android",
+     "androidtv"
+    ],
+    "nl": "Verder kijken toont ook titels die je op je iPhone of iPad begon",
+    "en": "Continue Watching now also shows titles you started on your iPhone or iPad"
+   }
+  ]
+ },
+ {
   "build": 110,
   "version": "1.0.0",
   "date": "2026-10-16",

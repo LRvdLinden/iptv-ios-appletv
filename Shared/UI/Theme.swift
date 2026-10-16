@@ -4,6 +4,8 @@ import ImageIO
 enum Theme {
     /// Accentkleur (build 52: instelbaar onder Mijn Bingr → Uiterlijk; standaard Bingr-rood)
     static var red: Color { AccentChoice.current.color }
+    /// Tekst/iconen óp een vlak in de accentkleur: wit, bij een licht accent (goud) donker
+    static var onAccent: Color { AccentChoice.current.onColor }
     /// Altijd rood (foutmeldingen e.d.)
     static let alert = Color(hex: 0xE50914)
     /// Bingr-rood, vast (ook als het profiel een andere accentkleur heeft): o.a. het Lifetime-icoon
@@ -72,6 +74,16 @@ extension View {
         #endif
     }
 
+    /// Label van een `.borderedProminent`-knop in de accentkleur: bij een licht accent (goud) donkere tekst.
+    /// Bij de andere kleuren niets zetten, zodat het systeem (o.a. de focus op Apple TV) zelf de tekstkleur kiest.
+    @ViewBuilder func onAccentLabel() -> some View {
+        if AccentChoice.current.isLight {
+            self.foregroundStyle(Theme.onAccent)
+        } else {
+            self
+        }
+    }
+
     @ViewBuilder func plainTVButton() -> some View {
         #if os(tvOS)
         self.buttonStyle(TVLiftStyle(scale: 1.06, dimWhenIdle: true))
@@ -114,7 +126,8 @@ extension EnvironmentValues {
     }
 }
 
-/// De afspeelknop (build 58): gevuld in de accentkleur van het actieve profiel, witte tekst en icoon.
+/// De afspeelknop (build 58): gevuld in de accentkleur van het actieve profiel, witte tekst en icoon
+/// (bij een licht accent zoals goud donkere tekst, `Theme.onAccent`).
 /// Eigen stijl die zelf `isFocused` afhandelt, zodat de systeemfocus (wit vlak) hem op Apple TV niet weer
 /// wit maakt: geselecteerd = groter, iets lichter accent, witte rand en schaduw.
 struct PlayButtonStyle: ButtonStyle {
@@ -134,7 +147,7 @@ struct PlayButtonStyle: ButtonStyle {
 
         var body: some View {
             configuration.label
-                .foregroundStyle(.white)
+                .foregroundStyle(Theme.onAccent)
                 .background { shape.fill(Theme.red) }
                 // geselecteerd: iets lichter; ingedrukt: iets donkerder
                 .overlay { shape.fill(.white.opacity(isFocused ? 0.14 : 0)) }
@@ -215,7 +228,7 @@ private struct NetflixButtonLabel: View {
                 content.contentShape(RoundedRectangle(cornerRadius: tvScaled(6)))
             } else {
                 content
-                    .foregroundStyle(isLight ? Color.black : Color.white)
+                    .foregroundStyle(kind == .accent ? Theme.onAccent : (isLight ? Color.black : Color.white))
                     .background(background, in: RoundedRectangle(cornerRadius: tvScaled(6)))
             }
         }
@@ -261,7 +274,7 @@ struct WatchedBadge: View {
         Image(systemName: "checkmark.circle.fill")
             .font(.system(size: tvScaled(18)))
             .symbolRenderingMode(.palette)
-            .foregroundStyle(.white, Theme.red)
+            .foregroundStyle(Theme.onAccent, Theme.red)
             .shadow(radius: 3)
     }
 }

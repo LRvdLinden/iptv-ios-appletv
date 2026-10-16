@@ -75,7 +75,7 @@ struct ConnectionsSetupView: View {
 
     private func step(_ n: Int, _ text: String) -> some View {
         HStack(alignment: .top, spacing: 10) {
-            Text("\(n)").font(.caption.bold()).frame(width: 22, height: 22).background(Theme.red, in: Circle())
+            Text("\(n)").font(.caption.bold()).foregroundStyle(Theme.onAccent).frame(width: 22, height: 22).background(Theme.red, in: Circle())
             Text(text).font(.subheadline)
         }
     }

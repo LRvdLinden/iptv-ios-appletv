@@ -542,7 +542,7 @@ private struct LanguagePicker: View {
                     Text(l.name)
                     Spacer()
                     if let i = subs.preferredLanguages.firstIndex(of: l.code) {
-                        Text("\(i + 1)").font(.caption.bold()).padding(6).background(Theme.red, in: Circle())
+                        Text("\(i + 1)").font(.caption.bold()).foregroundStyle(Theme.onAccent).padding(6).background(Theme.red, in: Circle())
                     }
                 }
             }

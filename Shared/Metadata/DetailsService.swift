@@ -110,7 +110,9 @@ final class DetailsService: ObservableObject {
         }
 
         // TMDB (optioneel): foto's, logo, achtergrond, stills en teksten in de app-taal
-        if let tm = await TMDB.details(imdb: d.imdbID, tmdbID: tmdbHint, title: searchTitle, year: yearInt, isShow: isShow) {
+        // build 111: bij een titel uit TMDB (Binnenkort / Nieuw op streamingdiensten) staat het TMDB-id in het id
+        if let tm = await TMDB.details(imdb: d.imdbID, tmdbID: DiscoverItem.parse(target.id)?.tmdbID ?? tmdbHint,
+                                       title: searchTitle, year: yearInt, isShow: isShow) {
             d.backdrop = tm.backdrop ?? d.backdrop
             d.logo = tm.logo ?? d.logo
             d.poster = d.poster ?? tm.poster

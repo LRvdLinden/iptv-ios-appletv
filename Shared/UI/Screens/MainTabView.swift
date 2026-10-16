@@ -136,7 +136,7 @@ extension MainTabView {
         guard !lib.channels.isEmpty else { return }
         app.resumeLastChannelPending = false
         let prefix = pid.uuidString + "|"
-        guard let k = CloudStore.shared.recentChannels.first(where: { $0.hasPrefix(prefix) }),
+        guard let k = CloudStore.shared.recentChannels.first(where: { $0.count > prefix.count && $0.prefix(prefix.count).caseInsensitiveCompare(prefix) == .orderedSame }),
               let c = lib.channels.first(where: { $0.id == String(k.dropFirst(prefix.count)) }) else { return }
         // zappen binnen dezelfde groep, zoals vanuit Live TV
         app.play(Playables.channel(c, now: lib.nowPlaying(c)), zap: lib.channels.filter { $0.group == c.group })

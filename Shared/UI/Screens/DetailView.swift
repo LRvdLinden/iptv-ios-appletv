@@ -121,6 +121,12 @@ struct DetailView: View {
                             ProgressView().tint(.white).frame(maxWidth: .infinity)
                         }
                         if !(d?.genres.isEmpty ?? true) || d?.director != nil { creditsBlock }
+                        // build 111: titel uit TMDB (Binnenkort / Nieuw op streamingdiensten): niet in je afspeellijst,
+                        // datum en de verplichte bronvermelding
+                        if let note = DiscoverStore.detailNote(for: target.id) {
+                            Text(note).font(.system(size: tvScaled(12))).foregroundStyle(Theme.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
                     .padding(.horizontal, Theme.edge)
 
@@ -367,10 +373,12 @@ struct DetailView: View {
             HStack(spacing: tvScaled(12)) {
                 circleButton(inMyList ? "heart.fill" : "heart") { toggleMyList() }
                     .accessibilityLabel(inMyList ? L("Remove from My List") : L("Add to My List"))   // build 97
-                circleButton(inAnyCollection ? "rectangle.stack.fill.badge.plus" : "rectangle.stack.badge.plus") {
-                    collecting = .detail(target)
+                if !DiscoverItem.isExternal(target.id) {   // build 111: TMDB-titels niet in collecties
+                    circleButton(inAnyCollection ? "rectangle.stack.fill.badge.plus" : "rectangle.stack.badge.plus") {
+                        collecting = .detail(target)
+                    }
+                    .accessibilityLabel(L("Add to collection…"))
                 }
-                .accessibilityLabel(L("Add to collection…"))
                 if let t = currentTrailer {
                     circleButton("film") { openTrailer(t) }
                         .accessibilityLabel(hasSeasonTrailer ? L("Trailer season %d", season) : L("Trailer"))
@@ -425,12 +433,12 @@ struct DetailView: View {
                 .frame(maxWidth: .infinity).frame(height: tvScaled(52))
                 .contentShape(Capsule())
                 .overlay(alignment: .bottom) {
-                    // voortgang: wit op de accentkleur (build 58)
+                    // voortgang: wit op de accentkleur (build 58; bij goud donker)
                     if let p = resumeFraction, p > 0.02 {
                         GeometryReader { g in
                             ZStack(alignment: .leading) {
-                                Capsule().fill(.white.opacity(0.3))
-                                Capsule().fill(.white).frame(width: g.size.width * p)
+                                Capsule().fill(Theme.onAccent.opacity(0.3))
+                                Capsule().fill(Theme.onAccent).frame(width: g.size.width * p)
                             }
                         }.frame(height: 3).padding(.horizontal, 24).padding(.bottom, 6)
                     }
@@ -869,7 +877,7 @@ struct DetailView: View {
                                     .overlay(alignment: .topTrailing) {
                                         if findInLibrary(r) != nil {
                                             Image(systemName: "play.circle.fill").font(.system(size: tvScaled(20)))
-                                                .foregroundStyle(.white, Theme.red).padding(6)
+                                                .foregroundStyle(Theme.onAccent, Theme.red).padding(6)
                                         }
                                     }
                                 Text(r.title).font(.system(size: tvScaled(14))).lineLimit(1)
@@ -1069,7 +1077,8 @@ struct DetailView: View {
     private func playNow() {
         switch target {
         case .movie(let m):
-            if m.streamURL == nil && m.stalkerCmd == nil && m.imdbID == nil && imdb == nil {
+            // build 111: TMDB-titel (niet in deze afspeellijst): in je andere bronnen zoeken
+            if DiscoverItem.isExternal(m.id) || (m.streamURL == nil && m.stalkerCmd == nil && m.imdbID == nil && imdb == nil) {
                 Task { await openSources() }; return
             }
             app.play(Playables.movie(m, imdb: imdb))

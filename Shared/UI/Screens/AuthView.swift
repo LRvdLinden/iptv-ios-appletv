@@ -122,7 +122,7 @@ struct AuthView: View {
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: tvScaled(44)))
                 .symbolRenderingMode(.palette)
-                .foregroundStyle(.white, Theme.red)
+                .foregroundStyle(Theme.onAccent, Theme.red)
             Text(L("Signed in as %@", mail))
                 .font(.system(size: tvScaled(18), weight: .semibold))
                 .foregroundStyle(.white)
@@ -439,10 +439,10 @@ struct AuthPrimaryButton: View {
         Button(action: action) {
             ZStack {
                 Text(title).opacity(busy ? 0 : 1)
-                if busy { ProgressView().tint(.white) }
+                if busy { ProgressView().tint(Theme.onAccent) }
             }
             .font(.system(size: tvScaled(16), weight: .bold))
-            .foregroundStyle(.white)
+            .foregroundStyle(Theme.onAccent)
             .frame(maxWidth: .infinity)
             .padding(.vertical, tvScaled(13))
             .background(Theme.red, in: RoundedRectangle(cornerRadius: tvScaled(6)))

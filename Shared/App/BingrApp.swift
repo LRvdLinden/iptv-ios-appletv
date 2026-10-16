@@ -411,13 +411,15 @@ struct RootView: View {
                 // niet via de banner langs het leeftijdsfilter: een herinnering van een ander profiel opent
                 // de zender alleen als het actieve profiel geen leeftijdsgrens heeft
                 if reminders.canWatch(r) {
-                    Button(L("Watch")) {
+                    Button {
                         reminders.due = nil
                         if let c = playlists.library.channels.first(where: { $0.id == r.channelID }) {
                             app.play(Playables.channel(c, now: playlists.library.nowPlaying(c)))
                         } else if let p = CloudStore.shared.playlists.first(where: { $0.id == r.playlistID }) {
                             app.open(p, thenShow: r.channelID)
                         }
+                    } label: {
+                        Text(L("Watch")).onAccentLabel()   // goud: donkere tekst op de knop
                     }
                     .buttonStyle(.borderedProminent)
                 }

@@ -560,6 +560,14 @@ final class CloudStore: ObservableObject {
         stateEdited.send((activeProfileID ?? mainProfileID, kind))
     }
 
+    /// Op dít apparaat bewust uit Verder kijken gehaald (uitgekeken of "Verwijder uit Verder kijken"): (profiel, sleutel,
+    /// tijd). StateSync legt de verwijdering meteen vast (synchroon, zonder `receive(on:)`). Alleen dit telt als
+    /// verwijdering van voortgang: een sleutel die lokaal ontbreekt (bijv. een onvolledige kopie op schijf) is dat niet,
+    /// anders wiste een sync-ronde (zoals na "Mijn lijst") Verder kijken op alle apparaten.
+    let progressCleared = PassthroughSubject<(UUID, String, Date), Never>()
+    /// Idem voor de kijkgeschiedenis ("Verwijder uit geschiedenis", wissen): (profiel, id's, tijd).
+    let historyRemoved = PassthroughSubject<(UUID, [String], Date), Never>()
+
     /// Lijsten, voortgang en geschiedenis van één profiel (ook als het niet actief is).
     struct ProfileData: Equatable {
         var favorites: Set<String> = []
@@ -793,21 +801,37 @@ final class CloudStore: ObservableObject {
 
     func key(_ playlist: UUID, _ item: String) -> String { "\(playlist.uuidString)|\(item)" }
 
+    /// Is `stored` de sleutel van dit item, ongeacht hoofdletters in de server-id? Deze app schrijft de id met
+    /// hoofdletters (`uuidString`), web/Android/Samsung TV soms met kleine letters (server daar aangemaakt). Het
+    /// item-id blijft exact. Opgeslagen sleutels blijven zoals ze zijn (oudere apps lezen ze ongewijzigd).
+    static func sameKey(_ stored: String, _ playlist: UUID, _ item: String) -> Bool {
+        let p = playlist.uuidString
+        guard stored.count == p.count + 1 + item.count, stored.hasSuffix("|" + item) else { return false }
+        return stored.prefix(p.count).caseInsensitiveCompare(p) == .orderedSame
+    }
+    private func keys(in set: Set<String>, _ playlist: UUID, _ item: String) -> Set<String> {
+        set.filter { Self.sameKey($0, playlist, item) }
+    }
+    private func contains(_ set: Set<String>, _ playlist: UUID, _ item: String) -> Bool {
+        set.contains(key(playlist, item)) || set.contains { Self.sameKey($0, playlist, item) }
+    }
+
     func toggleFavorite(_ playlist: UUID, _ item: String) {
-        let k = key(playlist, item)
-        if favorites.contains(k) { favorites.remove(k) } else { favorites.insert(k) }
+        // uit: alle schrijfwijzen weg (anders komt het via de andere terug); aan: in de eigen schrijfwijze
+        let found = keys(in: favorites, playlist, item)
+        if !found.isEmpty { favorites.subtract(found) } else { favorites.insert(key(playlist, item)) }
         write(favorites, pk(K.favorites))
         edited(.profile)
     }
-    func isFavorite(_ playlist: UUID, _ item: String) -> Bool { favorites.contains(key(playlist, item)) }
+    func isFavorite(_ playlist: UUID, _ item: String) -> Bool { contains(favorites, playlist, item) }
 
     func toggleMyList(_ playlist: UUID, _ item: String) {
-        let k = key(playlist, item)
-        if myList.contains(k) { myList.remove(k) } else { myList.insert(k) }
+        let found = keys(in: myList, playlist, item)
+        if !found.isEmpty { myList.subtract(found) } else { myList.insert(key(playlist, item)) }
         write(myList, pk(K.myList))
         edited(.profile)
     }
-    func inMyList(_ playlist: UUID, _ item: String) -> Bool { myList.contains(key(playlist, item)) }
+    func inMyList(_ playlist: UUID, _ item: String) -> Bool { contains(myList, playlist, item) }
     func setMyList(_ playlist: UUID, _ item: String, _ on: Bool) {
         guard inMyList(playlist, item) != on else { return }
         toggleMyList(playlist, item)
@@ -838,10 +862,14 @@ final class CloudStore: ObservableObject {
             guard d.progress[itemKey] != nil else { return }
             d.progress[itemKey] = nil
             setProfileData(other, d)
+            progressCleared.send((other, itemKey, Date()))
             stateEdited.send((other, .profile))
             return
         }
-        progress[itemKey] = nil; write(progress, pk(K.progress)); edited(.profile)
+        let existed = progress[itemKey] != nil
+        progress[itemKey] = nil; write(progress, pk(K.progress))
+        if existed, let id = activeProfileID ?? mainProfileID { progressCleared.send((id, itemKey, Date())) }
+        edited(.profile)
     }
 
     /// build 97: een ander (bestaand) profiel dan het actieve, anders nil
@@ -900,7 +928,7 @@ final class CloudStore: ObservableObject {
 
     func pushRecentChannel(_ playlist: UUID, _ channelID: String) {
         let k = key(playlist, channelID)
-        recentChannels.removeAll { $0 == k }
+        recentChannels.removeAll { Self.sameKey($0, playlist, channelID) }
         recentChannels.insert(k, at: 0)
         recentChannels = Array(recentChannels.prefix(20))
         write(recentChannels, pk(K.recent))
@@ -950,11 +978,15 @@ final class CloudStore: ObservableObject {
     func removeHistory(_ e: HistoryEntry) {
         history.removeAll { $0.id == e.id }
         write(history, pk(K.history))
+        // bewust verwijderd: als verwijdering vastleggen (een ontbrekende vermelding telt niet meer als verwijdering)
+        if let id = activeProfileID ?? mainProfileID { historyRemoved.send((id, [e.id], Date())) }
         edited(.profile)
     }
     func clearHistory(playlist: UUID?) {
+        let gone = history.filter { $0.playlistID == playlist }.map(\.id)
         history.removeAll { $0.playlistID == playlist }
         write(history, pk(K.history))
+        if !gone.isEmpty, let id = activeProfileID ?? mainProfileID { historyRemoved.send((id, gone, Date())) }
         edited(.profile)
     }
     /// Kijkgeschiedenis van het actieve profiel (en de server).

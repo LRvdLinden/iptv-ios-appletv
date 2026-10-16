@@ -4,6 +4,27 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 111
+_16 oktober 2026_
+
+### Alle apps en de website
+
+**Nieuw**
+
+- Home heeft drie nieuwe rijen: Nieuw toegevoegd (films en series van je eigen bron uit de laatste 30 dagen), Binnenkort en Nieuw op streamingdiensten (gegevens: TMDB). Titels die je al hebt openen direct; andere kun je op Mijn lijst zetten. Aan of uit en in volgorde te zetten via Startscherm
+- Nieuwe accentkleur Goud, passend bij het gouden app-icoon. Knoppen en labels in goud krijgen donkere tekst, zodat alles goed leesbaar blijft
+
+**Opgelost**
+
+- Mijn lijst, favorieten, recente zenders en kijkgeschiedenis zijn nu overal gelijk, ook als de server op een ander apparaat is toegevoegd
+
+### iOS, iPadOS, tvOS, macOS, Android en Android TV
+
+**Opgelost**
+
+- Iets in Mijn lijst zetten wist Verder kijken niet meer. Alleen wat je zelf uit Verder kijken haalt of uitkijkt, verdwijnt ook op je andere apparaten
+- Kijkgeschiedenis verdwijnt niet meer vanzelf; alleen wat je zelf verwijdert of wist
+
 ## Versie 1.0.0 · Build 110
 _16 oktober 2026_
 

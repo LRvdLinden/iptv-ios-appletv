@@ -290,7 +290,7 @@ struct AvatarTile: View {
                 .overlay(Circle().strokeBorder(.white, lineWidth: focused ? tvScaled(3) : 0))
                 .overlay(alignment: .bottomTrailing) {
                     if let badge {
-                        Image(systemName: badge).font(.system(size: tvScaled(12), weight: .bold)).foregroundStyle(.white)
+                        Image(systemName: badge).font(.system(size: tvScaled(12), weight: .bold)).foregroundStyle(Theme.onAccent)
                             .frame(width: tvScaled(26), height: tvScaled(26))
                             .background(Theme.red, in: Circle())
                             .overlay(Circle().strokeBorder(.black, lineWidth: tvScaled(2)))

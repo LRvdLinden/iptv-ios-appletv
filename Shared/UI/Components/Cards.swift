@@ -67,7 +67,7 @@ struct PosterCard: View {
 struct PosterLabel: View {
     let text: String
     var body: some View {
-        Text(text).font(.system(size: tvScaled(9), weight: .heavy)).foregroundStyle(.white)
+        Text(text).font(.system(size: tvScaled(9), weight: .heavy)).foregroundStyle(Theme.onAccent)
             .lineLimit(1)
             .padding(.horizontal, 5).padding(.vertical, 2)
             .background(Theme.red, in: RoundedRectangle(cornerRadius: 2))
@@ -213,7 +213,7 @@ struct Top10Badge: View {
             Text("TOP").font(.system(size: tvScaled(6.5), weight: .heavy))
             Text("10").font(.system(size: tvScaled(11), weight: .black))
         }
-        .foregroundStyle(.white)
+        .foregroundStyle(Theme.onAccent)
         .padding(.horizontal, tvScaled(3)).padding(.vertical, tvScaled(2))
         .background(Theme.red, in: RoundedRectangle(cornerRadius: 2))
     }

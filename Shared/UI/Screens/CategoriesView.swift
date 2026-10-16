@@ -75,12 +75,12 @@ struct CategoriesView: View {
                                     HStack(spacing: 6) {
                                         Image(systemName: allOn ? "checkmark.circle.fill" : (onCount == 0 ? "circle" : "minus.circle.fill"))
                                         Text(p.code).fontWeight(.bold)
-                                        Text("\(onCount)/\(p.groups.count)").foregroundStyle(Theme.secondary)
+                                        Text("\(onCount)/\(p.groups.count)").foregroundStyle(allOn ? Theme.onAccent.opacity(0.75) : Theme.secondary)
                                     }
                                     .font(.system(size: tvScaled(14)))
                                     .padding(.horizontal, tvScaled(12)).padding(.vertical, tvScaled(7))
                                     .background(allOn ? Theme.red.opacity(0.85) : Theme.elevated, in: Capsule())
-                                    .foregroundStyle(.white)
+                                    .foregroundStyle(allOn ? Theme.onAccent : Color.white)
                                 }
                                 .plainTVButton()
                             }

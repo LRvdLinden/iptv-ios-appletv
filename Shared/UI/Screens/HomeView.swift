@@ -37,6 +37,10 @@ struct HomeView: View {
     @State private var preparedAt = Date.distantPast
     @State private var traktMatchedKey: TraktMatchKey?
     @State private var collectionsDone: CollectionsKey?
+    /// Build 111: rijen Binnenkort / Nieuw op streamingdiensten (TMDB, gekoppeld aan je bibliotheek op de achtergrond)
+    @State private var discover: [DiscoverKind: [DiscoverEntry]] = [:]
+    /// Build 111: telt op als TMDB-titels uit Mijn lijst (van een ander apparaat) opgezocht zijn
+    @State private var discoverKnownTick = 0
 
     private var lib: Library { playlists.library }
     private var pid: UUID? { playlists.source?.id }
@@ -96,6 +100,11 @@ struct HomeView: View {
         .task(id: TraktMatchKey(version: indexVersion, playback: trakt.playback)) { await matchTraktPlayback() }
         .task(id: playlists.libraryVersion) { if filter == .all { browse.refresh(playlists) } }
         .onAppear { if filter == .all { browse.refresh(playlists) } }
+        // build 111: TMDB-rijen (12 uur bewaard) zodra de index er is; opnieuw bij ander profiel, taal of indeling
+        .task(id: DiscoverKey(version: indexVersion, profile: store.activeProfileID, kinds: discoverKinds,
+                              language: Localizer.shared.language)) { await loadDiscover() }
+        // build 111: TMDB-titels in Mijn lijst die dit apparaat nog niet kent (op een ander apparaat toegevoegd)
+        .task(id: store.myList) { await resolveExternalMyList() }
         .task(id: collectionsKey) {
             let key = collectionsKey
             guard key != collectionsDone else { return }   // al bijgewerkt: niet bij elke terugkeer opnieuw
@@ -231,7 +240,8 @@ struct HomeView: View {
         switch key {
         case "continue": return !continueWatching.isEmpty
         case "mylist": return !(myListMovies.isEmpty && myListSeries.isEmpty)
-        case "recent": return !index.recent.isEmpty
+        case "recent": return !index.recentTitles.isEmpty   // build 111: Home = films én series, laatste 30 dagen
+        case "upcoming", "streaming": return !(DiscoverKind(rawValue: key).flatMap { discover[$0] } ?? []).isEmpty
         case "foryou": return !forYou.isEmpty
         case "movies": return !index.popularMovies.isEmpty
         case "series": return !index.popularSeries.isEmpty
@@ -261,6 +271,8 @@ struct HomeView: View {
         case "continue": continueRow
         case "mylist": myListRows
         case "recent": recentRow
+        case "upcoming": discoverRow(.upcoming)
+        case "streaming": discoverRow(.streaming)
         case "foryou": forYouRow
         case "live": favoriteChannelsRow
         case "movies":
@@ -429,18 +441,157 @@ struct HomeView: View {
     }
 
     @ViewBuilder private var recentRow: some View {
-        let all = index.recent
-        if !all.isEmpty { movieRow(L("Recently added"), Array(all.prefix(30)), all: all) }
+        if filter == .all {
+            // build 111: "Nieuw toegevoegd": films én series van de laatste 30 dagen, nieuwste eerst (max. 30)
+            let items = index.recentTitles
+            if !items.isEmpty {
+                MediaRow(title: L("Recently added"), onSeeAll: seeAll(L("Recently added"), items)) {
+                    ForEach(items) { t in titleButton(t) }
+                }
+            }
+        } else {
+            let all = index.recent
+            if !all.isEmpty { movieRow(L("Recently added"), Array(all.prefix(30)), all: all) }
+        }
     }
 
-    /// Mijn lijst via de opgeslagen sleutels (snel), niet door de hele bibliotheek te lopen
+    /// Mijn lijst via de opgeslagen sleutels (snel), niet door de hele bibliotheek te lopen.
+    /// Build 111: plus TMDB-titels (Binnenkort / Nieuw op streamingdiensten) die niet in je bibliotheek staan.
     private var myListMovies: [Movie] {
         guard let pid else { return [] }
-        return store.myList.compactMap { index.movie(forKey: $0, playlist: pid) }.sorted { $0.title < $1.title }
+        let ext = showExternalInMyList
+        // dezelfde titel in twee schrijfwijzen van de server-id (iOS/web): één keer
+        return uniqueByID(store.myList.compactMap { k in
+            index.movie(forKey: k, playlist: pid) ?? (ext ? DiscoverKnown.shared.movie(forKey: k, playlist: pid) : nil)
+        }).sorted { $0.title < $1.title }
     }
     private var myListSeries: [Series] {
         guard let pid else { return [] }
-        return store.myList.compactMap { index.series(forKey: $0, playlist: pid) }.sorted { $0.title < $1.title }
+        let ext = showExternalInMyList
+        // dezelfde titel in twee schrijfwijzen van de server-id (iOS/web): één keer
+        return uniqueByID(store.myList.compactMap { k in
+            index.series(forKey: k, playlist: pid) ?? (ext ? DiscoverKnown.shared.series(forKey: k, playlist: pid) : nil)
+        }).sorted { $0.title < $1.title }
+    }
+    /// TMDB-titels alleen zonder leeftijdsgrens (die profielen zien alleen hun eigen, gefilterde bibliotheek)
+    private var showExternalInMyList: Bool {
+        _ = discoverKnownTick   // opnieuw tekenen zodra titels van een ander apparaat opgezocht zijn
+        return store.activeProfile?.effectiveAgeLimit == nil
+    }
+
+    // MARK: build 111: Binnenkort / Nieuw op streamingdiensten (TMDB)
+
+    /// Rijen die in de Home-indeling aan staan (alleen die worden opgehaald)
+    private var discoverKinds: [DiscoverKind] {
+        guard filter == .all else { return [] }
+        let rows = store.homeLayout.effective(collections: store.activeCollections)
+        return DiscoverKind.allCases.filter { k in rows.contains { $0.key == k.homeKey && $0.visible } }
+    }
+
+    @ViewBuilder private func discoverRow(_ kind: DiscoverKind) -> some View {
+        let list = discover[kind] ?? []
+        if !list.isEmpty {
+            VStack(alignment: .leading, spacing: tvScaled(4)) {
+                MediaRow(title: kind.title) {
+                    ForEach(list) { e in
+                        if let m = e.match {
+                            titleButton(m)
+                        } else {
+                            Button { detail = e.item.target } label: {
+                                PosterCard(title: e.item.title, poster: e.item.poster, badge: e.item.dateLabel)
+                            }
+                            .cardButton()
+                            .contextMenu {
+                                if let pid {
+                                    Button { store.toggleMyList(pid, e.item.id) } label: {
+                                        Label(store.inMyList(pid, e.item.id) ? L("Remove from My List") : L("Add to My List"), systemImage: "plus")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                // verplichte bronvermelding (TMDB; watch providers via JustWatch), klein onder de rij
+                Text(kind.attribution)
+                    .font(.system(size: tvScaled(11)))
+                    .foregroundStyle(Theme.secondary)
+                    .padding(.horizontal, Theme.edge)
+            }
+        }
+    }
+
+    /// Poster van een titel uit je bibliotheek (film of serie), met het gewone menu.
+    @ViewBuilder private func titleButton(_ t: DetailTarget) -> some View {
+        switch t {
+        case .movie(let m):
+            let imdb = trakt.imdb(for: m)
+            Button { detail = t } label: {
+                PosterCard(title: m.title, poster: m.poster, imdbID: imdb,
+                           watched: Playables.isWatched(movie: m, imdb: imdb),
+                           progress: store.progress[m.id]?.fraction, language: ContentLanguage.of(m))
+            }
+            .cardButton()
+            .contextMenu { movieMenu(m, imdb: imdb) }
+        case .series(let s):
+            let imdb = trakt.imdb(for: s)
+            Button { detail = t } label: {
+                PosterCard(title: s.title, poster: s.poster, imdbID: imdb,
+                           watchedEpisodes: Playables.watchedEpisodeCount(s, imdb: imdb), language: ContentLanguage.of(s))
+            }
+            .cardButton()
+            .contextMenu {
+                if let pid {
+                    Button { store.toggleMyList(pid, s.id) } label: {
+                        Label(store.inMyList(pid, s.id) ? L("Remove from My List") : L("Add to My List"), systemImage: "plus")
+                    }
+                }
+                Button { collecting = .series(s) } label: {
+                    Label(L("Add to collection…"), systemImage: "rectangle.stack.badge.plus")
+                }
+            }
+        }
+    }
+
+    /// Eerst wat al bewaard is (meteen), daarna het netwerk (12 uur bewaard); koppelen aan je bibliotheek op de
+    /// achtergrond. Kinderprofiel: animatie/familie; profiel met leeftijdsgrens: alleen titels uit de eigen bibliotheek.
+    private func loadDiscover() async {
+        let kinds = discoverKinds
+        guard !kinds.isEmpty else { if !discover.isEmpty { discover = [:] }; return }
+        guard indexVersion >= 0, !lib.movies.isEmpty || !lib.series.isEmpty else { return }
+        let profile = store.activeProfile
+        let kids = profile?.kids ?? false
+        let onlyLibrary = profile?.effectiveAgeLimit != nil
+        let idx = index
+        let matcher = await MatcherCache.shared.matcher(for: lib, key: matcherKey)
+        guard !Task.isCancelled else { return }
+        var out: [DiscoverKind: [DiscoverEntry]] = [:]
+        for k in kinds {
+            let cached = await Task.detached(priority: .utility) { DiscoverStore.cached(k, kids: kids) }.value
+            if !cached.isEmpty { out[k] = await DiscoverStore.match(cached, matcher: matcher, index: idx, onlyLibrary: onlyLibrary) }
+        }
+        guard !Task.isCancelled else { return }
+        if out != discover { discover = out }
+        for k in kinds {
+            let items = await DiscoverStore.shared.get(k, kids: kids)
+            guard !Task.isCancelled else { return }
+            out[k] = await DiscoverStore.match(items, matcher: matcher, index: idx, onlyLibrary: onlyLibrary)
+        }
+        guard !Task.isCancelled else { return }
+        if out != discover { discover = out }
+    }
+
+    private func resolveExternalMyList() async {
+        guard let pid else { return }
+        // server-id hoofdletterongevoelig (web/Android/Samsung TV schrijven hem soms met kleine letters)
+        let ids = store.myList.compactMap { k -> String? in
+            guard let bar = k.firstIndex(of: "|"), k[..<bar].caseInsensitiveCompare(pid.uuidString) == .orderedSame else { return nil }
+            let id = String(k[k.index(after: bar)...])
+            return DiscoverItem.isExternal(id) ? id : nil
+        }
+        guard !ids.isEmpty else { return }
+        let missing = await Task.detached(priority: .utility) { ids.filter { !DiscoverKnown.shared.contains($0) } }.value
+        guard !missing.isEmpty else { return }
+        if await DiscoverStore.shared.resolve(missing), !Task.isCancelled { discoverKnownTick += 1 }
     }
 
     /// P0-fix: voorheen `lib.movies.first(where: { trakt.imdb(for: $0) == imdb })` op de hoofdthread: per Trakt-item
@@ -670,7 +821,8 @@ struct HomeView: View {
 
     private func play(_ t: DetailTarget) {
         switch t {
-        case .movie(let m) where !ageLimited: app.play(Playables.movie(m, imdb: trakt.imdb(for: m)))
+        // build 111: TMDB-titel (niet in je bibliotheek, bijv. uit Mijn lijst) → detailpagina
+        case .movie(let m) where !ageLimited && !DiscoverItem.isExternal(m.id): app.play(Playables.movie(m, imdb: trakt.imdb(for: m)))
         default: detail = t
         }
     }
@@ -832,6 +984,14 @@ private struct TraktMatchKey: Equatable {
     let playback: [TraktSync.PlaybackItem]
 }
 
+/// Build 111: TMDB-rijen opnieuw ophalen/koppelen bij een andere index, profiel, indeling of taal.
+private struct DiscoverKey: Equatable {
+    let version: Int
+    let profile: UUID?
+    let kinds: [DiscoverKind]
+    let language: String
+}
+
 /// Elke id één keer (de eerste blijft). Dubbele id's (bijv. dezelfde stream twee keer in een M3U-lijst) in een
 /// ForEach in een Lazy-stack geven in SwiftUI ongedefinieerd gedrag: haperen of vastlopen, vooral met de focus op Apple TV.
 func uniqueByID<T: Identifiable>(_ xs: [T]) -> [T] {
@@ -934,6 +1094,12 @@ struct HomeIndex {
     var seriesGroupItems: [String: [Series]] = [:]
     var localTopMovies: [Movie] = []
     var localTopSeries: [Series] = []
+    /// Build 111: rij "Nieuw toegevoegd" op Home: films én series van de laatste 30 dagen (Xtream `added` /
+    /// `last_modified`), nieuwste eerst, max. 30; zonder datum (M3U) blijft hij leeg
+    var recentTitles: [DetailTarget] = []
+    /// Build 111: TMDB-id van de bron → titel (rijen Binnenkort / Nieuw op streamingdiensten)
+    var movieByTMDB: [Int: Movie] = [:]
+    var seriesByTMDB: [Int: Series] = [:]
 
     static func build(_ lib: Library) -> HomeIndex {
         var x = HomeIndex()
@@ -967,6 +1133,14 @@ struct HomeIndex {
         x.popularSeries = Array(series.filter { $0.poster != nil }.sorted { ($0.rating ?? 0) > ($1.rating ?? 0) }.prefix(60))
         x.localTopMovies = localTop(movies, rating: \.rating, added: \.addedAt, poster: \.poster)
         x.localTopSeries = localTop(series, rating: \.rating, added: nil, poster: \.poster)
+        // build 111
+        let cutoff = Date().addingTimeInterval(-30 * 86400)
+        var fresh: [(t: DetailTarget, at: Date)] = []
+        for m in movies { if let a = m.addedAt, a >= cutoff { fresh.append((.movie(m), a)) } }
+        for s in series { if let a = s.addedAt, a >= cutoff { fresh.append((.series(s), a)) } }
+        x.recentTitles = Array(fresh.sorted { $0.at > $1.at }.prefix(30).map(\.t))
+        for m in movies { if let t = m.tmdbID, x.movieByTMDB[t] == nil { x.movieByTMDB[t] = m } }
+        for s in series { if let t = s.tmdbID, x.seriesByTMDB[t] == nil { x.seriesByTMDB[t] = s } }
         return x
     }
 
@@ -1007,8 +1181,10 @@ struct HomeIndex {
     static func randomWithPoster(_ xs: [Series]) -> Series? { sample(xs, 1, where: { $0.poster != nil }).first }
 
     private func itemID(_ key: String, _ playlist: UUID) -> Substring? {
+        // server-id hoofdletterongevoelig: web/Android/Samsung TV schrijven hem soms met kleine letters
         let p = playlist.uuidString
-        guard key.count > p.count, key.hasPrefix(p) else { return nil }
+        guard key.count > p.count + 1, key.prefix(p.count).caseInsensitiveCompare(p) == .orderedSame,
+              key[key.index(key.startIndex, offsetBy: p.count)] == "|" else { return nil }
         return key.dropFirst(p.count + 1)
     }
     func movie(forKey k: String, playlist: UUID) -> Movie? { itemID(k, playlist).flatMap { movieByID[String($0)] } }

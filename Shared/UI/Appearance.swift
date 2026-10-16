@@ -6,11 +6,12 @@ import UIKit
 import AppKit
 #endif
 
-/// Accentkleur: knoppen en accenten in plaats van vast rood ("red", "blue", "green", "purple", "orange", "pink").
+/// Accentkleur: knoppen en accenten in plaats van vast rood ("red", "blue", "green", "purple", "orange", "pink", "gold").
+/// "gold" (nieuw): oudere apps kennen hem niet en tekenen rood, maar laten de waarde op de server staan.
 /// Build 52/53: één kleur voor het hele account (`settings.shared.accentColor`).
 /// Build 54: per profiel, in `account_data.profiles[].accentColor` (zie docs/ACCOUNT.md → "Build 54").
 enum AccentChoice: String, CaseIterable, Identifiable {
-    case red, blue, green, purple, orange, pink
+    case red, blue, green, purple, orange, pink, gold
     var id: String { rawValue }
     /// De kleur waarmee de app nu tekent: die van het actieve profiel (alleen op dit apparaat, volgt het profiel)
     static let key = "ui.accentColor.active"
@@ -46,8 +47,16 @@ enum AccentChoice: String, CaseIterable, Identifiable {
         case .purple: return Color(hex: 0x9B5CF6)
         case .orange: return Color(hex: 0xF97316)
         case .pink: return Color(hex: 0xEC4899)
+        // goud van het gouden app-icoon (de streep onder de B)
+        case .gold: return Color(hex: 0xF5B30B)
         }
     }
+
+    /// Licht accent: tekst en iconen óp een vlak in de accentkleur worden dan donker (wit op goud is onleesbaar)
+    var isLight: Bool { self == .gold }
+
+    /// Kleur voor tekst en iconen op een vlak in deze accentkleur
+    var onColor: Color { isLight ? Color(hex: 0x1A1400) : .white }
 
     var title: String {
         switch self {
@@ -57,6 +66,7 @@ enum AccentChoice: String, CaseIterable, Identifiable {
         case .purple: return L("Purple")
         case .orange: return L("Orange")
         case .pink: return L("Pink")
+        case .gold: return L("Gold")
         }
     }
 }

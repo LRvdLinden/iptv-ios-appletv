@@ -55,7 +55,7 @@ struct AddPlaylistView: View {
                                         Text(k.title).font(.system(size: tvScaled(12), weight: .semibold)).lineLimit(1)
                                     }
                                     .frame(maxWidth: .infinity).padding(.vertical, tvScaled(12))
-                                    .foregroundStyle(.white)
+                                    .foregroundStyle(kind == k ? Theme.onAccent : Color.white)
                                     .background(kind == k ? AnyShapeStyle(Theme.red) : AnyShapeStyle(Theme.elevated),
                                                 in: RoundedRectangle(cornerRadius: tvScaled(12)))
                                 }
@@ -76,12 +76,12 @@ struct AddPlaylistView: View {
 
                     Button(action: save) {
                         HStack {
-                            if testing { ProgressView().tint(.white) }
+                            if testing { ProgressView().tint(canSave ? Theme.onAccent : Color.white) }
                             Text(testing ? L("Testing connection…") : L("Save")).font(.system(size: tvScaled(17), weight: .bold))
                         }
                         .frame(maxWidth: .infinity).padding(.vertical, tvScaled(14))
                         .background(canSave ? Theme.red : Theme.elevated, in: Capsule())
-                        .foregroundStyle(.white)
+                        .foregroundStyle(canSave ? Theme.onAccent : Color.white)
                     }
                     .plainTVButton()
                     .disabled(!canSave || testing)

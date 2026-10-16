@@ -440,8 +440,9 @@ Elk profiel heeft een eigen accentkleur. Die staat in `account_data.profiles`, d
 
 | Veld (per profiel in `profiles`) | Waarde | Ontbreekt |
 |---|---|---|
-| `accentColor` | `"red"`, `"blue"`, `"green"`, `"purple"`, `"orange"` of `"pink"` | `"red"` |
+| `accentColor` | `"red"`, `"blue"`, `"green"`, `"purple"`, `"orange"`, `"pink"` of `"gold"` | `"red"` |
 
+- **Goud (`"gold"`, nieuw):** `#F5B30B`, het goud van het gouden app-icoon. Licht, dus tekst en iconen óp een vlak in de accentkleur (afspeelknop, labels, badges) worden donker (`#1A1400`) in plaats van wit. Een oudere app kent `"gold"` niet en tekent dan rood (of houdt zijn eigen lokale kleur). Uploadt zo'n app de profielenlijst (na een eigen wijziging aan de profielen), dan kan hij `"gold"` vervangen door zijn lokale kleur van dat profiel. Een onbekende waarde betekent: rood tekenen en de waarde van de server niet zelf vervangen.
 - **Wijzigen** (Mijn Bingr → Uiterlijk, elk profiel): zet `accentColor` bij het actieve profiel, zet `updatedAt` = nu en upload de profielenlijst (zoals bij naam of avatar). `accentColor` hoort bij de velden die bij "server nieuwer" worden overgenomen.
 - **Samenvoegen:** is de server nieuwer en heeft hij `accentColor`, neem die over. Ontbreekt `accentColor` op de server (een oudere app), laat de lokale waarde staan. Heeft het profiel lokaal nog geen kleur en de server wel, neem die van de server over (ook als de server niet nieuwer is).
 - **Toepassen:** bij het kiezen van een profiel en zodra de kleur van het actieve profiel (ook via de sync) verandert, meteen de hele interface in die kleur. "Wie kijkt er?" houdt de laatste kleur.
@@ -578,6 +579,9 @@ De apps hoeven hier niets voor te veranderen. De website haalt vóór elke wijzi
 
 - **Lezen:** accepteer verwijderingen in alle drie de vormen: `removed.<veld>`, `{removed:true}` in de lijst/in een `progress`-item, en de oudere iOS-velden `progressRemoved` / `historyRemoved` (en `<veld>Removed`).
 - **Schrijven:** zet verwijderingen altijd in `removed` (Android en Tizen lezen alleen die vorm voor `progress` en `history`). Haal `removed` nooit weg; iOS-apps van vóór build 60 schrijven daarnaast `progressRemoved` / `historyRemoved`, laat die staan.
+- **Verwijderingen uit `progress` alleen bij een bewuste actie** (uitgekeken, "Verwijder uit Verder kijken"), met de tijd van die actie. Een sleutel die lokaal ontbreekt (onvolledige of verouderde lokale kopie, ander profiel dat van schijf gelezen wordt) is géén verwijdering: dan wint wat de server heeft. Anders wist de eerstvolgende sync-ronde (bijvoorbeeld direct na "+ Mijn lijst") Verder kijken op alle apparaten. Web en Samsung TV deden dit al zo; iOS/tvOS/macOS en Android sinds de fix voor dit probleem. Het formaat verandert niet.
+- **Geschiedenis net zo:** een verwijdering uit `history` alleen bij "Verwijder uit geschiedenis" of wissen, niet omdat een vermelding lokaal ontbreekt.
+- **Server-id in sleutels hoofdletterongevoelig.** In `myList`, `favorites`, `recentChannels` en `history` (`<server-id>|<item>`) en in `progress[…].playlistID` mag de server-id in hoofdletters (iOS) of kleine letters (web/Android/Samsung TV, server daar aangemaakt) staan. Vergelijk de server-id altijd zonder op hoofdletters te letten, het item-id exact. Opgeslagen sleutels niet herschrijven. Uitzetten = alle schrijfwijzen van dat item verwijderen; aanzetten in de eigen schrijfwijze als er nog geen is. Een geschiedenis-verwijdering mag ook in beide schrijfwijzen in `removed.history` staan.
 
 ### `collections`: wanneer is het gemigreerd
 

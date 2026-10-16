@@ -115,7 +115,7 @@ struct DeviceRow: View {
                     if device.current {
                         Text(L("This device"))
                             .font(.system(size: tvScaled(11), weight: .bold))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(Theme.onAccent)
                             .padding(.horizontal, tvScaled(7))
                             .padding(.vertical, tvScaled(2))
                             .background(Theme.red, in: Capsule())

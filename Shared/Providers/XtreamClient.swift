@@ -74,7 +74,9 @@ struct XtreamClient {
     struct SeriesDTO: Decodable {
         let series_id: Flex; let name: String?; let cover: String?; let category_id: Flex?
         let plot: String?; let rating: Flex?; let releaseDate: String?; let year: Flex?; let tmdb: Int?
-        private enum K: String, CodingKey { case series_id, name, title, cover, category_id, plot, rating, releaseDate, release_date, year, tmdb, tmdb_id }
+        /// Build 111: laatst bijgewerkt (Unix-tijd), voor "Nieuw toegevoegd"
+        let last_modified: Flex?
+        private enum K: String, CodingKey { case series_id, name, title, cover, category_id, plot, rating, releaseDate, release_date, year, tmdb, tmdb_id, last_modified }
         init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: K.self)
             series_id = try c.decode(Flex.self, forKey: .series_id)
@@ -84,6 +86,7 @@ struct XtreamClient {
             releaseDate = c.flexString(.releaseDate) ?? c.flexString(.release_date)
             year = try? c.decode(Flex.self, forKey: .year)
             tmdb = ((try? c.decode(Flex.self, forKey: .tmdb)) ?? (try? c.decode(Flex.self, forKey: .tmdb_id)))?.int.flatMap { $0 > 0 ? $0 : nil }
+            last_modified = try? c.decode(Flex.self, forKey: .last_modified)
         }
     }
     /// Lijst waarin een kapot item wordt overgeslagen in plaats van de hele lijst te laten mislukken.
@@ -298,7 +301,8 @@ struct XtreamClient {
             let y = s.year?.int ?? s.releaseDate.flatMap { Int($0.prefix(4)) } ?? p.year
             return Series(id: "xs\(sid)", title: p.title, year: y, poster: s.cover?.urlValue,
                           group: scMap[s.category_id?.string ?? ""] ?? L("Other"),
-                          plot: s.plot, rating: s.rating?.double, xtreamSeriesID: sid, tmdbID: s.tmdb)
+                          plot: s.plot, rating: s.rating?.double, xtreamSeriesID: sid, tmdbID: s.tmdb,
+                          addedAt: s.last_modified?.double.flatMap { $0 > 0 ? Date(timeIntervalSince1970: $0) : nil })
         }
         return lib
     }
