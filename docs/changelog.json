@@ -1,5 +1,20 @@
 [
  {
+  "build": 107,
+  "version": "1.0.0",
+  "date": "2026-10-16",
+  "items": [
+   {
+    "type": "fixed",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Statuspagina: Android en Samsung TV staan weer goed. De controle kijkt nu of de nieuwste build in de beveiligde opslag staat, in plaats van naar de oude downloadmap op GitHub",
+    "en": "Status page: Android and Samsung TV show correctly again. The check now looks for the newest build in the secure storage instead of the old download folder on GitHub"
+   }
+  ]
+ },
+ {
   "build": 106,
   "version": "1.0.0",
   "date": "2026-10-16",

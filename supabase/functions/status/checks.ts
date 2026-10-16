@@ -45,7 +45,9 @@ export async function runCheck(m: Monitor, ctx: Ctx): Promise<CheckResult> {
       case "storage": return await checkStorage(m.target || "avatars", ctx);
       case "smtp": return await checkSmtp(ctx);
       case "tls": return await checkTls(m.target, ctx);
-      case "gh_asset": return await checkGhAsset(m.target, ctx);
+      case "build": return await checkBuild(m.target, ctx);
+      // oude monitors (vóór build 107): downloads in bingr-beheer/versions bestaan niet meer -> afgesloten opslag
+      case "gh_asset": return await checkBuild(ASSET_PLATFORM[(m.target.split("|")[1] || "").toLowerCase()] ?? "", ctx);
       case "gh_workflow": return await checkGhWorkflow(m.target, ctx);
       default: return { ok: true, skip: true, error: "no_check" }; // bv. devices: alleen informatie
     }
@@ -273,39 +275,59 @@ function ghHeaders(ctx: Ctx): Record<string, string> {
 }
 const limited = (res: Response) => res.status === 429 || (res.status === 403 && res.headers.get("x-ratelimit-remaining") === "0");
 
-/** Downloads staan sinds build 69 niet meer als GitHub-release, maar in <repo>/versions (latest.json met per platform het bestand). */
-const VERSION_KEYS: Record<string, string> = { ".apk": "android", ".wgt": "tizen", ".zip": "apple" };
+// ---- apps: buildpakketten in de afgesloten opslag van beheer.bingr.online ----
+// Sinds build 105 staan de pakketten niet meer op GitHub maar in builds/ op de server van beheer.bingr.online, alleen
+// bereikbaar via dl.php met een kortgeldige, ondertekende link (HMAC-SHA256 met het function-secret BINGR_BUILDS_KEY,
+// zelfde formaat als de functie admin in bingr-beheer). De controle haalt het manifest op en vraagt daarna met HEAD het
+// nieuwste bestand van het platform op (zonder het te downloaden). Links en sleutel komen nooit in een resultaat.
+export const BUILDS_DL = "https://beheer.bingr.online/dl.php";
+export const BUILD_PLATFORMS = ["android", "tizen", "apple", "beheer"] as const;
+const ASSET_PLATFORM: Record<string, string> = { ".apk": "android", ".wgt": "tizen", ".zip": "apple" };
 
-async function latestVersions(repo: string, ctx: Ctx, signal: AbortSignal): Promise<Record<string, { build?: number; file?: string; url?: string }>> {
-  const key = `ver:${repo}`;
-  if (!ctx.cache.has(key)) {
-    ctx.cache.set(key, (async () => {
-      const f = ctx.fetch ?? fetch;
-      const res = await f(`https://raw.githubusercontent.com/${repo}/main/versions/latest.json`, { signal, headers: { "User-Agent": UA } });
-      if (!res.ok) { await res.body?.cancel(); throw new Error(`versions/latest.json HTTP ${res.status}`); }
-      return await res.json();
-    })());
-  }
-  return await (ctx.cache.get(key) as Promise<Record<string, { build?: number; file?: string; url?: string }>>);
+const b64url = (b: Uint8Array) => btoa(String.fromCharCode(...b)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+/** Token voor dl.php: base64url(JSON {f, e}) + "." + base64url(HMAC-SHA256(key, payload)). */
+export async function signBuildToken(key: string, path: string, ttlSeconds: number, nowSec = Math.floor(Date.now() / 1000)): Promise<string> {
+  const enc = new TextEncoder();
+  const payload = b64url(enc.encode(JSON.stringify({ f: path, e: nowSec + ttlSeconds })));
+  const k = await crypto.subtle.importKey("raw", enc.encode(key), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = new Uint8Array(await crypto.subtle.sign("HMAC", k, enc.encode(payload)));
+  return `${payload}.${b64url(sig)}`;
 }
 
-/** target: "<owner/repo>|<.apk|.wgt|.zip>" — controleert of het nieuwste bestand in versions/ te downloaden is. */
-export async function checkGhAsset(target: string, ctx: Ctx): Promise<CheckResult> {
-  const [repo0, ext] = target.split("|");
-  // oude monitors wezen naar de releases van bingr-android; die bestaan niet meer
-  const repo = repo0 === "LRvdLinden/bingr-android" ? "LRvdLinden/bingr-beheer" : repo0;
+type BuildEntry = { build?: number; date?: string; file?: string; path?: string; size?: number };
+
+/** target: "android" | "tizen" | "apple" | "beheer" — staat de nieuwste build van dat platform in de opslag en is hij op te halen? */
+export async function checkBuild(target: string, ctx: Ctx): Promise<CheckResult> {
+  const plat = (target || "").trim().toLowerCase();
+  if (!(BUILD_PLATFORMS as readonly string[]).includes(plat)) return { ok: false, error: `onbekend platform "${plat}"` };
+  const key = (ctx.env("BINGR_BUILDS_KEY") || "").trim();
+  if (key.length < 32) return { ok: false, error: "opslag niet ingericht (BINGR_BUILDS_KEY ontbreekt)" };
   const f = ctx.fetch ?? fetch;
   const t = now();
   return await withTimeout(async (signal) => {
-    const all = await latestVersions(repo, ctx, signal);
-    const v = all[VERSION_KEYS[(ext || "").toLowerCase()] ?? ""];
-    if (!v?.url) return { ok: false, ms: since(t), error: `geen ${ext}-bestand in versions/latest.json` };
-    const res = await f(v.url, { signal, headers: { "User-Agent": UA, Range: "bytes=0-0" }, redirect: "follow" });
+    const cacheKey = "builds:manifest";
+    if (!ctx.cache.has(cacheKey)) {
+      ctx.cache.set(cacheKey, (async () => {
+        const res = await f(`${BUILDS_DL}?t=${await signBuildToken(key, "manifest.json", 60)}`,
+          { signal, headers: { "User-Agent": UA }, redirect: "error" });
+        if (!res.ok) { await res.body?.cancel(); throw new Error(`manifest HTTP ${res.status}`); }
+        return await res.json();
+      })());
+    }
+    let m: { platforms?: Record<string, BuildEntry> };
+    try { m = await (ctx.cache.get(cacheKey) as Promise<{ platforms?: Record<string, BuildEntry> }>); }
+    catch (e) { return { ok: false, ms: since(t), error: shortError(e) }; }
+    const v = m?.platforms?.[plat];
+    if (!v?.path || !v.file) return { ok: false, ms: since(t), error: "geen build in de opslag" };
+    const res = await f(`${BUILDS_DL}?t=${await signBuildToken(key, v.path, 60)}`,
+      { method: "HEAD", signal, headers: { "User-Agent": UA }, redirect: "error" });
     await res.body?.cancel();
     const ms = since(t);
-    const name = v.file ?? decodeURIComponent(v.url.split("/").pop() ?? "");
-    if (res.status !== 200 && res.status !== 206) return { ok: false, code: res.status, ms, error: `download HTTP ${res.status}`, detail: name };
-    return { ok: true, code: res.status, ms, detail: name };
+    const detail = `build ${v.build ?? "?"}${v.date ? ` (${v.date})` : ""}`;
+    if (res.status !== 200) return { ok: false, code: res.status, ms, error: `download HTTP ${res.status}`, detail };
+    const len = Number(res.headers.get("content-length") ?? "");
+    if (v.size && len && len !== v.size) return { ok: false, code: res.status, ms, error: "bestand is onvolledig", detail };
+    return { ok: true, code: res.status, ms, detail };
   });
 }
 

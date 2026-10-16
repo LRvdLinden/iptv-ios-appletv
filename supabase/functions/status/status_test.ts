@@ -2,7 +2,7 @@
 //   deno test --allow-net --allow-env --allow-read supabase/functions/status/status_test.ts
 // Optioneel een echte TLS-handshake tegen een lokale server: TLS_TEST_CERT=<pem> TLS_TEST_KEY=<pem> (CN mag alles zijn).
 import { addDays, daySeries, evaluate, isDue, type MonitorState, overall, uptimePct, windowUptime } from "./logic.ts";
-import { certNotAfter, checkGhAsset, checkGhWorkflow, checkHttp, checkTls, type Ctx, tlsResult } from "./checks.ts";
+import { certNotAfter, checkBuild, checkGhWorkflow, runCheck, signBuildToken, checkHttp, checkTls, type Ctx, tlsResult } from "./checks.ts";
 
 function eq(a: unknown, b: unknown, msg = "") {
   const x = JSON.stringify(a), y = JSON.stringify(b);
@@ -100,24 +100,45 @@ Deno.test({ name: "http-controle: status, trefwoord, traag, timeout", sanitizeOp
   eq(t, "timeout");
 });
 
-Deno.test("Downloads: nieuwste bestanden uit versions/latest.json", async () => {
-  const calls: string[] = [];
-  const h: Handler = (u) => {
-    calls.push(u);
-    if (u.endsWith("/versions/latest.json")) {
-      return Response.json({ android: { build: 69, file: "B.apk", url: "https://raw.example/B.apk" }, tizen: { build: 69, file: "B.wgt", url: "https://raw.example/B.wgt" } });
+Deno.test("Downloads: builds in de afgesloten opslag (dl.php)", async () => {
+  const KEY = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"; // testwaarde
+  const calls: { path: string; method: string }[] = [];
+  const h: Handler = (u, init) => {
+    const t = new URL(u).searchParams.get("t") ?? "";
+    const p = JSON.parse(atob(t.split(".")[0].replace(/-/g, "+").replace(/_/g, "/")));
+    calls.push({ path: p.f, method: init?.method ?? "GET" });
+    if (p.f === "manifest.json") {
+      return Response.json({ platforms: {
+        android: { build: 106, date: "2026-10-16", file: "B.apk", path: "android/B.apk", size: 10 },
+        tizen: { build: 106, file: "B.wgt", path: "tizen/B.wgt", size: 10 },
+        apple: { build: 106, file: "B.zip", path: "apple/B.zip", size: 10 },
+      } });
     }
-    return new Response("", { status: u.endsWith(".wgt") ? 404 : 206 });
+    if (p.f === "tizen/B.wgt") return new Response(null, { status: 404 });
+    if (p.f === "apple/B.zip") return new Response(null, { status: 200, headers: { "content-length": "3" } });
+    return new Response(null, { status: 200, headers: { "content-length": "10" } });
   };
-  const ctx = ctxWith(h);
-  const apk = await checkGhAsset("LRvdLinden/bingr-android|.apk", ctx); // oude monitor-target
-  eq([apk.ok, apk.detail], [true, "B.apk"]);
-  eq(calls[0], "https://raw.githubusercontent.com/LRvdLinden/bingr-beheer/main/versions/latest.json");
-  const wgt = await checkGhAsset("LRvdLinden/bingr-beheer|.wgt", ctx);
+  const ctx = ctxWith(h, { BINGR_BUILDS_KEY: KEY });
+  const apk = await checkBuild("android", ctx);
+  eq([apk.ok, apk.detail], [true, "build 106 (2026-10-16)"]);
+  eq(calls[1], { path: "android/B.apk", method: "HEAD" });
+  const wgt = await checkBuild("tizen", ctx);
   eq([wgt.ok, wgt.code], [false, 404]);
-  eq(calls.filter((c) => c.endsWith("latest.json")).length, 1); // maar één keer opgehaald per run
-  const none = await checkGhAsset("LRvdLinden/bingr-beheer|.zip", ctx);
-  eq([none.ok, none.error], [false, "geen .zip-bestand in versions/latest.json"]);
+  eq((await checkBuild("apple", ctx)).error, "bestand is onvolledig");
+  eq((await checkBuild("beheer", ctx)).error, "geen build in de opslag");
+  eq(calls.filter((c) => c.path === "manifest.json").length, 1); // manifest maar één keer per run
+  eq((await checkBuild("x", ctx)).ok, false);
+  eq((await checkBuild("android", ctxWith(h))).error, "opslag niet ingericht (BINGR_BUILDS_KEY ontbreekt)");
+  // oude monitor (gh_asset) gaat naar dezelfde controle
+  const old = await runCheck({ kind: "gh_asset", target: "LRvdLinden/bingr-beheer|.apk" } as never, ctxWith(h, { BINGR_BUILDS_KEY: KEY }));
+  eq(old.ok, true);
+});
+
+Deno.test("Downloads: token gelijk aan dl.php (HMAC-SHA256, base64url)", async () => {
+  const tok = await signBuildToken("k".repeat(64), "manifest.json", 60, 1000);
+  const [p, s] = tok.split(".");
+  eq(JSON.parse(atob(p)), { f: "manifest.json", e: 1060 });
+  eq(/^[A-Za-z0-9_-]{43}$/.test(s), true);
 });
 
 Deno.test("GitHub: Apple-build", async () => {

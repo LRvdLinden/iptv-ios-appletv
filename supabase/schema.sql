@@ -772,13 +772,19 @@ insert into public.status_monitors (id, name_nl, name_en, grp, kind, target, key
   ('site-link',  'Tv koppelen',                  'TV linking',                   'website', 'http',        'https://bingr.online/koppelen/',         null,         5,  true,  true, 40),
   ('site-acc',   'Mijn Bingr',                   'My Bingr',                     'website', 'http',        'https://bingr.online/account/',          null,         5,  true,  true, 50),
   ('tls',        'TLS-certificaat',              'TLS certificate',              'website', 'tls',         'bingr.online',                           null,         60, true,  true, 60),
-  ('apk',        'Android',                      'Android',                      'apps',    'gh_asset',    'LRvdLinden/bingr-beheer|.apk',           null,         15, true,  true, 10),
-  ('wgt',        'Samsung TV',                   'Samsung TV',                   'apps',    'gh_asset',    'LRvdLinden/bingr-beheer|.wgt',           null,         15, true,  true, 20),
+  ('apk',        'Android',                      'Android',                      'apps',    'build',       'android',                                null,         15, true,  true, 10),
+  ('wgt',        'Samsung TV',                   'Samsung TV',                   'apps',    'build',       'tizen',                                  null,         15, true,  true, 20),
   ('apple',      'Apple (iOS, iPadOS, tvOS, macOS)', 'Apple (iOS, iPadOS, tvOS, macOS)', 'apps',    'gh_workflow', 'LRvdLinden/iptv-ios-appletv|build.yml|main', null,     15, true,  true, 30),
   ('devices',    'Actieve apparaten',            'Active devices',               'apps',    'devices',     '',                                       null,         5,  false, true, 90)
 on conflict (id) do nothing;
 -- downloads staan sinds build 69 in bingr-beheer/versions (niet meer als GitHub-release)
 update public.status_monitors set target = replace(target, 'LRvdLinden/bingr-android|', 'LRvdLinden/bingr-beheer|') where kind = 'gh_asset' and target like 'LRvdLinden/bingr-android|%';
+-- build 107: pakketten staan niet meer op GitHub maar in de afgesloten opslag van beheer.bingr.online (dl.php);
+-- de downloadmonitors controleren die opslag (soort build, doel = platform)
+update public.status_monitors
+   set kind = 'build',
+       target = case when target like '%.apk' then 'android' when target like '%.wgt' then 'tizen' when target like '%.zip' then 'apple' else target end
+ where kind = 'gh_asset';
 
 create table if not exists public.status_checks (
   id          bigserial primary key,

@@ -4,6 +4,15 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 107
+_16 oktober 2026_
+
+### Server
+
+**Opgelost**
+
+- Statuspagina: Android en Samsung TV staan weer goed. De controle kijkt nu of de nieuwste build in de beveiligde opslag staat, in plaats van naar de oude downloadmap op GitHub
+
 ## Versie 1.0.0 · Build 106
 _16 oktober 2026_
 

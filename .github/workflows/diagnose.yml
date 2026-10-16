@@ -75,3 +75,30 @@ jobs:
             --data-urlencode "iso_timestamp_start=$(date -u -d '-6 hours' +%FT%TZ)" \
             --data-urlencode "iso_timestamp_end=$(date -u +%FT%TZ)" \
             | python3 -c 'import sys,re; s=sys.stdin.read(); s=re.sub(r"\"[^\"]*@[^\"]*\"","\"<e>\"",s); s=re.sub(r"[0-9a-f]{8}-[0-9a-f-]{27}","<id>",s); s=re.sub(r"\(([^()]{0,200})\)=\(([^()]*)\)",r"(\1)=(<waarde>)",s); print(s[:1800])' | note pgfouten
+
+  # build 107: statuspagina — per monitor de laatste uitkomst (geen gebruikersgegevens: alleen soort, status en foutsoort)
+  status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+    steps:
+      - name: Monitors van de statuspagina
+        shell: bash
+        run: |
+          set -uo pipefail
+          note() { printf '::notice title=%s::%s\n' "$1" "$(tr '\n' ' ' | head -c 3500)"; }
+          q() {
+            python3 -c 'import json,sys; print(json.dumps({"query": sys.argv[1]}))' "$1" > /tmp/q.json
+            curl -s -X POST "https://api.supabase.com/v1/projects/$REF/database/query" \
+              -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" --data @/tmp/q.json
+          }
+          q "select id, kind, enabled as aan, public as publiek, coalesce(last_state,'-') as staat, fail_streak as fouten,
+                    round(extract(epoch from now() - last_checked_at)) as sec_geleden, left(coalesce(last_error,''), 80) as fout
+             from public.status_monitors order by grp, sort" | note monitors
+          q "select m.id, left(coalesce(c.detail,''), 60) as detail, c.status_code as code
+             from public.status_monitors m left join lateral (select detail, status_code from public.status_checks
+               where monitor_id = m.id order by at desc limit 1) c on true where m.grp = 'apps'" | note apps
+          q "select (select count(*) from public.status_incidents where ended_at is null) as open_storingen,
+                    (select count(*) from public.status_incidents where started_at > now() - interval '7 days') as storingen_7d" | note storingen
