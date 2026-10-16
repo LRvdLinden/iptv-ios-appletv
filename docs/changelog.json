@@ -1,5 +1,23 @@
 [
  {
+  "build": 108,
+  "version": "1.0.0",
+  "date": "2026-10-16",
+  "items": [
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "Klaar voor de App Store en TestFlight: Bingr heeft nu een privacyoverzicht (geen tracking) en de exportverklaring voor versleuteling zit in de app",
+    "en": "Ready for the App Store and TestFlight: Bingr now includes a privacy manifest (no tracking) and the encryption export declaration is built into the app"
+   }
+  ]
+ },
+ {
   "build": 107,
   "version": "1.0.0",
   "date": "2026-10-16",

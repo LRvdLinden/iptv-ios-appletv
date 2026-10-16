@@ -1,0 +1,87 @@
+name: Mac-archief
+
+# Diagnose macOS-distributie: maakt (zonder ondertekening) een archief van BingrMac, zoals Xcode > Product > Archive,
+# en controleert wat App Store Connect / TestFlight eist. Ter vergelijking ook een archief van de iOS-app.
+# Uitkomst als annotaties (geen geheimen, geen gebruikersgegevens).
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['project.yml', 'macOS/**', '.github/workflows/mac-archive.yml', 'Shared/PrivacyInfo.xcprivacy']
+
+permissions:
+  contents: read
+
+jobs:
+  archive:
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Xcode-versie kiezen
+        run: |
+          sudo xcode-select -s "$(ls -d /Applications/Xcode_16*.app | sort -V | tail -1)"
+          xcodebuild -version
+
+      - name: Project genereren
+        run: |
+          brew install xcodegen
+          xcodegen generate
+          xcodebuild -resolvePackageDependencies -project Bingr.xcodeproj > /dev/null
+
+      - name: Archief macOS en iOS (zonder ondertekening)
+        run: |
+          set -o pipefail
+          for s in BingrMac:macOS Bingr:iOS; do
+            scheme=${s%%:*}; plat=${s##*:}
+            xcodebuild archive -project Bingr.xcodeproj -scheme "$scheme" -destination "generic/platform=$plat" \
+              -archivePath "$RUNNER_TEMP/$scheme.xcarchive" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+              > "$RUNNER_TEMP/$scheme.log" 2>&1 \
+              && echo "::notice title=$plat::archief gemaakt" \
+              || { echo "::error title=$plat::archiveren mislukt"; grep -E "error:" "$RUNNER_TEMP/$scheme.log" | sort -u | head -15 | sed 's/^/::error::/'; }
+          done
+
+      - name: Archieven controleren
+        run: |
+          n(){ echo "::notice title=$1::$2"; }; w(){ echo "::warning title=$1::$2"; }; e(){ echo "::error title=$1::$2"; }
+          pb(){ /usr/libexec/PlistBuddy -c "Print :$2" "$1" 2>/dev/null; }
+          for scheme in BingrMac Bingr; do
+            A="$RUNNER_TEMP/$scheme.xcarchive"; [ -d "$A" ] || continue
+            t=$scheme
+            # 1. "macOS/iOS App Archive" of "Generic Xcode Archive" (dan geen knop Distribute naar App Store Connect)
+            if pb "$A/Info.plist" ApplicationProperties:ApplicationPath >/dev/null; then
+              n "$t" "soort: app-archief ($(pb "$A/Info.plist" ApplicationProperties:ApplicationPath))"
+            else
+              e "$t" "Generic Xcode Archive: het archief bevat geen app op de juiste plek -> niet te distribueren naar App Store Connect"
+              n "$t" "inhoud Products: $(cd "$A/Products" && find . -maxdepth 4 | head -30 | tr '\n' ' ')"
+            fi
+            APP=$(find "$A/Products" -maxdepth 4 -name "*.app" | head -1); [ -n "$APP" ] || continue
+            if [ -d "$APP/Contents" ]; then C="$APP/Contents"; IP="$C/Info.plist"; BIN="$C/MacOS/$(pb "$IP" CFBundleExecutable)"; FW="$C/Frameworks"; else C="$APP"; IP="$APP/Info.plist"; BIN="$APP/$(pb "$IP" CFBundleExecutable)"; FW="$APP/Frameworks"; fi
+            n "$t" "bundle-ID $(pb "$IP" CFBundleIdentifier), versie $(pb "$IP" CFBundleShortVersionString) ($(pb "$IP" CFBundleVersion)), platform $(pb "$IP" CFBundleSupportedPlatforms:0), min. OS $(pb "$IP" LSMinimumSystemVersion)$(pb "$IP" MinimumOSVersion)"
+            for k in LSApplicationCategoryType ITSAppUsesNonExemptEncryption CFBundleIconName; do
+              v=$(pb "$IP" $k); [ -n "$v" ] && n "$t" "$k = $v" || w "$t" "$k ontbreekt in Info.plist"
+            done
+            n "$t" "architecturen app: $(lipo -archs "$BIN" 2>/dev/null)"
+            # 2. ingebouwde frameworks: architecturen, losse uitvoerbare bestanden buiten Frameworks/MacOS (App Store weigert die)
+            if [ -d "$FW" ]; then
+              for f in "$FW"/*; do b=$(basename "$f"); bin="$f"; [ -d "$f" ] && bin=$(find "$f" -maxdepth 3 -type f -perm -u+x ! -name "*.plist" | head -1); n "$t" "framework $b: $(lipo -archs "$bin" 2>/dev/null || echo '?')"; done
+            fi
+            odd=$(find "$C" -type f \( -name "*.dylib" -o -name "*.so" \) ! -path "*/Frameworks/*" | sed "s#$C/##" | head -10 | tr '\n' ' ')
+            [ -n "$odd" ] && w "$t" "losse bibliotheken buiten Frameworks/: $odd"
+            nested=$(find "$C" -mindepth 2 -name "*.app" | sed "s#$C/##" | head -5 | tr '\n' ' ')
+            [ -n "$nested" ] && w "$t" "app in de app: $nested"
+            # 3. icoon en privacy-manifest
+            if [ -f "$C/Resources/Assets.car" ] || [ -f "$C/Assets.car" ]; then
+              car=$( [ -f "$C/Resources/Assets.car" ] && echo "$C/Resources/Assets.car" || echo "$C/Assets.car")
+              xcrun --sdk macosx assetutil --info "$car" 2>/dev/null | grep -q '"Name" : "AppIcon"' && n "$t" "AppIcon in Assets.car" || w "$t" "geen AppIcon in Assets.car"
+            fi
+            [ -f "$C/Resources/AppIcon.icns" ] && n "$t" "AppIcon.icns aanwezig"
+            find "$APP" -name "PrivacyInfo.xcprivacy" | grep -q . && n "$t" "privacy-manifest aanwezig ($(find "$APP" -name PrivacyInfo.xcprivacy | wc -l | tr -d ' '))" || w "$t" "geen PrivacyInfo.xcprivacy in de app"
+            # 4. entitlements die bij ondertekenen gebruikt worden (uit het project)
+            ent=$(xcodebuild -project Bingr.xcodeproj -scheme "$scheme" -showBuildSettings 2>/dev/null | awk -F' = ' '/ CODE_SIGN_ENTITLEMENTS /{print $2; exit}')
+            [ -n "$ent" ] && [ -f "$ent" ] && n "$t" "entitlements: $(/usr/libexec/PlistBuddy -c Print "$ent" | grep -oE '^ +[a-z][A-Za-z0-9.-]+' | tr -d ' ' | tr '\n' ' ')"
+            sb=$(xcodebuild -project Bingr.xcodeproj -scheme "$scheme" -showBuildSettings 2>/dev/null | grep -E " (ENABLE_APP_SANDBOX|ENABLE_HARDENED_RUNTIME|SKIP_INSTALL|INSTALL_PATH|SUPPORTED_PLATFORMS|ARCHS) = " | sed 's/^ *//' | tr '\n' ';')
+            n "$t" "instellingen: $sb"
+          done

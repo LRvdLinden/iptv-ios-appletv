@@ -4,6 +4,15 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 108
+_16 oktober 2026_
+
+### iOS, iPadOS, tvOS en macOS
+
+**Verbeterd**
+
+- Klaar voor de App Store en TestFlight: Bingr heeft nu een privacyoverzicht (geen tracking) en de exportverklaring voor versleuteling zit in de app
+
 ## Versie 1.0.0 · Build 107
 _16 oktober 2026_
 

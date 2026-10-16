@@ -10,7 +10,7 @@ settings:
   base:
     SWIFT_VERSION: "5.9"
     MARKETING_VERSION: "1.0.0"
-    CURRENT_PROJECT_VERSION: "106"
+    CURRENT_PROJECT_VERSION: "108"
     # Team van Léon van der Linden; automatisch ondertekenen voor iOS, tvOS en macOS
     DEVELOPMENT_TEAM: EU3UY476T6
     CODE_SIGN_STYLE: Automatic
@@ -37,6 +37,8 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFBundleDisplayName: Bingr
+        # alleen standaardversleuteling (HTTPS): geen exportvragen bij elke upload naar App Store Connect / TestFlight
+        ITSAppUsesNonExemptEncryption: false
         LSApplicationCategoryType: public.app-category.entertainment
         UILaunchScreen: {}
         UIRequiresFullScreen: false
@@ -116,6 +118,8 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFBundleDisplayName: Bingr
+        # alleen standaardversleuteling (HTTPS): geen exportvragen bij elke upload naar App Store Connect / TestFlight
+        ITSAppUsesNonExemptEncryption: false
         LSApplicationCategoryType: public.app-category.entertainment
         UILaunchScreen: {}
         UIUserInterfaceStyle: Dark
@@ -155,6 +159,8 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFBundleDisplayName: Bingr
         CFBundleName: Bingr
+        # alleen standaardversleuteling (HTTPS): geen exportvragen bij elke upload naar App Store Connect / TestFlight
+        ITSAppUsesNonExemptEncryption: false
         LSApplicationCategoryType: public.app-category.entertainment
         LSMinimumSystemVersion: "14.0"
         NSAppTransportSecurity:
