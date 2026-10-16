@@ -25,7 +25,7 @@
 //   mail_run       {}                     -> verstuurt wat er in de wachtrij staat
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { smtpConfigured, smtpFrom, transport } from "../_shared/mail.ts";
-import { button, esc, eyebrow, footerHtml, layout, redBar, title } from "../_shared/layout.ts";
+import { button, esc, eyebrow, footerHtml, layout, personName, redBar, title } from "../_shared/layout.ts";
 import { clientIp } from "../_shared/ip.ts"; // build 95: laatste X-Forwarded-For-waarde, niet de eerste
 import { type Monitor, runCheck } from "./checks.ts";
 import { type DayRow, daySeries, durationS, evaluate, isDue, type State, uptimePct, windowUptime } from "./logic.ts";
@@ -447,6 +447,21 @@ async function maintenanceTransitions(notices: Notice[]): Promise<string[]> {
 }
 
 // ---- meldingen aan abonnees (wachtrij, in porties) ----
+/** Voornamen voor de aanhef ("Hoi <voornaam>,"): user_metadata.first_name van bevestigde Bingr-accounts met deze adressen
+ *  (bingr_first_names, alleen service role). Abonnees zonder account of zonder naam, of als het opzoeken mislukt: geen aanhef. */
+async function firstNames(emails: string[]): Promise<Map<string, string>> {
+  const m = new Map<string, string>();
+  if (!emails.length) return m;
+  try {
+    const { data, error } = await db.rpc("bingr_first_names", { p_emails: emails });
+    if (error) return m;
+    for (const r of (data ?? []) as { email: string; first_name: string | null }[]) {
+      const n = personName(r.first_name);
+      if (n && r.email) m.set(r.email.toLowerCase(), n);
+    }
+  } catch { /* zonder aanhef */ }
+  return m;
+}
 async function sendTo(tx: ReturnType<typeof transport>, to: string, m: { subject: string; html: string; text: string }, unsub?: string) {
   await tx.sendMail({
     from: env("BINGR_STATUS_FROM") || smtpFrom(), to, subject: m.subject, html: m.html, text: m.text,
@@ -484,10 +499,11 @@ async function processQueue(budgetMs: number, max: number) {
           .gt("id", cursor).order("id").limit(Math.min(25, max - sent - failed));
         const list = (subs ?? []) as { id: number; email: string; lang: Lang; token: string }[];
         if (!list.length) { done = true; break; }
+        const hi = await firstNames(list.map((x) => x.email));
         for (const sub of list) {
           if (Date.now() - t0 > budgetMs) break;
           try {
-            await sendTo(tx, sub.email, renderNotice(pn, sub.lang === "en" ? "en" : "nl", names, sub.token), unsubscribeUrl(sub.token));
+            await sendTo(tx, sub.email, renderNotice(pn, sub.lang === "en" ? "en" : "nl", names, sub.token, hi.get(sub.email.toLowerCase()) ?? ""), unsubscribeUrl(sub.token));
             s++; sent++;
             await db.from("status_subscribers").update({ last_sent_at: new Date().toISOString() }).eq("id", sub.id);
           } catch (e) {
@@ -711,8 +727,9 @@ async function subscribe(b: Record<string, unknown>, ip: string) {
       throw new Error(error.message);
     }
   }
+  const hi = await firstNames([email]);
   const tx = transport();
-  try { await sendTo(tx, email, renderConfirm(lang, token!)); }
+  try { await sendTo(tx, email, renderConfirm(lang, token!, hi.get(email.toLowerCase()) ?? "")); }
   catch (e) { console.error("status confirm", e instanceof Error ? e.message : e); return { status: 502, body: { error: "mail_failed" } }; }
   finally { tx.close(); }
   return { status: 200, body: { ok: true } };

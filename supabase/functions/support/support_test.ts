@@ -241,3 +241,12 @@ Deno.test("build 95: captcha (proof-of-work): opgave, oplossing, handtekening, v
   while (leadingZeroBits(await powHash(c.salt, String(bad))) >= 8) bad++;
   eq((await verifyPow(key, { ...c, nonce: String(bad) }, now, 8)), { ok: false, reason: "hash" });
 });
+
+Deno.test("aanhef met de voornaam van het account: alleen in klantmails en alleen als die bekend is", () => {
+  ok(!/>Hoi |>Hi /.test(renderMail(base).html) && !renderMail(base).text.includes("Hoi "), "zonder naam geen aanhef");
+  const m = renderMail({ ...base, firstName: "Léon" });
+  ok(m.html.includes(">Hoi Léon,</p>") && m.text.includes("Hoi Léon,"), "NL");
+  ok(renderMail({ ...base, lang: "en", kind: "customer_reply", body: "x", firstName: "Ann" }).html.includes(">Hi Ann,</p>"), "EN");
+  ok(renderMail({ ...base, firstName: "<b>Jo</b>" }).html.includes(">Hoi bJo/b,</p>"), "opgeschoond, geen HTML");
+  ok(!renderMail({ ...base, kind: "support_created", firstName: "Léon" }).html.includes("Hoi Léon"), "niet in mails aan support@");
+});

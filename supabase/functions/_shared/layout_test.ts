@@ -1,5 +1,5 @@
 // deno test supabase/functions/_shared/layout_test.ts — gedeelde huisstijl en de accountmails (supabase/templates/build.ts)
-import { button, esc, footerHtml, footerText, layout } from "./layout.ts";
+import { button, esc, firstNameOf, footerHtml, footerText, greeting, greetingText, layout, personName } from "./layout.ts";
 import { renderAuth, renderTemplate, TEMPLATES, VERIFY_TYPE } from "../../templates/build.ts";
 
 const ok = (c: unknown, m: string) => { if (!c) throw new Error(m); };
@@ -40,11 +40,29 @@ Deno.test("accountmails: NL/EN, Go-variabelen, geen afmeldlink", () => {
     ok(!/supabase/i.test(t), `${key}: geen namen van derden`);
     // Go-acties alleen op de bekende plekken (geen kapotte {{ … }})
     for (const a of t.match(/\{\{[^}]*\}\}/g) ?? []) {
-      ok(/^\{\{ (\.TokenHash|\.RedirectTo|\.Token|\.Email|\.NewEmail|else|end|if and \.Data\.lang \(eq \.Data\.lang "nl"\)) \}\}$/.test(a), `${key}: ${a}`);
+      ok(/^\{\{ (\.TokenHash|\.RedirectTo|\.Token|\.Email|\.NewEmail|\.Data\.first_name|else|end|if \.Data\.first_name|if and \.Data\.lang \(eq \.Data\.lang "nl"\)) \}\}$/.test(a), `${key}: ${a}`);
     }
   }
   ok(renderAuth("recovery", "nl").includes("Nieuw wachtwoord kiezen") && renderAuth("recovery", "en").includes("Choose a new password"), "teksten");
   ok(renderAuth("email_change", "nl").includes("{{ .NewEmail }}"), "nieuw adres");
   ok(renderAuth("confirmation", "nl").includes("type=signup&amp;lang=nl&amp;next={{ .RedirectTo }}"), "bevestigen met next");
   ok(!renderAuth("recovery", "en").includes("next="), "recovery zonder next (altijd naar reset/)");
+  // aanhef met de voornaam uit user_metadata, alleen als die er is
+  for (const key of Object.keys(TEMPLATES)) {
+    ok(renderAuth(key, "nl").includes(">Hoi {{ .Data.first_name }},</p>{{ end }}"), `${key}: aanhef NL`);
+    ok(renderAuth(key, "en").includes("{{ if .Data.first_name }}<p") && renderAuth(key, "en").includes(">Hi {{ .Data.first_name }},</p>"), `${key}: aanhef EN`);
+  }
+});
+
+Deno.test("aanhef: voornaam opschonen en escapen", () => {
+  ok(personName("  Léon \n  van  der ") === "Léon van der", "trimmen en witruimte");
+  ok(personName("<b>Jan</b>") === "bJan/b", "geen < >");
+  ok(personName("x".repeat(80)).length === 50 && Array.from(personName("😀".repeat(60))).length === 50, "max. 50 tekens");
+  ok(personName("kijk op https://evil.example") === "" && personName("www.spam.nl") === "" && personName("a@b.nl") === "", "geen links of adressen");
+  ok(personName(42) === "" && personName(null) === "", "alleen tekst");
+  ok(firstNameOf({ user_metadata: { first_name: " Anna ", last_name: "B" } }) === "Anna", "uit de gebruiker");
+  ok(firstNameOf({ first_name: "Piet" }) === "Piet" && firstNameOf({ user_metadata: {} }) === "" && firstNameOf(null) === "", "uit metadata of leeg");
+  ok(greetingText("nl", "Léon") === "Hoi Léon," && greetingText("en", "Léon") === "Hi Léon," && greetingText("nl", "") === "", "tekst");
+  ok(greeting("en", "Tom & Jerry's") === `<p style="margin:0 0 12px;font-size:15px;line-height:23px;font-weight:600;color:#ffffff">Hi Tom &amp; Jerry&#39;s,</p>`, "html ge-escaped");
+  ok(greeting("nl", undefined) === "", "zonder naam geen aanhef");
 });

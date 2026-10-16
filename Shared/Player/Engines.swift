@@ -301,6 +301,8 @@ final class AVEngine: PlaybackEngine {
     /// (`mediaSelectionGroup(forMediaCharacteristic:)`) is verouderd en kon de hoofdthread laten wachten.
     private var groups: [AVMediaCharacteristic: AVMediaSelectionGroup] = [:]
     private var groupsTask: Task<Void, Never>?
+    /// De geladen stream: bij stoppen of een nieuwe stream het laden afbreken (open HTTP-verzoeken naar de provider dicht)
+    private var asset: AVURLAsset?
 
     init(silent: Bool = false) {
         self.silent = silent
@@ -361,6 +363,9 @@ final class AVEngine: PlaybackEngine {
         failed = false; ended = false; self.live = live
         observers.forEach { NotificationCenter.default.removeObserver($0) }
         let asset = AVURLAsset(url: url, options: ["AVURLAssetHTTPHeaderFieldsKey": ["User-Agent": Secrets.userAgent]])
+        // vorige stream (zappen, nieuwe poging) eerst echt loslaten
+        self.asset?.cancelLoading()
+        self.asset = asset
         let item = AVPlayerItem(asset: asset)
         item.preferredForwardBufferDuration = live ? 4 : 0
         if silent {
@@ -413,6 +418,7 @@ final class AVEngine: PlaybackEngine {
     func pause() { player.pause() }
     func stop() {
         player.pause(); player.replaceCurrentItem(with: nil)
+        asset?.cancelLoading(); asset = nil
         observers.forEach { NotificationCenter.default.removeObserver($0) }
         observers = []
         groupsTask?.cancel(); groupsTask = nil

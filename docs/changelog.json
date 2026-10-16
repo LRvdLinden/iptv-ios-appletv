@@ -1,5 +1,129 @@
 [
  {
+  "build": 110,
+  "version": "1.0.0",
+  "date": "2026-10-16",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web"
+    ],
+    "nl": "Bij het aanmaken van een account vragen we nu je voor- en achternaam",
+    "en": "When you create an account, we now ask for your first and last name"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "web"
+    ],
+    "nl": "In Mijn Bingr kun je je naam bekijken en wijzigen",
+    "en": "You can now view and change your name in My Bingr"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "server"
+    ],
+    "nl": "E-mails van Bingr (account, supporttickets en statusupdates) beginnen met je voornaam als die bekend is",
+    "en": "Emails from Bingr (account, support tickets and status updates) now start with your first name when we know it"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "web",
+     "server"
+    ],
+    "nl": "Veiliger tv koppelen: je ziet welk apparaat de code aanvraagt en wanneer, en bij een code uit een link bevestig je eerst dat hij op je eigen scherm staat",
+    "en": "Safer TV linking: you see which device requested the code and when, and for a code from a link you first confirm it is on your own screen"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web",
+     "server"
+    ],
+    "nl": "Je account verwijderen vraagt nu om je wachtwoord",
+    "en": "Deleting your account now asks for your password"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web"
+    ],
+    "nl": "Verbindingen met je IPTV-server worden direct vrijgegeven bij stoppen, een fout of als de app naar de achtergrond gaat (behalve bij beeld-in-beeld, AirPlay en Chromecast), zodat er geen verbinding blijft hangen",
+    "en": "Connections to your IPTV server are released right away when you stop, on an error or when the app goes to the background (except with picture in picture, AirPlay and Chromecast), so no connection is left hanging"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web"
+    ],
+    "nl": "Bij de melding over de limiet van je IPTV-provider staat nu een tip: stop de stream op je andere apparaat of wacht even",
+    "en": "The message about your IPTV provider's limit now includes a tip: stop the stream on your other device or wait a moment"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "web"
+    ],
+    "nl": "bingr.online is beter beveiligd (o.a. HSTS en bescherming tegen inbedden in andere sites) en http gaat weer naar de juiste https-pagina",
+    "en": "bingr.online is better protected (including HSTS and protection against being embedded in other sites) and http goes to the right https page again"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Betere vindbaarheid: nieuwe titels en beschrijvingen, Nederlandse en Engelse versies, structured data, sitemaps en een eigen 404-pagina",
+    "en": "Better findability: new titles and descriptions, Dutch and English versions, structured data, sitemaps and a custom 404 page"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Support: de uitleg over installeren gaat nu over de app-winkels (binnenkort beschikbaar) in plaats van losse installatiebestanden",
+    "en": "Support: the installation guide now covers the app stores (coming soon) instead of separate installation files"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "web"
+    ],
+    "nl": "De voorwaarden en privacyverklaring noemen PixelForges als beheerder van Bingr",
+    "en": "The terms and privacy policy name PixelForges as the operator of Bingr"
+   }
+  ]
+ },
+ {
   "build": 109,
   "version": "1.0.0",
   "date": "2026-10-16",

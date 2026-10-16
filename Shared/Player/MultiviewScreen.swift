@@ -157,6 +157,9 @@ struct MultiviewScreen: View {
             hitLimit(l)
         }
         session.onLimit = { l in hitLimit(l) }
+        // naar de achtergrond: alle beelden echt stoppen (providerverbindingen vrij), terug = weer live
+        session.onBackground = { tiles.forEach { $0.controller.suspendForBackground() } }
+        session.onForeground = { tiles.forEach { $0.controller.resumeFromBackground() } }
     }
 
     private func hitLimit(_ l: AccountService.StreamLimit) {

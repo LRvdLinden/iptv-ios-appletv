@@ -888,7 +888,15 @@
   "Your account can be used on 1 screen at a time.": "يمكن استخدام حسابك على شاشة واحدة في كل مرة.",
   "Your IPTV subscription allows 1 connection at a time and it is in use. This is a limit of your provider, not of Bingr.": "يسمح اشتراك IPTV الخاص بك باتصال واحد في كل مرة وهو قيد الاستخدام. هذا حد من مزوّدك وليس من Bingr.",
   "Your IPTV subscription allows up to %d connections at the same time and they are all in use. This is a limit of your provider, not of Bingr.": "يسمح اشتراك IPTV الخاص بك بما يصل إلى %d اتصالات في الوقت نفسه وجميعها قيد الاستخدام. هذا حد من مزوّدك وليس من Bingr.",
-  "For %@: %@": "لـ %@: %@"
+  "Stop the stream on your other device, or wait a moment: your provider sometimes only releases a connection you just closed after a minute.": "أوقف البث على جهازك الآخر، أو انتظر قليلًا: أحيانًا لا يحرّر مزوّدك اتصالًا أغلقته للتو إلا بعد دقيقة.",
+  "For %@: %@": "لـ %@: %@",
+  "Enter your first name.": "أدخل اسمك الأول.",
+  "Enter your last name.": "أدخل اسم عائلتك.",
+  "Enter your password to confirm.": "أدخل كلمة المرور للتأكيد.",
+  "First name": "الاسم الأول",
+  "Incorrect password.": "كلمة المرور غير صحيحة.",
+  "Last name": "اسم العائلة",
+  "Too many attempts. Wait a few minutes and try again.": "محاولات كثيرة جدًا. انتظر بضع دقائق ثم حاول مرة أخرى."
  },
  "de": {
   "%@ is now signed in.": "%@ ist jetzt angemeldet.",
@@ -1779,7 +1787,15 @@
   "Your account can be used on 1 screen at a time.": "Dein Konto kann auf 1 Bildschirm gleichzeitig genutzt werden.",
   "Your IPTV subscription allows 1 connection at a time and it is in use. This is a limit of your provider, not of Bingr.": "Dein IPTV-Abo erlaubt 1 Verbindung gleichzeitig und diese ist belegt. Das ist ein Limit deines Anbieters, nicht von Bingr.",
   "Your IPTV subscription allows up to %d connections at the same time and they are all in use. This is a limit of your provider, not of Bingr.": "Dein IPTV-Abo erlaubt bis zu %d Verbindungen gleichzeitig und alle sind belegt. Das ist ein Limit deines Anbieters, nicht von Bingr.",
-  "For %@: %@": "Für %@: %@"
+  "Stop the stream on your other device, or wait a moment: your provider sometimes only releases a connection you just closed after a minute.": "Stoppe den Stream auf deinem anderen Gerät oder warte kurz: Dein Anbieter gibt eine gerade geschlossene Verbindung manchmal erst nach einer Minute frei.",
+  "For %@: %@": "Für %@: %@",
+  "Enter your first name.": "Gib deinen Vornamen ein.",
+  "Enter your last name.": "Gib deinen Nachnamen ein.",
+  "Enter your password to confirm.": "Gib zur Bestätigung dein Passwort ein.",
+  "First name": "Vorname",
+  "Incorrect password.": "Falsches Passwort.",
+  "Last name": "Nachname",
+  "Too many attempts. Wait a few minutes and try again.": "Zu viele Versuche. Warte ein paar Minuten und versuche es erneut."
  },
  "es": {
   "%@ is now signed in.": "%@ ya ha iniciado sesión.",
@@ -2670,7 +2686,15 @@
   "Your account can be used on 1 screen at a time.": "Tu cuenta puede usarse en 1 pantalla a la vez.",
   "Your IPTV subscription allows 1 connection at a time and it is in use. This is a limit of your provider, not of Bingr.": "Tu suscripción IPTV permite 1 conexión a la vez y está en uso. Es un límite de tu proveedor, no de Bingr.",
   "Your IPTV subscription allows up to %d connections at the same time and they are all in use. This is a limit of your provider, not of Bingr.": "Tu suscripción IPTV permite hasta %d conexiones a la vez y están todas en uso. Es un límite de tu proveedor, no de Bingr.",
-  "For %@: %@": "Para %@: %@"
+  "Stop the stream on your other device, or wait a moment: your provider sometimes only releases a connection you just closed after a minute.": "Detén la reproducción en tu otro dispositivo o espera un momento: a veces tu proveedor no libera una conexión que acabas de cerrar hasta pasado un minuto.",
+  "For %@: %@": "Para %@: %@",
+  "Enter your first name.": "Introduce tu nombre.",
+  "Enter your last name.": "Introduce tus apellidos.",
+  "Enter your password to confirm.": "Introduce tu contraseña para confirmar.",
+  "First name": "Nombre",
+  "Incorrect password.": "Contraseña incorrecta.",
+  "Last name": "Apellidos",
+  "Too many attempts. Wait a few minutes and try again.": "Demasiados intentos. Espera unos minutos y vuelve a intentarlo."
  },
  "fr": {
   "%@ is now signed in.": "%@ est maintenant connecté.",
@@ -3561,7 +3585,15 @@
   "Your account can be used on 1 screen at a time.": "Votre compte peut être utilisé sur 1 écran à la fois.",
   "Your IPTV subscription allows 1 connection at a time and it is in use. This is a limit of your provider, not of Bingr.": "Votre abonnement IPTV autorise 1 connexion à la fois et elle est utilisée. C'est une limite de votre fournisseur, pas de Bingr.",
   "Your IPTV subscription allows up to %d connections at the same time and they are all in use. This is a limit of your provider, not of Bingr.": "Votre abonnement IPTV autorise jusqu'à %d connexions simultanées et elles sont toutes utilisées. C'est une limite de votre fournisseur, pas de Bingr.",
-  "For %@: %@": "Pour %@ : %@"
+  "Stop the stream on your other device, or wait a moment: your provider sometimes only releases a connection you just closed after a minute.": "Arrête le flux sur ton autre appareil, ou patiente un instant : ton fournisseur ne libère parfois une connexion que tu viens de fermer qu'au bout d'une minute.",
+  "For %@: %@": "Pour %@ : %@",
+  "Enter your first name.": "Saisissez votre prénom.",
+  "Enter your last name.": "Saisissez votre nom.",
+  "Enter your password to confirm.": "Saisissez votre mot de passe pour confirmer.",
+  "First name": "Prénom",
+  "Incorrect password.": "Mot de passe incorrect.",
+  "Last name": "Nom",
+  "Too many attempts. Wait a few minutes and try again.": "Trop de tentatives. Patientez quelques minutes, puis réessayez."
  },
  "it": {
   "%@ is now signed in.": "%@ ha effettuato l’accesso.",
@@ -4452,7 +4484,15 @@
   "Your account can be used on 1 screen at a time.": "Il tuo account può essere usato su 1 schermo alla volta.",
   "Your IPTV subscription allows 1 connection at a time and it is in use. This is a limit of your provider, not of Bingr.": "Il tuo abbonamento IPTV consente 1 connessione alla volta ed è in uso. È un limite del tuo provider, non di Bingr.",
   "Your IPTV subscription allows up to %d connections at the same time and they are all in use. This is a limit of your provider, not of Bingr.": "Il tuo abbonamento IPTV consente fino a %d connessioni contemporaneamente e sono tutte in uso. È un limite del tuo provider, non di Bingr.",
-  "For %@: %@": "Per %@: %@"
+  "Stop the stream on your other device, or wait a moment: your provider sometimes only releases a connection you just closed after a minute.": "Interrompi lo stream sull'altro dispositivo, oppure attendi un momento: a volte il tuo provider libera una connessione appena chiusa solo dopo un minuto.",
+  "For %@: %@": "Per %@: %@",
+  "Enter your first name.": "Inserisci il tuo nome.",
+  "Enter your last name.": "Inserisci il tuo cognome.",
+  "Enter your password to confirm.": "Inserisci la password per confermare.",
+  "First name": "Nome",
+  "Incorrect password.": "Password errata.",
+  "Last name": "Cognome",
+  "Too many attempts. Wait a few minutes and try again.": "Troppi tentativi. Attendi qualche minuto e riprova."
  },
  "nl": {
   "%@ is now signed in.": "%@ is nu ingelogd.",
@@ -5343,7 +5383,15 @@
   "Your account can be used on 1 screen at a time.": "Je account kan op 1 scherm tegelijk worden gebruikt.",
   "Your IPTV subscription allows 1 connection at a time and it is in use. This is a limit of your provider, not of Bingr.": "Je IPTV-abonnement staat maximaal 1 verbinding tegelijk toe en die is in gebruik. Dit is een limiet van je provider, niet van Bingr.",
   "Your IPTV subscription allows up to %d connections at the same time and they are all in use. This is a limit of your provider, not of Bingr.": "Je IPTV-abonnement staat maximaal %d verbindingen tegelijk toe en die zijn allemaal in gebruik. Dit is een limiet van je provider, niet van Bingr.",
-  "For %@: %@": "Voor %@: %@"
+  "Stop the stream on your other device, or wait a moment: your provider sometimes only releases a connection you just closed after a minute.": "Stop de stream op je andere apparaat, of wacht even: een net gesloten verbinding wordt soms pas na een minuut vrijgegeven door je provider.",
+  "For %@: %@": "Voor %@: %@",
+  "Enter your first name.": "Voer je voornaam in.",
+  "Enter your last name.": "Voer je achternaam in.",
+  "Enter your password to confirm.": "Vul je wachtwoord in om te bevestigen.",
+  "First name": "Voornaam",
+  "Incorrect password.": "Onjuist wachtwoord.",
+  "Last name": "Achternaam",
+  "Too many attempts. Wait a few minutes and try again.": "Te veel pogingen. Wacht een paar minuten en probeer het opnieuw."
  },
  "pl": {
   "%@ is now signed in.": "%@ jest teraz zalogowany.",
@@ -6234,7 +6282,15 @@
   "Your account can be used on 1 screen at a time.": "Z konta można korzystać jednocześnie na 1 ekranie.",
   "Your IPTV subscription allows 1 connection at a time and it is in use. This is a limit of your provider, not of Bingr.": "Twoja subskrypcja IPTV pozwala na 1 połączenie naraz i jest ono w użyciu. To limit Twojego dostawcy, nie Bingr.",
   "Your IPTV subscription allows up to %d connections at the same time and they are all in use. This is a limit of your provider, not of Bingr.": "Twoja subskrypcja IPTV pozwala na maksymalnie %d połączeń naraz i wszystkie są w użyciu. To limit Twojego dostawcy, nie Bingr.",
-  "For %@: %@": "Dla %@: %@"
+  "Stop the stream on your other device, or wait a moment: your provider sometimes only releases a connection you just closed after a minute.": "Zatrzymaj stream na drugim urządzeniu albo chwilę poczekaj: dostawca czasem zwalnia właśnie zamknięte połączenie dopiero po minucie.",
+  "For %@: %@": "Dla %@: %@",
+  "Enter your first name.": "Wpisz swoje imię.",
+  "Enter your last name.": "Wpisz swoje nazwisko.",
+  "Enter your password to confirm.": "Wpisz hasło, aby potwierdzić.",
+  "First name": "Imię",
+  "Incorrect password.": "Nieprawidłowe hasło.",
+  "Last name": "Nazwisko",
+  "Too many attempts. Wait a few minutes and try again.": "Zbyt wiele prób. Odczekaj kilka minut i spróbuj ponownie."
  },
  "pt": {
   "%@ is now signed in.": "%@ já tem sessão iniciada.",
@@ -7125,7 +7181,15 @@
   "Your account can be used on 1 screen at a time.": "A tua conta pode ser usada em 1 ecrã de cada vez.",
   "Your IPTV subscription allows 1 connection at a time and it is in use. This is a limit of your provider, not of Bingr.": "A tua subscrição IPTV permite 1 ligação de cada vez e está em uso. É um limite do teu fornecedor, não do Bingr.",
   "Your IPTV subscription allows up to %d connections at the same time and they are all in use. This is a limit of your provider, not of Bingr.": "A tua subscrição IPTV permite até %d ligações ao mesmo tempo e estão todas em uso. É um limite do teu fornecedor, não do Bingr.",
-  "For %@: %@": "Para %@: %@"
+  "Stop the stream on your other device, or wait a moment: your provider sometimes only releases a connection you just closed after a minute.": "Para a transmissão no teu outro dispositivo, ou espera um pouco: o teu fornecedor por vezes só liberta uma ligação que acabaste de fechar passado um minuto.",
+  "For %@: %@": "Para %@: %@",
+  "Enter your first name.": "Introduza o seu nome próprio.",
+  "Enter your last name.": "Introduza o seu apelido.",
+  "Enter your password to confirm.": "Introduza a sua palavra-passe para confirmar.",
+  "First name": "Nome próprio",
+  "Incorrect password.": "Palavra-passe incorreta.",
+  "Last name": "Apelido",
+  "Too many attempts. Wait a few minutes and try again.": "Demasiadas tentativas. Aguarde alguns minutos e tente novamente."
  },
  "tr": {
   "%@ is now signed in.": "%@ artık oturum açtı.",
@@ -8016,7 +8080,15 @@
   "Your account can be used on 1 screen at a time.": "Hesabın aynı anda 1 ekranda kullanılabilir.",
   "Your IPTV subscription allows 1 connection at a time and it is in use. This is a limit of your provider, not of Bingr.": "IPTV aboneliğin aynı anda 1 bağlantıya izin veriyor ve bu bağlantı kullanımda. Bu, Bingr'ın değil sağlayıcının bir sınırıdır.",
   "Your IPTV subscription allows up to %d connections at the same time and they are all in use. This is a limit of your provider, not of Bingr.": "IPTV aboneliğin aynı anda en fazla %d bağlantıya izin veriyor ve hepsi kullanımda. Bu, Bingr'ın değil sağlayıcının bir sınırıdır.",
-  "For %@: %@": "%@ için: %@"
+  "Stop the stream on your other device, or wait a moment: your provider sometimes only releases a connection you just closed after a minute.": "Diğer cihazındaki yayını durdur ya da biraz bekle: sağlayıcın az önce kapattığın bir bağlantıyı bazen ancak bir dakika sonra serbest bırakır.",
+  "For %@: %@": "%@ için: %@",
+  "Enter your first name.": "Adını gir.",
+  "Enter your last name.": "Soyadını gir.",
+  "Enter your password to confirm.": "Onaylamak için şifreni gir.",
+  "First name": "Ad",
+  "Incorrect password.": "Şifre yanlış.",
+  "Last name": "Soyad",
+  "Too many attempts. Wait a few minutes and try again.": "Çok fazla deneme. Birkaç dakika bekleyip tekrar dene."
  },
  "zh-Hans": {
   "%@ is now signed in.": "%@ 现已登录。",
@@ -8907,6 +8979,14 @@
   "Your account can be used on 1 screen at a time.": "你的账户一次可在 1 个屏幕上使用。",
   "Your IPTV subscription allows 1 connection at a time and it is in use. This is a limit of your provider, not of Bingr.": "你的 IPTV 订阅一次只允许 1 个连接，且该连接正在使用中。这是你的服务商的限制，而不是 Bingr 的限制。",
   "Your IPTV subscription allows up to %d connections at the same time and they are all in use. This is a limit of your provider, not of Bingr.": "你的 IPTV 订阅最多允许同时 %d 个连接，且全部正在使用中。这是你的服务商的限制，而不是 Bingr 的限制。",
-  "For %@: %@": "给%@：%@"
+  "Stop the stream on your other device, or wait a moment: your provider sometimes only releases a connection you just closed after a minute.": "请停止你另一台设备上的播放，或稍等片刻：你的服务商有时要过一分钟才会释放刚关闭的连接。",
+  "For %@: %@": "给%@：%@",
+  "Enter your first name.": "请输入你的名字。",
+  "Enter your last name.": "请输入你的姓氏。",
+  "Enter your password to confirm.": "请输入密码以确认。",
+  "First name": "名字",
+  "Incorrect password.": "密码不正确。",
+  "Last name": "姓氏",
+  "Too many attempts. Wait a few minutes and try again.": "尝试次数过多。请等待几分钟后重试。"
  }
 }

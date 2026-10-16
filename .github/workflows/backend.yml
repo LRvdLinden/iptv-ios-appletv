@@ -51,7 +51,7 @@ jobs:
         with:
           deno-version: v2.x
       - name: Unittests (statistieken)
-        run: deno test supabase/functions/device-auth/stats_test.ts supabase/functions/device-auth/naming_test.ts supabase/functions/_shared/ban_test.ts supabase/functions/web-proxy/ip_test.ts
+        run: deno test supabase/functions/device-auth/stats_test.ts supabase/functions/device-auth/naming_test.ts supabase/functions/device-auth/password_test.ts supabase/functions/_shared/ban_test.ts supabase/functions/web-proxy/ip_test.ts
       - name: Unittests (statuspagina)
         continue-on-error: true
         run: |
@@ -497,6 +497,9 @@ jobs:
               c, ps = s.get("code"), s.get("poll_secret")
               code, r = req("POST", DA, {"action": "code_info", "code": c}, user)
               if r.get("label") != "Apple TV" or r.get("kind") != "tvos": fail.append(f"code_info HTTP {code}: {r}")
+              # H1: bevestigingsstap op /koppelen krijgt het aanmaaktijdstip (en niets van de aanvrager zoals een IP)
+              elif not r.get("created_at") or not isinstance(r.get("age_s"), int) or r["age_s"] > 120 or set(r) - {"ok", "device", "kind", "label", "created_at", "age_s", "expires_in"}:
+                  fail.append(f"code_info zonder (of met extra) velden: {r}")
               code, r = req("POST", DA, {"action": "approve", "code": c, "name": "x" * 41}, user)
               if code != 400 or r.get("error") != "name_too_long": fail.append(f"approve met te lange naam HTTP {code}: {r}")
               code, r = req("POST", DA, {"action": "approve", "code": c, "name": "  Apple TV - CI  "}, user)
@@ -510,6 +513,13 @@ jobs:
               names = {d.get("device_id"): d.get("name") for d in r.get("devices") or []}
               if names.get("ci-b") != "Apple TV - CI" or names.get("ci-a") != "Apple TV": fail.append(f"koppelnaam niet toegepast: {names}")
               else: print(f"::notice::koppelen met eigen naam werkt: {names}")
+              # H1: account verwijderen kan alleen met het huidige wachtwoord (zonder of fout = 403 wrong_password, account blijft)
+              for body, what in (({"action": "delete_account"}, "zonder wachtwoord"), ({"action": "delete_account", "password": pw + "x"}, "met fout wachtwoord")):
+                  code, r = req("POST", DA, body, user)
+                  if code != 403 or r.get("error") != "wrong_password": fail.append(f"delete_account {what}: HTTP {code} {str(r)[:200]} (verwacht 403 wrong_password)")
+              code, r = req("GET", f"{BASE}/auth/v1/admin/users/{uid}", None, adm)
+              if code != 200 or r.get("id") != uid: fail.append(f"testaccount weg na geweigerde delete_account: HTTP {code}")
+              elif not any("delete_account" in f for f in fail): print("::notice::delete_account zonder of met fout wachtwoord: 403, account blijft")
               # build 95: web-proxy weigert interne adressen (ook numeriek geschreven en via probe); token voor de GET-vorm
               # (die GET pas na de blokkade gebruiken: de blokkadecontrole van de GET-vorm onthoudt "in orde" 5 minuten)
               WP = f"{BASE}/functions/v1/web-proxy"
@@ -818,4 +828,87 @@ jobs:
           print(f"::notice::Inbox: map {row.get('mailbox') or '-'} · laatste ronde {row.get('last_poll_at') or 'nooit'} ({row.get('last_source') or '-'}) · laatst gelukt {row.get('last_ok_at') or 'nooit'}")
           if isinstance(res, dict): print("::notice::Inbox-resultaat: " + ", ".join(f"{k}={v}" for k, v in res.items() if k not in ("log",))[:400])
           if row.get("last_error"): print(f"::warning::Inbox-fout ({row.get('last_error_at')}): {row['last_error']}")
+          PY
+
+  # aparte job (eigen ruimte voor meldingen): voor- en achternaam bij een account (user_metadata first_name / last_name)
+  namen:
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+    steps:
+      - name: Account met naam end-to-end (tijdelijk account)
+        # Tijdelijk account met voor- en achternaam (zoals de apps bij het aanmaken meesturen; via de admin-API, zodat er geen
+        # bevestigingsmail naar een nep-adres gaat): de trigger bingr_user_names schoont de naam op, een naam met een link wordt
+        # geweigerd, de gebruiker kan zijn naam wijzigen (PUT /auth/v1/user), bingr_first_names vindt hem, en de accountmails
+        # hebben de aanhef {{ .Data.first_name }}. Het testaccount wordt altijd verwijderd; sleutels en tokens worden gemaskeerd.
+        run: |
+          if [ -z "$SUPABASE_ACCESS_TOKEN" ] || [ -z "$REF" ]; then exit 0; fi
+          python3 - <<'PY'
+          import json, os, secrets, sys, urllib.request, urllib.error
+          REF = os.environ["REF"]; MGMT = os.environ["SUPABASE_ACCESS_TOKEN"]
+          BASE = f"https://{REF}.supabase.co"; PUB = "sb_publishable_lpIup6Omq5kW2k3oICGZ4g_HPGac5A3"
+          def req(method, url, body=None, headers=None):
+              h = {"Content-Type": "application/json", **(headers or {})}
+              r = urllib.request.Request(url, data=None if body is None else json.dumps(body).encode(), method=method, headers=h)
+              try:
+                  with urllib.request.urlopen(r, timeout=30) as resp: raw = resp.read(); code = resp.status
+              except urllib.error.HTTPError as e: raw = e.read(); code = e.code
+              try: return code, json.loads(raw or b"{}")
+              except Exception: return code, {"raw": raw[:200].decode("utf-8", "replace")}
+          def sql(q):
+              return req("POST", f"https://api.supabase.com/v1/projects/{REF}/database/query", {"query": q}, {"Authorization": f"Bearer {MGMT}"})
+          code, keys = req("GET", f"https://api.supabase.com/v1/projects/{REF}/api-keys?reveal=true", headers={"Authorization": f"Bearer {MGMT}"})
+          key = None
+          for k in keys if isinstance(keys, list) else []:
+              v = k.get("api_key") or ""
+              if v and (k.get("name") == "service_role" or k.get("type") == "secret") and "·" not in v: key = v; break
+          if not key: print(f"::warning::namen end-to-end overgeslagen: geen geheime sleutel (HTTP {code})"); sys.exit(0)
+          print(f"::add-mask::{key}")
+          adm = {"apikey": key, **({"Authorization": f"Bearer {key}"} if key.startswith("ey") else {})}
+          fail, made = [], []
+          # accountmails: aanhef met de voornaam (alleen als die er is)
+          code, cfg = req("GET", f"https://api.supabase.com/v1/projects/{REF}/config/auth", headers={"Authorization": f"Bearer {MGMT}"})
+          for t in ("confirmation", "recovery", "magic_link", "email_change"):
+              c = (cfg or {}).get(f"mailer_templates_{t}_content") or ""
+              if code == 200 and not ("{{ if .Data.first_name }}" in c and "Hoi {{ .Data.first_name }}," in c and "Hi {{ .Data.first_name }}," in c):
+                  fail.append(f"template {t}: geen aanhef met .Data.first_name")
+          email, pw = f"ci-naam-{secrets.token_hex(6)}@example.com", secrets.token_urlsafe(18)
+          try:
+              code, u = req("POST", f"{BASE}/auth/v1/admin/users", {"email": email, "password": pw, "email_confirm": True,
+                            "user_metadata": {"lang": "nl", "first_name": "  Ci \t Test  ", "last_name": " van  der   Bingr "}}, adm)
+              uid = u.get("id")
+              if not uid: raise SystemExit(f"testaccount met naam aanmaken mislukt (HTTP {code} {str(u)[:200]})")
+              made.append(uid)
+              code, r = req("GET", f"{BASE}/auth/v1/admin/users/{uid}", None, adm)
+              m = (r or {}).get("user_metadata") or {}
+              if m.get("first_name") != "Ci Test" or m.get("last_name") != "van der Bingr" or m.get("lang") != "nl":
+                  fail.append(f"naam niet opgeschoond: {m}")
+              # een naam met een link of HTML wordt geweigerd (geen account)
+              bad = f"ci-naam-{secrets.token_hex(6)}@example.com"
+              code, r = req("POST", f"{BASE}/auth/v1/admin/users", {"email": bad, "password": pw, "email_confirm": True, "user_metadata": {"first_name": "www.spam.example"}}, adm)
+              if r.get("id"): made.append(r["id"]); fail.append(f"naam met link niet geweigerd (HTTP {code})")
+              # de gebruiker wijzigt zijn naam zelf (zoals Mijn Bingr)
+              code, t = req("POST", f"{BASE}/auth/v1/token?grant_type=password", {"email": email, "password": pw}, {"apikey": PUB})
+              tok = t.get("access_token")
+              if not tok: raise SystemExit(f"inloggen testaccount mislukt (HTTP {code})")
+              print(f"::add-mask::{tok}")
+              code, r = req("PUT", f"{BASE}/auth/v1/user", {"data": {"first_name": " Anna ", "last_name": "Bingr"}}, {"apikey": PUB, "Authorization": f"Bearer {tok}"})
+              m = (r or {}).get("user_metadata") or {}
+              if code != 200 or m.get("first_name") != "Anna" or m.get("last_name") != "Bingr": fail.append(f"naam wijzigen: HTTP {code} {m}")
+              code, r = req("PUT", f"{BASE}/auth/v1/user", {"data": {"first_name": "<b>x</b>"}}, {"apikey": PUB, "Authorization": f"Bearer {tok}"})
+              if code < 400: fail.append(f"naam met HTML niet geweigerd (HTTP {code})")
+              code, r = sql(f"select first_name from public.bingr_first_names(array['{email.upper()}'])")
+              if code >= 300 or not isinstance(r, list) or [x.get("first_name") for x in r] != ["Anna"]: fail.append(f"bingr_first_names: HTTP {code} {str(r)[:200]}")
+              if not fail: print("::notice::Namen: opschonen, weigeren, zelf wijzigen, opzoeken en aanhef in de accountmails werken")
+          except SystemExit as e:
+              fail.append(str(e))
+          finally:
+              for uid in made:
+                  code, _ = req("DELETE", f"{BASE}/auth/v1/admin/users/{uid}", None, adm)
+                  if code not in (200, 204): print(f"::warning::testaccount niet verwijderd (HTTP {code})")
+          for f in fail: print(f"::error::{f[:400]}")
+          sys.exit(1 if fail else 0)
           PY

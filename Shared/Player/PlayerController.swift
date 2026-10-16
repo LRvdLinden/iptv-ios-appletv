@@ -167,6 +167,7 @@ final class PlayerController: ObservableObject {
         timeshiftStart = nil; behindLive = 0; pausedAt = nil
         attempts = 0; reconnecting = false; errorText = nil; isBuffering = true
         dismissed = false
+        backgroundResume = nil; pauseWhenReady = false
         triedOtherEngine = false; reloadPending = false; lastGoodPosition = 0
         // ondertitels van de vorige titel niet meenemen
         externalCues = []; subtitleText = nil; externalSubtitleName = nil
@@ -282,6 +283,7 @@ final class PlayerController: ObservableObject {
 
     private func tick() {
         let st = engine.state
+        if pauseWhenReady && st == .playing { pauseWhenReady = false; pause() }
         // alleen publiceren wat veranderd is (elke toewijzing laat de schermen die deze speler volgen opnieuw tekenen)
         let playingNow = engine.isPlaying
         if isPlaying != playingNow { isPlaying = playingNow }
@@ -413,7 +415,9 @@ final class PlayerController: ObservableObject {
         let generic = L("This stream can't be played right now.")
         errorText = generic
         isBuffering = false
-        engine.pause()
+        // de stream echt stoppen (niet pauzeren): anders blijft de verbinding met de provider open (VLC probeert
+        // zelfs opnieuw te verbinden) en telt hij daar mee terwijl je de foutmelding ziet. "Opnieuw" laadt hem opnieuw.
+        engine.stop()
         // provider vol (alle verbindingen in gebruik)? Dan die melding in plaats van de algemene fout
         if !url.isFileURL, let check = providerLimitCheck {
             Task { @MainActor [weak self] in
@@ -488,11 +492,40 @@ final class PlayerController: ObservableObject {
         if !isBuffering { isBuffering = true }
     }
 
+    /// Positie om na de achtergrond te hervatten (nil = niet op de achtergrond gestopt)
+    private var backgroundResume: Double?
+    /// Film/aflevering stond op pauze toen de app naar de achtergrond ging: na het opnieuw laden weer pauzeren
+    private var pauseWhenReady = false
+
+    /// Naar de achtergrond zonder beeld-in-beeld/AirPlay/Chromecast: de stream echt stoppen, zodat de verbinding met
+    /// de IPTV-provider meteen vrijkomt (VLC speelde anders het geluid door en de provider telde hem nog mee).
+    func suspendForBackground() {
+        guard !stopped, url != nil, !inPiP, backgroundResume == nil else { return }
+        backgroundResume = isLive ? 0 : (position > 0.005 ? position : item.resumeAt)
+        pauseWhenReady = !isLive && engine.state == .paused
+        startWatch?.cancel()
+        saveProgress()
+        halt()
+    }
+
+    /// Terug op de voorgrond: op dezelfde plek verder (live: weer live).
+    func resumeFromBackground() {
+        guard let p = backgroundResume else { return }
+        backgroundResume = nil
+        guard !stopped, errorText == nil, let url else { return }
+        if !isLive { item.resumeAt = p }
+        // geen nieuwe kijksessie: kijktijd en geschiedenis lopen gewoon door
+        let w = watchedSeconds, recorded = recordedHistory, profile = playbackProfileID
+        start(url: url)
+        watchedSeconds = w; recordedHistory = recorded; playbackProfileID = profile
+    }
+
     /// `keepDisplay`: zappen of volgende aflevering — de schermstand niet eerst terugzetten (geen extra knipper).
     func stop(keepDisplay: Bool = false) {
         guard !stopped else { return }
         stopped = true
         startWatch?.cancel(); subtitleCheck?.cancel()
+        backgroundResume = nil
         #if os(tvOS)
         if !keepDisplay { resetDisplay() }
         #endif

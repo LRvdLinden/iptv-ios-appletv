@@ -594,7 +594,8 @@ end $$;
 revoke all on function public.bingr_admin_stats() from public, anon, authenticated;
 grant execute on function public.bingr_admin_stats() to service_role;
 
--- Gebruikers (hoofdaccounts), nieuwste eerst, zoeken op begin van het e-mailadres. De functie maskeert de e-mail.
+-- Gebruikers (hoofdaccounts), nieuwste eerst, zoeken op begin van het e-mailadres, de voornaam, de achternaam of
+-- "voornaam achternaam" (user_metadata first_name / last_name; beheer). De functie admin maskeert de e-mail.
 -- p_filter: '' = alle, 'blocked' = alleen geblokkeerde accounts, 'free' / 'lifetime' = abonnement, 'custom' = eigen limieten.
 drop function if exists public.bingr_admin_users(text, int, int);
 -- Filter van de gebruikerslijst (beheer). account_plans staat onderaan dit bestand (plpgsql controleert dat pas bij het uitvoeren).
@@ -610,19 +611,32 @@ begin
 end $$;
 revoke all on function public.bingr_admin_user_match(uuid, text) from public, anon, authenticated;
 grant execute on function public.bingr_admin_user_match(uuid, text) to service_role;
+-- Zoeken in de gebruikerslijst (beheer): p_pat is de ge-escapete zoekterm + '%' (begin van). Zonder zoekterm alleen accounts
+-- met een e-mailadres, zoals vroeger; met zoekterm ook op naam (ilike, zelfde escaping): het begin van een woord in
+-- "voornaam achternaam", dus de voornaam, de achternaam (ook "vries" in "de Vries") en de combinatie ("jan de v").
+create or replace function public.bingr_admin_user_search(p_email text, p_meta jsonb, p_q text, p_pat text) returns boolean
+language sql immutable set search_path = public as $$
+  select lower(p_email) like p_pat or (coalesce(p_q, '') <> '' and
+    (' ' || btrim(regexp_replace(coalesce(p_meta->>'first_name', '') || ' ' || coalesce(p_meta->>'last_name', ''), '\s+', ' ', 'g')))
+      ilike ('% ' || p_pat))
+$$;
+revoke all on function public.bingr_admin_user_search(text, jsonb, text, text) from public, anon, authenticated;
+grant execute on function public.bingr_admin_user_search(text, jsonb, text, text) to service_role;
 create or replace function public.bingr_admin_users(p_search text, p_limit int, p_offset int, p_filter text default '') returns jsonb
 language plpgsql security definer set search_path = public, auth as $$
-declare pat text := replace(replace(replace(lower(coalesce(p_search, '')), '\', '\\'), '%', '\%'), '_', '\_') || '%';
+declare q text := lower(coalesce(p_search, ''));
+  pat text := replace(replace(replace(q, '\', '\\'), '%', '\%'), '_', '\_') || '%';
   f text := coalesce(p_filter, '');
 begin
   perform public.bingr_blocks_expire();
   return jsonb_build_object(
-    'total', (select count(*) from auth.users u where lower(u.email) like pat and public.bingr_admin_user_match(u.id, f)),
+    'total', (select count(*) from auth.users u where public.bingr_admin_user_search(u.email, u.raw_user_meta_data, q, pat) and public.bingr_admin_user_match(u.id, f)),
     'blocked_total', (select count(distinct user_id) from public.account_blocks where lifted_at is null),
     'lifetime_total', (select count(*) from public.account_plans p join auth.users u on u.id = p.user_id where p.plan = 'lifetime'),
     'free_total', (select count(*) from auth.users u where not exists (select 1 from public.account_plans p where p.user_id = u.id and p.plan = 'lifetime')),
     'items', coalesce((select jsonb_agg(row_to_json(x)::jsonb order by x.created_at desc) from (
       select u.id, u.email, u.created_at, u.last_sign_in_at, u.email_confirmed_at is not null as confirmed,
+        nullif(btrim(u.raw_user_meta_data->>'first_name'), '') as first_name, nullif(btrim(u.raw_user_meta_data->>'last_name'), '') as last_name,
         (select count(*) from public.account_devices d where d.user_id = u.id) as device_count,
         (select coalesce(jsonb_agg(distinct d.platform), '[]'::jsonb) from public.account_devices d where d.user_id = u.id) as platforms,
         (select coalesce(jsonb_agg(distinct d.app_version), '[]'::jsonb) from public.account_devices d where d.user_id = u.id and d.app_version is not null) as app_versions,
@@ -634,7 +648,7 @@ begin
           where b.user_id = u.id and b.lifted_at is null order by b.created_at desc limit 1) as blocked,
         coalesce((select jsonb_build_object('plan', p.plan, 'max_streams', p.max_streams, 'max_devices', p.max_devices, 'source', p.source)
           from public.account_plans p where p.user_id = u.id), jsonb_build_object('plan', 'free')) as plan
-      from auth.users u where lower(u.email) like pat and public.bingr_admin_user_match(u.id, f)
+      from auth.users u where public.bingr_admin_user_search(u.email, u.raw_user_meta_data, q, pat) and public.bingr_admin_user_match(u.id, f)
       order by u.created_at desc limit least(greatest(p_limit, 1), 100) offset greatest(p_offset, 0)) x), '[]'::jsonb)
   );
 end $$;
@@ -646,11 +660,14 @@ language plpgsql security definer set search_path = public, auth as $$
 declare u record;
 begin
   perform public.bingr_blocks_expire();
-  select id, email, created_at, last_sign_in_at, email_confirmed_at, banned_until, raw_user_meta_data->>'lang' as lang into u from auth.users where id = p_id;
+  select id, email, created_at, last_sign_in_at, email_confirmed_at, banned_until, raw_user_meta_data->>'lang' as lang,
+    nullif(btrim(raw_user_meta_data->>'first_name'), '') as first_name, nullif(btrim(raw_user_meta_data->>'last_name'), '') as last_name
+    into u from auth.users where id = p_id;
   if not found then return null; end if;
   return jsonb_build_object(
     'id', u.id, 'email', u.email, 'created_at', u.created_at, 'last_sign_in_at', u.last_sign_in_at,
     'confirmed', u.email_confirmed_at is not null, 'lang', u.lang, 'banned_until', u.banned_until,
+    'first_name', u.first_name, 'last_name', u.last_name,
     'block', (select jsonb_build_object('id', b.id, 'reason', b.reason, 'until', b.until, 'created_at', b.created_at, 'notified', b.notified)
       from public.account_blocks b where b.user_id = u.id and b.lifted_at is null order by b.created_at desc limit 1),
     'blocks', coalesce((select jsonb_agg(jsonb_build_object('id', b.id, 'reason', b.reason, 'until', b.until, 'created_at', b.created_at,
@@ -1736,7 +1753,7 @@ alter table public.announcement_sends enable row level security;
 revoke all on public.announcement_sends from anon, authenticated;
 
 -- build 97: volgende batch: eerst vastgelopen rijen (> 10 min 'sending'), dan nieuwe ontvangers vanaf de cursor.
--- -> {items:[{id,email,lang}], done, busy}. busy = er lopen nog verzendingen van een andere aanroep (even wachten).
+-- -> {items:[{id,email,lang,first_name}], done, busy}. busy = er lopen nog verzendingen van een andere aanroep (even wachten).
 -- Klaar (email_done_at) pas als de cursor op is en niemand meer op 'sending' staat.
 create or replace function public.bingr_announce_take(p_id uuid, p_batch int) returns jsonb
 language plpgsql security definer set search_path = public, auth as $$
@@ -1775,7 +1792,9 @@ begin
   where s.announcement_id = p_id and s.user_id = any(ids) and s.state = 'sending'
     and not exists (select 1 from auth.users u where u.id = s.user_id and u.email is not null and u.email_confirmed_at is not null
                     and not exists (select 1 from public.account_email_prefs p where p.user_id = u.id and p.email_opt_out));
-  select jsonb_agg(jsonb_build_object('id', u.id, 'email', u.email, 'lang', u.raw_user_meta_data->>'lang') order by u.id) into rows
+  -- first_name: voor de aanhef "Hoi <voornaam>," in de mail (beheer)
+  select jsonb_agg(jsonb_build_object('id', u.id, 'email', u.email, 'lang', u.raw_user_meta_data->>'lang',
+    'first_name', nullif(btrim(u.raw_user_meta_data->>'first_name'), '')) order by u.id) into rows
   from auth.users u join public.announcement_sends s on s.user_id = u.id and s.announcement_id = p_id and s.state = 'sending'
   where u.id = any(ids);
   if rows is not null then return jsonb_build_object('items', rows, 'done', false, 'busy', false); end if;
@@ -1803,3 +1822,52 @@ revoke all on function public.bingr_announce_take(uuid, int) from public, anon, 
 revoke all on function public.bingr_announce_mark(uuid, uuid[], uuid[]) from public, anon, authenticated;
 grant execute on function public.bingr_announce_take(uuid, int) to service_role;
 grant execute on function public.bingr_announce_mark(uuid, uuid[], uuid[]) to service_role;
+
+-- ---- Voor- en achternaam van het account (user_metadata first_name / last_name) ----
+-- De apps en sites vragen ze bij het aanmaken van een account (docs/ACCOUNT.md); bestaande accounts vult de eigenaar in via
+-- het beheer. Mails beginnen dan met "Hoi <voornaam>," (functies support, status en admin; accountmails via {{ .Data.first_name }}).
+-- Opschonen zoals de apps en sites (BingrAuth.cleanName, Account.cleanName, personName() in functions/_shared/layout.ts):
+-- stuurtekens en < > weg, witruimte samengevoegd, getrimd, max. 50 tekens; leeg = geen naam.
+create or replace function public.bingr_clean_person_name(p text) returns text
+language sql immutable set search_path = public as $$
+  select nullif(btrim(left(btrim(regexp_replace(regexp_replace(coalesce(p, ''), '[\x01-\x1f\x7f<>]', '', 'g'), '\s+', ' ', 'g')), 50)), '')
+$$;
+-- Trigger op auth.users: naam opschonen bij het opslaan, en weigeren als er een link, e-mailadres of HTML in staat of hij
+-- langer is dan 50 tekens (de accountmail bij het aanmaken toont de naam al, ook voor een adres dat nog niet bevestigd is).
+-- De apps en sites sturen alleen opgeschoonde namen; een geweigerde naam geeft bij Supabase Auth een foutmelding (geen account).
+create or replace function public.bingr_user_names() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare k text; raw jsonb; v text; c text;
+begin
+  if new.raw_user_meta_data is null or jsonb_typeof(new.raw_user_meta_data) <> 'object' then return new; end if;
+  foreach k in array array['first_name', 'last_name'] loop
+    raw := new.raw_user_meta_data -> k;
+    continue when raw is null;
+    continue when tg_op = 'UPDATE' and raw is not distinct from (old.raw_user_meta_data -> k);
+    if jsonb_typeof(raw) = 'null' then new.raw_user_meta_data := new.raw_user_meta_data - k; continue; end if;
+    if jsonb_typeof(raw) <> 'string' then raise exception 'bingr_invalid_name' using errcode = '22023', detail = k; end if;
+    v := raw #>> '{}';
+    if v ~* '(://|www\.|@|<|>)' or char_length(btrim(regexp_replace(v, '\s+', ' ', 'g'))) > 50 then
+      raise exception 'bingr_invalid_name' using errcode = '22023', detail = k;
+    end if;
+    c := public.bingr_clean_person_name(v);
+    new.raw_user_meta_data := case when c is null then new.raw_user_meta_data - k else jsonb_set(new.raw_user_meta_data, array[k], to_jsonb(c)) end;
+  end loop;
+  return new;
+end $$;
+revoke all on function public.bingr_user_names() from public, anon, authenticated;
+drop trigger if exists bingr_user_names on auth.users;
+create trigger bingr_user_names before insert or update of raw_user_meta_data on auth.users
+  for each row execute function public.bingr_user_names();
+-- Voornamen bij e-mailadressen (functie status: abonnees hebben geen account-id). Alleen bevestigde accounts met een naam;
+-- max. 200 adressen per aanroep; alleen voor de service role.
+create or replace function public.bingr_first_names(p_emails text[]) returns table(email text, first_name text)
+language sql stable security definer set search_path = public, auth as $$
+  select lower(u.email)::text, public.bingr_clean_person_name(u.raw_user_meta_data->>'first_name')
+  from auth.users u
+  where u.email = any (array(select lower(e) from unnest(coalesce(p_emails, '{}'::text[])) e limit 200))
+    and u.email_confirmed_at is not null
+    and public.bingr_clean_person_name(u.raw_user_meta_data->>'first_name') is not null
+$$;
+revoke all on function public.bingr_first_names(text[]) from public, anon, authenticated;
+grant execute on function public.bingr_first_names(text[]) to service_role;

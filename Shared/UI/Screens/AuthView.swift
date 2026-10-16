@@ -237,12 +237,15 @@ private struct TVPhoneLogin: View {
 /// Kaart met e-mail en wachtwoord: inloggen, account maken, wachtwoord vergeten.
 struct AuthForm: View {
     enum Mode { case signIn, signUp, reset }
-    enum Field: Hashable { case email, password }
+    enum Field: Hashable { case firstName, lastName, email, password }
 
     @EnvironmentObject var account: AccountService
     @State private var mode: Mode = .signIn
     @State private var email = ""
     @State private var password = ""
+    // account maken: voor- en achternaam (verplicht; user_metadata first_name / last_name, voor de aanhef in de e-mails)
+    @State private var firstName = ""
+    @State private var lastName = ""
     @State private var showPassword = false
     @State private var error: String?
     @State private var info: String?
@@ -273,6 +276,10 @@ struct AuthForm: View {
                 .foregroundStyle(.white)
                 .padding(.bottom, tvScaled(4))
 
+            if mode == .signUp {
+                nameField(L("First name"), text: $firstName, field: .firstName, next: .lastName)
+                nameField(L("Last name"), text: $lastName, field: .lastName, next: .email)
+            }
             emailField
             if mode != .reset { passwordField }
 
@@ -331,6 +338,19 @@ struct AuthForm: View {
     }
 
     // MARK: velden
+
+    private func nameField(_ title: String, text: Binding<String>, field: Field, next: Field) -> some View {
+        TextField(title, text: Binding(get: { text.wrappedValue },
+                                       set: { text.wrappedValue = String($0.prefix(AccountService.nameMax)) }))
+            .keyboardType(.default)
+            .textInputAutocapitalization(.words)
+            .autocorrectionDisabled()
+            .nameContentType(given: field == .firstName)
+            .focused($focus, equals: field)
+            .submitLabel(.next)
+            .onSubmit { focus = next }
+            .modifier(AuthFieldStyle())
+    }
 
     private var emailField: some View {
         TextField(L("Email"), text: $email)
@@ -394,7 +414,7 @@ struct AuthForm: View {
                 case .signIn:
                     try await account.signIn(email: email, password: password)
                 case .signUp:
-                    let r = try await account.signUp(email: email, password: password)
+                    let r = try await account.signUp(email: email, password: password, firstName: firstName, lastName: lastName)
                     if r == .confirmEmail {
                         mode = .signIn
                         info = L("Check your inbox to confirm your email address, then sign in.")
@@ -456,6 +476,15 @@ private struct AuthFieldStyle: ViewModifier {
 }
 
 private extension View {
+    /// Voor- en achternaam automatisch laten invullen (iOS/tvOS; op de Mac niets).
+    @ViewBuilder func nameContentType(given: Bool) -> some View {
+        #if os(macOS)
+        self
+        #else
+        self.textContentType(given ? UITextContentType.givenName : UITextContentType.familyName)
+        #endif
+    }
+
     /// Laat de wachtwoordbeheerder meedoen (e-mail als gebruikersnaam).
     @ViewBuilder func authContentType(password: Bool, newPassword: Bool) -> some View {
         #if os(macOS)

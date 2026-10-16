@@ -6,7 +6,9 @@
 //                   Account dat de code goedkeurde is geblokkeerd -> 403 {status:"banned", error:"user_banned", banned:true}
 //   Alle acties met inloggen: geblokkeerd account -> 401 {error:"user_banned", banned:true, reason:"banned"} (docs/ACCOUNT.md)
 //                   Bij approved: POST /auth/v1/verify {type:"magiclink", token_hash} geeft de tv een eigen sessie.
-//   code_info       {code}   (ingelogd)  -> {ok, device, kind, label}   (soort apparaat bij een code, voor het naamveld op /koppelen)
+//   code_info       {code}   (ingelogd)  -> {ok, device, kind, label, created_at, age_s, expires_in}
+//                   soort apparaat bij een code (naamveld op /koppelen); created_at/age_s (seconden sinds aanmaken, door de server
+//                   berekend) en expires_in voor de bevestigingsstap ("zojuist", "3 minuten geleden"). device = wat het apparaat zelf opgaf.
 //                   Ongeldige/verlopen code (of al door een ander account goedgekeurd) -> 404 {error:"invalid_code"}
 //                   build 95: code_info en approve samen max. 30 per account en 60 per IP per minuut -> 429 {error:"rate_limited"}
 //   approve         {code, name?} (ingelogd) -> {ok, device, name}
@@ -14,7 +16,10 @@
 //                   de code; zodra de tv inlogt en zich aanmeldt (register_device van dezelfde soort, binnen 15 minuten) wordt het
 //                   de naam in account_devices met custom_name = true, zodat de standaardnaam van de app hem niet overschrijft.
 //                   Te lang -> 400 {error:"name_too_long"}.
-//   delete_account  {}       (ingelogd)  -> {ok}
+//   delete_account  {password} (ingelogd) -> {ok}
+//                   H1: huidig wachtwoord verplicht (server controleert het met signInWithPassword op het e-mailadres van het
+//                   account). Geen of fout wachtwoord -> 403 {error:"wrong_password"}; max. 5 per account en 20 per IP per
+//                   10 minuten -> 429 {error:"rate_limited"}; auth-server onbereikbaar -> 503 {error:"unavailable"}.
 //   register_device {device_id, name, platform, app_version?, os_version?} (ingelogd) -> {ok, limit} | 403 {error:"device_limit", limit, plan, devices}
 //                   limit = apparatenlimiet van het abonnement (gratis 8, lifetime 15, of eigen limiet uit het beheer)
 //   heartbeat       {device_id, app_version?, os_version?, platform?} (ingelogd) -> {ok, entitlements} | {revoked:true}  (werkt ook "laatst gebruikt" bij)
@@ -52,6 +57,7 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { buildStats, DEFAULT_TZ, periodRange, todayIn, validTz } from "./stats.ts";
 import { cleanDeviceName, deviceKind, deviceTypeLabel } from "./naming.ts";
+import { type PasswordCheck, passwordCheckResult } from "./password.ts";
 import { BANNED_BODY, bannedUntilActive, isBanError } from "../_shared/ban.ts";
 import { clientIp } from "../_shared/ip.ts";
 import {
@@ -236,6 +242,26 @@ const CODE_PER_MIN_USER = 30, CODE_PER_MIN_IP = 60;
 async function codeLimited(req: Request, userId: string) {
   return await rateLimited(`da-code:ip:${clientIp(req)}`, CODE_PER_MIN_IP) || await rateLimited(`da-code:u:${userId}`, CODE_PER_MIN_USER);
 }
+// H1: delete_account met wachtwoord, per account 5 en per IP 20 pogingen per 10 minuten (wachtwoord raden)
+const DELETE_PER_10MIN_USER = 5, DELETE_PER_10MIN_IP = 20;
+// Wachtwoord controleren met een losse anon-client (eigen geheugen, niets bewaard): signInWithPassword op het e-mailadres
+// van de ingelogde gebruiker. Lukt het, dan wordt die nieuwe sessie meteen weer ingetrokken (alleen die, scope local).
+// Het wachtwoord komt nooit in een log.
+async function passwordOk(email: string, password: string, req: Request): Promise<PasswordCheck> {
+  const key = Deno.env.get("SUPABASE_ANON_KEY") || req.headers.get("apikey") || "";
+  const anon = createClient(Deno.env.get("SUPABASE_URL")!, key, { auth: { autoRefreshToken: false, persistSession: false } });
+  try {
+    const { data, error } = await anon.auth.signInWithPassword({ email, password });
+    if (data?.session && !error) {
+      await anon.auth.signOut({ scope: "local" }).catch(() => {});
+      return "ok";
+    }
+    return passwordCheckResult(error as { status?: number; code?: string } | null);
+  } catch (e) {
+    console.error("delete_account wachtwoordcontrole", e instanceof Error ? e.message : e);
+    return "unavailable";
+  }
+}
 const isoMs = (v: unknown) => { const t = Date.parse(String(v ?? "")); return Number.isFinite(t) ? t : 0; };
 const TOMBSTONE_MS = 90 * 864e5;
 // Bronnen samenvoegen per id (hoofdletterongevoelig): nieuwste updatedAt (of deletedAt) wint, bij gelijk de nieuwe lijst.
@@ -333,9 +359,15 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       if (user instanceof Response) return user;
       if (await codeLimited(req, user.id)) return json({ error: "rate_limited" }, 429);
       const code = normalize(body.code).slice(0, 12);
-      const { data: row } = await admin.from("device_codes").select("device, expires_at, user_id").eq("code", code).maybeSingle();
+      const { data: row } = await admin.from("device_codes").select("device, created_at, expires_at, user_id").eq("code", code).maybeSingle();
       if (!row || new Date(row.expires_at) < new Date() || (row.user_id && row.user_id !== user.id)) return json({ error: "invalid_code" }, 404);
-      return json({ ok: true, device: row.device ?? "TV", kind: deviceKind(row.device), label: deviceTypeLabel(row.device) });
+      // H1: aanmaaktijdstip voor de bevestigingsstap op /koppelen ("zojuist", "3 minuten geleden"). age_s rekent de server
+      // zelf uit, zodat een verkeerd ingestelde klok bij de gebruiker de leeftijd niet verandert. Niets van de aanvrager (IP e.d.).
+      const age_s = Math.max(0, Math.round((Date.now() - Date.parse(row.created_at)) / 1000));
+      return json({
+        ok: true, device: row.device ?? "TV", kind: deviceKind(row.device), label: deviceTypeLabel(row.device),
+        created_at: row.created_at, age_s, expires_in: Math.max(0, Math.round((Date.parse(row.expires_at) - Date.now()) / 1000)),
+      });
     }
     case "approve": {
       const user = await authed(req);
@@ -356,6 +388,17 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
     case "delete_account": {
       const user = await authed(req);
       if (user instanceof Response) return user;
+      // H1: alleen met het huidige wachtwoord, zodat een overgenomen sessie (bv. een tv die via een doorgestuurde
+      // koppelcode is gekoppeld) het account niet kan verwijderen. Geen of fout wachtwoord -> 403 {error:"wrong_password"}.
+      const password = typeof body.password === "string" ? body.password : "";
+      if (!password || password.length > 200 || !user.email) return json({ error: "wrong_password" }, 403);
+      if (await rateLimited(`da-del:u:${user.id}`, DELETE_PER_10MIN_USER, 600) || await rateLimited(`da-del:ip:${clientIp(req)}`, DELETE_PER_10MIN_IP, 600)) {
+        return json({ error: "rate_limited" }, 429);
+      }
+      const check = await passwordOk(user.email, password, req);
+      if (check === "rate_limited") return json({ error: "rate_limited" }, 429);
+      if (check === "unavailable") return json({ error: "unavailable" }, 503);
+      if (check !== "ok") return json({ error: "wrong_password" }, 403);
       // profielfoto's opruimen, daarna de gebruiker (tabellen gaan mee via on delete cascade)
       for (let i = 0; i < 20; i++) {
         const { data: files, error: le } = await admin.storage.from("avatars").list(user.id, { limit: 1000 });

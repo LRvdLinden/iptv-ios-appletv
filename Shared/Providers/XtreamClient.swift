@@ -434,7 +434,12 @@ enum ProviderLimit {
         let x = XtreamClient(source: s, password: Keychain.get(s.passwordKey) ?? "")
         let c = await x.connections() ?? cached(server: x.server, username: x.username)
         guard let c, c.atLimit else { return nil }
-        return c.message
+        return c.message + "\n\n" + tip
+    }
+
+    /// Tip onder de providermelding: een net gesloten verbinding telt bij de provider vaak nog even mee.
+    static var tip: String {
+        L("Stop the stream on your other device, or wait a moment: your provider sometimes only releases a connection you just closed after a minute.")
     }
 }
 

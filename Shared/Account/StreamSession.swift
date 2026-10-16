@@ -1,6 +1,8 @@
 import Foundation
 #if canImport(UIKit)
 import UIKit
+#elseif canImport(AppKit)
+import AppKit
 #endif
 
 /// Tegelijk kijken (build 51, docs/ACCOUNT.md): de stream van dit apparaat bij de Bingr-account aanmelden
@@ -42,6 +44,11 @@ final class StreamSession {
     var titleProvider: (@MainActor () -> String?)?
     /// Limiet bereikt bij een herstart (na `stopped` of terug uit de achtergrond): de speler stopt en toont het scherm.
     var onLimit: (@MainActor (AccountService.StreamLimit) -> Void)?
+    /// Naar de achtergrond zonder beeld-in-beeld/AirPlay/Chromecast: de speler (of Multiview) stopt het beeld echt,
+    /// zodat ook de verbinding met de IPTV-provider vrijkomt (anders speelt VLC het geluid door en telt de provider
+    /// de verbinding nog, terwijl Bingr hem al afgemeld heeft). `onForeground` start op dezelfde plek opnieuw.
+    var onBackground: (@MainActor () -> Void)?
+    var onForeground: (@MainActor () -> Void)?
 
     private init() {
         #if canImport(UIKit)
@@ -51,6 +58,15 @@ final class StreamSession {
         })
         observers.append(nc.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main) { _ in
             MainActor.assumeIsolated { StreamSession.shared.enteredForeground() }
+        })
+        observers.append(nc.addObserver(forName: UIApplication.willTerminateNotification, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { StreamSession.shared.terminating() }
+        })
+        #elseif canImport(AppKit)
+        // Mac: de app afsluiten (Cmd-Q) = afmelden, anders telt de stream nog tot de TTL (90 s) mee
+        observers.append(NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil,
+                                                                queue: .main) { _ in
+            MainActor.assumeIsolated { StreamSession.shared.terminating() }
         })
         #endif
     }
@@ -124,6 +140,8 @@ final class StreamSession {
         keepAliveInBackground = nil
         titleProvider = nil
         onLimit = nil
+        onBackground = nil
+        onForeground = nil
         if !wasSuspended { Task { await send { await AccountService.shared.streamStop() } } }
     }
 
@@ -168,7 +186,30 @@ final class StreamSession {
         suspended = true
         generation += 1
         pingTask?.cancel(); pingTask = nil
+        // eerst het beeld (en de providerverbinding) echt stoppen, dan afmelden
+        onBackground?()
+        #if canImport(UIKit)
+        // de app wordt kort na het naar de achtergrond gaan bevroren: om tijd vragen zodat stream_stop aankomt
+        let bg = BackgroundTime()
+        bg.id = UIApplication.shared.beginBackgroundTask(withName: "bingr.stream_stop") {
+            MainActor.assumeIsolated { bg.end() }
+        }
+        Task {
+            await send { await AccountService.shared.streamStop() }
+            bg.end()
+        }
+        #else
         Task { await send { await AccountService.shared.streamStop() } }
+        #endif
+    }
+
+    /// App wordt afgesloten: meteen (zonder wachtrij of tokenvernieuwing) afmelden, kort blokkerend.
+    private func terminating() {
+        guard current != nil, !suspended else { return }
+        generation += 1
+        current = nil
+        pingTask?.cancel(); pingTask = nil
+        AccountService.shared.streamStopNow(wait: 1.5)
     }
 
     private func enteredForeground() {
@@ -177,6 +218,7 @@ final class StreamSession {
         generation += 1
         let gen = generation
         startPinging()
+        onForeground?()
         Task { @MainActor in
             let r = await self.send { await AccountService.shared.streamStart(profileID: Self.profileID, profileName: Self.profileName,
                                                                                title: self.titleProvider?() ?? info.title,
@@ -203,3 +245,16 @@ final class StreamSession {
         return await task.value
     }
 }
+
+#if canImport(UIKit)
+/// Extra tijd op de achtergrond voor één aanvraag (stream_stop); eindigt hooguit één keer.
+@MainActor
+private final class BackgroundTime {
+    var id = UIBackgroundTaskIdentifier.invalid
+    func end() {
+        guard id != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(id)
+        id = .invalid
+    }
+}
+#endif

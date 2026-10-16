@@ -4,6 +4,54 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 110
+_16 oktober 2026_
+
+### Alle apps en de website
+
+**Nieuw**
+
+- Bij het aanmaken van een account vragen we nu je voor- en achternaam
+
+**Verbeterd**
+
+- Bij de melding over de limiet van je IPTV-provider staat nu een tip: stop de stream op je andere apparaat of wacht even
+
+**Opgelost**
+
+- Verbindingen met je IPTV-server worden direct vrijgegeven bij stoppen, een fout of als de app naar de achtergrond gaat (behalve bij beeld-in-beeld, AirPlay en Chromecast), zodat er geen verbinding blijft hangen
+
+### iOS, iPadOS, tvOS, macOS, Android, Android TV, Website en Server
+
+**Verbeterd**
+
+- Je account verwijderen vraagt nu om je wachtwoord
+
+### Website
+
+**Nieuw**
+
+- In Mijn Bingr kun je je naam bekijken en wijzigen
+
+**Verbeterd**
+
+- bingr.online is beter beveiligd (o.a. HSTS en bescherming tegen inbedden in andere sites) en http gaat weer naar de juiste https-pagina
+- Betere vindbaarheid: nieuwe titels en beschrijvingen, Nederlandse en Engelse versies, structured data, sitemaps en een eigen 404-pagina
+- Support: de uitleg over installeren gaat nu over de app-winkels (binnenkort beschikbaar) in plaats van losse installatiebestanden
+- De voorwaarden en privacyverklaring noemen PixelForges als beheerder van Bingr
+
+### Website en Server
+
+**Verbeterd**
+
+- Veiliger tv koppelen: je ziet welk apparaat de code aanvraagt en wanneer, en bij een code uit een link bevestig je eerst dat hij op je eigen scherm staat
+
+### Server
+
+**Verbeterd**
+
+- E-mails van Bingr (account, supporttickets en statusupdates) beginnen met je voornaam als die bekend is
+
 ## Versie 1.0.0 · Build 109
 _16 oktober 2026_
 

@@ -151,6 +151,12 @@ Deno.test("e-mails: bevestigen en melding", () => {
   const en = renderNotice(n, "en", names, "u".repeat(48));
   ok(en.subject.startsWith("[Bingr Incident] Identified: Sign-in slow") && en.html.includes("Found it"), "engels");
   ok(!/supabase/i.test(c.html + m.html + en.html + m.text), "mails noemen geen leverancier");
+  // aanhef met de voornaam van het account (alleen als die bekend is)
+  ok(!/Hoi |Hi /.test(c.html + c.text + m.text) && !m.html.includes(">Hoi "), "zonder naam geen aanhef");
+  const cn = renderConfirm("nl", "t".repeat(48), "Léon");
+  ok(cn.html.includes(">Hoi Léon,</p>") && cn.text.includes("Hoi Léon,"), "bevestigen met aanhef");
+  const mn = renderNotice(n, "en", names, "u".repeat(48), "<Ann>");
+  ok(mn.html.includes(">Hi Ann,</p>") && mn.text.includes("Hi Ann,") && !mn.html.includes("<Ann>"), "melding met aanhef, opgeschoond");
 });
 
 Deno.test("e-mailadres en token controleren", () => {

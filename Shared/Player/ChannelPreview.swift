@@ -103,7 +103,15 @@ final class ChannelPreview: ObservableObject {
 
     private init() {
         _ = NetworkStatus.shared   // vast beginnen met meten
+        #if canImport(UIKit)
+        // naar de achtergrond: het voorbeeld stoppen, anders bleef de verbinding met de provider open (bevroren app)
+        background = NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification,
+                                                            object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { ChannelPreview.shared.stop() }
+        }
+        #endif
     }
+    private var background: NSObjectProtocol?
 
     /// Mag er nu een voorbeeld spelen?
     var allowed: Bool {

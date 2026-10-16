@@ -8,6 +8,8 @@ struct AccountSettingsSection: View {
     @ObservedObject private var ent = EntitlementsService.shared
     @State private var confirmSignOut = false
     @State private var confirmDelete = false
+    /// H1: huidig wachtwoord voor "Account verwijderen" (alleen in het geheugen, wordt na gebruik gewist)
+    @State private var deletePassword = ""
     @State private var error: String?
 
     var body: some View {
@@ -45,14 +47,17 @@ struct AccountSettingsSection: View {
                     }
                     Button(L("Cancel"), role: .cancel) {}
                 }
-                Button(role: .destructive) { confirmDelete = true } label: {
+                Button(role: .destructive) { deletePassword = ""; confirmDelete = true } label: {
                     Label(L("Delete account"), systemImage: "trash")
                         .foregroundStyle(Theme.red)
                 }
-                .confirmationDialog(L("Delete your Bingr account? This can't be undone."), isPresented: $confirmDelete,
-                                    titleVisibility: .visible) {
+                // H1: bevestigen met het huidige wachtwoord (een alert, omdat een confirmationDialog geen invoerveld kan hebben)
+                .alert(L("Delete your Bingr account? This can't be undone."), isPresented: $confirmDelete) {
+                    SecureField(L("Password"), text: $deletePassword)
                     Button(L("Delete account"), role: .destructive) { deleteAccount() }
-                    Button(L("Cancel"), role: .cancel) {}
+                    Button(L("Cancel"), role: .cancel) { deletePassword = "" }
+                } message: {
+                    Text(L("Enter your password to confirm."))
                 }
                 if account.isBusy {
                     HStack { Spacer(); ProgressView(); Spacer() }
@@ -72,8 +77,10 @@ struct AccountSettingsSection: View {
 
     private func deleteAccount() {
         error = nil
+        let password = deletePassword
+        deletePassword = ""
         Task { @MainActor in
-            do { try await account.deleteAccount() } catch { self.error = error.localizedDescription }
+            do { try await account.deleteAccount(password: password) } catch { self.error = error.localizedDescription }
         }
     }
 }

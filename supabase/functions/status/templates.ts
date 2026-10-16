@@ -1,7 +1,8 @@
 // Bingr-status: e-mails aan abonnees (bevestigen, storing/onderhoud, afgemeld) in de gedeelde huisstijl (../_shared/layout.ts).
 // Puur: geeft {subject, html, text} terug; versturen gebeurt in index.ts. Alles wat het beheer typt gaat door esc().
 import {
-  bodyHtml, button, copyLink, detailRows, esc, eyebrow, footerHtml, footerText, layout, note, para, redBar, SITE, title,
+  bodyHtml, button, copyLink, detailRows, esc, eyebrow, footerHtml, footerText, greeting, greetingText, layout, note, para, redBar, SITE,
+  title,
 } from "../_shared/layout.ts";
 import { type CompImpact, LABELS, type Lang, type NoticeStatus, type PublicNotice } from "./notices.ts";
 
@@ -51,15 +52,16 @@ const T = {
 
 export interface Rendered { subject: string; html: string; text: string }
 
-/** Bevestigingsmail (dubbele opt-in). */
-export function renderConfirm(lang: Lang, token: string): Rendered {
+/** Bevestigingsmail (dubbele opt-in). firstName: voornaam van het Bingr-account met dit adres (aanhef), anders leeg. */
+export function renderConfirm(lang: Lang, token: string, firstName = ""): Rendered {
   const t = T[lang], url = confirmUrl(token);
   const html = layout({
     lang, docTitle: `${t.confirmTitle} · Bingr`, preheader: t.confirmText, label: t.label,
-    contentHtml: `${eyebrow(t.confirmEyebrow)}${redBar("14px 0 22px")}${title(t.confirmTitle)}${para(t.confirmText)}${button(url, t.confirmBtn)}${note(t.confirmNote)}${copyLink(lang, url)}`,
+    contentHtml: `${eyebrow(t.confirmEyebrow)}${redBar("14px 0 22px")}${title(t.confirmTitle)}${greeting(lang, firstName)}${para(t.confirmText)}${button(url, t.confirmBtn)}${note(t.confirmNote)}${copyLink(lang, url)}`,
     footerHtml: footerHtml({ lang, reasonHtml: esc(t.reasonConfirm) }),
   });
-  const text = ["BINGR Status", "", t.confirmTitle, "", t.confirmText, "", `${t.confirmBtn}: ${url}`, t.confirmNote, "", footerText({ lang, reason: t.reasonConfirm })].join("\n");
+  const hi = greetingText(lang, firstName);
+  const text = ["BINGR Status", "", t.confirmTitle, "", ...(hi ? [hi] : []), t.confirmText, "", `${t.confirmBtn}: ${url}`, t.confirmNote, "", footerText({ lang, reason: t.reasonConfirm })].join("\n");
   return { subject: lang === "nl" ? "Bevestig je aanmelding voor statusupdates van Bingr" : "Confirm your Bingr status updates subscription", html, text };
 }
 
@@ -67,7 +69,7 @@ export function renderConfirm(lang: Lang, token: string): Rendered {
  * Melding aan een abonnee: storing of onderhoud met de nieuwste update bovenaan, de status, getroffen onderdelen en
  * het tijdvak. `n.updates` is nieuwste eerst (zoals publicNotice).
  */
-export function renderNotice(n: PublicNotice, lang: Lang, names: Map<string, { nl: string; en: string }>, token: string): Rendered {
+export function renderNotice(n: PublicNotice, lang: Lang, names: Map<string, { nl: string; en: string }>, token: string, firstName = ""): Rendered {
   const t = T[lang], L = LABELS[lang];
   const ttl = n.title[lang] || n.title.nl;
   const latest = n.updates[0];
@@ -94,6 +96,7 @@ export function renderNotice(n: PublicNotice, lang: Lang, names: Map<string, { n
 <td style="font-size:22px;line-height:29px;font-weight:800;color:#ffffff;vertical-align:top;word-break:break-word">${esc(ttl)}</td>
 <td align="right" style="vertical-align:top;padding-left:12px">${badge(st, lang)}</td></tr></table>
 ${redBar("16px 0 4px")}
+${firstName && greeting(lang, firstName) ? `<div style="margin:18px 0 0">${greeting(lang, firstName)}</div>` : ""}
 ${latest ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:20px 0 0"><tr>
 <td bgcolor="#1f1f1f" style="background:#1f1f1f;border-left:3px solid ${accent};border-radius:8px;padding:16px 20px 4px">
 <div style="font-size:12px;line-height:16px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#a3a3a3;margin:0 0 10px">${esc(t.latest)} · ${esc(fmt(latest.at, lang))}</div>
@@ -107,6 +110,7 @@ ${detailRows(rows)}`;
   });
   const text = [
     "BINGR Status", "", `${L.kind[n.kind]}: ${ttl}`, `${L.status[st] ?? st}`, "",
+    ...(greetingText(lang, firstName) ? [greetingText(lang, firstName), ""] : []),
     ...(latest ? [`${t.latest} (${fmt(latest.at, lang)}):`, latest.body[lang] || latest.body.nl, ""] : []),
     ...n.updates.slice(1, 4).map((u) => `${L.status[u.status] ?? u.status} (${fmt(u.at, lang)}): ${u.body[lang] || u.body.nl}`),
     ...(n.components.length ? ["", `${t.comps}: ${n.components.map((c) => names.get(c.id)?.[lang] ?? c.id).join(", ")}`] : []),

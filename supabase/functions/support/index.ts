@@ -59,6 +59,7 @@ import {
   MAX_FETCH_BYTES, messageBody, referencedIds, senderName, type TicketLite,
 } from "./inbox.ts";
 import { clientIp } from "../_shared/ip.ts";
+import { firstNameOf } from "../_shared/layout.ts";
 import { makeChallenge, powKey, verifyPow } from "./pow.ts";
 
 const env = (k: string) => Deno.env.get(k) ?? "";
@@ -211,8 +212,19 @@ function mailData(t: Ticket, kind: MailData["kind"], extra: Partial<MailData> = 
     hasAccount: !!t.user_id, createdAt: t.created_at, replyByMail: imapConfigured(), ...extra,
   };
 }
-const toCustomer = (t: Ticket, d: MailData) =>
-  send(t.email, renderMail(d), { number: t.number, first: d.kind === "customer_created", auto: d.kind !== "customer_reply" });
+/** Voornaam voor de aanhef ("Hoi <voornaam>,"): alleen als het ticket bij een account hoort en naar het bevestigde adres van
+ *  dat account gaat (user_metadata.first_name); anders, of als het opzoeken mislukt, "" (mail zonder aanhef). */
+async function firstNameFor(t: Ticket): Promise<string> {
+  if (!t.user_id) return "";
+  try {
+    const { data, error } = await db.auth.admin.getUserById(t.user_id);
+    const u = data?.user;
+    if (error || !u?.email || !u.email_confirmed_at || u.email.toLowerCase() !== t.email.toLowerCase()) return "";
+    return firstNameOf(u);
+  } catch { return ""; }
+}
+const toCustomer = async (t: Ticket, d: MailData) =>
+  send(t.email, renderMail({ ...d, firstName: d.firstName ?? await firstNameFor(t) }), { number: t.number, first: d.kind === "customer_created", auto: d.kind !== "customer_reply" });
 // build 95: boven dit aantal nieuwe tickets per uur (alle samen) geen bevestigingsmails meer aan klanten (tickets worden wel
 // opgeslagen en support krijgt de melding): een veiligheidsgrens tegen misbruik als mailkanon, die niemand buitensluit
 const GLOBAL_CONFIRM_CAP = 500;

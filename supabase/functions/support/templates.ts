@@ -3,7 +3,8 @@
 // inline stijlen voor Gmail, Outlook en Apple Mail, plus een platte-tekstversie. Alles wat de klant of het beheer typt gaat door esc().
 import { REPLY_MARKER } from "./mime.ts";
 import {
-  bodyHtml, button, copyLink, detailRows, esc, eyebrow, footerHtml, footerText, layout, messageBox, redBar, title, unesc,
+  bodyHtml, button, copyLink, detailRows, esc, eyebrow, footerHtml, footerText, greeting, greetingText, layout, messageBox, redBar,
+  title, unesc,
 } from "../_shared/layout.ts";
 import {
   CATEGORY_LABEL, type Lang, PLATFORM_LABEL, STATUS_ADMIN, STATUS_COLOR, STATUS_LABEL, type Status, ticketLabel,
@@ -43,6 +44,9 @@ export type MailData = {
   minimal?: boolean;
   // build 95: link voor een nieuwe vraag (gesloten ticket); standaard https://support.bingr.online/nieuw/
   newUrl?: string;
+  // voornaam van het Bingr-account van de klant (user_metadata.first_name): klantmails beginnen dan met "Hoi <voornaam>,";
+  // alleen invullen als het ticket bij dat account hoort en naar het (bevestigde) adres van dat account gaat
+  firstName?: string;
 };
 export const NEW_TICKET_URL = "https://support.bingr.online/nieuw/";
 
@@ -155,6 +159,9 @@ export function renderMail(d: MailData): { subject: string; html: string; text: 
     ? `<p style="margin:16px 0 0;font-size:14px;line-height:21px;color:#d6d6d6">${esc(t.closedFoot)} <a href="${esc(newUrl)}" style="color:#ffffff;font-weight:700">${esc(t.newTicket)}</a></p>`
     : "";
 
+  // aanhef alleen in mails aan de klant (niet aan support@)
+  const hi = toSupport ? "" : greeting(lang, d.firstName);
+  const hiText = toSupport ? "" : greetingText(lang, d.firstName);
   const card = `
 ${eyebrow(t.ticket)}
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:6px 0 0"><tr>
@@ -163,6 +170,7 @@ ${eyebrow(t.ticket)}
 ${minimal ? "" : `<div style="font-size:17px;line-height:24px;font-weight:700;color:#ffffff;margin:6px 0 0;word-break:break-word">${esc(d.subject)}</div>`}
 ${redBar()}
 ${title(heading)}
+${hi}
 <p style="margin:0;font-size:15px;line-height:23px;color:#d6d6d6">${esc(intro)}</p>
 ${body ? messageBox(boxLabel, body, accent) : ""}
 ${button(d.url, btn)}
@@ -186,7 +194,7 @@ ${toSupport && d.customerUrl ? `<p style="margin:10px 0 0;font-size:12px;line-he
     contentHtml: card, footerHtml: footerHtml({ lang, reasonHtml: esc(foot) }),
   });
 
-  const lines: string[] = [...(marker ? [REPLY_MARKER, ""] : []), "BINGR Support", "", `${t.ticket} ${num} · ${statusLabel}`, ...(minimal ? [] : [d.subject]), "", heading, intro];
+  const lines: string[] = [...(marker ? [REPLY_MARKER, ""] : []), "BINGR Support", "", `${t.ticket} ${num} · ${statusLabel}`, ...(minimal ? [] : [d.subject]), "", heading, ...(hiText ? [hiText] : []), intro];
   if (body) lines.push("", `--- ${boxLabel} ---`, body, "---");
   lines.push("", `${btn}: ${d.url}`);
   if (closed) lines.push(`${t.newTicket}: ${newUrl}`);

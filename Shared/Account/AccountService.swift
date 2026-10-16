@@ -182,14 +182,31 @@ final class AccountService: ObservableObject {
         guard password.count >= 6 else { throw AccountError.message(L("Password must be at least 6 characters.")) }
     }
 
+    /// Max. lengte van voor- en achternaam (user_metadata `first_name` / `last_name`).
+    static let nameMax = 50
+
+    /// Voor- of achternaam opschonen: stuurtekens en < > weg, witruimte samengevoegd en getrimd, max. 50 tekens
+    /// (gelijk aan `personName()` in supabase/functions/_shared/mail.ts en de websites/Android).
+    static func cleanName(_ s: String) -> String {
+        let kept = s.unicodeScalars.filter { $0.value >= 0x20 && $0.value != 0x7F && $0 != "<" && $0 != ">" }
+        let joined = String(String.UnicodeScalarView(kept))
+            .components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }.joined(separator: " ")
+        return String(String.UnicodeScalarView(joined.unicodeScalars.prefix(nameMax)))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     /// Account maken. Zonder sessie in het antwoord moet het e-mailadres eerst bevestigd worden.
-    func signUp(email: String, password: String) async throws -> SignUpResult {
+    /// Voor- en achternaam zijn verplicht en gaan mee als user_metadata (aanhef "Hoi <voornaam>," in de e-mails).
+    func signUp(email: String, password: String, firstName: String, lastName: String) async throws -> SignUpResult {
+        let first = Self.cleanName(firstName), last = Self.cleanName(lastName)
+        guard !first.isEmpty else { throw AccountError.message(L("Enter your first name.")) }
+        guard !last.isEmpty else { throw AccountError.message(L("Enter your last name.")) }
         let mail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         try validate(email: mail, password: password)
         isBusy = true; defer { isBusy = false }
-        // `lang` = huidige app-taal: bepaalt de taal van de e-mails
+        // `lang` = huidige app-taal: bepaalt de taal van de e-mails; `first_name` / `last_name` voor de aanhef
         let body: [String: Any] = ["email": mail, "password": password,
-                                   "data": ["lang": Localizer.shared.language]]
+                                   "data": ["lang": Localizer.shared.language, "first_name": first, "last_name": last]]
         let r = try await post("/auth/v1/signup", body)
         guard r.status == 200 || r.status == 201 else { throw Self.authError(r) }
         if storeSession(r.json, fallbackEmail: mail) { return .signedIn }
@@ -280,10 +297,14 @@ final class AccountService: ObservableObject {
     }
 
     /// Account verwijderen (App Store-eis), daarna lokaal uitloggen.
-    func deleteAccount() async throws {
+    /// H1: alleen met het huidige wachtwoord; de server controleert het (403 `wrong_password`, 429 `rate_limited`).
+    func deleteAccount(password: String) async throws {
+        guard !password.isEmpty else { throw AccountError.message(L("Incorrect password.")) }
         isBusy = true; defer { isBusy = false }
         let token = try await validAccessToken()
-        let r = try await post("/functions/v1/device-auth", ["action": "delete_account"], bearer: token)
+        let r = try await post("/functions/v1/device-auth", ["action": "delete_account", "password": password], bearer: token)
+        if r.status == 403, r.string("error") == "wrong_password" { throw AccountError.message(L("Incorrect password.")) }
+        if r.status == 429 { throw AccountError.message(L("Too many attempts. Wait a few minutes and try again.")) }
         guard r.status == 200, (r.json["ok"] as? Bool) == true else { throw AccountError.generic }
         clearLocal()
     }
@@ -594,6 +615,23 @@ final class AccountService: ObservableObject {
         _ = try? await authorized { token in
             try await self.post("/functions/v1/device-auth", ["action": "stream_stop", "device_id": self.deviceID], bearer: token)
         }
+    }
+
+    /// `stream_stop` bij het afsluiten van de app: zonder tokenvernieuwing (alleen met een nog geldig token) en hooguit
+    /// `wait` seconden blokkerend, zodat de stream niet nog tot de TTL (90 s) blijft meetellen. Lukt het niet, dan
+    /// ruimt de server hem na 90 s zonder ping alsnog op.
+    func streamStopNow(wait: TimeInterval) {
+        guard Secrets.accountsConfigured, isSignedIn, let token = accessToken, expiresAt > Date().timeIntervalSince1970 + 5,
+              let url = URL(string: Secrets.supabaseURL + "/functions/v1/device-auth") else { return }
+        var req = URLRequest(url: url, timeoutInterval: 5)
+        req.httpMethod = "POST"
+        req.setValue(Secrets.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: ["action": "stream_stop", "device_id": deviceID])
+        let done = DispatchSemaphore(value: 0)
+        URLSession.shared.dataTask(with: req) { _, _, _ in done.signal() }.resume()
+        if wait > 0 { _ = done.wait(timeout: .now() + wait) }
     }
 
     /// Wie kijkt er nu (alleen voor het hoofdprofiel in Mijn Bingr → Account).

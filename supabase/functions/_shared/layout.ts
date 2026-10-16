@@ -29,6 +29,43 @@ export function bodyHtml(text: string, color = "#e6e6e6", size = 15) {
   ).join("");
 }
 
+// ---- aanhef: "Hoi <voornaam>," / "Hi <first name>," ----
+// De voornaam staat in user_metadata.first_name (apps en sites bij het aanmaken van een account, of het beheer).
+// Zonder (bruikbare) naam geen aanhef: de mail blijft dan zoals hij was.
+
+/** Max. lengte van voor- en achternaam (gelijk aan de apps, de sites en de trigger bingr_user_names in schema.sql). */
+export const NAME_MAX = 50;
+/** Voor- of achternaam opschonen zoals de apps en sites dat doen: stuurtekens en < > weg, witruimte samengevoegd,
+ *  getrimd, max. NAME_MAX tekens. Een naam met een link of e-mailadres ("://", "www.", "@") telt niet: "". */
+export function personName(s: unknown): string {
+  if (typeof s !== "string") return "";
+  const v = s.replace(/[\u0000-\u001f\u007f<>]/g, "").replace(/\s+/g, " ").trim();
+  const n = Array.from(v).slice(0, NAME_MAX).join("").trim();
+  return /:\/\/|www\.|@/i.test(n) ? "" : n;
+}
+/** Voornaam van een Supabase-gebruiker (user.user_metadata.first_name) of uit user_metadata zelf; "" als onbekend. */
+export function firstNameOf(u: unknown): string {
+  if (!u || typeof u !== "object") return "";
+  const o = u as Record<string, unknown>;
+  const meta = o.user_metadata ?? o.raw_user_meta_data ?? o;
+  return meta && typeof meta === "object" ? personName((meta as Record<string, unknown>).first_name) : "";
+}
+/** "Hoi" / "Hi". */
+export const GREETING: Record<Lang, string> = { nl: "Hoi", en: "Hi" };
+/** Aanhef als platte tekst ("Hoi Léon,"); zonder naam "". */
+export function greetingText(lang: Lang, firstName?: string) {
+  const n = personName(firstName);
+  return n ? `${GREETING[lang] ?? GREETING.en} ${n},` : "";
+}
+/** Alinea met de aanhef; inner is al veilige HTML (bv. met {{ .Data.first_name }} in een accountmail). */
+export const greetingPara = (innerHtml: string) =>
+  `<p style="margin:0 0 12px;font-size:15px;line-height:23px;font-weight:600;color:#ffffff">${innerHtml}</p>`;
+/** Aanhef als HTML-alinea (ge-escaped); zonder naam "". */
+export function greeting(lang: Lang, firstName?: string) {
+  const g = greetingText(lang, firstName);
+  return g ? greetingPara(esc(g)) : "";
+}
+
 // ---- bouwstenen voor de kaart ----
 
 /** Kleine kopregel in hoofdletters boven de titel (bv. "Supportticket", "Account"). */

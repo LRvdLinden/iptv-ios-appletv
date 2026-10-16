@@ -79,8 +79,6 @@ jobs:
 
       - name: Build-rapport publiceren (branch ci-logs)
         if: always()
-        env:
-          BEHEER_TOKEN: ${{ secrets.BINGR_BEHEER_TOKEN }}
         run: |
           mkdir -p report
           {
@@ -116,18 +114,23 @@ jobs:
           git commit -m "build $GITHUB_SHA ios=${{ steps.ios.outcome }} tvos=${{ steps.tvos.outcome }} macos=${{ steps.macos.outcome }}"
           git push -f origin HEAD:ci-logs
 
-      # Xcode-project versleuteld naar bingr-beheer (tools/seal_build.sh, branch inbox-apple); de workflow Builds daar zet het
-      # in de afgesloten map builds/ op de server van beheer.bingr.online (alleen als iOS, tvOS en macOS slagen).
+      # Xcode-project versleuteld naar de PRIVÉ repo LRvdLinden/bingr-inbox (tools/seal_build.sh van bingr-beheer, branch
+      # inbox-apple); de workflow Builds van bingr-beheer haalt het daar op en zet het in de afgesloten map builds/ op de
+      # server van beheer.bingr.online (alleen als iOS, tvOS en macOS slagen).
       # Nooit onversleuteld op GitHub: geen artefact, geen release, niet op ci-logs.
-      # Nodig: secret BINGR_BEHEER_TOKEN (fine-grained token met Contents: Read and write op LRvdLinden/bingr-beheer).
+      # Nodig: secret BINGR_INBOX_TOKEN (fine-grained token met alleen Contents: Read and write op LRvdLinden/bingr-inbox).
+      # H3: géén token voor bingr-beheer meer (daarmee kon je het beheer-dashboard vervangen); die openbare repo (script en
+      # publieke sleutel) wordt anoniem gekloond, en het token gaat nooit in een URL (seal_build.sh geeft het als kopregel mee).
       - name: Xcode-project versleuteld aanleveren voor beheer.bingr.online
         if: steps.ios.outcome == 'success' && steps.tvos.outcome == 'success' && steps.macos.outcome == 'success'
         env:
-          TOKEN: ${{ secrets.BINGR_BEHEER_TOKEN }}
+          TOKEN: ${{ secrets.BINGR_INBOX_TOKEN }}
+          BINGR_INBOX_REPO: LRvdLinden/bingr-inbox
         run: |
           set -euo pipefail
           TOKEN=$(printf '%s' "$TOKEN" | tr -d '[:space:]')   # spaties/regeleinde van het plakken weghalen
-          if [ -z "$TOKEN" ]; then echo "::warning::Secret BINGR_BEHEER_TOKEN ontbreekt: Xcode-project niet aangeleverd."; exit 0; fi
+          # bewust geen terugval op een ander token: zonder BINGR_INBOX_TOKEN wordt er niets aangeleverd
+          if [ -z "$TOKEN" ]; then echo "::warning::Secret BINGR_INBOX_TOKEN ontbreekt: Xcode-project niet aangeleverd (zie README.md van bingr-beheer, H3)."; exit 0; fi
           # (de werkmap is na de ci-logs-stap leeg; versie en build komen uit het project in de zip)
           mkdir -p /tmp/pkg && cd /tmp/pkg && rm -rf x && mkdir x && cd x && unzip -q "$GITHUB_WORKSPACE/report/Bingr-xcode.zip"
           B=$(grep -m1 'CURRENT_PROJECT_VERSION' project.yml | grep -o '[0-9]\+'); V=$(grep -m1 'MARKETING_VERSION' project.yml | grep -o '[0-9.]\+' || echo 1.0.0)
@@ -136,8 +139,9 @@ jobs:
           zip -qr "/tmp/pkg/Bingr-$V-build$B-Xcode.zip" .
           cd /tmp/pkg
           awk -v b="Build $B" '/^## /{f=($0 ~ (b "$"))?1:0; next} f && !/^_.*_$/' x/CHANGELOG.md > notes.md || true
-          git clone -q --depth 1 "https://x-access-token:${TOKEN}@github.com/LRvdLinden/bingr-beheer.git" beheer 2>/dev/null \
-            || { echo "::error::bingr-beheer niet op te halen met BINGR_BEHEER_TOKEN."; exit 1; }
+          # anoniem (openbare repo): seal_build.sh en builds.pub.pem
+          GIT_TERMINAL_PROMPT=0 git clone -q --depth 1 https://github.com/LRvdLinden/bingr-beheer.git beheer 2>/dev/null \
+            || { echo "::error::bingr-beheer niet op te halen."; exit 1; }
           TOKEN="$TOKEN" beheer/tools/seal_build.sh apple "/tmp/pkg/Bingr-$V-build$B-Xcode.zip" "$V" "$B" notes.md
           rm -rf /tmp/pkg
 

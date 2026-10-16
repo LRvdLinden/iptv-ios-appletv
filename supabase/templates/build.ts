@@ -3,13 +3,15 @@
 //   deno run --allow-read --allow-write supabase/templates/build.ts
 // Taal: user_metadata.lang ("nl", "en", ...) die de app meestuurt bij het aanmaken van het account; NL voor "nl", anders EN.
 // De Go-templatevariabelen ({{ .TokenHash }}, {{ .RedirectTo }}, {{ .Token }}, {{ .Email }}, {{ .NewEmail }}) vult Supabase bij het versturen.
+// Aanhef: met user_metadata.first_name (apps/sites bij het aanmaken, of het beheer) "Hoi <voornaam>," / "Hi <first name>,"
+// boven de eerste alinea; zonder naam geen aanhef. Supabase gebruikt Go html/template, dus {{ .Data.first_name }} wordt ge-escaped.
 // Links gaan nooit naar …supabase.co/auth/v1/verify, maar naar bingr.online/bevestigen/ (token_hash-patroon): die pagina
 // bevestigt pas na een klik (linkscanners zoals Outlook Safe Links openen links vooraf en zouden een eenmalige link anders
 // opmaken). `next` = de redirect_to van de app/site (bv. koppelen/?code=…) en staat altijd achteraan: de pagina neemt alles na
 // "next=" en accepteert alleen adressen op bingr.online.
 // Accountmails zijn transactioneel: geen afmeldlink, wel waarom je de mail krijgt en wat je doet als jij het niet was.
 import {
-  button, codeBox, copyLink, detailRows, eyebrow, footerHtml, type Lang, layout, note, para, redBar, title,
+  button, codeBox, copyLink, detailRows, eyebrow, footerHtml, GREETING, greetingPara, type Lang, layout, note, para, redBar, title,
 } from "../functions/_shared/layout.ts";
 
 export const SITE = "https://bingr.online";
@@ -138,6 +140,10 @@ export const TEMPLATES: Record<string, Template> = {
   },
 };
 
+/** Aanhef als Go-template: alleen als user_metadata.first_name bestaat (html/template escapet de naam). */
+export const greetingTemplate = (lang: Lang) =>
+  `{{ if .Data.first_name }}${greetingPara(`${GREETING[lang]} {{ .Data.first_name }},`)}{{ end }}`;
+
 /** Eén taalversie (volledig HTML-document) van een accountmail. */
 export function renderAuth(key: string, lang: Lang, year?: number) {
   const tpl = TEMPLATES[key], t = tpl[lang];
@@ -147,6 +153,7 @@ export function renderAuth(key: string, lang: Lang, year?: number) {
 ${eyebrow(t.eyebrow)}
 ${redBar("12px 0 20px")}
 ${title(t.title)}
+${greetingTemplate(lang)}
 ${para(t.intro, true)}
 ${action}
 ${note(t.note)}

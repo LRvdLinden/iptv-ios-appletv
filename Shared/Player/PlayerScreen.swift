@@ -760,6 +760,9 @@ struct PlayerScreen: View {
             return StreamSession.info(for: it).title
         }
         session.onLimit = { l in hitLimit(l) }
+        // naar de achtergrond (zonder beeld-in-beeld/AirPlay/Chromecast): de stream echt stoppen, terug = verder
+        session.onBackground = { p.suspendForBackground() }
+        session.onForeground = { p.resumeFromBackground() }
     }
 
     private func hitLimit(_ l: AccountService.StreamLimit) {
