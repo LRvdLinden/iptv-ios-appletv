@@ -128,7 +128,7 @@ jobs:
              from public.push_messages where kind <> 'reminder' order by id desc limit 8" | note berichten
           q "select platform, channel, state, left(coalesce(error,''),60) as fout, count(*) as n from public.push_deliveries
              where created_at > now() - interval '2 days' group by 1,2,3,4 order by 1,3" | note bezorgingen
-          q "select jobname, schedule, active from cron.job where jobname like 'bingr-push%'" | note planning
+          q "select jobname, schedule, active from cron.job where jobname like 'bingr-%' order by 1" | note planning
           q "select status, left(coalesce(return_message,''),80) as uitkomst, count(*) as n from cron.job_run_details d
              join cron.job j on j.jobid = d.jobid where j.jobname = 'bingr-push' and d.start_time > now() - interval '30 minutes'
              group by 1,2" | note 'cron laatste 30 min'
