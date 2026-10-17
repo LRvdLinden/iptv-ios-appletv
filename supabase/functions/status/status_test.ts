@@ -141,6 +141,24 @@ Deno.test("Downloads: token gelijk aan dl.php (HMAC-SHA256, base64url)", async (
   eq(/^[A-Za-z0-9_-]{43}$/.test(s), true);
 });
 
+Deno.test("Pushdiensten: elk HTTP-antwoord = bereikbaar; geen verbinding = fout; functie push geeft een VAPID-sleutel", async () => {
+  const seen: { url: string; auth: string | null }[] = [];
+  const reach = (status: number) => ctxWith((u, init) => {
+    seen.push({ url: u, auth: new Headers(init?.headers).get("authorization") });
+    return new Response("{}", { status });
+  });
+  const a = await runCheck({ kind: "reach", target: "https://api.push.apple.com/" } as never, reach(404));
+  eq([a.ok, a.code], [true, 404]);
+  eq((await runCheck({ kind: "reach", target: "https://fcm.googleapis.com/" } as never, reach(200))).ok, true);
+  eq(seen.every((x) => x.auth === null), true); // geen sleutel of token in de controle
+  const down = await runCheck({ kind: "reach", target: "https://api.push.apple.com/" } as never, ctxWith(() => { throw new TypeError("dns error"); }));
+  eq(down.ok, false);
+  const key = "B" + "A".repeat(86);
+  eq((await runCheck({ kind: "push", target: "" } as never, ctxWith(() => Response.json({ key })))).ok, true);
+  eq((await runCheck({ kind: "push", target: "" } as never, ctxWith(() => Response.json({ error: "not_configured" }, { status: 503 })))).ok, false);
+  eq((await runCheck({ kind: "push", target: "" } as never, ctxWith(() => Response.json({ key: "kort" })))).error, "geen VAPID-sleutel");
+});
+
 Deno.test("GitHub: Apple-build", async () => {
   const run = (concl: string) => ctxWith(() => Response.json({ workflow_runs: [{ conclusion: concl, run_number: 9, head_sha: "abcdef123" }] }));
   eq((await checkGhWorkflow("o/r|build.yml|main", run("success"))).ok, true);

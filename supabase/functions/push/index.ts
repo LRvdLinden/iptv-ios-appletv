@@ -13,7 +13,8 @@
 //   admin_progress {message_id} -> {message_id, kind, devices, queued, sent, failed, invalid, errors, done}  (verstuurt ook een batch)
 //   admin_history  {page?} -> {items:[{id, kind, title, …, queued, sent, failed, invalid, errors}], page, has_more}
 // Planning (header x-push-secret = PUSH_CRON_SECRET, pg_cron elke minuut):
-//   cron        {} -> {ok, reminders, sent, failed, invalid, queued_left}   (herinneringen + resterende batches)
+//   cron        {} -> {ok, reminders, sent, failed, invalid, queued_left, beheer:{notices, sent, invalid, failed, skipped?}}
+//               (herinneringen + resterende batches + adminNotify: meldingen naar de beheer-app, zie beheer.ts)
 // Fouten: 401 {error:"not_signed_in"} / BANNED_BODY, 403 {error:"forbidden"}, 400 {error:"bad_…"}.
 // Logs bevatten nooit tokens, geheimen of e-mailadressen.
 import { createClient } from "jsr:@supabase/supabase-js@2";
@@ -21,6 +22,7 @@ import { BANNED_BODY, bannedUntilActive, isBanError } from "../_shared/ban.ts";
 import { unseal } from "../_shared/sealed.ts";
 import { sameSecret } from "./crypto.ts";
 import { Channels, type DeviceRow } from "./channels.ts";
+import { adminNotify, type BeheerResult } from "./beheer.ts";
 import {
   checkRegister, checkTarget, GROUPS, MAX_ATTEMPTS, type MessageRow, parseReminders, releaseKey, reminderDue, reminderKey,
   reminderProfile, renderNotice, safeUrl, ttlFor,
@@ -223,6 +225,8 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
     }
     case "release": {
       if (!secretOk(req, "PUSH_RELEASE_SECRET", "PUSH_ADMIN_SECRET")) return json({ error: "forbidden" }, 403);
+      // wie verstuurde: het beheer (PUSH_ADMIN_SECRET, knop in Downloads) of de oude weg (PUSH_RELEASE_SECRET, workflow Builds)
+      const fromBeheer = secretOk(req, "PUSH_ADMIN_SECRET");
       const group = String(body.platform_group ?? "");
       const build = Number(body.build);
       const version = String(body.version ?? "").trim();
@@ -232,7 +236,7 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       const key = releaseKey(group, build);
       const { data: ins, error } = await admin.from("push_messages").upsert({
         kind: "release", dedup_key: key, platform_group: group, build, payload: { version, build, platform_group: group },
-        target: { platforms: GROUPS[group], below_build: build }, created_by: "builds",
+        target: { platforms: GROUPS[group], below_build: build }, created_by: fromBeheer ? "beheer" : "builds",
       }, { onConflict: "dedup_key", ignoreDuplicates: true }).select("id");
       if (error) throw new Error(`release: ${error.message}`);
       if (!ins?.length) {
@@ -302,9 +306,12 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       const started = Date.now();
       let made = 0;
       try { made = await reminders(started); } catch (e) { console.error("push herinneringen", e instanceof Error ? e.message : e); }
+      let beheer: BeheerResult | { error: string };
+      try { beheer = await adminNotify(admin, channels.apns, env, Date.now()); }
+      catch (e) { console.error("push beheer", e instanceof Error ? e.message.slice(0, 80) : "fout"); beheer = { error: "failed" }; }
       const t = await drain(null, Math.max(5_000, 45_000 - (Date.now() - started)));
       const { count } = await admin.from("push_deliveries").select("id", { count: "exact", head: true }).in("state", ["queued", "sending"]);
-      return json({ ok: true, reminders: made, sent: t.sent, failed: t.failed, invalid: t.invalid, retry: t.retry, queued_left: count ?? 0 });
+      return json({ ok: true, reminders: made, sent: t.sent, failed: t.failed, invalid: t.invalid, retry: t.retry, queued_left: count ?? 0, beheer });
     }
     default:
       return json({ error: "unknown_action" }, 400);

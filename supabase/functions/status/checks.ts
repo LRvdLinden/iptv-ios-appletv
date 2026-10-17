@@ -1,6 +1,7 @@
 // Bingr-status: de controles zelf. Elke controle krijgt maximaal TIMEOUT_MS en geeft een CheckResult terug.
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import { type CheckResult, shortError } from "./logic.ts";
+import { type BuildEntry, BUILD_PLATFORMS, BUILDS_DL, fetchBuildManifest, signBuildToken } from "../_shared/builds.ts";
 
 export const TIMEOUT_MS = 10_000;
 export const SLOW_MS = 5_000; // trager dan dit = verminderde prestaties
@@ -46,6 +47,8 @@ export async function runCheck(m: Monitor, ctx: Ctx): Promise<CheckResult> {
       case "smtp": return await checkSmtp(ctx);
       case "tls": return await checkTls(m.target, ctx);
       case "build": return await checkBuild(m.target, ctx);
+      case "reach": return await checkReach(m.target, ctx);
+      case "push": return await checkPush(ctx);
       // oude monitors (vóór build 107): downloads in bingr-beheer/versions bestaan niet meer -> afgesloten opslag
       case "gh_asset": return await checkBuild(ASSET_PLATFORM[(m.target.split("|")[1] || "").toLowerCase()] ?? "", ctx);
       case "gh_workflow": return await checkGhWorkflow(m.target, ctx);
@@ -121,6 +124,38 @@ async function checkStorage(bucket: string, ctx: Ctx): Promise<CheckResult> {
     const ms = since(t);
     if (error || !data) return { ok: false, ms, error: shortError(error?.message ?? "bucket ontbreekt") };
     return { ok: true, ms, degraded: slow(ms) };
+  });
+}
+
+// ---- pushdiensten: is de dienst bereikbaar? Elk HTTP-antwoord telt (zonder geldige sleutel geeft hij 4xx); alleen geen
+// verbinding, een TLS-fout of een time-out is een storing. Geen sleutels of tokens in het verzoek.
+export async function checkReach(url: string, ctx: Ctx): Promise<CheckResult> {
+  const f = ctx.fetch ?? fetch;
+  const t = now();
+  return await withTimeout(async (signal) => {
+    const res = await f(url, { signal, redirect: "manual", headers: { "User-Agent": UA } });
+    const ms = since(t);
+    await res.body?.cancel();
+    if (res.status < 100 || res.status > 599) return { ok: false, code: res.status, ms, error: `HTTP ${res.status}` };
+    return { ok: true, code: res.status, ms, degraded: slow(ms), detail: `bereikbaar (HTTP ${res.status})` };
+  });
+}
+
+// ---- eigen functie push: actie vapid_key moet de publieke Web Push-sleutel geven (65 bytes, 87 tekens base64url) ----
+export async function checkPush(ctx: Ctx): Promise<CheckResult> {
+  const f = ctx.fetch ?? fetch;
+  const base = ctx.env("SUPABASE_URL").replace(/\/+$/, "");
+  const t = now();
+  return await withTimeout(async (signal) => {
+    const res = await f(`${base}/functions/v1/push`, {
+      method: "POST", signal, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "vapid_key" }),
+    });
+    const ms = since(t);
+    let j: { key?: unknown } = {};
+    try { j = await res.json(); } catch { /* geen json */ }
+    if (!res.ok) return { ok: false, code: res.status, ms, error: `HTTP ${res.status}` };
+    if (typeof j.key !== "string" || !/^[A-Za-z0-9_-]{87}$/.test(j.key)) return { ok: false, code: res.status, ms, error: "geen VAPID-sleutel" };
+    return { ok: true, code: res.status, ms, degraded: slow(ms) };
   });
 }
 
@@ -280,21 +315,8 @@ const limited = (res: Response) => res.status === 429 || (res.status === 403 && 
 // bereikbaar via dl.php met een kortgeldige, ondertekende link (HMAC-SHA256 met het function-secret BINGR_BUILDS_KEY,
 // zelfde formaat als de functie admin in bingr-beheer). De controle haalt het manifest op en vraagt daarna met HEAD het
 // nieuwste bestand van het platform op (zonder het te downloaden). Links en sleutel komen nooit in een resultaat.
-export const BUILDS_DL = "https://beheer.bingr.online/dl.php";
-export const BUILD_PLATFORMS = ["android", "tizen", "apple", "beheer"] as const;
+export { BUILD_PLATFORMS, BUILDS_DL, signBuildToken };
 const ASSET_PLATFORM: Record<string, string> = { ".apk": "android", ".wgt": "tizen", ".zip": "apple" };
-
-const b64url = (b: Uint8Array) => btoa(String.fromCharCode(...b)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-/** Token voor dl.php: base64url(JSON {f, e}) + "." + base64url(HMAC-SHA256(key, payload)). */
-export async function signBuildToken(key: string, path: string, ttlSeconds: number, nowSec = Math.floor(Date.now() / 1000)): Promise<string> {
-  const enc = new TextEncoder();
-  const payload = b64url(enc.encode(JSON.stringify({ f: path, e: nowSec + ttlSeconds })));
-  const k = await crypto.subtle.importKey("raw", enc.encode(key), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  const sig = new Uint8Array(await crypto.subtle.sign("HMAC", k, enc.encode(payload)));
-  return `${payload}.${b64url(sig)}`;
-}
-
-type BuildEntry = { build?: number; date?: string; file?: string; path?: string; size?: number };
 
 /** target: "android" | "tizen" | "apple" | "beheer" — staat de nieuwste build van dat platform in de opslag en is hij op te halen? */
 export async function checkBuild(target: string, ctx: Ctx): Promise<CheckResult> {
@@ -307,12 +329,7 @@ export async function checkBuild(target: string, ctx: Ctx): Promise<CheckResult>
   return await withTimeout(async (signal) => {
     const cacheKey = "builds:manifest";
     if (!ctx.cache.has(cacheKey)) {
-      ctx.cache.set(cacheKey, (async () => {
-        const res = await f(`${BUILDS_DL}?t=${await signBuildToken(key, "manifest.json", 60)}`,
-          { signal, headers: { "User-Agent": UA }, redirect: "error" });
-        if (!res.ok) { await res.body?.cancel(); throw new Error(`manifest HTTP ${res.status}`); }
-        return await res.json();
-      })());
+      ctx.cache.set(cacheKey, fetchBuildManifest(key, { fetch: f, signal, ua: UA }));
     }
     let m: { platforms?: Record<string, BuildEntry> };
     try { m = await (ctx.cache.get(cacheKey) as Promise<{ platforms?: Record<string, BuildEntry> }>); }

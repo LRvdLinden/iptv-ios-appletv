@@ -1,5 +1,29 @@
 [
  {
+  "build": 117,
+  "version": "1.0.0",
+  "date": "2026-10-17",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "web",
+     "server"
+    ],
+    "nl": "De statuspagina toont nu ook de pushmeldingen: de eigen pushdienst en de bereikbaarheid van de pushdiensten voor Apple-apparaten en Android",
+    "en": "The status page now also shows push notifications: our own push service and whether the push services for Apple devices and Android can be reached"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Berichten van Bingr komen alleen nog als pushmelding; oudere app-versies tonen ze niet meer in de app",
+    "en": "Messages from Bingr now only arrive as push notifications; older app versions no longer show them inside the app"
+   }
+  ]
+ },
+ {
   "build": 116,
   "version": "1.0.0",
   "date": "2026-10-17",

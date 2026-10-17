@@ -308,7 +308,7 @@ revoke all on public.device_pending_names from anon, authenticated;
 
 -- Beheer: de tabellen announcements, account_email_prefs, admin_login_attempts en admin_audit en de functies bingr_admin_*
 -- horen bij dit gedeelde schema, maar worden gebruikt door de Edge Function admin in de (sinds build 97 openbare) repo LRvdLinden/bingr-beheer
--- (beheer.bingr.online). Alleen announcements wordt ook door device-auth gelezen (berichten in de apps).
+-- (beheer.bingr.online). device-auth leest announcements sinds build 117 niet meer (berichten alleen als pushmelding).
 -- Berichten van de beheerder aan alle gebruikers (in de apps één keer getoond; eventueel ook per e-mail).
 create table if not exists public.announcements (
   id            uuid primary key default gen_random_uuid(),
@@ -2078,3 +2078,49 @@ grant execute on function public.bingr_push_refresh(bigint[]) to service_role;
 grant execute on function public.bingr_push_finish(jsonb) to service_role;
 grant execute on function public.bingr_push_users(uuid, int) to service_role;
 grant execute on function public.bingr_push_cleanup() to service_role;
+
+-- ============================================================================================================
+-- Build 117: pushdiensten op de statuspagina (groep Server). Eén keer klaargezet; daarna beslist het beheer (tab Status).
+-- push       = de eigen functie push (actie vapid_key moet de publieke Web Push-sleutel geven)
+-- push-apple = pushdienst voor iPhone, iPad en Mac (api.push.apple.com bereikbaar via HTTPS; elk HTTP-antwoord = up)
+-- push-android = pushdienst voor Android en de webspeler in Chrome (fcm.googleapis.com bereikbaar)
+insert into public.status_monitors (id, name_nl, name_en, grp, kind, target, keyword, interval_min, public, enabled, builtin, sort) values
+  ('push',         'Pushmeldingen',                  'Push notifications',                'server', 'push',  '',                              null, 5, true, true, true, 70),
+  ('push-apple',   'Pushmeldingen Apple-apparaten',  'Push notifications Apple devices',  'server', 'reach', 'https://api.push.apple.com/',   null, 5, true, true, true, 72),
+  ('push-android', 'Pushmeldingen Android',          'Push notifications Android',        'server', 'reach', 'https://fcm.googleapis.com/',   null, 5, true, true, true, 74)
+on conflict (id) do nothing;
+
+-- ============================================================================================================
+-- Pushmeldingen naar de beheer-app Bingr Beheer (bundle nl.lrvdlinden.bingr.beheer; iOS, iPadOS en Mac via Catalyst, APNs).
+-- docs/PUSH.md, "Beheer-app". De functie admin (bingr-beheer) upsert apparaten met de service role op device_id; de cron van
+-- de functie push leest ze en verstuurt (tickets, antwoorden, builds, status). Geen accounts: alleen beheerders hebben de app.
+create table if not exists public.admin_push_devices (
+  id          bigint generated always as identity primary key,
+  device_id   text not null unique,
+  token       text not null unique,
+  platform    text not null check (platform in ('ios', 'ipados', 'macos')),
+  sandbox     boolean not null default false,
+  prefs       jsonb not null default '{"tickets":true,"replies":true,"builds":true,"status":true}'::jsonb,
+  app_build   int,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now(),
+  last_error  text
+);
+alter table public.admin_push_devices enable row level security;
+revoke all on public.admin_push_devices from anon, authenticated;
+
+-- Watermerken (één rij, id = 1): wat de beheer-app al gemeld kreeg. Ontbreekt de rij of een veld, dan zet de cron het op de
+-- huidige stand zonder te melden (geen stortvloed aan oude meldingen). builds = {platform: build}, monitors =
+-- {monitor-id: {s: "up"|"down", since}}; builds_checked_at = laatste keer dat het manifest is opgehaald (hoogstens elke 5 min).
+create table if not exists public.admin_push_state (
+  id                 int primary key default 1 check (id = 1),
+  last_ticket_number bigint,
+  last_message_id    bigint,
+  builds             jsonb,
+  monitors           jsonb,
+  builds_checked_at  timestamptz,
+  updated_at         timestamptz not null default now()
+);
+alter table public.admin_push_state add column if not exists builds_checked_at timestamptz;
+alter table public.admin_push_state enable row level security;
+revoke all on public.admin_push_state from anon, authenticated;

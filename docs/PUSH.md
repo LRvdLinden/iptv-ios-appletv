@@ -65,6 +65,7 @@ verstuurt hem per build in het beheer (tab Downloads, knop "Pushmelding versture
 die `push` aanroept met `{action:"release", platform_group:"apple"|"android", version, build}` en header `x-push-secret` =
 `PUSH_ADMIN_SECRET` (`PUSH_RELEASE_SECRET` wordt ook nog geaccepteerd, maar *Builds* gebruikt het niet meer) →
 `{ok, message_id, devices, missing_channels}`, of bij een herhaling `{ok, duplicate:true, message_id}`. Fout geheim → 403 `forbidden`.
+`created_by` in de geschiedenis: `beheer` bij PUSH_ADMIN_SECRET (knop in het beheer), `builds` bij PUSH_RELEASE_SECRET.
 - `apple` → apparaten met platform ios, ipados, macos; `android` → android. (tvos/androidtv/tizen ontvangen niets.)
 - Alleen apparaten met `app_build < build` (wie al bijgewerkt is, krijgt niets).
 - Dedup: één melding per (platform_group, build) — tweede aanroep met dezelfde build doet niets.
@@ -109,9 +110,69 @@ zendernaam. Na de start wordt een herinnering niet meer verstuurd.
 - Opruimen (pg_cron `bingr-push-cleanup`, dagelijks): herinneringsberichten na 3 dagen, details per apparaat na 30 dagen,
   berichten na 400 dagen, apparaten die 270 dagen niet opnieuw registreerden.
 
+## Beheer-app (Bingr Beheer)
+
+De beheer-app Bingr Beheer (bingr-beheer/ios, bundle `nl.lrvdlinden.bingr.beheer`; iOS, iPadOS en Mac via Catalyst) krijgt
+eigen pushmeldingen via APNs. Dit staat los van de Bingr-apps: geen accounts, geen `push_devices`, nooit in de changelog.
+
+**Registratie** (bingr-beheer, functie `admin`, ingelogd in het beheer): upsert met de service role op `device_id` in
+`public.admin_push_devices`:
+
+| kolom | type | |
+|---|---|---|
+| `id` | bigint identity, pk | |
+| `device_id` | text, not null, uniek | id van het apparaat in de beheer-app |
+| `token` | text, not null, uniek | APNs-devicetoken (hex) |
+| `platform` | text, not null | `ios` \| `ipados` \| `macos` |
+| `sandbox` | boolean, default false | true voor debug-builds (APNs development) |
+| `prefs` | jsonb, default `{"tickets":true,"replies":true,"builds":true,"status":true}` | ontbrekende sleutel = aan |
+| `app_build` | int | |
+| `created_at`, `updated_at` | timestamptz, default now() | |
+| `last_error` | text | alleen een foutcode (`apns_…`), door `push` gezet |
+
+RLS aan, geen rechten voor anon/authenticated. `push` leest en verstuurt; de functie admin schrijft.
+
+**Versturen** (stap `adminNotify` in `push`/`cron`, elke minuut; `supabase/functions/push/beheer.ts`, pure logica in
+`beheer_logic.ts`, tests in `beheer_test.ts` die de deploy blokkeren). APNs met topic `BEHEER_APNS_TOPIC` (standaard
+`nl.lrvdlinden.bingr.beheer`) en dezelfde `APNS_KEY_P8`/`APNS_KEY_ID`/`APNS_TEAM_ID`; sandbox per apparaat. Zonder APNs-sleutels
+wordt niets verstuurd (geen fout); de watermerken lopen wel door.
+
+| soort (`kind`) | pref | wanneer | titel | tekst | link (`url`) |
+|---|---|---|---|---|---|
+| `ticket` | `tickets` | nieuw supportticket (`support_tickets.number` > watermerk) | `Nieuw ticket #<nummer>` | onderwerp (max. 120 tekens) | `bingrbeheer://support/<nummer>` |
+| `reply` | `replies` | nieuw klantbericht (`support_messages`, `author = 'customer'`, id > watermerk), niet het eerste bericht van een ticket (dat is het ticket zelf) | `Nieuw antwoord op #<nummer>` | begin van het bericht (max. 120 tekens) | `bingrbeheer://support/<nummer>` |
+| `build` | `builds` | hogere build in `builds/manifest.json` (beheer.bingr.online, via dl.php met HMAC-token uit `BINGR_BUILDS_KEY`, hoogstens elke 5 minuten) voor android, tizen, apple of beheer | `Android-build 116 staat klaar` (Samsung TV-, Apple-, Beheer-app-build) | `In Downloads op beheer.bingr.online` | `bingrbeheer://downloads` |
+| `status` | `status` | een statusmonitor (alle ingeschakelde monitors) krijgt een storing of is er weer vanaf | `Storing: <monitor>` / `Weer online: <monitor>` | `Sinds 14:25` / `Na 12 min weer bereikbaar` | `bingrbeheer://status` |
+
+- Status volgt de storingen van de functie `status` (`status_incidents`): die opent pas na 2 mislukte controles op rij en sluit
+  na 2 goede, dus flapperen geeft geen meldingen. Onderhoud opent geen storing, dus ook geen melding.
+- Meer dan 3 per soort in één ronde: één samenvatting (`5 nieuwe tickets`, `4 nieuwe antwoorden`, `4 nieuwe builds staan klaar`,
+  `5 statuswijzigingen` met `3 storingen, 2 weer online`).
+- Payload: `{aps:{alert:{title, body}, sound:"default", "thread-id":<kind>}, kind, url}`; `kind` = ticket | reply | build | status.
+- Ongeldige token (410, BadDeviceToken, Unregistered, DeviceTokenNotForTopic, ExpiredToken) → rij verwijderd; andere fout →
+  `last_error` (alleen de code). Na een geslaagde melding wordt `last_error` weer leeg.
+- Antwoord van `cron` bevat `beheer: {notices, sent, invalid, failed, skipped?}` (alleen tellingen; `skipped` = `busy`,
+  `apns_not_configured` of `no_devices`). Logs bevatten nooit tokens, onderwerpen, berichten of e-mailadressen.
+
+**Watermerken** in `public.admin_push_state` (één rij, `id = 1`): `last_ticket_number`, `last_message_id`, `builds`
+(`{platform: build}`), `monitors` (`{monitor-id: {s: "up"|"down", since}}`), `builds_checked_at` (laatste keer manifest),
+`updated_at`. Ontbreekt de rij of een veld, dan zet de cron dat op de huidige stand zonder te melden (geen stortvloed aan oude
+meldingen); een nieuwe monitor of een nieuw platform in het manifest wordt ook eerst stil vastgelegd. De watermerken worden
+vóór het versturen weggeschreven met een controle op `updated_at`, zodat twee gelijktijdige rondes niets dubbel versturen.
+
+## Pushdiensten op de statuspagina
+
+Monitors in de groep Server (functie `status`, elke 5 minuten, openbaar op bingr.online/status en in het beheer):
+- `push` "Pushmeldingen": de eigen functie `push`, actie `vapid_key` moet de publieke Web Push-sleutel geven (soort `push`).
+- `push-apple` "Pushmeldingen Apple-apparaten": api.push.apple.com bereikbaar via HTTPS (soort `reach`: elk HTTP-antwoord = up,
+  geen verbinding/TLS-fout/time-out = fout; er gaat geen sleutel of token mee).
+- `push-android` "Pushmeldingen Android": fcm.googleapis.com bereikbaar (soort `reach`). Web Push in Chrome loopt ook via deze
+  dienst; Safari via Apple, Firefox via Mozilla (die laatste wordt niet apart gecontroleerd).
+
 ## Geheimen (function-secrets, nooit in de repo)
 
 - `APNS_KEY_P8` (inhoud van de .p8-sleutel), `APNS_KEY_ID`, `APNS_TEAM_ID` (EU3UY476T6), `APNS_TOPIC` (nl.lrvdlinden.bingr)
+- `BEHEER_APNS_TOPIC` (optioneel, standaard nl.lrvdlinden.bingr.beheer) en `BINGR_BUILDS_KEY` (al gezet door bingr-beheer; voor de buildmeldingen)
 - `FCM_SERVICE_ACCOUNT` (JSON van een Firebase-serviceaccount), `FCM_PROJECT_ID`
 - `VAPID_PRIVATE_KEY`, `VAPID_PUBLIC_KEY`, `VAPID_SUBJECT` (mailto:support@bingr.online) — door *Backend* zelf gemaakt als ze ontbreken
 - `PUSH_ADMIN_SECRET` (door *Backend* gemaakt, zoals SUPPORT_ADMIN_SECRET), `PUSH_CRON_SECRET` (planning, actie `cron`)

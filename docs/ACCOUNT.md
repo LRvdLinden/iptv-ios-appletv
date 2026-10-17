@@ -608,20 +608,18 @@ Stuur ze bij **elke** `register_device` en `heartbeat`. Antwoorden en foutcodes 
 
 **Webspeler:** `platform` = `"browser"`, `name` = browser + systeem, bijvoorbeeld `"Chrome op Mac"`, `"Safari op iPhone"`, `"Edge op Windows"`. De apps tonen `browser` in de apparatenlijst als "Webbrowser" met een globe-icoon (Apple: `globe`, Android: `Icons.Default.Language`).
 
-### Berichten (`announcements`)
+### Berichten (`announcements`) — vervallen
 
-device-auth `{"action":"announcements","lang":"nl"}` met `Authorization: Bearer <access_token>`:
+Berichten uit het beheer komen alleen nog als **pushmelding** (docs/PUSH.md). Geen app vraagt `announcements` nog op of
+toont berichten in de app (geen banner, geen venster). device-auth `{"action":"announcements"}` blijft bestaan voor oude
+builds (vóór de pushmeldingen), maar geeft sinds build 117 altijd een lege lijst (ingelogd; anders 401 zoals elders):
 
 ```json
-{"items":[{"id":"<uuid>","title":"…","body":"…","created_at":"ISO-8601"}]}
+{"items":[]}
 ```
 
-- Alleen actieve berichten: niet verlopen en jonger dan 30 dagen; nieuwste eerst, max. 5.
-- `lang` `"en"` (of `"en-…"`) geeft de Engelse tekst als die er is; elke andere taal (en ontbrekend) geeft Nederlands.
-- `body` is platte tekst; regels gescheiden door `\n`, alinea's door `\n\n`. Https-links mogen klikbaar worden.
-- **Wanneer:** na login en bij het starten met een geldige sessie, en bij terugkeer naar de voorgrond (hooguit eens per uur).
-- **Tonen:** elk nog niet gezien bericht één keer, oudste eerst, als melding met titel, tekst en een knop **OK** (NL "OK"). Daarna het `id` lokaal als gezien bewaren (per apparaat, niet per profiel; max. 50 id's onthouden).
-- **Fouten:** stil, nooit blokkeren. 401/503 zoals elders.
+Zo tonen oude builds niets meer in de app en lopen ze niet vast op een onbekende actie. De tabel `announcements` (beheer)
+blijft voor de e-mailberichten uit het beheer; device-auth leest hem niet meer.
 
 ### Webproxy (`web-proxy`) voor de webspeler
 

@@ -4,6 +4,21 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 117
+_17 oktober 2026_
+
+### Website en Server
+
+**Nieuw**
+
+- De statuspagina toont nu ook de pushmeldingen: de eigen pushdienst en de bereikbaarheid van de pushdiensten voor Apple-apparaten en Android
+
+### Server
+
+**Verbeterd**
+
+- Berichten van Bingr komen alleen nog als pushmelding; oudere app-versies tonen ze niet meer in de app
+
 ## Versie 1.0.0 · Build 115
 _17 oktober 2026_
 

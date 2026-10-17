@@ -44,7 +44,7 @@
 //   watch_log       {days?:7} (ingelogd) -> {entries:[{device_name, platform, profile_id, profile_name, title, kind, started_at, ended_at, minutes}]}
 //   watch_stats     {period?:"week"|"month"|"year", offset?:0, profile_id?, tz?} (ingelogd) -> statistieken (build 68, zie docs/ACCOUNT.md)
 //   delete_watch_stats {profile_id?} (ingelogd) -> {ok}   (zonder profile_id: alle profielen)
-//   announcements   {lang?:"nl"|"en"} (ingelogd) -> {items:[{id, title, body, created_at}]}  (build 62; max. 5, nieuwste eerst)
+//   announcements   {lang?} (ingelogd) -> {items:[]}  (build 62; sinds build 117 altijd leeg: berichten alleen als pushmelding)
 //   ping            {}                  -> {ok:true}  (statuscontrole, zonder inloggen)
 //   config          {platform?, device_id?} (ingelogd) -> {traktClientID, traktClientSecret, openSubtitlesAPIKey, omdbAPIKey, tmdbAPIKey, entitlements}
 //                   App-sleutels staan alleen als function-secrets op de server (BINGR_*), nooit in de openbare repo.
@@ -647,19 +647,12 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       return json({ ok: true });
     }
     case "announcements": {
+      // Build 117: berichten uit het beheer komen alleen nog als pushmelding (docs/PUSH.md). Oude app-builds (vóór de
+      // pushmeldingen) vragen dit nog op en tonen dan een banner; ze krijgen een lege lijst, zodat ze niets meer in de app
+      // tonen en ook niet vastlopen op een onbekende actie. Inloggen blijft nodig (zelfde antwoord als voorheen bij 401).
       const user = await authed(req);
       if (user instanceof Response) return user;
-      const en = String(body.lang ?? "").toLowerCase().startsWith("en");
-      const now = new Date().toISOString();
-      const { data } = await admin.from("announcements").select("id,title_nl,body_nl,title_en,body_en,created_at")
-        .gte("created_at", new Date(Date.now() - 30 * 864e5).toISOString())
-        .or(`expires_at.is.null,expires_at.gt."${now}"`)
-        .order("created_at", { ascending: false }).limit(5);
-      const items = (data ?? []).map((a) => {
-        const useEn = en && String(a.title_en ?? "").trim() !== "" && String(a.body_en ?? "").trim() !== "";
-        return { id: a.id, title: useEn ? a.title_en : a.title_nl, body: useEn ? a.body_en : a.body_nl, created_at: a.created_at };
-      });
-      return json({ items });
+      return json({ items: [] });
     }
     case "config": {
       const user = await authed(req);

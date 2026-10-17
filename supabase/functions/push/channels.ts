@@ -25,27 +25,29 @@ export class Apns {
     return token;
   }
   async send(dev: DeviceRow, n: Notice, ttlS = 86400): Promise<Outcome> {
+    return await this.post(dev.token, dev.sandbox, apnsPayload(n), { collapseId: String(n.data.msg_id), ttlS });
+  }
+  // Eén melding met een eigen payload en (optioneel) een ander topic, bv. de beheer-app (BEHEER_APNS_TOPIC). Zelfde sleutel:
+  // een APNs-providertoken geldt voor alle apps van het team.
+  async post(token: string, sandbox: boolean, payload: unknown, o: { topic?: string; collapseId?: string; ttlS?: number } = {}): Promise<Outcome> {
     if (!this.configured()) return { state: "failed", error: "apns_not_configured" };
-    const host = dev.sandbox ? "https://api.sandbox.push.apple.com" : "https://api.push.apple.com";
-    const res = await this.f(`${host}/3/device/${dev.token}`, {
-      method: "POST",
-      headers: {
-        authorization: `bearer ${await this.token()}`,
-        "apns-topic": this.env("APNS_TOPIC") || "nl.lrvdlinden.bingr",
-        "apns-push-type": "alert",
-        "apns-priority": "10",
-        "apns-expiration": String(Math.floor(Date.now() / 1000) + ttlS),
-        "apns-collapse-id": String(n.data.msg_id).slice(0, 64),
-        "content-type": "application/json",
-      },
-      body: JSON.stringify(apnsPayload(n)),
-    });
+    const host = sandbox ? "https://api.sandbox.push.apple.com" : "https://api.push.apple.com";
+    const headers: Record<string, string> = {
+      authorization: `bearer ${await this.token()}`,
+      "apns-topic": o.topic || this.env("APNS_TOPIC") || "nl.lrvdlinden.bingr",
+      "apns-push-type": "alert",
+      "apns-priority": "10",
+      "apns-expiration": String(Math.floor(Date.now() / 1000) + (o.ttlS ?? 86400)),
+      "content-type": "application/json",
+    };
+    if (o.collapseId) headers["apns-collapse-id"] = o.collapseId.slice(0, 64);
+    const res = await this.f(`${host}/3/device/${token}`, { method: "POST", headers, body: JSON.stringify(payload) });
     let reason = "";
     if (res.status !== 200) { try { reason = String((await res.json())?.reason ?? ""); } catch { /* geen json */ } }
     else await res.body?.cancel();
-    const o = apnsOutcome(res.status, reason);
-    if (o.resetAuth) this.reset();
-    return o;
+    const out = apnsOutcome(res.status, reason);
+    if (out.resetAuth) this.reset();
+    return out;
   }
 }
 

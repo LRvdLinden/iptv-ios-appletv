@@ -24,6 +24,7 @@ name: Backend
 # build 95: de pg_cron-taak bingr-support-cleanup ruimt dagelijks op (AVG: gesloten tickets na 24 maanden, ip_hash na 30 dagen,
 # captcha-salts, cron.job_run_details na 7 dagen); zie bingr_support_cleanup in supabase/schema.sql.
 # Pushmeldingen (docs/PUSH.md, functie push): APNS_KEY_P8 (inhoud van de .p8), APNS_KEY_ID, APNS_TEAM_ID, APNS_TOPIC,
+# BEHEER_APNS_TOPIC (optioneel; beheer-app, standaard nl.lrvdlinden.bingr.beheer),
 # FCM_SERVICE_ACCOUNT (JSON van het Firebase-serviceaccount), FCM_PROJECT_ID en optioneel PUSH_RELEASE_SECRET (zelfde waarde als in
 # bingr-beheer, voor de releasemelding uit de workflow Builds) worden doorgezet als ze bestaan; ontbreken ze: waarschuwing.
 # PUSH_ADMIN_SECRET en het VAPID-sleutelpaar maakt deze workflow één keer zelf aan; PUSH_CRON_SECRET (optioneel vast) zoals
@@ -59,8 +60,9 @@ jobs:
       - name: Unittests (statistieken)
         run: deno test supabase/functions/device-auth/stats_test.ts supabase/functions/device-auth/naming_test.ts supabase/functions/device-auth/password_test.ts supabase/functions/_shared/ban_test.ts supabase/functions/web-proxy/ip_test.ts
       - name: Unittests (pushmeldingen)
-        # blokkeert de deploy: JWT (APNs/FCM/VAPID), Web Push-versleuteling (RFC 8291-testvector), payloads, taal, dedup
-        run: deno test supabase/functions/push/push_test.ts
+        # blokkeert de deploy: JWT (APNs/FCM/VAPID), Web Push-versleuteling (RFC 8291-testvector), payloads, taal, dedup,
+        # en de meldingen naar de beheer-app (teksten, samenvatten, statusovergangen, watermerken, topic)
+        run: deno test supabase/functions/push/push_test.ts supabase/functions/push/beheer_test.ts
       - name: Unittests (statuspagina)
         continue-on-error: true
         run: |
@@ -317,6 +319,7 @@ jobs:
           P_APNS_KID: ${{ secrets.APNS_KEY_ID }}
           P_APNS_TEAM: ${{ secrets.APNS_TEAM_ID }}
           P_APNS_TOPIC: ${{ secrets.APNS_TOPIC }}
+          P_BEHEER_TOPIC: ${{ secrets.BEHEER_APNS_TOPIC }}
           P_FCM_SA: ${{ secrets.FCM_SERVICE_ACCOUNT }}
           P_FCM_PROJECT: ${{ secrets.FCM_PROJECT_ID }}
           P_RELEASE: ${{ secrets.PUSH_RELEASE_SECRET }}
@@ -332,6 +335,7 @@ jobs:
           [ -n "$P_APNS_KID" ] && args+=("APNS_KEY_ID=$P_APNS_KID")
           [ -n "$P_APNS_TEAM" ] && args+=("APNS_TEAM_ID=$P_APNS_TEAM")
           [ -n "$P_APNS_TOPIC" ] && args+=("APNS_TOPIC=$P_APNS_TOPIC")
+          [ -n "$P_BEHEER_TOPIC" ] && args+=("BEHEER_APNS_TOPIC=$P_BEHEER_TOPIC")
           if [ -n "$P_FCM_SA" ]; then
             SA=$(printf '%s' "$P_FCM_SA" | python3 -c 'import json,sys; print(json.dumps(json.loads(sys.stdin.read()), separators=(",", ":")))' 2>/dev/null) \
               && args+=("FCM_SERVICE_ACCOUNT=$SA") || echo "::warning::FCM_SERVICE_ACCOUNT is geen geldige JSON; niet doorgezet"
