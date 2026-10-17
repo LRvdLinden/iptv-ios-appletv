@@ -4,6 +4,15 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 121
+_17 oktober 2026_
+
+### Server
+
+**Verbeterd**
+
+- E-mails van Bingr: de rode streep onder het logo loopt nu over het hele woord BINGR, zoals op de website
+
 ## Versie 1.0.0 · Build 120
 _17 oktober 2026_
 

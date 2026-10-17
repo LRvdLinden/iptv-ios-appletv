@@ -1,5 +1,20 @@
 [
  {
+  "build": 121,
+  "version": "1.0.0",
+  "date": "2026-10-17",
+  "items": [
+   {
+    "type": "improved",
+    "platforms": [
+     "server"
+    ],
+    "nl": "E-mails van Bingr: de rode streep onder het logo loopt nu over het hele woord BINGR, zoals op de website",
+    "en": "Emails from Bingr: the red line under the logo now spans the whole word BINGR, as on the website"
+   }
+  ]
+ },
+ {
   "build": 120,
   "version": "1.0.0",
   "date": "2026-10-17",
