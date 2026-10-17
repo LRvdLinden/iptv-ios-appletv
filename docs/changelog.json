@@ -1,5 +1,20 @@
 [
  {
+  "build": 119,
+  "version": "1.0.0",
+  "date": "2026-10-17",
+  "items": [
+   {
+    "type": "improved",
+    "platforms": [
+     "server"
+    ],
+    "nl": "E-mails van Bingr (account, support, status en berichten) tonen bovenaan alleen nog het Bingr-logo, zonder app-icoon ervoor",
+    "en": "Emails from Bingr (account, support, status and messages) now show only the Bingr logo at the top, without the app icon in front of it"
+   }
+  ]
+ },
+ {
   "build": 118,
   "version": "1.0.0",
   "date": "2026-10-17",

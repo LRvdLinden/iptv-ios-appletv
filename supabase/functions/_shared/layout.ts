@@ -183,7 +183,6 @@ export function layout(o: LayoutOpts) {
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#000000" style="background:#000000"><tr><td align="center" style="padding:32px 16px">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;font-family:${FONT}">
 ${marker}<tr><td style="padding:0 4px 24px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
-<td style="vertical-align:middle;width:56px"><img src="${SITE}/apple-touch-icon.png" width="44" height="44" alt="" style="display:block;border-radius:10px"></td>
 <td style="vertical-align:middle"><div style="font-size:30px;font-weight:900;letter-spacing:1px;color:#ffffff;line-height:30px">BINGR</div><div style="height:4px;width:74px;background:${RED};border-radius:2px;margin-top:6px;font-size:0;line-height:0">&nbsp;</div></td>
 ${label}
 </tr></table></td></tr>

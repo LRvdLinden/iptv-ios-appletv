@@ -4,6 +4,15 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 119
+_17 oktober 2026_
+
+### Server
+
+**Verbeterd**
+
+- E-mails van Bingr (account, support, status en berichten) tonen bovenaan alleen nog het Bingr-logo, zonder app-icoon ervoor
+
 ## Versie 1.0.0 · Build 118
 _17 oktober 2026_
 
