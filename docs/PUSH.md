@@ -58,12 +58,13 @@ Tikken:
 - `admin`: `data.url` als het beheer een link meegaf, anders de app openen.
 - `reminder`: `bingr://live?channel=<id>&profile=<profiel-id>` (zelfde als de lokale herinnering).
 
-## Releasemelding (automatisch)
+## Releasemelding (per build, vanuit het beheer)
 
-De workflow *Builds* (bingr-beheer) roept na het plaatsen van een pakket `push` aan:
-`{action:"release", platform_group:"apple"|"android", version, build}` met header `x-push-secret` = `PUSH_RELEASE_SECRET`
-(of `PUSH_ADMIN_SECRET`; *Builds* kan dat laatste niet uitlezen) → `{ok, message_id, devices, missing_channels}`, of bij een
-herhaling `{ok, duplicate:true, message_id}`. Fout geheim → 403 `forbidden`. `PUSH_RELEASE_SECRET` geeft alleen toegang tot `release`.
+Niet automatisch na het plaatsen van een pakket: Apple en Google keuren een build soms pas na dagen goed. De beheerder
+verstuurt hem per build in het beheer (tab Downloads, knop "Pushmelding versturen"; functie `admin`, actie `build_push`),
+die `push` aanroept met `{action:"release", platform_group:"apple"|"android", version, build}` en header `x-push-secret` =
+`PUSH_ADMIN_SECRET` (`PUSH_RELEASE_SECRET` wordt ook nog geaccepteerd, maar *Builds* gebruikt het niet meer) →
+`{ok, message_id, devices, missing_channels}`, of bij een herhaling `{ok, duplicate:true, message_id}`. Fout geheim → 403 `forbidden`.
 - `apple` → apparaten met platform ios, ipados, macos; `android` → android. (tvos/androidtv/tizen ontvangen niets.)
 - Alleen apparaten met `app_build < build` (wie al bijgewerkt is, krijgt niets).
 - Dedup: één melding per (platform_group, build) — tweede aanroep met dezelfde build doet niets.
@@ -114,5 +115,5 @@ zendernaam. Na de start wordt een herinnering niet meer verstuurd.
 - `FCM_SERVICE_ACCOUNT` (JSON van een Firebase-serviceaccount), `FCM_PROJECT_ID`
 - `VAPID_PRIVATE_KEY`, `VAPID_PUBLIC_KEY`, `VAPID_SUBJECT` (mailto:support@bingr.online) — door *Backend* zelf gemaakt als ze ontbreken
 - `PUSH_ADMIN_SECRET` (door *Backend* gemaakt, zoals SUPPORT_ADMIN_SECRET), `PUSH_CRON_SECRET` (planning, actie `cron`)
-- `PUSH_RELEASE_SECRET` (alleen voor `release`; zelfde waarde als GitHub-secret in deze repo en in bingr-beheer, door *Backend* doorgezet)
+- `PUSH_RELEASE_SECRET` (optioneel, alleen voor `release`; niet meer nodig sinds de releasemelding vanuit het beheer gaat)
 Ontbreekt een kanaalgeheim, dan slaat `push` dat kanaal over en meldt het in de geschiedenis (niet stil falen).

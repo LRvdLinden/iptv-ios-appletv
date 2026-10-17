@@ -1,5 +1,20 @@
 [
  {
+  "build": 115,
+  "version": "1.0.0",
+  "date": "2026-10-17",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Downloads op bingr.online: doe op iPhone, iPad, Apple TV en Mac mee met de bèta via TestFlight",
+    "en": "Downloads on bingr.online: join the beta via TestFlight on iPhone, iPad, Apple TV and Mac"
+   }
+  ]
+ },
+ {
   "build": 114,
   "version": "1.0.0",
   "date": "2026-10-16",
