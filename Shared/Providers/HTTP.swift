@@ -20,6 +20,7 @@ enum HTTP {
         c.timeoutIntervalForResource = 300
         c.httpAdditionalHeaders = ["User-Agent": Secrets.userAgent]
         c.requestCachePolicy = .reloadIgnoringLocalCacheData
+        Screenshots.configure(c)   // App Store-screenshots: geen netwerk
         return URLSession(configuration: c)
     }()
 

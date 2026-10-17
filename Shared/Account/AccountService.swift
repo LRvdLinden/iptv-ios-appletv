@@ -89,6 +89,7 @@ final class AccountService: ObservableObject {
         let c = URLSessionConfiguration.ephemeral
         c.timeoutIntervalForRequest = 20
         c.waitsForConnectivity = false
+        Screenshots.configure(c)   // App Store-screenshots: geen verbinding met de Bingr-server
         return URLSession(configuration: c)
     }()
 

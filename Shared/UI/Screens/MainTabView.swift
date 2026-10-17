@@ -7,6 +7,7 @@ struct MainTabView: View {
     /// Build 120: titel uit een link zonder eenduidige match → zoekscherm met de titel ingevuld
     @State private var linkSearch: LinkSearch?
     @State private var resolvingLink = false
+    @State private var screenshotCategories = Screenshots.isActive && Screenshots.screen == "categories"
     @AppStorage("ui.startTab") private var startTab = 0
     @AppStorage("ui.showLive") private var showLive = true
     @AppStorage("ui.showMovies") private var showMovies = true
@@ -121,6 +122,10 @@ struct MainTabView: View {
         .fullScreenCover(item: $pendingDetail) { DetailView(target: $0) }
         #endif
         .fullScreenCover(item: $linkSearch) { SearchView(modal: true, initialQuery: $0.query) }
+        // App Store-screenshots: scherm "categories" (categorieën aan/uit)
+        .fullScreenCover(isPresented: $screenshotCategories) {
+            NavigationStack { CategoriesView().navigationTitle(L("Categories")) }
+        }
     }
 
     /// Build 120: titel uit een link (e-mail van Bingr) in de bibliotheek van de actieve bron zoeken: op TMDB-id of

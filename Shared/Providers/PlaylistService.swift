@@ -94,6 +94,12 @@ final class PlaylistService: ObservableObject {
 
     func select(_ s: PlaylistSource, forceRefresh: Bool = false) async {
         source = s
+        // App Store-screenshots: de demo-bibliotheek uit het geheugen, geen netwerk en geen cache
+        if Screenshots.isActive {
+            stalker = nil; episodeCache = [:]; error = nil
+            setRaw(ScreenshotDemo.library)
+            return
+        }
         stalker = s.kind == .stalker ? StalkerClient(source: s) : nil
         episodeCache = [:]
         error = nil
@@ -117,6 +123,7 @@ final class PlaylistService: ObservableObject {
     }
 
     func refresh(_ s: PlaylistSource, showSpinner: Bool) async {
+        guard !Screenshots.isActive else { return }
         if showSpinner { isLoading = true }
         let background = !showSpinner && source?.id == s.id
         if background { isRefreshing = true }

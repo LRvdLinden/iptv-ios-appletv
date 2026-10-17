@@ -158,6 +158,12 @@ final class ChannelPreview: ObservableObject {
     }
 
     private func start(_ c: Channel, playlists: PlaylistService) async {
+        // App Store-screenshots: geen stream, alleen het (getekende) beeld van de zender
+        if Screenshots.isActive {
+            suspended = false
+            if channel?.id != c.id { channel = c }
+            return
+        }
         generation += 1
         let gen = generation
         let item = Playables.channel(c, now: playlists.library.nowPlaying(c))
@@ -208,7 +214,9 @@ struct ChannelPreviewView: View {
     var body: some View {
         ZStack {
             Color.black
-            if let ctrl = preview.controller, preview.channel != nil {
+            if Screenshots.isActive, let c = placeholder ?? preview.channel {
+                ScreenshotStill(channel: c)
+            } else if let ctrl = preview.controller, preview.channel != nil {
                 EngineView(controller: ctrl)
                 PreviewStatus(controller: ctrl)
             } else if let c = placeholder ?? preview.channel {

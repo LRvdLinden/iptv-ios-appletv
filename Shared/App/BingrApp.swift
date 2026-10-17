@@ -65,6 +65,14 @@ struct BingrApp: App {
                     #endif
                     // gekozen app-icoon na een update gelijktrekken; Mac: in het Dock (build 52/54)
                     AppIconChoice.reconcile()
+                    #if os(macOS)
+                    if Screenshots.isActive {
+                        Task { @MainActor in
+                            try? await Task.sleep(nanoseconds: 800_000_000)
+                            ScreenshotDemo.sizeMacWindow()
+                        }
+                    }
+                    #endif
                 }
                 .onChange(of: accent) { _, _ in
                     if app.playing == nil && !app.showMultiview { shownAccent = AccentChoice.current.rawValue }
@@ -85,7 +93,8 @@ struct BingrApp: App {
         .defaultSize(width: 1280, height: 820)
         #endif
         .onChange(of: phase) { _, p in
-            if p == .active {
+            // App Store-screenshots: geen sync, geen verversen, geen account
+            if p == .active && !Screenshots.isActive {
                 Secrets.reload()
                 store.load(mergeProgress: true)
                 // build 97: Trakt en de account-sync hooguit eens per minuut (op de Mac wordt de app bij elke
@@ -155,6 +164,11 @@ final class AppState: ObservableObject {
 
     init() {
         PiPCenter.shared.present = { [weak self] item in self?.playing = item }
+        // App Store-screenshots (-BingrScreenshots YES): demo in het geheugen, geen account, sync of netwerk
+        if Screenshots.isActive {
+            ScreenshotDemo.start(self)
+            return
+        }
         // Bingr-account: sessie op de achtergrond vernieuwen; ongeldig, uitgelogd of verwijderd → inlogscherm
         AccountService.shared.$isSignedIn
             .removeDuplicates()
@@ -241,6 +255,7 @@ final class AppState: ObservableObject {
     }
 
     private var needsAuth: Bool {
+        if Screenshots.isActive { return false }
         if Secrets.accountsConfigured { return !AccountService.shared.isSignedIn }
         return !skippedAccounts
     }

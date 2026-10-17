@@ -89,8 +89,12 @@ struct MultiviewScreen: View {
     private func tile(_ t: Tile) -> some View {
         Button { focus(t) } label: {
             ZStack(alignment: .bottomLeading) {
-                EngineView(controller: t.controller)
-                BufferingOverlay(controller: t.controller)
+                if Screenshots.isActive {
+                    ScreenshotStill(channel: t.channel)   // App Store-screenshots: getekend beeld, geen stream
+                } else {
+                    EngineView(controller: t.controller)
+                    BufferingOverlay(controller: t.controller)
+                }
                 HStack(spacing: 6) {
                     Image(systemName: active == t.id ? "speaker.wave.2.fill" : "speaker.slash.fill")
                     Text(t.channel.name).lineLimit(1)
@@ -115,6 +119,10 @@ struct MultiviewScreen: View {
         ctrl.isPreview = true
         let t = Tile(channel: c, controller: ctrl)
         tiles.append(t)
+        if Screenshots.isActive {
+            if active == nil { focus(t) } else { t.controller.muted = true }
+            return
+        }
         Task {
             let u = await playlists.resolve(ctrl.item)
             // tegel intussen weggehaald of Multiview gesloten → niet alsnog starten
@@ -147,6 +155,7 @@ struct MultiviewScreen: View {
 
     /// Multiview = één stream voor dit apparaat, hoeveel beelden er ook spelen.
     private func registerStream() {
+        guard !Screenshots.isActive else { return }
         let owner = streamOwner
         let session = StreamSession.shared
         session.keepAliveInBackground = nil

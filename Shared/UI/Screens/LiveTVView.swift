@@ -5,7 +5,8 @@ struct LiveTVView: View {
     @EnvironmentObject var playlists: PlaylistService
     @EnvironmentObject var store: CloudStore
     @State private var group: String = Self.allKey
-    @State private var mode: Mode = .list
+    /// App Store-screenshots: scherm "guide" opent direct de tv-gids
+    @State private var mode: Mode = Screenshots.isActive && Screenshots.screen == "guide" ? .grid : .list
     @State private var guideFor: Channel?
     @State private var program: ProgramTarget?
     @State private var filterText = ""

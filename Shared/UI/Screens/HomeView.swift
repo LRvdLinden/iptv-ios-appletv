@@ -57,7 +57,8 @@ struct HomeView: View {
         ZStack(alignment: .top) {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: tvScaled(26)) {
-                    if let hero {
+                    // App Store-screenshots: scherm "top10" begint direct met de Top 10
+                    if let hero, !(Screenshots.isActive && Screenshots.screen == "top10") {
                         HeroBanner(target: hero, onPlay: { play(hero) }, onInfo: { detail = hero })
                     } else {
                         Color.clear.frame(height: tvScaled(90))
@@ -871,6 +872,7 @@ struct HomeView: View {
     /// Billboard zonder te wachten: iets uit de Top 10-cache, anders willekeurig met poster (steekproef, niet de
     /// hele lijst filteren).
     private func quickHero(_ l: Library) -> DetailTarget? {
+        if Screenshots.isActive, let t = ScreenshotDemo.hero(l, filter: filter) { return t }
         switch filter {
         case .series: return (trendingSeries.first ?? HomeIndex.randomWithPoster(l.series)).map { .series($0) }
         case .movies: return (trendingMovies.first ?? HomeIndex.randomWithPoster(l.movies)).map { .movie($0) }

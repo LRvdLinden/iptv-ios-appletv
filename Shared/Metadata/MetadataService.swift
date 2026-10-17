@@ -35,6 +35,12 @@ final class MetadataService: ObservableObject {
     func fetch(title: String, year: Int?, isShow: Bool, imdb: String?) async -> TitleMetadata? {
         let k = Self.key(title: title, year: year, isShow: isShow)
         if let c = cache[k] { return c }
+        // App Store-screenshots: verzonnen gegevens zonder score, niets ophalen of opslaan
+        if Screenshots.isActive {
+            let demo = ScreenshotDemo.metadata(title: title, isShow: isShow)
+            if let demo { cache[k] = demo }
+            return demo
+        }
         if let t = inFlight[k] { return await t.value }
         let task = Task<TitleMetadata?, Never> { [weak self] in
             guard let self else { return nil }

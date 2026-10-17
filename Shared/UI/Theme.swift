@@ -379,6 +379,7 @@ final class ImagePipeline: @unchecked Sendable {
         c.requestCachePolicy = .returnCacheDataElseLoad
         c.httpMaximumConnectionsPerHost = 6
         c.timeoutIntervalForRequest = 20
+        Screenshots.configure(c)   // App Store-screenshots: alleen de lokaal getekende afbeeldingen (file://)
         return URLSession(configuration: c)
     }()
 

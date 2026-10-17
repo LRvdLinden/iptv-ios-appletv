@@ -110,6 +110,12 @@ final class CloudStore: ObservableObject {
     }
 
     func selectProfile(_ p: ViewerProfile) {
+        // App Store-screenshots: alleen het profiel kiezen, de demo-gegevens blijven staan (niets lezen of opslaan)
+        if Screenshots.isActive {
+            activeProfileID = p.id
+            applyActiveAccent()
+            return
+        }
         // build 91: het hoofdprofiel verlaten → zijn huidige kijkvoorkeuren vastleggen; anders neemt het bij terugkeer
         // de voorkeuren van het andere profiel over (lege velden = de globale waarden, die dat profiel heeft overschreven)
         if let cur = activeProfile, isMain(cur), p.id != cur.id {
@@ -258,6 +264,8 @@ final class CloudStore: ObservableObject {
     }
 
     private init() {
+        // App Store-screenshots: niets uit iCloud of van dit apparaat lezen (de demo zet zijn eigen gegevens)
+        if Screenshots.isActive { return }
         observer = NotificationCenter.default.addObserver(
             forName: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
             object: kv, queue: .main) { [weak self] n in
@@ -283,6 +291,7 @@ final class CloudStore: ObservableObject {
     }
 
     private func write<T: Encodable>(_ value: T, _ key: String) {
+        guard !Screenshots.isActive else { return }   // screenshotmodus: nooit opslaan (ook niet in iCloud)
         guard let d = try? JSONEncoder().encode(value) else { return }
         local.set(d, forKey: key)
         if accountCarriesBulk && Self.isBulkKey(key) {
@@ -371,6 +380,7 @@ final class CloudStore: ObservableObject {
     }
 
     func load(mergeProgress: Bool) {
+        guard !Screenshots.isActive else { return }
         // bij elke iCloud-wijziging van een ander apparaat: alleen wat echt veranderd is opnieuw publiceren
         assign(\.playlists, decode([PlaylistSource].self, K.playlists) ?? [])
         assign(\.profiles, decode([ViewerProfile].self, K.profiles) ?? [])
@@ -404,6 +414,24 @@ final class CloudStore: ObservableObject {
             assign(\.progress, remote)
         }
         touchLastSync()
+    }
+
+    /// App Store-screenshots (ScreenshotMode.swift): demo-gegevens alleen in het geheugen.
+    func applyScreenshotDemo(_ d: ScreenshotStoreData) {
+        guard Screenshots.isActive else { return }
+        playlists = d.playlists
+        profiles = d.profiles
+        mainSourceID = d.playlists.first?.id
+        mainProfileIDStored = d.mainProfile
+        activeProfileID = d.active
+        favorites = d.favorites
+        myList = d.myList
+        progress = d.progress
+        localWatched = d.watched
+        recentChannels = d.recent
+        customizations = d.customizations
+        homeLayouts = d.homeLayouts
+        lastSync = d.lastSync
     }
 
     // MARK: playlists

@@ -1,0 +1,162 @@
+name: App Store-screenshots
+
+# Engelse App Store-screenshots van de echte Apple-apps (iPhone 6.9" en 6.3", iPad 13", Apple TV, Mac), gemaakt in de
+# screenshotmodus (-BingrScreenshots YES, zie Shared/App/ScreenshotMode.swift): verzonnen titels en zelfgetekende
+# afbeeldingen, geen netwerk, geen account. Daarna marketingversies (kop + ondertitel, Bingr-stijl) op de vereiste
+# maten. Resultaat: artefact Bingr-AppStore-EN (zip). Geen buildpakket: alleen PNG's en een README.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: appstore-screenshots
+  cancel-in-progress: true
+
+jobs:
+  apple:
+    runs-on: macos-15
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 (v5.1.0)
+
+      - name: Xcode-versie kiezen
+        run: |
+          sudo xcode-select -s "$(ls -d /Applications/Xcode_16*.app | sort -V | tail -1)"
+          xcodebuild -version
+          xcrun simctl list runtimes
+          system_profiler SPDisplaysDataType | grep -E "Resolution|Retina|Display Type" || true
+
+      - name: Project genereren
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Packages ophalen
+        run: xcodebuild -resolvePackageDependencies -project Bingr.xcodeproj -scheme Bingr
+
+      - name: Bouwen voor de simulators en de Mac
+        run: |
+          set -o pipefail
+          xcodebuild build -project Bingr.xcodeproj -scheme Bingr -configuration Debug -derivedDataPath build \
+            -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO 2>&1 | tail -n 30
+          xcodebuild build -project Bingr.xcodeproj -scheme BingrTV -configuration Debug -derivedDataPath build \
+            -destination 'generic/platform=tvOS Simulator' CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO 2>&1 | tail -n 30
+          xcodebuild build -project Bingr.xcodeproj -scheme BingrMac -configuration Debug -derivedDataPath build \
+            -destination 'generic/platform=macOS' CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO 2>&1 | tail -n 30
+          ls build/Build/Products
+
+      - name: Screenshots iPhone, iPad en Apple TV (simulator)
+        run: |
+          set -euo pipefail
+          IOS_APP=build/Build/Products/Debug-iphonesimulator/Bingr.app
+          TV_APP=build/Build/Products/Debug-appletvsimulator/BingrTV.app
+          BUNDLE=nl.lrvdlinden.bingr
+          runtime() { xcrun simctl list runtimes -j | python3 -c "import json,sys; r=[x for x in json.load(sys.stdin)['runtimes'] if x['platform']=='$1' and x['isAvailable']]; print(sorted(r,key=lambda x:[int(p) for p in x['version'].split('.')])[-1]['identifier'])"; }
+          IOS_RT=$(runtime iOS); TV_RT=$(runtime tvOS)
+          echo "iOS: $IOS_RT  tvOS: $TV_RT"
+          pick() { # eerste bestaande apparaattype uit de lijst
+            for t in "$@"; do if xcrun simctl list devicetypes | grep -q "^$t ("; then echo "$t"; return; fi; done; return 1; }
+          shoot() { # map apparaattype runtime app schermen...
+            local dir=$1 type=$2 rt=$3 app=$4; shift 4
+            mkdir -p "shots/$dir"
+            local udid; udid=$(xcrun simctl create "shots-$dir" "$type" "$rt")
+            xcrun simctl boot "$udid"; xcrun simctl bootstatus "$udid" -b >/dev/null
+            xcrun simctl ui "$udid" appearance dark || true
+            if [ "$rt" = "$IOS_RT" ]; then
+              xcrun simctl status_bar "$udid" override --time 9:41 --dataNetwork wifi --wifiMode active --wifiBars 3 \
+                --cellularMode active --cellularBars 4 --batteryState charged --batteryLevel 100 || true
+            fi
+            xcrun simctl install "$udid" "$app"
+            local first=1
+            for s in "$@"; do
+              xcrun simctl terminate "$udid" "$BUNDLE" 2>/dev/null || true
+              sleep 2
+              xcrun simctl launch "$udid" "$BUNDLE" -BingrScreenshots YES -BingrScreen "$s" \
+                -AppleLanguages "(en)" -AppleLocale en_US >/dev/null
+              if [ $first = 1 ]; then sleep 35; first=0; else sleep 22; fi
+              xcrun simctl io "$udid" screenshot --type=png "shots/$dir/$s.png"
+              echo "$dir/$s: $(sips -g pixelWidth -g pixelHeight "shots/$dir/$s.png" | tail -2 | awk '{print $2}' | xargs)"
+            done
+            xcrun simctl shutdown "$udid" || true
+            xcrun simctl delete "$udid" || true
+          }
+          PHONE_MAX=$(pick "iPhone 17 Pro Max" "iPhone 16 Pro Max")
+          PHONE=$(pick "iPhone 17 Pro" "iPhone 16 Pro")
+          IPAD=$(pick "iPad Pro 13-inch (M5)" "iPad Pro 13-inch (M4)")
+          TV=$(pick "Apple TV 4K (3rd generation)" "Apple TV 4K (3rd generation) (at 1080p)" "Apple TV 4K (2nd generation)")
+          echo "Apparaten: $PHONE_MAX / $PHONE / $IPAD / $TV"
+          shoot iphone69 "$PHONE_MAX" "$IOS_RT" "$IOS_APP" home detail live guide top10 picker categories
+          shoot iphone63 "$PHONE" "$IOS_RT" "$IOS_APP" home detail live guide top10 picker categories
+          shoot ipad13 "$IPAD" "$IOS_RT" "$IOS_APP" home detail live guide top10 picker categories multiview
+          shoot appletv "$TV" "$TV_RT" "$TV_APP" home detail live guide top10 picker categories multiview
+
+      - name: Screenshots Mac
+        run: |
+          set -euo pipefail
+          APP=build/Build/Products/Debug/Bingr.app
+          mkdir -p shots/mac
+          cat > winid.swift <<'EOF'
+          import CoreGraphics
+          let list = (CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]]) ?? []
+          var best: (Int, Double) = (0, 0)
+          for w in list where (w["kCGWindowOwnerName"] as? String) == "Bingr" && (w["kCGWindowLayer"] as? Int) == 0 {
+              let b = w["kCGWindowBounds"] as? [String: Double] ?? [:]
+              let area = (b["Width"] ?? 0) * (b["Height"] ?? 0)
+              if area > best.1 { best = ((w["kCGWindowNumber"] as? Int) ?? 0, area) }
+          }
+          print(best.0)
+          EOF
+          swiftc -O -o winid winid.swift
+          for s in home detail live guide top10 picker categories multiview; do
+            pkill -x Bingr 2>/dev/null || true
+            sleep 2
+            "$APP/Contents/MacOS/Bingr" -BingrScreenshots YES -BingrScreen "$s" -BingrWindowSize 1440x900 \
+              -AppleLanguages "(en)" -AppleLocale en_US > "shots/mac/$s.log" 2>&1 &
+            sleep 25
+            WID=$(./winid)
+            echo "$s: venster $WID"
+            if [ "$WID" != "0" ]; then screencapture -x -o -l "$WID" "shots/mac/$s.png" || true; fi
+            [ -f "shots/mac/$s.png" ] || screencapture -x "shots/mac/$s-screen.png" || true
+            ls -la shots/mac | tail -3
+          done
+          pkill -x Bingr 2>/dev/null || true
+          screencapture -x shots/mac/_desktop.png || true
+
+      - name: Kale screenshots bewaren
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: raw-screenshots
+          path: shots
+          retention-days: 3
+
+  marketing:
+    needs: apple
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 (v5.1.0)
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: raw-screenshots
+          path: shots
+
+      - name: Lettertype Inter en Pillow
+        run: |
+          python3 -m pip install --quiet --break-system-packages pillow==11.0.0
+          mkdir -p fonts && cd fonts
+          curl -fsSL -o inter.zip https://github.com/rsms/inter/releases/download/v4.0/Inter-4.0.zip
+          unzip -q inter.zip
+          find . -name 'Inter-*.ttf' | head -20
+
+      - name: Marketingversies en zip maken
+        run: python3 tools/make_appstore_shots.py shots fonts out/Bingr-AppStore-EN
+
+      - name: Zip bewaren
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: Bingr-AppStore-EN
+          path: out/Bingr-AppStore-EN
+          retention-days: 30

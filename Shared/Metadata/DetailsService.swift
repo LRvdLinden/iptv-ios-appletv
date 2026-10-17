@@ -65,6 +65,12 @@ final class DetailsService: ObservableObject {
             if let r = s.rating, r > 0 { d.ratings.append(.init(source: L("Playlist"), value: String(format: "%.1f", r))) }
             if let si = await playlists.xtreamSeriesInfo(s) { merge(xtream: si, into: &d) }
         }
+        // App Store-screenshots: alleen de demo-gegevens, geen IMDb/Trakt/TMDB
+        if Screenshots.isActive {
+            ScreenshotDemo.enrich(&d, target: target)
+            cache[target.id] = d
+            return d
+        }
         // zoeken en koppelen met de opgeschoonde titel (zonder taallabel en IPTV-rommel)
         let cleaned = TitleCleaner.parse(d.title)
         let searchTitle = cleaned.title
