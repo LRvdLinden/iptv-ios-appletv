@@ -123,7 +123,7 @@ jobs:
           q "select platform, channel, sandbox, app_build, left(coalesce(last_error,''),40) as fout, count(*) as n,
                     round(extract(epoch from now() - max(updated_at))/60) as min_geleden
              from public.push_devices group by 1,2,3,4,5 order by 1,4" | note apparaten
-          q "select kind, created_at::timestamp(0) as tijd, devices, counts - 'errors' as aantallen, counts->'errors' as fouten,
+          q "select kind, platform_group as groep, build, created_by as door, created_at::timestamp(0) as tijd, devices, counts - 'errors' as aantallen, counts->'errors' as fouten,
                     (finished_at is not null) as klaar
              from public.push_messages where kind <> 'reminder' order by id desc limit 8" | note berichten
           q "select platform, channel, state, left(coalesce(error,''),60) as fout, count(*) as n from public.push_deliveries
