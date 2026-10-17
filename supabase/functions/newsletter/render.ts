@@ -118,7 +118,7 @@ export function renderNewsletter(o: RenderOpts): { subject: string; html: string
   const [unsubQ, unsubA] = t.unsub.split("? ");
   const reasonHtml = `${esc(t.reason)}<br>${esc(unsubQ)}? <a href="${esc(o.unsubscribeUrl)}" style="color:#b3b3b3;text-decoration:underline">${esc(unsubA)}</a>`;
   const footer = footerHtml({ lang: o.lang, reasonHtml, year: o.year }) +
-    `<br><span style="color:#5c5c5c;font-size:11px;line-height:16px">${esc(t.tmdb)} <a href="https://www.themoviedb.org" style="color:#737373">themoviedb.org</a></span>`;
+    `<br><span style="color:#5c5c5c;font-size:11px;line-height:16px">${esc(t.tmdb)}</span>`;
   const titles = [e.featured, ...e.fresh].filter(Boolean).slice(0, 3).map((i) => i!.title);
   const subject = subjectOf(o.lang, e, o.preview);
   const html = layout({

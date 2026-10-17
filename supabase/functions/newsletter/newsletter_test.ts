@@ -144,7 +144,7 @@ Deno.test("HTML: huisstijl, escapen van TMDB-tekst, knoppen, voettekst", () => {
     ok(m.html.includes('href="https://bingr.online/titel/?type=movie&amp;id=1&amp;q='), `${lang}: knoplink`);
     ok(m.html.includes("https://image.tmdb.org/t/p/w780/b1.jpg") && m.html.includes("https://image.tmdb.org/t/p/w342/p2.jpg"), `${lang}: afbeeldingen`);
     ok(m.html.includes("k=news&amp;t=a.b"), `${lang}: afmeldlink`);
-    ok(m.html.includes("TMDB") && m.html.includes("themoviedb.org") && m.html.includes("/privacy.html") && m.html.includes("support.bingr.online"), `${lang}: voettekst`);
+    ok(m.html.includes("TMDB") && m.html.includes("/privacy.html") && m.html.includes("support.bingr.online"), `${lang}: voettekst`);
     ok(!/€|\$\d|prijs|price/i.test(m.html), `${lang}: geen prijzen`);
     ok(!/netflix/i.test(m.html + m.text), `${lang}: geen namen van diensten`);
     ok(m.text.includes("https://bingr.online/titel/?type=tv&id=2") && m.text.includes("k=news&t=a.b"), `${lang}: platte tekst`);

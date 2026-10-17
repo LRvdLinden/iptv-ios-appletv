@@ -1,5 +1,20 @@
 [
  {
+  "build": 123,
+  "version": "1.0.0",
+  "date": "2026-10-17",
+  "items": [
+   {
+    "type": "improved",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Nieuwsbrief: betere bezorging, met de uitschrijfkop ook in voorbeeldmails en zonder externe link in de voettekst",
+    "en": "Newsletter: better deliverability, with the unsubscribe header also in preview emails and no external link in the footer"
+   }
+  ]
+ },
+ {
   "build": 122,
   "version": "1.0.0",
   "date": "2026-10-17",

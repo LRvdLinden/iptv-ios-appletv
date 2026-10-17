@@ -229,7 +229,12 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       const m = renderNewsletter({ lang, edition: editionFor(await currentContent(), lang), unsubscribeUrl: `${SITE}/unsubscribe/?k=news`, preview: true });
       const mailer = transport();
       try {
-        await mailer.sendMail({ from: FROM(), to, subject: m.subject, html: m.html, text: m.text });
+        // zelfde kopregels als de echte verzending; het token hoort bij een niet-bestaand account, dus afmelden doet niets
+        const token = await unsubToken("00000000-0000-0000-0000-000000000000", unsubSecret());
+        await mailer.sendMail({
+          from: FROM(), to, subject: m.subject, html: m.html, text: m.text,
+          headers: { "List-Unsubscribe": `<${oneClickUrl(FN_URL, token)}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
+        });
       } catch (e) {
         console.error("newsletter preview", smtpCode(e));
         return json({ error: "send_failed", code: smtpCode(e) }, 502);
