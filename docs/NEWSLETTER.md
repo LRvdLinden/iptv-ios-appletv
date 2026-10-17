@@ -66,7 +66,7 @@ detailpagina, anders het zoekscherm met `q` ingevuld.
   30 minuten op `sending` blijft hangen wordt `failed` (niet opnieuw: liever één mail te weinig dan dubbel).
   Een editie die na 36 uur nog niet klaar is, wordt afgesloten. De wachtrij van edities ouder dan 90 dagen wordt opgeruimd.
 - Afzender `From: Bingr <noreply@bingr.online>` (function-secret `BINGR_NEWSLETTER_FROM`, optioneel als GitHub-secret),
-  `Reply-To: support@bingr.online`. De SMTP-login (`BINGR_SMTP_USER`) moet met dit adres mogen versturen (alias/afzender bij
+  zonder Reply-To (vragen via support.bingr.online, link in de footer). De SMTP-login (`BINGR_SMTP_USER`) moet met dit adres mogen versturen (alias/afzender bij
   de mailhost).
 - Uitgezet (`enabled = false`): de cron verstuurt niets, ook niet de rest van een lopende editie.
 

@@ -11,6 +11,14 @@
     ],
     "nl": "E-mails van Bingr: de rode streep onder het logo loopt nu over het hele woord BINGR, zoals op de website",
     "en": "Emails from Bingr: the red line under the logo now spans the whole word BINGR, as on the website"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Nieuwsbrief: geen apart antwoordadres meer in de kop van de mail",
+    "en": "Newsletter: no separate reply-to address in the email header any more"
    }
   ]
  },

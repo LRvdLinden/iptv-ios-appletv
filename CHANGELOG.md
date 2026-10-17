@@ -12,6 +12,7 @@ _17 oktober 2026_
 **Verbeterd**
 
 - E-mails van Bingr: de rode streep onder het logo loopt nu over het hele woord BINGR, zoals op de website
+- Nieuwsbrief: geen apart antwoordadres meer in de kop van de mail
 
 ## Versie 1.0.0 · Build 120
 _17 oktober 2026_

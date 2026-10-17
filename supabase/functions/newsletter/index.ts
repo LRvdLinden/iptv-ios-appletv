@@ -29,7 +29,6 @@ const BATCH = Math.max(10, Math.min(500, Number(env("NEWSLETTER_BATCH") || 150) 
 const PAUSE_MS = Math.max(0, Math.min(5000, Number(env("NEWSLETTER_PAUSE_MS") || 300) || 0));
 const BUDGET_MS = 110_000;
 const FROM = () => env("BINGR_NEWSLETTER_FROM") || "Bingr <noreply@bingr.online>";
-const REPLY_TO = "support@bingr.online";
 // afmeldsleutel: BINGR_SOURCES_KEY wordt nooit vervangen (zoals de berichten in admin), met een eigen voorvoegsel
 const unsubSecret = () => env("BINGR_SOURCES_KEY") || env("SUPABASE_SERVICE_ROLE_KEY");
 
@@ -109,7 +108,7 @@ async function sendEdition(e: EditionRow, until: number, t: Totals): Promise<boo
           const token = await unsubToken(u.id, unsubSecret());
           const m = renderNewsletter({ lang, edition: editionFor(e.content, lang), firstName: u.first_name ?? undefined, unsubscribeUrl: unsubPageUrl(token), year });
           await mailer.sendMail({
-            from: FROM(), to: u.email, replyTo: REPLY_TO, subject: m.subject, html: m.html, text: m.text,
+            from: FROM(), to: u.email, subject: m.subject, html: m.html, text: m.text,
             headers: { "List-Unsubscribe": `<${oneClickUrl(FN_URL, token)}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click", "X-Bingr-Edition": e.edition_key },
           });
           sent.push(u.id); t.sent++;
@@ -230,7 +229,7 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       const m = renderNewsletter({ lang, edition: editionFor(await currentContent(), lang), unsubscribeUrl: `${SITE}/unsubscribe/?k=news`, preview: true });
       const mailer = transport();
       try {
-        await mailer.sendMail({ from: FROM(), to, replyTo: REPLY_TO, subject: m.subject, html: m.html, text: m.text });
+        await mailer.sendMail({ from: FROM(), to, subject: m.subject, html: m.html, text: m.text });
       } catch (e) {
         console.error("newsletter preview", smtpCode(e));
         return json({ error: "send_failed", code: smtpCode(e) }, 502);
