@@ -15,6 +15,22 @@
     ],
     "nl": "Links in e-mails van Bingr openen de film of serie direct in de app: de detailpagina als hij in je bibliotheek staat, anders het zoekscherm met de titel al ingevuld (ook als je nog moet inloggen of een profiel moet kiezen)",
     "en": "Links in emails from Bingr open the movie or series straight in the app: its details page if it's in your library, otherwise search with the title already filled in (also if you still need to sign in or pick a profile)"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Nieuwsbrief: op zondag 09:00 en woensdag 18:00 een e-mail met wat er nieuw is aan films en series (nieuw op streamingdiensten in Nederland, binnenkort en populair deze week), in het Nederlands of Engels; afmelden met één klik",
+    "en": "Newsletter: on Sunday at 9:00 and Wednesday at 18:00 an email with what's new in movies and series (new on streaming services in the Netherlands, coming soon and popular this week), in Dutch or English; unsubscribe with one click"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Links uit de nieuwsbrief openen de titel: in de app als die geïnstalleerd is, anders in de webspeler (detailpagina als hij in je bibliotheek staat, anders zoeken met de titel ingevuld, ook na inloggen); afmelden voor alleen de nieuwsbrief op bingr.online",
+    "en": "Links from the newsletter open the title: in the app if it's installed, otherwise in the web player (details page if it's in your library, otherwise search with the title filled in, also after signing in); unsubscribe from just the newsletter on bingr.online"
    }
   ]
  },

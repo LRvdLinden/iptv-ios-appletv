@@ -649,6 +649,8 @@ IPTV-servers sturen zelden CORS-headers en draaien vaak op **http**. Een https-p
 
 Er is een aparte Edge Function `admin` voor het beheer-dashboard (https://beheer.bingr.online). Beide staan in de privé-repo LRvdLinden/bingr-beheer en worden daar gedeployd; de Backend-workflow hier raakt de functie niet. De tabellen en `bingr_admin_*`-functies die hij gebruikt staan wel hier in `supabase/schema.sql`. Apps roepen `admin` nooit aan; de enige openbare actie is `unsubscribe` (vanaf `bingr.online`). Het enige wat apps ervan merken: berichten (hierboven), en dat e-mails met berichten een afmeldlink naar `bingr.online/unsubscribe/` hebben. Accountmails (bevestigen, wachtwoord) worden altijd verstuurd.
 
+**Nieuwsbrief** (sinds build 120, contract `docs/NEWSLETTER.md`): de functie `newsletter` stuurt zo 09:00 en wo 18:00 (Amsterdam) "wat is nieuw aan films en series" naar ingeschreven accounts (standaard ingeschreven; afmelden zet `account_email_prefs.newsletter_opt_out`). Links in die mail gaan naar `https://bingr.online/titel/?type=movie|tv&id=<tmdb-id>&q=<titel>&y=<jaar>`; met de app geïnstalleerd opent die (universal links / app links), anders de webspeler (`/web/#/titel?…`).
+
 ## Status en monitoring (bingr.online/status)
 
 Een aparte Edge Function `status` controleert elke 5 minuten de backend, de website en de downloads. Apps roepen die niet aan; ze hoeven er niets voor te doen.

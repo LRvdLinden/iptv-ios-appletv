@@ -2124,3 +2124,164 @@ create table if not exists public.admin_push_state (
 alter table public.admin_push_state add column if not exists builds_checked_at timestamptz;
 alter table public.admin_push_state enable row level security;
 revoke all on public.admin_push_state from anon, authenticated;
+
+-- ---- Nieuwsbrief (functie newsletter, docs/NEWSLETTER.md) ----
+-- Zondag 09:00 en woensdag 18:00 (Europe/Amsterdam) "wat is nieuw aan films en series" naar ingeschreven leden.
+-- Ingeschreven = bevestigd e-mailadres, niet geblokkeerd, geen email_opt_out en geen newsletter_opt_out. Nieuwe accounts
+-- zijn automatisch ingeschreven (geen rij in account_email_prefs = ingeschreven). Het beheer (bingr-beheer) leest en zet
+-- account_email_prefs.newsletter_opt_out rechtstreeks.
+alter table public.account_email_prefs add column if not exists newsletter_opt_out boolean not null default false;
+
+-- Aan/uit (één rij, id = 1). Standaard UIT: de cron verstuurt niets zolang enabled = false.
+create table if not exists public.newsletter_settings (
+  id         int primary key default 1 check (id = 1),
+  enabled    boolean not null default false,
+  updated_at timestamptz not null default now()
+);
+insert into public.newsletter_settings (id) values (1) on conflict (id) do nothing;
+alter table public.newsletter_settings enable row level security;
+revoke all on public.newsletter_settings from anon, authenticated;
+
+-- Eén rij per editie (edition_key uniek, bv. 2026-10-18-sun): de inhoud per taal ({nl:{featured,fresh,soon,popular}, en:…})
+-- wordt bij het aanmaken vastgelegd, zodat iedereen dezelfde mail krijgt en de volgende edities kunnen ontdubbelen.
+-- cursor = laatste account-id dat aan de wachtrij is toegevoegd.
+create table if not exists public.newsletter_editions (
+  id          bigint generated always as identity primary key,
+  edition_key text not null unique,
+  created_at  timestamptz not null default now(),
+  content     jsonb not null,
+  recipients  int not null default 0,
+  sent        int not null default 0,
+  failed      int not null default 0,
+  cursor      uuid,
+  finished_at timestamptz
+);
+create index if not exists newsletter_editions_created_idx on public.newsletter_editions (created_at desc);
+alter table public.newsletter_editions enable row level security;
+revoke all on public.newsletter_editions from anon, authenticated;
+
+-- Per (editie, account) één rij: nooit twee mails van dezelfde editie naar hetzelfde account. 'queued' = tijdelijke
+-- SMTP-fout, later opnieuw (max. 3 pogingen); een rij die langer dan 30 minuten op 'sending' staat (functie gestopt
+-- tijdens het versturen) wordt 'failed' en NIET opnieuw verstuurd (dan liever een mail te weinig dan dubbel).
+create table if not exists public.newsletter_deliveries (
+  edition_id bigint not null references public.newsletter_editions(id) on delete cascade,
+  user_id    uuid not null references auth.users(id) on delete cascade,
+  state      text not null default 'sending' check (state in ('queued', 'sending', 'sent', 'failed', 'skipped')),
+  attempts   int not null default 1,
+  claimed_at timestamptz not null default now(),
+  done_at    timestamptz,
+  primary key (edition_id, user_id)
+);
+create index if not exists newsletter_deliveries_open_idx on public.newsletter_deliveries (edition_id, state) where state in ('queued', 'sending');
+alter table public.newsletter_deliveries enable row level security;
+revoke all on public.newsletter_deliveries from anon, authenticated;
+
+-- Ingeschreven voor de nieuwsbrief?
+create or replace function public.bingr_news_subscribed(p_user uuid) returns boolean
+language sql stable security definer set search_path = public, auth as $$
+  select exists (select 1 from auth.users u
+    where u.id = p_user and u.email is not null and u.email_confirmed_at is not null and u.deleted_at is null
+      and (u.banned_until is null or u.banned_until <= now())
+      and not exists (select 1 from public.account_email_prefs p where p.user_id = u.id and (p.email_opt_out or p.newsletter_opt_out)));
+$$;
+-- Aantal ingeschreven ontvangers per taal (nl = lang leeg of nl*, anders en).
+create or replace function public.bingr_news_recipients() returns jsonb
+language sql stable security definer set search_path = public, auth as $$
+  select jsonb_build_object('nl', count(*) filter (where l = 'nl'), 'en', count(*) filter (where l = 'en'), 'total', count(*)) from (
+    select case when coalesce(u.raw_user_meta_data->>'lang', '') = '' or lower(u.raw_user_meta_data->>'lang') like 'nl%' then 'nl' else 'en' end as l
+    from auth.users u
+    where u.email is not null and u.email_confirmed_at is not null and u.deleted_at is null
+      and (u.banned_until is null or u.banned_until <= now())
+      and not exists (select 1 from public.account_email_prefs p where p.user_id = u.id and (p.email_opt_out or p.newsletter_opt_out))) x;
+$$;
+-- Volgende batch van een editie -> {items:[{id,email,lang,first_name}], done, busy}. Eerst 'queued' (opnieuw proberen),
+-- dan nieuwe ontvangers vanaf de cursor. Klaar (finished_at) als de cursor op is en niets meer open staat.
+create or replace function public.bingr_news_take(p_edition bigint, p_batch int) returns jsonb
+language plpgsql security definer set search_path = public, auth as $$
+declare e record; n int := greatest(least(coalesce(p_batch, 50), 500), 1); ids uuid[] := '{}'; more uuid[]; last_id uuid; rows jsonb; f int;
+begin
+  select * into e from public.newsletter_editions where id = p_edition for update;
+  if not found or e.finished_at is not null then return jsonb_build_object('items', '[]'::jsonb, 'done', true, 'busy', false); end if;
+  -- vastgelopen verzendingen: failed (nooit opnieuw, kan al verstuurd zijn)
+  update public.newsletter_deliveries set state = 'failed', done_at = now()
+  where edition_id = p_edition and state = 'sending' and claimed_at < now() - interval '30 minutes';
+  get diagnostics f = row_count;
+  if f > 0 then update public.newsletter_editions set failed = failed + f where id = p_edition; end if;
+  with s as (
+    select user_id from public.newsletter_deliveries where edition_id = p_edition and state = 'queued'
+    order by claimed_at limit n for update skip locked),
+  u as (
+    update public.newsletter_deliveries d set state = 'sending', claimed_at = now(), attempts = d.attempts + 1 from s
+    where d.edition_id = p_edition and d.user_id = s.user_id returning d.user_id)
+  select coalesce(array_agg(u.user_id), '{}') into ids from u;
+  if coalesce(array_length(ids, 1), 0) < n then
+    select coalesce(array_agg(r.id order by r.id), '{}'), max(r.id::text)::uuid into more, last_id from (
+      select u.id from auth.users u
+      where (e.cursor is null or u.id > e.cursor) and u.email is not null and u.email_confirmed_at is not null
+      order by u.id limit n - coalesce(array_length(ids, 1), 0)) r;
+    if last_id is not null then
+      insert into public.newsletter_deliveries (edition_id, user_id) select p_edition, x from unnest(more) x
+      on conflict (edition_id, user_id) do nothing;
+      update public.newsletter_editions set cursor = last_id where id = p_edition;
+      ids := ids || more;
+    end if;
+  end if;
+  -- intussen afgemeld, geblokkeerd of zonder bevestigd adres: overslaan
+  update public.newsletter_deliveries d set state = 'skipped', done_at = now()
+  where d.edition_id = p_edition and d.user_id = any(ids) and d.state = 'sending' and not public.bingr_news_subscribed(d.user_id);
+  select jsonb_agg(jsonb_build_object('id', u.id, 'email', u.email, 'lang', u.raw_user_meta_data->>'lang',
+    'first_name', nullif(btrim(u.raw_user_meta_data->>'first_name'), '')) order by u.id) into rows
+  from auth.users u join public.newsletter_deliveries d on d.user_id = u.id and d.edition_id = p_edition and d.state = 'sending'
+  where u.id = any(ids);
+  if rows is not null then return jsonb_build_object('items', rows, 'done', false, 'busy', false); end if;
+  if exists (select 1 from public.newsletter_deliveries where edition_id = p_edition and state = 'sending') then
+    return jsonb_build_object('items', '[]'::jsonb, 'done', false, 'busy', true);
+  end if;
+  if coalesce(array_length(ids, 1), 0) > 0 or exists (select 1 from public.newsletter_deliveries where edition_id = p_edition and state = 'queued') then
+    return jsonb_build_object('items', '[]'::jsonb, 'done', false, 'busy', false);
+  end if;
+  update public.newsletter_editions set finished_at = now() where id = p_edition;
+  return jsonb_build_object('items', '[]'::jsonb, 'done', true, 'busy', false);
+end $$;
+-- Resultaat van een batch: sent / failed / retry (tijdelijke fout: terug naar 'queued', na 3 pogingen failed) / release
+-- (niet aan toegekomen: terug naar 'queued' zonder dat het als poging telt).
+create or replace function public.bingr_news_mark(p_edition bigint, p_sent uuid[], p_failed uuid[], p_retry uuid[], p_release uuid[] default '{}')
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare ns int; nf int; nr int;
+begin
+  update public.newsletter_deliveries set state = 'queued', attempts = greatest(attempts - 1, 0)
+  where edition_id = p_edition and state = 'sending' and user_id = any(coalesce(p_release, '{}'));
+  update public.newsletter_deliveries set state = 'sent', done_at = now()
+  where edition_id = p_edition and state = 'sending' and user_id = any(coalesce(p_sent, '{}'));
+  get diagnostics ns = row_count;
+  update public.newsletter_deliveries set state = 'failed', done_at = now()
+  where edition_id = p_edition and state = 'sending' and (user_id = any(coalesce(p_failed, '{}'))
+    or (user_id = any(coalesce(p_retry, '{}')) and attempts >= 3));
+  get diagnostics nf = row_count;
+  update public.newsletter_deliveries set state = 'queued'
+  where edition_id = p_edition and state = 'sending' and user_id = any(coalesce(p_retry, '{}'));
+  get diagnostics nr = row_count;
+  update public.newsletter_editions set sent = sent + ns, failed = failed + nf where id = p_edition;
+  return jsonb_build_object('sent', ns, 'failed', nf, 'retry', nr);
+end $$;
+-- Opruimen: wachtrij van edities ouder dan 90 dagen weg (de tellers in newsletter_editions blijven).
+create or replace function public.bingr_news_cleanup() returns int
+language plpgsql security definer set search_path = public as $$
+declare n int;
+begin
+  delete from public.newsletter_deliveries d using public.newsletter_editions e
+  where d.edition_id = e.id and e.created_at < now() - interval '90 days';
+  get diagnostics n = row_count;
+  return n;
+end $$;
+revoke all on function public.bingr_news_subscribed(uuid) from public, anon, authenticated;
+revoke all on function public.bingr_news_recipients() from public, anon, authenticated;
+revoke all on function public.bingr_news_take(bigint, int) from public, anon, authenticated;
+revoke all on function public.bingr_news_mark(bigint, uuid[], uuid[], uuid[], uuid[]) from public, anon, authenticated;
+revoke all on function public.bingr_news_cleanup() from public, anon, authenticated;
+grant execute on function public.bingr_news_subscribed(uuid) to service_role;
+grant execute on function public.bingr_news_recipients() to service_role;
+grant execute on function public.bingr_news_take(bigint, int) to service_role;
+grant execute on function public.bingr_news_mark(bigint, uuid[], uuid[], uuid[], uuid[]) to service_role;
+grant execute on function public.bingr_news_cleanup() to service_role;

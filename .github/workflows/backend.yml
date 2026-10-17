@@ -29,6 +29,10 @@ name: Backend
 # bingr-beheer, voor de releasemelding uit de workflow Builds) worden doorgezet als ze bestaan; ontbreken ze: waarschuwing.
 # PUSH_ADMIN_SECRET en het VAPID-sleutelpaar maakt deze workflow één keer zelf aan; PUSH_CRON_SECRET (optioneel vast) zoals
 # STATUS_CRON_SECRET. De pg_cron-taak bingr-push roept elke minuut push/cron aan, bingr-push-cleanup ruimt dagelijks op.
+# Nieuwsbrief (docs/NEWSLETTER.md, functie newsletter): NEWSLETTER_ADMIN_SECRET (voor het beheer) maakt deze workflow één keer
+# zelf aan; NEWSLETTER_CRON_SECRET (optioneel vast) zoals STATUS_CRON_SECRET; BINGR_NEWSLETTER_FROM (optioneel, standaard
+# "Bingr <noreply@bingr.online>"). De pg_cron-taak bingr-newsletter roept elk uur (minuut 0) newsletter/cron aan; de functie
+# verstuurt alleen zo 09:00 en wo 18:00 Amsterdamse tijd en alleen als de nieuwsbrief in het beheer aan staat (standaard uit).
 on:
   push:
     branches: [main]
@@ -63,6 +67,10 @@ jobs:
         # blokkeert de deploy: JWT (APNs/FCM/VAPID), Web Push-versleuteling (RFC 8291-testvector), payloads, taal, dedup,
         # en de meldingen naar de beheer-app (teksten, samenvatten, statusovergangen, watermerken, topic)
         run: deno test supabase/functions/push/push_test.ts supabase/functions/push/beheer_test.ts
+      - name: Unittests (nieuwsbrief)
+        # blokkeert de deploy: zo 09:00 / wo 18:00 Europe/Amsterdam (zomer- en wintertijd), editiesleutels, ontdubbelen,
+        # HTML (escapen van TMDB-tekst), universele links, afmeldtoken, TMDB v3/v4
+        run: deno test supabase/functions/newsletter/newsletter_test.ts
       - name: Unittests (statuspagina)
         continue-on-error: true
         run: |
@@ -427,6 +435,85 @@ jobs:
           # 4. één cron-ronde met het geheim
           curl -s -X POST "$F" "${J[@]}" -H "x-push-secret: $(cat "$RUNNER_TEMP/push_cron_secret")" -d '{"action":"cron"}' > /tmp/c.json
           grep -Eq '"ok": ?true' /tmp/c.json && echo "::notice::push cron: $(cat /tmp/c.json)" || { echo "::error::push cron: $(head -c 300 /tmp/c.json)"; exit 1; }
+      - name: Nieuwsbrief - geheimen
+        if: steps.check.outputs.skip != '1'
+        env:
+          N_CRON: ${{ secrets.NEWSLETTER_CRON_SECRET }}
+          N_FROM: ${{ secrets.BINGR_NEWSLETTER_FROM }}
+        run: |
+          # docs/NEWSLETTER.md. Waarden nooit in het log.
+          list=$(supabase secrets list --project-ref "$REF" 2>/dev/null || true)
+          has() { grep -qw "$1" <<<"$list"; }
+          # geheim tussen admin (bingr-beheer) en newsletter: alleen aanmaken als het nog niet bestaat
+          if ! has NEWSLETTER_ADMIN_SECRET; then
+            supabase secrets set --project-ref "$REF" NEWSLETTER_ADMIN_SECRET="$(openssl rand -hex 32)" >/dev/null
+            echo "::notice::NEWSLETTER_ADMIN_SECRET aangemaakt (beheer van de nieuwsbrief)"
+          fi
+          has BINGR_TMDB_API_KEY || echo "::warning::BINGR_TMDB_API_KEY ontbreekt (GitHub-secret TMDB_API_KEY of TMDB_ACCESS_TOKEN): de nieuwsbrief heeft geen inhoud."
+          if [ -n "$N_FROM" ]; then supabase secrets set --project-ref "$REF" BINGR_NEWSLETTER_FROM="$N_FROM" >/dev/null; echo "::notice::BINGR_NEWSLETTER_FROM op de server gezet"; fi
+          SECRET="${N_CRON:-$(openssl rand -hex 32)}"
+          SECRET=$(printf '%s' "$SECRET" | tr -d '\r\n')
+          [[ "$SECRET" =~ ^[A-Za-z0-9_-]{24,128}$ ]] || { echo "::error::NEWSLETTER_CRON_SECRET: 24-128 tekens, alleen letters, cijfers, - en _"; exit 1; }
+          supabase secrets set --project-ref "$REF" NEWSLETTER_CRON_SECRET="$SECRET" >/dev/null
+          umask 077; printf '%s' "$SECRET" > "$RUNNER_TEMP/newsletter_cron_secret"
+          echo "::notice::NEWSLETTER_CRON_SECRET ${N_CRON:+(vast) }op de server gezet"
+      - name: Edge Function newsletter
+        if: steps.check.outputs.skip != '1'
+        run: supabase functions deploy newsletter --project-ref "$REF" --no-verify-jwt --use-api
+      - name: Nieuwsbrief - planning (pg_cron + pg_net)
+        if: steps.check.outputs.skip != '1'
+        run: |
+          # elk uur op minuut 0 newsletter/cron; de functie rekent zelf naar Europe/Amsterdam (zo 09:00, wo 18:00)
+          python3 - <<'PY' > /tmp/cron.json
+          import json, os
+          ref = os.environ["REF"]; sec = open(os.path.join(os.environ["RUNNER_TEMP"], "newsletter_cron_secret")).read()
+          cmd = ("select net.http_post(url := 'https://%s.supabase.co/functions/v1/newsletter', "
+                 "headers := jsonb_build_object('Content-Type', 'application/json', 'x-newsletter-secret', '%s'), "
+                 "body := '{\"action\":\"cron\"}'::jsonb, timeout_milliseconds := 150000);") % (ref, sec)
+          sql = ("select cron.unschedule(jobid) from cron.job where jobname = 'bingr-newsletter';\n"
+                 "select cron.schedule('bingr-newsletter', '0 * * * *', $cmd$ " + cmd + " $cmd$);\n"
+                 "select jobname, schedule, active from cron.job where jobname = 'bingr-newsletter';")
+          print(json.dumps({"query": sql}))
+          PY
+          code=$(curl -s -o /tmp/r.txt -w '%{http_code}' -X POST "https://api.supabase.com/v1/projects/$REF/database/query" \
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" --data @/tmp/cron.json)
+          rm -f /tmp/cron.json
+          python3 - "$code" <<'PY'
+          import json, sys
+          try: rows = json.load(open("/tmp/r.txt"))
+          except Exception: rows = []
+          ok = int(sys.argv[1] or 0) < 300 and any(isinstance(r, dict) and r.get("jobname") == "bingr-newsletter" and r.get("active") for r in rows)
+          print("::notice::Nieuwsbrief-planning: elk uur op minuut 0 (verstuurt zo 09:00 en wo 18:00 Amsterdam)" if ok
+                else f"::warning::Nieuwsbrief-planning niet gelukt (HTTP {sys.argv[1]})")
+          PY
+          rm -f /tmp/r.txt
+      - name: Nieuwsbrief testen
+        if: steps.check.outputs.skip != '1'
+        run: |
+          sleep 3
+          F="https://$REF.supabase.co/functions/v1/newsletter"
+          J=(-H "Content-Type: application/json")
+          # 1. beheeracties en cron zonder (of met fout) geheim -> 403
+          for a in status set_enabled preview render cron; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$F" "${J[@]}" -H "x-newsletter-secret: fout-geheim-0000000000000000" -d "{\"action\":\"$a\"}")
+            [ "$code" = 403 ] || { echo "::error::newsletter $a met fout geheim gaf HTTP $code"; exit 1; }
+            code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$F" "${J[@]}" -d "{\"action\":\"$a\"}")
+            [ "$code" = 403 ] || { echo "::error::newsletter $a zonder geheim gaf HTTP $code"; exit 1; }
+          done
+          echo "::notice::newsletter status/set_enabled/preview/render/cron zonder geheim geweigerd (403)"
+          # 2. afmelden met een ongeldig token -> 400 (CORS voor bingr.online), one-click 400, GET -> 303 naar de afmeldpagina
+          BAD="00000000-0000-4000-8000-000000000000.AAAAAAAAAAAAAAAAAAAAAAAA"
+          code=$(curl -s -o /tmp/u.json -D /tmp/uh.txt -w '%{http_code}' -X POST "$F" "${J[@]}" -H "Origin: https://bingr.online" -d "{\"action\":\"unsubscribe\",\"t\":\"$BAD\"}")
+          [ "$code" = 400 ] && grep -q invalid_token /tmp/u.json && tr -d '\r' < /tmp/uh.txt | grep -qi '^access-control-allow-origin: https://bingr.online$' \
+            || { echo "::error::newsletter unsubscribe met ongeldig token gaf HTTP $code"; exit 1; }
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$F?unsubscribe=$BAD" -d 'List-Unsubscribe=One-Click')
+          [ "$code" = 400 ] || { echo "::error::newsletter one-click met ongeldig token gaf HTTP $code"; exit 1; }
+          r=$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' "$F?unsubscribe=$BAD")
+          case "$r" in "303 https://bingr.online/unsubscribe/?k=news&t="*) ;; *) echo "::error::newsletter GET ?unsubscribe gaf '${r%% *}'"; exit 1;; esac
+          echo "::notice::newsletter afmelden: ongeldig token geweigerd (400), one-click en doorverwijzing werken"
+          # 3. één cron-ronde met het geheim (alleen tellingen in het antwoord; staat de nieuwsbrief uit, dan gebeurt er niets)
+          curl -s --max-time 170 -X POST "$F" "${J[@]}" -H "x-newsletter-secret: $(cat "$RUNNER_TEMP/newsletter_cron_secret")" -d '{"action":"cron"}' > /tmp/c.json
+          grep -Eq '"ok": ?true' /tmp/c.json && echo "::notice::newsletter cron: $(cat /tmp/c.json)" || { echo "::error::newsletter cron: $(head -c 300 /tmp/c.json)"; exit 1; }
       - name: Testen
         if: steps.check.outputs.skip != '1'
         run: |
