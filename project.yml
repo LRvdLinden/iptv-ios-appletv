@@ -10,7 +10,7 @@ settings:
   base:
     SWIFT_VERSION: "5.9"
     MARKETING_VERSION: "1.0.0"
-    CURRENT_PROJECT_VERSION: "114"
+    CURRENT_PROJECT_VERSION: "120"
     # Team van Léon van der Linden; automatisch ondertekenen voor iOS, tvOS en macOS
     DEVELOPMENT_TEAM: EU3UY476T6
     CODE_SIGN_STYLE: Automatic
@@ -55,6 +55,10 @@ targets:
         NSBonjourServices: [_googlecast._tcp, _CC1AD845._googlecast._tcp]
         CFBundleLocalizations: [en, nl, de, fr, es, it, pt, tr, pl, ar, zh-Hans]
         CFBundleDevelopmentRegion: en
+        # build 120: bingr://title?… (fallbackknop op bingr.online/titel/) en de deeplinks van pushmeldingen
+        CFBundleURLTypes:
+          - CFBundleURLName: nl.lrvdlinden.bingr
+            CFBundleURLSchemes: [bingr]
         UIFileSharingEnabled: false
         # extern scherm (HDMI/AirPlay-schermdeling): eigen scene met alleen het beeld, de bediening blijft op het toestel
         UIApplicationSceneManifest:
@@ -72,6 +76,9 @@ targets:
         # het exporteren voor TestFlight/App Store vanzelf op "production" (uit het distributieprofiel). De app leest de
         # echte omgeving uit het ingebedde profiel (PushService.sandbox) en meldt die aan de server.
         aps-environment: development
+        # build 120: universele links uit e-mails van Bingr (https://bingr.online/titel/…; apple-app-site-association
+        # op bingr.online)
+        com.apple.developer.associated-domains: [applinks:bingr.online]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: nl.lrvdlinden.bingr
@@ -132,6 +139,10 @@ targets:
         LSApplicationQueriesSchemes: [youtube]
         CFBundleLocalizations: [en, nl, de, fr, es, it, pt, tr, pl, ar, zh-Hans]
         CFBundleDevelopmentRegion: en
+        # build 120: bingr://title?… (fallbackknop op bingr.online/titel/) en de deeplinks van pushmeldingen
+        CFBundleURLTypes:
+          - CFBundleURLName: nl.lrvdlinden.bingr
+            CFBundleURLSchemes: [bingr]
     entitlements:
       path: tvOS/BingrTV.entitlements
       properties:
@@ -173,6 +184,10 @@ targets:
         NSBonjourServices: [_googlecast._tcp, _CC1AD845._googlecast._tcp, _smb._tcp]
         CFBundleLocalizations: [en, nl, de, fr, es, it, pt, tr, pl, ar, zh-Hans]
         CFBundleDevelopmentRegion: en
+        # build 120: bingr://title?… (fallbackknop op bingr.online/titel/) en de deeplinks van pushmeldingen
+        CFBundleURLTypes:
+          - CFBundleURLName: nl.lrvdlinden.bingr
+            CFBundleURLSchemes: [bingr]
         NSHumanReadableCopyright: "© 2026 Bingr"
     entitlements:
       path: macOS/BingrMac.entitlements
@@ -187,6 +202,8 @@ targets:
         # pushmeldingen (docs/PUSH.md), native macOS-sleutel; net als op iOS zet het exporteren voor de App Store
         # dit op "production"
         com.apple.developer.aps-environment: development
+        # build 120: universele links uit e-mails van Bingr (https://bingr.online/titel/…)
+        com.apple.developer.associated-domains: [applinks:bingr.online]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: nl.lrvdlinden.bingr

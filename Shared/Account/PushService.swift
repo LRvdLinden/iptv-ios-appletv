@@ -33,6 +33,8 @@ final class PushService: NSObject, ObservableObject {
     enum Route: Equatable {
         /// Herinnering: zender openen, met dezelfde profielcontrole als de banner (`ReminderCenter.canWatch`).
         case reminder(channelID: String, profileID: UUID?, playlistID: UUID?)
+        /// Build 120: film of serie uit een link (e-mail van Bingr, `bingr://title`): detailpagina of zoekscherm.
+        case title(TitleLink)
     }
 
     @Published private(set) var status: SystemStatus = .unknown
@@ -443,7 +445,28 @@ final class PushService: NSObject, ObservableObject {
         }
     }
 
-    /// `bingr://changelog?p=<platform>&b=<build>` en `bingr://live?channel=<id>&profile=<profiel-id>`.
+    /// Build 120: een link die de app opent (`onOpenURL` / universele link `https://bingr.online/titel/…`, of
+    /// `bingr://…`). Wordt net als een tik op een melding via `pendingRoute` uitgevoerd zodra de app in het hoofdscherm
+    /// is (dus ook na inloggen en "Wie kijkt er?"). `true` als de app er iets mee doet.
+    @discardableResult
+    func openLink(_ url: URL) -> Bool {
+        // onOpenURL én onContinueUserActivity kunnen dezelfde link geven: maar één keer uitvoeren
+        let now = Date()
+        if url == lastOpenedURL, now.timeIntervalSince(lastOpenedAt) < 3 { return true }
+        lastOpenedURL = url
+        lastOpenedAt = now
+        if let link = TitleLink.parse(url) {
+            pendingRoute = .title(link)
+            return true
+        }
+        if url.scheme?.lowercased() == "bingr" { return handle(deeplink: url, fallback: nil) }
+        return false
+    }
+    private var lastOpenedURL: URL?
+    private var lastOpenedAt = Date.distantPast
+
+    /// `bingr://changelog?p=<platform>&b=<build>`, `bingr://live?channel=<id>&profile=<profiel-id>` en (build 120)
+    /// `bingr://title?type=movie|tv&id=<tmdb-id>&q=<titel>&y=<jaar>`.
     private func handle(deeplink: URL, fallback: URL?) -> Bool {
         guard let c = URLComponents(url: deeplink, resolvingAgainstBaseURL: false) else { return false }
         func q(_ name: String) -> String? {
@@ -455,6 +478,10 @@ final class PushService: NSObject, ObservableObject {
         case "changelog":
             // de app heeft geen eigen changelogscherm: de changelog van precies die build op bingr.online
             if let u = Self.changelogURL(platform: q("p"), build: q("b")) ?? fallback { open(u) }
+            return true
+        case "title", "titel":
+            guard let link = TitleLink.parse(deeplink) else { return false }
+            pendingRoute = .title(link)
             return true
         case "live":
             guard let ch = q("channel"), !ch.isEmpty else { return false }

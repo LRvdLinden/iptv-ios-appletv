@@ -1,5 +1,24 @@
 [
  {
+  "build": 120,
+  "version": "1.0.0",
+  "date": "2026-10-17",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Links in e-mails van Bingr openen de film of serie direct in de app: de detailpagina als hij in je bibliotheek staat, anders het zoekscherm met de titel al ingevuld (ook als je nog moet inloggen of een profiel moet kiezen)",
+    "en": "Links in emails from Bingr open the movie or series straight in the app: its details page if it's in your library, otherwise search with the title already filled in (also if you still need to sign in or pick a profile)"
+   }
+  ]
+ },
+ {
   "build": 119,
   "version": "1.0.0",
   "date": "2026-10-17",

@@ -4,6 +4,15 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 120
+_17 oktober 2026_
+
+### iOS, iPadOS, macOS, Android en Android TV
+
+**Nieuw**
+
+- Links in e-mails van Bingr openen de film of serie direct in de app: de detailpagina als hij in je bibliotheek staat, anders het zoekscherm met de titel al ingevuld (ook als je nog moet inloggen of een profiel moet kiezen)
+
 ## Versie 1.0.0 · Build 119
 _17 oktober 2026_
 

@@ -52,6 +52,11 @@ struct BingrApp: App {
                 .environment(\.layoutDirection, localizer.isRTL ? .rightToLeft : .leftToRight)
                 .preferredColorScheme(.dark)
                 .tint(Theme.red)
+                // build 120: links uit e-mails van Bingr (universele link https://bingr.online/titel/… en bingr://title)
+                .onOpenURL { PushService.shared.openLink($0) }
+                .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
+                    if let url = activity.webpageURL { PushService.shared.openLink(url) }
+                }
                 .onAppear {
                     reminders.start()
                     #if os(iOS)
@@ -72,6 +77,8 @@ struct BingrApp: App {
                 }
                 #if os(macOS)
                 .frame(minWidth: 900, minHeight: 600)
+                // build 120: een link (bingr://, https://bingr.online/titel/…) in het open venster, geen nieuw venster
+                .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
                 #endif
         }
         #if os(macOS)
@@ -116,6 +123,8 @@ final class AppState: ObservableObject {
     @Published var multiviewStart: [Channel] = []
     /// Na wisselen van afspeellijst (globaal zoeken): dit item openen
     @Published var pendingItemID: String?
+    /// Build 120: titel uit een link (e-mail van Bingr): `MainTabView` zoekt hem zodra de bibliotheek geladen is
+    @Published var pendingTitleLink: TitleLink?
     /// Build 52 "Start bij laatste zender": na het kiezen van een profiel de laatste zender openen zodra de lijst er is
     @Published var resumeLastChannelPending = false
     /// Gekozen tabblad (blijft staan als de interface opnieuw wordt opgebouwd, bijv. na een andere accentkleur)
@@ -423,6 +432,11 @@ struct RootView: View {
                 // bibliotheek nog aan het laden, of een andere server: openen zodra de zender er is (MainTabView)
                 if playlists.source?.id == p.id { app.pendingItemID = channelID } else { app.open(p, thenShow: channelID) }
             }
+        case let .title(link):
+            // de detailpagina of het zoekscherm komt boven de tabbladen: speler en multiview eerst sluiten
+            app.playing = nil
+            app.showMultiview = false
+            app.pendingTitleLink = link
         }
     }
 

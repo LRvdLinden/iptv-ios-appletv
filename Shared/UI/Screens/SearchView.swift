@@ -4,6 +4,8 @@ import SwiftUI
 struct SearchView: View {
     /// Geopend via het vergrootglas op Home/Films/Series (met sluitknop en meteen typen)
     var modal = false
+    /// Build 120: met deze zoekterm openen (titel-link zonder eenduidige match)
+    var initialQuery: String? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var searchActive = false
     @State private var category: CategoryTarget?
@@ -61,6 +63,7 @@ struct SearchView: View {
             .background(Color.black)
             .navigationTitle(L("Search"))
             .modifier(SearchField(query: $query, active: $searchActive, modal: modal, close: { dismiss() }))
+            .onAppear { if query.isEmpty, let q = initialQuery, !q.isEmpty { query = q } }
             .onChange(of: query) { _, q in
                 searchPeople(q)
                 Task {
