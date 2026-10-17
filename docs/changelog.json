@@ -1,5 +1,20 @@
 [
  {
+  "build": 116,
+  "version": "1.0.0",
+  "date": "2026-10-17",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "android"
+    ],
+    "nl": "Pushmeldingen op Android-telefoons en -tablets: nieuwe versies, berichten van Bingr en herinneringen voor programma's",
+    "en": "Push notifications on Android phones and tablets: new versions, messages from Bingr and programme reminders"
+   }
+  ]
+ },
+ {
   "build": 115,
   "version": "1.0.0",
   "date": "2026-10-17",

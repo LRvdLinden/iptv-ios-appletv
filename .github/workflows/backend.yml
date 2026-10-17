@@ -24,7 +24,7 @@ name: Backend
 # build 95: de pg_cron-taak bingr-support-cleanup ruimt dagelijks op (AVG: gesloten tickets na 24 maanden, ip_hash na 30 dagen,
 # captcha-salts, cron.job_run_details na 7 dagen); zie bingr_support_cleanup in supabase/schema.sql.
 # Pushmeldingen (docs/PUSH.md, functie push): APNS_KEY_P8 (inhoud van de .p8), APNS_KEY_ID, APNS_TEAM_ID, APNS_TOPIC,
-# FCM_SERVICE_ACCOUNT (JSON van het Firebase-serviceaccount), FCM_PROJECT_ID en PUSH_RELEASE_SECRET (zelfde waarde als in
+# FCM_SERVICE_ACCOUNT (JSON van het Firebase-serviceaccount), FCM_PROJECT_ID en optioneel PUSH_RELEASE_SECRET (zelfde waarde als in
 # bingr-beheer, voor de releasemelding uit de workflow Builds) worden doorgezet als ze bestaan; ontbreken ze: waarschuwing.
 # PUSH_ADMIN_SECRET en het VAPID-sleutelpaar maakt deze workflow één keer zelf aan; PUSH_CRON_SECRET (optioneel vast) zoals
 # STATUS_CRON_SECRET. De pg_cron-taak bingr-push roept elke minuut push/cron aan, bingr-push-cleanup ruimt dagelijks op.
@@ -345,7 +345,6 @@ jobs:
           { [ -n "$P_APNS_P8" ] && [ -n "$P_APNS_KID" ] && [ -n "$P_APNS_TEAM" ]; } || has APNS_KEY_P8 \
             || echo "::warning::APNS_KEY_P8/APNS_KEY_ID/APNS_TEAM_ID ontbreken: geen pushmeldingen naar iPhone, iPad en Mac."
           [ -n "$P_FCM_SA" ] || has FCM_SERVICE_ACCOUNT || echo "::warning::FCM_SERVICE_ACCOUNT ontbreekt: geen pushmeldingen naar Android."
-          [ -n "$P_RELEASE" ] || has PUSH_RELEASE_SECRET || echo "::warning::PUSH_RELEASE_SECRET ontbreekt: de workflow Builds (bingr-beheer) kan geen releasemeldingen sturen."
           # geheim tussen admin (bingr-beheer) en push: alleen aanmaken als het nog niet bestaat
           if ! has PUSH_ADMIN_SECRET; then
             supabase secrets set --project-ref "$REF" PUSH_ADMIN_SECRET="$(openssl rand -hex 32)" >/dev/null
