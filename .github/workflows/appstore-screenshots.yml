@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write   # alleen voor de branch appstore-shots (resultaat, ook te lezen zonder artefact-opslag)
 
 concurrency:
   group: appstore-screenshots
@@ -51,6 +51,7 @@ jobs:
       - name: Screenshots iPhone, iPad en Apple TV (simulator)
         run: |
           set -euo pipefail
+          exec > >(tee -a shots-info.txt) 2>&1
           IOS_APP=build/Build/Products/Debug-iphonesimulator/Bingr.app
           TV_APP=build/Build/Products/Debug-appletvsimulator/BingrTV.app
           BUNDLE=nl.lrvdlinden.bingr
@@ -96,6 +97,8 @@ jobs:
       - name: Screenshots Mac
         run: |
           set -euo pipefail
+          exec > >(tee -a shots-info.txt) 2>&1
+          system_profiler SPDisplaysDataType | grep -E "Resolution|Retina" || true
           APP=build/Build/Products/Debug/Bingr.app
           mkdir -p shots/mac
           cat > winid.swift <<'EOF'
@@ -125,7 +128,12 @@ jobs:
           pkill -x Bingr 2>/dev/null || true
           screencapture -x shots/mac/_desktop.png || true
 
+      - name: Info bij de screenshots
+        if: always()
+        run: mkdir -p shots && cp shots-info.txt shots/_info.txt || true
+
       - name: Kale screenshots bewaren
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: raw-screenshots
@@ -160,3 +168,20 @@ jobs:
           name: Bingr-AppStore-EN
           path: out/Bingr-AppStore-EN
           retention-days: 30
+
+      - name: Resultaat op de branch appstore-shots (alleen demo-PNG's en README)
+        run: |
+          set -euo pipefail
+          (cd out && zip -qr Bingr-AppStore-EN.zip Bingr-AppStore-EN)
+          mkdir -p /tmp/pub && cp -R out/Bingr-AppStore-EN out/Bingr-AppStore-EN.zip /tmp/pub/
+          cp shots/_info.txt /tmp/pub/_info.txt 2>/dev/null || true
+          mkdir -p /tmp/pub/_mac-debug && cp shots/mac/*-screen.png shots/mac/_desktop.png /tmp/pub/_mac-debug/ 2>/dev/null || true
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git switch --orphan appstore-shots-tmp
+          git rm -rf --quiet . || true
+          rm -rf ./* 2>/dev/null || true
+          cp -R /tmp/pub/. .
+          git add -A
+          git commit -qm "App Store-screenshots ${GITHUB_SHA::7}"
+          git push -f origin HEAD:appstore-shots
