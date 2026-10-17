@@ -3,11 +3,15 @@
 //
 // Planning (header x-newsletter-secret = NEWSLETTER_CRON_SECRET, pg_cron elk uur op minuut 0):
 //   cron        {} -> {ok, enabled, due, created?, edition?, sent, failed, retry, left}
+//   welcome_cron {} -> {ok, smtp, sent, failed, retry}   (welkomstmail, pg_cron elke 5 minuten; zie welcome.ts)
 // Beheer (header x-newsletter-secret = NEWSLETTER_ADMIN_SECRET; functie admin in bingr-beheer):
 //   status      {} -> {enabled, next:{key, at}, recipients:{nl, en, total}, editions:[{key, created_at, recipients, sent, failed, done}]}
 //   set_enabled {enabled} -> {ok, enabled}
 //   preview     {to, lang?} -> {ok}   (huidige editie naar één adres, onderwerp met "[Voorbeeld]", max. 10 per uur)
 //   render      {lang} -> {subject, html}
+//   welcome_preview {to, lang?} -> {ok}   (welkomstmail naar één adres, "[Voorbeeld]", aanhef met een voorbeeldnaam;
+//                                          limiet gedeeld met preview)
+//   welcome_render  {lang} -> {subject, html}
 // Openbaar (afmeldpagina bingr.online/unsubscribe/?k=news; CORS alleen https://bingr.online):
 //   unsubscribe {t} -> {ok} | 400 {error:"invalid_token"}
 //   POST ?unsubscribe=t (List-Unsubscribe=One-Click, RFC 8058) -> 200 "unsubscribed"; GET ?unsubscribe=t -> 303 naar de afmeldpagina
@@ -20,6 +24,7 @@ import {
   smtpTemporary, unsubPageUrl, unsubToken, unsubUser, validEmail,
 } from "./logic.ts";
 import { renderNewsletter } from "./render.ts";
+import { renderWelcome, SAMPLE_NAME, showNewsletter, WELCOME_BATCH } from "./welcome.ts";
 import { buildContent } from "./tmdb.ts";
 
 const env = (k: string) => Deno.env.get(k) ?? "";
@@ -169,6 +174,64 @@ async function cron() {
   return { ok: true, enabled: true, due: due?.key ?? null, created, edition: last, sent: t.sent, failed: t.failed, retry: t.retry, errors: t.errors, left: count ?? 0 };
 }
 
+// ---------- welkomstmail ----------
+// Naar accounts die hun adres de laatste 7 dagen bevestigden en nog geen rij in account_welcome hebben (bingr_welcome_take
+// claimt ze met een rij). Transactioneel: ook bij email_opt_out (het is de bevestiging van hun account), maar dan zonder
+// de alinea over de nieuwsbrief; die staat er alleen in als de nieuwsbrief aan staat en het lid ingeschreven is.
+const WELCOME_BUDGET_MS = 100_000;
+async function welcomeCron() {
+  const started = Date.now();
+  if (!smtpConfigured()) { console.error("newsletter welcome: smtp_not_configured"); return { ok: true, smtp: false, sent: 0, failed: 0, retry: 0 }; }
+  const { data: st } = await admin.from("newsletter_settings").select("enabled").eq("id", 1).maybeSingle();
+  const newsOn = !!st?.enabled;
+  const { data, error } = await admin.rpc("bingr_welcome_take", { p_batch: WELCOME_BATCH });
+  if (error) throw new Error(`welcome_take: ${error.code ?? "fout"}`);
+  const items = (Array.isArray(data) ? data : []) as { id: string; email: string; lang: string | null; first_name: string | null; newsletter: boolean }[];
+  const t = { sent: 0, failed: 0, retry: 0, errors: {} as Record<string, number> };
+  if (!items.length) return { ok: true, smtp: true, ...t };
+  const sent: string[] = [], failed: string[] = [], codes: string[] = [], retry: string[] = [];
+  const mailer = transport();
+  const year = new Date().getFullYear();
+  let stop = false;
+  try {
+    for (const u of items) {
+      // niet aan toegekomen (tijd op of tijdelijke fout): de rij gaat weg, de volgende ronde opnieuw
+      if (stop || Date.now() - started > WELCOME_BUDGET_MS) { retry.push(u.id); stop = true; continue; }
+      const lang = langOf(u.lang), news = showNewsletter(newsOn, u.newsletter === true);
+      try {
+        const token = await unsubToken(u.id, unsubSecret());
+        const m = renderWelcome({ lang, firstName: u.first_name ?? undefined, unsubscribeUrl: unsubPageUrl(token), newsletter: news, year });
+        await mailer.sendMail({
+          from: FROM(), to: u.email, subject: m.subject, html: m.html, text: m.text,
+          headers: {
+            "X-Bingr-Mail": "welcome",
+            ...(news ? { "List-Unsubscribe": `<${oneClickUrl(FN_URL, token)}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } : {}),
+          },
+        });
+        sent.push(u.id); t.sent++;
+      } catch (err) {
+        const code = smtpCode(err);
+        t.errors[code] = (t.errors[code] ?? 0) + 1;
+        if (smtpTemporary(err)) { retry.push(u.id); t.retry++; stop = true; }
+        else { failed.push(u.id); codes.push(code); t.failed++; }
+      }
+      if (PAUSE_MS) await sleep(PAUSE_MS);
+    }
+  } finally {
+    try { mailer.close(); } catch { /* stil */ }
+    const { error: me } = await admin.rpc("bingr_welcome_mark", { p_sent: sent, p_failed: failed, p_codes: codes, p_retry: retry });
+    if (me) console.error("newsletter welcome_mark", me.code ?? "fout");
+  }
+  console.log("newsletter welcome", JSON.stringify(t));
+  return { ok: true, smtp: true, ...t };
+}
+async function welcomeCounts(): Promise<{ sent_7d: number; pending: number } | null> {
+  const { data, error } = await admin.rpc("bingr_welcome_counts");
+  if (error) { console.error("newsletter welcome_counts", error.code ?? "fout"); return null; }
+  const r = (data ?? {}) as Record<string, number>;
+  return { sent_7d: Number(r.sent_7d ?? 0), pending: Number(r.pending ?? 0) };
+}
+
 async function unsubscribe(t: unknown): Promise<boolean> {
   const id = await unsubUser(t, unsubSecret());
   if (!id) return false;
@@ -190,14 +253,19 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
     if (!secretOk(req, "NEWSLETTER_CRON_SECRET")) return json({ error: "forbidden" }, 403);
     return json(await cron());
   }
-  if (!["status", "set_enabled", "preview", "render"].includes(action)) return json({ error: "unknown_action" }, 400);
+  if (action === "welcome_cron") {
+    if (!secretOk(req, "NEWSLETTER_CRON_SECRET")) return json({ error: "forbidden" }, 403);
+    return json(await welcomeCron());
+  }
+  if (!["status", "set_enabled", "preview", "render", "welcome_preview", "welcome_render"].includes(action)) return json({ error: "unknown_action" }, 400);
   if (!secretOk(req, "NEWSLETTER_ADMIN_SECRET")) return json({ error: "forbidden" }, 403);
   switch (action) {
     case "status": {
-      const [st, rc, ed] = await Promise.all([
+      const [st, rc, ed, welcome] = await Promise.all([
         admin.from("newsletter_settings").select("enabled").eq("id", 1).maybeSingle(),
         admin.rpc("bingr_news_recipients"),
         admin.from("newsletter_editions").select("edition_key,created_at,recipients,sent,failed,finished_at").order("created_at", { ascending: false }).limit(10),
+        welcomeCounts(),
       ]);
       if (rc.error) throw new Error(`recipients: ${rc.error.code ?? "fout"}`);
       const r = (rc.data ?? {}) as Record<string, number>;
@@ -207,6 +275,7 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
         editions: ((ed.data ?? []) as EditionRow[]).map((e) => ({
           key: e.edition_key, created_at: e.created_at, recipients: e.recipients, sent: e.sent, failed: e.failed, done: !!e.finished_at,
         })),
+        welcome,
       });
     }
     case "set_enabled": {
@@ -237,6 +306,28 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
         });
       } catch (e) {
         console.error("newsletter preview", smtpCode(e));
+        return json({ error: "send_failed", code: smtpCode(e) }, 502);
+      } finally { try { mailer.close(); } catch { /* stil */ } }
+      return json({ ok: true });
+    }
+    case "welcome_render": {
+      const lang: Lang = body.lang === "en" ? "en" : "nl";
+      const m = renderWelcome({ lang, firstName: SAMPLE_NAME, unsubscribeUrl: `${SITE}/unsubscribe/?k=news`, newsletter: true, preview: true });
+      return json({ subject: m.subject, html: m.html });
+    }
+    case "welcome_preview": {
+      const to = typeof body.to === "string" ? body.to.trim() : "";
+      if (!validEmail(to)) return json({ error: "bad_email" }, 400);
+      if (!smtpConfigured()) return json({ error: "smtp_not_configured" }, 503);
+      // zelfde limiet als het voorbeeld van de nieuwsbrief (samen max. 10 per uur)
+      if (!(await rateOk("news-preview", 10, 3600))) return json({ error: "rate_limited", retry_after: 3600 }, 429);
+      const lang: Lang = body.lang === "en" ? "en" : "nl";
+      const m = renderWelcome({ lang, firstName: SAMPLE_NAME, unsubscribeUrl: `${SITE}/unsubscribe/?k=news`, newsletter: true, preview: true });
+      const mailer = transport();
+      try {
+        await mailer.sendMail({ from: FROM(), to, subject: m.subject, html: m.html, text: m.text, headers: { "X-Bingr-Mail": "welcome-preview" } });
+      } catch (e) {
+        console.error("newsletter welcome_preview", smtpCode(e));
         return json({ error: "send_failed", code: smtpCode(e) }, 502);
       } finally { try { mailer.close(); } catch { /* stil */ } }
       return json({ ok: true });

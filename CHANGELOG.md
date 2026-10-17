@@ -4,6 +4,15 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 124
+_17 oktober 2026_
+
+### Server
+
+**Nieuw**
+
+- Nieuwe leden krijgen na het bevestigen van hun e-mailadres een welkomstmail met de eerste stappen: je eigen bron toevoegen, kijken in de browser, je tv koppelen, de apps en hulp
+
 ## Versie 1.0.0 · Build 123
 _17 oktober 2026_
 

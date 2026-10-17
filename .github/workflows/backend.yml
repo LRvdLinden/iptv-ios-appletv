@@ -33,6 +33,7 @@ name: Backend
 # zelf aan; NEWSLETTER_CRON_SECRET (optioneel vast) zoals STATUS_CRON_SECRET; BINGR_NEWSLETTER_FROM (optioneel, standaard
 # "Bingr <noreply@bingr.online>"). De pg_cron-taak bingr-newsletter roept elk uur (minuut 0) newsletter/cron aan; de functie
 # verstuurt alleen zo 09:00 en wo 18:00 Amsterdamse tijd en alleen als de nieuwsbrief in het beheer aan staat (standaard uit).
+# Welkomstmail (zelfde functie): de pg_cron-taak bingr-welcome roept elke 5 minuten newsletter/welcome_cron aan (los van aan/uit).
 on:
   push:
     branches: [main]
@@ -70,7 +71,8 @@ jobs:
       - name: Unittests (nieuwsbrief)
         # blokkeert de deploy: zo 09:00 / wo 18:00 Europe/Amsterdam (zomer- en wintertijd), editiesleutels, ontdubbelen,
         # HTML (escapen van TMDB-tekst), universele links, afmeldtoken, TMDB v3/v4
-        run: deno test supabase/functions/newsletter/newsletter_test.ts
+        # en de welkomstmail (opbouw, escapen, aanhef, links, selectie, eerste uitrol)
+        run: deno test supabase/functions/newsletter/newsletter_test.ts supabase/functions/newsletter/welcome_test.ts
       - name: Unittests (statuspagina)
         continue-on-error: true
         run: |
@@ -470,9 +472,12 @@ jobs:
           cmd = ("select net.http_post(url := 'https://%s.supabase.co/functions/v1/newsletter', "
                  "headers := jsonb_build_object('Content-Type', 'application/json', 'x-newsletter-secret', '%s'), "
                  "body := '{\"action\":\"cron\"}'::jsonb, timeout_milliseconds := 150000);") % (ref, sec)
-          sql = ("select cron.unschedule(jobid) from cron.job where jobname = 'bingr-newsletter';\n"
+          # welkomstmail: elke 5 minuten (zelfde functie en geheim)
+          wcmd = cmd.replace('{"action":"cron"}', '{"action":"welcome_cron"}')
+          sql = ("select cron.unschedule(jobid) from cron.job where jobname in ('bingr-newsletter', 'bingr-welcome');\n"
                  "select cron.schedule('bingr-newsletter', '0 * * * *', $cmd$ " + cmd + " $cmd$);\n"
-                 "select jobname, schedule, active from cron.job where jobname = 'bingr-newsletter';")
+                 "select cron.schedule('bingr-welcome', '*/5 * * * *', $cmd$ " + wcmd + " $cmd$);\n"
+                 "select jobname, schedule, active from cron.job where jobname in ('bingr-newsletter', 'bingr-welcome') order by jobname;")
           print(json.dumps({"query": sql}))
           PY
           code=$(curl -s -o /tmp/r.txt -w '%{http_code}' -X POST "https://api.supabase.com/v1/projects/$REF/database/query" \
@@ -482,9 +487,10 @@ jobs:
           import json, sys
           try: rows = json.load(open("/tmp/r.txt"))
           except Exception: rows = []
-          ok = int(sys.argv[1] or 0) < 300 and any(isinstance(r, dict) and r.get("jobname") == "bingr-newsletter" and r.get("active") for r in rows)
-          print("::notice::Nieuwsbrief-planning: elk uur op minuut 0 (verstuurt zo 09:00 en wo 18:00 Amsterdam)" if ok
-                else f"::warning::Nieuwsbrief-planning niet gelukt (HTTP {sys.argv[1]})")
+          jobs = {r.get("jobname") for r in rows if isinstance(r, dict) and r.get("active")} if isinstance(rows, list) else set()
+          ok = int(sys.argv[1] or 0) < 300 and {"bingr-newsletter", "bingr-welcome"} <= jobs
+          print("::notice::Nieuwsbrief-planning: elk uur op minuut 0 (verstuurt zo 09:00 en wo 18:00 Amsterdam); welkomstmail elke 5 minuten" if ok
+                else f"::warning::Nieuwsbrief-/welkomstplanning niet gelukt (HTTP {sys.argv[1]})")
           PY
           rm -f /tmp/r.txt
       - name: Nieuwsbrief testen
@@ -494,13 +500,13 @@ jobs:
           F="https://$REF.supabase.co/functions/v1/newsletter"
           J=(-H "Content-Type: application/json")
           # 1. beheeracties en cron zonder (of met fout) geheim -> 403
-          for a in status set_enabled preview render cron; do
+          for a in status set_enabled preview render cron welcome_preview welcome_render welcome_cron; do
             code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$F" "${J[@]}" -H "x-newsletter-secret: fout-geheim-0000000000000000" -d "{\"action\":\"$a\"}")
             [ "$code" = 403 ] || { echo "::error::newsletter $a met fout geheim gaf HTTP $code"; exit 1; }
             code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$F" "${J[@]}" -d "{\"action\":\"$a\"}")
             [ "$code" = 403 ] || { echo "::error::newsletter $a zonder geheim gaf HTTP $code"; exit 1; }
           done
-          echo "::notice::newsletter status/set_enabled/preview/render/cron zonder geheim geweigerd (403)"
+          echo "::notice::newsletter status/set_enabled/preview/render/cron/welcome_* zonder geheim geweigerd (403)"
           # 2. afmelden met een ongeldig token -> 400 (CORS voor bingr.online), one-click 400, GET -> 303 naar de afmeldpagina
           BAD="00000000-0000-4000-8000-000000000000.AAAAAAAAAAAAAAAAAAAAAAAA"
           code=$(curl -s -o /tmp/u.json -D /tmp/uh.txt -w '%{http_code}' -X POST "$F" "${J[@]}" -H "Origin: https://bingr.online" -d "{\"action\":\"unsubscribe\",\"t\":\"$BAD\"}")
@@ -514,6 +520,9 @@ jobs:
           # 3. één cron-ronde met het geheim (alleen tellingen in het antwoord; staat de nieuwsbrief uit, dan gebeurt er niets)
           curl -s --max-time 170 -X POST "$F" "${J[@]}" -H "x-newsletter-secret: $(cat "$RUNNER_TEMP/newsletter_cron_secret")" -d '{"action":"cron"}' > /tmp/c.json
           grep -Eq '"ok": ?true' /tmp/c.json && echo "::notice::newsletter cron: $(cat /tmp/c.json)" || { echo "::error::newsletter cron: $(head -c 300 /tmp/c.json)"; exit 1; }
+          # 4. één ronde welkomstmail (alleen tellingen in het antwoord)
+          curl -s --max-time 170 -X POST "$F" "${J[@]}" -H "x-newsletter-secret: $(cat "$RUNNER_TEMP/newsletter_cron_secret")" -d '{"action":"welcome_cron"}' > /tmp/w.json
+          grep -Eq '"ok": ?true' /tmp/w.json && echo "::notice::welkomstmail: $(cat /tmp/w.json)" || { echo "::error::welkomstmail: $(head -c 300 /tmp/w.json)"; exit 1; }
       - name: Testen
         if: steps.check.outputs.skip != '1'
         run: |

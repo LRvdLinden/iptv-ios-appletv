@@ -1,5 +1,20 @@
 [
  {
+  "build": 124,
+  "version": "1.0.0",
+  "date": "2026-10-17",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Nieuwe leden krijgen na het bevestigen van hun e-mailadres een welkomstmail met de eerste stappen: je eigen bron toevoegen, kijken in de browser, je tv koppelen, de apps en hulp",
+    "en": "New members get a welcome email after confirming their email address, with the first steps: adding your own source, watching in the browser, pairing your TV, the apps and help"
+   }
+  ]
+ },
+ {
   "build": 123,
   "version": "1.0.0",
   "date": "2026-10-17",

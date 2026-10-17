@@ -2285,3 +2285,84 @@ grant execute on function public.bingr_news_recipients() to service_role;
 grant execute on function public.bingr_news_take(bigint, int) to service_role;
 grant execute on function public.bingr_news_mark(bigint, uuid[], uuid[], uuid[], uuid[]) to service_role;
 grant execute on function public.bingr_news_cleanup() to service_role;
+
+-- ---- Welkomstmail (functie newsletter, actie welcome_cron; docs/NEWSLETTER.md, sectie Welkomstmail) ----
+-- Eén rij per account dat een welkomstmail kreeg (of krijgt): sent_at = verstuurd; error = korte foutcode (smtp_550, stuck)
+-- of 'existing' (bij de eerste uitrol al bestaand lid: nooit een welkomstmail); een rij zonder sent_at en error = bezig.
+-- Bij de EERSTE uitrol (tabel bestond nog niet) worden alle bevestigde accounts als 'existing' gemarkeerd, zodat alleen
+-- nieuwe leden een welkomstmail krijgen. Daarna is dit blok een no-op.
+do $$
+begin
+  if to_regclass('public.account_welcome') is null then
+    create table public.account_welcome (
+      user_id    uuid primary key references auth.users(id) on delete cascade,
+      claimed_at timestamptz not null default now(),
+      sent_at    timestamptz,
+      error      text check (error is null or error ~ '^[a-z0-9_]{1,40}$')
+    );
+    insert into public.account_welcome (user_id, sent_at, error)
+      select u.id, null, 'existing' from auth.users u where u.email_confirmed_at is not null
+      on conflict (user_id) do nothing;
+  end if;
+end $$;
+create index if not exists account_welcome_sent_idx on public.account_welcome (sent_at) where sent_at is not null;
+alter table public.account_welcome enable row level security;
+revoke all on public.account_welcome from anon, authenticated;
+
+-- Volgende batch (max. 200, de functie vraagt 50) -> [{id, email, lang, first_name, newsletter}], meteen geclaimd met een rij.
+-- Bevestigd in de laatste 7 dagen, niet verwijderd, niet geblokkeerd, nog geen rij. email_opt_out telt hier NIET (de
+-- welkomstmail is transactioneel); `newsletter` = ingeschreven voor de nieuwsbrief (dan staat die alinea in de mail).
+-- Een claim die 30 minuten blijft hangen wordt 'stuck' en niet opnieuw verstuurd (liever geen mail dan twee).
+create or replace function public.bingr_welcome_take(p_batch int) returns jsonb
+language plpgsql security definer set search_path = public, auth as $$
+declare n int := greatest(least(coalesce(p_batch, 50), 200), 1); rows jsonb;
+begin
+  update public.account_welcome set error = 'stuck' where sent_at is null and error is null and claimed_at < now() - interval '30 minutes';
+  with c as (
+    select u.id from auth.users u
+    where u.email is not null and u.email_confirmed_at is not null and u.email_confirmed_at > now() - interval '7 days'
+      and u.deleted_at is null and (u.banned_until is null or u.banned_until <= now())
+      and not exists (select 1 from public.account_welcome w where w.user_id = u.id)
+    order by u.email_confirmed_at limit n),
+  ins as (
+    insert into public.account_welcome (user_id) select id from c on conflict (user_id) do nothing returning user_id)
+  select jsonb_agg(jsonb_build_object('id', u.id, 'email', u.email, 'lang', u.raw_user_meta_data->>'lang',
+    'first_name', nullif(btrim(u.raw_user_meta_data->>'first_name'), ''),
+    'newsletter', public.bingr_news_subscribed(u.id)) order by u.email_confirmed_at) into rows
+  from auth.users u join ins on ins.user_id = u.id;
+  return coalesce(rows, '[]'::jsonb);
+end $$;
+-- Resultaat: sent -> sent_at; failed -> error = code (niet opnieuw); retry (tijdelijke fout / niet aan toegekomen) -> rij weg,
+-- de volgende ronde opnieuw (binnen de 7 dagen).
+create or replace function public.bingr_welcome_mark(p_sent uuid[], p_failed uuid[], p_codes text[], p_retry uuid[])
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare ns int; nf int; nr int;
+begin
+  update public.account_welcome set sent_at = now(), error = null
+  where sent_at is null and user_id = any(coalesce(p_sent, '{}'));
+  get diagnostics ns = row_count;
+  update public.account_welcome w set error = case when f.code ~ '^[a-z0-9_]{1,40}$' then f.code else 'error' end
+  from unnest(coalesce(p_failed, '{}'), coalesce(p_codes, '{}')) as f(id, code)
+  where w.user_id = f.id and w.sent_at is null;
+  get diagnostics nf = row_count;
+  delete from public.account_welcome where sent_at is null and error is null and user_id = any(coalesce(p_retry, '{}'));
+  get diagnostics nr = row_count;
+  return jsonb_build_object('sent', ns, 'failed', nf, 'retry', nr);
+end $$;
+-- Aantallen voor het beheer: verstuurd in de laatste 7 dagen en wachtend (zou nu een welkomstmail krijgen).
+create or replace function public.bingr_welcome_counts() returns jsonb
+language sql stable security definer set search_path = public, auth as $$
+  select jsonb_build_object(
+    'sent_7d', (select count(*) from public.account_welcome w where w.sent_at > now() - interval '7 days'),
+    'pending', (select count(*) from auth.users u
+      where u.email is not null and u.email_confirmed_at is not null and u.email_confirmed_at > now() - interval '7 days'
+        and u.deleted_at is null and (u.banned_until is null or u.banned_until <= now())
+        and not exists (select 1 from public.account_welcome w where w.user_id = u.id)));
+$$;
+revoke all on function public.bingr_welcome_take(int) from public, anon, authenticated;
+revoke all on function public.bingr_welcome_mark(uuid[], uuid[], text[], uuid[]) from public, anon, authenticated;
+revoke all on function public.bingr_welcome_counts() from public, anon, authenticated;
+grant execute on function public.bingr_welcome_take(int) to service_role;
+grant execute on function public.bingr_welcome_mark(uuid[], uuid[], text[], uuid[]) to service_role;
+grant execute on function public.bingr_welcome_counts() to service_role;
