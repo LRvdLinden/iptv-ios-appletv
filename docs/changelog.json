@@ -1,5 +1,22 @@
 [
  {
+  "build": 122,
+  "version": "1.0.0",
+  "date": "2026-10-17",
+  "items": [
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "macos"
+    ],
+    "nl": "Home: de uitgelichte titel staat weer altijd in het midden; bij sommige posters schoof hij rechts uit beeld",
+    "en": "Home: the featured title is always centred again; with some posters it slid off to the right"
+   }
+  ]
+ },
+ {
   "build": 121,
   "version": "1.0.0",
   "date": "2026-10-17",

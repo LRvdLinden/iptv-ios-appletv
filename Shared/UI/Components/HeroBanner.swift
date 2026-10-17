@@ -27,36 +27,46 @@ struct HeroBanner: View {
 
     // iPhone/iPad: grote portret-kaart met gloed van de poster erachter
     private var phoneBody: some View {
-        ZStack(alignment: .top) {
-            RemoteImage(url: poster)
-                .frame(height: 620).frame(maxWidth: .infinity)
-                .blur(radius: 50).opacity(0.65).clipped()
-            LinearGradient(colors: [.clear, .black], startPoint: .center, endPoint: .bottom).frame(height: 620)
-
-            VStack(spacing: 0) {
-                ZStack(alignment: .bottom) {
-                    RemoteImage(url: poster, placeholder: title, maxPixel: 1100)
-                        .frame(width: 330, height: 470).clipped()
-                    LinearGradient(colors: [.clear, .black.opacity(0.85)], startPoint: .center, endPoint: .bottom)
-                    VStack(spacing: 10) {
-                        Text(title.uppercased())
-                            .font(.system(size: 30, weight: .black)).kerning(1)
-                            .multilineTextAlignment(.center).lineLimit(2).minimumScaleFactor(0.6)
-                            .shadow(radius: 8)
-                        Text(tags).font(.system(size: 12, weight: .medium)).foregroundStyle(.white.opacity(0.85))
-                        HStack(spacing: 10) {
-                            NetflixButton(title: L("Play"), icon: "play.fill", kind: .play, action: onPlay).frame(maxWidth: .infinity)
-                            NetflixButton(title: L("Info"), icon: "info.circle", kind: .secondary, action: onInfo).frame(maxWidth: .infinity)
-                        }
+        VStack(spacing: 0) {
+            ZStack(alignment: .bottom) {
+                RemoteImage(url: poster, placeholder: title, maxPixel: 1100)
+                    .frame(width: 330, height: 470).clipped()
+                LinearGradient(colors: [.clear, .black.opacity(0.85)], startPoint: .center, endPoint: .bottom)
+                VStack(spacing: 10) {
+                    Text(title.uppercased())
+                        .font(.system(size: 30, weight: .black)).kerning(1)
+                        .multilineTextAlignment(.center).lineLimit(2).minimumScaleFactor(0.6)
+                        .shadow(radius: 8)
+                    Text(tags).font(.system(size: 12, weight: .medium)).foregroundStyle(.white.opacity(0.85))
+                    HStack(spacing: 10) {
+                        NetflixButton(title: L("Play"), icon: "play.fill", kind: .play, action: onPlay).frame(maxWidth: .infinity)
+                        NetflixButton(title: L("Info"), icon: "info.circle", kind: .secondary, action: onInfo).frame(maxWidth: .infinity)
                     }
-                    .padding(16)
                 }
-                .frame(width: 330, height: 470)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-                .overlay(RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.12)))
-                .shadow(color: .black.opacity(0.6), radius: 20, y: 10)
-                .padding(.top, 110)
+                .padding(16)
             }
+            .frame(width: 330, height: 470)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.12)))
+            .shadow(color: .black.opacity(0.6), radius: 20, y: 10)
+            .padding(.top, 110)
+        }
+        // de kaart bepaalt de breedte (schermbreedte), nooit de afbeelding erachter: een brede poster maakte het blok
+        // anders breder dan het scherm en schoof de kaart (gecentreerd in dat blok) rechts uit beeld
+        .frame(maxWidth: .infinity, minHeight: 620, alignment: .top)
+        .background(alignment: .top) {
+            // gloed van de poster: als overlay op een vlak van de juiste maat, zodat hij de opmaak niet kan oprekken
+            Color.clear
+                .frame(height: 620)
+                .overlay {
+                    RemoteImage(url: poster)
+                        .blur(radius: 50).opacity(0.65)
+                }
+                .overlay {
+                    LinearGradient(colors: [.clear, .black], startPoint: .center, endPoint: .bottom)
+                }
+                .clipped()
+                .allowsHitTesting(false)
         }
         .task(id: target.id) { await load() }
     }
