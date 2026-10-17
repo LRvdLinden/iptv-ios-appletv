@@ -1,5 +1,28 @@
 [
  {
+  "build": 118,
+  "version": "1.0.0",
+  "date": "2026-10-17",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Downloads op bingr.online: download de testversie voor Android, Android TV, Google TV en Fire TV als APK (op een tv via bingr.online/apk)",
+    "en": "Downloads on bingr.online: download the test version for Android, Android TV, Google TV and Fire TV as an APK (on a TV via bingr.online/apk)"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Webspeler: geen cookiemelding meer; het lettertype van Google Fonts laadt alleen als je dat eerder op bingr.online hebt geaccepteerd",
+    "en": "Web player: no more cookie notice; the Google Fonts typeface only loads if you accepted it earlier on bingr.online"
+   }
+  ]
+ },
+ {
   "build": 117,
   "version": "1.0.0",
   "date": "2026-10-17",

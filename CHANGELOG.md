@@ -4,6 +4,19 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 118
+_17 oktober 2026_
+
+### Website
+
+**Nieuw**
+
+- Downloads op bingr.online: download de testversie voor Android, Android TV, Google TV en Fire TV als APK (op een tv via bingr.online/apk)
+
+**Verbeterd**
+
+- Webspeler: geen cookiemelding meer; het lettertype van Google Fonts laadt alleen als je dat eerder op bingr.online hebt geaccepteerd
+
 ## Versie 1.0.0 · Build 117
 _17 oktober 2026_
 
