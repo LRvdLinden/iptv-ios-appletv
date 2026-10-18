@@ -1,5 +1,28 @@
 [
  {
+  "build": 131,
+  "version": "1.0.0",
+  "date": "2026-10-18",
+  "items": [
+   {
+    "type": "fixed",
+    "platforms": [
+     "android"
+    ],
+    "nl": "Op liggende tablets en andere brede schermen past het uitgelichte billboard op Home nu in beeld: een breed billboard met poster, titel en knoppen in plaats van een kaart die hoger was dan het scherm",
+    "en": "On landscape tablets and other wide screens, the featured billboard on Home now fits on screen: a wide billboard with poster, title and buttons instead of a card taller than the screen"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "androidtv"
+    ],
+    "nl": "Het detailscherm schuift bij openen niet meer omhoog: de titel of het logo blijft met ruimte boven in beeld",
+    "en": "The detail screen no longer scrolls up when it opens: the title or logo stays visible with room at the top"
+   }
+  ]
+ },
+ {
   "build": 130,
   "version": "1.0.0",
   "date": "2026-10-18",
