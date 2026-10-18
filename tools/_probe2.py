@@ -10,13 +10,14 @@ def get(u):
         try: return urllib.request.urlopen(urllib.request.Request(u,headers=UA),timeout=90).read()
         except Exception as e: err=e; time.sleep(4)
     raise err
-films={
+films={"moon":"Le Voyage dans la Lune Méliès 1902","moonb":"A Trip to the Moon 1902","coffee":"Coffee Run Blender Open Movie","spring":"Spring Blender Open Movie","agent":"Agent 327 Operation Barbershop Blender","nosf2":"Nosferatu Eine Symphonie des Grauens"}
+_old={
  "bbb":"Big Buck Bunny","ed":"Elephants Dream","sintel":"Sintel","tos":"Tears of Steel","cosmos":"Cosmos Laundromat",
  "agent":"Agent 327","spring":"Spring Blender","coffee":"Coffee Run","sprite":"Sprite Fright","charge":"Charge Blender",
  "nosferatu":"Nosferatu 1922","moon":"Voyage dans la Lune","moon2":"Trip to the Moon Melies","train":"Great Train Robbery",
  "vampires":"Les Vampires Feuillade","judex":"Judex","nanook":"Nanook of the North","caligari":"Caligari"}
-out=pathlib.Path("sheets2"); out.mkdir(exist_ok=True)
-rep=open("probe2.txt","w")
+out=pathlib.Path("sheets3"); out.mkdir(exist_ok=True)
+rep=open("probe3.txt","w")
 for key,q in films.items():
     res=api(action="query",list="search",srsearch=f"filetype:video {q}",srnamespace="6",srlimit="25")
     titles=[m["title"] for m in res["query"]["search"]]
@@ -30,7 +31,7 @@ for key,q in films.items():
         rep.write(f"  {p['title']}\t{vi.get('width')}x{vi.get('height')}\t{dur:.0f}s\t{lic}\n")
         if dur>60 and vi.get("thumburl"): cands.append((vi.get("width",0)*min(dur,3000),p["title"],dur,vi["thumburl"],lic))
     cands.sort(reverse=True)
-    for ci,(sc,t,dur,tu,lic) in enumerate(cands[:2]):
+    for ci,(sc,t,dur,tu,lic) in enumerate(cands[:3]):
         n=16; cols=4; sheet=Image.new("RGB",(cols*490,(n//cols)*300),(25,25,25)); d=ImageDraw.Draw(sheet)
         base=tu.split("?")[0]
         for i in range(n):
@@ -44,7 +45,7 @@ for key,q in films.items():
         rep.write(f"  SHEET {key}-{ci}: {t} ({lic}) {base}\n")
     time.sleep(1)
 # extra stilstaande beelden
-for q in ["Nosferatu 1922","Voyage dans la Lune 1902","Great Train Robbery 1903","Elephants Dream","Agent 327 Operation Barbershop","Sintel Blender","Tears of Steel"]:
+for q in ["Voyage dans la Lune","Melies Lune 1902","Trip to the Moon Melies","Agent 327","Coffee Run","Charge Blender Studio","Cosmos Laundromat Blender"]:
     res=api(action="query",list="search",srsearch=f"filetype:bitmap {q}",srnamespace="6",srlimit="40")
     titles=[m["title"] for m in res["query"]["search"]]
     if not titles: continue
