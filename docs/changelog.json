@@ -1,5 +1,97 @@
 [
  {
+  "build": 129,
+  "version": "1.0.0",
+  "date": "2026-10-18",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "Tv-gids als raster: zenders van je andere servers tonen nu ook hun programma's, en terugkijken gaat via de server van die zender",
+    "en": "TV guide grid: channels from your other servers now show their programmes too, and catch-up goes through that channel's server"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web"
+    ],
+    "nl": "Slimme collecties zoeken in al je servers: dezelfde titel op twee servers zie je één keer, en openen en afspelen gaat via zijn eigen server",
+    "en": "Smart collections search all your servers: the same title on two servers shows once, and it opens and plays through its own server"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web"
+    ],
+    "nl": "Zoeken en Andere bronnen tonen titels en zenders van al je servers en openen ze via hun eigen server, zonder van server te wisselen",
+    "en": "Search and Other sources show titles and channels from all your servers and open them through their own server, without switching servers"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "In Live TV tonen collecties ook zenders van je andere servers",
+    "en": "In Live TV, collections also show channels from your other servers"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "android",
+     "androidtv"
+    ],
+    "nl": "Terugkijken op MAC-portals, ook via een andere server dan de actieve",
+    "en": "Catch-up on MAC portals, also through a server other than the active one"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "tizen"
+    ],
+    "nl": "Nieuw scherm Geschiedenis (Instellingen › Profiel): je kijkgeschiedenis van al je servers, met openen, verwijderen en wissen",
+    "en": "New Watch history screen (Settings › Profile): your watch history from all your servers, with open, remove and clear"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "tvos"
+    ],
+    "nl": "Nieuwe Top Shelf-afbeelding op Apple TV: een schuine muur van filmposters met het Bingr-logo",
+    "en": "New Top Shelf image on Apple TV: a tilted wall of movie posters with the Bingr logo"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Andere bron zoekt nu ook op je actieve server als de zender van een andere server komt, en een zender uit de tv-gids van een andere server komt met de juiste server in een collectie",
+    "en": "Other source now also checks your active server when the channel comes from another server, and a channel added to a collection from another server's TV guide keeps the right server"
+   }
+  ]
+ },
+ {
   "build": 128,
   "version": "1.0.0",
   "date": "2026-10-18",

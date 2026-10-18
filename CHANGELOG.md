@@ -4,6 +4,41 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 129
+_18 oktober 2026_
+
+### Alle apps en de website
+
+**Nieuw**
+
+- Slimme collecties zoeken in al je servers: dezelfde titel op twee servers zie je één keer, en openen en afspelen gaat via zijn eigen server
+
+**Verbeterd**
+
+- Zoeken en Andere bronnen tonen titels en zenders van al je servers en openen ze via hun eigen server, zonder van server te wisselen
+
+### iOS, iPadOS, tvOS en macOS
+
+**Nieuw**
+
+- Tv-gids als raster: zenders van je andere servers tonen nu ook hun programma's, en terugkijken gaat via de server van die zender
+
+**Verbeterd**
+
+- In Live TV tonen collecties ook zenders van je andere servers
+
+### tvOS
+
+**Verbeterd**
+
+- Nieuwe Top Shelf-afbeelding op Apple TV: een schuine muur van filmposters met het Bingr-logo
+
+### Website
+
+**Opgelost**
+
+- Andere bron zoekt nu ook op je actieve server als de zender van een andere server komt, en een zender uit de tv-gids van een andere server komt met de juiste server in een collectie
+
 ## Versie 1.0.0 · Build 128
 _18 oktober 2026_
 
