@@ -47,9 +47,10 @@ https://bingr.online/titel/?type=movie|tv&id=<tmdb-id>&q=<titel, url-encoded>&y=
 (`y` ontbreekt als het jaar onbekend is.) Is de app geïnstalleerd, dan opent die (Apple universal links via
 `bingr.online/.well-known/apple-app-site-association`, appID `EU3UY476T6.nl.lrvdlinden.bingr`, alleen `/titel/*`;
 Android app links via `bingr.online/.well-known/assetlinks.json`, package `nl.lrvdlinden.bingr`). De app zoekt de titel in
-de bibliotheek op TMDB-id, anders op titel (+ jaar). Zonder app opent `bingr.online/titel/`: die toont de titel met
-"Open in de app" (`bingr://title?type=movie|tv&id=<tmdb-id>&q=<titel>`) en "Kijk in je browser", en stuurt door naar de
-webspeler `https://bingr.online/web/#/titel?type=&id=&q=&y=` (op een computer meteen, op telefoon/tablet na 3 seconden).
+de bibliotheek op TMDB-id, anders op titel (+ jaar). Zonder app opent `bingr.online/titel/` (build 132: PHP, zie
+"Deelpreview"): backdrop, poster, titel, jaar en omschrijving met "Open in Bingr" (`bingr://title?type=movie|tv&id=<tmdb-id>&q=<titel>`),
+"Kijk in je browser" (webspeler `https://bingr.online/web/#/titel?type=&id=&q=&y=`) en de TestFlight-/APK-knoppen.
+Sinds build 132 stuurt de pagina niet meer vanzelf door naar de webspeler.
 De webspeler zoekt na het inloggen (de route blijft bewaard) in de bibliotheek op titel (+ jaar); precies één goede match →
 detailpagina, anders het zoekscherm met `q` ingevuld.
 
@@ -61,7 +62,7 @@ bingr-website, PHP op de hosting) de Open Graph- en Twitter-tags server-side: `o
 (omschrijving, ingekort), `og:image` (TMDB-backdrop `w1280`, 1280×720, anders poster `w780`, 780×1170, met
 `og:image:width/height`), `og:url` (canonieke link), `og:type` `video.movie` / `video.tv_show`, `og:site_name` Bingr,
 `twitter:card` `summary_large_image` en `<title>`. Lukt het ophalen niet, dan de algemene Bingr-preview
-(`assets/img/og.png`).
+(`assets/img/nl/tv_home.jpg`, 1400×788).
 
 De gegevens komen uit de openbare Edge Function `title-meta` (`supabase/functions/title-meta`, workflow *Backend*,
 `verify_jwt` uit, CORS `*`). De TMDB-sleutel blijft op de server (function-secret `BINGR_TMDB_API_KEY`, zelfde als de
