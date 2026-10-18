@@ -2366,3 +2366,119 @@ revoke all on function public.bingr_welcome_counts() from public, anon, authenti
 grant execute on function public.bingr_welcome_take(int) to service_role;
 grant execute on function public.bingr_welcome_mark(uuid[], uuid[], text[], uuid[]) to service_role;
 grant execute on function public.bingr_welcome_counts() to service_role;
+
+-- ============================================================================================================
+-- Insights in het beheer (tab Overzicht van bingr-beheer, functie admin, actie insights): aantallen per tijdvak voor de
+-- grafieken. De functie admin rekent de grenzen van de tijdvakken uit (Europe/Amsterdam, per 5 min / uur / dag / maand) en
+-- stuurt ze als oplopende lijst p_edges (n+1 momenten = n tijdvakken). Terug komt per serie een lijst van n aantallen, of
+-- null als de serie hier niet te tellen is. Nooit gegevens per persoon: alleen tellingen per tijdvak.
+-- Hulpje (niet aan te roepen van buiten): telt de rijen (at, w) van een vaste query uit bingr_admin_insights per tijdvak;
+-- in die query is $1 = p_edges, $2 = begin, $3 = einde.
+create or replace function public.bingr_insights_bin(p_edges timestamptz[], p_sql text) returns jsonb
+language plpgsql stable security definer set search_path = public, auth as $$
+declare n int := array_length(p_edges, 1) - 1; res jsonb;
+begin
+  execute format(
+    'select coalesce(jsonb_agg(coalesce(c.v, 0) order by g.i), ''[]''::jsonb)
+       from generate_series(1, %s) g(i)
+       left join (select width_bucket(s.at, $1) i, sum(s.w)::bigint v from (%s) s(at, w)
+                   where s.at >= $2 and s.at < $3 group by 1) c on c.i = g.i', n, p_sql)
+    into res using p_edges, p_edges[1], p_edges[n + 1];
+  return res;
+end $$;
+revoke all on function public.bingr_insights_bin(timestamptz[], text) from public, anon, authenticated, service_role;
+
+-- p_metric: accounts (new_users; active_users alleen met p_daily) | signins | streams (live, movie, episode) |
+-- push (sent, failed) | support (new, closed). p_daily = tijdvakken van een dag of langer (gegevens per dag tellen mee).
+create or replace function public.bingr_admin_insights(p_metric text, p_edges timestamptz[], p_daily boolean default false)
+returns jsonb
+language plpgsql stable security definer set search_path = public, auth as $$
+declare n int := coalesce(array_length(p_edges, 1), 0) - 1; k text; kinds text[];
+        res jsonb := '{}'::jsonb; q text;
+begin
+  if n < 1 or n > 1000 or array_position(p_edges, null) is not null then return null; end if;
+  if exists (select 1 from generate_series(1, n) i where p_edges[i] >= p_edges[i + 1]) then return null; end if;
+  if p_metric = 'accounts' then
+    res := jsonb_build_object('new_users', public.bingr_insights_bin(p_edges,
+      'select created_at, 1 from auth.users where created_at >= $2 and created_at < $3'));
+    -- account_logins: één rij per account per UTC-dag; telt op 12:00 UTC van die dag
+    if p_daily then
+      res := res || jsonb_build_object('active_users', public.bingr_insights_bin(p_edges,
+        'select (day + time ''12:00'') at time zone ''UTC'', 1 from public.account_logins
+          where day between ($2 at time zone ''UTC'')::date - 1 and ($3 at time zone ''UTC'')::date'));
+    end if;
+  elsif p_metric = 'signins' then
+    if to_regclass('auth.audit_log_entries') is not null then
+      begin
+        res := jsonb_build_object('signins', public.bingr_insights_bin(p_edges,
+          'select created_at, 1 from auth.audit_log_entries
+            where created_at >= $2 and created_at < $3 and payload->>''action'' = ''login'''));
+      exception when others then res := '{}'::jsonb;
+      end;
+    end if;
+  elsif p_metric = 'streams' then
+    foreach k in array array['live', 'movie', 'episode'] loop
+      kinds := case k when 'live' then array['live', 'catchup', 'channel'] when 'movie' then array['movie', 'vod']
+                      else array['episode', 'series'] end;
+      if p_daily then
+        -- account_watch_stats: per lokale dag (Europe/Amsterdam of de tijdzone van de app), 400 dagen bewaard
+        q := format('select (day + time ''12:00'') at time zone ''Europe/Amsterdam'', plays from public.account_watch_stats
+                      where kind = %L and day between ($2 at time zone ''Europe/Amsterdam'')::date - 1
+                                                  and ($3 at time zone ''Europe/Amsterdam'')::date', k);
+      else
+        -- per uur of 5 minuten: gestarte streams uit account_watch_log (8 dagen bewaard)
+        q := format('select started_at, 1 from public.account_watch_log
+                      where started_at >= $2 and started_at < $3 and lower(coalesce(kind, '''')) = any(%L::text[])', kinds);
+      end if;
+      res := res || jsonb_build_object(k, public.bingr_insights_bin(p_edges, q));
+    end loop;
+  elsif p_metric = 'push' then
+    -- push_deliveries: per apparaat, 30 dagen bewaard; daarvoor de tellers per bericht (push_messages.counts)
+    res := jsonb_build_object(
+      'sent', public.bingr_insights_bin(p_edges,
+        'select sent_at, 1 from public.push_deliveries
+          where state = ''sent'' and sent_at >= greatest($2, now() - interval ''30 days'') and sent_at < $3
+         union all
+         select created_at, coalesce((counts->>''sent'')::int, 0) from public.push_messages
+          where created_at >= $2 and created_at < least($3, now() - interval ''30 days'')'),
+      'failed', public.bingr_insights_bin(p_edges,
+        'select coalesce(claimed_at, created_at), 1 from public.push_deliveries
+          where state in (''failed'', ''invalid'') and coalesce(claimed_at, created_at) >= greatest($2, now() - interval ''30 days'')
+            and coalesce(claimed_at, created_at) < $3
+         union all
+         select created_at, coalesce((counts->>''failed'')::int, 0) + coalesce((counts->>''invalid'')::int, 0) from public.push_messages
+          where created_at >= $2 and created_at < least($3, now() - interval ''30 days'')'));
+  elsif p_metric = 'support' then
+    res := jsonb_build_object(
+      'new', public.bingr_insights_bin(p_edges,
+        'select created_at, 1 from public.support_tickets where created_at >= $2 and created_at < $3'),
+      'closed', public.bingr_insights_bin(p_edges,
+        'select closed_at, 1 from public.support_tickets where status = ''closed'' and closed_at >= $2 and closed_at < $3'));
+  else
+    return null;
+  end if;
+  return res;
+end $$;
+revoke all on function public.bingr_admin_insights(text, timestamptz[], boolean) from public, anon, authenticated;
+grant execute on function public.bingr_admin_insights(text, timestamptz[], boolean) to service_role;
+create index if not exists support_tickets_closed_idx on public.support_tickets (closed_at) where closed_at is not null;
+create index if not exists push_deliveries_sent_idx on public.push_deliveries (sent_at) where sent_at is not null;
+create index if not exists push_messages_created_idx on public.push_messages (created_at);
+-- Storingen (monitors van de statuspagina) en gepland onderhoud in een periode, als banden op de tijdas van de grafieken
+-- in het beheer. Alleen naam en tijden (zoals op de openbare statuspagina): geen oorzaak, doel of andere gegevens.
+create or replace function public.bingr_admin_insights_events(p_from timestamptz, p_to timestamptz) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(e order by e->>'from'), '[]'::jsonb) from (
+    select jsonb_build_object('kind', 'incident', 'name', m.name_nl, 'from', i.started_at, 'to', i.ended_at) e
+      from public.status_incidents i join public.status_monitors m on m.id = i.monitor_id
+     where m.public and m.kind <> 'devices' and i.started_at < p_to and coalesce(i.ended_at, now()) > p_from
+    union all
+    select jsonb_build_object('kind', 'maintenance', 'name', n.title_nl, 'from', coalesce(n.window_start, n.started_at),
+                              'to', coalesce(n.window_end, n.resolved_at))
+      from public.status_notices n
+     where n.kind = 'maintenance' and n.status not in ('cancelled', 'scheduled')
+       and coalesce(n.window_start, n.started_at) < p_to and coalesce(n.window_end, n.resolved_at, now()) > p_from
+    order by 1 limit 40) x(e);
+$$;
+revoke all on function public.bingr_admin_insights_events(timestamptz, timestamptz) from public, anon, authenticated;
+grant execute on function public.bingr_admin_insights_events(timestamptz, timestamptz) to service_role;
