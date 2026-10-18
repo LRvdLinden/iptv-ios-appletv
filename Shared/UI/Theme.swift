@@ -386,6 +386,11 @@ final class ImagePipeline: @unchecked Sendable {
     private func key(_ url: URL, _ px: Int) -> String { "\(px)|\(url.absoluteString)" }
 
     func cached(_ url: URL, maxPixel: Int) -> CGImage? { memory.object(forKey: key(url, maxPixel) as NSString)?.image }
+    /// Build 132: deze afbeelding in welke gangbare grootte ook al in het geheugen staat (posters 720, koppen groter).
+    func cachedAny(_ url: URL) -> CGImage? {
+        for px in [720, 1600, 1100, 1200, 1920, 900, 600, 360] { if let hit = cached(url, maxPixel: px) { return hit } }
+        return nil
+    }
 
     func load(_ url: URL, maxPixel: Int) async -> CGImage? {
         let k = key(url, maxPixel)

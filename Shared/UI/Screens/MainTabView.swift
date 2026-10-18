@@ -141,7 +141,7 @@ struct MainTabView: View {
         }
     }
 
-    /// Build 120: titel uit een link (e-mail van Bingr) in de bibliotheek van de actieve bron zoeken: op TMDB-id of
+    /// Build 120: titel uit een link (e-mail van Bingr, deelknop sinds build 132) in de bibliotheek van de actieve bron zoeken: op TMDB-id of
     /// titel (+ jaar). Eén goede match → detailpagina, anders het zoekscherm. Wacht tot de bibliotheek geladen is.
     private func openTitleLink(loaded: Bool = false) {
         guard let link = app.pendingTitleLink, !resolvingLink, !playlists.isLoading,
@@ -152,9 +152,25 @@ struct MainTabView: View {
         resolvingLink = true
         let movies = lib.movies, series = lib.series
         let pref = TrackPreferences.preferredAudio
+        // build 132: staat de titel niet (eenduidig) op de actieve server, dan op de andere servers van het account
+        // (cache op dit apparaat, met het filter van het profiel per server); openen gaat dan via die server
+        let others = CloudStore.shared.playlists.filter { $0.id != src.id }
+        let ctx = Dictionary(uniqueKeysWithValues: others.map { p in (p.id, playlists.context(for: p)) })
         Task {
-            let r = await Task.detached(priority: .userInitiated) {
-                TitleLink.resolve(link, movies: movies, series: series, preferredAudio: pref)
+            let r = await Task.detached(priority: .userInitiated) { () -> TitleLink.Resolution in
+                let here = TitleLink.resolve(link, movies: movies, series: series, preferredAudio: pref)
+                if case .detail = here { return here }
+                for p in others {
+                    guard let raw = PlaylistService.readCache(p) ?? PlaylistService.readAnyCatalog(p)?.0 else { continue }
+                    let other = ctx[p.id].map { PlaylistService.apply(raw, $0) } ?? raw
+                    guard case .detail(let t) = TitleLink.resolve(link, movies: other.movies, series: other.series,
+                                                                   preferredAudio: pref) else { continue }
+                    switch t {
+                    case .movie(var m): m.sourceID = p.id; return .detail(.movie(m))
+                    case .series(var x): x.sourceID = p.id; return .detail(.series(x))
+                    }
+                }
+                return here
             }.value
             resolvingLink = false
             pendingDetail = nil

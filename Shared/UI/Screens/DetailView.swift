@@ -467,24 +467,43 @@ struct DetailView: View {
         if let y = d?.year { return y }
         switch target { case .movie(let m): return m.year.map(String.init); case .series(let s): return s.year.map(String.init) }
     }
-    /// Openbare link: IMDb (mooie preview in WhatsApp/iMessage), anders Trakt of TMDB.
+    /// Build 132: de eigen Bingr-link (`https://bingr.online/titel/?type=&id=&q=&y=`, zie TitleLink): de pagina geeft een
+    /// rijke preview (cover + meta) en opent de app op deze detailpagina. Zonder TMDB-id: type + titel + jaar (de app
+    /// zoekt dan op titel). Een serie deelt altijd de serie (ook vanaf een aflevering).
+    private var shareTMDBID: Int? {
+        if let t = d?.tmdbID { return t }
+        switch target {
+        case .movie(let m): return m.tmdbID ?? ContentLanguage.Facts.shared.tmdbID(m.id)
+        case .series(let s): return s.tmdbID ?? ContentLanguage.Facts.shared.tmdbID(s.id)
+        }
+    }
     private var shareURL: URL? {
-        if let i = imdb { return URL(string: "https://www.imdb.com/title/\(i)/") }
-        if let slug = d?.traktSlug { return URL(string: "https://trakt.tv/\(isMovie ? "movies" : "shows")/\(slug)") }
-        if let t = d?.tmdbID { return URL(string: "https://www.themoviedb.org/\(isMovie ? "movie" : "tv")/\(t)") }
-        return nil
+        TitleLink.shareURL(kind: isMovie ? .movie : .tv, tmdbID: shareTMDBID, title: shareTitle,
+                           year: shareYear.flatMap { Int($0.prefix(4)) })
     }
     private var shareText: String {
         let name = shareYear.map { "\(shareTitle) (\($0))" } ?? shareTitle
         return L(isMovie ? "Movie tip: %@" : "Series tip: %@", name)
+    }
+    /// Poster als preview-afbeelding, alleen als hij al geladen is (geheugencache); anders alleen de titel.
+    private var sharePoster: Image? {
+        for u in [d?.poster, basePoster].compactMap({ $0 }) {
+            if let cg = ImagePipeline.shared.cachedAny(u) { return Image(decorative: cg, scale: 1) }
+        }
+        return nil
     }
 
     #if !os(tvOS)
     private var shareButton: some View {
         Group {
             if let url = shareURL {
-                ShareLink(item: url, subject: Text(shareTitle), message: Text(shareText),
-                          preview: SharePreview(shareTitle)) { shareIcon }
+                if let img = sharePoster {
+                    ShareLink(item: url, subject: Text(shareTitle), message: Text(shareText),
+                              preview: SharePreview(shareTitle, image: img)) { shareIcon }
+                } else {
+                    ShareLink(item: url, subject: Text(shareTitle), message: Text(shareText),
+                              preview: SharePreview(shareTitle)) { shareIcon }
+                }
             } else {
                 ShareLink(item: shareText, subject: Text(shareTitle), preview: SharePreview(shareTitle)) { shareIcon }
             }

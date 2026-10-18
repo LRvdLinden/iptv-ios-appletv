@@ -47,6 +47,37 @@ struct TitleLink: Equatable, Sendable {
         return link
     }
 
+    /// Build 132: de eigen deellink (deelknop op de detailpagina): spiegel van `parse(_:)`, dus
+    /// `https://bingr.online/titel/?type=movie|tv&id=<tmdb-id>&q=<titel>&y=<jaar>` (of `bingr://title?…`). Waarden
+    /// strikt percent-encoded (ook `+`, `&`, `=`, `#`), zodat parse() precies dezelfde titel terugleest. Zonder titel én
+    /// zonder TMDB-id: nil (parse() zou hem ook weigeren).
+    func shareURL(scheme: String = "https") -> URL? {
+        let title = String(query.trimmingCharacters(in: .whitespacesAndNewlines).prefix(200))
+        let id = tmdbID.flatMap { $0 > 0 ? $0 : nil }
+        guard !title.isEmpty || id != nil else { return nil }
+        var parts: [String] = []
+        if let kind { parts.append("type=\(kind.rawValue)") }
+        if let id { parts.append("id=\(id)") }
+        if !title.isEmpty { parts.append("q=\(Self.encode(title))") }
+        if let year, (1870...2200).contains(year) { parts.append("y=\(year)") }
+        let base = scheme.lowercased() == "bingr" ? "bingr://title" : "https://bingr.online/titel/"
+        return URL(string: base + "?" + parts.joined(separator: "&"))
+    }
+
+    static func shareURL(kind: Kind, tmdbID: Int?, title: String, year: Int?) -> URL? {
+        TitleLink(kind: kind, tmdbID: tmdbID, query: title, year: year).shareURL()
+    }
+
+    /// Alleen RFC 3986-"unreserved" ongemoeid; de rest (spatie → %20, + → %2B, & → %26, …) gecodeerd.
+    private static let unreserved: CharacterSet = {
+        var c = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+        c.insert(charactersIn: "-._~")
+        return c
+    }()
+    private static func encode(_ s: String) -> String {
+        s.addingPercentEncoding(withAllowedCharacters: unreserved) ?? s
+    }
+
     enum Resolution: Sendable { case detail(DetailTarget), search(String) }
 
     /// Zoekt de titel in de (gefilterde) bibliotheek. Zwaar bij grote lijsten: buiten de hoofdthread aanroepen.
