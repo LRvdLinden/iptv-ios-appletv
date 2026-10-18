@@ -4,6 +4,19 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 125
+_18 oktober 2026_
+
+### Website
+
+**Verbeterd**
+
+- bingr.online en support.bingr.online: beter vindbaar in zoekmachines (één Nederlandse en één Engelse versie per pagina, duidelijkere paginatitels) en sneller laden door compressie en caching
+
+**Opgelost**
+
+- bingr.online: beter leesbare tekst bij Samsung TV in Downloads en een toegankelijkere cookiemelding
+
 ## Versie 1.0.0 · Build 124
 _17 oktober 2026_
 
