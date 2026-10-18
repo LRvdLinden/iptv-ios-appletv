@@ -53,7 +53,7 @@ struct SearchView: View {
                     if !groupHits.isEmpty { categoryList }
                     if !results.movies.isEmpty { grid(L("Movies"), results.movies.map { .movie($0) }) }
                     if !results.series.isEmpty { grid(L("Series"), results.series.map { .series($0) }) }
-                    if !results.other.isEmpty && CloudStore.shared.isMainActive { otherPlaylists }
+                    if !results.other.isEmpty { otherPlaylists }   // build 130: voor elk profiel
                     // Live TV (zenders en tv-gids) altijd als laatste, na films en series; de tvOS-focus volgt deze volgorde
                     if !results.channels.isEmpty { channelRow }
                     if !programs.isEmpty { programList }

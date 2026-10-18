@@ -236,6 +236,8 @@ Servers horen bij het account. Na het (opnieuw) installeren, na een update en op
 
 **Wie beheert:** alleen het hoofdaccount voegt servers toe, wijzigt ze en verwijdert ze; dat is al zo. Elk apparaat van het account leest ze en past ze toe, ongeacht het actieve profiel.
 
+**Build 130: alle servers voor alle profielen.** Elk profiel (ook subprofielen) ziet en gebruikt **alle** servers van het account: de actieve server kiezen/wisselen, zoeken ("In je andere afspeellijsten"), Andere bronnen, andere bronnen van een zender, vernieuwen van alle servers, terugkijken en de lijsten over alle servers (build 128/129). Er is geen serverfilter of -toewijzing per profiel. Alleen toevoegen, wijzigen en verwijderen van servers (en groepen/zenders beheren: hernoemen, samenvoegen, volgorde) blijft bij het hoofdaccount. Kinderslot, leeftijdsgrens en verborgen categorieën van het profiel gelden per server, ook voor de andere servers. Kiest een subprofiel een andere server, dan geldt die keuze alleen voor dat profiel op dat apparaat (lokaal); `mainSourceID` verandert alleen vanuit het hoofdaccount. Opslag en formaat veranderen niet.
+
 **Synchroniseren** volgt hetzelfde patroon als profielen. Het gebeurt na login (vóór "Wie kijkt er?", met maximaal 8 seconden wachten), bij het starten, bij terugkeer naar de voorgrond en bij elke heartbeat:
 - **Server leeg en lokaal bronnen:** uploaden. Dat is de migratie van bestaande gebruikers, inclusief de wachtwoorden en tokens uit de sleutelhanger.
 - **Lokaal leeg en server bronnen:** alles lokaal aanmaken met hetzelfde `id`, de `secrets` terugzetten in de sleutelhanger of opslag, het eigen platformblok toepassen, `mainSourceID` instellen en de bibliotheek laden. Dit is het geval na herinstallatie of op een nieuw apparaat.

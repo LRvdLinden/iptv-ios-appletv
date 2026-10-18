@@ -145,7 +145,7 @@ struct MainTabView: View {
     /// titel (+ jaar). Eén goede match → detailpagina, anders het zoekscherm. Wacht tot de bibliotheek geladen is.
     private func openTitleLink(loaded: Bool = false) {
         guard let link = app.pendingTitleLink, !resolvingLink, !playlists.isLoading,
-              let src = playlists.source, src.id == CloudStore.shared.mainSource?.id else { return }
+              let src = playlists.source, src.id == app.preferredSource?.id else { return }
         let lib = playlists.library
         guard loaded || !lib.isEmptyLibrary else { return }
         app.pendingTitleLink = nil

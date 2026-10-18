@@ -312,7 +312,25 @@ final class AppState: ObservableObject {
         withAnimation(.easeInOut(duration: 0.5)) { stage = needsAuth ? .auth : .picker }
     }
 
-    /// Profiel gekozen ("Wie kijkt er?") → de server van het hoofdaccount openen.
+    /// Build 130: alle servers van het account zijn er voor elk profiel. Kiest een subprofiel een andere server, dan
+    /// geldt die keuze alleen voor dat profiel op dit apparaat (lokaal); de actieve server van het account
+    /// (`mainSourceID`, gesynct) verandert alleen vanuit het hoofdaccount. Beheer (toevoegen, wijzigen,
+    /// verwijderen) blijft bij het hoofdaccount.
+    private func profileSourceKey(_ profile: UUID) -> String { "profile.\(profile.uuidString).activeSource" }
+
+    /// De server die het actieve profiel opent: de eigen keuze van een subprofiel (als die server nog bestaat),
+    /// anders de actieve server van het account.
+    var preferredSource: PlaylistSource? {
+        let store = CloudStore.shared
+        if !store.isMainOrSolo, let pid = store.activeProfileID,
+           let id = UserDefaults.standard.string(forKey: profileSourceKey(pid)).flatMap(UUID.init),
+           let p = store.playlists.first(where: { $0.id == id }) {
+            return p
+        }
+        return store.mainSource
+    }
+
+    /// Profiel gekozen ("Wie kijkt er?") → de server van dit profiel openen (standaard die van het hoofdaccount).
     func open(profile: ViewerProfile) {
         let store = CloudStore.shared
         store.selectProfile(profile)
@@ -320,7 +338,7 @@ final class AppState: ObservableObject {
         selectedTab = nil
         if !store.isMain(profile) { ParentalControl.shared.lock() }   // ontgrendeling van het hoofdaccount niet meenemen
         Task { await TraktSync.shared.applyProfile(isMain: store.isMain(profile)) }
-        guard let src = store.mainSource else { return }
+        guard let src = preferredSource else { return }
         // al geladen, of al aan het laden (bijv. na het importeren uit de account)
         if playlists.source?.id == src.id && (!playlists.library.isEmptyLibrary || playlists.isLoading) {
             withAnimation(.easeInOut(duration: 0.4)) { stage = .main }
@@ -332,7 +350,14 @@ final class AppState: ObservableObject {
 
     func open(_ p: PlaylistSource, thenShow itemID: String? = nil) {
         lastPlaylistID = p.id
-        if CloudStore.shared.mainSourceID != p.id { CloudStore.shared.setMainSource(p.id) }
+        let store = CloudStore.shared
+        if store.isMainOrSolo {
+            if store.mainSourceID != p.id { store.setMainSource(p.id) }
+        } else if let pid = store.activeProfileID {
+            // subprofiel: eigen keuze, lokaal (de server van het account blijft)
+            if p.id == store.mainSourceID { UserDefaults.standard.removeObject(forKey: profileSourceKey(pid)) }
+            else { UserDefaults.standard.set(p.id.uuidString, forKey: profileSourceKey(pid)) }
+        }
         pendingItemID = itemID
         withAnimation(.easeInOut(duration: 0.4)) { stage = .main }
         Task { await playlists.select(p) }
@@ -346,12 +371,12 @@ final class AppState: ObservableObject {
         let current = playlists.source?.id
         if stage == .main {
             guard let cur = current else {
-                if let src = store.mainSource { open(src) }
+                if let src = preferredSource { open(src) }
                 return
             }
             if change.removed.contains(cur) || !store.playlists.contains(where: { $0.id == cur }) {
-                if let src = store.mainSource { open(src) } else { switchPlaylist() }
-            } else if change.mainChanged, let src = store.mainSource, src.id != cur {
+                if let src = preferredSource { open(src) } else { switchPlaylist() }
+            } else if change.mainChanged, let src = preferredSource, src.id != cur {
                 open(src)
             } else if change.updated.contains(cur), let src = store.playlists.first(where: { $0.id == cur }) {
                 // instellingen of inloggegevens gewijzigd: op de achtergrond opnieuw ophalen
@@ -359,7 +384,7 @@ final class AppState: ObservableObject {
             }
             return
         }
-        guard let src = store.mainSource else { return }
+        guard let src = preferredSource else { return }
         // build 130: de bibliotheek alvast laden, maar pas na de intro
         Task { [weak self] in
             guard let self else { return }

@@ -72,7 +72,7 @@ enum AlternativeSources {
     // MARK: live
 
     /// Treffers voor een zender: eerst zelfde EPG-ID, daarna zelfde genormaliseerde naam.
-    /// Andere servers alleen voor het hoofdaccount (zoals bij "Andere bronnen" op de detailpagina).
+    /// Andere servers van het account (build 130: voor elk profiel, zoals "Andere bronnen" op de detailpagina).
     @MainActor
     static func liveMatches(for channelID: String, playlists: PlaylistService) async -> [AlternativeSource] {
         let lib = playlists.library
@@ -80,7 +80,9 @@ enum AlternativeSources {
               let ch = lib.channels.first(where: { $0.id == channelID }) ?? playlists.rawLibrary.channels.first(where: { $0.id == channelID })
         else { return [] }
         let store = CloudStore.shared
-        let others = store.isMainActive || store.profiles.isEmpty ? store.playlists.filter { $0.id != current.id } : []
+        let others = store.playlists.filter { $0.id != current.id }   // build 130: voor elk profiel
+        // build 130: met het filter van het profiel per server (kinderslot, leeftijd, verborgen categorieën)
+        let filters = Dictionary(uniqueKeysWithValues: others.map { ($0.id, playlists.context(for: $0)) })
         let currentChannels = lib.channels
         let epg = ch.epgID?.lowercased().trimmingCharacters(in: .whitespaces)
         let name = normalizedName(ch.name)
@@ -99,7 +101,12 @@ enum AlternativeSources {
                 }
             }
             scan(current, currentChannels, isCurrent: true)
-            for p in others { scan(p, cachedChannels(p), isCurrent: false) }
+            for p in others {
+                var raw = Library()
+                raw.channels = cachedChannels(p)
+                let visible = filters[p.id].map { PlaylistService.apply(raw, $0).channels } ?? raw.channels
+                scan(p, visible, isCurrent: false)
+            }
             // EPG-treffers eerst, dan de eigen bron, dan de rest
             return hits.sorted { a, b in
                 if a.byEPG != b.byEPG { return a.byEPG }

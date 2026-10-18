@@ -48,10 +48,10 @@ struct AppSettingsView: View {
     var body: some View {
         List {
             playlistSection
-            if isMain {
-                serverSection
-                refreshSection
-            }
+            // build 130: de servers van het account zijn er voor elk profiel (kiezen, vernieuwen, controleren);
+            // toevoegen, wijzigen en verwijderen blijft bij het hoofdaccount (zie serverSection)
+            serverSection
+            refreshSection
             openSubtitlesSection
             playerSection
             parentalSection
@@ -194,13 +194,17 @@ struct AppSettingsView: View {
                         }
                     }
                     .contextMenu {
-                        Button { editing = src } label: { Label(L("Edit"), systemImage: "pencil") }
-                        Button(role: .destructive) { deletingServer = src } label: { Label(L("Delete"), systemImage: "trash") }
+                        if isMain {
+                            Button { editing = src } label: { Label(L("Edit"), systemImage: "pencil") }
+                            Button(role: .destructive) { deletingServer = src } label: { Label(L("Delete"), systemImage: "trash") }
+                        }
                     }
                     #if !os(tvOS)
                     .swipeActions {
-                        Button(role: .destructive) { deletingServer = src } label: { Label(L("Delete"), systemImage: "trash") }
-                        Button { editing = src } label: { Label(L("Edit"), systemImage: "pencil") }.tint(.blue)
+                        if isMain {
+                            Button(role: .destructive) { deletingServer = src } label: { Label(L("Delete"), systemImage: "trash") }
+                            Button { editing = src } label: { Label(L("Edit"), systemImage: "pencil") }.tint(.blue)
+                        }
                     }
                     #endif
                 }
@@ -208,12 +212,18 @@ struct AppSettingsView: View {
                     Text(L("%@ · %d channels · %d movies · %d series", s.kind.title,
                            playlists.library.channels.count, playlists.library.movies.count, playlists.library.series.count))
                         .font(.caption).foregroundStyle(Theme.secondary)
-                    Button { editing = s } label: { Label(L("Edit server"), systemImage: "server.rack") }
+                    if isMain {
+                        Button { editing = s } label: { Label(L("Edit server"), systemImage: "server.rack") }
+                    }
+                    // categorieën aan/uit gelden per profiel (build 128)
                     NavigationLink { CategoriesView() } label: {
                         Label(L("Categories on/off (NL, BE, DE…)"), systemImage: "line.3.horizontal.decrease.circle")
                     }
-                    NavigationLink { ManageView() } label: {
-                        Label(L("Manage groups and channels"), systemImage: "slider.horizontal.below.rectangle")
+                    // groepen en zenders beheren (hernoemen, samenvoegen, volgorde) geldt voor het hele account
+                    if isMain {
+                        NavigationLink { ManageView() } label: {
+                            Label(L("Manage groups and channels"), systemImage: "slider.horizontal.below.rectangle")
+                        }
                     }
                     NavigationLink { SourceCheckView() } label: {
                         Label(L("Check source"), systemImage: "stethoscope")
@@ -226,13 +236,15 @@ struct AppSettingsView: View {
                     .disabled(playlists.refreshingAll)
                     if store.playlists.count > 1 { refreshStatus }
                 }
-                if ent.canAddServer(count: store.playlists.count) {
-                    Button { addingServer = true } label: { Label(L("Add server"), systemImage: "plus") }
-                } else {
-                    LifetimeLockRow(title: L("Add server"), icon: "plus", feature: .multiServer)
-                }
-                if let s = playlists.source {
-                    Button(role: .destructive) { deletingServer = s } label: { Label(L("Delete server"), systemImage: "trash") }
+                if isMain {
+                    if ent.canAddServer(count: store.playlists.count) {
+                        Button { addingServer = true } label: { Label(L("Add server"), systemImage: "plus") }
+                    } else {
+                        LifetimeLockRow(title: L("Add server"), icon: "plus", feature: .multiServer)
+                    }
+                    if let s = playlists.source {
+                        Button(role: .destructive) { deletingServer = s } label: { Label(L("Delete server"), systemImage: "trash") }
+                    }
                 }
             } header: { Text(L("Server")) } footer: {
                 Text(L("The server, Trakt and OpenSubtitles belong to the main account and are used by all profiles."))

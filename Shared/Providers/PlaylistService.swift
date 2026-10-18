@@ -686,8 +686,8 @@ final class PlaylistService: ObservableObject {
         // zoeken in de cache van alle andere afspeellijsten
         let others = CloudStore.shared.playlists.filter { $0.id != source?.id }
         let liveLabel = L("Live TV")
-        // leeftijdsgrens: ook de andere afspeellijsten filteren (anders liepen kinderprofielen hier om het filter heen)
-        let ageCtx = Dictionary(uniqueKeysWithValues: others.compactMap { p in ageContext(for: p).map { (p.id, $0) } })
+        // build 130: elk profiel ziet alle servers, met zijn eigen filter per server (leeftijd, kinderslot, categorieën)
+        let ageCtx = Dictionary(uniqueKeysWithValues: others.map { p in (p.id, context(for: p)) })
         r.other = await Task.detached(priority: .userInitiated) {
             var hits: [OtherHit] = []
             for p in others {
@@ -717,9 +717,9 @@ final class PlaylistService: ObservableObject {
         guard !norm.isEmpty else { return [] }
         let current = source
         let currentLib = library   // gefilterd: geen verborgen/vergrendelde of te oude titels
-        // andere servers alleen voor het hoofdaccount (subprofielen mogen de server niet wisselen)
-        let all = CloudStore.shared.isMainActive ? CloudStore.shared.playlists : CloudStore.shared.playlists.filter { $0.id == current?.id }
-        let ageCtx = Dictionary(uniqueKeysWithValues: all.compactMap { p in ageContext(for: p).map { (p.id, $0) } })
+        // build 130: alle servers van het account, voor elk profiel (met het filter van het profiel per server)
+        let all = CloudStore.shared.playlists
+        let ageCtx = Dictionary(uniqueKeysWithValues: all.filter { $0.id != current?.id }.map { p in (p.id, context(for: p)) })
         return await Task.detached(priority: .userInitiated) {
             var hits: [OtherHit] = []
             for p in all {
