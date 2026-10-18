@@ -1,5 +1,52 @@
 [
  {
+  "build": 128,
+  "version": "1.0.0",
+  "date": "2026-10-18",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Webspeler: één Verder kijken, Mijn lijst, set favoriete en recente zenders, geschiedenis en collecties over al je servers. Een titel of zender van een andere server open je en speel je af via die server, zonder te wisselen; dezelfde titel op twee servers is één tegel",
+    "en": "Web player: one Continue watching, My List, set of favourite and recent channels, history and collections across all your servers. A title or channel from another server opens and plays through that server, without switching; the same title on two servers is one tile"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Webspeler: staat een titel niet meer op zijn server of is die server verwijderd, dan zoekt Bingr hem op de achtergrond op je andere servers en verhuist hij mee, met je voortgang. Vindt Bingr hem nergens, dan blijft hij staan en krijg je bij aanklikken een melding met Verwijderen, Zoeken of Annuleren. Er verdwijnt niets",
+    "en": "Web player: if a title is no longer on its server or that server was removed, Bingr looks for it on your other servers in the background and moves it there, with your progress. If it can't be found anywhere, it stays and tapping it shows a message with Remove, Search or Cancel. Nothing disappears"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Webspeler: categorieën aan of uit per profiel, voor de categorieën van al je servers (Mijn Bingr → Categorieën tonen)",
+    "en": "Web player: turn categories on or off per profile, for the categories of all your servers (My Bingr → Show categories)"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Webspeler: een M3U-afspeellijst zonder eigen tv-gids-URL laadt weer",
+    "en": "Web player: an M3U playlist without its own TV guide URL loads again"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "web"
+    ],
+    "nl": "bingr.online, de webspeler en support.bingr.online: Lifetime is tot 3 schermen tegelijk en 15 apparaten; hoeveel je tegelijk kunt kijken, hangt ook af van je IPTV-aanbieder (ook in de voorwaarden en de privacyverklaring)",
+    "en": "bingr.online, the web player and support.bingr.online: Lifetime is up to 3 screens at once and 15 devices; how many you can watch at once also depends on your IPTV provider (also in the terms and the privacy policy)"
+   }
+  ]
+ },
+ {
   "build": 127,
   "version": "1.0.0",
   "date": "2026-10-18",

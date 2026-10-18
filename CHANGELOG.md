@@ -4,6 +4,25 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 128
+_18 oktober 2026_
+
+### Website
+
+**Nieuw**
+
+- Webspeler: één Verder kijken, Mijn lijst, set favoriete en recente zenders, geschiedenis en collecties over al je servers. Een titel of zender van een andere server open je en speel je af via die server, zonder te wisselen; dezelfde titel op twee servers is één tegel
+- Webspeler: staat een titel niet meer op zijn server of is die server verwijderd, dan zoekt Bingr hem op de achtergrond op je andere servers en verhuist hij mee, met je voortgang. Vindt Bingr hem nergens, dan blijft hij staan en krijg je bij aanklikken een melding met Verwijderen, Zoeken of Annuleren. Er verdwijnt niets
+- Webspeler: categorieën aan of uit per profiel, voor de categorieën van al je servers (Mijn Bingr → Categorieën tonen)
+
+**Verbeterd**
+
+- bingr.online, de webspeler en support.bingr.online: Lifetime is tot 3 schermen tegelijk en 15 apparaten; hoeveel je tegelijk kunt kijken, hangt ook af van je IPTV-aanbieder (ook in de voorwaarden en de privacyverklaring)
+
+**Opgelost**
+
+- Webspeler: een M3U-afspeellijst zonder eigen tv-gids-URL laadt weer
+
 ## Versie 1.0.0 · Build 127
 _18 oktober 2026_
 
