@@ -12,44 +12,8 @@ jobs:
       - name: Zoeken
         run: |
           python3 -m pip install --quiet --break-system-packages pillow==11.0.0
-          python3 tools/fetch_free_media.py search probe.txt \
-            "Category:Big Buck Bunny" "Category:Elephants Dream" "Category:Sintel" "Category:Tears of Steel" \
-            "Category:Cosmos Laundromat" "Category:Agent 327: Operation Barbershop" "Category:Spring (2019 film)" \
-            "Category:Coffee Run" "Category:Sprite Fright" "Category:Charge (2022 film)" \
-            "Category:Nosferatu (1922 film)" "Category:A Trip to the Moon" "Category:The Great Train Robbery (1903 film)" \
-            "Category:Les Vampires (film)" "Category:Judex (1916 film)" "Category:Nanook of the North" \
-            "Category:Intolerance (film)" "Category:The Cabinet of Dr. Caligari" \
-            "Sprite Fright Blender" "Charge Blender open movie" "Coffee Run Blender" "Spring Blender Studio" \
-            "Agent 327 Blender" "Cosmos Laundromat" "Les Vampires Feuillade" "Judex Feuillade" "Nosferatu 1922 still"
-          python3 - <<'PY'
-          import urllib.request, pathlib
-          from io import BytesIO
-          from PIL import Image, ImageDraw
-          UA={"User-Agent":"BingrAppStoreScreenshots/1.0 (https://github.com/LRvdLinden/iptv-ios-appletv)"}
-          sec=None; n=0; groups={}
-          for l in open("probe.txt"):
-              l=l.rstrip("\n")
-              if l.startswith("### "): sec=l[4:]; groups[sec]=[]; continue
-              f=l.split("\t")
-              if len(f)<9 or f[4]!="OK" or not f[8] or not f[2].startswith("image"): continue
-              groups[sec].append((f[0],f[8]))
-          out=pathlib.Path("sheets"); out.mkdir(exist_ok=True)
-          idx=open("sheets/index.txt","w")
-          for gi,(sec,items) in enumerate(groups.items()):
-              items=items[:30]
-              if not items: continue
-              cols=6; rows=(len(items)+cols-1)//cols
-              sheet=Image.new("RGB",(cols*370,rows*260),(30,30,30)); d=ImageDraw.Draw(sheet)
-              for i,(t,u) in enumerate(items):
-                  try:
-                      im=Image.open(BytesIO(urllib.request.urlopen(urllib.request.Request(u,headers=UA),timeout=60).read())).convert("RGB")
-                      im.thumbnail((360,230)); sheet.paste(im,((i%cols)*370+5,(i//cols)*260+5))
-                  except Exception as e: print(t,e)
-                  d.text(((i%cols)*370+8,(i//cols)*260+238),f"{i} {t[5:50]}",fill=(255,255,0))
-                  idx.write(f"{gi:02d}-{i}\t{t}\n")
-              sheet.save(f"sheets/{gi:02d}.jpg",quality=80)
-          PY
+          python3 tools/_probe2.py
       - name: Resultaat
         run: |
           git config user.name github-actions; git config user.email actions@github.com
-          git add probe.txt sheets; git commit -qm "probe-resultaat"; git push origin HEAD:media-probe-result -f
+          git add probe2.txt sheets2; git commit -qm "probe-resultaat"; git push origin HEAD:media-probe-result -f
