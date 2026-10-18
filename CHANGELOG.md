@@ -4,6 +4,39 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 130
+_18 oktober 2026_
+
+### Alle apps en de website
+
+**Verbeterd**
+
+- Vernieuwen werkt nu al je servers bij: eerst de actieve, daarna de andere één voor één op de achtergrond, met voortgang. Lukt een server niet, dan gaan de andere gewoon door en zie je welke niet lukte
+
+### iOS, iPadOS, tvOS en macOS
+
+**Opgelost**
+
+- De intro bij het openen loopt weer vloeiend, vooral op Apple TV
+
+### iOS, iPadOS, tvOS, macOS en Website
+
+**Opgelost**
+
+- Andere servers worden pas bijgewerkt als je actieve server klaar is, en een oude cache van een andere server wordt weer op de achtergrond ververst (hooguit eens per 6 uur)
+
+### iOS, iPadOS, tvOS, macOS, Android, Android TV en Website
+
+**Verbeterd**
+
+- Alle servers van je account zijn er nu voor elk profiel: kiezen, vernieuwen, zoeken en Andere bronnen over alle servers, met het kinderslot, de leeftijdsgrens en de categorieën van het profiel. Servers toevoegen, wijzigen en verwijderen blijft bij het hoofdprofiel
+
+### Website
+
+**Opgelost**
+
+- Het laden van een tweede MAC-portal verstoort het afspelen op je actieve server niet meer
+
 ## Versie 1.0.0 · Build 129
 _18 oktober 2026_
 

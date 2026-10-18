@@ -1,5 +1,82 @@
 [
  {
+  "build": 130,
+  "version": "1.0.0",
+  "date": "2026-10-18",
+  "items": [
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web"
+    ],
+    "nl": "Vernieuwen werkt nu al je servers bij: eerst de actieve, daarna de andere één voor één op de achtergrond, met voortgang. Lukt een server niet, dan gaan de andere gewoon door en zie je welke niet lukte",
+    "en": "Refresh now updates all your servers: the active one first, then the others one by one in the background, with progress. If one server fails, the rest carry on and you see which one didn't work"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web"
+    ],
+    "nl": "Alle servers van je account zijn er nu voor elk profiel: kiezen, vernieuwen, zoeken en Andere bronnen over alle servers, met het kinderslot, de leeftijdsgrens en de categorieën van het profiel. Servers toevoegen, wijzigen en verwijderen blijft bij het hoofdprofiel",
+    "en": "All servers on your account are now available to every profile: choose, refresh, search and Other sources across all servers, with the profile's parental lock, age limit and categories. Adding, editing and removing servers stays with the main profile"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "android",
+     "androidtv",
+     "tizen"
+    ],
+    "nl": "Na het openen is de app weer snel klaar en blijft hij niet meer lang ‘Bijwerken…’ tonen. Je andere servers worden stil op de achtergrond bijgewerkt, één tegelijk, hooguit eens per 6 uur en niet tijdens het kijken",
+    "en": "The app is ready quickly again after opening and no longer shows ‘Updating…’ for a long time. Your other servers are updated quietly in the background, one at a time, at most every 6 hours and never while you're watching"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "web"
+    ],
+    "nl": "Andere servers worden pas bijgewerkt als je actieve server klaar is, en een oude cache van een andere server wordt weer op de achtergrond ververst (hooguit eens per 6 uur)",
+    "en": "Other servers are only updated once your active server is ready, and an old cache of another server is refreshed in the background again (at most every 6 hours)"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "De intro bij het openen loopt weer vloeiend, vooral op Apple TV",
+    "en": "The intro animation at launch is smooth again, especially on Apple TV"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Het laden van een tweede MAC-portal verstoort het afspelen op je actieve server niet meer",
+    "en": "Loading a second MAC portal no longer interferes with playback on your active server"
+   }
+  ]
+ },
+ {
   "build": 129,
   "version": "1.0.0",
   "date": "2026-10-18",
