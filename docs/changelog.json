@@ -1,5 +1,28 @@
 [
  {
+  "build": 127,
+  "version": "1.0.0",
+  "date": "2026-10-18",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "web"
+    ],
+    "nl": "bingr.online: vier nieuwe uitlegpagina's: de IPTV-app voor iPhone, iPad, Apple TV en Mac, IPTV op Samsung TV, een M3U-afspeellijst of Xtream Codes toevoegen (met de tv-gids) en een eerlijke vergelijking met IPTV Smarters en TiviMate",
+    "en": "bingr.online: four new guide pages: the IPTV app for iPhone, iPad, Apple TV and Mac, IPTV on Samsung TV, adding an M3U playlist or Xtream Codes (with the TV guide) and an honest comparison with IPTV Smarters and TiviMate"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "web"
+    ],
+    "nl": "bingr.online, de webspeler en support.bingr.online: duidelijker dat het aantal streams dat je tegelijk kunt kijken ook afhangt van je IPTV-aanbieder (bij de abonnementen, in de FAQ, op de upgradepagina en in de hulp)",
+    "en": "bingr.online, the web player and support.bingr.online: clearer that the number of streams you can watch at once also depends on your IPTV provider (with the plans, in the FAQ, on the upgrade page and in the help)"
+   }
+  ]
+ },
+ {
   "build": 126,
   "version": "1.0.0",
   "date": "2026-10-18",

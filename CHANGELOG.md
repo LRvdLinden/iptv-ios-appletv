@@ -4,6 +4,19 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 127
+_18 oktober 2026_
+
+### Website
+
+**Nieuw**
+
+- bingr.online: vier nieuwe uitlegpagina's: de IPTV-app voor iPhone, iPad, Apple TV en Mac, IPTV op Samsung TV, een M3U-afspeellijst of Xtream Codes toevoegen (met de tv-gids) en een eerlijke vergelijking met IPTV Smarters en TiviMate
+
+**Verbeterd**
+
+- bingr.online, de webspeler en support.bingr.online: duidelijker dat het aantal streams dat je tegelijk kunt kijken ook afhangt van je IPTV-aanbieder (bij de abonnementen, in de FAQ, op de upgradepagina en in de hulp)
+
 ## Versie 1.0.0 · Build 126
 _18 oktober 2026_
 
