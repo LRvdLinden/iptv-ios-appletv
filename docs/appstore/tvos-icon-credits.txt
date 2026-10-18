@@ -1,4 +1,4 @@
-Bingr - tvOS-icoon en Top Shelf-afbeeldingen (tools/make_tvos_icon.py)
+Bingr - Top Shelf-afbeeldingen voor Apple TV (tools/make_tvos_icon.py)
 
 De covermuur op de achtergrond gebruikt alleen vrij te gebruiken filmposters van Wikimedia Commons:
 Blender open movies (Creative Commons Naamsvermelding) en films die in de EU en de VS publiek domein zijn.

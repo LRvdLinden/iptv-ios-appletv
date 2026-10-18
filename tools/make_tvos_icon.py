@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Maakt het gelaagde tvOS-icoon en de Top Shelf-afbeeldingen (build 129).
+"""Maakt de Top Shelf-afbeeldingen voor Apple TV (build 129); het app-icoon blijft ongewijzigd.
 
     python3 tools/fetch_free_media.py fetch /tmp/media     # vrije posters (licentie per bestand gecontroleerd)
     python3 tools/make_tvos_icon.py /tmp/media [previewmap]
@@ -12,10 +12,9 @@ Alleen vrije posters: Blender open movies (CC BY) en films die in de EU en de VS
 docs/appstore/free_media.json (Wikimedia Commons). Nooit TMDB/IMDb-posters (docs/covers e.d.): het icoon gaat de
 App Store in. De naamsvermelding komt in docs/appstore/tvos-icon-credits.txt.
 
-Uitvoer (tvOS/Assets.xcassets/App Icon & Top Shelf Image.brandassets):
-- App Icon.imagestack (400x240 @1x, 800x480 @2x) en App Icon - App Store.imagestack (1280x768):
-  Back = covermuur (ondoorzichtig), Middle = vignet + rode gloed (transparant), Front = logo (transparant)
-- Top Shelf Image (1920x720, 3840x1440) en Top Shelf Image Wide (2320x720, 4640x1440): alles in één beeld
+Uitvoer (tvOS/Assets.xcassets/App Icon & Top Shelf Image.brandassets): Top Shelf Image (1920x720, 3840x1440) en
+Top Shelf Image Wide (2320x720, 4640x1440). tvOS toont de Top Shelf schermvullend achter de iconenrij, die over de
+onderste ~35% valt: het logo (en de rode gloed) staan daarom in het bovenste deel, de muur vult het hele vlak.
 """
 import json
 import math
@@ -152,23 +151,23 @@ def tilted_wall(posters, W: int, H: int, pw_frac: float, seed: int, drift=(0.0, 
 
 # ---------------------------------------------------------------- vignet en gloed
 
-def radial(W, H, rx, ry, stops):
+def radial(W, H, rx, ry, stops, cy=0.5):
     """Radiaal verloop (ellips rx, ry als fractie) met stops [(positie, waarde)] → float-array."""
     yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
-    r = np.sqrt(((xx + .5 - W / 2) / (W * rx)) ** 2 + ((yy + .5 - H / 2) / (H * ry)) ** 2)
+    r = np.sqrt(((xx + .5 - W / 2) / (W * rx)) ** 2 + ((yy + .5 - H * cy) / (H * ry)) ** 2)
     pos = [p for p, _ in stops]
     val = [v for _, v in stops]
     return np.interp(r, pos, val).astype(np.float32)
 
 
-def middle_layer(W, H, wide=False, strength=1.0):
+def middle_layer(W, H, wide=False, strength=1.0, cy=0.5):
     """Donker vignet (midden donker achter het logo, randen weer donkerder) + rode gloed: transparante PNG."""
     yy = (np.mgrid[0:H, 0:W][0].astype(np.float32) + .5) / H
     rx = 0.62 if wide else 0.75
-    dark = radial(W, H, rx, 0.75, [(0, .74), (.45, .60), (.8, .36), (1.15, .55), (1.6, .80)])
+    dark = radial(W, H, rx, 0.75, [(0, .74), (.45, .60), (.8, .36), (1.15, .55), (1.6, .80)], cy)
     lin = np.interp(yy, [0, .22, .75, 1], [.55, .0, .0, .62]).astype(np.float32)
     a_dark = 1 - (1 - dark * strength) * (1 - lin * strength)
-    glow = radial(W, H, 0.30 if wide else 0.42, 0.42, [(0, .34), (.5, .2), (1, 0)]) * strength
+    glow = radial(W, H, 0.30 if wide else 0.42, 0.42, [(0, .34), (.5, .2), (1, 0)], cy) * strength
     # rood over zwart (alpha-compositie van twee lagen in één)
     a = 1 - (1 - a_dark) * (1 - glow)
     rgb = np.zeros((H, W, 3), np.float32)
@@ -276,15 +275,7 @@ def main():
     preview = pathlib.Path(sys.argv[2]) if len(sys.argv) > 2 else None
     posters, used = load_posters(media)
 
-    ICON_PW = 0.17      # posterbreedte als fractie van de hoogte
-    ICON_LOGO = 0.50    # logobreedte als fractie van de breedte (ruim binnen de veilige zone)
-    back = lambda W, H: tilted_wall(posters, W, H, ICON_PW, seed=129)
-    middle = lambda W, H: middle_layer(W, H)
-    front = lambda W, H: logo_layer(W, H, ICON_LOGO)
-    layers = {"Front": front, "Middle": middle, "Back": back}
-    write_stack("App Icon.imagestack", [("1x", 400, 240), ("2x", 800, 480)], layers)
-    write_stack("App Icon - App Store.imagestack", [("1x", 1280, 768)], layers)
-
+    LOGO_Y = 0.34  # middelpunt van het logo (fractie van de hoogte), ruim boven de iconenrij
     for name, sizes in (("Top Shelf Image.imageset", [("1x", 1920, 720), ("2x", 3840, 1440)]),
                         ("Top Shelf Image Wide.imageset", [("1x", 2320, 720), ("2x", 4640, 1440)])):
         d = BRAND / name
@@ -294,14 +285,14 @@ def main():
         for scale, W, H in sizes:
             fn = f"topshelf@{scale}.png"
             img = flatten(tilted_wall(posters, W, H, 0.24, seed=7),
-                          middle_layer(W, H, wide=True),
-                          logo_layer(W, H, 0.27 * 1920 * H / (720 * W)))
+                          middle_layer(W, H, wide=True, cy=LOGO_Y),
+                          logo_layer(W, H, 0.25 * 1920 * H / (720 * W), cy_frac=LOGO_Y))
             img.save(d / fn, optimize=True)
             imgs.append({"filename": fn, "idiom": "tv", "scale": scale})
         write_json(d / "Contents.json", {"images": imgs, "info": INFO})
 
     # naamsvermelding (CC BY vraagt dat)
-    lines = ["Bingr - tvOS-icoon en Top Shelf-afbeeldingen (tools/make_tvos_icon.py)",
+    lines = ["Bingr - Top Shelf-afbeeldingen voor Apple TV (tools/make_tvos_icon.py)",
              "",
              "De covermuur op de achtergrond gebruikt alleen vrij te gebruiken filmposters van Wikimedia Commons:",
              "Blender open movies (Creative Commons Naamsvermelding) en films die in de EU en de VS publiek domein zijn.",
@@ -320,40 +311,33 @@ def main():
 
     if preview:
         make_previews(preview, posters)
-    print(f"tvOS-icoon en Top Shelf gemaakt met {len(used)} vrije posters; credits in {CREDITS.relative_to(ROOT)}")
+    print(f"Top Shelf gemaakt met {len(used)} vrije posters; credits in {CREDITS.relative_to(ROOT)}")
 
 
 def make_previews(out: pathlib.Path, posters):
-    """Vlak icoon, parallax-standen (lagen verschoven) en de Top Shelf, alleen om te bekijken."""
+    """Top Shelf (gewoon en breed) met een gesimuleerde iconenrij over de onderste 35%, alleen om te bekijken."""
     out.mkdir(parents=True, exist_ok=True)
-    st = BRAND / "App Icon - App Store.imagestack"
-    L = {n: Image.open(st / f"{n}.imagestacklayer/Content.imageset/{n.lower()}@1x.png").convert("RGBA")
-         for n in ("Back", "Middle", "Front")}
-    W, H = L["Back"].size
-    canvas = Image.new("RGB", (W * 2 + 120, H * 2 + 120), (40, 40, 44))
 
-    def focused(dx, dy, scale=1.0):
-        # tvOS: lagen schuiven ten opzichte van elkaar; achterste het minst, voorste het meest
-        img = Image.new("RGBA", (W, H))
-        for n, k in (("Back", -0.6), ("Middle", 0.4), ("Front", 1.6)):
-            lay = L[n]
-            s = scale * (1.04 if n == "Back" else 1.0)
-            lay = lay.resize((round(W * s), round(H * s)), Image.LANCZOS)
-            img.alpha_composite(lay, (round((W - lay.width) / 2 + dx * k), round((H - lay.height) / 2 + dy * k)))
-        m = Image.new("L", (W, H), 0)
-        ImageDraw.Draw(m).rounded_rectangle((0, 0, W - 1, H - 1), 24, fill=255)
-        res = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-        res.paste(img, (0, 0), m)
-        return res
+    def with_dock(im):
+        im = im.convert("RGBA")
+        W, H = im.size
+        dock = Image.new("RGBA", im.size, (0, 0, 0, 0))
+        dr = ImageDraw.Draw(dock)
+        top = round(H * 0.65)
+        iw, ih, g = round(H * 0.42), round(H * 0.25), round(H * 0.04)
+        n = W // (iw + g) + 1
+        x0 = (W - (n * iw + (n - 1) * g)) // 2
+        for i in range(n):
+            x = x0 + i * (iw + g)
+            dr.rounded_rectangle((x, top + g, x + iw, top + g + ih), round(H * 0.02),
+                                 fill=(255, 255, 255, 40), outline=(255, 255, 255, 120), width=2)
+        return Image.alpha_composite(im, dock).convert("RGB")
 
-    for i, (dx, dy) in enumerate([(0, 0), (-18, -10), (18, 10), (18, -10)]):
-        canvas.paste(focused(dx, dy), (40 + (i % 2) * (W + 40), 40 + (i // 2) * (H + 40)), focused(dx, dy))
-    canvas.save(out / "tvos-icon-preview.png")
     ts = Image.open(BRAND / "Top Shelf Image.imageset/topshelf@1x.png")
     tw = Image.open(BRAND / "Top Shelf Image Wide.imageset/topshelf@1x.png")
     sheet = Image.new("RGB", (tw.width, ts.height + tw.height + 40), (40, 40, 44))
-    sheet.paste(ts, ((tw.width - ts.width) // 2, 0))
-    sheet.paste(tw, (0, ts.height + 40))
+    sheet.paste(with_dock(ts), ((tw.width - ts.width) // 2, 0))
+    sheet.paste(with_dock(tw), (0, ts.height + 40))
     sheet.save(out / "tvos-topshelf-preview.png")
 
 
