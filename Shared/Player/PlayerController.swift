@@ -220,6 +220,8 @@ final class PlayerController: ObservableObject {
             watchedSeconds = 0; recordedHistory = false
             // build 97: nieuwe afspeelsessie: het profiel van nu vastleggen
             playbackProfileID = CloudStore.shared.activeProfileID
+            // build 128: meta van wat er speelt (titel, aflevering, zender) meeschrijven voor "één lijst over alle servers"
+            if !isPreview { CrossServer.shared.notePlayed(item) }
         }
         stopped = false
         let apple = forceApple ?? Self.prefersApple(url)
@@ -649,7 +651,8 @@ final class PlayerController: ObservableObject {
         guard !isPreview, !recordedHistory, watchedSeconds >= 60 else { return }
         recordedHistory = true
         let it = item
-        CloudStore.shared.addHistory(HistoryEntry(itemID: it.channelID ?? it.id, playlistID: CloudStore.shared.activePlaylistID,
+        // build 128: de eigen server van het item (ook als dat niet de open bron is)
+        CloudStore.shared.addHistory(HistoryEntry(itemID: it.channelID ?? it.id, playlistID: it.sourceID ?? CloudStore.shared.activePlaylistID,
                                                   title: it.title, subtitle: it.subtitle, artwork: it.artwork,
                                                   type: it.type, channelID: it.channelID, date: Date(),
                                                   profileID: playbackProfileID ?? CloudStore.shared.activeProfileID))
@@ -671,7 +674,7 @@ final class PlayerController: ObservableObject {
             }
         } else if position > 0.02 {
             store.setProgress(item.id, ProgressEntry(fraction: position, position: currentTime, updated: Date(),
-                                                     title: item.title, artwork: item.artwork, playlistID: store.activePlaylistID,
+                                                     title: item.title, artwork: item.artwork, playlistID: item.sourceID ?? store.activePlaylistID,
                                                      profileID: prof), profile: prof)
         }
     }

@@ -8,6 +8,7 @@ enum Playables {
                              imdbID: imdb, artwork: m.poster, stalkerCmd: m.stalkerCmd,
                              resumeAt: resume(m.id, imdb: imdb))
         if m.streamURL == nil, m.stalkerCmd == nil, let id = m.imdbID ?? imdb { p.stremio = "movie|\(id)" }
+        p.sourceID = m.sourceID   // build 128: afspelen via de eigen server van de titel
         applyLanguage(ContentLanguage.of(m), to: &p)
         return p
     }
@@ -27,13 +28,16 @@ enum Playables {
                              artwork: e.still ?? s.poster, resumeAt: resume(e.id, imdb: nil))
         if e.streamURL == nil, e.id.hasPrefix("se") { p.stremio = "series|\(e.id.dropFirst(2))" }
         p.seriesID = s.id
+        p.sourceID = s.sourceID ?? e.sourceID
         applyLanguage(ContentLanguage.of(s), to: &p)
         return p
     }
 
     static func channel(_ c: Channel, now: EPGProgram?) -> PlayableItem {
-        PlayableItem(id: c.id, title: c.name, subtitle: now?.title, url: c.streamURL, type: .live,
-                     artwork: c.logo, stalkerCmd: c.stalkerCmd, channelID: c.id)
+        var p = PlayableItem(id: c.id, title: c.name, subtitle: now?.title, url: c.streamURL, type: .live,
+                             artwork: c.logo, stalkerCmd: c.stalkerCmd, channelID: c.id)
+        p.sourceID = c.sourceID
+        return p
     }
 
     static func resume(_ id: String, imdb: String?) -> Double {

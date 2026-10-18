@@ -102,7 +102,8 @@ struct ManageView: View {
 
     @ViewBuilder private func groupRow(_ g: String, index: Int) -> some View {
         let key = Customization.groupKey(g)
-        let hidden = c.hidden.contains(key)
+        // build 128: verbergen van een categorie = categorie uit voor dit profiel (zoals in Categorieën aan/uit)
+        let hidden = pid.map { store.isCategoryHidden($0, g) } ?? false
         let locked = pid.map { CloudStore.shared.parental.lockedGroups.contains("\($0.uuidString)|\(g)") } ?? false
         let label = HStack {
             VStack(alignment: .leading, spacing: 2) {
@@ -125,7 +126,7 @@ struct ManageView: View {
         }
         #if !os(tvOS)
         .swipeActions {
-            Button { update { if hidden { $0.hidden.remove(key) } else { $0.hidden.insert(key) } } } label: {
+            Button { toggleCategory(g, hidden) } label: {
                 Label(hidden ? L("Show") : L("Hide"), systemImage: hidden ? "eye" : "eye.slash")
             }.tint(.gray)
             Button { renaming = RenameTarget(id: key, current: display(g)) } label: { Label(L("Rename"), systemImage: "pencil") }.tint(.blue)
@@ -135,10 +136,11 @@ struct ManageView: View {
 
     @ViewBuilder private func groupActions(_ g: String) -> some View {
         let key = Customization.groupKey(g)
-        let hidden = c.hidden.contains(key)
+        // build 128: verbergen van een categorie = categorie uit voor dit profiel (zoals in Categorieën aan/uit)
+        let hidden = pid.map { store.isCategoryHidden($0, g) } ?? false
         let locked = pid.map { CloudStore.shared.parental.lockedGroups.contains("\($0.uuidString)|\(g)") } ?? false
         Button { renaming = RenameTarget(id: key, current: display(g)) } label: { Label(L("Rename"), systemImage: "pencil") }
-        Button { update { if hidden { $0.hidden.remove(key) } else { $0.hidden.insert(key) } } } label: {
+        Button { toggleCategory(g, hidden) } label: {
             Label(hidden ? L("Show") : L("Hide"), systemImage: hidden ? "eye" : "eye.slash")
         }
         Button { merging = g } label: { Label(L("Merge into…"), systemImage: "arrow.triangle.merge") }
@@ -151,6 +153,11 @@ struct ManageView: View {
             Button { moveGroup(g, by: -1) } label: { Label(L("Move up"), systemImage: "arrow.up") }
             Button { moveGroup(g, by: 1) } label: { Label(L("Move down"), systemImage: "arrow.down") }
         }
+    }
+
+    private func toggleCategory(_ g: String, _ hidden: Bool) {
+        guard let pid else { return }
+        store.setCategories([(pid, g)], hidden: !hidden)
     }
 
     private func update(_ change: (inout Customization) -> Void) {

@@ -29,6 +29,9 @@ final class CloudStore: ObservableObject {
     /// serie-id → "seizoen-aflevering" uit `localWatched` (één keer opgebouwd i.p.v. per poster de hele set door te lopen)
     private var localEpisodeIndex: [String: Set<String>]?
     @Published private(set) var recentChannels: [String] = []
+    /// Build 128: categorieën die dit profiel uit heeft gezet, over alle servers: "<server-id>|<categorienaam>"
+    @Published private(set) var hiddenCategories: Set<String> = [] { didSet { hiddenGroupsCache = [:] } }
+    private var hiddenGroupsCache: [UUID: Set<String>] = [:]
     @Published var lastSync: Date?
     /// Per afspeellijst: hernoemd, verborgen, volgorde, samengevoegd
     @Published private(set) var customizations: [UUID: Customization] = [:]
@@ -88,6 +91,7 @@ final class CloudStore: ObservableObject {
         assign(\.localWatched, scoped(Set<String>.self, K.watched) ?? [])
         assign(\.recentChannels, scoped([String].self, K.recent) ?? [])
         assign(\.history, scoped([HistoryEntry].self, K.history) ?? [])
+        assign(\.hiddenCategories, decode(Set<String>.self, pk(K.categories)) ?? [])
     }
 
     /// Bestaande afspeellijsten (vroeger = profielen) omzetten naar kijkprofielen.
@@ -210,7 +214,7 @@ final class CloudStore: ObservableObject {
     /// De lokale gegevens van een (verwijderd) profiel wissen: lijsten, voortgang, geschiedenis en pincode.
     func purgeProfileData(_ id: UUID) {
         guard id != mainProfileID else { return }
-        for base in [K.favorites, K.myList, K.watched, K.recent, K.history, K.progress] {
+        for base in [K.favorites, K.myList, K.watched, K.recent, K.history, K.progress, K.categories] {
             let key = "\(base).\(id.uuidString)"
             kv.removeObject(forKey: key)
             local.removeObject(forKey: key)
@@ -260,7 +264,8 @@ final class CloudStore: ObservableObject {
                    custom = "custom.v1", parental = "parental.v1", reminders = "reminders.v1",
                    photos = "photos.v1", history = "history.v1",
                    profiles = "profiles.v1", mainSource = "mainsource.v1", mainProfile = "mainprofile.v1",
-                   collections = "collections.v1", homeLayout = "homelayout.v1"
+                   collections = "collections.v1", homeLayout = "homelayout.v1",
+                   categories = "categories.v1"
     }
 
     private init() {
@@ -490,8 +495,13 @@ final class CloudStore: ObservableObject {
         DispatchQueue.global(qos: .utility).async {
             for k in Keychain.keys(withPrefix: prefix) { Keychain.set(nil, for: k) }
         }
-        if let old { try? FileManager.default.removeItem(at: PlaylistService.cacheURL(old)) }
+        if let old {
+            try? FileManager.default.removeItem(at: PlaylistService.cacheURL(old))
+            try? FileManager.default.removeItem(at: PlaylistService.catalogURL(old))
+        }
         write(playlists, K.playlists)
+        // build 128: zijn categoriekeuzes in alle profielen weg (als verwijdering, dus ook op de andere apparaten)
+        purgeCategories(of: id)
     }
 
     /// Servers en profielen van het vorige account op dit apparaat (zie `wipeAccountData`)
@@ -543,7 +553,7 @@ final class CloudStore: ObservableObject {
         let ids = playlists.map(\.id)
         let profileIDs = profiles.map(\.id)
         for p in playlists { try? FileManager.default.removeItem(at: PlaylistService.cacheURL(p)) }
-        let bases = [K.favorites, K.myList, K.watched, K.recent, K.history, K.progress]
+        let bases = [K.favorites, K.myList, K.watched, K.recent, K.history, K.progress, K.categories]
         let keys = Set(kv.dictionaryRepresentation.keys).union(local.dictionaryRepresentation().keys)
             .filter { k in bases.contains { k == $0 || k.hasPrefix($0 + ".") } }
         for k in keys { kv.removeObject(forKey: k); local.removeObject(forKey: k) }
@@ -560,7 +570,7 @@ final class CloudStore: ObservableObject {
         // oude accentkleur van het vorige account niet naar de profielen van dit account kopiëren
         local.removeObject(forKey: AccentChoice.legacyKey)
         local.removeObject(forKey: AccentChoice.migratedKey)
-        favorites = []; myList = []; localWatched = []; recentChannels = []; history = []; progress = [:]
+        favorites = []; myList = []; localWatched = []; recentChannels = []; history = []; progress = [:]; hiddenCategories = []
         activeProfileID = nil
         activePlaylistID = nil
         local.removeObject(forKey: "activeProfileID")
@@ -604,6 +614,8 @@ final class CloudStore: ObservableObject {
         var recentChannels: [String] = []
         var history: [HistoryEntry] = []
         var progress: [String: ProgressEntry] = [:]
+        /// Build 128: categorieën uit ("<server-id>|<categorienaam>")
+        var hiddenCategories: Set<String> = []
     }
 
     /// Gegevens van een profiel lezen. Het hoofdprofiel neemt (net als `scoped`) de gegevens van vóór de profielen over.
@@ -611,7 +623,8 @@ final class CloudStore: ObservableObject {
         // het actieve profiel: wat nu in het geheugen staat (dat is altijd het nieuwste)
         if id == activeProfileID {
             return ProfileData(favorites: favorites, myList: myList, watched: localWatched,
-                               recentChannels: recentChannels, history: history, progress: progress)
+                               recentChannels: recentChannels, history: history, progress: progress,
+                               hiddenCategories: hiddenCategories)
         }
         func read<T: Decodable>(_ t: T.Type, _ base: String) -> T? {
             if let v = decode(t, "\(base).\(id.uuidString)") { return v }
@@ -622,7 +635,8 @@ final class CloudStore: ObservableObject {
                            watched: read(Set<String>.self, K.watched) ?? [],
                            recentChannels: read([String].self, K.recent) ?? [],
                            history: read([HistoryEntry].self, K.history) ?? [],
-                           progress: read([String: ProgressEntry].self, K.progress) ?? [:])
+                           progress: read([String: ProgressEntry].self, K.progress) ?? [:],
+                           hiddenCategories: decode(Set<String>.self, "\(K.categories).\(id.uuidString)") ?? [])
     }
 
     /// Gegevens van een profiel uit de Bingr-account zetten (StateSync). Alleen wat veranderd is wordt geschreven;
@@ -637,10 +651,12 @@ final class CloudStore: ObservableObject {
         if old.recentChannels != d.recentChannels { write(d.recentChannels, K.recent + suffix) }
         if old.history != d.history { write(d.history, K.history + suffix) }
         if old.progress != d.progress { write(d.progress, K.progress + suffix) }
+        if old.hiddenCategories != d.hiddenCategories { write(d.hiddenCategories, K.categories + suffix) }
         if id == activeProfileID {
             // alleen wat veranderd is: anders tekent elk scherm opnieuw bij elke sync-ronde
             assign(\.favorites, d.favorites); assign(\.myList, d.myList); assign(\.localWatched, d.watched)
             assign(\.recentChannels, d.recentChannels); assign(\.history, d.history); assign(\.progress, d.progress)
+            assign(\.hiddenCategories, d.hiddenCategories)
         }
     }
 
@@ -954,6 +970,15 @@ final class CloudStore: ObservableObject {
         edited(.profile)
     }
 
+    /// Build 128: een zender uit de recente zenders halen (melding "niet gevonden")
+    func removeRecentChannel(_ playlist: UUID, _ channelID: String) {
+        let before = recentChannels.count
+        recentChannels.removeAll { Self.sameKey($0, playlist, channelID) }
+        guard recentChannels.count != before else { return }
+        write(recentChannels, pk(K.recent))
+        edited(.profile)
+    }
+
     func pushRecentChannel(_ playlist: UUID, _ channelID: String) {
         let k = key(playlist, channelID)
         recentChannels.removeAll { Self.sameKey($0, playlist, channelID) }
@@ -961,6 +986,106 @@ final class CloudStore: ObservableObject {
         recentChannels = Array(recentChannels.prefix(20))
         write(recentChannels, pk(K.recent))
         edited(.profile)
+    }
+
+    // MARK: categorieën per profiel (build 128, docs/ACCOUNT.md → "Categorieën per profiel")
+
+    static func categoryKey(_ playlist: UUID, _ group: String) -> String { "\(playlist.uuidString)|\(group)" }
+
+    /// Categorieën die het actieve profiel op deze server uit heeft gezet (server-id hoofdletterongevoelig).
+    func hiddenGroups(for playlist: UUID) -> Set<String> {
+        if let c = hiddenGroupsCache[playlist] { return c }
+        let p = playlist.uuidString
+        var out = Set<String>()
+        for k in hiddenCategories {
+            guard let bar = k.firstIndex(of: "|"), k[..<bar].caseInsensitiveCompare(p) == .orderedSame else { continue }
+            out.insert(String(k[k.index(after: bar)...]))
+        }
+        hiddenGroupsCache[playlist] = out
+        return out
+    }
+
+    func isCategoryHidden(_ playlist: UUID, _ group: String) -> Bool { hiddenGroups(for: playlist).contains(group) }
+
+    /// Categorieën aan of uit voor het actieve profiel. `items`: (server, categorienaam).
+    func setCategories(_ items: [(UUID, String)], hidden: Bool) {
+        var set = hiddenCategories
+        for (pl, g) in items {
+            let found = set.filter { Self.sameKey($0, pl, g) }
+            if hidden { if found.isEmpty { set.insert(Self.categoryKey(pl, g)) } } else { set.subtract(found) }
+        }
+        guard set != hiddenCategories else { return }
+        hiddenCategories = set
+        write(hiddenCategories, pk(K.categories))
+        edited(.profile)
+    }
+
+    /// Server verwijderd: zijn categoriekeuzes uit alle profielen (build 128).
+    private func purgeCategories(of playlist: UUID) {
+        let p = playlist.uuidString
+        func strip(_ s: Set<String>) -> Set<String> {
+            s.filter { k in
+                guard let bar = k.firstIndex(of: "|") else { return true }
+                return k[..<bar].caseInsensitiveCompare(p) != .orderedSame
+            }
+        }
+        for prof in profiles {
+            var d = profileData(prof.id)
+            let next = strip(d.hiddenCategories)
+            guard next != d.hiddenCategories else { continue }
+            d.hiddenCategories = next
+            setProfileData(prof.id, d)
+            stateEdited.send((prof.id, .profile))
+        }
+    }
+
+    /// Eenmalige migratie (build 128): categorieën die tot build 127 voor het hele account per server uit stonden
+    /// (`group:<naam>` in de aanpassingen van de server) gaan naar elk profiel. Per (profiel, server) één keer.
+    /// Geeft per profiel de toegevoegde sleutels terug (StateSync geeft ze een oude tijd, zodat een keuze die een
+    /// ander apparaat al per profiel maakte voorgaat).
+    @discardableResult
+    func migrateLegacyCategories() -> [UUID: [String]] {
+        guard !Screenshots.isActive, !profiles.isEmpty else { return [:] }
+        let doneKey = "categories.migrated.v128"
+        var done = Set(local.stringArray(forKey: doneKey) ?? [])
+        var added: [UUID: [String]] = [:]
+        for prof in profiles {
+            var d = profileData(prof.id)
+            var changed = false
+            for src in playlists {
+                let pair = "\(prof.id.uuidString)|\(src.id.uuidString)"
+                guard !done.contains(pair) else { continue }
+                done.insert(pair)
+                for h in customization(src.id).hidden where h.hasPrefix("group:") {
+                    let g = String(h.dropFirst("group:".count))
+                    guard !d.hiddenCategories.contains(where: { Self.sameKey($0, src.id, g) }) else { continue }
+                    let k = Self.categoryKey(src.id, g)
+                    d.hiddenCategories.insert(k)
+                    added[prof.id, default: []].append(k)
+                    changed = true
+                }
+            }
+            if changed { setProfileData(prof.id, d) }
+        }
+        local.set(Array(done).sorted(), forKey: doneKey)
+        return added
+    }
+
+    // MARK: build 128: remap (één lijst over alle servers)
+
+    /// Gegevens van een profiel na een remap zetten (telt als eigen wijziging: gaat naar de account).
+    func applyRemappedProfileData(_ id: UUID, _ d: ProfileData) {
+        guard d != profileData(id) else { return }
+        setProfileData(id, d)
+        stateEdited.send((id, .profile))
+    }
+
+    /// Collecties na een remap of het invullen van `sid` (eigen wijziging: gaat naar de account).
+    func applyRemappedCollections(_ list: [BingrCollection]) {
+        guard list != collections else { return }
+        collections = list
+        write(collections, K.collections)
+        stateEdited.send((nil, .collections))
     }
 
     // MARK: beheren (hernoemen / verbergen / volgorde / samenvoegen)

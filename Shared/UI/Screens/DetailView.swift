@@ -57,7 +57,10 @@ struct DetailView: View {
     @State private var episodeFocusRedirected = false
     #endif
 
-    private var pid: UUID? { playlists.source?.id }
+    /// Build 128: de server van deze titel (een andere server als hij daarvandaan komt), anders de open server
+    private var pid: UUID? { target.sourceID ?? playlists.source?.id }
+    /// Build 128: titel van een andere server die nog niet gevonden is: zoeken of de melding
+    @State private var crossPrompt: CrossServer.Prompt?
     private var baseTitle: String { switch target { case .movie(let m): return m.title; case .series(let s): return s.title } }
     /// Titel zonder taallabel ("Animal (IT)" → "Animal"), build 59
     private var title: String { d?.title ?? ContentLanguage.displayTitle(baseTitle) }
@@ -164,6 +167,8 @@ struct DetailView: View {
             }
         }
         .task(id: target.id) { await load() }
+        .task(id: target.id) { await resolveCrossServer() }
+        .crossServerPrompt($crossPrompt)
         .task(id: "\(target.id)-\(playlists.libraryVersion)") { await loadLanguageVersions() }
         .task(id: d?.recommendations.map(\.id) ?? []) { await matchRecommendations() }
         #if !os(tvOS)
@@ -1011,6 +1016,18 @@ struct DetailView: View {
     }
 
     /// Mijn lijst van dít profiel (de Trakt-watchlist volgt mee, maar bepaalt niet wat er in je lijst staat).
+    /// Build 128: geopend vanaf een plek zonder eigen afhandeling (bijv. "Alles bekijken") en nog niet gevonden op zijn
+    /// server: nu zoeken; gevonden → die titel openen, anders de melding (en daarna deze pagina sluiten)
+    private func resolveCrossServer() async {
+        guard let sid = target.sourceID, CrossServer.shared.isMissing(target) else { return }
+        switch await CrossServerOpen.open(key: sid.uuidString + "|" + target.id, list: .myList) {
+        case .movie(let m): nested = .movie(m)
+        case .series(let x): nested = .series(x)
+        case .channel: break
+        case .prompt(let p): crossPrompt = p
+        }
+    }
+
     private var inMyList: Bool { pid.map { store.inMyList($0, target.id) } ?? false }
 
     /// Staat deze titel in een eigen (handmatige) collectie?

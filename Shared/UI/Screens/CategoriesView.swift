@@ -2,24 +2,61 @@ import SwiftUI
 
 /// Categorieën aan/uit per onderdeel (Live TV, Films, Series), met snelknoppen per land/taal
 /// (NL, BE, DE, TK …) die alle categorieën met dat voorvoegsel in één keer aan- of uitzetten.
+/// Build 128: per profiel (CloudStore.hiddenCategories, "<server-id>|<categorie>") en met de categorieën van alle
+/// servers; dezelfde naam op twee servers is één regel die voor beide geldt.
 struct CategoriesView: View {
     @EnvironmentObject var playlists: PlaylistService
     @EnvironmentObject var store: CloudStore
     @State private var kind: ManageView.Kind = .live
     @State private var filter = ""
+    /// Categorieën van de andere servers (uit hun cache, op de achtergrond gelezen)
+    @State private var other: [UUID: [ManageView.Kind: [String]]] = [:]
 
     private var pid: UUID? { playlists.source?.id }
     private var c: Customization { pid.map { store.customization($0) } ?? Customization() }
 
-    private var groups: [String] {
-        let raw = playlists.rawLibrary
-        let all: [String]
-        switch kind {
-        case .live: all = orderedUnique(raw.channels.map(\.group))
-        case .movies: all = orderedUnique(raw.movies.map(\.group))
-        case .series: all = orderedUnique(raw.series.map(\.group))
+    /// Categorie → de servers waar hij voorkomt (open server eerst, dan in de volgorde van de servers)
+    private var serversOf: [String: [UUID]] {
+        var out: [String: [UUID]] = [:]
+        for (sid, list) in allLists { for g in list where !(out[g]?.contains(sid) ?? false) { out[g, default: []].append(sid) } }
+        return out
+    }
+
+    private var allLists: [(UUID, [String])] {
+        var out: [(UUID, [String])] = []
+        if let pid {
+            let raw = playlists.rawLibrary
+            switch kind {
+            case .live: out.append((pid, orderedUnique(raw.channels.map(\.group))))
+            case .movies: out.append((pid, orderedUnique(raw.movies.map(\.group))))
+            case .series: out.append((pid, orderedUnique(raw.series.map(\.group))))
+            }
         }
+        // alleen servers die nog bestaan (een verwijderde server verdwijnt meteen uit dit scherm)
+        for src in store.playlists where src.id != pid {
+            if let l = other[src.id]?[kind] { out.append((src.id, l)) }
+        }
+        return out
+    }
+
+    private var groups: [String] {
+        let all = orderedUnique(allLists.flatMap { $0.1 })
         return filter.isEmpty ? all : all.filter { $0.localizedCaseInsensitiveContains(filter) }
+    }
+
+    private func loadOtherServers() async {
+        let others = store.playlists.filter { $0.id != pid }
+        guard !others.isEmpty else { if !other.isEmpty { other = [:] }; return }
+        let loaded = await Task.detached(priority: .userInitiated) { () -> [UUID: [ManageView.Kind: [String]]] in
+            var out: [UUID: [ManageView.Kind: [String]]] = [:]
+            for p in others {
+                guard let (lib, _) = PlaylistService.readAnyCatalog(p) else { continue }
+                out[p.id] = [.live: orderedUnique(lib.channels.map(\.group)), .movies: orderedUnique(lib.movies.map(\.group)),
+                             .series: orderedUnique(lib.series.map(\.group))]
+            }
+            return out
+        }.value
+        if loaded != other { other = loaded }
     }
 
     /// Voorvoegsels zoals "NL", "BE", "DE", "TK" met de categorieën die erbij horen.
@@ -43,15 +80,23 @@ struct CategoriesView: View {
         return skip.contains(p) ? nil : p
     }
 
-    private func isOn(_ g: String) -> Bool { !c.hidden.contains(Customization.groupKey(g)) }
+    /// Aan = op geen enkele server uitgezet voor dit profiel
+    private func isOn(_ g: String) -> Bool {
+        let servers = serversOf[g] ?? pid.map { [$0] } ?? []
+        return !servers.contains { store.isCategoryHidden($0, g) }
+    }
 
     private func set(_ list: [String], on: Bool) {
-        guard let pid else { return }
-        store.updateCustomization(pid) { cu in
-            for g in list {
-                if on { cu.hidden.remove(Customization.groupKey(g)) } else { cu.hidden.insert(Customization.groupKey(g)) }
-            }
-        }
+        let map = serversOf
+        var items: [(UUID, String)] = []
+        for g in list { for sid in map[g] ?? pid.map { [$0] } ?? [] { items.append((sid, g)) } }
+        store.setCategories(items, hidden: !on)
+    }
+
+    private func serverNames(_ g: String) -> String? {
+        guard store.playlists.count > 1, let ids = serversOf[g] else { return nil }
+        let names = ids.compactMap { id in store.playlists.first { $0.id == id }?.name }
+        return names.isEmpty ? nil : names.joined(separator: " · ")
     }
 
     var body: some View {
@@ -103,14 +148,19 @@ struct CategoriesView: View {
                 #endif
                 ForEach(groups, id: \.self) { g in
                     Toggle(isOn: Binding(get: { isOn(g) }, set: { set([g], on: $0) })) {
-                        Text(c.renamed[Customization.groupKey(g)] ?? g).lineLimit(1)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(c.renamed[Customization.groupKey(g)] ?? g).lineLimit(1)
+                            if let names = serverNames(g) {
+                                Text(names).font(.caption).foregroundStyle(Theme.secondary).lineLimit(1)
+                            }
+                        }
                     }
                     .tint(Theme.red)
                 }
             } header: {
                 Text(L("Categories (%d)", groups.count))
             } footer: {
-                Text(L("Categories that are off don't appear anywhere in the app. Saved per playlist and synced via iCloud."))
+                Text(L("Categories that are off don't appear anywhere for this profile. This list shows the categories of all your servers."))
             }
         }
         .navigationTitle(L("Categories"))
@@ -118,5 +168,6 @@ struct CategoriesView: View {
         .searchable(text: $filter, prompt: L("Search category"))
         #endif
         .onChange(of: kind) { _, _ in filter = "" }
+        .task(id: store.playlists.map(\.id)) { await loadOtherServers() }
     }
 }

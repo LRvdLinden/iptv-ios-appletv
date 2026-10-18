@@ -8,6 +8,27 @@ struct CollectionItem: Codable, Hashable {
     enum Kind: String, Codable, CaseIterable { case channel, movie, series }
     var type: Kind
     var id: String
+    /// Build 128: server van het item (ontbreekt = `sourceID` van de collectie, anders de server waarop het staat)
+    var sid: String? = nil
+
+    init(type: Kind, id: String, sid: String? = nil) {
+        self.type = type; self.id = id; self.sid = sid
+    }
+
+    /// Gelijk op soort + id + server (hoofdletterongevoelig); ontbreekt de server aan één kant, dan soort + id.
+    static func == (a: CollectionItem, b: CollectionItem) -> Bool {
+        guard a.type == b.type, a.id == b.id else { return false }
+        guard let x = a.sid, let y = b.sid else { return true }
+        return x.caseInsensitiveCompare(y) == .orderedSame
+    }
+    func hash(into h: inout Hasher) { h.combine(type); h.combine(id) }
+
+    /// Hoort dit item bij deze server? (zonder `sid`: ja, zoals vóór build 128)
+    func belongs(to source: UUID?) -> Bool {
+        guard let sid, !sid.isEmpty else { return true }
+        guard let source else { return false }
+        return sid.caseInsensitiveCompare(source.uuidString) == .orderedSame
+    }
 }
 
 /// Afbeelding van een collectie: symbool + kleur (zoals een avatar) of een eigen plaatje (`url`).
@@ -87,14 +108,16 @@ enum CollectionResolver {
         var out = CollectionContent()
         switch c.kind {
         case .manual:
-            let wantedChannels = Set(c.items.filter { $0.type == .channel }.map(\.id))
-            let wantedMovies = Set(c.items.filter { $0.type == .movie }.map(\.id))
-            let wantedSeries = Set(c.items.filter { $0.type == .series }.map(\.id))
+            // build 128: items van een andere server komen via CrossServer (niet uit deze bibliotheek)
+            let mine = c.items.filter { $0.belongs(to: source) }
+            let wantedChannels = Set(mine.filter { $0.type == .channel }.map(\.id))
+            let wantedMovies = Set(mine.filter { $0.type == .movie }.map(\.id))
+            let wantedSeries = Set(mine.filter { $0.type == .series }.map(\.id))
             var ch: [String: Channel] = [:], mv: [String: Movie] = [:], se: [String: Series] = [:]
             if !wantedChannels.isEmpty { for x in lib.channels where wantedChannels.contains(x.id) { ch[x.id] = x } }
             if !wantedMovies.isEmpty { for x in lib.movies where wantedMovies.contains(x.id) { mv[x.id] = x } }
             if !wantedSeries.isEmpty { for x in lib.series where wantedSeries.contains(x.id) { se[x.id] = x } }
-            for item in c.items {
+            for item in mine {
                 switch item.type {
                 case .channel: if let x = ch[item.id] { out.channels.append(x) }
                 case .movie: if let x = mv[item.id] { out.movies.append(x) }

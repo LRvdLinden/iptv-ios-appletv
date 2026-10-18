@@ -70,7 +70,7 @@ struct MyBingrView: View {
             #if os(iOS)
             row(.downloads, L("Downloads"), "arrow.down.circle")
             #endif
-            row(.history, L("Watch history"), "clock.arrow.circlepath", count: store.history(for: playlists.source?.id).count)
+            row(.history, L("Watch history"), "clock.arrow.circlepath", count: store.history.filter { store.belongsToActive($0.profileID) }.count)
             row(.collections, L("Collections"), "rectangle.stack", count: store.activeCollections.count)
             // build 86: Categorieën (genres en de categorieën van je server), eerder een eigen tabblad
             if showMovies || showSeries {

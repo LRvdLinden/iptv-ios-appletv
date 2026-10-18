@@ -30,6 +30,9 @@ struct HomeView: View {
     @State private var showCategories = false
     @State private var browseOpen: BrowseCategory?
     @ObservedObject private var browse = BrowseIndexStore.shared
+    /// Build 128: items van andere servers (Mijn lijst, Verder kijken, favoriete zenders, collecties)
+    @ObservedObject private var cross = CrossServer.shared
+    @State private var prompt: CrossServer.Prompt?
     /// P0-fix: `.task` start bij elke terugkeer naar het tabblad opnieuw. Onthouden wat al klaar is, zodat Home,
     /// Films en Series dan niet opnieuw door de hele bibliotheek lopen (dat bevroor de app).
     @State private var indexVersion = -1
@@ -132,6 +135,7 @@ struct HomeView: View {
         .sheet(item: $collecting) { AddToCollectionSheet(target: $0) }
         .fullScreenCover(item: $category) { CategoryView(target: $0) }
         .resumeDialog($resumeChoice) { detail = $0 }
+        .crossServerPrompt($prompt)
         #if !os(tvOS)
         .sheet(item: $detail) { DetailView(target: $0).presentationDragIndicator(.visible) }
         #else
@@ -251,6 +255,7 @@ struct HomeView: View {
                   let c = store.collection(String(key.dropFirst(HomeLayout.collectionPrefix.count))) else { return false }
             let content = collectionContent[c.id] ?? CollectionContent()
             return !(content.channels.isEmpty && content.movies.isEmpty && content.series.isEmpty)
+                || !cross.collectionContent(c, active: pid).isEmpty
         }
     }
 
@@ -328,10 +333,23 @@ struct HomeView: View {
     }
 
     /// Favoriete zenders; zonder favorieten de laatst bekeken zenders.
+    /// Build 128: van alle servers (andere servers via CrossServer); dezelfde zender op twee servers één keer.
     private var liveChannels: (list: [Channel], favs: [Channel]) {
-        let favs = pid.map { p in store.favorites.compactMap { k in index.channel(forKey: k, playlist: p) } } ?? []
-        let recent = favs.isEmpty ? (pid.map { p in store.recentChannels.compactMap { k in index.channel(forKey: k, playlist: p) } } ?? []) : []
+        _ = cross.version
+        func channel(_ k: String) -> Channel? {
+            if let p = pid, isActive(k) { return index.channel(forKey: k, playlist: p) }
+            return cross.channel(forKey: k)
+        }
+        let favKeys = store.favorites.sorted { cross.addedAt($0, field: "favorites") > cross.addedAt($1, field: "favorites") }
+        let favs = CrossServer.dedupe(uniqueByID(favKeys.compactMap(channel)), identity: CrossServer.identity)
+        let recent = favs.isEmpty ? CrossServer.dedupe(store.recentChannels.compactMap(channel), identity: CrossServer.identity) : []
         return (favs.isEmpty ? recent : favs, favs)
+    }
+
+    /// Hoort deze sleutel bij de open server? (server-id hoofdletterongevoelig)
+    private func isActive(_ key: String) -> Bool {
+        guard let pid, let bar = key.firstIndex(of: "|") else { return false }
+        return key[..<bar].caseInsensitiveCompare(pid.uuidString) == .orderedSame
     }
 
     @ViewBuilder private var favoriteChannelsRow: some View {
@@ -340,7 +358,11 @@ struct HomeView: View {
         if !list.isEmpty {
             MediaRow(title: favs.isEmpty ? L("Recently watched channels") : L("Favorite channels")) {
                 ForEach(list) { c in
-                    Button { app.play(Playables.channel(c, now: lib.nowPlaying(c)), zap: list) } label: {
+                    Button {
+                        CrossServerOpen.channel(c, list: favs.isEmpty ? .recentChannels : .favorites,
+                                                onChannel: { app.play(Playables.channel($0, now: lib.nowPlaying($0)), zap: list) },
+                                                onPrompt: { prompt = $0 })
+                    } label: {
                         ChannelCard(channel: c, now: lib.nowPlaying(c), favorite: !favs.isEmpty)
                     }
                     .cardButton()
@@ -356,7 +378,7 @@ struct HomeView: View {
 
     /// Rij van een eigen collectie (op Films/Series alleen de films of series daaruit).
     @ViewBuilder private func collectionRow(_ c: BingrCollection) -> some View {
-        let content = collectionContent[c.id] ?? CollectionContent()
+        let content = mergedCollection(c)
         let channels = filter == .all ? content.channels : []
         let movies = filter == .series ? [] : content.movies
         let series = filter == .movies ? [] : content.series
@@ -364,14 +386,18 @@ struct HomeView: View {
             let titles: [DetailTarget] = movies.map { .movie($0) } + series.map { .series($0) }
             MediaRow(title: c.name, onSeeAll: seeAll(c.name, titles)) {
                 ForEach(channels.prefix(40)) { ch in
-                    Button { app.play(Playables.channel(ch, now: lib.nowPlaying(ch)), zap: channels) } label: {
+                    Button {
+                        CrossServerOpen.channel(ch, list: .collection(c.id),
+                                                onChannel: { app.play(Playables.channel($0, now: lib.nowPlaying($0)), zap: channels) },
+                                                onPrompt: { prompt = $0 })
+                    } label: {
                         ChannelCard(channel: ch, now: lib.nowPlaying(ch))
                     }
                     .cardButton()
-                    .contextMenu { collectionItemMenu(c, .init(type: .channel, id: ch.id)) }
+                    .contextMenu { collectionItemMenu(c, .init(type: .channel, id: ch.id, sid: ch.sourceID?.uuidString)) }
                 }
                 ForEach(titles.prefix(60)) { t in
-                    Button { detail = t } label: {
+                    Button { open(t, .collection(c.id)) } label: {
                         switch t {
                         case .movie(let m):
                             PosterCard(title: m.title, poster: m.poster, imdbID: trakt.imdb(for: m),
@@ -385,11 +411,28 @@ struct HomeView: View {
                     }
                     .cardButton()
                     .contextMenu {
-                        collectionItemMenu(c, t.isSeries ? .init(type: .series, id: t.id) : .init(type: .movie, id: t.id))
+                        collectionItemMenu(c, t.isSeries ? .init(type: .series, id: t.id, sid: t.sourceID?.uuidString)
+                                                         : .init(type: .movie, id: t.id, sid: t.sourceID?.uuidString))
                     }
                 }
             }
         }
+    }
+
+    /// Build 128: collectie met de items van andere servers erbij (dezelfde titel op twee servers één keer)
+    private func mergedCollection(_ c: BingrCollection) -> CollectionContent {
+        var content = collectionContent[c.id] ?? CollectionContent()
+        let other = cross.collectionContent(c, active: pid)
+        guard !other.isEmpty else { return content }
+        content.channels = CrossServer.dedupe(uniqueByID(content.channels + other.channels), identity: CrossServer.identity)
+        content.movies = CrossServer.dedupe(uniqueByID(content.movies + other.movies), identity: CrossServer.identity)
+        content.series = CrossServer.dedupe(uniqueByID(content.series + other.series), identity: CrossServer.identity)
+        return content
+    }
+
+    /// Titel openen; van een andere server en nog niet gevonden → eerst zoeken, anders de melding (build 128)
+    private func open(_ t: DetailTarget, _ list: CrossServer.ListKind) {
+        CrossServerOpen.title(t, list: list, onTarget: { detail = $0 }, onPrompt: { prompt = $0 })
     }
 
     private func seeAll(_ title: String, _ items: [DetailTarget]) -> (() -> Void)? {
@@ -415,7 +458,7 @@ struct HomeView: View {
             if !mine.isEmpty {
                 MediaRow(title: L("My List"), onSeeAll: { category = CategoryTarget(title: L("My List"), items: mine) }) {
                     ForEach(mine) { t in
-                        Button { detail = t } label: {
+                        Button { open(t, .myList) } label: {
                             switch t {
                             case .movie(let m):
                                 PosterCard(title: m.title, poster: m.poster, imdbID: trakt.imdb(for: m),
@@ -458,21 +501,46 @@ struct HomeView: View {
 
     /// Mijn lijst via de opgeslagen sleutels (snel), niet door de hele bibliotheek te lopen.
     /// Build 111: plus TMDB-titels (Binnenkort / Nieuw op streamingdiensten) die niet in je bibliotheek staan.
+    /// Build 128: Mijn lijst over alle servers, laatst toegevoegd eerst; dezelfde titel op twee servers één tegel
+    /// (die van de open server gaat voor).
     private var myListMovies: [Movie] {
         guard let pid else { return [] }
+        _ = cross.version
         let ext = showExternalInMyList
-        // dezelfde titel in twee schrijfwijzen van de server-id (iOS/web): één keer
-        return uniqueByID(store.myList.compactMap { k in
-            index.movie(forKey: k, playlist: pid) ?? (ext ? DiscoverKnown.shared.movie(forKey: k, playlist: pid) : nil)
-        }).sorted { $0.title < $1.title }
+        var mine: [(Movie, Double)] = [], other: [(Movie, Double)] = []
+        for k in store.myList {
+            if isActive(k) {
+                if let m = index.movie(forKey: k, playlist: pid) ?? (ext ? DiscoverKnown.shared.movie(forKey: k, playlist: pid) : nil) {
+                    mine.append((m, cross.addedAt(k, field: "myList")))
+                }
+            } else if let m = cross.movie(forKey: k) {
+                other.append((m, cross.addedAt(k, field: "myList")))
+            }
+        }
+        return Self.ordered(mine + other, identity: CrossServer.identity)
     }
     private var myListSeries: [Series] {
         guard let pid else { return [] }
+        _ = cross.version
         let ext = showExternalInMyList
-        // dezelfde titel in twee schrijfwijzen van de server-id (iOS/web): één keer
-        return uniqueByID(store.myList.compactMap { k in
-            index.series(forKey: k, playlist: pid) ?? (ext ? DiscoverKnown.shared.series(forKey: k, playlist: pid) : nil)
-        }).sorted { $0.title < $1.title }
+        var mine: [(Series, Double)] = [], other: [(Series, Double)] = []
+        for k in store.myList {
+            if isActive(k) {
+                if let s = index.series(forKey: k, playlist: pid) ?? (ext ? DiscoverKnown.shared.series(forKey: k, playlist: pid) : nil) {
+                    mine.append((s, cross.addedAt(k, field: "myList")))
+                }
+            } else if let s = cross.series(forKey: k) {
+                other.append((s, cross.addedAt(k, field: "myList")))
+            }
+        }
+        return Self.ordered(mine + other, identity: CrossServer.identity)
+    }
+
+    /// Eén tegel per titel (de eerste, dus de open server), daarna laatst toegevoegd eerst (bij gelijke tijd op titel)
+    private static func ordered<T: Identifiable>(_ items: [(T, Double)], identity: (T) -> String) -> [T] where T.ID == String {
+        var seenID = Set<String>(), seenWork = Set<String>()
+        let kept = items.filter { seenID.insert($0.0.id).inserted && seenWork.insert(identity($0.0)).inserted }
+        return kept.sorted { a, b in a.1 != b.1 ? a.1 > b.1 : identity(a.0) < identity(b.0) }.map { $0.0 }
     }
     /// TMDB-titels alleen zonder leeftijdsgrens (die profielen zien alleen hun eigen, gefilterde bibliotheek)
     private var showExternalInMyList: Bool {
@@ -636,7 +704,7 @@ struct HomeView: View {
         if !items.isEmpty {
             MediaRow(title: L("Continue watching")) {
                 ForEach(items) { c in
-                    Button { resumeChoice = choice(for: c) } label: {
+                    Button { tapContinue(c) } label: {
                         ContinueCard(title: c.title, poster: c.artwork, fraction: c.fraction, caption: c.subtitle)
                     }
                     .cardButton()
@@ -700,7 +768,7 @@ struct HomeView: View {
         MediaRow(title: title, onSeeAll: all.map { list in { category = CategoryTarget(title: title, items: list.map { .movie($0) }) } }) {
             ForEach(items) { m in
                 let imdb = trakt.imdb(for: m)
-                Button { detail = .movie(m) } label: {
+                Button { open(.movie(m), .myList) } label: {
                     PosterCard(title: m.title, poster: m.poster, imdbID: imdb,
                                watched: Playables.isWatched(movie: m, imdb: imdb),
                                progress: store.progress[m.id]?.fraction, language: ContentLanguage.of(m))
@@ -715,13 +783,13 @@ struct HomeView: View {
         MediaRow(title: title, onSeeAll: all.map { list in { category = CategoryTarget(title: title, items: list.map { .series($0) }) } }) {
             ForEach(items) { s in
                 let imdb = trakt.imdb(for: s)
-                Button { detail = .series(s) } label: {
+                Button { open(.series(s), .myList) } label: {
                     PosterCard(title: s.title, poster: s.poster, imdbID: imdb,
                                watchedEpisodes: Playables.watchedEpisodeCount(s, imdb: imdb), language: ContentLanguage.of(s))
                 }
                 .cardButton()
                 .contextMenu {
-                    if let pid {
+                    if let pid = s.sourceID ?? pid {
                         Button { store.toggleMyList(pid, s.id); PlusCheckFeedback.toggled() } label: {
                             Label(store.inMyList(pid, s.id) ? L("Remove from My List") : L("Add to My List"),
                                   systemImage: PlusCheckGlyph.symbol(store.inMyList(pid, s.id)))
@@ -762,7 +830,7 @@ struct HomeView: View {
             store.setLocalWatched(m.id, !watched)
             Task { await trakt.setWatched(Playables.movie(m, imdb: imdb), !watched) }
         } label: { Label(watched ? L("Mark as unwatched") : L("Mark as watched"), systemImage: watched ? "eye.slash" : "checkmark.circle") }
-        if let pid {
+        if let pid = m.sourceID ?? pid {
             Button { store.toggleMyList(pid, m.id); PlusCheckFeedback.toggled() } label: {
                 Label(store.inMyList(pid, m.id) ? L("Remove from My List") : L("Add to My List"),
                       systemImage: PlusCheckGlyph.symbol(store.inMyList(pid, m.id)))
@@ -780,14 +848,18 @@ struct HomeView: View {
         let updated: Date; let isMovie: Bool
         var position: Double? = nil
         var traktPlaybackID: Int? = nil
+        /// Build 128: van een andere server (nil = de open server)
+        var source: UUID? = nil
     }
 
     private var continueWatching: [ContinueItem] {
         let movieIDs = index.movieByID
         let seriesTitles = index.seriesTitles
+        _ = cross.version
         var out: [ContinueItem] = store.progress.compactMap { key, e in
             guard store.belongsToActive(e.profileID) else { return nil }   // alleen van dit profiel
-            guard e.playlistID == nil || e.playlistID == pid else { return nil }   // alleen van deze server
+            // build 128: ook van andere servers (opgezocht in de catalogus van die server, zie CrossServer)
+            if let other = e.playlistID, other != pid { return foreignContinue(key, e, server: other) }
             let isMovie = movieIDs[key] != nil
             // afleveringen alleen als de serie (nog) zichtbaar is voor dit profiel (niet verborgen/op slot/te oud)
             if !isMovie && !seriesTitles.contains(e.title) { return nil }
@@ -806,6 +878,38 @@ struct HomeView: View {
         return Array(out.sorted { $0.updated > $1.updated }.prefix(20))
     }
 
+    /// Verder kijken van een andere server: film of aflevering (de serie moet daar zichtbaar zijn voor dit profiel);
+    /// nog niet gevonden → de tegel met de bewaarde titel, bij aantikken zoeken of de melding.
+    private func foreignContinue(_ key: String, _ e: ProgressEntry, server: UUID) -> ContinueItem? {
+        let full = server.uuidString + "|" + key
+        let left = max(0, e.position / max(e.fraction, 0.01) - e.position)
+        let isMovie: Bool
+        if let m = cross.movie(forKey: full), !cross.isMissing(full) { isMovie = true; _ = m }
+        else if cross.episodeSeries(playlist: server, key: key) != nil { isMovie = false }
+        else if cross.isMissing(full), store.activeProfile?.effectiveAgeLimit == nil { isMovie = true }
+        else { return nil }
+        if filter == .movies && !isMovie { return nil }
+        if filter == .series && isMovie && !cross.isMissing(full) { return nil }
+        return ContinueItem(id: key, title: e.title, subtitle: L("%d min left", Int(left / 60)), artwork: e.artwork,
+                            fraction: e.fraction, updated: e.updated, isMovie: isMovie,
+                            position: e.position > 0 ? e.position : nil, source: server)
+    }
+
+    private func tapContinue(_ c: ContinueItem) {
+        guard let s = c.source, cross.isMissing(s.uuidString + "|" + c.id) else { resumeChoice = choice(for: c); return }
+        Task { @MainActor in
+            switch await CrossServerOpen.open(key: s.uuidString + "|" + c.id, list: .continueWatching) {
+            case .movie(let m):
+                resumeChoice = ResumeChoice(id: m.id, title: c.title, fraction: c.fraction, position: c.position,
+                                            detail: .movie(m), source: m.sourceID)
+            case .series(let x):
+                detail = .series(x)
+            case .channel: break
+            case .prompt(let p): prompt = p
+            }
+        }
+    }
+
     private func removeFromContinue(_ c: ContinueItem) {
         withAnimation {
             store.clearProgress(c.id)
@@ -815,6 +919,12 @@ struct HomeView: View {
 
     /// Tik op Verder kijken: kiezen tussen hervatten en opnieuw kijken.
     private func choice(for c: ContinueItem) -> ResumeChoice {
+        if let s = c.source {
+            let full = s.uuidString + "|" + c.id
+            let d: DetailTarget? = c.isMovie ? cross.movie(forKey: full).map { .movie($0) }
+                                             : cross.episodeSeries(playlist: s, key: c.id).map { .series($0) }
+            return ResumeChoice(id: c.id, title: c.title, fraction: c.fraction, position: c.position, detail: d, source: s)
+        }
         let d: DetailTarget? = c.isMovie ? lib.movies.first { $0.id == c.id }.map { .movie($0) }
                                          : lib.series.first { $0.title == c.title }.map { .series($0) }
         return ResumeChoice(id: c.id, title: c.title, fraction: c.fraction, position: c.position, detail: d)

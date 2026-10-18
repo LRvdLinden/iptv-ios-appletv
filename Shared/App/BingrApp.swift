@@ -190,6 +190,8 @@ final class AppState: ObservableObject {
         // abonnement (build 88): ophalen na het inloggen, bij de heartbeat en op de voorgrond
         EntitlementsService.shared.start()
         StateSync.shared.start()
+        // build 128: één lijst over alle servers (opzoeken op andere servers, remap, catalogmeta); wacht tijdens afspelen
+        CrossServer.shared.start(playlists: playlists, isPlaying: { [weak self] in self?.playing != nil })
         // servers uit de Bingr-account geïmporteerd, gewijzigd of verwijderd → bibliotheek laden of verversen
         SourceSync.shared.changes
             .receive(on: DispatchQueue.main)

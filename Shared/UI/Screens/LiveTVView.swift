@@ -20,6 +20,9 @@ struct LiveTVView: View {
     /// Zenders van de gekozen groep, collectie of zoekopdracht: buiten de hoofdthread samengesteld (build 56)
     @State private var shown: [Channel] = []
     @State private var shownKey: ListKey?
+    /// Build 128: favorieten en recente zenders van andere servers
+    @ObservedObject private var cross = CrossServer.shared
+    @State private var prompt: CrossServer.Prompt?
     @State private var collecting: CollectionTarget?
     @State private var offsetFor: Channel?
     /// Voor welke lijstversie groepen en evenementen klaar zijn (niet bij elke terugkeer naar Live TV opnieuw)
@@ -78,6 +81,8 @@ struct LiveTVView: View {
         let recent: [String]
         /// Alleen bij een collectie
         let collection: BingrCollection?
+        /// Build 128: zenders van andere servers (favorieten/recent)
+        var foreign: [Channel] = []
     }
 
     private var listKey: ListKey {
@@ -94,7 +99,25 @@ struct LiveTVView: View {
         return ListKey(version: playlists.libraryVersion, source: playlists.source?.id, group: group, query: query,
                        favorites: !searching && group == Self.favKey ? Set(ids(store.favorites)) : [],
                        recent: !searching && group == Self.recentKey ? ids(store.recentChannels) : [],
-                       collection: searching ? nil : collection(for: group))
+                       collection: searching ? nil : collection(for: group),
+                       foreign: searching ? [] : foreignChannels)
+    }
+
+    /// Build 128: favorieten (op volgorde van toevoegen) of recente zenders van andere servers
+    private var foreignChannels: [Channel] {
+        _ = cross.version
+        let prefix = store.key(pid, "")
+        func other(_ k: String) -> Bool { !(k.count > prefix.count && k.prefix(prefix.count).caseInsensitiveCompare(prefix) == .orderedSame) }
+        switch group {
+        case Self.favKey:
+            return store.favorites.filter(other)
+                .sorted { cross.addedAt($0, field: "favorites") > cross.addedAt($1, field: "favorites") }
+                .compactMap { cross.channel(forKey: $0) }
+        case Self.recentKey:
+            return store.recentChannels.filter(other).compactMap { cross.channel(forKey: $0) }
+        default:
+            return []
+        }
     }
 
     /// De zenders die nu in beeld staan. Evenementen zijn al klaar; de rest (ook Alle zenders) komt uit `shown`.
@@ -158,7 +181,19 @@ struct LiveTVView: View {
             }.value
         }
         guard !Task.isCancelled else { return }
-        if result != shown { shown = result }
+        var result2 = result
+        if !key.foreign.isEmpty {
+            if key.group == Self.recentKey {
+                // recente zenders: op de volgorde van de lijst, over alle servers
+                let byKey = Dictionary((result.map { (pid.uuidString + "|" + $0.id, $0) } + key.foreign.map { (($0.sourceID ?? pid).uuidString + "|" + $0.id, $0) })
+                                        .map { (CatalogKey.normalize($0.0), $0.1) }, uniquingKeysWith: { a, _ in a })
+                result2 = store.recentChannels.compactMap { byKey[CatalogKey.normalize($0)] }
+            } else {
+                result2 = result + key.foreign
+            }
+            result2 = CrossServer.dedupe(uniqueByID(result2), identity: CrossServer.identity)
+        }
+        if result2 != shown { shown = result2 }
         shownKey = key
     }
 
@@ -167,6 +202,7 @@ struct LiveTVView: View {
             content
                 .background(Color.black)
                 .navigationTitle(L("Live TV"))
+                .crossServerPrompt($prompt)
                 .toolbar {
                     ToolbarItemGroup(placement: .primaryAction) {
                         Button { withAnimation { mode = mode == .list ? .grid : .list } } label: {
@@ -295,8 +331,11 @@ struct LiveTVView: View {
     }
 
     private func play(_ c: Channel) {
-        store.pushRecentChannel(pid, c.id)
-        app.play(Playables.channel(c, now: lib.nowPlaying(c)), zap: visibleChannels)
+        // build 128: een zender van een andere server: via die server; nog niet gevonden → zoeken, anders de melding
+        CrossServerOpen.channel(c, list: group == Self.recentKey ? .recentChannels : .favorites, onChannel: { x in
+            store.pushRecentChannel(x.sourceID ?? pid, x.id)
+            app.play(Playables.channel(x, now: lib.nowPlaying(x)), zap: visibleChannels)
+        }, onPrompt: { prompt = $0 })
     }
 
     private var channelList: some View {
@@ -324,7 +363,7 @@ struct LiveTVView: View {
                             } else {
                                 // gids per zender op begintijd: binair zoeken, geen lus door alle programma's per rij
                                 ChannelRow(channel: c, now: lib.nowPlaying(c), next: lib.upcoming(c, count: 2).dropFirst().first,
-                                           favorite: store.isFavorite(pid, c.id))
+                                           favorite: store.isFavorite(c.sourceID ?? pid, c.id))
                             }
                         }
                         #if os(tvOS)
@@ -348,9 +387,10 @@ struct LiveTVView: View {
     }
 
     @ViewBuilder private func channelMenu(_ c: Channel, list: [Channel]) -> some View {
-        Button { store.toggleFavorite(pid, c.id); PlusCheckFeedback.toggled() } label: {
-            Label(store.isFavorite(pid, c.id) ? L("Remove from favorites") : L("Add to favorites"),
-                  systemImage: PlusCheckGlyph.symbol(store.isFavorite(pid, c.id)))   // plus / vinkje (was een ster)
+        let cp = c.sourceID ?? pid
+        Button { store.toggleFavorite(cp, c.id); PlusCheckFeedback.toggled() } label: {
+            Label(store.isFavorite(cp, c.id) ? L("Remove from favorites") : L("Add to favorites"),
+                  systemImage: PlusCheckGlyph.symbol(store.isFavorite(cp, c.id)))   // plus / vinkje (was een ster)
         }
         Button { guideFor = c } label: {
             Label(c.catchupDays > 0 ? L("Guide & catch-up") : L("Guide"), systemImage: "list.bullet.rectangle")

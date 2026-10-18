@@ -918,7 +918,14 @@
   "Get a notification when a new version of Bingr is available, when a program you set a reminder for is about to start, and for news from Bingr.": "احصل على إشعار عند توفر إصدار جديد من Bingr، وعندما يوشك برنامج ضبطت له تذكيرًا على البدء، وعند وجود أخبار من Bingr.",
   "up to %d": "حتى %d",
   "How many you can watch at once also depends on your IPTV provider.": "يعتمد عدد ما يمكنك مشاهدته في وقت واحد أيضًا على مزوّد IPTV لديك.",
-  "Lifetime allows up to %d screens at the same time.": "يتيح Lifetime ما يصل إلى %d شاشات في الوقت نفسه."
+  "Lifetime allows up to %d screens at the same time.": "يتيح Lifetime ما يصل إلى %d شاشات في الوقت نفسه.",
+  "Categories that are off don't appear anywhere for this profile. This list shows the categories of all your servers.": "لا تظهر الفئات المعطّلة في أي مكان في هذا الملف الشخصي. تعرض هذه القائمة فئات جميع خوادمك.",
+  "Unknown title": "عنوان غير معروف",
+  "a removed server": "خادم محذوف",
+  "“%@” is no longer on “%@” and wasn't found on %@ either.": "لم يعد “%@” موجودًا على “%@” ولم يُعثر عليه أيضًا على %@.",
+  "“%@” is no longer on “%@”, and you have no other server to search.": "لم يعد “%@” موجودًا على “%@”، وليس لديك خادم آخر للبحث فيه.",
+  "“%@” was on “%@”, but that server has been removed, and you have no other server to search.": "كان “%@” على “%@”، لكن هذا الخادم حُذف، وليس لديك خادم آخر للبحث فيه.",
+  "“%@” was on “%@”, but that server has been removed. This title wasn't found on your other servers (%@).": "كان “%@” على “%@”، لكن هذا الخادم حُذف. لم يُعثر على هذا العنوان على خوادمك الأخرى (%@)."
  },
  "de": {
   "%@ is now signed in.": "%@ ist jetzt angemeldet.",
@@ -1839,7 +1846,14 @@
   "Get a notification when a new version of Bingr is available, when a program you set a reminder for is about to start, and for news from Bingr.": "Erhalte eine Mitteilung, wenn eine neue Version von Bingr verfügbar ist, wenn eine Sendung, für die du eine Erinnerung gesetzt hast, gleich beginnt, und bei Neuigkeiten von Bingr.",
   "up to %d": "bis zu %d",
   "How many you can watch at once also depends on your IPTV provider.": "Wie viele Streams gleichzeitig möglich sind, hängt auch von deinem IPTV-Anbieter ab.",
-  "Lifetime allows up to %d screens at the same time.": "Mit Lifetime kannst du auf bis zu %d Bildschirmen gleichzeitig schauen."
+  "Lifetime allows up to %d screens at the same time.": "Mit Lifetime kannst du auf bis zu %d Bildschirmen gleichzeitig schauen.",
+  "Categories that are off don't appear anywhere for this profile. This list shows the categories of all your servers.": "Deaktivierte Kategorien erscheinen in diesem Profil nirgends. Diese Liste zeigt die Kategorien all deiner Server.",
+  "Unknown title": "Unbekannter Titel",
+  "a removed server": "einem gelöschten Server",
+  "“%@” is no longer on “%@” and wasn't found on %@ either.": "„%@“ ist nicht mehr auf „%@“ und wurde auch auf %@ nicht gefunden.",
+  "“%@” is no longer on “%@”, and you have no other server to search.": "„%@“ ist nicht mehr auf „%@“, und du hast keinen anderen Server, auf dem wir suchen können.",
+  "“%@” was on “%@”, but that server has been removed, and you have no other server to search.": "„%@“ war auf „%@“, aber dieser Server wurde gelöscht, und du hast keinen anderen Server, auf dem wir suchen können.",
+  "“%@” was on “%@”, but that server has been removed. This title wasn't found on your other servers (%@).": "„%@“ war auf „%@“, aber dieser Server wurde gelöscht. Auf deinen anderen Servern (%@) wurde dieser Titel nicht gefunden."
  },
  "es": {
   "%@ is now signed in.": "%@ ya ha iniciado sesión.",
@@ -2760,7 +2774,14 @@
   "Get a notification when a new version of Bingr is available, when a program you set a reminder for is about to start, and for news from Bingr.": "Recibe una notificación cuando haya una nueva versión de Bingr, cuando un programa para el que pusiste un recordatorio esté a punto de empezar y con noticias de Bingr.",
   "up to %d": "hasta %d",
   "How many you can watch at once also depends on your IPTV provider.": "Cuántos puedes ver a la vez también depende de tu proveedor de IPTV.",
-  "Lifetime allows up to %d screens at the same time.": "Lifetime permite hasta %d pantallas a la vez."
+  "Lifetime allows up to %d screens at the same time.": "Lifetime permite hasta %d pantallas a la vez.",
+  "Categories that are off don't appear anywhere for this profile. This list shows the categories of all your servers.": "Las categorías desactivadas no aparecen en ninguna parte de este perfil. Esta lista muestra las categorías de todos tus servidores.",
+  "Unknown title": "Título desconocido",
+  "a removed server": "un servidor eliminado",
+  "“%@” is no longer on “%@” and wasn't found on %@ either.": "«%@» ya no está en «%@» y tampoco se ha encontrado en %@.",
+  "“%@” is no longer on “%@”, and you have no other server to search.": "«%@» ya no está en «%@» y no tienes otro servidor en el que buscar.",
+  "“%@” was on “%@”, but that server has been removed, and you have no other server to search.": "«%@» estaba en «%@», pero ese servidor se ha eliminado y no tienes otro servidor en el que buscar.",
+  "“%@” was on “%@”, but that server has been removed. This title wasn't found on your other servers (%@).": "«%@» estaba en «%@», pero ese servidor se ha eliminado. Este título no se ha encontrado en tus otros servidores (%@)."
  },
  "fr": {
   "%@ is now signed in.": "%@ est maintenant connecté.",
@@ -3681,7 +3702,14 @@
   "Get a notification when a new version of Bingr is available, when a program you set a reminder for is about to start, and for news from Bingr.": "Recevez une notification quand une nouvelle version de Bingr est disponible, quand un programme pour lequel vous avez défini un rappel va commencer, et pour les actualités de Bingr.",
   "up to %d": "jusqu’à %d",
   "How many you can watch at once also depends on your IPTV provider.": "Le nombre de flux simultanés dépend aussi de ton fournisseur IPTV.",
-  "Lifetime allows up to %d screens at the same time.": "Lifetime permet jusqu’à %d écrans en même temps."
+  "Lifetime allows up to %d screens at the same time.": "Lifetime permet jusqu’à %d écrans en même temps.",
+  "Categories that are off don't appear anywhere for this profile. This list shows the categories of all your servers.": "Les catégories désactivées n’apparaissent nulle part dans ce profil. Cette liste affiche les catégories de tous tes serveurs.",
+  "Unknown title": "Titre inconnu",
+  "a removed server": "un serveur supprimé",
+  "“%@” is no longer on “%@” and wasn't found on %@ either.": "« %@ » n’est plus sur « %@ » et n’a pas non plus été trouvé sur %@.",
+  "“%@” is no longer on “%@”, and you have no other server to search.": "« %@ » n’est plus sur « %@ », et tu n’as aucun autre serveur sur lequel chercher.",
+  "“%@” was on “%@”, but that server has been removed, and you have no other server to search.": "« %@ » était sur « %@ », mais ce serveur a été supprimé, et tu n’as aucun autre serveur sur lequel chercher.",
+  "“%@” was on “%@”, but that server has been removed. This title wasn't found on your other servers (%@).": "« %@ » était sur « %@ », mais ce serveur a été supprimé. Ce titre est introuvable sur tes autres serveurs (%@)."
  },
  "it": {
   "%@ is now signed in.": "%@ ha effettuato l’accesso.",
@@ -4602,7 +4630,14 @@
   "Get a notification when a new version of Bingr is available, when a program you set a reminder for is about to start, and for news from Bingr.": "Ricevi una notifica quando è disponibile una nuova versione di Bingr, quando un programma per cui hai impostato un promemoria sta per iniziare e per le novità di Bingr.",
   "up to %d": "fino a %d",
   "How many you can watch at once also depends on your IPTV provider.": "Quanti puoi guardarne contemporaneamente dipende anche dal tuo provider IPTV.",
-  "Lifetime allows up to %d screens at the same time.": "Lifetime consente fino a %d schermi contemporaneamente."
+  "Lifetime allows up to %d screens at the same time.": "Lifetime consente fino a %d schermi contemporaneamente.",
+  "Categories that are off don't appear anywhere for this profile. This list shows the categories of all your servers.": "Le categorie disattivate non compaiono da nessuna parte in questo profilo. Questo elenco mostra le categorie di tutti i tuoi server.",
+  "Unknown title": "Titolo sconosciuto",
+  "a removed server": "un server rimosso",
+  "“%@” is no longer on “%@” and wasn't found on %@ either.": "«%@» non è più su «%@» e non è stato trovato nemmeno su %@.",
+  "“%@” is no longer on “%@”, and you have no other server to search.": "«%@» non è più su «%@» e non hai altri server su cui cercare.",
+  "“%@” was on “%@”, but that server has been removed, and you have no other server to search.": "«%@» era su «%@», ma quel server è stato rimosso e non hai altri server su cui cercare.",
+  "“%@” was on “%@”, but that server has been removed. This title wasn't found on your other servers (%@).": "«%@» era su «%@», ma quel server è stato rimosso. Questo titolo non è stato trovato sugli altri tuoi server (%@)."
  },
  "nl": {
   "%@ is now signed in.": "%@ is nu ingelogd.",
@@ -5523,7 +5558,14 @@
   "Get a notification when a new version of Bingr is available, when a program you set a reminder for is about to start, and for news from Bingr.": "Krijg een melding als er een nieuwe versie van Bingr is, als een programma waarvoor je een herinnering hebt gezet bijna begint, en bij nieuws van Bingr.",
   "up to %d": "tot %d",
   "How many you can watch at once also depends on your IPTV provider.": "Hoeveel je tegelijk kunt kijken, hangt ook af van je IPTV-aanbieder.",
-  "Lifetime allows up to %d screens at the same time.": "Met Lifetime kun je op maximaal %d schermen tegelijk kijken."
+  "Lifetime allows up to %d screens at the same time.": "Met Lifetime kun je op maximaal %d schermen tegelijk kijken.",
+  "Categories that are off don't appear anywhere for this profile. This list shows the categories of all your servers.": "Categorieën die uit staan, zie je in dit profiel nergens meer. Deze lijst toont de categorieën van al je servers.",
+  "Unknown title": "Onbekende titel",
+  "a removed server": "een verwijderde server",
+  "“%@” is no longer on “%@” and wasn't found on %@ either.": "‘%@’ staat niet meer op ‘%@’ en is ook niet gevonden op %@.",
+  "“%@” is no longer on “%@”, and you have no other server to search.": "‘%@’ staat niet meer op ‘%@’, en je hebt geen andere server waarop we kunnen zoeken.",
+  "“%@” was on “%@”, but that server has been removed, and you have no other server to search.": "‘%@’ stond op ‘%@’, maar die server is verwijderd, en je hebt geen andere server waarop we kunnen zoeken.",
+  "“%@” was on “%@”, but that server has been removed. This title wasn't found on your other servers (%@).": "‘%@’ stond op ‘%@’, maar die server is verwijderd. Op je andere servers (%@) is deze titel niet gevonden."
  },
  "pl": {
   "%@ is now signed in.": "%@ jest teraz zalogowany.",
@@ -6444,7 +6486,14 @@
   "Get a notification when a new version of Bingr is available, when a program you set a reminder for is about to start, and for news from Bingr.": "Otrzymuj powiadomienie, gdy pojawi się nowa wersja Bingr, gdy program, dla którego ustawiłeś przypomnienie, zaraz się zacznie, oraz o nowościach od Bingr.",
   "up to %d": "do %d",
   "How many you can watch at once also depends on your IPTV provider.": "To, ile możesz oglądać jednocześnie, zależy też od Twojego dostawcy IPTV.",
-  "Lifetime allows up to %d screens at the same time.": "Lifetime pozwala na maksymalnie %d ekranów jednocześnie."
+  "Lifetime allows up to %d screens at the same time.": "Lifetime pozwala na maksymalnie %d ekranów jednocześnie.",
+  "Categories that are off don't appear anywhere for this profile. This list shows the categories of all your servers.": "Wyłączone kategorie nie pojawiają się nigdzie w tym profilu. Ta lista pokazuje kategorie ze wszystkich Twoich serwerów.",
+  "Unknown title": "Nieznany tytuł",
+  "a removed server": "usunięty serwer",
+  "“%@” is no longer on “%@” and wasn't found on %@ either.": "„%@” nie ma już na „%@” i nie znaleziono go też na %@.",
+  "“%@” is no longer on “%@”, and you have no other server to search.": "„%@” nie ma już na „%@”, a nie masz innego serwera do przeszukania.",
+  "“%@” was on “%@”, but that server has been removed, and you have no other server to search.": "„%@” był na „%@”, ale ten serwer został usunięty, a nie masz innego serwera do przeszukania.",
+  "“%@” was on “%@”, but that server has been removed. This title wasn't found on your other servers (%@).": "„%@” był na „%@”, ale ten serwer został usunięty. Tego tytułu nie znaleziono na Twoich innych serwerach (%@)."
  },
  "pt": {
   "%@ is now signed in.": "%@ já tem sessão iniciada.",
@@ -7365,7 +7414,14 @@
   "Get a notification when a new version of Bingr is available, when a program you set a reminder for is about to start, and for news from Bingr.": "Recebe uma notificação quando houver uma nova versão do Bingr, quando um programa para o qual definiste um lembrete estiver prestes a começar e para notícias do Bingr.",
   "up to %d": "até %d",
   "How many you can watch at once also depends on your IPTV provider.": "Quantos podes ver ao mesmo tempo também depende do teu fornecedor de IPTV.",
-  "Lifetime allows up to %d screens at the same time.": "O Lifetime permite até %d ecrãs ao mesmo tempo."
+  "Lifetime allows up to %d screens at the same time.": "O Lifetime permite até %d ecrãs ao mesmo tempo.",
+  "Categories that are off don't appear anywhere for this profile. This list shows the categories of all your servers.": "As categorias desativadas não aparecem em lado nenhum neste perfil. Esta lista mostra as categorias de todos os teus servidores.",
+  "Unknown title": "Título desconhecido",
+  "a removed server": "um servidor removido",
+  "“%@” is no longer on “%@” and wasn't found on %@ either.": "“%@” já não está em “%@” e também não foi encontrado em %@.",
+  "“%@” is no longer on “%@”, and you have no other server to search.": "“%@” já não está em “%@” e não tens outro servidor onde procurar.",
+  "“%@” was on “%@”, but that server has been removed, and you have no other server to search.": "“%@” estava em “%@”, mas esse servidor foi removido e não tens outro servidor onde procurar.",
+  "“%@” was on “%@”, but that server has been removed. This title wasn't found on your other servers (%@).": "“%@” estava em “%@”, mas esse servidor foi removido. Este título não foi encontrado nos teus outros servidores (%@)."
  },
  "tr": {
   "%@ is now signed in.": "%@ artık oturum açtı.",
@@ -8286,7 +8342,14 @@
   "Get a notification when a new version of Bingr is available, when a program you set a reminder for is about to start, and for news from Bingr.": "Bingr’ın yeni bir sürümü çıktığında, hatırlatıcı kurduğun bir program başlamak üzereyken ve Bingr’dan haberler olduğunda bildirim al.",
   "up to %d": "%d'e kadar",
   "How many you can watch at once also depends on your IPTV provider.": "Aynı anda kaç tane izleyebileceğin IPTV sağlayıcına da bağlıdır.",
-  "Lifetime allows up to %d screens at the same time.": "Lifetime aynı anda en fazla %d ekrana izin verir."
+  "Lifetime allows up to %d screens at the same time.": "Lifetime aynı anda en fazla %d ekrana izin verir.",
+  "Categories that are off don't appear anywhere for this profile. This list shows the categories of all your servers.": "Kapalı kategoriler bu profilde hiçbir yerde görünmez. Bu liste tüm sunucularının kategorilerini gösterir.",
+  "Unknown title": "Bilinmeyen başlık",
+  "a removed server": "silinmiş bir sunucu",
+  "“%@” is no longer on “%@” and wasn't found on %@ either.": "“%@” artık “%@” üzerinde değil ve %@ üzerinde de bulunamadı.",
+  "“%@” is no longer on “%@”, and you have no other server to search.": "“%@” artık “%@” üzerinde değil ve aranacak başka bir sunucun yok.",
+  "“%@” was on “%@”, but that server has been removed, and you have no other server to search.": "“%@” “%@” üzerindeydi, ancak bu sunucu silindi ve aranacak başka bir sunucun yok.",
+  "“%@” was on “%@”, but that server has been removed. This title wasn't found on your other servers (%@).": "“%@” “%@” üzerindeydi, ancak bu sunucu silindi. Bu başlık diğer sunucularında (%@) bulunamadı."
  },
  "zh-Hans": {
   "%@ is now signed in.": "%@ 现已登录。",
@@ -9207,6 +9270,13 @@
   "Get a notification when a new version of Bingr is available, when a program you set a reminder for is about to start, and for news from Bingr.": "当 Bingr 有新版本可用、你设置了提醒的节目即将开始，或有来自 Bingr 的消息时收到通知。",
   "up to %d": "最多 %d",
   "How many you can watch at once also depends on your IPTV provider.": "可同时观看的数量还取决于你的 IPTV 提供商。",
-  "Lifetime allows up to %d screens at the same time.": "Lifetime 最多允许 %d 个屏幕同时观看。"
+  "Lifetime allows up to %d screens at the same time.": "Lifetime 最多允许 %d 个屏幕同时观看。",
+  "Categories that are off don't appear anywhere for this profile. This list shows the categories of all your servers.": "已关闭的分类在此个人资料中不会出现在任何地方。此列表显示你所有服务器的分类。",
+  "Unknown title": "未知标题",
+  "a removed server": "已删除的服务器",
+  "“%@” is no longer on “%@” and wasn't found on %@ either.": "“%@”已不在“%@”上，在 %@ 上也未找到。",
+  "“%@” is no longer on “%@”, and you have no other server to search.": "“%@”已不在“%@”上，而你没有其他可供搜索的服务器。",
+  "“%@” was on “%@”, but that server has been removed, and you have no other server to search.": "“%@”曾在“%@”上，但该服务器已被删除，而你没有其他可供搜索的服务器。",
+  "“%@” was on “%@”, but that server has been removed. This title wasn't found on your other servers (%@).": "“%@”曾在“%@”上，但该服务器已被删除。在你的其他服务器（%@）上未找到此标题。"
  }
 }

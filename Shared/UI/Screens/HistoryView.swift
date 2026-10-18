@@ -7,9 +7,12 @@ struct HistoryView: View {
     @EnvironmentObject var store: CloudStore
     @State private var detail: DetailTarget?
     @State private var confirmClear = false
+    /// Build 128: geschiedenis van alle servers
+    @ObservedObject private var cross = CrossServer.shared
+    @State private var prompt: CrossServer.Prompt?
 
     private var pid: UUID? { playlists.source?.id }
-    private var entries: [HistoryEntry] { store.history(for: pid) }
+    private var entries: [HistoryEntry] { store.history.filter { store.belongsToActive($0.profileID) } }
 
     private var days: [(day: Date, items: [HistoryEntry])] {
         let cal = Calendar.current
@@ -47,8 +50,11 @@ struct HistoryView: View {
             }
         }
         .navigationTitle(L("Watch history"))
+        .crossServerPrompt($prompt)
         .confirmationDialog(L("Clear watch history"), isPresented: $confirmClear) {
-            Button(L("Clear watch history"), role: .destructive) { store.clearHistory(playlist: pid) }
+            Button(L("Clear watch history"), role: .destructive) {
+                for p in Set(entries.map(\.playlistID)) { store.clearHistory(playlist: p) }
+            }
             Button(L("Cancel"), role: .cancel) {}
         }
         #if !os(tvOS)
@@ -89,6 +95,28 @@ struct HistoryView: View {
     }
 
     private func open(_ e: HistoryEntry) {
+        // build 128: van een andere server: via die server (nog niet gevonden → zoeken, anders de melding)
+        if let other = e.playlistID, other != pid {
+            let key = other.uuidString + "|" + e.itemID
+            if e.type == .live, let c = cross.channel(forKey: key) {
+                CrossServerOpen.channel(c, list: .history, onChannel: { app.play(Playables.channel($0, now: nil), zap: [$0]) },
+                                        onPrompt: { prompt = $0 })
+            } else if let m = cross.movie(forKey: key) {
+                CrossServerOpen.title(.movie(m), list: .history, onTarget: { detail = $0 }, onPrompt: { prompt = $0 })
+            } else if let s = cross.series(forKey: key) ?? cross.episodeSeries(playlist: other, key: e.itemID) {
+                CrossServerOpen.title(.series(s), list: .history, onTarget: { detail = $0 }, onPrompt: { prompt = $0 })
+            } else {
+                Task { @MainActor in
+                    switch await CrossServerOpen.open(key: key, list: .history) {
+                    case .movie(let m): detail = .movie(m)
+                    case .series(let s): detail = .series(s)
+                    case .channel(let c): app.play(Playables.channel(c, now: nil), zap: [c])
+                    case .prompt(let p): prompt = p
+                    }
+                }
+            }
+            return
+        }
         let lib = playlists.library
         if e.type == .live, let c = lib.channels.first(where: { $0.id == (e.channelID ?? e.itemID) }) {
             app.play(Playables.channel(c, now: lib.nowPlaying(c)), zap: lib.channels)

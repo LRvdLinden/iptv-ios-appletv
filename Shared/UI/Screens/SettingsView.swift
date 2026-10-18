@@ -394,10 +394,9 @@ struct AppSettingsView: View {
                 Text(L("Series")).tag(3)
             }
             .pickerStyle(.menu)
-            if isMain {
-                NavigationLink { CategoriesView() } label: {
-                    Label(L("Categories on/off (NL, BE, DE…)"), systemImage: "line.3.horizontal.decrease.circle")
-                }
+            // build 128: categorieën aan/uit per profiel (elk profiel zijn eigen keuze)
+            NavigationLink { CategoriesView() } label: {
+                Label(L("Categories on/off (NL, BE, DE…)"), systemImage: "line.3.horizontal.decrease.circle")
             }
             #if !os(tvOS)
             // build 82: trailer zonder geluid in de kop van film- en seriepagina's

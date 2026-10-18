@@ -144,6 +144,8 @@ struct Channel: Identifiable, Hashable, Codable {
     var catchupDays: Int = 0
     /// Stalker: commando om een link te genereren
     var stalkerCmd: String?
+    /// Build 128: van een andere server dan de open bron (nil = de open bron)
+    var sourceID: UUID? = nil
 }
 
 struct Movie: Identifiable, Hashable, Codable {
@@ -161,6 +163,8 @@ struct Movie: Identifiable, Hashable, Codable {
     var xtreamVodID: Int?
     /// TMDB-id van de bron (Xtream "tmdb"), om Trakt-vinkjes op het juiste item te zetten (build 75)
     var tmdbID: Int? = nil
+    /// Build 128: van een andere server dan de open bron (nil = de open bron)
+    var sourceID: UUID? = nil
 }
 
 struct Series: Identifiable, Hashable, Codable {
@@ -181,6 +185,8 @@ struct Series: Identifiable, Hashable, Codable {
     var tmdbID: Int? = nil
     /// Build 111: laatst toegevoegd/bijgewerkt op de server (Xtream `last_modified`), voor "Nieuw toegevoegd"
     var addedAt: Date? = nil
+    /// Build 128: van een andere server dan de open bron (nil = de open bron)
+    var sourceID: UUID? = nil
 }
 
 struct Episode: Identifiable, Hashable, Codable {
@@ -193,6 +199,8 @@ struct Episode: Identifiable, Hashable, Codable {
     var still: URL?
     var plot: String?
     var durationSeconds: Int?
+    /// Build 128: van een andere server dan de open bron (nil = de open bron)
+    var sourceID: UUID? = nil
 }
 
 struct EPGProgram: Identifiable, Hashable, Codable {

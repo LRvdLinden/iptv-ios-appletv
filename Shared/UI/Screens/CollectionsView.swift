@@ -7,10 +7,12 @@ struct CollectionTarget: Identifiable, Hashable {
     var poster: URL? = nil
     var id: String { "\(item.type.rawValue)|\(item.id)" }
 
-    static func movie(_ m: Movie) -> CollectionTarget { CollectionTarget(item: .init(type: .movie, id: m.id), title: m.title, poster: m.poster) }
-    static func series(_ s: Series) -> CollectionTarget { CollectionTarget(item: .init(type: .series, id: s.id), title: s.title, poster: s.poster) }
-    static func channel(_ c: Channel) -> CollectionTarget { CollectionTarget(item: .init(type: .channel, id: c.id), title: c.name, poster: c.logo) }
-    static func detail(_ t: DetailTarget) -> CollectionTarget {
+    // build 128: nieuwe items krijgen de server van het item (`sid`)
+    @MainActor private static func sid(_ id: UUID?) -> String? { (id ?? CloudStore.shared.activePlaylistID)?.uuidString }
+    @MainActor static func movie(_ m: Movie) -> CollectionTarget { CollectionTarget(item: .init(type: .movie, id: m.id, sid: sid(m.sourceID)), title: m.title, poster: m.poster) }
+    @MainActor static func series(_ s: Series) -> CollectionTarget { CollectionTarget(item: .init(type: .series, id: s.id, sid: sid(s.sourceID)), title: s.title, poster: s.poster) }
+    @MainActor static func channel(_ c: Channel) -> CollectionTarget { CollectionTarget(item: .init(type: .channel, id: c.id, sid: sid(c.sourceID)), title: c.name, poster: c.logo) }
+    @MainActor static func detail(_ t: DetailTarget) -> CollectionTarget {
         switch t { case .movie(let m): return .movie(m); case .series(let s): return .series(s) }
     }
 }
@@ -386,9 +388,10 @@ struct CollectionEditor: View {
         }
         let lib = playlists.library
         switch item.type {
-        case .channel: return lib.channels.first { $0.id == item.id }?.name ?? item.id
-        case .movie: return lib.movies.first { $0.id == item.id }?.title ?? item.id
-        case .series: return lib.series.first { $0.id == item.id }?.title ?? item.id
+        // build 128: items van een andere server: de naam uit de catalogus van die server
+        case .channel: return lib.channels.first { $0.id == item.id }?.name ?? CrossServer.shared.title(of: item, in: existing) ?? item.id
+        case .movie: return lib.movies.first { $0.id == item.id }?.title ?? CrossServer.shared.title(of: item, in: existing) ?? item.id
+        case .series: return lib.series.first { $0.id == item.id }?.title ?? CrossServer.shared.title(of: item, in: existing) ?? item.id
         }
     }
 

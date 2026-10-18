@@ -3,6 +3,8 @@ import SwiftUI
 enum DetailTarget: Identifiable, Hashable {
     case movie(Movie), series(Series)
     var id: String { switch self { case .movie(let m): return m.id; case .series(let s): return s.id } }
+    /// Build 128: server van deze titel als dat niet de open bron is
+    var sourceID: UUID? { switch self { case .movie(let m): return m.sourceID; case .series(let s): return s.sourceID } }
 }
 
 /// Poster in 2:3 met IMDb-score, "bekeken"-vinkje en voortgangsbalk.

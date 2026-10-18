@@ -60,6 +60,13 @@ final class PlaylistService: ObservableObject {
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.applyCustomizations() }
             .store(in: &bag)
+        // build 128: categorieën aan/uit per profiel gewijzigd (ook via de sync) → opnieuw filteren
+        CloudStore.shared.$hiddenCategories
+            .removeDuplicates()
+            .dropFirst()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.applyCustomizations() }
+            .store(in: &bag)
         // nieuwe IMDb-classificaties binnen → leeftijdsfilter opnieuw toepassen
         MetadataService.shared.$cache
             .dropFirst()
@@ -253,25 +260,35 @@ final class PlaylistService: ObservableObject {
         var meta: [String: TitleMetadata]
         /// TMDB-classificaties (build 53); leeg zonder leeftijdsgrens
         var ratings: [String: AgeInfo] = [:]
+        /// Build 128: categorieën die het actieve profiel op deze server uit heeft gezet (categorienaam zoals de server
+        /// hem levert). De oude `group:`-items in `custom.hidden` gelden sinds build 128 niet meer voor categorieën.
+        var hiddenGroups: Set<String> = []
 
         /// Dezelfde regels (alles behalve de classificaties zelf)? Dan mag de vorige uitkomst blijven staan
         /// tot de nieuwe klaar is, en hoeft een gelijke uitkomst niet opnieuw gepubliceerd te worden.
         func sameRules(as o: FilterContext) -> Bool {
             playlist == o.playlist && ageLimit == o.ageLimit && strict == o.strict && parentalEnabled == o.parentalEnabled
                 && autoLockAdult == o.autoLockAdult && unlocked == o.unlocked && lockedGroups == o.lockedGroups
-                && custom == o.custom
+                && custom == o.custom && hiddenGroups == o.hiddenGroups
         }
     }
 
-    private func context(for s: PlaylistSource) -> FilterContext {
+    /// Filter van een bron met de regels van het actieve profiel (ook voor andere servers, build 128).
+    func context(for s: PlaylistSource) -> FilterContext {
         let st = CloudStore.shared
         let pc = st.parental
-        return FilterContext(custom: st.customization(s.id), playlist: s.id,
+        var custom = st.customization(s.id)
+        // build 128: categorieën aan/uit staan per profiel (CloudStore.hiddenCategories); de oude account-brede
+        // `group:`-items blijven op de server staan voor oudere apps, maar tellen hier niet meer mee
+        // (App Store-screenshots: de demo verbergt groepen nog op de oude manier)
+        if !Screenshots.isActive { custom.hidden = custom.hidden.filter { !$0.hasPrefix("group:") } }
+        return FilterContext(custom: custom, playlist: s.id,
                              ageLimit: st.activeProfile?.effectiveAgeLimit, strict: st.activeProfile?.strictAgeFilter ?? false,
                              parentalEnabled: pc.enabled, lockedGroups: pc.lockedGroups, autoLockAdult: pc.autoLockAdult,
                              unlocked: ParentalControl.shared.isUnlocked,
                              meta: (st.activeProfile?.effectiveAgeLimit != nil) ? MetadataService.shared.cache : [:],
-                             ratings: (st.activeProfile?.effectiveAgeLimit != nil) ? AgeRatingService.shared.cache : [:])
+                             ratings: (st.activeProfile?.effectiveAgeLimit != nil) ? AgeRatingService.shared.cache : [:],
+                             hiddenGroups: st.hiddenGroups(for: s.id))
     }
 
     /// Filter voor een andere afspeellijst met de leeftijdsgrens van het actieve profiel (nil = geen grens).
@@ -354,11 +371,14 @@ final class PlaylistService: ObservableObject {
     static func apply(_ raw: Library, _ c: Customization, playlist: UUID, ageLimit: Int? = nil, strict: Bool = false) -> Library {
         let st = CloudStore.shared
         let pc = st.parental
+        var c = c
+        if !Screenshots.isActive { c.hidden = c.hidden.filter { !$0.hasPrefix("group:") } }
         return apply(raw, FilterContext(custom: c, playlist: playlist, ageLimit: ageLimit, strict: strict,
                                         parentalEnabled: pc.enabled, lockedGroups: pc.lockedGroups, autoLockAdult: pc.autoLockAdult,
                                         unlocked: ParentalControl.shared.isUnlocked,
                                         meta: ageLimit != nil ? MetadataService.shared.cache : [:],
-                                        ratings: ageLimit != nil ? AgeRatingService.shared.cache : [:]))
+                                        ratings: ageLimit != nil ? AgeRatingService.shared.cache : [:],
+                                        hiddenGroups: st.hiddenGroups(for: playlist)))
     }
 
     nonisolated static func apply(_ raw: Library, _ ctx: FilterContext) -> Library {
@@ -389,6 +409,7 @@ final class PlaylistService: ObservableObject {
             if let ok = groupOK[g] { return ok }
             let ok = !c.hidden.contains(Customization.groupKey(g))
                 && !c.hidden.contains(Customization.groupKey(c.merged[g] ?? g))
+                && !ctx.hiddenGroups.contains(g)
                 && !isLocked(g)
                 && !isLocked(c.merged[g] ?? g)
             groupOK[g] = ok
@@ -432,8 +453,23 @@ final class PlaylistService: ObservableObject {
 
     // MARK: details
 
+    /// Bron van een item: zijn eigen server (build 128, `sourceID`), anders de open bron.
+    func source(for id: UUID?) -> PlaylistSource? {
+        guard let id, id != source?.id else { return source }
+        return CloudStore.shared.playlists.first { $0.id == id }
+    }
+
     func episodes(for series: Series) async -> [Episode] {
         if !series.episodes.isEmpty { return series.episodes }
+        // build 128: een serie van een andere server: afleveringen via die server (zonder te wisselen)
+        if let sid = series.sourceID, sid != source?.id {
+            let key = sid.uuidString + "|" + series.id
+            if let c = episodeCache[key] { return c }
+            guard let other = self.source(for: sid) else { return [] }
+            let eps = await Self.fetchEpisodes(series, in: other).map { e -> Episode in var x = e; x.sourceID = sid; return x }
+            if !eps.isEmpty { episodeCache[key] = eps }
+            return eps
+        }
         if let c = episodeCache[series.id] { return c }
         guard let s = source else { return [] }
         var eps: [Episode] = []
@@ -455,27 +491,45 @@ final class PlaylistService: ObservableObject {
     }
 
     func xtreamSeriesInfo(_ series: Series) async -> XtreamClient.SeriesInfo? {
-        guard let s = source, s.kind == .xtream, let id = series.xtreamSeriesID else { return nil }
+        guard let s = source(for: series.sourceID), s.kind == .xtream, let id = series.xtreamSeriesID else { return nil }
         return await XtreamClient(source: s, password: Keychain.get(s.passwordKey) ?? "").seriesInfo(id)
     }
 
     func xtreamVodInfo(_ m: Movie) async -> XtreamClient.VodInfo.Info? {
-        guard let s = source, s.kind == .xtream, let id = m.xtreamVodID else { return nil }
+        guard let s = source(for: m.sourceID), s.kind == .xtream, let id = m.xtreamVodID else { return nil }
         return await XtreamClient(source: s, password: Keychain.get(s.passwordKey) ?? "").vodInfo(id)
     }
 
     /// Stremio: alle beschikbare streams voor een titel.
     func stremioStreams(_ item: PlayableItem) async -> [StremioClient.Stream] {
-        guard let ref = item.stremio, let s = source else { return [] }
-        if stremioAddons.isEmpty { stremioAddons = await Self.stremioAddons(s) }
+        guard let ref = item.stremio, let s = source(for: item.sourceID) else { return [] }
         let parts = ref.split(separator: "|", maxSplits: 1).map(String.init)
         guard parts.count == 2 else { return [] }
+        // build 128: een titel van een andere server: de add-ons van die server
+        if s.id != source?.id {
+            if foreignAddons[s.id] == nil { foreignAddons[s.id] = await Self.stremioAddons(s) }
+            return await StremioClient(addons: foreignAddons[s.id] ?? []).streams(type: parts[0], id: parts[1])
+        }
+        if stremioAddons.isEmpty { stremioAddons = await Self.stremioAddons(s) }
         return await StremioClient(addons: stremioAddons).streams(type: parts[0], id: parts[1])
     }
+    /// Build 128: Stremio-add-ons en MAC-portalsessies van andere servers (afspelen zonder te wisselen)
+    private var foreignAddons: [UUID: [StremioClient.Addon]] = [:]
+    private var foreignStalker: [UUID: StalkerClient] = [:]
 
     /// Geeft de echte afspeel-URL (Stalker maakt per keer een link aan, Stremio zoekt een stream).
     func resolve(_ item: PlayableItem) async -> URL? {
         if let u = item.url { if item.stalkerCmd == nil { return u } }
+        // build 128: MAC-portal van een andere server: een eigen sessie met die server
+        if let cmd = item.stalkerCmd, let sid = item.sourceID, sid != source?.id, let other = source(for: sid), other.kind == .stalker {
+            let st: StalkerClient
+            if let c = foreignStalker[sid] { st = c } else {
+                st = StalkerClient(source: other)
+                guard (try? await st.connect()) != nil else { return item.url }
+                foreignStalker[sid] = st
+            }
+            return (try? await st.createLink(cmd: cmd, type: item.type == .live ? .live : .movie)) ?? item.url
+        }
         if let cmd = item.stalkerCmd, let st = stalker {
             return (try? await st.createLink(cmd: cmd, type: item.type == .live ? .live : .movie)) ?? item.url
         }
@@ -624,6 +678,88 @@ final class PlaylistService: ObservableObject {
         }
     }
     func clearCache(_ s: PlaylistSource) { try? FileManager.default.removeItem(at: Self.cacheURL(s)) }
+}
+
+// MARK: - Build 128: catalogi en afleveringen van andere servers (zonder te wisselen)
+
+extension PlaylistService {
+    /// Afleveringen van een serie op een (andere) server.
+    static func fetchEpisodes(_ series: Series, in s: PlaylistSource) async -> [Episode] {
+        if !series.episodes.isEmpty { return series.episodes }
+        switch s.kind {
+        case .xtream:
+            return (try? await XtreamClient(source: s, password: Keychain.get(s.passwordKey) ?? "").episodes(for: series)) ?? []
+        case .jellyfin, .emby:
+            return (try? await JellyfinClient(source: s, session: session(s)).episodes(series)) ?? []
+        case .plex:
+            guard let session = session(s) else { return [] }
+            return (try? await PlexClient(session: session).episodes(series)) ?? []
+        case .stremio:
+            return (try? await StremioClient(addons: await stremioAddons(s)).episodes(series)) ?? []
+        default:
+            return []
+        }
+    }
+
+    /// Catalogus (zenders, films, series; zonder gids) van een server die op dit apparaat nog geen cache heeft.
+    static func fetchCatalog(_ s: PlaylistSource) async throws -> Library {
+        let password = Keychain.get(s.passwordKey) ?? ""
+        switch s.kind {
+        case .m3u:
+            guard let u = s.m3uURL.urlValue else { throw HTTPError.badURL }
+            let data = try await HTTP.get(u)
+            let pid = s.id
+            let text = String(decoding: data, as: UTF8.self)
+            return await Task.detached(priority: .utility) { M3UParser.library(from: text, playlistID: pid) }.value
+        case .xtream:
+            let x = XtreamClient(source: s, password: password)
+            try await x.authenticate()
+            return try await x.library(playlistID: s.id)
+        case .stalker:
+            let st = StalkerClient(source: s)
+            try await st.connect()
+            return try await st.library()
+        case .jellyfin, .emby:
+            return try await JellyfinClient(source: s, session: session(s)).library()
+        case .plex:
+            guard let session = session(s) else { throw MediaError.notLoggedIn }
+            return try await PlexClient(session: session).library()
+        case .stremio:
+            return await StremioClient(addons: await stremioAddons(s)).library()
+        }
+    }
+
+    /// Catalogus zonder gids van een server die hier (nog) niet geopend is (build 128)
+    nonisolated static func catalogURL(_ s: PlaylistSource) -> URL {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("catalog-\(s.id.uuidString).json")
+    }
+
+    /// De gewone cache, anders de catalogus van build 128; met het tijdstip van het bestand.
+    nonisolated static func readAnyCatalog(_ s: PlaylistSource) -> (Library, Date)? {
+        let fm = FileManager.default
+        for url in [cacheURL(s), catalogURL(s)] {
+            guard let d = try? Data(contentsOf: url), let lib = try? JSONDecoder().decode(Library.self, from: d) else { continue }
+            let stamp = ((try? fm.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date) ?? .distantPast
+            return (lib, stamp)
+        }
+        return nil
+    }
+
+    /// Tijdstip van de nieuwste cache/catalogus van een server (nil = nog niets).
+    nonisolated static func catalogStamp(_ s: PlaylistSource) -> Date? {
+        let fm = FileManager.default
+        for url in [cacheURL(s), catalogURL(s)] {
+            if let d = (try? fm.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date { return d }
+        }
+        return nil
+    }
+
+    nonisolated static func writeCatalog(_ s: PlaylistSource, _ lib: Library) {
+        var l = lib
+        l.epg = [:]
+        if let d = try? JSONEncoder().encode(l) { try? d.write(to: catalogURL(s), options: .atomic) }
+    }
 }
 
 /// Hoe vaak afspeellijsten (incl. gids) automatisch ververst worden.

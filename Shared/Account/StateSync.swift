@@ -42,7 +42,8 @@ final class StateSync {
     private static let maxRemoved = 2000
     private static let maxHistory = 500
     private static let maxRecent = 20
-    private static let setLists = ["myList", "favorites", "watched"]
+    /// build 128: `hiddenCategories` (categorieën uit per profiel, "<server-id>|<categorienaam>") als set erbij
+    private static let setLists = ["myList", "favorites", "watched", "hiddenCategories"]
 
     private init() {
         if let d = UserDefaults.standard.data(forKey: metaKey), let m = try? JSONDecoder().decode(Meta.self, from: d) {
@@ -292,6 +293,52 @@ final class StateSync {
         saveMeta()
     }
 
+    // MARK: - Build 128: remap, oude categoriekeuzes en volgorde
+
+    /// Remap van één item in een lijst van een profiel: de nieuwe sleutel krijgt de `at` van de oude (de volgorde
+    /// blijft), de oude wordt een verwijdering met de remap-tijd. `field`: myList, favorites, watched, recentChannels,
+    /// hiddenCategories, progress of history. Werkt alleen met een account (zonder is er geen sync-stand).
+    func noteRemap(profile id: UUID, field: String, old: String, new: String, at: Date) {
+        guard Secrets.accountsConfigured, AccountService.shared.isSignedIn, old != new else { return }
+        var m = meta.profiles[id.uuidString] ?? ListMeta()
+        let t = trusted(at.timeIntervalSince1970)
+        var present = m.present[field] ?? [:]
+        var removed = m.removed[field] ?? [:]
+        if let oldAt = present[old] { present[new] = max(present[new] ?? 0, oldAt) }
+        present[old] = nil
+        removed[old] = max(removed[old] ?? 0, t)
+        removed[new] = nil
+        m.present[field] = present
+        m.removed[field] = removed
+        meta.profiles[id.uuidString] = m
+        saveMeta()
+    }
+
+    /// Items die als heel oud moeten tellen (migratie van oude keuzes): een keuze die een ander apparaat al maakte
+    /// (ook een verwijdering) gaat dan voor.
+    func presetOld(profile id: UUID, field: String, keys: [String]) {
+        guard Secrets.accountsConfigured, AccountService.shared.isSignedIn, !keys.isEmpty else { return }
+        var m = meta.profiles[id.uuidString] ?? ListMeta()
+        var present = m.present[field] ?? [:]
+        for k in keys where present[k] == nil { present[k] = 1 }
+        m.present[field] = present
+        meta.profiles[id.uuidString] = m
+        saveMeta()
+    }
+
+    /// Wanneer dit item aan de lijst is toegevoegd (volgorde van Mijn lijst en favorieten), nil = onbekend.
+    func addedAt(profile id: UUID, field: String, key: String) -> Double? {
+        guard let p = meta.profiles[id.uuidString]?.present[field] else { return nil }
+        if let t = p[key] { return t }
+        let n = CatalogKey.normalize(key)
+        return p.first { CatalogKey.normalize($0.key) == n }?.value
+    }
+
+    /// catalogmeta gewijzigd: vertraagd uploaden (zoals andere onderdelen)
+    func catalogMetaChanged(delay: TimeInterval = 3) {
+        schedule(["catalogmeta"], delay: delay)
+    }
+
     /// Id van een geschiedenis-vermelding ("<server-id>|<item>") ook met de server-id in kleine letters: web en Samsung
     /// TV gebruiken de id zoals de server hem kreeg (soms kleine letters), deze app hoofdletters. Zo raakt een
     /// verwijdering hier ook hun vermelding.
@@ -376,6 +423,12 @@ final class StateSync {
         if wants("connections"), let u = await mergeConnections(server["connections"]) { uploads.append(("connections", u)) }
         if wants("settings"), let u = mergeSettings(server["settings"]) { uploads.append(("settings", u)) }
         if wants("reminders"), let u = mergeReminders(server["reminders"]) { uploads.append(("reminders", u)) }
+        // build 128: eerst catalogmeta (remap-regels van andere apparaten), dan de regels toepassen op alle profielen en
+        // collecties; de samenvoeging hieronder neemt de herschreven lijsten (met behoud van `at`) mee
+        if wants("catalogmeta"), let u = CrossServer.shared.mergeRemote(server["catalogmeta"]?.data, hadRemote: server["catalogmeta"] != nil) {
+            uploads.append(("catalogmeta", u))
+        }
+        CrossServer.shared.applyRemapEverywhere()
         if wants("collections"), let u = mergeCollections(server["collections"]) { uploads.append(("collections", u)) }
         let tombs = ProfileSync.shared.tombstonedIDs
         for p in store.profiles where !tombs.contains(p.id) {
@@ -1030,7 +1083,12 @@ final class StateSync {
             d["image"] = ["symbol": c.image.avatar.symbol, "colorIndex": c.image.avatar.colorIndex]
         }
         d["kind"] = c.kind.rawValue
-        d["items"] = c.items.map { ["type": $0.type.rawValue, "id": $0.id] }
+        // build 128: `sid` (server van het item) als hij bekend is
+        d["items"] = c.items.map { i -> [String: Any] in
+            var x: [String: Any] = ["type": i.type.rawValue, "id": i.id]
+            if let sid = i.sid, !sid.isEmpty { x["sid"] = sid }
+            return x
+        }
         d["query"] = c.query
         d["types"] = c.types
         if let g = c.group, !g.isEmpty { d["group"] = g } else { d.removeValue(forKey: "group") }
@@ -1064,7 +1122,7 @@ final class StateSync {
         c.items = (j["items"] as? [Any] ?? []).compactMap { e in
             guard let d = e as? [String: Any], let t = (d["type"] as? String).flatMap(CollectionItem.Kind.init(rawValue:)),
                   let iid = string(d["id"]) else { return nil }
-            return CollectionItem(type: t, id: iid)
+            return CollectionItem(type: t, id: iid, sid: string(d["sid"]))
         }
         c.query = j["query"] as? String ?? ""
         if let t = j["types"] as? [String] { c.types = t }
@@ -1117,6 +1175,7 @@ final class StateSync {
         Self.diff(&m, "myList", d.myList, now: now)
         Self.diff(&m, "favorites", d.favorites, now: now)
         Self.diff(&m, "watched", d.watched, now: now)
+        Self.diff(&m, "hiddenCategories", d.hiddenCategories, now: now)
         Self.diffOrdered(&m, "recentChannels", d.recentChannels, now: now)
         // voortgang: alleen bewuste verwijderingen tellen (`progressCleared`), niet een sleutel die hier ontbreekt
         Self.diffTimed(&m, "progress", d.progress.mapValues { $0.updated.timeIntervalSince1970 }, now: now, inferRemovals: false)
@@ -1292,6 +1351,7 @@ final class StateSync {
         newData.myList = Set((sets["myList"] ?? [:]).keys)
         newData.favorites = Set((sets["favorites"] ?? [:]).keys)
         newData.watched = Set((sets["watched"] ?? [:]).keys)
+        newData.hiddenCategories = Set((sets["hiddenCategories"] ?? [:]).keys)
         newData.recentChannels = recentOrdered.map(\.key)
         newData.history = historySorted.map(\.entry)
         newData.progress = progress.mapValues(\.entry)

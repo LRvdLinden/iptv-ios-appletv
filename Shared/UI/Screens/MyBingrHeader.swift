@@ -8,6 +8,9 @@ struct MyBingrHeader: View {
     @EnvironmentObject var trakt: TraktSync
     @State private var detail: DetailTarget?
     @State private var resumeChoice: ResumeChoice?
+    /// Build 128: items van andere servers
+    @ObservedObject private var cross = CrossServer.shared
+    @State private var prompt: CrossServer.Prompt?
 
     private var lib: Library { playlists.library }
     private var pid: UUID? { playlists.source?.id }
@@ -15,31 +18,64 @@ struct MyBingrHeader: View {
     /// Verder kijken van dít profiel (films + series met voortgang), nieuwste eerst.
     private struct ContinueEntry: Identifiable {
         let id: String; let target: DetailTarget; let entry: ProgressEntry
+        /// Build 128: server als dat niet de open server is
+        var source: UUID? = nil
     }
+    /// Build 128: over alle servers (andere servers via CrossServer)
     private var continueItems: [ContinueEntry] {
+        _ = cross.version
         let movies = Dictionary(lib.movies.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         let seriesByTitle = Dictionary(lib.series.map { ($0.title, $0) }, uniquingKeysWith: { a, _ in a })
         var seen = Set<String>()
         return store.progress
-            .filter { store.belongsToActive($0.value.profileID) && ($0.value.playlistID == nil || $0.value.playlistID == pid) }
+            .filter { store.belongsToActive($0.value.profileID) }
             .sorted { $0.value.updated > $1.value.updated }
             .compactMap { key, e -> ContinueEntry? in
-                let t: DetailTarget? = movies[key].map { .movie($0) } ?? seriesByTitle[e.title].map { .series($0) }
+                var t: DetailTarget?
+                var source: UUID?
+                if let other = e.playlistID, other != pid {
+                    let full = other.uuidString + "|" + key
+                    t = cross.movie(forKey: full).map { .movie($0) } ?? cross.episodeSeries(playlist: other, key: key).map { .series($0) }
+                    source = other
+                } else {
+                    t = movies[key].map { .movie($0) } ?? seriesByTitle[e.title].map { .series($0) }
+                }
                 guard let t, seen.insert(t.id).inserted else { return nil }   // per serie alleen de laatste aflevering
-                return ContinueEntry(id: key, target: t, entry: e)
+                return ContinueEntry(id: key, target: t, entry: e, source: source)
             }
             .prefix(20).map { $0 }
     }
 
+    private func isActive(_ key: String) -> Bool {
+        guard let pid, let bar = key.firstIndex(of: "|") else { return false }
+        return key[..<bar].caseInsensitiveCompare(pid.uuidString) == .orderedSame
+    }
+
     private var favoriteChannels: [Channel] {
-        guard let pid else { return [] }
-        return lib.channels.filter { store.isFavorite(pid, $0.id) }
+        _ = cross.version
+        let active = pid.map { p in lib.channels.filter { store.isFavorite(p, $0.id) } } ?? []
+        let other = store.favorites.filter { !isActive($0) }
+            .sorted { cross.addedAt($0, field: "favorites") > cross.addedAt($1, field: "favorites") }
+            .compactMap { cross.channel(forKey: $0) }
+        return CrossServer.dedupe(uniqueByID(active + other), identity: CrossServer.identity)
     }
 
     private var myListItems: [DetailTarget] {
-        guard let pid else { return [] }
-        return lib.movies.filter { store.inMyList(pid, $0.id) }.map { .movie($0) }
-            + lib.series.filter { store.inMyList(pid, $0.id) }.map { .series($0) }
+        _ = cross.version
+        var out: [DetailTarget] = []
+        if let pid {
+            out = lib.movies.filter { store.inMyList(pid, $0.id) }.map { .movie($0) }
+                + lib.series.filter { store.inMyList(pid, $0.id) }.map { .series($0) }
+        }
+        for k in store.myList where !isActive(k) {
+            if let m = cross.movie(forKey: k) { out.append(.movie(m)) } else if let s = cross.series(forKey: k) { out.append(.series(s)) }
+        }
+        var seen = Set<String>()
+        return out.filter { t in
+            let id: String
+            switch t { case .movie(let m): id = CrossServer.identity(m); case .series(let s): id = CrossServer.identity(s) }
+            return seen.insert(t.id).inserted && seen.insert(id).inserted
+        }
     }
 
     var body: some View {
@@ -68,6 +104,7 @@ struct MyBingrHeader: View {
             if !favs.isEmpty { channelRow(favs) }
         }
         .resumeDialog($resumeChoice) { detail = $0 }
+        .crossServerPrompt($prompt)
         .padding(.vertical, tvScaled(8))
         #if !os(tvOS)
         .sheet(item: $detail) { DetailView(target: $0).presentationDragIndicator(.visible) }
@@ -102,8 +139,15 @@ struct MyBingrHeader: View {
                         let e = c.entry
                         let left = max(0, e.position / max(e.fraction, 0.01) - e.position)
                         Button {
-                            resumeChoice = ResumeChoice(id: c.id, title: e.title, fraction: e.fraction,
-                                                        position: e.position > 0 ? e.position : nil, detail: c.target)
+                            let choice = ResumeChoice(id: c.id, title: e.title, fraction: e.fraction,
+                                                      position: e.position > 0 ? e.position : nil, detail: c.target, source: c.source)
+                            CrossServerOpen.title(c.target, list: .continueWatching,
+                                                  onTarget: { t in
+                                                      var x = choice
+                                                      if t.id != c.target.id { x = ResumeChoice(id: t.id, title: e.title, fraction: e.fraction, position: x.position, detail: t, source: t.sourceID) }
+                                                      resumeChoice = x
+                                                  },
+                                                  onPrompt: { prompt = $0 })
                         } label: {
                             ContinueCard(title: e.title, poster: e.artwork ?? poster(c.target), fraction: e.fraction,
                                          caption: L("%d min left", Int(left / 60)))
@@ -124,7 +168,11 @@ struct MyBingrHeader: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(spacing: Theme.rowSpacing) {
                     ForEach(list) { c in
-                        Button { app.play(Playables.channel(c, now: lib.nowPlaying(c)), zap: list) } label: {
+                        Button {
+                            CrossServerOpen.channel(c, list: .favorites,
+                                                    onChannel: { app.play(Playables.channel($0, now: lib.nowPlaying($0)), zap: list) },
+                                                    onPrompt: { prompt = $0 })
+                        } label: {
                             ChannelCard(channel: c, now: lib.nowPlaying(c), favorite: true)
                         }
                         .cardButton()
@@ -151,7 +199,7 @@ struct MyBingrHeader: View {
                     LazyHStack(spacing: Theme.rowSpacing) {
                         ForEach(Array(items.enumerated()), id: \.offset) { _, pair in
                             let (t, fraction) = pair
-                            Button { detail = t } label: {
+                            Button { CrossServerOpen.title(t, list: .myList, onTarget: { detail = $0 }, onPrompt: { prompt = $0 }) } label: {
                                 switch t {
                                 case .movie(let m):
                                     let imdb = trakt.imdb(for: m)

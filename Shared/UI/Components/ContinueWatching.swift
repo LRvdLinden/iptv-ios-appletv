@@ -36,6 +36,8 @@ struct ResumeChoice: Identifiable {
     let fraction: Double
     var position: Double?
     var detail: DetailTarget?
+    /// Build 128: server van de voortgang als dat niet de open server is
+    var source: UUID? = nil
 }
 
 extension View {
@@ -67,8 +69,8 @@ private struct ResumeDialog: ViewModifier {
 
     private func run(_ c: ResumeChoice, restart: Bool) {
         Task {
-            if let fallback = await ResumePlayer.play(key: c.id, title: c.title, restart: restart,
-                                                      app: app, playlists: playlists, trakt: trakt) {
+            if let fallback = await ResumePlayer.play(key: c.id, title: c.title, restart: restart, source: c.source,
+                                                      detail: c.detail, app: app, playlists: playlists, trakt: trakt) {
                 onDetail(fallback)
             }
         }
@@ -78,8 +80,29 @@ private struct ResumeDialog: ViewModifier {
 @MainActor
 enum ResumePlayer {
     /// Speelt een film of aflevering af op basis van de voortgangssleutel. Lukt dat niet, dan de serie/film om te openen.
-    static func play(key: String, title: String, restart: Bool,
+    static func play(key: String, title: String, restart: Bool, source: UUID? = nil, detail: DetailTarget? = nil,
                      app: AppState, playlists: PlaylistService, trakt: TraktSync) async -> DetailTarget? {
+        // build 128: voortgang van een andere server: afspelen via die server (zonder te wisselen)
+        if let source, source != playlists.source?.id {
+            switch detail {
+            case .movie(let m)?:
+                var it = Playables.movie(m, imdb: trakt.imdb(for: m))
+                if restart { it.resumeAt = 0 }
+                app.play(it)
+                return nil
+            case .series(let s)?:
+                let eps = await playlists.episodes(for: s)
+                if let e = eps.first(where: { $0.id == key }) {
+                    var it = Playables.episode(e, of: s, imdb: trakt.imdb(for: s))
+                    if restart { it.resumeAt = 0 }
+                    app.play(it)
+                    return nil
+                }
+                return .series(s)
+            case nil:
+                return nil
+            }
+        }
         let lib = playlists.library
         if let m = lib.movies.first(where: { $0.id == key }) {
             var it = Playables.movie(m, imdb: trakt.imdb(for: m))
