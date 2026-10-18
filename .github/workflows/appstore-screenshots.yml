@@ -240,7 +240,11 @@ jobs:
         run: |
           set -euo pipefail
           (cd out && zip -qr Bingr-AppStore-EN.zip Bingr-AppStore-EN)
-          mkdir -p /tmp/pub && cp -R out/Bingr-AppStore-EN out/Bingr-AppStore-EN.zip /tmp/pub/
+          mkdir -p /tmp/pub && cp -R out/Bingr-AppStore-EN /tmp/pub/
+          # GitHub weigert bestanden boven 100 MB: de zip alleen meenemen als hij kleiner is (anders zelf zippen uit de map)
+          ZIPSIZE=$(stat -c %s out/Bingr-AppStore-EN.zip); echo "zip: $ZIPSIZE bytes"
+          if [ "$ZIPSIZE" -lt 95000000 ]; then cp out/Bingr-AppStore-EN.zip /tmp/pub/; fi
+          du -sh /tmp/pub
           cp shots/_info.txt /tmp/pub/_info.txt 2>/dev/null || true
           cp -R out/_promo-crops /tmp/pub/_promo-crops 2>/dev/null || true
           mkdir -p /tmp/pub/_mac-debug && cp shots/mac/*-screen.png shots/mac/_desktop.png /tmp/pub/_mac-debug/ 2>/dev/null || true
