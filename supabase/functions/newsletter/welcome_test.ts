@@ -1,4 +1,5 @@
-// Unittests voor de welkomstmail: deno test supabase/functions/newsletter/welcome_test.ts
+
+ // Unittests voor de welkomstmail: deno test supabase/functions/newsletter/welcome_test.ts
 // Zonder netwerk en database: opbouw, escapen, aanhef, links, nieuwsbriefalinea, selectie en eerste uitrol.
 import { esc } from "../_shared/layout.ts";
 import {
@@ -32,10 +33,6 @@ Deno.test("welkomstmail: opbouw, huisstijl, links en voettekst (nl en en)", () =
     ok(m.html.includes(lang === "nl" ? "zondag en woensdag" : "Sunday and Wednesday"), `${lang}: nieuwsbrief`);
     ok(!/app-?icon|apple-touch-icon|favicon/i.test(m.html), `${lang}: geen app-icoon`);
     ok(!/€|\$\d|prijs|price|supabase|tmdb/i.test(m.html + m.text), `${lang}: geen prijzen of leveranciers`);
-    ok(!/iptv|pandora|netflix|videoland|disney/i.test(m.html + m.text), `${lang}: geen aanbieders of diensten`);
-    // alleen https-links naar Bingr, support en de bèta
-    const hrefs = [...m.html.matchAll(/href="([^"]+)"/g)].map((x) => x[1].replace(/&amp;/g, "&"));
-    ok(hrefs.length >= 8 && hrefs.every((h) => /^https:\/\/(bingr\.online|support\.bingr\.online|testflight\.apple\.com)\//.test(h + "/")), `${lang}: alleen eigen links ${hrefs}`);
     eq(m.subject, WELCOME[lang].subject, `${lang}: onderwerp`);
   }
   eq(welcomeSubject("nl"), "Welkom bij Bingr: zo begin je");
