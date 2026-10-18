@@ -1,0 +1,322 @@
+Bingr - App Store images: credits
+=================================
+
+The movie and series artwork in these screenshots and promotional images comes from films that are free
+to use worldwide: Blender open movies (Creative Commons Attribution, (c) Blender Foundation | blender.org)
+and silent films that are in the public domain in the EU and the US (published before 1931, all authors
+died more than 70 years ago). Channels, TV guide, channel logos and profile names are made up.
+
+Changes: images were resized and cropped to fit the app layout; on posters made from a film frame the
+title was added by the app. Frames from videos were extracted at the stated time.
+
+m01-poster  -  Sintel (2010)
+  Image:   File:Sintel poster.jpg
+  Author:  (c) copyright Blender Foundation | durian.blender.org
+  Licence: CC BY 3.0 - https://creativecommons.org/licenses/by/3.0
+  Source:  https://commons.wikimedia.org/wiki/File:Sintel_poster.jpg
+
+m01-keyart  -  Sintel (2010)
+  Image:   File:Sintel Cover Durian Project.jpg
+  Author:  Lee Salvemini, Pablo Vazquez, David Revoy, Durian Team, Blender Foundation
+  Licence: CC BY 3.0 - https://creativecommons.org/licenses/by/3.0
+  Source:  https://commons.wikimedia.org/wiki/File:Sintel_Cover_Durian_Project.jpg
+
+m01-backdrop  -  Sintel (2010)
+  Image:   File:Sintel movie 4K.webm (frame at 693 s)
+  Author:  Durian Open Movie project; about page (archived link 31 March 2014); see also the credits roll.
+  Licence: CC BY 3.0 - https://creativecommons.org/licenses/by/3.0
+  Source:  https://commons.wikimedia.org/wiki/File:Sintel_movie_4K.webm
+
+m02-poster  -  Tears of Steel (2012)
+  Image:   File:Tos-poster.png
+  Author:  (CC) Blender Foundation | Project Mango
+  Licence: CC BY 3.0 - https://creativecommons.org/licenses/by/3.0
+  Source:  https://commons.wikimedia.org/wiki/File:Tos-poster.png
+
+m02-backdrop  -  Tears of Steel (2012)
+  Image:   File:Tears of Steel in 4k - Official Blender Foundation release.webm (frame at 114 s)
+  Author:  Blender Foundation
+  Licence: CC BY 3.0 - https://creativecommons.org/licenses/by/3.0
+  Source:  https://commons.wikimedia.org/wiki/File:Tears_of_Steel_in_4k_-_Official_Blender_Foundation_release.webm
+
+m03-poster  -  Big Buck Bunny (2008)
+  Image:   File:Big buck bunny poster big.jpg
+  Author:  (c) copyright Blender Foundation | peach.blender.org
+  Licence: CC BY 3.0 - https://creativecommons.org/licenses/by/3.0
+  Source:  https://commons.wikimedia.org/wiki/File:Big_buck_bunny_poster_big.jpg
+
+m03-backdrop  -  Big Buck Bunny (2008)
+  Image:   File:Big Buck Bunny 4K.webm (frame at 99 s)
+  Author:  Blender Foundation
+  Licence: CC BY 3.0 - https://creativecommons.org/licenses/by/3.0
+  Source:  https://commons.wikimedia.org/wiki/File:Big_Buck_Bunny_4K.webm
+
+m04-poster  -  Cosmos Laundromat (2015)
+  Image:   File:CosmosLaundromatPoster.jpg
+  Author:  Andy Goralczyk and the Blender Foundation
+  Licence: CC BY 4.0 - https://creativecommons.org/licenses/by/4.0
+  Source:  https://commons.wikimedia.org/wiki/File:CosmosLaundromatPoster.jpg
+
+m04-backdrop  -  Cosmos Laundromat (2015)
+  Image:   File:Franck the caterpillar.jpg
+  Author:  Blender Foundation
+  Licence: CC BY 4.0 - https://creativecommons.org/licenses/by/4.0
+  Source:  https://commons.wikimedia.org/wiki/File:Franck_the_caterpillar.jpg
+
+m05-poster  -  Spring (2019)
+  Image:   File:Spring2019AlphaPosterBlender.jpg
+  Author:  Blender Foundation
+  Licence: CC BY 4.0 - https://creativecommons.org/licenses/by/4.0
+  Source:  https://commons.wikimedia.org/wiki/File:Spring2019AlphaPosterBlender.jpg
+
+m05-backdrop  -  Spring (2019)
+  Image:   File:Spring-concept art-Spring.png
+  Author:  Uploaded by Julien Kaspar/Blender Foundation
+  Licence: CC BY 4.0 - https://creativecommons.org/licenses/by/4.0
+  Source:  https://commons.wikimedia.org/wiki/File:Spring-concept_art-Spring.png
+
+m06-poster  -  Sprite Fright (2021)
+  Image:   File:Sprite Fright-movie poster.jpg
+  Author:  Blender Studio
+  Licence: CC BY 4.0 - https://creativecommons.org/licenses/by/4.0
+  Source:  https://commons.wikimedia.org/wiki/File:Sprite_Fright-movie_poster.jpg
+
+m06-backdrop  -  Sprite Fright (2021)
+  Image:   File:Sprite Fright - Open Movie by Blender Studio.webm (frame at 177 s)
+  Author:  Blender Studio
+  Licence: CC BY 4.0 - https://creativecommons.org/licenses/by/4.0
+  Source:  https://commons.wikimedia.org/wiki/File:Sprite_Fright_-_Open_Movie_by_Blender_Studio.webm
+
+m07-poster  -  Coffee Run (2020)
+  Image:   File:Coffee Run-movie poster.png
+  Author:  Hjalti Hjalmarsson (Blender Cloud)
+  Licence: CC BY 4.0 - https://creativecommons.org/licenses/by/4.0
+  Source:  https://commons.wikimedia.org/wiki/File:Coffee_Run-movie_poster.png
+
+m07-backdrop  -  Coffee Run (2020)
+  Image:   File:Coffee Run - Blender Open Movie-full movie.webm (frame at 40 s)
+  Author:  Blender Foundation
+  Licence: CC BY 4.0 - https://creativecommons.org/licenses/by/4.0
+  Source:  https://commons.wikimedia.org/wiki/File:Coffee_Run_-_Blender_Open_Movie-full_movie.webm
+
+m08-poster  -  Charge (2022)
+  Image:   File:Charge-movie poster.jpg
+  Author:  Blender Studio
+  Licence: CC BY 4.0 - https://creativecommons.org/licenses/by/4.0
+  Source:  https://commons.wikimedia.org/wiki/File:Charge-movie_poster.jpg
+
+m08-backdrop  -  Charge (2022)
+  Image:   File:Charge - Blender Open Movie-full movie.webm (frame at 172 s)
+  Author:  Blender Studio
+  Licence: CC BY 4.0 - https://creativecommons.org/licenses/by/4.0
+  Source:  https://commons.wikimedia.org/wiki/File:Charge_-_Blender_Open_Movie-full_movie.webm
+
+m09-keyart  -  Elephants Dream (2006)
+  Image:   File:Elephants Dream s5 both.jpg
+  Author:  Ton Roosendaal et al.
+  Licence: CC BY 2.5 - https://creativecommons.org/licenses/by/2.5
+  Source:  https://commons.wikimedia.org/wiki/File:Elephants_Dream_s5_both.jpg
+
+m09-backdrop  -  Elephants Dream (2006)
+  Image:   File:Elephants Dream s7 both.jpg
+  Author:  Ton Roosendaal et al.
+  Licence: CC BY 2.5 - https://creativecommons.org/licenses/by/2.5
+  Source:  https://commons.wikimedia.org/wiki/File:Elephants_Dream_s7_both.jpg
+
+m11-keyart  -  Nosferatu (1922)
+  Image:   File:Film Nosferatu (van F, SFA008003709.jpg
+  Author:  Unknown authorUnknown author
+  Licence: Public domain
+  Source:  https://commons.wikimedia.org/wiki/File:Film_Nosferatu_(van_F,_SFA008003709.jpg
+
+m11-backdrop  -  Nosferatu (1922)
+  Image:   File:Nosferatu (1922).webm (frame at 3276 s)
+  Author:  F. W. Murnau / Henrik Galeen
+  Licence: Public domain
+  Source:  https://commons.wikimedia.org/wiki/File:Nosferatu_(1922).webm
+
+m12-keyart  -  A Trip to the Moon (1902)
+  Image:   File:Melies color Voyage dans la lune.jpg
+  Author:  Georges Méliès
+  Licence: Public domain
+  Source:  https://commons.wikimedia.org/wiki/File:Melies_color_Voyage_dans_la_lune.jpg
+
+m12-backdrop  -  A Trip to the Moon (1902)
+  Image:   File:Méliès Trip to the Moon cannon still.jpg
+  Author:  Georges Méliès
+  Licence: Public domain
+  Source:  https://commons.wikimedia.org/wiki/File:M%C3%A9li%C3%A8s_Trip_to_the_Moon_cannon_still.jpg
+
+m13-poster  -  The Great Train Robbery (1903)
+  Image:   File:Great Train Robbery Poster.jpeg
+  Author:  Unknown authorUnknown author
+  Licence: Public domain
+  Source:  https://commons.wikimedia.org/wiki/File:Great_Train_Robbery_Poster.jpeg
+
+m13-keyart  -  The Great Train Robbery (1903)
+  Image:   File:The Great Train Robbery 1903.webm (frame at 416 s)
+  Author:  Edwin Stanton Porter
+  Licence: Public domain
+  Source:  https://commons.wikimedia.org/wiki/File:The_Great_Train_Robbery_1903.webm
+
+m13-backdrop  -  The Great Train Robbery (1903)
+  Image:   File:The Great Train Robbery 1903.webm (frame at 284 s)
+  Author:  Edwin Stanton Porter
+  Licence: Public domain
+  Source:  https://commons.wikimedia.org/wiki/File:The_Great_Train_Robbery_1903.webm
+
+s01-poster  -  Les Vampires (1915)
+  Image:   File:Les Vampires - Tamagno.jpg
+  Author:  Francisco Tamagno
+  Licence: Public domain
+  Source:  https://commons.wikimedia.org/wiki/File:Les_Vampires_-_Tamagno.jpg
+
+s01-keyart  -  Les Vampires (1915)
+  Image:   File:Les Vampires - Irma Vep.jpg
+  Author:  Unknown authorUnknown author
+  Licence: Public domain
+  Source:  https://commons.wikimedia.org/wiki/File:Les_Vampires_-_Irma_Vep.jpg
+
+s01-backdrop  -  Les Vampires (1915)
+  Image:   File:Les Vampires - Les Yeux qui fascinent - Juan-José Moreno contre Irma Vep.jpg
+  Author:  Louis Feuillade
+  Licence: Public domain
+  Source:  https://commons.wikimedia.org/wiki/File:Les_Vampires_-_Les_Yeux_qui_fascinent_-_Juan-Jos%C3%A9_Moreno_contre_Irma_Vep.jpg
+
+s01-still1  -  Les Vampires (1915)
+  Image:   File:Les Vampires (1915) par Louis Feuillade.webm (frame at 190 s)
+  Author:  Louis Feuillade
+  Licence: Public domain
+  Source:  https://commons.wikimedia.org/wiki/File:Les_Vampires_(1915)_par_Louis_Feuillade.webm
+
+s01-still2  -  Les Vampires (1915)
+  Image:   File:Les Vampires - Irma Vep revolver.jpg
+  Author:  Louis Feuillade
+  Licence: Public domain
+  Source:  https://commons.wikimedia.org/wiki/File:Les_Vampires_-_Irma_Vep_revolver.jpg
+
+s01-still3  -  Les Vampires (1915)
+  Image:   File:Les Vampires (1915) par Louis Feuillade.webm (frame at 571 s)
+  Author:  Louis Feuillade
+  Licence: Public domain
+  Source:  https://commons.wikimedia.org/wiki/File:Les_Vampires_(1915)_par_Louis_Feuillade.webm
+
+s01-still4  -  Les Vampires (1915)
+  Image:   File:Les Vampires - Satanas - le cabaret du Joyeux Cagibi.jpg
+  Author:  Louis Feuillade
+  Licence: Public domain
+  Source:  https://commons.wikimedia.org/wiki/File:Les_Vampires_-_Satanas_-_le_cabaret_du_Joyeux_Cagibi.jpg
+
+s01-still5  -  Les Vampires (1915)
+  Image:   File:Les Vampires (1915) par Louis Feuillade.webm (frame at 1334 s)
+  Author:  Louis Feuillade
+  Licence: Public domain
+  Source:  https://commons.wikimedia.org/wiki/File:Les_Vampires_(1915)_par_Louis_Feuillade.webm
+
+s01-still6  -  Les Vampires (1915)
+  Image:   File:Les Vampires - Les Yeux qui fascinent - Juan-José Moreno enlève Irma Vep.jpg
+  Author:  Louis Feuillade
+  Licence: Public domain
+  Source:  https://commons.wikimedia.org/wiki/File:Les_Vampires_-_Les_Yeux_qui_fascinent_-_Juan-Jos%C3%A9_Moreno_enl%C3%A8ve_Irma_Vep.jpg
+
+s01-still7  -  Les Vampires (1915)
+  Image:   File:Les Vampires (1915) par Louis Feuillade.webm (frame at 1588 s)
+  Author:  Louis Feuillade
+  Licence: Public domain
+  Source:  https://commons.wikimedia.org/wiki/File:Les_Vampires_(1915)_par_Louis_Feuillade.webm
+
+s01-still8  -  Les Vampires (1915)
+  Image:   File:Les Vampires - L'Homme des poisons - Irma Vep en danger.jpg
+  Author:  Louis Feuillade (1873-1925)
+  Licence: Public domain
+  Source:  https://commons.wikimedia.org/wiki/File:Les_Vampires_-_L%27Homme_des_poisons_-_Irma_Vep_en_danger.jpg
+
+s02-keyart  -  Judex (1916)
+  Image:   File:Judex photo.jpg
+  Author:  Louis Feuillade
+  Licence: Public domain
+  Source:  https://commons.wikimedia.org/wiki/File:Judex_photo.jpg
+
+s02-backdrop  -  Judex (1916)
+  Image:   File:Judex.jpg
+  Author:  Louis Feuillade (1873-1925)
+  Licence: Public domain
+  Source:  https://commons.wikimedia.org/wiki/File:Judex.jpg
+
+s02-still1  -  Judex (1916)
+  Image:   File:Judex - Episode 03 - La Meute fantastique (1916).webm (frame at 624 s)
+  Author:  Louis Feuillade
+  Licence: Public domain
+  Source:  https://commons.wikimedia.org/wiki/File:Judex_-_Episode_03_-_La_Meute_fantastique_(1916).webm
+
+s02-still2  -  Judex (1916)
+  Image:   File:Judex - Episode 03 - La Meute fantastique (1916).webm (frame at 346 s)
+  Author:  Louis Feuillade
+  Licence: Public domain
+  Source:  https://commons.wikimedia.org/wiki/File:Judex_-_Episode_03_-_La_Meute_fantastique_(1916).webm
+
+s02-still3  -  Judex (1916)
+  Image:   File:Judex - Episode 03 - La Meute fantastique (1916).webm (frame at 901 s)
+  Author:  Louis Feuillade
+  Licence: Public domain
+  Source:  https://commons.wikimedia.org/wiki/File:Judex_-_Episode_03_-_La_Meute_fantastique_(1916).webm
+
+s02-still4  -  Judex (1916)
+  Image:   File:Musidora Judex 3.jpg
+  Author:  Louis Feuillade (1873-1925)
+  Licence: Public domain
+  Source:  https://commons.wikimedia.org/wiki/File:Musidora_Judex_3.jpg
+
+s02-still5  -  Judex (1916)
+  Image:   File:Judex - Episode 03 - La Meute fantastique (1916).webm (frame at 1178 s)
+  Author:  Louis Feuillade
+  Licence: Public domain
+  Source:  https://commons.wikimedia.org/wiki/File:Judex_-_Episode_03_-_La_Meute_fantastique_(1916).webm
+
+s02-still6  -  Judex (1916)
+  Image:   File:Judex - Episode 03 - La Meute fantastique (1916).webm (frame at 1733 s)
+  Author:  Louis Feuillade
+  Licence: Public domain
+  Source:  https://commons.wikimedia.org/wiki/File:Judex_-_Episode_03_-_La_Meute_fantastique_(1916).webm
+
+live-c03  -  Tears of Steel (2012)
+  Image:   File:Tears of Steel in 4k - Official Blender Foundation release.webm (frame at 527 s)
+  Author:  Blender Foundation
+  Licence: CC BY 3.0 - https://creativecommons.org/licenses/by/3.0
+  Source:  https://commons.wikimedia.org/wiki/File:Tears_of_Steel_in_4k_-_Official_Blender_Foundation_release.webm
+
+live-c04  -  Big Buck Bunny (2008)
+  Image:   File:Big Buck Bunny 4K.webm (frame at 376 s)
+  Author:  Blender Foundation
+  Licence: CC BY 3.0 - https://creativecommons.org/licenses/by/3.0
+  Source:  https://commons.wikimedia.org/wiki/File:Big_Buck_Bunny_4K.webm
+
+live-c06  -  Nosferatu (1922)
+  Image:   File:Nosferatu (1922).webm (frame at 3621 s)
+  Author:  F. W. Murnau / Henrik Galeen
+  Licence: Public domain
+  Source:  https://commons.wikimedia.org/wiki/File:Nosferatu_(1922).webm
+
+live-c10  -  Big Buck Bunny (2008)
+  Image:   File:Big Buck Bunny 4K.webm (frame at 19 s)
+  Author:  Blender Foundation
+  Licence: CC BY 3.0 - https://creativecommons.org/licenses/by/3.0
+  Source:  https://commons.wikimedia.org/wiki/File:Big_Buck_Bunny_4K.webm
+
+live-c13  -  Sprite Fright (2021)
+  Image:   File:Sprite Fright - Open Movie by Blender Studio.webm (frame at 19 s)
+  Author:  Blender Studio
+  Licence: CC BY 4.0 - https://creativecommons.org/licenses/by/4.0
+  Source:  https://commons.wikimedia.org/wiki/File:Sprite_Fright_-_Open_Movie_by_Blender_Studio.webm
+
+live-c14  -  Big Buck Bunny (2008)
+  Image:   File:Big Buck Bunny 4K.webm (frame at 337 s)
+  Author:  Blender Foundation
+  Licence: CC BY 3.0 - https://creativecommons.org/licenses/by/3.0
+  Source:  https://commons.wikimedia.org/wiki/File:Big_Buck_Bunny_4K.webm
+
+live-c12  -  A Trip to the Moon (1902)
+  Image:   File:Méliès Trip to the Moon stars still.jpg
+  Author:  Georges Méliès
+  Licence: Public domain
+  Source:  https://commons.wikimedia.org/wiki/File:M%C3%A9li%C3%A8s_Trip_to_the_Moon_stars_still.jpg

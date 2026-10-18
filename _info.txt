@@ -1,0 +1,125 @@
+Tijdzone app: Etc/GMT-11
+iOS: com.apple.CoreSimulator.SimRuntime.iOS-26-2  tvOS: com.apple.CoreSimulator.SimRuntime.tvOS-26-2
+Apparaten: iPhone 17 Pro Max / iPhone 17 Pro / iPad Pro 13-inch (M5) / Apple TV 4K (3rd generation)
+Wrote screenshot to: shots/iphone69/home.png
+iphone69/home: 1320 2868
+Wrote screenshot to: shots/iphone69/detail.png
+iphone69/detail: 1320 2868
+Wrote screenshot to: shots/iphone69/live.png
+iphone69/live: 1320 2868
+Wrote screenshot to: shots/iphone69/guide.png
+iphone69/guide: 1320 2868
+Wrote screenshot to: shots/iphone69/top10.png
+iphone69/top10: 1320 2868
+Wrote screenshot to: shots/iphone69/picker.png
+iphone69/picker: 1320 2868
+Wrote screenshot to: shots/iphone69/categories.png
+iphone69/categories: 1320 2868
+Wrote screenshot to: shots/iphone63/home.png
+iphone63/home: 1206 2622
+Wrote screenshot to: shots/iphone63/detail.png
+iphone63/detail: 1206 2622
+Wrote screenshot to: shots/iphone63/live.png
+iphone63/live: 1206 2622
+Wrote screenshot to: shots/iphone63/guide.png
+iphone63/guide: 1206 2622
+Wrote screenshot to: shots/iphone63/top10.png
+iphone63/top10: 1206 2622
+Wrote screenshot to: shots/iphone63/picker.png
+iphone63/picker: 1206 2622
+Wrote screenshot to: shots/iphone63/categories.png
+iphone63/categories: 1206 2622
+Wrote screenshot to: shots/ipad13/home.png
+ipad13/home: 2064 2752
+Wrote screenshot to: shots/ipad13/detail.png
+ipad13/detail: 2064 2752
+Wrote screenshot to: shots/ipad13/live.png
+ipad13/live: 2064 2752
+Wrote screenshot to: shots/ipad13/guide.png
+ipad13/guide: 2064 2752
+Wrote screenshot to: shots/ipad13/top10.png
+ipad13/top10: 2064 2752
+Wrote screenshot to: shots/ipad13/picker.png
+ipad13/picker: 2064 2752
+Wrote screenshot to: shots/ipad13/categories.png
+ipad13/categories: 2064 2752
+Wrote screenshot to: shots/ipad13/multiview.png
+ipad13/multiview: 2064 2752
+An error was encountered processing the command (domain=NSPOSIXErrorDomain, code=45):
+Simulator device failed to complete the requested operation.
+Operation not supported
+Underlying error (domain=NSPOSIXErrorDomain, code=45):
+	Runtime does not support userInterfaceStyle
+	Operation not supported
+Wrote screenshot to: shots/appletv/home.png
+appletv/home: 3840 2160
+Wrote screenshot to: shots/appletv/detail.png
+appletv/detail: 3840 2160
+Wrote screenshot to: shots/appletv/live.png
+appletv/live: 3840 2160
+Wrote screenshot to: shots/appletv/guide.png
+appletv/guide: 3840 2160
+Wrote screenshot to: shots/appletv/top10.png
+appletv/top10: 3840 2160
+Wrote screenshot to: shots/appletv/picker.png
+appletv/picker: 3840 2160
+Wrote screenshot to: shots/appletv/categories.png
+appletv/categories: 3840 2160
+Wrote screenshot to: shots/appletv/multiview.png
+appletv/multiview: 3840 2160
+Persistent screen id: D0F26C02-CFC3-40C3-BEFE-CB3F2E0E89E6
+Resolution: 1024x768
+Resolutions for rotation 0:
+  mode 0: res:800x600 hz:60 color_depth:7
+  mode 1: res:960x540 hz:60 color_depth:7
+  mode 2: res:1024x576 hz:60 color_depth:7
+  mode 3: res:1024x768 hz:60 color_depth:7 <-- current mode
+  mode 4: res:1280x720 hz:60 color_depth:7
+  mode 5: res:1280x960 hz:60 color_depth:7
+  mode 6: res:1344x756 hz:60 color_depth:7
+  mode 7: res:1344x1008 hz:60 color_depth:7
+  mode 8: res:1600x900 hz:60 color_depth:7
+  mode 9: res:1600x1200 hz:60 color_depth:7
+  mode 10: res:1920x1080 hz:60 color_depth:7
+  mode 11: res:640x480 hz:60 color_depth:7
+scherm D0F26C02-CFC3-40C3-BEFE-CB3F2E0E89E6 → mode 10
+home: venster 24
+drwxr-xr-x  7 runner  staff      224 Oct 18 09:40 ..
+-rw-r--r--  1 runner  staff        0 Oct 18 09:40 home.log
+-rw-r--r--@ 1 runner  staff  1158803 Oct 18 09:41 home.png
+/Users/runner/work/_temp/4d42f9a5-3f25-4392-8891-27eb2cda088f.sh: line 41: 76638 Terminated: 15          TZ="$TZ_APP" "$APP/Contents/MacOS/Bingr" -BingrScreenshots YES -BingrScreen "$s" -BingrWindowSize 1440x900 -BingrMediaDir "$PWD/media" -AppleLanguages "(en)" -AppleLocale en_US > "shots/mac/$s.log" 2>&1
+detail: venster 31
+-rw-r--r--@ 1 runner  staff   984470 Oct 18 09:41 detail.png
+-rw-r--r--  1 runner  staff        0 Oct 18 09:40 home.log
+-rw-r--r--@ 1 runner  staff  1158803 Oct 18 09:41 home.png
+/Users/runner/work/_temp/4d42f9a5-3f25-4392-8891-27eb2cda088f.sh: line 41: 77167 Terminated: 15          TZ="$TZ_APP" "$APP/Contents/MacOS/Bingr" -BingrScreenshots YES -BingrScreen "$s" -BingrWindowSize 1440x900 -BingrMediaDir "$PWD/media" -AppleLanguages "(en)" -AppleLocale en_US > "shots/mac/$s.log" 2>&1
+live: venster 38
+-rw-r--r--@ 1 runner  staff  1158803 Oct 18 09:41 home.png
+-rw-r--r--  1 runner  staff        0 Oct 18 09:41 live.log
+-rw-r--r--@ 1 runner  staff   129446 Oct 18 09:42 live.png
+/Users/runner/work/_temp/4d42f9a5-3f25-4392-8891-27eb2cda088f.sh: line 41: 78708 Terminated: 15          TZ="$TZ_APP" "$APP/Contents/MacOS/Bingr" -BingrScreenshots YES -BingrScreen "$s" -BingrWindowSize 1440x900 -BingrMediaDir "$PWD/media" -AppleLanguages "(en)" -AppleLocale en_US > "shots/mac/$s.log" 2>&1
+guide: venster 44
+-rw-r--r--@  1 runner  staff  1158803 Oct 18 09:41 home.png
+-rw-r--r--   1 runner  staff        0 Oct 18 09:41 live.log
+-rw-r--r--@  1 runner  staff   129446 Oct 18 09:42 live.png
+/Users/runner/work/_temp/4d42f9a5-3f25-4392-8891-27eb2cda088f.sh: line 41: 79348 Terminated: 15          TZ="$TZ_APP" "$APP/Contents/MacOS/Bingr" -BingrScreenshots YES -BingrScreen "$s" -BingrWindowSize 1440x900 -BingrMediaDir "$PWD/media" -AppleLanguages "(en)" -AppleLocale en_US > "shots/mac/$s.log" 2>&1
+top10: venster 50
+-rw-r--r--@  1 runner  staff   129446 Oct 18 09:42 live.png
+-rw-r--r--   1 runner  staff        0 Oct 18 09:42 top10.log
+-rw-r--r--@  1 runner  staff  1034880 Oct 18 09:42 top10.png
+/Users/runner/work/_temp/4d42f9a5-3f25-4392-8891-27eb2cda088f.sh: line 41: 80487 Terminated: 15          TZ="$TZ_APP" "$APP/Contents/MacOS/Bingr" -BingrScreenshots YES -BingrScreen "$s" -BingrWindowSize 1440x900 -BingrMediaDir "$PWD/media" -AppleLanguages "(en)" -AppleLocale en_US > "shots/mac/$s.log" 2>&1
+picker: venster 56
+-rw-r--r--@  1 runner  staff   116994 Oct 18 09:43 picker.png
+-rw-r--r--   1 runner  staff        0 Oct 18 09:42 top10.log
+-rw-r--r--@  1 runner  staff  1034880 Oct 18 09:42 top10.png
+/Users/runner/work/_temp/4d42f9a5-3f25-4392-8891-27eb2cda088f.sh: line 41: 81433 Terminated: 15          TZ="$TZ_APP" "$APP/Contents/MacOS/Bingr" -BingrScreenshots YES -BingrScreen "$s" -BingrWindowSize 1440x900 -BingrMediaDir "$PWD/media" -AppleLanguages "(en)" -AppleLocale en_US > "shots/mac/$s.log" 2>&1
+categories: venster 62
+-rw-r--r--@  1 runner  staff   116994 Oct 18 09:43 picker.png
+-rw-r--r--   1 runner  staff        0 Oct 18 09:42 top10.log
+-rw-r--r--@  1 runner  staff  1034880 Oct 18 09:42 top10.png
+/Users/runner/work/_temp/4d42f9a5-3f25-4392-8891-27eb2cda088f.sh: line 41: 82207 Terminated: 15          TZ="$TZ_APP" "$APP/Contents/MacOS/Bingr" -BingrScreenshots YES -BingrScreen "$s" -BingrWindowSize 1440x900 -BingrMediaDir "$PWD/media" -AppleLanguages "(en)" -AppleLocale en_US > "shots/mac/$s.log" 2>&1
+multiview: venster 71
+-rw-r--r--@  1 runner  staff   116994 Oct 18 09:43 picker.png
+-rw-r--r--   1 runner  staff        0 Oct 18 09:42 top10.log
+-rw-r--r--@  1 runner  staff  1034880 Oct 18 09:42 top10.png
+/Users/runner/work/_temp/4d42f9a5-3f25-4392-8891-27eb2cda088f.sh: line 54: 83421 Terminated: 15          TZ="$TZ_APP" "$APP/Contents/MacOS/Bingr" -BingrScreenshots YES -BingrScreen "$s" -BingrWindowSize 1440x900 -BingrMediaDir "$PWD/media" -AppleLanguages "(en)" -AppleLocale en_US > "shots/mac/$s.log" 2>&1
