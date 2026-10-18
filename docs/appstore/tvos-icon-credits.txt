@@ -1,0 +1,70 @@
+Bingr - tvOS-icoon en Top Shelf-afbeeldingen (tools/make_tvos_icon.py)
+
+De covermuur op de achtergrond gebruikt alleen vrij te gebruiken filmposters van Wikimedia Commons:
+Blender open movies (Creative Commons Naamsvermelding) en films die in de EU en de VS publiek domein zijn.
+Geen posters van commerciële films. Verkleind, bijgesneden, donkerder gemaakt en schuin geplaatst.
+
+- Sintel (2010): Sintel poster.jpg
+  Maker: (c) copyright Blender Foundation | durian.blender.org
+  Licentie: CC BY 3.0 (https://creativecommons.org/licenses/by/3.0)
+  Bron: https://commons.wikimedia.org/wiki/File:Sintel_poster.jpg
+- Tears of Steel (2012): Tos-poster.png
+  Maker: (CC) Blender Foundation | Project Mango
+  Licentie: CC BY 3.0 (https://creativecommons.org/licenses/by/3.0)
+  Bron: https://commons.wikimedia.org/wiki/File:Tos-poster.png
+- Big Buck Bunny (2008): Big buck bunny poster big.jpg
+  Maker: (c) copyright Blender Foundation | peach.blender.org
+  Licentie: CC BY 3.0 (https://creativecommons.org/licenses/by/3.0)
+  Bron: https://commons.wikimedia.org/wiki/File:Big_buck_bunny_poster_big.jpg
+- Cosmos Laundromat (2015): CosmosLaundromatPoster.jpg
+  Maker: Andy Goralczyk and the Blender Foundation
+  Licentie: CC BY 4.0 (https://creativecommons.org/licenses/by/4.0)
+  Bron: https://commons.wikimedia.org/wiki/File:CosmosLaundromatPoster.jpg
+- Spring (2019): Spring2019AlphaPosterBlender.jpg
+  Maker: Blender Foundation
+  Licentie: CC BY 4.0 (https://creativecommons.org/licenses/by/4.0)
+  Bron: https://commons.wikimedia.org/wiki/File:Spring2019AlphaPosterBlender.jpg
+- Sprite Fright (2021): Sprite Fright-movie poster.jpg
+  Maker: Blender Studio
+  Licentie: CC BY 4.0 (https://creativecommons.org/licenses/by/4.0)
+  Bron: https://commons.wikimedia.org/wiki/File:Sprite_Fright-movie_poster.jpg
+- Coffee Run (2020): Coffee Run-movie poster.png
+  Maker: Hjalti Hjalmarsson (Blender Cloud)
+  Licentie: CC BY 4.0 (https://creativecommons.org/licenses/by/4.0)
+  Bron: https://commons.wikimedia.org/wiki/File:Coffee_Run-movie_poster.png
+- Charge (2022): Charge-movie poster.jpg
+  Maker: Blender Studio
+  Licentie: CC BY 4.0 (https://creativecommons.org/licenses/by/4.0)
+  Bron: https://commons.wikimedia.org/wiki/File:Charge-movie_poster.jpg
+- Sintel (2010): Sintel Cover Durian Project.jpg
+  Maker: Lee Salvemini, Pablo Vazquez, David Revoy, Durian Team, Blender Foundation
+  Licentie: CC BY 3.0 (https://creativecommons.org/licenses/by/3.0)
+  Bron: https://commons.wikimedia.org/wiki/File:Sintel_Cover_Durian_Project.jpg
+- Elephants Dream (2006): Elephants Dream s5 both.jpg
+  Maker: Ton Roosendaal et al.
+  Licentie: CC BY 2.5 (https://creativecommons.org/licenses/by/2.5)
+  Bron: https://commons.wikimedia.org/wiki/File:Elephants_Dream_s5_both.jpg
+- Nosferatu (1922): Film Nosferatu (van F, SFA008003709.jpg
+  Maker: Unknown author
+  Licentie: Public domain
+  Bron: https://commons.wikimedia.org/wiki/File:Film_Nosferatu_(van_F,_SFA008003709.jpg
+- A Trip to the Moon (1902): Melies color Voyage dans la lune.jpg
+  Maker: Georges Méliès
+  Licentie: Public domain
+  Bron: https://commons.wikimedia.org/wiki/File:Melies_color_Voyage_dans_la_lune.jpg
+- The Great Train Robbery (1903): Great Train Robbery Poster.jpeg
+  Maker: Unknown author
+  Licentie: Public domain
+  Bron: https://commons.wikimedia.org/wiki/File:Great_Train_Robbery_Poster.jpeg
+- Les Vampires (1915): Les Vampires - Tamagno.jpg
+  Maker: Francisco Tamagno
+  Licentie: Public domain
+  Bron: https://commons.wikimedia.org/wiki/File:Les_Vampires_-_Tamagno.jpg
+- Les Vampires (1915): Les Vampires - Irma Vep.jpg
+  Maker: Unknown author
+  Licentie: Public domain
+  Bron: https://commons.wikimedia.org/wiki/File:Les_Vampires_-_Irma_Vep.jpg
+- Judex (1916): Judex photo.jpg
+  Maker: Louis Feuillade
+  Licentie: Public domain
+  Bron: https://commons.wikimedia.org/wiki/File:Judex_photo.jpg
