@@ -2,7 +2,7 @@ name: Backend
 
 # Zet de Bingr-accounts in Supabase klaar: tabel (supabase/schema.sql), e-mailtemplates (supabase/templates) en de Edge Functions
 # device-auth (accounts, tv-koppeling), web-proxy (webspeler), status (bingr.online/status), support (support.bingr.online) en push
-# (pushmeldingen). De functie admin (beheer-dashboard)
+# (pushmeldingen), newsletter (nieuwsbrief) en title-meta (openbare deelpreview van bingr.online/titel/). De functie admin (beheer-dashboard)
 # staat in de privé-repo LRvdLinden/bingr-beheer en wordt daar gedeployd; deze workflow raakt of verwijdert hem nooit.
 # Secrets: SUPABASE_ACCESS_TOKEN (supabase.com/dashboard/account/tokens) en SUPABASE_PROJECT_REF (bv. abcd1234 uit https://abcd1234.supabase.co).
 # Mail (optioneel, ook gebruikt door admin): BINGR_SMTP_HOST, BINGR_SMTP_PORT (465), BINGR_SMTP_USER,
@@ -73,6 +73,9 @@ jobs:
         # HTML (escapen van TMDB-tekst), universele links, afmeldtoken, TMDB v3/v4
         # en de welkomstmail (opbouw, escapen, aanhef, links, selectie, eerste uitrol)
         run: deno test supabase/functions/newsletter/newsletter_test.ts supabase/functions/newsletter/welcome_test.ts
+      - name: Unittests (deelpreview)
+        # blokkeert de deploy: validatie (type/id/q/y), TMDB-antwoord -> metadata (nl met terugval en, afbeeldingen), limiet
+        run: deno test supabase/functions/title-meta/title_meta_test.ts
       - name: Unittests (statuspagina)
         continue-on-error: true
         run: |
@@ -523,6 +526,38 @@ jobs:
           # 4. één ronde welkomstmail (alleen tellingen in het antwoord)
           curl -s --max-time 170 -X POST "$F" "${J[@]}" -H "x-newsletter-secret: $(cat "$RUNNER_TEMP/newsletter_cron_secret")" -d '{"action":"welcome_cron"}' > /tmp/w.json
           grep -Eq '"ok": ?true' /tmp/w.json && echo "::notice::welkomstmail: $(cat /tmp/w.json)" || { echo "::error::welkomstmail: $(head -c 300 /tmp/w.json)"; exit 1; }
+      - name: Edge Function title-meta
+        if: steps.check.outputs.skip != '1'
+        run: supabase functions deploy title-meta --project-ref "$REF" --no-verify-jwt --use-api
+      - name: Deelpreview (title-meta) testen
+        if: steps.check.outputs.skip != '1'
+        run: |
+          # build 132: openbare metadata voor de preview van bingr.online/titel/ (docs/NEWSLETTER.md, "Deelpreview")
+          sleep 3
+          F="https://$REF.supabase.co/functions/v1/title-meta"
+          for q in "type=person&id=1" "type=movie&id=12a" "type=movie" "type=tv&id=0"; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "$F?$q")
+            [ "$code" = 400 ] || { echo "::error::title-meta ?$q gaf HTTP $code, verwacht 400"; exit 1; }
+          done
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$F?type=movie&id=603")
+          [ "$code" = 405 ] || { echo "::error::title-meta POST gaf HTTP $code, verwacht 405"; exit 1; }
+          echo "::notice::title-meta: ongeldige verzoeken (400) en POST (405) geweigerd"
+          code=$(curl -s -o /tmp/tm.json -D /tmp/tmh.txt -w '%{http_code}' --max-time 20 "$F?type=movie&id=603")
+          if [ "$code" = 503 ]; then echo "::warning::title-meta: BINGR_TMDB_API_KEY ontbreekt, de preview valt terug op de algemene Bingr-preview"; exit 0; fi
+          tr -d '\r' < /tmp/tmh.txt | grep -qi '^access-control-allow-origin: \*$' || { echo "::error::title-meta: geen CORS *"; exit 1; }
+          tr -d '\r' < /tmp/tmh.txt | grep -qi '^cache-control: .*s-maxage=86400' || { echo "::error::title-meta: geen cache-header"; exit 1; }
+          python3 - "$code" <<'PY2'
+          import json, sys
+          j = json.load(open("/tmp/tm.json"))
+          ok = sys.argv[1] == "200" and j.get("ok") and j.get("id") == 603 and j.get("year") == 1999 and j["title"]["en"] and \
+               (j.get("image") or {}).get("url", "").startswith("https://image.tmdb.org/t/p/")
+          print(f"::notice::title-meta 603: {j['title']['en']} ({j.get('year')}), afbeelding {j['image']['width']}x{j['image']['height']}" if ok
+                else f"::error::title-meta 603 gaf HTTP {sys.argv[1]}: {json.dumps(j)[:200]}")
+          sys.exit(0 if ok else 1)
+          PY2
+          code=$(curl -s -o /tmp/tm2.json -w '%{http_code}' --max-time 20 "$F?type=tv&q=Dark&y=2017")
+          [ "$code" = 200 ] && grep -q '"type":"tv"' /tmp/tm2.json && echo "::notice::title-meta zoeken (q+y): HTTP 200" \
+            || { echo "::error::title-meta zoeken op q+y gaf HTTP $code"; exit 1; }
       - name: Testen
         if: steps.check.outputs.skip != '1'
         run: |

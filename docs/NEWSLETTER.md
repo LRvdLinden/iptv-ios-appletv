@@ -53,6 +53,30 @@ webspeler `https://bingr.online/web/#/titel?type=&id=&q=&y=` (op een computer me
 De webspeler zoekt na het inloggen (de route blijft bewaard) in de bibliotheek op titel (+ jaar); precies één goede match →
 detailpagina, anders het zoekscherm met `q` ingevuld.
 
+## Deelpreview (build 132)
+
+De deelknoppen in alle apps delen dezelfde universele link. Zodat WhatsApp, iMessage, Telegram, Facebook, X, Slack enz. er
+een preview van maken (crawlers voeren geen JavaScript uit), rendert `bingr.online/titel/` (`titel/index.php` in
+bingr-website, PHP op de hosting) de Open Graph- en Twitter-tags server-side: `og:title` "Titel (jaar)", `og:description`
+(omschrijving, ingekort), `og:image` (TMDB-backdrop `w1280`, 1280×720, anders poster `w780`, 780×1170, met
+`og:image:width/height`), `og:url` (canonieke link), `og:type` `video.movie` / `video.tv_show`, `og:site_name` Bingr,
+`twitter:card` `summary_large_image` en `<title>`. Lukt het ophalen niet, dan de algemene Bingr-preview
+(`assets/img/og.png`).
+
+De gegevens komen uit de openbare Edge Function `title-meta` (`supabase/functions/title-meta`, workflow *Backend*,
+`verify_jwt` uit, CORS `*`). De TMDB-sleutel blijft op de server (function-secret `BINGR_TMDB_API_KEY`, zelfde als de
+nieuwsbrief); de website-repo bevat alleen de publieke Supabase-URL.
+
+- `GET /functions/v1/title-meta?type=movie|tv&id=<tmdb-id>` (optioneel `q`, `y`: is het id onbekend, dan zoeken), of
+  `?type=movie|tv&q=<titel>&y=<jaar>` (eerste zoekresultaat; zonder treffer met jaar nog één keer zonder jaar).
+- 200 `{ok, type, id, year, title:{nl,en}, overview:{nl,en}, poster, backdrop, image:{url,width,height}, url}` (nl-NL,
+  terugval en-US). 400 `bad_request` (type niet movie/tv, id niet numeriek, of geen id en geen q), 404 `not_found`,
+  405 (alleen GET/HEAD/OPTIONS), 429 `rate_limited` (60 per minuut per bezoeker), 502 `upstream`, 503 `not_configured`.
+- `Cache-Control: public, max-age=3600, s-maxage=86400` (404/400: 1 uur); de functie houdt ook 6 uur een cache in het
+  geheugen. Geen logging van IP-adressen: de limiet gebruikt alleen een hash met een willekeurig zout per instantie.
+- De PHP-pagina vraagt met een timeout van 3 seconden en cachet het antwoord 1 dag in een tmp-bestand op de server
+  (mislukt: 10 minuten de terugval).
+
 ## Planning en versturen
 
 - pg_cron-taak `bingr-newsletter` (gezet door *Backend*): elk uur op minuut 0 `POST newsletter {action:"cron"}` met

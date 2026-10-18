@@ -17,3 +17,6 @@ verify_jwt = false
 
 [functions.newsletter]
 verify_jwt = false
+
+[functions.title-meta]
+verify_jwt = false
