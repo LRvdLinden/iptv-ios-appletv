@@ -1,8 +1,9 @@
+
 // Bingr welkomstmail (contract docs/NEWSLETTER.md, sectie Welkomstmail): nieuwe leden krijgen hem zodra ze hun
 // e-mailadres hebben bevestigd (actie welcome_cron, pg_cron elke 5 minuten). Zelfde huisstijl als de nieuwsbrief
 // (_shared/layout.ts): zwart, BINGR met rode streep, kaart #141414. Pure code (geen database, geen netwerk) zodat alles
-// met `deno test` te controleren is. Bingr levert geen zenders en beveelt geen bronnen of aanbieders aan: nooit een naam
-// of link van een aanbieder in deze mail.
+// met `deno test` te controleren is. Bingr levert geen zenders of content.
+// De welkomstmail bevat een herkenbaar gemarkeerde verwijzing naar een externe IPTV-aanbieder.
 import { esc, FONT, footerHtml, footerText, greeting, greetingText, layout, RED, SUPPORT_SITE } from "../_shared/layout.ts";
 import type { Lang } from "./logic.ts";
 
@@ -20,6 +21,7 @@ export const LINKS = {
   testflight: "https://testflight.apple.com/join/JW915fdA",
   android: "https://bingr.online/apk",
   support: SUPPORT_SITE,
+  pandora: "https://pandoraiptv.co/",
 } as const;
 
 type Step = { title: string; body: string; button?: { label: string; url: string } };
@@ -28,6 +30,7 @@ type T = {
   subject: string; preheader: string; eyebrow: string; title: string; intro: string; steps: Step[]; apps: App[];
   appsTitle: string; appsBody: string; newsletter: string; unsubQ: string; unsubA: string; honest: string; reason: string;
   sampleNote: string;
+  providerLabel: string; providerTitle: string; providerBody: string; providerButton: string; providerDisclaimer: string;
 };
 
 export const WELCOME: Record<Lang, T> = {
@@ -66,6 +69,11 @@ export const WELCOME: Record<Lang, T> = {
     honest: "Bingr levert zelf geen zenders, films of series. Je kijkt wat je eigen bron aanbiedt.",
     reason: "Je ontvangt deze e-mail omdat je een Bingr-account hebt aangemaakt en je e-mailadres hebt bevestigd. Deze welkomstmail krijg je één keer.",
     sampleNote: "Voorbeeld uit het beheer: de uitschrijflink werkt hier niet.",
+    providerLabel: "Externe IPTV-aanbieder",
+    providerTitle: "Nog geen IPTV-abonnement?",
+    providerBody: "Bingr is jouw mediaspeler. Zoek je nog een eigen IPTV-bron? Bekijk het aanbod en de abonnementsmogelijkheden van PandoraIPTV.",
+    providerButton: "Bekijk PandoraIPTV",
+    providerDisclaimer: "PandoraIPTV is een externe aanbieder. Bingr verkoopt geen IPTV-abonnementen of content. Controleer zelf of het aanbod over de vereiste uitzendrechten beschikt.",
   },
   en: {
     subject: "Welcome to Bingr: here's how to start",
@@ -102,6 +110,11 @@ export const WELCOME: Record<Lang, T> = {
     honest: "Bingr doesn't provide any channels, movies or series itself. You watch what your own source offers.",
     reason: "You're receiving this email because you created a Bingr account and confirmed your email address. You'll only get this welcome email once.",
     sampleNote: "Preview from the admin: the unsubscribe link doesn't work here.",
+    providerLabel: "External IPTV provider",
+    providerTitle: "Looking for an IPTV subscription?",
+    providerBody: "Bingr is your media player. Need your own IPTV source? Explore PandoraIPTV and its available subscription options.",
+    providerButton: "Explore PandoraIPTV",
+    providerDisclaimer: "PandoraIPTV is a third-party provider. Bingr does not sell IPTV subscriptions or content. Please verify that the provider has the necessary content rights.",
   },
 };
 
@@ -167,11 +180,20 @@ export function renderWelcome(o: WelcomeOpts): { subject: string; html: string; 
     `<div style="font-size:14px;line-height:21px;color:#e6e6e6">${esc(t.newsletter)}</div>` +
     `<div style="margin:8px 0 0;font-size:13px;line-height:19px;color:#b3b3b3">${esc(t.unsubQ)} <a href="${esc(o.unsubscribeUrl)}" style="color:#ffffff;text-decoration:underline">${esc(t.unsubA)}</a></div>` +
     `</td></tr></table>`;
+  const provider = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:26px 0 0"><tr>` +
+    `<td bgcolor="#1c1c1c" style="background:#1c1c1c;border:1px solid #333333;border-left:3px solid ${RED};border-radius:8px;padding:22px 20px">` +
+    `<div style="font-size:11px;line-height:16px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:${RED}">${esc(t.providerLabel)}</div>` +
+    `<div style="margin:10px 0;font-size:19px;line-height:25px;font-weight:800;color:#ffffff">${esc(t.providerTitle)}</div>` +
+    `<p style="margin:0;font-size:14px;line-height:22px;color:#d6d6d6">${esc(t.providerBody)}</p>` +
+    btn(t.providerButton, LINKS.pandora, true) +
+    `<p style="margin:16px 0 0;font-size:11px;line-height:17px;color:#858585">${esc(t.providerDisclaimer)}</p>` +
+    `</td></tr></table>`;
   const content = `${greeting(o.lang, o.firstName)}<div style="font-size:12px;line-height:16px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#8c8c8c">${esc(t.eyebrow)}</div>
 <h1 style="margin:8px 0 10px;font-size:24px;line-height:30px;font-weight:800;color:#ffffff">${esc(t.title)}</h1>
 <p style="margin:0;font-size:15px;line-height:23px;color:#d6d6d6">${esc(t.intro)}</p>
 <div style="height:4px;width:56px;background:${RED};border-radius:2px;margin:20px 0 24px;font-size:0;line-height:0">&nbsp;</div>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${rows.join("\n")}</table>
+${provider}
 ${news}
 <p style="margin:20px 0 0;padding:14px 16px;background:#1f1f1f;border-radius:8px;font-size:13px;line-height:19px;color:#b3b3b3">${esc(t.honest)}</p>`;
   const reasonHtml = esc(t.reason) + (o.preview ? `<br><span style="color:#5c5c5c">${esc(t.sampleNote)}</span>` : "");
@@ -189,6 +211,7 @@ export function welcomeText(o: WelcomeOpts): string {
   t.steps.forEach((s, i) => out.push(`${i + 1}. ${s.title}`, s.body, ...(s.button ? [`${s.button.label}: ${s.button.url}`] : []), ""));
   out.push(`${t.steps.length + 1}. ${t.appsTitle}`, t.appsBody, ...t.apps.map((a) => `- ${a.name}: ${a.how}${a.button ? ` (${a.button.url})` : ""}`), "");
   out.push(`${t.steps.length + 2}. ${help.title}`, help.body, `${help.button!.label}: ${help.button!.url}`, "");
+  out.push(t.providerLabel, t.providerTitle, t.providerBody, `${t.providerButton}: ${LINKS.pandora}`, t.providerDisclaimer, "");
   if (o.newsletter !== false) out.push(t.newsletter, `${t.unsubQ} ${t.unsubA}: ${o.unsubscribeUrl}`, "");
   out.push(t.honest, "", footerText({ lang: o.lang, reason: t.reason, year: o.year }));
   if (o.preview) out.push(t.sampleNote);
