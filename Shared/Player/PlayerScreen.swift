@@ -532,7 +532,8 @@ struct PlayerScreen: View {
         ProviderLimit.prime(providerSource(it))
         if it.type == .live, let cid = it.channelID {
             let pl = playlists
-            player.catchupProvider = { from, to in pl.catchupURL(channelID: cid, start: from, end: to) }
+            let sid = it.sourceID   // build 128: terugkijken via de eigen server van de zender
+            player.catchupProvider = { from, to in pl.catchupURL(channelID: cid, start: from, end: to, sourceID: sid) }
         } else {
             player.catchupProvider = nil
         }

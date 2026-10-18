@@ -81,6 +81,69 @@
     ],
     "nl": "Lifetime is tot 3 schermen tegelijk en 15 apparaten; hoeveel je tegelijk kunt kijken, hangt ook af van je IPTV-aanbieder",
     "en": "Lifetime is up to 3 screens at once and 15 devices; how many you can watch at once also depends on your IPTV provider"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "Eén Verder kijken, Mijn lijst en favorieten per profiel over al je servers heen; is een server verwijderd, dan zoekt Bingr de titel of zender automatisch op je andere servers",
+    "en": "One Continue watching, My List and favorites per profile across all your servers; if a server is removed, Bingr automatically looks for the title or channel on your other servers"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "Titels en zenders van een andere server open je, speel je af en kijk je terug (tv-gids, terugkijken) via die server, zonder te wisselen. Ook recente zenders, je kijkgeschiedenis en collecties gelden over al je servers; dezelfde titel op twee servers is één tegel",
+    "en": "Titles and channels from another server open, play and catch up (TV guide, catch-up) through that server, without switching. Recent channels, your watch history and collections also work across all your servers; the same title on two servers is one tile"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "Vindt Bingr een titel nergens meer, dan blijft hij staan en krijg je bij aantikken een melding met Verwijderen, Zoeken of Annuleren. Er verdwijnt niets",
+    "en": "If Bingr can't find a title anywhere, it stays and tapping it shows a message with Remove, Search or Cancel. Nothing disappears"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "Categorieën aan of uit per profiel, voor de categorieën van al je servers; je bestaande keuzes blijven staan",
+    "en": "Turn categories on or off per profile, for the categories of all your servers; your existing choices are kept"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "Abonnementen: de vergelijking toont de echte waarden (Gratis 1 scherm, 8 apparaten, 1 server; Lifetime tot 3 schermen, 15 apparaten, onbeperkt), met de uitleg dat het aantal schermen ook afhangt van je IPTV-aanbieder",
+    "en": "Plans: the comparison shows the real values (Free 1 screen, 8 devices, 1 server; Lifetime up to 3 screens, 15 devices, unlimited), noting that the number of screens also depends on your IPTV provider"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Server: de account-sync bewaart de gegevens voor één lijst over alle servers (titels en verhuisde items), en het abonnement geeft de standaardwaarden van Gratis en Lifetime mee",
+    "en": "Server: the account sync stores the data for one list across all servers (titles and moved items), and the plan includes the default values of Free and Lifetime"
    }
   ]
  },

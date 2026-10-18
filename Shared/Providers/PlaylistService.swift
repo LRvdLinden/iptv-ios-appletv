@@ -538,11 +538,20 @@ final class PlaylistService: ObservableObject {
     }
 
     func catchupURL(_ c: Channel, _ p: EPGProgram) -> URL? {
-        catchupURL(channelID: c.id, start: p.start, end: p.end)
+        catchupURL(channelID: c.id, start: p.start, end: p.end, sourceID: c.sourceID, channel: c)
     }
 
-    /// Terugkijken / timeshift vanaf een willekeurig moment (Xtream).
-    func catchupURL(channelID: String, start: Date, end: Date) -> URL? {
+    /// Terugkijken / timeshift vanaf een willekeurig moment (Xtream). Build 128: ook voor een zender van een andere
+    /// server (`sourceID`): met de inloggegevens, de zender en de terugkijk-correctie van die server.
+    func catchupURL(channelID: String, start: Date, end: Date, sourceID: UUID? = nil, channel: Channel? = nil) -> URL? {
+        if let sid = sourceID, sid != source?.id {
+            guard let other = self.source(for: sid), other.kind == .xtream else { return nil }
+            let ch = (channel?.catchupDays ?? 0) > 0 ? channel : CrossServer.shared.channel(forKey: sid.uuidString + "|" + channelID)
+            guard let ch, ch.catchupDays > 0 else { return nil }
+            let shift = TimeInterval((other.catchupOffsets?[channelID] ?? 0) * 60)
+            let p = EPGProgram(channelID: channelID, title: "", start: start.addingTimeInterval(shift), end: end.addingTimeInterval(shift))
+            return XtreamClient(source: other, password: Keychain.get(other.passwordKey) ?? "").catchupURL(channel: ch, program: p)
+        }
         guard let s = source, s.kind == .xtream,
               let ch = rawLibrary.channels.first(where: { $0.id == channelID }), ch.catchupDays > 0 else { return nil }
         // terugkijk-correctie van deze zender (build 51): het begintijdstip verschuiven
@@ -551,7 +560,37 @@ final class PlaylistService: ObservableObject {
         return XtreamClient(source: s, password: Keychain.get(s.passwordKey) ?? "").catchupURL(channel: ch, program: p)
     }
 
+    /// Build 128: tv-gids van een zender van een andere server: uit de cache van die server, anders de gids van die
+    /// server ophalen (XMLTV, één keer per sessie bewaard), bij een MAC-portal via die portal.
+    func foreignEPG(_ c: Channel) async -> [EPGProgram] {
+        guard let sid = c.sourceID, let other = source(for: sid) else { return [] }
+        let key = c.epgID ?? c.id
+        if let cached = foreignEPGCache[sid] { return cached[key] ?? cached[c.id] ?? [] }
+        if other.kind == .stalker {
+            let st: StalkerClient
+            if let x = foreignStalker[sid] { st = x } else {
+                st = StalkerClient(source: other)
+                guard (try? await st.connect()) != nil else { return [] }
+                foreignStalker[sid] = st
+            }
+            return await st.shortEPG(channelID: c.id).sorted { $0.start < $1.start }
+        }
+        var epg = await Task.detached(priority: .userInitiated) { () -> [String: [EPGProgram]] in
+            PlaylistService.readAnyCatalog(other)?.0.epg ?? [:]
+        }.value
+        if epg.isEmpty {
+            var url = other.epgURL.urlValue
+            if url == nil, other.kind == .xtream { url = XtreamClient(source: other, password: Keychain.get(other.passwordKey) ?? "").xmltvURL }
+            if let url { epg = await loadEPG(url) }
+        }
+        epg = Library.sortedEPG(epg)
+        foreignEPGCache = [sid: epg]   // één server tegelijk in het geheugen
+        return epg[key] ?? epg[c.id] ?? []
+    }
+    private var foreignEPGCache: [UUID: [String: [EPGProgram]]] = [:]
+
     func shortEPG(_ c: Channel) async -> [EPGProgram] {
+        if c.sourceID != nil, c.sourceID != source?.id { return await foreignEPG(c) }
         if let s = stalker, library.epg[c.epgID ?? c.id] == nil {
             let p = await s.shortEPG(channelID: c.id).sorted { $0.start < $1.start }
             if !p.isEmpty {

@@ -176,7 +176,7 @@ struct ProgramSheet: View {
             HStack(spacing: tvScaled(10)) {
                 Text("\(program.start.formatted(date: .abbreviated, time: .shortened)) – \(program.end.formatted(date: .omitted, time: .shortened))")
                     .foregroundStyle(Theme.secondary)
-                if channel.catchupDays > 0, let pid = playlists.source?.id {
+                if channel.catchupDays > 0, let pid = channel.sourceID ?? playlists.source?.id {
                     let off = store.catchupOffset(pid, channel.id)
                     Button { editOffset = true } label: {
                         Label(off == 0 ? L("Catch-up offset") : L("Offset %@ min", (off > 0 ? "+" : "−") + "\(abs(off))"),
@@ -204,7 +204,7 @@ struct ProgramSheet: View {
                     let on = store.hasReminder(reminderID)
                     NetflixButton(title: on ? L("Reminder set") : L("Remind me"), icon: on ? "bell.slash" : "bell", kind: on ? .secondary : .primary) {
                         if on { ReminderCenter.shared.remove(reminderID) }
-                        else if let pid = playlists.source?.id {
+                        else if let pid = channel.sourceID ?? playlists.source?.id {
                             Task { await ReminderCenter.shared.add(channel: channel, program: program, playlist: pid) }
                         }
                     }

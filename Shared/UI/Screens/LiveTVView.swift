@@ -564,7 +564,7 @@ struct CatchupOffsetSheet: View {
             HStack(spacing: tvScaled(14)) {
                 NetflixButton(title: L("Reset"), icon: "arrow.counterclockwise", kind: .secondary) { minutes = 0 }
                 NetflixButton(title: L("Save"), icon: "checkmark", kind: .accent) {
-                    if let pid = playlists.source?.id { store.setCatchupOffset(pid, channel.id, minutes) }
+                    if let pid = channel.sourceID ?? playlists.source?.id { store.setCatchupOffset(pid, channel.id, minutes) }
                     dismiss()
                 }
             }
@@ -578,7 +578,7 @@ struct CatchupOffsetSheet: View {
         .onAppear {
             guard !loaded else { return }
             loaded = true
-            if let pid = playlists.source?.id { minutes = store.catchupOffset(pid, channel.id) }
+            if let pid = channel.sourceID ?? playlists.source?.id { minutes = store.catchupOffset(pid, channel.id) }
         }
     }
 
@@ -662,7 +662,9 @@ struct GuideSheet: View {
             }
             .navigationTitle(channel.name)
             .task {
-                let all = playlists.library.epg[channel.epgID ?? channel.id] ?? []
+                // build 128: een zender van een andere server: de gids van die server
+                let foreign = channel.sourceID != nil && channel.sourceID != playlists.source?.id
+                let all = foreign ? await playlists.foreignEPG(channel) : (playlists.library.epg[channel.epgID ?? channel.id] ?? [])
                 let from = Date().addingTimeInterval(-Double(max(channel.catchupDays, 0)) * 86400)
                 programs = all.isEmpty ? await playlists.shortEPG(channel) : all.filter { $0.end > from }
             }

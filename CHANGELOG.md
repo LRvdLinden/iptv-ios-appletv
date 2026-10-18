@@ -7,6 +7,19 @@ Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**
 ## Versie 1.0.0 · Build 128
 _18 oktober 2026_
 
+### iOS, iPadOS, tvOS en macOS
+
+**Nieuw**
+
+- Eén Verder kijken, Mijn lijst en favorieten per profiel over al je servers heen; is een server verwijderd, dan zoekt Bingr de titel of zender automatisch op je andere servers
+- Titels en zenders van een andere server open je, speel je af en kijk je terug (tv-gids, terugkijken) via die server, zonder te wisselen. Ook recente zenders, je kijkgeschiedenis en collecties gelden over al je servers; dezelfde titel op twee servers is één tegel
+- Vindt Bingr een titel nergens meer, dan blijft hij staan en krijg je bij aantikken een melding met Verwijderen, Zoeken of Annuleren. Er verdwijnt niets
+- Categorieën aan of uit per profiel, voor de categorieën van al je servers; je bestaande keuzes blijven staan
+
+**Verbeterd**
+
+- Abonnementen: de vergelijking toont de echte waarden (Gratis 1 scherm, 8 apparaten, 1 server; Lifetime tot 3 schermen, 15 apparaten, onbeperkt), met de uitleg dat het aantal schermen ook afhangt van je IPTV-aanbieder
+
 ### Website
 
 **Nieuw**
@@ -23,6 +36,12 @@ _18 oktober 2026_
 **Opgelost**
 
 - Webspeler: een M3U-afspeellijst zonder eigen tv-gids-URL laadt weer
+
+### Server
+
+**Verbeterd**
+
+- Server: de account-sync bewaart de gegevens voor één lijst over alle servers (titels en verhuisde items), en het abonnement geeft de standaardwaarden van Gratis en Lifetime mee
 
 ## Versie 1.0.0 · Build 127
 _18 oktober 2026_
