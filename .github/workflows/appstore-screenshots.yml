@@ -1,9 +1,13 @@
 name: App Store-screenshots
 
 # Engelse App Store-screenshots van de echte Apple-apps (iPhone 6.9" en 6.3", iPad 13", Apple TV, Mac), gemaakt in de
-# screenshotmodus (-BingrScreenshots YES, zie Shared/App/ScreenshotMode.swift): verzonnen titels en zelfgetekende
-# afbeeldingen, geen netwerk, geen account. Daarna marketingversies (kop + ondertitel, Bingr-stijl) op de vereiste
-# maten. Resultaat: artefact Bingr-AppStore-EN (zip). Geen buildpakket: alleen PNG's en een README.
+# screenshotmodus (-BingrScreenshots YES, zie Shared/App/ScreenshotMode.swift): echte films met een vrije licentie
+# (Blender open movies, CC BY; stille films die in de EU en de VS publiek domein zijn) met afbeeldingen van Wikimedia
+# Commons (docs/appstore/free_media.json, licentie per bestand gecontroleerd door tools/fetch_free_media.py), verzonnen
+# zenders, geen netwerk in de app, geen account. Daarna marketingversies (kop + ondertitel + naamsvermelding, Bingr-stijl)
+# op de vereiste maten, promo-afbeeldingen en CREDITS.txt. Resultaat: artefact Bingr-AppStore-EN (zip) en de branch
+# appstore-shots. Geen buildpakket: alleen PNG's en tekstbestanden. De afbeeldingen komen alleen in de app-bundels van
+# deze workflow (map ScreenshotMedia), nooit in de gewone builds.
 
 on:
   workflow_dispatch:
@@ -16,7 +20,25 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  media:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 (v5.1.0)
+
+      - name: Vrije film-afbeeldingen ophalen (licentie per bestand gecontroleerd)
+        run: |
+          python3 -m pip install --quiet --break-system-packages pillow==11.0.0
+          python3 tools/fetch_free_media.py fetch media
+          du -sh media
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: free-media
+          path: media
+          retention-days: 3
+
   apple:
+    needs: media
     runs-on: macos-15
     timeout-minutes: 150
     steps:
@@ -47,6 +69,21 @@ jobs:
           xcodebuild build -project Bingr.xcodeproj -scheme BingrMac -configuration Debug -derivedDataPath build \
             -destination 'generic/platform=macOS' CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO 2>&1 | tail -n 30
           ls build/Build/Products
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: free-media
+          path: media
+
+      - name: Vrije afbeeldingen in de app-bundels (alleen voor deze screenshots)
+        run: |
+          set -euo pipefail
+          for d in build/Build/Products/Debug-iphonesimulator/Bingr.app build/Build/Products/Debug-appletvsimulator/BingrTV.app \
+                   build/Build/Products/Debug/Bingr.app/Contents/Resources; do
+            mkdir -p "$d/ScreenshotMedia"
+            cp media/*.jpg "$d/ScreenshotMedia/"
+          done
+          ls media | wc -l
 
       - name: Screenshots iPhone, iPad en Apple TV (simulator)
         run: |
@@ -143,7 +180,7 @@ jobs:
           for s in home detail live guide top10 picker categories multiview; do
             pkill -x Bingr 2>/dev/null || true
             sleep 2
-            TZ="$TZ_APP" "$APP/Contents/MacOS/Bingr" -BingrScreenshots YES -BingrScreen "$s" -BingrWindowSize 1440x900 \
+            TZ="$TZ_APP" "$APP/Contents/MacOS/Bingr" -BingrScreenshots YES -BingrScreen "$s" -BingrWindowSize 1440x900 -BingrMediaDir "$PWD/media" \
               -AppleLanguages "(en)" -AppleLocale en_US > "shots/mac/$s.log" 2>&1 &
             sleep 25
             WID=$(./winid)
@@ -157,7 +194,10 @@ jobs:
 
       - name: Info bij de screenshots
         if: always()
-        run: mkdir -p shots && cp shots-info.txt shots/_info.txt || true
+        run: |
+          mkdir -p shots
+          cp shots-info.txt shots/_info.txt || true
+          cp media/credits.json shots/_credits.json || true
 
       - name: Kale screenshots bewaren
         if: always()
@@ -202,6 +242,7 @@ jobs:
           (cd out && zip -qr Bingr-AppStore-EN.zip Bingr-AppStore-EN)
           mkdir -p /tmp/pub && cp -R out/Bingr-AppStore-EN out/Bingr-AppStore-EN.zip /tmp/pub/
           cp shots/_info.txt /tmp/pub/_info.txt 2>/dev/null || true
+          cp -R out/_promo-crops /tmp/pub/_promo-crops 2>/dev/null || true
           mkdir -p /tmp/pub/_mac-debug && cp shots/mac/*-screen.png shots/mac/_desktop.png /tmp/pub/_mac-debug/ 2>/dev/null || true
           git config user.name "github-actions"
           git config user.email "actions@github.com"

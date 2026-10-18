@@ -11,8 +11,10 @@ import AppKit
 // kiest `-BingrScreen <naam>` het scherm: home, detail, live, guide, picker, top10 (= discover), categories,
 // multiview. Gebruikers kunnen dit niet bereiken: zonder argument is `isActive` false en doet niets hieronder iets.
 //
-// In deze modus: een verzonnen demo-bibliotheek in het geheugen (geen echte titels, posters, zenders of merken),
-// lokaal getekende afbeeldingen (geen externe URL's), geen netwerk (alle http(s)-verzoeken worden geweigerd), geen
+// In deze modus: een demo-bibliotheek in het geheugen met echte films met een vrije licentie (Blender open movies, CC BY;
+// stille films die wereldwijd publiek domein zijn), met lokale afbeeldingen die de workflow vooraf van Wikimedia Commons
+// haalt en in de app-bundel zet (map ScreenshotMedia, alleen in die workflow; anders zelfgetekend). Zenders, gids en
+// profielen zijn verzonnen (geen echte zenders of merken). Geen netwerk (alle http(s)-verzoeken worden geweigerd), geen
 // account, geen sync en niets opgeslagen in iCloud of op de server.
 
 enum Screenshots {
@@ -87,123 +89,89 @@ enum ScreenshotDemo {
         var year: Int
         var genres: [String]
         var minutes: Int
-        var rating: Double
+        var director: String
         var plot: String
-        var dark: UInt32
-        var light: UInt32
-        var motif: Int
         var group: String
-        var certification: String
+        /// Kleuren/motief voor de zelfgetekende reserve-afbeelding (als er geen vrije afbeelding is)
+        var dark: UInt32 = 0x1A1A1A
+        var light: UInt32 = 0x7F8C8D
+        var motif: Int = 2
+        /// Afleveringen (series): titel per aflevering, één seizoen
+        var episodes: [String] = []
     }
 
-    // MARK: verzonnen inhoud
+    // MARK: echte films met een vrije licentie (zie docs/appstore/free_media.json)
+    //
+    // Blender open movies (CC BY, © Blender Foundation | blender.org) en films die in de EU én de VS publiek domein
+    // zijn (vóór 1931 verschenen, alle makers meer dan 70 jaar overleden). Geen scores of leeftijdsclassificaties
+    // (die zouden verzonnen zijn); de volgorde van Top 10 volgt `addedAt`.
 
     private static let movies: [DemoTitle] = [
-        .init(id: "m01", title: "The Last Signal", year: 2026, genres: ["Thriller", "Sci-Fi"], minutes: 124, rating: 8.7,
-              plot: "When a deep-space relay goes silent, a lone engineer races to decode its final transmission before the message reaches Earth.",
-              dark: 0x3A0A0A, light: 0xC0392B, motif: 5, group: "Thriller", certification: "12"),
-        .init(id: "m02", title: "Night Harbor", year: 2025, genres: ["Crime", "Drama"], minutes: 112, rating: 8.4,
-              plot: "A harbor pilot is drawn into a smuggling ring that runs on the night tide.",
-              dark: 0x0F2027, light: 0x2C5364, motif: 6, group: "Drama", certification: "16"),
-        .init(id: "m03", title: "Ember Road", year: 2024, genres: ["Adventure", "Drama"], minutes: 118, rating: 8.2,
-              plot: "Two estranged sisters drive across a burning desert to keep a promise to their father.",
-              dark: 0x4B1D06, light: 0xF39C12, motif: 0, group: "Drama", certification: "12"),
-        .init(id: "m04", title: "Glass Kingdom", year: 2026, genres: ["Fantasy", "Adventure"], minutes: 131, rating: 8.6,
-              plot: "Beneath a frozen lake lies a kingdom made of glass, and only one girl can hear it singing.",
-              dark: 0x0B3D3A, light: 0x16A085, motif: 3, group: "Family", certification: "6"),
-        .init(id: "m05", title: "Polar Line", year: 2025, genres: ["Thriller"], minutes: 104, rating: 7.9,
-              plot: "A night train through the Arctic stops in the middle of nowhere. Nobody is allowed to leave.",
-              dark: 0x1C2541, light: 0x5BC0BE, motif: 3, group: "Thriller", certification: "12"),
-        .init(id: "m06", title: "Midnight Docket", year: 2024, genres: ["Crime", "Mystery"], minutes: 109, rating: 8.0,
-              plot: "A night-court judge notices the same defendant on her docket, every night, with a different name.",
-              dark: 0x1A1A2E, light: 0x6C3483, motif: 4, group: "Thriller", certification: "16"),
-        .init(id: "m07", title: "Wildfire Season", year: 2026, genres: ["Action", "Drama"], minutes: 121, rating: 8.1,
-              plot: "A rookie smokejumper and a veteran crew make a last stand against the fire of the century.",
-              dark: 0x421B04, light: 0xE67E22, motif: 3, group: "Action", certification: "12"),
-        .init(id: "m08", title: "Paper Comets", year: 2025, genres: ["Comedy", "Romance"], minutes: 97, rating: 7.6,
-              plot: "Two rival kite makers are forced to share one tiny workshop for an entire summer.",
-              dark: 0x2D1E3E, light: 0xA569BD, motif: 1, group: "Comedy", certification: "AL"),
-        .init(id: "m09", title: "Neon Saints", year: 2026, genres: ["Action", "Crime"], minutes: 116, rating: 8.3,
-              plot: "In a city that never switches off its lights, four outcasts plan one perfect blackout.",
-              dark: 0x2B0233, light: 0xFF2E93, motif: 4, group: "Action", certification: "16"),
-        .init(id: "m10", title: "Cobalt Harbour", year: 2023, genres: ["Drama"], minutes: 102, rating: 7.4,
-              plot: "A retired lighthouse keeper takes in a runaway who claims to come from the sea.",
-              dark: 0x0D1B2A, light: 0x415A77, motif: 6, group: "Drama", certification: "6"),
-        .init(id: "m11", title: "Silent Orbit", year: 2026, genres: ["Sci-Fi", "Drama"], minutes: 128, rating: 8.5,
-              plot: "Stranded on a dark space station, a crew of three discovers they are not alone in orbit.",
-              dark: 0x000814, light: 0x003566, motif: 5, group: "Sci-Fi", certification: "12"),
-        .init(id: "m12", title: "Iron & Ash", year: 2024, genres: ["Action", "War"], minutes: 133, rating: 7.8,
-              plot: "A blacksmith's daughter leads a rebellion with nothing but a forge and a stubborn heart.",
-              dark: 0x3C1414, light: 0xA04000, motif: 7, group: "Action", certification: "16"),
-        .init(id: "m13", title: "Velvet Hour", year: 2025, genres: ["Romance", "Drama"], minutes: 106, rating: 7.7,
-              plot: "Every evening at dusk, a jazz pianist and a night nurse meet in the same empty café.",
-              dark: 0x3D0B1F, light: 0xC0392B, motif: 1, group: "Drama", certification: "12"),
-        .init(id: "m14", title: "Kingsgate", year: 2023, genres: ["History", "Drama"], minutes: 141, rating: 7.5,
-              plot: "Two brothers fight over a crown neither of them really wants.",
-              dark: 0x2A1A05, light: 0xD4A017, motif: 7, group: "Drama", certification: "12"),
-        .init(id: "m15", title: "Deep Current", year: 2026, genres: ["Adventure", "Thriller"], minutes: 113, rating: 8.0,
-              plot: "A cave-diving team follows an underground river that does not appear on any map.",
-              dark: 0x002B36, light: 0x268BD2, motif: 6, group: "Thriller", certification: "12"),
-        .init(id: "m16", title: "Amber Orchard", year: 2024, genres: ["Family", "Comedy"], minutes: 94, rating: 7.3,
-              plot: "Three cousins spend a chaotic autumn saving their grandmother's apple farm.",
-              dark: 0x1E3D14, light: 0x7DBB3A, motif: 0, group: "Family", certification: "AL"),
-        .init(id: "m17", title: "Hollow Pines", year: 2025, genres: ["Horror", "Mystery"], minutes: 99, rating: 7.2,
-              plot: "Campers in a quiet forest find a trail that only appears after midnight.",
-              dark: 0x13311F, light: 0x27AE60, motif: 3, group: "Thriller", certification: "16"),
-        .init(id: "m18", title: "Sundown Protocol", year: 2026, genres: ["Action", "Sci-Fi"], minutes: 119, rating: 7.9,
-              plot: "An AI security system decides the city is safest when everybody stays home.",
-              dark: 0x3B1E08, light: 0xFF8C42, motif: 2, group: "Sci-Fi", certification: "12"),
-        .init(id: "m19", title: "Lantern Bay", year: 2023, genres: ["Animation", "Family"], minutes: 88, rating: 7.6,
-              plot: "A little fox sets out to light every lantern in the bay before the winter storm.",
-              dark: 0x102A43, light: 0xF0B429, motif: 1, group: "Family", certification: "AL"),
-        .init(id: "m20", title: "Quiet Static", year: 2025, genres: ["Mystery", "Sci-Fi"], minutes: 101, rating: 7.1,
-              plot: "A late-night radio host receives calls from listeners who haven't been born yet.",
-              dark: 0x1B1B1B, light: 0x7F8C8D, motif: 2, group: "Sci-Fi", certification: "12")
+        .init(id: "m01", title: "Sintel", year: 2010, genres: ["Fantasy", "Animation"], minutes: 15, director: "Colin Levy",
+              plot: "A lonely young woman befriends a baby dragon she calls Scales. When he is taken from her, she sets out on a long and dangerous quest to find him again.",
+              group: "Animation", dark: 0x2A1A05, light: 0xD4A017, motif: 3),
+        .init(id: "m02", title: "Tears of Steel", year: 2012, genres: ["Sci-Fi", "Action"], minutes: 12, director: "Ian Hubert",
+              plot: "In a future Amsterdam, a group of warriors and scientists gathers at the Oude Kerk for a desperate attempt to save the world from destructive robots.",
+              group: "Sci-Fi", dark: 0x0F2027, light: 0x2C5364, motif: 4),
+        .init(id: "m03", title: "Big Buck Bunny", year: 2008, genres: ["Comedy", "Animation"], minutes: 10, director: "Sacha Goedegebure",
+              plot: "A big, gentle rabbit enjoys a sunny day in the forest, until three bullying rodents push him too far and he plans a comic revenge.",
+              group: "Family", dark: 0x1E3D14, light: 0x7DBB3A, motif: 0),
+        .init(id: "m04", title: "Cosmos Laundromat", year: 2015, genres: ["Sci-Fi", "Animation"], minutes: 12, director: "Mathieu Auvray",
+              plot: "On a desolate island, a suicidal sheep named Franck meets a quirky salesman who offers him the gift of a lifetime: many lives.",
+              group: "Sci-Fi", dark: 0x102A43, light: 0xF0B429, motif: 5),
+        .init(id: "m05", title: "Spring", year: 2019, genres: ["Fantasy", "Animation"], minutes: 8, director: "Andy Goralczyk",
+              plot: "A shepherd girl and her dog face ancient spirits in order to continue the cycle of life.",
+              group: "Animation", dark: 0x13311F, light: 0x27AE60, motif: 3),
+        .init(id: "m06", title: "Sprite Fright", year: 2021, genres: ["Horror", "Comedy"], minutes: 10, director: "Matthew Luhn",
+              plot: "When a group of rowdy teenagers trek into an isolated forest, they discover peaceful mushroom creatures that turn out to be an unexpected force of nature.",
+              group: "Family", dark: 0x3C1414, light: 0xA04000, motif: 3),
+        .init(id: "m07", title: "Coffee Run", year: 2020, genres: ["Drama", "Animation"], minutes: 3, director: "Hjalti Hjálmarsson",
+              plot: "Fuelled by caffeine, a young woman runs through the bittersweet memories of her past relationship.",
+              group: "Animation", dark: 0x3D0B1F, light: 0xC0392B, motif: 4),
+        .init(id: "m08", title: "Charge", year: 2022, genres: ["Action", "Animation"], minutes: 4, director: "Hjalti Hjálmarsson",
+              plot: "In an energy-starved future, an old man breaks into a heavily guarded facility to steal fuel, and finds out he is not alone.",
+              group: "Action", dark: 0x421B04, light: 0xE67E22, motif: 2),
+        .init(id: "m09", title: "Elephants Dream", year: 2006, genres: ["Sci-Fi", "Animation"], minutes: 11, director: "Bassam Kurdali",
+              plot: "Old Proog guides young Emo through the endless rooms and machines of a strange world that only one of them seems to understand.",
+              group: "Sci-Fi", dark: 0x1A1A2E, light: 0x6C3483, motif: 1),
+        .init(id: "m11", title: "Nosferatu", year: 1922, genres: ["Horror", "Silent"], minutes: 94, director: "F. W. Murnau",
+              plot: "Estate agent Thomas Hutter travels to the Carpathian mountains to sell a house to the mysterious Count Orlok, who brings death and plague to the town of Wisborg.",
+              group: "Silent Classics", dark: 0x1B1B1B, light: 0x7F8C8D, motif: 7),
+        .init(id: "m12", title: "A Trip to the Moon", year: 1902, genres: ["Sci-Fi", "Silent"], minutes: 13, director: "Georges Méliès",
+              plot: "A group of astronomers is fired from a giant cannon to the Moon, where they meet the strange Selenites. Georges Méliès' famous fantasy.",
+              group: "Silent Classics", dark: 0x050A30, light: 0x3D5AFE, motif: 5),
+        .init(id: "m13", title: "The Great Train Robbery", year: 1903, genres: ["Western", "Silent"], minutes: 12, director: "Edwin S. Porter",
+              plot: "A gang of outlaws holds up a steam train and robs its passengers, with a posse in hot pursuit.",
+              group: "Silent Classics", dark: 0x3A1C0B, light: 0xB87333, motif: 3)
     ]
 
     private static let series: [DemoTitle] = [
-        .init(id: "s01", title: "Harbor Nine", year: 2026, genres: ["Crime", "Drama"], minutes: 52, rating: 8.9,
-              plot: "Nine detectives, one coastal city and a case that refuses to stay buried. Season 3 now streaming from your own library.",
-              dark: 0x0B2545, light: 0x13A4C9, motif: 6, group: "Crime Series", certification: "16"),
-        .init(id: "s02", title: "The Cartographers", year: 2025, genres: ["Adventure", "Drama"], minutes: 48, rating: 8.6,
-              plot: "A family of mapmakers discovers an island that moves every night.",
-              dark: 0x2E1F0F, light: 0xC8963E, motif: 0, group: "Drama Series", certification: "12"),
-        .init(id: "s03", title: "Static Hearts", year: 2026, genres: ["Romance", "Comedy"], minutes: 32, rating: 8.1,
-              plot: "Two radio hosts who hate each other on air fall for each other off air.",
-              dark: 0x3D0B2F, light: 0xE84393, motif: 1, group: "Comedy Series", certification: "12"),
-        .init(id: "s04", title: "Brightwell Manor", year: 2024, genres: ["Drama", "History"], minutes: 55, rating: 8.4,
-              plot: "Upstairs, downstairs and every secret in between at a crumbling country estate.",
-              dark: 0x1F2A1A, light: 0x8DA65B, motif: 7, group: "Drama Series", certification: "12"),
-        .init(id: "s05", title: "Orbit Station", year: 2026, genres: ["Sci-Fi", "Drama"], minutes: 50, rating: 8.7,
-              plot: "Life, love and politics on the first city in orbit around the moon.",
-              dark: 0x050A30, light: 0x3D5AFE, motif: 5, group: "Sci-Fi Series", certification: "12"),
-        .init(id: "s06", title: "Second Sunrise", year: 2025, genres: ["Drama"], minutes: 46, rating: 8.0,
-              plot: "After a blackout that lasted a year, a small town learns to start over.",
-              dark: 0x402010, light: 0xFFA552, motif: 0, group: "Drama Series", certification: "12"),
-        .init(id: "s07", title: "Copper Valley", year: 2024, genres: ["Crime", "Western"], minutes: 49, rating: 8.2,
-              plot: "A sheriff with a past keeps the peace in a mining town that wants none.",
-              dark: 0x3A1C0B, light: 0xB87333, motif: 3, group: "Crime Series", certification: "16"),
-        .init(id: "s08", title: "Little Comets", year: 2026, genres: ["Animation", "Kids"], minutes: 22, rating: 8.3,
-              plot: "Five tiny comets learn to fly in formation across the night sky.",
-              dark: 0x0A2E4A, light: 0x4DD0E1, motif: 1, group: "Kids Series", certification: "AL"),
-        .init(id: "s09", title: "The Long Field", year: 2025, genres: ["Sport", "Drama"], minutes: 44, rating: 7.9,
-              plot: "A small-town football club gets one last season to avoid relegation.",
-              dark: 0x0E3B1E, light: 0x43A047, motif: 2, group: "Drama Series", certification: "6"),
-        .init(id: "s10", title: "Signal & Noise", year: 2026, genres: ["Thriller", "Tech"], minutes: 47, rating: 8.5,
-              plot: "A whistleblower and a hacker uncover what a city's smart grid is really listening to.",
-              dark: 0x1A1A2E, light: 0x00B894, motif: 4, group: "Sci-Fi Series", certification: "16"),
-        .init(id: "s11", title: "Marlow Street", year: 2023, genres: ["Comedy"], minutes: 28, rating: 7.8,
-              plot: "Neighbours, noise complaints and one very shared garden.",
-              dark: 0x2B2D42, light: 0xEF8354, motif: 4, group: "Comedy Series", certification: "AL"),
-        .init(id: "s12", title: "Tidewater", year: 2025, genres: ["Mystery", "Drama"], minutes: 51, rating: 8.0,
-              plot: "Every low tide reveals another clue on the beach of a seaside village.",
-              dark: 0x003D5B, light: 0x30638E, motif: 6, group: "Crime Series", certification: "12")
+        .init(id: "s01", title: "Les Vampires", year: 1915, genres: ["Crime", "Mystery", "Silent"], minutes: 45, director: "Louis Feuillade",
+              plot: "Journalist Philippe Guérande takes on the Vampires, a secret gang of criminals led by the Grand Vampire and the mysterious Irma Vep, who hold Paris in their grip. Louis Feuillade's serial in ten episodes.",
+              group: "Silent Serials", dark: 0x3D0B1F, light: 0x8E2F3C, motif: 7,
+              episodes: ["The Severed Head", "The Ring That Kills", "The Red Codebook", "The Spectre", "Dead Man's Escape",
+                         "Hypnotic Eyes", "Satanas", "The Thunder Master", "The Poisoner", "The Terrible Wedding"]),
+        .init(id: "s02", title: "Judex", year: 1916, genres: ["Crime", "Adventure", "Silent"], minutes: 45, director: "Louis Feuillade",
+              plot: "The masked avenger Judex sets out to punish the ruthless banker Favraux, and falls in love with his daughter Jacqueline. Louis Feuillade's serial in twelve parts.",
+              group: "Silent Serials", dark: 0x1A1A2E, light: 0x415A77, motif: 4,
+              episodes: ["The Mysterious Shadow", "The Atonement", "The Fantastic Hounds", "The Secret of the Tomb",
+                         "The Tragic Mill", "The Licorice Kid", "The Woman in Black", "The Underground Passages of Château-Rouge",
+                         "When the Child Appeared", "Jacqueline's Heart", "The Water Sprite", "Love's Forgiveness"])
     ]
 
-    private static let episodeTitles = [
-        "Low Tide", "The Ninth Bell", "Fog Line", "Undertow", "Breakwater", "Salt and Iron", "Signal Fire", "The Long Night",
-        "Harbor Lights Out", "Dead Reckoning", "North Pier", "Riptide", "Ghost Net", "Slack Water", "Mooring", "Lantern Watch",
-        "Crosscurrent", "Shipping Forecast", "High Water", "The Ninth Wave", "Ebb", "Driftwood", "Last Ferry", "Homecoming"
+    private static let episodePlots: [String: [String]] = [
+        "s01": ["Philippe Guérande, a reporter at a Paris newspaper, starts to investigate the gang that calls itself the Vampires.",
+                "The Vampires strike again, and Guérande and his friend Mazamette follow a trail across Paris.",
+                "A coded notebook falls into the wrong hands, and the gang will do anything to get it back.",
+                "Irma Vep and the Vampires plan their boldest move yet.",
+                "Guérande sets a trap, but the Vampires are always one step ahead.",
+                "A new rival enters the game and the gang is forced to change its plans."],
+        "s02": ["A mysterious figure in a black cloak watches the banker Favraux.",
+                "Favraux receives a warning: he has until midnight to make amends.",
+                "Jacqueline learns the truth about her father's past.",
+                "Judex and his brother follow the kidnappers through the countryside.",
+                "The adventuress Diana Monti spins a web of her own.",
+                "A young street urchin turns out to be an unexpected ally."]
     ]
 
     struct DemoChannel {
@@ -272,21 +240,20 @@ enum ScreenshotDemo {
         }
         let poster = { (id: String) in library.movies.first { $0.id == id }?.poster ?? library.series.first { $0.id == id }?.poster }
         var progress: [String: ProgressEntry] = [:]
-        progress["m02"] = entry("Night Harbor", poster("m02"), 0.62, 112, ago: 3600)
-        progress["s01-2-4"] = entry("Harbor Nine", poster("s01"), 0.41, 52, ago: 1800)
-        progress["m08"] = entry("Paper Comets", poster("m08"), 0.25, 97, ago: 7200)
-        progress["s05-1-3"] = entry("Orbit Station", poster("s05"), 0.7, 50, ago: 86400)
-        progress["m11"] = entry("Silent Orbit", poster("m11"), 0.8, 128, ago: 2 * 86400)
-        progress["s03-1-5"] = entry("Static Hearts", poster("s03"), 0.33, 32, ago: 3 * 86400)
+        progress["s01-1-4"] = entry("Les Vampires", poster("s01"), 0.41, 45, ago: 1800)
+        progress["m02"] = entry("Tears of Steel", poster("m02"), 0.62, 12, ago: 3600)
+        progress["m11"] = entry("Nosferatu", poster("m11"), 0.35, 94, ago: 7200)
+        progress["m05"] = entry("Spring", poster("m05"), 0.7, 8, ago: 86400)
+        progress["s02-1-3"] = entry("Judex", poster("s02"), 0.25, 45, ago: 2 * 86400)
+        progress["m03"] = entry("Big Buck Bunny", poster("m03"), 0.8, 10, ago: 3 * 86400)
         var watched: Set<String> = []
-        for e in 1...8 { watched.insert("s01-1-\(e)"); watched.insert(CloudStore.episodeKey(series: "s01", season: 1, episode: e)) }
-        for e in 1...3 { watched.insert("s01-2-\(e)"); watched.insert(CloudStore.episodeKey(series: "s01", season: 2, episode: e)) }
+        for e in 1...3 { watched.insert("s01-1-\(e)"); watched.insert(CloudStore.episodeKey(series: "s01", season: 1, episode: e)) }
         var custom = Customization()
         for g in hiddenGroups { custom.hidden.insert(Customization.groupKey(g)) }
         let data = ScreenshotStoreData(
             playlists: [source], profiles: profiles, mainProfile: alexID, active: alexID,
             favorites: Set(["c01", "c03", "c07", "c10", "c13", "c06", "c02"].map(key)),
-            myList: Set(["m04", "m09", "s02", "m15", "s10", "m13", "s04"].map(key)),
+            myList: Set(["m04", "m06", "s02", "m12", "m09", "m13", "m08"].map(key)),
             progress: progress, watched: watched,
             recent: ["c03", "c07", "c01"].map(key),
             customizations: [sourceID: custom],
@@ -340,6 +307,31 @@ enum ScreenshotDemo {
         return HomeLayout(rows: rows, updatedAt: Date())
     }
 
+    // MARK: vrije afbeeldingen
+
+    /// Map met de vrije film-afbeeldingen (JPEG, `<id>.jpg`): `-BingrMediaDir <pad>` of `ScreenshotMedia/` in de
+    /// app-bundel. Die zet alleen de workflow appstore-screenshots.yml erin (tools/fetch_free_media.py); in gewone
+    /// builds ontbreekt de map en tekent de demo zelf reserve-afbeeldingen.
+    private static let mediaDir: URL? = {
+        let fm = FileManager.default
+        if let p = UserDefaults.standard.string(forKey: "BingrMediaDir"), fm.fileExists(atPath: p) { return URL(fileURLWithPath: p) }
+        if let r = Bundle.main.resourceURL?.appendingPathComponent("ScreenshotMedia"), fm.fileExists(atPath: r.path) { return r }
+        return nil
+    }()
+
+    private static func media(_ id: String) -> URL? {
+        guard let dir = mediaDir else { return nil }
+        let u = dir.appendingPathComponent(id + ".jpg")
+        return FileManager.default.fileExists(atPath: u.path) ? u : nil
+    }
+
+    /// Alle beschikbare afbeeldingen met dit voorvoegsel (bv. "s01-still"), gesorteerd
+    private static func mediaList(_ prefix: String) -> [URL] {
+        guard let dir = mediaDir,
+              let names = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else { return [] }
+        return names.filter { $0.hasPrefix(prefix) && $0.hasSuffix(".jpg") }.sorted().map { dir.appendingPathComponent($0) }
+    }
+
     // MARK: bibliotheek
 
     private static func buildLibrary() {
@@ -347,60 +339,70 @@ enum ScreenshotDemo {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         func art<V: View>(_ name: String, _ size: CGSize, _ view: V) -> URL? { render(view, size: size, to: dir.appendingPathComponent(name + ".png")) }
 
+        /// Poster, achtergrond en staande kop-afbeelding: de vrije afbeelding als die er is (poster = echte poster, of een
+        /// beeld uit de film met de titel erop), anders zelfgetekend.
+        func artwork(_ t: DemoTitle, seed: Int) -> URL? {
+            let back = media("\(t.id)-backdrop")
+            let key = media("\(t.id)-keyart") ?? media("\(t.id)-poster")
+            backdrops[t.id] = back ?? art("backdrop-\(t.id)", CGSize(width: 1600, height: 900),
+                                          DemoArt(title: nil, dark: Color(hex: t.dark), light: Color(hex: t.light), motif: t.motif,
+                                                  seed: seed, wide: true))
+            if let k = media("\(t.id)-keyart") {
+                keyArt[t.id] = k
+            } else if let b = back {
+                keyArt[t.id] = art("keyart-\(t.id)", CGSize(width: 800, height: 1140), PhotoArt(url: b, title: nil))
+            } else {
+                keyArt[t.id] = art("keyart-\(t.id)", CGSize(width: 800, height: 1140),
+                                   DemoArt(title: nil, dark: Color(hex: t.dark), light: Color(hex: t.light), motif: t.motif, seed: seed))
+            }
+            if let p = media("\(t.id)-poster") { return p }
+            if let k = key ?? back { return art("poster-\(t.id)", CGSize(width: 600, height: 900), PhotoArt(url: k, title: t.title)) }
+            return art("poster-\(t.id)", CGSize(width: 600, height: 900),
+                       DemoArt(title: t.title, dark: Color(hex: t.dark), light: Color(hex: t.light), motif: t.motif, seed: seed))
+        }
+
         var lib = Library()
         let now = Date()
         for (i, t) in movies.enumerated() {
-            let p = art("poster-\(t.id)", CGSize(width: 600, height: 900),
-                        DemoArt(title: t.title, dark: Color(hex: t.dark), light: Color(hex: t.light), motif: t.motif, seed: i))
-            backdrops[t.id] = art("backdrop-\(t.id)", CGSize(width: 1600, height: 900),
-                                  DemoArt(title: nil, dark: Color(hex: t.dark), light: Color(hex: t.light), motif: t.motif, seed: i, wide: true))
-            keyArt[t.id] = art("keyart-\(t.id)", CGSize(width: 800, height: 1140),
-                               DemoArt(title: nil, dark: Color(hex: t.dark), light: Color(hex: t.light), motif: t.motif, seed: i))
-            // ouder dan een maand: geen "Recently added"-labels over de posters
+            let p = artwork(t, seed: i)
+            // ouder dan een maand: geen "Recently added"-labels over de posters; geen score (volgorde Top 10 = addedAt)
             lib.movies.append(Movie(id: t.id, title: t.title, year: t.year, poster: p, group: t.group,
-                                    streamURL: URL(string: "http://demo.invalid/movie/\(t.id).mp4"), imdbID: nil, rating: t.rating,
+                                    streamURL: URL(string: "http://demo.invalid/movie/\(t.id).mp4"), imdbID: nil, rating: nil,
                                     plot: t.plot, addedAt: now.addingTimeInterval(-Double(60 + i * 3) * 86400)))
             movieInfo[t.id] = t
             byTitle["m|" + t.title.lowercased()] = t
         }
-        // stills voor afleveringen
+        // reserve-stills voor afleveringen (zonder vrije afbeeldingen)
         let stillPalette: [(UInt32, UInt32, Int)] = [(0x0B2545, 0x13A4C9, 6), (0x102A43, 0x486581, 3), (0x1A1A2E, 0x6C3483, 4),
-                                                     (0x0F2027, 0x2C5364, 0), (0x002B36, 0x268BD2, 6), (0x13311F, 0x27AE60, 3),
-                                                     (0x2A1A05, 0xD4A017, 0), (0x3A0A0A, 0xC0392B, 4)]
+                                                     (0x0F2027, 0x2C5364, 0), (0x002B36, 0x268BD2, 6), (0x13311F, 0x27AE60, 3)]
         stills = stillPalette.enumerated().compactMap { i, p in
             art("still-\(i)", CGSize(width: 800, height: 450),
                 DemoArt(title: nil, dark: Color(hex: p.0), light: Color(hex: p.1), motif: p.2, seed: i + 40, wide: true))
         }
         for (i, t) in series.enumerated() {
-            let p = art("poster-\(t.id)", CGSize(width: 600, height: 900),
-                        DemoArt(title: t.title, dark: Color(hex: t.dark), light: Color(hex: t.light), motif: t.motif, seed: i + 20))
-            backdrops[t.id] = art("backdrop-\(t.id)", CGSize(width: 1600, height: 900),
-                                  DemoArt(title: nil, dark: Color(hex: t.dark), light: Color(hex: t.light), motif: t.motif, seed: i + 20, wide: true))
-            keyArt[t.id] = art("keyart-\(t.id)", CGSize(width: 800, height: 1140),
-                               DemoArt(title: nil, dark: Color(hex: t.dark), light: Color(hex: t.light), motif: t.motif, seed: i + 20))
+            let p = artwork(t, seed: i + 20)
+            let own = mediaList("\(t.id)-still")
+            let pool = own.isEmpty ? stills : own
+            let plots = episodePlots[t.id] ?? []
             var eps: [Episode] = []
-            for s in 1...3 {
-                for e in 1...8 {
-                    let n = (s - 1) * 8 + (e - 1)
-                    eps.append(Episode(id: "\(t.id)-\(s)-\(e)", seriesID: t.id, season: s, number: e,
-                                       title: episodeTitles[(n + i * 5) % episodeTitles.count],
-                                       streamURL: URL(string: "http://demo.invalid/series/\(t.id)/\(s)/\(e).mp4"),
-                                       still: stills.isEmpty ? nil : stills[(n + i) % stills.count],
-                                       plot: episodePlot(n), durationSeconds: t.minutes * 60))
-                }
+            for (n, title) in t.episodes.enumerated() {
+                eps.append(Episode(id: "\(t.id)-1-\(n + 1)", seriesID: t.id, season: 1, number: n + 1, title: title,
+                                   streamURL: URL(string: "http://demo.invalid/series/\(t.id)/1/\(n + 1).mp4"),
+                                   still: pool.isEmpty ? nil : pool[n % pool.count],
+                                   plot: plots.isEmpty ? nil : plots[n % plots.count], durationSeconds: nil))
             }
             lib.series.append(Series(id: t.id, title: t.title, year: t.year, poster: p, group: t.group, imdbID: nil, plot: t.plot,
-                                     rating: t.rating, episodes: eps, addedAt: now.addingTimeInterval(-Double(60 + i * 2) * 86400)))
+                                     rating: nil, episodes: eps, addedAt: now.addingTimeInterval(-Double(60 + i * 2) * 86400)))
             seriesInfo[t.id] = t
             byTitle["s|" + t.title.lowercased()] = t
         }
-        // zenders, logo's, beeld per zender en een gids rond "nu"
+        // zenders (verzonnen), logo's, beeld per zender en een gids rond "nu"
         let hourStart = Calendar.current.dateInterval(of: .hour, for: now)?.start ?? now
         let start0 = hourStart.addingTimeInterval(-5 * 3600)
         let durations = [30, 60, 45, 90, 60, 30, 120, 60]
         for (i, c) in channels.enumerated() {
             let logo = art("logo-\(c.id)", CGSize(width: 480, height: 270), DemoLogo(name: c.name, glyph: c.glyph, color: Color(hex: c.color)))
-            liveStills[c.id] = art("live-\(c.id)", CGSize(width: 1280, height: 720),
+            liveStills[c.id] = media("live-\(c.id)") ?? art("live-\(c.id)", CGSize(width: 1280, height: 720),
                                    DemoArt(title: nil, dark: Color(hex: c.color).opacity(0.35), light: Color(hex: c.color), motif: i % 8,
                                            seed: i + 60, wide: true))
             lib.channels.append(Channel(id: c.id, name: c.name, logo: logo, group: c.group,
@@ -423,16 +425,6 @@ enum ScreenshotDemo {
         library = lib
     }
 
-    private static func episodePlot(_ n: Int) -> String {
-        let p = ["A storm cuts the harbor off from the mainland, and an old case resurfaces.",
-                 "The team follows a lead to an abandoned cannery on the north shore.",
-                 "A witness changes her story, and the detectives start to doubt each other.",
-                 "An anonymous message points to someone inside the station.",
-                 "The night ferry returns without its captain.",
-                 "Old maps reveal a tunnel under the fish market."]
-        return p[n % p.count]
-    }
-
     private static func programDescription(_ t: String) -> String {
         "\(t): fresh episode with highlights, guests and the stories everyone will be talking about tomorrow."
     }
@@ -447,17 +439,18 @@ enum ScreenshotDemo {
         }
     }
 
-    /// "IMDb"-achtige gegevens zonder score (geen merknamen in beeld): jaar, genres, duur en beschrijving
+    /// "IMDb"-achtige gegevens zonder score en zonder leeftijd (geen merknamen in beeld): jaar, genres, duur, regie en beschrijving
     static func metadata(title: String, isShow: Bool) -> TitleMetadata? {
         guard let t = byTitle[(isShow ? "s|" : "m|") + title.lowercased()] else { return nil }
-        return TitleMetadata(imdbID: "", title: t.title, year: String(t.year), rated: t.certification,
+        return TitleMetadata(imdbID: "", title: t.title, year: String(t.year), rated: nil,
                              runtime: isShow ? nil : runtime(t.minutes), genre: t.genres.joined(separator: ", "),
-                             plot: t.plot, poster: keyArt[t.id], type: isShow ? "series" : "movie", totalSeasons: isShow ? 3 : nil)
+                             director: t.director, plot: t.plot, poster: keyArt[t.id], type: isShow ? "series" : "movie",
+                             totalSeasons: isShow ? 1 : nil)
     }
 
     private static func runtime(_ m: Int) -> String { m >= 60 ? "\(m / 60)h \(m % 60)m" : "\(m)m" }
 
-    /// Detailpagina: achtergrond, genres, duur en afleveringsinfo
+    /// Detailpagina: achtergrond, genres, duur, regie en afleveringsinfo
     static func enrich(_ d: inout TitleDetails, target: DetailTarget) {
         let t: DemoTitle?
         switch target {
@@ -469,13 +462,14 @@ enum ScreenshotDemo {
         d.poster = keyArt[t.id] ?? d.poster
         d.backdrops = []
         d.genres = t.genres
-        d.certification = t.certification
-        d.runtime = target.isSeries ? "\(t.minutes) min" : runtime(t.minutes)
-        d.seasonCount = target.isSeries ? 3 : nil
+        d.certification = nil
+        d.director = t.director
+        d.runtime = target.isSeries ? nil : runtime(t.minutes)
+        d.seasonCount = target.isSeries ? 1 : nil
         if case .series(let s) = target {
             for e in s.episodes {
                 d.episodeInfo["\(e.season)-\(e.number)"] = .init(title: e.title, overview: e.plot, still: e.still, airDate: nil,
-                                                                runtime: t.minutes)
+                                                                runtime: nil)
             }
         }
     }
@@ -507,6 +501,52 @@ struct ScreenshotStill: View {
                     .padding(tvScaled(10))
             }
             .clipped()
+    }
+}
+
+/// Poster of staande afbeelding uit een vrije filmafbeelding (lokaal bestand): gevuld en bijgesneden, met (bij posters)
+/// de titel eronder. Bewerking volgens de licentie vermeld in CREDITS.txt (bijgesneden, titel toegevoegd).
+private struct PhotoArt: View {
+    let url: URL
+    let title: String?
+
+    private var image: Image? {
+        #if os(macOS)
+        NSImage(contentsOf: url).map { Image(nsImage: $0) }
+        #else
+        UIImage(contentsOfFile: url.path).map { Image(uiImage: $0) }
+        #endif
+    }
+
+    var body: some View {
+        GeometryReader { g in
+            let w = g.size.width, h = g.size.height
+            ZStack {
+                Color.black
+                if let image {
+                    image.resizable().scaledToFill().frame(width: w, height: h).clipped()
+                }
+                if let title {
+                    LinearGradient(colors: [.clear, .black.opacity(0.85)], startPoint: UnitPoint(x: 0.5, y: 0.45), endPoint: .bottom)
+                    VStack(spacing: h * 0.012) {
+                        Spacer()
+                        Capsule().fill(Color(red: 0.9, green: 0.04, blue: 0.08)).frame(width: w * 0.12, height: max(2, h * 0.005))
+                        Text(title.uppercased())
+                            .font(.system(size: w * 0.105, weight: .black))
+                            .kerning(w * 0.003)
+                            .multilineTextAlignment(.center)
+                            .lineLimit(3)
+                            .minimumScaleFactor(0.5)
+                            .foregroundStyle(.white)
+                            .shadow(color: .black.opacity(0.6), radius: w * 0.02)
+                            .padding(.horizontal, w * 0.07)
+                            .padding(.bottom, h * 0.06)
+                    }
+                }
+            }
+            .frame(width: w, height: h)
+            .clipped()
+        }
     }
 }
 

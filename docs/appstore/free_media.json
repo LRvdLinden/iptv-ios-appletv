@@ -1,0 +1,453 @@
+{
+ "_note": "Vrije film-afbeeldingen voor de App Store-screenshots (screenshotmodus). Alleen Wikimedia Commons-bestanden met CC BY / CC BY-SA (Blender open movies) of publiek domein in de EU en de VS (films voor 1931, alle makers > 70 jaar overleden). tools/fetch_free_media.py controleert de licentie per bestand via de Commons-API en stopt bij iets anders. id = <titel-id>-poster | -keyart | -backdrop | -stillN, of live-<zender-id>. seek = beeld uit de video op dat tijdstip (s); crop = [x0, y0, x1, y1] als fractie.",
+ "images": [
+  {
+   "id": "m01-poster",
+   "film": "Sintel",
+   "year": 2010,
+   "file": "Sintel poster.jpg",
+   "width": 900
+  },
+  {
+   "id": "m01-keyart",
+   "film": "Sintel",
+   "year": 2010,
+   "file": "Sintel Cover Durian Project.jpg",
+   "width": 1078
+  },
+  {
+   "id": "m01-backdrop",
+   "film": "Sintel",
+   "year": 2010,
+   "file": "Sintel movie 4K.webm",
+   "seek": 693,
+   "width": 1920
+  },
+  {
+   "id": "m02-poster",
+   "film": "Tears of Steel",
+   "year": 2012,
+   "file": "Tos-poster.png",
+   "width": 900
+  },
+  {
+   "id": "m02-backdrop",
+   "film": "Tears of Steel",
+   "year": 2012,
+   "file": "Tears of Steel in 4k - Official Blender Foundation release.webm",
+   "seek": 114,
+   "width": 1920
+  },
+  {
+   "id": "m03-poster",
+   "film": "Big Buck Bunny",
+   "year": 2008,
+   "file": "Big buck bunny poster big.jpg",
+   "width": 900
+  },
+  {
+   "id": "m03-backdrop",
+   "film": "Big Buck Bunny",
+   "year": 2008,
+   "file": "Big Buck Bunny 4K.webm",
+   "seek": 99,
+   "width": 1920
+  },
+  {
+   "id": "m04-poster",
+   "film": "Cosmos Laundromat",
+   "year": 2015,
+   "file": "CosmosLaundromatPoster.jpg",
+   "width": 900
+  },
+  {
+   "id": "m04-backdrop",
+   "film": "Cosmos Laundromat",
+   "year": 2015,
+   "file": "Franck the caterpillar.jpg",
+   "width": 1920
+  },
+  {
+   "id": "m05-poster",
+   "film": "Spring",
+   "year": 2019,
+   "file": "Spring2019AlphaPosterBlender.jpg",
+   "width": 900
+  },
+  {
+   "id": "m05-backdrop",
+   "film": "Spring",
+   "year": 2019,
+   "file": "Spring-concept art-Spring.png",
+   "width": 1920
+  },
+  {
+   "id": "m06-poster",
+   "film": "Sprite Fright",
+   "year": 2021,
+   "file": "Sprite Fright-movie poster.jpg",
+   "width": 900
+  },
+  {
+   "id": "m06-backdrop",
+   "film": "Sprite Fright",
+   "year": 2021,
+   "file": "Sprite Fright - Open Movie by Blender Studio.webm",
+   "seek": 177,
+   "width": 1920
+  },
+  {
+   "id": "m07-poster",
+   "film": "Coffee Run",
+   "year": 2020,
+   "file": "Coffee Run-movie poster.png",
+   "width": 900
+  },
+  {
+   "id": "m07-backdrop",
+   "film": "Coffee Run",
+   "year": 2020,
+   "file": "Coffee Run - Blender Open Movie-full movie.webm",
+   "width": 1920,
+   "seek": 40
+  },
+  {
+   "id": "m08-poster",
+   "film": "Charge",
+   "year": 2022,
+   "file": "Charge-movie poster.jpg",
+   "width": 900
+  },
+  {
+   "id": "m08-backdrop",
+   "film": "Charge",
+   "year": 2022,
+   "file": "Charge - Blender Open Movie-full movie.webm",
+   "seek": 172,
+   "width": 1920
+  },
+  {
+   "id": "m09-keyart",
+   "film": "Elephants Dream",
+   "year": 2006,
+   "file": "Elephants Dream s5 both.jpg",
+   "crop": [
+    0.33,
+    0,
+    0.73,
+    1
+   ],
+   "width": 1920
+  },
+  {
+   "id": "m09-backdrop",
+   "film": "Elephants Dream",
+   "year": 2006,
+   "file": "Elephants Dream s7 both.jpg",
+   "width": 1920
+  },
+  {
+   "id": "m11-keyart",
+   "film": "Nosferatu",
+   "year": 1922,
+   "file": "Film Nosferatu (van F, SFA008003709.jpg",
+   "width": 1100
+  },
+  {
+   "id": "m11-backdrop",
+   "film": "Nosferatu",
+   "year": 1922,
+   "file": "Nosferatu (1922).webm",
+   "seek": 3276,
+   "width": 1440
+  },
+  {
+   "id": "m12-keyart",
+   "film": "A Trip to the Moon",
+   "year": 1902,
+   "file": "Melies color Voyage dans la lune.jpg",
+   "crop": [
+    0.22,
+    0,
+    0.78,
+    1
+   ],
+   "width": 2362
+  },
+  {
+   "id": "m12-backdrop",
+   "film": "A Trip to the Moon",
+   "year": 1902,
+   "file": "Méliès Trip to the Moon cannon still.jpg",
+   "width": 1920
+  },
+  {
+   "id": "m13-poster",
+   "film": "The Great Train Robbery",
+   "year": 1903,
+   "file": "Great Train Robbery Poster.jpeg",
+   "width": 500
+  },
+  {
+   "id": "m13-keyart",
+   "film": "The Great Train Robbery",
+   "year": 1903,
+   "file": "The Great Train Robbery 1903.webm",
+   "seek": 416,
+   "crop": [
+    0.28,
+    0,
+    0.72,
+    1
+   ],
+   "width": 1920
+  },
+  {
+   "id": "m13-backdrop",
+   "film": "The Great Train Robbery",
+   "year": 1903,
+   "file": "The Great Train Robbery 1903.webm",
+   "seek": 284,
+   "crop": [
+    0.135,
+    0,
+    0.865,
+    1
+   ],
+   "width": 1920
+  },
+  {
+   "id": "s01-poster",
+   "film": "Les Vampires",
+   "year": 1915,
+   "file": "Les Vampires - Tamagno.jpg",
+   "width": 821
+  },
+  {
+   "id": "s01-keyart",
+   "film": "Les Vampires",
+   "year": 1915,
+   "file": "Les Vampires - Irma Vep.jpg",
+   "width": 1100
+  },
+  {
+   "id": "s01-backdrop",
+   "film": "Les Vampires",
+   "year": 1915,
+   "file": "Les Vampires - Les Yeux qui fascinent - Juan-José Moreno contre Irma Vep.jpg",
+   "width": 1920
+  },
+  {
+   "id": "s01-still1",
+   "film": "Les Vampires",
+   "year": 1915,
+   "file": "Les Vampires (1915) par Louis Feuillade.webm",
+   "seek": 190,
+   "crop": [
+    0.12,
+    0,
+    0.88,
+    1
+   ],
+   "width": 1460
+  },
+  {
+   "id": "s01-still2",
+   "film": "Les Vampires",
+   "year": 1915,
+   "file": "Les Vampires - Irma Vep revolver.jpg",
+   "width": 1000
+  },
+  {
+   "id": "s01-still3",
+   "film": "Les Vampires",
+   "year": 1915,
+   "file": "Les Vampires (1915) par Louis Feuillade.webm",
+   "seek": 571,
+   "crop": [
+    0.12,
+    0,
+    0.88,
+    1
+   ],
+   "width": 1460
+  },
+  {
+   "id": "s01-still4",
+   "film": "Les Vampires",
+   "year": 1915,
+   "file": "Les Vampires - Satanas - le cabaret du Joyeux Cagibi.jpg",
+   "width": 1000
+  },
+  {
+   "id": "s01-still5",
+   "film": "Les Vampires",
+   "year": 1915,
+   "file": "Les Vampires (1915) par Louis Feuillade.webm",
+   "seek": 1334,
+   "crop": [
+    0.12,
+    0,
+    0.88,
+    1
+   ],
+   "width": 1460
+  },
+  {
+   "id": "s01-still6",
+   "film": "Les Vampires",
+   "year": 1915,
+   "file": "Les Vampires - Les Yeux qui fascinent - Juan-José Moreno enlève Irma Vep.jpg",
+   "width": 834
+  },
+  {
+   "id": "s01-still7",
+   "film": "Les Vampires",
+   "year": 1915,
+   "file": "Les Vampires (1915) par Louis Feuillade.webm",
+   "seek": 1588,
+   "crop": [
+    0.12,
+    0,
+    0.88,
+    1
+   ],
+   "width": 1460
+  },
+  {
+   "id": "s01-still8",
+   "film": "Les Vampires",
+   "year": 1915,
+   "file": "Les Vampires - L'Homme des poisons - Irma Vep en danger.jpg",
+   "width": 750
+  },
+  {
+   "id": "s02-keyart",
+   "film": "Judex",
+   "year": 1916,
+   "file": "Judex photo.jpg",
+   "crop": [
+    0.22,
+    0,
+    0.72,
+    1
+   ],
+   "width": 2468
+  },
+  {
+   "id": "s02-backdrop",
+   "film": "Judex",
+   "year": 1916,
+   "file": "Judex.jpg",
+   "crop": [
+    0,
+    0.1,
+    1,
+    0.73
+   ],
+   "width": 1451
+  },
+  {
+   "id": "s02-still1",
+   "film": "Judex",
+   "year": 1916,
+   "file": "Judex - Episode 03 - La Meute fantastique (1916).webm",
+   "seek": 624,
+   "width": 944
+  },
+  {
+   "id": "s02-still2",
+   "film": "Judex",
+   "year": 1916,
+   "file": "Judex - Episode 03 - La Meute fantastique (1916).webm",
+   "seek": 346,
+   "width": 944
+  },
+  {
+   "id": "s02-still3",
+   "film": "Judex",
+   "year": 1916,
+   "file": "Judex - Episode 03 - La Meute fantastique (1916).webm",
+   "seek": 901,
+   "width": 944
+  },
+  {
+   "id": "s02-still4",
+   "film": "Judex",
+   "year": 1916,
+   "file": "Musidora Judex 3.jpg",
+   "width": 1200
+  },
+  {
+   "id": "s02-still5",
+   "film": "Judex",
+   "year": 1916,
+   "file": "Judex - Episode 03 - La Meute fantastique (1916).webm",
+   "seek": 1178,
+   "width": 944
+  },
+  {
+   "id": "s02-still6",
+   "film": "Judex",
+   "year": 1916,
+   "file": "Judex - Episode 03 - La Meute fantastique (1916).webm",
+   "seek": 1733,
+   "width": 944
+  },
+  {
+   "id": "live-c03",
+   "film": "Tears of Steel",
+   "year": 2012,
+   "file": "Tears of Steel in 4k - Official Blender Foundation release.webm",
+   "seek": 527,
+   "width": 1280
+  },
+  {
+   "id": "live-c04",
+   "film": "Big Buck Bunny",
+   "year": 2008,
+   "file": "Big Buck Bunny 4K.webm",
+   "seek": 376,
+   "width": 1280
+  },
+  {
+   "id": "live-c06",
+   "film": "Nosferatu",
+   "year": 1922,
+   "file": "Nosferatu (1922).webm",
+   "seek": 3621,
+   "width": 1280
+  },
+  {
+   "id": "live-c10",
+   "film": "Big Buck Bunny",
+   "year": 2008,
+   "file": "Big Buck Bunny 4K.webm",
+   "seek": 19,
+   "width": 1280
+  },
+  {
+   "id": "live-c13",
+   "film": "Sprite Fright",
+   "year": 2021,
+   "file": "Sprite Fright - Open Movie by Blender Studio.webm",
+   "seek": 19,
+   "width": 1280
+  },
+  {
+   "id": "live-c14",
+   "film": "Big Buck Bunny",
+   "year": 2008,
+   "file": "Big Buck Bunny 4K.webm",
+   "seek": 337,
+   "width": 1280
+  },
+  {
+   "id": "live-c12",
+   "film": "A Trip to the Moon",
+   "year": 1902,
+   "file": "Méliès Trip to the Moon stars still.jpg",
+   "width": 850
+  }
+ ]
+}

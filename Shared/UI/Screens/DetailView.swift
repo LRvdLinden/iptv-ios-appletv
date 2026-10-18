@@ -336,10 +336,13 @@ struct DetailView: View {
     private var metaRow: some View {
         HStack(spacing: tvScaled(14)) {
             let main = d?.ratings.first { $0.source == "IMDb" } ?? d?.ratings.first
-            Text("★ \(main?.value ?? "–")")
-                .font(.system(size: tvScaled(15), weight: .bold))
-                .padding(.horizontal, 12).padding(.vertical, 6)
-                .background(Color.white.opacity(0.15), in: RoundedRectangle(cornerRadius: 10))
+            // screenshotmodus: geen leeg "★ –" (de demo heeft bewust geen scores)
+            if main != nil || !Screenshots.isActive {
+                Text("★ \(main?.value ?? "–")")
+                    .font(.system(size: tvScaled(15), weight: .bold))
+                    .padding(.horizontal, 12).padding(.vertical, 6)
+                    .background(Color.white.opacity(0.15), in: RoundedRectangle(cornerRadius: 10))
+            }
             if let y = d?.year { Text(String(y.prefix(4))) }
             if let c = certificationLabel { Text(c).font(.system(size: tvScaled(12), weight: .semibold))
                 .padding(.horizontal, 5).padding(.vertical, 1).overlay(RoundedRectangle(cornerRadius: 3).stroke(Theme.secondary)) }
