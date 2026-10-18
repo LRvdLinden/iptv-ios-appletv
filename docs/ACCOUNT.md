@@ -746,7 +746,7 @@ Er zijn twee abonnementen. Betalen kan nog niet (de betaalpagina komt later op b
 
 | | **Gratis** (€ 0) | **Lifetime** (€ 4,99 eenmalig) |
 |---|---|---|
-| Tegelijk kijken (`limits.streams`) | 1 | 3 |
+| Tegelijk kijken (`limits.streams`) | 1 | tot 6 (build 128, was 3) |
 | Ingelogde apparaten (`limits.devices`) | 8 | 15 |
 | Servers (`limits.servers`) | 1 | onbeperkt (`null`) |
 | Statistieken (`features.stats`) | – | ✓ |
@@ -758,6 +758,7 @@ Er zijn twee abonnementen. Betalen kan nog niet (de betaalpagina komt later op b
 - **Opslag:** tabel `account_plans` (`user_id` pk → `auth.users` on delete cascade, `plan` `'free'|'lifetime'` standaard `'free'`, `max_streams` / `max_devices` (null = standaard van het abonnement), `source` `'legacy'|'admin'|'purchase'`, `note`, `granted_by`, `created_at`, `updated_at`). RLS: de gebruiker leest alleen zijn eigen rij; schrijven alleen de functies (service role). **Geen rij = Gratis.**
 - **Bestaande accounts:** alle accounts die bestonden toen de abonnementen werden ingevoerd, kregen Lifetime cadeau (`source:'legacy'`). Dat gebeurt één keer (markering `plans_legacy_done` in `app_settings`); nieuwe accounts daarna beginnen op Gratis.
 - **Beheer:** kan een account Lifetime geven (`source:'admin'`, gratis) en per account `max_streams` (1–50) en `max_devices` (1–200) verhogen, ook bij Gratis.
+- **Build 128: Lifetime = tot 6 schermen tegelijk** (de limiet van Bingr). Overal tonen als "tot 6 schermen" met eronder: NL "Hoeveel je tegelijk kunt kijken, hangt ook af van je IPTV-aanbieder." / EN "How many you can watch at once also depends on your IPTV provider." De getallen in de vergelijking komen uit `entitlements` (eigen abonnement) en voor het andere abonnement uit de standaard (Gratis 1 scherm, 8 apparaten, 1 server; Lifetime tot 6 schermen, 15 apparaten, onbeperkt). Apple-builds tonen nooit een prijs.
 - **Standaardwaarden** staan in `supabase/functions/_shared/plans.ts` (met unittests in `plans_test.ts`); apps gebruiken altijd de getallen uit `entitlements`, nooit een vast getal.
 
 ### `entitlements` (device-auth, ingelogd)
@@ -821,3 +822,89 @@ State-section `reminders` (één lijst voor het hele account, zoals sinds build 
 - **Profiel verwijderd** (hier of via een tombstone van een ander apparaat): zijn herinneringen gaan weg, met hun meldingen/alarmen, en de verwijdering gaat mee naar de account.
 - **Server:** geen schemawijziging; de section blijft versleutelde JSON.
 - **Push:** de functie `push` leest deze section (alleen lezen) en stuurt 2 minuten voor de start een systeem-push naar de apparaten van het account met push (PUSH.md, "Herinneringen"). Een app met geregistreerde push plant dan zelf geen lokale melding meer.
+
+## Build 128: één lijst over alle servers
+
+Per profiel is er, ongeacht het aantal servers, **één** Verder kijken, **één** Mijn lijst, **één** set favoriete en recente zenders en **één** kijkgeschiedenis; collecties gelden over alle servers heen. Niemand verliest iets: items worden nooit automatisch verwijderd. Bestaande sleutels en sections veranderen niet; alles hieronder is een aanvulling, oudere apps negeren het en zien gewoon de (herschreven) lijsten.
+
+### Weergave en openen
+
+- **Over alle servers:** Verder kijken, Mijn lijst, favoriete zenders, recente zenders, geschiedenis en (handmatige) collecties tonen items van **alle** servers van het account, niet alleen van de actieve, op volgorde van laatst bekeken/toegevoegd (`at`). Dezelfde titel op twee servers is één tegel (match: TMDB-id, anders genormaliseerde titel + jaar; zenders: genormaliseerde naam of EPG-id); de tegel van de actieve server gaat voor. Tegels zien er hetzelfde uit als andere tegels (geen label "andere server").
+- **Server bestaat nog** (ook niet-actief): openen en afspelen via die server, met zijn eigen inloggegevens uit `get_sources`, zonder de actieve server te wisselen. Kan een app dat technisch niet, dan als terugval zoeken op de actieve server (zie Matching).
+- **Server verwijderd** (tombstone in de sources) **of item niet (meer) op zijn server:** op de achtergrond (rustig: alleen als er zulke items zijn, catalogi van andere servers gecachet, niet tijdens afspelen, met time-outs) en bij aanklikken (als het nog niet gebeurd is) zoeken op de andere servers. Voorrang: actieve server, daarna de overige in de volgorde van de sources.
+  - **Gevonden** → remap (hieronder) en meteen openen/afspelen op hetzelfde punt.
+  - **Niet gevonden** → het item blijft staan. Bij aanklikken een melding met de knoppen **Verwijderen uit {Verder kijken | Mijn lijst | Favorieten | collectie}**, **Zoeken** (zoekscherm met de titel ingevuld) en **Annuleren**:
+    - server verwijderd: NL "‘{titel}’ stond op ‘{servernaam}’, maar die server is verwijderd. Op je andere servers ({namen}) is deze titel niet gevonden." · EN "“{title}” was on “{server}”, but that server has been removed. This title wasn't found on your other servers ({names})."
+    - item weg van een bestaande server: NL "‘{titel}’ staat niet meer op ‘{servernaam}’ en is ook niet gevonden op {namen}." · EN "“{title}” is no longer on “{server}” and wasn't found on {names} either."
+    - geen andere server: NL "‘{titel}’ stond op ‘{servernaam}’, maar die server is verwijderd, en je hebt geen andere server waarop we kunnen zoeken." · EN "“{title}” was on “{server}”, but that server has been removed, and you have no other server to search." (bestaande server: "‘{titel}’ staat niet meer op ‘{servernaam}’, en je hebt geen andere server waarop we kunnen zoeken." · "“{title}” is no longer on “{server}”, and you have no other server to search.")
+    - Servernaam onbekend (geen meta): NL "een verwijderde server" · EN "a removed server". Titel onbekend: "Onbekende titel" / "Unknown title".
+- **Kinderslot, leeftijdsgrens en verborgen categorieën** van het profiel gelden ook voor items van andere servers en voor de gevonden server.
+
+### Sleutels
+
+- Bestaande sleutels blijven: `<server-id>|<item-id>` in `myList`, `favorites`, `recentChannels`, `history` (id), en `progress[<item-id>]` met `playlistID` (de server). Voor catalogmeta en remap is de sleutel van een voortgangsitem `<playlistID>|<item-id>`, van een collectie-item `<sid>|<id>` (zie Collecties).
+- Server-id altijd **hoofdletterongevoelig** vergelijken, item-id exact (zoals sinds build 60).
+- **`catalogmeta.items`**: sleutel = server-id in **kleine letters** + `|` + item-id **exact**. Lezen hoofdletterongevoelig.
+- **`catalogmeta.remap`**: sleutel = de oude sleutel **helemaal in kleine letters** (ook het item-id); `to` = de nieuwe sleutel ongewijzigd (zoals de app hem schrijft). Opzoeken: eerst `lowercase(sleutel)`; een app mag daarnaast `<sid kleine letters>|<item exact>` proberen.
+
+### State-section `catalogmeta` (hele account, naast `collections`)
+
+```json
+{
+  "items": {
+    "<server-id kleine letters>|<item-id>": {
+      "t": "titel", "y": 2019, "k": "movie|series|episode|channel", "tmdb": 603, "img": "https://…",
+      "sid": "<server-id>", "sname": "servernaam",
+      "ep": { "series": "<server-id>|<serie-id>", "st": "serietitel", "s": 1, "e": 2 },
+      "ch": { "name": "NPO 1 HD", "epg": "npo1.nl" },
+      "at": "ISO-8601"
+    }
+  },
+  "remap": { "<oude sleutel kleine letters>": { "to": "<nieuwe sleutel>", "at": "ISO-8601" } },
+  "updatedAt": "ISO-8601"
+}
+```
+
+- `y`, `tmdb`, `img`, `ep`, `ch` mogen `null` zijn of ontbreken. `tmdb` is een getal (lees ook een getal als tekst). `ep` alleen bij `k:"episode"`, `ch` alleen bij `k:"channel"`.
+- **Schrijven:** bij elke toevoeging (Mijn lijst, favoriet, collectie) en bij afspelen schrijft de app de meta van dat item mee als die ontbreekt of veranderd is (titel, jaar, TMDB-id, poster/logo, servernaam). Uploaden zoals andere sections (ongeveer 3 seconden vertraging; tijdens afspelen niet vaker dan andere uploads).
+- **Samenvoegen:** per sleutel (items en remap apart) wint de nieuwste `at`. Onbekende velden op het hoogste niveau blijven staan.
+- **Begrenzen** (vóór elke upload): items waar in geen enkel profiel of collectie meer naar verwezen wordt en die ouder zijn dan 90 dagen weg; `remap`-regels ouder dan 180 dagen weg; maximaal 6000 items (eerst de oudste waarnaar niet verwezen wordt); en de hele section onder ~1 MB (de server weigert boven 1 MB met 413 `too_large`; mik op < 900 KB door de oudste items weg te laten).
+- **Server:** geen schemawijziging. `put_state`/`get_state` accepteren elke section-naam (`[a-zA-Z0-9._:-]`, max 80 tekens), data max 1 MB (JSON-tekst), max 200 sections per account. De workflow Backend test `catalogmeta` end-to-end (opslaan, teruglezen, > 1 MB = 413).
+
+### Matching (normalisatie)
+
+- **Titels:** taallabels/landcodes vooraan weg (`NL | `, `NL: `, `|NL| `, `[NL] `, `NL - `), afleveringsmarkering (`S01E02`) en alles erna weg, jaar (`(2019)`, ` 2019`) apart nemen, alles tussen haken weg, kwaliteits- en taalwoorden weg (`4K UHD FHD HD SD HEVC H265 X265 X264 1080p 720p 2160p MULTI DUAL SUBS NL SUBS DOLBY ATMOS HDR`), accenten en hoofdletters weg, alleen letters en cijfers. Match = gelijke genormaliseerde titel **en** jaar gelijk of ±1 (is aan één kant het jaar onbekend: de titel alleen, met voorkeur voor een treffer met jaar). TMDB-id gaat altijd voor als beide kanten hem hebben.
+- **Films/series:** zelfde soort (`movie` ↔ film, `series` ↔ serie).
+- **Afleveringen:** eerst de serie (TMDB-id, anders `ep.st` + jaar), dan in die serie seizoen `ep.s` + aflevering `ep.e`. Zonder `ep` (oude voortgang zonder meta): niet te koppelen → melding.
+- **Zenders:** gelijke EPG-id (`ch.epg`, hoofdletterongevoelig, niet leeg), anders gelijke genormaliseerde naam: voorvoegsels (`NL |`, `NL:`, `|NL|`, `[NL]`, `NL -`) weg, kwaliteitswoorden (`HD FHD UHD SD 4K 8K HEVC H264 H265 50FPS 60FPS HDR RAW BACKUP`) weg, een losse landcode achteraan weg, accenten, hoofdletters, spaties en leestekens weg ("NL: NPO 1 FHD" → "npo1").
+
+### Remap toepassen
+
+- **Gevonden** → regel `remap[lowercase(oud)] = {to: nieuw, at: nu}` en meta voor de nieuwe sleutel.
+- Elke app past bij het laden/syncen **alle** regels toe op **alle profielen** en **alle collecties**: oude sleutel → nieuwe in `myList`, `favorites`, `recentChannels`, `watched`, `history` (`playlistID` en `itemID`), `progress` (sleutel en `playlistID`; positie, `fraction`, `updatedAt` blijven) en collectie-items (`id` en `sid`). De nieuwe sleutel krijgt **dezelfde `at`** (volgorde blijft), de oude komt in `removed.<veld>` met de tijd van de remap. Bekeken: het nieuwe item-id (en bij een serie `ep:<nieuwe serie-id>|s-e`) wordt toegevoegd; dat is genoeg.
+- Idempotent (nogmaals toepassen verandert niets), ketens volgen (a→b→c, maximaal 10 stappen), **nooit een lus**: een regel die terug zou leiden naar een eerdere sleutel wordt niet aangemaakt en bij het toepassen genegeerd. Bestaat de nieuwe sleutel al in de lijst, dan blijft die (met de nieuwste `at`) en verdwijnt alleen de oude.
+
+### Collecties
+
+- Collectie-items `{type, id}` krijgen een optioneel veld **`sid`** (server-id): `{type, id, sid}`. Nieuwe items krijgen altijd `sid`.
+- Een item **zonder** `sid` hoort bij `collection.sourceID` als die gezet is, anders bij de server waarop het item gevonden wordt (actieve eerst, dan de overige). Een app mag `sid` dan invullen zodra het gevonden is (collectie `updatedAt` = nu).
+- Een remap herschrijft `id` **en** `sid` (collectie `updatedAt` = nu). Gelijke items vergelijken op `type` + `id` + `sid` (hoofdletterongevoelig; ontbreekt `sid` aan één kant, dan alleen `type` + `id`).
+- Handmatige collecties tonen items van alle servers. Slimme collecties (zoekwoorden) zoeken in de actieve server, of in `sourceID` als die gezet is.
+
+### Migratie (eerste start van build 128, niets verliezen)
+
+- Voor elk item in Mijn lijst, Verder kijken, favorieten, recente zenders, geschiedenis en collecties van **alle** profielen: meta aanvullen uit de catalogus van zijn eigen server (zodra die geladen is, ook voor niet-actieve servers, rustig op de achtergrond). Voortgang en geschiedenis hebben al een titel en artwork: die eerst gebruiken (geschiedenis van een aflevering: seizoen/aflevering uit de ondertitel "S1:E2").
+- Items van al verwijderde servers zonder meta blijven bewaard: de app probeert ze te herkennen via de titel uit voortgang/geschiedenis; lukt dat niet, dan een tegel "Onbekende titel" en pas bij aanklikken de melding. Niets raden op basis van het item-id, niets verwijderen.
+- Een vlag per apparaat (lokaal) dat de migratie gedaan is; de migratie mag veilig vaker lopen.
+
+### Categorieën per profiel
+
+**Hoe het tot build 127 was opgeslagen (Apple):** categorieën aan/uit stonden **per server voor het hele account** in het platformblok van de bron (`get_sources` → bron → `apple.customization.hidden`, lijst met `"group:<categorienaam>"`, naast verborgen zender-/titel-id's zonder voorvoegsel). Hernoemen (`renamed`), samenvoegen (`merged`) en volgorde (`groupOrder`, `channelOrder`) staan daar ook. Android/Tizen/web hebben hun eigen opslag in hun eigen blok; elk platform migreert zijn eigen oude keuzes.
+
+**Nieuw (build 128):**
+- Het categorieënscherm (Live TV / Films / Series, de landen/talen-knoppen, aan/uit) is **per profiel** en toont de categorieën van **alle** servers van het account. Dezelfde naam op twee servers is één regel; aan/uit geldt dan voor beide servers. Waar nodig staat eronder van welke server(s) de categorie komt.
+- Opslag in `profile.<id>` als set **`hiddenCategories`** = `[{id: "<server-id>|<categorienaam>", at}]` met verwijderingen in `removed.hiddenCategories` (precies zoals `myList`: per item wint de nieuwste `at`). Categorienaam = de naam zoals de server hem levert (vóór hernoemen/samenvoegen), exact. Server-id hoofdletterongevoelig. Staat erin = categorie **uit** voor dat profiel.
+- Rijen, filters, zoeken, de Live TV-lijst en de items van andere servers gebruiken de keuzes van het profiel, per server.
+- **Migratie** (eenmalig per apparaat, vlag lokaal): voor elke server elke `"group:<naam>"` uit het oude platformblok → `"<server-id>|<naam>"` in `hiddenCategories` van **elk** profiel, met een **oude** `at` (epoch), zodat een keuze die een ander apparaat inmiddels per profiel maakte voorgaat. Het oude blok blijft onaangeroerd staan (oudere apps lezen het); build 128 leest er voor categorieën niets meer uit. Verborgen losse zenders/titels, hernoemen, samenvoegen en volgorde blijven per server voor het hele account.
+- **Server verwijderd (tombstone):** zijn categorieën verdwijnen meteen uit het scherm, de rijen en de filters, en alle `"<server-id>|…"`-sleutels gaan uit `hiddenCategories` van alle profielen (als verwijdering, dus gesynct). Komt dezelfde server-id terug, dan begint hij met de standaard (alles aan).
+- Items die via een remap naar een andere server verhuisd zijn, vallen onder de categoriekeuzes van die nieuwe server.

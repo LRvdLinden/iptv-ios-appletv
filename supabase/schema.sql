@@ -1639,7 +1639,7 @@ end $$;
 -- ============================================================================================================
 -- Abonnementen: Gratis en Lifetime (€ 4,99 eenmalig). Contract in docs/ACCOUNT.md ("Abonnementen").
 -- Eén rij per account met een abonnement of eigen limieten; geen rij = gratis. Standaardlimieten staan in
--- supabase/functions/_shared/plans.ts (gratis: 1 stream, 8 apparaten, 1 server; lifetime: 3, 15, onbeperkt);
+-- supabase/functions/_shared/plans.ts (gratis: 1 stream, 8 apparaten, 1 server; lifetime: 6 (build 128, was 3), 15, onbeperkt);
 -- max_streams / max_devices = eigen limiet uit het beheer (null = standaard van het abonnement).
 -- source: 'legacy' (bestaand account, cadeau bij de invoering), 'admin' (beheer) of 'purchase' (betaald).
 -- De gebruiker leest alleen zijn eigen rij; schrijven doen alleen device-auth en admin (service role).
