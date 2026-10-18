@@ -17,17 +17,17 @@ Deno.test("abonnement: geen rij of onbekend = gratis", () => {
 });
 
 Deno.test("abonnement: lifetime-standaard en eigen limieten", () => {
-  eq(limitsFor({ plan: "lifetime" }), { streams: 6, devices: 15, servers: null });
+  eq(limitsFor({ plan: "lifetime" }), { streams: 3, devices: 15, servers: null });
   eq(limitsFor({ plan: "lifetime", max_streams: 10, max_devices: 25 }), { streams: 10, devices: 25, servers: null });
   eq(limitsFor({ plan: "free", max_streams: 4, max_devices: null }), { streams: 4, devices: 8, servers: 1 }, "gratis met meer streams");
-  eq(limitsFor({ plan: "lifetime", max_streams: 0, max_devices: -3 }), { streams: 6, devices: 15, servers: null }, "ongeldig = standaard");
+  eq(limitsFor({ plan: "lifetime", max_streams: 0, max_devices: -3 }), { streams: 3, devices: 15, servers: null }, "ongeldig = standaard");
   eq(limitsFor({ plan: "lifetime", max_streams: "8" }), { streams: 8, devices: 15, servers: null }, "getal als tekst");
 });
 
-Deno.test("standaard: gratis 1 en lifetime 6 gelijktijdige kijkers", () => {
+Deno.test("standaard: gratis 1 en lifetime 3 gelijktijdige kijkers", () => {
   eq(PLAN_DEFAULTS.free.streams, 1);
-  eq(PLAN_DEFAULTS.lifetime.streams, 6);
-  eq(limitsFor({ plan: "lifetime", max_streams: null }).streams, 6, "geen eigen limiet = standaard");
+  eq(PLAN_DEFAULTS.lifetime.streams, 3);
+  eq(limitsFor({ plan: "lifetime", max_streams: null }).streams, 3, "geen eigen limiet = standaard");
 });
 
 Deno.test("eigen limiet: alleen hele getallen binnen de grens", () => {
@@ -84,7 +84,7 @@ Deno.test("entitlements: volledig antwoord", () => {
   });
   const e = entitlements({ plan: "lifetime", max_devices: 20 }, DEFAULT_UPGRADE_LINK, "ios");
   eq(e.plan, "lifetime");
-  eq(e.limits, { streams: 6, devices: 20, servers: null });
+  eq(e.limits, { streams: 3, devices: 20, servers: null });
   eq(e.features.trakt, true);
   eq(e.upgrade.link, false, "Apple standaard zonder link");
 });

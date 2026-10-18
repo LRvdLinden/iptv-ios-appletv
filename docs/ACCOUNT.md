@@ -746,7 +746,7 @@ Er zijn twee abonnementen. Betalen kan nog niet (de betaalpagina komt later op b
 
 | | **Gratis** (€ 0) | **Lifetime** (€ 4,99 eenmalig) |
 |---|---|---|
-| Tegelijk kijken (`limits.streams`) | 1 | tot 6 (build 128, was 3) |
+| Tegelijk kijken (`limits.streams`) | 1 | tot 3 |
 | Ingelogde apparaten (`limits.devices`) | 8 | 15 |
 | Servers (`limits.servers`) | 1 | onbeperkt (`null`) |
 | Statistieken (`features.stats`) | – | ✓ |
@@ -758,7 +758,7 @@ Er zijn twee abonnementen. Betalen kan nog niet (de betaalpagina komt later op b
 - **Opslag:** tabel `account_plans` (`user_id` pk → `auth.users` on delete cascade, `plan` `'free'|'lifetime'` standaard `'free'`, `max_streams` / `max_devices` (null = standaard van het abonnement), `source` `'legacy'|'admin'|'purchase'`, `note`, `granted_by`, `created_at`, `updated_at`). RLS: de gebruiker leest alleen zijn eigen rij; schrijven alleen de functies (service role). **Geen rij = Gratis.**
 - **Bestaande accounts:** alle accounts die bestonden toen de abonnementen werden ingevoerd, kregen Lifetime cadeau (`source:'legacy'`). Dat gebeurt één keer (markering `plans_legacy_done` in `app_settings`); nieuwe accounts daarna beginnen op Gratis.
 - **Beheer:** kan een account Lifetime geven (`source:'admin'`, gratis) en per account `max_streams` (1–50) en `max_devices` (1–200) verhogen, ook bij Gratis.
-- **Build 128: Lifetime = tot 6 schermen tegelijk** (de limiet van Bingr). Overal tonen als "tot 6 schermen" met eronder: NL "Hoeveel je tegelijk kunt kijken, hangt ook af van je IPTV-aanbieder." / EN "How many you can watch at once also depends on your IPTV provider." De getallen in de vergelijking komen uit `entitlements` (eigen abonnement) en voor het andere abonnement uit de standaard (Gratis 1 scherm, 8 apparaten, 1 server; Lifetime tot 6 schermen, 15 apparaten, onbeperkt). Apple-builds tonen nooit een prijs.
+- **Build 128: Lifetime = tot 3 schermen tegelijk** (de limiet van Bingr). Overal tonen als "tot 3 schermen" met eronder: NL "Hoeveel je tegelijk kunt kijken, hangt ook af van je IPTV-aanbieder." / EN "How many you can watch at once also depends on your IPTV provider." De getallen in de vergelijking komen uit `entitlements` (eigen abonnement) en voor het andere abonnement uit de standaard (Gratis 1 scherm, 8 apparaten, 1 server; Lifetime tot 3 schermen, 15 apparaten, onbeperkt). Apple-builds tonen nooit een prijs.
 - **Standaardwaarden** staan in `supabase/functions/_shared/plans.ts` (met unittests in `plans_test.ts`); apps gebruiken altijd de getallen uit `entitlements`, nooit een vast getal.
 
 ### `entitlements` (device-auth, ingelogd)
