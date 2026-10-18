@@ -4,6 +4,37 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 132
+_19 oktober 2026_
+
+### iOS, iPadOS, macOS en Android
+
+**Verbeterd**
+
+- Delen vanaf een film of serie deelt nu een eigen Bingr-link met cover en info. Met Bingr geïnstalleerd opent die meteen de detailpagina in de app
+
+### iOS, iPadOS, tvOS, macOS, Android, Android TV en Website
+
+**Opgelost**
+
+- Een Bingr-link naar een film of serie (ook uit de wekelijkse mail) opent nu de detailpagina als de titel op een andere server van je account staat
+
+### Website
+
+**Nieuw**
+
+- Deel films en series vanuit de webspeler met een eigen Bingr-link (knop Delen op de detailpagina en in het menu van een titel)
+
+**Verbeterd**
+
+- Gedeelde titellinks krijgen een mooie preview in WhatsApp, iMessage, Telegram, Facebook, X en Slack: backdrop, titel, jaar en omschrijving. De titelpagina is vernieuwd met een grote backdrop, poster, Open in Bingr en de downloadknoppen
+
+### Server
+
+**Nieuw**
+
+- Nieuwe openbare functie voor de titelgegevens van gedeelde links, met cache en limiet
+
 ## Versie 1.0.0 · Build 130
 _18 oktober 2026_
 

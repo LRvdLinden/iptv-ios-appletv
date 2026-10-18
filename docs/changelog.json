@@ -1,5 +1,61 @@
 [
  {
+  "build": 132,
+  "version": "1.0.0",
+  "date": "2026-10-19",
+  "items": [
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "macos",
+     "android"
+    ],
+    "nl": "Delen vanaf een film of serie deelt nu een eigen Bingr-link met cover en info. Met Bingr geïnstalleerd opent die meteen de detailpagina in de app",
+    "en": "Sharing a movie or series now shares a Bingr link with cover and info. With Bingr installed it opens the details page straight in the app"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Deel films en series vanuit de webspeler met een eigen Bingr-link (knop Delen op de detailpagina en in het menu van een titel)",
+    "en": "Share movies and series from the web player with a Bingr link (Share button on the details page and in a title's menu)"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Gedeelde titellinks krijgen een mooie preview in WhatsApp, iMessage, Telegram, Facebook, X en Slack: backdrop, titel, jaar en omschrijving. De titelpagina is vernieuwd met een grote backdrop, poster, Open in Bingr en de downloadknoppen",
+    "en": "Shared title links now get a rich preview in WhatsApp, iMessage, Telegram, Facebook, X and Slack: backdrop, title, year and description. The title page has been redesigned with a large backdrop, poster, Open in Bingr and the download buttons"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web"
+    ],
+    "nl": "Een Bingr-link naar een film of serie (ook uit de wekelijkse mail) opent nu de detailpagina als de titel op een andere server van je account staat",
+    "en": "A Bingr link to a movie or series (also from the weekly email) now opens the details page when the title is on another server in your account"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Nieuwe openbare functie voor de titelgegevens van gedeelde links, met cache en limiet",
+    "en": "New public function that provides title details for shared links, cached and rate-limited"
+   }
+  ]
+ },
+ {
   "build": 131,
   "version": "1.0.0",
   "date": "2026-10-18",
