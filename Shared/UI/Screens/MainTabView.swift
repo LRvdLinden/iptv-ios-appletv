@@ -32,6 +32,16 @@ struct MainTabView: View {
         #endif
     }
 
+    /// App Store-screenshots: detailpagina schermvullend op iPad en Mac
+    private static var screenshotWideDetail: Bool {
+        guard Screenshots.isActive else { return false }
+        #if os(macOS)
+        return true
+        #else
+        return !isPhone
+        #endif
+    }
+
     private static var isPhone: Bool {
         #if os(iOS)
         UIDevice.current.userInterfaceIdiom == .phone
@@ -117,7 +127,9 @@ struct MainTabView: View {
             }
         }
         #if !os(tvOS)
-        .sheet(item: $pendingDetail) { DetailView(target: $0) }
+        .sheet(item: Self.screenshotWideDetail ? Binding<DetailTarget?>.constant(nil) : $pendingDetail) { DetailView(target: $0) }
+        // App Store-screenshots op iPad en Mac: de detailpagina schermvullend (een blad is daar klein)
+        .fullScreenCover(item: Self.screenshotWideDetail ? $pendingDetail : Binding<DetailTarget?>.constant(nil)) { DetailView(target: $0) }
         #else
         .fullScreenCover(item: $pendingDetail) { DetailView(target: $0) }
         #endif
@@ -125,6 +137,7 @@ struct MainTabView: View {
         // App Store-screenshots: scherm "categories" (categorieën aan/uit)
         .fullScreenCover(isPresented: $screenshotCategories) {
             NavigationStack { CategoriesView().navigationTitle(L("Categories")) }
+                .background(Color.black.ignoresSafeArea())
         }
     }
 

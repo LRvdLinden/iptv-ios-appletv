@@ -74,6 +74,8 @@ enum ScreenshotDemo {
     private static var seriesInfo: [String: DemoTitle] = [:]
     private static var byTitle: [String: DemoTitle] = [:]
     private static var backdrops: [String: URL] = [:]
+    /// Staande afbeelding zonder titel (billboard op Home en de kop van de detailpagina tekenen de titel zelf)
+    private static var keyArt: [String: URL] = [:]
     private static var stills: [URL] = []
     private(set) static var liveStills: [String: URL] = [:]
     static let heroMovieID = "m01"
@@ -352,9 +354,12 @@ enum ScreenshotDemo {
                         DemoArt(title: t.title, dark: Color(hex: t.dark), light: Color(hex: t.light), motif: t.motif, seed: i))
             backdrops[t.id] = art("backdrop-\(t.id)", CGSize(width: 1600, height: 900),
                                   DemoArt(title: nil, dark: Color(hex: t.dark), light: Color(hex: t.light), motif: t.motif, seed: i, wide: true))
+            keyArt[t.id] = art("keyart-\(t.id)", CGSize(width: 800, height: 1140),
+                               DemoArt(title: nil, dark: Color(hex: t.dark), light: Color(hex: t.light), motif: t.motif, seed: i))
+            // ouder dan een maand: geen "Recently added"-labels over de posters
             lib.movies.append(Movie(id: t.id, title: t.title, year: t.year, poster: p, group: t.group,
                                     streamURL: URL(string: "http://demo.invalid/movie/\(t.id).mp4"), imdbID: nil, rating: t.rating,
-                                    plot: t.plot, addedAt: now.addingTimeInterval(-Double(i) * 86400 * 3)))
+                                    plot: t.plot, addedAt: now.addingTimeInterval(-Double(60 + i * 3) * 86400)))
             movieInfo[t.id] = t
             byTitle["m|" + t.title.lowercased()] = t
         }
@@ -371,6 +376,8 @@ enum ScreenshotDemo {
                         DemoArt(title: t.title, dark: Color(hex: t.dark), light: Color(hex: t.light), motif: t.motif, seed: i + 20))
             backdrops[t.id] = art("backdrop-\(t.id)", CGSize(width: 1600, height: 900),
                                   DemoArt(title: nil, dark: Color(hex: t.dark), light: Color(hex: t.light), motif: t.motif, seed: i + 20, wide: true))
+            keyArt[t.id] = art("keyart-\(t.id)", CGSize(width: 800, height: 1140),
+                               DemoArt(title: nil, dark: Color(hex: t.dark), light: Color(hex: t.light), motif: t.motif, seed: i + 20))
             var eps: [Episode] = []
             for s in 1...3 {
                 for e in 1...8 {
@@ -383,7 +390,7 @@ enum ScreenshotDemo {
                 }
             }
             lib.series.append(Series(id: t.id, title: t.title, year: t.year, poster: p, group: t.group, imdbID: nil, plot: t.plot,
-                                     rating: t.rating, episodes: eps, addedAt: now.addingTimeInterval(-Double(i) * 86400 * 2)))
+                                     rating: t.rating, episodes: eps, addedAt: now.addingTimeInterval(-Double(60 + i * 2) * 86400)))
             seriesInfo[t.id] = t
             byTitle["s|" + t.title.lowercased()] = t
         }
@@ -445,7 +452,7 @@ enum ScreenshotDemo {
         guard let t = byTitle[(isShow ? "s|" : "m|") + title.lowercased()] else { return nil }
         return TitleMetadata(imdbID: "", title: t.title, year: String(t.year), rated: t.certification,
                              runtime: isShow ? nil : runtime(t.minutes), genre: t.genres.joined(separator: ", "),
-                             plot: t.plot, poster: nil, type: isShow ? "series" : "movie", totalSeasons: isShow ? 3 : nil)
+                             plot: t.plot, poster: keyArt[t.id], type: isShow ? "series" : "movie", totalSeasons: isShow ? 3 : nil)
     }
 
     private static func runtime(_ m: Int) -> String { m >= 60 ? "\(m / 60)h \(m % 60)m" : "\(m)m" }
@@ -459,6 +466,7 @@ enum ScreenshotDemo {
         }
         guard let t else { return }
         d.backdrop = backdrops[t.id]
+        d.poster = keyArt[t.id] ?? d.poster
         d.backdrops = []
         d.genres = t.genres
         d.certification = t.certification
@@ -488,7 +496,10 @@ enum ScreenshotDemo {
 struct ScreenshotStill: View {
     let channel: Channel
     var body: some View {
-        RemoteImage(url: ScreenshotDemo.liveStills[channel.id], contentMode: .fill, maxPixel: 1280)
+        // de maat komt van het vak zelf (Color.clear), niet van de afbeelding: anders loopt een gevulde afbeelding over
+        Color.clear
+            .overlay { RemoteImage(url: ScreenshotDemo.liveStills[channel.id], contentMode: .fill, maxPixel: 1280) }
+            .clipped()
             .overlay(alignment: .topTrailing) {
                 RemoteImage(url: channel.logo, contentMode: .fit)
                     .frame(width: tvScaled(70), height: tvScaled(40))
@@ -710,7 +721,10 @@ extension ScreenshotDemo {
         guard parts.count == 2 else { return }
         for w in NSApp.windows where w.isVisible && w.canBecomeMain {
             let screen = w.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? .zero
-            w.setFrame(NSRect(x: screen.minX, y: screen.maxY - parts[1], width: parts[0], height: parts[1]), display: true)
+            // past het niet (klein scherm), dan zo groot mogelijk in dezelfde verhouding
+            let f = min(1, screen.width / parts[0], screen.height / parts[1])
+            let width = (parts[0] * f).rounded(), height = (parts[1] * f).rounded()
+            w.setFrame(NSRect(x: screen.minX, y: screen.maxY - height, width: width, height: height), display: true)
             w.makeKeyAndOrderFront(nil)
         }
         NSApp.activate(ignoringOtherApps: true)

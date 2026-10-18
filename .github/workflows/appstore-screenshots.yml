@@ -52,6 +52,10 @@ jobs:
         run: |
           set -euo pipefail
           exec > >(tee -a shots-info.txt) 2>&1
+          # tijdzone zo kiezen dat het in de app ongeveer 20 uur is (avondprogramma's in de gids)
+          H=$((10#$(date -u +%H))); OFF=$(( (20 - H + 36) % 24 - 12 ))
+          if [ $OFF -ge 0 ]; then export TZ_APP="Etc/GMT-$OFF"; else export TZ_APP="Etc/GMT+$((-OFF))"; fi
+          echo "Tijdzone app: $TZ_APP"
           IOS_APP=build/Build/Products/Debug-iphonesimulator/Bingr.app
           TV_APP=build/Build/Products/Debug-appletvsimulator/BingrTV.app
           BUNDLE=nl.lrvdlinden.bingr
@@ -75,7 +79,7 @@ jobs:
             for s in "$@"; do
               xcrun simctl terminate "$udid" "$BUNDLE" 2>/dev/null || true
               sleep 2
-              xcrun simctl launch "$udid" "$BUNDLE" -BingrScreenshots YES -BingrScreen "$s" \
+              SIMCTL_CHILD_TZ="$TZ_APP" xcrun simctl launch "$udid" "$BUNDLE" -BingrScreenshots YES -BingrScreen "$s" \
                 -AppleLanguages "(en)" -AppleLocale en_US >/dev/null
               if [ $first = 1 ]; then sleep 35; first=0; else sleep 22; fi
               xcrun simctl io "$udid" screenshot --type=png "shots/$dir/$s.png"
@@ -98,7 +102,30 @@ jobs:
         run: |
           set -euo pipefail
           exec > >(tee -a shots-info.txt) 2>&1
-          system_profiler SPDisplaysDataType | grep -E "Resolution|Retina" || true
+          H=$((10#$(date -u +%H))); OFF=$(( (20 - H + 36) % 24 - 12 ))
+          if [ $OFF -ge 0 ]; then TZ_APP="Etc/GMT-$OFF"; else TZ_APP="Etc/GMT+$((-OFF))"; fi
+          # groter (retina) scherm als de runner dat kan: liefst 1440x900 HiDPI (= 2880x1800), anders het grootste
+          brew install displayplacer >/dev/null 2>&1 || true
+          if command -v displayplacer >/dev/null; then
+            displayplacer list > displays.txt 2>&1 || true
+            grep -E "^Persistent screen id|^Resolution|mode [0-9]+:" displays.txt | head -60 || true
+            ID=$(grep -m1 "^Persistent screen id" displays.txt | awk '{print $4}')
+            MODE=$(python3 - <<'PY'
+          import re
+          best=None
+          for l in open("displays.txt"):
+              m=re.search(r"mode (\d+): res:(\d+)x(\d+).*?(scaling:on)?\s*$", l.strip())
+              if not m: continue
+              n,w,h,sc=int(m.group(1)),int(m.group(2)),int(m.group(3)),bool(m.group(4))
+              score=(3 if (w,h)==(1440,900) and sc else 2 if (w>=1440 and h>=900) else 1, w*h*(2 if sc else 1))
+              if best is None or score>best[0]: best=(score,n)
+          print(best[1] if best else "")
+          PY
+          )
+            echo "scherm $ID → mode $MODE"
+            if [ -n "$ID" ] && [ -n "$MODE" ]; then displayplacer "id:$ID mode:$MODE" || true; sleep 5; fi
+          fi
+          system_profiler SPDisplaysDataType | grep -E "Resolution|Retina|UI Looks" || true
           APP=build/Build/Products/Debug/Bingr.app
           mkdir -p shots/mac
           cat > winid.swift <<'EOF'
@@ -116,7 +143,7 @@ jobs:
           for s in home detail live guide top10 picker categories multiview; do
             pkill -x Bingr 2>/dev/null || true
             sleep 2
-            "$APP/Contents/MacOS/Bingr" -BingrScreenshots YES -BingrScreen "$s" -BingrWindowSize 1440x900 \
+            TZ="$TZ_APP" "$APP/Contents/MacOS/Bingr" -BingrScreenshots YES -BingrScreen "$s" -BingrWindowSize 1440x900 \
               -AppleLanguages "(en)" -AppleLocale en_US > "shots/mac/$s.log" 2>&1 &
             sleep 25
             WID=$(./winid)

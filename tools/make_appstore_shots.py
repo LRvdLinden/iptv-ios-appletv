@@ -199,8 +199,6 @@ def main() -> None:
             if not p.exists():
                 continue
             shot = rgb(Image.open(p))
-            if key == "mac":
-                shot = trim_black(shot)
             n += 1
             prefix = f"{n:02d}-{name}"
             # kaal (RGB); Apple TV: 1920×1080 en (indien echt zo groot) 3840×2160
