@@ -27,6 +27,8 @@ jobs:
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           cp -r media /tmp/media
+          rm -rf media
+          git checkout -- .
           git switch --orphan tmp-result
           git rm -rf --quiet . || true
           cp -r /tmp/media/. .
