@@ -82,6 +82,11 @@ final class CrossServer: ObservableObject {
     private var lastFetch: [UUID: Date] = [:]
     /// Na het matchen: niet opnieuw proberen binnen 6 uur (tenzij bij aanklikken)
     private var lastMatchTry: [String: Date] = [:]
+    /// Build 129: slimme collecties over alle servers: per collectie-id de treffers op de niet-actieve servers (in de
+    /// volgorde van de sources), en per server de laatste uitkomst met zijn handtekening
+    private var smartFound: [String: CollectionContent] = [:]
+    private var smartSig: [UUID: String] = [:]
+    private var smartResult: [UUID: [String: CollectionContent]] = [:]
 
     private static let migratedKey = "crossserver.migrated.v128"
     nonisolated private static var fileURL: URL {
@@ -335,6 +340,23 @@ final class CrossServer: ObservableObject {
         return r
     }
 
+    /// Build 129: slimme collecties in de catalogus van een andere server, met het filter (leeftijd, kinderslot,
+    /// categorieën) van het profiel op die server; zelfde zoeklogica als op de actieve server (`CollectionResolver`).
+    nonisolated static func smart(_ list: [BingrCollection], lib: Library, ctx: PlaylistService.FilterContext,
+                                  sid: UUID) -> [String: CollectionContent] {
+        let vis = PlaylistService.apply(lib, ctx)
+        let ix = LibrarySearchIndex(vis, version: 0)
+        var out: [String: CollectionContent] = [:]
+        for c in list {
+            var r = CollectionResolver.resolve(c, lib: vis, source: sid, index: ix)
+            for i in r.channels.indices { r.channels[i].sourceID = sid }
+            for i in r.movies.indices { r.movies[i].sourceID = sid }
+            for i in r.series.indices { r.series[i].sourceID = sid }
+            out[c.id] = r
+        }
+        return out
+    }
+
     /// Lichte koppel-index van een catalogus (achtergrond)
     nonisolated static func index(_ lib: Library) -> CatalogIndex {
         var titles: [CatalogIndex.Entry] = []
@@ -405,6 +427,10 @@ final class CrossServer: ObservableObject {
             legacy += c.items.filter { ($0.sid ?? "").isEmpty }
         }
 
+        // build 129: slimme collecties (zoekwoorden) van het actieve profiel; alleen in een volledige ronde
+        let smartList = only == nil ? store.activeCollections.filter { !$0.deleted && $0.kind == .smart && !$0.keywords.isEmpty } : []
+        var newSmart: [UUID: [String: CollectionContent]] = [:]
+
         var newFound = only == nil ? [String: Found]() : found
         var newMissing = only == nil ? [String: Missing]() : missing
         var newEpisodes = only == nil ? [String: Series]() : episodeSeries
@@ -423,16 +449,34 @@ final class CrossServer: ObservableObject {
         for src in ordered {
             let list = bySid[src.id.uuidString.lowercased()] ?? []
             let isActive = src.id == activeID
-            guard !list.isEmpty || (isActive && !legacy.isEmpty) else { continue }
+            let smartHere = isActive ? [] : smartList.filter { CollectionResolver.matchesSource($0, src.id) }
+            guard !list.isEmpty || (isActive && !legacy.isEmpty) || !smartHere.isEmpty else { continue }
             let ctx = pl.context(for: src)
-            guard let (lib, stamp) = await catalog(src, fetch: !list.isEmpty, force: interactive) else {
+            guard let (lib, stamp) = await catalog(src, fetch: !list.isEmpty || !smartHere.isEmpty, force: interactive) else {
                 for r in list { newMissing[r.norm] = missingInfo(r, deleted: false, unverified: true) }
+                if let old = smartResult[src.id], !smartHere.isEmpty { newSmart[src.id] = old }
                 continue
             }
             guard !Task.isCancelled else { return }
-            let sig = "\(stamp.timeIntervalSince1970)|\(store.activeProfileID?.uuidString ?? "")|\(ctx.ageLimit ?? -1)|\(ctx.strict)|"
+            let base = "\(stamp.timeIntervalSince1970)|\(store.activeProfileID?.uuidString ?? "")|\(ctx.ageLimit ?? -1)|\(ctx.strict)|"
                 + "\(ctx.parentalEnabled)|\(ctx.unlocked)|\(ctx.hiddenGroups.sorted().joined(separator: ","))|\(ctx.custom.hashValue)|"
-                + list.map(\.norm).sorted().joined(separator: ",") + "|\(isActive ? legacy.count : 0)"
+            // build 129: slimme collecties op deze (niet-actieve) server, met het filter van het profiel op deze server
+            if !smartHere.isEmpty {
+                let ssig = base + smartHere.map { "\($0.id):\($0.query):\($0.types.joined(separator: "+")):\($0.group ?? "")" }
+                    .sorted().joined(separator: ";")
+                if smartSig[src.id] == ssig, let cached = smartResult[src.id] {
+                    newSmart[src.id] = cached
+                } else {
+                    let sid = src.id
+                    let r = await Task.detached(priority: .utility) { Self.smart(smartHere, lib: lib, ctx: ctx, sid: sid) }.value
+                    guard !Task.isCancelled else { return }
+                    smartSig[src.id] = ssig
+                    smartResult[src.id] = r
+                    newSmart[src.id] = r
+                }
+            }
+            guard !list.isEmpty || (isActive && !legacy.isEmpty) else { continue }
+            let sig = base + list.map(\.norm).sorted().joined(separator: ",") + "|\(isActive ? legacy.count : 0)"
             let result: ServerResult
             if only == nil, lastSig[src.id] == sig, let cached = lastResult[src.id] {
                 result = cached
@@ -509,7 +553,22 @@ final class CrossServer: ObservableObject {
             persist()
             StateSync.shared.catalogMetaChanged(delay: isPlaying() ? 30 : 3)
         }
-        let changed = newFound != found || newMissing != missing || newEpisodes != episodeSeries
+        var changed = newFound != found || newMissing != missing || newEpisodes != episodeSeries
+        if only == nil {
+            // build 129: slimme collecties samenvoegen in de volgorde van de sources (de actieve server zit er niet in)
+            var merged: [String: CollectionContent] = [:]
+            for src in ordered where src.id != activeID {
+                guard let r = newSmart[src.id] else { continue }
+                for (cid, c) in r where !c.isEmpty {
+                    merged[cid, default: CollectionContent()].channels += c.channels
+                    merged[cid, default: CollectionContent()].movies += c.movies
+                    merged[cid, default: CollectionContent()].series += c.series
+                }
+            }
+            let gone = Set(smartResult.keys).subtracting(sources.map(\.id))
+            for g in gone { smartResult[g] = nil; smartSig[g] = nil }
+            if merged != smartFound { smartFound = merged; changed = true }
+        }
         found = newFound
         missing = newMissing
         episodeSeries = newEpisodes
@@ -809,9 +868,19 @@ final class CrossServer: ObservableObject {
         return meta.item(forKey: key)?.at ?? 0
     }
 
-    /// Items van andere servers in een handmatige collectie
+    /// Items van andere servers in een collectie (handmatig: de items met een andere server; slim, build 129: de
+    /// treffers op de andere servers)
     func collectionContent(_ c: BingrCollection, active: UUID?) -> CollectionContent {
-        guard c.kind == .manual else { return CollectionContent() }
+        guard c.kind == .manual else {
+            guard var out = smartFound[c.id] else { return CollectionContent() }
+            // is er intussen van server gewisseld: de actieve server komt al uit de eigen bibliotheek
+            if let active {
+                out.channels.removeAll { $0.sourceID == active }
+                out.movies.removeAll { $0.sourceID == active }
+                out.series.removeAll { $0.sourceID == active }
+            }
+            return out
+        }
         var out = CollectionContent()
         for i in c.items {
             guard let sid = i.sid ?? c.sourceID, !sid.isEmpty,

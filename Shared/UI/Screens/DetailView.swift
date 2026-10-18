@@ -936,7 +936,7 @@ struct DetailView: View {
                 ForEach(sources) { h in
                     Button {
                         showSources = false
-                        if h.playlist.id == pid { openLocal(h.itemID) } else { dismiss(); app.open(h.playlist, thenShow: h.itemID) }
+                        if h.playlist.id == playlists.source?.id { openLocal(h.itemID) } else { openOther(h) }
                     } label: {
                         HStack(spacing: 12) {
                             MiniAvatar(playlist: h.playlist, size: 34)
@@ -1153,6 +1153,15 @@ struct DetailView: View {
         let year = d?.year.flatMap { Int($0.prefix(4)) }
         sources = await playlists.otherSources(title: title, year: year, isShow: target.isSeries, excluding: target.id)
         showSources = true
+    }
+
+    /// Build 129: dezelfde titel op een andere server openen via die server, zonder van server te wisselen. Alleen als
+    /// hij daar niet meer in de catalogus staat: zoals voorheen naar die server.
+    private func openOther(_ h: PlaylistService.OtherHit) {
+        Task { @MainActor in
+            guard let f = await playlists.foreignItem(h) else { dismiss(); app.open(h.playlist, thenShow: h.itemID); return }
+            if let m = f.movie { nested = .movie(m) } else if let s = f.series { nested = .series(s) }
+        }
     }
 
     private func openLocal(_ id: String) {

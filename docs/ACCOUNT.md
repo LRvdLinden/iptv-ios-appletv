@@ -893,6 +893,7 @@ Per profiel is er, ongeacht het aantal servers, **één** Verder kijken, **één
 - Een item **zonder** `sid` hoort bij `collection.sourceID` als die gezet is, anders bij de server waarop het item gevonden wordt (actieve eerst, dan de overige). Een app mag `sid` dan invullen zodra het gevonden is (collectie `updatedAt` = nu).
 - Een remap herschrijft `id` **en** `sid` (collectie `updatedAt` = nu). Gelijke items vergelijken op `type` + `id` + `sid` (hoofdletterongevoelig; ontbreekt `sid` aan één kant, dan alleen `type` + `id`).
 - Handmatige collecties tonen items van alle servers. Slimme collecties (zoekwoorden) zoeken in de actieve server, of in `sourceID` als die gezet is.
+  - **Build 129 (Apple):** slimme collecties zonder `sourceID` zoeken in **alle** servers van het account (actieve eerst, dan de overige in de volgorde van de sources; met `sourceID` alleen in die server, ook als die niet actief is), met het filter van het profiel per server (kinderslot, leeftijdsgrens, categorieën). Dezelfde titel/zender op twee servers is één item (zelfde match als hierboven); openen en afspelen via de eigen server. Opslag en formaat veranderen niet.
 
 ### Migratie (eerste start van build 128, niets verliezen)
 

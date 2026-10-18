@@ -13,6 +13,16 @@ struct GuideGridView: View {
 
     @EnvironmentObject var playlists: PlaylistService
     @State private var now = Date()
+    /// Build 129: programma's van zenders van een andere server ("<server-id>|<zender-id>" → programma's), uit de gids
+    /// van die server
+    @State private var foreignPrograms: [String: [EPGProgram]] = [:]
+
+    private func isForeign(_ c: Channel) -> Bool { c.sourceID != nil && c.sourceID != playlists.source?.id }
+    private func foreignKey(_ c: Channel) -> String { (c.sourceID?.uuidString ?? "") + "|" + c.id }
+    /// De zenders van andere servers in beeld (per server bij elkaar: elke gids wordt zo maar één keer gelezen)
+    private var foreignShown: [Channel] {
+        shown.filter(isForeign).sorted { ($0.sourceID?.uuidString ?? "") < ($1.sourceID?.uuidString ?? "") }
+    }
 
     private var pxPerMinute: CGFloat { tvScaled(5) }
     private var rowHeight: CGFloat { tvScaled(62) }
@@ -83,6 +93,7 @@ struct GuideGridView: View {
             }
         }
         .background(Color.black)
+        .task(id: foreignShown.map(foreignKey)) { await loadForeign() }
         .task {
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 60_000_000_000)
@@ -107,7 +118,9 @@ struct GuideGridView: View {
     private func row(_ c: Channel) -> some View {
         let end = start.addingTimeInterval(hours * 3600)
         // programma's per zender staan op begintijd: binair zoeken naar het zichtbare stuk (build 56)
-        let progs = playlists.library.programs(c, from: start, to: end)
+        let progs = isForeign(c)
+            ? (foreignPrograms[foreignKey(c)] ?? []).filter { $0.end > start && $0.start < end }
+            : playlists.library.programs(c, from: start, to: end)
         return ZStack(alignment: .leading) {
             Rectangle().fill(Color(hex: 0x101010))
             if progs.isEmpty {
@@ -144,6 +157,25 @@ struct GuideGridView: View {
     }
 
     private func x(_ d: Date) -> CGFloat { CGFloat(d.timeIntervalSince(start) / 60) * pxPerMinute }
+
+    /// Build 129: de gids van zenders van een andere server (zoals in het gidsblad, `PlaylistService.foreignEPG`);
+    /// alleen het stuk rond het raster bewaren (gisteren t/m morgen), zodat het geheugen klein blijft.
+    private func loadForeign() async {
+        let list = foreignShown
+        guard !list.isEmpty else { if !foreignPrograms.isEmpty { foreignPrograms = [:] }; return }
+        let from = Date().addingTimeInterval(-86400), to = Date().addingTimeInterval(2 * 86400)
+        var out: [String: [EPGProgram]] = [:]
+        for (i, c) in list.enumerated() {
+            let k = foreignKey(c)
+            if let have = foreignPrograms[k] { out[k] = have; continue }
+            let progs = await playlists.foreignEPG(c)
+            guard !Task.isCancelled else { return }
+            out[k] = progs.filter { $0.end > from && $0.start < to }
+            // na elke server alvast tonen (de eerste rijen hoeven niet op de laatste server te wachten)
+            if i + 1 < list.count, list[i + 1].sourceID != c.sourceID { foreignPrograms.merge(out) { _, n in n } }
+        }
+        if out != foreignPrograms { foreignPrograms = out }
+    }
 }
 
 private extension Date {

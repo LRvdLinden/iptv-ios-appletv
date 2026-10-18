@@ -259,13 +259,27 @@ struct SearchView: View {
         }
     }
 
-    /// Treffers in andere afspeellijsten: tik → wissel van afspeellijst en open het item.
+    /// Build 129: een treffer op een andere server openen en afspelen via die server, zonder te wisselen. Alleen als het
+    /// item niet meer in de catalogus van die server staat: zoals voorheen naar die server.
+    private func openOther(_ h: PlaylistService.OtherHit) {
+        Task { @MainActor in
+            guard let f = await playlists.foreignItem(h) else { app.open(h.playlist, thenShow: h.itemID); return }
+            if let m = f.movie { detail = .movie(m) }
+            else if let s = f.series { detail = .series(s) }
+            else if let c = f.channel {
+                store.pushRecentChannel(h.playlist.id, c.id)
+                app.play(Playables.channel(c, now: nil), zap: [c])
+            }
+        }
+    }
+
+    /// Treffers in andere afspeellijsten: tik → het item openen via zijn eigen server (build 129: zonder te wisselen).
     private var otherPlaylists: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(L("In your other playlists")).font(Theme.titleFont).padding(.leading, Theme.edge)
             LazyVStack(spacing: 4) {
                 ForEach(results.other) { h in
-                    Button { app.open(h.playlist, thenShow: h.itemID) } label: {
+                    Button { openOther(h) } label: {
                         HStack(spacing: 12) {
                             Capsule().fill(h.playlist.avatar.gradient).frame(width: tvScaled(4), height: tvScaled(52))
                             RemoteImage(url: h.artwork, contentMode: .fill, placeholder: String(h.title.prefix(2)))

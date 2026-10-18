@@ -696,6 +696,26 @@ final class PlaylistService: ObservableObject {
         }.value
     }
 
+    /// Build 129: een treffer op een andere server (zoeken, "Andere bronnen") openen zonder van server te wisselen:
+    /// het item uit de catalogus van die server, met `sourceID`, zodat openen en afspelen via die server gaan (zoals
+    /// de items van andere servers sinds build 128). nil = niet (meer) in de catalogus van die server.
+    func foreignItem(_ h: OtherHit) async -> CrossServer.Found? {
+        let p = h.playlist, id = h.itemID, live = h.isLive
+        let active = source?.id
+        return await Task.detached(priority: .userInitiated) { () -> CrossServer.Found? in
+            guard let (lib, _) = Self.readAnyCatalog(p) else { return nil }
+            let tag: UUID? = p.id == active ? nil : p.id
+            if live {
+                guard var c = lib.channels.first(where: { $0.id == id }) else { return nil }
+                c.sourceID = tag
+                return CrossServer.Found(channel: c)
+            }
+            if var m = lib.movies.first(where: { $0.id == id }) { m.sourceID = tag; return CrossServer.Found(movie: m) }
+            if var x = lib.series.first(where: { $0.id == id }) { x.sourceID = tag; return CrossServer.Found(series: x) }
+            return nil
+        }.value
+    }
+
     // MARK: cache
 
     nonisolated static func cacheURL(_ s: PlaylistSource) -> URL {

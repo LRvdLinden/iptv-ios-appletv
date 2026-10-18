@@ -43,9 +43,11 @@ struct LiveTVView: View {
 
     /// Collecties waar zenders in (kunnen) staan
     private var channelCollections: [BingrCollection] {
-        store.activeCollections.filter { c in
-            CollectionResolver.matchesSource(c, playlists.source?.id)
-                && (c.kind == .smart ? c.allows(.channel) : c.items.contains { $0.type == .channel })
+        _ = cross.version
+        return store.activeCollections.filter { c in
+            (c.kind == .smart ? c.allows(.channel) : c.items.contains { $0.type == .channel })
+                // build 129: ook een collectie van een andere server, als daar zenders in staan
+                && (CollectionResolver.matchesSource(c, playlists.source?.id) || !cross.collectionContent(c, active: pid).channels.isEmpty)
         }
     }
 
@@ -116,7 +118,9 @@ struct LiveTVView: View {
         case Self.recentKey:
             return store.recentChannels.filter(other).compactMap { cross.channel(forKey: $0) }
         default:
-            return []
+            // build 129: zenders van andere servers in een collectie (handmatig en slim)
+            guard let c = collection(for: group) else { return [] }
+            return cross.collectionContent(c, active: pid).channels
         }
     }
 
@@ -332,7 +336,9 @@ struct LiveTVView: View {
 
     private func play(_ c: Channel) {
         // build 128: een zender van een andere server: via die server; nog niet gevonden → zoeken, anders de melding
-        CrossServerOpen.channel(c, list: group == Self.recentKey ? .recentChannels : .favorites, onChannel: { x in
+        let list: CrossServer.ListKind = group == Self.recentKey ? .recentChannels
+            : (collection(for: group).map { CrossServer.ListKind.collection($0.id) } ?? .favorites)
+        CrossServerOpen.channel(c, list: list, onChannel: { x in
             store.pushRecentChannel(x.sourceID ?? pid, x.id)
             app.play(Playables.channel(x, now: lib.nowPlaying(x)), zap: visibleChannels)
         }, onPrompt: { prompt = $0 })
