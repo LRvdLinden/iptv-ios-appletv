@@ -78,8 +78,25 @@ final class CrossServer: ObservableObject {
     /// Per server: handtekening van de laatste opzoekronde (cache-tijd, sleutels, filter) en de uitkomst
     private var lastSig: [UUID: String] = [:]
     private var lastResult: [UUID: ServerResult] = [:]
-    /// Per server: laatste poging om een catalogus op te halen (niet vaker dan eens per 6 uur)
-    private var lastFetch: [UUID: Date] = [:]
+    /// Per server: laatste poging om een catalogus op te halen (niet vaker dan eens per 6 uur). Build 130: bewaard
+    /// op het apparaat, zodat ook een herstart van de app (of een server die steeds faalt) niet vaker ophaalt.
+    private var lastFetch: [UUID: Date] = {
+        let raw = UserDefaults.standard.dictionary(forKey: CrossServer.lastFetchKey) as? [String: Double] ?? [:]
+        var out: [UUID: Date] = [:]
+        for (k, v) in raw { if let u = UUID(uuidString: k) { out[u] = Date(timeIntervalSince1970: v) } }
+        return out
+    }() {
+        didSet {
+            var raw: [String: Double] = [:]
+            for (k, v) in lastFetch where Date().timeIntervalSince(v) < 7 * 24 * 3600 { raw[k.uuidString] = v.timeIntervalSince1970 }
+            UserDefaults.standard.set(raw, forKey: CrossServer.lastFetchKey)
+        }
+    }
+    nonisolated private static let lastFetchKey = "crossserver.lastFetch.v130"
+    /// Build 130: niet-actieve servers met een oude cache (> 6 uur), die stil op de achtergrond ververst worden
+    private var staleQueue: [UUID] = []
+    private var staleTask: Task<Void, Never>?
+    nonisolated static let freshFor: TimeInterval = 6 * 3600
     /// Na het matchen: niet opnieuw proberen binnen 6 uur (tenzij bij aanklikken)
     private var lastMatchTry: [String: Date] = [:]
     /// Build 129: slimme collecties over alle servers: per collectie-id de treffers op de niet-actieve servers (in de
@@ -378,26 +395,74 @@ final class CrossServer: ObservableObject {
     }
 
     /// Catalogus van een server: de open bron uit het geheugen, anders de cache, anders (mag `fetch`) ophalen.
+    /// Build 130: een oude cache (> 6 uur) van een niet-actieve server wordt meteen gebruikt en daarna stil op de
+    /// achtergrond ververst (`queueStale`); nooit met de laadindicator, die hoort alleen bij de actieve server.
     private func catalog(_ s: PlaylistSource, fetch: Bool, force: Bool = false) async -> (Library, Date)? {
         if let pl = playlists, pl.source?.id == s.id, !pl.rawLibrary.isEmptyLibrary {
             return (pl.rawLibrary, Date(timeIntervalSince1970: Double(pl.libraryVersion)))
         }
-        if let hit = await Task.detached(priority: .utility, operation: { PlaylistService.readAnyCatalog(s) }).value { return hit }
+        if let hit = await Task.detached(priority: .utility, operation: { PlaylistService.readAnyCatalog(s) }).value {
+            if fetch, Date().timeIntervalSince(hit.1) > Self.freshFor, s.id != playlists?.source?.id { queueStale(s.id) }
+            return hit
+        }
         guard fetch else { return nil }
-        if !force, let last = lastFetch[s.id], Date().timeIntervalSince(last) < 6 * 3600 { return nil }
+        if !force, let last = lastFetch[s.id], Date().timeIntervalSince(last) < Self.freshFor { return nil }
+        if !force { await waitUntilNotPlaying() }
         lastFetch[s.id] = Date()
         guard let lib = await Self.withTimeout(90, { try? await PlaylistService.fetchCatalog(s) }), !lib.isEmptyLibrary else { return nil }
         await Task.detached(priority: .utility) { PlaylistService.writeCatalog(s, lib) }.value
         return (lib, Date())
     }
 
-    /// Wachten tot er niets afspeelt en er niet gescrold wordt
-    private func waitUntilQuiet() async {
+    /// Build 130: een niet-actieve server met een oude cache stil verversen (één tegelijk, niet tijdens afspelen,
+    /// hooguit eens per 6 uur per server, ook over herstarts heen). Daarna één nieuwe ronde; die vindt een verse
+    /// catalogus en zet niets opnieuw in de rij, dus geen lus.
+    private func queueStale(_ id: UUID) {
+        if let last = lastFetch[id], Date().timeIntervalSince(last) < Self.freshFor { return }
+        guard !staleQueue.contains(id) else { return }
+        staleQueue.append(id)
+        guard staleTask == nil else { return }
+        staleTask = Task { @MainActor [weak self] in
+            var updated = false
+            while let self, !self.staleQueue.isEmpty, !Task.isCancelled {
+                let id = self.staleQueue.removeFirst()
+                await self.waitUntilQuiet()
+                guard let s = CloudStore.shared.playlists.first(where: { $0.id == id }), s.id != self.playlists?.source?.id,
+                      let stamp = PlaylistService.catalogStamp(s), Date().timeIntervalSince(stamp) > Self.freshFor else { continue }
+                if let last = self.lastFetch[id], Date().timeIntervalSince(last) < Self.freshFor { continue }
+                self.lastFetch[id] = Date()
+                guard let lib = await Self.withTimeout(90, { try? await PlaylistService.fetchCatalog(s) }), !lib.isEmptyLibrary else { continue }
+                await Task.detached(priority: .utility) { PlaylistService.writeCatalog(s, lib) }.value
+                updated = true
+            }
+            self?.staleTask = nil
+            if updated { self?.schedule(delay: 2) }
+        }
+    }
+
+    /// Build 130: na "alle servers verversen" (PlaylistService.refreshAll): de verse catalogi meteen gebruiken voor
+    /// catalogmeta, remap en slimme collecties, en ontbrekende items opnieuw op alle servers zoeken.
+    func serversRefreshed(_ ids: [UUID]) {
+        guard started else { return }
+        let now = Date()
+        for id in ids { lastFetch[id] = now }
+        staleQueue.removeAll { ids.contains($0) }
+        lastMatchTry = [:]
+        schedule(delay: 1)
+    }
+
+    /// Wachten tot er niets afspeelt (hooguit 6 uur)
+    func waitUntilNotPlaying() async {
         var waited = 0
         while isPlaying() && !Task.isCancelled && waited < 6 * 3600 {
             try? await Task.sleep(nanoseconds: 10_000_000_000)
             waited += 10
         }
+    }
+
+    /// Wachten tot er niets afspeelt en er niet gescrold wordt
+    private func waitUntilQuiet() async {
+        await waitUntilNotPlaying()
         await ScrollActivity.shared.waitUntilIdle()
     }
 

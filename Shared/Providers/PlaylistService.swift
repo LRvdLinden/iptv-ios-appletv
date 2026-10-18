@@ -129,50 +129,57 @@ final class PlaylistService: ObservableObject {
         await refresh(s, showSpinner: true)
     }
 
-    func refresh(_ s: PlaylistSource, showSpinner: Bool) async {
-        guard !Screenshots.isActive else { return }
+    /// Eén server verversen (met gids). true = gelukt. Build 130: voor een niet-actieve server blijven de
+    /// laadindicator en de laadtekst van de actieve server onaangeroerd (die horen alleen bij de actieve server).
+    @discardableResult
+    func refresh(_ s: PlaylistSource, showSpinner: Bool) async -> Bool {
+        guard !Screenshots.isActive else { return false }
+        let isActive = source?.id == s.id
+        let ownsIndicator = showSpinner || isActive
         if showSpinner { isLoading = true }
-        let background = !showSpinner && source?.id == s.id
+        let background = !showSpinner && isActive
         if background { isRefreshing = true }
         defer {
-            isLoading = false; loadingText = ""
+            if ownsIndicator { isLoading = false; loadingText = "" }
             if background { isRefreshing = false }
         }
+        // laadtekst alleen voor de actieve server
+        func say(_ t: String) { if ownsIndicator { loadingText = t } }
         do {
             var lib: Library
             let password = Keychain.get(s.passwordKey) ?? ""
             switch s.kind {
             case .m3u:
-                loadingText = L("Downloading playlist…")
+                say(L("Downloading playlist…"))
                 guard let u = s.m3uURL.urlValue else { throw HTTPError.badURL }
                 let data = try await HTTP.get(u)
-                loadingText = L("Sorting channels and movies…")
+                say(L("Sorting channels and movies…"))
                 let text = String(decoding: data, as: UTF8.self)
                 let pid = s.id
                 lib = await Task.detached(priority: .userInitiated) { M3UParser.library(from: text, playlistID: pid) }.value
                 let epg = s.epgURL.urlValue ?? M3UParser.epgURL(fromHeader: text)
-                if let epg { loadingText = L("Loading TV guide…"); lib.epg = await loadEPG(epg) }
+                if let epg { say(L("Loading TV guide…")); lib.epg = await loadEPG(epg) }
             case .xtream:
-                loadingText = L("Signing in to server…")
+                say(L("Signing in to server…"))
                 let x = XtreamClient(source: s, password: password)
                 try await x.authenticate()
-                loadingText = L("Fetching live TV, movies and series…")
+                say(L("Fetching live TV, movies and series…"))
                 lib = try await x.library(playlistID: s.id)
                 let epg = s.epgURL.urlValue ?? x.xmltvURL
-                if let epg { loadingText = L("Loading TV guide…"); lib.epg = await loadEPG(epg) }
+                if let epg { say(L("Loading TV guide…")); lib.epg = await loadEPG(epg) }
             case .stalker:
-                loadingText = L("Connecting to portal…")
+                say(L("Connecting to portal…"))
                 let st = (source?.id == s.id ? stalker : nil) ?? StalkerClient(source: s)
                 try await st.connect()
-                loadingText = L("Fetching channels and videos…")
+                say(L("Fetching channels and videos…"))
                 lib = try await st.library()
                 if let epg = s.epgURL.urlValue { lib.epg = await loadEPG(epg) }
             case .jellyfin, .emby:
-                loadingText = L("Fetching your library…")
+                say(L("Fetching your library…"))
                 let jf = JellyfinClient(source: s, session: Self.session(s))
                 lib = try await jf.library()
             case .plex:
-                loadingText = L("Fetching your library…")
+                say(L("Fetching your library…"))
                 guard var session = Self.session(s) else { throw MediaError.notLoggedIn }
                 // server-adres kan veranderen: bij fout opnieuw zoeken
                 do { lib = try await PlexClient(session: session).library() }
@@ -183,10 +190,10 @@ final class PlaylistService: ObservableObject {
                     lib = try await PlexClient(session: session).library()
                 }
             case .stremio:
-                loadingText = L("Loading Stremio add-ons…")
+                say(L("Loading Stremio add-ons…"))
                 let addons = await Self.stremioAddons(s)
                 if source?.id == s.id { stremioAddons = addons }
-                loadingText = L("Fetching catalogs…")
+                say(L("Fetching catalogs…"))
                 lib = await StremioClient(addons: addons).library()
             }
             if source?.id == s.id {
@@ -196,11 +203,13 @@ final class PlaylistService: ObservableObject {
             } else {
                 writeCache(s, lib)     // andere afspeellijst op de achtergrond ververst
             }
+            return true
         } catch {
-            guard source?.id == s.id else { return }
+            guard source?.id == s.id else { return false }
             if rawLibrary.channels.isEmpty && rawLibrary.movies.isEmpty && rawLibrary.series.isEmpty {
                 self.error = error.localizedDescription
             }
+            return false
         }
     }
 
@@ -211,12 +220,49 @@ final class PlaylistService: ObservableObject {
         await refresh(s, showSpinner: false)
     }
 
-    /// Alle afspeellijsten op de achtergrond verversen.
+    /// Build 130: alle servers van het account verversen ("Nu vernieuwen", "Alle servers nu verversen").
+    /// Eerst de actieve (zodat die snel klaar is), daarna de andere één voor één op de achtergrond, met een time-out
+    /// per server en niet tijdens het afspelen. Een fout bij één server houdt de rest niet tegen; welke niet lukten
+    /// staat daarna in `refreshFailed` (alleen de servernamen, er wordt niets gelogd). Daarna catalogmeta, remap en
+    /// slimme collecties bijwerken (`CrossServer`).
     @Published private(set) var refreshingAll = false
-    func refreshAll() async {
+    /// Voortgang: server `done + 1` van `total` (nil = niet bezig)
+    @Published private(set) var refreshProgress: (current: Int, total: Int)?
+    /// Namen van de servers die bij de laatste keer alles verversen niet lukten
+    @Published private(set) var refreshFailed: [String] = []
+
+    /// `forceActive`: de actieve server opnieuw laden met het laadscherm (zoals "Nu vernieuwen" altijd deed);
+    /// anders op de achtergrond met het "Bijwerken"-pilletje.
+    func refreshAll(forceActive: Bool = false) async {
+        guard !refreshingAll, !Screenshots.isActive else { return }
         refreshingAll = true
-        defer { refreshingAll = false }
-        for p in CloudStore.shared.playlists { await refresh(p, showSpinner: false) }
+        refreshFailed = []
+        defer { refreshingAll = false; refreshProgress = nil }
+        let all = CloudStore.shared.playlists
+        let activeID = source?.id
+        let ordered = all.filter { $0.id == activeID } + all.filter { $0.id != activeID }
+        var failed: [String] = []
+        for (i, p) in ordered.enumerated() {
+            refreshProgress = (i + 1, ordered.count)
+            // de server kan intussen verwijderd zijn
+            guard CloudStore.shared.playlists.contains(where: { $0.id == p.id }) else { continue }
+            let ok: Bool
+            if p.id == activeID {
+                if forceActive {
+                    await select(p, forceRefresh: true)
+                    ok = !rawLibrary.isEmptyLibrary && source?.id == p.id
+                } else {
+                    ok = await CrossServer.withTimeout(300, { await self.refresh(p, showSpinner: false) }) ?? false
+                }
+            } else {
+                // de andere servers: rustig, niet tijdens het afspelen
+                await CrossServer.shared.waitUntilNotPlaying()
+                ok = await CrossServer.withTimeout(120, { await self.refresh(p, showSpinner: false) }) ?? false
+            }
+            if !ok { failed.append(p.name) }
+        }
+        refreshFailed = failed
+        CrossServer.shared.serversRefreshed(ordered.map(\.id))
     }
 
     private func loadEPG(_ url: URL) async -> [String: [EPGProgram]] {
@@ -794,24 +840,28 @@ extension PlaylistService {
             .appendingPathComponent("catalog-\(s.id.uuidString).json")
     }
 
-    /// De gewone cache, anders de catalogus van build 128; met het tijdstip van het bestand.
+    /// De nieuwste van de gewone cache en de catalogus van build 128; met het tijdstip van het bestand.
+    /// Build 130: de nieuwste wint (de catalogus wordt op de achtergrond ververst als de cache oud is).
     nonisolated static func readAnyCatalog(_ s: PlaylistSource) -> (Library, Date)? {
-        let fm = FileManager.default
-        for url in [cacheURL(s), catalogURL(s)] {
-            guard let d = try? Data(contentsOf: url), let lib = try? JSONDecoder().decode(Library.self, from: d) else { continue }
-            let stamp = ((try? fm.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date) ?? .distantPast
-            return (lib, stamp)
+        for url in catalogFiles(s) {
+            guard let d = try? Data(contentsOf: url.0), let lib = try? JSONDecoder().decode(Library.self, from: d) else { continue }
+            return (lib, url.1)
         }
         return nil
     }
 
+    /// Cache en catalogus die er zijn, nieuwste eerst
+    nonisolated private static func catalogFiles(_ s: PlaylistSource) -> [(URL, Date)] {
+        let fm = FileManager.default
+        return [cacheURL(s), catalogURL(s)].compactMap { url -> (URL, Date)? in
+            guard let d = (try? fm.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date else { return nil }
+            return (url, d)
+        }.sorted { $0.1 > $1.1 }
+    }
+
     /// Tijdstip van de nieuwste cache/catalogus van een server (nil = nog niets).
     nonisolated static func catalogStamp(_ s: PlaylistSource) -> Date? {
-        let fm = FileManager.default
-        for url in [cacheURL(s), catalogURL(s)] {
-            if let d = (try? fm.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date { return d }
-        }
-        return nil
+        catalogFiles(s).first?.1
     }
 
     nonisolated static func writeCatalog(_ s: PlaylistSource, _ lib: Library) {

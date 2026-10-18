@@ -925,7 +925,9 @@
   "“%@” is no longer on “%@” and wasn't found on %@ either.": "لم يعد “%@” موجودًا على “%@” ولم يُعثر عليه أيضًا على %@.",
   "“%@” is no longer on “%@”, and you have no other server to search.": "لم يعد “%@” موجودًا على “%@”، وليس لديك خادم آخر للبحث فيه.",
   "“%@” was on “%@”, but that server has been removed, and you have no other server to search.": "كان “%@” على “%@”، لكن هذا الخادم حُذف، وليس لديك خادم آخر للبحث فيه.",
-  "“%@” was on “%@”, but that server has been removed. This title wasn't found on your other servers (%@).": "كان “%@” على “%@”، لكن هذا الخادم حُذف. لم يُعثر على هذا العنوان على خوادمك الأخرى (%@)."
+  "“%@” was on “%@”, but that server has been removed. This title wasn't found on your other servers (%@).": "كان “%@” على “%@”، لكن هذا الخادم حُذف. لم يُعثر على هذا العنوان على خوادمك الأخرى (%@).",
+  "Refreshing server %d of %d…": "جارٍ تحديث الخادم %d من %d…",
+  "Couldn't refresh: %@": "تعذّر التحديث: %@"
  },
  "de": {
   "%@ is now signed in.": "%@ ist jetzt angemeldet.",
@@ -1853,7 +1855,9 @@
   "“%@” is no longer on “%@” and wasn't found on %@ either.": "„%@“ ist nicht mehr auf „%@“ und wurde auch auf %@ nicht gefunden.",
   "“%@” is no longer on “%@”, and you have no other server to search.": "„%@“ ist nicht mehr auf „%@“, und du hast keinen anderen Server, auf dem wir suchen können.",
   "“%@” was on “%@”, but that server has been removed, and you have no other server to search.": "„%@“ war auf „%@“, aber dieser Server wurde gelöscht, und du hast keinen anderen Server, auf dem wir suchen können.",
-  "“%@” was on “%@”, but that server has been removed. This title wasn't found on your other servers (%@).": "„%@“ war auf „%@“, aber dieser Server wurde gelöscht. Auf deinen anderen Servern (%@) wurde dieser Titel nicht gefunden."
+  "“%@” was on “%@”, but that server has been removed. This title wasn't found on your other servers (%@).": "„%@“ war auf „%@“, aber dieser Server wurde gelöscht. Auf deinen anderen Servern (%@) wurde dieser Titel nicht gefunden.",
+  "Refreshing server %d of %d…": "Server %d von %d wird aktualisiert…",
+  "Couldn't refresh: %@": "Nicht aktualisiert: %@"
  },
  "es": {
   "%@ is now signed in.": "%@ ya ha iniciado sesión.",
@@ -2781,7 +2785,9 @@
   "“%@” is no longer on “%@” and wasn't found on %@ either.": "«%@» ya no está en «%@» y tampoco se ha encontrado en %@.",
   "“%@” is no longer on “%@”, and you have no other server to search.": "«%@» ya no está en «%@» y no tienes otro servidor en el que buscar.",
   "“%@” was on “%@”, but that server has been removed, and you have no other server to search.": "«%@» estaba en «%@», pero ese servidor se ha eliminado y no tienes otro servidor en el que buscar.",
-  "“%@” was on “%@”, but that server has been removed. This title wasn't found on your other servers (%@).": "«%@» estaba en «%@», pero ese servidor se ha eliminado. Este título no se ha encontrado en tus otros servidores (%@)."
+  "“%@” was on “%@”, but that server has been removed. This title wasn't found on your other servers (%@).": "«%@» estaba en «%@», pero ese servidor se ha eliminado. Este título no se ha encontrado en tus otros servidores (%@).",
+  "Refreshing server %d of %d…": "Actualizando servidor %d de %d…",
+  "Couldn't refresh: %@": "No se pudo actualizar: %@"
  },
  "fr": {
   "%@ is now signed in.": "%@ est maintenant connecté.",
@@ -3709,7 +3715,9 @@
   "“%@” is no longer on “%@” and wasn't found on %@ either.": "« %@ » n’est plus sur « %@ » et n’a pas non plus été trouvé sur %@.",
   "“%@” is no longer on “%@”, and you have no other server to search.": "« %@ » n’est plus sur « %@ », et tu n’as aucun autre serveur sur lequel chercher.",
   "“%@” was on “%@”, but that server has been removed, and you have no other server to search.": "« %@ » était sur « %@ », mais ce serveur a été supprimé, et tu n’as aucun autre serveur sur lequel chercher.",
-  "“%@” was on “%@”, but that server has been removed. This title wasn't found on your other servers (%@).": "« %@ » était sur « %@ », mais ce serveur a été supprimé. Ce titre est introuvable sur tes autres serveurs (%@)."
+  "“%@” was on “%@”, but that server has been removed. This title wasn't found on your other servers (%@).": "« %@ » était sur « %@ », mais ce serveur a été supprimé. Ce titre est introuvable sur tes autres serveurs (%@).",
+  "Refreshing server %d of %d…": "Actualisation du serveur %d sur %d…",
+  "Couldn't refresh: %@": "Échec de l’actualisation : %@"
  },
  "it": {
   "%@ is now signed in.": "%@ ha effettuato l’accesso.",
@@ -4637,7 +4645,9 @@
   "“%@” is no longer on “%@” and wasn't found on %@ either.": "«%@» non è più su «%@» e non è stato trovato nemmeno su %@.",
   "“%@” is no longer on “%@”, and you have no other server to search.": "«%@» non è più su «%@» e non hai altri server su cui cercare.",
   "“%@” was on “%@”, but that server has been removed, and you have no other server to search.": "«%@» era su «%@», ma quel server è stato rimosso e non hai altri server su cui cercare.",
-  "“%@” was on “%@”, but that server has been removed. This title wasn't found on your other servers (%@).": "«%@» era su «%@», ma quel server è stato rimosso. Questo titolo non è stato trovato sugli altri tuoi server (%@)."
+  "“%@” was on “%@”, but that server has been removed. This title wasn't found on your other servers (%@).": "«%@» era su «%@», ma quel server è stato rimosso. Questo titolo non è stato trovato sugli altri tuoi server (%@).",
+  "Refreshing server %d of %d…": "Aggiornamento server %d di %d…",
+  "Couldn't refresh: %@": "Aggiornamento non riuscito: %@"
  },
  "nl": {
   "%@ is now signed in.": "%@ is nu ingelogd.",
@@ -5565,7 +5575,9 @@
   "“%@” is no longer on “%@” and wasn't found on %@ either.": "‘%@’ staat niet meer op ‘%@’ en is ook niet gevonden op %@.",
   "“%@” is no longer on “%@”, and you have no other server to search.": "‘%@’ staat niet meer op ‘%@’, en je hebt geen andere server waarop we kunnen zoeken.",
   "“%@” was on “%@”, but that server has been removed, and you have no other server to search.": "‘%@’ stond op ‘%@’, maar die server is verwijderd, en je hebt geen andere server waarop we kunnen zoeken.",
-  "“%@” was on “%@”, but that server has been removed. This title wasn't found on your other servers (%@).": "‘%@’ stond op ‘%@’, maar die server is verwijderd. Op je andere servers (%@) is deze titel niet gevonden."
+  "“%@” was on “%@”, but that server has been removed. This title wasn't found on your other servers (%@).": "‘%@’ stond op ‘%@’, maar die server is verwijderd. Op je andere servers (%@) is deze titel niet gevonden.",
+  "Refreshing server %d of %d…": "Server %d van %d verversen…",
+  "Couldn't refresh: %@": "Niet gelukt: %@"
  },
  "pl": {
   "%@ is now signed in.": "%@ jest teraz zalogowany.",
@@ -6493,7 +6505,9 @@
   "“%@” is no longer on “%@” and wasn't found on %@ either.": "„%@” nie ma już na „%@” i nie znaleziono go też na %@.",
   "“%@” is no longer on “%@”, and you have no other server to search.": "„%@” nie ma już na „%@”, a nie masz innego serwera do przeszukania.",
   "“%@” was on “%@”, but that server has been removed, and you have no other server to search.": "„%@” był na „%@”, ale ten serwer został usunięty, a nie masz innego serwera do przeszukania.",
-  "“%@” was on “%@”, but that server has been removed. This title wasn't found on your other servers (%@).": "„%@” był na „%@”, ale ten serwer został usunięty. Tego tytułu nie znaleziono na Twoich innych serwerach (%@)."
+  "“%@” was on “%@”, but that server has been removed. This title wasn't found on your other servers (%@).": "„%@” był na „%@”, ale ten serwer został usunięty. Tego tytułu nie znaleziono na Twoich innych serwerach (%@).",
+  "Refreshing server %d of %d…": "Odświeżanie serwera %d z %d…",
+  "Couldn't refresh: %@": "Nie udało się odświeżyć: %@"
  },
  "pt": {
   "%@ is now signed in.": "%@ já tem sessão iniciada.",
@@ -7421,7 +7435,9 @@
   "“%@” is no longer on “%@” and wasn't found on %@ either.": "“%@” já não está em “%@” e também não foi encontrado em %@.",
   "“%@” is no longer on “%@”, and you have no other server to search.": "“%@” já não está em “%@” e não tens outro servidor onde procurar.",
   "“%@” was on “%@”, but that server has been removed, and you have no other server to search.": "“%@” estava em “%@”, mas esse servidor foi removido e não tens outro servidor onde procurar.",
-  "“%@” was on “%@”, but that server has been removed. This title wasn't found on your other servers (%@).": "“%@” estava em “%@”, mas esse servidor foi removido. Este título não foi encontrado nos teus outros servidores (%@)."
+  "“%@” was on “%@”, but that server has been removed. This title wasn't found on your other servers (%@).": "“%@” estava em “%@”, mas esse servidor foi removido. Este título não foi encontrado nos teus outros servidores (%@).",
+  "Refreshing server %d of %d…": "A atualizar servidor %d de %d…",
+  "Couldn't refresh: %@": "Não foi possível atualizar: %@"
  },
  "tr": {
   "%@ is now signed in.": "%@ artık oturum açtı.",
@@ -8349,7 +8365,9 @@
   "“%@” is no longer on “%@” and wasn't found on %@ either.": "“%@” artık “%@” üzerinde değil ve %@ üzerinde de bulunamadı.",
   "“%@” is no longer on “%@”, and you have no other server to search.": "“%@” artık “%@” üzerinde değil ve aranacak başka bir sunucun yok.",
   "“%@” was on “%@”, but that server has been removed, and you have no other server to search.": "“%@” “%@” üzerindeydi, ancak bu sunucu silindi ve aranacak başka bir sunucun yok.",
-  "“%@” was on “%@”, but that server has been removed. This title wasn't found on your other servers (%@).": "“%@” “%@” üzerindeydi, ancak bu sunucu silindi. Bu başlık diğer sunucularında (%@) bulunamadı."
+  "“%@” was on “%@”, but that server has been removed. This title wasn't found on your other servers (%@).": "“%@” “%@” üzerindeydi, ancak bu sunucu silindi. Bu başlık diğer sunucularında (%@) bulunamadı.",
+  "Refreshing server %d of %d…": "Sunucu %d / %d yenileniyor…",
+  "Couldn't refresh: %@": "Yenilenemedi: %@"
  },
  "zh-Hans": {
   "%@ is now signed in.": "%@ 现已登录。",
@@ -9277,6 +9295,8 @@
   "“%@” is no longer on “%@” and wasn't found on %@ either.": "“%@”已不在“%@”上，在 %@ 上也未找到。",
   "“%@” is no longer on “%@”, and you have no other server to search.": "“%@”已不在“%@”上，而你没有其他可供搜索的服务器。",
   "“%@” was on “%@”, but that server has been removed, and you have no other server to search.": "“%@”曾在“%@”上，但该服务器已被删除，而你没有其他可供搜索的服务器。",
-  "“%@” was on “%@”, but that server has been removed. This title wasn't found on your other servers (%@).": "“%@”曾在“%@”上，但该服务器已被删除。在你的其他服务器（%@）上未找到此标题。"
+  "“%@” was on “%@”, but that server has been removed. This title wasn't found on your other servers (%@).": "“%@”曾在“%@”上，但该服务器已被删除。在你的其他服务器（%@）上未找到此标题。",
+  "Refreshing server %d of %d…": "正在刷新服务器（%d/%d）…",
+  "Couldn't refresh: %@": "未能刷新：%@"
  }
 }

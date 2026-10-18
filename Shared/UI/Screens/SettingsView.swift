@@ -218,9 +218,13 @@ struct AppSettingsView: View {
                     NavigationLink { SourceCheckView() } label: {
                         Label(L("Check source"), systemImage: "stethoscope")
                     }
-                    Button { Task { await playlists.select(s, forceRefresh: true) } } label: {
+                    // build 130: alle servers van het account, de actieve eerst (met het laadscherm), de andere daarna
+                    // één voor één op de achtergrond
+                    Button { Task { await playlists.refreshAll(forceActive: true) } } label: {
                         Label(L("Refresh now"), systemImage: "arrow.clockwise")
                     }
+                    .disabled(playlists.refreshingAll)
+                    if store.playlists.count > 1 { refreshStatus }
                 }
                 if ent.canAddServer(count: store.playlists.count) {
                     Button { addingServer = true } label: { Label(L("Add server"), systemImage: "plus") }
@@ -270,6 +274,17 @@ struct AppSettingsView: View {
         .task { await subs.refreshUser() }
     }
 
+    /// Build 130: voortgang van alle servers verversen ("Server 1 van 3") en welke servers niet lukten
+    @ViewBuilder private var refreshStatus: some View {
+        if let p = playlists.refreshProgress, p.total > 1 {
+            Text(L("Refreshing server %d of %d…", p.current, p.total))
+                .font(.caption).foregroundStyle(Theme.secondary)
+        } else if !playlists.refreshingAll, !playlists.refreshFailed.isEmpty {
+            Text(L("Couldn't refresh: %@", playlists.refreshFailed.joined(separator: ", ")))
+                .font(.caption).foregroundStyle(Theme.secondary)
+        }
+    }
+
     private var refreshSection: some View {
         Section {
             Picker(L("Update playlists"), selection: $refreshPolicy) {
@@ -285,6 +300,7 @@ struct AppSettingsView: View {
                 }
             }
             .disabled(playlists.refreshingAll)
+            refreshStatus
         } header: { Text(L("Update playlists")) } footer: {
             Text(L("Channels, movies, series and the TV guide are refreshed in the background at this interval."))
         }
