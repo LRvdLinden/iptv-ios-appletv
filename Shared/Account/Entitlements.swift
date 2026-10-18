@@ -67,6 +67,8 @@ final class EntitlementsService: ObservableObject {
         var limits: Limits
         var features: Features
         var upgrade: Upgrade
+        /// build 128: standaardlimieten van beide abonnementen van de server (`plans`), voor de vergelijking
+        var plans: [String: Limits]? = nil
     }
 
     /// Standaardlimieten per abonnement (als de server een veld niet meestuurt; de vergelijking toont deze).
@@ -95,6 +97,13 @@ final class EntitlementsService: ObservableObject {
     var isFree: Bool { current?.plan == .free }
     var limits: Limits { current?.limits ?? Self.lifetimeLimits }
     var upgrade: Upgrade { current?.upgrade ?? Upgrade() }
+
+    /// build 128: standaardlimieten van een abonnement (van de server, anders de bekende standaard) — voor de
+    /// vergelijking Gratis/Lifetime; nooit de eigen limieten van dit account
+    func standard(_ p: Plan) -> Limits {
+        if let l = current?.plans?[p == .free ? "free" : "lifetime"] { return l }
+        return p == .free ? Self.freeLimits : Self.lifetimeLimits
+    }
 
     func allows(_ f: Feature) -> Bool {
         guard let c = current else { return true }
@@ -237,7 +246,20 @@ final class EntitlementsService: ObservableObject {
         let u = j["upgrade"] as? [String: Any] ?? [:]
         let upgrade = Upgrade(url: u["url"] as? String, link: (u["link"] as? Bool) ?? false,
                               price: u["price"] as? String, priceEN: u["price_en"] as? String)
-        return Entitlements(plan: plan, limits: limits, features: features, upgrade: upgrade)
+        var plans: [String: Limits]?
+        if let pj = j["plans"] as? [String: Any] {
+            var out: [String: Limits] = [:]
+            for (k, v) in pj {
+                guard let d = v as? [String: Any] else { continue }
+                var lim = k == "free" ? freeLimits : lifetimeLimits
+                if let x = int(d["streams"]) { lim.streams = x }
+                if let x = int(d["devices"]) { lim.devices = x }
+                if d.keys.contains("servers") { lim.servers = int(d["servers"]) }
+                out[k] = lim
+            }
+            plans = out.isEmpty ? nil : out
+        }
+        return Entitlements(plan: plan, limits: limits, features: features, upgrade: upgrade, plans: plans)
     }
 }
 

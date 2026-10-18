@@ -915,7 +915,10 @@
   "System setting": "إعداد النظام",
   "Turn on notifications": "تشغيل الإشعارات",
   "Bingr can send you a notification when a new version is available, when a program you set a reminder for is about to start, and for important news about Bingr. You can change this anytime in Settings.": "يمكن لـ Bingr أن يرسل إليك إشعارًا عند توفر إصدار جديد، وعندما يوشك برنامج ضبطت له تذكيرًا على البدء، وعند وجود أخبار مهمة عن Bingr. يمكنك تغيير ذلك في أي وقت من الإعدادات.",
-  "Get a notification when a new version of Bingr is available, when a program you set a reminder for is about to start, and for news from Bingr.": "احصل على إشعار عند توفر إصدار جديد من Bingr، وعندما يوشك برنامج ضبطت له تذكيرًا على البدء، وعند وجود أخبار من Bingr."
+  "Get a notification when a new version of Bingr is available, when a program you set a reminder for is about to start, and for news from Bingr.": "احصل على إشعار عند توفر إصدار جديد من Bingr، وعندما يوشك برنامج ضبطت له تذكيرًا على البدء، وعند وجود أخبار من Bingr.",
+  "up to %d": "حتى %d",
+  "How many you can watch at once also depends on your IPTV provider.": "يعتمد عدد ما يمكنك مشاهدته في وقت واحد أيضًا على مزوّد IPTV لديك.",
+  "Lifetime allows up to %d screens at the same time.": "يتيح Lifetime ما يصل إلى %d شاشات في الوقت نفسه."
  },
  "de": {
   "%@ is now signed in.": "%@ ist jetzt angemeldet.",
@@ -1833,7 +1836,10 @@
   "System setting": "Systemeinstellung",
   "Turn on notifications": "Mitteilungen aktivieren",
   "Bingr can send you a notification when a new version is available, when a program you set a reminder for is about to start, and for important news about Bingr. You can change this anytime in Settings.": "Bingr kann dich benachrichtigen, wenn eine neue Version verfügbar ist, wenn eine Sendung, für die du eine Erinnerung gesetzt hast, gleich beginnt, und bei wichtigen Neuigkeiten zu Bingr. Du kannst das jederzeit in den Einstellungen ändern.",
-  "Get a notification when a new version of Bingr is available, when a program you set a reminder for is about to start, and for news from Bingr.": "Erhalte eine Mitteilung, wenn eine neue Version von Bingr verfügbar ist, wenn eine Sendung, für die du eine Erinnerung gesetzt hast, gleich beginnt, und bei Neuigkeiten von Bingr."
+  "Get a notification when a new version of Bingr is available, when a program you set a reminder for is about to start, and for news from Bingr.": "Erhalte eine Mitteilung, wenn eine neue Version von Bingr verfügbar ist, wenn eine Sendung, für die du eine Erinnerung gesetzt hast, gleich beginnt, und bei Neuigkeiten von Bingr.",
+  "up to %d": "bis zu %d",
+  "How many you can watch at once also depends on your IPTV provider.": "Wie viele Streams gleichzeitig möglich sind, hängt auch von deinem IPTV-Anbieter ab.",
+  "Lifetime allows up to %d screens at the same time.": "Mit Lifetime kannst du auf bis zu %d Bildschirmen gleichzeitig schauen."
  },
  "es": {
   "%@ is now signed in.": "%@ ya ha iniciado sesión.",
@@ -2751,7 +2757,10 @@
   "System setting": "Ajuste del sistema",
   "Turn on notifications": "Activar notificaciones",
   "Bingr can send you a notification when a new version is available, when a program you set a reminder for is about to start, and for important news about Bingr. You can change this anytime in Settings.": "Bingr puede enviarte una notificación cuando haya una nueva versión, cuando un programa para el que pusiste un recordatorio esté a punto de empezar y con noticias importantes sobre Bingr. Puedes cambiarlo cuando quieras en Ajustes.",
-  "Get a notification when a new version of Bingr is available, when a program you set a reminder for is about to start, and for news from Bingr.": "Recibe una notificación cuando haya una nueva versión de Bingr, cuando un programa para el que pusiste un recordatorio esté a punto de empezar y con noticias de Bingr."
+  "Get a notification when a new version of Bingr is available, when a program you set a reminder for is about to start, and for news from Bingr.": "Recibe una notificación cuando haya una nueva versión de Bingr, cuando un programa para el que pusiste un recordatorio esté a punto de empezar y con noticias de Bingr.",
+  "up to %d": "hasta %d",
+  "How many you can watch at once also depends on your IPTV provider.": "Cuántos puedes ver a la vez también depende de tu proveedor de IPTV.",
+  "Lifetime allows up to %d screens at the same time.": "Lifetime permite hasta %d pantallas a la vez."
  },
  "fr": {
   "%@ is now signed in.": "%@ est maintenant connecté.",
@@ -3669,7 +3678,10 @@
   "System setting": "Réglage du système",
   "Turn on notifications": "Activer les notifications",
   "Bingr can send you a notification when a new version is available, when a program you set a reminder for is about to start, and for important news about Bingr. You can change this anytime in Settings.": "Bingr peut vous envoyer une notification quand une nouvelle version est disponible, quand un programme pour lequel vous avez défini un rappel va commencer, et pour les actualités importantes de Bingr. Vous pouvez modifier cela à tout moment dans Réglages.",
-  "Get a notification when a new version of Bingr is available, when a program you set a reminder for is about to start, and for news from Bingr.": "Recevez une notification quand une nouvelle version de Bingr est disponible, quand un programme pour lequel vous avez défini un rappel va commencer, et pour les actualités de Bingr."
+  "Get a notification when a new version of Bingr is available, when a program you set a reminder for is about to start, and for news from Bingr.": "Recevez une notification quand une nouvelle version de Bingr est disponible, quand un programme pour lequel vous avez défini un rappel va commencer, et pour les actualités de Bingr.",
+  "up to %d": "jusqu’à %d",
+  "How many you can watch at once also depends on your IPTV provider.": "Le nombre de flux simultanés dépend aussi de ton fournisseur IPTV.",
+  "Lifetime allows up to %d screens at the same time.": "Lifetime permet jusqu’à %d écrans en même temps."
  },
  "it": {
   "%@ is now signed in.": "%@ ha effettuato l’accesso.",
@@ -4587,7 +4599,10 @@
   "System setting": "Impostazione di sistema",
   "Turn on notifications": "Attiva le notifiche",
   "Bingr can send you a notification when a new version is available, when a program you set a reminder for is about to start, and for important news about Bingr. You can change this anytime in Settings.": "Bingr può inviarti una notifica quando è disponibile una nuova versione, quando un programma per cui hai impostato un promemoria sta per iniziare e per notizie importanti su Bingr. Puoi cambiarlo in qualsiasi momento in Impostazioni.",
-  "Get a notification when a new version of Bingr is available, when a program you set a reminder for is about to start, and for news from Bingr.": "Ricevi una notifica quando è disponibile una nuova versione di Bingr, quando un programma per cui hai impostato un promemoria sta per iniziare e per le novità di Bingr."
+  "Get a notification when a new version of Bingr is available, when a program you set a reminder for is about to start, and for news from Bingr.": "Ricevi una notifica quando è disponibile una nuova versione di Bingr, quando un programma per cui hai impostato un promemoria sta per iniziare e per le novità di Bingr.",
+  "up to %d": "fino a %d",
+  "How many you can watch at once also depends on your IPTV provider.": "Quanti puoi guardarne contemporaneamente dipende anche dal tuo provider IPTV.",
+  "Lifetime allows up to %d screens at the same time.": "Lifetime consente fino a %d schermi contemporaneamente."
  },
  "nl": {
   "%@ is now signed in.": "%@ is nu ingelogd.",
@@ -5505,7 +5520,10 @@
   "System setting": "Systeeminstelling",
   "Turn on notifications": "Meldingen aanzetten",
   "Bingr can send you a notification when a new version is available, when a program you set a reminder for is about to start, and for important news about Bingr. You can change this anytime in Settings.": "Bingr kan je een melding sturen als er een nieuwe versie is, als een programma waarvoor je een herinnering hebt gezet bijna begint, en bij belangrijk nieuws over Bingr. Je kunt dit altijd wijzigen in Instellingen.",
-  "Get a notification when a new version of Bingr is available, when a program you set a reminder for is about to start, and for news from Bingr.": "Krijg een melding als er een nieuwe versie van Bingr is, als een programma waarvoor je een herinnering hebt gezet bijna begint, en bij nieuws van Bingr."
+  "Get a notification when a new version of Bingr is available, when a program you set a reminder for is about to start, and for news from Bingr.": "Krijg een melding als er een nieuwe versie van Bingr is, als een programma waarvoor je een herinnering hebt gezet bijna begint, en bij nieuws van Bingr.",
+  "up to %d": "tot %d",
+  "How many you can watch at once also depends on your IPTV provider.": "Hoeveel je tegelijk kunt kijken, hangt ook af van je IPTV-aanbieder.",
+  "Lifetime allows up to %d screens at the same time.": "Met Lifetime kun je op maximaal %d schermen tegelijk kijken."
  },
  "pl": {
   "%@ is now signed in.": "%@ jest teraz zalogowany.",
@@ -6423,7 +6441,10 @@
   "System setting": "Ustawienie systemu",
   "Turn on notifications": "Włącz powiadomienia",
   "Bingr can send you a notification when a new version is available, when a program you set a reminder for is about to start, and for important news about Bingr. You can change this anytime in Settings.": "Bingr może wysłać Ci powiadomienie, gdy pojawi się nowa wersja, gdy program, dla którego ustawiłeś przypomnienie, zaraz się zacznie, oraz o ważnych nowościach dotyczących Bingr. Możesz to zmienić w każdej chwili w Ustawieniach.",
-  "Get a notification when a new version of Bingr is available, when a program you set a reminder for is about to start, and for news from Bingr.": "Otrzymuj powiadomienie, gdy pojawi się nowa wersja Bingr, gdy program, dla którego ustawiłeś przypomnienie, zaraz się zacznie, oraz o nowościach od Bingr."
+  "Get a notification when a new version of Bingr is available, when a program you set a reminder for is about to start, and for news from Bingr.": "Otrzymuj powiadomienie, gdy pojawi się nowa wersja Bingr, gdy program, dla którego ustawiłeś przypomnienie, zaraz się zacznie, oraz o nowościach od Bingr.",
+  "up to %d": "do %d",
+  "How many you can watch at once also depends on your IPTV provider.": "To, ile możesz oglądać jednocześnie, zależy też od Twojego dostawcy IPTV.",
+  "Lifetime allows up to %d screens at the same time.": "Lifetime pozwala na maksymalnie %d ekranów jednocześnie."
  },
  "pt": {
   "%@ is now signed in.": "%@ já tem sessão iniciada.",
@@ -7341,7 +7362,10 @@
   "System setting": "Definição do sistema",
   "Turn on notifications": "Ativar notificações",
   "Bingr can send you a notification when a new version is available, when a program you set a reminder for is about to start, and for important news about Bingr. You can change this anytime in Settings.": "O Bingr pode enviar-te uma notificação quando houver uma nova versão, quando um programa para o qual definiste um lembrete estiver prestes a começar e para notícias importantes sobre o Bingr. Podes alterar isto a qualquer momento nas Definições.",
-  "Get a notification when a new version of Bingr is available, when a program you set a reminder for is about to start, and for news from Bingr.": "Recebe uma notificação quando houver uma nova versão do Bingr, quando um programa para o qual definiste um lembrete estiver prestes a começar e para notícias do Bingr."
+  "Get a notification when a new version of Bingr is available, when a program you set a reminder for is about to start, and for news from Bingr.": "Recebe uma notificação quando houver uma nova versão do Bingr, quando um programa para o qual definiste um lembrete estiver prestes a começar e para notícias do Bingr.",
+  "up to %d": "até %d",
+  "How many you can watch at once also depends on your IPTV provider.": "Quantos podes ver ao mesmo tempo também depende do teu fornecedor de IPTV.",
+  "Lifetime allows up to %d screens at the same time.": "O Lifetime permite até %d ecrãs ao mesmo tempo."
  },
  "tr": {
   "%@ is now signed in.": "%@ artık oturum açtı.",
@@ -8259,7 +8283,10 @@
   "System setting": "Sistem ayarı",
   "Turn on notifications": "Bildirimleri aç",
   "Bingr can send you a notification when a new version is available, when a program you set a reminder for is about to start, and for important news about Bingr. You can change this anytime in Settings.": "Bingr; yeni bir sürüm çıktığında, hatırlatıcı kurduğun bir program başlamak üzereyken ve Bingr ile ilgili önemli haberlerde sana bildirim gönderebilir. Bunu istediğin zaman Ayarlar’dan değiştirebilirsin.",
-  "Get a notification when a new version of Bingr is available, when a program you set a reminder for is about to start, and for news from Bingr.": "Bingr’ın yeni bir sürümü çıktığında, hatırlatıcı kurduğun bir program başlamak üzereyken ve Bingr’dan haberler olduğunda bildirim al."
+  "Get a notification when a new version of Bingr is available, when a program you set a reminder for is about to start, and for news from Bingr.": "Bingr’ın yeni bir sürümü çıktığında, hatırlatıcı kurduğun bir program başlamak üzereyken ve Bingr’dan haberler olduğunda bildirim al.",
+  "up to %d": "%d'e kadar",
+  "How many you can watch at once also depends on your IPTV provider.": "Aynı anda kaç tane izleyebileceğin IPTV sağlayıcına da bağlıdır.",
+  "Lifetime allows up to %d screens at the same time.": "Lifetime aynı anda en fazla %d ekrana izin verir."
  },
  "zh-Hans": {
   "%@ is now signed in.": "%@ 现已登录。",
@@ -9177,6 +9204,9 @@
   "System setting": "系统设置",
   "Turn on notifications": "开启通知",
   "Bingr can send you a notification when a new version is available, when a program you set a reminder for is about to start, and for important news about Bingr. You can change this anytime in Settings.": "当有新版本可用、你设置了提醒的节目即将开始，或有关于 Bingr 的重要消息时，Bingr 可以向你发送通知。你可以随时在“设置”中更改。",
-  "Get a notification when a new version of Bingr is available, when a program you set a reminder for is about to start, and for news from Bingr.": "当 Bingr 有新版本可用、你设置了提醒的节目即将开始，或有来自 Bingr 的消息时收到通知。"
+  "Get a notification when a new version of Bingr is available, when a program you set a reminder for is about to start, and for news from Bingr.": "当 Bingr 有新版本可用、你设置了提醒的节目即将开始，或有来自 Bingr 的消息时收到通知。",
+  "up to %d": "最多 %d",
+  "How many you can watch at once also depends on your IPTV provider.": "可同时观看的数量还取决于你的 IPTV 提供商。",
+  "Lifetime allows up to %d screens at the same time.": "Lifetime 最多允许 %d 个屏幕同时观看。"
  }
 }

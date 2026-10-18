@@ -770,9 +770,12 @@ Body `{platform?, device_id?}`; `platform` is één van `ios`, `ipados`, `tvos`,
   "plan": "free",
   "limits": { "streams": 1, "devices": 8, "servers": 1 },
   "features": { "stats": false, "now_watching": false, "trakt": false, "multi_server": false, "themes": false },
-  "upgrade": { "url": "https://bingr.online/upgrade/", "link": true, "price": "€ 4,99", "price_en": "€4.99" }
+  "upgrade": { "url": "https://bingr.online/upgrade/", "link": true, "price": "€ 4,99", "price_en": "€4.99" },
+  "plans": { "free": { "streams": 1, "devices": 8, "servers": 1 }, "lifetime": { "streams": 3, "devices": 15, "servers": null } }
 }
 ```
+
+- **`plans`** (build 128): de standaardlimieten van beide abonnementen (uit `plans.ts`), voor de vergelijking Gratis/Lifetime. `limits` is wat dít account mag (met eigen limieten uit het beheer); de vergelijking toont altijd `plans`, nooit de eigen limieten. Ontbreekt `plans` (oudere server), gebruik dan Gratis 1/8/1 en Lifetime 3/15/onbeperkt.
 
 - Hetzelfde object staat als `entitlements` in het antwoord van **`heartbeat`** (platform van dat apparaat, of `platform` in de body) en **`config`** (met `platform`/`device_id` in de body). Kon de server het niet bepalen, dan ontbreekt het veld: houd dan de laatst bekende waarde aan.
 - **`upgrade.link`**: per platform in te stellen in het beheer (`app_settings`, sleutel `upgrade_link` = `{"apple": false, "android": true, "androidtv": true, "tizen": true, "web": true}`; `apple` geldt voor ios, ipados, tvos en macos). Standaard **uit voor Apple**: de Apple-apps tonen dan wel de vergelijking Gratis/Lifetime, maar **geen link, knop of QR-code** naar de betaalpagina. Staat het aan, dan opent de app `upgrade.url` (mag `?from=app&platform=<platform>` meegeven; op een tv als QR-code).

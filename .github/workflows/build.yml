@@ -28,6 +28,14 @@ jobs:
       - name: Vertalingen controleren
         run: python3 tools/extract_strings.py
 
+      - name: Zelftest pure logica (build 128, CatalogMeta)
+        id: selftest
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          swiftc -O Shared/Account/CatalogMeta.swift tools/selftest/main.swift -o "$RUNNER_TEMP/selftest" 2>&1 | tee selftest.log
+          "$RUNNER_TEMP/selftest" 2>&1 | tee -a selftest.log
+
       - name: App-sleutels inbouwen (alleen bij een privé-repo)
         if: github.event.repository.private == true
         env:
@@ -86,6 +94,10 @@ jobs:
             echo "ios: ${{ steps.ios.outcome }}"
             echo "tvos: ${{ steps.tvos.outcome }}"
             echo "macos: ${{ steps.macos.outcome }}"
+            echo "selftest: ${{ steps.selftest.outcome }}"
+            echo
+            echo "=== selftest ==="
+            tail -n 60 selftest.log || true
             echo
             echo "=== iOS errors ==="
             grep -E "error:|warning: .*(unavailable|deprecated in)" ios.log | sort -u | head -300 || true
@@ -146,5 +158,5 @@ jobs:
           rm -rf /tmp/pkg
 
       - name: Status
-        if: steps.ios.outcome != 'success' || steps.tvos.outcome != 'success' || steps.macos.outcome != 'success'
+        if: steps.ios.outcome != 'success' || steps.tvos.outcome != 'success' || steps.macos.outcome != 'success' || steps.selftest.outcome != 'success'
         run: exit 1

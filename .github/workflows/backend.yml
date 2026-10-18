@@ -714,6 +714,21 @@ jobs:
               if not r.get("known"): print("::warning::my_devices: geen bekende builds (bingr.online/assets/changelog.json niet bereikbaar?)")
               code, r = req("POST", SU, {"action": "versions"}, {"apikey": PUB})
               if code != 200 or "known" not in r: fail.append(f"versions HTTP {code}: {str(r)[:200]}")
+              # build 128: state-section catalogmeta (opslaan, teruglezen, boven 1 MB geweigerd)
+              cm = {"items": {"ci-server|xv1": {"t": "Dune", "y": 2021, "k": "movie", "tmdb": 438631, "img": None,
+                                                "sid": "ci-server", "sname": "CI", "ep": None, "ch": None, "at": "2026-01-01T00:00:00Z"}},
+                    "remap": {"ci-old|xv1": {"to": "ci-server|xv1", "at": "2026-01-01T00:00:00Z"}}, "updatedAt": "2026-01-01T00:00:00Z"}
+              code, r = req("POST", DA, {"action": "put_state", "section": "catalogmeta", "data": cm}, user)
+              if code != 200 or not r.get("ok"): fail.append(f"put_state catalogmeta HTTP {code}: {str(r)[:200]}")
+              code, r = req("POST", DA, {"action": "get_state", "sections": ["catalogmeta"]}, user)
+              got = ((r.get("sections") or {}).get("catalogmeta") or {}).get("data")
+              if code != 200 or got != cm: fail.append(f"get_state catalogmeta HTTP {code}: {str(r)[:200]}")
+              big = {"items": {f"ci-server|x{i}": {"t": "x" * 200, "k": "movie", "sid": "ci-server", "at": "2026-01-01T00:00:00Z"} for i in range(5000)}}
+              code, r = req("POST", DA, {"action": "put_state", "section": "catalogmeta", "data": big}, user)
+              if code != 413 or r.get("error") != "too_large": fail.append(f"put_state catalogmeta > 1 MB: HTTP {code} {str(r)[:120]} (verwacht 413 too_large)")
+              code, r = req("POST", DA, {"action": "get_state", "sections": ["catalogmeta"]}, user)
+              if ((r.get("sections") or {}).get("catalogmeta") or {}).get("data") != cm: fail.append("catalogmeta na geweigerde upload niet meer gelijk")
+              if not any("catalogmeta" in f for f in fail): print("::notice::catalogmeta: opslaan/teruglezen werkt, > 1 MB = 413 too_large")
               # 2. koppelen met een eigen naam
               code, s = req("POST", DA, {"action": "start", "device": "Apple TV"}, {"apikey": PUB})
               c, ps = s.get("code"), s.get("poll_secret")

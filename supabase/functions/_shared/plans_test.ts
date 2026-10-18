@@ -81,10 +81,12 @@ Deno.test("entitlements: volledig antwoord", () => {
     plan: "free", limits: { streams: 1, devices: 8, servers: 1 },
     features: { stats: false, now_watching: false, trakt: false, multi_server: false, themes: false },
     upgrade: { url: "https://bingr.online/upgrade/", link: true, price: "€ 4,99", price_en: "€4.99" },
+    plans: { free: { streams: 1, devices: 8, servers: 1 }, lifetime: { streams: 3, devices: 15, servers: null } },
   });
   const e = entitlements({ plan: "lifetime", max_devices: 20 }, DEFAULT_UPGRADE_LINK, "ios");
   eq(e.plan, "lifetime");
   eq(e.limits, { streams: 3, devices: 20, servers: null });
   eq(e.features.trakt, true);
   eq(e.upgrade.link, false, "Apple standaard zonder link");
+  eq(e.plans.lifetime, { streams: 3, devices: 15, servers: null }, "build 128: standaard, niet de eigen limiet");
 });

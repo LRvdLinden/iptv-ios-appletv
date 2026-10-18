@@ -17,6 +17,8 @@ export type Entitlements = {
   limits: Limits;
   features: Features;
   upgrade: { url: string; link: boolean; price: string; price_en: string };
+  // build 128: de standaardlimieten van beide abonnementen, zodat de apps de vergelijking niet hardcoderen
+  plans: Record<Plan, Limits>;
 };
 
 export const PLAN_DEFAULTS: Record<Plan, Limits> = {
@@ -106,6 +108,7 @@ export function entitlements(row: PlanRow, settings: UpgradeLink, platform: Plat
     limits: limitsFor(row),
     features: featuresFor(plan),
     upgrade: { url: UPGRADE_URL, link: upgradeLinkFor(settings, platform), price: PRICE_NL, price_en: PRICE_EN },
+    plans: { free: { ...PLAN_DEFAULTS.free }, lifetime: { ...PLAN_DEFAULTS.lifetime } },
   };
 }
 

@@ -288,8 +288,9 @@ struct LifetimeExplanation: View {
 struct PlanComparison: View {
     @ObservedObject private var ent = EntitlementsService.shared
 
-    private var free: EntitlementsService.Limits { ent.plan == .free ? ent.limits : EntitlementsService.freeLimits }
-    private var lifetime: EntitlementsService.Limits { ent.plan == .lifetime ? ent.limits : EntitlementsService.lifetimeLimits }
+    // build 128: altijd de standaard van elk abonnement (van de server), niet de eigen limieten van dit account
+    private var free: EntitlementsService.Limits { ent.standard(.free) }
+    private var lifetime: EntitlementsService.Limits { ent.standard(.lifetime) }
 
     var body: some View {
         Grid(alignment: .leading, horizontalSpacing: tvScaled(12), verticalSpacing: tvScaled(10)) {
@@ -299,13 +300,17 @@ struct PlanComparison: View {
                 header(.lifetime)
             }
             Divider().overlay(Color.white.opacity(0.12)).gridCellColumns(3)
-            row(L("Screens at the same time"), "\(free.streams ?? 0)", "\(lifetime.streams ?? 0)")
+            row(L("Screens at the same time"), "\(free.streams ?? 0)", L("up to %d", lifetime.streams ?? 0))
             row(L("Devices"), "\(free.devices ?? 0)", "\(lifetime.devices ?? 0)")
             row(L("Servers"), free.servers.map { "\($0)" } ?? L("Unlimited"), lifetime.servers.map { "\($0)" } ?? L("Unlimited"))
             check(L("Statistics"))
             check(L("Watching now and watch history"))
             check("Trakt")
             check(L("Accent colors"))
+            Text(L("How many you can watch at once also depends on your IPTV provider."))
+                .font(.system(size: tvScaled(12))).foregroundStyle(Theme.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .gridCellColumns(3)
         }
         .font(.system(size: tvScaled(14)))
         .padding(tvScaled(16))
@@ -428,9 +433,10 @@ struct PlanLimitNote: View {
     private var text: String {
         switch topic {
         case .streams:
-            return L("Lifetime allows %d screens at the same time.", EntitlementsService.lifetimeLimits.streams ?? 3)
+            return L("Lifetime allows up to %d screens at the same time.", EntitlementsService.shared.standard(.lifetime).streams ?? 3)
+                + " " + L("How many you can watch at once also depends on your IPTV provider.")
         case .devices:
-            return L("Lifetime allows %d devices.", EntitlementsService.lifetimeLimits.devices ?? 15)
+            return L("Lifetime allows %d devices.", EntitlementsService.shared.standard(.lifetime).devices ?? 15)
         default:
             return L("This is a Lifetime feature")
         }
