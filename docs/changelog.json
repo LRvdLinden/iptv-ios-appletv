@@ -1,5 +1,20 @@
 [
  {
+  "build": 126,
+  "version": "1.0.0",
+  "date": "2026-10-18",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "web"
+    ],
+    "nl": "bingr.online en support.bingr.online: PressKit te downloaden via de footer (logo, app-iconen en screenshots voor de pers; ook via bingr.online/presskit)",
+    "en": "bingr.online and support.bingr.online: PressKit available for download via the footer (logo, app icons and screenshots for the press; also at bingr.online/presskit)"
+   }
+  ]
+ },
+ {
   "build": 125,
   "version": "1.0.0",
   "date": "2026-10-18",
