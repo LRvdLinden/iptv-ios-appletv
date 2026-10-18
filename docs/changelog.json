@@ -59,8 +59,8 @@
      "androidtv",
      "tizen"
     ],
-    "nl": "Eén Verder kijken, Mijn lijst en favorieten per profiel over al je servers heen; is een server verwijderd, dan zoekt Bingr de titel of zender automatisch op je andere servers. Ook recente zenders, geschiedenis en collecties tonen alles van al je servers; een titel of zender van een andere server speel je af via die server, zonder te wisselen. Vindt Bingr hem nergens, dan blijft hij staan en krijg je bij aanklikken een melding met Verwijderen, Zoeken of Annuleren",
-    "en": "One Continue watching, My List and favourites per profile across all your servers; if a server was removed, Bingr automatically looks for the title or channel on your other servers. Recent channels, history and collections also show everything from all your servers; a title or channel from another server plays through that server, without switching. If Bingr can't find it anywhere, it stays and tapping it shows a message with Remove, Search or Cancel"
+    "nl": "Eén Verder kijken, Mijn lijst en favorieten per profiel over al je servers heen; is een server verwijderd, dan zoekt Bingr de titel of zender automatisch op je andere servers. Ook recente zenders, geschiedenis en collecties tonen alles van al je servers; een titel of zender van een andere server speel je af via die server, ook terugkijken in de tv-gids (met de inlog en terugkijk-correctie van die server), zonder te wisselen. Vindt Bingr hem nergens, dan blijft hij staan en krijg je bij aanklikken een melding met Verwijderen, Zoeken of Annuleren",
+    "en": "One Continue watching, My List and favourites per profile across all your servers; if a server was removed, Bingr automatically looks for the title or channel on your other servers. Recent channels, history and collections also show everything from all your servers; a title or channel from another server plays through that server, including catch-up in the TV guide (with that server's login and catch-up offset), without switching. If Bingr can't find it anywhere, it stays and tapping it shows a message with Remove, Search or Cancel"
    },
    {
     "type": "new",
