@@ -14,6 +14,7 @@ _18 oktober 2026_
 - Webspeler: één Verder kijken, Mijn lijst, set favoriete en recente zenders, geschiedenis en collecties over al je servers. Een titel of zender van een andere server open je en speel je af via die server, zonder te wisselen; dezelfde titel op twee servers is één tegel
 - Webspeler: staat een titel niet meer op zijn server of is die server verwijderd, dan zoekt Bingr hem op de achtergrond op je andere servers en verhuist hij mee, met je voortgang. Vindt Bingr hem nergens, dan blijft hij staan en krijg je bij aanklikken een melding met Verwijderen, Zoeken of Annuleren. Er verdwijnt niets
 - Webspeler: categorieën aan of uit per profiel, voor de categorieën van al je servers (Mijn Bingr → Categorieën tonen)
+- Webspeler: terugkijken (vanaf het begin en eerdere programma's in de tv-gids) werkt ook voor zenders van een andere dan de actieve server, via de eigen gegevens en tv-gids van die server, ook voor zenders die naar een andere server verhuisd zijn
 
 **Verbeterd**
 

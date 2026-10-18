@@ -29,6 +29,14 @@
     "en": "Web player: turn categories on or off per profile, for the categories of all your servers (My Bingr → Show categories)"
    },
    {
+    "type": "new",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Webspeler: terugkijken (vanaf het begin en eerdere programma's in de tv-gids) werkt ook voor zenders van een andere dan de actieve server, via de eigen gegevens en tv-gids van die server, ook voor zenders die naar een andere server verhuisd zijn",
+    "en": "Web player: catch-up (from the start and earlier programmes in the TV guide) also works for channels from a server other than the active one, through that server's own details and TV guide, including channels that moved to another server"
+   },
+   {
     "type": "fixed",
     "platforms": [
      "web"
@@ -43,6 +51,36 @@
     ],
     "nl": "bingr.online, de webspeler en support.bingr.online: Lifetime is tot 3 schermen tegelijk en 15 apparaten; hoeveel je tegelijk kunt kijken, hangt ook af van je IPTV-aanbieder (ook in de voorwaarden en de privacyverklaring)",
     "en": "bingr.online, the web player and support.bingr.online: Lifetime is up to 3 screens at once and 15 devices; how many you can watch at once also depends on your IPTV provider (also in the terms and the privacy policy)"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "android",
+     "androidtv",
+     "tizen"
+    ],
+    "nl": "Eén Verder kijken, Mijn lijst en favorieten per profiel over al je servers heen; is een server verwijderd, dan zoekt Bingr de titel of zender automatisch op je andere servers. Ook recente zenders, geschiedenis en collecties tonen alles van al je servers; een titel of zender van een andere server speel je af via die server, zonder te wisselen. Vindt Bingr hem nergens, dan blijft hij staan en krijg je bij aanklikken een melding met Verwijderen, Zoeken of Annuleren",
+    "en": "One Continue watching, My List and favourites per profile across all your servers; if a server was removed, Bingr automatically looks for the title or channel on your other servers. Recent channels, history and collections also show everything from all your servers; a title or channel from another server plays through that server, without switching. If Bingr can't find it anywhere, it stays and tapping it shows a message with Remove, Search or Cancel"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "android",
+     "androidtv",
+     "tizen"
+    ],
+    "nl": "Categorieën aan of uit per profiel, voor de categorieën van al je servers (dezelfde naam op twee servers is één regel); je bestaande keuzes gaan mee, en de categorieën van een verwijderde server verdwijnen",
+    "en": "Turn categories on or off per profile, for the categories of all your servers (the same name on two servers is one line); your existing choices carry over, and the categories of a removed server disappear"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "android",
+     "androidtv",
+     "tizen"
+    ],
+    "nl": "Lifetime is tot 3 schermen tegelijk en 15 apparaten; hoeveel je tegelijk kunt kijken, hangt ook af van je IPTV-aanbieder",
+    "en": "Lifetime is up to 3 screens at once and 15 devices; how many you can watch at once also depends on your IPTV provider"
    }
   ]
  },
