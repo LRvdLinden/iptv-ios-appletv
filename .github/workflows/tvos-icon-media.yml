@@ -1,0 +1,35 @@
+name: tvOS-icoon media (tijdelijk)
+# Haalt de vrije posters (docs/appstore/free_media.json, licentie gecontroleerd door tools/fetch_free_media.py)
+# op en zet ze op de branch tvos-icon-media-result, zodat tools/make_tvos_icon.py ze lokaal kan gebruiken.
+on:
+  push:
+    branches: [tvos-icon-media]
+permissions:
+  contents: write
+jobs:
+  media:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 (v5.1.0)
+      - name: Posters ophalen
+        run: |
+          python3 -m pip install --quiet --break-system-packages pillow==11.0.0
+          python3 - <<'PY'
+          import json, pathlib
+          p = pathlib.Path("docs/appstore/free_media.json")
+          d = json.loads(p.read_text())
+          d["images"] = [i for i in d["images"] if i["id"].endswith(("-poster", "-keyart"))]
+          p.write_text(json.dumps(d))
+          PY
+          python3 tools/fetch_free_media.py fetch media
+      - name: Naar branch
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          cp -r media /tmp/media
+          git switch --orphan tmp-result
+          git rm -rf --quiet . || true
+          cp -r /tmp/media/. .
+          git add -A
+          git commit -qm "Vrije posters voor het tvOS-icoon"
+          git push -f origin HEAD:tvos-icon-media-result
