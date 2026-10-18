@@ -1,12 +1,20 @@
 import SwiftUI
 import AVFoundation
+import ImageIO
 
 /// Intro: covers van films en series uit je afspeellijst regenen van boven naar beneden,
 /// daarna springen de letters van BINGR één voor één omhoog met een glanzende veeg erover.
-struct SplashView: View {
+///
+/// Build 130 (vloeiend op Apple TV): de covers worden vóór de animatie op de achtergrond geladen en verkleind
+/// (geen AsyncImage die midden in de val decodeert), de coverlaag wordt in één keer via Metal getekend
+/// (`drawingGroup`), en de view hangt niet aan state die tijdens het opstarten verandert (`Equatable`: de
+/// omringende RootView mag opnieuw tekenen zonder dat de intro opnieuw opgebouwd wordt).
+struct SplashView: View, Equatable {
     let onFinished: () -> Void
 
-    @State private var posters: [URL?] = []
+    static func == (a: SplashView, b: SplashView) -> Bool { true }
+
+    @State private var images: [CGImage] = []
     @State private var fall = false
     @State private var dim = false
     @State private var lettersIn = 0
@@ -21,14 +29,19 @@ struct SplashView: View {
             ZStack {
                 Color.black.ignoresSafeArea()
 
-                // vallende covers
-                ForEach(Array(tiles(in: geo.size).enumerated()), id: \.offset) { _, t in
-                    FallingCover(url: t.url, colorSeed: t.seed)
-                        .frame(width: t.width, height: t.width * 1.5)
-                        .rotationEffect(.degrees(fall ? t.endRotation : t.startRotation))
-                        .position(x: t.x, y: fall ? geo.size.height + t.width * 1.6 : -t.width * 1.6)
-                        .animation(.easeIn(duration: t.duration).delay(t.delay), value: fall)
+                // vallende covers (één laag, via Metal getekend)
+                ZStack {
+                    ForEach(Array(tiles(in: geo.size).enumerated()), id: \.offset) { _, t in
+                        FallingCover(image: t.image, colorSeed: t.seed)
+                            .frame(width: t.width, height: t.width * 1.5)
+                            .rotationEffect(.degrees(fall ? t.endRotation : t.startRotation))
+                            .position(x: t.x, y: fall ? geo.size.height + t.width * 1.6 : -t.width * 1.6)
+                            .animation(.easeIn(duration: t.duration).delay(t.delay), value: fall)
+                    }
                 }
+                .frame(width: geo.size.width, height: geo.size.height)
+                .drawingGroup()
+                .allowsHitTesting(false)
 
                 // donker worden zodat de naam eruit springt
                 LinearGradient(colors: [.black.opacity(0.2), .black.opacity(0.95), .black.opacity(0.2)],
@@ -73,13 +86,24 @@ struct SplashView: View {
             }
             .frame(width: geo.size.width, height: geo.size.height)
         }
+        // hele scherm (ook achter de notch): de coverlaag wordt via drawingGroup binnen zijn kader getekend
+        .ignoresSafeArea()
         .task {
-            posters = SplashPosters.load()
+            // covers eerst (achtergrond, hooguit even wachten), dan pas de animatie en de tune
+            images = await SplashPosters.preload(count: Self.distinctCovers, maxPixel: Self.coverPixels, deadline: 0.6)
             await run()
         }
     }
 
-    private struct Tile { var url: URL?; var seed: Int; var x: CGFloat; var width: CGFloat
+    #if os(tvOS)
+    private static let distinctCovers = 14
+    private static let coverPixels = 420
+    #else
+    private static let distinctCovers = 12
+    private static let coverPixels = 360
+    #endif
+
+    private struct Tile { var image: CGImage?; var seed: Int; var x: CGFloat; var width: CGFloat
         var delay: Double; var duration: Double; var startRotation: Double; var endRotation: Double }
 
     /// Kolommen met covers, elk met eigen snelheid en vertraging.
@@ -95,9 +119,9 @@ struct SplashView: View {
         for c in 0..<columns {
             for r in 0..<perColumn {
                 let i = c * perColumn + r
-                let url = posters.isEmpty ? nil : posters[i % posters.count]
+                let img = images.isEmpty ? nil : images[i % images.count]
                 let w = colW * CGFloat(0.82 + g.next() * 0.25)
-                out.append(Tile(url: url, seed: i,
+                out.append(Tile(image: img, seed: i,
                                 x: colW * (CGFloat(c) + 0.5) + CGFloat(g.next() - 0.5) * colW * 0.3,
                                 width: w,
                                 delay: Double(r) * 0.32 + g.next() * 0.35,
@@ -137,16 +161,18 @@ struct SplashView: View {
 
 /// Eén cover; zonder afbeelding een kleurige kaart met filmicoon.
 private struct FallingCover: View {
-    let url: URL?
+    let image: CGImage?
     let colorSeed: Int
     var body: some View {
         ZStack {
-            let p = PlaylistAvatar.palettes[colorSeed % PlaylistAvatar.palettes.count]
-            LinearGradient(colors: p, startPoint: .topLeading, endPoint: .bottomTrailing)
-            Image(systemName: ["film", "tv", "popcorn", "sparkles.tv", "play.rectangle"][colorSeed % 5])
-                .font(.system(size: tvScaled(26), weight: .semibold)).foregroundStyle(.white.opacity(0.6))
-            if let url {
-                AsyncImage(url: url) { img in img.resizable().scaledToFill() } placeholder: { Color.clear }
+            if let image {
+                // al verkleind en gedecodeerd (SplashPosters.preload): niets meer te doen tijdens de val
+                Image(decorative: image, scale: 1).resizable().scaledToFill()
+            } else {
+                let p = PlaylistAvatar.palettes[colorSeed % PlaylistAvatar.palettes.count]
+                LinearGradient(colors: p, startPoint: .topLeading, endPoint: .bottomTrailing)
+                Image(systemName: ["film", "tv", "popcorn", "sparkles.tv", "play.rectangle"][colorSeed % 5])
+                    .font(.system(size: tvScaled(26), weight: .semibold)).foregroundStyle(.white.opacity(0.6))
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: tvScaled(8)))
@@ -160,6 +186,49 @@ enum SplashPosters {
 
     static func load() -> [URL?] {
         (UserDefaults.standard.stringArray(forKey: key) ?? []).shuffled().compactMap { URL(string: $0) }
+    }
+
+    /// Build 130: de covers voor de intro vooraf laden (eerst uit de URL-cache), verkleinen en decoderen, allemaal
+    /// buiten de main thread. Wat na `deadline` seconden nog niet binnen is, wordt een gekleurde kaart.
+    static func preload(count: Int, maxPixel: Int, deadline: Double) async -> [CGImage] {
+        let urls = Array(load().prefix(count).compactMap { $0 })
+        guard !urls.isEmpty else { return [] }
+        return await Task.detached(priority: .userInitiated) { () -> [CGImage] in
+            // `nil` = de deadline; `.some(x)` = een cover (x nil als hij niet lukte)
+            await withTaskGroup(of: CGImage??.self) { g in
+                for u in urls {
+                    g.addTask {
+                        var req = URLRequest(url: u, cachePolicy: .returnCacheDataElseLoad, timeoutInterval: deadline + 0.5)
+                        req.setValue("image/*", forHTTPHeaderField: "Accept")
+                        guard let (d, _) = try? await URLSession.shared.data(for: req) else { return .some(nil) }
+                        return .some(downsample(d, maxPixel: maxPixel))
+                    }
+                }
+                g.addTask { try? await Task.sleep(nanoseconds: UInt64(deadline * 1_000_000_000)); return nil }
+                var out: [CGImage] = []
+                var done = 0
+                while let r = await g.next() {
+                    guard let r else { break }          // deadline: met wat er is verder
+                    done += 1
+                    if let img = r { out.append(img) }
+                    if done == urls.count { break }     // alles binnen
+                }
+                g.cancelAll()
+                return out
+            }
+        }.value
+    }
+
+    /// Verkleinen en meteen decoderen (ImageIO), zodat het tekenen tijdens de animatie niets meer kost.
+    static func downsample(_ data: Data, maxPixel: Int) -> CGImage? {
+        guard let src = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary) else { return nil }
+        let opts: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixel,
+        ]
+        return CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary)
     }
 
     static func save(from lib: Library) {
@@ -188,19 +257,25 @@ private struct SeededRandom {
 enum SplashTune {
     private static var player: AVAudioPlayer?
 
+    /// Build 130: de audiosessie en de speler buiten de main thread klaarzetten (`setActive` kan even blokkeren,
+    /// wat op Apple TV de eerste frames van de intro deed haperen).
     static func play() {
         guard let url = Bundle.main.url(forResource: "bingr_tune", withExtension: "m4a") else { return }
-        // .playback: ook hoorbaar met de stil-schakelaar aan (zoals de Netflix-intro); mengt met andere audio
-        #if !os(macOS)
-        let session = AVAudioSession.sharedInstance()
-        try? session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
-        try? session.setActive(true)
-        #endif
-        guard let p = try? AVAudioPlayer(contentsOf: url) else { return }
-        p.volume = 1.0
-        p.prepareToPlay()
-        p.play(atTime: p.deviceCurrentTime + 0.02)
-        player = p
-        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { player = nil }
+        DispatchQueue.global(qos: .userInitiated).async {
+            // .playback: ook hoorbaar met de stil-schakelaar aan (zoals de Netflix-intro); mengt met andere audio
+            #if !os(macOS)
+            let session = AVAudioSession.sharedInstance()
+            try? session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
+            try? session.setActive(true)
+            #endif
+            guard let p = try? AVAudioPlayer(contentsOf: url) else { return }
+            p.volume = 1.0
+            p.prepareToPlay()
+            p.play(atTime: p.deviceCurrentTime + 0.02)
+            DispatchQueue.main.async {
+                player = p
+                DispatchQueue.main.asyncAfter(deadline: .now() + 4) { player = nil }
+            }
+        }
     }
 }

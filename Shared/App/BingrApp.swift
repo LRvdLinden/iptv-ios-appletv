@@ -211,7 +211,14 @@ final class AppState: ObservableObject {
         // met een sessie meteen door naar "Wie kijkt er?" en op de achtergrond vernieuwen + profielen synchroniseren
         // build 97: de start telt als volledige ronde (het eerste "actief" vlak daarna slaat de account-sync over)
         if Secrets.accountsConfigured, AccountService.shared.isSignedIn { lastAccountRefresh = Date() }
-        Task {
+        // build 130: vangnet, mocht de intro nooit klaar melden
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 6_000_000_000)
+            self?.markSplashDone()
+        }
+        Task { [weak self] in
+            // build 130: de sync (die lijsten, profielen en servers op de main thread toepast) pas na de intro
+            await self?.afterSplash()
             guard Secrets.accountsConfigured, AccountService.shared.isSignedIn else { return }
             let r = await AccountService.shared.refresh()
             guard r == .ok || r == .offline else { return }
@@ -281,7 +288,27 @@ final class AppState: ObservableObject {
         set { UserDefaults.standard.set(newValue?.uuidString, forKey: lastKey) }
     }
 
+    // MARK: build 130: zwaar opstartwerk pas na de intro (anders haperde de animatie, vooral op Apple TV)
+
+    private var splashDone = false
+    private var splashWaiters: [CheckedContinuation<Void, Never>] = []
+
+    /// Wacht tot de intro klaar is (meteen terug als dat al zo is; hooguit 6 seconden, zie `init`).
+    func afterSplash() async {
+        if splashDone { return }
+        await withCheckedContinuation { splashWaiters.append($0) }
+    }
+
+    private func markSplashDone() {
+        guard !splashDone else { return }
+        splashDone = true
+        let w = splashWaiters
+        splashWaiters = []
+        for c in w { c.resume() }
+    }
+
     func splashFinished() {
+        markSplashDone()
         withAnimation(.easeInOut(duration: 0.5)) { stage = needsAuth ? .auth : .picker }
     }
 
@@ -333,10 +360,16 @@ final class AppState: ObservableObject {
             return
         }
         guard let src = store.mainSource else { return }
-        if current != src.id {
-            Task { await playlists.select(src) }
-        } else if change.updated.contains(src.id) {
-            Task { await playlists.refresh(src, showSpinner: false) }
+        // build 130: de bibliotheek alvast laden, maar pas na de intro
+        Task { [weak self] in
+            guard let self else { return }
+            await self.afterSplash()
+            guard self.stage != .main else { return }   // intussen geopend: dat laadt zelf
+            if self.playlists.source?.id != src.id {
+                await self.playlists.select(src)
+            } else if change.updated.contains(src.id) {
+                await self.playlists.refresh(src, showSpinner: false)
+            }
         }
     }
 
@@ -398,7 +431,8 @@ struct RootView: View {
                 } else {
                 switch app.stage {
                 case .splash:
-                    SplashView { app.splashFinished() }.transition(.opacity)
+                    // build 130: equatable, zodat opstartwerk dat RootView laat hertekenen de intro niet raakt
+                    SplashView { app.splashFinished() }.equatable().transition(.opacity)
                 case .auth:
                     AuthView().transition(.opacity)
                 case .picker:
