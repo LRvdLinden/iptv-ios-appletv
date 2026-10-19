@@ -193,7 +193,7 @@ jobs:
   mail:
     # na streams: het logs-endpoint geeft snel 429 bij gelijktijdige queries
     needs: streams
-    if: ${{ always() && !inputs.alleen_mailtest }}
+    if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
@@ -309,6 +309,23 @@ jobs:
           r=$(curl -s -X POST "https://api.supabase.com/v1/projects/$REF/database/query" \
             -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" --data @/tmp/q.json | head -c 1500)
           printf '::notice title=auth-auditlog 24u::%s\n' "$(echo "$r" | sed -E 's/[^ ",]+@[^ ",]+/<e>/g')"
+      - name: Provider van onbevestigde en nieuwe accounts (alleen grote providers bij naam)
+        shell: bash
+        run: |
+          python3 -c 'import json,sys; print(json.dumps({"query": sys.argv[1]}))' "with u as (select email_confirmed_at is not null as bevestigd, created_at,
+                 case when split_part(lower(email),'@',2) in ('gmail.com','googlemail.com') then 'gmail'
+                      when split_part(lower(email),'@',2) in ('hotmail.com','hotmail.nl','outlook.com','outlook.nl','live.com','live.nl','msn.com') then 'microsoft'
+                      when split_part(lower(email),'@',2) in ('icloud.com','me.com','mac.com') then 'icloud'
+                      when split_part(lower(email),'@',2) in ('ziggo.nl','kpnmail.nl','planet.nl','home.nl','xs4all.nl','hetnet.nl','casema.nl','upcmail.nl','chello.nl') then 'nl-provider'
+                      when split_part(lower(email),'@',2) like 'yahoo.%' then 'yahoo'
+                      when split_part(lower(email),'@',2) = 'bingr.online' then 'bingr.online'
+                      when split_part(lower(email),'@',2) like 'example.%' then 'example (CI)' else 'ander' end as provider from auth.users)
+                 select provider, count(*) filter (where not bevestigd) as onbevestigd, count(*) filter (where created_at > now() - interval '30 days') as nieuw_30d,
+                        count(*) filter (where bevestigd and created_at > now() - interval '30 days') as bevestigd_30d
+                 from u group by 1 order by 1" > /tmp/q.json
+          r=$(curl -s -X POST "https://api.supabase.com/v1/projects/$REF/database/query" \
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" --data @/tmp/q.json | head -c 1500)
+          printf '::notice title=accounts per provider::%s\n' "$(echo "$r" | sed -E 's/[^ ",]+@[^ ",]+/<e>/g')"
       - name: Onbevestigde accounts (alleen aantallen)
         shell: bash
         run: |

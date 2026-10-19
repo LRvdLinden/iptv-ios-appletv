@@ -100,8 +100,19 @@ def summary(f, msg, t_sent):
     spam = str(msg.get("X-Spam-Flag") or msg.get("X-Spam-Status") or "-").split(",")[0][:20]
     when = email.utils.parsedate_to_datetime(str(msg.get("Date"))) if msg.get("Date") else None
     subj = re.sub(r"[^\s\"'<>]+@[^\s\"'<>]+", "<e>", str(msg.get("Subject", "")))[:80].replace(tag, "<tag>")
-    fname = f.strip('"'); fname = "INBOX" if fname.upper() == "INBOX" else ("spam/junk" if re.search(r"spam|junk|ongewenst", fname, re.I) else "andere map")
+    fname = re.sub(r"[^\w .\-/]", "", f.strip('"').replace(tag, "<tag>"))[:40] or "?"
+    def dom(v):
+        m = re.search(r"@([^>\s]+)", v or "")
+        if not m: return ""
+        d = m.group(1).lower().rstrip(">")
+        return d if d in ("bingr.online", "localhost") else "<ander>"
+    dk = [re.search(r"\bd=([^;\s]+)", str(v)) for v in (msg.get_all("DKIM-Signature") or [])]
+    dkim = ",".join(sorted({(m.group(1).lower() if m and m.group(1).lower() == "bingr.online" else "<ander>") for m in dk})) or "geen"
+    names = sorted({k.lower() for k in msg.keys() if not k.lower().startswith(("x-", "received", "authentication", "arc-", "dkim", "return-path", "delivered-to", "envelope"))})
     return (f"map: {fname} | onderwerp: {subj} | afzenderdomein: {fr.partition('@')[2] or '-'} | auth-results: {res} | spam: {spam}"
+            + f" | DKIM-Signature d=: {dkim} | Message-ID-domein: {dom(str(msg.get('Message-ID') or '')) or 'geen'} | Date: {'ja' if msg.get('Date') else 'nee'}"
+            + f" | Return-Path-domein: {dom(str(msg.get('Return-Path') or '')) or '-'} | Received-hops: {len(msg.get_all('Received') or [])}"
+            + f" | type: {msg.get_content_type()} | kopregels: {','.join(names)}"
             + (f" | na {round(time.time() - t_sent)} s" if t_sent else ""))
 
 uid_user = None; t0 = None; signup_ok = False
