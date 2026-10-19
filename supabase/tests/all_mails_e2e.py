@@ -14,9 +14,15 @@
 #   4. via IMAP (BINGR_IMAP_*, mailbox support@) per mail: aangekomen + vertraging, kopregels, Authentication-Results,
 #      DKIM-Signature, List-Unsubscribe, taal, links (domein + HTTP-code, alleen GET zonder redirect; de pagina's op
 #      bingr.online gebruiken een token pas na een klik) en afbeeldingen;
-#   5. opruimen: testmails (alle mappen), testaccount, testticket(s), statusabonnement, logregels en de sleutel.
-# Env: REF, SUPABASE_ACCESS_TOKEN, I_HOST, I_PORT, I_USER, I_PASS, MAILTEST_WAIT (s, standaard 420).
-import email, email.policy, email.utils, hashlib, html as htmlmod, imaplib, json, os, re, secrets, ssl, sys, time
+#   5. externe controle van SPF/DKIM/DMARC: mails tussen adressen op dezelfde server worden vaak niet ondertekend en niet
+#      gecontroleerd. Daarom één controlemail via BINGR_SMTP_* (dezelfde server en login als alle functies) naar de
+#      automatische verifier van Port25 (check-auth@verifier.port25.com, geen inhoud of gegevens van gebruikers); het
+#      rapport komt terug in de mailbox van de afzender (BINGR_SMTP_USER via IMAP) en wordt daarna verwijderd;
+#   6. opruimen: testmails (alle mappen), testaccount, testticket(s), statusabonnement, logregels en de sleutel.
+# Env: REF, SUPABASE_ACCESS_TOKEN, I_HOST, I_PORT, I_USER, I_PASS, S_HOST, S_PORT, S_USER, S_PASS, S_FROM (optioneel, voor 5),
+#      MAILTEST_WAIT (s, standaard 420).
+import email, email.policy, email.utils, hashlib, html as htmlmod, imaplib, json, os, re, secrets, smtplib, ssl, sys, time
+from email.message import EmailMessage
 import urllib.error, urllib.parse, urllib.request
 
 E = os.environ
@@ -29,7 +35,7 @@ OWN = {"bingr.online", "support.bingr.online", "beheer.bingr.online"}
 OK_EXTERNAL = {"image.tmdb.org", "www.themoviedb.org", "testflight.apple.com", "apps.apple.com", "play.google.com"}
 fail, warn, rows = [], [], []
 
-def note(title, msg): print(f"::notice title={title}::{str(msg)[:1800]}")
+def note(title, msg): print(f"::notice title={title}::" + str(msg)[:3800].replace("%", "%25").replace("\r", "").replace("\n", "%0A"))
 def mask(v):
     if v: print(f"::add-mask::{v}")
 
@@ -64,7 +70,8 @@ def errtxt(r):
 
 if not (REF and MGMT): print("::warning::alle_mails: SUPABASE_* ontbreken, overgeslagen"); sys.exit(0)
 if not (E.get("I_HOST") and E.get("I_USER") and E.get("I_PASS")): print("::warning::alle_mails: BINGR_IMAP_* ontbreken, overgeslagen"); sys.exit(0)
-for k in ("I_USER", "I_PASS", "I_HOST"): mask(E.get(k))
+for k in ("I_USER", "I_PASS", "I_HOST", "S_USER", "S_PASS", "S_HOST", "S_FROM"): mask(E.get(k))
+mask(email.utils.parseaddr(E.get("S_FROM") or "")[1])
 
 tag = "ci-" + secrets.token_hex(5)
 addr = {k: f"support+{tag}{'-' + k if k else ''}@bingr.online" for k in ("", "new", "nb", "wp", "st", "sp", "ad")}
@@ -221,6 +228,24 @@ try:
             if c == 200: expect_mail("auth-magic_link", A, "nl", r"^https://bingr\.online/bevestigen/\?token_hash=[^&]+&type=magiclink")
             else: fail.append(f"inloglink (magic link): HTTP {c} {errtxt(r)}")
 
+    # ---- 4b. externe SPF/DKIM/DMARC-controle (Port25) ----
+    ext_t = None
+    if E.get("S_HOST") and E.get("S_USER") and E.get("S_PASS"):
+        try:
+            m = EmailMessage(); m["From"] = E.get("S_FROM") or E["S_USER"]; m["To"] = "check-auth@verifier.port25.com"
+            m["Subject"] = f"Bingr mailcontrole {tag}"; m["Message-ID"] = email.utils.make_msgid(domain="bingr.online")
+            m["Date"] = email.utils.formatdate(localtime=False)
+            m.set_content("Automatische controle van SPF, DKIM en DMARC van bingr.online.")
+            m.add_alternative("<p>Automatische controle van SPF, DKIM en DMARC van bingr.online.</p>", subtype="html")
+            port = int((E.get("S_PORT") or "465").strip() or 465)
+            with (smtplib.SMTP_SSL(E["S_HOST"].strip(), port, timeout=30, context=ssl.create_default_context()) if port == 465
+                  else smtplib.SMTP(E["S_HOST"].strip(), port, timeout=30)) as sm:
+                if port != 465: sm.starttls(context=ssl.create_default_context())
+                sm.login(E["S_USER"].strip(), E["S_PASS"]); sm.send_message(m)
+            ext_t = time.time()
+        except Exception as e:
+            warn.append(f"externe controle niet verstuurd: {type(e).__name__}")
+
     # ---- 5. IMAP: wachten tot alles binnen is ----
     def imap():
         c = imaplib.IMAP4_SSL(E["I_HOST"].strip(), int((E.get("I_PORT") or "993").strip() or 993), ssl_context=ssl.create_default_context(), timeout=60)
@@ -296,19 +321,26 @@ try:
     def dname(v):
         n, a = email.utils.parseaddr(str(v or ""))
         n = re.sub(r"[^\w .\-]", "", n)[:30]
-        return n or "(geen)", a.partition("@")[2].lower() or "-"
+        loc, _, d = a.lower().partition("@")
+        kind = "support@" if loc == "support" else "noreply@" if re.match(r"^(no-?reply|do-?not-?reply)$", loc) else "ander@"
+        return (f"\"{n}\"" if n else "geen naam") + " " + kind, d or "-"
+    groups = {}
+    def group(k):
+        return {"auth": "Auth", "welcome": "Welkom/nieuwsbrief", "newsletter": "Welkom/nieuwsbrief", "status": "Status", "support": "Support",
+                "account": "Beheer"}.get(k.split("-")[0], "Overig")
     status_cache = {}
     def check(u):
         if u not in status_cache: status_cache[u] = http_status(u)
         return status_cache[u]
+    nodkim = []
     for k in sorted(expect):
         ex = expect[k]
         if k not in got:
             rows.append((k, "nee", "", "", "", "", "", "", "", "", "", ""))
-            note(f"{k}", "aangekomen: nee"); fail.append(f"{k}: niet aangekomen (na {WAIT} s)"); continue
+            groups.setdefault(group(k), []).append(f"{k}: NIET aangekomen"); fail.append(f"{k}: niet aangekomen (na {WAIT} s)"); continue
         f, msg, t_seen = got[k]
         rt = recv_time(msg)
-        delay = round((rt or t_seen) - ex["t"]) if (rt or t_seen) else None
+        delay = max(0, round((rt or t_seen) - ex["t"])) if (rt or t_seen) else None
         fname, fdom = dname(msg.get("From"))
         rto = msg.get("Reply-To")
         rto_dom = dname(rto)[1] if rto else "-"
@@ -343,17 +375,15 @@ try:
         imgs = [htmlmod.unescape(s) for s in re.findall(r"""<img[^>]+src=["']([^"']+)["']""", html or "", re.I)]
         img_ok = sum(1 for s in imgs[:30] if check(s)[0] == 200 and check(s)[1].startswith("image/"))
         spam = bool(re.search(r"spam|junk|ongewenst", f, re.I))
-        line = " | ".join([
-            "aangekomen: ja" + (" (SPAMMAP)" if spam else ""), f"vertraging: {delay} s", f"From: {fname} @{fdom}", f"Reply-To: {'ja @' + rto_dom if rto else 'nee'}",
-            f"Message-ID: {'ja @' + mid_dom if mid else 'NEE'}", f"Date: {'ja' if msg.get('Date') else 'NEE'}", f"text+html: {'ja' if multipart else 'NEE (' + ','.join(sorted(types)) + ')'}",
-            f"spf={auth.get('spf', '-')} dkim={auth.get('dkim', '-')} dmarc={auth.get('dmarc', '-')}", f"DKIM-Signature d=: {','.join(dk) or 'geen'}",
-            f"List-Unsubscribe: {('ja ' + lu_dom + (' +one-click' if lup else '')) if lu else 'nee'}", f"taal: {lang} (verwacht {ex['lang']})",
-            f"links: {len(links)} domeinen: {','.join(doms) or '-'}", f"supabase.co: {'JA' if supa else 'nee'}",
-            f"links niet 2xx/3xx: {','.join(http_bad[:6]) or 'geen'}",
-            f"hoofdlink: {('HTTP ' + str(main_code)) if main else ('geen' if ex['main'] else 'n.v.t.')}",
-            f"afbeeldingen: {img_ok}/{len(imgs)}" if imgs else "afbeeldingen: geen",
+        line = "; ".join([
+            f"{k}: ja{' (SPAMMAP)' if spam else ''} na {delay}s", f"From {fname}{fdom}", f"Reply-To {'ja @' + rto_dom if rto else 'nee'}",
+            f"MsgID {'ja @' + mid_dom if mid else 'NEE'}", f"Date {'ja' if msg.get('Date') else 'NEE'}", f"text+html {'ja' if multipart else 'NEE ' + ','.join(sorted(types))}",
+            f"AR spf={auth.get('spf', '-')} dkim={auth.get('dkim', '-')} dmarc={auth.get('dmarc', '-')}", f"DKIM-Sig {','.join(dk) or 'geen'}",
+            f"List-Unsub {('ja ' + lu_dom + (' 1-klik' if lup else '')) if lu else 'nee'}", f"taal {lang}/{ex['lang']}",
+            f"links {len(links)} [{','.join(doms) or '-'}] supabase.co {'JA' if supa else 'nee'} fout {','.join(http_bad[:4]) or '0'}",
+            f"hoofdlink {('HTTP ' + str(main_code)) if main else ('GEEN' if ex['main'] else 'n.v.t.')}", f"img {img_ok}/{len(imgs)}" if imgs else "img geen",
         ])
-        note(k, line)
+        groups.setdefault(group(k), []).append(line)
         rows.append((k, "ja" + (" (spam)" if spam else ""), str(delay), f"{fname} @{fdom}", "ja" if rto else "nee", "ja" if mid and msg.get("Date") else "NEE",
                      "ja" if multipart else "NEE", f"{auth.get('spf', '-')}/{auth.get('dkim', '-')}/{auth.get('dmarc', '-')}", ",".join(dk) or "geen",
                      ("ja" if lu else "nee") + (" (1-klik)" if lup else ""), f"{lang}/{ex['lang']}",
@@ -371,9 +401,49 @@ try:
         if ex["main"] and not main: fail.append(f"{k}: hoofdlink niet gevonden")
         if main and not (200 <= (main_code or 0) < 400): fail.append(f"{k}: hoofdlink HTTP {main_code}")
         if imgs and img_ok < len(imgs[:30]): fail.append(f"{k}: afbeeldingen laden niet ({img_ok}/{len(imgs)})")
-        if auth.get("dkim") not in (None, "pass") or not dk: warn.append(f"{k}: DKIM {'ontbreekt' if not dk else auth.get('dkim')}")
+        if not dk: nodkim.append(k)
+        elif auth.get("dkim") not in (None, "pass"): warn.append(f"{k}: DKIM {auth.get('dkim')}")
         if auth.get("spf") not in (None, "pass"): warn.append(f"{k}: SPF {auth.get('spf')}")
         if auth.get("dmarc") not in (None, "pass"): warn.append(f"{k}: DMARC {auth.get('dmarc')}")
+    for g, lines in groups.items(): note(f"mails {g}", "\n".join(lines))
+    if nodkim: warn.append(f"geen DKIM-Signature bij {len(nodkim)}/{len(got)} mails (aflevering op dezelfde server tekent vaak niet; zie de externe DKIM-controle)")
+    # rapport van Port25 in de mailbox van de afzender
+    if ext_t:
+        res = None
+        end = time.time() + 180
+        while time.time() < end and res is None:
+            try:
+                c = imaplib.IMAP4_SSL(E["I_HOST"].strip(), int((E.get("I_PORT") or "993").strip() or 993), ssl_context=ssl.create_default_context(), timeout=60)
+                c.login(E["S_USER"].strip(), E["S_PASS"])
+                for f in folders(c):
+                    try:
+                        if c.select(f)[0] != "OK": continue
+                        typ, d = c.uid("SEARCH", None, "FROM", '"port25"')
+                        for uid in (d[0].split() if typ == "OK" and d and d[0] else []):
+                            typ, dd = c.uid("FETCH", uid, "(BODY.PEEK[])")
+                            raw = next((p_[1] for p_ in dd or [] if isinstance(p_, tuple)), b"")
+                            body = raw.decode("utf-8", "replace")
+                            if tag not in body: continue
+                            res = {a.lower(): b.lower() for a, b in re.findall(r"^(SPF|DKIM|DMARC|iprev) check:\s+(\w+)", body, re.M)}
+                            dkd = re.findall(r"\bd=([a-z0-9.-]+)", body.split("DKIM check details", 1)[-1][:4000])
+                            res["dkim_d"] = (dkd[0] if dkd else "-")
+                            c.uid("STORE", uid, "+FLAGS.SILENT", r"(\Deleted)"); c.expunge()
+                    except Exception: continue
+                    if res is not None: break
+                c.logout()
+            except Exception as e:
+                warn.append(f"externe controle IMAP: {type(e).__name__}"); break
+            if res is None: time.sleep(15)
+        if res is None:
+            note("externe SPF/DKIM/DMARC (Port25)", "geen rapport binnen 3 min (verifier niet bereikbaar of rapport elders)")
+        else:
+            dkd = res.get("dkim_d", "-"); dkd = dkd if dkd in ("bingr.online", "-") else "<ander>"
+            note("externe SPF/DKIM/DMARC (Port25)", f"SPF {res.get('spf', '-')} | DKIM {res.get('dkim', '-')} (d={dkd}) | DMARC {res.get('dmarc', '-')} | iprev {res.get('iprev', '-')}")
+            for a in ("spf", "dkim", "dmarc"):
+                if res.get(a) and res[a] != "pass": fail.append(f"extern: {a.upper()} {res[a]}")
+            if nodkim and res.get("dkim") == "pass":
+                warn[:] = [w for w in warn if not w.startswith("geen DKIM-Signature bij")]
+                note("DKIM", f"intern {len(nodkim)} mails zonder handtekening (aflevering op dezelfde server); extern DKIM pass")
     extra = sorted(set(got) - set(expect))
     if extra: note("alle_mails extra", "ook binnen (niet verwacht): " + ",".join(re.sub(r"[^\w-]", "", x)[:40] for x in extra))
 finally:
@@ -432,7 +502,8 @@ if rows and E.get("GITHUB_STEP_SUMMARY"):
     with open(E["GITHUB_STEP_SUMMARY"], "a") as fh:
         fh.write("## Alle Bingr-mails (end-to-end)\n\n| " + " | ".join(hdr) + " |\n|" + "---|" * len(hdr) + "\n")
         for r_ in rows: fh.write("| " + " | ".join(str(x) for x in r_) + " |\n")
-for w in warn: print(f"::warning::{w[:300]}")
-for f in fail: print(f"::error::{f[:300]}")
+def esc_ann(s): return s.replace("%", "%25").replace("\r", "").replace("\n", "%0A")
+if warn: print("::warning title=alle_mails waarschuwingen::" + esc_ann("\n".join(w[:300] for w in warn))[:3800])
+if fail: print("::error title=alle_mails fouten::" + esc_ann("\n".join(f[:300] for f in fail))[:3800])
 if not fail: print(f"::notice title=alle_mails::alle {len(expect)} mails komen aan en zijn in orde")
 sys.exit(1 if fail else 0)

@@ -1,5 +1,5 @@
 // deno test --allow-env supabase/functions/_shared/mail_test.ts (mailtest-sleutel in mail.ts; workflow Backend)
-import { isMailtestAddress, mailtestOk } from "./mail.ts";
+import { isMailtestAddress, mailtestOk, withName } from "./mail.ts";
 function assertEquals(a: unknown, b: unknown) {
   const x = JSON.stringify(a), y = JSON.stringify(b);
   if (x !== y) throw new Error(`verwacht ${y}, kreeg ${x}`);
@@ -27,4 +27,11 @@ Deno.test("mailtest: sleutel tegen app_settings.mailtest", async () => {
   assertEquals(await mailtestOk(key, async () => null, now), false);
   assertEquals(await mailtestOk("", async () => row, now), false);
   assertEquals(await mailtestOk(key, async () => { throw new Error("db"); }, now), false);
+});
+
+Deno.test("afzender: kaal adres krijgt de naam Bingr", () => {
+  assertEquals(withName("noreply@bingr.online"), "Bingr <noreply@bingr.online>");
+  assertEquals(withName("Bingr <noreply@bingr.online>"), "Bingr <noreply@bingr.online>");
+  assertEquals(withName(" noreply@bingr.online ", "Bingr Support"), "Bingr Support <noreply@bingr.online>");
+  assertEquals(withName(""), "");
 });

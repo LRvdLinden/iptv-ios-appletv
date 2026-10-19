@@ -47,7 +47,7 @@
 // meldingen naar BINGR_SUPPORT_EMAIL (standaard support@bingr.online). Weigert de SMTP-server die afzender, dan gaat de
 // mail met BINGR_SMTP_FROM als afzender en het supportadres als Reply-To. Mislukt mailen: het ticket blijft bestaan.
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { isMailtestAddress, MAILTEST_HEADER, mailtestOk, smtpConfigured, smtpFrom, transport } from "../_shared/mail.ts";
+import { isMailtestAddress, MAILTEST_HEADER, mailtestOk, smtpConfigured, smtpFrom, transport, withName } from "../_shared/mail.ts";
 import {
   addressOf, beheerUrl, type DeviceRow, deviceKind, isStatus, type KnownVersion, knownVersions, myDevices, parseNumber, PRIORITIES, randomToken, safeSearch, sameText, type Status, statusAfter,
   ticketUrl, validateCreate, validateMessage, validToken,
@@ -196,7 +196,7 @@ async function send(to: string, mail: { subject: string; html: string; text: str
       // afzender geweigerd (het SMTP-account mag niet als support@ versturen): opnieuw met de standaardafzender
       if (smtpFrom() && addressOf(smtpFrom()).toLowerCase() !== addressOf(SUPPORT_FROM()).toLowerCase()) {
         console.error("support mail (support-afzender)", msg);
-        await tx.sendMail({ ...base, from: smtpFrom(), replyTo: opts.replyTo ?? addressOf(SUPPORT_FROM()) });
+        await tx.sendMail({ ...base, from: withName(addressOf(smtpFrom()), "Bingr Support"), replyTo: opts.replyTo ?? addressOf(SUPPORT_FROM()) });
         return { ok: true, messageId };
       }
       throw e;

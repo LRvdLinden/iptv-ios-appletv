@@ -412,6 +412,11 @@ jobs:
           I_PORT: ${{ secrets.BINGR_IMAP_PORT_SUPPORT || secrets.BINGR_IMAP_PORT }}
           I_USER: ${{ secrets.BINGR_IMAP_USER_SUPPORT || secrets.BINGR_IMAP_USER }}
           I_PASS: ${{ secrets.BINGR_IMAP_PASSWORD_SUPPORT || secrets.BINGR_IMAP_PASSWORD }}
+          S_HOST: ${{ secrets.BINGR_SMTP_HOST }}
+          S_PORT: ${{ secrets.BINGR_SMTP_PORT }}
+          S_USER: ${{ secrets.BINGR_SMTP_USER }}
+          S_PASS: ${{ secrets.BINGR_SMTP_PASSWORD }}
+          S_FROM: ${{ secrets.BINGR_SMTP_FROM }}
         run: python3 -I supabase/tests/all_mails_e2e.py
       - name: DNS van bingr.online voor mail (SPF, DMARC, DKIM-selectors; openbare records)
         if: ${{ always() }}

@@ -17,7 +17,13 @@ export function transport() {
   });
 }
 
-export const smtpFrom = () => env("BINGR_SMTP_FROM");
+/** Afzender met weergavenaam: een kaal adres in BINGR_SMTP_FROM wordt "Bingr <adres>" (zonder naam toont een mailapp
+ *  "noreply" als afzender, en sommige spamfilters rekenen het mee). */
+export function withName(from: string, name = "Bingr"): string {
+  const f = from.trim();
+  return !f || f.includes("<") ? f : `${name} <${f}>`;
+}
+export const smtpFrom = () => withName(env("BINGR_SMTP_FROM"));
 
 // ---- mailtest (workflow Diagnose, invoer alle_mails; supabase/tests/all_mails_e2e.py in iptv-ios-appletv) ----
 // De test zet via de Management-API in app_settings de rij 'mailtest' = {sha256: hex(SHA-256(sleutel)), until: ISO} (max. 30
