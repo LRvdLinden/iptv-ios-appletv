@@ -198,18 +198,23 @@ jobs:
               qs = urllib.parse.urlencode({"sql": sql, "iso_timestamp_start": start.strftime("%Y-%m-%dT%H:%M:%SZ"),
                                            "iso_timestamp_end": end.strftime("%Y-%m-%dT%H:%M:%SZ")})
               return get(f"{API}/analytics/endpoints/logs?{qs}")
-          # edge_logs: statuscodes van de mailpaden van Auth (geen adressen)
-          ec, er = logs("select request.path as pad, request.method as m, response.status_code as status, count(*) as n from edge_logs "
-                        "cross join unnest(metadata) as md cross join unnest(md.request) as request cross join unnest(md.response) as response "
-                        "where request.path like '/auth/v1/%' and (request.path like '%signup%' or request.path like '%resend%' or request.path like '%verify%' "
-                        "or request.path like '%recover%' or request.path like '%otp%' or request.path like '%token%') group by 1,2,3 order by 1,3")
-          note("edge auth-paden", json.dumps((er or {}).get("result") if isinstance(er, dict) and "result" in er else {"http": ec, "fout": str((er or {}).get("error"))[:200] if isinstance(er, dict) else None}))
-          rows = None
-          for tbl in ("auth_logs", "gotrue_logs", "auth_audit_logs"):
-              code, r = logs(f"select timestamp, event_message from {tbl} order by timestamp desc limit 1000")
-              if isinstance(r, dict) and isinstance(r.get("result"), list): rows = r["result"]; note("auth-logs tabel", tbl); break
-          if code != 200 or not isinstance(rows, list):
-              note("auth-logs", f"niet gelezen (HTTP {code}) " + re.sub(r"[^\s\"]+@[^\s\"]+", "<e>", json.dumps(r)[:300] if r else ""))
+          # nieuw logs-endpoint (ClickHouse, één tabel logs; bron in source_name of source)
+          def first(tmpl):
+              last = None
+              for col in ("source_name", "source"):
+                  c2, r2 = logs(tmpl.replace("{SRC}", col))
+                  if isinstance(r2, dict) and isinstance(r2.get("result"), list): return r2["result"], None
+                  last = f"HTTP {c2} " + (str(r2.get("error"))[:200] if isinstance(r2, dict) else "")
+              return None, last
+          ep, efout = first("select log_attributes['request.path'] as pad, log_attributes['response.status_code'] as status, count() as n from logs "
+                            "where {SRC} = 'edge_logs' and log_attributes['request.path'] like '/auth/v1/%' and (log_attributes['request.path'] like '%signup%' "
+                            "or log_attributes['request.path'] like '%resend%' or log_attributes['request.path'] like '%verify%' or log_attributes['request.path'] like '%recover%' "
+                            "or log_attributes['request.path'] like '%otp%') group by pad, status order by pad, status")
+          note("edge auth-paden", json.dumps(ep) if ep is not None else f"niet gelezen: {efout}")
+          rows, code = first("select timestamp, event_message from logs where {SRC} = 'auth_logs' order by timestamp desc limit 1000")
+          r = {"error": code} if rows is None else {}
+          if not isinstance(rows, list):
+              note("auth-logs", "niet gelezen: " + re.sub(r"[^\s\"]+@[^\s\"]+", "<e>", str(code))[:300])
           else:
               def clean(s):
                   s = re.sub(r"[^\s\"'<>]+@[^\s\"'<>]+", "<e>", str(s)); s = re.sub(r"[0-9a-f]{8}-[0-9a-f-]{27}", "<id>", s)
