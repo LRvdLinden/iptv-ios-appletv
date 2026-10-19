@@ -1394,7 +1394,7 @@ revoke all on public.support_pow_used from anon, authenticated;
 --   gebruikte captcha-salts na 1 dag weg; het logboek van pg_cron (cron.job_run_details) na 7 dagen weg.
 create or replace function public.bingr_support_cleanup() returns jsonb
 language plpgsql security definer set search_path = public as $$
-declare t int := 0; i int := 0; p int := 0; c int := 0; s int := 0;
+declare t int := 0; i int := 0; p int := 0; c int := 0; s int := 0; b int := 0;
 begin
   delete from public.support_tickets
   where status = 'closed' and greatest(last_reply_at, updated_at, coalesce(closed_at, updated_at)) < now() - interval '24 months';
@@ -1411,7 +1411,9 @@ begin
   end;
   -- build 134: registratiepogingen (IP-hashes) na 7 dagen weg
   if to_regprocedure('public.bingr_signup_attempts_cleanup()') is not null then s := public.bingr_signup_attempts_cleanup(); end if;
-  return jsonb_build_object('tickets', t, 'ip_hash', i, 'pow', p, 'cron_runs', c, 'signup_attempts', s);
+  -- bewaarplicht: aankopen zonder account 7 jaar na het einde van het boekjaar weg (bingr_billing_retention)
+  if to_regprocedure('public.bingr_billing_retention(timestamptz)') is not null then b := public.bingr_billing_retention(); end if;
+  return jsonb_build_object('tickets', t, 'ip_hash', i, 'pow', p, 'cron_runs', c, 'signup_attempts', s, 'purchases', b);
 end $$;
 revoke all on function public.bingr_support_cleanup() from public, anon, authenticated;
 grant execute on function public.bingr_support_cleanup() to service_role;
@@ -1706,9 +1708,11 @@ end $$;
 -- billing_purchases: één rij per Checkout Session van Lifetime. status: pending (afgerond, betaling nog onderweg), paid,
 -- failed, refunded (volledig terugbetaald), disputed (chargeback). Geen e-mailadressen, namen of betaalgegevens: alleen het
 -- account, de Stripe-id's, het bedrag en de status. De gebruiker leest alleen zijn eigen rijen; schrijven alleen de functies.
+-- Account verwijderd: de aankoop blijft (fiscale bewaarplicht) met user_id null en user_deleted_at; zie "Bewaarplicht" hieronder.
+-- >>> unittest billing
 create table if not exists public.billing_purchases (
   id                bigint generated always as identity primary key,
-  user_id           uuid not null references auth.users(id) on delete cascade,
+  user_id           uuid references auth.users(id) on delete set null,
   stripe_session_id text not null unique check (stripe_session_id ~ '^cs_[A-Za-z0-9_]+$' and char_length(stripe_session_id) <= 255),
   payment_intent    text check (payment_intent is null or (payment_intent ~ '^pi_[A-Za-z0-9_]+$' and char_length(payment_intent) <= 255)),
   amount            int not null check (amount >= 0),
@@ -1787,6 +1791,65 @@ select 'ch_legacy_' || b.id, b.id, case when b.status = 'disputed' then 'dispute
   from public.billing_purchases b
  where b.status in ('refunded', 'disputed') and not exists (select 1 from public.billing_refunds r where r.purchase_id = b.id)
 on conflict (id) do nothing;
+
+-- Bewaarplicht (fiscaal, 7 jaar): aankopen en terugbetalingen blijven staan als het account wordt verwijderd (device-auth
+-- delete_account, het beheer of het opruimen), maar zonder koppeling aan het account: user_id wordt null (on delete set
+-- null) en user_deleted_at het moment van verwijderen (trigger hieronder). Er staan in deze tabellen geen e-mailadressen,
+-- namen of adressen; de kwitantie-URL wordt niet bewaard (die haalt de functie billing live bij Stripe, alleen voor het
+-- eigen account). Wat blijft: datum, bedrag, btw, Stripe-kosten, betaalmethode (soort), land (code), status en de
+-- Stripe-id's (de boekhouding gaat uit van Stripe). RLS: user_id = auth.uid(), dus een rij zonder account ziet niemand.
+-- Na 7 jaar na het einde van het boekjaar weg (bingr_billing_retention, dagelijks via bingr_support_cleanup).
+-- Migratie (herhaalbaar): user_id mag leeg, de foreign key van on delete cascade naar on delete set null.
+alter table public.billing_purchases add column if not exists user_deleted_at timestamptz;
+alter table public.billing_purchases alter column user_id drop not null;
+do $$
+declare c record;
+begin
+  for c in select conname from pg_constraint
+            where conrelid = 'public.billing_purchases'::regclass and contype = 'f' and confrelid = 'auth.users'::regclass
+              and confdeltype <> 'n' loop
+    execute format('alter table public.billing_purchases drop constraint %I', c.conname);
+  end loop;
+  if not exists (select 1 from pg_constraint where conrelid = 'public.billing_purchases'::regclass and contype = 'f'
+                    and confrelid = 'auth.users'::regclass and confdeltype = 'n') then
+    alter table public.billing_purchases add constraint billing_purchases_user_id_fkey
+      foreign key (user_id) references auth.users(id) on delete set null;
+  end if;
+end $$;
+create index if not exists billing_purchases_unlinked_idx on public.billing_purchases (user_deleted_at) where user_id is null;
+-- user_id van gevuld naar leeg (de foreign key bij het verwijderen van het account): moment vastleggen. Werkt voor elke
+-- manier van verwijderen, want on delete set null is een update op deze tabel.
+create or replace function public.bingr_billing_user_unlinked() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if old.user_id is not null and new.user_id is null then
+    new.user_deleted_at := coalesce(new.user_deleted_at, now());
+    new.updated_at := now();
+  end if;
+  return new;
+end $$;
+revoke all on function public.bingr_billing_user_unlinked() from public, anon, authenticated;
+drop trigger if exists bingr_billing_user_unlinked on public.billing_purchases;
+create trigger bingr_billing_user_unlinked before update of user_id on public.billing_purchases
+  for each row execute function public.bingr_billing_user_unlinked();
+-- Bewaartermijn: 7 jaar na het einde van het boekjaar (kalenderjaar, Europe/Amsterdam) van het laatste moment van de
+-- aankoop (aangemaakt, betaald, terugbetaald of een terugbetaling/chargeback in billing_refunds). Een aankoop uit 2026 mag
+-- dus vanaf 1 januari 2034 weg. Alleen aankopen zonder account (bij een bestaand account blijven ze tot het account wordt
+-- verwijderd); de terugbetalingen gaan mee (on delete cascade). Terug: aantal verwijderde aankopen.
+create or replace function public.bingr_billing_retention(p_now timestamptz default now()) returns int
+language plpgsql security definer set search_path = public as $$
+declare cutoff timestamptz; n int;
+begin
+  cutoff := (date_trunc('year', p_now at time zone 'Europe/Amsterdam') - interval '7 years') at time zone 'Europe/Amsterdam';
+  delete from public.billing_purchases b
+   where b.user_id is null
+     and greatest(b.created_at, b.paid_at, b.refunded_at) < cutoff
+     and not exists (select 1 from public.billing_refunds r where r.purchase_id = b.id and r.refunded_at >= cutoff);
+  get diagnostics n = row_count;
+  return n;
+end $$;
+revoke all on function public.bingr_billing_retention(timestamptz) from public, anon, authenticated;
+grant execute on function public.bingr_billing_retention(timestamptz) to service_role;
 -- btw-tarief voor de omzet zonder Stripe Tax (bedragen zijn incl. btw): btw = bruto × tarief / (100 + tarief). In te stellen
 -- in het beheer (tab Omzet, actie revenue_vat_set); een bestaande waarde blijft staan.
 insert into public.app_settings (key, value) values ('revenue_vat', '{"rate": 21}'::jsonb) on conflict (key) do nothing;
@@ -1902,6 +1965,7 @@ begin
 end $$;
 revoke all on function public.bingr_admin_revenue_rows(timestamptz, timestamptz, text) from public, anon, authenticated;
 grant execute on function public.bingr_admin_revenue_rows(timestamptz, timestamptz, text) to service_role;
+-- <<< unittest billing
 
 -- build 97: beheer (functie admin in LRvdLinden/bingr-beheer). Tokenversie: elk beheer-token draagt de versie v; de functie
 -- admin vergelijkt die bij elk verzoek met deze rij. "Overal uitloggen" (actie logout_all) verhoogt de versie, en een ander
@@ -2602,6 +2666,7 @@ grant execute on function public.bingr_welcome_counts() to service_role;
 -- null als de serie hier niet te tellen is. Nooit gegevens per persoon: alleen tellingen per tijdvak.
 -- Hulpje (niet aan te roepen van buiten): telt de rijen (at, w) van een vaste query uit bingr_admin_insights per tijdvak;
 -- in die query is $1 = p_edges, $2 = begin, $3 = einde.
+-- >>> unittest insights-bin
 create or replace function public.bingr_insights_bin(p_edges timestamptz[], p_sql text) returns jsonb
 language plpgsql stable security definer set search_path = public, auth as $$
 declare n int := array_length(p_edges, 1) - 1; res jsonb;
@@ -2615,6 +2680,7 @@ begin
   return res;
 end $$;
 revoke all on function public.bingr_insights_bin(timestamptz[], text) from public, anon, authenticated, service_role;
+-- <<< unittest insights-bin
 
 -- p_metric: accounts (new_users; active_users alleen met p_daily) | signins | streams (live, movie, episode) |
 -- push (sent, failed) | purchases (paid, refunded; build 133) | support (new, closed). p_daily = tijdvakken van een dag of langer (gegevens per dag tellen mee).

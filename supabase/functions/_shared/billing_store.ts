@@ -13,18 +13,37 @@ async function planOf(db: Db, userId: string): Promise<PlanRowFull> {
   return data ?? null;
 }
 
+// Account verwijderd (fiscale bewaarplicht): de aankoop blijft staan met user_id null en user_deleted_at (trigger
+// bingr_billing_user_unlinked in supabase/schema.sql). Een late betaling, terugbetaling of chargeback van zo'n aankoop
+// wordt nog vastgelegd, maar geeft of neemt geen Lifetime. Bestaat het account niet meer (23503, foreign key), dan komt
+// de aankoop er zonder account bij.
+const accountGone = (e: { code?: string } | null) => e?.code === "23503";
+
 /** Betaald: aankoop op 'paid' en Lifetime (bron purchase). Geeft terug of het account nieuw Lifetime kreeg door deze aankoop. */
-export async function grant(db: Db, p: Purchase, nowIso = new Date().toISOString()): Promise<{ granted: boolean; already: boolean }> {
-  const { data: prev, error: pe } = await db.from("billing_purchases").select("status").eq("stripe_session_id", p.sessionId).maybeSingle();
+export async function grant(db: Db, p: Purchase, nowIso = new Date().toISOString()): Promise<{ granted: boolean; already: boolean; deleted?: boolean }> {
+  const { data: prev, error: pe } = await db.from("billing_purchases").select("status,user_id").eq("stripe_session_id", p.sessionId).maybeSingle();
   if (pe) throw fail("billing_purchases", pe);
   // een terugbetaalde of betwiste aankoop wordt niet opnieuw actief door een laat of herhaald event
   if (prev && (prev.status === "refunded" || prev.status === "disputed")) return { granted: false, already: false };
-  const { error: ue } = await db.from("billing_purchases").upsert({
+  const paidAt = prev?.status === "paid" ? undefined : nowIso;
+  // btw volgens Stripe Tax (alleen als bekend; null overschrijft niets)
+  const tax = p.taxAmount ?? undefined;
+  if (prev && (prev.user_id === null || prev.user_id === undefined)) {
+    const { error } = await db.from("billing_purchases").update({ status: "paid", paid_at: paidAt, tax_amount: tax, updated_at: nowIso })
+      .eq("stripe_session_id", p.sessionId);
+    if (error) throw fail("billing_purchases", error);
+    return { granted: false, already: false, deleted: true };
+  }
+  const row = {
     user_id: p.userId, stripe_session_id: p.sessionId, payment_intent: p.paymentIntent, amount: p.amount, currency: p.currency,
-    status: "paid", paid_at: prev?.status === "paid" ? undefined : nowIso, updated_at: nowIso,
-    // btw volgens Stripe Tax (alleen als bekend; null overschrijft niets)
-    tax_amount: p.taxAmount ?? undefined,
-  }, { onConflict: "stripe_session_id" });
+    status: "paid", paid_at: paidAt, updated_at: nowIso, tax_amount: tax,
+  };
+  const { error: ue } = await db.from("billing_purchases").upsert(row, { onConflict: "stripe_session_id" });
+  if (accountGone(ue)) {
+    const { error } = await db.from("billing_purchases").upsert({ ...row, user_id: null, user_deleted_at: nowIso }, { onConflict: "stripe_session_id" });
+    if (error) throw fail("billing_purchases", error);
+    return { granted: false, already: false, deleted: true };
+  }
   if (ue) throw fail("billing_purchases", ue);
   const cur = await planOf(db, p.userId);
   if (cur?.plan === "lifetime" && cur.source === "purchase" && prev?.status === "paid") return { granted: false, already: true };
@@ -42,6 +61,14 @@ export async function pending(db: Db, p: Purchase, nowIso = new Date().toISOStri
     user_id: p.userId, stripe_session_id: p.sessionId, payment_intent: p.paymentIntent, amount: p.amount, currency: p.currency,
     status: "pending", updated_at: nowIso,
   });
+  if (accountGone(error)) {
+    const { error: e2 } = await db.from("billing_purchases").insert({
+      user_id: null, user_deleted_at: nowIso, stripe_session_id: p.sessionId, payment_intent: p.paymentIntent, amount: p.amount,
+      currency: p.currency, status: "pending", updated_at: nowIso,
+    });
+    if (e2 && e2.code !== "23505") throw fail("billing_purchases", e2);
+    return;
+  }
   if (error && error.code !== "23505") throw fail("billing_purchases", error);
 }
 
@@ -59,6 +86,8 @@ export async function revoke(db: Db, paymentIntent: string, status: "refunded" |
   if (!rows?.length) return { found: false, downgraded: false };
   const { error: ue } = await db.from("billing_purchases").update({ status, refunded_at: nowIso, updated_at: nowIso }).eq("payment_intent", paymentIntent);
   if (ue) throw fail("billing_purchases", ue);
+  // account verwijderd: de aankoop is gemarkeerd, er is geen Lifetime meer om in te trekken
+  if (rows[0].user_id === null || rows[0].user_id === undefined) return { found: true, downgraded: false, reason: "account_deleted" };
   const userId = String(rows[0].user_id);
   const { data: others, error: oe } = await db.from("billing_purchases").select("id").eq("user_id", userId).eq("status", "paid").limit(1);
   if (oe) throw fail("billing_purchases", oe);

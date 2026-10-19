@@ -407,7 +407,8 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
         if (re) break;
       }
       // sessies van gekoppelde apparaten intrekken; alle tabellen (profielen, servers, gegevens, apparaten, streams,
-      // geschiedenis, tv-codes) gaan mee via on delete cascade
+      // geschiedenis, tv-codes) gaan mee via on delete cascade. Aankopen en terugbetalingen blijven (fiscale bewaarplicht,
+      // 7 jaar) zonder koppeling aan het account: user_id null via on delete set null (docs/ACCOUNT.md, "Bewaarplicht").
       const { error } = await admin.auth.admin.deleteUser(user.id);
       if (error) { console.error("delete_account", error.message); return json({ error: "delete_failed" }, 500); }
       return json({ ok: true });

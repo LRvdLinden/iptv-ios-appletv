@@ -116,6 +116,13 @@ jobs:
           sudo systemctl start postgresql.service
           for i in $(seq 1 20); do pg_isready -q && break; sleep 1; done
           sudo -u postgres bash supabase/tests/signup_guard_test.sh
+      - name: Unittests (bewaarplicht aankopen)
+        # blokkeert de deploy: account verwijderen -> aankopen en terugbetalingen blijven zonder account (user_id null,
+        # user_deleted_at), omzet en tellingen gelijk, RLS, migratie van on delete cascade en de bewaartermijn van 7 jaar na
+        # het einde van het boekjaar; in een tijdelijke database op de Postgres van de runner (geen Supabase).
+        run: |
+          for i in $(seq 1 20); do pg_isready -q && break; sleep 1; done
+          sudo -u postgres bash supabase/tests/billing_test.sh
       - name: Controleren
         id: check
         run: |
@@ -129,6 +136,34 @@ jobs:
           code=$(curl -s -o /tmp/r.txt -w '%{http_code}' -X POST "https://api.supabase.com/v1/projects/$REF/database/query" \
             -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" --data @/tmp/q.json)
           cat /tmp/r.txt; echo; [ "$code" -lt 300 ] || { echo "::error::Schema mislukt (HTTP $code)"; exit 1; }
+      - name: Bewaarplicht aankopen - rooktest
+        # na het schema: aankopen blijven bij het verwijderen van een account (foreign key on delete set null, user_id
+        # nullable, trigger voor user_deleted_at, bewaartermijn-functie). Alleen ja/nee in het log, geen gegevens.
+        if: steps.check.outputs.skip != '1'
+        run: |
+          python3 - <<'PY'
+          import json, os, sys, urllib.request, urllib.error
+          q = ("select (select count(*) from pg_constraint where conrelid = 'public.billing_purchases'::regclass and contype = 'f'"
+               " and confrelid = 'auth.users'::regclass and confdeltype = 'n') = 1"
+               " and (select count(*) from pg_constraint where conrelid = 'public.billing_purchases'::regclass and contype = 'f'"
+               " and confrelid = 'auth.users'::regclass) = 1"
+               " and not (select attnotnull from pg_attribute where attrelid = 'public.billing_purchases'::regclass and attname = 'user_id')"
+               " and exists (select 1 from pg_attribute where attrelid = 'public.billing_purchases'::regclass and attname = 'user_deleted_at' and not attisdropped)"
+               " and exists (select 1 from pg_trigger where tgrelid = 'public.billing_purchases'::regclass and tgname = 'bingr_billing_user_unlinked')"
+               " and to_regprocedure('public.bingr_billing_retention(timestamptz)') is not null"
+               " and (select count(*) from pg_constraint where conrelid = 'public.billing_refunds'::regclass and contype = 'f'"
+               " and confrelid = 'auth.users'::regclass) = 0 as ok")
+          r = urllib.request.Request(f"https://api.supabase.com/v1/projects/{os.environ['REF']}/database/query",
+              data=json.dumps({"query": q}).encode(), method="POST",
+              headers={"Authorization": f"Bearer {os.environ['SUPABASE_ACCESS_TOKEN']}", "Content-Type": "application/json"})
+          try:
+              with urllib.request.urlopen(r, timeout=60) as resp: rows = json.loads(resp.read() or b"[]"); code = resp.status
+          except urllib.error.HTTPError as e: rows, code = None, e.code
+          if code < 300 and isinstance(rows, list) and rows and rows[0].get("ok") is True:
+              print("::notice::Bewaarplicht aankopen: in orde (on delete set null, user_deleted_at, bewaartermijn)")
+          else:
+              print(f"::error::Bewaarplicht aankopen: controle mislukt (HTTP {code})"); sys.exit(1)
+          PY
       - name: Registratiebescherming - wegwerpdomeinen, hook en limieten
         # build 134 (docs/ACCOUNT.md, "Bescherming tegen nepaccounts"): 1. de lijst met wegwerpdomeinen van
         # github.com/disposable-email-domains/disposable-email-domains, vast op een commit en gecontroleerd met sha256, in

@@ -73,7 +73,7 @@ Deno.serve(async (req) => {
     let result: string = d.kind;
     switch (d.kind) {
       case "grant": {
-        const g = await grant(admin, d.purchase); result = g.granted ? "granted" : g.already ? "already" : "skipped";
+        const g = await grant(admin, d.purchase); result = g.granted ? "granted" : g.already ? "already" : g.deleted ? "account_deleted" : "skipped";
         if (d.purchase.paymentIntent) result += `+${await fetchDetails(cfg.secretKey, d.purchase.paymentIntent)}`;
         break;
       }

@@ -211,7 +211,9 @@ Deno.test("weergave: alleen Stripe-links en bedragen", () => {
 
 // ---------------- databasestappen (nep-database) ----------------
 type Row = Record<string, unknown>;
-function fakeDb() {
+function fakeDb(users?: Set<string>) {
+  // users: bestaande accounts (foreign key naar auth.users); zonder = alles bestaat
+  const fk = (o: Row) => !!users && o.user_id !== null && o.user_id !== undefined && !users.has(String(o.user_id));
   const t: Record<string, Row[]> = { billing_purchases: [], account_plans: [], billing_events: [], billing_refunds: [] };
   const keyOf: Record<string, string> = { billing_purchases: "stripe_session_id", account_plans: "user_id", billing_events: "id", billing_refunds: "id" };
   let seq = 1;
@@ -237,12 +239,14 @@ function fakeDb() {
       maybeSingle: () => Promise.resolve({ data: (run().data as Row[])[0] ?? null, error: null }),
       then: (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) => Promise.resolve(run()).then(res, rej),
       upsert: (o: Row, opts?: { ignoreDuplicates?: boolean }) => {
+        if (table === "billing_purchases" && fk(o)) return Promise.resolve({ data: null, error: { code: "23503" } });
         const k = keyOf[table], cur = t[table].find((r) => r[k] === o[k]);
         const clean = Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined));
         if (cur) { if (!opts?.ignoreDuplicates) Object.assign(cur, clean); } else t[table].push({ id: seq++, ...clean });
         return Promise.resolve({ data: null, error: null });
       },
       insert: (o: Row) => {
+        if (table === "billing_purchases" && fk(o)) return Promise.resolve({ data: null, error: { code: "23503" } });
         const k = keyOf[table];
         if (t[table].some((r) => r[k] === o[k])) return Promise.resolve({ data: null, error: { code: "23505" } });
         t[table].push({ id: seq++, ...o }); return Promise.resolve({ data: null, error: null });
@@ -298,6 +302,27 @@ Deno.test("database: chargeback met eigen limieten -> rij Gratis; Lifetime uit h
   db2.t.account_plans.push({ user_id: UID, plan: "lifetime", source: "admin" });
   eq(await revoke(db2, "pi_7", "refunded"), { found: true, downgraded: false, reason: "not_purchase" });
   eq(db2.t.account_plans[0].plan, "lifetime");
+});
+Deno.test("database: account verwijderd - aankoop blijft zonder account, late events geven of nemen geen Lifetime", async () => {
+  // aankoop bestond al; account daarna verwijderd (user_id null via de trigger)
+  const db = fakeDb(new Set());
+  db.t.billing_purchases.push({ id: 1, user_id: null, user_deleted_at: "T0", stripe_session_id: "cs_test_a1", payment_intent: "pi_123", amount: 499, status: "pending" });
+  eq(await grant(db, purchase, "T1"), { granted: false, already: false, deleted: true });
+  eq([db.t.billing_purchases[0].status, db.t.billing_purchases[0].paid_at, db.t.billing_purchases[0].user_id], ["paid", "T1", null]);
+  eq(db.t.account_plans.length, 0, "geen Lifetime voor een verwijderd account");
+  eq(await revoke(db, "pi_123", "refunded", "T2"), { found: true, downgraded: false, reason: "account_deleted" });
+  eq(db.t.billing_purchases[0].status, "refunded");
+  // nieuwe aankoop van een account dat al weg is (foreign key): vastgelegd zonder account
+  const db2 = fakeDb(new Set());
+  await pending(db2, purchase, "T0");
+  eq([db2.t.billing_purchases.length, db2.t.billing_purchases[0].user_id, db2.t.billing_purchases[0].user_deleted_at], [1, null, "T0"]);
+  const db3 = fakeDb(new Set());
+  eq(await grant(db3, purchase, "T1"), { granted: false, already: false, deleted: true });
+  eq([db3.t.billing_purchases[0].status, db3.t.billing_purchases[0].user_id, db3.t.billing_purchases[0].paid_at], ["paid", null, "T1"]);
+  eq(db3.t.account_plans.length, 0);
+  // bestaand account: gewoon Lifetime
+  const db4 = fakeDb(new Set([UID]));
+  eq(await grant(db4, purchase, "T1"), { granted: true, already: false });
 });
 Deno.test("database: event één keer", async () => {
   const db = fakeDb();
