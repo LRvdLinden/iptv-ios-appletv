@@ -4,6 +4,29 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 135
+_19 oktober 2026_
+
+### Website
+
+**Nieuw**
+
+- Geen bevestigingsmail gekregen? Op bingr.online kun je hem nu opnieuw laten sturen, ook als je bij het inloggen ‘Bevestig eerst je e-mailadres’ ziet
+
+**Verbeterd**
+
+- De privacyverklaring legt uit welke aankoopgegevens we na het verwijderen van je account bewaren en hoe lang
+
+### Server
+
+**Verbeterd**
+
+- Verwijder je je account, dan blijven je aankopen (datum, bedrag, btw, betaalmethode en land) zonder koppeling aan je account 7 jaar bewaard vanwege de wettelijke bewaarplicht en daarna automatisch verwijderd
+
+**Opgelost**
+
+- Bevestigingsmails voor nieuwe accounts gaan nu altijd via de eigen mailserver van Bingr
+
 ## Versie 1.0.0 · Build 134
 _19 oktober 2026_
 

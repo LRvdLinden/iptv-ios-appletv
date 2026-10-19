@@ -1,5 +1,44 @@
 [
  {
+  "build": 135,
+  "version": "1.0.0",
+  "date": "2026-10-19",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Geen bevestigingsmail gekregen? Op bingr.online kun je hem nu opnieuw laten sturen, ook als je bij het inloggen ‘Bevestig eerst je e-mailadres’ ziet",
+    "en": "Didn't get the confirmation email? You can now have it sent again on bingr.online, also when signing in shows ‘Confirm your email address first’"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Bevestigingsmails voor nieuwe accounts gaan nu altijd via de eigen mailserver van Bingr",
+    "en": "Confirmation emails for new accounts are now always sent through Bingr's own mail server"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Verwijder je je account, dan blijven je aankopen (datum, bedrag, btw, betaalmethode en land) zonder koppeling aan je account 7 jaar bewaard vanwege de wettelijke bewaarplicht en daarna automatisch verwijderd",
+    "en": "If you delete your account, your purchases (date, amount, VAT, payment method and country) are kept without any link to your account for 7 years because of the legal retention requirement, then deleted automatically"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "web"
+    ],
+    "nl": "De privacyverklaring legt uit welke aankoopgegevens we na het verwijderen van je account bewaren en hoe lang",
+    "en": "The privacy policy now explains which purchase details we keep after you delete your account, and for how long"
+   }
+  ]
+ },
+ {
   "build": 134,
   "version": "1.0.0",
   "date": "2026-10-19",
