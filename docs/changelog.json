@@ -1,5 +1,52 @@
 [
  {
+  "build": 138,
+  "version": "1.0.0",
+  "date": "2026-10-19",
+  "items": [
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web"
+    ],
+    "nl": "Voorbereiding op de eerste release (versie 1.0.0)",
+    "en": "Preparing the first release (version 1.0.0)"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "android",
+     "androidtv"
+    ],
+    "nl": "Klaar voor Google Play: de app richt zich nu op Android 16 en wordt ook als App Bundle gebouwd",
+    "en": "Ready for Google Play: the app now targets Android 16 and is also built as an App Bundle"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Account maken op bingr.online en in de webspeler is beter beschermd tegen bots, zonder captcha",
+    "en": "Creating an account on bingr.online and in the web player is better protected against bots, without a captcha"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Betere bescherming tegen nepaccounts: aanmeldingen van bots via de website worden herkend en geweigerd",
+    "en": "Better protection against fake accounts: sign-ups by bots through the website are detected and rejected"
+   }
+  ]
+ },
+ {
   "build": 137,
   "version": "1.0.0",
   "date": "2026-10-19",

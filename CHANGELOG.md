@@ -4,6 +4,27 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 138
+_19 oktober 2026_
+
+### Alle apps en de website
+
+**Verbeterd**
+
+- Voorbereiding op de eerste release (versie 1.0.0)
+
+### Website
+
+**Verbeterd**
+
+- Account maken op bingr.online en in de webspeler is beter beschermd tegen bots, zonder captcha
+
+### Server
+
+**Opgelost**
+
+- Betere bescherming tegen nepaccounts: aanmeldingen van bots via de website worden herkend en geweigerd
+
 ## Versie 1.0.0 · Build 137
 _19 oktober 2026_
 
