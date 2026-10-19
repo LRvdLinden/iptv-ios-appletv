@@ -173,8 +173,17 @@ jobs:
         # (aanmelden, wachtwoord vergeten, opnieuw sturen, gebruiker wijzigen; per IP per 5 minuten) max. 10. Strengere bestaande
         # waarden blijven. 3. pg_cron-taak bingr-unconfirmed-cleanup (elk uur): onbevestigde accounts na 48 uur weg. Alleen
         # "ingesteld" in het log, geen configuratie of serverantwoorden.
+        # build 135: Auth verstuurt de bevestigingsmails via de eigen SMTP (dezelfde BINGR_SMTP_*-secrets als de functies,
+        # poort 465): smtp_host/port/user/pass, smtp_admin_email = adres uit BINGR_SMTP_FROM, afzendernaam "Bingr",
+        # smtp_max_frequency 60 s. Zonder eigen SMTP stuurt Supabase alleen naar teamleden (max. ~2 per uur) en weigert het
+        # rate_limit_email_sent; daarom eerst SMTP, dan de limieten. In het log alleen ja/nee, nooit waarden.
         if: steps.check.outputs.skip != '1'
         env:
+          S_HOST: ${{ secrets.BINGR_SMTP_HOST }}
+          S_PORT: ${{ secrets.BINGR_SMTP_PORT }}
+          S_USER: ${{ secrets.BINGR_SMTP_USER }}
+          S_PASS: ${{ secrets.BINGR_SMTP_PASSWORD }}
+          S_FROM: ${{ secrets.BINGR_SMTP_FROM }}
           DEA_COMMIT: c619f0a1e359b880ac9d442bb37d22b8391ba12f
           DEA_SHA256: 2a8f3d0ae32228c081d5ff90e8021a9ccb0a4348f96872c511f4b83762d87dde
         run: |
@@ -222,13 +231,33 @@ jobs:
               def stricter(key, want):
                   v = cur.get(key)
                   return v if isinstance(v, int) and 0 < v <= want else want
+              # eigen SMTP voor Auth (vóór de limieten)
+              E = os.environ
+              m = re.search(r"<([^>]+)>", E.get("S_FROM") or "")
+              admin_email = (m.group(1) if m else (E.get("S_FROM") or "")).strip() or "noreply@bingr.online"
+              if E.get("S_HOST") and E.get("S_USER") and E.get("S_PASS"):
+                  smtp = {"smtp_host": E["S_HOST"].strip(), "smtp_port": str(int((E.get("S_PORT") or "465").strip() or 465)),
+                          "smtp_user": E["S_USER"].strip(), "smtp_pass": E["S_PASS"], "smtp_admin_email": admin_email,
+                          "smtp_sender_name": "Bingr", "smtp_max_frequency": 60}
+                  sc, _ = req("PATCH", f"{API}/config/auth", smtp)
+                  if sc >= 300: fail.append(f"Auth-SMTP instellen mislukt (HTTP {sc})")
+                  else:
+                      code2, chk = req("GET", f"{API}/config/auth"); chk = chk if isinstance(chk, dict) else {}
+                      ok = all(str(chk.get(k) or "").strip().lower() == str(smtp[k]).strip().lower()
+                               for k in ("smtp_host", "smtp_port", "smtp_user", "smtp_admin_email", "smtp_sender_name"))
+                      if ok: print("::notice::Auth-SMTP ingesteld (eigen SMTP, afzender Bingr)")
+                      else: fail.append("Auth-SMTP staat na het instellen niet goed")
+              elif not cur.get("smtp_host"):
+                  fail.append("BINGR_SMTP_HOST/USER/PASSWORD ontbreken en Auth heeft geen eigen SMTP: bevestigingsmails komen niet aan")
+              else:
+                  print("::warning::BINGR_SMTP_* ontbreken: Auth-SMTP niet bijgewerkt (bestaande instelling blijft)")
               if cur.get("mailer_autoconfirm"): print("::warning::Bevestigen per e-mail stond uit; staat nu weer aan")
               code, _ = req("PATCH", f"{API}/config/auth", {"hook_before_user_created_enabled": True,
                             "hook_before_user_created_uri": HOOK, "mailer_autoconfirm": False})
               # limieten apart: Supabase weigert rate_limit_email_sent zonder eigen SMTP; dan alleen een waarschuwing
               lc, _ = req("PATCH", f"{API}/config/auth", {"rate_limit_email_sent": stricter("rate_limit_email_sent", 30),
                           "rate_limit_otp": stricter("rate_limit_otp", 10)})
-              if lc >= 300: print(f"::warning::Auth-limieten niet bijgewerkt (HTTP {lc})")
+              if lc >= 300: fail.append(f"Auth-limieten niet bijgewerkt (HTTP {lc})")
               if code >= 300: fail.append(f"Auth-config bijwerken mislukt (HTTP {code})")
               else:
                   code, now = req("GET", f"{API}/config/auth")

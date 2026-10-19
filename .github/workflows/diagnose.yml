@@ -237,6 +237,12 @@ jobs:
               note("auth-logs mailregels", json.dumps(dict(mails.most_common(10)), ensure_ascii=False) or "{}")
               note("auth-logs fouten", json.dumps(dict(fouten.most_common(12)), ensure_ascii=False) or "geen")
           PY
+      - name: DNS van bingr.online voor mail (SPF, DMARC, MX; openbare records, alleen ja/nee)
+        shell: bash
+        run: |
+          spf=$(dig +short TXT bingr.online | grep -ci "v=spf1"); dm=$(dig +short TXT _dmarc.bingr.online | grep -ci "v=dmarc1")
+          dmp=$(dig +short TXT _dmarc.bingr.online | grep -oiE "p=[a-z]+" | head -1); mx=$(dig +short MX bingr.online | wc -l)
+          printf '::notice title=mail-dns::SPF: %s | DMARC: %s %s | MX-records: %s\n' "$([ "$spf" -gt 0 ] && echo ja || echo nee)" "$([ "$dm" -gt 0 ] && echo ja || echo nee)" "$dmp" "$mx"
       - name: Auth-auditlog (alleen acties en aantallen)
         shell: bash
         run: |
