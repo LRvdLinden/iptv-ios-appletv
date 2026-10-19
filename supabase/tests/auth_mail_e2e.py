@@ -149,13 +149,14 @@ try:
         note("mailtest aanmelding", f"HTTP 200 | sessie terug (geen bevestiging nodig): {'ja' if r.get('access_token') else 'nee'} | "
              f"confirmation_sent_at gezet: {'ja' if u.get('confirmation_sent_at') else 'nee'} | identities: {len(u.get('identities') or [])}")
         if r.get("access_token"):
-            # bevestigen staat (tijdelijk) uit: geen bevestigingsmail; test het mailpad dan met "wachtwoord vergeten"
-            # (zelfde hook, zelfde verzending)
+            # bevestigen staat (tijdelijk) uit (autoconfirm): het testaccount weer onbevestigd maken en de bevestigingsmail
+            # opnieuw laten sturen (POST /resend type signup): zelfde template en zelfde hook als bij een gewone aanmelding
+            sql(f"update auth.users set email_confirmed_at = null, confirmation_sent_at = null where id = {lit(uid_user)}")
             time.sleep(2)
-            c2, _ = req("POST", f"{BASE}/auth/v1/recover", {"email": to}, {"apikey": PUB})
-            t_auth = time.time(); mode = "herstelmail"
-            note("mailtest modus", f"bevestigen staat uit (autoconfirm): test met de herstelmail (POST /recover: HTTP {c2})")
-            if c2 >= 300: fail.append(f"herstelmail aanvragen mislukt (HTTP {c2})"); signup_ok = False
+            c2, _ = req("POST", f"{BASE}/auth/v1/resend", {"type": "signup", "email": to}, {"apikey": PUB})
+            t_auth = time.time(); mode = "bevestigingsmail (opnieuw gestuurd)"
+            note("mailtest modus", f"bevestigen staat uit (autoconfirm): bevestigingsmail via POST /resend (HTTP {c2})")
+            if c2 >= 300: fail.append(f"bevestigingsmail opnieuw sturen mislukt (HTTP {c2})"); signup_ok = False
     else:
         msg = re.sub(r"[^\s\"'<>]+@[^\s\"'<>]+", "<e>", str((r or {}).get("msg") or (r or {}).get("message") or (r or {}).get("error_code") or ""))[:160]
         fail.append(f"aanmelding mislukt: HTTP {code} {msg}")
