@@ -326,6 +326,17 @@ jobs:
           r=$(curl -s -X POST "https://api.supabase.com/v1/projects/$REF/database/query" \
             -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" --data @/tmp/q.json | head -c 1500)
           printf '::notice title=accounts per provider::%s\n' "$(echo "$r" | sed -E 's/[^ ",]+@[^ ",]+/<e>/g')"
+      - name: Nieuwe accounts laatste 6 uur (alleen tijden, geen adressen)
+        shell: bash
+        run: |
+          python3 -c 'import json,sys; print(json.dumps({"query": sys.argv[1]}))' "select round(extract(epoch from now() - created_at)/60) as min_geleden,
+                 round(extract(epoch from confirmation_sent_at - created_at)) as mail_na_sec, round(extract(epoch from email_confirmed_at - created_at)/60) as bevestigd_na_min,
+                 round(extract(epoch from email_confirmed_at - confirmation_sent_at)) as bevestigd_na_mail_sec, (last_sign_in_at is not null) as ingelogd,
+                 (split_part(lower(email),'@',2) in ('bingr.online') or split_part(lower(email),'@',2) like 'example.%') as test
+                 from auth.users where created_at > now() - interval '6 hours' order by created_at desc limit 10" > /tmp/q.json
+          r=$(curl -s -X POST "https://api.supabase.com/v1/projects/$REF/database/query" \
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" --data @/tmp/q.json | head -c 1500)
+          printf '::notice title=nieuwe accounts 6u::%s\n' "$(echo "$r" | sed -E 's/[^ ",]+@[^ ",]+/<e>/g')"
       - name: Onbevestigde accounts (alleen aantallen)
         shell: bash
         run: |
