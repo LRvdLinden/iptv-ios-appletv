@@ -109,7 +109,11 @@ jobs:
           rows, err = first("select timestamp, log_attributes['parsed.error_severity'] as niveau, event_message from logs where {SRC} = 'postgres_logs' "
                             "and log_attributes['parsed.error_severity'] in ('ERROR', 'FATAL') and (event_message like '%bingr_stream%' or event_message like '%bingr_stats%' "
                             "or event_message like '%account_watch%' or event_message like '%account_streams%') order by timestamp desc limit 20")
-          print((scrub(rows) or "geen") if rows is not None else f"niet gelezen: {err}")
+          # totaal per niveau (alleen aantallen): laat ook zien dat de sleutel parsed.error_severity gevuld is
+          tot, err2 = first("select log_attributes['parsed.error_severity'] as niveau, count() as n from logs where {SRC} = 'postgres_logs' "
+                            "group by niveau order by n desc limit 10")
+          print("stream-fouten: " + (scrub(rows) if rows is not None else f"niet gelezen: {err}")
+                + " | alle Postgres-regels per niveau (6 uur): " + (scrub(tot) if tot is not None else f"niet gelezen: {err2}"))
           PY2
 
   # build 107: statuspagina — per monitor de laatste uitkomst (geen gebruikersgegevens: alleen soort, status en foutsoort)
