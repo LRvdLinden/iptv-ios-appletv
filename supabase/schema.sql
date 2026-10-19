@@ -580,6 +580,11 @@ begin
     'plan_lifetime', (select count(*) from public.account_plans p join auth.users u on u.id = p.user_id where p.plan = 'lifetime'),
     'plan_free', (select count(*) from auth.users u where not exists (select 1 from public.account_plans p where p.user_id = u.id and p.plan = 'lifetime')),
     'plan_custom', (select count(*) from public.account_plans p where p.max_streams is not null or p.max_devices is not null),
+    -- build 133: aankopen (Stripe). Omzet = som van de betaalde aankopen (terugbetaald en chargeback tellen niet mee), in centen
+    'purchases_paid', (select count(*) from public.billing_purchases where status = 'paid'),
+    'purchases_refunded', (select count(*) from public.billing_purchases where status in ('refunded', 'disputed')),
+    'purchases_7d', (select count(*) from public.billing_purchases where status = 'paid' and paid_at > now() - interval '7 days'),
+    'revenue_cents', (select coalesce(sum(amount), 0) from public.billing_purchases where status = 'paid' and currency = 'eur'),
     'signins_source', case when audit_total > 0 then 'audit' else 'activity' end,
     'days', coalesce(days, '[]'::jsonb),
     'platforms', coalesce((select jsonb_agg(jsonb_build_object('platform', platform, 'devices', n) order by n desc)
@@ -646,8 +651,9 @@ begin
         coalesce((select p.email_opt_out from public.account_email_prefs p where p.user_id = u.id), false) as email_opt_out,
         (select jsonb_build_object('until', b.until, 'created_at', b.created_at) from public.account_blocks b
           where b.user_id = u.id and b.lifted_at is null order by b.created_at desc limit 1) as blocked,
-        coalesce((select jsonb_build_object('plan', p.plan, 'max_streams', p.max_streams, 'max_devices', p.max_devices, 'source', p.source)
-          from public.account_plans p where p.user_id = u.id), jsonb_build_object('plan', 'free')) as plan
+        (coalesce((select jsonb_build_object('plan', p.plan, 'max_streams', p.max_streams, 'max_devices', p.max_devices, 'source', p.source)
+          from public.account_plans p where p.user_id = u.id), jsonb_build_object('plan', 'free'))
+          || coalesce(public.bingr_admin_purchase(u.id), '{}'::jsonb)) as plan
       from auth.users u where public.bingr_admin_user_search(u.email, u.raw_user_meta_data, q, pat) and public.bingr_admin_user_match(u.id, f)
       order by u.created_at desc limit least(greatest(p_limit, 1), 100) offset greatest(p_offset, 0)) x), '[]'::jsonb)
   );
@@ -678,7 +684,12 @@ begin
     'email_opt_out', coalesce((select p.email_opt_out from public.account_email_prefs p where p.user_id = u.id), false),
     'plan', coalesce((select jsonb_build_object('plan', p.plan, 'max_streams', p.max_streams, 'max_devices', p.max_devices, 'source', p.source,
         'note', p.note, 'granted_by', p.granted_by, 'created_at', p.created_at, 'updated_at', p.updated_at)
-      from public.account_plans p where p.user_id = u.id), jsonb_build_object('plan', 'free')),
+      from public.account_plans p where p.user_id = u.id), jsonb_build_object('plan', 'free'))
+      || coalesce(public.bingr_admin_purchase(u.id), '{}'::jsonb),
+    -- build 133: aankopen van dit account (Stripe), nieuwste eerst; zonder Stripe-id's of betaalgegevens
+    'purchases', coalesce((select jsonb_agg(jsonb_build_object('created_at', b.created_at, 'paid_at', b.paid_at, 'amount', b.amount,
+        'currency', b.currency, 'status', b.status, 'refunded_at', b.refunded_at) order by b.created_at desc)
+      from (select * from public.billing_purchases where user_id = u.id order by created_at desc limit 10) b), '[]'::jsonb),
     'watching_now', (select count(*) from public.account_streams s where s.user_id = u.id and s.last_ping > now() - interval '90 seconds'),
     'active_days_30d', (select count(*) from public.account_logins l where l.user_id = u.id and l.day > (now() at time zone 'utc')::date - 30),
     'devices', coalesce((select jsonb_agg(jsonb_build_object('name', d.name, 'platform', d.platform, 'app_version', d.app_version,
@@ -1688,6 +1699,58 @@ begin
   raise notice 'Abonnementen: % bestaande accounts kregen Lifetime (legacy)', n;
 end $$;
 
+-- ============================================================================================================
+-- build 133: betalen via Stripe (functies billing en stripe-webhook, docs/ACCOUNT.md "Betalen (Stripe, build 133)").
+-- billing_purchases: één rij per Checkout Session van Lifetime. status: pending (afgerond, betaling nog onderweg), paid,
+-- failed, refunded (volledig terugbetaald), disputed (chargeback). Geen e-mailadressen, namen of betaalgegevens: alleen het
+-- account, de Stripe-id's, het bedrag en de status. De gebruiker leest alleen zijn eigen rijen; schrijven alleen de functies.
+create table if not exists public.billing_purchases (
+  id                bigint generated always as identity primary key,
+  user_id           uuid not null references auth.users(id) on delete cascade,
+  stripe_session_id text not null unique check (stripe_session_id ~ '^cs_[A-Za-z0-9_]+$' and char_length(stripe_session_id) <= 255),
+  payment_intent    text check (payment_intent is null or (payment_intent ~ '^pi_[A-Za-z0-9_]+$' and char_length(payment_intent) <= 255)),
+  amount            int not null check (amount >= 0),
+  currency          text not null default 'eur' check (currency ~ '^[a-z]{3}$'),
+  status            text not null check (status in ('pending', 'paid', 'failed', 'refunded', 'disputed')),
+  paid_at           timestamptz,
+  refunded_at       timestamptz,
+  created_at        timestamptz not null default now(),
+  updated_at        timestamptz not null default now()
+);
+create index if not exists billing_purchases_user_idx on public.billing_purchases (user_id, created_at desc);
+create index if not exists billing_purchases_pi_idx on public.billing_purchases (payment_intent) where payment_intent is not null;
+create index if not exists billing_purchases_paid_idx on public.billing_purchases (paid_at) where paid_at is not null;
+alter table public.billing_purchases enable row level security;
+revoke all on public.billing_purchases from anon, authenticated;
+grant select on public.billing_purchases to authenticated;
+drop policy if exists "eigen aankopen lezen" on public.billing_purchases;
+create policy "eigen aankopen lezen" on public.billing_purchases for select to authenticated using (user_id = auth.uid());
+-- Verwerkte Stripe-events (idempotentie van de webhook). Alleen id, type en resultaat; na 90 dagen weg (bingr_billing_cleanup).
+create table if not exists public.billing_events (
+  id         text primary key check (id ~ '^evt_[A-Za-z0-9_]+$'),
+  type       text not null,
+  result     text,
+  created_at timestamptz not null default now()
+);
+alter table public.billing_events enable row level security;
+revoke all on public.billing_events from anon, authenticated;
+create or replace function public.bingr_billing_cleanup() returns void
+language sql security definer set search_path = public as $$
+  delete from public.billing_events where created_at < now() - interval '90 days';
+$$;
+revoke all on function public.bingr_billing_cleanup() from public, anon, authenticated;
+grant execute on function public.bingr_billing_cleanup() to service_role;
+-- Beheer: aankopen in de gebruikerslijst en het overzicht (laatste aankoop per account: datum, bedrag, status)
+create or replace function public.bingr_admin_purchase(p_user uuid) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object('purchased_at', coalesce(b.paid_at, b.created_at), 'amount', b.amount, 'currency', b.currency, 'status', b.status,
+                            'refunded_at', b.refunded_at)
+    from public.billing_purchases b where b.user_id = p_user and b.status in ('paid', 'refunded', 'disputed')
+   order by coalesce(b.paid_at, b.created_at) desc limit 1
+$$;
+revoke all on function public.bingr_admin_purchase(uuid) from public, anon, authenticated;
+grant execute on function public.bingr_admin_purchase(uuid) to service_role;
+
 -- build 97: beheer (functie admin in LRvdLinden/bingr-beheer). Tokenversie: elk beheer-token draagt de versie v; de functie
 -- admin vergelijkt die bij elk verzoek met deze rij. "Overal uitloggen" (actie logout_all) verhoogt de versie, en een ander
 -- wachtwoord ook vanzelf: pw_hash is een sleutel-hash (HMAC met de service-role-sleutel) van BINGR_ADMIN_PASSWORD, nooit het
@@ -2064,6 +2127,8 @@ begin
   delete from public.push_messages where created_at < now() - interval '400 days';
   delete from public.push_deliveries where created_at < now() - interval '30 days' and state not in ('queued', 'sending');
   delete from public.push_devices where updated_at < now() - interval '270 days';
+  -- build 133: verwerkte Stripe-events na 90 dagen (de aankopen zelf blijven)
+  if to_regclass('public.billing_events') is not null then delete from public.billing_events where created_at < now() - interval '90 days'; end if;
 end $$;
 
 revoke all on function public.bingr_push_enqueue(bigint, boolean, uuid[], text[], int) from public, anon, authenticated;
@@ -2122,6 +2187,8 @@ create table if not exists public.admin_push_state (
   updated_at         timestamptz not null default now()
 );
 alter table public.admin_push_state add column if not exists builds_checked_at timestamptz;
+-- build 133: watermerk voor "Nieuwe Lifetime-aankoop" (billing_purchases.paid_at)
+alter table public.admin_push_state add column if not exists last_purchase_at timestamptz;
 alter table public.admin_push_state enable row level security;
 revoke all on public.admin_push_state from anon, authenticated;
 
@@ -2389,7 +2456,7 @@ end $$;
 revoke all on function public.bingr_insights_bin(timestamptz[], text) from public, anon, authenticated, service_role;
 
 -- p_metric: accounts (new_users; active_users alleen met p_daily) | signins | streams (live, movie, episode) |
--- push (sent, failed) | support (new, closed). p_daily = tijdvakken van een dag of langer (gegevens per dag tellen mee).
+-- push (sent, failed) | purchases (paid, refunded; build 133) | support (new, closed). p_daily = tijdvakken van een dag of langer (gegevens per dag tellen mee).
 create or replace function public.bingr_admin_insights(p_metric text, p_edges timestamptz[], p_daily boolean default false)
 returns jsonb
 language plpgsql stable security definer set search_path = public, auth as $$
@@ -2448,6 +2515,13 @@ begin
          union all
          select created_at, coalesce((counts->>''failed'')::int, 0) + coalesce((counts->>''invalid'')::int, 0) from public.push_messages
           where created_at >= $2 and created_at < least($3, now() - interval ''30 days'')'));
+  elsif p_metric = 'purchases' then
+    -- build 133: betaalde aankopen (op het moment van betalen) en terugbetalingen/chargebacks (op dat moment)
+    res := jsonb_build_object(
+      'paid', public.bingr_insights_bin(p_edges,
+        'select paid_at, 1 from public.billing_purchases where paid_at >= $2 and paid_at < $3'),
+      'refunded', public.bingr_insights_bin(p_edges,
+        'select refunded_at, 1 from public.billing_purchases where refunded_at >= $2 and refunded_at < $3'));
   elsif p_metric = 'support' then
     res := jsonb_build_object(
       'new', public.bingr_insights_bin(p_edges,

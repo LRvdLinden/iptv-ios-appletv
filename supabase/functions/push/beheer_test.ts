@@ -147,3 +147,16 @@ Deno.test("beheer: APNs met topic van de beheer-app, sandbox per apparaat", asyn
   // zonder sleutels: niet versturen
   eq((await new Apns(() => undefined, fake).post("ab", false, payload)).error, "apns_not_configured");
 });
+
+Deno.test("aankopen (build 133): bedrag, samenvatten, watermerk, voorkeur", async () => {
+  const { purchaseNotices, purchaseMark, wants } = await import("./beheer_logic.ts");
+  eq(purchaseNotices([]), []);
+  eq(purchaseNotices([{ paid_at: "2026-10-19T10:00:00Z", amount: 499, currency: "eur" }]),
+    [{ kind: "purchase", title: "Nieuwe Lifetime-aankoop", body: "€ 4,99", url: "bingrbeheer://overview" }]);
+  const many = [1, 2, 3, 4].map((i) => ({ paid_at: `2026-10-19T10:0${i}:00Z`, amount: 499, currency: "eur" }));
+  eq(purchaseNotices(many), [{ kind: "purchase", title: "4 nieuwe Lifetime-aankopen", body: "Samen € 19,96", url: "bingrbeheer://overview" }]);
+  eq(purchaseMark(many, "2026-10-19T09:00:00Z"), "2026-10-19T10:04:00Z");
+  eq(purchaseMark([], "2026-10-19T09:00:00Z"), "2026-10-19T09:00:00Z");
+  eq(wants({ tickets: true }, "purchase"), true, "ontbrekende voorkeur = aan");
+  eq(wants({ purchases: false }, "purchase"), false);
+});

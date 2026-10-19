@@ -34,6 +34,8 @@ name: Backend
 # "Bingr <noreply@bingr.online>"). De pg_cron-taak bingr-newsletter roept elk uur (minuut 0) newsletter/cron aan; de functie
 # verstuurt alleen zo 09:00 en wo 18:00 Amsterdamse tijd en alleen als de nieuwsbrief in het beheer aan staat (standaard uit).
 # Welkomstmail (zelfde functie): de pg_cron-taak bingr-welcome roept elke 5 minuten newsletter/welcome_cron aan (los van aan/uit).
+# Betalen (build 133, job billing): functies billing en stripe-webhook; GitHub-secrets STRIPE_SECRET_KEY (zonder: betalen uit),
+# optioneel STRIPE_WEBHOOK_SECRET en STRIPE_AUTOMATIC_TAX. Het webhook-endpoint in Stripe zet de job zelf klaar.
 on:
   push:
     branches: [main]
@@ -76,6 +78,10 @@ jobs:
       - name: Unittests (deelpreview)
         # blokkeert de deploy: validatie (type/id/q/y), TMDB-antwoord -> metadata (nl met terugval en, afbeeldingen), limiet
         run: deno test supabase/functions/title-meta/title_meta_test.ts
+      - name: Unittests (betalen)
+        # build 133, blokkeert de deploy: Stripe-handtekening (HMAC-SHA256, 5 min), Checkout-opbouw, events -> Lifetime /
+        # terugbetaling / chargeback, idempotentie (nep-database)
+        run: deno test supabase/functions/_shared/billing_test.ts
       - name: Unittests (statuspagina)
         continue-on-error: true
         run: |
@@ -1068,6 +1074,239 @@ jobs:
           finally:
               code, _ = req("DELETE", f"{BASE}/auth/v1/admin/users/{uid}", None, adm)
               print("::notice::testaccount verwijderd" if code in (200, 204) else f"::warning::testaccount {email} niet verwijderd (HTTP {code})")
+          for f in fail: print(f"::error::{f[:400]}")
+          sys.exit(1 if fail else 0)
+          PY
+
+  # build 133: betalen via Stripe (functies billing en stripe-webhook, docs/ACCOUNT.md "Betalen (Stripe, build 133)").
+  # Eigen job (eigen ruimte voor meldingen); de unittests (billing_test.ts) draaien blokkerend in de deploy-job.
+  # GitHub-secrets: STRIPE_SECRET_KEY (sk_test_… of sk_live_…; ontbreekt hij, dan is betalen uit: billing geeft 503
+  # billing_unavailable en de site toont "binnenkort beschikbaar"), optioneel STRIPE_WEBHOOK_SECRET (whsec_…, alleen als je
+  # het endpoint zelf in Stripe hebt gemaakt) en STRIPE_AUTOMATIC_TAX ("true" = Stripe Tax). Het webhook-endpoint
+  # https://<ref>.supabase.co/functions/v1/stripe-webhook maakt deze job zelf aan in Stripe (per modus: test en live apart)
+  # en zet het signing secret als function-secret STRIPE_WEBHOOK_SECRET. Sleutels en secrets komen nooit in het log.
+  billing:
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 (v5.1.0)
+      - name: Controleren
+        id: check
+        run: |
+          if [ -z "$SUPABASE_ACCESS_TOKEN" ] || [ -z "$REF" ]; then echo "::warning::secrets ontbreken, betalen niet bijgewerkt"; echo "skip=1" >> $GITHUB_OUTPUT; fi
+      - uses: supabase/setup-cli@1dedf2c611547ede7232d26866dd3c56ab903bbb # v1 (v1.7.3)
+        if: steps.check.outputs.skip != '1'
+        with:
+          version: 2.121.0
+      - name: Betalen - sleutel en webhook
+        if: steps.check.outputs.skip != '1'
+        env:
+          STRIPE_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_WHSEC: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+          STRIPE_TAX: ${{ secrets.STRIPE_AUTOMATIC_TAX }}
+        run: |
+          [ -n "$STRIPE_KEY" ] && echo "::add-mask::$STRIPE_KEY"
+          [ -n "$STRIPE_WHSEC" ] && echo "::add-mask::$STRIPE_WHSEC"
+          umask 077
+          python3 - <<'PY'
+          import json, os, re, subprocess, sys, urllib.parse, urllib.request, urllib.error
+          REF = os.environ["REF"]; MGMT = os.environ["SUPABASE_ACCESS_TOKEN"]; TMP = os.environ["RUNNER_TEMP"]
+          KEY = (os.environ.get("STRIPE_KEY") or "").strip(); GH_WHSEC = (os.environ.get("STRIPE_WHSEC") or "").strip()
+          TAX = (os.environ.get("STRIPE_TAX") or "").strip().lower() in ("1", "true", "yes", "on", "ja")
+          URL = f"https://{REF}.supabase.co/functions/v1/stripe-webhook"
+          EVENTS = ["checkout.session.completed", "checkout.session.async_payment_succeeded", "checkout.session.async_payment_failed",
+                    "charge.refunded", "charge.dispute.created"]
+          API_VERSION = "2025-03-31.basil"
+          def secrets_names():
+              r = subprocess.run(["supabase", "secrets", "list", "--project-ref", REF], capture_output=True, text=True)
+              return set(re.findall(r"\b[A-Z][A-Z0-9_]{2,}\b", r.stdout))
+          def secrets_set(**kv):
+              r = subprocess.run(["supabase", "secrets", "set", "--project-ref", REF, *[f"{k}={v}" for k, v in kv.items()]], capture_output=True, text=True)
+              if r.returncode: print(f"::error::function-secrets zetten mislukt ({', '.join(kv)})"); sys.exit(1)
+          def secrets_unset(*names):
+              subprocess.run(["supabase", "secrets", "unset", "--project-ref", REF, *names], input="y\n", capture_output=True, text=True)
+          def sql(q):
+              r = urllib.request.Request(f"https://api.supabase.com/v1/projects/{REF}/database/query", method="POST",
+                  data=json.dumps({"query": q}).encode(), headers={"Authorization": f"Bearer {MGMT}", "Content-Type": "application/json"})
+              try:
+                  with urllib.request.urlopen(r, timeout=30) as resp: return json.loads(resp.read() or b"[]")
+              except urllib.error.HTTPError as e: print(f"::warning::SQL HTTP {e.code}"); return None
+          def stripe(method, path, params=None):
+              data = urllib.parse.urlencode(params or [], doseq=True)
+              url = f"https://api.stripe.com/v1/{path}" + (f"?{data}" if method in ("GET", "DELETE") and data else "")
+              r = urllib.request.Request(url, method=method, data=data.encode() if method == "POST" else None,
+                  headers={"Authorization": f"Bearer {KEY}", "Content-Type": "application/x-www-form-urlencoded"})
+              try:
+                  with urllib.request.urlopen(r, timeout=30) as resp: return resp.status, json.loads(resp.read() or b"{}")
+              except urllib.error.HTTPError as e:
+                  try: body = json.loads(e.read() or b"{}")
+                  except Exception: body = {}
+                  return e.code, body
+          def err(b): e = (b or {}).get("error") or {}; return f"{e.get('type', '')}/{e.get('code', '')}".strip("/")
+          names = secrets_names()
+          if not re.fullmatch(r"(sk|rk)_(test|live)_[A-Za-z0-9]+", KEY):
+              if KEY: print("::warning::STRIPE_SECRET_KEY heeft geen geldige vorm (sk_test_… / sk_live_…); betalen blijft uit")
+              if "STRIPE_SECRET_KEY" in names:
+                  secrets_unset("STRIPE_SECRET_KEY"); print("::notice::STRIPE_SECRET_KEY van de server gehaald (geen GitHub-secret meer): betalen uit")
+              print("::notice::Betalen staat uit: GitHub-secret STRIPE_SECRET_KEY ontbreekt. billing geeft 503 billing_unavailable, de site toont 'binnenkort beschikbaar'.")
+              open(os.path.join(TMP, "billing_mode"), "w").write("off"); sys.exit(0)
+          mode = "live" if "_live_" in KEY else "test"
+          open(os.path.join(TMP, "billing_mode"), "w").write(mode)
+          secrets_set(STRIPE_SECRET_KEY=KEY, STRIPE_AUTOMATIC_TAX="true" if TAX else "false")
+          code, acct = stripe("GET", "account")
+          if code == 401: print(f"::error::Stripe weigert STRIPE_SECRET_KEY (HTTP 401 {err(acct)})"); sys.exit(1)
+          if code != 200: acct = {}; print(f"::warning::Stripe-account niet te lezen (HTTP {code} {err(acct)}); verder met de webhook")
+          print(f"::notice::Stripe ({mode}modus): sleutel geldig, betalingen {'aan' if acct.get('charges_enabled') else 'nog niet aan (account afmaken in het Stripe-dashboard)'}, Stripe Tax {'aan' if TAX else 'uit'}")
+          code, lst = stripe("GET", "webhook_endpoints", [("limit", "100")])
+          if code != 200: print(f"::error::webhook-endpoints lezen mislukt (HTTP {code} {err(lst)})"); sys.exit(1)
+          mine = [e for e in lst.get("data", []) if e.get("url") == URL]
+          rows = sql("select value from public.app_settings where key = 'billing_webhook'") or []
+          stored = rows[0]["value"] if rows and isinstance(rows[0].get("value"), dict) else (json.loads(rows[0]["value"]) if rows and rows[0].get("value") else {})
+          known = None   # het signing secret als we het in deze ronde kennen (voor de rooktest)
+          ep = mine[0] if mine else None
+          for extra in mine[1:]:
+              stripe("DELETE", f"webhook_endpoints/{extra['id']}"); print("::notice::dubbel webhook-endpoint verwijderd")
+          if ep:
+              stripe("POST", f"webhook_endpoints/{ep['id']}", [("enabled_events[]", e) for e in EVENTS] + [("disabled", "false")])
+              if GH_WHSEC:
+                  secrets_set(STRIPE_WEBHOOK_SECRET=GH_WHSEC); known = GH_WHSEC
+                  print("::notice::webhook: bestaand endpoint, signing secret uit GitHub-secret STRIPE_WEBHOOK_SECRET")
+              elif "STRIPE_WEBHOOK_SECRET" in names and stored.get("endpoint_id") == ep["id"]:
+                  print("::notice::webhook: bestaand endpoint met bekend signing secret (ongewijzigd)")
+              else:
+                  stripe("DELETE", f"webhook_endpoints/{ep['id']}"); ep = None
+                  print("::notice::webhook: endpoint had een onbekend signing secret; vervangen door een nieuw")
+          if not ep:
+              code, ep = stripe("POST", "webhook_endpoints", [("url", URL), ("api_version", API_VERSION),
+                  ("description", "Bingr Lifetime (workflow Backend, iptv-ios-appletv)")] + [("enabled_events[]", e) for e in EVENTS])
+              sec = (ep or {}).get("secret") or ""
+              if code != 200 or not sec.startswith("whsec_"): print(f"::error::webhook-endpoint aanmaken mislukt (HTTP {code} {err(ep)})"); sys.exit(1)
+              print(f"::add-mask::{sec}")
+              secrets_set(STRIPE_WEBHOOK_SECRET=sec); known = sec
+              print(f"::notice::webhook-endpoint aangemaakt in Stripe ({mode}modus, {len(EVENTS)} events); signing secret als function-secret gezet")
+          val = json.dumps({"endpoint_id": ep["id"], "mode": mode, "url": URL}).replace("'", "''")
+          sql(f"insert into public.app_settings (key, value, updated_at) values ('billing_webhook', '{val}'::jsonb, now()) on conflict (key) do update set value = excluded.value, updated_at = now()")
+          if known: open(os.path.join(TMP, "whsec"), "w").write(known)
+          PY
+      - name: Edge Functions billing en stripe-webhook
+        if: steps.check.outputs.skip != '1'
+        run: |
+          supabase functions deploy billing --project-ref "$REF" --no-verify-jwt --use-api
+          supabase functions deploy stripe-webhook --project-ref "$REF" --no-verify-jwt --use-api
+      - name: Betalen testen
+        # rooktest (zonder inloggen 401, foute handtekening 400, juiste handtekening 200) en end-to-end met een tijdelijk
+        # account: zonder sleutel 503 billing_unavailable; in testmodus een echte Checkout Session (daarna verlopen), status
+        # niet betaald, en 409 already_lifetime. Het testaccount wordt altijd verwijderd; tokens en sleutels worden gemaskeerd.
+        if: steps.check.outputs.skip != '1'
+        env:
+          STRIPE_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+        run: |
+          [ -n "$STRIPE_KEY" ] && echo "::add-mask::$STRIPE_KEY"
+          sleep 5
+          python3 - <<'PY'
+          import hashlib, hmac, json, os, secrets, sys, time, urllib.parse, urllib.request, urllib.error
+          REF = os.environ["REF"]; MGMT = os.environ["SUPABASE_ACCESS_TOKEN"]; TMP = os.environ["RUNNER_TEMP"]
+          BASE = f"https://{REF}.supabase.co"; PUB = "sb_publishable_lpIup6Omq5kW2k3oICGZ4g_HPGac5A3"
+          KEY = (os.environ.get("STRIPE_KEY") or "").strip()
+          MODE = open(os.path.join(TMP, "billing_mode")).read().strip() if os.path.exists(os.path.join(TMP, "billing_mode")) else "off"
+          WH = open(os.path.join(TMP, "whsec")).read().strip() if os.path.exists(os.path.join(TMP, "whsec")) else ""
+          def req(method, url, body=None, headers=None, raw=None):
+              h = {"Content-Type": "application/json", **(headers or {})}
+              data = raw if raw is not None else (None if body is None else json.dumps(body).encode())
+              r = urllib.request.Request(url, data=data, method=method, headers=h)
+              try:
+                  with urllib.request.urlopen(r, timeout=30) as resp: rawb = resp.read(); code = resp.status; hd = dict(resp.headers)
+              except urllib.error.HTTPError as e: rawb = e.read(); code = e.code; hd = dict(e.headers)
+              try: return code, json.loads(rawb or b"{}"), hd
+              except Exception: return code, {"raw": rawb[:200].decode("utf-8", "replace")}, hd
+          def sql(q):
+              return req("POST", f"https://api.supabase.com/v1/projects/{REF}/database/query", {"query": q}, {"Authorization": f"Bearer {MGMT}"})
+          fail = []
+          B, W = f"{BASE}/functions/v1/billing", f"{BASE}/functions/v1/stripe-webhook"
+          code, c, _ = req("GET", f"{B}/config", headers={"apikey": PUB})
+          if code != 200 or c.get("enabled") is not (MODE != "off") or c.get("price_cents") != 499: fail.append(f"billing/config: HTTP {code} {c}")
+          else: print(f"::notice::billing/config: betalen {'aan (' + MODE + 'modus)' if c['enabled'] else 'uit'}, {c['price_cents']} cent")
+          code, r, hd = req("POST", f"{B}/checkout", {"waiver": True}, {"apikey": PUB, "Origin": "https://bingr.online"})
+          if code != 401 or r.get("error") != "not_signed_in": fail.append(f"billing/checkout zonder inloggen: HTTP {code} {r}")
+          elif (hd.get("Access-Control-Allow-Origin") or hd.get("access-control-allow-origin")) != "https://bingr.online": fail.append("billing: geen CORS voor https://bingr.online")
+          else: print("::notice::billing/checkout zonder inloggen: 401 (met CORS voor bingr.online)")
+          ev = json.dumps({"id": "evt_ci_" + secrets.token_hex(8), "object": "event", "type": "ci.ping", "data": {"object": {}}})
+          t = int(time.time())
+          code, r, _ = req("POST", W, raw=ev.encode(), headers={"Stripe-Signature": f"t={t},v1={'0' * 64}"})
+          if code != 400: fail.append(f"stripe-webhook met foute handtekening: HTTP {code}")
+          code2, _, _ = req("POST", W, raw=ev.encode(), headers={})
+          if code == 400 and code2 == 400: print("::notice::stripe-webhook: foute of geen handtekening -> 400")
+          elif code2 != 400: fail.append(f"stripe-webhook zonder handtekening: HTTP {code2}")
+          if WH:
+              sig = hmac.new(WH.encode(), f"{t}.{ev}".encode(), hashlib.sha256).hexdigest()
+              code, r, _ = req("POST", W, raw=ev.encode(), headers={"Stripe-Signature": f"t={t},v1={sig}"})
+              if code != 200 or r.get("result") != "ignore_other_event": fail.append(f"stripe-webhook met juiste handtekening: HTTP {code} {r}")
+              else: print("::notice::stripe-webhook: juiste handtekening -> 200 (signing secret klopt)")
+          # end-to-end met een tijdelijk account
+          code, keys, _ = req("GET", f"https://api.supabase.com/v1/projects/{REF}/api-keys?reveal=true", headers={"Authorization": f"Bearer {MGMT}"})
+          key = next((k.get("api_key") for k in (keys if isinstance(keys, list) else []) if k.get("api_key") and (k.get("name") == "service_role" or k.get("type") == "secret") and "·" not in k.get("api_key")), None)
+          if not key:
+              print(f"::warning::end-to-end overgeslagen: geen geheime sleutel (HTTP {code})")
+          else:
+              print(f"::add-mask::{key}")
+              adm = {"apikey": key, **({"Authorization": f"Bearer {key}"} if key.startswith("ey") else {})}
+              email, pw = f"ci-pay-{secrets.token_hex(6)}@example.com", secrets.token_urlsafe(18)
+              code, u, _ = req("POST", f"{BASE}/auth/v1/admin/users", {"email": email, "password": pw, "email_confirm": True}, adm)
+              uid = u.get("id")
+              try:
+                  if not uid: raise SystemExit(f"testaccount aanmaken mislukt (HTTP {code})")
+                  code, tk, _ = req("POST", f"{BASE}/auth/v1/token?grant_type=password", {"email": email, "password": pw}, {"apikey": PUB})
+                  tok = tk.get("access_token")
+                  if not tok: raise SystemExit(f"inloggen testaccount mislukt (HTTP {code})")
+                  print(f"::add-mask::{tok}")
+                  user = {"apikey": PUB, "Authorization": f"Bearer {tok}"}
+                  code, r, _ = req("POST", f"{B}/purchases", {}, user)
+                  if code != 200 or r.get("items") != []: fail.append(f"purchases leeg account: HTTP {code} {r}")
+                  if MODE == "off":
+                      code, r, _ = req("POST", f"{B}/checkout", {"waiver": True, "lang": "nl"}, user)
+                      if code != 503 or r.get("error") != "billing_unavailable": fail.append(f"checkout zonder sleutel: HTTP {code} {r}")
+                      else: print("::notice::checkout zonder STRIPE_SECRET_KEY: 503 billing_unavailable (site: binnenkort beschikbaar)")
+                  else:
+                      code, r, _ = req("POST", f"{B}/checkout", {"lang": "nl"}, user)
+                      if code != 400 or r.get("error") != "waiver_required": fail.append(f"checkout zonder vinkje: HTTP {code} {r}")
+                      if MODE == "test":
+                          code, r, _ = req("POST", f"{B}/checkout", {"waiver": True, "lang": "nl"}, user)
+                          url = r.get("url") or ""
+                          if code != 200 or not url.startswith("https://checkout.stripe.com/"): fail.append(f"checkout testmodus: HTTP {code} {str(r)[:200]}")
+                          else:
+                              print("::notice::checkout (testmodus): Stripe Checkout Session aangemaakt")
+                              # sessie-id via de Stripe-API (de URL zelf niet loggen); daarna status en verlopen
+                              rq = urllib.request.Request("https://api.stripe.com/v1/checkout/sessions?limit=10", headers={"Authorization": f"Bearer {KEY}"})
+                              try:
+                                  with urllib.request.urlopen(rq, timeout=30) as resp: ss = json.loads(resp.read())
+                              except Exception: ss = {}
+                              sid = next((s["id"] for s in ss.get("data", []) if s.get("client_reference_id") == uid), None)
+                              if not sid: fail.append("checkout-sessie niet gevonden bij Stripe")
+                              else:
+                                  code, r, _ = req("POST", f"{B}/status", {"session_id": sid}, user)
+                                  if code != 200 or r.get("paid") is not False or r.get("plan") != "free": fail.append(f"status onbetaald: HTTP {code} {r}")
+                                  else: print("::notice::status (onbetaald): paid=false, plan=free")
+                                  rq = urllib.request.Request(f"https://api.stripe.com/v1/checkout/sessions/{sid}/expire", method="POST", data=b"", headers={"Authorization": f"Bearer {KEY}"})
+                                  try: urllib.request.urlopen(rq, timeout=30)
+                                  except Exception: print("::warning::testsessie niet verlopen")
+                  code, r, _ = sql(f"insert into public.account_plans (user_id, plan, source, granted_by) values ('{uid}', 'lifetime', 'admin', 'ci') on conflict (user_id) do update set plan = 'lifetime'")
+                  code, r, _ = req("POST", f"{B}/checkout", {"waiver": True}, user)
+                  if code != 409 or r.get("error") != "already_lifetime": fail.append(f"checkout met Lifetime: HTTP {code} {r}")
+                  else: print("::notice::checkout met Lifetime: 409 already_lifetime")
+              except SystemExit as e:
+                  fail.append(str(e))
+              finally:
+                  if uid:
+                      code, _, _ = req("DELETE", f"{BASE}/auth/v1/admin/users/{uid}", None, adm)
+                      if code not in (200, 204): print(f"::warning::testaccount niet verwijderd (HTTP {code})")
+          code, r, _ = sql("select (select count(*) from public.billing_purchases) as purchases, (select count(*) from public.billing_events) as events, exists(select 1 from information_schema.columns where table_name = 'admin_push_state' and column_name = 'last_purchase_at') as push_col")
+          row = r[0] if isinstance(r, list) and r else {}
+          if code >= 300 or not row.get("push_col"): fail.append(f"schema betalen: HTTP {code} {str(r)[:200]}")
+          else: print(f"::notice::betalen: {row['purchases']} aankopen, {row['events']} verwerkte Stripe-events")
           for f in fail: print(f"::error::{f[:400]}")
           sys.exit(1 if fail else 0)
           PY

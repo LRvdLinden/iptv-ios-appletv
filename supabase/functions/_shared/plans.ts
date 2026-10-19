@@ -28,6 +28,10 @@ export const PLAN_DEFAULTS: Record<Plan, Limits> = {
 export const UPGRADE_URL = "https://bingr.online/upgrade/";
 export const PRICE_NL = "€ 4,99";
 export const PRICE_EN = "€4.99";
+// build 133: betalen via Stripe op bingr.online/upgrade/ (functie billing, _shared/billing.ts): eenmalig 499 cent in euro
+export const PRICE_CENTS = 499;
+export const PRICE_CURRENCY = "eur";
+export const PRODUCT_NAME = "Bingr Lifetime";
 // standaard: in de Apple-apps geen link naar de betaalpagina (alleen de vergelijking), elders wel
 export const DEFAULT_UPGRADE_LINK: UpgradeLink = { apple: false, android: true, androidtv: true, tizen: true, web: true };
 export const PLATFORMS: Platform[] = ["ios", "ipados", "tvos", "macos", "android", "androidtv", "tizen", "web"];

@@ -6,7 +6,7 @@ import { fetchBuildManifest } from "../_shared/builds.ts";
 import type { Apns } from "./channels.ts";
 import {
   type BeheerNotice, beheerPayload, buildNotices, type Builds, initState, manifestBuilds, manifestDue, type MonitorNow,
-  replyNotices, type ReplyRow, type State, statusNotices, ticketNotices, type TicketRow, wants,
+  purchaseMark, purchaseNotices, type PurchaseRow, replyNotices, type ReplyRow, type State, statusNotices, ticketNotices, type TicketRow, wants,
 } from "./beheer_logic.ts";
 
 // deno-lint-ignore no-explicit-any
@@ -106,6 +106,21 @@ export async function adminNotify(db: Db, apns: Apns, env: Env, nowMs = Date.now
     notices.push(...b.notices);
     state.builds = b.mark;
   }
+  // build 133: nieuwe betaalde Lifetime-aankopen (billing_purchases.paid_at na het watermerk). Eerste keer: watermerk = nu.
+  // Ontbreekt de tabel of de kolom nog (ouder schema), dan stil overslaan.
+  const prevPurchase = (prev as { last_purchase_at?: string | null } | null)?.last_purchase_at ?? null;
+  let lastPurchase: string | undefined = prevPurchase ?? new Date(nowMs).toISOString();
+  if (prevPurchase) {
+    const { data, error } = await db.from("billing_purchases").select("paid_at,amount,currency").eq("status", "paid")
+      .gt("paid_at", prevPurchase).order("paid_at").limit(50);
+    if (error) { console.error("push beheer aankopen", error.code ?? "fout"); lastPurchase = prevPurchase; }
+    else {
+      const rows = (data ?? []) as PurchaseRow[];
+      notices.push(...purchaseNotices(rows));
+      lastPurchase = purchaseMark(rows, prevPurchase);
+    }
+  }
+  if (prev && !("last_purchase_at" in prev)) lastPurchase = undefined; // kolom bestaat nog niet
   if (armed.status) {
     const s = statusNotices(monitors, state.monitors!, nowMs);
     notices.push(...s.notices);
@@ -114,7 +129,7 @@ export async function adminNotify(db: Db, apns: Apns, env: Env, nowMs = Date.now
 
   // Watermerken eerst vastleggen (optimistisch: alleen als niemand anders tussendoor schreef), dan pas versturen. Zo
   // verstuurt een tweede, gelijktijdige ronde niets dubbel.
-  const upd = { ...state, updated_at: new Date(nowMs).toISOString() };
+  const upd = { ...state, ...(lastPurchase !== undefined ? { last_purchase_at: lastPurchase } : {}), updated_at: new Date(nowMs).toISOString() };
   if (!prev) {
     const { data, error } = await db.from("admin_push_state").upsert({ id: 1, ...upd }, { onConflict: "id", ignoreDuplicates: true }).select("id");
     if (error) throw new Error(`admin_push_state: ${error.code ?? "fout"}`);

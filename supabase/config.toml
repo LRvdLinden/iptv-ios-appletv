@@ -20,3 +20,10 @@ verify_jwt = false
 
 [functions.title-meta]
 verify_jwt = false
+
+# build 133: betalen (Stripe). billing valideert het token zelf (401 met CORS); de webhook krijgt geen JWT van Stripe
+[functions.billing]
+verify_jwt = false
+
+[functions.stripe-webhook]
+verify_jwt = false

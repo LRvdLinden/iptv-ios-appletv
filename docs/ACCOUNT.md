@@ -744,7 +744,7 @@ Periode **Week / Maand (standaard) / Jaar** met ‹ › om terug en (tot de huid
 
 ## Abonnementen: Gratis en Lifetime
 
-Er zijn twee abonnementen. Betalen kan nog niet (de betaalpagina komt later op bingr.online/upgrade/); de server regelt wat elk abonnement mag.
+Er zijn twee abonnementen. Betalen kan sinds build 133 op bingr.online/upgrade/ (Stripe, zie "Betalen (Stripe, build 133)"); de server regelt wat elk abonnement mag.
 
 | | **Gratis** (€ 0) | **Lifetime** (€ 4,99 eenmalig) |
 |---|---|---|
@@ -800,8 +800,55 @@ Body `{platform?, device_id?}`; `platform` is één van `ios`, `ipados`, `tvos`,
 ### Website
 
 - **bingr.online** (homepage): vergelijkingstabel Gratis / Lifetime met **Maak gratis een account** en **Upgrade naar Lifetime** (→ /upgrade/).
-- **bingr.online/upgrade/**: ingelogd het huidige abonnement (`entitlements` met `platform:"web"`) en de vergelijking; zolang betalen niet gekoppeld is een uitgeschakelde knop "Betalen — binnenkort beschikbaar". Niet ingelogd: eerst inloggen, daarna terug naar /upgrade/. Parameters `?from=app&platform=…` worden geaccepteerd.
-- **Mijn Bingr** (/account/): "Abonnement: Gratis/Lifetime" met de limieten en een Upgrade-link; Statistieken en Nu aan het kijken met een slotje voor Gratis.
+- **bingr.online/upgrade/**: ingelogd het huidige abonnement (`entitlements` met `platform:"web"`) en de vergelijking; Gratis: het vinkje (directe levering / afstand herroepingsrecht) en de knop **Koop Lifetime – € 4,99** (build 133, zie hieronder; zonder Stripe-sleutel een uitgeschakelde knop "Betalen is binnenkort beschikbaar"). Niet ingelogd: eerst inloggen of een account maken, daarna terug naar /upgrade/. Parameters `?from=app&platform=…` worden geaccepteerd.
+- **Mijn Bingr** (/account/): "Abonnement: Gratis/Lifetime" met de limieten en een Upgrade-link; bij een gekochte Lifetime "Gekocht op …" met de link naar de kwitantie (build 133); Statistieken en Nu aan het kijken met een slotje voor Gratis.
+
+## Betalen (Stripe, build 133)
+
+Lifetime (€ 4,99 eenmalig, incl. btw) is te koop op **bingr.online/upgrade/**, alleen op de website. Verkoper is **PixelForges** (Apeldoorn, KvK 70031576, btw NL001876986B40, support@bingr.online); Bingr is een product van PixelForges. Betalen gaat via **Stripe Checkout** (doorsturen naar checkout.stripe.com, geen Stripe.js op de site). De betaalmethoden (iDEAL, kaart, Apple Pay, Bancontact, …) kiest het Stripe-dashboard. Bingr ziet en bewaart nooit betaalgegevens.
+
+- **Apple-apps:** nooit een prijs, koopknop, link of QR-code naar de betaalpagina (`upgrade.link.apple` blijft `false`). Een gekochte Lifetime werkt daar wel meteen (via `entitlements`).
+- **Andere apps** (Android, Android TV, Samsung TV): met `upgrade.link` openen ze `upgrade.url`; betalen gebeurt daar in de browser.
+
+### Functie `billing` (`/functions/v1/billing/<actie>`, header `apikey`)
+
+| Actie | Inloggen | Antwoord |
+|---|---|---|
+| `config` (GET/POST) | nee | `{enabled, mode: "test"\|"live"\|null, price_cents: 499, currency: "eur", product: "Bingr Lifetime"}` |
+| `checkout` (POST `{lang?: "nl"\|"en", waiver: true}`) | ja | `{url}` → doorsturen naar Stripe. **409** `already_lifetime` (ook cadeau/beheer), **400** `waiver_required`, **429** `rate_limited` (10 per account / 30 per IP per 10 min), **503** `billing_unavailable` (geen `STRIPE_SECRET_KEY`), **502** `stripe_error` |
+| `status` (GET/POST `session_id`) | ja | `{paid, status, payment_status, plan}`. Vangnet: is de sessie betaald, dan zet de functie Lifetime meteen (idempotent), ook als de webhook nog niet binnen is. Sessie van een ander account: **404** |
+| `purchases` (GET/POST) | ja | `{items:[{created_at, paid_at, amount, currency, status, refunded_at, receipt_url, invoice_url, invoice_pdf}]}` (eigen aankopen, max. 10; links van Stripe, alleen `https://…stripe.com/…`) |
+
+Zonder (geldig) token **401** `not_signed_in`, geblokkeerd account **401** `user_banned` (zoals device-auth). CORS: https://bingr.online (en localhost).
+
+**Checkout Session:** `mode=payment`, één regel `price_data` (eur, `PRICE_CENTS` = 499 en `PRODUCT_NAME` = "Bingr Lifetime" uit `_shared/plans.ts`), `client_reference_id` en `metadata.user_id` = account-id, `metadata.plan = lifetime`, `metadata.withdrawal_waiver_at` (tijd van het vinkje), `customer_email` = e-mail van het account, `locale` nl/en, `success_url` `https://bingr.online/upgrade/?status=success&session_id={CHECKOUT_SESSION_ID}`, `cancel_url` `…/upgrade/?status=cancel`, `invoice_creation` aan (factuur/kwitantie met de verkoper in de voettekst), `payment_intent_data.statement_descriptor_suffix = BINGR` (afschrift "PIXELFORGES* BINGR", de prefix staat in het dashboard), `custom_text.submit` met de afstand van het herroepingsrecht en "Verkoper: PixelForges (KvK 70031576)". Met function-secret `STRIPE_AUTOMATIC_TAX=true`: `automatic_tax` aan, prijs `tax_behavior=inclusive`, `tax_code txcd_10000000`. Idempotency-Key per account, taal en minuut.
+
+### Webhook `stripe-webhook` (`/functions/v1/stripe-webhook`, verify_jwt uit)
+
+- Handtekening: header `Stripe-Signature` (`t=…,v1=…`), HMAC-SHA256 van `"<t>.<ruwe body>"` met `STRIPE_WEBHOOK_SECRET`, tolerantie 5 minuten; fout, te oud of ontbrekend → **400**.
+- `checkout.session.completed` met `payment_status: paid` en `checkout.session.async_payment_succeeded` → aankoop `paid` en `account_plans` upsert `plan='lifetime'`, `source='purchase'`, `granted_by='stripe'`, `note` = sessie-/payment-intent-id (geen persoonsgegevens); bestaande `max_streams`/`max_devices` blijven.
+- `checkout.session.completed` met `unpaid` (vertraagde betaalmethode) → aankoop `pending`; `checkout.session.async_payment_failed` → `failed` (abonnement verandert niet).
+- `charge.refunded` (volledig; gedeeltelijk = niets) → `refunded`; `charge.dispute.created` → `disputed`. Was Lifetime van dit account gekocht (`source='purchase'`) en is er geen andere betaalde aankoop, dan terug naar **Gratis**: zonder eigen limieten gaat de rij weg, met eigen limieten blijft een rij `plan='free'`. Lifetime uit het beheer of cadeau (`admin`/`legacy`) blijft staan. Een terugbetaalde aankoop wordt nooit opnieuw actief door een laat event.
+- Idempotent: `billing_events` (event-id uniek, 90 dagen bewaard) en elke stap zelf. Antwoord `200 {received:true, result}`; bij een fout 500 (Stripe probeert opnieuw).
+- Logs: alleen eventtype en resultaat, nooit e-mailadressen, namen of betaalgegevens.
+
+### Tabellen (`supabase/schema.sql`)
+
+- **`billing_purchases`**: `id`, `user_id` (→ auth.users, cascade), `stripe_session_id` (uniek), `payment_intent`, `amount` (centen), `currency`, `status` `pending|paid|failed|refunded|disputed`, `paid_at`, `refunded_at`, `created_at`, `updated_at`. RLS: de gebruiker leest alleen zijn eigen rijen; schrijven alleen de functies (service role).
+- **`billing_events`**: `id` (evt_…), `type`, `result`, `created_at` (alleen service role).
+- **`app_settings.billing_webhook`**: `{endpoint_id, mode, url}` van het endpoint dat de workflow aanmaakte.
+- Beheer: `bingr_admin_stats` geeft `purchases_paid`, `purchases_refunded`, `purchases_7d`, `revenue_cents` (som van de betaalde aankopen; terugbetaald telt niet mee); `bingr_admin_users` / `bingr_admin_user` geven bij `plan` `purchased_at`, `amount`, `currency`, `status` (laatste aankoop) en `user_detail.purchases`; `bingr_admin_insights` metric `purchases` (`paid`, `refunded`). De beheer-app krijgt "Nieuwe Lifetime-aankoop" (alleen het bedrag; voorkeur `purchases`, ontbreekt = aan) via de cron van `push` (watermerk `admin_push_state.last_purchase_at`).
+
+### Terugbetalen
+
+Op verzoek via support (support.bingr.online): terugbetalen in het **Stripe-dashboard** (Betalingen → Terugbetalen, volledig). De webhook zet het account dan vanzelf terug naar Gratis. Een chargeback doet hetzelfde. Lifetime opnieuw geven kan altijd in het beheer (`source='admin'`).
+
+### Instellen (workflow Backend, job `billing`)
+
+- GitHub-secrets in **LRvdLinden/iptv-ios-appletv**: `STRIPE_SECRET_KEY` (verplicht om betalen aan te zetten; begin met `sk_test_…`), optioneel `STRIPE_AUTOMATIC_TAX` (`true`) en `STRIPE_WEBHOOK_SECRET` (alleen als je het endpoint zelf in Stripe maakte). Ontbreekt `STRIPE_SECRET_KEY`, dan haalt de workflow hem ook van de server: betalen staat uit (503 `billing_unavailable`, site "Betalen is binnenkort beschikbaar").
+- De job maakt het webhook-endpoint `https://<ref>.supabase.co/functions/v1/stripe-webhook` zelf aan (per modus, test en live apart) met de vijf events hierboven en zet het signing secret als function-secret `STRIPE_WEBHOOK_SECRET` (gemaskeerd, nooit in het log). Bestaat het endpoint al maar is het secret onbekend, dan gebruikt hij GitHub-secret `STRIPE_WEBHOOK_SECRET`, anders vervangt hij het endpoint.
+- Rooktest: `billing` zonder inloggen 401, webhook met foute handtekening 400 (met juiste 200), en met een tijdelijk account 503 (zonder sleutel) of in testmodus een echte Checkout Session, `status` onbetaald en 409 `already_lifetime`.
+- **Naar live:** GitHub-secret `STRIPE_SECRET_KEY` vervangen door de `sk_live_…`-sleutel (of een restricted key `rk_live_…` met schrijfrechten op Checkout Sessions en Webhook Endpoints en leesrechten op Payment Intents, Charges en Invoices) en de workflow **Backend** opnieuw draaien (Actions → Backend → Run workflow). Die maakt het live-endpoint en het live-secret aan. Testaankopen blijven in `billing_purchases` staan (herkenbaar aan `cs_test_`).
 
 ## Herinneringen per profiel
 
