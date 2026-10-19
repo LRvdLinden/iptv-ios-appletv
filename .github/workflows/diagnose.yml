@@ -23,9 +23,15 @@ jobs:
         run: |
           cat > "$RUNNER_TEMP/bingr_logs.py" <<'PY'
           # Management API analytics/endpoints/logs (ClickHouse). Geen gebruikersgegevens in het (openbare) log: scrub().
-          import datetime, json, os, re, urllib.error, urllib.parse, urllib.request
+          import datetime, json, os, re, time, urllib.error, urllib.parse, urllib.request
           API = f"https://api.supabase.com/v1/projects/{os.environ['REF']}/analytics/endpoints/logs"
           def logs(sql, hours=6):
+              # het logs-endpoint heeft een lage rate limit (429): even wachten en opnieuw
+              for wait in (5, 10, 20, 30, 0):
+                  c, r = _logs(sql, hours)
+                  if c != 429 or not wait: return c, r
+                  time.sleep(wait)
+          def _logs(sql, hours):
               end = datetime.datetime.now(datetime.timezone.utc); start = end - datetime.timedelta(hours=hours)
               qs = urllib.parse.urlencode({"sql": sql, "iso_timestamp_start": start.strftime("%Y-%m-%dT%H:%M:%SZ"),
                                            "iso_timestamp_end": end.strftime("%Y-%m-%dT%H:%M:%SZ")})
@@ -177,6 +183,9 @@ jobs:
 
   # build 135: bevestigingsmail van Supabase Auth — alleen ja/nee, getallen en foutsoorten (geen adressen of serverwaarden)
   mail:
+    # na streams: het logs-endpoint geeft snel 429 bij gelijktijdige queries
+    needs: streams
+    if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
