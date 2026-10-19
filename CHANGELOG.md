@@ -4,6 +4,26 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 133
+_19 oktober 2026_
+
+### Website
+
+**Nieuw**
+
+- Lifetime kopen op bingr.online/upgrade: eenmalig € 4,99, veilig afrekenen via Stripe (o.a. iDEAL, kaart, Apple Pay en Bancontact). Lifetime werkt meteen in al je apps
+- Mijn Bingr toont wanneer je Lifetime hebt gekocht, met een link naar je kwitantie
+
+**Verbeterd**
+
+- Voorwaarden en privacyverklaring bijgewerkt: Bingr is een product van PixelForges, betalen via Stripe, herroepingsrecht en terugbetaling
+
+### Server
+
+**Nieuw**
+
+- Betalingen en terugbetalingen worden automatisch verwerkt: na betaling staat Lifetime direct op je account
+
 ## Versie 1.0.0 · Build 132
 _19 oktober 2026_
 
