@@ -43,6 +43,14 @@
     ],
     "nl": "Betere bescherming tegen nepaccounts: aanmeldingen van bots via de website worden herkend en geweigerd",
     "en": "Better protection against fake accounts: sign-ups by bots through the website are detected and rejected"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "server"
+    ],
+    "nl": "E-mails van Bingr tonen weer een afzendernaam (Bingr of Bingr Support) in plaats van alleen het adres",
+    "en": "Emails from Bingr show a sender name again (Bingr or Bingr Support) instead of just the address"
    }
   ]
  },

@@ -24,6 +24,7 @@ _19 oktober 2026_
 **Opgelost**
 
 - Betere bescherming tegen nepaccounts: aanmeldingen van bots via de website worden herkend en geweigerd
+- E-mails van Bingr tonen weer een afzendernaam (Bingr of Bingr Support) in plaats van alleen het adres
 
 ## Versie 1.0.0 · Build 137
 _19 oktober 2026_
