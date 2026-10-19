@@ -2666,6 +2666,250 @@ grant execute on function public.bingr_welcome_take(int) to service_role;
 grant execute on function public.bingr_welcome_mark(uuid[], uuid[], text[], uuid[]) to service_role;
 grant execute on function public.bingr_welcome_counts() to service_role;
 
+-- ---- Eigen mailing vanuit het beheer (functie newsletter, acties mailing_*; docs/NEWSLETTER.md, "Eigen mailing vanuit het beheer") ----
+-- De beheerder stelt in bingr-beheer (tab Nieuwsbrief) een mail op in NL en EN en kiest de doelgroep:
+--   newsletter = nieuwsbrief-abonnees (zelfde regels als bingr_news_subscribed: geen email_opt_out en geen newsletter_opt_out)
+--   service    = servicebericht aan alle accounts met een bevestigd adres (ook na afmelden voor de nieuwsbrief of alle
+--                berichten); alleen voor belangrijke service-informatie (voorwaarden, storingen), nooit reclame.
+-- Altijd: bevestigd e-mailadres, niet verwijderd, niet (nu) geblokkeerd. Taal: user_metadata.lang leeg of nl* -> nl, anders en.
+-- Bij het versturen wordt de lijst ontvangers één keer vastgelegd in mailing_recipients (primaire sleutel mailing + account:
+-- iedereen hoogstens één mail per mailing). De functie newsletter verstuurt in batches (pg_cron bingr-mailing, elke 5
+-- minuten, met een limiet per uur) en controleert vlak voor het versturen nog een keer de doelgroep. Geen adressen in
+-- deze tabellen; het beheer ziet alleen onderwerpen en aantallen.
+-- >>> unittest mailing
+create table if not exists public.mailings (
+  id               bigint generated always as identity primary key,
+  request_id       uuid not null unique,
+  created_at       timestamptz not null default now(),
+  audience         text not null check (audience in ('newsletter', 'service')),
+  content          jsonb not null,
+  status           text not null default 'sending' check (status in ('sending', 'done', 'cancelled')),
+  recipients       int not null default 0,
+  recipients_nl    int not null default 0,
+  recipients_en    int not null default 0,
+  sent             int not null default 0,
+  failed           int not null default 0,
+  skipped          int not null default 0,
+  cancelled        int not null default 0,
+  finished_at      timestamptz,
+  push_notified_at timestamptz
+);
+create index if not exists mailings_created_idx on public.mailings (created_at desc);
+-- hoogstens één mailing tegelijk aan het versturen
+create unique index if not exists mailings_one_active_idx on public.mailings ((true)) where status = 'sending';
+alter table public.mailings enable row level security;
+revoke all on public.mailings from anon, authenticated;
+
+-- state: queued (wacht; ook na een tijdelijke SMTP-fout, max. 3 pogingen) -> sending (geclaimd) -> sent | failed |
+-- skipped (intussen niet meer in de doelgroep) | cancelled (mailing geannuleerd). Een rij die 30 minuten op sending blijft
+-- (functie gestopt tijdens het versturen) wordt failed en NIET opnieuw verstuurd (liever één mail te weinig dan dubbel).
+create table if not exists public.mailing_recipients (
+  mailing_id bigint not null references public.mailings(id) on delete cascade,
+  user_id    uuid not null references auth.users(id) on delete cascade,
+  lang       text not null check (lang in ('nl', 'en')),
+  state      text not null default 'queued' check (state in ('queued', 'sending', 'sent', 'failed', 'skipped', 'cancelled')),
+  attempts   int not null default 0,
+  claimed_at timestamptz,
+  done_at    timestamptz,
+  primary key (mailing_id, user_id)
+);
+create index if not exists mailing_recipients_open_idx on public.mailing_recipients (mailing_id, state) where state in ('queued', 'sending');
+create index if not exists mailing_recipients_done_idx on public.mailing_recipients (done_at) where state in ('sent', 'failed');
+alter table public.mailing_recipients enable row level security;
+revoke all on public.mailing_recipients from anon, authenticated;
+
+-- Doelgroep: (account, taal). Zelfde regels als eligible() in supabase/functions/newsletter/mailing.ts.
+create or replace function public.bingr_mailing_audience(p_audience text) returns table (user_id uuid, lang text)
+language sql stable security definer set search_path = public, auth as $$
+  select u.id,
+    case when coalesce(u.raw_user_meta_data->>'lang', '') = '' or lower(u.raw_user_meta_data->>'lang') like 'nl%' then 'nl' else 'en' end
+  from auth.users u
+  where p_audience in ('newsletter', 'service')
+    and u.email is not null and u.email_confirmed_at is not null and u.deleted_at is null
+    and (u.banned_until is null or u.banned_until <= now())
+    and (p_audience = 'service' or not exists (select 1 from public.account_email_prefs p
+      where p.user_id = u.id and (p.email_opt_out or p.newsletter_opt_out)));
+$$;
+-- Hoort één account (nog) bij de doelgroep? (vlak voor het versturen)
+create or replace function public.bingr_mailing_eligible(p_user uuid, p_audience text) returns boolean
+language sql stable security definer set search_path = public, auth as $$
+  select exists (select 1 from auth.users u
+    where u.id = p_user and p_audience in ('newsletter', 'service')
+      and u.email is not null and u.email_confirmed_at is not null and u.deleted_at is null
+      and (u.banned_until is null or u.banned_until <= now())
+      and (p_audience = 'service' or not exists (select 1 from public.account_email_prefs p
+        where p.user_id = u.id and (p.email_opt_out or p.newsletter_opt_out))));
+$$;
+-- Aantallen per taal -> {nl, en, total}
+create or replace function public.bingr_mailing_count(p_audience text) returns jsonb
+language sql stable security definer set search_path = public, auth as $$
+  select jsonb_build_object('nl', count(*) filter (where a.lang = 'nl'), 'en', count(*) filter (where a.lang = 'en'), 'total', count(*))
+  from public.bingr_mailing_audience(p_audience) a;
+$$;
+
+-- Mailing aanmaken en de ontvangers vastleggen -> {id, duplicate, recipients:{nl, en, total}} of {error}. Idempotent:
+-- dezelfde request_id (uuid van het beheer per verzendopdracht) geeft de bestaande mailing terug in plaats van een tweede.
+-- Fouten: bad_audience, no_recipients, mailing_busy (er wordt al een mailing verstuurd).
+create or replace function public.bingr_mailing_create(p_request uuid, p_audience text, p_content jsonb) returns jsonb
+language plpgsql security definer set search_path = public, auth as $$
+declare m record; mid bigint; nl int; en int;
+begin
+  if p_request is null then return jsonb_build_object('error', 'bad_request_id'); end if;
+  if p_audience is null or p_audience not in ('newsletter', 'service') then return jsonb_build_object('error', 'bad_audience'); end if;
+  if p_content is null or jsonb_typeof(p_content) <> 'object' then return jsonb_build_object('error', 'bad_content'); end if;
+  select * into m from public.mailings where request_id = p_request;
+  if found then
+    return jsonb_build_object('id', m.id, 'duplicate', true,
+      'recipients', jsonb_build_object('nl', m.recipients_nl, 'en', m.recipients_en, 'total', m.recipients));
+  end if;
+  if exists (select 1 from public.mailings where status = 'sending') then return jsonb_build_object('error', 'mailing_busy'); end if;
+  select count(*) filter (where a.lang = 'nl'), count(*) filter (where a.lang = 'en') into nl, en
+  from public.bingr_mailing_audience(p_audience) a;
+  if nl + en = 0 then return jsonb_build_object('error', 'no_recipients'); end if;
+  insert into public.mailings (request_id, audience, content) values (p_request, p_audience, p_content)
+  on conflict do nothing returning id into mid;
+  if mid is null then
+    -- tegelijk aangemaakt: dezelfde opdracht (request_id) of een andere mailing is net begonnen
+    select * into m from public.mailings where request_id = p_request;
+    if found then
+      return jsonb_build_object('id', m.id, 'duplicate', true,
+        'recipients', jsonb_build_object('nl', m.recipients_nl, 'en', m.recipients_en, 'total', m.recipients));
+    end if;
+    return jsonb_build_object('error', 'mailing_busy');
+  end if;
+  insert into public.mailing_recipients (mailing_id, user_id, lang)
+  select mid, a.user_id, a.lang from public.bingr_mailing_audience(p_audience) a
+  on conflict (mailing_id, user_id) do nothing;
+  select count(*) filter (where r.lang = 'nl'), count(*) filter (where r.lang = 'en') into nl, en
+  from public.mailing_recipients r where r.mailing_id = mid;
+  update public.mailings set recipients = nl + en, recipients_nl = nl, recipients_en = en where id = mid;
+  return jsonb_build_object('id', mid, 'duplicate', false, 'recipients', jsonb_build_object('nl', nl, 'en', en, 'total', nl + en));
+end $$;
+
+-- Volgende batch -> {items:[{id, email, lang, first_name}], done, busy}. Claimt 'queued'-rijen (state 'sending', poging + 1);
+-- wie intussen niet meer bij de doelgroep hoort (afgemeld, geblokkeerd, verwijderd) wordt 'skipped'. Niets meer open:
+-- de mailing is klaar (status done, finished_at).
+create or replace function public.bingr_mailing_take(p_mailing bigint, p_batch int) returns jsonb
+language plpgsql security definer set search_path = public, auth as $$
+declare m record; n int := greatest(least(coalesce(p_batch, 50), 200), 1); ids uuid[]; f int; s int; rows jsonb;
+begin
+  select * into m from public.mailings where id = p_mailing for update;
+  if not found or m.status <> 'sending' then return jsonb_build_object('items', '[]'::jsonb, 'done', true, 'busy', false); end if;
+  update public.mailing_recipients set state = 'failed', done_at = now()
+  where mailing_id = p_mailing and state = 'sending' and claimed_at < now() - interval '30 minutes';
+  get diagnostics f = row_count;
+  with c as (
+    select r.user_id from public.mailing_recipients r where r.mailing_id = p_mailing and r.state = 'queued'
+    order by r.user_id limit n for update skip locked),
+  u as (
+    update public.mailing_recipients r set state = 'sending', claimed_at = now(), attempts = r.attempts + 1 from c
+    where r.mailing_id = p_mailing and r.user_id = c.user_id returning r.user_id)
+  select coalesce(array_agg(u.user_id), '{}') into ids from u;
+  update public.mailing_recipients r set state = 'skipped', done_at = now()
+  where r.mailing_id = p_mailing and r.user_id = any(ids) and r.state = 'sending'
+    and not public.bingr_mailing_eligible(r.user_id, m.audience);
+  get diagnostics s = row_count;
+  if f + s > 0 then update public.mailings set failed = failed + f, skipped = skipped + s where id = p_mailing; end if;
+  select jsonb_agg(jsonb_build_object('id', u.id, 'email', u.email, 'lang', r.lang,
+    'first_name', nullif(btrim(u.raw_user_meta_data->>'first_name'), '')) order by u.id) into rows
+  from public.mailing_recipients r join auth.users u on u.id = r.user_id
+  where r.mailing_id = p_mailing and r.user_id = any(ids) and r.state = 'sending';
+  if rows is not null then return jsonb_build_object('items', rows, 'done', false, 'busy', false); end if;
+  if exists (select 1 from public.mailing_recipients where mailing_id = p_mailing and state = 'sending') then
+    return jsonb_build_object('items', '[]'::jsonb, 'done', false, 'busy', true);
+  end if;
+  if exists (select 1 from public.mailing_recipients where mailing_id = p_mailing and state = 'queued') then
+    return jsonb_build_object('items', '[]'::jsonb, 'done', false, 'busy', false);
+  end if;
+  update public.mailings set status = 'done', finished_at = now() where id = p_mailing and status = 'sending';
+  return jsonb_build_object('items', '[]'::jsonb, 'done', true, 'busy', false);
+end $$;
+
+-- Resultaat van een batch: sent / failed / retry (tijdelijke fout: terug naar queued, na 3 pogingen failed) / release
+-- (niet aan toegekomen: terug naar queued zonder dat het als poging telt). Alleen rijen die op 'sending' staan.
+create or replace function public.bingr_mailing_mark(p_mailing bigint, p_sent uuid[], p_failed uuid[], p_retry uuid[], p_release uuid[] default '{}')
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare ns int; nf int; nr int;
+begin
+  update public.mailing_recipients set state = 'queued', attempts = greatest(attempts - 1, 0)
+  where mailing_id = p_mailing and state = 'sending' and user_id = any(coalesce(p_release, '{}'));
+  update public.mailing_recipients set state = 'sent', done_at = now()
+  where mailing_id = p_mailing and state = 'sending' and user_id = any(coalesce(p_sent, '{}'));
+  get diagnostics ns = row_count;
+  update public.mailing_recipients set state = 'failed', done_at = now()
+  where mailing_id = p_mailing and state = 'sending' and (user_id = any(coalesce(p_failed, '{}'))
+    or (user_id = any(coalesce(p_retry, '{}')) and attempts >= 3));
+  get diagnostics nf = row_count;
+  update public.mailing_recipients set state = 'queued'
+  where mailing_id = p_mailing and state = 'sending' and user_id = any(coalesce(p_retry, '{}'));
+  get diagnostics nr = row_count;
+  update public.mailings set sent = sent + ns, failed = failed + nf where id = p_mailing;
+  -- geannuleerd terwijl deze batch liep: wat nu weer 'queued' staat gaat ook niet meer
+  update public.mailing_recipients r set state = 'cancelled', done_at = now()
+  from public.mailings m where m.id = p_mailing and m.status = 'cancelled' and r.mailing_id = p_mailing and r.state = 'queued';
+  get diagnostics nr = row_count;
+  if nr > 0 then update public.mailings set cancelled = cancelled + nr where id = p_mailing; end if;
+  return jsonb_build_object('sent', ns, 'failed', nf);
+end $$;
+
+-- Annuleren zolang de mailing nog niet klaar is: wat nog in de wachtrij staat gaat niet meer; een batch die nu loopt
+-- maakt zijn mails af. -> {ok, cancelled} | {ok:false, error:'not_active'}
+create or replace function public.bingr_mailing_cancel(p_mailing bigint) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare n int;
+begin
+  update public.mailings set status = 'cancelled', finished_at = now() where id = p_mailing and status = 'sending';
+  if not found then return jsonb_build_object('ok', false, 'error', 'not_active'); end if;
+  update public.mailing_recipients set state = 'cancelled', done_at = now() where mailing_id = p_mailing and state = 'queued';
+  get diagnostics n = row_count;
+  update public.mailings set cancelled = cancelled + n where id = p_mailing;
+  return jsonb_build_object('ok', true, 'cancelled', n);
+end $$;
+
+-- Mails (verstuurd of mislukt) van alle mailings in het laatste uur: voor de limiet per uur.
+create or replace function public.bingr_mailing_sent_last_hour() returns int
+language sql stable security definer set search_path = public as $$
+  select count(*)::int from public.mailing_recipients where state in ('sent', 'failed') and done_at > now() - interval '1 hour';
+$$;
+-- Open rijen (queued of sending) van een mailing: "te gaan" in het beheer.
+create or replace function public.bingr_mailing_open(p_mailing bigint) returns int
+language sql stable security definer set search_path = public as $$
+  select count(*)::int from public.mailing_recipients where mailing_id = p_mailing and state in ('queued', 'sending');
+$$;
+-- Opruimen: ontvangerslijsten van mailings die langer dan 90 dagen klaar zijn (de tellers in mailings blijven).
+create or replace function public.bingr_mailing_cleanup() returns int
+language plpgsql security definer set search_path = public as $$
+declare n int;
+begin
+  delete from public.mailing_recipients r using public.mailings m
+  where r.mailing_id = m.id and m.status <> 'sending' and m.finished_at < now() - interval '90 days';
+  get diagnostics n = row_count;
+  return n;
+end $$;
+revoke all on function public.bingr_mailing_audience(text) from public, anon, authenticated;
+revoke all on function public.bingr_mailing_eligible(uuid, text) from public, anon, authenticated;
+revoke all on function public.bingr_mailing_count(text) from public, anon, authenticated;
+revoke all on function public.bingr_mailing_create(uuid, text, jsonb) from public, anon, authenticated;
+revoke all on function public.bingr_mailing_take(bigint, int) from public, anon, authenticated;
+revoke all on function public.bingr_mailing_mark(bigint, uuid[], uuid[], uuid[], uuid[]) from public, anon, authenticated;
+revoke all on function public.bingr_mailing_cancel(bigint) from public, anon, authenticated;
+revoke all on function public.bingr_mailing_sent_last_hour() from public, anon, authenticated;
+revoke all on function public.bingr_mailing_open(bigint) from public, anon, authenticated;
+revoke all on function public.bingr_mailing_cleanup() from public, anon, authenticated;
+grant execute on function public.bingr_mailing_audience(text) to service_role;
+grant execute on function public.bingr_mailing_eligible(uuid, text) to service_role;
+grant execute on function public.bingr_mailing_count(text) to service_role;
+grant execute on function public.bingr_mailing_create(uuid, text, jsonb) to service_role;
+grant execute on function public.bingr_mailing_take(bigint, int) to service_role;
+grant execute on function public.bingr_mailing_mark(bigint, uuid[], uuid[], uuid[], uuid[]) to service_role;
+grant execute on function public.bingr_mailing_cancel(bigint) to service_role;
+grant execute on function public.bingr_mailing_sent_last_hour() to service_role;
+grant execute on function public.bingr_mailing_open(bigint) to service_role;
+grant execute on function public.bingr_mailing_cleanup() to service_role;
+grant select, insert, update, delete on public.mailings, public.mailing_recipients to service_role;
+-- <<< unittest mailing
+
 -- ============================================================================================================
 -- Insights in het beheer (tab Overzicht van bingr-beheer, functie admin, actie insights): aantallen per tijdvak voor de
 -- grafieken. De functie admin rekent de grenzen van de tijdvakken uit (Europe/Amsterdam, per 5 min / uur / dag / maand) en

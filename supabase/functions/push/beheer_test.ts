@@ -160,3 +160,18 @@ Deno.test("aankopen (build 133): bedrag, samenvatten, watermerk, voorkeur", asyn
   eq(wants({ tickets: true }, "purchase"), true, "ontbrekende voorkeur = aan");
   eq(wants({ purchases: false }, "purchase"), false);
 });
+
+Deno.test("beheer: mailing verstuurd (eigen mailing uit het beheer)", async () => {
+  const { mailingNotices, NEWSLETTER, wants } = await import("./beheer_logic.ts");
+  eq(mailingNotices([]), []);
+  eq(mailingNotices([{ id: 1, recipients: 1250, sent: 1248, failed: 2, subject: "Nieuwe voorwaarden" }]), [{
+    kind: "mailing", title: "Mailing verstuurd (1.250 ontvangers)", body: "Nieuwe voorwaarden · 1.248 verstuurd, 2 mislukt", url: NEWSLETTER,
+  }]);
+  eq(mailingNotices([{ id: 2, recipients: 1, sent: 1, failed: 0, subject: null }])[0].title, "Mailing verstuurd (1 ontvanger)");
+  eq(mailingNotices([{ id: 2, recipients: 1, sent: 1, failed: 0 }])[0].body, "1 verstuurd");
+  const many = mailingNotices([1, 2, 3, 4].map((id) => ({ id, recipients: 10, sent: 10, failed: 0 })));
+  eq(many.length, 1, "samengevat");
+  eq(many[0].title, "4 mailings verstuurd");
+  ok(wants({}, "mailing") && !wants({ mailings: false }, "mailing"), "voorkeur mailings");
+  ok(!JSON.stringify(mailingNotices([{ id: 1, recipients: 1, sent: 1, failed: 0, subject: "x" }])).includes("@"), "geen adressen");
+});

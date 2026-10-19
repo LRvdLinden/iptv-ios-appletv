@@ -2,9 +2,11 @@
 // netwerk, zodat alles met `deno test` te controleren is (beheer_test.ts). Teksten in het Nederlands (de beheer-app is NL).
 import { timeIn } from "./logic.ts";
 
-export type Kind = "ticket" | "reply" | "build" | "status" | "purchase";
-export type Pref = "tickets" | "replies" | "builds" | "status" | "purchases";
-export const PREF_OF: Record<Kind, Pref> = { ticket: "tickets", reply: "replies", build: "builds", status: "status", purchase: "purchases" };
+export type Kind = "ticket" | "reply" | "build" | "status" | "purchase" | "mailing";
+export type Pref = "tickets" | "replies" | "builds" | "status" | "purchases" | "mailings";
+export const PREF_OF: Record<Kind, Pref> = {
+  ticket: "tickets", reply: "replies", build: "builds", status: "status", purchase: "purchases", mailing: "mailings",
+};
 export type BeheerNotice = { kind: Kind; title: string; body: string; url: string };
 
 /** Hoogstens zoveel losse meldingen per soort per ronde; daarboven één samenvatting. */
@@ -77,6 +79,25 @@ export function purchaseNotices(rows: PurchaseRow[]): BeheerNotice[] {
 /** Nieuw watermerk: de laatste paid_at van de opgehaalde rijen, anders het oude. */
 export function purchaseMark(rows: PurchaseRow[], prev: string): string {
   return rows.reduce((m, r) => (Date.parse(r.paid_at) > Date.parse(m) ? r.paid_at : m), prev);
+}
+
+// ---------- eigen mailing (beheer, tab Nieuwsbrief) ----------
+// Een mailing is klaar (status done): "Mailing verstuurd (x ontvangers)". Alleen aantallen en het NL-onderwerp (door de
+// beheerder geschreven), nooit adressen.
+export const NEWSLETTER = "bingrbeheer://newsletter";
+export type MailingRow = { id: number; recipients: number; sent: number; failed: number; subject?: string | null };
+const nf = (n: number) => Math.max(0, Math.floor(Number(n) || 0)).toLocaleString("nl-NL");
+export function mailingNotices(rows: MailingRow[]): BeheerNotice[] {
+  if (rows.length > MAX_PER_KIND) {
+    const sent = rows.reduce((a, r) => a + (Number(r.sent) || 0), 0);
+    return [{ kind: "mailing", title: `${rows.length} mailings verstuurd`, body: `Samen ${nf(sent)} verstuurd`, url: NEWSLETTER }];
+  }
+  return rows.map((r) => {
+    const n = Math.max(0, Number(r.recipients) || 0);
+    const parts = [`${nf(r.sent)} verstuurd`, ...(Number(r.failed) > 0 ? [`${nf(r.failed)} mislukt`] : [])].join(", ");
+    const subj = clip(r.subject ?? "", 80);
+    return { kind: "mailing" as const, title: `Mailing verstuurd (${nf(n)} ${n === 1 ? "ontvanger" : "ontvangers"})`, body: subj ? `${subj} · ${parts}` : parts, url: NEWSLETTER };
+  });
 }
 
 // ---------- builds ----------
@@ -168,7 +189,7 @@ export type Current = {
  * Eerste keer (geen rij, of een veld leeg): op de huidige stand zetten zonder te melden. Geeft per soort terug of er al een
  * watermerk was (alleen dan mag die soort melden).
  */
-export function initState(row: Partial<State> | null, cur: Current, nowMs: number): { state: State; armed: Record<Exclude<Kind, "purchase">, boolean> } {
+export function initState(row: Partial<State> | null, cur: Current, nowMs: number): { state: State; armed: Record<Exclude<Kind, "purchase" | "mailing">, boolean> } {
   const r = row ?? {};
   const num = (v: unknown) => (v == null || v === "" || !Number.isFinite(Number(v)) ? null : Number(v));
   const obj = <T>(v: unknown) => (v && typeof v === "object" && !Array.isArray(v) ? v as T : null);

@@ -12,8 +12,16 @@
 //   welcome_preview {to, lang?} -> {ok}   (welkomstmail naar één adres, "[Voorbeeld]", aanhef met een voorbeeldnaam;
 //                                          limiet gedeeld met preview)
 //   welcome_render  {lang} -> {subject, html}
-//   preview en welcome_preview ook met header x-bingr-mailtest (mailtest van de workflow Diagnose, _shared/mail.ts), dan
-//   alleen naar een testadres support+ci-…@bingr.online
+//   Eigen mailing (docs/NEWSLETTER.md, "Eigen mailing vanuit het beheer"; mailing.ts):
+//   mailing_status {} -> {active, mailings:[…], audiences:{newsletter:{nl,en,total}, service:{…}}, per_hour, batch, sent_last_hour}
+//   mailing_render {content, audience, lang} -> {subject, html}
+//   mailing_test   {to, content, audience, lang: nl|en|both} -> {ok, sent}   (onderwerp "[Test] …"; limiet gedeeld met preview)
+//   mailing_send   {request_id, content, audience, service_ack?} -> {ok, id, duplicate, recipients:{nl,en,total}}
+//   mailing_cancel {id} -> {ok, cancelled}
+//   mailing_cron   {} -> {ok, smtp, mailing, sent, failed, retry, done, budget}   (x-newsletter-secret = NEWSLETTER_CRON_SECRET;
+//                  pg_cron bingr-mailing elke 5 minuten; max. MAILING_PER_HOUR per uur, MAILING_BATCH per ronde)
+//   preview, welcome_preview en mailing_test ook met header x-bingr-mailtest (mailtest van de workflow Diagnose,
+//   _shared/mail.ts), dan alleen naar een testadres support+ci-…@bingr.online
 // Openbaar (afmeldpagina bingr.online/unsubscribe/?k=news; CORS alleen https://bingr.online):
 //   unsubscribe {t} -> {ok} | 400 {error:"invalid_token"}
 //   POST ?unsubscribe=t (List-Unsubscribe=One-Click, RFC 8058) -> 200 "unsubscribed"; GET ?unsubscribe=t -> 303 naar de afmeldpagina
@@ -28,6 +36,10 @@ import {
 import { renderNewsletter } from "./render.ts";
 import { renderWelcome, SAMPLE_NAME, showNewsletter, WELCOME_BATCH } from "./welcome.ts";
 import { buildContent } from "./tmdb.ts";
+import {
+  type Audience, budgetOf, cleanContent, isAudience, type MailingContent, type MailingRow, mailingView, type Recipient, renderMailing,
+  runMailing,
+} from "./mailing.ts";
 
 const env = (k: string) => Deno.env.get(k) ?? "";
 const admin = createClient(env("SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"), { auth: { autoRefreshToken: false, persistSession: false } });
@@ -35,6 +47,10 @@ const FN_URL = `${env("SUPABASE_URL").replace(/\/+$/, "")}/functions/v1/newslett
 const BATCH = Math.max(10, Math.min(500, Number(env("NEWSLETTER_BATCH") || 150) || 150));
 const PAUSE_MS = Math.max(0, Math.min(5000, Number(env("NEWSLETTER_PAUSE_MS") || 300) || 0));
 const BUDGET_MS = 110_000;
+// eigen mailing: max. per uur (alle mailings samen) en per ronde (pg_cron elke 5 minuten)
+const MAILING_PER_HOUR = Math.max(10, Math.min(2000, Number(env("MAILING_PER_HOUR") || 200) || 200));
+const MAILING_BATCH = Math.max(5, Math.min(200, Number(env("MAILING_BATCH") || 50) || 50));
+const MAILING_BUDGET_MS = 100_000;
 const FROM = () => env("BINGR_NEWSLETTER_FROM") || "Bingr <noreply@bingr.online>";
 // afmeldsleutel: BINGR_SOURCES_KEY wordt nooit vervangen (zoals de berichten in admin), met een eigen voorvoegsel
 const unsubSecret = () => env("BINGR_SOURCES_KEY") || env("SUPABASE_SERVICE_ROLE_KEY");
@@ -243,6 +259,170 @@ async function unsubscribe(t: unknown): Promise<boolean> {
   return true;
 }
 
+// ---------- eigen mailing (beheer) ----------
+// Inhoud en doelgroep komen uit het beheer (functie admin). De ontvangers worden bij mailing_send één keer vastgelegd
+// (bingr_mailing_create); mailing_cron verstuurt ze in batches met een limiet per uur. Logs: alleen tellingen en codes.
+
+const NIL_USER = "00000000-0000-0000-0000-000000000000";
+const randomId = () => Array.from(crypto.getRandomValues(new Uint8Array(9)), (b) => b.toString(16).padStart(2, "0")).join("");
+
+/** Kopregels per doelgroep: abonnees krijgen List-Unsubscribe (1 klik), een servicebericht niet. */
+async function mailingHeaders(audience: Audience, userId: string, kind: string, id: number | string) {
+  const h: Record<string, string> = { "X-Bingr-Mail": kind, "X-Bingr-Mailing": String(id) };
+  if (audience === "newsletter") {
+    const token = await unsubToken(userId, unsubSecret());
+    h["List-Unsubscribe"] = `<${oneClickUrl(FN_URL, token)}>`;
+    h["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click";
+    return { headers: h, unsubscribeUrl: unsubPageUrl(token) };
+  }
+  return { headers: h, unsubscribeUrl: undefined };
+}
+
+async function audienceCounts(a: Audience) {
+  const { data, error } = await admin.rpc("bingr_mailing_count", { p_audience: a });
+  if (error) throw new Error(`mailing_count: ${error.code ?? "fout"}`);
+  const r = (data ?? {}) as Record<string, number>;
+  return { nl: Number(r.nl ?? 0), en: Number(r.en ?? 0), total: Number(r.total ?? 0) };
+}
+
+async function mailingStatus() {
+  const cols = "id,created_at,finished_at,audience,status,content,recipients,recipients_nl,recipients_en,sent,failed,skipped,cancelled";
+  const [list, news, service, hour] = await Promise.all([
+    admin.from("mailings").select(cols).order("created_at", { ascending: false }).limit(20),
+    audienceCounts("newsletter"), audienceCounts("service"), admin.rpc("bingr_mailing_sent_last_hour"),
+  ]);
+  if (list.error) throw new Error(`mailings: ${list.error.code ?? "fout"}`);
+  const rows = (list.data ?? []) as MailingRow[];
+  const act = rows.find((m) => m.status === "sending");
+  let open: number | undefined;
+  if (act) {
+    const { data } = await admin.rpc("bingr_mailing_open", { p_mailing: act.id });
+    open = typeof data === "number" ? data : undefined;
+  }
+  return {
+    active: act ? mailingView(act, open) : null,
+    mailings: rows.map((m) => mailingView(m, m === act ? open : undefined)),
+    audiences: { newsletter: news, service },
+    per_hour: MAILING_PER_HOUR, batch: MAILING_BATCH, sent_last_hour: typeof hour.data === "number" ? hour.data : 0,
+  };
+}
+
+async function mailingCron() {
+  const started = Date.now();
+  if (!smtpConfigured()) return { ok: true, smtp: false, mailing: null, sent: 0, failed: 0, retry: 0, done: false, budget: 0 };
+  await admin.rpc("bingr_mailing_cleanup");
+  const { data: rows, error } = await admin.from("mailings").select("id,audience,content").eq("status", "sending")
+    .order("created_at", { ascending: true }).limit(1);
+  if (error) throw new Error(`mailings: ${error.code ?? "fout"}`);
+  const m = (rows ?? [])[0] as { id: number; audience: string; content: MailingContent } | undefined;
+  if (!m) return { ok: true, smtp: true, mailing: null, sent: 0, failed: 0, retry: 0, done: false, budget: 0 };
+  const audience: Audience = isAudience(m.audience) ? m.audience : "newsletter";
+  const { data: used } = await admin.rpc("bingr_mailing_sent_last_hour");
+  const budget = budgetOf(MAILING_PER_HOUR, typeof used === "number" ? used : MAILING_PER_HOUR, MAILING_BATCH);
+  if (!budget) return { ok: true, smtp: true, mailing: m.id, sent: 0, failed: 0, retry: 0, done: false, budget, waiting: "hour_limit" };
+  const mailer = transport();
+  const year = new Date().getFullYear();
+  try {
+    const r = await runMailing({
+      take: async (batch) => {
+        const { data, error } = await admin.rpc("bingr_mailing_take", { p_mailing: m.id, p_batch: batch });
+        if (error) throw new Error(`mailing_take: ${error.code ?? "fout"}`);
+        return data as { items: Recipient[]; done: boolean; busy: boolean };
+      },
+      mark: async (x) => {
+        const { error } = await admin.rpc("bingr_mailing_mark", { p_mailing: m.id, p_sent: x.sent, p_failed: x.failed, p_retry: x.retry, p_release: x.release });
+        if (error) throw new Error(`mailing_mark: ${error.code ?? "fout"}`);
+      },
+      send: async (u, lang) => {
+        const { headers, unsubscribeUrl } = await mailingHeaders(audience, u.id, audience === "service" ? "mailing-service" : "mailing", m.id);
+        const mail = renderMailing({ lang, content: m.content, audience, firstName: u.first_name ?? undefined, unsubscribeUrl, year });
+        await mailer.sendMail({
+          from: FROM(), to: u.email, subject: mail.subject, html: mail.html, text: mail.text, headers,
+          messageId: `<bingr-mailing-${m.id}.${randomId()}@bingr.online>`, date: new Date(),
+        });
+      },
+      now: Date.now, temporary: smtpTemporary, code: smtpCode, pause: PAUSE_MS ? () => sleep(PAUSE_MS) : undefined,
+    }, { budget, until: started + MAILING_BUDGET_MS, batch: Math.min(50, budget) });
+    console.log("newsletter mailing", JSON.stringify({ mailing: m.id, sent: r.sent, failed: r.failed, retry: r.retry, done: r.done, errors: r.errors }));
+    return { ok: true, smtp: true, mailing: m.id, sent: r.sent, failed: r.failed, retry: r.retry, done: r.done, budget, errors: r.errors };
+  } finally {
+    try { mailer.close(); } catch { /* stil */ }
+  }
+}
+
+/** Testmail naar één adres (nooit gelogd): "[Test] …", voorbeeldnaam, zelfde kopregels als de echte verzending. */
+async function mailingTest(to: string, content: MailingContent, audience: Audience, langs: Lang[]) {
+  const mailer = transport();
+  try {
+    for (const lang of langs) {
+      const { headers, unsubscribeUrl } = await mailingHeaders(audience, NIL_USER, "mailing-test", "test");
+      const m = renderMailing({ lang, content, audience, firstName: SAMPLE_NAME, unsubscribeUrl, test: true });
+      await mailer.sendMail({
+        from: FROM(), to, subject: m.subject, html: m.html, text: m.text, headers,
+        messageId: `<bingr-mailing-test.${randomId()}@bingr.online>`, date: new Date(),
+      });
+    }
+  } finally { try { mailer.close(); } catch { /* stil */ } }
+}
+
+async function mailingAction(action: string, body: Record<string, unknown>): Promise<Response> {
+  const audience = body.audience === undefined ? "newsletter" : body.audience;
+  switch (action) {
+    case "mailing_status":
+      return json(await mailingStatus());
+    case "mailing_render": {
+      if (!isAudience(audience)) return json({ error: "bad_audience" }, 400);
+      const lang: Lang = body.lang === "en" ? "en" : "nl";
+      const c = cleanContent(body.content, [lang]);
+      if (!c.ok) return json({ error: c.error }, 400);
+      const unsubscribeUrl = audience === "newsletter" ? `${SITE}/unsubscribe/?k=news` : undefined;
+      const m = renderMailing({ lang, content: c.content, audience, firstName: SAMPLE_NAME, unsubscribeUrl });
+      return json({ subject: m.subject, html: m.html });
+    }
+    case "mailing_test": {
+      const to = typeof body.to === "string" ? body.to.trim() : "";
+      if (!validEmail(to)) return json({ error: "bad_email" }, 400);
+      if (!isAudience(audience)) return json({ error: "bad_audience" }, 400);
+      const langs: Lang[] = body.lang === "both" ? ["nl", "en"] : body.lang === "en" ? ["en"] : ["nl"];
+      const c = cleanContent(body.content, langs);
+      if (!c.ok) return json({ error: c.error }, 400);
+      if (!smtpConfigured()) return json({ error: "smtp_not_configured" }, 503);
+      // zelfde teller als de voorbeelden van nieuwsbrief en welkomstmail (samen max. 10 per uur)
+      if (!(await rateOk("news-preview", 10, 3600))) return json({ error: "rate_limited", retry_after: 3600 }, 429);
+      try { await mailingTest(to, c.content, audience, langs); } catch (e) {
+        console.error("newsletter mailing_test", smtpCode(e));
+        return json({ error: "send_failed", code: smtpCode(e) }, 502);
+      }
+      return json({ ok: true, sent: langs.length });
+    }
+    case "mailing_send": {
+      if (!isAudience(audience)) return json({ error: "bad_audience" }, 400);
+      if (audience === "service" && body.service_ack !== true) return json({ error: "service_ack_required" }, 400);
+      const rid = typeof body.request_id === "string" ? body.request_id.toLowerCase() : "";
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(rid)) return json({ error: "bad_request_id" }, 400);
+      const c = cleanContent(body.content, ["nl", "en"]);
+      if (!c.ok) return json({ error: c.error }, 400);
+      if (!smtpConfigured()) return json({ error: "smtp_not_configured" }, 503);
+      const { data, error } = await admin.rpc("bingr_mailing_create", { p_request: rid, p_audience: audience, p_content: c.content });
+      if (error) throw new Error(`mailing_create: ${error.code ?? "fout"}`);
+      const r = (data ?? {}) as Record<string, unknown>;
+      if (typeof r.error === "string") return json({ error: r.error }, r.error === "mailing_busy" || r.error === "no_recipients" ? 409 : 400);
+      console.log("newsletter mailing_send", JSON.stringify({ mailing: r.id, audience, duplicate: r.duplicate === true }));
+      return json({ ok: true, id: r.id, duplicate: r.duplicate === true, recipients: r.recipients });
+    }
+    case "mailing_cancel": {
+      const id = Number(body.id);
+      if (!Number.isSafeInteger(id) || id <= 0) return json({ error: "bad_id" }, 400);
+      const { data, error } = await admin.rpc("bingr_mailing_cancel", { p_mailing: id });
+      if (error) throw new Error(`mailing_cancel: ${error.code ?? "fout"}`);
+      const r = (data ?? {}) as Record<string, unknown>;
+      if (r.ok !== true) return json({ error: typeof r.error === "string" ? r.error : "not_active" }, 409);
+      return json({ ok: true, cancelled: Number(r.cancelled ?? 0) });
+    }
+  }
+  return json({ error: "unknown_action" }, 400);
+}
+
 // ---------- verzoeken ----------
 
 async function handle(req: Request, body: Record<string, unknown>): Promise<Response> {
@@ -259,10 +439,16 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
     if (!secretOk(req, "NEWSLETTER_CRON_SECRET")) return json({ error: "forbidden" }, 403);
     return json(await welcomeCron());
   }
-  if (!["status", "set_enabled", "preview", "render", "welcome_preview", "welcome_render"].includes(action)) return json({ error: "unknown_action" }, 400);
-  const mailtest = (action === "preview" || action === "welcome_preview") && isMailtestAddress(body.to) &&
+  if (action === "mailing_cron") {
+    if (!secretOk(req, "NEWSLETTER_CRON_SECRET")) return json({ error: "forbidden" }, 403);
+    return json(await mailingCron());
+  }
+  const MAILING = ["mailing_status", "mailing_render", "mailing_test", "mailing_send", "mailing_cancel"];
+  if (![...MAILING, "status", "set_enabled", "preview", "render", "welcome_preview", "welcome_render"].includes(action)) return json({ error: "unknown_action" }, 400);
+  const mailtest = (action === "preview" || action === "welcome_preview" || action === "mailing_test") && isMailtestAddress(body.to) &&
     await mailtestOk(req.headers.get(MAILTEST_HEADER), async () => (await admin.from("app_settings").select("value").eq("key", "mailtest").maybeSingle()).data?.value);
   if (!mailtest && !secretOk(req, "NEWSLETTER_ADMIN_SECRET")) return json({ error: "forbidden" }, 403);
+  if (MAILING.includes(action)) return await mailingAction(action, body);
   switch (action) {
     case "status": {
       const [st, rc, ed, welcome] = await Promise.all([
@@ -345,7 +531,8 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
   return json({ error: "unknown_action" }, 400);
 }
 
-const MAX_BODY = 16 * 1024;
+// eigen mailing: onderwerp + tekst in twee talen (max. 2 × 8000 tekens)
+const MAX_BODY = 64 * 1024;
 Deno.serve(async (req) => {
   const url = new URL(req.url);
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS_SITE });

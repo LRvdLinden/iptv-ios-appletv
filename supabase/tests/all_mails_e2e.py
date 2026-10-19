@@ -74,7 +74,7 @@ for k in ("I_USER", "I_PASS", "I_HOST", "S_USER", "S_PASS", "S_HOST", "S_FROM"):
 mask(email.utils.parseaddr(E.get("S_FROM") or "")[1])
 
 tag = "ci-" + secrets.token_hex(5)
-addr = {k: f"support+{tag}{'-' + k if k else ''}@bingr.online" for k in ("", "new", "nb", "wp", "st", "sp", "ad")}
+addr = {k: f"support+{tag}{'-' + k if k else ''}@bingr.online" for k in ("", "new", "nb", "wp", "ml", "st", "sp", "ad")}
 A = addr[""]
 key = secrets.token_hex(32); mask(key)
 MT = {"x-bingr-mailtest": key}
@@ -138,6 +138,13 @@ try:
     c, r = req("POST", f"{FN}/newsletter", {"action": "welcome_preview", "to": addr["wp"], "lang": "en"}, MT)
     if c == 200: expect_mail("welcome-preview", addr["wp"], "en", r"^https://bingr\.online/", unsub=True)
     else: fail.append(f"welkomstmail-voorbeeld: HTTP {c} {errtxt(r)}")
+    # eigen mailing uit het beheer: testmail (doelgroep nieuwsbrief, met List-Unsubscribe), alleen naar het testadres
+    ml = {"nl": {"subject": "CI-mailing", "body": "# Test\n\nTestmail van de **mailtest**.\n\n- [Bingr](https://bingr.online/)", "button": "Naar Bingr"},
+          "en": {"subject": "CI mailing", "body": "# Test\n\nTest email from the **mail test**.", "button": "Go to Bingr"},
+          "image": "", "button_url": "https://bingr.online/"}
+    c, r = req("POST", f"{FN}/newsletter", {"action": "mailing_test", "to": addr["ml"], "lang": "en", "audience": "newsletter", "content": ml}, MT)
+    if c == 200: expect_mail("mailing-test", addr["ml"], "en", r"^https://bingr\.online/$", unsub=True)
+    else: fail.append(f"eigen mailing (testmail): HTTP {c} {errtxt(r)}")
     c, r = req("POST", f"{FN}/status", {"action": "subscribe", "email": addr["st"], "lang": "en"}, {"apikey": PUB})
     if c == 200: expect_mail("status-confirm", addr["st"], "en", r"^https://bingr\.online/status/\?confirm=")
     else: fail.append(f"statusupdates aanmelden: HTTP {c} {errtxt(r)}")
@@ -326,7 +333,7 @@ try:
         return (f"\"{n}\"" if n else "geen naam") + " " + kind, d or "-"
     groups = {}
     def group(k):
-        return {"auth": "Auth", "welcome": "Welkom/nieuwsbrief", "newsletter": "Welkom/nieuwsbrief", "status": "Status", "support": "Support",
+        return {"auth": "Auth", "welcome": "Welkom/nieuwsbrief", "newsletter": "Welkom/nieuwsbrief", "mailing": "Welkom/nieuwsbrief", "status": "Status", "support": "Support",
                 "account": "Beheer"}.get(k.split("-")[0], "Overig")
     status_cache = {}
     def check(u):

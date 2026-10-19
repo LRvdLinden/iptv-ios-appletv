@@ -162,6 +162,92 @@ SMTP, huisstijl en afzender (`Bingr <noreply@bingr.online>`, geen Reply-To) als 
 - **Beheer:** `status.welcome = {sent_7d, pending}` (alleen aantallen), `welcome_preview` en `welcome_render` (zie de tabel
   hierboven); in bingr-beheer de acties `welcome_preview` / `welcome_render` en het blok *Welkomstmail* in de tab Nieuwsbrief.
 
+## Eigen mailing vanuit het beheer
+
+Naast de automatische nieuwsbrief kan de beheerder in het beheer (bingr-beheer, tab **Nieuwsbrief**, blok *Eigen mailing*;
+ook in de app BingrBeheer) zelf een mail opstellen en versturen. Zelfde functie (`newsletter`), SMTP, huisstijl
+(`_shared/layout.ts`: zwart, BINGR met rode streep) en afzender `Bingr <noreply@bingr.online>`, zonder Reply-To; elke mail
+heeft een tekstversie, een eigen `Message-ID` (`<bingr-mailing-<id>.<willekeurig>@bingr.online>`) en `Date`.
+Code: `supabase/functions/newsletter/mailing.ts` (logica, opmaak, mail), tests `mailing_test.ts` (deno) en
+`supabase/tests/mailing_test.sh` (doelgroep en wachtrij op Postgres); beide blokkeren de deploy in *Backend*.
+
+### Opstellen
+
+- Onderwerp NL + EN (max. 150 tekens), tekst NL + EN (max. 8000 tekens per taal), optioneel een afbeelding (https-URL,
+  bovenaan, 500 px breed) en een knop (tekst NL + EN, max. 40 tekens, en één https-URL).
+- Opmaak (markdown-achtig, alles wordt ge-escaped; geen eigen HTML of stijlen): lege regel = nieuwe alinea, `# Kop`,
+  `## Kleinere kop`, `**vet**`, `[linktekst](https://…)` en losse `https://`-links, `- punt` / `* punt` (opsomming),
+  `1. punt` (genummerd). Alleen https-links en -afbeeldingen (geen http, javascript:, IP-adressen of inloggegevens in de URL).
+- Aanhef *Hoi <voornaam>,* / *Hi <first name>,* als het account een voornaam heeft (zoals de nieuwsbrief).
+
+### Doelgroep
+
+| doelgroep | wie | afmelden |
+|---|---|---|
+| `newsletter` **Nieuwsbrief-abonnees** (standaard) | bevestigd adres, niet geblokkeerd/verwijderd, geen `email_opt_out` en geen `newsletter_opt_out` (zelfde regels als de nieuwsbrief) | `List-Unsubscribe` (1 klik, RFC 8058) + zichtbare afmeldlink `bingr.online/unsubscribe/?k=news&t=…` (zelfde token als de nieuwsbrief) |
+| `service` **Servicebericht aan alle gebruikers** | álle accounts met een bevestigd adres die niet geblokkeerd of verwijderd zijn, ook wie zich voor de nieuwsbrief of alle berichten afmeldde | geen `List-Unsubscribe`; voettekst legt uit waarom ("Je krijgt dit servicebericht omdat je een Bingr-account hebt …"); label *Servicebericht* in de kop |
+
+Een servicebericht is **alleen** voor belangrijke service-informatie (wijziging van voorwaarden of privacyverklaring,
+storingen, beveiliging, einde van een functie), **nooit voor reclame of nieuws** (AVG en art. 11.7 Telecommunicatiewet:
+reclame per e-mail alleen aan wie zich niet heeft afgemeld). Het beheer toont een waarschuwing en vraagt een extra
+bevestiging; de functie weigert `service` zonder `service_ack: true` (400 `service_ack_required`).
+Geblokkeerde (`banned_until` in de toekomst), verwijderde, onbevestigde accounts en accounts zonder adres krijgen nooit een mailing.
+
+Taal per ontvanger uit `user_metadata.lang`: leeg of `nl…` → NL-versie, elke andere taal → EN-versie.
+
+### Versturen
+
+1. **Voorbeeld** (`mailing_render`): de mail in NL of EN in het beheer (met de voorbeeldnaam *Alex*).
+2. **Testmail** (`mailing_test`): naar één adres dat de beheerder invult (NL, EN of beide; onderwerp `[Test] …`; zelfde
+   kopregels als de echte verzending). Het adres wordt niet bewaard en niet gelogd. Limiet gedeeld met de andere
+   voorbeelden (samen 10 per uur).
+3. **Versturen** (`mailing_send`): het beheer toont eerst een bevestiging met het aantal ontvangers per taal. Daarna legt
+   `bingr_mailing_create` de ontvangers één keer vast in `mailing_recipients` (primaire sleutel mailing + account: iedereen
+   hoogstens één mail per mailing). Dezelfde `request_id` (uuid per verzendopdracht uit het beheer) geeft de bestaande
+   mailing terug in plaats van een tweede (dubbelklik, opnieuw proberen). Hoogstens één mailing tegelijk (409 `mailing_busy`);
+   zonder ontvangers 409 `no_recipients`.
+4. **Wachtrij**: pg_cron-taak `bingr-mailing` (gezet door *Backend*) elke 5 minuten (minuut 2, 7, …)
+   `POST newsletter {action:"mailing_cron"}` met `x-newsletter-secret: NEWSLETTER_CRON_SECRET`. Per ronde max.
+   `MAILING_BATCH` (standaard 50) mails, 300 ms pauze, ~100 s; **max. `MAILING_PER_HOUR` per uur** (standaard **200**, alle
+   mailings samen, verstuurd + mislukt in het laatste uur; function-secret, optioneel als GitHub-secret `MAILING_PER_HOUR`,
+   10–2000). Vlak voor het versturen wordt de doelgroep opnieuw gecontroleerd: wie zich intussen afmeldde (bij `newsletter`)
+   of geblokkeerd/verwijderd werd, wordt overgeslagen (`skipped`). Tijdelijke SMTP-fout (4xx, time-out): ronde stopt, die
+   ontvanger later opnieuw (max. 3 pogingen); blijvende fout: `failed`. Een rij die 30 minuten op `sending` blijft wordt
+   `failed` en niet opnieuw verstuurd (liever één mail te weinig dan dubbel).
+   Voorbeeld: 1.000 abonnees bij 200 per uur ≈ 5 uur.
+5. **Voortgang en annuleren**: het beheer toont verstuurd / mislukt / overgeslagen / te gaan en kan annuleren zolang de
+   mailing niet klaar is (`mailing_cancel`): wat nog in de wachtrij staat gaat niet meer; een batch die op dat moment loopt
+   maakt zijn mails af.
+6. **Klaar**: `status = done`; de cron van de functie `push` stuurt de beheer-app één keer "Mailing verstuurd (x ontvangers)"
+   (soort `mailing`, voorkeur `mailings`, link `bingrbeheer://newsletter`).
+
+Geschiedenis: `mailings` bewaart per mailing de inhoud (onderwerp, tekst), doelgroep, datum en aantallen; het beheer toont
+alleen onderwerpen en aantallen, nooit adressen. De ontvangerslijst (`mailing_recipients`, alleen account-id, taal en status)
+wordt 90 dagen na afloop opgeruimd.
+
+### Acties (`x-newsletter-secret: NEWSLETTER_ADMIN_SECRET`, via de functie `admin`)
+
+| actie | invoer | antwoord |
+|---|---|---|
+| `mailing_status` | `{}` | `{active, mailings:[{id, created_at, finished_at, audience, status: sending\|done\|cancelled, subject:{nl, en}, recipients:{nl, en, total}, sent, failed, skipped, cancelled, left}], audiences:{newsletter:{nl, en, total}, service:{…}}, per_hour, batch, sent_last_hour}` (laatste 20) |
+| `mailing_render` | `{content, audience, lang}` | `{subject, html}`; 400 `bad_*` |
+| `mailing_test` | `{to, content, audience, lang: nl\|en\|both}` | `{ok, sent}`; 400 `bad_email` / `bad_*`, 429 `rate_limited`, 502 `send_failed`, 503 `smtp_not_configured`. Ook met de mailtest-header (Diagnose), dan alleen naar `support+ci-…@bingr.online` |
+| `mailing_send` | `{request_id, content, audience, service_ack?}` | `{ok, id, duplicate, recipients:{nl, en, total}}`; 400 `bad_*` / `service_ack_required`, 409 `mailing_busy` / `no_recipients` |
+| `mailing_cancel` | `{id}` | `{ok, cancelled}`; 409 `not_active` |
+
+`content` = `{nl:{subject, body, button}, en:{subject, body, button}, image, button_url}`. Fouten bij de invoer:
+`bad_content`, `bad_subject_nl|en`, `bad_body_nl|en`, `bad_button_text_nl|en`, `bad_image_url`, `bad_button_url`, `bad_audience`.
+
+### Database
+
+`mailings` (`id`, `request_id` uniek, `audience`, `content` jsonb, `status`, `recipients`, `recipients_nl`, `recipients_en`,
+`sent`, `failed`, `skipped`, `cancelled`, `created_at`, `finished_at`, `push_notified_at`; unieke index: hoogstens één met
+status `sending`) en `mailing_recipients` (`mailing_id`, `user_id`, `lang`, `state` queued/sending/sent/failed/skipped/cancelled,
+`attempts`, `claimed_at`, `done_at`; primaire sleutel (mailing, account)). Functies `bingr_mailing_audience`,
+`bingr_mailing_eligible`, `bingr_mailing_count`, `bingr_mailing_create`, `bingr_mailing_take`, `bingr_mailing_mark`,
+`bingr_mailing_cancel`, `bingr_mailing_sent_last_hour`, `bingr_mailing_open`, `bingr_mailing_cleanup` (alleen service role).
+RLS aan, alles ingetrokken voor anon en authenticated.
+
 ## Database (`supabase/schema.sql`)
 
 - `account_email_prefs.newsletter_opt_out boolean not null default false`

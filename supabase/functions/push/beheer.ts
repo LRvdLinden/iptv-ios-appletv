@@ -5,7 +5,7 @@
 import { fetchBuildManifest } from "../_shared/builds.ts";
 import type { Apns } from "./channels.ts";
 import {
-  type BeheerNotice, beheerPayload, buildNotices, type Builds, initState, manifestBuilds, manifestDue, type MonitorNow,
+  type BeheerNotice, beheerPayload, buildNotices, type Builds, initState, mailingNotices, type MailingRow, manifestBuilds, manifestDue, type MonitorNow,
   purchaseMark, purchaseNotices, type PurchaseRow, replyNotices, type ReplyRow, type State, statusNotices, ticketNotices, type TicketRow, wants,
 } from "./beheer_logic.ts";
 
@@ -141,6 +141,21 @@ export async function adminNotify(db: Db, apns: Apns, env: Env, nowMs = Date.now
     const { data, error } = await db.from("admin_push_state").update(upd).eq("id", 1).eq("updated_at", prev.updated_at).select("id");
     if (error) throw new Error(`admin_push_state: ${error.code ?? "fout"}`);
     if (!data?.length) return { ...res, skipped: "busy" };
+  }
+
+  // eigen mailing klaar (tabel mailings, functie newsletter): één keer melden door push_notified_at te claimen (pas na
+  // het vastleggen van de watermerken, zodat een gelijktijdige ronde die 'busy' teruggeeft niets claimt). Alleen
+  // mailings die de laatste dag klaar kwamen; ontbreekt de tabel nog (ouder schema), dan stil overslaan.
+  {
+    const { data, error } = await db.from("mailings").update({ push_notified_at: new Date(nowMs).toISOString() })
+      .eq("status", "done").is("push_notified_at", null).gt("finished_at", new Date(nowMs - 86400_000).toISOString())
+      .select("id,recipients,sent,failed,content");
+    if (error) { if (!["42P01", "PGRST205", "42703"].includes(error.code ?? "")) console.error("push beheer mailings", error.code ?? "fout"); }
+    else {
+      const rows = ((data ?? []) as (MailingRow & { content?: { nl?: { subject?: string } } })[])
+        .sort((a, b) => a.id - b.id).map((r) => ({ ...r, subject: r.content?.nl?.subject ?? null }));
+      notices.push(...mailingNotices(rows));
+    }
   }
 
   res.notices = notices.length;
