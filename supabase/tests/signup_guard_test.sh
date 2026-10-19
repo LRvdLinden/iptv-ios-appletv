@@ -15,7 +15,10 @@ for name in person-name signup-guard; do
 done
 psql -X -q -v ON_ERROR_STOP=1 -d "$db" -f supabase/tests/signup_guard_stub.sql
 psql -X -q -v ON_ERROR_STOP=1 -d "$db" -f "$blocks"
-# twee keer: het schema moet herhaalbaar zijn (elke deploy draait het opnieuw)
+# twee keer: het schema moet herhaalbaar zijn (elke deploy draait het opnieuw). Daartussen de check op signup_attempts.reason
+# terug naar die van vóór build 138 (zonder honeypot/too_fast): de tweede ronde moet hem bijwerken.
+psql -X -q -v ON_ERROR_STOP=1 -d "$db" -c "alter table public.signup_attempts drop constraint signup_attempts_reason_check;
+  alter table public.signup_attempts add constraint signup_attempts_reason_check check (reason is null or reason in ('rate_limit', 'disposable', 'name'))"
 psql -X -q -v ON_ERROR_STOP=1 -d "$db" -f "$blocks"
 rm -f "$blocks"
 psql -X -q -v ON_ERROR_STOP=1 -o /dev/null -d "$db" -f supabase/tests/signup_guard_test.sql

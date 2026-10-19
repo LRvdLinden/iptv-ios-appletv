@@ -122,7 +122,8 @@ jobs:
           grep -E "FAILED|error|=>|verwacht" plans-test.log | head -30 | while IFS= read -r l; do echo "::warning::${l:0:300}"; done
           exit 1
       - name: Unittests (registratiebescherming)
-        # blokkeert de deploy (build 134): de hook bingr_before_user_created, IP-hash, wegwerpdomeinen, naamregel, opruimen van
+        # blokkeert de deploy (build 134): de hook bingr_before_user_created, IP-hash, wegwerpdomeinen, naamregel, honeypot en
+        # tijdmeting (build 138), opruimen van
         # onbevestigde accounts en de beheertellingen, in een tijdelijke database op de Postgres van de runner (geen Supabase).
         run: |
           sudo systemctl start postgresql.service
@@ -1744,6 +1745,18 @@ jobs:
               if status(hook(ip2, f"ci-{secrets.token_hex(4)}@ci.yopmail.com")) != 400: fail.append("wegwerp-subdomein niet geweigerd")
               if status(hook(ip2, f"ci-{secrets.token_hex(4)}@example.com", {"first_name": "www.spam.example", "last_name": "x"})) != 400: fail.append("naam met link niet geweigerd")
               if hook(None, f"ci-{secrets.token_hex(4)}@mailinator.com") != {}: fail.append("zonder IP (admin) niet toegestaan")
+              # 2b. honeypot en tijdmeting van de webformulieren (build 138): hp gevuld of fill_ms < 1500 = 400 met een neutrale
+              #     melding; leeg veld en traag genoeg, of zonder beide (apps) = toegestaan
+              neutral = "Something went wrong. Please try again."
+              r = hook(ip2, f"ci-{secrets.token_hex(4)}@example.com", {"first_name": "Ci", "hp": "https://spam.example", "fill_ms": 6000})
+              if status(r) != 400 or (r.get("error") or {}).get("message") != neutral: fail.append(f"honeypot niet (neutraal) geweigerd: {status(r)}")
+              r = hook(ip2, f"ci-{secrets.token_hex(4)}@example.com", {"first_name": "Ci", "fill_ms": 300})
+              if status(r) != 400 or (r.get("error") or {}).get("message") != neutral: fail.append(f"te snel niet (neutraal) geweigerd: {status(r)}")
+              if hook(ip2, f"ci-{secrets.token_hex(4)}@example.com", {"first_name": "Ci", "hp": "", "fill_ms": 4200}) != {}: fail.append("leeg honeypotveld en traag genoeg niet toegestaan")
+              code, r = sql("select count(*) filter (where reason = 'honeypot')::int hp, count(*) filter (where reason = 'too_fast')::int tf from public.signup_attempts "
+                            f"where ip_hash = public.bingr_signup_ip_hash('{ip2}') and not allowed and at > now() - interval '10 minutes'")
+              row = r[0] if code < 300 and isinstance(r, list) and r else {}
+              if row.get("hp", 0) < 1 or row.get("tf", 0) < 1: fail.append(f"redenen honeypot/too_fast niet opgeslagen (HTTP {code})")
               code, r = sql("select count(*)::int n from public.disposable_domains where source = 'list'")
               n = r[0].get("n") if code < 300 and isinstance(r, list) and r else 0
               if not n or n < 1000: print(f"::warning::wegwerplijst niet geladen ({n} domeinen uit de lijst); alleen de eigen lijst werkt")
@@ -1752,6 +1765,8 @@ jobs:
               g = r[0].get("g") if code < 300 and isinstance(r, list) and r else None
               if not isinstance(g, dict) or not isinstance(g.get("rejected_24h"), dict) or (g["rejected_24h"].get("rate_limit") or 0) < 1:
                   fail.append(f"bingr_admin_signup_guard: HTTP {code}")
+              elif (g["rejected_24h"].get("honeypot") or 0) < 1 or (g["rejected_24h"].get("too_fast") or 0) < 1:
+                  fail.append("bingr_admin_signup_guard telt honeypot/too_fast niet")
               # 4. echte aanmelding met een wegwerpadres via Auth: geweigerd door de hook (geen account, geen mail)
               code, r = sql("select now()::text t")
               t0 = r[0]["t"] if code < 300 and isinstance(r, list) and r else None
@@ -1786,7 +1801,7 @@ jobs:
               else: made.remove(ids[0])
               code, r = sql("select count(*)::int n from cron.job where jobname = 'bingr-unconfirmed-cleanup' and active")
               if not (code < 300 and isinstance(r, list) and r and r[0].get("n") == 1): print("::warning::planning bingr-unconfirmed-cleanup ontbreekt")
-              if not fail: print("::notice::Registratiebescherming: limiet per netwerk, wegwerpadressen, namen, admin, Auth-hook en opruimen werken")
+              if not fail: print("::notice::Registratiebescherming: limiet per netwerk, wegwerpadressen, namen, honeypot en tijdmeting, admin, Auth-hook en opruimen werken")
           except SystemExit as e:
               fail.append(str(e))
           finally:

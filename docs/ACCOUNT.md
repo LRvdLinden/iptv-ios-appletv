@@ -82,16 +82,23 @@ Alleen op de server: geen captcha en geen app-update, dus ook voor de tv-apps en
 
   | Reden (`reason`) | Regel | Antwoord van `/auth/v1/signup` |
   |---|---|---|
+  | `honeypot` (build 138) | `user_metadata.hp` is niet leeg: het verborgen veld van de webformulieren is ingevuld (zie hieronder) | **400** `Something went wrong. Please try again.` |
+  | `too_fast` (build 138) | `user_metadata.fill_ms` is aanwezig en kleiner dan **1500** (formulier sneller verstuurd dan een mens kan) | **400** `Something went wrong. Please try again.` |
   | `rate_limit` | meer dan **3 nieuwe accounts per uur** of **10 per 24 uur** vanaf één netwerk (IPv4-adres of IPv6-/64); instelbaar in `app_settings.signup_limits` `{per_hour, per_day}` | **429** `Too many sign-ups from this network. Try again later.` |
   | `name` | voor- of achternaam met een link, e-mailadres of HTML, of langer dan 50 tekens (zelfde regel als de trigger: `bingr_person_name_invalid`) | **400** `Names cannot contain links, email addresses or HTML.` |
   | `disposable` | wegwerp-e-mailadres: het domein of een bovenliggend domein staat in `disposable_domains` (open lijst [disposable-email-domains](https://github.com/disposable-email-domains/disposable-email-domains), vast op een commit en sha256, plus een eigen lijst) | **400** `Use a permanent email address. Disposable email addresses are not accepted.` |
 
   Supabase geeft de melding door als `msg` met `error_code` `unknown`. **Wat de gebruiker ziet:** de apps (iOS/iPadOS/tvOS/macOS, Android/Android TV, Samsung TV, webspeler) kennen die code niet en tonen "Something went wrong. Please try again."; bingr.online/koppelen toont bij de 429 "Even wachten: er zijn te veel pogingen gedaan…". Daarom bevatten de meldingen geen woorden die de apps anders herkennen (already, banned, password, confirm). Een fout in de hook zelf = toestaan (nooit legitieme aanmeldingen blokkeren).
+- **Honeypot en tijdmeting (build 138, alleen de webformulieren):** bingr.online/koppelen (ook vanaf Mijn Bingr en /upgrade, via `assets/js/auth-forms.js`, `BingrAuth.honeypot`) en de webspeler (`web/js/screens.js` → `A.signUp` in `web/js/account.js`) hebben een verborgen veld `website` (buiten beeld via de CSS-klasse `hp-field`, `tabindex="-1"`, `autocomplete="off"`, `aria-hidden`, label "Laat dit veld leeg" / "Leave this field empty"). Mensen zien het niet; bots vullen het in. Ze sturen in `options.data` mee:
+  - `fill_ms`: altijd, de milliseconden tussen het tonen van het formulier (in de modus "account maken") en het versturen (`performance.now()`, afgerond);
+  - `hp`: alleen als het veld gevuld is (dan wordt de aanmelding toch geweigerd). Na een fout maakt het formulier het veld weer leeg (een autofill bij een echte gebruiker blokkeert dan maar één poging).
+
+  De apps (Apple, Android, Samsung TV) sturen ze niet: **ontbreken = toestaan**, net als `hp` leeg/null en een onleesbare `fill_ms`. De melding is bewust neutraal (geen hint voor bots); de site en de webspeler tonen "Er ging iets mis. Probeer het opnieuw." De trigger `bingr_user_names` haalt `hp` en `fill_ms` bij het opslaan weer uit `raw_user_meta_data`: ze staan nooit in het account, het beheer of de mails (die gebruiken alleen `lang` en `first_name`).
 - **Privacy:** geen IP- of e-mailadressen opgeslagen. `signup_attempts` bewaart alleen `sha256(salt | netwerk)` (de salt staat alleen in de database, `signup_guard_secret`), tijd, toegestaan en reden; na **7 dagen** weg (dagelijks via `bingr_support_cleanup`).
 - **Auth-limieten** (workflow Backend; strengere bestaande waarden blijven): `rate_limit_email_sent` max. 30 per uur, `rate_limit_otp` (aanmelden, wachtwoord vergeten, opnieuw sturen, `PUT /user`) max. 10 per IP per 5 minuten.
 - **Onbevestigde accounts** verdwijnen na **48 uur** (pg_cron `bingr-unconfirmed-cleanup`, elk uur, `bingr_signup_cleanup`): alleen als het adres nooit bevestigd is, er nooit is ingelogd en er niets aan hangt (geen abonnement, aankoop, blokkade, supportticket, profielen of apparaten). Alleen het aantal wordt bewaard (`signup_cleanups`). Wie later alsnog wil, maakt gewoon opnieuw een account.
-- **Beheer:** `bingr_admin_signup_guard()` (alleen aantallen: geweigerd per reden in 24 uur / 7 dagen, toegestaan, onbevestigd verwijderd), in het Overzicht van het beheer.
-- **Testen:** `supabase/tests/signup_guard_test.sh` (unittests op een lege Postgres, ook in de workflow) en de job `registratie` (de regels met SQL, één echte aanmelding met een wegwerpadres, het opruimen met een tijdelijk account).
+- **Beheer:** `bingr_admin_signup_guard()` (alleen aantallen: geweigerd per reden in 24 uur / 7 dagen (`rate_limit`, `disposable`, `name`, `honeypot`, `too_fast`), toegestaan, onbevestigd verwijderd), in het Overzicht van het beheer.
+- **Testen:** `supabase/tests/signup_guard_test.sh` (unittests op een lege Postgres, ook in de workflow) en de job `registratie` (de regels met SQL, ook honeypot en tijdmeting, één echte aanmelding met een wegwerpadres, het opruimen met een tijdelijk account).
 
 ### Accountmails via de Send Email Hook (build 137)
 

@@ -2121,6 +2121,7 @@ $$;
 revoke all on function public.bingr_person_name_invalid(text) from public, anon, authenticated;
 -- Trigger op auth.users: naam opschonen bij het opslaan, en weigeren als er een link, e-mailadres of HTML in staat of hij
 -- langer is dan 50 tekens (de accountmail bij het aanmaken toont de naam al, ook voor een adres dat nog niet bevestigd is).
+-- Build 138: haalt ook hp en fill_ms (honeypot en tijdmeting van de webformulieren, alleen voor de hook) uit de metadata.
 -- De apps en sites sturen alleen opgeschoonde namen; een geweigerde naam geeft bij Supabase Auth een foutmelding (geen account).
 -- Foutcode PT400 (build 136; was 22023 = HTTP 500): Supabase Auth geeft een SQLSTATE "PTnnn" door als HTTP-status nnn, met
 -- {code:"PT400", message, detail (= first_name/last_name), hint:"bingr_invalid_name"}. Dat geldt alleen voor aanroepen zonder
@@ -2131,6 +2132,8 @@ language plpgsql security definer set search_path = public as $$
 declare k text; raw jsonb; v text; c text;
 begin
   if new.raw_user_meta_data is null or jsonb_typeof(new.raw_user_meta_data) <> 'object' then return new; end if;
+  -- build 138: honeypot en tijdmeting van de webformulieren zijn alleen voor de hook bingr_before_user_created; niet bewaren
+  new.raw_user_meta_data := new.raw_user_meta_data - 'hp' - 'fill_ms';
   foreach k in array array['first_name', 'last_name'] loop
     raw := new.raw_user_meta_data -> k;
     continue when raw is null;
@@ -2795,7 +2798,12 @@ grant execute on function public.bingr_admin_insights_events(timestamptz, timest
 --   rate_limit  meer dan signup_limits.per_hour (3) nieuwe accounts per uur of per_day (10) per 24 uur vanaf één netwerk
 --               (IPv4-adres of IPv6-/64), 429;
 --   name        een voor- of achternaam met een link, e-mailadres of HTML (zelfde regel als de trigger bingr_user_names), 400;
---   disposable  een wegwerp-e-mailadres (tabel disposable_domains, ook subdomeinen), 400.
+--   disposable  een wegwerp-e-mailadres (tabel disposable_domains, ook subdomeinen), 400;
+--   honeypot    (build 138) user_metadata.hp niet leeg: het verborgen veld "website" van de webformulieren is ingevuld, 400;
+--   too_fast    (build 138) user_metadata.fill_ms aanwezig en < 1500: formulier sneller verstuurd dan een mens kan, 400.
+--               Beide met de neutrale melding "Something went wrong. Please try again." (geen hint voor bots). De apps sturen
+--               hp en fill_ms niet mee: ontbreken = toestaan. De trigger bingr_user_names haalt hp en fill_ms weer uit de
+--               opgeslagen metadata (nooit zichtbaar in het beheer of in mails).
 -- Nooit een IP-adres of e-mailadres opgeslagen: alleen sha256(geheime salt | netwerk) in signup_attempts, 7 dagen bewaard.
 -- Accounts die het beheer of de CI via de admin-API maakt, roepen de hook niet aan (Supabase Auth); zonder IP-adres of met
 -- een andere provider dan e-mail laat de hook alles door. Bij een fout in de hook zelf: toestaan (nooit legitieme
@@ -2808,8 +2816,18 @@ create table if not exists public.signup_attempts (
   ip_hash text not null check (ip_hash ~ '^[0-9a-f]{64}$'),
   at      timestamptz not null default now(),
   allowed boolean not null,
-  reason  text check (reason is null or reason in ('rate_limit', 'disposable', 'name'))
+  reason  text check (reason is null or reason in ('rate_limit', 'disposable', 'name', 'honeypot', 'too_fast'))
 );
+-- build 138: redenen honeypot en too_fast erbij (bestaande tabel: de check opnieuw zetten als hij ze nog niet kent)
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conrelid = 'public.signup_attempts'::regclass and contype = 'c'
+                 and pg_get_constraintdef(oid) like '%too_fast%') then
+    alter table public.signup_attempts drop constraint if exists signup_attempts_reason_check;
+    alter table public.signup_attempts add constraint signup_attempts_reason_check
+      check (reason is null or reason in ('rate_limit', 'disposable', 'name', 'honeypot', 'too_fast'));
+  end if;
+end $$;
 create index if not exists signup_attempts_ip_idx on public.signup_attempts (ip_hash, at) where allowed;
 create index if not exists signup_attempts_at_idx on public.signup_attempts (at);
 alter table public.signup_attempts enable row level security;
@@ -2905,7 +2923,7 @@ declare
   ip text := nullif(btrim(coalesce(event->'metadata'->>'ip_address', '')), '');
   prov text := coalesce(nullif(u->'app_metadata'->>'provider', ''), 'email');
   meta jsonb := u->'user_metadata';
-  lim jsonb; per_hour int := 3; per_day int := 10; h text; reason text;
+  lim jsonb; per_hour int := 3; per_day int := 10; h text; reason text; fill numeric;
 begin
   -- geen gewone aanmelding (admin-API zonder IP, anoniem of een andere provider): toestaan
   if ip is null or prov <> 'email' or coalesce(u->>'is_anonymous', 'false') = 'true' then return '{}'::jsonb; end if;
@@ -2917,7 +2935,18 @@ begin
     if jsonb_typeof(lim->'per_day') = 'number' then per_day := least(greatest((lim->>'per_day')::numeric::int, 1), 10000); end if;
     -- gelijktijdige aanmeldingen vanaf hetzelfde netwerk na elkaar tellen
     perform pg_advisory_xact_lock(hashtextextended('bingr_signup:' || h, 0));
-    if (select count(*) from public.signup_attempts where ip_hash = h and allowed and at > now() - interval '1 hour') >= per_hour
+    -- build 138: honeypot en tijdmeting van de webformulieren (de apps sturen ze niet: ontbreken = toestaan)
+    if jsonb_typeof(meta) = 'object' then
+      if jsonb_typeof(meta->'fill_ms') = 'number' then fill := (meta->>'fill_ms')::numeric;
+      elsif jsonb_typeof(meta->'fill_ms') = 'string' and btrim(meta->>'fill_ms') ~ '^-?[0-9]{1,15}(\.[0-9]+)?$' then fill := btrim(meta->>'fill_ms')::numeric;
+      end if;
+    end if;
+    if jsonb_typeof(meta) = 'object' and jsonb_typeof(meta->'hp') is not null and jsonb_typeof(meta->'hp') <> 'null'
+       and not (jsonb_typeof(meta->'hp') = 'string' and btrim(meta->>'hp') = '') then
+      reason := 'honeypot';
+    elsif fill is not null and fill < 1500 then
+      reason := 'too_fast';
+    elsif (select count(*) from public.signup_attempts where ip_hash = h and allowed and at > now() - interval '1 hour') >= per_hour
        or (select count(*) from public.signup_attempts where ip_hash = h and allowed and at > now() - interval '24 hours') >= per_day then
       reason := 'rate_limit';
     elsif jsonb_typeof(meta) = 'object' and exists (
@@ -2939,6 +2968,8 @@ begin
     return jsonb_build_object('error', jsonb_build_object('http_code', 400, 'message', 'Names cannot contain links, email addresses or HTML.'));
   elsif reason = 'disposable' then
     return jsonb_build_object('error', jsonb_build_object('http_code', 400, 'message', 'Use a permanent email address. Disposable email addresses are not accepted.'));
+  elsif reason in ('honeypot', 'too_fast') then
+    return jsonb_build_object('error', jsonb_build_object('http_code', 400, 'message', 'Something went wrong. Please try again.'));
   end if;
   return '{}'::jsonb;
 end $$;
@@ -2980,15 +3011,17 @@ begin
 end $$;
 
 -- Beheer (functie admin, Overzicht): alleen aantallen. Geweigerd per reden (24 uur / 7 dagen), toegestaan, verwijderde
--- onbevestigde accounts en het aantal wegwerpdomeinen.
+-- onbevestigde accounts en het aantal wegwerpdomeinen. Redenen: rate_limit, disposable, name, honeypot, too_fast (build 138).
 create or replace function public.bingr_admin_signup_guard() returns jsonb
 language sql stable security definer set search_path = public as $$
   select jsonb_build_object(
     'rejected_24h', (select jsonb_build_object('total', count(*), 'rate_limit', count(*) filter (where reason = 'rate_limit'),
-        'disposable', count(*) filter (where reason = 'disposable'), 'name', count(*) filter (where reason = 'name'))
+        'disposable', count(*) filter (where reason = 'disposable'), 'name', count(*) filter (where reason = 'name'),
+        'honeypot', count(*) filter (where reason = 'honeypot'), 'too_fast', count(*) filter (where reason = 'too_fast'))
       from public.signup_attempts where not allowed and at > now() - interval '24 hours'),
     'rejected_7d', (select jsonb_build_object('total', count(*), 'rate_limit', count(*) filter (where reason = 'rate_limit'),
-        'disposable', count(*) filter (where reason = 'disposable'), 'name', count(*) filter (where reason = 'name'))
+        'disposable', count(*) filter (where reason = 'disposable'), 'name', count(*) filter (where reason = 'name'),
+        'honeypot', count(*) filter (where reason = 'honeypot'), 'too_fast', count(*) filter (where reason = 'too_fast'))
       from public.signup_attempts where not allowed and at > now() - interval '7 days'),
     'allowed_24h', (select count(*) from public.signup_attempts where allowed and at > now() - interval '24 hours'),
     'allowed_7d', (select count(*) from public.signup_attempts where allowed and at > now() - interval '7 days'),

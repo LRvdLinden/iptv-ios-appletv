@@ -126,11 +126,43 @@ select pg_temp.ok(pg_temp.code(public.bingr_before_user_created(pg_temp.ev('192.
 select pg_temp.ok(pg_temp.code(public.bingr_before_user_created(pg_temp.ev('192.0.2.50', 'h@in.wegwerp.example'))) = 400, 'wegwerp-subdomein');
 select pg_temp.ok((select count(*) from public.signup_attempts where ip_hash = public.bingr_signup_ip_hash('192.0.2.50') and reason = 'disposable') = 2, 'reden disposable');
 
+-- honeypot en tijdmeting van de webformulieren (build 138): hp gevuld of fill_ms < 1500 = 400 met een neutrale melding;
+-- ontbreken (apps) of leeg/null = toestaan
+select pg_temp.ok(pg_temp.code(public.bingr_before_user_created(pg_temp.ev('192.0.2.80', 'k1@example.com', '{"first_name":"Anna","hp":"https://spam.example","fill_ms":9000}'))) = 400, 'honeypot gevuld');
+select pg_temp.ok(public.bingr_before_user_created(pg_temp.ev('192.0.2.80', 'k1@example.com', '{"hp":"x"}'))->'error'->>'message' = 'Something went wrong. Please try again.', 'honeypot: neutrale melding');
+select pg_temp.ok(pg_temp.code(public.bingr_before_user_created(pg_temp.ev('192.0.2.80', 'k2@example.com', '{"hp":1}'))) = 400, 'honeypot: geen tekst');
+select pg_temp.ok(pg_temp.code(public.bingr_before_user_created(pg_temp.ev('192.0.2.80', 'k3@example.com', '{"hp":"x","fill_ms":100}'))) = 400, 'honeypot en te snel: honeypot');
+select pg_temp.ok((select count(*) from public.signup_attempts where ip_hash = public.bingr_signup_ip_hash('192.0.2.80') and reason = 'honeypot' and not allowed) = 4, 'reden honeypot');
+select pg_temp.ok(pg_temp.code(public.bingr_before_user_created(pg_temp.ev('192.0.2.81', 'k4@example.com', '{"first_name":"Anna","fill_ms":1499}'))) = 400, 'te snel (1499 ms)');
+select pg_temp.ok(public.bingr_before_user_created(pg_temp.ev('192.0.2.81', 'k5@example.com', '{"fill_ms":0}'))->'error'->>'message' = 'Something went wrong. Please try again.', 'te snel: neutrale melding');
+select pg_temp.ok(pg_temp.code(public.bingr_before_user_created(pg_temp.ev('192.0.2.81', 'k6@example.com', '{"fill_ms":-5}'))) = 400, 'te snel: negatief');
+select pg_temp.ok(pg_temp.code(public.bingr_before_user_created(pg_temp.ev('192.0.2.81', 'k7@example.com', '{"fill_ms":" 300 "}'))) = 400, 'te snel: als tekst');
+select pg_temp.ok((select count(*) from public.signup_attempts where ip_hash = public.bingr_signup_ip_hash('192.0.2.81') and reason = 'too_fast' and not allowed) = 4, 'reden too_fast');
+select pg_temp.ok(public.bingr_before_user_created(pg_temp.ev('192.0.2.82', 'k8@example.com', '{"first_name":"Anna","fill_ms":1500}')) = '{}'::jsonb, '1500 ms toegestaan');
+select pg_temp.ok(public.bingr_before_user_created(pg_temp.ev('192.0.2.82', 'k9@example.com', '{"hp":"","fill_ms":8123.5}')) = '{}'::jsonb, 'leeg veld en traag toegestaan');
+select pg_temp.ok(public.bingr_before_user_created(pg_temp.ev('192.0.2.83', 'k10@example.com', '{"hp":"  ","fill_ms":"abc"}')) = '{}'::jsonb, 'spaties en onleesbare tijd toegestaan');
+select pg_temp.ok(public.bingr_before_user_created(pg_temp.ev('192.0.2.83', 'k11@example.com', '{"hp":null,"fill_ms":null}')) = '{}'::jsonb, 'null toegestaan');
+select pg_temp.ok(public.bingr_before_user_created(pg_temp.ev('192.0.2.83', 'k12@example.com', '{"first_name":"Anna","last_name":"Bingr","lang":"en"}')) = '{}'::jsonb, 'zonder hp/fill_ms (apps) toegestaan');
+-- geweigerde bots tellen niet mee voor de limiet: na 4 honeypots nog 3 aanmeldingen vanaf dat netwerk
+select pg_temp.ok(public.bingr_before_user_created(pg_temp.ev('192.0.2.80', 'k13@example.com', '{"fill_ms":5000}')) = '{}'::jsonb, 'na honeypots: mens toegestaan');
+-- hp en fill_ms worden niet bewaard (trigger bingr_user_names), de rest wel
+insert into auth.users (id, email, raw_user_meta_data)
+  values ('00000000-0000-4000-8000-000000000138', 'hp@example.com', '{"lang":"nl","first_name":"Anna","hp":"","fill_ms":4321}');
+select pg_temp.ok((select not raw_user_meta_data ? 'hp' and not raw_user_meta_data ? 'fill_ms' and raw_user_meta_data->>'first_name' = 'Anna'
+  and raw_user_meta_data->>'lang' = 'nl' from auth.users where id = '00000000-0000-4000-8000-000000000138'), 'hp en fill_ms niet opgeslagen');
+update auth.users set raw_user_meta_data = raw_user_meta_data || '{"fill_ms":1}' where id = '00000000-0000-4000-8000-000000000138';
+select pg_temp.ok((select not raw_user_meta_data ? 'fill_ms' from auth.users where id = '00000000-0000-4000-8000-000000000138'), 'ook niet bij wijzigen');
+delete from auth.users where id = '00000000-0000-4000-8000-000000000138';
+-- de check op signup_attempts kent de nieuwe redenen, en niets anders
+select pg_temp.ok(pg_temp.name_err($q$insert into public.signup_attempts (ip_hash, allowed, reason) values (repeat('a', 64), false, 'iets')$q$) like '23514/%', 'onbekende reden geweigerd');
+
 -- meldingen: de apps herkennen geen andere fout in de tekst (already, banned, password, confirm)
 select pg_temp.ok(not exists (
   select 1 from (values (public.bingr_before_user_created(pg_temp.ev('198.51.100.7', 'z@example.com'))),
                         (public.bingr_before_user_created(pg_temp.ev('192.0.2.60', 'z@mailinator.com'))),
-                        (public.bingr_before_user_created(pg_temp.ev('192.0.2.61', 'z@example.com', '{"first_name":"a@b"}')))) v(r)
+                        (public.bingr_before_user_created(pg_temp.ev('192.0.2.61', 'z@example.com', '{"first_name":"a@b"}'))),
+                        (public.bingr_before_user_created(pg_temp.ev('192.0.2.62', 'z@example.com', '{"hp":"x"}'))),
+                        (public.bingr_before_user_created(pg_temp.ev('192.0.2.63', 'z@example.com', '{"fill_ms":10}')))) v(r)
   where r->'error'->>'message' is null or lower(r->'error'->>'message') ~ '(already|banned|password|confirm|invalid login)'), 'neutrale meldingen');
 
 -- niet blokkeren: zonder IP (admin), andere provider, anoniem; niets opgeslagen
@@ -186,6 +218,8 @@ select pg_temp.ok((public.bingr_admin_signup_guard()->'rejected_24h'->>'name')::
 select pg_temp.ok((public.bingr_admin_signup_guard()->'rejected_7d'->>'disposable')::int >= 22, 'tellingen disposable');
 select pg_temp.ok((public.bingr_admin_signup_guard()->>'unconfirmed_deleted_24h')::int = 1, 'tellingen verwijderd');
 select pg_temp.ok((public.bingr_admin_signup_guard()->>'disposable_domains')::int >= 16, 'aantal wegwerpdomeinen');
+select pg_temp.ok((public.bingr_admin_signup_guard()->'rejected_24h'->>'honeypot')::int >= 5, 'tellingen honeypot');
+select pg_temp.ok((public.bingr_admin_signup_guard()->'rejected_7d'->>'too_fast')::int >= 5, 'tellingen too_fast');
 select pg_temp.ok(public.bingr_admin_signup_guard()::text !~ '[0-9a-f]{64}', 'geen hashes in de tellingen');
 
 -- pogingen na 7 dagen weg
