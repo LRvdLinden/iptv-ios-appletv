@@ -63,13 +63,13 @@ jobs:
                raise exception 'TERUGDRAAIEN ok=%', r->>'ok';
              end \$\$" | python3 -c 'import sys,re; s=sys.stdin.read(); print(re.sub(r"[0-9a-f]{8}-[0-9a-f-]{27}","<id>",s)[:600])' | note proefaanroep
           SQL="select response.status_code as status, count(*) as n from function_edge_logs cross join unnest(metadata) as m cross join unnest(m.response) as response cross join unnest(m.request) as request where request.url like '%/device-auth%' group by 1 order by 1"
-          curl -s -G "https://api.supabase.com/v1/projects/$REF/analytics/endpoints/logs.all" \
+          curl -s -G "https://api.supabase.com/v1/projects/$REF/analytics/endpoints/logs" \
             -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
             --data-urlencode "sql=$SQL" \
             --data-urlencode "iso_timestamp_start=$(date -u -d '-6 hours' +%FT%TZ)" \
             --data-urlencode "iso_timestamp_end=$(date -u +%FT%TZ)" | head -c 1500 | note statuscodes
           SQL2="select event_message from postgres_logs cross join unnest(metadata) as m cross join unnest(m.parsed) as p where p.error_severity in ('ERROR','FATAL') and (event_message like '%bingr_stream%' or event_message like '%bingr_stats%' or event_message like '%account_watch%' or event_message like '%account_streams%') limit 20"
-          curl -s -G "https://api.supabase.com/v1/projects/$REF/analytics/endpoints/logs.all" \
+          curl -s -G "https://api.supabase.com/v1/projects/$REF/analytics/endpoints/logs" \
             -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
             --data-urlencode "sql=$SQL2" \
             --data-urlencode "iso_timestamp_start=$(date -u -d '-6 hours' +%FT%TZ)" \
@@ -142,6 +142,10 @@ jobs:
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      S_HOST: ${{ secrets.BINGR_SMTP_HOST }}
+      S_PORT: ${{ secrets.BINGR_SMTP_PORT }}
+      S_USER: ${{ secrets.BINGR_SMTP_USER }}
+      S_FROM: ${{ secrets.BINGR_SMTP_FROM }}
     steps:
       - name: Auth-mail (config en auth-logs)
         shell: bash
@@ -154,7 +158,9 @@ jobs:
               r = urllib.request.Request(url, headers={"Authorization": f"Bearer {MGMT}"})
               try:
                   with urllib.request.urlopen(r, timeout=60) as resp: return resp.status, json.loads(resp.read() or b"{}")
-              except urllib.error.HTTPError as e: return e.code, None
+              except urllib.error.HTTPError as e:
+                  try: return e.code, json.loads(e.read() or b"{}")
+                  except Exception: return e.code, None
               except Exception: return 0, None
           def note(title, msg): print(f"::notice title={title}::{msg[:3500]}")
           code, c = get(f"{API}/config/auth")
@@ -177,14 +183,24 @@ jobs:
                   f"template confirmation via bingr.online/bevestigen: {'ja' if 'bingr.online/bevestigen' in (c.get('mailer_templates_confirmation_content') or '') else 'nee'}",
                   f"onderwerp confirmation gezet: {yn('mailer_subjects_confirmation')}",
               ]))
+              def addr(v):
+                  m = re.search(r"<([^>]+)>", v or ""); return (m.group(1) if m else (v or "")).strip().lower()
+              E = os.environ; same = lambda a, b: "-" if not b else ("ja" if str(a or "").strip().lower() == str(b).strip().lower() else "nee")
+              note("auth-smtp vs secrets", " | ".join([
+                  f"host = BINGR_SMTP_HOST: {same(c.get('smtp_host'), E.get('S_HOST'))}",
+                  f"port = BINGR_SMTP_PORT: {same(c.get('smtp_port'), E.get('S_PORT'))}",
+                  f"user = BINGR_SMTP_USER: {same(c.get('smtp_user'), E.get('S_USER'))}",
+                  f"admin_email = adres BINGR_SMTP_FROM: {same(c.get('smtp_admin_email'), addr(E.get('S_FROM')))}",
+                  f"admin_email = smtp_user: {same(c.get('smtp_admin_email'), c.get('smtp_user'))}",
+                  f"pass gezet (niet leesbaar): {'ja' if c.get('smtp_pass') else 'onbekend'}"]))
           end = datetime.datetime.now(datetime.timezone.utc); start = end - datetime.timedelta(hours=int(os.environ.get("HOURS", "3")))
           sql = "select timestamp, event_message from auth_logs order by timestamp desc limit 1000"
           qs = urllib.parse.urlencode({"sql": sql, "iso_timestamp_start": start.strftime("%Y-%m-%dT%H:%M:%SZ"),
                                        "iso_timestamp_end": end.strftime("%Y-%m-%dT%H:%M:%SZ")})
-          code, r = get(f"{API}/analytics/endpoints/logs.all?{qs}")
+          code, r = get(f"{API}/analytics/endpoints/logs?{qs}")
           rows = (r or {}).get("result") if isinstance(r, dict) else None
           if code != 200 or not isinstance(rows, list):
-              note("auth-logs", f"niet gelezen (HTTP {code}{', fout: ja' if isinstance(r, dict) and r.get('error') else ''})")
+              note("auth-logs", f"niet gelezen (HTTP {code}) " + re.sub(r"[^\s\"]+@[^\s\"]+", "<e>", json.dumps(r)[:300] if r else ""))
           else:
               def clean(s):
                   s = re.sub(r"[^\s\"'<>]+@[^\s\"'<>]+", "<e>", str(s)); s = re.sub(r"[0-9a-f]{8}-[0-9a-f-]{27}", "<id>", s)
@@ -213,7 +229,10 @@ jobs:
           python3 -c 'import json,sys; print(json.dumps({"query": sys.argv[1]}))' "select count(*) filter (where email_confirmed_at is null) as onbevestigd,
                  count(*) filter (where email_confirmed_at is null and created_at > now() - interval '24 hours') as onbevestigd_24u,
                  count(*) filter (where confirmation_sent_at > now() - interval '24 hours') as bevestigingsmail_24u,
-                 count(*) filter (where created_at > now() - interval '24 hours') as nieuw_24u from auth.users" > /tmp/q.json
+                 count(*) filter (where created_at > now() - interval '24 hours') as nieuw_24u,
+                 (select json_agg(json_build_object('min_geleden', round(extract(epoch from now() - created_at)/60),
+                    'mail_na_sec', round(extract(epoch from confirmation_sent_at - created_at)), 'mail_min_geleden', round(extract(epoch from now() - confirmation_sent_at)/60)))
+                  from auth.users where email_confirmed_at is null) as onbevestigde_accounts from auth.users" > /tmp/q.json
           r=$(curl -s -X POST "https://api.supabase.com/v1/projects/$REF/database/query" \
             -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" --data @/tmp/q.json | head -c 400)
           printf '::notice title=accounts::%s\n' "$(echo "$r" | sed -E 's/[^ ",]+@[^ ",]+/<e>/g')"
