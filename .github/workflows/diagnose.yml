@@ -194,11 +194,20 @@ jobs:
                   f"admin_email = smtp_user: {same(c.get('smtp_admin_email'), c.get('smtp_user'))}",
                   f"pass gezet (niet leesbaar): {'ja' if c.get('smtp_pass') else 'onbekend'}"]))
           end = datetime.datetime.now(datetime.timezone.utc); start = end - datetime.timedelta(hours=int(os.environ.get("HOURS", "3")))
-          sql = "select timestamp, event_message from auth_logs order by timestamp desc limit 1000"
-          qs = urllib.parse.urlencode({"sql": sql, "iso_timestamp_start": start.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                                       "iso_timestamp_end": end.strftime("%Y-%m-%dT%H:%M:%SZ")})
-          code, r = get(f"{API}/analytics/endpoints/logs?{qs}")
-          rows = (r or {}).get("result") if isinstance(r, dict) else None
+          def logs(sql):
+              qs = urllib.parse.urlencode({"sql": sql, "iso_timestamp_start": start.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                                           "iso_timestamp_end": end.strftime("%Y-%m-%dT%H:%M:%SZ")})
+              return get(f"{API}/analytics/endpoints/logs?{qs}")
+          # edge_logs: statuscodes van de mailpaden van Auth (geen adressen)
+          ec, er = logs("select request.path as pad, request.method as m, response.status_code as status, count(*) as n from edge_logs "
+                        "cross join unnest(metadata) as md cross join unnest(md.request) as request cross join unnest(md.response) as response "
+                        "where request.path like '/auth/v1/%' and (request.path like '%signup%' or request.path like '%resend%' or request.path like '%verify%' "
+                        "or request.path like '%recover%' or request.path like '%otp%' or request.path like '%token%') group by 1,2,3 order by 1,3")
+          note("edge auth-paden", json.dumps((er or {}).get("result") if isinstance(er, dict) and "result" in er else {"http": ec, "fout": str((er or {}).get("error"))[:200] if isinstance(er, dict) else None}))
+          rows = None
+          for tbl in ("auth_logs", "gotrue_logs", "auth_audit_logs"):
+              code, r = logs(f"select timestamp, event_message from {tbl} order by timestamp desc limit 1000")
+              if isinstance(r, dict) and isinstance(r.get("result"), list): rows = r["result"]; note("auth-logs tabel", tbl); break
           if code != 200 or not isinstance(rows, list):
               note("auth-logs", f"niet gelezen (HTTP {code}) " + re.sub(r"[^\s\"]+@[^\s\"]+", "<e>", json.dumps(r)[:300] if r else ""))
           else:
@@ -223,6 +232,15 @@ jobs:
               note("auth-logs mailregels", json.dumps(dict(mails.most_common(10)), ensure_ascii=False) or "{}")
               note("auth-logs fouten", json.dumps(dict(fouten.most_common(12)), ensure_ascii=False) or "geen")
           PY
+      - name: Auth-auditlog (alleen acties en aantallen)
+        shell: bash
+        run: |
+          python3 -c 'import json,sys; print(json.dumps({"query": sys.argv[1]}))' "select payload->>'action' as actie, count(*) as n,
+                 round(extract(epoch from now() - max(created_at))/60) as min_geleden from auth.audit_log_entries
+                 where created_at > now() - interval '24 hours' group by 1 order by 1" > /tmp/q.json
+          r=$(curl -s -X POST "https://api.supabase.com/v1/projects/$REF/database/query" \
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" --data @/tmp/q.json | head -c 1500)
+          printf '::notice title=auth-auditlog 24u::%s\n' "$(echo "$r" | sed -E 's/[^ ",]+@[^ ",]+/<e>/g')"
       - name: Onbevestigde accounts (alleen aantallen)
         shell: bash
         run: |
