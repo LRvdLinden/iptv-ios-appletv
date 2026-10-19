@@ -26,6 +26,36 @@ select pg_temp.ok(public.bingr_person_name_invalid('<b>x</b>'), 'HTML');
 select pg_temp.ok(public.bingr_person_name_invalid(repeat('a', 51)), 'langer dan 50');
 select pg_temp.ok(not public.bingr_person_name_invalid(repeat('a', 50)), 'precies 50');
 
+-- trigger bingr_user_names (build 136): opschonen, en weigeren met SQLSTATE PT400 (Supabase Auth: HTTP 400) i.p.v. 22023 (500)
+create function pg_temp.name_err(q text) returns text language plpgsql as $$
+declare st text; dt text; hn text;
+begin
+  execute q;
+  return 'geen fout';
+exception when others then
+  get stacked diagnostics st = returned_sqlstate, dt = pg_exception_detail, hn = pg_exception_hint;
+  return st || '/' || coalesce(dt, '') || '/' || coalesce(hn, '');
+end $$;
+insert into auth.users (id, email, raw_user_meta_data)
+  values ('00000000-0000-4000-8000-000000000136', 'naam@example.com', '{"lang":"nl","first_name":"  Ci \t Test ","last_name":" van  der Bingr "}');
+select pg_temp.ok((select raw_user_meta_data->>'first_name' = 'Ci Test' and raw_user_meta_data->>'last_name' = 'van der Bingr'
+  from auth.users where id = '00000000-0000-4000-8000-000000000136'), 'naam opgeschoond bij aanmaken');
+select pg_temp.ok(pg_temp.name_err($q$update auth.users set raw_user_meta_data = raw_user_meta_data || '{"first_name":"<b>x</b>"}'
+  where id = '00000000-0000-4000-8000-000000000136'$q$) = 'PT400/first_name/bingr_invalid_name', 'HTML bij wijzigen: PT400');
+select pg_temp.ok(pg_temp.name_err($q$update auth.users set raw_user_meta_data = raw_user_meta_data || '{"last_name":"a@b.example"}'
+  where id = '00000000-0000-4000-8000-000000000136'$q$) = 'PT400/last_name/bingr_invalid_name', 'e-mailadres bij wijzigen: PT400');
+select pg_temp.ok(pg_temp.name_err($q$update auth.users set raw_user_meta_data = raw_user_meta_data || '{"first_name":42}'
+  where id = '00000000-0000-4000-8000-000000000136'$q$) = 'PT400/first_name/bingr_invalid_name', 'geen tekst: PT400');
+select pg_temp.ok(pg_temp.name_err($q$insert into auth.users (email, raw_user_meta_data) values ('x@example.com', '{"first_name":"www.spam.example"}')$q$)
+  = 'PT400/first_name/bingr_invalid_name', 'link bij aanmaken: PT400');
+select pg_temp.ok((select raw_user_meta_data->>'first_name' = 'Ci Test' from auth.users where id = '00000000-0000-4000-8000-000000000136'),
+  'geweigerde naam: oude naam blijft');
+update auth.users set raw_user_meta_data = raw_user_meta_data || '{"first_name":" Anna ","last_name":null}'
+  where id = '00000000-0000-4000-8000-000000000136';
+select pg_temp.ok((select raw_user_meta_data->>'first_name' = 'Anna' and not raw_user_meta_data ? 'last_name' and raw_user_meta_data->>'lang' = 'nl'
+  from auth.users where id = '00000000-0000-4000-8000-000000000136'), 'naam wijzigen: opgeschoond, null = weg, lang blijft');
+delete from auth.users where id = '00000000-0000-4000-8000-000000000136';
+
 -- netwerk en hash
 select pg_temp.ok(public.bingr_signup_ip_key('192.0.2.10') = '192.0.2.10', 'IPv4');
 select pg_temp.ok(public.bingr_signup_ip_key(' ::ffff:192.0.2.10 ') = '192.0.2.10', 'IPv4 in IPv6');

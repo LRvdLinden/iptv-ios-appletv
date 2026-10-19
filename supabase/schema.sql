@@ -2107,11 +2107,11 @@ grant execute on function public.bingr_announce_mark(uuid, uuid[], uuid[]) to se
 -- het beheer. Mails beginnen dan met "Hoi <voornaam>," (functies support, status en admin; accountmails via {{ .Data.first_name }}).
 -- Opschonen zoals de apps en sites (BingrAuth.cleanName, Account.cleanName, personName() in functions/_shared/layout.ts):
 -- stuurtekens en < > weg, witruimte samengevoegd, getrimd, max. 50 tekens; leeg = geen naam.
+-- >>> unittest person-name
 create or replace function public.bingr_clean_person_name(p text) returns text
 language sql immutable set search_path = public as $$
   select nullif(btrim(left(btrim(regexp_replace(regexp_replace(coalesce(p, ''), '[\x01-\x1f\x7f<>]', '', 'g'), '\s+', ' ', 'g')), 50)), '')
 $$;
--- >>> unittest person-name
 -- build 134: naamregel, ook gebruikt door de hook bingr_before_user_created: link of e-mailadres (://, www., @), < of >,
 -- of langer dan 50 tekens.
 create or replace function public.bingr_person_name_invalid(p text) returns boolean
@@ -2119,10 +2119,13 @@ language sql immutable set search_path = public as $$
   select p is not null and (p ~* '(://|www\.|@|<|>)' or char_length(btrim(regexp_replace(p, '\s+', ' ', 'g'))) > 50)
 $$;
 revoke all on function public.bingr_person_name_invalid(text) from public, anon, authenticated;
--- <<< unittest person-name
 -- Trigger op auth.users: naam opschonen bij het opslaan, en weigeren als er een link, e-mailadres of HTML in staat of hij
 -- langer is dan 50 tekens (de accountmail bij het aanmaken toont de naam al, ook voor een adres dat nog niet bevestigd is).
 -- De apps en sites sturen alleen opgeschoonde namen; een geweigerde naam geeft bij Supabase Auth een foutmelding (geen account).
+-- Foutcode PT400 (build 136; was 22023 = HTTP 500): Supabase Auth geeft een SQLSTATE "PTnnn" door als HTTP-status nnn, met
+-- {code:"PT400", message, detail (= first_name/last_name), hint:"bingr_invalid_name"}. Dat geldt alleen voor aanroepen zonder
+-- header X-Supabase-Api-Version (curl, URLSession, OkHttp); supabase-js stuurt "2024-01-01" en krijgt van Auth altijd 500
+-- "Error updating user" (unexpected_failure). Zie docs/ACCOUNT.md, "Voor- en achternaam".
 create or replace function public.bingr_user_names() returns trigger
 language plpgsql security definer set search_path = public as $$
 declare k text; raw jsonb; v text; c text;
@@ -2133,10 +2136,10 @@ begin
     continue when raw is null;
     continue when tg_op = 'UPDATE' and raw is not distinct from (old.raw_user_meta_data -> k);
     if jsonb_typeof(raw) = 'null' then new.raw_user_meta_data := new.raw_user_meta_data - k; continue; end if;
-    if jsonb_typeof(raw) <> 'string' then raise exception 'bingr_invalid_name' using errcode = '22023', detail = k; end if;
-    v := raw #>> '{}';
-    if public.bingr_person_name_invalid(v) then
-      raise exception 'bingr_invalid_name' using errcode = '22023', detail = k;
+    v := case when jsonb_typeof(raw) = 'string' then raw #>> '{}' end;
+    if v is null or public.bingr_person_name_invalid(v) then
+      raise exception 'Names cannot contain links, email addresses or HTML.'
+        using errcode = 'PT400', detail = k, hint = 'bingr_invalid_name';
     end if;
     c := public.bingr_clean_person_name(v);
     new.raw_user_meta_data := case when c is null then new.raw_user_meta_data - k else jsonb_set(new.raw_user_meta_data, array[k], to_jsonb(c)) end;
@@ -2147,6 +2150,7 @@ revoke all on function public.bingr_user_names() from public, anon, authenticate
 drop trigger if exists bingr_user_names on auth.users;
 create trigger bingr_user_names before insert or update of raw_user_meta_data on auth.users
   for each row execute function public.bingr_user_names();
+-- <<< unittest person-name
 -- Voornamen bij e-mailadressen (functie status: abonnees hebben geen account-id). Alleen bevestigde accounts met een naam;
 -- max. 200 adressen per aanroep; alleen voor de service role.
 create or replace function public.bingr_first_names(p_emails text[]) returns table(email text, first_name text)

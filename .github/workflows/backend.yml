@@ -1570,8 +1570,19 @@ jobs:
               code, r = req("GET", f"{BASE}/auth/v1/admin/users/{uid}", None, adm)
               m = (r or {}).get("user_metadata") or {}
               if m.get("first_name") != "Anna" or m.get("last_name") != "Bingr": fail.append(f"naam wijzigen niet opgeschoond: {m}")
-              code, r = req("PUT", f"{BASE}/auth/v1/user", {"data": {"first_name": "<b>x</b>"}}, {"apikey": PUB, "Authorization": f"Bearer {tok}"})
-              if code < 400: fail.append(f"naam met HTML niet geweigerd (HTTP {code})")
+              # build 136: een geweigerde naam = 400 {code:"PT400", hint:"bingr_invalid_name", detail:<veld>} (trigger met
+              # SQLSTATE PT400; was 22023 = 500). Alleen zonder header X-Supabase-Api-Version: met "2024-01-01" (supabase-js)
+              # geeft Auth altijd 500 unexpected_failure. In beide gevallen blijft de oude naam staan.
+              for bad_name, field in (("<b>x</b>", "first_name"), ("www.spam.example", "last_name")):
+                  code, r = req("PUT", f"{BASE}/auth/v1/user", {"data": {field: bad_name}}, {"apikey": PUB, "Authorization": f"Bearer {tok}"})
+                  if code != 400 or r.get("code") != "PT400" or r.get("hint") != "bingr_invalid_name" or r.get("detail") != field:
+                      fail.append(f"naam geweigerd ({field}): verwacht 400 PT400, kreeg HTTP {code} {str(r)[:200]}")
+              code, r = req("PUT", f"{BASE}/auth/v1/user", {"data": {"first_name": "a@b.example"}}, {"apikey": PUB, "Authorization": f"Bearer {tok}", "X-Supabase-Api-Version": "2024-01-01"})
+              if code < 400: fail.append(f"naam met e-mailadres niet geweigerd (supabase-js, HTTP {code})")
+              else: print(f"::notice::naam geweigerd met X-Supabase-Api-Version 2024-01-01 (supabase-js): HTTP {code} {r.get('code') or r.get('error_code')}")
+              code, r = req("GET", f"{BASE}/auth/v1/admin/users/{uid}", None, adm)
+              m = (r or {}).get("user_metadata") or {}
+              if m.get("first_name") != "Anna" or m.get("last_name") != "Bingr": fail.append(f"geweigerde naam toch opgeslagen: {m}")
               code, r = sql(f"select first_name from public.bingr_first_names(array['{email.upper()}'])")
               if code >= 300 or not isinstance(r, list) or [x.get("first_name") for x in r] != ["Anna"]: fail.append(f"bingr_first_names: HTTP {code} {str(r)[:200]}")
               if not fail: print("::notice::Namen: opschonen, weigeren, zelf wijzigen, opzoeken en aanhef in de accountmails werken")
