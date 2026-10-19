@@ -4,6 +4,19 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 134
+_19 oktober 2026_
+
+### Server
+
+**Nieuw**
+
+- Betere bescherming tegen nepaccounts: te veel nieuwe accounts vanaf hetzelfde netwerk, wegwerp-e-mailadressen en namen met links worden geweigerd. Er wordt geen IP-adres opgeslagen
+
+**Verbeterd**
+
+- Een nieuw account moet je altijd eerst per e-mail bevestigen; accounts die na 48 uur nog niet bevestigd zijn, worden automatisch verwijderd
+
 ## Versie 1.0.0 · Build 133
 _19 oktober 2026_
 

@@ -1,5 +1,28 @@
 [
  {
+  "build": 134,
+  "version": "1.0.0",
+  "date": "2026-10-19",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Betere bescherming tegen nepaccounts: te veel nieuwe accounts vanaf hetzelfde netwerk, wegwerp-e-mailadressen en namen met links worden geweigerd. Er wordt geen IP-adres opgeslagen",
+    "en": "Better protection against fake accounts: too many new accounts from the same network, disposable email addresses and names containing links are refused. No IP addresses are stored"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Een nieuw account moet je altijd eerst per e-mail bevestigen; accounts die na 48 uur nog niet bevestigd zijn, worden automatisch verwijderd",
+    "en": "New accounts must always be confirmed by email first; accounts that are still unconfirmed after 48 hours are removed automatically"
+   }
+  ]
+ },
+ {
   "build": 133,
   "version": "1.0.0",
   "date": "2026-10-19",
