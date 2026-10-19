@@ -1,5 +1,20 @@
 [
  {
+  "build": 136,
+  "version": "1.0.0",
+  "date": "2026-10-19",
+  "items": [
+   {
+    "type": "fixed",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Je naam wijzigen naar een naam met een link, e-mailadres of HTML geeft nu een duidelijke foutmelding in plaats van een serverfout; je oude naam blijft staan",
+    "en": "Changing your name to one with a link, email address or HTML now returns a clear error instead of a server error; your previous name is kept"
+   }
+  ]
+ },
+ {
   "build": 135,
   "version": "1.0.0",
   "date": "2026-10-19",

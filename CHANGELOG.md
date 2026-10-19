@@ -4,6 +4,15 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 136
+_19 oktober 2026_
+
+### Server
+
+**Opgelost**
+
+- Je naam wijzigen naar een naam met een link, e-mailadres of HTML geeft nu een duidelijke foutmelding in plaats van een serverfout; je oude naam blijft staan
+
 ## Versie 1.0.0 · Build 135
 _19 oktober 2026_
 
