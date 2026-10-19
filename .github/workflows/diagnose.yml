@@ -134,3 +134,86 @@ jobs:
           q "select status, left(coalesce(return_message,''),80) as uitkomst, count(*) as n from cron.job_run_details d
              join cron.job j on j.jobid = d.jobid where j.jobname = 'bingr-push' and d.start_time > now() - interval '30 minutes'
              group by 1,2" | note 'cron laatste 30 min'
+
+  # build 135: bevestigingsmail van Supabase Auth — alleen ja/nee, getallen en foutsoorten (geen adressen of serverwaarden)
+  mail:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+    steps:
+      - name: Auth-mail (config en auth-logs)
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os, re, urllib.request, urllib.error, urllib.parse, collections, datetime
+          REF = os.environ["REF"]; MGMT = os.environ["SUPABASE_ACCESS_TOKEN"]
+          API = f"https://api.supabase.com/v1/projects/{REF}"
+          def get(url):
+              r = urllib.request.Request(url, headers={"Authorization": f"Bearer {MGMT}"})
+              try:
+                  with urllib.request.urlopen(r, timeout=60) as resp: return resp.status, json.loads(resp.read() or b"{}")
+              except urllib.error.HTTPError as e: return e.code, None
+              except Exception: return 0, None
+          def note(title, msg): print(f"::notice title={title}::{msg[:3500]}")
+          code, c = get(f"{API}/config/auth")
+          if code != 200 or not isinstance(c, dict):
+              note("auth-config", f"niet gelezen (HTTP {code})")
+          else:
+              yn = lambda k: "ja" if c.get(k) else "nee"
+              sender = c.get("smtp_sender_name")
+              note("auth-config", " | ".join([
+                  f"smtp_host gezet: {yn('smtp_host')}", f"smtp_port: {c.get('smtp_port') or '-'}",
+                  f"smtp_user gezet: {yn('smtp_user')}", f"smtp_admin_email gezet: {yn('smtp_admin_email')}",
+                  f"smtp_admin_email @bingr.online: {'ja' if str(c.get('smtp_admin_email') or '').lower().endswith('@bingr.online') else 'nee'}",
+                  f"smtp_sender_name: {sender if sender in (None, '', 'Bingr') else '(anders)'}",
+                  f"smtp_max_frequency: {c.get('smtp_max_frequency')}",
+                  f"mailer_autoconfirm: {c.get('mailer_autoconfirm')}", f"rate_limit_email_sent: {c.get('rate_limit_email_sent')}",
+                  f"rate_limit_otp: {c.get('rate_limit_otp')}", f"external_email_enabled: {c.get('external_email_enabled')}",
+                  f"hook_before_user_created_enabled: {c.get('hook_before_user_created_enabled')}",
+                  f"site_url bingr.online: {'ja' if (c.get('site_url') or '').rstrip('/') == 'https://bingr.online' else 'nee'}",
+                  f"bevestigen/ in redirect-lijst: {'ja' if 'https://bingr.online/bevestigen/' in (c.get('uri_allow_list') or '') else 'nee'}",
+                  f"template confirmation via bingr.online/bevestigen: {'ja' if 'bingr.online/bevestigen' in (c.get('mailer_templates_confirmation_content') or '') else 'nee'}",
+                  f"onderwerp confirmation gezet: {yn('mailer_subjects_confirmation')}",
+              ]))
+          end = datetime.datetime.now(datetime.timezone.utc); start = end - datetime.timedelta(hours=int(os.environ.get("HOURS", "3")))
+          sql = "select timestamp, event_message from auth_logs order by timestamp desc limit 1000"
+          qs = urllib.parse.urlencode({"sql": sql, "iso_timestamp_start": start.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                                       "iso_timestamp_end": end.strftime("%Y-%m-%dT%H:%M:%SZ")})
+          code, r = get(f"{API}/analytics/endpoints/logs.all?{qs}")
+          rows = (r or {}).get("result") if isinstance(r, dict) else None
+          if code != 200 or not isinstance(rows, list):
+              note("auth-logs", f"niet gelezen (HTTP {code}{', fout: ja' if isinstance(r, dict) and r.get('error') else ''})")
+          else:
+              def clean(s):
+                  s = re.sub(r"[^\s\"'<>]+@[^\s\"'<>]+", "<e>", str(s)); s = re.sub(r"[0-9a-f]{8}-[0-9a-f-]{27}", "<id>", s)
+                  s = re.sub(r"\b\d{1,3}(\.\d{1,3}){3}(:\d+)?\b", "<ip>", s); s = re.sub(r"\b[\w-]+(\.[\w-]+)+:\d+\b", "<host>", s)
+                  return s[:140]
+              lv = collections.Counter(); fouten = collections.Counter(); paden = collections.Counter(); mails = collections.Counter()
+              for row in rows:
+                  try: m = json.loads(row.get("event_message") or "{}")
+                  except Exception: m = {"msg": row.get("event_message")}
+                  level = m.get("level") or "?"; lv[level] += 1
+                  path = m.get("path") or ""; st = m.get("status")
+                  if path in ("/signup", "/resend", "/recover", "/otp", "/magiclink", "/verify", "/user") or "mail" in str(m.get("msg") or "").lower():
+                      paden[f"{path or '-'} {st or ''}".strip()] += 1
+                  if "mail" in json.dumps(m).lower() and (m.get("action") or m.get("msg")):
+                      mails[clean(m.get("msg") or m.get("action"))] += 1
+                  if level in ("error", "fatal", "warning") or (isinstance(st, int) and st >= 400):
+                      fouten[clean(f"{m.get('msg') or ''} | {m.get('error') or ''} | {m.get('error_code') or ''}")] += 1
+              note("auth-logs niveaus", f"{len(rows)} regels ({start:%H:%M}-{end:%H:%M} UTC): " + json.dumps(dict(lv)))
+              note("auth-logs mailpaden", json.dumps(dict(paden.most_common(15)), ensure_ascii=False) or "{}")
+              note("auth-logs mailregels", json.dumps(dict(mails.most_common(10)), ensure_ascii=False) or "{}")
+              note("auth-logs fouten", json.dumps(dict(fouten.most_common(12)), ensure_ascii=False) or "geen")
+          PY
+      - name: Onbevestigde accounts (alleen aantallen)
+        shell: bash
+        run: |
+          python3 -c 'import json,sys; print(json.dumps({"query": sys.argv[1]}))' "select count(*) filter (where email_confirmed_at is null) as onbevestigd,
+                 count(*) filter (where email_confirmed_at is null and created_at > now() - interval '24 hours') as onbevestigd_24u,
+                 count(*) filter (where confirmation_sent_at > now() - interval '24 hours') as bevestigingsmail_24u,
+                 count(*) filter (where created_at > now() - interval '24 hours') as nieuw_24u from auth.users" > /tmp/q.json
+          r=$(curl -s -X POST "https://api.supabase.com/v1/projects/$REF/database/query" \
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" --data @/tmp/q.json | head -c 400)
+          printf '::notice title=accounts::%s\n' "$(echo "$r" | sed -E 's/[^ ",]+@[^ ",]+/<e>/g')"
