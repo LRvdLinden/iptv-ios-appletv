@@ -23,7 +23,7 @@ const content = (over: Partial<MailingContent> = {}): MailingContent => ({
 
 Deno.test("invoer: geldige inhoud, opgeschoond", () => {
   const r = cleanContent({
-    nl: { subject: "  Nieuw\n in  Bingr ", body: "Hallo\r\n\r\n\r\n\r\nwereld  ​", button: "Lees" },
+    nl: { subject: "  Nieuw\n in  Bingr ", body: "Hallo\r\n\r\n\r\n\r\nwereld  \u200b", button: "Lees" },
     en: { subject: "New", body: "Hi", button: "Read" }, image: "", button_url: " https://bingr.online/x?a=1&b=2 ",
   });
   ok(r.ok, "ok");
