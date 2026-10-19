@@ -4,6 +4,15 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.0 · Build 137
+_19 oktober 2026_
+
+### Server
+
+**Opgelost**
+
+- Bevestigingsmails en andere accountmails (wachtwoord vergeten, e-mail wijzigen) komen weer direct aan, ook bij Gmail en Outlook
+
 ## Versie 1.0.0 · Build 136
 _19 oktober 2026_
 

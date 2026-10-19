@@ -1,5 +1,20 @@
 [
  {
+  "build": 137,
+  "version": "1.0.0",
+  "date": "2026-10-19",
+  "items": [
+   {
+    "type": "fixed",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Bevestigingsmails en andere accountmails (wachtwoord vergeten, e-mail wijzigen) komen weer direct aan, ook bij Gmail en Outlook",
+    "en": "Confirmation emails and other account emails (forgot password, change email) arrive right away again, including Gmail and Outlook"
+   }
+  ]
+ },
+ {
   "build": 136,
   "version": "1.0.0",
   "date": "2026-10-19",
