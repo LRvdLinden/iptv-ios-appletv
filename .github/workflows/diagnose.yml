@@ -18,6 +18,39 @@ jobs:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       REF: ${{ secrets.SUPABASE_PROJECT_REF }}
     steps:
+      - name: Hulp voor het logs-endpoint
+        shell: bash
+        run: |
+          cat > "$RUNNER_TEMP/bingr_logs.py" <<'PY'
+          # Management API analytics/endpoints/logs (ClickHouse). Geen gebruikersgegevens in het (openbare) log: scrub().
+          import datetime, json, os, re, urllib.error, urllib.parse, urllib.request
+          API = f"https://api.supabase.com/v1/projects/{os.environ['REF']}/analytics/endpoints/logs"
+          def logs(sql, hours=6):
+              end = datetime.datetime.now(datetime.timezone.utc); start = end - datetime.timedelta(hours=hours)
+              qs = urllib.parse.urlencode({"sql": sql, "iso_timestamp_start": start.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                                           "iso_timestamp_end": end.strftime("%Y-%m-%dT%H:%M:%SZ")})
+              r = urllib.request.Request(f"{API}?{qs}", headers={"Authorization": f"Bearer {os.environ['SUPABASE_ACCESS_TOKEN']}"})
+              try:
+                  with urllib.request.urlopen(r, timeout=60) as resp: return resp.status, json.loads(resp.read() or b"{}")
+              except urllib.error.HTTPError as e:
+                  try: return e.code, json.loads(e.read() or b"{}")
+                  except Exception: return e.code, None
+              except Exception: return 0, None
+          def first(tmpl, hours=6):
+              # bron in source_name of source (zoals de job mail); fout = (None, korte melding)
+              last = None
+              for col in ("source_name", "source"):
+                  c, r = logs(tmpl.replace("{SRC}", col), hours)
+                  if isinstance(r, dict) and isinstance(r.get("result"), list) and not r.get("error"): return r["result"], None
+                  last = f"HTTP {c} " + (scrub(r.get("error"))[:300] if isinstance(r, dict) else "")
+              return None, last
+          def scrub(v):
+              s = v if isinstance(v, str) else json.dumps(v, ensure_ascii=False)
+              s = re.sub(r"[^\s\"'<>]+@[^\s\"'<>]+", "<e>", s); s = re.sub(r"[0-9a-f]{8}-[0-9a-f-]{27}", "<id>", s)
+              s = re.sub(r"\(([^()]{0,200})\)=\(([^()]*)\)", r"(\1)=(<waarde>)", s)
+              s = re.sub(r"\b\d{1,3}(\.\d{1,3}){3}(:\d+)?\b", "<ip>", s)
+              return s[:1800]
+          PY
       - name: Kijksessies (Nu aan het kijken)
         shell: bash
         run: |
@@ -62,19 +95,22 @@ jobs:
                r := public.bingr_stream_start(u, d, 'p', 'p', 't', 'movie', 'c', 3, 90, null, null, 'Europe/Amsterdam');
                raise exception 'TERUGDRAAIEN ok=%', r->>'ok';
              end \$\$" | python3 -c 'import sys,re; s=sys.stdin.read(); print(re.sub(r"[0-9a-f]{8}-[0-9a-f-]{27}","<id>",s)[:600])' | note proefaanroep
-          SQL="select response.status_code as status, count(*) as n from function_edge_logs cross join unnest(metadata) as m cross join unnest(m.response) as response cross join unnest(m.request) as request where request.url like '%/device-auth%' group by 1 order by 1"
-          curl -s -G "https://api.supabase.com/v1/projects/$REF/analytics/endpoints/logs" \
-            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
-            --data-urlencode "sql=$SQL" \
-            --data-urlencode "iso_timestamp_start=$(date -u -d '-6 hours' +%FT%TZ)" \
-            --data-urlencode "iso_timestamp_end=$(date -u +%FT%TZ)" | head -c 1500 | note statuscodes
-          SQL2="select event_message from postgres_logs cross join unnest(metadata) as m cross join unnest(m.parsed) as p where p.error_severity in ('ERROR','FATAL') and (event_message like '%bingr_stream%' or event_message like '%bingr_stats%' or event_message like '%account_watch%' or event_message like '%account_streams%') limit 20"
-          curl -s -G "https://api.supabase.com/v1/projects/$REF/analytics/endpoints/logs" \
-            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
-            --data-urlencode "sql=$SQL2" \
-            --data-urlencode "iso_timestamp_start=$(date -u -d '-6 hours' +%FT%TZ)" \
-            --data-urlencode "iso_timestamp_end=$(date -u +%FT%TZ)" \
-            | python3 -c 'import sys,re; s=sys.stdin.read(); s=re.sub(r"\"[^\"]*@[^\"]*\"","\"<e>\"",s); s=re.sub(r"[0-9a-f]{8}-[0-9a-f-]{27}","<id>",s); s=re.sub(r"\(([^()]{0,200})\)=\(([^()]*)\)",r"(\1)=(<waarde>)",s); print(s[:1800])' | note pgfouten
+          # logs via het logs-endpoint (ClickHouse, één tabel logs; logs.all is per 23-9-2026 verwijderd, zie job mail).
+          # Bron in source_name of source; kolommen uit log_attributes (Map(String, String): ontbrekende sleutel = '').
+          python3 - <<'PY2' | note statuscodes
+          import os, re, sys; sys.path.insert(0, os.environ["RUNNER_TEMP"]); from bingr_logs import first, scrub
+          rows, err = first("select log_attributes['response.status_code'] as status, count() as n from logs where {SRC} = 'function_edge_logs' "
+                            "and (log_attributes['request.pathname'] like '%/device-auth%' or log_attributes['request.url'] like '%/device-auth%' "
+                            "or event_message like '%/device-auth%') group by status order by status limit 50")
+          print(scrub(rows) if rows is not None else f"niet gelezen: {err}")
+          PY2
+          python3 - <<'PY2' | note pgfouten
+          import os, re, sys; sys.path.insert(0, os.environ["RUNNER_TEMP"]); from bingr_logs import first, scrub
+          rows, err = first("select timestamp, log_attributes['parsed.error_severity'] as niveau, event_message from logs where {SRC} = 'postgres_logs' "
+                            "and log_attributes['parsed.error_severity'] in ('ERROR', 'FATAL') and (event_message like '%bingr_stream%' or event_message like '%bingr_stats%' "
+                            "or event_message like '%account_watch%' or event_message like '%account_streams%') order by timestamp desc limit 20")
+          print((scrub(rows) or "geen") if rows is not None else f"niet gelezen: {err}")
+          PY2
 
   # build 107: statuspagina — per monitor de laatste uitkomst (geen gebruikersgegevens: alleen soort, status en foutsoort)
   status:
