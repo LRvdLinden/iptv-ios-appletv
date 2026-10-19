@@ -263,9 +263,9 @@ jobs:
                   fail.append("BINGR_SMTP_HOST/USER/PASSWORD ontbreken en Auth heeft geen eigen SMTP: bevestigingsmails komen niet aan")
               else:
                   print("::warning::BINGR_SMTP_* ontbreken: Auth-SMTP niet bijgewerkt (bestaande instelling blijft)")
-              if cur.get("mailer_autoconfirm"): print("::warning::Bevestigen per e-mail stond uit; staat nu weer aan")
+              # build 137: mailer_autoconfirm volgt app_settings.require_email_confirm (stap hierna, supabase/tests/email_confirm.py)
               code, _ = req("PATCH", f"{API}/config/auth", {"hook_before_user_created_enabled": True,
-                            "hook_before_user_created_uri": HOOK, "mailer_autoconfirm": False})
+                            "hook_before_user_created_uri": HOOK})
               # limieten apart: Supabase weigert rate_limit_email_sent zonder eigen SMTP; dan alleen een waarschuwing
               lc, _ = req("PATCH", f"{API}/config/auth", {"rate_limit_email_sent": stricter("rate_limit_email_sent", 30),
                           "rate_limit_otp": stricter("rate_limit_otp", 10)})
@@ -276,10 +276,8 @@ jobs:
                   now = now if isinstance(now, dict) else {}
                   if now.get("hook_before_user_created_enabled") is not True or now.get("hook_before_user_created_uri") != HOOK:
                       fail.append("hook Before User Created staat niet aan")
-                  elif now.get("mailer_autoconfirm") is not False:
-                      fail.append("bevestigen per e-mail staat niet aan")
                   else:
-                      print("::notice::Hook, bevestiging en limieten ingesteld")
+                      print("::notice::Hook en limieten ingesteld")
           # 3. planning: onbevestigde accounts opruimen (elk uur)
           code, r = sql("select cron.unschedule(jobid) from cron.job where jobname = 'bingr-unconfirmed-cleanup';\n"
                         "select cron.schedule('bingr-unconfirmed-cleanup', '17 * * * *', $cmd$ select public.bingr_signup_cleanup(); $cmd$);\n"
@@ -289,6 +287,11 @@ jobs:
           for f in fail: print(f"::error::{f}")
           sys.exit(1 if fail else 0)
           PY
+      - name: Bevestigen per e-mail (app_settings.require_email_confirm)
+        # build 137: mailer_autoconfirm = !require_email_confirm (tijdelijk false); staat bevestigen uit, dan worden
+        # vastzittende onbevestigde accounts bevestigd. Alleen aantallen in het log.
+        if: steps.check.outputs.skip != '1'
+        run: python3 -I supabase/tests/email_confirm.py
       - name: E-mailtemplates (Bingr-huisstijl)
         if: steps.check.outputs.skip != '1'
         run: |
@@ -1725,7 +1728,9 @@ jobs:
               code, cfg = req("GET", f"https://api.supabase.com/v1/projects/{REF}/config/auth", headers={"Authorization": f"Bearer {MGMT}"})
               if code != 200 or cfg.get("hook_before_user_created_enabled") is not True or not str(cfg.get("hook_before_user_created_uri") or "").endswith("/public/bingr_before_user_created"):
                   fail.append("hook Before User Created staat niet aan in Auth")
-              if code == 200 and cfg.get("mailer_autoconfirm") is not False: fail.append("bevestigen per e-mail staat niet aan")
+              code2, rq = sql("select value from public.app_settings where key = 'require_email_confirm'")
+              require = bool(code2 < 300 and isinstance(rq, list) and rq and rq[0].get("value") is True)
+              if code == 200 and cfg.get("mailer_autoconfirm") is not (not require): fail.append("mailer_autoconfirm volgt require_email_confirm niet")
               # 1. per netwerk: 3 per uur, de 4e geweigerd (429); de 4 aanroepen in één query, na elkaar
               q = ", ".join(f"public.bingr_before_user_created('{ev(ip, f'ci-{i}-{secrets.token_hex(3)}@example.com')}'::jsonb) r{i}" for i in range(1, 5))
               code, r = sql(f"select {q}")

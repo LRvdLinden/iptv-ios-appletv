@@ -117,7 +117,7 @@ def summary(f, msg, t_sent):
             + f" | kopregels: {','.join(names)}"
             + (f" | na {round(time.time() - t_sent)} s" if t_sent else ""))
 
-uid_user = None; t0 = None; signup_ok = False
+uid_user = None; t0 = None; signup_ok = False; mode = "bevestigingsmail"
 try:
     # 0. bestaat er al een account met het testadres? (dan stuurt Auth geen mail)
     code, r = sql(f"select now()::text t, (select count(*) from auth.users where lower(email) = lower({lit(to)}))::int n")
@@ -148,6 +148,14 @@ try:
         signup_ok = True
         note("mailtest aanmelding", f"HTTP 200 | sessie terug (geen bevestiging nodig): {'ja' if r.get('access_token') else 'nee'} | "
              f"confirmation_sent_at gezet: {'ja' if u.get('confirmation_sent_at') else 'nee'} | identities: {len(u.get('identities') or [])}")
+        if r.get("access_token"):
+            # bevestigen staat (tijdelijk) uit: geen bevestigingsmail; test het mailpad dan met "wachtwoord vergeten"
+            # (zelfde hook, zelfde verzending)
+            time.sleep(2)
+            c2, _ = req("POST", f"{BASE}/auth/v1/recover", {"email": to}, {"apikey": PUB})
+            t_auth = time.time(); mode = "herstelmail"
+            note("mailtest modus", f"bevestigen staat uit (autoconfirm): test met de herstelmail (POST /recover: HTTP {c2})")
+            if c2 >= 300: fail.append(f"herstelmail aanvragen mislukt (HTTP {c2})"); signup_ok = False
     else:
         msg = re.sub(r"[^\s\"'<>]+@[^\s\"'<>]+", "<e>", str((r or {}).get("msg") or (r or {}).get("message") or (r or {}).get("error_code") or ""))[:160]
         fail.append(f"aanmelding mislukt: HTTP {code} {msg}")
@@ -164,17 +172,17 @@ try:
             warn.append(f"IMAP: {type(e).__name__}"); break
     for kind, t in (("controle", t_ctrl), ("auth", t_auth)):
         if kind not in want: continue
-        if kind in got: note(f"mailtest {kind}mail", "binnengekomen: ja | " + summary(got[kind][0], got[kind][2], t))
+        if kind in got: note(f"mailtest {mode if kind == 'auth' else kind + 'mail'}", "binnengekomen: ja | " + summary(got[kind][0], got[kind][2], t))
         else: note(f"mailtest {kind}mail", f"binnengekomen: nee (na {WAIT} s)")
     if signup_ok and "auth" not in got:
-        fail.append("bevestigingsmail van Supabase Auth niet binnengekomen" + (" (controlemail wel)" if "controle" in got else ""))
+        fail.append(f"{mode} van Supabase Auth niet binnengekomen" + (" (controlemail wel)" if "controle" in got else ""))
     elif signup_ok and "auth" in got and re.search(r"spam|junk|ongewenst", got["auth"][0], re.I):
-        fail.append("bevestigingsmail van Supabase Auth komt in de spammap")
+        fail.append(f"{mode} van Supabase Auth komt in de spammap")
     if signup_ok and "auth" in got:
         am = got["auth"][2]
-        if not am.get("Message-ID"): fail.append("bevestigingsmail zonder Message-ID (Gmail/Outlook stellen die uit of weigeren hem)")
+        if not am.get("Message-ID"): fail.append(f"{mode} zonder Message-ID (Gmail/Outlook stellen die uit of weigeren hem)")
         if E.get("MAILTEST_REQUIRE_HOOK") and not str(am.get("X-Bingr-Mail") or "").startswith("auth-"):
-            fail.append("bevestigingsmail niet via de Send Email Hook (auth-mail) verstuurd")
+            fail.append(f"{mode} niet via de Send Email Hook (auth-mail) verstuurd")
     if t_ctrl and "controle" not in got: warn.append("controlemail niet binnengekomen (plus-adres of mailbox?)")
     # Auth-logs rond de aanmelding: alleen meldingen met 'mail'/smtp (zonder adressen)
     try:
@@ -218,5 +226,5 @@ finally:
 
 for w in warn: print(f"::warning::{w[:300]}")
 for f in fail: print(f"::error::{f[:300]}")
-if not fail: print("::notice title=mailtest::Bevestigingsmail van Supabase Auth komt aan (echte aanmelding, via IMAP gecontroleerd)")
+if not fail: print(f"::notice title=mailtest::{mode.capitalize()} van Supabase Auth komt aan (echte aanmelding, via IMAP gecontroleerd)")
 sys.exit(1 if fail else 0)

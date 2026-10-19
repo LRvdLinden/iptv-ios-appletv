@@ -1,0 +1,38 @@
+name: Auth-bevestiging
+
+# build 137: zet Supabase Auth mailer_autoconfirm direct volgens app_settings.require_email_confirm (zonder de hele Backend)
+# en bevestigt, als bevestigen uit staat, de vastzittende onbevestigde accounts. Alleen aantallen in het (openbare) log.
+# Optioneel eerst de waarde wijzigen met de invoer require_email_confirm.
+on:
+  workflow_dispatch:
+    inputs:
+      require_email_confirm:
+        description: 'Nieuwe waarde (leeg = ongewijzigd): true = bevestigen verplicht, false = tijdelijk uit'
+        type: choice
+        options: ['', 'true', 'false']
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  zetten:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 (v5.1.0)
+      - name: Waarde wijzigen
+        if: inputs.require_email_confirm != ''
+        env:
+          V: ${{ inputs.require_email_confirm }}
+        run: |
+          [ "$V" = true ] || [ "$V" = false ] || exit 1
+          python3 -c 'import json,os; v=os.environ["V"]; print(json.dumps({"query": f"insert into public.app_settings (key, value, updated_at) values (\x27require_email_confirm\x27, \x27{v}\x27::jsonb, now()) on conflict (key) do update set value = excluded.value, updated_at = now()"}))' > /tmp/q.json
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "https://api.supabase.com/v1/projects/$REF/database/query" \
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" --data @/tmp/q.json)
+          [ "$code" -lt 300 ] && echo "::notice::require_email_confirm = $V" || { echo "::error::wijzigen mislukt (HTTP $code)"; exit 1; }
+      - name: Auth instellen en vastzittende accounts bevestigen
+        run: python3 -I supabase/tests/email_confirm.py

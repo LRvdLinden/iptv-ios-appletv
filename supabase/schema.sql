@@ -2854,6 +2854,10 @@ revoke all on public.signup_cleanups from anon, authenticated;
 -- Limieten (aan te passen zonder deploy): nieuwe accounts per netwerk per uur en per 24 uur. Bestaande waarden blijven staan.
 insert into public.app_settings (key, value) values ('signup_limits', '{"per_hour": 3, "per_day": 10}'::jsonb)
 on conflict (key) do nothing;
+-- build 137: bevestigen per e-mail verplicht (true) of tijdelijk uit (false; de workflow Backend zet dan mailer_autoconfirm aan
+-- en bevestigt vastzittende accounts). Alleen weer op true als de e-2-e-test (job authmail) de bevestigingsmail bewijst.
+insert into public.app_settings (key, value) values ('require_email_confirm', 'false'::jsonb)
+on conflict (key) do nothing;
 
 -- Netwerk van een IP-adres: IPv4 zoals het is (ook ::ffff:a.b.c.d), IPv6 per /64 (één aansluiting); onleesbaar = de tekst.
 create or replace function public.bingr_signup_ip_key(p_ip text) returns text
