@@ -21,6 +21,8 @@ export const WEBHOOK_EVENTS = [
   "checkout.session.async_payment_failed",
   "charge.refunded",
   "charge.dispute.created",
+  // omzet in het beheer: Stripe-kosten (balance transaction) komen soms pas later; dan alsnog ophalen
+  "charge.updated",
 ] as const;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -141,12 +143,18 @@ export async function signHeader(rawBody: string, secret: string, tSec: number):
 // ---------------- events -> wat te doen ----------------
 // deno-lint-ignore no-explicit-any
 type Obj = Record<string, any>;
-export type Purchase = { userId: string; sessionId: string; paymentIntent: string | null; amount: number; currency: string };
+/** taxAmount: btw volgens Stripe Tax (total_details.amount_tax) als automatic_tax aan stond, anders null (onbekend). */
+export type Purchase = { userId: string; sessionId: string; paymentIntent: string | null; amount: number; currency: string; taxAmount: number | null };
+/** Terugbetaling of chargeback (bedrag en Stripe-kosten in centen, moment ISO). Alleen bedragen, geen gegevens van de klant. */
+export type RefundRow = { id: string; kind: "refund" | "dispute"; amount: number; fee: number; at: string };
 export type Decision =
   | { kind: "grant"; purchase: Purchase }
   | { kind: "pending"; purchase: Purchase }
   | { kind: "failed"; sessionId: string }
-  | { kind: "revoke"; paymentIntent: string; status: "refunded" | "disputed" }
+  // charge.refunded: ook gedeeltelijk (voor de omzet); alleen volledig zet een gekochte Lifetime terug naar Gratis
+  | { kind: "refund"; paymentIntent: string; chargeId: string | null; amountRefunded: number; full: boolean }
+  | { kind: "revoke"; paymentIntent: string; status: "refunded" | "disputed"; dispute?: RefundRow }
+  | { kind: "details"; paymentIntent: string }
   | { kind: "ignore"; reason: string };
 
 /** Aankoop uit een Checkout Session (alleen onze Lifetime-sessies, met een geldig account-id). */
@@ -159,6 +167,8 @@ export function purchaseFromSession(s: Obj | null | undefined): Purchase | null 
   return {
     userId: userId.toLowerCase(), sessionId: s.id, paymentIntent: isStripeId(pi, "pi_") ? pi : null,
     amount: Number.isInteger(s.amount_total) ? s.amount_total : PRICE_CENTS, currency: String(s.currency || PRICE_CURRENCY).toLowerCase(),
+    taxAmount: s.automatic_tax?.enabled === true && Number.isInteger(s.total_details?.amount_tax) && s.total_details.amount_tax >= 0
+      ? s.total_details.amount_tax : null,
   };
 }
 export function decide(event: Obj | null | undefined): Decision {
@@ -179,21 +189,76 @@ export function decide(event: Obj | null | undefined): Decision {
       return p ? { kind: "failed", sessionId: p.sessionId } : { kind: "ignore", reason: "not_ours" };
     }
     case "charge.refunded": {
-      // alleen volledig terugbetaald; een gedeeltelijke terugbetaling laat Lifetime staan
       if (!o || o.object !== "charge") return { kind: "ignore", reason: "bad_object" };
-      const full = o.refunded === true || (Number.isInteger(o.amount) && Number(o.amount_refunded) >= o.amount);
-      if (!full) return { kind: "ignore", reason: "partial_refund" };
       const pi = typeof o.payment_intent === "string" ? o.payment_intent : o.payment_intent?.id;
-      return isStripeId(pi, "pi_") ? { kind: "revoke", paymentIntent: pi, status: "refunded" } : { kind: "ignore", reason: "no_payment_intent" };
+      if (!isStripeId(pi, "pi_")) return { kind: "ignore", reason: "no_payment_intent" };
+      const refunded = Number.isInteger(o.amount_refunded) && o.amount_refunded > 0 ? o.amount_refunded : 0;
+      const full = o.refunded === true || (Number.isInteger(o.amount) && refunded >= o.amount);
+      return { kind: "refund", paymentIntent: pi, chargeId: isStripeId(o.id, "ch_") || isStripeId(o.id, "py_") ? o.id : null, amountRefunded: refunded, full };
     }
     case "charge.dispute.created": {
       if (!o || o.object !== "dispute") return { kind: "ignore", reason: "bad_object" };
       const pi = typeof o.payment_intent === "string" ? o.payment_intent : o.payment_intent?.id;
-      return isStripeId(pi, "pi_") ? { kind: "revoke", paymentIntent: pi, status: "disputed" } : { kind: "ignore", reason: "no_payment_intent" };
+      if (!isStripeId(pi, "pi_")) return { kind: "ignore", reason: "no_payment_intent" };
+      const d = disputeRow(o, event.created);
+      return d ? { kind: "revoke", paymentIntent: pi, status: "disputed", dispute: d } : { kind: "revoke", paymentIntent: pi, status: "disputed" };
+    }
+    case "charge.updated": {
+      // alleen interessant als de balance transaction (Stripe-kosten) er nu is
+      if (!o || o.object !== "charge" || !o.balance_transaction) return { kind: "ignore", reason: "no_balance" };
+      const pi = typeof o.payment_intent === "string" ? o.payment_intent : o.payment_intent?.id;
+      return isStripeId(pi, "pi_") ? { kind: "details", paymentIntent: pi } : { kind: "ignore", reason: "no_payment_intent" };
     }
     default:
       return { kind: "ignore", reason: "other_event" };
   }
+}
+
+// ---------------- omzet: Stripe-kosten, betaalmethode, land, terugbetalingen ----------------
+const int0 = (v: unknown) => (Number.isInteger(v) && (v as number) >= 0 ? v as number : null);
+const isoOf = (sec: unknown, fallback: string) => (Number.isInteger(sec) && (sec as number) > 0 ? new Date((sec as number) * 1000).toISOString() : fallback);
+/** Gegevens voor de omzet uit een charge (met of zonder uitgeklapte balance_transaction). Alleen bedragen en codes. */
+export type ChargeDetails = { chargeId: string | null; fee: number | null; net: number | null; method: string | null; country: string | null };
+export function detailsFromCharge(ch: Obj | null | undefined): ChargeDetails | null {
+  if (!ch || typeof ch !== "object" || ch.object !== "charge") return null;
+  const bt = ch.balance_transaction && typeof ch.balance_transaction === "object" ? ch.balance_transaction : null;
+  const pm = ch.payment_method_details && typeof ch.payment_method_details === "object" ? ch.payment_method_details : {};
+  // Apple Pay / Google Pay zijn een kaart met een wallet; anders het type (ideal, bancontact, card, …)
+  const wallet = pm.type === "card" ? pm.card?.wallet?.type : null;
+  const m = String(wallet || pm.type || "").toLowerCase();
+  const cc = String(ch.billing_details?.address?.country || pm.card?.country || pm[String(pm.type)]?.country || "").toUpperCase();
+  return {
+    chargeId: isStripeId(ch.id, "ch_") || isStripeId(ch.id, "py_") ? ch.id : null,
+    fee: bt ? int0(bt.fee) : null,
+    net: bt && Number.isInteger(bt.net) ? bt.net : null,
+    method: /^[a-z_]{1,32}$/.test(m) ? m : null,
+    country: /^[A-Z]{2}$/.test(cc) ? cc : null,
+  };
+}
+/** Uit een PaymentIntent met expand[]=latest_charge.balance_transaction. */
+export function detailsFromPaymentIntent(pi: Obj | null | undefined): ChargeDetails | null {
+  if (!pi || typeof pi !== "object" || pi.object !== "payment_intent") return null;
+  return detailsFromCharge(pi.latest_charge && typeof pi.latest_charge === "object" ? pi.latest_charge : null);
+}
+/** Parameters voor GET /v1/payment_intents/{id}. */
+export const DETAILS_EXPAND: [string, string][] = [["expand[]", "latest_charge.balance_transaction"]];
+/** Terugbetalingen uit GET /v1/refunds?charge=… (alleen gelukt of onderweg; mislukt/geannuleerd telt niet). */
+export function refundRows(list: Obj | null | undefined, nowIso: string): RefundRow[] {
+  const data = Array.isArray(list?.data) ? list!.data : [];
+  return data.filter((r: Obj) => r?.object === "refund" && (isStripeId(r.id, "re_") || isStripeId(r.id, "pyr_")))
+    .filter((r: Obj) => !["failed", "canceled"].includes(String(r.status)) && int0(r.amount) !== null)
+    .map((r: Obj) => ({ id: r.id, kind: "refund" as const, amount: r.amount, fee: 0, at: isoOf(r.created, nowIso) }));
+}
+/** Zonder Stripe-sleutel: één rij per charge met het totaal terugbetaalde bedrag (wordt bijgewerkt). */
+export function refundFallback(chargeId: string, amountRefunded: number, nowIso: string): RefundRow {
+  return { id: chargeId, kind: "refund", amount: amountRefunded, fee: 0, at: nowIso };
+}
+/** Chargeback: bedrag en de dispute-kosten (som van de fees in balance_transactions). */
+export function disputeRow(d: Obj | null | undefined, eventCreated?: unknown, nowIso = new Date().toISOString()): RefundRow | null {
+  if (!d || d.object !== "dispute" || !(isStripeId(d.id, "dp_") || isStripeId(d.id, "du_")) || int0(d.amount) === null) return null;
+  const fee = (Array.isArray(d.balance_transactions) ? d.balance_transactions : [])
+    .reduce((a: number, b: Obj) => a + (int0(b?.fee) ?? 0), 0);
+  return { id: d.id, kind: "dispute", amount: d.amount, fee, at: isoOf(d.created ?? eventCreated, nowIso) };
 }
 
 // ---------------- account_plans ----------------

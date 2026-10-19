@@ -2,10 +2,11 @@
 // Betalen (build 133): handtekening van Stripe, Checkout-opbouw, events -> beslissing, en de databasestappen (grant,
 // pending, revoke, idempotentie) tegen een kleine nep-database in het geheugen.
 import {
-  billingConfig, CANCEL_URL, checkoutParams, decide, formatAmount, formEncode, grantRow, idempotencyKey, parseSignature,
-  purchaseFromSession, purchaseView, revokeAction, signHeader, SUCCESS_URL, verifySignature, WEBHOOK_EVENTS,
+  billingConfig, CANCEL_URL, checkoutParams, decide, detailsFromCharge, detailsFromPaymentIntent, disputeRow, formatAmount, formEncode,
+  grantRow, idempotencyKey, parseSignature, purchaseFromSession, purchaseView, refundFallback, refundRows, revokeAction, signHeader,
+  SUCCESS_URL, verifySignature, WEBHOOK_EVENTS,
 } from "./billing.ts";
-import { eventDone, eventSeen, failed, grant, pending, revoke } from "./billing_store.ts";
+import { eventDone, eventSeen, failed, grant, needsDetails, pending, recordRefunds, revoke, saveDetails } from "./billing_store.ts";
 import { PRICE_CENTS } from "./plans.ts";
 
 function eq(a: unknown, b: unknown, msg = "") {
@@ -115,7 +116,7 @@ const ev = (type: string, object: unknown, id = "evt_1") => ({ id, object: "even
 Deno.test("events: betaald -> grant, onbetaald -> pending, mislukt -> failed", () => {
   const g = decide(ev("checkout.session.completed", session()));
   eq(g.kind, "grant");
-  if (g.kind === "grant") eq(g.purchase, { userId: UID, sessionId: "cs_test_a1", paymentIntent: "pi_123", amount: 499, currency: "eur" });
+  if (g.kind === "grant") eq(g.purchase, { userId: UID, sessionId: "cs_test_a1", paymentIntent: "pi_123", amount: 499, currency: "eur", taxAmount: null });
   eq(decide(ev("checkout.session.completed", session({ payment_status: "unpaid" }))).kind, "pending");
   eq(decide(ev("checkout.session.async_payment_succeeded", session())).kind, "grant");
   eq(decide(ev("checkout.session.async_payment_succeeded", session({ payment_status: "unpaid" }))).kind, "ignore");
@@ -133,20 +134,61 @@ Deno.test("events: niet van ons, kapot of ander type -> negeren", () => {
   const p = purchaseFromSession(session({ client_reference_id: null, payment_intent: { id: "pi_9" } }));
   eq(p?.userId, UID); eq(p?.paymentIntent, "pi_9");
 });
-Deno.test("events: volledige terugbetaling en chargeback -> revoke; gedeeltelijk -> negeren", () => {
-  eq(decide(ev("charge.refunded", { object: "charge", refunded: true, amount: 499, amount_refunded: 499, payment_intent: "pi_123" })),
-    { kind: "revoke", paymentIntent: "pi_123", status: "refunded" });
-  eq(decide(ev("charge.refunded", { object: "charge", refunded: false, amount: 499, amount_refunded: 499, payment_intent: "pi_123" })).kind, "revoke", "bedrag volledig");
-  eq(decide(ev("charge.refunded", { object: "charge", refunded: false, amount: 499, amount_refunded: 200, payment_intent: "pi_123" })),
-    { kind: "ignore", reason: "partial_refund" });
-  eq(decide(ev("charge.dispute.created", { object: "dispute", payment_intent: "pi_123" })), { kind: "revoke", paymentIntent: "pi_123", status: "disputed" });
+Deno.test("events: terugbetaling (volledig en gedeeltelijk), chargeback met kosten, charge.updated", () => {
+  eq(decide(ev("charge.refunded", { object: "charge", id: "ch_1", refunded: true, amount: 499, amount_refunded: 499, payment_intent: "pi_123" })),
+    { kind: "refund", paymentIntent: "pi_123", chargeId: "ch_1", amountRefunded: 499, full: true });
+  const f = decide(ev("charge.refunded", { object: "charge", id: "ch_1", refunded: false, amount: 499, amount_refunded: 499, payment_intent: "pi_123" }));
+  eq(f.kind === "refund" && f.full, true, "bedrag volledig");
+  eq(decide(ev("charge.refunded", { object: "charge", id: "ch_1", refunded: false, amount: 499, amount_refunded: 200, payment_intent: { id: "pi_123" } })),
+    { kind: "refund", paymentIntent: "pi_123", chargeId: "ch_1", amountRefunded: 200, full: false });
+  eq(decide(ev("charge.refunded", { object: "charge", amount: 499, amount_refunded: 499 })), { kind: "ignore", reason: "no_payment_intent" });
+  eq(decide(ev("charge.dispute.created", { object: "dispute", id: "dp_1", amount: 499, created: 1760000000, payment_intent: "pi_123",
+    balance_transactions: [{ fee: 1500 }, { fee: 0 }] })),
+    { kind: "revoke", paymentIntent: "pi_123", status: "disputed", dispute: { id: "dp_1", kind: "dispute", amount: 499, fee: 1500, at: new Date(1760000000 * 1000).toISOString() } });
+  eq(decide(ev("charge.dispute.created", { object: "dispute", payment_intent: "pi_123" })), { kind: "revoke", paymentIntent: "pi_123", status: "disputed" }, "zonder id/bedrag");
   eq(decide(ev("charge.dispute.created", { object: "dispute", payment_intent: null })).kind, "ignore");
-  eq(WEBHOOK_EVENTS.length, 5);
+  eq(decide(ev("charge.updated", { object: "charge", balance_transaction: "txn_1", payment_intent: "pi_123" })), { kind: "details", paymentIntent: "pi_123" });
+  eq(decide(ev("charge.updated", { object: "charge", balance_transaction: null, payment_intent: "pi_123" })), { kind: "ignore", reason: "no_balance" });
+  eq(WEBHOOK_EVENTS.length, 6);
+  ok((WEBHOOK_EVENTS as readonly string[]).includes("charge.updated"));
+});
+Deno.test("omzet: btw van Stripe Tax alleen met automatic_tax", () => {
+  eq(purchaseFromSession(session({ automatic_tax: { enabled: true }, total_details: { amount_tax: 87 } }))?.taxAmount, 87);
+  eq(purchaseFromSession(session({ automatic_tax: { enabled: true }, total_details: { amount_tax: 0 } }))?.taxAmount, 0, "verlegd/buiten de EU");
+  eq(purchaseFromSession(session({ automatic_tax: { enabled: false }, total_details: { amount_tax: 0 } }))?.taxAmount, null);
+  eq(purchaseFromSession(session())?.taxAmount, null);
+});
+Deno.test("omzet: kosten, netto, betaalmethode en land uit de charge", () => {
+  const card = { object: "charge", id: "ch_1", balance_transaction: { fee: 40, net: 459 }, billing_details: { address: { country: "nl" } },
+    payment_method_details: { type: "card", card: { country: "DE", wallet: null } } };
+  eq(detailsFromCharge(card), { chargeId: "ch_1", fee: 40, net: 459, method: "card", country: "NL" }, "factuuradres voor kaartland");
+  eq(detailsFromCharge({ ...card, billing_details: {}, payment_method_details: { type: "card", card: { country: "BE", wallet: { type: "apple_pay" } } } }),
+    { chargeId: "ch_1", fee: 40, net: 459, method: "apple_pay", country: "BE" }, "Apple Pay");
+  eq(detailsFromCharge({ object: "charge", id: "py_2", balance_transaction: "txn_1", payment_method_details: { type: "ideal", ideal: { bank: "ing" } } }),
+    { chargeId: "py_2", fee: null, net: null, method: "ideal", country: null }, "balance transaction nog niet uitgeklapt");
+  eq(detailsFromCharge({ object: "charge", payment_method_details: { type: "Bad Type!" }, billing_details: { address: { country: "Nederland" } } }),
+    { chargeId: null, fee: null, net: null, method: null, country: null });
+  eq(detailsFromCharge(null), null);
+  eq(detailsFromPaymentIntent({ object: "payment_intent", latest_charge: card })?.fee, 40);
+  eq(detailsFromPaymentIntent({ object: "payment_intent", latest_charge: "ch_1" }), null, "niet uitgeklapt");
+});
+Deno.test("omzet: terugbetalingen uit de Stripe-lijst, zonder sleutel per charge", () => {
+  const rows = refundRows({ data: [
+    { object: "refund", id: "re_1", amount: 200, status: "succeeded", created: 1760000000 },
+    { object: "refund", id: "re_2", amount: 100, status: "failed", created: 1760000001 },
+    { object: "refund", id: "re_3", amount: 50, status: "pending" },
+    { object: "refund", id: "xx_4", amount: 50, status: "succeeded" },
+  ] }, "NU");
+  eq(rows, [{ id: "re_1", kind: "refund", amount: 200, fee: 0, at: new Date(1760000000 * 1000).toISOString() }, { id: "re_3", kind: "refund", amount: 50, fee: 0, at: "NU" }]);
+  eq(refundRows(null, "NU"), []);
+  eq(refundFallback("ch_1", 499, "NU"), { id: "ch_1", kind: "refund", amount: 499, fee: 0, at: "NU" });
+  eq(disputeRow({ object: "dispute", id: "du_1", amount: 499 }, undefined, "NU"), { id: "du_1", kind: "dispute", amount: 499, fee: 0, at: "NU" });
+  eq(disputeRow({ object: "dispute", id: "dp_1" }), null, "geen bedrag");
 });
 
 // ---------------- account_plans ----------------
 Deno.test("grant: Lifetime, bron purchase, eigen limieten blijven, geen persoonsgegevens in de notitie", () => {
-  const p = { userId: UID, sessionId: "cs_test_a1", paymentIntent: "pi_123", amount: 499, currency: "eur" };
+  const p = { userId: UID, sessionId: "cs_test_a1", paymentIntent: "pi_123", amount: 499, currency: "eur", taxAmount: null };
   const r = grantRow({ plan: "free", max_streams: 4, max_devices: null }, p, "T");
   eq(r, { user_id: UID, plan: "lifetime", source: "purchase", granted_by: "stripe", updated_at: "T", max_streams: 4, max_devices: null, note: "Stripe cs_test_a1 / pi_123" });
   eq(grantRow(null, { ...p, paymentIntent: null }, "T").note, "Stripe cs_test_a1 / -");
@@ -170,13 +212,15 @@ Deno.test("weergave: alleen Stripe-links en bedragen", () => {
 // ---------------- databasestappen (nep-database) ----------------
 type Row = Record<string, unknown>;
 function fakeDb() {
-  const t: Record<string, Row[]> = { billing_purchases: [], account_plans: [], billing_events: [] };
-  const keyOf: Record<string, string> = { billing_purchases: "stripe_session_id", account_plans: "user_id", billing_events: "id" };
+  const t: Record<string, Row[]> = { billing_purchases: [], account_plans: [], billing_events: [], billing_refunds: [] };
+  const keyOf: Record<string, string> = { billing_purchases: "stripe_session_id", account_plans: "user_id", billing_events: "id", billing_refunds: "id" };
   let seq = 1;
   function q(table: string) {
     const f: [string, string, unknown][] = [];
     let op: "select" | "update" | "delete" = "select", patch: Row = {}, lim = 1e9;
-    const rows = () => t[table].filter((r) => f.every(([k, how, v]) => how === "in" ? (v as unknown[]).includes(r[k]) : r[k] === v));
+    const like = (p: string) => new RegExp("^" + p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/%/g, ".*").replace(/_/g, ".") + "$");
+    const rows = () => t[table].filter((r) => f.every(([k, how, v]) => how === "in" ? (v as unknown[]).includes(r[k])
+      : how === "like" ? like(String(v)).test(String(r[k])) : r[k] === v));
     const run = () => {
       if (op === "update") { for (const r of rows()) Object.assign(r, Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined))); return { data: null, error: null }; }
       if (op === "delete") { const del = new Set(rows()); t[table] = t[table].filter((r) => !del.has(r)); return { data: null, error: null }; }
@@ -186,6 +230,7 @@ function fakeDb() {
       select: () => b, order: () => b,
       eq: (k: string, v: unknown) => { f.push([k, "eq", v]); return b; },
       in: (k: string, v: unknown[]) => { f.push([k, "in", v]); return b; },
+      like: (k: string, v: string) => { f.push([k, "like", v]); return b; },
       limit: (n: number) => { lim = n; return b; },
       update: (p: Row) => { op = "update"; patch = p; return b; },
       delete: () => { op = "delete"; return b; },
@@ -207,7 +252,7 @@ function fakeDb() {
   }
   return { t, from: q };
 }
-const purchase = { userId: UID, sessionId: "cs_test_a1", paymentIntent: "pi_123", amount: 499, currency: "eur" };
+const purchase = { userId: UID, sessionId: "cs_test_a1", paymentIntent: "pi_123", amount: 499, currency: "eur", taxAmount: null };
 Deno.test("database: grant twee keer = één aankoop, Lifetime, eigen limieten blijven", async () => {
   const db = fakeDb();
   db.t.account_plans.push({ user_id: UID, plan: "free", max_streams: 4, max_devices: null, source: "admin" });
@@ -261,4 +306,34 @@ Deno.test("database: event één keer", async () => {
   await eventDone(db, "evt_1", "checkout.session.completed", "already");
   eq(await eventSeen(db, "evt_1"), true);
   eq(db.t.billing_events.length, 1); eq(db.t.billing_events[0].result, "granted");
+});
+
+Deno.test("database: omzet - btw van Stripe Tax, kosten later aanvullen", async () => {
+  const db = fakeDb();
+  await grant(db, { ...purchase, taxAmount: 87 }, "T1");
+  eq(db.t.billing_purchases[0].tax_amount, 87);
+  await grant(db, purchase, "T2");
+  eq(db.t.billing_purchases[0].tax_amount, 87, "onbekend overschrijft niets");
+  eq(await needsDetails(db, "pi_123"), true);
+  eq(await needsDetails(db, "pi_x"), null);
+  eq(await saveDetails(db, "pi_123", { chargeId: "ch_1", fee: null, net: null, method: "ideal", country: null }, "T3"), false);
+  eq([db.t.billing_purchases[0].payment_method, db.t.billing_purchases[0].fee], ["ideal", undefined]);
+  eq(await saveDetails(db, "pi_123", { chargeId: "ch_1", fee: 39, net: 460, method: null, country: "NL" }, "T4"), true);
+  const b = db.t.billing_purchases[0];
+  eq([b.charge_id, b.fee, b.net_amount, b.payment_method, b.country, b.details_at], ["ch_1", 39, 460, "ideal", "NL", "T4"]);
+  eq(await needsDetails(db, "pi_123"), false);
+});
+Deno.test("database: omzet - terugbetalingen idempotent, rij per charge vervalt bij echte refund-id's", async () => {
+  const db = fakeDb();
+  await grant(db, purchase, "T1");
+  eq(await recordRefunds(db, "pi_x", [refundFallback("ch_1", 100, "T2")]), { found: false, rows: 0 });
+  await recordRefunds(db, "pi_123", [refundFallback("ch_1", 100, "T2")]);
+  await recordRefunds(db, "pi_123", [refundFallback("ch_1", 200, "T3")]);
+  eq(db.t.billing_refunds.map((r) => [r.id, r.amount]), [["ch_1", 200]], "bijgewerkt, niet dubbel");
+  await recordRefunds(db, "pi_123", [{ id: "re_1", kind: "refund", amount: 200, fee: 0, at: "T2" }, { id: "re_2", kind: "refund", amount: 299, fee: 0, at: "T4" }]);
+  await recordRefunds(db, "pi_123", [{ id: "re_1", kind: "refund", amount: 200, fee: 0, at: "T2" }, { id: "re_2", kind: "refund", amount: 299, fee: 0, at: "T4" }]);
+  eq(db.t.billing_refunds.map((r) => [r.id, r.amount, r.purchase_id]), [["re_1", 200, 1], ["re_2", 299, 1]]);
+  await recordRefunds(db, "pi_123", [{ id: "dp_1", kind: "dispute", amount: 499, fee: 1500, at: "T5" }]);
+  eq(db.t.billing_refunds.length, 3, "chargeback blijft naast de refunds staan");
+  eq((await revoke(db, "pi_123", "refunded", "T6")).downgraded, true);
 });

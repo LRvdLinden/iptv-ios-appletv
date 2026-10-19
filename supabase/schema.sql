@@ -1751,6 +1751,156 @@ $$;
 revoke all on function public.bingr_admin_purchase(uuid) from public, anon, authenticated;
 grant execute on function public.bingr_admin_purchase(uuid) to service_role;
 
+-- Beheer, tab Omzet (functie admin, actie revenue; bingr-beheer). Per aankoop ook de Stripe-kosten en het netto bedrag
+-- (balance transaction), de btw volgens Stripe Tax (alleen met automatic_tax, anders null), het type betaalmethode en het
+-- land (alleen landcode). De webhook vult dit bij betaling, bij charge.updated of via admin revenue_backfill. Geen
+-- persoonsgegevens: geen kaartnummers, namen of adressen.
+alter table public.billing_purchases
+  add column if not exists charge_id      text check (charge_id is null or (charge_id ~ '^(ch|py)_[A-Za-z0-9_]+$' and char_length(charge_id) <= 255)),
+  add column if not exists fee            int check (fee is null or fee >= 0),
+  add column if not exists net_amount     int,
+  add column if not exists tax_amount     int check (tax_amount is null or tax_amount >= 0),
+  add column if not exists payment_method text check (payment_method is null or payment_method ~ '^[a-z_]{1,32}$'),
+  add column if not exists country        text check (country is null or country ~ '^[A-Z]{2}$'),
+  add column if not exists details_at     timestamptz;
+-- Terugbetalingen (ook gedeeltelijk) en chargebacks: één rij per Stripe-id (re_…, dp_…; zonder Stripe-sleutel één rij per
+-- charge ch_… met het totaal). Alleen bedrag, kosten (dispute fee) en moment. Alleen de functies (service role).
+create table if not exists public.billing_refunds (
+  id          text primary key check (id ~ '^(re|pyr|dp|du|ch|py)_[A-Za-z0-9_]+$' and char_length(id) <= 255),
+  purchase_id bigint not null references public.billing_purchases(id) on delete cascade,
+  kind        text not null check (kind in ('refund', 'dispute')),
+  amount      int not null check (amount >= 0),
+  fee         int not null default 0 check (fee >= 0),
+  refunded_at timestamptz not null,
+  created_at  timestamptz not null default now()
+);
+create index if not exists billing_refunds_purchase_idx on public.billing_refunds (purchase_id);
+create index if not exists billing_refunds_at_idx on public.billing_refunds (refunded_at);
+create index if not exists billing_purchases_nofee_idx on public.billing_purchases (paid_at) where fee is null and payment_intent is not null;
+alter table public.billing_refunds enable row level security;
+revoke all on public.billing_refunds from anon, authenticated;
+-- terugbetalingen van vóór deze tabel: één rij per aankoop (volledig bedrag, op refunded_at)
+insert into public.billing_refunds (id, purchase_id, kind, amount, refunded_at)
+select 'ch_legacy_' || b.id, b.id, case when b.status = 'disputed' then 'dispute' else 'refund' end, b.amount, coalesce(b.refunded_at, b.updated_at)
+  from public.billing_purchases b
+ where b.status in ('refunded', 'disputed') and not exists (select 1 from public.billing_refunds r where r.purchase_id = b.id)
+on conflict (id) do nothing;
+-- btw-tarief voor de omzet zonder Stripe Tax (bedragen zijn incl. btw): btw = bruto × tarief / (100 + tarief). In te stellen
+-- in het beheer (tab Omzet, actie revenue_vat_set); een bestaande waarde blijft staan.
+insert into public.app_settings (key, value) values ('revenue_vat', '{"rate": 21}'::jsonb) on conflict (key) do nothing;
+
+-- Btw-tarief (0–50, standaard 21) en het filter op modus (live = cs_live_…, test = cs_test_…, all) als SQL-stukken voor
+-- de omzetfuncties hieronder. Intern (geen execute voor de API-rollen).
+create or replace function public.bingr_revenue_rate() returns numeric
+language sql stable security definer set search_path = public as $$
+  select coalesce((select case when (value->>'rate') ~ '^\d{1,2}(\.\d{1,2})?$' and (value->>'rate')::numeric <= 50
+                               then (value->>'rate')::numeric end from public.app_settings where key = 'revenue_vat'), 21)
+$$;
+revoke all on function public.bingr_revenue_rate() from public, anon, authenticated, service_role;
+create or replace function public.bingr_revenue_filter(p_mode text) returns text
+language sql immutable as $$
+  select case p_mode when 'live' then ' and b.stripe_session_id like ''cs\_live\_%''' when 'test' then ' and b.stripe_session_id like ''cs\_test\_%''' else '' end
+$$;
+revoke all on function public.bingr_revenue_filter(text) from public, anon, authenticated, service_role;
+
+-- Totalen van één tijdvak: aankopen op paid_at (ook als ze later zijn terugbetaald), terugbetalingen/chargebacks op hun
+-- eigen moment. Btw per aankoop: Stripe Tax (tax_amount) als bekend, anders bruto × tarief / (100 + tarief); van een
+-- terugbetaling het evenredige deel. Alleen aantallen en bedragen (centen, eur), plus verdeling per betaalmethode en land.
+create or replace function public.bingr_revenue_sum(p_from timestamptz, p_to timestamptz, p_mode text) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare res jsonb; rate numeric := public.bingr_revenue_rate(); f text := public.bingr_revenue_filter(p_mode); vat text;
+begin
+  vat := format('coalesce(b.tax_amount, round(b.amount * %s / (100 + %s)))', rate, rate);
+  execute format($q$
+    with p as (select b.amount, b.fee, b.tax_amount, b.payment_method, b.country, (%2$s)::bigint vat from public.billing_purchases b
+                where b.status in ('paid', 'refunded', 'disputed') and b.currency = 'eur' and b.paid_at >= $1 and b.paid_at < $2 %1$s),
+         r as (select r.amount, r.fee, r.kind, round(r.amount::numeric * (%2$s) / nullif(b.amount, 0))::bigint vat
+                 from public.billing_refunds r join public.billing_purchases b on b.id = r.purchase_id
+                where b.currency = 'eur' and r.refunded_at >= $1 and r.refunded_at < $2 %1$s)
+    select jsonb_build_object(
+      'count', (select count(*) from p), 'gross', (select coalesce(sum(amount), 0) from p), 'vat', (select coalesce(sum(vat), 0) from p),
+      'fees', (select coalesce(sum(fee), 0) from p) + (select coalesce(sum(fee), 0) from r),
+      'refunds', (select coalesce(sum(amount), 0) from r), 'refunds_vat', (select coalesce(sum(vat), 0) from r),
+      'refund_count', (select count(*) from r where kind = 'refund'), 'dispute_count', (select count(*) from r where kind = 'dispute'),
+      'missing_fees', (select count(*) from p where fee is null), 'with_tax', (select count(*) from p where tax_amount is not null),
+      'by_method', (select coalesce(jsonb_agg(jsonb_build_object('key', k, 'count', c, 'gross', g) order by g desc, k), '[]'::jsonb)
+                      from (select coalesce(payment_method, '?') k, count(*) c, sum(amount) g from p group by 1) x),
+      'by_country', (select coalesce(jsonb_agg(jsonb_build_object('key', k, 'count', c, 'gross', g) order by g desc, k), '[]'::jsonb)
+                       from (select coalesce(country, '?') k, count(*) c, sum(amount) g from p group by 1) x))
+  $q$, f, vat) into res using p_from, p_to;
+  return res;
+end $$;
+revoke all on function public.bingr_revenue_sum(timestamptz, timestamptz, text) from public, anon, authenticated, service_role;
+
+-- p_edges: grenzen van de tijdvakken (zoals bingr_admin_insights); p_mode: live | test | all; p_ranges: [{key, from, to}]
+-- (max. 8) voor de tegels (deze maand, vorige maand, dit jaar, totaal) en de gekozen periode. Antwoord: {rate, live_count,
+-- test_count, series: {count, gross, vat, fees, refunds, refunds_vat, refund_count: [per tijdvak]}, ranges: {key: totalen}}.
+create or replace function public.bingr_admin_revenue(p_edges timestamptz[], p_mode text default 'all', p_ranges jsonb default '[]'::jsonb)
+returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare n int := coalesce(array_length(p_edges, 1), 0) - 1; rate numeric := public.bingr_revenue_rate(); f text; vat text;
+        paid text; refs text; rg jsonb; ranges jsonb := '{}'::jsonb;
+begin
+  if n < 1 or n > 1000 or array_position(p_edges, null) is not null then return null; end if;
+  if exists (select 1 from generate_series(1, n) i where p_edges[i] >= p_edges[i + 1]) then return null; end if;
+  if p_mode is null or p_mode not in ('live', 'test', 'all') then return null; end if;
+  if jsonb_typeof(p_ranges) <> 'array' or jsonb_array_length(p_ranges) > 8 then return null; end if;
+  f := public.bingr_revenue_filter(p_mode);
+  vat := format('coalesce(b.tax_amount, round(b.amount * %s / (100 + %s)))', rate, rate);
+  paid := 'from public.billing_purchases b where b.status in (''paid'', ''refunded'', ''disputed'') and b.currency = ''eur''
+            and b.paid_at >= $2 and b.paid_at < $3' || f;
+  refs := 'from public.billing_refunds r join public.billing_purchases b on b.id = r.purchase_id where b.currency = ''eur''
+            and r.refunded_at >= $2 and r.refunded_at < $3' || f;
+  for rg in select * from jsonb_array_elements(p_ranges) loop
+    if coalesce(rg->>'key', '') !~ '^[a-z_]{1,20}$' or (rg->>'from') is null or (rg->>'to') is null then return null; end if;
+    ranges := ranges || jsonb_build_object(rg->>'key', public.bingr_revenue_sum((rg->>'from')::timestamptz, (rg->>'to')::timestamptz, p_mode));
+  end loop;
+  return jsonb_build_object(
+    'rate', rate,
+    'live_count', (select count(*) from public.billing_purchases b where b.status in ('paid', 'refunded', 'disputed') and b.stripe_session_id like 'cs\_live\_%'),
+    'test_count', (select count(*) from public.billing_purchases b where b.status in ('paid', 'refunded', 'disputed') and b.stripe_session_id like 'cs\_test\_%'),
+    'series', jsonb_build_object(
+      'count', public.bingr_insights_bin(p_edges, 'select b.paid_at, 1 ' || paid),
+      'gross', public.bingr_insights_bin(p_edges, 'select b.paid_at, b.amount ' || paid),
+      'vat', public.bingr_insights_bin(p_edges, format('select b.paid_at, %s ', vat) || paid),
+      'fees', public.bingr_insights_bin(p_edges, 'select b.paid_at, coalesce(b.fee, 0) ' || paid || ' union all select r.refunded_at, r.fee ' || refs),
+      'refunds', public.bingr_insights_bin(p_edges, 'select r.refunded_at, r.amount ' || refs),
+      'refunds_vat', public.bingr_insights_bin(p_edges, format('select r.refunded_at, round(r.amount::numeric * (%s) / nullif(b.amount, 0)) ', vat) || refs),
+      'refund_count', public.bingr_insights_bin(p_edges, 'select r.refunded_at, 1 ' || refs)),
+    'ranges', ranges);
+end $$;
+revoke all on function public.bingr_admin_revenue(timestamptz[], text, jsonb) from public, anon, authenticated;
+grant execute on function public.bingr_admin_revenue(timestamptz[], text, jsonb) to service_role;
+
+-- CSV-export van de tab Omzet: per aankoop (paid_at in de periode) en per terugbetaling/chargeback (op dat moment) alleen
+-- datum, soort, bedrag, btw, kosten, methode en land; geen account, e-mail, naam of Stripe-id. Max. 5000 rijen.
+create or replace function public.bingr_admin_revenue_rows(p_from timestamptz, p_to timestamptz, p_mode text default 'all') returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare res jsonb; rate numeric := public.bingr_revenue_rate(); f text; vat text;
+begin
+  if p_from is null or p_to is null or p_from >= p_to or p_mode is null or p_mode not in ('live', 'test', 'all') then return null; end if;
+  f := public.bingr_revenue_filter(p_mode);
+  vat := format('coalesce(b.tax_amount, round(b.amount * %s / (100 + %s)))', rate, rate);
+  execute format($q$
+    select coalesce(jsonb_agg(x.j order by x.at), '[]'::jsonb) from (
+      select u.at, u.j from (
+        select b.paid_at at, jsonb_build_object('at', b.paid_at, 'kind', 'purchase', 'amount', b.amount, 'vat', (%2$s)::bigint, 'fee', b.fee,
+                 'method', b.payment_method, 'country', b.country, 'tax', b.tax_amount is not null) j
+          from public.billing_purchases b
+         where b.status in ('paid', 'refunded', 'disputed') and b.currency = 'eur' and b.paid_at >= $1 and b.paid_at < $2 %1$s
+        union all
+        select r.refunded_at, jsonb_build_object('at', r.refunded_at, 'kind', r.kind, 'amount', -r.amount,
+                 'vat', -round(r.amount::numeric * (%2$s) / nullif(b.amount, 0))::bigint, 'fee', r.fee,
+                 'method', b.payment_method, 'country', b.country, 'tax', b.tax_amount is not null)
+          from public.billing_refunds r join public.billing_purchases b on b.id = r.purchase_id
+         where b.currency = 'eur' and r.refunded_at >= $1 and r.refunded_at < $2 %1$s) u
+      order by u.at limit 5000) x
+  $q$, f, vat) into res using p_from, p_to;
+  return res;
+end $$;
+revoke all on function public.bingr_admin_revenue_rows(timestamptz, timestamptz, text) from public, anon, authenticated;
+grant execute on function public.bingr_admin_revenue_rows(timestamptz, timestamptz, text) to service_role;
+
 -- build 97: beheer (functie admin in LRvdLinden/bingr-beheer). Tokenversie: elk beheer-token draagt de versie v; de functie
 -- admin vergelijkt die bij elk verzoek met deze rij. "Overal uitloggen" (actie logout_all) verhoogt de versie, en een ander
 -- wachtwoord ook vanzelf: pw_hash is een sleutel-hash (HMAC met de service-role-sleutel) van BINGR_ADMIN_PASSWORD, nooit het

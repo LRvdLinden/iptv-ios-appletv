@@ -1119,7 +1119,7 @@ jobs:
           TAX = (os.environ.get("STRIPE_TAX") or "").strip().lower() in ("1", "true", "yes", "on", "ja")
           URL = f"https://{REF}.supabase.co/functions/v1/stripe-webhook"
           EVENTS = ["checkout.session.completed", "checkout.session.async_payment_succeeded", "checkout.session.async_payment_failed",
-                    "charge.refunded", "charge.dispute.created"]
+                    "charge.refunded", "charge.dispute.created", "charge.updated"]
           API_VERSION = "2025-03-31.basil"
           def secrets_names():
               r = subprocess.run(["supabase", "secrets", "list", "--project-ref", REF], capture_output=True, text=True)

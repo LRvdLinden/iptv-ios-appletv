@@ -1,7 +1,7 @@
 // Betalen (build 133): database-stappen voor billing en stripe-webhook (tabellen billing_purchases, billing_events en
 // account_plans in supabase/schema.sql). Alles idempotent: dezelfde aankoop of hetzelfde event twee keer verwerken geeft
 // hetzelfde resultaat. Fouten bevatten alleen een code, nooit gegevens van de klant.
-import { grantRow, type PlanRowFull, type Purchase, revokeAction } from "./billing.ts";
+import { type ChargeDetails, grantRow, type PlanRowFull, type Purchase, type RefundRow, revokeAction } from "./billing.ts";
 
 // deno-lint-ignore no-explicit-any
 type Db = any;
@@ -22,6 +22,8 @@ export async function grant(db: Db, p: Purchase, nowIso = new Date().toISOString
   const { error: ue } = await db.from("billing_purchases").upsert({
     user_id: p.userId, stripe_session_id: p.sessionId, payment_intent: p.paymentIntent, amount: p.amount, currency: p.currency,
     status: "paid", paid_at: prev?.status === "paid" ? undefined : nowIso, updated_at: nowIso,
+    // btw volgens Stripe Tax (alleen als bekend; null overschrijft niets)
+    tax_amount: p.taxAmount ?? undefined,
   }, { onConflict: "stripe_session_id" });
   if (ue) throw fail("billing_purchases", ue);
   const cur = await planOf(db, p.userId);
@@ -79,4 +81,49 @@ export async function eventSeen(db: Db, id: string): Promise<boolean> {
 export async function eventDone(db: Db, id: string, type: string, result: string) {
   const { error } = await db.from("billing_events").upsert({ id, type: type.slice(0, 80), result: result.slice(0, 40) }, { onConflict: "id", ignoreDuplicates: true });
   if (error) throw fail("billing_events", error);
+}
+
+// ---------------- omzet (beheer, tab Omzet) ----------------
+
+/** Heeft deze betaling nog geen Stripe-kosten? null = onbekende betaling. */
+export async function needsDetails(db: Db, paymentIntent: string): Promise<boolean | null> {
+  const { data, error } = await db.from("billing_purchases").select("id,fee").eq("payment_intent", paymentIntent).limit(1);
+  if (error) throw fail("billing_purchases", error);
+  if (!data?.length) return null;
+  return data[0].fee === null || data[0].fee === undefined;
+}
+
+/** Stripe-kosten, netto, betaalmethode en land bij de aankoop zetten (alleen wat bekend is). */
+export async function saveDetails(db: Db, paymentIntent: string, d: ChargeDetails, nowIso = new Date().toISOString()): Promise<boolean> {
+  const patch: Record<string, unknown> = { details_at: nowIso, updated_at: nowIso };
+  if (d.chargeId) patch.charge_id = d.chargeId;
+  if (d.fee !== null) patch.fee = d.fee;
+  if (d.net !== null) patch.net_amount = d.net;
+  if (d.method) patch.payment_method = d.method;
+  if (d.country) patch.country = d.country;
+  const { error } = await db.from("billing_purchases").update(patch).eq("payment_intent", paymentIntent);
+  if (error) throw fail("billing_purchases", error);
+  return d.fee !== null;
+}
+
+/**
+ * Terugbetalingen/chargebacks van een betaling vastleggen (billing_refunds, één rij per Stripe-id; idempotent).
+ * Komen er echte refund-id's (re_…), dan vervalt een eerdere rij per charge (ch_…, zonder Stripe-sleutel gemaakt).
+ */
+export async function recordRefunds(db: Db, paymentIntent: string, rows: RefundRow[]): Promise<{ found: boolean; rows: number }> {
+  const { data, error } = await db.from("billing_purchases").select("id").eq("payment_intent", paymentIntent).limit(1);
+  if (error) throw fail("billing_purchases", error);
+  if (!data?.length) return { found: false, rows: 0 };
+  const purchaseId = data[0].id;
+  if (rows.some((r) => r.id.startsWith("re_") || r.id.startsWith("pyr_"))) {
+    const { error: de } = await db.from("billing_refunds").delete().eq("purchase_id", purchaseId).eq("kind", "refund").like("id", "ch_%");
+    if (de) throw fail("billing_refunds", de);
+  }
+  for (const r of rows) {
+    const { error: ue } = await db.from("billing_refunds").upsert({
+      id: r.id, purchase_id: purchaseId, kind: r.kind, amount: r.amount, fee: r.fee, refunded_at: r.at,
+    }, { onConflict: "id" });
+    if (ue) throw fail("billing_refunds", ue);
+  }
+  return { found: true, rows: rows.length };
 }
