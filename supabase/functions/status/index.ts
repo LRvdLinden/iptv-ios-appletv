@@ -23,8 +23,12 @@
 //   notice_delete  {id}                   -> {ok}
 //   subscribers    {}                     -> {confirmed, pending, nl, en, last_7d, queue}
 //   mail_run       {}                     -> verstuurt wat er in de wachtrij staat
+//   mail_preview   {to, lang?, kind: notice|alert} -> {ok}  voorbeeld ("[Voorbeeld]") naar één adres: notice = de mail aan
+//                  abonnees met de nieuwste melding (anders een voorbeeldmelding), alert = de monitoringmail aan
+//                  BINGR_ALERT_EMAIL. Ook met header x-bingr-mailtest (workflow Diagnose, _shared/mail.ts), dan alleen
+//                  naar een testadres support+ci-…@bingr.online.
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { smtpConfigured, smtpFrom, transport } from "../_shared/mail.ts";
+import { isMailtestAddress, MAILTEST_HEADER, mailtestOk, smtpConfigured, smtpFrom, transport } from "../_shared/mail.ts";
 import { button, esc, eyebrow, footerHtml, layout, personName, redBar, title } from "../_shared/layout.ts";
 import { clientIp } from "../_shared/ip.ts"; // build 95: laatste X-Forwarded-For-waarde, niet de eerste
 import { type Monitor, runCheck } from "./checks.ts";
@@ -32,7 +36,7 @@ import { type DayRow, daySeries, durationS, evaluate, isDue, type State, uptimeP
 import {
   annotateDays, atomFeed, autoOpenText, autoResolveText, autoTitle, COMP_IMPACTS, type CompImpact, componentLevels, effectiveStatus,
   IMPACTS, INCIDENT_STATUSES, isActive, isUpcoming, type Lang, MAINT_STATUSES, maintStatus, maintText, type Notice, overallLevel,
-  publicNotice, rssFeed, span, validEmail, validToken,
+  publicNotice, type PublicNotice, rssFeed, span, validEmail, validToken,
 } from "./notices.ts";
 import { renderConfirm, renderNotice, unsubscribeUrl } from "./templates.ts";
 
@@ -465,7 +469,10 @@ async function firstNames(emails: string[]): Promise<Map<string, string>> {
 async function sendTo(tx: ReturnType<typeof transport>, to: string, m: { subject: string; html: string; text: string }, unsub?: string) {
   await tx.sendMail({
     from: env("BINGR_STATUS_FROM") || smtpFrom(), to, subject: m.subject, html: m.html, text: m.text,
-    headers: { "Auto-Submitted": "auto-generated", ...(unsub ? { "List-Unsubscribe": `<${unsub}>`, "List-Id": "Bingr status <status.bingr.online>" } : {}) },
+    headers: {
+      "Auto-Submitted": "auto-generated", "X-Bingr-Mail": unsub ? "status-notice" : "status-confirm",
+      ...(unsub ? { "List-Unsubscribe": `<${unsub}>`, "List-Id": "Bingr status <status.bingr.online>" } : {}),
+    },
   });
 }
 
@@ -532,9 +539,7 @@ function fmtDuration(s: number | undefined) {
 }
 
 /** Eén e-mail per run met alle nieuwe en opgeloste storingen (alleen als BINGR_ALERT_EMAIL en SMTP zijn ingesteld). */
-async function alert(events: Event[]): Promise<boolean | string> {
-  const to = env("BINGR_ALERT_EMAIL");
-  if (!to || !smtpConfigured()) return false;
+function alertMail(events: Event[]) {
   const lines = events.map((e) => e.kind === "open"
     ? `STORING: ${e.monitor.name_nl} — ${e.cause ?? "onbekende oorzaak"} (sinds ${new Date(e.started_at!).toLocaleString("nl-NL", { timeZone: "Europe/Amsterdam" })})`
     : `HERSTELD: ${e.monitor.name_nl}${e.duration_s != null ? ` — duurde ${fmtDuration(e.duration_s)}` : ""}`);
@@ -552,14 +557,55 @@ ${button(`${BEHEER}/`, "Openen in beheer")}
 <p style="margin:16px 0 0;font-size:13px;line-height:19px;color:#b3b3b3">Openbare statuspagina: <a href="${SITE}/status/" style="color:#ffffff">bingr.online/status</a>${opened ? ". Een automatische melding staat daar al; abonnees krijgen pas na 10 minuten een mail." : ""}</p>`,
     footerHtml: footerHtml({ lang: "nl", reasonHtml: "Melding van de statusmonitor van Bingr aan BINGR_ALERT_EMAIL." }),
   });
+  return { subject, text, html };
+}
+async function alert(events: Event[]): Promise<boolean | string> {
+  const to = env("BINGR_ALERT_EMAIL");
+  if (!to || !smtpConfigured()) return false;
+  const { subject, text, html } = alertMail(events);
   const tx = transport();
   try {
-    await tx.sendMail({ from: smtpFrom(), to, subject, text, html });
+    await tx.sendMail({ from: smtpFrom(), to, subject, text, html, headers: { "Auto-Submitted": "auto-generated", "X-Bingr-Mail": "status-alert" } });
     return true;
   } catch (e) {
     console.error("status alert", e instanceof Error ? e.message : e);
     return "failed";
   } finally { tx.close(); }
+}
+
+/** Voorbeeld van de statusmails naar één adres (beheer of mailtest); onderwerp met "[Voorbeeld]". */
+async function mailPreview(b: Record<string, unknown>) {
+  const to = validEmail(b.to);
+  if (!to) return { status: 400, body: { error: "bad_email" } };
+  if (!smtpConfigured()) return { status: 503, body: { error: "mail_unavailable" } };
+  const lang: Lang = b.lang === "en" ? "en" : "nl";
+  const kind = b.kind === "alert" ? "alert" : "notice";
+  const tag = lang === "en" ? "[Preview] " : "[Voorbeeld] ";
+  const tx = transport();
+  try {
+    if (kind === "alert") {
+      const now = new Date().toISOString();
+      const m = alertMail([{ kind: "open", monitor: { id: "preview", name_nl: "Voorbeeld" } as unknown as MonitorRow, cause: "voorbeeld (geen echte storing)", started_at: now }]);
+      await tx.sendMail({ from: smtpFrom(), to, subject: tag + m.subject, text: m.text, html: m.html, headers: { "Auto-Submitted": "auto-generated", "X-Bingr-Mail": "status-alert-preview" } });
+    } else {
+      const { visible, names } = await publicNames();
+      const latest = (await loadNotices(90)).find(shownOnPage);
+      const now = Date.now();
+      const pn: PublicNotice = latest ? publicNotice(latest, visible) : {
+        id: 0, kind: "incident", title: { nl: "Voorbeeldmelding", en: "Sample notice" }, impact: "minor", status: "resolved",
+        started_at: new Date(now - 3600e3).toISOString(), resolved_at: new Date(now).toISOString(), window_start: null, window_end: null, components: [],
+        updates: [{ status: "resolved", body: { nl: "Dit is een voorbeeld; er is geen storing.", en: "This is a sample; there is no incident." }, at: new Date(now).toISOString() }],
+      };
+      // token van een niet-bestaande abonnee: afmelden doet niets
+      const token = "0".repeat(48);
+      const m = renderNotice(pn, lang, names, token, "");
+      await sendTo(tx, to, { ...m, subject: tag + m.subject }, unsubscribeUrl(token));
+    }
+  } catch (e) {
+    console.error("status preview", e instanceof Error ? e.name : "fout");
+    return { status: 502, body: { error: "mail_failed" } };
+  } finally { tx.close(); }
+  return { status: 200, body: { ok: true } };
 }
 
 // ---- beheer van meldingen ----
@@ -860,7 +906,9 @@ Deno.serve(async (req) => {
     const pr = await publicAction(action, body, req);
     if (pr) return pr;
 
-    if (!(await sameSecret(req.headers.get("x-status-secret") ?? ""))) return json({ error: "forbidden" }, env("STATUS_CRON_SECRET") ? 403 : 503);
+    const mailtest = action === "mail_preview" && isMailtestAddress(body.to) &&
+      await mailtestOk(req.headers.get(MAILTEST_HEADER), async () => (await db.from("app_settings").select("value").eq("key", "mailtest").maybeSingle()).data?.value);
+    if (!mailtest && !(await sameSecret(req.headers.get("x-status-secret") ?? ""))) return json({ error: "forbidden" }, env("STATUS_CRON_SECRET") ? 403 : 503);
 
     switch (action) {
       case "run": {
@@ -912,6 +960,10 @@ Deno.serve(async (req) => {
         return json(await subscriberCounts());
       case "mail_run":
         return json(await processQueue(40_000, 80));
+      case "mail_preview": {
+        const r = await mailPreview(body);
+        return json(r.body, r.status);
+      }
       default:
         return json({ error: "unknown_action" }, 400);
     }

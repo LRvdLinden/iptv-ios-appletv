@@ -114,7 +114,7 @@ jobs:
           exit 1
       - name: Unittests (accountmails, auth-mail)
         # blokkeert de deploy (build 137): een kapotte hook zou elke aanmelding laten mislukken
-        run: deno test supabase/functions/auth-mail/logic_test.ts
+        run: deno test supabase/functions/auth-mail/logic_test.ts && deno test --allow-env supabase/functions/_shared/mail_test.ts
       - name: Unittests (abonnementen)
         continue-on-error: true
         run: |

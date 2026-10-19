@@ -34,8 +34,11 @@ async function loadMonitors(db: Db): Promise<MonitorNow[]> {
     .map((m) => ({ id: m.id, name: m.name_nl, down: open.has(m.id), since: open.get(m.id) ?? null }));
 }
 
+// testtickets van de mailtest (workflow Diagnose, adres support+ci-…@bingr.online) geven geen melding; ze worden direct verwijderd
+const CI_TICKET = "support+ci-%@bingr.online";
 async function newTickets(db: Db, after: number): Promise<TicketRow[]> {
-  const { data, error } = await db.from("support_tickets").select("number,subject").gt("number", after).order("number").limit(50);
+  const { data, error } = await db.from("support_tickets").select("number,subject").gt("number", after).not("email", "like", CI_TICKET)
+    .order("number").limit(50);
   if (error) throw new Error(`support_tickets: ${error.code ?? "fout"}`);
   return (data ?? []) as TicketRow[];
 }
@@ -50,7 +53,7 @@ async function newReplies(db: Db, after: number): Promise<{ rows: ReplyRow[]; ma
   if (!cust.length) return { rows: [], maxId };
   const ids = [...new Set(cust.map((r) => r.ticket_id))];
   const [tk, firsts] = await Promise.all([
-    db.from("support_tickets").select("id,number").in("id", ids),
+    db.from("support_tickets").select("id,number").in("id", ids).not("email", "like", CI_TICKET),
     db.from("support_messages").select("id,ticket_id").in("ticket_id", ids).eq("author", "customer").order("id").limit(1000),
   ]);
   const num = new Map(((tk.data ?? []) as { id: string; number: number }[]).map((t) => [t.id, Number(t.number)]));

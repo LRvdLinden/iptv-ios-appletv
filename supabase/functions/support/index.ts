@@ -32,6 +32,8 @@
 //   admin_note   {number, message}                -> {ok}   (interne notitie, nooit zichtbaar voor de klant)
 //   admin_inbox  {}                               -> {configured, agents, state, log}  (status van de inbox-import)
 //   admin_poll   {}                               -> zoals poll_inbox  (knop "Nu ophalen" in het beheer)
+//   admin_reply en admin_status ook met header x-bingr-mailtest (workflow Diagnose, _shared/mail.ts), dan alleen voor
+//   testtickets van een testadres support+ci-…@bingr.online
 // Inbox-import (alleen met header x-support-cron = SUPPORT_CRON_SECRET; pg_cron roept dit elke 5 minuten aan, build 95):
 //   poll_inbox   {}  -> {ok, fetched, imported, …} of {skipped:"imap not configured"} of {ok:false, error}
 //   Haalt nieuwe mails uit de INBOX van support@ (IMAP over TLS: BINGR_IMAP_HOST, BINGR_IMAP_PORT (993), BINGR_IMAP_USER,
@@ -45,7 +47,7 @@
 // meldingen naar BINGR_SUPPORT_EMAIL (standaard support@bingr.online). Weigert de SMTP-server die afzender, dan gaat de
 // mail met BINGR_SMTP_FROM als afzender en het supportadres als Reply-To. Mislukt mailen: het ticket blijft bestaan.
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { smtpConfigured, smtpFrom, transport } from "../_shared/mail.ts";
+import { isMailtestAddress, MAILTEST_HEADER, mailtestOk, smtpConfigured, smtpFrom, transport } from "../_shared/mail.ts";
 import {
   addressOf, beheerUrl, type DeviceRow, deviceKind, isStatus, type KnownVersion, knownVersions, myDevices, parseNumber, PRIORITIES, randomToken, safeSearch, sameText, type Status, statusAfter,
   ticketUrl, validateCreate, validateMessage, validToken,
@@ -171,7 +173,7 @@ async function addMessage(ticketId: string, author: string, body: string, source
 // ---- e-mail ----
 type Sent = { ok: boolean; error?: string; messageId?: string };
 const imapConfigured = () => !!(env("BINGR_IMAP_HOST") && env("BINGR_IMAP_USER") && env("BINGR_IMAP_PASSWORD"));
-async function send(to: string, mail: { subject: string; html: string; text: string }, opts: { replyTo?: string; number: number; first?: boolean; auto?: boolean }): Promise<Sent> {
+async function send(to: string, mail: { subject: string; html: string; text: string }, opts: { replyTo?: string; number: number; first?: boolean; auto?: boolean; kind?: string }): Promise<Sent> {
   if (!smtpConfigured()) return { ok: false, error: "smtp_not_configured" };
   // alle mails van één ticket in één gesprek (Message-ID / In-Reply-To / References). Elke mail een eigen Message-ID met het
   // ticketnummer erin (<bingr-ticket-1007.…@bingr.online>), zodat een antwoord erop altijd bij het ticket komt.
@@ -179,7 +181,9 @@ async function send(to: string, mail: { subject: string; html: string; text: str
   const messageId = opts.first && to.toLowerCase() !== SUPPORT_EMAIL().toLowerCase() ? root : `<bingr-ticket-${opts.number}.${randomToken(9)}@bingr.online>`;
   // X-Bingr-Ticket: zo herkent de inbox-import onze eigen mails (geen lussen); Auto-Submitted voor systeemmails (RFC 3834),
   // zodat afwezigheidsmelders er niet op antwoorden
-  const headers: Record<string, string> = { "X-Bingr-Ticket": String(opts.number), ...(opts.auto ? { "Auto-Submitted": "auto-generated" } : {}) };
+  const headers: Record<string, string> = {
+    "X-Bingr-Ticket": String(opts.number), ...(opts.kind ? { "X-Bingr-Mail": `support-${opts.kind}` } : {}), ...(opts.auto ? { "Auto-Submitted": "auto-generated" } : {}),
+  };
   if (messageId !== root) { headers["In-Reply-To"] = root; headers["References"] = root; }
   const base = { to, subject: mail.subject, html: mail.html, text: mail.text, headers, messageId };
   const tx = transport();
@@ -224,7 +228,7 @@ async function firstNameFor(t: Ticket): Promise<string> {
   } catch { return ""; }
 }
 const toCustomer = async (t: Ticket, d: MailData) =>
-  send(t.email, renderMail({ ...d, firstName: d.firstName ?? await firstNameFor(t) }), { number: t.number, first: d.kind === "customer_created", auto: d.kind !== "customer_reply" });
+  send(t.email, renderMail({ ...d, firstName: d.firstName ?? await firstNameFor(t) }), { number: t.number, first: d.kind === "customer_created", auto: d.kind !== "customer_reply", kind: d.kind });
 // build 95: boven dit aantal nieuwe tickets per uur (alle samen) geen bevestigingsmails meer aan klanten (tickets worden wel
 // opgeslagen en support krijgt de melding): een veiligheidsgrens tegen misbruik als mailkanon, die niemand buitensluit
 const GLOBAL_CONFIRM_CAP = 500;
@@ -233,7 +237,7 @@ const notSent = (error: string): Sent => ({ ok: false, error });
 // Reply-To van een melding: met de inbox-import het supportadres zelf (het antwoord van de eigenaar komt dan via de import in
 // het ticket en gaat als gebrande mail naar de klant); zonder import het adres van de klant (antwoord gaat direct naar de klant)
 const toSupport = (t: Ticket, d: MailData) =>
-  send(SUPPORT_EMAIL(), renderMail(d), { number: t.number, replyTo: imapConfigured() ? addressOf(SUPPORT_FROM()) : t.email, first: d.kind === "support_created", auto: true });
+  send(SUPPORT_EMAIL(), renderMail(d), { number: t.number, replyTo: imapConfigured() ? addressOf(SUPPORT_FROM()) : t.email, first: d.kind === "support_created", auto: true, kind: d.kind });
 async function markMail(messageId: number, r: Sent) {
   await db.from("support_messages").update({ email_sent: r.ok, email_error: r.ok ? null : r.error ?? null, ...(r.messageId && r.ok ? { mail_message_id: r.messageId } : {}) }).eq("id", messageId);
 }
@@ -268,7 +272,16 @@ Deno.serve(async (req) => {
     }
     if (action.startsWith("admin_")) {
       const secret = env("SUPPORT_ADMIN_SECRET");
-      if (!secret || !sameText(req.headers.get("x-support-secret") ?? "", secret)) return json({ error: "forbidden" }, 403);
+      if (!secret || !sameText(req.headers.get("x-support-secret") ?? "", secret)) {
+        // mailtest: alleen antwoorden/status op een testticket (adres support+ci-…@bingr.online)
+        if (!(action === "admin_reply" || action === "admin_status") || !req.headers.get(MAILTEST_HEADER)) return json({ error: "forbidden" }, 403);
+        const n = parseNumber(body.number);
+        const t = n ? await ticketByNumber(n) : null;
+        if (!t || !isMailtestAddress(t.email) ||
+          !(await mailtestOk(req.headers.get(MAILTEST_HEADER), async () => (await db.from("app_settings").select("value").eq("key", "mailtest").maybeSingle()).data?.value))) {
+          return json({ error: "forbidden" }, 403);
+        }
+      }
       return await handleAdmin(action, body, json);
     }
     return await handleCustomer(req, action, body, json);

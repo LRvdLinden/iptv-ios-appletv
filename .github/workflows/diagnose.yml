@@ -11,13 +11,17 @@ on:
         description: "Alleen de end-to-end-test van de bevestigingsmail"
         type: boolean
         default: false
+      alle_mails:
+        description: "Alleen de end-to-end-test van ALLE mails (±20 mails naar support+ci-…@bingr.online, ±10 min)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 jobs:
   streams:
-    if: ${{ !inputs.alleen_mailtest }}
+    if: ${{ !inputs.alleen_mailtest && !inputs.alle_mails }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
@@ -130,7 +134,7 @@ jobs:
 
   # build 107: statuspagina — per monitor de laatste uitkomst (geen gebruikersgegevens: alleen soort, status en foutsoort)
   status:
-    if: ${{ !inputs.alleen_mailtest }}
+    if: ${{ !inputs.alleen_mailtest && !inputs.alle_mails }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
@@ -157,7 +161,7 @@ jobs:
                     (select count(*) from public.status_incidents where started_at > now() - interval '7 days') as storingen_7d" | note storingen
 
   push:
-    if: ${{ !inputs.alleen_mailtest }}
+    if: ${{ !inputs.alleen_mailtest && !inputs.alle_mails }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
@@ -193,7 +197,7 @@ jobs:
   mail:
     # na streams: het logs-endpoint geeft snel 429 bij gelijktijdige queries
     needs: streams
-    if: ${{ always() && !inputs.alleen_mailtest }}
+    if: ${{ always() && !inputs.alleen_mailtest && !inputs.alle_mails }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
@@ -354,6 +358,7 @@ jobs:
   # build 137: echte aanmelding naar een plus-adres van support@ en via IMAP controleren dat de bevestigingsmail aankomt
   # (supabase/tests/auth_mail_e2e.py; ook in Backend, job authmail). Alleen ja/nee, onderwerp en afzenderdomein in het log.
   mailtest:
+    if: ${{ !inputs.alle_mails }}
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
@@ -376,6 +381,7 @@ jobs:
 
   # build 137: bounces in de mailbox van de afzender (BINGR_SMTP_USER via IMAP): waarom externe bezorging mislukt
   bounces:
+    if: ${{ !inputs.alle_mails }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -387,3 +393,38 @@ jobs:
           I_HOST: ${{ secrets.BINGR_IMAP_HOST_SUPPORT || secrets.BINGR_IMAP_HOST }}
           I_PORT: ${{ secrets.BINGR_IMAP_PORT_SUPPORT || secrets.BINGR_IMAP_PORT }}
         run: python3 -I supabase/tests/mail_bounces.py
+
+  # Alle mails end-to-end (supabase/tests/all_mails_e2e.py): Auth (bevestigen, wachtwoord, inloglink, e-mailwijziging,
+  # verificatiecode als die aan staat), echte welkomstmail, voorbeelden van nieuwsbrief/welkomst/status, statusupdates,
+  # supportticket (6 mails) en de accountmails van het beheer. Per mail alleen ja/nee, tijden, domeinen en HTTP-codes;
+  # een tabel in de samenvatting van de run. Alles naar support+ci-…@bingr.online en daarna opgeruimd.
+  allemails:
+    if: ${{ inputs.alle_mails }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 (v5.1.0)
+      - name: Alle mails end-to-end (versturen -> IMAP)
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          I_HOST: ${{ secrets.BINGR_IMAP_HOST_SUPPORT || secrets.BINGR_IMAP_HOST }}
+          I_PORT: ${{ secrets.BINGR_IMAP_PORT_SUPPORT || secrets.BINGR_IMAP_PORT }}
+          I_USER: ${{ secrets.BINGR_IMAP_USER_SUPPORT || secrets.BINGR_IMAP_USER }}
+          I_PASS: ${{ secrets.BINGR_IMAP_PASSWORD_SUPPORT || secrets.BINGR_IMAP_PASSWORD }}
+        run: python3 -I supabase/tests/all_mails_e2e.py
+      - name: DNS van bingr.online voor mail (SPF, DMARC, DKIM-selectors; openbare records)
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          spf=$(dig +short TXT bingr.online | grep -i "v=spf1" | head -1 | tr -d '"')
+          dm=$(dig +short TXT _dmarc.bingr.online | grep -i "v=dmarc1" | head -1 | tr -d '"')
+          printf '::notice title=mail-dns SPF::%s\n' "$(echo "${spf:-geen}" | sed -E 's/ip[46]:[^ ]+/ip:<adres>/g')"
+          printf '::notice title=mail-dns DMARC::%s\n' "$(echo "${dm:-geen}" | sed -E 's/(rua|ruf)=[^;]*/\1=<adres>/g')"
+          found=""
+          for sel in default dkim mail x selector1 selector2 google k1 s1 s2 key1 sig1 mx; do
+            r=$(dig +short TXT "$sel._domainkey.bingr.online" | tr -d '"' | head -c 40)
+            [ -n "$r" ] && found="$found $sel"
+          done
+          printf '::notice title=mail-dns DKIM::selectors met een sleutel:%s\n' "${found:- geen gevonden (gangbare namen)}"
+

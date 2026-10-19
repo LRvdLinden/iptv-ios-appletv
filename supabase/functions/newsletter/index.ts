@@ -12,12 +12,14 @@
 //   welcome_preview {to, lang?} -> {ok}   (welkomstmail naar één adres, "[Voorbeeld]", aanhef met een voorbeeldnaam;
 //                                          limiet gedeeld met preview)
 //   welcome_render  {lang} -> {subject, html}
+//   preview en welcome_preview ook met header x-bingr-mailtest (mailtest van de workflow Diagnose, _shared/mail.ts), dan
+//   alleen naar een testadres support+ci-…@bingr.online
 // Openbaar (afmeldpagina bingr.online/unsubscribe/?k=news; CORS alleen https://bingr.online):
 //   unsubscribe {t} -> {ok} | 400 {error:"invalid_token"}
 //   POST ?unsubscribe=t (List-Unsubscribe=One-Click, RFC 8058) -> 200 "unsubscribed"; GET ?unsubscribe=t -> 303 naar de afmeldpagina
 // Logs bevatten nooit e-mailadressen, tokens of geheimen: alleen tellingen en foutcodes.
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { smtpConfigured, transport } from "../_shared/mail.ts";
+import { isMailtestAddress, MAILTEST_HEADER, mailtestOk, smtpConfigured, transport } from "../_shared/mail.ts";
 import { clientIp } from "../_shared/ip.ts";
 import {
   type Content, dueEdition, type Edition, editionRefs, langOf, type Lang, nextEdition, oneClickUrl, sameSecret, SITE, smtpCode,
@@ -114,7 +116,7 @@ async function sendEdition(e: EditionRow, until: number, t: Totals): Promise<boo
           const m = renderNewsletter({ lang, edition: editionFor(e.content, lang), firstName: u.first_name ?? undefined, unsubscribeUrl: unsubPageUrl(token), year });
           await mailer.sendMail({
             from: FROM(), to: u.email, subject: m.subject, html: m.html, text: m.text,
-            headers: { "List-Unsubscribe": `<${oneClickUrl(FN_URL, token)}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click", "X-Bingr-Edition": e.edition_key },
+            headers: { "List-Unsubscribe": `<${oneClickUrl(FN_URL, token)}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click", "X-Bingr-Edition": e.edition_key, "X-Bingr-Mail": "newsletter" },
           });
           sent.push(u.id); t.sent++;
         } catch (err) {
@@ -258,7 +260,9 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
     return json(await welcomeCron());
   }
   if (!["status", "set_enabled", "preview", "render", "welcome_preview", "welcome_render"].includes(action)) return json({ error: "unknown_action" }, 400);
-  if (!secretOk(req, "NEWSLETTER_ADMIN_SECRET")) return json({ error: "forbidden" }, 403);
+  const mailtest = (action === "preview" || action === "welcome_preview") && isMailtestAddress(body.to) &&
+    await mailtestOk(req.headers.get(MAILTEST_HEADER), async () => (await admin.from("app_settings").select("value").eq("key", "mailtest").maybeSingle()).data?.value);
+  if (!mailtest && !secretOk(req, "NEWSLETTER_ADMIN_SECRET")) return json({ error: "forbidden" }, 403);
   switch (action) {
     case "status": {
       const [st, rc, ed, welcome] = await Promise.all([
@@ -302,7 +306,7 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
         const token = await unsubToken("00000000-0000-0000-0000-000000000000", unsubSecret());
         await mailer.sendMail({
           from: FROM(), to, subject: m.subject, html: m.html, text: m.text,
-          headers: { "List-Unsubscribe": `<${oneClickUrl(FN_URL, token)}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
+          headers: { "List-Unsubscribe": `<${oneClickUrl(FN_URL, token)}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click", "X-Bingr-Mail": "newsletter-preview" },
         });
       } catch (e) {
         console.error("newsletter preview", smtpCode(e));
@@ -325,7 +329,12 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       const m = renderWelcome({ lang, firstName: SAMPLE_NAME, unsubscribeUrl: `${SITE}/unsubscribe/?k=news`, newsletter: true, preview: true });
       const mailer = transport();
       try {
-        await mailer.sendMail({ from: FROM(), to, subject: m.subject, html: m.html, text: m.text, headers: { "X-Bingr-Mail": "welcome-preview" } });
+        // zelfde kopregels als de echte welkomstmail (met de alinea over de nieuwsbrief); token van een niet-bestaand account
+        const token = await unsubToken("00000000-0000-0000-0000-000000000000", unsubSecret());
+        await mailer.sendMail({
+          from: FROM(), to, subject: m.subject, html: m.html, text: m.text,
+          headers: { "X-Bingr-Mail": "welcome-preview", "List-Unsubscribe": `<${oneClickUrl(FN_URL, token)}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
+        });
       } catch (e) {
         console.error("newsletter welcome_preview", smtpCode(e));
         return json({ error: "send_failed", code: smtpCode(e) }, 502);
