@@ -71,6 +71,25 @@ Tv-code tonen als `K7Q-4MX` (3 + 3). Bij het invoeren hoofdletters maken en `-` 
 - **Bestaande accounts** hebben geen naam; de eigenaar vult die in via het beheer (functie `admin`, dezelfde sleutels) en de gebruiker zelf in Mijn Bingr (`PUT /auth/v1/user`).
 - **E-mails** beginnen met **"Hoi <voornaam>,"** / **"Hi <first name>,"** als de voornaam bekend is, anders zonder aanhef (zoals voorheen): de accountmails (`supabase/templates`, `{{ if .Data.first_name }}…{{ end }}`; Supabase escapet met Go html/template), supportmails aan de klant (alleen als het ticket bij het account hoort en naar het bevestigde adres ervan gaat), statusmails aan abonnees met een bevestigd Bingr-account op hetzelfde adres (`bingr_first_names`) en berichten uit het beheer. Mails aan support@ of de beheerder krijgen geen aanhef.
 
+### Bescherming tegen nepaccounts (build 134)
+
+Alleen op de server: geen captcha en geen app-update, dus ook voor de tv-apps en oudere builds. Bestaande regels blijven: bevestigen per e-mail verplicht (`mailer_autoconfirm` false) en de naamcontrole hierboven.
+
+- **Auth-hook "Before User Created"** = Postgres-functie `public.bingr_before_user_created(event jsonb)` (schema.sql; aangezet door de workflow Backend, `pg-functions://postgres/public/bingr_before_user_created`). Hij draait bij elk nieuw account via `/auth/v1/signup` (niet bij bestaande adressen en niet bij accounts die het beheer of de CI via de admin-API maakt). Weigert, in deze volgorde:
+
+  | Reden (`reason`) | Regel | Antwoord van `/auth/v1/signup` |
+  |---|---|---|
+  | `rate_limit` | meer dan **3 nieuwe accounts per uur** of **10 per 24 uur** vanaf één netwerk (IPv4-adres of IPv6-/64); instelbaar in `app_settings.signup_limits` `{per_hour, per_day}` | **429** `Too many sign-ups from this network. Try again later.` |
+  | `name` | voor- of achternaam met een link, e-mailadres of HTML, of langer dan 50 tekens (zelfde regel als de trigger: `bingr_person_name_invalid`) | **400** `Names cannot contain links, email addresses or HTML.` |
+  | `disposable` | wegwerp-e-mailadres: het domein of een bovenliggend domein staat in `disposable_domains` (open lijst [disposable-email-domains](https://github.com/disposable-email-domains/disposable-email-domains), vast op een commit en sha256, plus een eigen lijst) | **400** `Use a permanent email address. Disposable email addresses are not accepted.` |
+
+  Supabase geeft de melding door als `msg` met `error_code` `unknown`. **Wat de gebruiker ziet:** de apps (iOS/iPadOS/tvOS/macOS, Android/Android TV, Samsung TV, webspeler) kennen die code niet en tonen "Something went wrong. Please try again."; bingr.online/koppelen toont bij de 429 "Even wachten: er zijn te veel pogingen gedaan…". Daarom bevatten de meldingen geen woorden die de apps anders herkennen (already, banned, password, confirm). Een fout in de hook zelf = toestaan (nooit legitieme aanmeldingen blokkeren).
+- **Privacy:** geen IP- of e-mailadressen opgeslagen. `signup_attempts` bewaart alleen `sha256(salt | netwerk)` (de salt staat alleen in de database, `signup_guard_secret`), tijd, toegestaan en reden; na **7 dagen** weg (dagelijks via `bingr_support_cleanup`).
+- **Auth-limieten** (workflow Backend; strengere bestaande waarden blijven): `rate_limit_email_sent` max. 30 per uur, `rate_limit_otp` (aanmelden, wachtwoord vergeten, opnieuw sturen, `PUT /user`) max. 10 per IP per 5 minuten.
+- **Onbevestigde accounts** verdwijnen na **48 uur** (pg_cron `bingr-unconfirmed-cleanup`, elk uur, `bingr_signup_cleanup`): alleen als het adres nooit bevestigd is, er nooit is ingelogd en er niets aan hangt (geen abonnement, aankoop, blokkade, supportticket, profielen of apparaten). Alleen het aantal wordt bewaard (`signup_cleanups`). Wie later alsnog wil, maakt gewoon opnieuw een account.
+- **Beheer:** `bingr_admin_signup_guard()` (alleen aantallen: geweigerd per reden in 24 uur / 7 dagen, toegestaan, onbevestigd verwijderd), in het Overzicht van het beheer.
+- **Testen:** `supabase/tests/signup_guard_test.sh` (unittests op een lege Postgres, ook in de workflow) en de job `registratie` (de regels met SQL, één echte aanmelding met een wegwerpadres, het opruimen met een tijdelijk account).
+
 ## Schermen
 
 **Inlogscherm op telefoon, tablet en Mac** (Netflix-stijl): zwarte achtergrond met een gedimde, licht vervaagde collage van posters (covers uit de bibliotheek als die er zijn, anders een donker verloop met rood), bovenaan het Bingr-logo. Daaronder een kaart met de kop **"Sign In"** of **"Create account"** (bij "Create account" eerst de velden **First name** en **Last name**), de velden **E-mail** en **Password** (met tonen/verbergen), een rode volle knop, en een foutmelding in oranje/rood onder de velden. Daaronder: "Forgot password?", en "New to Bingr? **Sign up now.**" / "Already have an account? **Sign in.**". Wachtwoord minimaal 6 tekens. Tijdens het laden een spinner in de knop.

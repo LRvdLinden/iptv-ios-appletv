@@ -1394,7 +1394,7 @@ revoke all on public.support_pow_used from anon, authenticated;
 --   gebruikte captcha-salts na 1 dag weg; het logboek van pg_cron (cron.job_run_details) na 7 dagen weg.
 create or replace function public.bingr_support_cleanup() returns jsonb
 language plpgsql security definer set search_path = public as $$
-declare t int := 0; i int := 0; p int := 0; c int := 0;
+declare t int := 0; i int := 0; p int := 0; c int := 0; s int := 0;
 begin
   delete from public.support_tickets
   where status = 'closed' and greatest(last_reply_at, updated_at, coalesce(closed_at, updated_at)) < now() - interval '24 months';
@@ -1409,7 +1409,9 @@ begin
   exception when others then
     raise notice 'cron.job_run_details niet opgeruimd: %', sqlerrm;
   end;
-  return jsonb_build_object('tickets', t, 'ip_hash', i, 'pow', p, 'cron_runs', c);
+  -- build 134: registratiepogingen (IP-hashes) na 7 dagen weg
+  if to_regprocedure('public.bingr_signup_attempts_cleanup()') is not null then s := public.bingr_signup_attempts_cleanup(); end if;
+  return jsonb_build_object('tickets', t, 'ip_hash', i, 'pow', p, 'cron_runs', c, 'signup_attempts', s);
 end $$;
 revoke all on function public.bingr_support_cleanup() from public, anon, authenticated;
 grant execute on function public.bingr_support_cleanup() to service_role;
@@ -2045,6 +2047,15 @@ create or replace function public.bingr_clean_person_name(p text) returns text
 language sql immutable set search_path = public as $$
   select nullif(btrim(left(btrim(regexp_replace(regexp_replace(coalesce(p, ''), '[\x01-\x1f\x7f<>]', '', 'g'), '\s+', ' ', 'g')), 50)), '')
 $$;
+-- >>> unittest person-name
+-- build 134: naamregel, ook gebruikt door de hook bingr_before_user_created: link of e-mailadres (://, www., @), < of >,
+-- of langer dan 50 tekens.
+create or replace function public.bingr_person_name_invalid(p text) returns boolean
+language sql immutable set search_path = public as $$
+  select p is not null and (p ~* '(://|www\.|@|<|>)' or char_length(btrim(regexp_replace(p, '\s+', ' ', 'g'))) > 50)
+$$;
+revoke all on function public.bingr_person_name_invalid(text) from public, anon, authenticated;
+-- <<< unittest person-name
 -- Trigger op auth.users: naam opschonen bij het opslaan, en weigeren als er een link, e-mailadres of HTML in staat of hij
 -- langer is dan 50 tekens (de accountmail bij het aanmaken toont de naam al, ook voor een adres dat nog niet bevestigd is).
 -- De apps en sites sturen alleen opgeschoonde namen; een geweigerde naam geeft bij Supabase Auth een foutmelding (geen account).
@@ -2060,7 +2071,7 @@ begin
     if jsonb_typeof(raw) = 'null' then new.raw_user_meta_data := new.raw_user_meta_data - k; continue; end if;
     if jsonb_typeof(raw) <> 'string' then raise exception 'bingr_invalid_name' using errcode = '22023', detail = k; end if;
     v := raw #>> '{}';
-    if v ~* '(://|www\.|@|<|>)' or char_length(btrim(regexp_replace(v, '\s+', ' ', 'g'))) > 50 then
+    if public.bingr_person_name_invalid(v) then
       raise exception 'bingr_invalid_name' using errcode = '22023', detail = k;
     end if;
     c := public.bingr_clean_person_name(v);
@@ -2706,3 +2717,220 @@ language sql stable security definer set search_path = public as $$
 $$;
 revoke all on function public.bingr_admin_insights_events(timestamptz, timestamptz) from public, anon, authenticated;
 grant execute on function public.bingr_admin_insights_events(timestamptz, timestamptz) to service_role;
+
+-- ============================================================================================================
+-- build 134: bescherming tegen nepaccounts (docs/ACCOUNT.md, "Bescherming tegen nepaccounts (build 134)"). Zonder captcha
+-- en zonder app-update: Supabase Auth roept bij elk nieuw account (POST /auth/v1/signup, ook vanaf tv-apps en de website)
+-- de Postgres-hook bingr_before_user_created aan (Before User Created; aangezet door de Backend-workflow). Die weigert:
+--   rate_limit  meer dan signup_limits.per_hour (3) nieuwe accounts per uur of per_day (10) per 24 uur vanaf één netwerk
+--               (IPv4-adres of IPv6-/64), 429;
+--   name        een voor- of achternaam met een link, e-mailadres of HTML (zelfde regel als de trigger bingr_user_names), 400;
+--   disposable  een wegwerp-e-mailadres (tabel disposable_domains, ook subdomeinen), 400.
+-- Nooit een IP-adres of e-mailadres opgeslagen: alleen sha256(geheime salt | netwerk) in signup_attempts, 7 dagen bewaard.
+-- Accounts die het beheer of de CI via de admin-API maakt, roepen de hook niet aan (Supabase Auth); zonder IP-adres of met
+-- een andere provider dan e-mail laat de hook alles door. Bij een fout in de hook zelf: toestaan (nooit legitieme
+-- aanmeldingen blokkeren door een storing). Onbevestigde accounts verdwijnen na 48 uur (bingr_signup_cleanup, elk uur).
+-- Het blok tussen de unittest-markeringen wordt ook los getest met Postgres (supabase/tests/signup_guard_test.sh).
+-- >>> unittest signup-guard
+
+create table if not exists public.signup_attempts (
+  id      bigint generated always as identity primary key,
+  ip_hash text not null check (ip_hash ~ '^[0-9a-f]{64}$'),
+  at      timestamptz not null default now(),
+  allowed boolean not null,
+  reason  text check (reason is null or reason in ('rate_limit', 'disposable', 'name'))
+);
+create index if not exists signup_attempts_ip_idx on public.signup_attempts (ip_hash, at) where allowed;
+create index if not exists signup_attempts_at_idx on public.signup_attempts (at);
+alter table public.signup_attempts enable row level security;
+revoke all on public.signup_attempts from anon, authenticated;
+
+-- Geheime salt voor de IP-hash: één keer in de database gemaakt (nooit in de repo of een log), alleen voor de functies hier.
+create table if not exists public.signup_guard_secret (
+  id   int primary key default 1 check (id = 1),
+  salt text not null check (char_length(salt) >= 32)
+);
+alter table public.signup_guard_secret enable row level security;
+revoke all on public.signup_guard_secret from anon, authenticated, service_role;
+insert into public.signup_guard_secret (id, salt)
+values (1, encode(sha256(convert_to(gen_random_uuid()::text || gen_random_uuid()::text || clock_timestamp()::text, 'UTF8')), 'hex'))
+on conflict (id) do nothing;
+
+-- Wegwerpdomeinen: source 'list' = github.com/disposable-email-domains/disposable-email-domains (de workflow vult en ververst
+-- ze, vast op een commit), 'own' = eigen aanvulling hieronder (blijft ook staan als de lijst niet te laden is).
+create table if not exists public.disposable_domains (
+  domain   text primary key check (char_length(domain) <= 253 and domain ~ '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$'),
+  source   text not null default 'own' check (source in ('list', 'own')),
+  added_at timestamptz not null default now()
+);
+alter table public.disposable_domains enable row level security;
+revoke all on public.disposable_domains from anon, authenticated;
+insert into public.disposable_domains (domain, source) values
+  ('mailinator.com', 'own'), ('yopmail.com', 'own'), ('guerrillamail.com', 'own'), ('sharklasers.com', 'own'),
+  ('10minutemail.com', 'own'), ('temp-mail.org', 'own'), ('tempmail.com', 'own'), ('trashmail.com', 'own'),
+  ('getnada.com', 'own'), ('maildrop.cc', 'own'), ('dispostable.com', 'own'), ('mohmal.com', 'own'),
+  ('emailondeck.com', 'own'), ('throwawaymail.com', 'own'), ('mintemail.com', 'own'), ('fakeinbox.com', 'own')
+on conflict (domain) do update set source = 'own';
+
+-- Onbevestigde accounts die automatisch verwijderd zijn: alleen het aantal per ronde (voor het beheer), 400 dagen bewaard.
+create table if not exists public.signup_cleanups (
+  id      bigint generated always as identity primary key,
+  at      timestamptz not null default now(),
+  deleted int not null check (deleted >= 0)
+);
+alter table public.signup_cleanups enable row level security;
+revoke all on public.signup_cleanups from anon, authenticated;
+
+-- Limieten (aan te passen zonder deploy): nieuwe accounts per netwerk per uur en per 24 uur. Bestaande waarden blijven staan.
+insert into public.app_settings (key, value) values ('signup_limits', '{"per_hour": 3, "per_day": 10}'::jsonb)
+on conflict (key) do nothing;
+
+-- Netwerk van een IP-adres: IPv4 zoals het is (ook ::ffff:a.b.c.d), IPv6 per /64 (één aansluiting); onleesbaar = de tekst.
+create or replace function public.bingr_signup_ip_key(p_ip text) returns text
+language plpgsql immutable set search_path = public as $$
+declare a inet; s text := lower(btrim(coalesce(p_ip, '')));
+begin
+  if s ~ '^::ffff:\d+\.\d+\.\d+\.\d+$' then s := substr(s, 8); end if;
+  begin
+    a := s::inet;
+  exception when others then
+    return left(s, 100);
+  end;
+  if family(a) = 6 then return host(network(set_masklen(a, 64))) || '/64'; end if;
+  return host(a);
+end $$;
+create or replace function public.bingr_signup_ip_hash(p_ip text) returns text
+language sql stable security definer set search_path = public as $$
+  select encode(sha256(convert_to(s.salt || '|' || public.bingr_signup_ip_key(p_ip), 'UTF8')), 'hex')
+  from public.signup_guard_secret s where s.id = 1
+$$;
+
+-- Wegwerpadres? Het domein of een bovenliggend domein (a.b.mailinator.com -> mailinator.com) staat in disposable_domains.
+create or replace function public.bingr_email_disposable(p_email text) returns boolean
+language plpgsql stable security definer set search_path = public as $$
+declare d text; parts text[]; n int; cands text[] := '{}';
+begin
+  d := rtrim(lower(btrim(coalesce(substring(coalesce(p_email, '') from '@([^@]*)$'), ''))), '.');
+  if d = '' then return false; end if;
+  parts := string_to_array(d, '.');
+  n := coalesce(array_length(parts, 1), 0);
+  for i in 1 .. n - 1 loop
+    cands := cands || array_to_string(parts[i:n], '.');
+  end loop;
+  return exists (select 1 from public.disposable_domains where domain = any (cands));
+end $$;
+
+-- De hook (Supabase Auth, Before User Created). event = {metadata:{ip_address,…}, user:{email, app_metadata, user_metadata,…}}.
+-- Terug: '{}' = toestaan; {"error":{"http_code":4xx,"message":…}} = weigeren (Auth geeft die status en msg door; error_code
+-- is dan "unknown"). De apps tonen bij een onbekende fout "Something went wrong. Please try again."; de website (koppelen)
+-- herkent "Too many" als te veel pogingen. Daarom korte, neutrale Engelse teksten.
+create or replace function public.bingr_before_user_created(event jsonb) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  u jsonb := case when jsonb_typeof(event->'user') = 'object' then event->'user' else '{}'::jsonb end;
+  ip text := nullif(btrim(coalesce(event->'metadata'->>'ip_address', '')), '');
+  prov text := coalesce(nullif(u->'app_metadata'->>'provider', ''), 'email');
+  meta jsonb := u->'user_metadata';
+  lim jsonb; per_hour int := 3; per_day int := 10; h text; reason text;
+begin
+  -- geen gewone aanmelding (admin-API zonder IP, anoniem of een andere provider): toestaan
+  if ip is null or prov <> 'email' or coalesce(u->>'is_anonymous', 'false') = 'true' then return '{}'::jsonb; end if;
+  begin
+    h := public.bingr_signup_ip_hash(ip);
+    if h is null then return '{}'::jsonb; end if;
+    select value into lim from public.app_settings where key = 'signup_limits';
+    if jsonb_typeof(lim->'per_hour') = 'number' then per_hour := least(greatest((lim->>'per_hour')::numeric::int, 1), 10000); end if;
+    if jsonb_typeof(lim->'per_day') = 'number' then per_day := least(greatest((lim->>'per_day')::numeric::int, 1), 10000); end if;
+    -- gelijktijdige aanmeldingen vanaf hetzelfde netwerk na elkaar tellen
+    perform pg_advisory_xact_lock(hashtextextended('bingr_signup:' || h, 0));
+    if (select count(*) from public.signup_attempts where ip_hash = h and allowed and at > now() - interval '1 hour') >= per_hour
+       or (select count(*) from public.signup_attempts where ip_hash = h and allowed and at > now() - interval '24 hours') >= per_day then
+      reason := 'rate_limit';
+    elsif jsonb_typeof(meta) = 'object' and exists (
+        select 1 from unnest(array['first_name', 'last_name']) k
+        where jsonb_typeof(meta->k) is not null and jsonb_typeof(meta->k) <> 'null'
+          and (jsonb_typeof(meta->k) <> 'string' or public.bingr_person_name_invalid(meta->>k))) then
+      reason := 'name';
+    elsif public.bingr_email_disposable(u->>'email') then
+      reason := 'disposable';
+    end if;
+    insert into public.signup_attempts (ip_hash, allowed, reason) values (h, reason is null, reason);
+  exception when others then
+    raise warning 'bingr_before_user_created: % (%)', sqlerrm, sqlstate;
+    return '{}'::jsonb;
+  end;
+  if reason = 'rate_limit' then
+    return jsonb_build_object('error', jsonb_build_object('http_code', 429, 'message', 'Too many sign-ups from this network. Try again later.'));
+  elsif reason = 'name' then
+    return jsonb_build_object('error', jsonb_build_object('http_code', 400, 'message', 'Names cannot contain links, email addresses or HTML.'));
+  elsif reason = 'disposable' then
+    return jsonb_build_object('error', jsonb_build_object('http_code', 400, 'message', 'Use a permanent email address. Disposable email addresses are not accepted.'));
+  end if;
+  return '{}'::jsonb;
+end $$;
+
+-- Opruimen (pg_cron bingr-unconfirmed-cleanup, elk uur): onbevestigde accounts ouder dan 48 uur verwijderen, alleen als er
+-- niets aan hangt (geen abonnement, aankoop, blokkade, supportticket, profielen of apparaten; nooit ingelogd, niet
+-- uitgenodigd). Max. 500 per ronde. Alleen het aantal wordt bewaard (signup_cleanups). p_only = alleen dat account (CI-test;
+-- telt niet mee). Terug: {deleted}.
+create or replace function public.bingr_signup_cleanup(p_only uuid default null) returns jsonb
+language plpgsql security definer set search_path = public, auth as $$
+declare n int := 0;
+begin
+  delete from auth.users u where u.id in (
+    select x.id from auth.users x
+    where x.email_confirmed_at is null and x.phone_confirmed_at is null and x.created_at < now() - interval '48 hours'
+      and x.last_sign_in_at is null and x.invited_at is null and x.email is not null
+      and (p_only is null or x.id = p_only)
+      and not exists (select 1 from public.account_plans p where p.user_id = x.id)
+      and not exists (select 1 from public.billing_purchases b where b.user_id = x.id)
+      and not exists (select 1 from public.account_blocks k where k.user_id = x.id)
+      and not exists (select 1 from public.support_tickets t where t.user_id = x.id)
+      and not exists (select 1 from public.account_data d where d.user_id = x.id)
+      and not exists (select 1 from public.account_devices v where v.user_id = x.id)
+    order by x.created_at limit 500);
+  get diagnostics n = row_count;
+  if p_only is null and n > 0 then insert into public.signup_cleanups (deleted) values (n); end if;
+  return jsonb_build_object('deleted', n);
+end $$;
+
+-- Pogingen na 7 dagen weg, tellingen van het opruimen na 400 dagen (dagelijks via bingr_support_cleanup).
+create or replace function public.bingr_signup_attempts_cleanup() returns int
+language plpgsql security definer set search_path = public as $$
+declare n int;
+begin
+  delete from public.signup_attempts where at < now() - interval '7 days';
+  get diagnostics n = row_count;
+  delete from public.signup_cleanups where at < now() - interval '400 days';
+  return n;
+end $$;
+
+-- Beheer (functie admin, Overzicht): alleen aantallen. Geweigerd per reden (24 uur / 7 dagen), toegestaan, verwijderde
+-- onbevestigde accounts en het aantal wegwerpdomeinen.
+create or replace function public.bingr_admin_signup_guard() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object(
+    'rejected_24h', (select jsonb_build_object('total', count(*), 'rate_limit', count(*) filter (where reason = 'rate_limit'),
+        'disposable', count(*) filter (where reason = 'disposable'), 'name', count(*) filter (where reason = 'name'))
+      from public.signup_attempts where not allowed and at > now() - interval '24 hours'),
+    'rejected_7d', (select jsonb_build_object('total', count(*), 'rate_limit', count(*) filter (where reason = 'rate_limit'),
+        'disposable', count(*) filter (where reason = 'disposable'), 'name', count(*) filter (where reason = 'name'))
+      from public.signup_attempts where not allowed and at > now() - interval '7 days'),
+    'allowed_24h', (select count(*) from public.signup_attempts where allowed and at > now() - interval '24 hours'),
+    'allowed_7d', (select count(*) from public.signup_attempts where allowed and at > now() - interval '7 days'),
+    'unconfirmed_deleted_24h', (select coalesce(sum(deleted), 0) from public.signup_cleanups where at > now() - interval '24 hours'),
+    'unconfirmed_deleted_7d', (select coalesce(sum(deleted), 0) from public.signup_cleanups where at > now() - interval '7 days'),
+    'disposable_domains', (select count(*) from public.disposable_domains))
+$$;
+
+revoke all on function public.bingr_signup_ip_key(text) from public, anon, authenticated, service_role;
+revoke all on function public.bingr_signup_ip_hash(text) from public, anon, authenticated, service_role;
+revoke all on function public.bingr_email_disposable(text) from public, anon, authenticated, service_role;
+revoke all on function public.bingr_before_user_created(jsonb) from public, anon, authenticated, service_role;
+revoke all on function public.bingr_signup_cleanup(uuid) from public, anon, authenticated, service_role;
+revoke all on function public.bingr_signup_attempts_cleanup() from public, anon, authenticated, service_role;
+revoke all on function public.bingr_admin_signup_guard() from public, anon, authenticated;
+grant execute on function public.bingr_admin_signup_guard() to service_role;
+grant usage on schema public to supabase_auth_admin;
+grant execute on function public.bingr_before_user_created(jsonb) to supabase_auth_admin;
+-- <<< unittest signup-guard

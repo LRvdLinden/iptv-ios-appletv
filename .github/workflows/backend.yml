@@ -36,6 +36,9 @@ name: Backend
 # Welkomstmail (zelfde functie): de pg_cron-taak bingr-welcome roept elke 5 minuten newsletter/welcome_cron aan (los van aan/uit).
 # Betalen (build 133, job billing): functies billing en stripe-webhook; GitHub-secrets STRIPE_SECRET_KEY (zonder: betalen uit),
 # optioneel STRIPE_WEBHOOK_SECRET en STRIPE_AUTOMATIC_TAX. Het webhook-endpoint in Stripe zet de job zelf klaar.
+# Nepaccounts (build 134, geen secrets nodig): Auth-hook bingr_before_user_created (limiet per netwerk, wegwerpadressen, namen),
+# lijst met wegwerpdomeinen (vaste commit + sha256), strengere Auth-limieten en de pg_cron-taak bingr-unconfirmed-cleanup;
+# unittests op de Postgres van de runner (supabase/tests) en job registratie (end-to-end).
 on:
   push:
     branches: [main]
@@ -106,6 +109,13 @@ jobs:
           deno test supabase/functions/_shared/plans_test.ts > plans-test.log 2>&1 && exit 0
           grep -E "FAILED|error|=>|verwacht" plans-test.log | head -30 | while IFS= read -r l; do echo "::warning::${l:0:300}"; done
           exit 1
+      - name: Unittests (registratiebescherming)
+        # blokkeert de deploy (build 134): de hook bingr_before_user_created, IP-hash, wegwerpdomeinen, naamregel, opruimen van
+        # onbevestigde accounts en de beheertellingen, in een tijdelijke database op de Postgres van de runner (geen Supabase).
+        run: |
+          sudo systemctl start postgresql.service
+          for i in $(seq 1 20); do pg_isready -q && break; sleep 1; done
+          sudo -u postgres bash supabase/tests/signup_guard_test.sh
       - name: Controleren
         id: check
         run: |
@@ -119,6 +129,90 @@ jobs:
           code=$(curl -s -o /tmp/r.txt -w '%{http_code}' -X POST "https://api.supabase.com/v1/projects/$REF/database/query" \
             -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" --data @/tmp/q.json)
           cat /tmp/r.txt; echo; [ "$code" -lt 300 ] || { echo "::error::Schema mislukt (HTTP $code)"; exit 1; }
+      - name: Registratiebescherming - wegwerpdomeinen, hook en limieten
+        # build 134 (docs/ACCOUNT.md, "Bescherming tegen nepaccounts"): 1. de lijst met wegwerpdomeinen van
+        # github.com/disposable-email-domains/disposable-email-domains, vast op een commit en gecontroleerd met sha256, in
+        # public.disposable_domains (source 'list'; de eigen lijst uit schema.sql blijft staan). Lukt het downloaden niet, dan
+        # blijft de vorige lijst staan (waarschuwing). 2. Auth: de hook Before User Created aan (pg-functions://…/bingr_before_user_created),
+        # bevestigen per e-mail verplicht (mailer_autoconfirm false), rate_limit_email_sent max. 30 per uur en rate_limit_otp
+        # (aanmelden, wachtwoord vergeten, opnieuw sturen, gebruiker wijzigen; per IP per 5 minuten) max. 10. Strengere bestaande
+        # waarden blijven. 3. pg_cron-taak bingr-unconfirmed-cleanup (elk uur): onbevestigde accounts na 48 uur weg. Alleen
+        # "ingesteld" in het log, geen configuratie of serverantwoorden.
+        if: steps.check.outputs.skip != '1'
+        env:
+          DEA_COMMIT: c619f0a1e359b880ac9d442bb37d22b8391ba12f
+          DEA_SHA256: 2a8f3d0ae32228c081d5ff90e8021a9ccb0a4348f96872c511f4b83762d87dde
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, re, sys, urllib.request, urllib.error
+          REF = os.environ["REF"]; MGMT = os.environ["SUPABASE_ACCESS_TOKEN"]
+          API = f"https://api.supabase.com/v1/projects/{REF}"
+          def req(method, url, body=None):
+              h = {"Authorization": f"Bearer {MGMT}", "Content-Type": "application/json"}
+              r = urllib.request.Request(url, data=None if body is None else json.dumps(body).encode(), method=method, headers=h)
+              try:
+                  with urllib.request.urlopen(r, timeout=60) as resp: raw = resp.read(); code = resp.status
+              except urllib.error.HTTPError as e: raw = e.read(); code = e.code
+              try: return code, json.loads(raw or b"{}")
+              except Exception: return code, None
+          def sql(q): return req("POST", f"{API}/database/query", {"query": q})
+          fail = []
+          # 1. wegwerpdomeinen
+          url = f"https://raw.githubusercontent.com/disposable-email-domains/disposable-email-domains/{os.environ['DEA_COMMIT']}/disposable_email_blocklist.conf"
+          try:
+              with urllib.request.urlopen(url, timeout=60) as resp: data = resp.read()
+          except Exception as e:
+              data = None; print(f"::warning::Lijst met wegwerpdomeinen niet geladen ({type(e).__name__}); vorige lijst blijft staan")
+          if data is not None and hashlib.sha256(data).hexdigest() != os.environ["DEA_SHA256"]:
+              data = None; print("::warning::Lijst met wegwerpdomeinen: sha256 klopt niet; vorige lijst blijft staan")
+          if data is not None:
+              ok = re.compile(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$")
+              doms = sorted({l.strip().lower() for l in data.decode("utf-8", "replace").splitlines()
+                             if l.strip() and not l.startswith("#") and len(l.strip()) <= 253 and ok.match(l.strip().lower())})
+              if len(doms) < 1000:
+                  print(f"::warning::Lijst met wegwerpdomeinen te kort ({len(doms)}); vorige lijst blijft staan")
+              else:
+                  arr = "'{" + ",".join(doms) + "}'::text[]"
+                  code, r = sql("insert into public.disposable_domains (domain, source) select d, 'list' from unnest(" + arr + ") d on conflict (domain) do nothing;\n"
+                                "delete from public.disposable_domains where source = 'list' and domain <> all (" + arr + ");\n"
+                                "select count(*)::int n from public.disposable_domains;")
+                  if code < 300 and isinstance(r, list) and r: print(f"::notice::Wegwerpdomeinen ingesteld: {r[0].get('n')} domeinen")
+                  else: fail.append(f"wegwerpdomeinen opslaan mislukt (HTTP {code})")
+          # 2. Auth: hook, bevestigen verplicht, limieten (strengere bestaande waarden blijven)
+          HOOK = "pg-functions://postgres/public/bingr_before_user_created"
+          code, cur = req("GET", f"{API}/config/auth")
+          if code != 200 or not isinstance(cur, dict):
+              fail.append(f"Auth-config niet gelezen (HTTP {code})")
+          else:
+              def stricter(key, want):
+                  v = cur.get(key)
+                  return v if isinstance(v, int) and 0 < v <= want else want
+              if cur.get("mailer_autoconfirm"): print("::warning::Bevestigen per e-mail stond uit; staat nu weer aan")
+              code, _ = req("PATCH", f"{API}/config/auth", {"hook_before_user_created_enabled": True,
+                            "hook_before_user_created_uri": HOOK, "mailer_autoconfirm": False})
+              # limieten apart: Supabase weigert rate_limit_email_sent zonder eigen SMTP; dan alleen een waarschuwing
+              lc, _ = req("PATCH", f"{API}/config/auth", {"rate_limit_email_sent": stricter("rate_limit_email_sent", 30),
+                          "rate_limit_otp": stricter("rate_limit_otp", 10)})
+              if lc >= 300: print(f"::warning::Auth-limieten niet bijgewerkt (HTTP {lc})")
+              if code >= 300: fail.append(f"Auth-config bijwerken mislukt (HTTP {code})")
+              else:
+                  code, now = req("GET", f"{API}/config/auth")
+                  now = now if isinstance(now, dict) else {}
+                  if now.get("hook_before_user_created_enabled") is not True or now.get("hook_before_user_created_uri") != HOOK:
+                      fail.append("hook Before User Created staat niet aan")
+                  elif now.get("mailer_autoconfirm") is not False:
+                      fail.append("bevestigen per e-mail staat niet aan")
+                  else:
+                      print("::notice::Hook, bevestiging en limieten ingesteld")
+          # 3. planning: onbevestigde accounts opruimen (elk uur)
+          code, r = sql("select cron.unschedule(jobid) from cron.job where jobname = 'bingr-unconfirmed-cleanup';\n"
+                        "select cron.schedule('bingr-unconfirmed-cleanup', '17 * * * *', $cmd$ select public.bingr_signup_cleanup(); $cmd$);\n"
+                        "select count(*)::int n from cron.job where jobname = 'bingr-unconfirmed-cleanup' and active;")
+          if code < 300 and isinstance(r, list) and r and r[0].get("n") == 1: print("::notice::Planning bingr-unconfirmed-cleanup ingesteld")
+          else: print(f"::warning::pg_cron niet beschikbaar (HTTP {code}): onbevestigde accounts worden niet automatisch opgeruimd")
+          for f in fail: print(f"::error::{f}")
+          sys.exit(1 if fail else 0)
+          PY
       - name: E-mailtemplates (Bingr-huisstijl)
         if: steps.check.outputs.skip != '1'
         run: |
@@ -1423,6 +1517,131 @@ jobs:
               for uid in made:
                   code, _ = req("DELETE", f"{BASE}/auth/v1/admin/users/{uid}", None, adm)
                   if code not in (200, 204): print(f"::warning::testaccount niet verwijderd (HTTP {code})")
+          for f in fail: print(f"::error::{f[:400]}")
+          sys.exit(1 if fail else 0)
+          PY
+
+  # aparte job (build 134): bescherming tegen nepaccounts end-to-end. De regels van de hook worden met SQL getest (zonder
+  # echte aanmeldingen: geen bevestigingsmails), met adressen uit 192.0.2.0/24 (documentatie, nooit een echte gebruiker);
+  # hun pogingen worden daarna verwijderd. Eén echte aanmelding met een wegwerpadres bewijst dat Auth de hook aanroept
+  # (geweigerd vóór het aanmaken: geen account en geen mail). Het opruimen van onbevestigde accounts wordt getest met een
+  # tijdelijk account (admin-API, geen mail) dat 49 uur ouder gemaakt wordt. Sleutels worden gemaskeerd; geen IP- of e-mailadressen in het log.
+  registratie:
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+    steps:
+      - name: Registratiebescherming testen
+        run: |
+          if [ -z "$SUPABASE_ACCESS_TOKEN" ] || [ -z "$REF" ]; then exit 0; fi
+          python3 - <<'PY'
+          import json, os, random, secrets, sys, time, urllib.request, urllib.error
+          REF = os.environ["REF"]; MGMT = os.environ["SUPABASE_ACCESS_TOKEN"]
+          BASE = f"https://{REF}.supabase.co"; PUB = "sb_publishable_lpIup6Omq5kW2k3oICGZ4g_HPGac5A3"
+          def req(method, url, body=None, headers=None):
+              h = {"Content-Type": "application/json", **(headers or {})}
+              r = urllib.request.Request(url, data=None if body is None else json.dumps(body).encode(), method=method, headers=h)
+              try:
+                  with urllib.request.urlopen(r, timeout=30) as resp: raw = resp.read(); code = resp.status
+              except urllib.error.HTTPError as e: raw = e.read(); code = e.code
+              try: return code, json.loads(raw or b"{}")
+              except Exception: return code, {"raw": raw[:200].decode("utf-8", "replace")}
+          def sql(q):
+              return req("POST", f"https://api.supabase.com/v1/projects/{REF}/database/query", {"query": q}, {"Authorization": f"Bearer {MGMT}"})
+          fail, made = [], []
+          ip = f"192.0.2.{random.randint(1, 254)}"
+          def ev(addr, email, meta=None):
+              return json.dumps({"metadata": {"name": "before-user-created", "ip_address": addr},
+                                 "user": {"email": email, "app_metadata": {"provider": "email", "providers": ["email"]},
+                                          "user_metadata": meta or {}, "is_anonymous": False}}).replace("'", "''")
+          def hook(addr, email, meta=None):
+              code, r = sql(f"select public.bingr_before_user_created('{ev(addr, email, meta)}'::jsonb) r")
+              if code >= 300 or not isinstance(r, list) or not r: raise SystemExit(f"hook aanroepen mislukt (HTTP {code})")
+              return r[0].get("r") or {}
+          def status(r): return ((r or {}).get("error") or {}).get("http_code")
+          code, keys = req("GET", f"https://api.supabase.com/v1/projects/{REF}/api-keys?reveal=true", headers={"Authorization": f"Bearer {MGMT}"})
+          key = None
+          for k in keys if isinstance(keys, list) else []:
+              v = k.get("api_key") or ""
+              if v and (k.get("name") == "service_role" or k.get("type") == "secret") and "·" not in v: key = v; break
+          if key: print(f"::add-mask::{key}")
+          adm = {"apikey": key or "", **({"Authorization": f"Bearer {key}"} if key and key.startswith("ey") else {})}
+          t0, real_rejected = None, False
+          try:
+              # 0. hook staat aan in Auth
+              code, cfg = req("GET", f"https://api.supabase.com/v1/projects/{REF}/config/auth", headers={"Authorization": f"Bearer {MGMT}"})
+              if code != 200 or cfg.get("hook_before_user_created_enabled") is not True or not str(cfg.get("hook_before_user_created_uri") or "").endswith("/public/bingr_before_user_created"):
+                  fail.append("hook Before User Created staat niet aan in Auth")
+              if code == 200 and cfg.get("mailer_autoconfirm") is not False: fail.append("bevestigen per e-mail staat niet aan")
+              # 1. per netwerk: 3 per uur, de 4e geweigerd (429); de 4 aanroepen in één query, na elkaar
+              q = ", ".join(f"public.bingr_before_user_created('{ev(ip, f'ci-{i}-{secrets.token_hex(3)}@example.com')}'::jsonb) r{i}" for i in range(1, 5))
+              code, r = sql(f"select {q}")
+              row = r[0] if code < 300 and isinstance(r, list) and r else {}
+              got = [status(row.get(f"r{i}")) for i in range(1, 5)]
+              if got != [None, None, None, 429]: fail.append(f"limiet per netwerk: verwacht [-, -, -, 429], kreeg {got} (HTTP {code})")
+              elif not str(row["r4"]["error"].get("message", "")).startswith("Too many"): fail.append("melding bij de limiet")
+              # 2. wegwerpadres (ook subdomein) en naam met een link: 400; zonder IP (admin): toegestaan
+              ip2 = f"192.0.2.{(int(ip.split('.')[-1]) % 254) + 1}"
+              if status(hook(ip2, f"ci-{secrets.token_hex(4)}@mailinator.com")) != 400: fail.append("wegwerpadres niet geweigerd")
+              if status(hook(ip2, f"ci-{secrets.token_hex(4)}@ci.yopmail.com")) != 400: fail.append("wegwerp-subdomein niet geweigerd")
+              if status(hook(ip2, f"ci-{secrets.token_hex(4)}@example.com", {"first_name": "www.spam.example", "last_name": "x"})) != 400: fail.append("naam met link niet geweigerd")
+              if hook(None, f"ci-{secrets.token_hex(4)}@mailinator.com") != {}: fail.append("zonder IP (admin) niet toegestaan")
+              code, r = sql("select count(*)::int n from public.disposable_domains where source = 'list'")
+              n = r[0].get("n") if code < 300 and isinstance(r, list) and r else 0
+              if not n or n < 1000: print(f"::warning::wegwerplijst niet geladen ({n} domeinen uit de lijst); alleen de eigen lijst werkt")
+              # 3. tellingen voor het beheer
+              code, r = sql("select public.bingr_admin_signup_guard() g")
+              g = r[0].get("g") if code < 300 and isinstance(r, list) and r else None
+              if not isinstance(g, dict) or not isinstance(g.get("rejected_24h"), dict) or (g["rejected_24h"].get("rate_limit") or 0) < 1:
+                  fail.append(f"bingr_admin_signup_guard: HTTP {code}")
+              # 4. echte aanmelding met een wegwerpadres via Auth: geweigerd door de hook (geen account, geen mail)
+              code, r = sql("select now()::text t")
+              t0 = r[0]["t"] if code < 300 and isinstance(r, list) and r else None
+              code, r = req("POST", f"{BASE}/auth/v1/signup", {"email": f"ci-{secrets.token_hex(6)}@mailinator.com", "password": secrets.token_urlsafe(18),
+                            "data": {"lang": "en", "first_name": "Ci", "last_name": "Test"}}, {"apikey": PUB})
+              if (r or {}).get("id") or ((r or {}).get("user") or {}).get("id"):
+                  made.append((r.get("user") or r).get("id")); fail.append("aanmelding met wegwerpadres niet geweigerd (hook niet actief?)")
+              elif code == 400 and "permanent email" in str(r.get("msg") or r.get("message") or "").lower():
+                  real_rejected = True
+                  print("::notice::Auth roept de hook aan: aanmelding met wegwerpadres geweigerd (400)")
+              elif code == 429:
+                  # limiet van Supabase zelf op dit IP (andere tests): de hook is dan niet bereikt
+                  print("::warning::aanmelding met wegwerpadres: HTTP 429 van Supabase, hook niet bereikt")
+              else:
+                  fail.append(f"aanmelding met wegwerpadres: HTTP {code} {str(r)[:160]}")
+              # 5. onbevestigd account na 48 uur weg; een account met een abonnement blijft
+              if not key: raise SystemExit("geen geheime sleutel: opruimtest overgeslagen")
+              ids = []
+              for _ in range(2):
+                  code, u = req("POST", f"{BASE}/auth/v1/admin/users", {"email": f"ci-onbevestigd-{secrets.token_hex(6)}@example.com",
+                                "password": secrets.token_urlsafe(18), "email_confirm": False}, adm)
+                  if not u.get("id"): raise SystemExit(f"testaccount aanmaken mislukt (HTTP {code})")
+                  made.append(u["id"]); ids.append(u["id"])
+              code, r = sql(f"update auth.users set created_at = now() - interval '49 hours' where id in ('{ids[0]}', '{ids[1]}');\n"
+                            f"insert into public.account_plans (user_id, plan, source, granted_by) values ('{ids[1]}', 'free', 'admin', 'ci');\n"
+                            f"select public.bingr_signup_cleanup('{ids[0]}') a, public.bingr_signup_cleanup('{ids[1]}') b")
+              row = r[0] if code < 300 and isinstance(r, list) and r else {}
+              if (row.get("a") or {}).get("deleted") != 1: fail.append(f"onbevestigd account niet opgeruimd (HTTP {code} {str(r)[:160]})")
+              if (row.get("b") or {}).get("deleted") != 0: fail.append("account met abonnement toch opgeruimd")
+              code, _ = req("GET", f"{BASE}/auth/v1/admin/users/{ids[0]}", None, adm)
+              if code != 404: fail.append(f"opgeruimd account bestaat nog (HTTP {code})")
+              else: made.remove(ids[0])
+              code, r = sql("select count(*)::int n from cron.job where jobname = 'bingr-unconfirmed-cleanup' and active")
+              if not (code < 300 and isinstance(r, list) and r and r[0].get("n") == 1): print("::warning::planning bingr-unconfirmed-cleanup ontbreekt")
+              if not fail: print("::notice::Registratiebescherming: limiet per netwerk, wegwerpadressen, namen, admin, Auth-hook en opruimen werken")
+          except SystemExit as e:
+              fail.append(str(e))
+          finally:
+              # testpogingen weg (eigen documentatie-IP's en de ene echte aanmelding), zodat het beheer alleen echte telt
+              ip2 = f"192.0.2.{(int(ip.split('.')[-1]) % 254) + 1}"
+              sql(f"delete from public.signup_attempts where ip_hash in (public.bingr_signup_ip_hash('{ip}'), public.bingr_signup_ip_hash('{ip2}'))")
+              if t0 and real_rejected: sql(f"delete from public.signup_attempts where id = (select max(id) from public.signup_attempts where reason = 'disposable' and at >= '{t0}'::timestamptz)")
+              for uid in made:
+                  code, _ = req("DELETE", f"{BASE}/auth/v1/admin/users/{uid}", None, adm)
+                  if code not in (200, 204, 404): print(f"::warning::testaccount niet verwijderd (HTTP {code})")
           for f in fail: print(f"::error::{f[:400]}")
           sys.exit(1 if fail else 0)
           PY
