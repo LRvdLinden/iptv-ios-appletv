@@ -179,5 +179,11 @@ if (import.meta.main) {
     cfg[`mailer_templates_${key}_content`] = content;
   }
   await Deno.writeTextFile(new URL("templates.json", here), JSON.stringify(cfg, null, 1) + "\n");
+  // build 137: dezelfde templates voor de functie auth-mail (Send Email Hook; die verstuurt ze via _shared/mail.ts)
+  const fn: Record<string, { subject: string; content: string }> = {};
+  for (const key of Object.keys(TEMPLATES)) fn[key] = { subject: cfg[`mailer_subjects_${key}`], content: cfg[`mailer_templates_${key}_content`] };
+  await Deno.writeTextFile(new URL("../functions/auth-mail/templates.ts", here),
+    "// Gegenereerd door supabase/templates/build.ts (niet met de hand aanpassen): de Auth-mails voor de functie auth-mail.\n" +
+    `export const TEMPLATES: Record<string, { subject: string; content: string }> = ${JSON.stringify(fn, null, 1)};\n`);
   console.log(`${Object.keys(TEMPLATES).length} templates`);
 }

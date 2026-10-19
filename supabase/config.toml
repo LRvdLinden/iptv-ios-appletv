@@ -27,3 +27,7 @@ verify_jwt = false
 
 [functions.stripe-webhook]
 verify_jwt = false
+
+# build 137: Send Email Hook van Supabase Auth; controleert zelf de Standard-Webhooks-handtekening (AUTH_MAIL_HOOK_SECRET)
+[functions.auth-mail]
+verify_jwt = false

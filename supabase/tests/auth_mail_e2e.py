@@ -10,6 +10,7 @@
 # Testadres: support+ci-<willekeurig>@bingr.online (plus-adres; komt in dezelfde mailbox). De afzender is noreply@:
 # de inbox-import negeert die (AUTO_SENDER), dus er komt nooit een ticket van; de mails worden ook direct verwijderd.
 #
+# MAILTEST_REQUIRE_HOOK=1: de mail moet via de functie auth-mail komen (kopregel X-Bingr-Mail: auth-…).
 # Env: REF, SUPABASE_ACCESS_TOKEN, S_HOST, S_PORT, S_USER, S_PASS, S_FROM, I_HOST, I_PORT, I_USER, I_PASS,
 #      MAILTEST_TO (optioneel, standaard support@bingr.online), MAILTEST_WAIT (seconden, standaard 180).
 import email, email.policy, email.utils, imaplib, json, os, re, secrets, smtplib, ssl, sys, time, urllib.error, urllib.request
@@ -112,7 +113,8 @@ def summary(f, msg, t_sent):
     return (f"map: {fname} | onderwerp: {subj} | afzenderdomein: {fr.partition('@')[2] or '-'} | auth-results: {res} | spam: {spam}"
             + f" | DKIM-Signature d=: {dkim} | Message-ID-domein: {dom(str(msg.get('Message-ID') or '')) or 'geen'} | Date: {'ja' if msg.get('Date') else 'nee'}"
             + f" | Return-Path-domein: {dom(str(msg.get('Return-Path') or '')) or '-'} | Received-hops: {len(msg.get_all('Received') or [])}"
-            + f" | type: {msg.get_content_type()} | kopregels: {','.join(names)}"
+            + f" | type: {msg.get_content_type()} | via auth-mail (hook): {'ja' if str(msg.get('X-Bingr-Mail') or '').startswith('auth-') else 'nee'}"
+            + f" | kopregels: {','.join(names)}"
             + (f" | na {round(time.time() - t_sent)} s" if t_sent else ""))
 
 uid_user = None; t0 = None; signup_ok = False
@@ -168,6 +170,11 @@ try:
         fail.append("bevestigingsmail van Supabase Auth niet binnengekomen" + (" (controlemail wel)" if "controle" in got else ""))
     elif signup_ok and "auth" in got and re.search(r"spam|junk|ongewenst", got["auth"][0], re.I):
         fail.append("bevestigingsmail van Supabase Auth komt in de spammap")
+    if signup_ok and "auth" in got:
+        am = got["auth"][2]
+        if not am.get("Message-ID"): fail.append("bevestigingsmail zonder Message-ID (Gmail/Outlook stellen die uit of weigeren hem)")
+        if E.get("MAILTEST_REQUIRE_HOOK") and not str(am.get("X-Bingr-Mail") or "").startswith("auth-"):
+            fail.append("bevestigingsmail niet via de Send Email Hook (auth-mail) verstuurd")
     if t_ctrl and "controle" not in got: warn.append("controlemail niet binnengekomen (plus-adres of mailbox?)")
     # Auth-logs rond de aanmelding: alleen meldingen met 'mail'/smtp (zonder adressen)
     try:

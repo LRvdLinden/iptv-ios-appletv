@@ -39,6 +39,11 @@ name: Backend
 # Nepaccounts (build 134, geen secrets nodig): Auth-hook bingr_before_user_created (limiet per netwerk, wegwerpadressen, namen),
 # lijst met wegwerpdomeinen (vaste commit + sha256), strengere Auth-limieten en de pg_cron-taak bingr-unconfirmed-cleanup;
 # unittests op de Postgres van de runner (supabase/tests) en job registratie (end-to-end).
+# Accountmails (build 137, functie auth-mail): Send Email Hook van Supabase Auth. Auth mailt niet meer zelf via SMTP (die mails
+# hadden geen Message-ID en kwamen bij Gmail/Outlook vertraagd of niet aan), maar roept auth-mail aan; die rendert
+# supabase/templates en verstuurt via _shared/mail.ts (BINGR_SMTP_*). Het geheim AUTH_MAIL_HOOK_SECRET maakt deze workflow zelf
+# (één keer, of opnieuw met de invoer auth_mail_new_secret); de Auth-SMTP blijft als terugval ingesteld. Job authmail test de
+# echte aanmelding end-to-end (supabase/tests/auth_mail_e2e.py: plus-adres van support@, controle via IMAP).
 on:
   push:
     branches: [main]
@@ -47,6 +52,10 @@ on:
     inputs:
       verify_scheduler:
         description: 'Wachten tot de planning (pg_cron) de statuscontrole zelf heeft uitgevoerd (max. 7 min)'
+        type: boolean
+        default: false
+      auth_mail_new_secret:
+        description: 'Nieuw geheim voor de Send Email Hook (functie auth-mail) maken'
         type: boolean
         default: false
 
@@ -103,6 +112,9 @@ jobs:
           deno test supabase/functions/_shared/layout_test.ts > layout-test.log 2>&1 && exit 0
           grep -E "FAILED|error|=>" layout-test.log | head -30 | while IFS= read -r l; do echo "::warning::${l:0:300}"; done
           exit 1
+      - name: Unittests (accountmails, auth-mail)
+        # blokkeert de deploy (build 137): een kapotte hook zou elke aanmelding laten mislukken
+        run: deno test supabase/functions/auth-mail/logic_test.ts
       - name: Unittests (abonnementen)
         continue-on-error: true
         run: |
@@ -390,6 +402,45 @@ jobs:
             [ -z "$S_AGENTS" ] && echo "::notice::BINGR_SUPPORT_AGENTS ontbreekt: alleen antwoorden vanaf het supportadres zelf gaan per mail naar de klant."
           fi
           true
+      - name: Accountmails - functie auth-mail en Send Email Hook
+        if: steps.check.outputs.skip != '1'
+        env:
+          NEW_SECRET: ${{ inputs.auth_mail_new_secret && '1' || '' }}
+        run: |
+          set -uo pipefail
+          API="https://api.supabase.com/v1/projects/$REF"; H="Authorization: Bearer $SUPABASE_ACCESS_TOKEN"
+          URI="https://$REF.supabase.co/functions/v1/auth-mail"
+          have=$(curl -s "$API/secrets" -H "$H" | python3 -c 'import json,sys
+          try: d = json.load(sys.stdin)
+          except Exception: d = []
+          print(1 if isinstance(d, list) and any(s.get("name") == "AUTH_MAIL_HOOK_SECRET" for s in d) else 0)')
+          on=$(curl -s "$API/config/auth" -H "$H" | URI="$URI" python3 -c 'import json,os,sys
+          try: c = json.load(sys.stdin)
+          except Exception: c = {}
+          print(1 if c.get("hook_send_email_enabled") is True and c.get("hook_send_email_uri") == os.environ["URI"] else 0)')
+          SECRET=""
+          if [ "$have" != 1 ] || [ "$on" != 1 ] || [ -n "${NEW_SECRET:-}" ]; then
+            SECRET="v1,whsec_$(openssl rand -base64 32)"
+            echo "::add-mask::$SECRET"; echo "::add-mask::${SECRET#v1,whsec_}"
+            supabase secrets set --project-ref "$REF" "AUTH_MAIL_HOOK_SECRET=$SECRET" >/dev/null || { echo "::error::AUTH_MAIL_HOOK_SECRET zetten mislukt"; exit 1; }
+            echo "::notice::Nieuw geheim voor de Send Email Hook gezet"
+          fi
+          supabase functions deploy auth-mail --project-ref "$REF" --no-verify-jwt --use-api || { echo "::error::deploy auth-mail mislukt"; exit 1; }
+          # rooktest vóór het aanzetten: zonder handtekening 401 (de functie draait en controleert de handtekening)
+          code=0
+          for i in $(seq 1 12); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$URI" -H "Content-Type: application/json" -d '{}')
+            [ "$code" = 401 ] && break; sleep 5
+          done
+          [ "$code" = 401 ] || { echo "::error::auth-mail zonder handtekening gaf HTTP $code (verwacht 401); hook niet aangezet"; exit 1; }
+          SECRET="$SECRET" URI="$URI" python3 -c 'import json,os
+          b = {"hook_send_email_enabled": True, "hook_send_email_uri": os.environ["URI"]}
+          if os.environ.get("SECRET"): b["hook_send_email_secrets"] = os.environ["SECRET"]
+          json.dump(b, open("/tmp/hook.json", "w"))'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X PATCH "$API/config/auth" -H "$H" -H "Content-Type: application/json" --data @/tmp/hook.json)
+          rm -f /tmp/hook.json
+          [ "$code" -lt 300 ] || { echo "::error::Send Email Hook aanzetten mislukt (HTTP $code)"; exit 1; }
+          echo "::notice::Send Email Hook staat aan: accountmails via auth-mail (nodemailer, BINGR_SMTP_*)"
       - name: Edge Function device-auth
         if: steps.check.outputs.skip != '1'
         run: supabase functions deploy device-auth --project-ref "$REF" --no-verify-jwt --use-api
@@ -1470,6 +1521,30 @@ jobs:
           PY
 
   # aparte job: de deploy-job zit aan het maximum van 50 meldingen
+  # build 137: echte aanmelding naar een plus-adres van support@ en via IMAP controleren dat de bevestigingsmail (via de hook,
+  # met Message-ID) binnen 3 minuten aankomt; testmails, testaccount en hookpoging worden opgeruimd (geen ticket: afzender noreply@)
+  authmail:
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 (v5.1.0)
+      - name: Bevestigingsmail end-to-end (aanmelding -> IMAP)
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          S_HOST: ${{ secrets.BINGR_SMTP_HOST }}
+          S_PORT: ${{ secrets.BINGR_SMTP_PORT }}
+          S_USER: ${{ secrets.BINGR_SMTP_USER }}
+          S_PASS: ${{ secrets.BINGR_SMTP_PASSWORD }}
+          S_FROM: ${{ secrets.BINGR_SMTP_FROM }}
+          I_HOST: ${{ secrets.BINGR_IMAP_HOST_SUPPORT || secrets.BINGR_IMAP_HOST }}
+          I_PORT: ${{ secrets.BINGR_IMAP_PORT_SUPPORT || secrets.BINGR_IMAP_PORT }}
+          I_USER: ${{ secrets.BINGR_IMAP_USER_SUPPORT || secrets.BINGR_IMAP_USER }}
+          I_PASS: ${{ secrets.BINGR_IMAP_PASSWORD_SUPPORT || secrets.BINGR_IMAP_PASSWORD }}
+          MAILTEST_REQUIRE_HOOK: '1'
+        run: python3 -I supabase/tests/auth_mail_e2e.py
+
   inbox:
     needs: deploy
     runs-on: ubuntu-latest

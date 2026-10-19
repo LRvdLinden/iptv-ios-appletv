@@ -93,6 +93,16 @@ Alleen op de server: geen captcha en geen app-update, dus ook voor de tv-apps en
 - **Beheer:** `bingr_admin_signup_guard()` (alleen aantallen: geweigerd per reden in 24 uur / 7 dagen, toegestaan, onbevestigd verwijderd), in het Overzicht van het beheer.
 - **Testen:** `supabase/tests/signup_guard_test.sh` (unittests op een lege Postgres, ook in de workflow) en de job `registratie` (de regels met SQL, één echte aanmelding met een wegwerpadres, het opruimen met een tijdelijk account).
 
+### Accountmails via de Send Email Hook (build 137)
+
+Supabase Auth verstuurt de accountmails (bevestigen, wachtwoord vergeten, uitnodiging, inloglink, e-mailadres wijzigen, verificatiecode) **niet meer zelf** via SMTP. De mails van Auth (GoTrue) hadden geen `Message-ID`-kopregel, en Gmail en Outlook stelden ze daarom minutenlang uit of lieten ze vallen. Nu:
+
+- **Send Email Hook** (Auth-config `hook_send_email_*`, gezet door de workflow Backend) → Edge Function **`auth-mail`** (`supabase/functions/auth-mail`, zonder JWT). Die controleert de Standard-Webhooks-handtekening (`AUTH_MAIL_HOOK_SECRET`, `v1,whsec_…`; de workflow maakt het geheim één keer, of opnieuw met de invoer `auth_mail_new_secret`) en rendert dezelfde templates (`supabase/templates/build.ts` maakt ook `auth-mail/templates.ts`). Daarna verstuurt hij via `_shared/mail.ts` (nodemailer met `BINGR_SMTP_*`, met Message-ID, Date en een tekstversie), net als de welkomstmail. Kopregel `X-Bingr-Mail: auth-<template>`.
+- E-mailadres wijzigen met "Secure email change": twee mails. Supabase noemt de hashes andersom: `token_hash_new` hoort bij het huidige adres, `token_hash` bij het nieuwe.
+- Mislukt het versturen, dan geeft Auth een fout (500) aan de app. Een soort zonder template (bv. een melding) wordt overgeslagen en de actie gaat gewoon door.
+- De Auth-SMTP (`smtp_*`, afzender "Bingr") blijft ingesteld als terugval wanneer de hook uit staat.
+- **Testen:** unittests `auth-mail/logic_test.ts` (die blokkeren de deploy) en de job `authmail` in Backend (ook in Diagnose als `mailtest`, met de invoer `alleen_mailtest`). Die doet een echte aanmelding naar een plus-adres van support@ en controleert via IMAP (`BINGR_IMAP_*`) dat de bevestigingsmail binnen 3 minuten aankomt, via de hook en met Message-ID. Daarna worden de testmails, het testaccount en de hookpoging verwijderd. Er komt geen ticket van: de afzender is noreply@ en de inbox-import negeert die.
+
 ## Schermen
 
 **Inlogscherm op telefoon, tablet en Mac** (Netflix-stijl): zwarte achtergrond met een gedimde, licht vervaagde collage van posters (covers uit de bibliotheek als die er zijn, anders een donker verloop met rood), bovenaan het Bingr-logo. Daaronder een kaart met de kop **"Sign In"** of **"Create account"** (bij "Create account" eerst de velden **First name** en **Last name**), de velden **E-mail** en **Password** (met tonen/verbergen), een rode volle knop, en een foutmelding in oranje/rood onder de velden. Daaronder: "Forgot password?", en "New to Bingr? **Sign up now.**" / "Already have an account? **Sign in.**". Wachtwoord minimaal 6 tekens. Tijdens het laden een spinner in de knop.

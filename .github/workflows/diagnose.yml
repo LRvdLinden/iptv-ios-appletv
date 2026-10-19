@@ -193,7 +193,7 @@ jobs:
   mail:
     # na streams: het logs-endpoint geeft snel 429 bij gelijktijdige queries
     needs: streams
-    if: ${{ always() }}
+    if: ${{ always() && !inputs.alleen_mailtest }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
@@ -371,6 +371,7 @@ jobs:
           I_PORT: ${{ secrets.BINGR_IMAP_PORT_SUPPORT || secrets.BINGR_IMAP_PORT }}
           I_USER: ${{ secrets.BINGR_IMAP_USER_SUPPORT || secrets.BINGR_IMAP_USER }}
           I_PASS: ${{ secrets.BINGR_IMAP_PASSWORD_SUPPORT || secrets.BINGR_IMAP_PASSWORD }}
+          MAILTEST_REQUIRE_HOOK: '1'
         run: python3 -I supabase/tests/auth_mail_e2e.py
 
   # build 137: bounces in de mailbox van de afzender (BINGR_SMTP_USER via IMAP): waarom externe bezorging mislukt
