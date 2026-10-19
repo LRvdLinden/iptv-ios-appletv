@@ -68,7 +68,8 @@ const env = (k: string) => Deno.env.get(k) ?? "";
 const SUPPORT_SITE = env("BINGR_SUPPORT_SITE") || "https://support.bingr.online";
 const BEHEER = "https://beheer.bingr.online";
 const SUPPORT_EMAIL = () => env("BINGR_SUPPORT_EMAIL") || "support@bingr.online";
-const SUPPORT_FROM = () => env("BINGR_SUPPORT_FROM") || "Bingr Support <support@bingr.online>";
+// altijd met weergavenaam: een kaal adres in BINGR_SUPPORT_FROM wordt "Bingr Support <adres>"
+const SUPPORT_FROM = () => withName(env("BINGR_SUPPORT_FROM") || "support@bingr.online", "Bingr Support");
 const db = createClient(env("SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"), { auth: { autoRefreshToken: false, persistSession: false } });
 
 const MAIN_SITE = env("BINGR_SITE") || "https://bingr.online";

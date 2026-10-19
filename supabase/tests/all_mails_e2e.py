@@ -376,7 +376,7 @@ try:
         img_ok = sum(1 for s in imgs[:30] if check(s)[0] == 200 and check(s)[1].startswith("image/"))
         spam = bool(re.search(r"spam|junk|ongewenst", f, re.I))
         line = "; ".join([
-            f"{k}: ja{' (SPAMMAP)' if spam else ''} na {delay}s", f"From {fname}{fdom}", f"Reply-To {'ja @' + rto_dom if rto else 'nee'}",
+            f"{k}: ja{' (SPAMMAP)' if spam else ''} na {delay}s", f"From {fname} @{fdom}", f"Reply-To {'ja @' + rto_dom if rto else 'nee'}",
             f"MsgID {'ja @' + mid_dom if mid else 'NEE'}", f"Date {'ja' if msg.get('Date') else 'NEE'}", f"text+html {'ja' if multipart else 'NEE ' + ','.join(sorted(types))}",
             f"AR spf={auth.get('spf', '-')} dkim={auth.get('dkim', '-')} dmarc={auth.get('dmarc', '-')}", f"DKIM-Sig {','.join(dk) or 'geen'}",
             f"List-Unsub {('ja ' + lu_dom + (' 1-klik' if lup else '')) if lu else 'nee'}", f"taal {lang}/{ex['lang']}",
