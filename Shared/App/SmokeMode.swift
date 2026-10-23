@@ -42,55 +42,82 @@ enum SmokeTest {
 
     private static let seededKey = "smoke.seeded.v141"
 
-    /// Vóór alles (BingrApp.init): de stand van een terugkerende gebruiker zetten, eenmalig per installatie.
+    /// Vóór alles (eerste opgeslagen eigenschap van BingrApp, vóór CloudStore): de stand van een terugkerende gebruiker
+    /// zetten, eenmalig per installatie. Drie servers: een kleine (open) en twee grote (`-BingrSmokeM3U` + `2`/`3`), zodat
+    /// ook het geheugen bij veel titels over alle servers (Voor jou, Nieuw op Bingr) getest wordt.
     static func seedIfNeeded() {
         guard isActive else { return }
         let d = UserDefaults.standard
         say("start (seeded=\(d.bool(forKey: seededKey)))")
         guard !d.bool(forKey: seededKey) else { return }
-        let base = arg("-BingrSmokeM3U") ?? "http://127.0.0.1:9/get.php"
-        var src = PlaylistSource(name: "Smoke", kind: .m3u, avatar: PlaylistAvatar(symbol: "tv", colorIndex: 1))
-        src.m3uURL = base + "?username=smoke&password=test&type=m3u_plus&output=ts"
+        let base = arg("-BingrSmokeM3U") ?? "http://127.0.0.1:9/get"
+        func server(_ name: String, _ file: String, _ color: Int) -> PlaylistSource {
+            var s = PlaylistSource(name: name, kind: .m3u, avatar: PlaylistAvatar(symbol: "tv", colorIndex: color))
+            s.m3uURL = base + file + ".php?username=smoke&password=test&type=m3u_plus&output=ts"
+            return s
+        }
+        let src = server("Smoke", "", 1)
+        let big1 = server("Smoke groot 1", "2", 4), big2 = server("Smoke groot 2", "3", 5)
         let main = ViewerProfile(name: "Smoke", avatar: PlaylistAvatar(symbol: "star", colorIndex: 2))
         var kids = ViewerProfile(name: "Kids", avatar: PlaylistAvatar(symbol: "kid01", colorIndex: 3))
         kids.isKids = true
         func put<T: Encodable>(_ v: T, _ key: String) {
             if let data = try? JSONEncoder().encode(v) { d.set(data, forKey: key) }
         }
-        put([src], "playlists.v1")
+        put([src, big1, big2], "playlists.v1")
         put([main, kids], "profiles.v1")
         put(src.id, "mainsource.v1")
         put(main.id, "mainprofile.v1")
         let sid = src.id.uuidString
-        put(Set(["\(sid)|m-smoke-1", "\(sid)|s-smoke-1"]), "mylist.v1.\(main.id.uuidString)")
+        put(Set(["\(sid)|m-smoke-1", "\(sid)|s-smoke-1", "\(big1.id.uuidString)|m-big-7"]), "mylist.v1.\(main.id.uuidString)")
         put(Set(["\(sid)|m-smoke-2"]), "mylist.v1.\(kids.id.uuidString)")
         put(Set(["\(sid)|c-smoke-1"]), "favorites.v1.\(main.id.uuidString)")
         put(Set(["\(sid)|Smoke Films"]), "categories.v1.\(main.id.uuidString)")
         d.set((startInKids ? kids : main).id.uuidString, forKey: "activeProfileID")
         d.set(src.id.uuidString, forKey: "lastPlaylistID")
         d.set(true, forKey: "account.skipped")
+        // bij elke start alle servers verversen (zoals "Server automatisch vernieuwen: bij elke start")
+        d.set("launch", forKey: "playlist.refresh")
         d.set(true, forKey: seededKey)
     }
 
-    /// Na de intro: vanzelf het laatst actieve profiel openen en daarna de tabbladen langslopen.
+    /// Na de intro: vanzelf het laatst actieve profiel openen, de tabbladen langslopen en daarna wijzigingen zoals een
+    /// sync-ronde ze geeft (categorie uit en weer aan, wisselen naar het kinderprofiel en terug), met Home lang in beeld
+    /// zodat het billboard een paar keer wisselt.
     @MainActor static func drive(_ app: AppState) {
         guard isActive else { return }
         Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            func wait(_ s: Double) async { try? await Task.sleep(nanoseconds: UInt64(s * 1_000_000_000)) }
+            await wait(1.5)
             let store = CloudStore.shared
             guard let p = store.activeProfile ?? store.profiles.first else { say("geen profiel"); return }
             say("profiel openen (kids=\(p.kids))")
             app.open(profile: p)
             for tab in [0, 1, 2, 3, 7, 4, 5, 0] {
-                try? await Task.sleep(nanoseconds: 2_500_000_000)
+                await wait(2.5)
                 app.selectedTab = tab
                 say("tabblad \(tab)")
             }
             #if !os(tvOS)
             app.showMyBingr()
-            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            await wait(2.5)
             app.showingMyBingr = false
             #endif
+            await wait(10)
+            if let src = store.playlists.first {
+                store.setCategories([(src.id, "Smoke Films")], hidden: true)
+                say("categorie uit")
+                await wait(4)
+                store.setCategories([(src.id, "Smoke Films")], hidden: false)
+                say("categorie aan")
+            }
+            await wait(4)
+            for q in store.profiles.filter(\.kids) + [p] {
+                app.open(profile: q)
+                say("profiel \(q.kids ? "kinderen" : "hoofd")")
+                await wait(6)
+            }
+            app.selectedTab = 0
             say("klaar")
         }
     }
