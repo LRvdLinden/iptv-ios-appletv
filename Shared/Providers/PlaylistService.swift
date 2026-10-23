@@ -120,6 +120,7 @@ final class PlaylistService: ObservableObject {
             isLoading = false
         }
         guard source?.id == s.id else { return }   // intussen een andere bron gekozen
+        if SmokeTest.isActive { SmokeTest.say("bewaarde lijst: \(cached != nil ? "ja" : "nee (ophalen)")") }
         if let cached {
             setRaw(cached)
             // build 140: volgens de instelling alle servers van het account die aan de beurt zijn. Build 141: de open

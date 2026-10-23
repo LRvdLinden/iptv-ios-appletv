@@ -161,7 +161,13 @@ enum SmokeTest {
             } else {
                 say("diagnose vorige start: geen probleem")
             }
-            if flag("-BingrSmokeExpectCrashReport"), StartDiagnostics.shared.lastProblem?.kind != .crash {
+            // Apple TV: zonder signal-handler (build 144) is een crash "niet klaar" (laatste mijlpaal en duur)
+            #if os(tvOS)
+            let reported = [StartDiag.Problem.Kind.crash, .notFinished].contains(StartDiagnostics.shared.lastProblem?.kind ?? .hang)
+            #else
+            let reported = StartDiagnostics.shared.lastProblem?.kind == .crash
+            #endif
+            if flag("-BingrSmokeExpectCrashReport"), !reported {
                 say("geen crashrapport van de vorige start BINGR_SMOKE_FAIL")
             }
             if app.stage == .auth, let mail = accountEmail, let pw = accountPassword {
@@ -188,7 +194,8 @@ enum SmokeTest {
             guard let p = store.activeProfile ?? store.profiles.first else { say("geen profiel"); return }
             say("profiel openen (kids=\(p.kids))")
             let opened = Date()
-            app.open(profile: p)
+            // niet nog eens openen als de pincodetest het profiel al opende (anders twee keer laden)
+            if app.stage != .main { app.open(profile: p) }
             // build 143: Home binnen 2 s na het kiezen van een profiel (bewaarde lijst, niets ophalen)
             if !StartDiagnostics.shared.has("home") {
                 for _ in 0..<40 where !StartDiagnostics.shared.has("home") { await wait(0.1) }
