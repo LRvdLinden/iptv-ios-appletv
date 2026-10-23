@@ -15,13 +15,17 @@ on:
         description: "Alleen de end-to-end-test van ALLE mails (±20 mails naar support+ci-…@bingr.online, ±10 min)"
         type: boolean
         default: false
+      inbox:
+        description: "Alleen de support-inbox (alleen-lezen: mappen, ongelezen, indeling per reden, al geïmporteerd)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 jobs:
   streams:
-    if: ${{ !inputs.alleen_mailtest && !inputs.alle_mails }}
+    if: ${{ !inputs.alleen_mailtest && !inputs.alle_mails && !inputs.inbox }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
@@ -134,7 +138,7 @@ jobs:
 
   # build 107: statuspagina — per monitor de laatste uitkomst (geen gebruikersgegevens: alleen soort, status en foutsoort)
   status:
-    if: ${{ !inputs.alleen_mailtest && !inputs.alle_mails }}
+    if: ${{ !inputs.alleen_mailtest && !inputs.alle_mails && !inputs.inbox }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
@@ -161,7 +165,7 @@ jobs:
                     (select count(*) from public.status_incidents where started_at > now() - interval '7 days') as storingen_7d" | note storingen
 
   push:
-    if: ${{ !inputs.alleen_mailtest && !inputs.alle_mails }}
+    if: ${{ !inputs.alleen_mailtest && !inputs.alle_mails && !inputs.inbox }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
@@ -197,7 +201,7 @@ jobs:
   mail:
     # na streams: het logs-endpoint geeft snel 429 bij gelijktijdige queries
     needs: streams
-    if: ${{ always() && !inputs.alleen_mailtest && !inputs.alle_mails }}
+    if: ${{ always() && !inputs.alleen_mailtest && !inputs.alle_mails && !inputs.inbox }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
@@ -358,7 +362,7 @@ jobs:
   # build 137: echte aanmelding naar een plus-adres van support@ en via IMAP controleren dat de bevestigingsmail aankomt
   # (supabase/tests/auth_mail_e2e.py; ook in Backend, job authmail). Alleen ja/nee, onderwerp en afzenderdomein in het log.
   mailtest:
-    if: ${{ !inputs.alle_mails }}
+    if: ${{ !inputs.alle_mails && !inputs.inbox }}
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
@@ -381,7 +385,7 @@ jobs:
 
   # build 137: bounces in de mailbox van de afzender (BINGR_SMTP_USER via IMAP): waarom externe bezorging mislukt
   bounces:
-    if: ${{ !inputs.alle_mails }}
+    if: ${{ !inputs.alle_mails && !inputs.inbox }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -433,3 +437,22 @@ jobs:
           done
           printf '::notice title=mail-dns DKIM::selectors met een sleutel:%s\n' "${found:- geen gevonden (gangbare namen)}"
 
+
+  # Support-inbox (supabase/tests/inbox_diag.py): alleen-lezen, alleen tellingen (geen adressen, onderwerpen of inhoud)
+  inbox:
+    if: ${{ inputs.inbox }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 (v5.1.0)
+      - name: Support-inbox (tellingen)
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          I_HOST: ${{ secrets.BINGR_IMAP_HOST_SUPPORT || secrets.BINGR_IMAP_HOST }}
+          I_PORT: ${{ secrets.BINGR_IMAP_PORT_SUPPORT || secrets.BINGR_IMAP_PORT }}
+          I_USER: ${{ secrets.BINGR_IMAP_USER_SUPPORT || secrets.BINGR_IMAP_USER }}
+          I_PASS: ${{ secrets.BINGR_IMAP_PASSWORD_SUPPORT || secrets.BINGR_IMAP_PASSWORD }}
+          SUP_EMAIL: ${{ secrets.BINGR_SUPPORT_EMAIL }}
+          AGENTS: ${{ secrets.BINGR_SUPPORT_AGENTS_SUPPORT || secrets.BINGR_SUPPORT_AGENTS }}
+        run: python3 -I supabase/tests/inbox_diag.py
