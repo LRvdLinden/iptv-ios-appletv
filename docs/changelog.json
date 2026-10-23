@@ -1,5 +1,70 @@
 [
  {
+  "build": 144,
+  "version": "1.0.1",
+  "date": "2026-10-23",
+  "items": [
+   {
+    "type": "fixed",
+    "platforms": [
+     "tvos"
+    ],
+    "nl": "De Apple TV-app start weer: Bingr gebruikt de sleutelhanger niet meer",
+    "en": "The Apple TV app launches again: Bingr no longer uses the Keychain"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "Je servers, pincodes en instellingen gaan alleen nog via je Bingr-account naar je andere apparaten, niet meer via de sleutelhanger of iCloud",
+    "en": "Your servers, PINs and settings now sync to your other devices only through your Bingr account, no longer via the Keychain or iCloud"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "android",
+     "androidtv",
+     "tizen"
+    ],
+    "nl": "Verder kijken toont de echte poster van de film of serie, ook bij eerder bekeken titels en titels van je andere apparaten",
+    "en": "Continue Watching shows the real movie or series poster, also for titles you watched earlier and titles from your other devices"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "android",
+     "androidtv",
+     "tizen"
+    ],
+    "nl": "Openen gaat sneller: met een bewaarde lijst wordt bij het openen niets opgehaald, verversen gebeurt pas later en één server tegelijk",
+    "en": "Opening is faster: with a saved list nothing is downloaded at startup, refreshing happens later and one server at a time"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "android",
+     "androidtv"
+    ],
+    "nl": "Profiel kiezen en het pincodescherm laden niets meer op de achtergrond",
+    "en": "Choosing a profile and the PIN screen no longer load anything in the background"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "android",
+     "androidtv",
+     "tizen"
+    ],
+    "nl": "Verversen gebeurt nooit tijdens het kijken, in de profielkeuze of op het pincodescherm",
+    "en": "Refreshing never happens while watching, on the profile picker or on the PIN screen"
+   }
+  ]
+ },
+ {
   "build": 143,
   "version": "1.0.1",
   "date": "2026-10-23",

@@ -10,6 +10,10 @@ on:
         description: "Zware start-rooktest: grote servers, Bingr-testaccount, Apple TV als Release en de Mac (±45 min)"
         type: boolean
         default: false
+      rooktest:
+        description: "Korte start-rooktest draaien (staat sinds build 144 standaard uit bij een push)"
+        type: boolean
+        default: false
   # build 142: de zware start-rooktest elke nacht (bij een push alleen de korte)
   schedule:
     - cron: '23 2 * * *'
@@ -28,6 +32,8 @@ jobs:
     env:
       # build 142: korte rooktest bij elke push (iOS en tvOS, kleine nepdata); de zware alleen 's nachts of op verzoek
       HEAVY: ${{ github.event_name == 'schedule' || inputs.zware_rooktest == true }}
+      # build 144: rooktest bij een push overgeslagen (op verzoek); wel 's nachts of via Run workflow
+      SMOKE: ${{ github.event_name == 'schedule' || inputs.zware_rooktest == true || inputs.rooktest == true }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 (v5.1.0)
 
@@ -123,7 +129,7 @@ jobs:
       # met de crash-stack als ::error:: (zonder persoonsgegevens)
       - name: Start-rooktest iOS (simulator)
         id: smoke_ios
-        if: steps.ios.outcome == 'success'
+        if: env.SMOKE == 'true' && steps.ios.outcome == 'success'
         continue-on-error: true
         timeout-minutes: 20
         env:
@@ -135,7 +141,7 @@ jobs:
       # simulator ze ook toepast. Alleen het vlag BINGR_SMOKE erbij voor de testmodus.
       - name: Build tvOS Release (ondertekend met entitlements) voor de start-rooktest
         id: tvos_release
-        if: steps.tvos.outcome == 'success'
+        if: env.SMOKE == 'true' && steps.tvos.outcome == 'success'
         continue-on-error: true
         run: |
           set -o pipefail
@@ -148,7 +154,7 @@ jobs:
 
       - name: Start-rooktest tvOS (simulator)
         id: smoke_tvos
-        if: steps.tvos.outcome == 'success' && steps.tvos_release.outcome != 'failure'
+        if: env.SMOKE == 'true' && steps.tvos.outcome == 'success' && steps.tvos_release.outcome != 'failure'
         continue-on-error: true
         timeout-minutes: 25
         # Apple TV heeft veel minder geheugen dan een iPhone of Mac: daarboven stopt tvOS de app (lijkt een crash)
@@ -232,7 +238,7 @@ jobs:
       # publieke sleutel) wordt anoniem gekloond, en het token gaat nooit in een URL (seal_build.sh geeft het als kopregel mee).
       - name: Xcode-project versleuteld aanleveren voor beheer.bingr.online
         # build 141: alleen als de apps ook echt starten (start-rooktest)
-        if: github.event_name != 'schedule' && steps.ios.outcome == 'success' && steps.tvos.outcome == 'success' && steps.macos.outcome == 'success' && steps.tvos_release.outcome != 'failure' && steps.smoke_ios.outcome == 'success' && steps.smoke_tvos.outcome == 'success' && steps.smoke_macos.outcome != 'failure'
+        if: github.event_name != 'schedule' && steps.ios.outcome == 'success' && steps.tvos.outcome == 'success' && steps.macos.outcome == 'success' && steps.tvos_release.outcome != 'failure' && steps.smoke_ios.outcome != 'failure' && steps.smoke_tvos.outcome != 'failure' && steps.smoke_macos.outcome != 'failure'
         env:
           TOKEN: ${{ secrets.BINGR_INBOX_TOKEN }}
           BINGR_INBOX_REPO: LRvdLinden/bingr-inbox
@@ -256,7 +262,7 @@ jobs:
           rm -rf /tmp/pkg
 
       - name: Status
-        if: steps.ios.outcome != 'success' || steps.tvos.outcome != 'success' || steps.macos.outcome != 'success' || steps.selftest.outcome != 'success' || steps.tvos_release.outcome == 'failure' || steps.smoke_ios.outcome != 'success' || steps.smoke_tvos.outcome != 'success' || steps.smoke_macos.outcome == 'failure'
+        if: steps.ios.outcome != 'success' || steps.tvos.outcome != 'success' || steps.macos.outcome != 'success' || steps.selftest.outcome != 'success' || steps.tvos_release.outcome == 'failure' || steps.smoke_ios.outcome == 'failure' || steps.smoke_tvos.outcome == 'failure' || steps.smoke_macos.outcome == 'failure'
         run: exit 1
 
   # build 143: dezelfde korte start-rooktest met de nieuwste Xcode (SDK 27) en de nieuwste iOS/tvOS-simulator, zoals

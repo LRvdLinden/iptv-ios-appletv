@@ -4,6 +4,21 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.1 · Build 144
+_23 oktober 2026_
+
+### iOS, iPadOS, tvOS en macOS
+
+**Verbeterd**
+
+- Je servers, pincodes en instellingen gaan alleen nog via je Bingr-account naar je andere apparaten, niet meer via de sleutelhanger of iCloud
+
+### tvOS
+
+**Opgelost**
+
+- De Apple TV-app start weer: Bingr gebruikt de sleutelhanger niet meer
+
 ## Versie 1.0.1 · Build 143
 _23 oktober 2026_
 
