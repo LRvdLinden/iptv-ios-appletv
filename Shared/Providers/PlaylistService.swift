@@ -249,7 +249,7 @@ final class PlaylistService: ObservableObject {
     /// bewaarde lijst staat meteen in beeld. Pas als de app al `autoSettle` seconden draait, er niets speelt en het
     /// hoofdscherm open is: eerst de open server (alleen als die ouder is dan de ingestelde termijn), daarna de andere
     /// één voor één (`scheduleOthers`). Een nieuwe server of profiel annuleert het.
-    static var autoSettle: TimeInterval { SmokeTest.isActive ? 35 : 45 }
+    static var autoSettle: TimeInterval { SmokeTest.isActive ? 40 : 45 }
     private var autoTask: Task<Void, Never>?
     func scheduleAutoRefresh() {
         autoTask?.cancel()

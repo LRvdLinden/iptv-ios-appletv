@@ -134,12 +134,13 @@ sim_run() { # udid app naam args...
   local alive=1 peak=0 rss secs=$SECS timeline="" req0
   [ "$name" = 1-nieuw ] && secs=15
   [ "$name" = 2b-crash ] && secs=25
-  req0=$(count_req)
+  req0=$(count_req); local t0=$(date +%s) reqchecked=0
   for s in $(seq 1 "$secs"); do
     sleep 1
     if ! kill -0 "$pid" 2>/dev/null; then alive=0; echo "$PLATFORM/$name: gestopt na ${s}s"; break; fi
     # build 143: start met een bewaarde lijst: de eerste 30 s geen enkele aanvraag naar de IPTV-servers
-    if [ "$s" = 30 ] && [ "${CACHED_START:-}" = 1 ]; then
+    if [ $reqchecked = 0 ] && [ $(( $(date +%s) - t0 )) -ge 29 ] && [ "${CACHED_START:-}" = 1 ]; then
+      reqchecked=1
       local reqs=$(( $(count_req) - req0 ))
       echo "$PLATFORM/$name: aanvragen naar de servers in de eerste 30 s: $reqs"
       [ "$reqs" -gt 0 ] && grep 'GET /get' "$OUT/m3u-access.log" | tail -n "$reqs" | sed -E "s|^[^[]*|$PLATFORM/$name: aanvraag: |; s|\\?[^ ]*||"
