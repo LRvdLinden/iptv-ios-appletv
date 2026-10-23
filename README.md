@@ -127,6 +127,7 @@ De Android-versie (telefoon, tablet, Android TV / Google TV / Fire TV) staat in 
 
 ## Opmerkingen
 
+- **Ondertekensleutel (security L1):** de keystore `android/app/bingr-release.jks` die vroeger in de git-geschiedenis van iptv-ios-appletv stond (commit b766ea7, met het wachtwoord in build.gradle; SHA-256 begint met `B3:2D` en eindigt op `22:2D`) is gecompromitteerd en mag **nooit** meer worden gebruikt, voor geen enkele app of build. De huidige release-sleutel (secret `BINGR_KEYSTORE_BASE64` in bingr-android, SHA-256 `9E:D5:…:53:6B`, zie de workflow *Ondertekencertificaat*) is een andere. De geschiedenis wordt bewust niet herschreven.
 - IMDb heeft geen gratis publieke API; daarom IMDb-gegevens via OMDb en trailers/IMDb-ID's via Trakt.
 - Niet overgenomen van UHF: **VPN-koppeling** (vereist afspraken met VPN-aanbieders en een speciale Apple-toestemming — gebruik gewoon je eigen VPN-app) en **opnemen (DVR)** (vereist een aparte server-app thuis; catch-up dekt veel daarvan).
 - Bingr is een speler: je gebruikt je eigen, legale afspeellijsten en mediaservers.
