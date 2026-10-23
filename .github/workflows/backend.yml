@@ -132,6 +132,12 @@ jobs:
           sudo systemctl start postgresql.service
           for i in $(seq 1 20); do pg_isready -q && break; sleep 1; done
           sudo -u postgres bash supabase/tests/signup_guard_test.sh
+      - name: Unittests (inlogbescherming per account)
+        # blokkeert de deploy: de hook bingr_password_attempt (5 fouten in 15 min = 15 min dicht, oplopend tot 60, rechten,
+        # opruimen na 1 dag, kapotte invoer houdt niemand tegen); een fout in de hook zou inloggen kunnen breken
+        run: |
+          for i in $(seq 1 20); do pg_isready -q && break; sleep 1; done
+          sudo -u postgres bash supabase/tests/password_guard_test.sh
       - name: Unittests (bewaarplicht aankopen)
         # blokkeert de deploy: account verwijderen -> aankopen en terugbetalingen blijven zonder account (user_id null,
         # user_deleted_at), omzet en tellingen gelijk, RLS, migratie van on delete cascade en de bewaartermijn van 7 jaar na
@@ -1315,6 +1321,25 @@ jobs:
           for f in fail: print(f"::error::{f[:400]}")
           sys.exit(1 if fail else 0)
           PY
+
+  # Inlogbescherming en beveiligingsadvisor (docs/ACCOUNT.md "Inlogbescherming"): Auth-limieten per IP, wachtwoordeisen,
+  # de hook Password Verification Attempt (blokkade per account) met een end-to-end-test op een tijdelijk account, en daarna
+  # de blijvende controle: faalt als een tabel in public geen RLS heeft of de security-advisor van Supabase een ERROR geeft.
+  # Alleen namen van tabellen/regels, ja/nee en aantallen in het log.
+  beveiliging:
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 (v5.1.0)
+      - name: Inlogbescherming - limieten, wachtwoorden en blokkade per account
+        run: python3 -I supabase/tests/login_guard.py
+      - name: Beveiligingsadvisor en RLS - controle
+        if: ${{ !cancelled() }}
+        run: python3 -I supabase/tests/security_advisor.py gate
 
   # build 133: betalen via Stripe (functies billing en stripe-webhook, docs/ACCOUNT.md "Betalen (Stripe, build 133)").
   # Eigen job (eigen ruimte voor meldingen); de unittests (billing_test.ts) draaien blokkerend in de deploy-job.

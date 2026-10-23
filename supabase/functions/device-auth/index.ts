@@ -11,6 +11,7 @@
 //                   berekend) en expires_in voor de bevestigingsstap ("zojuist", "3 minuten geleden"). device = wat het apparaat zelf opgaf.
 //                   Ongeldige/verlopen code (of al door een ander account goedgekeurd) -> 404 {error:"invalid_code"}
 //                   build 95: code_info en approve samen max. 30 per account en 60 per IP per minuut -> 429 {error:"rate_limited"}
+//                   en max. 20 FOUTE codes per account en per IP per uur (daarna 429 tot het uur om is; raden van codes)
 //   approve         {code, name?} (ingelogd) -> {ok, device, name}
 //                   name (optioneel, max. 40 tekens): eigen naam voor het apparaat ("Apple TV - Woonkamer"). Wordt bewaard bij
 //                   de code; zodra de tv inlogt en zich aanmeldt (register_device van dezelfde soort, binnen 15 minuten) wordt het
@@ -240,7 +241,24 @@ async function rateLimited(key: string, max: number, windowS = 60): Promise<bool
 // build 95: tv-koppeling raden/afschermen: code_info en approve per account en per IP
 const CODE_PER_MIN_USER = 30, CODE_PER_MIN_IP = 60;
 async function codeLimited(req: Request, userId: string) {
-  return await rateLimited(`da-code:ip:${clientIp(req)}`, CODE_PER_MIN_IP) || await rateLimited(`da-code:u:${userId}`, CODE_PER_MIN_USER);
+  return await rateLimited(`da-code:ip:${clientIp(req)}`, CODE_PER_MIN_IP) || await rateLimited(`da-code:u:${userId}`, CODE_PER_MIN_USER)
+    || await badCodeBlocked(req, userId);
+}
+// Koppelcodes raden: alleen FOUTE codes (invalid_code) tellen, max. 20 per IP en 20 per account per uur; daarna 429 tot
+// het uur om is. Een gewone gebruiker typt hooguit een paar keer een code verkeerd (de website vraagt pas bij 6 tekens).
+const BAD_CODE_PER_HOUR = 20;
+async function ratePeek(key: string, max: number, windowS: number): Promise<boolean> {
+  const { data, error } = await admin.rpc("bingr_rate_peek", { p_key: key, p_max: max, p_window: windowS });
+  if (error) { console.error("rate_peek", key.split(":")[0], error.message); return true; }
+  return data !== false;
+}
+async function badCodeBlocked(req: Request, userId: string) {
+  return !(await ratePeek(`da-bad:ip:${clientIp(req)}`, BAD_CODE_PER_HOUR, 3600)) || !(await ratePeek(`da-bad:u:${userId}`, BAD_CODE_PER_HOUR, 3600));
+}
+async function invalidCode(req: Request, userId: string) {
+  await rateLimited(`da-bad:ip:${clientIp(req)}`, BAD_CODE_PER_HOUR, 3600);
+  await rateLimited(`da-bad:u:${userId}`, BAD_CODE_PER_HOUR, 3600);
+  return json({ error: "invalid_code" }, 404);
 }
 // H1: delete_account met wachtwoord, per account 5 en per IP 20 pogingen per 10 minuten (wachtwoord raden)
 const DELETE_PER_10MIN_USER = 5, DELETE_PER_10MIN_IP = 20;
@@ -360,7 +378,7 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       if (await codeLimited(req, user.id)) return json({ error: "rate_limited" }, 429);
       const code = normalize(body.code).slice(0, 12);
       const { data: row } = await admin.from("device_codes").select("device, created_at, expires_at, user_id").eq("code", code).maybeSingle();
-      if (!row || new Date(row.expires_at) < new Date() || (row.user_id && row.user_id !== user.id)) return json({ error: "invalid_code" }, 404);
+      if (!row || new Date(row.expires_at) < new Date() || (row.user_id && row.user_id !== user.id)) return await invalidCode(req, user.id);
       // H1: aanmaaktijdstip voor de bevestigingsstap op /koppelen ("zojuist", "3 minuten geleden"). age_s rekent de server
       // zelf uit, zodat een verkeerd ingestelde klok bij de gebruiker de leeftijd niet verandert. Niets van de aanvrager (IP e.d.).
       const age_s = Math.max(0, Math.round((Date.now() - Date.parse(row.created_at)) / 1000));
@@ -375,8 +393,8 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       if (await codeLimited(req, user.id)) return json({ error: "rate_limited" }, 429);
       const code = normalize(body.code).slice(0, 12);
       const { data: row } = await admin.from("device_codes").select("code, device, expires_at, user_id").eq("code", code).maybeSingle();
-      if (!row || new Date(row.expires_at) < new Date()) return json({ error: "invalid_code" }, 404);
-      if (row.user_id && row.user_id !== user.id) return json({ error: "invalid_code" }, 404);
+      if (!row || new Date(row.expires_at) < new Date()) return await invalidCode(req, user.id);
+      if (row.user_id && row.user_id !== user.id) return await invalidCode(req, user.id);
       const n = cleanDeviceName(body.name, deviceTypeLabel(row.device));
       if ("error" in n) return json({ error: n.error }, 400);
       // alleen een nog niet goedgekeurde code (of je eigen) claimen, ook als twee accounts tegelijk goedkeuren

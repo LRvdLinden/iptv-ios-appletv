@@ -1868,7 +1868,7 @@ language sql stable security definer set search_path = public as $$
 $$;
 revoke all on function public.bingr_revenue_rate() from public, anon, authenticated, service_role;
 create or replace function public.bingr_revenue_filter(p_mode text) returns text
-language sql immutable as $$
+language sql immutable set search_path = '' as $$
   select case p_mode when 'live' then ' and b.stripe_session_id like ''cs\_live\_%''' when 'test' then ' and b.stripe_session_id like ''cs\_test\_%''' else '' end
 $$;
 revoke all on function public.bingr_revenue_filter(text) from public, anon, authenticated, service_role;
@@ -3290,3 +3290,175 @@ grant execute on function public.bingr_admin_signup_guard() to service_role;
 grant usage on schema public to supabase_auth_admin;
 grant execute on function public.bingr_before_user_created(jsonb) to supabase_auth_admin;
 -- <<< unittest signup-guard
+
+-- ============================================================================================================
+-- Inlogbescherming per account (Supabase Auth, hook Password Verification Attempt; aangezet door de Backend-workflow,
+-- docs/ACCOUNT.md "Inlogbescherming"). Auth roept de hook aan bij elke wachtwoordcontrole van een bestaand account
+-- (inloggen met e-mail + wachtwoord, ook de controle bij delete_account) met event = {user_id, valid}.
+-- 5 foute wachtwoorden binnen 15 minuten = dat account 15 minuten dicht (ook met het goede wachtwoord); elke volgende
+-- blokkade binnen 24 uur duurt twee keer zo lang (15 -> 30 -> 60 minuten, max. 60). Gelukt = teller weg. Bestaande sessies
+-- blijven werken (verversen gaat niet langs de hook). Terug: {"decision":"continue"} of
+-- {"error":{"http_code":429,"message":"Too many attempts. Try again in 15 minutes."}} (kort, neutraal, Engels; de apps en
+-- de website tonen bij 429 hun eigen tekst "te veel pogingen"). Alleen user_id en tijden, geen IP's of wachtwoorden;
+-- rijen na 1 dag weg (in de hook en in bingr_cleanup). Een fout in de hook houdt niemand tegen (continue + warning).
+-- Het blok tussen de unittest-markeringen wordt ook los getest met Postgres (supabase/tests/password_guard_test.sh).
+-- >>> unittest password-guard
+create table if not exists public.auth_password_failures (
+  user_id      uuid primary key references auth.users(id) on delete cascade,
+  failures     int not null default 0,
+  window_start timestamptz not null default now(),
+  locked_until timestamptz,
+  lock_level   int not null default 0,
+  updated_at   timestamptz not null default now()
+);
+create index if not exists auth_password_failures_updated_idx on public.auth_password_failures (updated_at);
+alter table public.auth_password_failures enable row level security;
+revoke all on public.auth_password_failures from public, anon, authenticated;
+
+create or replace function public.bingr_password_lock_message(p_until timestamptz) returns jsonb
+language sql stable set search_path = '' as $$
+  select jsonb_build_object('error', jsonb_build_object('http_code', 429, 'message',
+    'Too many attempts. Try again in ' || m || case when m = 1 then ' minute.' else ' minutes.' end))
+  from (select greatest(1, ceil(extract(epoch from p_until - now()) / 60))::int as m) x
+$$;
+
+create or replace function public.bingr_password_attempt(event jsonb) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  uid uuid; ok boolean; have boolean; r public.auth_password_failures%rowtype; lvl int; until_ts timestamptz;
+  max_fail constant int := 5; win constant interval := interval '15 minutes';
+begin
+  begin
+    uid := nullif(event->>'user_id', '')::uuid;
+    ok := coalesce((event->>'valid')::boolean, false);
+  exception when others then
+    return jsonb_build_object('decision', 'continue');
+  end;
+  if uid is null then return jsonb_build_object('decision', 'continue'); end if;
+  begin
+    select * into r from public.auth_password_failures where user_id = uid for update;
+    have := found;
+    if have and r.updated_at < now() - interval '1 day' and (r.locked_until is null or r.locked_until < now()) then
+      delete from public.auth_password_failures where user_id = uid;
+      have := false;
+    end if;
+    -- dicht: ook een goed wachtwoord wordt geweigerd
+    if have and r.locked_until is not null and r.locked_until > now() then
+      return public.bingr_password_lock_message(r.locked_until);
+    end if;
+    if ok then
+      if have then delete from public.auth_password_failures where user_id = uid; end if;
+      return jsonb_build_object('decision', 'continue');
+    end if;
+    if not have then
+      insert into public.auth_password_failures (user_id, failures, window_start, updated_at) values (uid, 1, now(), now())
+      on conflict (user_id) do update set failures = public.auth_password_failures.failures + 1, updated_at = now();
+      return jsonb_build_object('decision', 'continue');
+    end if;
+    if r.window_start < now() - win then r.failures := 0; r.window_start := now(); end if;
+    r.failures := r.failures + 1;
+    if r.failures >= max_fail then
+      lvl := least(coalesce(r.lock_level, 0) + 1, 3);
+      until_ts := now() + win * power(2, lvl - 1)::int;
+      update public.auth_password_failures set failures = 0, window_start = now(), locked_until = until_ts,
+        lock_level = lvl, updated_at = now() where user_id = uid;
+      return public.bingr_password_lock_message(until_ts);
+    end if;
+    update public.auth_password_failures set failures = r.failures, window_start = r.window_start, updated_at = now()
+    where user_id = uid;
+    return jsonb_build_object('decision', 'continue');
+  exception when others then
+    raise warning 'bingr_password_attempt: % (%)', sqlerrm, sqlstate;
+    return jsonb_build_object('decision', 'continue');
+  end;
+end $$;
+
+-- opruimen: rijen zonder lopende blokkade na 1 dag weg (ook via bingr_cleanup)
+create or replace function public.bingr_password_failures_cleanup() returns int
+language plpgsql security definer set search_path = public as $$
+declare n int;
+begin
+  delete from public.auth_password_failures where updated_at < now() - interval '1 day' and (locked_until is null or locked_until < now());
+  get diagnostics n = row_count;
+  return n;
+end $$;
+
+revoke all on function public.bingr_password_lock_message(timestamptz) from public, anon, authenticated, service_role;
+revoke all on function public.bingr_password_attempt(jsonb) from public, anon, authenticated, service_role;
+revoke all on function public.bingr_password_failures_cleanup() from public, anon, authenticated;
+grant execute on function public.bingr_password_failures_cleanup() to service_role;
+grant usage on schema public to supabase_auth_admin;
+grant execute on function public.bingr_password_attempt(jsonb) to supabase_auth_admin;
+-- <<< unittest password-guard
+
+-- Opruimen (zoals hierboven), plus de tellers van de inlogbescherming per account.
+create or replace function public.bingr_cleanup() returns void
+language sql security definer set search_path = public as $$
+  delete from public.device_codes where expires_at < now();
+  delete from public.account_streams where last_ping < now() - interval '1 day';
+  delete from public.account_watch_log where started_at < now() - interval '8 days';
+  delete from public.rate_limits where bucket < now() - interval '10 minutes';
+  delete from public.admin_login_attempts where window_start < now() - interval '1 day' and (locked_until is null or locked_until < now());
+  delete from public.account_logins where day < (now() at time zone 'utc')::date - 400;
+  delete from public.admin_audit where created_at < now() - interval '1 year';
+  delete from public.account_watch_stats where day < (now() at time zone 'utc')::date - 400;
+  delete from public.auth_password_failures where updated_at < now() - interval '1 day' and (locked_until is null or locked_until < now());
+$$;
+revoke all on function public.bingr_cleanup() from public, anon, authenticated;
+grant execute on function public.bingr_cleanup() to service_role;
+
+-- Limiet alleen bekijken (zonder te tellen): zelfde venster en bucket als bingr_rate_hit. Voor device-auth: foute
+-- koppelcodes per IP/account (alleen fouten tellen, maar elke aanvraag controleren). Terug: true = nog onder p_max.
+create or replace function public.bingr_rate_peek(p_key text, p_max int, p_window int default 60) returns boolean
+language plpgsql stable security definer set search_path = public as $$
+declare n int; w int := greatest(coalesce(p_window, 60), 1); b timestamptz;
+begin
+  if w = 60 then b := date_trunc('minute', now());
+  else b := to_timestamp(floor(extract(epoch from now()) / w) * w + case when w > 60 then w else 0 end);
+  end if;
+  select hits into n from public.rate_limits where key = p_key and bucket = b;
+  return coalesce(n, 0) < p_max;
+end $$;
+revoke all on function public.bingr_rate_peek(text, int, int) from public, anon, authenticated;
+grant execute on function public.bingr_rate_peek(text, int, int) to service_role;
+
+-- ============================================================================================================
+-- Beveiligingsadvisor van Supabase (docs/ACCOUNT.md "Inlogbescherming"; Backend controleert hem na elke deploy):
+-- 1. account_data: alleen wat de apps nodig hebben (authenticated lezen/toevoegen/wijzigen via RLS; anon niets, geen
+--    delete/truncate; verwijderen gaat via device-auth met de service role).
+revoke all on public.account_data from anon;
+revoke delete, truncate, references, trigger on public.account_data from authenticated;
+grant select, insert, update on public.account_data to authenticated;
+-- 2. RLS-policies met (select auth.uid()): één keer per query uitgerekend i.p.v. per rij (performance-advisor
+--    auth_rls_initplan); zelfde betekenis.
+drop policy if exists "eigen gegevens lezen" on public.account_data;
+drop policy if exists "eigen gegevens schrijven" on public.account_data;
+drop policy if exists "eigen gegevens wijzigen" on public.account_data;
+create policy "eigen gegevens lezen"    on public.account_data for select to authenticated using (user_id = (select auth.uid()));
+create policy "eigen gegevens schrijven" on public.account_data for insert to authenticated with check (user_id = (select auth.uid()));
+create policy "eigen gegevens wijzigen" on public.account_data for update to authenticated using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()));
+drop policy if exists "eigen abonnement lezen" on public.account_plans;
+create policy "eigen abonnement lezen" on public.account_plans for select to authenticated using (user_id = (select auth.uid()));
+drop policy if exists "eigen aankopen lezen" on public.billing_purchases;
+create policy "eigen aankopen lezen" on public.billing_purchases for select to authenticated using (user_id = (select auth.uid()));
+-- 3. Geen enkele security-definer-functie in public is via de Data API (/rest/v1/rpc) uit te voeren door anon of
+--    authenticated (advisor anon/authenticated_security_definer_function_executable). Triggers en event-triggers hebben
+--    dat recht niet nodig. De service role behoudt wat hij had. Functies van extensies blijven ongemoeid.
+do $$
+declare f record;
+begin
+  for f in
+    select p.oid::regprocedure as sig, has_function_privilege('service_role', p.oid, 'execute') as svc
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.prosecdef
+      and not exists (select 1 from pg_depend d where d.objid = p.oid and d.deptype = 'e')
+      and (has_function_privilege('anon', p.oid, 'execute') or has_function_privilege('authenticated', p.oid, 'execute'))
+  loop
+    begin
+      if f.svc then execute format('grant execute on function %s to service_role', f.sig); end if;
+      execute format('revoke execute on function %s from public, anon, authenticated', f.sig);
+    exception when others then
+      raise warning 'rechten % niet aangepast: %', f.sig, sqlerrm;
+    end;
+  end loop;
+end $$;
