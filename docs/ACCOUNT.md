@@ -1016,3 +1016,69 @@ Per profiel is er, ongeacht het aantal servers, **één** Verder kijken, **één
 - **Migratie** (eenmalig per apparaat, vlag lokaal): voor elke server elke `"group:<naam>"` uit het oude platformblok → `"<server-id>|<naam>"` in `hiddenCategories` van **elk** profiel, met een **oude** `at` (epoch), zodat een keuze die een ander apparaat inmiddels per profiel maakte voorgaat. Het oude blok blijft onaangeroerd staan (oudere apps lezen het); build 128 leest er voor categorieën niets meer uit. Verborgen losse zenders/titels, hernoemen, samenvoegen en volgorde blijven per server voor het hele account.
 - **Server verwijderd (tombstone):** zijn categorieën verdwijnen meteen uit het scherm, de rijen en de filters, en alle `"<server-id>|…"`-sleutels gaan uit `hiddenCategories` van alle profielen (als verwijdering, dus gesynct). Komt dezelfde server-id terug, dan begint hij met de standaard (alles aan).
 - Items die via een remap naar een andere server verhuisd zijn, vallen onder de categoriekeuzes van die nieuwe server.
+
+## Build 140: categorieën per account, kinderprofielen en de ouderpoort
+
+Versie 1.0.1, build 140. Dit is het gedeelde contract voor Apple, Android/Android TV, Samsung TV (Tizen) en web.
+
+### Categorieën per account (vervangt "Categorieën per profiel" van build 128)
+
+- Eén set verborgen categorieën voor het **hele account**. Die geldt voor alle profielen die **geen** kinderprofiel zijn. Elk niet-kinderprofiel ziet en zet in het categorieënscherm dezelfde set. Kinderprofielen zien het categorieënscherm niet; voor hen gelden de kinderregels hieronder.
+- **Opslag:** een nieuwe state-section **`account`** (via `get_state`/`put_state`, versleuteld zoals de andere sections):
+
+```json
+{
+  "hiddenCategories": [ { "id": "<server-id kleine letters>|<categorienaam exact>", "at": "ISO-8601" } ],
+  "removed": { "hiddenCategories": { "<id>": "ISO-8601" } },
+  "updatedAt": "ISO-8601"
+}
+```
+
+  - De sleutel is de **server-id in kleine letters**, dan `|`, dan de categorienaam **exact** zoals de server hem levert (vóór hernoemen of samenvoegen). Lees hoofdletterongevoelig op de server-id, want een sleutel uit `profile.<id>.hiddenCategories` (build 128, iOS schreef hoofdletters) kan via de migratie binnenkomen. Vergelijk de categorienaam exact.
+  - Staat een sleutel erin, dan staat de categorie **uit** voor alle niet-kinderprofielen.
+  - **Samenvoegen** gaat zoals bij `myList`: per sleutel wint de nieuwste `at` tussen `hiddenCategories` en `removed.hiddenCategories`. Een verwijdering mag ook in de lijst staan als `{id, removed:true, at}`. Verwijderingen ouder dan 90 dagen mogen weg. Onbekende velden op het hoogste niveau blijven staan; een ander platform kan er later iets bij zetten.
+  - **Uploaden** gaat zoals andere sections: ongeveer 3 seconden na een wijziging, en bij het lezen als lokaal iets nieuwer is of ontbreekt. Is de section op de server leeg en is er lokaal iets, dan uploaden.
+- **Migratie** (eenmalig per apparaat, met een lokale vlag; mag veilig vaker lopen): neem de unie van `hiddenCategories` uit `profile.<id>` van **alle niet-kinderprofielen** en zet die in `account.hiddenCategories`, met `at` = epoch (`1970-01-01T00:00:00Z`). Een keuze die een ander apparaat al in `account` maakte (of een verwijdering daarvan) wint dan altijd. Normaliseer de server-id naar kleine letters. De per-profiel-data niet wissen of wijzigen, want oudere apps lezen die nog. Build 140 en nieuwer lezen voor categorieën alleen nog `account`.
+- **Server verwijderd** (tombstone in de sources): zijn categorieën verdwijnen uit het scherm, de rijen en de filters, en alle `"<server-id>|…"`-sleutels gaan als verwijdering (met `at` = nu) uit `account.hiddenCategories`.
+- Rijen, filters, zoeken, Live TV en de items van andere servers gebruiken de account-set, per server. Verborgen losse zenders/titels, hernoemen, samenvoegen en volgorde blijven zoals ze waren (per server, voor het hele account).
+
+### Kinderprofielen: alleen kinderinhoud
+
+Een kinderprofiel (`kids: true`) ziet **alleen** inhoud uit kindercategorieën. Dat geldt overal: Home-rijen, uitgelicht, Films, Series, Live TV en de gids, Zoeken, Andere bronnen, Categorieën, Mijn lijst, Verder kijken, collecties, favoriete/recente zenders, Voor jou en Nieuw op Bingr. Items die niet mogen, worden **verborgen**, niet verwijderd. Ze blijven in de opgeslagen lijsten staan.
+
+**Kindercategorie.** Neem de categorienaam zoals de server hem levert (vóór hernoemen/samenvoegen) en bepaal:
+1. **Normaliseren:** kleine letters, accenten weg, en een landprefix vooraan weg, ook herhaald: `NL | `, `NL: `, `NL - `, `NL – `, `|NL| `, `[NL] `, `(NL) ` (2–3 letters). Bijvoorbeeld "NL | Kinderfilms" → "kinderfilms" en "|EN| Kids" → "kids".
+2. **Nooit kinderen:** bevat de genormaliseerde naam ergens `adult`, `xxx`, `18+`, `+18`, `porn`, `erotic` of `erotiek` (ook "for adults"), dan is het nooit een kindercategorie, ook niet als er een kinderwoord in staat.
+3. **Kinderwoorden.** Een woord begint aan het begin of na een teken dat geen letter of cijfer is.
+   - **Woordbegin** (het woord mag doorlopen, bv. "kinderfilms", "familiefilms", "cartoons", "disney+"): `kinder`, `kids`, `children`, `familie`, `family`, `jeugd`, `cartoon` (ook "cartoon network"), `animatie`, `animation`, `disney`, `pixar`, `nickelodeon`, `peuter`, `kleuter`, `ketnet`, `zappelin`, `jetix`, `boomerang`.
+   - **Heel woord** (er mag geen letter of cijfer achter staan): `kid`, `child`, `baby`, `junior`, `nick jr`, `z@pp`.
+   - **Niet:** `anime` (ook niet via "anim"); "kidnap" telt niet (want `kid` moet een heel woord zijn).
+4. Een kindercategorie = punt 2 niet, punt 3 wel.
+
+**Leeftijd erbovenop.** Ook binnen een kindercategorie blijft de leeftijdsgrens van het profiel gelden (`ageLimit`, bij een kinderprofiel zonder grens 12). Een bekende classificatie boven de grens maakt het item onzichtbaar. Een titel zonder bekende classificatie is toegestaan, omdat hij uit een kindercategorie komt. Zenders volgen alleen de categorie; de zendernaam telt niet mee.
+
+**Lijsten** (Mijn lijst, Verder kijken, collecties, favorieten, geschiedenis): een item toon je alleen als het in de (gefilterde) bibliotheek van zijn eigen server gevonden wordt. Voor items van een andere server of een gevonden server (remap) gelden de categorieën van die server.
+
+Voor een kinderprofiel gelden de account-brede verborgen categorieën niet; het kinderfilter bepaalt alles. Wat een kinderprofiel ooit in `profile.<id>.hiddenCategories` had, wordt genegeerd.
+
+### Ouderpoort: rekensom om een kinderprofiel te verlaten
+
+Een rekensom (zoals bij NLziet) komt **vóór** elke actie waarmee je een actief kinderprofiel verlaat:
+- profiel wisselen (avatar/profielmenu, "Wie kijkt er?");
+- Instellingen en Mijn Bingr openen (account, apparaten, abonnement);
+- uitloggen.
+
+Kies je bij het starten van de app in "Wie kijkt er?" een profiel en was het laatst actieve profiel op dit apparaat een kinderprofiel, dan komt de rekensom ook. Dat geldt niet bij het kiezen van een ander kinderprofiel.
+
+- **Som:** willekeurig. In de helft van de gevallen een vermenigvuldiging `a × b` met a ∈ 6…12 en b ∈ 3…9. Anders een optelling `a + b` met a, b ∈ 11…49. Toon de som als "7 × 8 = ?" of "23 + 46 = ?".
+- **Invoer:** alleen cijfers (maximaal 3), met wis/terug. Op tv met de cijfertoetsen of de afstandsbediening (zelfde soort cijferpaneel als de pincode). Controleer bij **OK**, of vanzelf zodra er evenveel cijfers staan als het antwoord heeft.
+- **Fout:** schud of rode tekst, invoer leeg, opnieuw proberen. Na **3 foute pogingen** komt er een nieuwe som en beginnen de pogingen opnieuw. Annuleren of fout betekent: je blijft in het kinderprofiel en de actie gaat niet door.
+- **Goed:** de actie gaat meteen door. Er is geen ontgrendeling voor later: elke volgende actie vraagt weer een som zolang het kinderprofiel actief is.
+- **Teksten** (Engels = sleutel): "Ask a grown-up" (NL "Vraag een volwassene") · "Solve this sum to leave the kids profile." (NL "Los deze som op om het kinderprofiel te verlaten.") · "That's not right. Try again." (NL "Dat klopt niet. Probeer het nog eens.") · "New sum" (NL "Nieuwe som") · "OK" · "Cancel" (NL "Annuleren").
+- Dit is alleen lokaal; er gaat niets naar de server.
+
+### Overig (lokaal, geen opslagwijziging)
+
+- **Voor jou** is per actief profiel. Het is gebaseerd op Verder kijken, de geschiedenis en wat bekeken is van dat profiel: de genres van de laatst/meest bekeken titels en (met TMDB) "recommendations"/"similar". Alleen titels die op een server van het account staan, zonder titels die al bekeken of uitgekeken zijn, met het kinder- en leeftijdsfilter. Zonder geschiedenis heet de rij "Popular" (NL "Populair").
+- **Nieuw op Bingr** toont de titels die het laatst aan de bibliotheek (alle servers) zijn toegevoegd, nieuwste eerst. Volgorde: de toevoegdatum van de provider (Xtream `added`, Plex/Jellyfin `addedAt`/`DateCreated`), anders het moment waarop de app de titel voor het eerst zag (lokaal per apparaat bewaard).
+- **Uitgelicht (hero)** is een vaste selectie van maximaal 8 titels: om en om uit Voor jou en Nieuw op Bingr, dubbele weg. De selectie wisselt vanzelf om de 8 seconden. Waar de selectie start, schuift elke dag één plek op (dagnummer modulo het aantal). Er is geen willekeur per opening.
