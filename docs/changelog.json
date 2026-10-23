@@ -1,5 +1,95 @@
 [
  {
+  "build": 145,
+  "version": "1.0.1",
+  "date": "2026-10-24",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web",
+     "windows"
+    ],
+    "nl": "Na het kiezen van een profiel vraagt Bingr of je je servers nu wilt bijwerken (Nu bijwerken of Later); je bewaarde lijst staat meteen klaar",
+    "en": "After you choose a profile, Bingr asks whether to update your servers now (Update now or Later); your saved list is ready right away"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web",
+     "windows"
+    ],
+    "nl": "Nieuwe instelling Servers laden bij openen: Vragen, Altijd of Nooit, alleen handmatig (per apparaat)",
+    "en": "New setting Load servers on open: Ask, Always or Never, manually only (per device)"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web",
+     "windows"
+    ],
+    "nl": "Geen automatisch verversen op tijd meer: de vernieuwtermijn (elke dag, week enz.) is vervallen; je kiest zelf wanneer, of vernieuwt handmatig",
+    "en": "No more timed automatic refresh: the refresh interval (daily, weekly and so on) has been removed; you choose when, or refresh manually"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web",
+     "windows"
+    ],
+    "nl": "Bijwerken gaat één server tegelijk op de achtergrond, de open server eerst, en nooit tijdens het afspelen",
+    "en": "Updating runs one server at a time in the background, the open server first, and never during playback"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "tvos",
+     "androidtv",
+     "tizen"
+    ],
+    "nl": "Op de tv staat de focus bij de vraag standaard op Later",
+    "en": "On TV, the question focuses on Later by default"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "android",
+     "androidtv"
+    ],
+    "nl": "Je gegevens komen alleen nog terug via je Bingr-account, niet meer via de Google-back-up",
+    "en": "Your data now only comes back through your Bingr account, no longer through Google backup"
+   }
+  ]
+ },
+ {
   "build": 144,
   "version": "1.0.1",
   "date": "2026-10-23",
