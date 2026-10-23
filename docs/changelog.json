@@ -1,5 +1,197 @@
 [
  {
+  "build": 140,
+  "version": "1.0.1",
+  "date": "2026-10-23",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "windows"
+    ],
+    "nl": "Nieuw: Bingr voor Windows. Installeer Bingr op je Windows 10- of 11-pc en kijk je zenders, films en series in een eigen venster, met volledig scherm, mediatoetsen en je Bingr-account (inloggen met e-mail of koppelcode)",
+    "en": "New: Bingr for Windows. Install Bingr on your Windows 10 or 11 PC and watch your channels, movies and series in their own window, with full screen, media keys and your Bingr account (sign in with email or pairing code)"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web"
+    ],
+    "nl": "Kinderprofielen tonen alleen kinderinhoud, afgestemd op de leeftijdsgrens; een kinderprofiel verlaten kan pas na een rekensom (Vraag een volwassene)",
+    "en": "Kids profiles only show kids content, matched to the age limit; leaving a kids profile requires solving a sum (Ask a grown-up)"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web"
+    ],
+    "nl": "Categorieën staat in het menu naast Series; Mijn Bingr open je via je profiel",
+    "en": "Categories is in the menu next to Series; open My Bingr from your profile"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web"
+    ],
+    "nl": "Verborgen categorieën gelden nu voor je hele account (alle profielen behalve kinderprofielen)",
+    "en": "Hidden categories now apply to your whole account (all profiles except kids profiles)"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web"
+    ],
+    "nl": "Categorieën aan- en uitzetten in Instellingen gaat veel sneller",
+    "en": "Turning categories on and off in Settings is much faster"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web"
+    ],
+    "nl": "Voor jou is gebaseerd op wat dit profiel kijkt; zonder kijkgeschiedenis heet de rij Populair",
+    "en": "For you is based on what this profile watches; without watch history the row is called Popular"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web"
+    ],
+    "nl": "Nieuw op Bingr toont wat het laatst aan je bibliotheek is toegevoegd, over al je servers",
+    "en": "New on Bingr shows what was most recently added to your library, across all your servers"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web"
+    ],
+    "nl": "Uitgelicht op Home toont een vaste selectie die vanzelf om de 8 seconden wisselt",
+    "en": "The featured title on Home shows a fixed selection that changes automatically every 8 seconds"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web"
+    ],
+    "nl": "Servers automatisch vernieuwen volgt weer je instelling en werkt al je servers bij, ook als de app lang openstaat",
+    "en": "Automatic server refresh follows your setting again and updates all your servers, also when the app stays open"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web"
+    ],
+    "nl": "Wat je aan Mijn lijst toevoegt, blijft er nu altijd in staan, ook op je andere apparaten",
+    "en": "Titles you add to My List now always stay there, also on your other devices"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Na het wisselen van profiel via het profielmenu openden pagina's in de webspeler niet meer",
+    "en": "After switching profiles from the profile menu, pages in the web player no longer opened"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Bingr staat in de App Store voor iPhone en iPad: op bingr.online en support.bingr.online staat nu een App Store-knop naast TestFlight",
+    "en": "Bingr is in the App Store for iPhone and iPad: bingr.online and support.bingr.online now have an App Store button next to TestFlight"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Mails aan support@bingr.online worden weer altijd een ticket, ook als ze al gelezen waren; reacties komen in het bestaande ticket en niets wordt dubbel geïmporteerd",
+    "en": "Emails to support@bingr.online always become a ticket again, even if they were already read; replies go into the existing ticket and nothing is imported twice"
+   }
+  ]
+ },
+ {
+  "build": 139,
+  "version": "1.0.0",
+  "date": "2026-10-22",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "Bingr staat officieel in de App Store",
+    "en": "Bingr is officially in the App Store"
+   }
+  ]
+ },
+ {
   "build": 138,
   "version": "1.0.0",
   "date": "2026-10-19",
