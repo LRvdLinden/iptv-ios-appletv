@@ -56,14 +56,14 @@ jobs:
           xcodegen generate
 
       - name: Packages ophalen
-        run: xcodebuild -resolvePackageDependencies -project Bingr.xcodeproj -scheme Bingr
+        run: xcodebuild -resolvePackageDependencies -project Bingr.xcodeproj -scheme Bingr -derivedDataPath build
 
       - name: Build iOS (simulator, zonder signing)
         id: ios
         continue-on-error: true
         run: |
           set -o pipefail
-          xcodebuild build -project Bingr.xcodeproj -scheme Bingr \
+          xcodebuild build -project Bingr.xcodeproj -scheme Bingr -derivedDataPath build \
             -destination 'generic/platform=iOS Simulator' \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO 2>&1 | tee ios.log
 
@@ -72,7 +72,7 @@ jobs:
         continue-on-error: true
         run: |
           set -o pipefail
-          xcodebuild build -project Bingr.xcodeproj -scheme BingrTV \
+          xcodebuild build -project Bingr.xcodeproj -scheme BingrTV -derivedDataPath build \
             -destination 'generic/platform=tvOS Simulator' \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO 2>&1 | tee tvos.log
 
@@ -81,9 +81,33 @@ jobs:
         continue-on-error: true
         run: |
           set -o pipefail
-          xcodebuild build -project Bingr.xcodeproj -scheme BingrMac \
+          xcodebuild build -project Bingr.xcodeproj -scheme BingrMac -derivedDataPath build \
             -destination 'generic/platform=macOS' \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO 2>&1 | tee macos.log
+
+      # build 141: de apps echt starten (simulator en Mac) en ±30 s laten draaien, ook als terugkerende gebruiker en
+      # met een kinderprofiel (tools/smoke_launch.sh, Shared/App/SmokeMode.swift); een crash laat de workflow falen,
+      # met de crash-stack als ::error:: (zonder persoonsgegevens)
+      - name: Start-rooktest iOS (simulator)
+        id: smoke_ios
+        if: steps.ios.outcome == 'success'
+        continue-on-error: true
+        timeout-minutes: 15
+        run: tools/smoke_launch.sh ios build/Build/Products "$RUNNER_TEMP/smoke/ios" 2>&1 | tee smoke-ios.log; exit ${PIPESTATUS[0]}
+
+      - name: Start-rooktest tvOS (simulator)
+        id: smoke_tvos
+        if: steps.tvos.outcome == 'success'
+        continue-on-error: true
+        timeout-minutes: 15
+        run: tools/smoke_launch.sh tvos build/Build/Products "$RUNNER_TEMP/smoke/tvos" 2>&1 | tee smoke-tvos.log; exit ${PIPESTATUS[0]}
+
+      - name: Start-rooktest macOS
+        id: smoke_macos
+        if: steps.macos.outcome == 'success'
+        continue-on-error: true
+        timeout-minutes: 10
+        run: tools/smoke_launch.sh macos build/Build/Products "$RUNNER_TEMP/smoke/macos" 2>&1 | tee smoke-macos.log; exit ${PIPESTATUS[0]}
 
       - name: Build-rapport publiceren (branch ci-logs)
         if: always()
@@ -95,9 +119,13 @@ jobs:
             echo "tvos: ${{ steps.tvos.outcome }}"
             echo "macos: ${{ steps.macos.outcome }}"
             echo "selftest: ${{ steps.selftest.outcome }}"
+            echo "smoke: ios=${{ steps.smoke_ios.outcome }} tvos=${{ steps.smoke_tvos.outcome }} macos=${{ steps.smoke_macos.outcome }}"
             echo
             echo "=== selftest ==="
             tail -n 60 selftest.log || true
+            echo
+            echo "=== start-rooktest ==="
+            for p in ios tvos macos; do grep -aE "^(Simulator|$p/|Start-rooktest|== |app:|exception:|termination:|reason:|asi |thread |  [ 0-9][0-9] |-- |BINGR_SMOKE)" smoke-$p.log 2>/dev/null | grep -v '^::' | head -n 160; done
             echo
             echo "=== iOS errors ==="
             grep -E "error:|warning: .*(unavailable|deprecated in)" ios.log | sort -u | head -300 || true
@@ -113,6 +141,9 @@ jobs:
           tail -n 200 ios.log > report/ios-tail.txt || true
           tail -n 200 tvos.log > report/tvos-tail.txt || true
           tail -n 200 macos.log > report/macos-tail.txt || true
+          mkdir -p report/smoke
+          for p in ios tvos macos; do for f in "$RUNNER_TEMP/smoke/$p/"*.png; do
+            [ -f "$f" ] && cp "$f" "report/smoke/$p-$(basename "$f")"; done; done
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git fetch origin ci-logs || true
@@ -121,9 +152,11 @@ jobs:
           git switch --orphan ci-logs-tmp
           git rm -rf --quiet . || true
           cp report/*.txt .
+          mkdir -p smoke && cp report/smoke/*.png smoke/ 2>/dev/null || true
           git add latest.txt ios-tail.txt tvos-tail.txt macos-tail.txt
+          git add smoke 2>/dev/null || true
           # build 105: het Xcode-project staat niet meer op ci-logs (de branch is openbaar); alleen de logs
-          git commit -m "build $GITHUB_SHA ios=${{ steps.ios.outcome }} tvos=${{ steps.tvos.outcome }} macos=${{ steps.macos.outcome }}"
+          git commit -m "build $GITHUB_SHA ios=${{ steps.ios.outcome }} tvos=${{ steps.tvos.outcome }} macos=${{ steps.macos.outcome }} smoke=${{ steps.smoke_ios.outcome }}/${{ steps.smoke_tvos.outcome }}/${{ steps.smoke_macos.outcome }}"
           git push -f origin HEAD:ci-logs
 
       # Xcode-project versleuteld naar de PRIVÉ repo LRvdLinden/bingr-inbox (tools/seal_build.sh van bingr-beheer, branch
@@ -134,7 +167,8 @@ jobs:
       # H3: géén token voor bingr-beheer meer (daarmee kon je het beheer-dashboard vervangen); die openbare repo (script en
       # publieke sleutel) wordt anoniem gekloond, en het token gaat nooit in een URL (seal_build.sh geeft het als kopregel mee).
       - name: Xcode-project versleuteld aanleveren voor beheer.bingr.online
-        if: steps.ios.outcome == 'success' && steps.tvos.outcome == 'success' && steps.macos.outcome == 'success'
+        # build 141: alleen als de apps ook echt starten (start-rooktest)
+        if: steps.ios.outcome == 'success' && steps.tvos.outcome == 'success' && steps.macos.outcome == 'success' && steps.smoke_ios.outcome == 'success' && steps.smoke_tvos.outcome == 'success' && steps.smoke_macos.outcome == 'success'
         env:
           TOKEN: ${{ secrets.BINGR_INBOX_TOKEN }}
           BINGR_SIGN_KEY: ${{ secrets.BINGR_BUILD_SIGN_KEY }}   # security M4: handtekening (zie README van bingr-beheer)
@@ -159,5 +193,5 @@ jobs:
           rm -rf /tmp/pkg
 
       - name: Status
-        if: steps.ios.outcome != 'success' || steps.tvos.outcome != 'success' || steps.macos.outcome != 'success' || steps.selftest.outcome != 'success'
+        if: steps.ios.outcome != 'success' || steps.tvos.outcome != 'success' || steps.macos.outcome != 'success' || steps.selftest.outcome != 'success' || steps.smoke_ios.outcome != 'success' || steps.smoke_tvos.outcome != 'success' || steps.smoke_macos.outcome != 'success'
         run: exit 1
