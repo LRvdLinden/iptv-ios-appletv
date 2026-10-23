@@ -289,10 +289,11 @@ check(AutoRefresh.isDue(policy: "launch", age: 120), "bij elke start")
 check(!AutoRefresh.isDue(policy: "launch", age: 120, periodic: true), "bij elke start: niet periodiek")
 check(AutoRefresh.isDue(policy: "garbage", age: 30 * 3600), "onbekend = dagelijks")
 let refNow = Date(timeIntervalSince1970: 1_000_000)
-eq(AutoRefresh.due(policy: "daily", servers: [("A", 30 * 3600), ("B", 3600), ("C", nil), ("D", 40 * 3600)],
+let refServers: [(id: String, age: TimeInterval?)] = [("A", 108_000), ("B", 3_600), ("C", nil), ("D", 144_000)]
+eq(AutoRefresh.due(policy: "daily", servers: refServers,
                    lastAttempt: ["D": refNow.addingTimeInterval(-60)], now: refNow, periodic: true),
    ["A", "C"], "alle servers van het account die te oud zijn, niet net geprobeerd")
-eq(AutoRefresh.due(policy: "daily", servers: [("D", 40 * 3600)], lastAttempt: ["D": refNow.addingTimeInterval(-3600)],
+eq(AutoRefresh.due(policy: "daily", servers: [(id: "D", age: TimeInterval(40 * 3600))], lastAttempt: ["D": refNow.addingTimeInterval(-3600)],
                    now: refNow, periodic: true), ["D"], "na 15 minuten opnieuw proberen")
 
 // MARK: build 140: Voor jou
