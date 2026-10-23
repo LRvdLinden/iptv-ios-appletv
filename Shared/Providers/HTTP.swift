@@ -31,6 +31,10 @@ enum HTTP {
     }
 
     static func get(_ url: URL, headers: [String: String] = [:]) async throws -> Data {
+        // start-rooktest: welke catalogus wordt wanneer opgehaald (alleen het pad, geen query/inloggegevens)
+        if SmokeTest.isActive, url.host == "127.0.0.1" {
+            SmokeTest.say("HTTP GET \(url.path) [\(Int(StartDiagnostics.shared.uptime))s] \(Thread.callStackSymbols.dropFirst().prefix(6).map { $0.split(separator: " ").dropFirst(3).first.map(String.init) ?? "" }.joined(separator: " < "))")
+        }
         var r = URLRequest(url: url)
         headers.forEach { r.setValue($1, forHTTPHeaderField: $0) }
         let (d, h) = try await data(r)

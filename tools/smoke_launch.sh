@@ -142,6 +142,7 @@ sim_run() { # udid app naam args...
     if [ "$s" = 30 ] && [ "${CACHED_START:-}" = 1 ]; then
       local reqs=$(( $(count_req) - req0 ))
       echo "$PLATFORM/$name: aanvragen naar de servers in de eerste 30 s: $reqs"
+      [ "$reqs" -gt 0 ] && grep 'GET /get' "$OUT/m3u-access.log" | tail -n "$reqs" | sed -E "s|^[^[]*|$PLATFORM/$name: aanvraag: |; s|\\?[^ ]*||"
       if [ "$reqs" -gt 0 ]; then echo "::error title=Start-rooktest $PLATFORM ($name)::$reqs aanvragen naar de IPTV-servers in de eerste 30 s na een start met bewaarde lijst"; FAIL=1; fi
     fi
     rss=$(ps -o rss= -p "$pid" 2>/dev/null | tr -d ' '); [ -n "$rss" ] && [ "$rss" -gt "$peak" ] && peak=$rss
