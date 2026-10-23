@@ -2,7 +2,7 @@ name: Build
 
 on:
   push:
-    branches: [main]
+    branches: [rooktest-138-none]
     paths-ignore: ['docs/**', '**/*.md', '.github/workflows/covers.yml', 'tools/fetch_covers.py', 'tools/make_screenshots.py', 'tools/sync_website.py', '.github/workflows/mac-archive.yml']
   workflow_dispatch:
 
@@ -159,7 +159,7 @@ jobs:
             tail -n 60 selftest.log || true
             echo
             echo "=== start-rooktest ==="
-            for p in ios tvos macos; do grep -aE "^(Simulator|$p/|[0-9]+ .*get|Start-rooktest|== |app:|exception:|termination:|reason:|asi |thread |  [ 0-9][0-9] |-- |BINGR_SMOKE)" smoke-$p.log 2>/dev/null | grep -v '^::' | head -n 160; done
+            for p in ios tvos macos; do grep -aE "^(Simulator|$p/|[0-9]+ .*get|Start-rooktest|== |app:|exception:|termination:|reason:|asi |thread |  [ 0-9][0-9] |-- |BINGR_SMOKE)" smoke-$p.log 2>/dev/null | grep -v '^::' | grep -v tabblad | head -n 300; done
             echo
             echo "=== iOS errors ==="
             grep -E "error:|warning: .*(unavailable|deprecated in)" ios.log | sort -u | head -300 || true
@@ -191,7 +191,7 @@ jobs:
           git add smoke 2>/dev/null || true
           # build 105: het Xcode-project staat niet meer op ci-logs (de branch is openbaar); alleen de logs
           git commit -m "build $GITHUB_SHA ios=${{ steps.ios.outcome }} tvos=${{ steps.tvos.outcome }} macos=${{ steps.macos.outcome }} smoke=${{ steps.smoke_ios.outcome }}/${{ steps.smoke_tvos.outcome }}/${{ steps.smoke_macos.outcome }}"
-          git push -f origin HEAD:ci-logs
+          git push -f origin HEAD:ci-logs-138
 
       # Xcode-project versleuteld naar de PRIVÉ repo LRvdLinden/bingr-inbox (tools/seal_build.sh van bingr-beheer, branch
       # inbox-apple); de workflow Builds van bingr-beheer haalt het daar op en zet het in de afgesloten map builds/ op de
@@ -200,31 +200,3 @@ jobs:
       # Nodig: secret BINGR_INBOX_TOKEN (fine-grained token met alleen Contents: Read and write op LRvdLinden/bingr-inbox).
       # H3: géén token voor bingr-beheer meer (daarmee kon je het beheer-dashboard vervangen); die openbare repo (script en
       # publieke sleutel) wordt anoniem gekloond, en het token gaat nooit in een URL (seal_build.sh geeft het als kopregel mee).
-      - name: Xcode-project versleuteld aanleveren voor beheer.bingr.online
-        # build 141: alleen als de apps ook echt starten (start-rooktest)
-        if: steps.ios.outcome == 'success' && steps.tvos.outcome == 'success' && steps.macos.outcome == 'success' && steps.tvos_release.outcome == 'success' && steps.smoke_ios.outcome == 'success' && steps.smoke_tvos.outcome == 'success' && steps.smoke_macos.outcome == 'success'
-        env:
-          TOKEN: ${{ secrets.BINGR_INBOX_TOKEN }}
-          BINGR_INBOX_REPO: LRvdLinden/bingr-inbox
-        run: |
-          set -euo pipefail
-          TOKEN=$(printf '%s' "$TOKEN" | tr -d '[:space:]')   # spaties/regeleinde van het plakken weghalen
-          # bewust geen terugval op een ander token: zonder BINGR_INBOX_TOKEN wordt er niets aangeleverd
-          if [ -z "$TOKEN" ]; then echo "::warning::Secret BINGR_INBOX_TOKEN ontbreekt: Xcode-project niet aangeleverd (zie README.md van bingr-beheer, H3)."; exit 0; fi
-          # (de werkmap is na de ci-logs-stap leeg; versie en build komen uit het project in de zip)
-          mkdir -p /tmp/pkg && cd /tmp/pkg && rm -rf x && mkdir x && cd x && unzip -q "$GITHUB_WORKSPACE/report/Bingr-xcode.zip"
-          B=$(grep -m1 'CURRENT_PROJECT_VERSION' project.yml | grep -o '[0-9]\+'); V=$(grep -m1 'MARKETING_VERSION' project.yml | grep -o '[0-9.]\+' || echo 1.0.0)
-          # zonder docs/screenshots en docs/covers (die horen niet in het pakket)
-          rm -rf docs/screenshots docs/covers
-          zip -qr "/tmp/pkg/Bingr-$V-build$B-Xcode.zip" .
-          cd /tmp/pkg
-          awk -v b="Build $B" '/^## /{f=($0 ~ (b "$"))?1:0; next} f && !/^_.*_$/' x/CHANGELOG.md > notes.md || true
-          # anoniem (openbare repo): seal_build.sh en builds.pub.pem
-          GIT_TERMINAL_PROMPT=0 git clone -q --depth 1 https://github.com/LRvdLinden/bingr-beheer.git beheer 2>/dev/null \
-            || { echo "::error::bingr-beheer niet op te halen."; exit 1; }
-          TOKEN="$TOKEN" beheer/tools/seal_build.sh apple "/tmp/pkg/Bingr-$V-build$B-Xcode.zip" "$V" "$B" notes.md
-          rm -rf /tmp/pkg
-
-      - name: Status
-        if: steps.ios.outcome != 'success' || steps.tvos.outcome != 'success' || steps.macos.outcome != 'success' || steps.selftest.outcome != 'success' || steps.tvos_release.outcome != 'success' || steps.smoke_ios.outcome != 'success' || steps.smoke_tvos.outcome != 'success' || steps.smoke_macos.outcome != 'success'
-        run: exit 1

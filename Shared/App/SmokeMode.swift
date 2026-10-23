@@ -47,8 +47,10 @@ enum SmokeTest {
 
     /// Naar stderr (niet gebufferd), zodat de workflow het ook ziet als de app daarna crasht
     static func say(_ s: String) {
-        FileHandle.standardError.write(Data(("BINGR_SMOKE: " + s + "\n").utf8))
+        let t = String(format: "%.0f", Date().timeIntervalSince(started))
+        FileHandle.standardError.write(Data(("BINGR_SMOKE: [\(t)s] " + s + "\n").utf8))
     }
+    private static let started = Date()
 
     private static let seededKey = "smoke.seeded.v141"
 
@@ -117,11 +119,6 @@ enum SmokeTest {
                 app.selectedTab = tab
                 say("tabblad \(tab)")
             }
-            #if !os(tvOS)
-            app.showMyBingr()
-            await wait(2.5)
-            app.showingMyBingr = false
-            #endif
             await wait(10)
             if let src = store.playlists.first {
                 store.setCategories([(src.id, "Smoke Films")], hidden: true)

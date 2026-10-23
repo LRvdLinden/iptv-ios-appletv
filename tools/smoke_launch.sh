@@ -45,8 +45,8 @@ open(path, "w").write("\n".join(l) + "\n")
 PY
 }
 make_m3u "$SRV/get.php" 40 6 Smoke 0
-make_m3u "$SRV/get2.php" "${SMOKE_BIG_MOVIES:-20000}" "${SMOKE_BIG_SHOWS:-2500}" Groot 0
-make_m3u "$SRV/get3.php" "${SMOKE_BIG_MOVIES:-20000}" "${SMOKE_BIG_SHOWS:-2500}" Reus 0
+make_m3u "$SRV/get2.php" "${SMOKE_BIG_MOVIES:-50000}" "${SMOKE_BIG_SHOWS:-6000}" Groot 0
+make_m3u "$SRV/get3.php" "${SMOKE_BIG_MOVIES:-50000}" "${SMOKE_BIG_SHOWS:-6000}" Reus 0
 ls -la "$SRV" | awk '{print $5, $9}' | tail -n 3
 ( cd "$SRV" && exec python3 -m http.server 8765 --bind 127.0.0.1 ) >/dev/null 2>&1 &
 SRV_PID=$!
@@ -114,20 +114,22 @@ sim_run() { # udid app naam args...
   local pid; pid=$(echo "$out" | grep -oE '[0-9]+$' | tail -1)
   echo "$PLATFORM/$name: gestart (pid ${pid:-?})"
   if [ -z "$pid" ]; then echo "$out"; report_crash "$name" "$log"; return; fi
-  local alive=1 peak=0 rss secs=$SECS
+  local alive=1 peak=0 rss secs=$SECS timeline=""
   [ "$name" = 1-nieuw ] && secs=20
   for s in $(seq 1 "$secs"); do
     sleep 1
     if ! kill -0 "$pid" 2>/dev/null; then alive=0; echo "$PLATFORM/$name: gestopt na ${s}s"; break; fi
     rss=$(ps -o rss= -p "$pid" 2>/dev/null | tr -d ' '); [ -n "$rss" ] && [ "$rss" -gt "$peak" ] && peak=$rss
+    [ -n "$rss" ] && [ $((s % 5)) = 0 ] && timeline="$timeline ${s}s:$((rss / 1024))"
   done
+  echo "$PLATFORM/$name: geheugen (MB) per 5 s:$timeline"
   check_memory "$name" "$peak"
   if [ $alive = 1 ]; then
     # ook een crash van een hulpproces van de app telt
     local late; late=$(new_reports 1)
     if [ -n "$late" ]; then report_crash "$name" "$log"; return; fi
     echo "$PLATFORM/$name: draait na ${secs}s nog (geen crash)"
-    grep -a "BINGR_SMOKE" "$log" | tail -n 12 || true
+    grep -a "BINGR_SMOKE" "$log" | grep -v "tabblad" | tail -n 20 || true
     xcrun simctl io "$udid" screenshot --type=png "$OUT/$name.png" >/dev/null 2>&1 || true
     xcrun simctl terminate "$udid" "$BUNDLE" >/dev/null 2>&1 || true
   else
@@ -176,20 +178,22 @@ mac_run() { # naam args...
   "$bin" "$@" > "$log" 2>&1 &
   local pid=$!
   echo "macos/$name: gestart (pid $pid)"
-  local alive=1 peak=0 rss secs=$SECS
+  local alive=1 peak=0 rss secs=$SECS timeline=""
   [ "$name" = 1-nieuw ] && secs=20
   for s in $(seq 1 "$secs"); do
     sleep 1
     if ! kill -0 "$pid" 2>/dev/null; then alive=0; echo "macos/$name: gestopt na ${s}s"; break; fi
     rss=$(ps -o rss= -p "$pid" 2>/dev/null | tr -d ' '); [ -n "$rss" ] && [ "$rss" -gt "$peak" ] && peak=$rss
+    [ -n "$rss" ] && [ $((s % 5)) = 0 ] && timeline="$timeline ${s}s:$((rss / 1024))"
   done
+  echo "$PLATFORM/$name: geheugen (MB) per 5 s:$timeline"
   check_memory "$name" "$peak"
   if [ $alive = 1 ]; then
     local late; late=$(new_reports 1)
     kill "$pid" 2>/dev/null; sleep 2; kill -9 "$pid" 2>/dev/null || true
     if [ -n "$late" ]; then report_crash "$name" "$log"; return; fi
     echo "macos/$name: draait na ${secs}s nog (geen crash)"
-    grep -a "BINGR_SMOKE" "$log" | tail -n 12 || true
+    grep -a "BINGR_SMOKE" "$log" | grep -v "tabblad" | tail -n 20 || true
     screencapture -x "$OUT/$name.png" 2>/dev/null || true
   else
     wait "$pid" 2>/dev/null; echo "exitcode $?"
