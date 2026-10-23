@@ -1,5 +1,266 @@
 [
  {
+  "build": 142,
+  "version": "1.0.1",
+  "date": "2026-10-23",
+  "items": [
+   {
+    "type": "fixed",
+    "platforms": [
+     "tvos"
+    ],
+    "nl": "De Apple TV-app stopt niet meer direct na het openen",
+    "en": "The Apple TV app no longer quits right after opening"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "android",
+     "androidtv"
+    ],
+    "nl": "Een profiel kiezen gaat snel en zonder vastlopen, ook met grote servers op een Android TV",
+    "en": "Choosing a profile is fast and no longer freezes, even with large servers on an Android TV"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Bij het openen ververst eerst alleen de open server; je andere servers volgen later op de achtergrond",
+    "en": "On launch only the open server refreshes first; your other servers follow later in the background"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web",
+     "windows"
+    ],
+    "nl": "Nieuw op Bingr staat op de plek van Nieuw toegevoegd, met Film of Serie op elke tegel",
+    "en": "New on Bingr replaces Recently added, with Movie or Series on each tile"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web",
+     "windows"
+    ],
+    "nl": "Titels die je na zoeken aan Mijn lijst toevoegt (ook van een andere server of een aanbeveling) staan er meteen in, ook op je andere apparaten",
+    "en": "Titles you add to My List from search (also from another server or a recommendation) appear right away, on your other devices too"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web",
+     "windows"
+    ],
+    "nl": "Verder kijken toont de cover van de film of serie",
+    "en": "Continue watching shows the movie or series cover"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "macos"
+    ],
+    "nl": "De Mac-app gebruikt alleen uitgaande verbindingen; eigen ondertitels gaan niet naar de Chromecast, ondertitels uit de stream wel",
+    "en": "The Mac app only uses outgoing connections; your own subtitles aren't sent to the Chromecast, subtitles from the stream are"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "android"
+    ],
+    "nl": "Downloads op Android 14 en nieuwer lopen als door jou gestarte overdracht, zonder vaste melding op de achtergrond",
+    "en": "Downloads on Android 14 and later run as a transfer started by you, without a permanent background notification"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen"
+    ],
+    "nl": "Kinderslot uitzetten, de pincode wijzigen en een vergrendelde groep ontgrendelen vragen nu de huidige pincode",
+    "en": "Turning off parental controls, changing the PIN and unlocking a locked group now ask for the current PIN"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen"
+    ],
+    "nl": "Na 5 foute pincodes geldt een oplopende wachttijd",
+    "en": "After 5 wrong PINs there's an increasing waiting time"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "macos",
+     "android"
+    ],
+    "nl": "Tv koppelen toont eerst welk apparaat het is en vraagt om bevestiging",
+    "en": "Linking a TV first shows which device it is and asks you to confirm"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "android",
+     "androidtv"
+    ],
+    "nl": "Een export van je instellingen vraagt eerst je pincode en het tijdelijke bestand wordt na het delen verwijderd",
+    "en": "Exporting your settings asks for your PIN first and the temporary file is removed after sharing"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Casten naar een Chromecast is beter afgeschermd: alleen wat je cast is bereikbaar, met een nieuwe sleutel per sessie",
+    "en": "Casting to a Chromecast is better shielded: only what you cast is reachable, with a new key per session"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "Trailers zijn veiliger: alleen geldige YouTube-trailers worden geladen",
+    "en": "Trailers are safer: only valid YouTube trailers are loaded"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen"
+    ],
+    "nl": "Inloggegevens van je servers en je accountsessie worden versleuteld bewaard (sleutelhanger op Apple)",
+    "en": "Your server login details and account session are stored encrypted (Keychain on Apple)"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen"
+    ],
+    "nl": "Verbindingen met Bingr en de eigen diensten gaan altijd via HTTPS",
+    "en": "Connections to Bingr and its own services always use HTTPS"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web",
+     "windows",
+     "server"
+    ],
+    "nl": "Inloggen is beter beschermd tegen raden, met een duidelijke melding bij te veel pogingen",
+    "en": "Signing in is better protected against guessing, with a clear message after too many attempts"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web",
+     "windows",
+     "server"
+    ],
+    "nl": "Een nieuw wachtwoord moet minstens 8 tekens hebben",
+    "en": "A new password needs at least 8 characters"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "web",
+     "windows"
+    ],
+    "nl": "De webspeler is strenger beveiligd: alle scripts komen van Bingr zelf",
+    "en": "The web player has stricter security: all scripts come from Bingr itself"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "web",
+     "server"
+    ],
+    "nl": "Een supportticket koppel je aan je account en is alleen voor jou zichtbaar",
+    "en": "You can link a support ticket to your account and only you can see it"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "server"
+    ],
+    "nl": "De webproxy werkt alleen nog voor je eigen servers, met limieten per account",
+    "en": "The web proxy only works for your own servers, with limits per account"
+   }
+  ]
+ },
+ {
   "build": 140,
   "version": "1.0.1",
   "date": "2026-10-23",
