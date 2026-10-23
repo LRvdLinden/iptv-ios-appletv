@@ -145,7 +145,7 @@ jobs:
         timeout-minutes: 25
         # Apple TV heeft veel minder geheugen dan een iPhone of Mac: daarboven stopt tvOS de app (lijkt een crash)
         env:
-          SMOKE_MAX_MB: "1500"
+          SMOKE_MAX_MB: "700"
           SMOKE_CONFIG: ${{ env.HEAVY == 'true' && 'Release' || 'Debug' }}
           SMOKE_LIGHT: ${{ env.HEAVY != 'true' && '1' || '' }}
         run: tools/smoke_launch.sh tvos build/Build/Products "$RUNNER_TEMP/smoke/tvos" 2>&1 | tee smoke-tvos.log; exit ${PIPESTATUS[0]}

@@ -155,6 +155,15 @@ enum SmokeTest {
         Task { @MainActor in
             func wait(_ s: Double) async { try? await Task.sleep(nanoseconds: UInt64(s * 1_000_000_000)) }
             await wait(1.5)
+            // build 143: startdiagnose van de vorige start
+            if let pr = StartDiagnostics.shared.lastProblem {
+                say("diagnose vorige start: \(pr.kind.rawValue) bij \(pr.lastMark), \(pr.stack.count) stackregels, fout: \(pr.crash ?? "-")")
+            } else {
+                say("diagnose vorige start: geen probleem")
+            }
+            if flag("-BingrSmokeExpectCrashReport"), StartDiagnostics.shared.lastProblem?.kind != .crash {
+                say("geen crashrapport van de vorige start BINGR_SMOKE_FAIL")
+            }
             if app.stage == .auth, let mail = accountEmail, let pw = accountPassword {
                 // zoals het inlogscherm: daarna registreert AuthView het apparaat, synct en gaat naar "Wie kijkt er?"
                 do { try await AccountService.shared.signIn(email: mail, password: pw); say("ingelogd") }
@@ -179,6 +188,11 @@ enum SmokeTest {
             guard let p = store.activeProfile ?? store.profiles.first else { say("geen profiel"); return }
             say("profiel openen (kids=\(p.kids))")
             app.open(profile: p)
+            if flag("-BingrSmokeCrash") {
+                await wait(4)
+                say("bewust crashen (test van de startdiagnose)")
+                StartDiagnostics.forceCrash()
+            }
             for tab in [0, 1, 2, 3, 7, 4, 5, 0] {
                 await wait(2.5)
                 app.selectedTab = tab

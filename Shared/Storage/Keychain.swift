@@ -57,9 +57,55 @@ enum Keychain {
     private static var cache: [String: String?] = [:]
     private static var localCache: [String: String?] = [:]
 
+    /// Alles in één keer gelezen (`warmUp`): een sleutel die niet in het geheugen staat, bestaat dan niet.
+    private static var warm = false
+
     private static func cached(_ key: String, local: Bool) -> String?? {
         cacheLock.lock(); defer { cacheLock.unlock() }
-        return local ? localCache[key] : cache[key]
+        if let v = local ? localCache[key] : cache[key] { return v }
+        return warm ? .some(nil) : nil
+    }
+
+    /// Build 143: alle items van Bingr in drie zoekopdrachten (synchroniseerbaar, oud lokaal, alleen dit apparaat) in het
+    /// geheugen, in plaats van één of twee zoekopdrachten per sleutel op de hoofdthread. Bij het starten (vóór CloudStore)
+    /// en daarna op de achtergrond als de app weer actief wordt. Lukt een zoekopdracht niet, dan blijft het per sleutel.
+    @discardableResult
+    static func warmUp() -> Bool {
+        func all(_ base: [String: Any]) -> [String: String]? {
+            var q = base
+            q[kSecReturnAttributes as String] = true
+            q[kSecReturnData as String] = true
+            q[kSecMatchLimit as String] = kSecMatchLimitAll
+            var res: AnyObject?
+            let st = SecItemCopyMatching(q as CFDictionary, &res)
+            if st == errSecItemNotFound { return [:] }
+            guard st == errSecSuccess, let items = res as? [[String: Any]] else { return nil }
+            var out: [String: String] = [:]
+            for i in items {
+                guard let a = i[kSecAttrAccount as String] as? String, let d = i[kSecValueData as String] as? Data,
+                      let v = String(data: d, encoding: .utf8), !v.isEmpty else { continue }
+                if out[a] == nil { out[a] = v }
+            }
+            return out
+        }
+        let result: (synced: [String: String]?, legacy: [String: String]?, local: [String: String]?) = serial {
+            (all(syncedQuery(nil)), all(legacyQuery(nil)), all(localOnlyQuery))
+        }
+        guard let synced = result.synced, let legacy = result.legacy, let local = result.local else { return false }
+        cacheLock.lock()
+        var fresh: [String: String?] = [:]
+        for (k, v) in legacy { fresh[k] = v }
+        for (k, v) in synced { fresh[k] = v }   // synchroniseerbaar gaat voor (zoals `read`)
+        cache = fresh
+        localCache = local.mapValues { Optional($0) }
+        warm = true
+        cacheLock.unlock()
+        return true
+    }
+
+    private static var localOnlyQuery: [String: Any] {
+        [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: localOnlyService,
+         kSecAttrSynchronizable as String: kSecAttrSynchronizableAny]
     }
 
     private static func remember(_ key: String, _ value: String?, local: Bool) {
@@ -70,7 +116,19 @@ enum Keychain {
     /// Alles opnieuw uit de sleutelhanger lezen (een ander apparaat kan synchroniseerbare items gewijzigd hebben), op de
     /// achtergrond: tot het klaar is, blijven de bekende waarden gelden (de hoofdthread wacht nooit).
     static func revalidate() {
-        cacheLock.lock(); let keys = Array(cache.keys), locals = Array(localCache.keys); cacheLock.unlock()
+        cacheLock.lock(); let before = cache; let wasWarm = warm; let keys = Array(cache.keys), locals = Array(localCache.keys); cacheLock.unlock()
+        if wasWarm {
+            DispatchQueue.global(qos: .utility).async {
+                guard warmUp() else { return }
+                cacheLock.lock(); let after = cache; cacheLock.unlock()
+                let changed = Set(before.keys).union(after.keys).filter { (before[$0] ?? nil) != (after[$0] ?? nil) }
+                guard !changed.isEmpty else { return }
+                DispatchQueue.main.async {
+                    for k in changed { NotificationCenter.default.post(name: didChange, object: nil, userInfo: ["key": k]) }
+                }
+            }
+            return
+        }
         guard !keys.isEmpty || !locals.isEmpty else { return }
         DispatchQueue.global(qos: .utility).async {
             var changed: [String] = []
@@ -247,7 +305,14 @@ enum Keychain {
         add[kSecValueData as String] = data
         // synchroniseerbare items mogen geen "ThisDeviceOnly" zijn
         add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
-        SecItemAdd(add as CFDictionary, nil)
+        if SecItemAdd(add as CFDictionary, nil) != errSecSuccess {
+            // build 143: synchroniseerbaar lukt niet (bijv. iCloud-sleutelhanger uit op dit toestel): dan alleen hier
+            // bewaren, zodat het niet verloren gaat (`read` leest dit oude lokale item ook)
+            var local = legacyQuery(key)
+            local[kSecValueData as String] = data
+            local[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+            SecItemAdd(local as CFDictionary, nil)
+        }
     }
 
     private static func deleteAll(_ key: String) {

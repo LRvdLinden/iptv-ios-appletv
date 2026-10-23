@@ -70,6 +70,8 @@ struct AppSettingsView: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            // build 143: rapport van de vorige start (crash, hang of niet klaar), als supportticket te sturen
+            StartDiagnosticsSection()
             if isMain { advancedSection }
         }
         .navigationTitle(L("Settings"))

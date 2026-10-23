@@ -367,7 +367,12 @@ final class AVEngine: PlaybackEngine {
         self.asset?.cancelLoading()
         self.asset = asset
         let item = AVPlayerItem(asset: asset)
+        #if os(tvOS)
+        // build 143: Apple TV (weinig geheugen): films/series niet onbeperkt vooruit bufferen (0 = automatisch, kan groot worden)
+        item.preferredForwardBufferDuration = live ? 4 : 30
+        #else
         item.preferredForwardBufferDuration = live ? 4 : 0
+        #endif
         if silent {
             item.preferredPeakBitRate = 2_500_000
             item.preferredMaximumResolution = CGSize(width: 960, height: 540)

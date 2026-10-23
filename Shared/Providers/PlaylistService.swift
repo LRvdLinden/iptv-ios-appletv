@@ -124,7 +124,15 @@ final class PlaylistService: ObservableObject {
             setRaw(cached)
             // build 140: volgens de instelling alle servers van het account die aan de beurt zijn. Build 141: de open
             // server meteen, de andere pas later en één voor één (zie `refreshIfDue`)
-            Task { await refreshIfDue() }
+            Task {
+                #if os(tvOS)
+                // build 143: Apple TV: de bewaarde lijst staat al in beeld; het verversen (ophalen, inlezen, gids) pas na
+                // de start, anders staan oude en nieuwe lijst tegelijk in het (kleine) geheugen
+                let up = StartDiagnostics.shared.uptime, settle: TimeInterval = SmokeTest.isActive ? 20 : 45
+                if up < settle { try? await Task.sleep(nanoseconds: UInt64((settle - up) * 1_000_000_000)) }
+                #endif
+                await refreshIfDue()
+            }
             return
         }
         setRaw(Library())
@@ -356,6 +364,7 @@ final class PlaylistService: ObservableObject {
     // MARK: aanpassingen toepassen
 
     private func setRaw(_ lib: Library) {
+        if !lib.isEmptyLibrary { StartDiagnostics.shared.mark("catalogus") }   // build 143
         rawLibrary = lib
         applyCustomizations()
     }

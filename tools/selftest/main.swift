@@ -359,5 +359,33 @@ eq(rows([("recent", false)]).map(\.visible), [false], "dan het aan/uit van recen
 eq(rows([("streaming", true), ("foryou", true)]).map(\.key), ["streaming", "foryou"], "zonder recent: ongewijzigd")
 eq(rows([("recent", true), ("streaming", true)]).filter { $0.key == "streaming" }.count, 1, "maar één rij Nieuw op Bingr")
 
+// MARK: build 143: startdiagnose
+
+do {
+    var r = StartDiag.Record(build: "1.0.1 (143)", os: "tvOS 27.2", started: 1000)
+    r.marks = [.init(name: "gestart", t: 0, mb: 80), .init(name: "opslag", t: 0.4, mb: 120), .init(name: "catalogus", t: 6.2, mb: 610)]
+    r.peakMB = 640
+    let nf = StartDiag.analyze(r)
+    eq(nf?.kind, .notFinished as StartDiag.Problem.Kind?, "niet bij klaar: rapport")
+    eq(nf?.lastMark, "catalogus" as String?, "laatste mijlpaal")
+    check(StartDiag.text(nf!).contains("hoogste 640 MB"), "geheugen in het rapport")
+    check(StartDiag.text(nf!).contains("catalogus 6.2s 610MB"), "mijlpaal met tijd en geheugen")
+    var ok = r; ok.marks.append(.init(name: "klaar", t: 20)); ok.finished = true
+    eq(StartDiag.analyze(ok), nil as StartDiag.Problem?, "klaar zonder crash of hang: geen rapport")
+    var hung = ok; hung.hang = 12.5; hung.hangAt = "profiel gekozen"
+    eq(StartDiag.analyze(hung)?.kind, .hang as StartDiag.Problem.Kind?, "hoofdthread > 10 s vast: watchdog-vermoeden")
+    eq(StartDiag.analyze(hung)?.lastMark, "profiel gekozen" as String?, "mijlpaal van de hang")
+    let crashed = StartDiag.analyze(r, crashLog: "signal 05\n0 Bingr 0x1 main + 4\n1 libswiftCore 0x2 x")
+    eq(crashed?.kind, .crash as StartDiag.Problem.Kind?, "signaalbestand: crash")
+    eq(crashed?.crash, "signal 05" as String?, "type van de crash")
+    eq(crashed?.stack.count, 3, "stackregels")
+    var ex = r; ex.crash = "NSInvalidArgumentException: mail jan@example.com https://srv.example/get.php?username=a"
+    let exText = StartDiag.text(StartDiag.analyze(ex)!)
+    check(!exText.contains("jan@example.com") && !exText.contains("username"), "geen e-mail of URL in het rapport")
+    check(StartDiag.scrub("/Users/leon/Library/x").hasPrefix("/~"), "geen gebruikersnaam in paden")
+    let rt = try! JSONDecoder().decode(StartDiag.Record.self, from: try! JSONEncoder().encode(r))
+    eq(rt, r, "record via JSON")
+}
+
 print("\(checks) controles, \(failures) fout")
 exit(failures == 0 ? 0 : 1)

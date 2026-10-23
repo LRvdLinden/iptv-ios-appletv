@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 import SwiftUI
 import ImageIO
 #if canImport(UIKit)
@@ -1395,5 +1396,56 @@ final class AccountService: ObservableObject {
             if msg.contains("password") && (msg.contains("8") || msg.contains("weak")) { return .message(L("Password must be at least 8 characters.")) }
             return .generic
         }
+    }
+}
+
+// MARK: - Build 143: startdiagnose als supportticket
+
+extension AccountService {
+    /// Rapport van de startdiagnose als supportticket (functie `support`, actie `create`, met de captcha zoals het
+    /// formulier op support.bingr.online). Alleen ingelogd; het adres is altijd dat van het account (de functie zet het).
+    /// Geeft het ticketnummer terug.
+    func sendDiagnosticTicket(subject: String, message: String) async throws -> Int {
+        guard isSignedIn, let mail = email else { throw AccountError.generic }
+        let token = try await validAccessToken()
+        let c = try await post("/functions/v1/support", ["action": "challenge"])
+        guard c.status == 200, let salt = c.string("salt"), let sig = c.string("signature"),
+              let diff = c.number("difficulty"), let exp = c.number("expires") else { throw AccountError.generic }
+        let difficulty = Int(diff)
+        // nonce zoeken waarbij SHA-256(salt + nonce) met `difficulty` nul-bits begint (gemiddeld 2^18 pogingen)
+        let nonce: Int? = await Task.detached(priority: .userInitiated) { () -> Int? in
+            for n in 0..<50_000_000 {
+                if Task.isCancelled { return nil }
+                let h = SHA256.hash(data: Data((salt + String(n)).utf8))
+                var zeros = 0
+                for b in h {
+                    if b == 0 { zeros += 8; continue }
+                    zeros += b.leadingZeroBitCount
+                    break
+                }
+                if zeros >= difficulty { return n }
+            }
+            return nil
+        }.value
+        guard let nonce else { throw AccountError.generic }
+        #if os(tvOS)
+        let platform = "tvos"
+        #elseif os(macOS)
+        let platform = "macos"
+        #else
+        let platform = "ios"
+        #endif
+        let info = Bundle.main.infoDictionary
+        let version = "\(info?["CFBundleShortVersionString"] as? String ?? "?") (\(info?["CFBundleVersion"] as? String ?? "?"))"
+        let body: [String: Any] = [
+            "action": "create", "name": "Bingr-app", "email": mail, "category": "apps", "platform": platform,
+            "app_version": version, "subject": subject, "message": message, "lang": Localizer.shared.language,
+            "device_id": deviceID, "elapsed_ms": 10_000,
+            "pow": ["salt": salt, "difficulty": difficulty, "expires": Int(exp), "signature": sig, "nonce": String(nonce)],
+        ]
+        let r = try await post("/functions/v1/support", body, bearer: token)
+        if r.status == 429 { throw AccountError.message(L("Too many attempts. Wait a few minutes and try again.")) }
+        guard r.status == 200, let n = r.number("number") else { throw AccountError.generic }
+        return Int(n)
     }
 }

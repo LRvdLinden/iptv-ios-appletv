@@ -129,6 +129,7 @@ sim_run() { # udid app naam args...
   if [ -z "$pid" ]; then echo "$out"; report_crash "$name" "$log"; return; fi
   local alive=1 peak=0 rss secs=$SECS timeline=""
   [ "$name" = 1-nieuw ] && secs=15
+  [ "$name" = 2b-crash ] && secs=25
   for s in $(seq 1 "$secs"); do
     sleep 1
     if ! kill -0 "$pid" 2>/dev/null; then alive=0; echo "$PLATFORM/$name: gestopt na ${s}s"; break; fi
@@ -138,6 +139,13 @@ sim_run() { # udid app naam args...
   echo "$PLATFORM/$name: geheugen (MB) per 5 s:$timeline"
   check_memory "$name" "$peak"
   check_log "$name" "$log"
+  if [ -n "${EXPECT_CRASH:-}" ]; then
+    # build 143: bewuste crash (test van de startdiagnose): moet gestopt zijn, geen fout
+    if [ $alive = 1 ]; then echo "::error title=Start-rooktest $PLATFORM ($name)::bewuste crash gebeurde niet"; FAIL=1
+    else echo "$PLATFORM/$name: bewust gecrasht (verwacht)"; new_reports 25 >/dev/null; sleep 2; fi
+    xcrun simctl terminate "$udid" "$BUNDLE" >/dev/null 2>&1 || true
+    return
+  fi
   if [ $alive = 1 ]; then
     # ook een crash van een hulpproces van de app telt
     local late; late=$(new_reports 1)
@@ -163,6 +171,9 @@ simulator() { # platform-runtime-naam app types...
   sim_run "$udid" "$app" 1-nieuw "${fresh[@]}"
   xcrun simctl uninstall "$udid" "$BUNDLE"; xcrun simctl install "$udid" "$app"
   sim_run "$udid" "$app" 2-terugkerend -BingrSmoke YES -BingrSmokeKeychainMs "${SMOKE_KEYCHAIN_MS:-150}" -BingrSmokeM3U "$M3U" "${fresh[@]}"
+  # build 143: bewuste crash → de volgende start moet het rapport van de startdiagnose hebben
+  EXPECT_CRASH=1 sim_run "$udid" "$app" 2b-crash -BingrSmoke YES -BingrSmokeCrash YES -BingrSmokeM3U "$M3U" "${fresh[@]}"
+  sim_run "$udid" "$app" 2c-na-crash -BingrSmoke YES -BingrSmokeExpectCrashReport YES -BingrSmokeM3U "$M3U" "${fresh[@]}"
   if [ -n "${SMOKE_LIGHT:-}" ]; then
     xcrun simctl shutdown "$udid" >/dev/null 2>&1 || true; xcrun simctl delete "$udid" >/dev/null 2>&1 || true
     return
@@ -198,6 +209,7 @@ mac_run() { # naam args...
   echo "macos/$name: gestart (pid $pid)"
   local alive=1 peak=0 rss secs=$SECS timeline=""
   [ "$name" = 1-nieuw ] && secs=15
+  [ "$name" = 2b-crash ] && secs=25
   for s in $(seq 1 "$secs"); do
     sleep 1
     if ! kill -0 "$pid" 2>/dev/null; then alive=0; echo "macos/$name: gestopt na ${s}s"; break; fi

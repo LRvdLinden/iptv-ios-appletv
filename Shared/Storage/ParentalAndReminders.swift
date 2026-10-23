@@ -268,6 +268,7 @@ struct PINPad: View {
 
     var body: some View {
         pad.onAppear {
+            StartDiagnostics.shared.mark("pincodescherm")   // build 143
             // start-rooktest (build 143): tijd tot het pincodescherm meten en de testcode invoeren
             guard let code = SmokeTest.pinShown() else { return }
             Task { @MainActor in

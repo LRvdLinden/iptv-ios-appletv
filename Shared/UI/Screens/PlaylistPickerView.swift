@@ -80,6 +80,9 @@ struct PlaylistPickerView: View {
             }
         }
         .onAppear {
+            // build 143: startdiagnose; blijft de gebruiker hier, dan is de start na 10 s klaar
+            StartDiagnostics.shared.mark("profielkeuze")
+            Task { try? await Task.sleep(nanoseconds: 10_000_000_000); StartDiagnostics.shared.mark("klaar") }
             appeared = true   // gegevens zijn al geladen; iCloud-wijzigingen komen vanzelf binnen
             // Apple TV: meteen op het (laatst gebruikte) profiel staan, niet op Beheren
             Task { @MainActor in
@@ -107,6 +110,7 @@ struct PlaylistPickerView: View {
     /// pincode: daarna meteen de pincode (build 143: uit het geheugen, zonder op de sleutelhanger te wachten). Pas na de
     /// juiste code wordt het profiel geopend en de server geladen.
     private func choose(_ p: ViewerProfile) {
+        StartDiagnostics.shared.mark("profiel gekozen")
         KidsGate.shared.pick(p) {
             if ParentalControl.shared.hasPIN(profile: p.id) { pinFor = p } else { app.open(profile: p) }
         }

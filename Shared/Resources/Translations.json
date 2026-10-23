@@ -940,7 +940,13 @@
   "Too many wrong attempts. Try again in %@.": "محاولات خاطئة كثيرة. حاول مرة أخرى بعد %@.",
   "“%@” (code created %@) gets full access to your Bingr account.": "سيحصل „%@” (أُنشئ الرمز %@) على وصول كامل إلى حساب Bingr الخاص بك.",
   "Too many attempts. Try again in %d minutes.": "محاولات كثيرة جدًا. حاول مرة أخرى بعد %d دقائق.",
-  "Your own subtitles can't be sent to the Chromecast from the Mac. Subtitles from the stream do work.": "لا يمكن إرسال ترجماتك الخاصة إلى Chromecast من Mac. ترجمات البث تعمل."
+  "Your own subtitles can't be sent to the Chromecast from the Mac. Subtitles from the stream do work.": "لا يمكن إرسال ترجماتك الخاصة إلى Chromecast من Mac. ترجمات البث تعمل.",
+  "Start diagnostics": "تشخيص بدء التشغيل",
+  "Send as support ticket": "إرسال كتذكرة دعم",
+  "Sent as ticket #%@": "أُرسلت كتذكرة رقم %@",
+  "Couldn't send. Try again later.": "تعذّر الإرسال. حاول لاحقًا.",
+  "Sign in to send this to support.": "سجّل الدخول لإرسال هذا إلى الدعم.",
+  "Dismiss": "تجاهل"
  },
  "de": {
   "%@ is now signed in.": "%@ ist jetzt angemeldet.",
@@ -1883,7 +1889,13 @@
   "Too many wrong attempts. Try again in %@.": "Zu viele falsche Versuche. Versuche es in %@ erneut.",
   "“%@” (code created %@) gets full access to your Bingr account.": "„%@“ (Code erstellt %@) erhält vollen Zugriff auf dein Bingr-Konto.",
   "Too many attempts. Try again in %d minutes.": "Zu viele Versuche. Versuche es in %d Minuten erneut.",
-  "Your own subtitles can't be sent to the Chromecast from the Mac. Subtitles from the stream do work.": "Eigene Untertitel können vom Mac nicht an den Chromecast gesendet werden. Untertitel aus dem Stream funktionieren."
+  "Your own subtitles can't be sent to the Chromecast from the Mac. Subtitles from the stream do work.": "Eigene Untertitel können vom Mac nicht an den Chromecast gesendet werden. Untertitel aus dem Stream funktionieren.",
+  "Start diagnostics": "Startdiagnose",
+  "Send as support ticket": "Als Support-Ticket senden",
+  "Sent as ticket #%@": "Als Ticket #%@ gesendet",
+  "Couldn't send. Try again later.": "Senden fehlgeschlagen. Versuche es später erneut.",
+  "Sign in to send this to support.": "Melde dich an, um dies an den Support zu senden.",
+  "Dismiss": "Verwerfen"
  },
  "es": {
   "%@ is now signed in.": "%@ ya ha iniciado sesión.",
@@ -2826,7 +2838,13 @@
   "Too many wrong attempts. Try again in %@.": "Demasiados intentos incorrectos. Vuelve a intentarlo en %@.",
   "“%@” (code created %@) gets full access to your Bingr account.": "«%@» (código creado %@) tendrá acceso completo a tu cuenta de Bingr.",
   "Too many attempts. Try again in %d minutes.": "Demasiados intentos. Vuelve a intentarlo en %d minutos.",
-  "Your own subtitles can't be sent to the Chromecast from the Mac. Subtitles from the stream do work.": "Tus propios subtítulos no se pueden enviar al Chromecast desde el Mac. Los subtítulos del stream sí funcionan."
+  "Your own subtitles can't be sent to the Chromecast from the Mac. Subtitles from the stream do work.": "Tus propios subtítulos no se pueden enviar al Chromecast desde el Mac. Los subtítulos del stream sí funcionan.",
+  "Start diagnostics": "Diagnóstico de inicio",
+  "Send as support ticket": "Enviar como ticket de soporte",
+  "Sent as ticket #%@": "Enviado como ticket n.º %@",
+  "Couldn't send. Try again later.": "No se pudo enviar. Inténtalo más tarde.",
+  "Sign in to send this to support.": "Inicia sesión para enviarlo a soporte.",
+  "Dismiss": "Descartar"
  },
  "fr": {
   "%@ is now signed in.": "%@ est maintenant connecté.",
@@ -3769,7 +3787,13 @@
   "Too many wrong attempts. Try again in %@.": "Trop de tentatives incorrectes. Réessayez dans %@.",
   "“%@” (code created %@) gets full access to your Bingr account.": "« %@ » (code créé %@) aura un accès complet à votre compte Bingr.",
   "Too many attempts. Try again in %d minutes.": "Trop de tentatives. Réessayez dans %d minutes.",
-  "Your own subtitles can't be sent to the Chromecast from the Mac. Subtitles from the stream do work.": "Vos propres sous-titres ne peuvent pas être envoyés au Chromecast depuis le Mac. Les sous-titres du flux fonctionnent."
+  "Your own subtitles can't be sent to the Chromecast from the Mac. Subtitles from the stream do work.": "Vos propres sous-titres ne peuvent pas être envoyés au Chromecast depuis le Mac. Les sous-titres du flux fonctionnent.",
+  "Start diagnostics": "Diagnostic de démarrage",
+  "Send as support ticket": "Envoyer comme ticket d'assistance",
+  "Sent as ticket #%@": "Envoyé comme ticket n° %@",
+  "Couldn't send. Try again later.": "Échec de l'envoi. Réessaie plus tard.",
+  "Sign in to send this to support.": "Connecte-toi pour l'envoyer à l'assistance.",
+  "Dismiss": "Effacer"
  },
  "it": {
   "%@ is now signed in.": "%@ ha effettuato l’accesso.",
@@ -4712,7 +4736,13 @@
   "Too many wrong attempts. Try again in %@.": "Troppi tentativi errati. Riprova tra %@.",
   "“%@” (code created %@) gets full access to your Bingr account.": "«%@» (codice creato %@) avrà accesso completo al tuo account Bingr.",
   "Too many attempts. Try again in %d minutes.": "Troppi tentativi. Riprova tra %d minuti.",
-  "Your own subtitles can't be sent to the Chromecast from the Mac. Subtitles from the stream do work.": "I tuoi sottotitoli non possono essere inviati al Chromecast dal Mac. I sottotitoli dello stream funzionano."
+  "Your own subtitles can't be sent to the Chromecast from the Mac. Subtitles from the stream do work.": "I tuoi sottotitoli non possono essere inviati al Chromecast dal Mac. I sottotitoli dello stream funzionano.",
+  "Start diagnostics": "Diagnostica di avvio",
+  "Send as support ticket": "Invia come ticket di assistenza",
+  "Sent as ticket #%@": "Inviato come ticket n. %@",
+  "Couldn't send. Try again later.": "Invio non riuscito. Riprova più tardi.",
+  "Sign in to send this to support.": "Accedi per inviarlo all'assistenza.",
+  "Dismiss": "Ignora"
  },
  "nl": {
   "%@ is now signed in.": "%@ is nu ingelogd.",
@@ -5655,7 +5685,13 @@
   "Too many wrong attempts. Try again in %@.": "Te veel foute pogingen. Probeer het opnieuw over %@.",
   "“%@” (code created %@) gets full access to your Bingr account.": "„%@” (code aangemaakt %@) krijgt volledige toegang tot je Bingr-account.",
   "Too many attempts. Try again in %d minutes.": "Te veel pogingen. Probeer het over %d minuten opnieuw.",
-  "Your own subtitles can't be sent to the Chromecast from the Mac. Subtitles from the stream do work.": "Eigen ondertitels kunnen vanaf de Mac niet naar de Chromecast. Ondertitels uit de stream werken wel."
+  "Your own subtitles can't be sent to the Chromecast from the Mac. Subtitles from the stream do work.": "Eigen ondertitels kunnen vanaf de Mac niet naar de Chromecast. Ondertitels uit de stream werken wel.",
+  "Start diagnostics": "Startdiagnose",
+  "Send as support ticket": "Als supportticket versturen",
+  "Sent as ticket #%@": "Verstuurd als ticket #%@",
+  "Couldn't send. Try again later.": "Versturen lukte niet. Probeer het later opnieuw.",
+  "Sign in to send this to support.": "Log in om dit naar support te sturen.",
+  "Dismiss": "Wissen"
  },
  "pl": {
   "%@ is now signed in.": "%@ jest teraz zalogowany.",
@@ -6598,7 +6634,13 @@
   "Too many wrong attempts. Try again in %@.": "Zbyt wiele błędnych prób. Spróbuj ponownie za %@.",
   "“%@” (code created %@) gets full access to your Bingr account.": "„%@” (kod utworzony %@) otrzyma pełny dostęp do Twojego konta Bingr.",
   "Too many attempts. Try again in %d minutes.": "Zbyt wiele prób. Spróbuj ponownie za %d min.",
-  "Your own subtitles can't be sent to the Chromecast from the Mac. Subtitles from the stream do work.": "Własnych napisów nie można wysłać z Maca do Chromecasta. Napisy ze strumienia działają."
+  "Your own subtitles can't be sent to the Chromecast from the Mac. Subtitles from the stream do work.": "Własnych napisów nie można wysłać z Maca do Chromecasta. Napisy ze strumienia działają.",
+  "Start diagnostics": "Diagnostyka uruchamiania",
+  "Send as support ticket": "Wyślij jako zgłoszenie do pomocy",
+  "Sent as ticket #%@": "Wysłano jako zgłoszenie #%@",
+  "Couldn't send. Try again later.": "Nie udało się wysłać. Spróbuj później.",
+  "Sign in to send this to support.": "Zaloguj się, aby wysłać to do pomocy.",
+  "Dismiss": "Odrzuć"
  },
  "pt": {
   "%@ is now signed in.": "%@ já tem sessão iniciada.",
@@ -7541,7 +7583,13 @@
   "Too many wrong attempts. Try again in %@.": "Demasiadas tentativas erradas. Tente novamente dentro de %@.",
   "“%@” (code created %@) gets full access to your Bingr account.": "«%@» (código criado %@) terá acesso total à sua conta Bingr.",
   "Too many attempts. Try again in %d minutes.": "Demasiadas tentativas. Tente novamente dentro de %d minutos.",
-  "Your own subtitles can't be sent to the Chromecast from the Mac. Subtitles from the stream do work.": "As tuas legendas não podem ser enviadas para o Chromecast a partir do Mac. As legendas do stream funcionam."
+  "Your own subtitles can't be sent to the Chromecast from the Mac. Subtitles from the stream do work.": "As tuas legendas não podem ser enviadas para o Chromecast a partir do Mac. As legendas do stream funcionam.",
+  "Start diagnostics": "Diagnóstico de arranque",
+  "Send as support ticket": "Enviar como pedido de suporte",
+  "Sent as ticket #%@": "Enviado como pedido n.º %@",
+  "Couldn't send. Try again later.": "Não foi possível enviar. Tenta mais tarde.",
+  "Sign in to send this to support.": "Inicia sessão para enviar ao suporte.",
+  "Dismiss": "Descartar"
  },
  "tr": {
   "%@ is now signed in.": "%@ artık oturum açtı.",
@@ -8484,7 +8532,13 @@
   "Too many wrong attempts. Try again in %@.": "Çok fazla hatalı deneme. %@ sonra tekrar deneyin.",
   "“%@” (code created %@) gets full access to your Bingr account.": "“%@” (kod oluşturuldu: %@) Bingr hesabınıza tam erişim elde eder.",
   "Too many attempts. Try again in %d minutes.": "Çok fazla deneme. %d dakika sonra tekrar deneyin.",
-  "Your own subtitles can't be sent to the Chromecast from the Mac. Subtitles from the stream do work.": "Kendi altyazıların Mac'ten Chromecast'e gönderilemez. Yayındaki altyazılar çalışır."
+  "Your own subtitles can't be sent to the Chromecast from the Mac. Subtitles from the stream do work.": "Kendi altyazıların Mac'ten Chromecast'e gönderilemez. Yayındaki altyazılar çalışır.",
+  "Start diagnostics": "Başlatma tanılaması",
+  "Send as support ticket": "Destek talebi olarak gönder",
+  "Sent as ticket #%@": "#%@ numaralı talep olarak gönderildi",
+  "Couldn't send. Try again later.": "Gönderilemedi. Daha sonra tekrar dene.",
+  "Sign in to send this to support.": "Bunu desteğe göndermek için giriş yap.",
+  "Dismiss": "Kapat"
  },
  "zh-Hans": {
   "%@ is now signed in.": "%@ 现已登录。",
@@ -9427,6 +9481,12 @@
   "Too many wrong attempts. Try again in %@.": "错误次数过多。请在 %@ 后重试。",
   "“%@” (code created %@) gets full access to your Bingr account.": "“%@”（代码创建于 %@）将获得你的 Bingr 账户的完全访问权限。",
   "Too many attempts. Try again in %d minutes.": "尝试次数过多。请在 %d 分钟后重试。",
-  "Your own subtitles can't be sent to the Chromecast from the Mac. Subtitles from the stream do work.": "无法从 Mac 将你自己的字幕发送到 Chromecast。流中的字幕可以使用。"
+  "Your own subtitles can't be sent to the Chromecast from the Mac. Subtitles from the stream do work.": "无法从 Mac 将你自己的字幕发送到 Chromecast。流中的字幕可以使用。",
+  "Start diagnostics": "启动诊断",
+  "Send as support ticket": "作为支持工单发送",
+  "Sent as ticket #%@": "已作为工单 #%@ 发送",
+  "Couldn't send. Try again later.": "无法发送。请稍后再试。",
+  "Sign in to send this to support.": "登录后即可发送给支持团队。",
+  "Dismiss": "清除"
  }
 }

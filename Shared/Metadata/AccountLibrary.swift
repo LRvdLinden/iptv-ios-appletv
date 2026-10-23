@@ -39,6 +39,12 @@ final class AccountLibrary {
     }
 
     private func load(_ playlists: PlaylistService) async -> [(UUID, Library)] {
+        #if os(tvOS)
+        // build 143: Apple TV (weinig geheugen): de andere servers pas als de start voorbij is, niet tegelijk met het
+        // inlezen van de open server
+        let up = StartDiagnostics.shared.uptime
+        if up < Self.tvSettle { try? await Task.sleep(nanoseconds: UInt64((Self.tvSettle - up) * 1_000_000_000)) }
+        #endif
         let activeID = playlists.source?.id
         let sources = CloudStore.shared.playlists.filter { $0.id != activeID }
         var out: [(UUID, Library)] = []
@@ -63,6 +69,11 @@ final class AccountLibrary {
                 // de detailpagina zelf op bij die server (`PlaylistService.episodes(for:)`).
                 l.movies = l.movies.map { var m = $0; m.sourceID = sid; m.plot = nil; return m }
                 l.series = l.series.map { var x = $0; x.sourceID = sid; x.plot = nil; x.episodes = []; return x }
+                #if os(tvOS)
+                // build 143: Apple TV: per andere server alleen de nieuwste titels (genoeg voor Nieuw op Bingr en Voor jou)
+                l.movies = AccountLibrary.newest(l.movies, AccountLibrary.tvMovies) { $0.addedAt }
+                l.series = AccountLibrary.newest(l.series, AccountLibrary.tvSeries) { $0.addedAt }
+                #endif
                 return l
             }.value
             guard let lib else { continue }
@@ -71,6 +82,25 @@ final class AccountLibrary {
         }
         for id in cache.keys where !keep.contains(id) { cache[id] = nil }
         return out
+    }
+
+    /// Build 143 (Apple TV): wachten tot zoveel seconden na de start, en zoveel titels per andere server
+    nonisolated static var tvSettle: TimeInterval { SmokeTest.isActive ? 15 : 30 }
+    nonisolated static let tvMovies = 3000, tvSeries = 1500
+
+    /// De nieuwste `n` (op toevoegdatum; zonder datum in de volgorde van de server), de rest weg.
+    nonisolated static func newest<T>(_ xs: [T], _ n: Int, _ date: (T) -> Date?) -> [T] {
+        guard xs.count > n else { return xs }
+        let withDate = xs.enumerated().map { ($0.offset, date($0.element)) }
+        let keep = withDate.sorted { a, b in
+            switch (a.1, b.1) {
+            case let (x?, y?): return x != y ? x > y : a.0 < b.0
+            case (_?, nil): return true
+            case (nil, _?): return false
+            default: return a.0 < b.0
+            }
+        }.prefix(n).map(\.0).sorted()
+        return keep.map { xs[$0] }
     }
 
     /// Titel-index van de andere servers samen (voor aanbevelingen die niet op de open server staan).

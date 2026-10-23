@@ -9,7 +9,17 @@ struct BingrApp: App {
     // opnieuw bij elke wijziging (bijv. elke nieuwe IMDb-score of sync-ronde). De schermen volgen ze zelf.
     // build 141: start-rooktest in CI (alleen Debug, launch-argument `-BingrSmoke YES`): eerst de testgegevens, dan pas
     // CloudStore (die leest ze bij het aanmaken)
-    private let store: CloudStore = { SmokeTest.seedIfNeeded(); return CloudStore.shared }()
+    private let store: CloudStore = {
+        StartDiagnostics.shared.start()   // build 143: startdiagnose (mijlpalen, vangnet), zo vroeg mogelijk
+        // build 143: de hele sleutelhanger van Bingr in drie zoekopdrachten in het geheugen, vóór account en opslag
+        // (anders tientallen losse zoekopdrachten op de hoofdthread)
+        Keychain.warmUp()
+        StartDiagnostics.shared.mark("sleutelhanger")
+        SmokeTest.seedIfNeeded()
+        let s = CloudStore.shared
+        StartDiagnostics.shared.mark("opslag")
+        return s
+    }()
     private let trakt = TraktSync.shared
     private let meta = MetadataService.shared
     private let subs = OpenSubtitles.shared
@@ -39,6 +49,7 @@ struct BingrApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
+                .onAppear { StartDiagnostics.shared.mark("eerste frame") }   // build 143
                 .id(localizer.language + "|" + shownAccent)     // taal of accentkleur wisselen → alles opnieuw opbouwen
                 .environmentObject(app)
                 .environmentObject(app.playlists)
@@ -197,6 +208,7 @@ final class AppState: ObservableObject {
         CloudStore.shared.$profiles.map { $0.map(\.id) }.removeDuplicates().dropFirst()
             .sink { _ in ParentalControl.shared.prefetchPINs() }
             .store(in: &bag)
+        StartDiagnostics.shared.mark("account")
         ProfileSync.shared.start()
         SourceSync.shared.start()
         // abonnement (build 88): ophalen na het inloggen, bij de heartbeat en op de voorgrond
@@ -272,6 +284,7 @@ final class AppState: ObservableObject {
             .store(in: &bag)
     }
 
+    /// (build 143: mijlpaal na het opzetten van account en sync staat in `init`)
     /// Zonder sleutels in deze build kan de gebruiker "Doorgaan zonder account" kiezen (onthouden).
     var skippedAccounts: Bool {
         get { UserDefaults.standard.bool(forKey: skipKey) }
@@ -323,6 +336,7 @@ final class AppState: ObservableObject {
     }
 
     func splashFinished() {
+        StartDiagnostics.shared.mark("intro klaar")
         markSplashDone()
         withAnimation(.easeInOut(duration: 0.5)) { stage = needsAuth ? .auth : .picker }
         SmokeTest.drive(self)
@@ -348,6 +362,7 @@ final class AppState: ObservableObject {
 
     /// Profiel gekozen ("Wie kijkt er?") → de server van dit profiel openen (standaard die van het hoofdaccount).
     func open(profile: ViewerProfile) {
+        StartDiagnostics.shared.mark("profiel")
         let store = CloudStore.shared
         store.selectProfile(profile)
         resumeLastChannelPending = PlayerSettings.resumeLastChannel
@@ -365,6 +380,7 @@ final class AppState: ObservableObject {
     }
 
     func open(_ p: PlaylistSource, thenShow itemID: String? = nil) {
+        StartDiagnostics.shared.mark("servers")
         lastPlaylistID = p.id
         let store = CloudStore.shared
         if store.isMainOrSolo {

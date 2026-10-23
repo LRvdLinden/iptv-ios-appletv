@@ -76,3 +76,97 @@ enum HomeRowOrder {
         return out
     }
 }
+
+// MARK: - Build 143: startdiagnose (mijlpalen, vorige start niet klaar, crash of hang)
+
+/// Pure logica van de startdiagnose (`StartDiagnostics` in Shared/App/StartDiagnostics.swift), ook in de zelftest.
+/// Alleen mijlpalen, tijden, build, OS en stack-symbolen: geen URL's, servernamen, gebruikersnamen of e-mail.
+enum StartDiag {
+    /// Mijlpaal: naam, seconden sinds de start en het geheugengebruik van de app op dat moment (MB, phys_footprint)
+    struct Mark: Codable, Equatable { var name: String; var t: Double; var mb: Int? = nil }
+    struct Record: Codable, Equatable {
+        var build: String
+        var os: String
+        var started: Double
+        var marks: [Mark] = []
+        /// Hoofdthread langer dan 10 s vast (gezien door de bewaking op de achtergrond)
+        var hang: Double? = nil
+        var hangAt: String? = nil
+        var finished = false
+        var crash: String? = nil
+        var stack: [String] = []
+        /// Hoogste geheugengebruik tijdens de start (MB)
+        var peakMB: Int? = nil
+    }
+    struct Problem: Codable, Equatable {
+        enum Kind: String, Codable { case crash, hang, notFinished }
+        var kind: Kind
+        var build: String
+        var os: String
+        var at: Double
+        var lastMark: String
+        var seconds: Double
+        var marks: [Mark]
+        var crash: String?
+        var stack: [String]
+        var peakMB: Int? = nil
+    }
+
+    static let hangLimit: Double = 10
+    static let finalMark = "klaar"
+
+    /// Wat er mis was met de vorige start (nil = die kwam gewoon bij "klaar", zonder crash of lange hang).
+    static func analyze(_ r: Record?, crashLog: String? = nil) -> Problem? {
+        guard let r else { return nil }
+        let stack = scrub(lines: (crashLog.map { $0.split(separator: "\n").map(String.init) } ?? []) + r.stack)
+        let last = r.marks.last?.name ?? "gestart"
+        let dur = r.marks.last?.t ?? 0
+        let crashName = r.crash ?? crashLog.flatMap { log in log.split(separator: "\n").first.map(String.init) }
+        if let c = crashName, !c.isEmpty {
+            return Problem(kind: .crash, build: r.build, os: r.os, at: r.started, lastMark: last, seconds: dur, marks: r.marks,
+                           crash: scrub(c), stack: Array(stack.prefix(60)), peakMB: r.peakMB)
+        }
+        if let h = r.hang, h >= hangLimit {
+            return Problem(kind: .hang, build: r.build, os: r.os, at: r.started, lastMark: r.hangAt ?? last, seconds: h,
+                           marks: r.marks, crash: nil, stack: [], peakMB: r.peakMB)
+        }
+        if !r.finished {
+            return Problem(kind: .notFinished, build: r.build, os: r.os, at: r.started, lastMark: last, seconds: dur,
+                           marks: r.marks, crash: nil, stack: [], peakMB: r.peakMB)
+        }
+        return nil
+    }
+
+    /// Tekst voor het scherm en het supportticket.
+    static func text(_ p: Problem) -> String {
+        var out: [String] = []
+        switch p.kind {
+        case .crash: out.append("Vorige start: gestopt (crash) na \(fmt(p.seconds)) s, bij \"\(p.lastMark)\"")
+        case .hang: out.append("Vorige start: hoofdthread \(fmt(p.seconds)) s vast bij \"\(p.lastMark)\" (watchdog-vermoeden)")
+        case .notFinished: out.append("Vorige start: niet klaar, laatste mijlpaal \"\(p.lastMark)\" na \(fmt(p.seconds)) s (gestopt door het systeem, bijv. geheugen of watchdog)")
+        }
+        if let m = p.peakMB { out.append("Geheugen: hoogste \(m) MB") }
+        out.append("Build \(p.build) · \(p.os)")
+        out.append("Mijlpalen: " + p.marks.map { m in "\(m.name) \(fmt(m.t))s" + (m.mb.map { " \($0)MB" } ?? "") }.joined(separator: " · "))
+        if let c = p.crash { out.append("Fout: \(c)") }
+        if !p.stack.isEmpty { out.append("Stack:"); out += p.stack }
+        return out.joined(separator: "\n")
+    }
+
+    private static func fmt(_ d: Double) -> String { String(format: "%.1f", d) }
+
+    /// Geen persoonsgegevens: e-mail, URL's, paden met gebruikersnaam en lange tekenreeksen tussen aanhalingstekens weg.
+    static func scrub(_ s: String) -> String {
+        var t = s
+        let rules: [(String, String)] = [
+            (#"[A-Za-z][A-Za-z0-9+.-]*://\S+"#, "<url>"),
+            (#"[^\s"'<>]+@[^\s"'<>]+\.[A-Za-z]{2,}"#, "<e>"),
+            (#"/(Users|home|var/mobile)/[^/\s]+"#, "/~"),
+            (#""[^"]{24,}""#, "\"…\""),
+        ]
+        for (p, r) in rules { t = t.replacingOccurrences(of: p, with: r, options: .regularExpression) }
+        return String(t.prefix(300))
+    }
+
+    static func scrub(lines: [String]) -> [String] { lines.map { scrub($0) }.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty } }
+}

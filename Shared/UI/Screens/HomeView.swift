@@ -114,7 +114,14 @@ struct HomeView: View {
         // Trakt-voortgang koppelen zodra de index er is of Trakt iets nieuws heeft (ook bij gewijzigd percentage)
         .task(id: TraktMatchKey(version: indexVersion, playback: trakt.playback)) { await matchTraktPlayback() }
         .task(id: playlists.libraryVersion) { if filter == .all { browse.refresh(playlists) } }
-        .onAppear { if filter == .all { browse.refresh(playlists) } }
+        .onAppear {
+            if filter == .all { browse.refresh(playlists) }
+            // build 143: startdiagnose (Home in beeld; 10 s later is de start klaar)
+            if filter == .all {
+                StartDiagnostics.shared.mark("home")
+                Task { try? await Task.sleep(nanoseconds: 10_000_000_000); StartDiagnostics.shared.mark("klaar") }
+            }
+        }
         // build 111: TMDB-rijen (12 uur bewaard) zodra de index er is; opnieuw bij ander profiel, taal of indeling
         .task(id: DiscoverKey(version: indexVersion, profile: store.activeProfileID, kinds: discoverKinds,
                               language: Localizer.shared.language)) { await loadDiscover() }
