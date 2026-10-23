@@ -645,7 +645,7 @@ De apps hoeven hier niets voor te veranderen. De website haalt vóór elke wijzi
 | `startScreen` | `"home"`, `"live"`, `"movies"` of `"series"` |
 | `hiddenTabs` | lijst met `"live"`, `"movies"`, `"series"` |
 | `introMusic` | vervallen: de intromuziek staat altijd aan. Nieuwe apps lezen dit veld niet meer en schrijven altijd `true` (oudere apps lezen het nog); niet verwijderen |
-| `refreshInterval` | de raw value van het verversbeleid (gelijk op iOS en Android) |
+| `refreshInterval` | de raw value van het verversbeleid (gelijk op iOS en Android). Apple vanaf build 145: niet meer lezen of schrijven (de vernieuwtermijn is vervallen; "Servers laden bij openen" is per apparaat, lokaal, niet gesynct); laten staan |
 | `categorySort` | `"standard"` of een andere sorteerwijze |
 | `parentalControl`, `parentalAutoLockAdult` | true/false (lezen: ook een object `parentalControl: {enabled, autoLockAdult}`) |
 | `traktScrobble`, `traktAskRating` | true/false |

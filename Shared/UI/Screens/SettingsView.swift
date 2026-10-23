@@ -16,7 +16,8 @@ struct AppSettingsView: View {
     /// Pushmeldingen (docs/PUSH.md): schakelaar met de systeemstatus (niet op Apple TV)
     @ObservedObject private var push = PushService.shared
     @AppStorage(TrackPreferences.subtitleModeKey) private var subtitleMode = TrackPreferences.SubtitleMode.whenNeeded.rawValue
-    @AppStorage("playlist.refresh") private var refreshPolicy = RefreshPolicy.daily.rawValue
+    /// Build 145: "Servers laden bij openen" (per apparaat, niet gesynct)
+    @AppStorage(StartLoad.key) private var startLoad = StartLoad.Mode.ask.rawValue
     @AppStorage("player.engine") private var engine = PlayerController.EngineChoice.auto.rawValue
     @AppStorage(SubtitleSize.key) private var subtitleSize = SubtitleSize.small.rawValue
     @AppStorage(TrackPreferences.audioKey) private var audioLanguage = ""
@@ -316,8 +317,8 @@ struct AppSettingsView: View {
 
     private var refreshSection: some View {
         Section {
-            Picker(L("Update playlists"), selection: $refreshPolicy) {
-                ForEach(RefreshPolicy.allCases) { Text($0.title).tag($0.rawValue) }
+            Picker(L("Load servers on open"), selection: $startLoad) {
+                ForEach(StartLoad.Mode.allCases) { Text($0.title).tag($0.rawValue) }
             }
             .pickerStyle(.menu)
             Button {
@@ -331,7 +332,7 @@ struct AppSettingsView: View {
             .disabled(playlists.refreshingAll)
             refreshStatus
         } header: { Text(L("Update playlists")) } footer: {
-            Text(L("Channels, movies, series and the TV guide are refreshed in the background at this interval."))
+            Text(L("Applies to this device only. Ask: after you choose a profile, Bingr asks whether to update your servers. You can always update manually."))
         }
     }
 

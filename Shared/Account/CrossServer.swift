@@ -397,13 +397,15 @@ final class CrossServer: ObservableObject {
 
     /// Catalogus van een server: de open bron uit het geheugen, anders de cache, anders (mag `fetch`) ophalen.
     /// Build 130: een oude cache (> 6 uur) van een niet-actieve server wordt meteen gebruikt en daarna stil op de
-    /// achtergrond ververst (`queueStale`); nooit met de laadindicator, die hoort alleen bij de actieve server.
+    /// achtergrond ververst (`queueStale`, sinds build 145 niet meer); nooit met de laadindicator, die hoort alleen bij
+    /// de actieve server. Zonder enige catalogus (nieuwe server) wordt hij nog wel opgehaald.
     private func catalog(_ s: PlaylistSource, fetch: Bool, force: Bool = false) async -> (Library, Date)? {
         if let pl = playlists, pl.source?.id == s.id, !pl.rawLibrary.isEmptyLibrary {
             return (pl.rawLibrary, Date(timeIntervalSince1970: Double(pl.libraryVersion)))
         }
         if let hit = await Task.detached(priority: .utility, operation: { PlaylistService.readAnyCatalog(s) }).value {
-            if fetch, Date().timeIntervalSince(hit.1) > Self.freshFor, s.id != playlists?.source?.id { queueStale(s.id) }
+            // build 145: een oude catalogus wordt gewoon gebruikt en niet meer stil op tijd ververst (alleen nog bij
+            // "Nu bijwerken", Altijd of handmatig, zie `StartLoad`)
             return hit
         }
         guard fetch else { return nil }

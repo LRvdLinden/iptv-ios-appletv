@@ -82,6 +82,12 @@ struct MainTabView: View {
         })
     }
 
+    /// Build 145: "Servers bijwerken?" alleen op het hoofdscherm, niet tijdens het afspelen of in multiview (dan komt
+    /// hij daarna terug)
+    private var showStartPrompt: Bool {
+        app.startPrompt && app.stage == .main && app.playing == nil && !app.showMultiview
+    }
+
     var body: some View {
         ZStack {
             TabView(selection: tabSelection) {
@@ -125,6 +131,18 @@ struct MainTabView: View {
             .toolbarBackground(.black.opacity(0.92), for: .tabBar)
             .toolbarBackground(.visible, for: .tabBar)
             #endif
+            #if os(tvOS)
+            // build 145: tijdens de vraag kan de focus alleen naar de knoppen van de vraag
+            .disabled(showStartPrompt)
+            #else
+            // build 145: alleen de knoppen sluiten de vraag (verdwijnt hij omdat er iets gaat spelen, dan komt hij terug)
+            .alert(L("Update servers?"), isPresented: Binding(get: { showStartPrompt }, set: { _ in })) {
+                Button(L("Update now")) { app.answerStartPrompt(update: true) }
+                Button(L("Later"), role: .cancel) { app.answerStartPrompt(update: false) }
+            } message: {
+                Text(L("Your saved list is ready. Do you want to update your servers now?"))
+            }
+            #endif
 
             if playlists.isLoading {
                 LoadingOverlay(text: playlists.loadingText, source: playlists.source)
@@ -137,8 +155,17 @@ struct MainTabView: View {
                     .allowsHitTesting(false)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
+            #if os(tvOS)
+            if showStartPrompt {
+                StartUpdatePromptTV(onUpdate: { app.answerStartPrompt(update: true) },
+                                    onLater: { app.answerStartPrompt(update: false) })
+                    .transition(.opacity)
+                    .zIndex(2)
+            }
+            #endif
         }
         .animation(.easeInOut, value: playlists.isLoading)
+        .animation(.easeInOut, value: showStartPrompt)
         .animation(.easeInOut, value: playlists.isRefreshing)
         .alert(L("Couldn't load playlist"), isPresented: Binding(get: { playlists.error != nil },
                                                                  set: { if !$0 { playlists.error = nil } })) {
@@ -270,6 +297,59 @@ private struct LinkSearch: Identifiable {
     let id = UUID()
     let query: String
 }
+
+#if os(tvOS)
+/// Build 145: "Servers bijwerken?" op de Apple TV: eigen venster, zodat de standaardfocus op "Later" ligt (bij een
+/// systeemmelding kiest tvOS zelf). De menuknop van de afstandsbediening = Later.
+private struct StartUpdatePromptTV: View {
+    let onUpdate: () -> Void
+    let onLater: () -> Void
+    private enum Choice: Hashable { case update, later }
+    @FocusState private var focus: Choice?
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.72).ignoresSafeArea()
+            VStack(spacing: 28) {
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .font(.system(size: 56, weight: .semibold))
+                    .foregroundStyle(Theme.red)
+                Text(L("Update servers?"))
+                    .font(.system(size: 44, weight: .bold))
+                    .foregroundStyle(.white)
+                    .multilineTextAlignment(.center)
+                Text(L("Your saved list is ready. Do you want to update your servers now?"))
+                    .font(.system(size: 28))
+                    .foregroundStyle(.white.opacity(0.85))
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 40) {
+                    Button(action: onUpdate) {
+                        Text(L("Update now")).font(.system(size: 28, weight: .semibold)).frame(minWidth: 300)
+                    }
+                    .focused($focus, equals: .update)
+                    Button(action: onLater) {
+                        Text(L("Later")).font(.system(size: 28, weight: .semibold)).frame(minWidth: 300)
+                    }
+                    .focused($focus, equals: .later)
+                }
+                .focusSection()
+                .padding(.top, 12)
+            }
+            .padding(60)
+            .frame(maxWidth: 1100)
+            .background(Theme.card, in: RoundedRectangle(cornerRadius: 32, style: .continuous))
+        }
+        .defaultFocus($focus, .later)
+        .onAppear {
+            // standaardfocus op "Later" (ook als de focus net nog op Home stond)
+            focus = .later
+            DispatchQueue.main.async { if focus != .update { focus = .later } }
+        }
+        .onExitCommand(perform: onLater)
+    }
+}
+#endif
 
 /// Klein "Bijwerken…"-label tijdens het verversen op de achtergrond.
 private struct UpdatingPill: View {

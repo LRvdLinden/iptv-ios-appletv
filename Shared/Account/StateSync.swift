@@ -92,7 +92,7 @@ final class StateSync {
     }
 
     /// 60: `subtitleLanguage: "off"` wordt `""` + `autoSubtitles: "off"`
-    nonisolated static let settingsFormat = 60
+    nonisolated static let settingsFormat = 145   // build 145: zonder refreshInterval
 
     /// Build 144: lokale sync-stand vergeten (de account is daarna de bron, zoals op een nieuw apparaat), zie
     /// `Keychain.settleBeforeSync`.
@@ -633,7 +633,8 @@ final class StateSync {
         if !(d.object(forKey: "ui.showSeries") as? Bool ?? true) { hidden.append("series") }
         shared["hiddenTabs"] = hidden
         shared["introMusic"] = true   // instelling vervallen: altijd aan (oudere apps lezen dit veld nog)
-        shared["refreshInterval"] = RefreshPolicy.current.rawValue
+        // build 145: `refreshInterval` niet meer schrijven: "Servers laden bij openen" is per apparaat (niet gesynct);
+        // bij het samenvoegen blijft de waarde van de server staan voor oudere apps en Android
         shared["parentalControl"] = store.parental.enabled
         shared["parentalAutoLockAdult"] = store.parental.autoLockAdult
         shared["traktScrobble"] = TraktSync.scrobbleEnabled
@@ -736,7 +737,7 @@ final class StateSync {
             setIfChanged(!v.contains("series"), "ui.showSeries")
         }
         // introMusic: niet meer lezen (intromuziek staat altijd aan)
-        if let v = shared["refreshInterval"] as? String, RefreshPolicy(rawValue: v) != nil { setIfChanged(v, "playlist.refresh") }
+        // build 145: `refreshInterval` niet meer lezen (de vernieuwtermijn is vervallen; "Servers laden bij openen" is per apparaat)
         if let p = shared["parentalControl"] as? [String: Any] {
             store.setSyncedParental(enabled: p["enabled"] as? Bool ?? store.parental.enabled,
                                     autoLockAdult: p["autoLockAdult"] as? Bool ?? store.parental.autoLockAdult)

@@ -277,24 +277,48 @@ eq(FirstSeen.newest([("a", nil), ("b", 300), ("c", nil), ("d", 900)], firstSeen:
    "provider-datum, anders eerste keer gezien; zonder tijd niet")
 eq(FirstSeen.newest([("x", 5), ("y", 5)], firstSeen: [:], limit: 1), ["x"], "gelijke tijd op id, limiet")
 
-// MARK: build 140: server automatisch vernieuwen
+// MARK: build 145: servers laden bij openen (Vragen / Altijd / Nooit)
 
-check(!AutoRefresh.isDue(policy: "manual", age: nil), "handmatig nooit")
-check(AutoRefresh.isDue(policy: "daily", age: nil), "geen cache = nu")
-check(AutoRefresh.isDue(policy: "daily", age: 25 * 3600), "dagelijks na 25 uur")
-check(!AutoRefresh.isDue(policy: "daily", age: 3 * 3600), "dagelijks niet na 3 uur")
-check(AutoRefresh.isDue(policy: "weekly", age: 8 * 86_400), "wekelijks na 8 dagen")
-check(!AutoRefresh.isDue(policy: "weekly", age: 2 * 86_400), "wekelijks niet na 2 dagen")
-check(AutoRefresh.isDue(policy: "launch", age: 120), "bij elke start")
-check(!AutoRefresh.isDue(policy: "launch", age: 120, periodic: true), "bij elke start: niet periodiek")
-check(AutoRefresh.isDue(policy: "garbage", age: 30 * 3600), "onbekend = dagelijks")
-let refNow = Date(timeIntervalSince1970: 1_000_000)
-let refServers: [(id: String, age: TimeInterval?)] = [("A", 108_000), ("B", 3_600), ("C", nil), ("D", 144_000)]
-eq(AutoRefresh.due(policy: "daily", servers: refServers,
-                   lastAttempt: ["D": refNow.addingTimeInterval(-60)], now: refNow, periodic: true),
-   ["A", "C"], "alle servers van het account die te oud zijn, niet net geprobeerd")
-eq(AutoRefresh.due(policy: "daily", servers: [(id: "D", age: TimeInterval(40 * 3600))], lastAttempt: ["D": refNow.addingTimeInterval(-3600)],
-                   now: refNow, periodic: true), ["D"], "na 15 minuten opnieuw proberen")
+eq(StartLoad.mode(nil), .ask, "standaard Vragen")
+eq(StartLoad.mode("garbage"), .ask, "onbekend = Vragen")
+eq(StartLoad.mode("never"), .never, "Nooit")
+for old in ["manual", "launch", "sixHours", "daily", "weekly", nil] as [String?] {
+    eq(StartLoad.migrated(legacy: old, current: nil), .ask, "oude termijn \(old ?? "-") wordt Vragen")
+}
+eq(StartLoad.migrated(legacy: "daily", current: "always"), .always, "al gekozen instelling blijft")
+eq(StartLoad.migrated(legacy: nil, current: "x"), .ask, "ongeldige nieuwe waarde = Vragen")
+// Vragen
+eq(StartLoad.decide(mode: .ask, hasCache: true, kids: false, decided: false), .ask, "Vragen met bewaarde lijst: vraag")
+eq(StartLoad.decide(mode: .ask, hasCache: false, kids: false, decided: false), .none, "geen cache: al geladen, geen vraag")
+eq(StartLoad.decide(mode: .ask, hasCache: true, kids: true, decided: false), .none, "kinderprofiel: Later")
+eq(StartLoad.decide(mode: .ask, hasCache: true, kids: false, decided: true), .none, "één keer per sessie")
+// Altijd
+eq(StartLoad.decide(mode: .always, hasCache: true, kids: false, decided: false), .update, "Altijd: meteen bijwerken")
+eq(StartLoad.decide(mode: .always, hasCache: true, kids: true, decided: false), .update, "Altijd ook bij een kinderprofiel")
+eq(StartLoad.decide(mode: .always, hasCache: false, kids: false, decided: false), .update, "Altijd zonder cache: de rest bijwerken")
+eq(StartLoad.decide(mode: .always, hasCache: true, kids: false, decided: true), .none, "Altijd: één keer per sessie")
+// Nooit
+eq(StartLoad.decide(mode: .never, hasCache: true, kids: false, decided: false), .none, "Nooit: niets")
+eq(StartLoad.decide(mode: .never, hasCache: false, kids: false, decided: false), .none, "Nooit zonder cache: alleen het laden zelf")
+// sessie
+check(StartLoad.consumes(mode: .ask, kids: false, decided: false), "vraag gesteld: sessie beslist")
+check(!StartLoad.consumes(mode: .ask, kids: true, decided: false), "kinderprofiel: vraag later bij een gewoon profiel")
+check(StartLoad.consumes(mode: .always, kids: true, decided: false), "Altijd bij kinderprofiel: beslist")
+check(!StartLoad.consumes(mode: .never, kids: true, decided: false), "Nooit bij kinderprofiel: niet beslist")
+check(StartLoad.consumes(mode: .never, kids: true, decided: true), "eenmaal beslist blijft beslist")
+// reeks: kinderprofiel, dan hoofdprofiel, dan terug uit de achtergrond / ander profiel
+do {
+    var decided = false
+    var asked = 0
+    for kids in [true, false, false, true, false] {
+        if StartLoad.decide(mode: .ask, hasCache: true, kids: kids, decided: decided) == .ask { asked += 1 }
+        decided = StartLoad.consumes(mode: .ask, kids: kids, decided: decided)
+    }
+    eq(asked, 1, "Vragen: precies één keer per keer openen")
+}
+check(StartLoad.skipJustLoaded(age: 30, justLoaded: true), "net geladen: niet nog eens")
+check(!StartLoad.skipJustLoaded(age: 30, justLoaded: false), "bewaarde lijst: wel bijwerken")
+check(!StartLoad.skipJustLoaded(age: 3600, justLoaded: true), "oud: wel bijwerken")
 
 // MARK: build 140: Voor jou
 

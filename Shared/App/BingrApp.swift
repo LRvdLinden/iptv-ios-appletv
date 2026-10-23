@@ -129,8 +129,7 @@ struct BingrApp: App {
                 // build 97: Trakt en de account-sync hooguit eens per minuut (op de Mac wordt de app bij elke
                 // wissel tussen apps weer actief)
                 if app.traktRefreshDue() { Task { await trakt.refresh() } }
-                // build 143: bij terugkeer naar de app (niet bij het starten: dan plant `select` het verversen)
-                if app.stage == .main && StartDiagnostics.shared.uptime > PlaylistService.autoSettle { Task { await app.playlists.refreshIfDue() } }
+                // build 145: bij terugkeer naar de app niets ophalen en niet opnieuw vragen (één keer per keer openen)
                 // gekoppelde apparaten: heartbeat (of registreren) bij terugkeer naar de voorgrond
                 if app.accountRefreshDue() {
                     Task {
@@ -231,9 +230,11 @@ final class AppState: ObservableObject {
         StateSync.shared.start()
         // build 128: één lijst over alle servers (opzoeken op andere servers, remap, catalogmeta); wacht tijdens afspelen
         CrossServer.shared.start(playlists: playlists, isPlaying: { [weak self] in self?.playing != nil })
-        // build 143: automatisch verversen alleen als het hoofdscherm open is en er niets speelt
-        playlists.isPlaying = { [weak self] in self?.playing != nil }
-        playlists.mayAutoRefresh = { [weak self] in self?.stage == .main }
+        // build 145: servers bijwerken alleen als het hoofdscherm open is en er niets speelt
+        playlists.isPlaying = { [weak self] in self?.playing != nil || self?.showMultiview == true }
+        playlists.mayLoad = { [weak self] in self?.stage == .main }
+        // build 145: de oude vernieuwtermijn wordt eenmalig "Vragen"
+        StartLoad.migrateIfNeeded()
         // servers uit de Bingr-account geïmporteerd, gewijzigd of verwijderd → bibliotheek laden of verversen
         SourceSync.shared.changes
             .receive(on: DispatchQueue.main)
@@ -277,9 +278,7 @@ final class AppState: ObservableObject {
         Task { @MainActor [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 300 * 1_000_000_000)
-                // build 140: "Server automatisch vernieuwen" ook als de app lang openstaat (bijv. Apple TV), voor alle
-                // servers van het account; los gestart, zodat de account-sync hieronder er niet op wacht
-                if let pl = self?.playlists, self?.stage == .main { Task { await pl.refreshAllIfDue(periodic: true) } }
+                // build 145: geen automatisch verversen op tijd meer (alleen de vraag bij het openen, Altijd of handmatig)
                 await AccountService.shared.checkDevice(force: true)
                 // account_data opnieuw lezen: nieuwe of verwijderde profielfoto's van andere apparaten
                 await ProfileSync.shared.syncNow()
@@ -378,9 +377,41 @@ final class AppState: ObservableObject {
         return store.mainSource
     }
 
+    // MARK: build 145: servers laden bij openen (Vragen / Altijd / Nooit, zie `StartLoad`)
+
+    /// De vraag "Servers bijwerken?" staat open (alleen op het hoofdscherm, niet tijdens het afspelen)
+    @Published var startPrompt = false
+    /// Deze sessie (dit keer openen) is er al beslist: niet opnieuw vragen, ook niet na terugkeer uit de achtergrond
+    private(set) var startDecided = false
+
+    /// Na het openen van een profiel, met de server open: vragen, meteen bijwerken of niets.
+    private func decideStart(hadCache: Bool) {
+        guard !Screenshots.isActive, stage == .main else { return }
+        let mode = StartLoad.current
+        let kids = CloudStore.shared.activeProfile?.kids ?? false
+        let d = StartLoad.decide(mode: mode, hasCache: hadCache, kids: kids, decided: startDecided)
+        startDecided = StartLoad.consumes(mode: mode, kids: kids, decided: startDecided)
+        if SmokeTest.isActive { SmokeTest.say("servers laden bij openen: \(mode.rawValue) → \(d)") }
+        switch d {
+        case .ask: startPrompt = true
+        case .update: playlists.startServerUpdate(justLoaded: !hadCache)
+        case .none: break
+        }
+    }
+
+    /// "Nu bijwerken" of "Later"
+    func answerStartPrompt(update: Bool) {
+        guard startPrompt else { return }
+        startPrompt = false
+        if update { playlists.startServerUpdate() }
+    }
+
     /// Profiel gekozen ("Wie kijkt er?") → de server van dit profiel openen (standaard die van het hoofdaccount).
     func open(profile: ViewerProfile) {
         StartDiagnostics.shared.mark("profiel")
+        // build 145: wissel van profiel: het bijwerken stopt, een open vraag verdwijnt
+        playlists.cancelServerUpdate()
+        startPrompt = false
         let store = CloudStore.shared
         store.selectProfile(profile)
         resumeLastChannelPending = PlayerSettings.resumeLastChannel
@@ -392,6 +423,8 @@ final class AppState: ObservableObject {
         if playlists.source?.id == src.id && (!playlists.library.isEmptyLibrary || playlists.isLoading) {
             withAnimation(.easeInOut(duration: 0.4)) { stage = .main }
             playlists.applyCustomizations()
+            // build 145: de lijst staat er al (bewaard of eerder geladen); wordt hij nog geladen, dan beslist `open(_:)`
+            if !playlists.isLoading { decideStart(hadCache: true) }
             return
         }
         open(src)
@@ -410,7 +443,13 @@ final class AppState: ObservableObject {
         }
         pendingItemID = itemID
         withAnimation(.easeInOut(duration: 0.4)) { stage = .main }
-        Task { await playlists.select(p) }
+        Task { [weak self] in
+            guard let self else { return }
+            await self.playlists.select(p)
+            // build 145: daarna (bewaarde lijst meteen in beeld, of zonder cache net geladen) vragen, bijwerken of niets
+            guard self.playlists.source?.id == p.id else { return }
+            self.decideStart(hadCache: self.playlists.lastSelectHadCache)
+        }
     }
 
     /// SourceSync heeft servers uit de Bingr-account toegepast. In de app: is de open server verwijderd of
@@ -449,6 +488,9 @@ final class AppState: ObservableObject {
     }
 
     func switchPlaylist() {
+        // build 145: nooit laden in de profielkeuze of op het pincodescherm
+        playlists.cancelServerUpdate()
+        startPrompt = false
         withAnimation(.easeInOut(duration: 0.35)) { stage = .picker }
     }
 

@@ -946,7 +946,15 @@
   "Sent as ticket #%@": "أُرسلت كتذكرة رقم %@",
   "Couldn't send. Try again later.": "تعذّر الإرسال. حاول لاحقًا.",
   "Sign in to send this to support.": "سجّل الدخول لإرسال هذا إلى الدعم.",
-  "Dismiss": "تجاهل"
+  "Dismiss": "تجاهل",
+  "Update servers?": "تحديث الخوادم؟",
+  "Your saved list is ready. Do you want to update your servers now?": "قائمتك المحفوظة جاهزة. هل تريد تحديث خوادمك الآن؟",
+  "Update now": "التحديث الآن",
+  "Later": "لاحقًا",
+  "Load servers on open": "تحميل الخوادم عند الفتح",
+  "Ask": "اسأل",
+  "Never, manually only": "أبدًا، يدويًا فقط",
+  "Applies to this device only. Ask: after you choose a profile, Bingr asks whether to update your servers. You can always update manually.": "ينطبق على هذا الجهاز فقط. اسأل: بعد اختيار ملف شخصي، يسألك Bingr عمّا إذا كنت تريد تحديث خوادمك. يمكنك التحديث يدويًا في أي وقت."
  },
  "de": {
   "%@ is now signed in.": "%@ ist jetzt angemeldet.",
@@ -1895,7 +1903,15 @@
   "Sent as ticket #%@": "Als Ticket #%@ gesendet",
   "Couldn't send. Try again later.": "Senden fehlgeschlagen. Versuche es später erneut.",
   "Sign in to send this to support.": "Melde dich an, um dies an den Support zu senden.",
-  "Dismiss": "Verwerfen"
+  "Dismiss": "Verwerfen",
+  "Update servers?": "Server aktualisieren?",
+  "Your saved list is ready. Do you want to update your servers now?": "Deine gespeicherte Liste ist bereit. Möchtest du deine Server jetzt aktualisieren?",
+  "Update now": "Jetzt aktualisieren",
+  "Later": "Später",
+  "Load servers on open": "Server beim Öffnen laden",
+  "Ask": "Fragen",
+  "Never, manually only": "Nie, nur manuell",
+  "Applies to this device only. Ask: after you choose a profile, Bingr asks whether to update your servers. You can always update manually.": "Gilt nur für dieses Gerät. Fragen: Nach der Profilauswahl fragt Bingr, ob deine Server aktualisiert werden sollen. Manuell aktualisieren geht immer."
  },
  "es": {
   "%@ is now signed in.": "%@ ya ha iniciado sesión.",
@@ -2844,7 +2860,15 @@
   "Sent as ticket #%@": "Enviado como ticket n.º %@",
   "Couldn't send. Try again later.": "No se pudo enviar. Inténtalo más tarde.",
   "Sign in to send this to support.": "Inicia sesión para enviarlo a soporte.",
-  "Dismiss": "Descartar"
+  "Dismiss": "Descartar",
+  "Update servers?": "¿Actualizar servidores?",
+  "Your saved list is ready. Do you want to update your servers now?": "Tu lista guardada está lista. ¿Quieres actualizar tus servidores ahora?",
+  "Update now": "Actualizar ahora",
+  "Later": "Más tarde",
+  "Load servers on open": "Cargar servidores al abrir",
+  "Ask": "Preguntar",
+  "Never, manually only": "Nunca, solo manualmente",
+  "Applies to this device only. Ask: after you choose a profile, Bingr asks whether to update your servers. You can always update manually.": "Solo se aplica a este dispositivo. Preguntar: después de elegir un perfil, Bingr pregunta si quieres actualizar tus servidores. Siempre puedes actualizar manualmente."
  },
  "fr": {
   "%@ is now signed in.": "%@ est maintenant connecté.",
@@ -3793,7 +3817,15 @@
   "Sent as ticket #%@": "Envoyé comme ticket n° %@",
   "Couldn't send. Try again later.": "Échec de l'envoi. Réessaie plus tard.",
   "Sign in to send this to support.": "Connecte-toi pour l'envoyer à l'assistance.",
-  "Dismiss": "Effacer"
+  "Dismiss": "Effacer",
+  "Update servers?": "Mettre à jour les serveurs ?",
+  "Your saved list is ready. Do you want to update your servers now?": "Votre liste enregistrée est prête. Voulez-vous mettre à jour vos serveurs maintenant ?",
+  "Update now": "Mettre à jour",
+  "Later": "Plus tard",
+  "Load servers on open": "Charger les serveurs à l’ouverture",
+  "Ask": "Demander",
+  "Never, manually only": "Jamais, manuellement uniquement",
+  "Applies to this device only. Ask: after you choose a profile, Bingr asks whether to update your servers. You can always update manually.": "S’applique uniquement à cet appareil. Demander : après le choix d’un profil, Bingr demande s’il faut mettre à jour vos serveurs. Vous pouvez toujours les mettre à jour manuellement."
  },
  "it": {
   "%@ is now signed in.": "%@ ha effettuato l’accesso.",
@@ -4742,7 +4774,15 @@
   "Sent as ticket #%@": "Inviato come ticket n. %@",
   "Couldn't send. Try again later.": "Invio non riuscito. Riprova più tardi.",
   "Sign in to send this to support.": "Accedi per inviarlo all'assistenza.",
-  "Dismiss": "Ignora"
+  "Dismiss": "Ignora",
+  "Update servers?": "Aggiornare i server?",
+  "Your saved list is ready. Do you want to update your servers now?": "Il tuo elenco salvato è pronto. Vuoi aggiornare i tuoi server ora?",
+  "Update now": "Aggiorna ora",
+  "Later": "Più tardi",
+  "Load servers on open": "Carica i server all’apertura",
+  "Ask": "Chiedi",
+  "Never, manually only": "Mai, solo manualmente",
+  "Applies to this device only. Ask: after you choose a profile, Bingr asks whether to update your servers. You can always update manually.": "Vale solo per questo dispositivo. Chiedi: dopo aver scelto un profilo, Bingr chiede se aggiornare i tuoi server. Puoi sempre aggiornare manualmente."
  },
  "nl": {
   "%@ is now signed in.": "%@ is nu ingelogd.",
@@ -5691,7 +5731,15 @@
   "Sent as ticket #%@": "Verstuurd als ticket #%@",
   "Couldn't send. Try again later.": "Versturen lukte niet. Probeer het later opnieuw.",
   "Sign in to send this to support.": "Log in om dit naar support te sturen.",
-  "Dismiss": "Wissen"
+  "Dismiss": "Wissen",
+  "Update servers?": "Servers bijwerken?",
+  "Your saved list is ready. Do you want to update your servers now?": "Je bewaarde lijst staat klaar. Wil je je servers nu bijwerken?",
+  "Update now": "Nu bijwerken",
+  "Later": "Later",
+  "Load servers on open": "Servers laden bij openen",
+  "Ask": "Vragen",
+  "Never, manually only": "Nooit, alleen handmatig",
+  "Applies to this device only. Ask: after you choose a profile, Bingr asks whether to update your servers. You can always update manually.": "Geldt alleen voor dit apparaat. Vragen: na het kiezen van een profiel vraagt Bingr of je je servers wilt bijwerken. Handmatig bijwerken kan altijd."
  },
  "pl": {
   "%@ is now signed in.": "%@ jest teraz zalogowany.",
@@ -6640,7 +6688,15 @@
   "Sent as ticket #%@": "Wysłano jako zgłoszenie #%@",
   "Couldn't send. Try again later.": "Nie udało się wysłać. Spróbuj później.",
   "Sign in to send this to support.": "Zaloguj się, aby wysłać to do pomocy.",
-  "Dismiss": "Odrzuć"
+  "Dismiss": "Odrzuć",
+  "Update servers?": "Zaktualizować serwery?",
+  "Your saved list is ready. Do you want to update your servers now?": "Twoja zapisana lista jest gotowa. Czy chcesz teraz zaktualizować serwery?",
+  "Update now": "Aktualizuj teraz",
+  "Later": "Później",
+  "Load servers on open": "Wczytuj serwery przy otwieraniu",
+  "Ask": "Pytaj",
+  "Never, manually only": "Nigdy, tylko ręcznie",
+  "Applies to this device only. Ask: after you choose a profile, Bingr asks whether to update your servers. You can always update manually.": "Dotyczy tylko tego urządzenia. Pytaj: po wybraniu profilu Bingr pyta, czy zaktualizować serwery. Zawsze możesz zaktualizować ręcznie."
  },
  "pt": {
   "%@ is now signed in.": "%@ já tem sessão iniciada.",
@@ -7589,7 +7645,15 @@
   "Sent as ticket #%@": "Enviado como pedido n.º %@",
   "Couldn't send. Try again later.": "Não foi possível enviar. Tenta mais tarde.",
   "Sign in to send this to support.": "Inicia sessão para enviar ao suporte.",
-  "Dismiss": "Descartar"
+  "Dismiss": "Descartar",
+  "Update servers?": "Atualizar servidores?",
+  "Your saved list is ready. Do you want to update your servers now?": "A sua lista guardada está pronta. Quer atualizar os seus servidores agora?",
+  "Update now": "Atualizar agora",
+  "Later": "Mais tarde",
+  "Load servers on open": "Carregar servidores ao abrir",
+  "Ask": "Perguntar",
+  "Never, manually only": "Nunca, só manualmente",
+  "Applies to this device only. Ask: after you choose a profile, Bingr asks whether to update your servers. You can always update manually.": "Aplica-se apenas a este dispositivo. Perguntar: depois de escolher um perfil, o Bingr pergunta se quer atualizar os seus servidores. Pode sempre atualizar manualmente."
  },
  "tr": {
   "%@ is now signed in.": "%@ artık oturum açtı.",
@@ -8538,7 +8602,15 @@
   "Sent as ticket #%@": "#%@ numaralı talep olarak gönderildi",
   "Couldn't send. Try again later.": "Gönderilemedi. Daha sonra tekrar dene.",
   "Sign in to send this to support.": "Bunu desteğe göndermek için giriş yap.",
-  "Dismiss": "Kapat"
+  "Dismiss": "Kapat",
+  "Update servers?": "Sunucular güncellensin mi?",
+  "Your saved list is ready. Do you want to update your servers now?": "Kayıtlı listen hazır. Sunucularını şimdi güncellemek ister misin?",
+  "Update now": "Şimdi güncelle",
+  "Later": "Daha sonra",
+  "Load servers on open": "Açılışta sunucuları yükle",
+  "Ask": "Sor",
+  "Never, manually only": "Asla, yalnızca elle",
+  "Applies to this device only. Ask: after you choose a profile, Bingr asks whether to update your servers. You can always update manually.": "Yalnızca bu cihaz için geçerlidir. Sor: bir profil seçtikten sonra Bingr sunucularını güncellemek isteyip istemediğini sorar. Her zaman elle güncelleyebilirsin."
  },
  "zh-Hans": {
   "%@ is now signed in.": "%@ 现已登录。",
@@ -9487,6 +9559,14 @@
   "Sent as ticket #%@": "已作为工单 #%@ 发送",
   "Couldn't send. Try again later.": "无法发送。请稍后再试。",
   "Sign in to send this to support.": "登录后即可发送给支持团队。",
-  "Dismiss": "清除"
+  "Dismiss": "清除",
+  "Update servers?": "更新服务器？",
+  "Your saved list is ready. Do you want to update your servers now?": "你保存的列表已就绪。要现在更新服务器吗？",
+  "Update now": "立即更新",
+  "Later": "稍后",
+  "Load servers on open": "打开时加载服务器",
+  "Ask": "询问",
+  "Never, manually only": "从不，仅手动",
+  "Applies to this device only. Ask: after you choose a profile, Bingr asks whether to update your servers. You can always update manually.": "仅适用于此设备。询问：选择个人资料后，Bingr 会询问是否更新服务器。你随时可以手动更新。"
  }
 }

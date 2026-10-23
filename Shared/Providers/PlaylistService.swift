@@ -101,6 +101,9 @@ final class PlaylistService: ObservableObject {
     // MARK: laden
 
     func select(_ s: PlaylistSource, forceRefresh: Bool = false) async {
+        // build 145: een andere server gekozen → het bijwerken bij het openen stopt
+        if source?.id != s.id { cancelServerUpdate() }
+        lastSelectHadCache = false
         source = s
         // App Store-screenshots: de demo-bibliotheek uit het geheugen, geen netwerk en geen cache
         if Screenshots.isActive {
@@ -123,9 +126,8 @@ final class PlaylistService: ObservableObject {
         if SmokeTest.isActive { SmokeTest.say("bewaarde lijst: \(cached != nil ? "ja" : "nee (ophalen)")") }
         if let cached {
             setRaw(cached)
-            // build 140: volgens de instelling alle servers van het account die aan de beurt zijn. Build 141: de open
-            // server meteen, de andere pas later en één voor één (zie `refreshIfDue`)
-            scheduleAutoRefresh()
+            // build 145: niets ophalen; wat er daarna gebeurt (vragen, altijd, nooit) beslist AppState (`StartLoad`)
+            lastSelectHadCache = true
             return
         }
         setRaw(Library())
@@ -204,6 +206,8 @@ final class PlaylistService: ObservableObject {
                 say(L("Fetching catalogs…"))
                 lib = await StremioClient(addons: addons).library()
             }
+            // build 145: gestopt (wissel van profiel of server, time-out): niets half bijgewerkts wegschrijven
+            try Task.checkCancellation()
             if source?.id == s.id {
                 setRaw(lib)
                 writeCache(s, lib)
@@ -215,6 +219,8 @@ final class PlaylistService: ObservableObject {
             return true
         } catch {
             guard source?.id == s.id else { return false }
+            // build 145: gestopt is geen fout
+            if error is CancellationError || (error as? URLError)?.code == .cancelled { return false }
             if rawLibrary.channels.isEmpty && rawLibrary.movies.isEmpty && rawLibrary.series.isEmpty {
                 self.error = error.localizedDescription
             }
@@ -222,99 +228,62 @@ final class PlaylistService: ObservableObject {
         }
     }
 
-    /// Bij terugkeren in de app: verversen als het volgens de instelling tijd is.
-    /// Build 140: niet alleen de open server, maar alle servers van het account (zoals "Nu vernieuwen" sinds build 130).
-    ///
-    /// Build 141 (crash op Apple TV, build 140): bij het openen van de app ververste build 140 meteen álle servers
-    /// waarvan de lijst te oud was, ook vóór er een server open was (de app wordt bij het starten "actief"). Op een Apple
-    /// TV, die meestal één keer per dag opent, zijn dat elke keer alle servers: ophalen, inlezen en de gids van alle
-    /// grote servers tegelijk met het opstarten van de app. Het geheugen liep daardoor zo op dat tvOS de app direct na
-    /// het openen stopte. Nu: alleen de open server meteen (zoals tot build 139); de andere servers pas als de app al een
-    /// tijd draait, één voor één en niet tijdens het afspelen (`scheduleOthers`).
-    func refreshIfDue() async {
-        guard !Screenshots.isActive, let s = source else { return }
-        let due = AutoRefresh.due(policy: RefreshPolicy.current.rawValue, servers: [(id: s.id.uuidString, age: cacheAge(s))],
-                                  lastAttempt: autoRefreshAttempt, now: Date(), periodic: false)
-        if !due.isEmpty, !isLoading, !autoRefreshing, !refreshingAll {
-            autoRefreshing = true
-            autoRefreshAttempt[s.id.uuidString] = Date()
-            let ok = await refresh(s, showSpinner: false)
-            autoRefreshing = false
-            if ok { autoRefreshAttempt[s.id.uuidString] = nil; CrossServer.shared.serversRefreshed([s.id]) }
-        }
-        scheduleOthers()
-    }
+    /// Build 145: had de laatst gekozen server een bewaarde lijst? (Anders is hij net met de laadmelding geladen.)
+    private(set) var lastSelectHadCache = false
 
-    /// Build 143: automatisch verversen na het openen met een bewaarde lijst. Bij het openen wordt NIETS opgehaald: de
-    /// bewaarde lijst staat meteen in beeld. Pas als de app al `autoSettle` seconden draait, er niets speelt en het
-    /// hoofdscherm open is: eerst de open server (alleen als die ouder is dan de ingestelde termijn), daarna de andere
-    /// één voor één (`scheduleOthers`). Een nieuwe server of profiel annuleert het.
-    static var autoSettle: TimeInterval { SmokeTest.isActive ? 40 : 45 }
-    private var autoTask: Task<Void, Never>?
-    func scheduleAutoRefresh() {
-        autoTask?.cancel()
-        othersTask?.cancel(); othersTask = nil
-        autoTask = Task { @MainActor [weak self] in
-            while !Task.isCancelled {
-                guard let self else { return }
-                let up = StartDiagnostics.shared.uptime
-                if up >= Self.autoSettle, !(self.isPlaying?() ?? false), self.mayAutoRefresh?() ?? true { break }
-                try? await Task.sleep(nanoseconds: UInt64(max(2, Self.autoSettle - up) * 1_000_000_000))
-            }
-            guard !Task.isCancelled, let self else { return }
-            await self.refreshIfDue()
-        }
-    }
-    /// Wordt er iets afgespeeld / mag het nu (hoofdscherm open)? Gezet door AppState.
+    /// Wordt er iets afgespeeld / mag er nu geladen worden (hoofdscherm open, niet in de profielkeuze of op het
+    /// pincodescherm)? Gezet door AppState.
     var isPlaying: (() -> Bool)?
-    var mayAutoRefresh: (() -> Bool)?
+    var mayLoad: (() -> Bool)?
 
-    /// Build 141: de andere servers pas na `othersDelay` seconden (als de app dan nog openstaat), via
-    /// `refreshAllIfDue` (één voor één, niet tijdens het afspelen, met een time-out).
-    /// (in de start-rooktest korter, zodat het verversen van de grote servers binnen de test valt)
-    static var othersDelay: TimeInterval { SmokeTest.isActive ? 40 : 120 }
-    private var othersTask: Task<Void, Never>?
-    private func scheduleOthers() {
-        guard othersTask == nil, CloudStore.shared.playlists.count > 1 else { return }
-        othersTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: UInt64(Self.othersDelay * 1_000_000_000))
-            guard let self, !Task.isCancelled else { return }
-            if self.isPlaying?() ?? false { self.othersTask = nil; self.scheduleOthers(); return }
-            await self.refreshAllIfDue()
-            self.othersTask = nil
+    /// Build 145: "Servers bijwerken?" → Nu bijwerken, of de instelling Altijd: alle servers van het account, één voor
+    /// één. Eerst de open server, op de achtergrond (het "Bijwerken"-pilletje; Home blijft bruikbaar), daarna de andere.
+    /// Nooit tijdens het afspelen of buiten het hoofdscherm (dan wachten), met een time-out per server. Een wissel van
+    /// profiel of server stopt het (`cancelServerUpdate`). Er wordt niets automatisch op tijd ververst.
+    @Published private(set) var updatingServers = false
+    private var updateTask: Task<Void, Never>?
+    /// Welke ronde de huidige is (een gestopte ronde ruimt na afloop niet de nieuwe op)
+    private var updateRound = 0
+
+    /// `justLoaded`: de open server is net (zonder bewaarde lijst) geladen; die niet meteen nog een keer.
+    func startServerUpdate(justLoaded: Bool = false) {
+        guard updateTask == nil, !refreshingAll, !Screenshots.isActive else { return }
+        updatingServers = true
+        updateRound &+= 1
+        let round = updateRound
+        updateTask = Task { @MainActor [weak self] in
+            await self?.runServerUpdate(justLoaded: justLoaded)
+            guard let self, self.updateRound == round else { return }
+            self.updateTask = nil
+            self.updatingServers = false
         }
     }
 
-    /// Build 140: laatste mislukte poging per server (niet vaker dan eens per 15 minuten opnieuw)
-    private var autoRefreshAttempt: [String: Date] = [:]
-    private var autoRefreshing = false
+    /// Stoppen (wissel van profiel of server, naar "Wie kijkt er?", of handmatig alles verversen).
+    func cancelServerUpdate() {
+        updateTask?.cancel()
+        updateTask = nil
+        updatingServers = false
+    }
 
-    /// Build 140: "Server automatisch vernieuwen" (dagelijks, wekelijks …): elke server van het account waarvan de
-    /// bewaarde lijst te oud is, verversen. De open server eerst; de andere rustig op de achtergrond (niet tijdens het
-    /// afspelen, met een time-out). Loopt bij het openen van een server, bij terugkeer naar de voorgrond en
-    /// (`periodic`) elke 5 minuten zolang de app openstaat — ook na een herstart, want de leeftijd komt van de cache.
-    func refreshAllIfDue(periodic: Bool = false) async {
-        guard !Screenshots.isActive, !autoRefreshing, !refreshingAll, !isLoading else { return }
+    private func runServerUpdate(justLoaded: Bool) async {
         let all = CloudStore.shared.playlists
         let activeID = source?.id
         let ordered = all.filter { $0.id == activeID } + all.filter { $0.id != activeID }
-        let due = AutoRefresh.due(policy: RefreshPolicy.current.rawValue,
-                                  servers: ordered.map { (id: $0.id.uuidString, age: cacheAge($0)) },
-                                  lastAttempt: autoRefreshAttempt, now: Date(), periodic: periodic)
-        guard !due.isEmpty else { return }
-        autoRefreshing = true
-        defer { autoRefreshing = false }
         var done: [UUID] = []
-        for id in due {
-            guard let p = CloudStore.shared.playlists.first(where: { $0.id.uuidString == id }) else { continue }
-            autoRefreshAttempt[id] = Date()
-            let isActive = p.id == source?.id
-            if !isActive { await CrossServer.shared.waitUntilNotPlaying() }
-            let ok = await CrossServer.withTimeout(isActive ? 300 : 120, { await self.refresh(p, showSpinner: false) }) ?? false
-            if ok {
-                done.append(p.id)
-                autoRefreshAttempt[id] = nil
+        for p in ordered {
+            // niet tijdens het afspelen, niet in de profielkeuze of op het pincodescherm
+            while !Task.isCancelled, (isPlaying?() ?? false) || !(mayLoad?() ?? true) {
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
             }
+            guard !Task.isCancelled else { break }
+            // de server kan intussen verwijderd zijn
+            guard CloudStore.shared.playlists.contains(where: { $0.id == p.id }) else { continue }
+            let isActive = p.id == source?.id
+            if isActive, StartLoad.skipJustLoaded(age: cacheAge(p), justLoaded: justLoaded) { continue }
+            // één server tegelijk: dit wacht tot hij klaar is (of de time-out)
+            let ok = await CrossServer.withTimeout(isActive ? 300 : 120, { await self.refresh(p, showSpinner: false) }) ?? false
+            if ok { done.append(p.id) }
         }
         if !done.isEmpty { CrossServer.shared.serversRefreshed(done) }
     }
@@ -334,6 +303,7 @@ final class PlaylistService: ObservableObject {
     /// anders op de achtergrond met het "Bijwerken"-pilletje.
     func refreshAll(forceActive: Bool = false) async {
         guard !refreshingAll, !Screenshots.isActive else { return }
+        cancelServerUpdate()   // build 145: handmatig gaat voor (één server tegelijk)
         refreshingAll = true
         refreshFailed = []
         defer { refreshingAll = false; refreshProgress = nil }
@@ -991,28 +961,25 @@ extension PlaylistService {
     }
 }
 
-/// Hoe vaak afspeellijsten (incl. gids) automatisch ververst worden.
-enum RefreshPolicy: String, CaseIterable, Identifiable {
-    case manual, launch, sixHours, daily, weekly
-    var id: String { rawValue }
+/// Build 145: "Servers laden bij openen" (per apparaat, niet gesynct), zie `StartLoad` (Build145.swift).
+extension StartLoad {
+    static var current: Mode { mode(UserDefaults.standard.string(forKey: key)) }
 
-    static var current: RefreshPolicy {
-        RefreshPolicy(rawValue: UserDefaults.standard.string(forKey: "playlist.refresh") ?? "") ?? .daily
+    /// Eenmalig: de oude vernieuwtermijn (`playlist.refresh`) wordt Vragen; de oude sleutel gaat weg.
+    static func migrateIfNeeded(_ d: UserDefaults = .standard) {
+        guard !d.bool(forKey: migratedKey) else { return }
+        d.set(migrated(legacy: d.string(forKey: legacyKey), current: d.string(forKey: key)).rawValue, forKey: key)
+        d.removeObject(forKey: legacyKey)
+        d.set(true, forKey: migratedKey)
     }
+}
 
+extension StartLoad.Mode {
     var title: String {
         switch self {
-        case .manual: return L("Manually")
-        case .launch: return L("Every time the app opens")
-        case .sixHours: return L("Every 6 hours")
-        case .daily: return L("Daily")
-        case .weekly: return L("Weekly")
+        case .ask: return L("Ask")
+        case .always: return L("Always")
+        case .never: return L("Never, manually only")
         }
-    }
-
-    /// Build 140: dezelfde regels als `AutoRefresh.isDue` (Build140.swift, getest in de zelftest)
-    func isDue(age: TimeInterval?) -> Bool {
-        guard let age else { return self != .manual }
-        return AutoRefresh.isDue(policy: rawValue, age: age)
     }
 }

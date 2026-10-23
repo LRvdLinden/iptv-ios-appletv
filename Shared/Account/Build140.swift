@@ -279,37 +279,6 @@ enum FirstSeen {
     }
 }
 
-// MARK: - Server automatisch vernieuwen
-
-enum AutoRefresh {
-    /// Na een mislukte poging niet vaker dan eens per 15 minuten opnieuw
-    static let retryAfter: TimeInterval = 15 * 60
-
-    /// Wanneer een cache van deze leeftijd ververst moet worden. `policy` = de raw value van `RefreshPolicy`
-    /// (manual, launch, sixHours, daily, weekly). `periodic`: de controle terwijl de app openstaat; "bij elke start"
-    /// telt dan niet (anders elke minuut).
-    static func isDue(policy: String, age: TimeInterval?, periodic: Bool = false) -> Bool {
-        switch policy {
-        case "manual": return false
-        case "launch": return !periodic && (age ?? .infinity) > 60
-        case "sixHours": return (age ?? .infinity) > 6 * 3600
-        case "weekly": return (age ?? .infinity) > 7 * 24 * 3600
-        default: return (age ?? .infinity) > 24 * 3600   // daily (standaard)
-        }
-    }
-
-    /// Welke servers nu ververst moeten worden: alle servers van het account waarvan de cache te oud is (of ontbreekt),
-    /// behalve die net (binnen `retryAfter`) geprobeerd zijn. De volgorde blijft die van `servers`.
-    static func due(policy: String, servers: [(id: String, age: TimeInterval?)], lastAttempt: [String: Date],
-                    now: Date, periodic: Bool) -> [String] {
-        servers.filter { s in
-            guard isDue(policy: policy, age: s.age, periodic: periodic) else { return false }
-            if let t = lastAttempt[s.id], now.timeIntervalSince(t) < retryAfter { return false }
-            return true
-        }.map(\.id)
-    }
-}
-
 // MARK: - Voor jou: welke titels het actieve profiel keek
 
 enum ForYouSeeds {
