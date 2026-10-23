@@ -92,6 +92,9 @@ struct LinkTVView: View {
     @State private var code = ""
     @State private var result: String?
     @State private var failed = false
+    /// build 141: apparaat bij de code, wacht op bevestiging
+    @State private var pending: AccountService.TVCodeInfo?
+    @State private var pendingCode = ""
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -118,22 +121,58 @@ struct LinkTVView: View {
                 }
                 .disabled(AccountService.normalizeCode(code).count < 4 || account.isBusy)
             } footer: {
-                if let result {
-                    Label(result, systemImage: failed ? "exclamationmark.circle.fill" : "checkmark.circle.fill")
-                        .foregroundStyle(failed ? AuthForm.errorColor : Theme.green)
+                VStack(alignment: .leading, spacing: 8) {
+                    // build 141: waarschuwing tegen doorgestuurde codes
+                    Label(L("Only enter a code that is shown on your own TV."), systemImage: "exclamationmark.shield")
+                        .foregroundStyle(Theme.secondary)
+                    if let result {
+                        Label(result, systemImage: failed ? "exclamationmark.circle.fill" : "checkmark.circle.fill")
+                            .foregroundStyle(failed ? AuthForm.errorColor : Theme.green)
+                    }
                 }
             }
         }
         .navigationTitle(L("Link a TV"))
         .onAppear { focused = true }
+        .alert(L("Give this device access?"), isPresented: Binding(get: { pending != nil }, set: { if !$0 { pending = nil } }),
+               presenting: pending) { _ in
+            Button(L("Link")) { approve(pendingCode) }
+            Button(L("Cancel"), role: .cancel) { pendingCode = "" }
+        } message: { info in
+            Text(L("“%@” (code created %@) gets full access to your Bingr account.", deviceName(info), ageText(info.ageSeconds))
+                 + "\n\n" + L("Only enter a code that is shown on your own TV. Never enter a code someone else sent you."))
+        }
     }
 
+    private func deviceName(_ i: AccountService.TVCodeInfo) -> String {
+        i.label.caseInsensitiveCompare(i.device) == .orderedSame ? i.device : "\(i.label) · \(i.device)"
+    }
+
+    private func ageText(_ s: Int) -> String { s < 60 ? L("just now") : L("%d min ago", s / 60) }
+
+    /// build 141: eerst het apparaat bij de code opvragen en laten bevestigen, pas daarna goedkeuren.
     private func link() {
         guard !account.isBusy, AccountService.normalizeCode(code).count >= 4 else { return }
         result = nil
+        let c = code
         Task { @MainActor in
             do {
-                let device = try await account.approveTV(code: code)
+                let info = try await account.tvCodeInfo(code: c)
+                pendingCode = c
+                pending = info
+            } catch {
+                failed = true
+                result = error.localizedDescription
+            }
+        }
+    }
+
+    private func approve(_ c: String) {
+        pendingCode = ""
+        guard !c.isEmpty else { return }
+        Task { @MainActor in
+            do {
+                let device = try await account.approveTV(code: c)
                 failed = false
                 result = L("%@ is now signed in.", device)
                 code = ""

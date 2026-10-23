@@ -16,14 +16,63 @@ final class ParentalControl: ObservableObject {
 
     func setPIN(_ pin: String?) { Keychain.set(pin, for: pinKey) }
 
+    init() { loadAttempts() }
+
     func verify(_ pin: String) -> Bool {
-        guard let stored = Keychain.get(pinKey), stored == pin else { return false }
+        guard attempt({ Keychain.get(pinKey).map { $0 == pin } ?? false }) else { return false }
         unlock()
         return true
     }
 
     /// Alleen controleren (één titel toestaan), zónder de hele bibliotheek te ontgrendelen.
-    func check(_ pin: String) -> Bool { Keychain.get(pinKey) == pin }
+    func check(_ pin: String) -> Bool { attempt { Keychain.get(pinKey).map { $0 == pin } ?? false } }
+
+    // MARK: wachttijd na foute pincodes (build 141)
+    // Na 5 foute pogingen een oplopende wachttijd (30 s, 1 min, 5 min, 15 min, daarna 1 uur per poging), voor alle
+    // pincodes samen. Alleen op dit apparaat bijgehouden (sleutelhanger, niet gesynchroniseerd), zodat opnieuw
+    // starten hem niet wist. Een goede pincode zet de teller terug op nul.
+
+    /// Tot wanneer er geen nieuwe poging mag (nil = nu al).
+    @Published private(set) var blockedUntil: Date?
+    private var failures = 0
+    private static let attemptsKey = "pin.attempts"
+    static let freeAttempts = 5
+    private static let delays: [TimeInterval] = [30, 60, 5 * 60, 15 * 60, 60 * 60]
+
+    /// Seconden tot een nieuwe poging mag (0 = nu). Nooit langer dan de langste wachttijd (klok teruggezet).
+    var waitRemaining: TimeInterval {
+        guard let u = blockedUntil else { return 0 }
+        return max(0, min(u.timeIntervalSinceNow, Self.delays[Self.delays.count - 1]))
+    }
+
+    /// Eén poging: tijdens de wachttijd altijd fout (zonder te vergelijken), daarna tellen.
+    private func attempt(_ match: () -> Bool) -> Bool {
+        guard waitRemaining <= 0 else { return false }
+        let ok = match()
+        if ok {
+            if failures != 0 || blockedUntil != nil { failures = 0; blockedUntil = nil; saveAttempts() }
+        } else {
+            failures += 1
+            if failures >= Self.freeAttempts {
+                let step = min(failures - Self.freeAttempts, Self.delays.count - 1)
+                blockedUntil = Date().addingTimeInterval(Self.delays[step])
+            }
+            saveAttempts()
+        }
+        return ok
+    }
+
+    private func loadAttempts() {
+        guard let s = Keychain.getLocalOnly(Self.attemptsKey) else { return }
+        let parts = s.split(separator: "|")
+        failures = parts.first.flatMap { Int($0) } ?? 0
+        if parts.count > 1, let t = Double(parts[1]), t > 0 { blockedUntil = Date(timeIntervalSince1970: t) }
+    }
+
+    private func saveAttempts() {
+        let value = failures == 0 ? nil : "\(failures)|\(blockedUntil?.timeIntervalSince1970 ?? 0)"
+        Keychain.setLocalOnly(value, for: Self.attemptsKey)
+    }
 
     /// 30 min ontgrendelen; daarna gaat het slot vanzelf weer dicht (en wordt de bibliotheek opnieuw gefilterd).
     private func unlock() {
@@ -50,7 +99,7 @@ final class ParentalControl: ObservableObject {
     func setPIN(_ pin: String?, profile: UUID) { Keychain.set(pin, for: Self.pinKey(for: profile)); objectWillChange.send() }
     /// Juiste pincode voor dit profiel? (Bij het hoofdaccount ook meteen 30 min ontgrendelen.)
     func verify(_ pin: String, profile: UUID) -> Bool {
-        guard let stored = Keychain.get(Self.pinKey(for: profile)), stored == pin else { return false }
+        guard attempt({ Keychain.get(Self.pinKey(for: profile)).map { $0 == pin } ?? false }) else { return false }
         if CloudStore.shared.mainProfileID == profile { unlock() }
         return true
     }
@@ -171,10 +220,11 @@ final class ParentalControl: ObservableObject {
         return !isAdultGroup(g) && kidsWords.contains { l.contains($0) }
     }
 
-    func toggleLock(playlist: UUID, group: String) {
+    /// build 141: groep op slot zetten mag altijd; ontgrendelen alleen na de pincode (zie ManageView).
+    func setLocked(_ locked: Bool, playlist: UUID, group: String) {
         let k = "\(playlist.uuidString)|\(group)"
         CloudStore.shared.updateParental { s in
-            if s.lockedGroups.contains(k) { s.lockedGroups.remove(k) } else { s.lockedGroups.insert(k) }
+            if locked { s.lockedGroups.insert(k) } else { s.lockedGroups.remove(k) }
         }
     }
 }
@@ -182,10 +232,31 @@ final class ParentalControl: ObservableObject {
 /// Pincode-invoer (werkt met toetsenbord, afstandsbediening en Siri Remote).
 struct PINPad: View {
     let title: String
+    /// build 141: false bij het kiezen van een nieuwe pincode (daar geldt geen wachttijd)
+    var limited = true
     let onDone: (String) -> Bool
     @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var parental = ParentalControl.shared
     @State private var pin = ""
     @State private var shake = false
+
+    /// build 141: melding tijdens de wachttijd na te veel foute pogingen (telt elke seconde af)
+    @ViewBuilder private var waitNotice: some View {
+        if limited, parental.blockedUntil != nil {
+            TimelineView(.periodic(from: .now, by: 1)) { _ in
+                let r = parental.waitRemaining
+                if r > 0 {
+                    Text(L("Too many wrong attempts. Try again in %@.", Self.format(r)))
+                        .font(.footnote).foregroundStyle(Theme.imdb).multilineTextAlignment(.center)
+                }
+            }
+        }
+    }
+
+    private static func format(_ t: TimeInterval) -> String {
+        let s = Int(t.rounded(.up))
+        return String(format: "%d:%02d", s / 60, s % 60)
+    }
 
     var body: some View {
         #if os(tvOS)
@@ -195,6 +266,7 @@ struct PINPad: View {
             Text(title).font(.system(size: 34, weight: .bold)).multilineTextAlignment(.center)
                 .lineLimit(2).minimumScaleFactor(0.7).frame(maxWidth: 1100)
             dots(size: 22, spacing: 22)
+            waitNotice
             HStack(spacing: 14) {
                 ForEach(["1","2","3","4","5","6","7","8","9","0","⌫"], id: \.self) { k in
                     Button { tap(k) } label: {
@@ -220,6 +292,7 @@ struct PINPad: View {
                 Image(systemName: "lock.fill").font(.system(size: 36)).foregroundStyle(Theme.red)
                 Text(title).font(.system(size: 20, weight: .bold)).multilineTextAlignment(.center)
                 dots(size: 16, spacing: 14)
+                waitNotice
                 LazyVGrid(columns: Array(repeating: GridItem(.fixed(70), spacing: 14), count: 3), spacing: 14) {
                     ForEach(["1","2","3","4","5","6","7","8","9","","0","⌫"], id: \.self) { k in
                         if k.isEmpty { Color.clear.frame(height: 70) } else {
@@ -256,6 +329,8 @@ struct PINPad: View {
     private func tap(_ k: String) {
         if k == "⌫" { if !pin.isEmpty { pin.removeLast() }; return }
         guard pin.count < 4 else { return }
+        // build 141: tijdens de wachttijd geen invoer
+        if limited, parental.waitRemaining > 0 { shake.toggle(); pin = ""; return }
         pin += k
         if pin.count == 4 {
             if onDone(pin) { dismiss() } else { shake.toggle(); pin = "" }

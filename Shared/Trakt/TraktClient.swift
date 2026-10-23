@@ -30,11 +30,21 @@ actor TraktClient {
     // MARK: inloggen (device flow)
 
     /// Host voor /oauth: Trakt verhuist dit naar auth.trakt.tv; api.trakt.tv blijft als terugval.
+    /// build 141: alleen een host uit `oauthHosts` (ook als hij via de account-sync binnenkomt); anders api.trakt.tv.
     private var oauthBase: URL {
-        get { URL(string: UserDefaults.standard.string(forKey: "trakt.oauthHost") ?? "https://api.trakt.tv")! }
-        set { UserDefaults.standard.set(newValue.absoluteString, forKey: "trakt.oauthHost") }
+        get {
+            let h = UserDefaults.standard.string(forKey: "trakt.oauthHost").flatMap { Self.allowedOAuthHost($0) } ?? "https://api.trakt.tv"
+            return URL(string: h)!
+        }
+        set { if let h = Self.allowedOAuthHost(newValue.absoluteString) { UserDefaults.standard.set(h, forKey: "trakt.oauthHost") } }
     }
-    private static let oauthHosts = ["https://api.trakt.tv", "https://auth.trakt.tv"]
+    static let oauthHosts = ["https://api.trakt.tv", "https://auth.trakt.tv"]
+    /// build 141: vaste lijst; "https://auth.trakt.tv/" telt ook.
+    static func allowedOAuthHost(_ v: String) -> String? {
+        var h = v.trimmingCharacters(in: .whitespaces).lowercased()
+        while h.hasSuffix("/") { h.removeLast() }
+        return oauthHosts.contains(h) ? h : nil
+    }
     /// PKCE-verifier voor deze koppelpoging (nieuwe Trakt-apps hebben geen client secret meer).
     private var verifier = ""
 

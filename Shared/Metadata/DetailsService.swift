@@ -159,7 +159,7 @@ final class DetailsService: ObservableObject {
         d.director = vi.director.flatMap { $0.isEmpty ? nil : $0 }
         if let s = vi.duration_secs?.int, s > 0 { d.runtime = L("%d min", s / 60) }
         if let y = vi.releasedate, y.count >= 4 { d.year = d.year ?? String(y.prefix(4)) }
-        if let t = vi.youtube_trailer, !t.isEmpty { d.trailerYouTubeID = t }
+        if let t = Trailer.safeID(vi.youtube_trailer) { d.trailerYouTubeID = t }   // build 141: strikt
         tmdbHint = vi.tmdb_id?.int
     }
 
@@ -172,7 +172,7 @@ final class DetailsService: ObservableObject {
             if let c = i.cast, !c.isEmpty { d.cast = c.components(separatedBy: ",").map { TitleDetails.CastMember(name: $0.trimmingCharacters(in: .whitespaces)) }.filter { !$0.name.isEmpty } }
             d.director = i.director.flatMap { $0.isEmpty ? nil : $0 }
             if let y = i.releaseDate, y.count >= 4 { d.year = d.year ?? String(y.prefix(4)) }
-            if let t = i.youtube_trailer, !t.isEmpty { d.trailerYouTubeID = t }
+            if let t = Trailer.safeID(i.youtube_trailer) { d.trailerYouTubeID = t }   // build 141: strikt
             if let rt = i.episode_run_time?.int, rt > 0 { d.runtime = L("%d min", rt) }
             tmdbHint = i.tmdb?.int
         }

@@ -5,8 +5,47 @@ import WebKit
 
 /// Trailers komen van Trakt (YouTube). iOS speelt ze in-app af; tvOS opent de YouTube-app.
 enum Trailer {
-    static func appURL(_ id: String) -> URL? { URL(string: "youtube://www.youtube.com/watch?v=\(id)") }
-    static func webURL(_ id: String) -> URL? { URL(string: "https://www.youtube.com/watch?v=\(id)") }
+    static func appURL(_ id: String) -> URL? { safeID(id).flatMap { URL(string: "youtube://www.youtube.com/watch?v=\($0)") } }
+    static func webURL(_ id: String) -> URL? { safeID(id).flatMap { URL(string: "https://www.youtube.com/watch?v=\($0)") } }
+
+    /// build 141: alleen een echte YouTube-id (11 tekens A-Z, a-z, 0-9, - en _). De id komt o.a. van de IPTV-server
+    /// (`youtube_trailer`) en gaat in HTML; alles anders wordt geweigerd. Een volledige YouTube-link mag ook.
+    static func safeID(_ raw: String?) -> String? {
+        guard let raw = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { return nil }
+        if isValidID(raw) { return raw }
+        // volledige link: youtube.com/watch?v=<id>, youtube.com/embed/<id> of youtu.be/<id>
+        guard raw.contains("/"), let c = URLComponents(string: raw) else { return nil }
+        if let v = c.queryItems?.first(where: { $0.name == "v" })?.value, isValidID(v) { return v }
+        if let last = c.path.split(separator: "/").last.map(String.init), isValidID(last),
+           let host = c.host?.lowercased(), host.contains("youtu") { return last }
+        return nil
+    }
+
+    static func isValidID(_ s: String) -> Bool {
+        s.utf8.count == 11 && s.utf8.allSatisfy { c in
+            (c >= 0x30 && c <= 0x39) || (c >= 0x41 && c <= 0x5A) || (c >= 0x61 && c <= 0x7A) || c == 0x2D || c == 0x5F
+        }
+    }
+
+    /// build 141: HTML-escapen (extra laag naast `safeID`).
+    static func htmlEscaped(_ s: String) -> String {
+        s.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;").replacingOccurrences(of: "\"", with: "&quot;")
+            .replacingOccurrences(of: "'", with: "&#39;")
+    }
+
+    /// build 141: HTML van het trailer-blad; nil bij een ongeldige id.
+    static func embedHTML(_ id: String, playsInline: Bool) -> String? {
+        guard let safe = safeID(id) else { return nil }
+        let e = htmlEscaped(safe)
+        let viewport = playsInline ? "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">" : ""
+        return """
+        <html><head>\(viewport)<style>body{margin:0;background:#000}</style></head>
+        <body><iframe width="100%" height="100%" style="position:absolute;inset:0;border:0"
+        src="https://www.youtube-nocookie.com/embed/\(e)?autoplay=1\(playsInline ? "&amp;playsinline=1" : "")&amp;rel=0&amp;modestbranding=1"
+        allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe></body></html>
+        """
+    }
 
     /// Build 82: trailer automatisch (zonder geluid) in de kop van de detailpagina. Standaard aan.
     /// Apple TV heeft geen WebKit en geen eigen YouTube-stream, daar blijft de kopafbeelding staan.
@@ -54,6 +93,7 @@ final class HeroTrailerModel: ObservableObject {
     var isVisible: Bool { phase == .playing }
 
     func start(_ id: String) {
+        guard let id = Trailer.safeID(id) else { return }   // build 141
         lastID = id
         muted = true
         videoID = id
@@ -97,7 +137,8 @@ final class HeroTrailerModel: ObservableObject {
     /// en iets ingezoomd zodat randen met YouTube-logo of titel buiten beeld vallen. Seintjes naar de app:
     /// `playing`, `ended` (1 s voor het einde, vóór het eindscherm) en `error`.
     static func html(_ id: String) -> String {
-        let safe = id.filter { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }
+        // build 141: zelfde strikte controle als het trailer-blad (Trailer.safeID)
+        let safe = Trailer.safeID(id) ?? ""
         return """
         <!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
         <style>html,body{margin:0;height:100%;overflow:hidden;background:#000}
@@ -197,16 +238,14 @@ struct YouTubeEmbed: NSViewRepresentable {
         c.mediaTypesRequiringUserActionForPlayback = []
         let w = WKWebView(frame: .zero, configuration: c)
         w.setValue(false, forKey: "drawsBackground")
-        let html = """
-        <html><head><style>body{margin:0;background:#000}</style></head>
-        <body><iframe width="100%" height="100%" style="position:absolute;inset:0;border:0"
-        src="https://www.youtube-nocookie.com/embed/\(id)?autoplay=1&rel=0&modestbranding=1"
-        allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe></body></html>
-        """
-        w.loadHTMLString(html, baseURL: URL(string: "https://www.youtube-nocookie.com"))
+        w.navigationDelegate = context.coordinator
+        if let html = Trailer.embedHTML(id, playsInline: false) {
+            w.loadHTMLString(html, baseURL: URL(string: "https://www.youtube-nocookie.com"))
+        }
         return w
     }
     func updateNSView(_ nsView: WKWebView, context: Context) {}
+    func makeCoordinator() -> YouTubeNavigationGuard { YouTubeNavigationGuard() }
 }
 #else
 struct YouTubeEmbed: UIViewRepresentable {
@@ -217,16 +256,29 @@ struct YouTubeEmbed: UIViewRepresentable {
         c.mediaTypesRequiringUserActionForPlayback = []
         let w = WKWebView(frame: .zero, configuration: c)
         w.isOpaque = false; w.backgroundColor = .black; w.scrollView.isScrollEnabled = false
-        let html = """
-        <html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;background:#000}</style></head>
-        <body><iframe width="100%" height="100%" style="position:absolute;inset:0;border:0"
-        src="https://www.youtube-nocookie.com/embed/\(id)?autoplay=1&playsinline=1&rel=0&modestbranding=1"
-        allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe></body></html>
-        """
-        w.loadHTMLString(html, baseURL: URL(string: "https://www.youtube-nocookie.com"))
+        w.navigationDelegate = context.coordinator
+        if let html = Trailer.embedHTML(id, playsInline: true) {
+            w.loadHTMLString(html, baseURL: URL(string: "https://www.youtube-nocookie.com"))
+        }
         return w
     }
     func updateUIView(_ uiView: WKWebView, context: Context) {}
+    func makeCoordinator() -> YouTubeNavigationGuard { YouTubeNavigationGuard() }
 }
 #endif
+
+/// build 141: het trailer-blad blijft op YouTube: de hoofdpagina navigeert nergens anders heen.
+@MainActor
+final class YouTubeNavigationGuard: NSObject, WKNavigationDelegate {
+    func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
+                 decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        guard action.targetFrame?.isMainFrame ?? true else { decisionHandler(.allow); return }
+        let url = action.request.url
+        if url?.scheme == "about" { decisionHandler(.allow); return }
+        let host = url?.host?.lowercased() ?? ""
+        let ok = url?.scheme == "https" && ["youtube-nocookie.com", "youtube.com"].contains { host == $0 || host.hasSuffix("." + $0) }
+        // loadHTMLString met baseURL youtube-nocookie.com komt hier als die URL binnen
+        decisionHandler(ok ? .allow : .cancel)
+    }
+}
 #endif

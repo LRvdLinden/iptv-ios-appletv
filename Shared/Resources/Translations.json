@@ -931,7 +931,14 @@
   "Ask a grown-up": "اطلب من شخص بالغ",
   "Solve this sum to leave the kids profile.": "حُلّ هذه العملية لمغادرة ملف الأطفال.",
   "That's not right. Try again.": "هذا غير صحيح. حاول مرة أخرى.",
-  "New sum": "عملية جديدة"
+  "New sum": "عملية جديدة",
+  "Enter PIN to unlock this group": "أدخل رمز PIN لفتح هذه المجموعة",
+  "Enter your current PIN": "أدخل رمز PIN الحالي",
+  "Give this device access?": "منح هذا الجهاز حق الوصول؟",
+  "Only enter a code that is shown on your own TV.": "أدخل فقط رمزًا يظهر على تلفازك الخاص.",
+  "Only enter a code that is shown on your own TV. Never enter a code someone else sent you.": "أدخل فقط رمزًا يظهر على تلفازك الخاص. لا تُدخل أبدًا رمزًا أرسله إليك شخص آخر.",
+  "Too many wrong attempts. Try again in %@.": "محاولات خاطئة كثيرة. حاول مرة أخرى بعد %@.",
+  "“%@” (code created %@) gets full access to your Bingr account.": "سيحصل „%@” (أُنشئ الرمز %@) على وصول كامل إلى حساب Bingr الخاص بك."
  },
  "de": {
   "%@ is now signed in.": "%@ ist jetzt angemeldet.",
@@ -1865,7 +1872,14 @@
   "Ask a grown-up": "Frag einen Erwachsenen",
   "Solve this sum to leave the kids profile.": "Löse diese Rechenaufgabe, um das Kinderprofil zu verlassen.",
   "That's not right. Try again.": "Das stimmt nicht. Versuch es noch einmal.",
-  "New sum": "Neue Aufgabe"
+  "New sum": "Neue Aufgabe",
+  "Enter PIN to unlock this group": "PIN eingeben, um diese Gruppe zu entsperren",
+  "Enter your current PIN": "Aktuelle PIN eingeben",
+  "Give this device access?": "Diesem Gerät Zugriff geben?",
+  "Only enter a code that is shown on your own TV.": "Gib nur einen Code ein, der auf deinem eigenen Fernseher angezeigt wird.",
+  "Only enter a code that is shown on your own TV. Never enter a code someone else sent you.": "Gib nur einen Code ein, der auf deinem eigenen Fernseher angezeigt wird. Gib nie einen Code ein, den dir jemand anderes geschickt hat.",
+  "Too many wrong attempts. Try again in %@.": "Zu viele falsche Versuche. Versuche es in %@ erneut.",
+  "“%@” (code created %@) gets full access to your Bingr account.": "„%@“ (Code erstellt %@) erhält vollen Zugriff auf dein Bingr-Konto."
  },
  "es": {
   "%@ is now signed in.": "%@ ya ha iniciado sesión.",
@@ -2799,7 +2813,14 @@
   "Ask a grown-up": "Pregunta a un adulto",
   "Solve this sum to leave the kids profile.": "Resuelve esta operación para salir del perfil infantil.",
   "That's not right. Try again.": "No es correcto. Inténtalo de nuevo.",
-  "New sum": "Nueva operación"
+  "New sum": "Nueva operación",
+  "Enter PIN to unlock this group": "Introduce el PIN para desbloquear este grupo",
+  "Enter your current PIN": "Introduce tu PIN actual",
+  "Give this device access?": "¿Dar acceso a este dispositivo?",
+  "Only enter a code that is shown on your own TV.": "Introduce solo un código que aparezca en tu propio televisor.",
+  "Only enter a code that is shown on your own TV. Never enter a code someone else sent you.": "Introduce solo un código que aparezca en tu propio televisor. Nunca introduzcas un código que te haya enviado otra persona.",
+  "Too many wrong attempts. Try again in %@.": "Demasiados intentos incorrectos. Vuelve a intentarlo en %@.",
+  "“%@” (code created %@) gets full access to your Bingr account.": "«%@» (código creado %@) tendrá acceso completo a tu cuenta de Bingr."
  },
  "fr": {
   "%@ is now signed in.": "%@ est maintenant connecté.",
@@ -3733,7 +3754,14 @@
   "Ask a grown-up": "Demande à un adulte",
   "Solve this sum to leave the kids profile.": "Résous ce calcul pour quitter le profil enfant.",
   "That's not right. Try again.": "Ce n'est pas ça. Réessaie.",
-  "New sum": "Nouveau calcul"
+  "New sum": "Nouveau calcul",
+  "Enter PIN to unlock this group": "Saisissez le code PIN pour déverrouiller ce groupe",
+  "Enter your current PIN": "Saisissez votre code PIN actuel",
+  "Give this device access?": "Donner accès à cet appareil ?",
+  "Only enter a code that is shown on your own TV.": "Saisissez uniquement un code affiché sur votre propre téléviseur.",
+  "Only enter a code that is shown on your own TV. Never enter a code someone else sent you.": "Saisissez uniquement un code affiché sur votre propre téléviseur. Ne saisissez jamais un code que quelqu’un d’autre vous a envoyé.",
+  "Too many wrong attempts. Try again in %@.": "Trop de tentatives incorrectes. Réessayez dans %@.",
+  "“%@” (code created %@) gets full access to your Bingr account.": "« %@ » (code créé %@) aura un accès complet à votre compte Bingr."
  },
  "it": {
   "%@ is now signed in.": "%@ ha effettuato l’accesso.",
@@ -4667,7 +4695,14 @@
   "Ask a grown-up": "Chiedi a un adulto",
   "Solve this sum to leave the kids profile.": "Risolvi questo calcolo per uscire dal profilo bambini.",
   "That's not right. Try again.": "Non è corretto. Riprova.",
-  "New sum": "Nuovo calcolo"
+  "New sum": "Nuovo calcolo",
+  "Enter PIN to unlock this group": "Inserisci il PIN per sbloccare questo gruppo",
+  "Enter your current PIN": "Inserisci il PIN attuale",
+  "Give this device access?": "Dare accesso a questo dispositivo?",
+  "Only enter a code that is shown on your own TV.": "Inserisci solo un codice mostrato sulla tua TV.",
+  "Only enter a code that is shown on your own TV. Never enter a code someone else sent you.": "Inserisci solo un codice mostrato sulla tua TV. Non inserire mai un codice che ti ha inviato qualcun altro.",
+  "Too many wrong attempts. Try again in %@.": "Troppi tentativi errati. Riprova tra %@.",
+  "“%@” (code created %@) gets full access to your Bingr account.": "«%@» (codice creato %@) avrà accesso completo al tuo account Bingr."
  },
  "nl": {
   "%@ is now signed in.": "%@ is nu ingelogd.",
@@ -5601,7 +5636,14 @@
   "Ask a grown-up": "Vraag een volwassene",
   "Solve this sum to leave the kids profile.": "Los deze som op om het kinderprofiel te verlaten.",
   "That's not right. Try again.": "Dat klopt niet. Probeer het nog eens.",
-  "New sum": "Nieuwe som"
+  "New sum": "Nieuwe som",
+  "Enter PIN to unlock this group": "Voer de pincode in om deze groep te ontgrendelen",
+  "Enter your current PIN": "Voer je huidige pincode in",
+  "Give this device access?": "Dit apparaat toegang geven?",
+  "Only enter a code that is shown on your own TV.": "Voer alleen een code in die op je eigen tv staat.",
+  "Only enter a code that is shown on your own TV. Never enter a code someone else sent you.": "Voer alleen een code in die op je eigen tv staat. Voer nooit een code in die iemand anders je heeft gestuurd.",
+  "Too many wrong attempts. Try again in %@.": "Te veel foute pogingen. Probeer het opnieuw over %@.",
+  "“%@” (code created %@) gets full access to your Bingr account.": "„%@” (code aangemaakt %@) krijgt volledige toegang tot je Bingr-account."
  },
  "pl": {
   "%@ is now signed in.": "%@ jest teraz zalogowany.",
@@ -6535,7 +6577,14 @@
   "Ask a grown-up": "Poproś dorosłego",
   "Solve this sum to leave the kids profile.": "Rozwiąż to działanie, aby opuścić profil dziecka.",
   "That's not right. Try again.": "To nie jest poprawne. Spróbuj ponownie.",
-  "New sum": "Nowe działanie"
+  "New sum": "Nowe działanie",
+  "Enter PIN to unlock this group": "Wpisz PIN, aby odblokować tę grupę",
+  "Enter your current PIN": "Wpisz obecny PIN",
+  "Give this device access?": "Dać dostęp temu urządzeniu?",
+  "Only enter a code that is shown on your own TV.": "Wpisuj tylko kod widoczny na Twoim własnym telewizorze.",
+  "Only enter a code that is shown on your own TV. Never enter a code someone else sent you.": "Wpisuj tylko kod widoczny na Twoim własnym telewizorze. Nigdy nie wpisuj kodu, który ktoś Ci przysłał.",
+  "Too many wrong attempts. Try again in %@.": "Zbyt wiele błędnych prób. Spróbuj ponownie za %@.",
+  "“%@” (code created %@) gets full access to your Bingr account.": "„%@” (kod utworzony %@) otrzyma pełny dostęp do Twojego konta Bingr."
  },
  "pt": {
   "%@ is now signed in.": "%@ já tem sessão iniciada.",
@@ -7469,7 +7518,14 @@
   "Ask a grown-up": "Pede a um adulto",
   "Solve this sum to leave the kids profile.": "Resolve esta conta para sair do perfil infantil.",
   "That's not right. Try again.": "Não está certo. Tenta novamente.",
-  "New sum": "Nova conta"
+  "New sum": "Nova conta",
+  "Enter PIN to unlock this group": "Introduza o PIN para desbloquear este grupo",
+  "Enter your current PIN": "Introduza o PIN atual",
+  "Give this device access?": "Dar acesso a este dispositivo?",
+  "Only enter a code that is shown on your own TV.": "Introduza apenas um código que apareça na sua própria TV.",
+  "Only enter a code that is shown on your own TV. Never enter a code someone else sent you.": "Introduza apenas um código que apareça na sua própria TV. Nunca introduza um código que outra pessoa lhe enviou.",
+  "Too many wrong attempts. Try again in %@.": "Demasiadas tentativas erradas. Tente novamente dentro de %@.",
+  "“%@” (code created %@) gets full access to your Bingr account.": "«%@» (código criado %@) terá acesso total à sua conta Bingr."
  },
  "tr": {
   "%@ is now signed in.": "%@ artık oturum açtı.",
@@ -8403,7 +8459,14 @@
   "Ask a grown-up": "Bir yetişkine sor",
   "Solve this sum to leave the kids profile.": "Çocuk profilinden çıkmak için bu işlemi çöz.",
   "That's not right. Try again.": "Bu doğru değil. Tekrar dene.",
-  "New sum": "Yeni işlem"
+  "New sum": "Yeni işlem",
+  "Enter PIN to unlock this group": "Bu grubun kilidini açmak için PIN'i girin",
+  "Enter your current PIN": "Mevcut PIN'inizi girin",
+  "Give this device access?": "Bu cihaza erişim verilsin mi?",
+  "Only enter a code that is shown on your own TV.": "Yalnızca kendi TV'nizde görünen bir kodu girin.",
+  "Only enter a code that is shown on your own TV. Never enter a code someone else sent you.": "Yalnızca kendi TV'nizde görünen bir kodu girin. Başkasının size gönderdiği bir kodu asla girmeyin.",
+  "Too many wrong attempts. Try again in %@.": "Çok fazla hatalı deneme. %@ sonra tekrar deneyin.",
+  "“%@” (code created %@) gets full access to your Bingr account.": "“%@” (kod oluşturuldu: %@) Bingr hesabınıza tam erişim elde eder."
  },
  "zh-Hans": {
   "%@ is now signed in.": "%@ 现已登录。",
@@ -9337,6 +9400,13 @@
   "Ask a grown-up": "请大人帮忙",
   "Solve this sum to leave the kids profile.": "解答这道算术题即可离开儿童资料。",
   "That's not right. Try again.": "答案不对，请再试一次。",
-  "New sum": "新题目"
+  "New sum": "新题目",
+  "Enter PIN to unlock this group": "输入 PIN 以解锁此分组",
+  "Enter your current PIN": "输入当前 PIN",
+  "Give this device access?": "允许此设备访问？",
+  "Only enter a code that is shown on your own TV.": "只输入显示在你自己电视上的代码。",
+  "Only enter a code that is shown on your own TV. Never enter a code someone else sent you.": "只输入显示在你自己电视上的代码。切勿输入别人发给你的代码。",
+  "Too many wrong attempts. Try again in %@.": "错误次数过多。请在 %@ 后重试。",
+  "“%@” (code created %@) gets full access to your Bingr account.": "“%@”（代码创建于 %@）将获得你的 Bingr 账户的完全访问权限。"
  }
 }

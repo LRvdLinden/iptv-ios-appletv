@@ -10,7 +10,7 @@ settings:
   base:
     SWIFT_VERSION: "5.9"
     MARKETING_VERSION: "1.0.1"
-    CURRENT_PROJECT_VERSION: "140"
+    CURRENT_PROJECT_VERSION: "141"
     # Team van Léon van der Linden; automatisch ondertekenen voor iOS, tvOS en macOS
     DEVELOPMENT_TEAM: EU3UY476T6
     CODE_SIGN_STYLE: Automatic
@@ -50,6 +50,14 @@ targets:
         UIUserInterfaceStyle: Dark
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true          # IPTV-servers draaien vaak op http://
+          # build 141: eigen diensten altijd via HTTPS (volledige ATS); de uitzondering hierboven blijft alleen voor IPTV
+          NSExceptionDomains:
+            bingr.online: {NSIncludesSubdomains: true, NSExceptionAllowsInsecureHTTPLoads: false}
+            supabase.co: {NSIncludesSubdomains: true, NSExceptionAllowsInsecureHTTPLoads: false}
+            trakt.tv: {NSIncludesSubdomains: true, NSExceptionAllowsInsecureHTTPLoads: false}
+            themoviedb.org: {NSIncludesSubdomains: true, NSExceptionAllowsInsecureHTTPLoads: false}
+            tmdb.org: {NSIncludesSubdomains: true, NSExceptionAllowsInsecureHTTPLoads: false}
+            opensubtitles.com: {NSIncludesSubdomains: true, NSExceptionAllowsInsecureHTTPLoads: false}
         NSLocalNetworkUsageDescription: Bingr gebruikt het lokale netwerk om streams van je eigen server af te spelen.
         LSApplicationQueriesSchemes: [youtube]
         NSBonjourServices: [_googlecast._tcp, _CC1AD845._googlecast._tcp]
@@ -136,6 +144,14 @@ targets:
         UIUserInterfaceStyle: Dark
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
+          # build 141: eigen diensten altijd via HTTPS (volledige ATS); de uitzondering hierboven blijft alleen voor IPTV
+          NSExceptionDomains:
+            bingr.online: {NSIncludesSubdomains: true, NSExceptionAllowsInsecureHTTPLoads: false}
+            supabase.co: {NSIncludesSubdomains: true, NSExceptionAllowsInsecureHTTPLoads: false}
+            trakt.tv: {NSIncludesSubdomains: true, NSExceptionAllowsInsecureHTTPLoads: false}
+            themoviedb.org: {NSIncludesSubdomains: true, NSExceptionAllowsInsecureHTTPLoads: false}
+            tmdb.org: {NSIncludesSubdomains: true, NSExceptionAllowsInsecureHTTPLoads: false}
+            opensubtitles.com: {NSIncludesSubdomains: true, NSExceptionAllowsInsecureHTTPLoads: false}
         LSApplicationQueriesSchemes: [youtube]
         CFBundleLocalizations: [en, nl, de, fr, es, it, pt, tr, pl, ar, zh-Hans]
         CFBundleDevelopmentRegion: en
@@ -180,6 +196,14 @@ targets:
         LSMinimumSystemVersion: "14.0"
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true          # IPTV-servers draaien vaak op http://
+          # build 141: eigen diensten altijd via HTTPS (volledige ATS); de uitzondering hierboven blijft alleen voor IPTV
+          NSExceptionDomains:
+            bingr.online: {NSIncludesSubdomains: true, NSExceptionAllowsInsecureHTTPLoads: false}
+            supabase.co: {NSIncludesSubdomains: true, NSExceptionAllowsInsecureHTTPLoads: false}
+            trakt.tv: {NSIncludesSubdomains: true, NSExceptionAllowsInsecureHTTPLoads: false}
+            themoviedb.org: {NSIncludesSubdomains: true, NSExceptionAllowsInsecureHTTPLoads: false}
+            tmdb.org: {NSIncludesSubdomains: true, NSExceptionAllowsInsecureHTTPLoads: false}
+            opensubtitles.com: {NSIncludesSubdomains: true, NSExceptionAllowsInsecureHTTPLoads: false}
         NSLocalNetworkUsageDescription: Bingr gebruikt het lokale netwerk om streams van je eigen server af te spelen.
         NSBonjourServices: [_googlecast._tcp, _CC1AD845._googlecast._tcp, _smb._tcp]
         CFBundleLocalizations: [en, nl, de, fr, es, it, pt, tr, pl, ar, zh-Hans]

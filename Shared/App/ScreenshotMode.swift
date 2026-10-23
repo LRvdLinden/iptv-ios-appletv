@@ -18,12 +18,24 @@ import AppKit
 // account, geen sync en niets opgeslagen in iCloud of op de server.
 
 enum Screenshots {
-    /// Alleen via het launch-argument (argumentdomein van UserDefaults, wordt nooit bewaard)
-    static let isActive: Bool = UserDefaults.standard.bool(forKey: "BingrScreenshots")
+    /// build 141: alleen in een Debug-build (de workflow appstore-screenshots.yml bouwt Debug) en alleen via het echte
+    /// launch-argument `-BingrScreenshots YES`. Niet via UserDefaults: die leest ook het bewaarde domein, en
+    /// `defaults write` zette de modus dan op de Mac aan. In de App Store-build (Release) is hij altijd uit.
+    static let isActive: Bool = {
+        #if DEBUG
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-BingrScreenshots"), i + 1 < args.count else { return false }
+        return ["yes", "true", "1"].contains(args[i + 1].lowercased())
+        #else
+        return false
+        #endif
+    }()
 
     /// Het scherm dat direct open moet (`-BingrScreen`)
     static let screen: String = {
-        let s = (UserDefaults.standard.string(forKey: "BingrScreen") ?? "home").lowercased()
+        let args = ProcessInfo.processInfo.arguments
+        let v = args.firstIndex(of: "-BingrScreen").flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil }
+        let s = (v ?? "home").lowercased()
         return s == "discover" ? "top10" : s
     }()
 

@@ -34,11 +34,23 @@ final class OpenSubtitles: ObservableObject {
         username = session?.username
     }
 
+    /// build 141: alleen een host van OpenSubtitles (api.opensubtitles.com, vip-api.opensubtitles.com …), ook als hij
+    /// uit de login of de account-sync komt; anders api.opensubtitles.com. "https://" en een "/" aan het eind mogen.
+    static func safeBase(_ raw: String?) -> String {
+        let fallback = "api.opensubtitles.com"
+        guard var h = raw?.trimmingCharacters(in: .whitespaces).lowercased(), !h.isEmpty else { return fallback }
+        if h.hasPrefix("https://") { h.removeFirst(8) }
+        while h.hasSuffix("/") { h.removeLast() }
+        let okChars = h.unicodeScalars.allSatisfy { ("a"..."z").contains($0) || ("0"..."9").contains($0) || $0 == "." || $0 == "-" }
+        guard okChars, h == "opensubtitles.com" || h.hasSuffix(".opensubtitles.com") else { return fallback }
+        return h
+    }
+
     private func request(_ path: String, method: String = "GET", query: [String: String] = [:], body: [String: Any]? = nil,
                          base: String? = nil) async throws -> Data {
         // build 91: zonder app-sleutel (nog niet van de server) niet aanroepen: dat geeft een 401/403 die niets met je inlog te maken heeft
         guard Secrets.openSubtitlesReady else { throw OSError.notReady }
-        var c = URLComponents(string: "https://\(base ?? session?.baseURL ?? "api.opensubtitles.com")/api/v1\(path)")!
+        var c = URLComponents(string: "https://\(Self.safeBase(base ?? session?.baseURL))/api/v1\(path)")!
         if !query.isEmpty { c.queryItems = query.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) } }
         var r = URLRequest(url: c.url!)
         r.httpMethod = method
@@ -74,7 +86,7 @@ final class OpenSubtitles: ObservableObject {
         struct R: Decodable { struct U: Decodable { let allowed_downloads: Int?; let remaining_downloads: Int? }; let token: String; let base_url: String?; let user: U? }
         let d = try await request("/login", method: "POST", body: ["username": username, "password": password], base: "api.opensubtitles.com")
         let r = try JSONDecoder().decode(R.self, from: d)
-        session = Session(token: r.token, baseURL: r.base_url ?? "api.opensubtitles.com", username: username)
+        session = Session(token: r.token, baseURL: Self.safeBase(r.base_url), username: username)
         remainingDownloads = r.user?.remaining_downloads ?? r.user?.allowed_downloads
     }
 
@@ -85,7 +97,7 @@ final class OpenSubtitles: ObservableObject {
 
     /// Sessie uit de Bingr-account zetten of wissen (zonder uitloggen bij OpenSubtitles).
     func applySyncedSession(token: String, baseURL: String?, username: String) {
-        let s = Session(token: token, baseURL: (baseURL?.isEmpty == false ? baseURL! : "api.opensubtitles.com"), username: username)
+        let s = Session(token: token, baseURL: Self.safeBase(baseURL), username: username)   // build 141: vaste lijst
         guard session?.token != s.token || session?.baseURL != s.baseURL || session?.username != s.username else { return }
         session = s
         Task { await refreshUser() }

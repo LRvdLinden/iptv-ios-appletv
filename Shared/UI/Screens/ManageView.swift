@@ -11,6 +11,10 @@ struct ManageView: View {
     @State private var merging: String?
     /// Groep waarvan het actiemenu open is (tik op een film-/seriegroep, of op Apple TV)
     @State private var groupMenu: String?
+    /// build 141: groep die na de pincode ontgrendeld wordt
+    @State private var unlocking: UnlockTarget?
+
+    struct UnlockTarget: Identifiable { var playlist: UUID; var group: String; var id: String { "\(playlist.uuidString)|\(group)" } }
 
     enum Kind: String, CaseIterable { case live, movies, series }
     struct RenameTarget: Identifiable { var id: String; var current: String }
@@ -87,6 +91,14 @@ struct ManageView: View {
         .toolbar { EditButton() }
         #endif
         .sheet(item: $renaming) { t in RenameSheet(title: t.current) { new in update { $0.renamed[t.id] = new.isEmpty ? nil : new } } }
+        // build 141: een groep ontgrendelen vraagt de pincode van het kinderslot
+        .sheet(item: $unlocking) { t in
+            PINPad(title: L("Enter PIN to unlock this group")) { pin in
+                guard parental.verify(pin) else { return false }
+                parental.setLocked(false, playlist: t.playlist, group: t.group)
+                return true
+            }
+        }
         .confirmationDialog(groupMenu.map(display) ?? "", isPresented: Binding(get: { groupMenu != nil }, set: { if !$0 { groupMenu = nil } }),
                             titleVisibility: .visible) {
             if let g = groupMenu { groupActions(g) }
@@ -145,7 +157,15 @@ struct ManageView: View {
         }
         Button { merging = g } label: { Label(L("Merge into…"), systemImage: "arrow.triangle.merge") }
         if CloudStore.shared.parental.enabled, let pid {
-            Button { parental.toggleLock(playlist: pid, group: g) } label: {
+            Button {
+                if !locked { parental.setLocked(true, playlist: pid, group: g) }
+                else if !parental.hasPIN { parental.setLocked(false, playlist: pid, group: g) }
+                else {
+                    // eerst het menu laten sluiten, anders verschijnt het pincodeblad niet
+                    let t = UnlockTarget(playlist: pid, group: g)
+                    Task { @MainActor in try? await Task.sleep(nanoseconds: 350_000_000); unlocking = t }
+                }
+            } label: {
                 Label(locked ? L("Unlock") : L("Lock with PIN"), systemImage: locked ? "lock.open" : "lock")
             }
         }

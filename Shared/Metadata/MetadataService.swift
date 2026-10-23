@@ -72,8 +72,8 @@ final class MetadataService: ObservableObject {
 
     static func youtubeID(_ url: String) -> String? {
         guard let c = URLComponents(string: url) else { return nil }
-        if let v = c.queryItems?.first(where: { $0.name == "v" })?.value { return v }
-        if c.host?.contains("youtu.be") == true { return String(c.path.dropFirst()) }
+        if let v = c.queryItems?.first(where: { $0.name == "v" })?.value { return Trailer.isValidID(v) ? v : nil }
+        if c.host?.contains("youtu.be") == true { let v = String(c.path.dropFirst()); return Trailer.isValidID(v) ? v : nil }
         return nil
     }
 

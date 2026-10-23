@@ -314,7 +314,14 @@ final class CloudStore: ObservableObject {
 
     private func write<T: Encodable>(_ value: T, _ key: String) {
         guard !Screenshots.isActive else { return }   // screenshotmodus: nooit opslaan (ook niet in iCloud)
-        guard let d = try? JSONEncoder().encode(value) else { return }
+        // build 141: adressen met inloggegevens (M3U/EPG) in de sleutelhanger, niet in iCloud KV
+        let encoded: Data?
+        if key == K.playlists, let list = value as? [PlaylistSource] {
+            encoded = try? JSONEncoder().encode(sealSecretURLs(list))
+        } else {
+            encoded = try? JSONEncoder().encode(value)
+        }
+        guard let d = encoded else { return }
         local.set(d, forKey: key)
         if accountCarriesBulk && Self.isBulkKey(key) {
             // build 97: niet (meer) in iCloud KV (max 1 MB); een oude kopie opruimen
@@ -331,6 +338,103 @@ final class CloudStore: ObservableObject {
             kv.synchronize()
         }
         touchLastSync()
+    }
+
+    // MARK: adressen met inloggegevens (build 141)
+    //
+    // Een M3U- of EPG-adres met inloggegevens (`get.php?username=…&password=…`, `user:pass@host`, token) staat in de
+    // iCloud-sleutelhanger (synchroniseerbaar, end-to-end versleuteld) onder `source.<id>.m3uURL` / `.epgURL`. In
+    // iCloud KV en UserDefaults staat dan alleen `keychainURLMarker`. Bewust een eigen voorvoegsel (niet
+    // `playlist.<id>.`): SourceSync beheert die geheimen en zou onbekende sleutels weghalen. Niets gaat verloren:
+    // ontbreekt de sleutelhanger-waarde (nog niet gesynchroniseerd), dan blijft het adres dat al in het geheugen stond.
+
+    nonisolated static let keychainURLMarker = "bingr-keychain:"
+    nonisolated static func secretURLKeys(_ id: UUID) -> (m3u: String, epg: String) {
+        ("source.\(id.uuidString).m3uURL", "source.\(id.uuidString).epgURL")
+    }
+    /// Laatst bekende sleutelhanger-waarden (minder trage sleutelhanger-aanroepen op de hoofdthread)
+    private var secretURLCache: [String: String] = [:]
+
+    /// Bevat dit adres inloggegevens?
+    nonisolated static func urlHasCredentials(_ s: String) -> Bool {
+        guard !s.isEmpty, !s.hasPrefix(keychainURLMarker), let c = URLComponents(string: s.trimmingCharacters(in: .whitespaces)) else { return false }
+        if c.user != nil || c.password != nil { return true }
+        let names: Set<String> = ["username", "user", "password", "pass", "pwd", "passwd", "token", "key", "apikey", "api_key",
+                                  "auth", "access_token", "mac"]
+        return c.queryItems?.contains { names.contains($0.name.lowercased()) && !($0.value ?? "").isEmpty } ?? false
+    }
+
+    /// Synchroniseerbare sleutelhanger, anders de kopie op dit apparaat (iCloud-sleutelhanger uit of nog niet binnen).
+    private func keychainURL(_ key: String) -> String? {
+        if let v = secretURLCache[key] { return v }
+        let v = Keychain.get(key) ?? Keychain.getLocalOnly(key)
+        if let v { secretURLCache[key] = v }
+        return v
+    }
+
+    private func storeKeychainURL(_ value: String?, _ key: String) {
+        if let value, !value.isEmpty {
+            guard secretURLCache[key] != value else { return }
+            if Keychain.get(key) != value { Keychain.set(value, for: key) }
+            if Keychain.getLocalOnly(key) != value { Keychain.setLocalOnly(value, for: key) }
+            secretURLCache[key] = value
+        } else if secretURLCache[key] != nil || Keychain.get(key) != nil || Keychain.getLocalOnly(key) != nil {
+            Keychain.set(nil, for: key); Keychain.setLocalOnly(nil, for: key); secretURLCache[key] = nil
+        }
+    }
+
+    /// Oude, volledige kopie op dit apparaat (UserDefaults van een build vóór 141), als laatste terugval.
+    private func legacyLocalURLs() -> [UUID: (m3u: String, epg: String)] {
+        guard let d = local.data(forKey: K.playlists), let list = try? JSONDecoder().decode([PlaylistSource].self, from: d) else { return [:] }
+        return Dictionary(list.map { ($0.id, ($0.m3uURL, $0.epgURL)) }, uniquingKeysWith: { a, _ in a })
+    }
+
+    /// Kopie voor iCloud KV/UserDefaults: adressen met inloggegevens naar de sleutelhanger, in de kopie een verwijzing.
+    private func sealSecretURLs(_ list: [PlaylistSource]) -> [PlaylistSource] {
+        list.map { p in
+            var p = p
+            let k = Self.secretURLKeys(p.id)
+            if p.m3uURL.hasPrefix(Self.keychainURLMarker) {
+                // geen adres in het geheugen (sleutelhanger nog niet binnen): verwijzing laten staan
+            } else if Self.urlHasCredentials(p.m3uURL) {
+                storeKeychainURL(p.m3uURL, k.m3u); p.m3uURL = Self.keychainURLMarker
+            } else { storeKeychainURL(nil, k.m3u) }
+            if p.epgURL.hasPrefix(Self.keychainURLMarker) {
+            } else if Self.urlHasCredentials(p.epgURL) {
+                storeKeychainURL(p.epgURL, k.epg); p.epgURL = Self.keychainURLMarker
+            } else { storeKeychainURL(nil, k.epg) }
+            return p
+        }
+    }
+
+    /// Verwijzingen vervangen door het adres uit de sleutelhanger. `reseal`: er stond nog een volledig adres met
+    /// inloggegevens in de opslag (overzetten en opnieuw wegschrijven).
+    private func unsealSecretURLs(_ list: [PlaylistSource]) -> ([PlaylistSource], reseal: Bool) {
+        var reseal = false
+        // een ander apparaat kan het adres in de sleutelhanger gewijzigd hebben: opnieuw lezen
+        secretURLCache.removeAll()
+        var legacy: [UUID: (m3u: String, epg: String)]?
+        func fallback(_ id: UUID, _ m3u: Bool) -> String {
+            if let c = playlists.first(where: { $0.id == id }) {
+                let v = m3u ? c.m3uURL : c.epgURL
+                if !v.isEmpty, !v.hasPrefix(Self.keychainURLMarker) { return v }
+            }
+            if legacy == nil { legacy = legacyLocalURLs() }
+            let v = legacy?[id].map { m3u ? $0.m3u : $0.epg } ?? ""
+            return v.hasPrefix(Self.keychainURLMarker) ? "" : v
+        }
+        let out = list.map { p in
+            var p = p
+            let k = Self.secretURLKeys(p.id)
+            if p.m3uURL.hasPrefix(Self.keychainURLMarker) {
+                p.m3uURL = keychainURL(k.m3u) ?? fallback(p.id, true)
+            } else if Self.urlHasCredentials(p.m3uURL) { reseal = true }
+            if p.epgURL.hasPrefix(Self.keychainURLMarker) {
+                p.epgURL = keychainURL(k.epg) ?? fallback(p.id, false)
+            } else if Self.urlHasCredentials(p.epgURL) { reseal = true }
+            return p
+        }
+        return (out, reseal)
     }
 
     // MARK: grootte van iCloud KV (build 97)
@@ -411,7 +515,11 @@ final class CloudStore: ObservableObject {
     func load(mergeProgress: Bool) {
         guard !Screenshots.isActive else { return }
         // bij elke iCloud-wijziging van een ander apparaat: alleen wat echt veranderd is opnieuw publiceren
-        assign(\.playlists, decode([PlaylistSource].self, K.playlists) ?? [])
+        // build 141: M3U/EPG-adressen met inloggegevens komen uit de sleutelhanger; staat er nog een volledig adres in
+        // iCloud KV (oudere versie of ander apparaat), dan gaat dat naar de sleutelhanger en KV krijgt een verwijzing
+        let (loaded, reseal) = unsealSecretURLs(decode([PlaylistSource].self, K.playlists) ?? [])
+        assign(\.playlists, loaded)
+        if reseal { write(playlists, K.playlists) }
         assign(\.profiles, decode([ViewerProfile].self, K.profiles) ?? [])
         assign(\.mainSourceID, decode(UUID.self, K.mainSource))
         assign(\.mainProfileIDStored, decode(UUID.self, K.mainProfile))
@@ -517,8 +625,11 @@ final class CloudStore: ObservableObject {
         let prefix = Self.secretPrefix(id)
         let pl = parental.lockedGroups.filter { $0.hasPrefix(id.uuidString + "|") }
         if !pl.isEmpty { updateParental { $0.lockedGroups.subtract(pl) } }
+        let urlKeys = Self.secretURLKeys(id)
+        secretURLCache[urlKeys.m3u] = nil; secretURLCache[urlKeys.epg] = nil
         DispatchQueue.global(qos: .utility).async {
             for k in Keychain.keys(withPrefix: prefix) { Keychain.set(nil, for: k) }
+            for k in [urlKeys.m3u, urlKeys.epg] { Keychain.set(nil, for: k); Keychain.setLocalOnly(nil, for: k) }   // build 141
         }
         if let old {
             try? FileManager.default.removeItem(at: PlaylistService.cacheURL(old))
@@ -583,6 +694,7 @@ final class CloudStore: ObservableObject {
             .filter { k in bases.contains { k == $0 || k.hasPrefix($0 + ".") } }
         for k in keys { kv.removeObject(forKey: k); local.removeObject(forKey: k) }
         playlists = []; write(playlists, K.playlists)
+        secretURLCache = [:]
         profiles = []; write(profiles, K.profiles)
         mainSourceID = nil; write(mainSourceID, K.mainSource)
         mainProfileIDStored = nil; write(mainProfileIDStored, K.mainProfile)
@@ -608,7 +720,11 @@ final class CloudStore: ObservableObject {
         local.set(profileIDs.map(\.uuidString), forKey: Self.foreignProfilesKey)
         kv.synchronize()
         DispatchQueue.global(qos: .utility).async {
-            for id in ids { for k in Keychain.keys(withPrefix: Self.secretPrefix(id)) { Keychain.set(nil, for: k) } }
+            for id in ids {
+                for k in Keychain.keys(withPrefix: Self.secretPrefix(id)) { Keychain.set(nil, for: k) }
+                let u = Self.secretURLKeys(id)
+                for k in [u.m3u, u.epg] { Keychain.set(nil, for: k); Keychain.setLocalOnly(nil, for: k) }   // build 141
+            }
             for id in profileIDs { Keychain.set(nil, for: "profile.\(id.uuidString).pin") }
             Keychain.set(nil, for: "parental.pin")
         }

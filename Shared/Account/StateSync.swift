@@ -777,7 +777,7 @@ final class StateSync {
 
         // apple
         if let v = (shared["categorySort"] as? String) ?? (apple["categorySort"] as? String) { setIfChanged(v, "category.sort") }
-        if let v = apple["traktOAuthHost"] as? String, v.hasPrefix("https://") { setIfChanged(v, "trakt.oauthHost") }
+        if let raw = apple["traktOAuthHost"] as? String, let v = TraktClient.allowedOAuthHost(raw) { setIfChanged(v, "trakt.oauthHost") }   // build 141: vaste lijst
         if let v = (apple["zapDelay"] as? NSNumber)?.doubleValue, PlayerSettings.zapDelays.contains(v),
            v != PlayerSettings.zapDelay { d.set(v, forKey: PlayerSettings.zapDelayKey) }
         if let v = apple["channelPreview"] as? Bool { setIfChanged(v, PlayerSettings.previewKey) }

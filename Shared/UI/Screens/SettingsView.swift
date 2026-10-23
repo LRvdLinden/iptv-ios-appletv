@@ -42,7 +42,8 @@ struct AppSettingsView: View {
 
     enum SetupTarget: String, Identifiable { case openSubtitles, all; var id: String { rawValue } }
 
-    enum PinMode: String, Identifiable { case set, unlock, disable; var id: String { rawValue } }
+    /// build 141: `change`, `lockOff` en `autoLockOff` vragen eerst de huidige pincode (net als Samsung TV)
+    enum PinMode: String, Identifiable { case set, change, unlock, disable, lockOff, autoLockOff; var id: String { rawValue } }
 
 
     var body: some View {
@@ -103,6 +104,20 @@ struct AppSettingsView: View {
                 switch mode {
                 case .set:
                     PINSetupView(profileID: prof.id)
+                case .change:
+                    PINSetupView(profileID: prof.id, requireCurrent: true)
+                case .lockOff:
+                    PINPad(title: L("Enter PIN to turn off")) { pin in
+                        guard parental.verify(pin, profile: prof.id) else { return false }
+                        store.updateParental { $0.enabled = false }
+                        return true
+                    }
+                case .autoLockOff:
+                    PINPad(title: L("Enter PIN to turn off")) { pin in
+                        guard parental.verify(pin, profile: prof.id) else { return false }
+                        store.updateParental { $0.autoLockAdult = false }
+                        return true
+                    }
                 case .unlock:
                     PINPad(title: L("Enter PIN")) { parental.verify($0, profile: prof.id) }
                 case .disable:
@@ -383,7 +398,7 @@ struct AppSettingsView: View {
                       systemImage: has ? "lock.fill" : "lock.open")
                     .foregroundStyle(has ? Theme.green : Theme.secondary)
                 if has {
-                    Button(L("Change PIN")) { pinMode = .set }
+                    Button(L("Change PIN")) { pinMode = .change }
                     Button(L("Remove PIN"), role: .destructive) { pinMode = .disable }
                 } else {
                     Button { pinMode = .set } label: { Label(L("Set PIN"), systemImage: "lock") }
@@ -392,11 +407,11 @@ struct AppSettingsView: View {
             if isMain, store.activeProfile.map({ parental.hasPIN(profile: $0.id) }) ?? false {
                 Toggle(L("Lock adult content with this PIN"), isOn: Binding(
                     get: { store.parental.enabled },
-                    set: { v in store.updateParental { $0.enabled = v } }))
+                    set: { v in if v { store.updateParental { $0.enabled = true } } else { pinMode = .lockOff } }))
                 if store.parental.enabled {
                     Toggle(L("Lock adult groups automatically"), isOn: Binding(
                         get: { store.parental.autoLockAdult },
-                        set: { v in store.updateParental { $0.autoLockAdult = v } }))
+                        set: { v in if v { store.updateParental { $0.autoLockAdult = true } } else { pinMode = .autoLockOff } }))
                     Label(parental.isUnlocked ? L("Unlocked for 30 minutes") : L("Locked"), systemImage: parental.isUnlocked ? "lock.open.fill" : "lock.fill")
                         .foregroundStyle(parental.isUnlocked ? Theme.imdb : Theme.green)
                     if parental.isUnlocked { Button(L("Lock now")) { parental.lock() } }
@@ -487,20 +502,34 @@ struct AppSettingsView: View {
     }
 }
 
-/// Nieuwe pincode instellen (2× invoeren).
+/// Nieuwe pincode instellen (2× invoeren). build 141: met `requireCurrent` eerst de huidige pincode (wijzigen).
 struct PINSetupView: View {
     var profileID: UUID? = nil
+    var requireCurrent = false
     @EnvironmentObject var store: CloudStore
     @Environment(\.dismiss) private var dismiss
     @State private var first: String?
     @State private var step = 0
+    @State private var verified = false
 
     var body: some View {
-        if step == 0 {
-            PINPad(title: L("Choose a 4-digit PIN")) { pin in first = pin; step = 1; return false }
+        if requireCurrent && !verified {
+            PINPad(title: L("Enter your current PIN")) { pin in
+                let ok: Bool
+                if let id = profileID ?? store.activeProfileID ?? store.mainProfileID {
+                    ok = ParentalControl.shared.verify(pin, profile: id)
+                } else {
+                    ok = ParentalControl.shared.verify(pin)
+                }
+                if ok { verified = true }
+                return false   // niet sluiten: door naar de nieuwe pincode
+            }
+            .id("current")
+        } else if step == 0 {
+            PINPad(title: L("Choose a 4-digit PIN"), limited: false) { pin in first = pin; step = 1; return false }
                 .id("a")
         } else {
-            PINPad(title: L("Enter the PIN again")) { pin in
+            PINPad(title: L("Enter the PIN again"), limited: false) { pin in
                 guard pin == first else { step = 0; return false }
                 if let id = profileID ?? store.activeProfileID ?? store.mainProfileID {
                     ParentalControl.shared.setPIN(pin, profile: id)

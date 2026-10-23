@@ -314,7 +314,35 @@ final class AccountService: ObservableObject {
         clearLocal()
     }
 
+    /// build 141: wat de server bij een tv-code weet (device-auth `code_info`), voor de bevestiging vóór het koppelen.
+    struct TVCodeInfo {
+        /// Wat het apparaat zelf opgaf ("Samsung TV", "Apple TV" …)
+        var device: String
+        /// Soort apparaat volgens de server ("Apple TV", "Android TV" …)
+        var label: String
+        /// Seconden sinds de code is aangemaakt (door de server berekend)
+        var ageSeconds: Int
+    }
+
+    /// build 141: eerst opvragen bij welk apparaat de code hoort (nog niets goedkeuren).
+    func tvCodeInfo(code: String) async throws -> TVCodeInfo {
+        let c = Self.normalizeCode(code)
+        guard c.count >= 4 else { throw AccountError.message(L("That code is invalid or has expired.")) }
+        isBusy = true; defer { isBusy = false }
+        let token = try await validAccessToken()
+        let r = try await post("/functions/v1/device-auth", ["action": "code_info", "code": c], bearer: token)
+        if r.status == 404 || r.string("error") == "invalid_code" {
+            throw AccountError.message(L("That code is invalid or has expired."))
+        }
+        if r.status == 429 { throw AccountError.message(L("Too many attempts. Wait a few minutes and try again.")) }
+        guard r.status == 200, (r.json["ok"] as? Bool) == true else { throw AccountError.generic }
+        let device = String((r.string("device") ?? "TV").prefix(60))
+        let age = (r.json["age_s"] as? NSNumber)?.intValue ?? 0
+        return TVCodeInfo(device: device, label: String((r.string("label") ?? device).prefix(60)), ageSeconds: max(0, age))
+    }
+
     /// Een tv koppelen met de code op het tv-scherm. Geeft de apparaatnaam terug.
+    /// build 141: alleen na de bevestiging in `LinkTVView` (eerst `tvCodeInfo`).
     func approveTV(code: String) async throws -> String {
         let c = Self.normalizeCode(code)
         guard c.count >= 4 else { throw AccountError.message(L("That code is invalid or has expired.")) }
