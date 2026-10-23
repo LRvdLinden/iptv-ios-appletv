@@ -50,12 +50,14 @@ make_m3u "$SRV/get.php" 40 6 Smoke 0
 make_m3u "$SRV/get2.php" "${SMOKE_BIG_MOVIES:-50000}" "${SMOKE_BIG_SHOWS:-6000}" Groot 0
 make_m3u "$SRV/get3.php" "${SMOKE_BIG_MOVIES:-50000}" "${SMOKE_BIG_SHOWS:-6000}" Reus 0
 ls -la "$SRV" | awk '{print $5, $9}' | tail -n 3
-( cd "$SRV" && exec python3 -m http.server 8765 --bind 127.0.0.1 ) >/dev/null 2>&1 &
+( cd "$SRV" && exec python3 -m http.server 8765 --bind 127.0.0.1 ) > /dev/null 2> "$OUT/m3u-access.log" &
 SRV_PID=$!
 trap 'kill $SRV_PID 2>/dev/null || true' EXIT
 # tweede start: nieuwe titels op de open server (Nieuw op Bingr, billboard)
 more_titles() { make_m3u "$SRV/get.php" 40 6 Smoke 12; }
 M3U="http://127.0.0.1:8765/get"
+
+count_req() { local n; n=$(grep -c 'GET /get' "$OUT/m3u-access.log" 2>/dev/null); echo "${n:-0}"; }
 
 marker() { touch "$OUT/.mark"; sleep 1; }
 
@@ -63,7 +65,9 @@ marker() { touch "$OUT/.mark"; sleep 1; }
 new_reports() {
   local wait=$1 found=""
   for _ in $(seq 1 "$wait"); do
-    found=$(find "$REPORTS" -maxdepth 1 \( -name 'Bingr*.ips' -o -name 'BingrTV*.ips' -o -name 'Bingr*.crash' \) -newer "$OUT/.mark" 2>/dev/null)
+    # bewuste crash van de test (StartDiagnostics.forceCrash) telt niet
+    found=$(find "$REPORTS" -maxdepth 1 \( -name 'Bingr*.ips' -o -name 'BingrTV*.ips' -o -name 'Bingr*.crash' \) -newer "$OUT/.mark" \
+      -exec grep -L "forceCrash" {} + 2>/dev/null)
     [ -n "$found" ] && break
     sleep 1
   done
@@ -127,12 +131,19 @@ sim_run() { # udid app naam args...
   local pid; pid=$(echo "$out" | grep -oE '[0-9]+$' | tail -1)
   echo "$PLATFORM/$name: gestart (pid ${pid:-?})"
   if [ -z "$pid" ]; then echo "$out"; report_crash "$name" "$log"; return; fi
-  local alive=1 peak=0 rss secs=$SECS timeline=""
+  local alive=1 peak=0 rss secs=$SECS timeline="" req0
   [ "$name" = 1-nieuw ] && secs=15
   [ "$name" = 2b-crash ] && secs=25
+  req0=$(count_req)
   for s in $(seq 1 "$secs"); do
     sleep 1
     if ! kill -0 "$pid" 2>/dev/null; then alive=0; echo "$PLATFORM/$name: gestopt na ${s}s"; break; fi
+    # build 143: start met een bewaarde lijst: de eerste 30 s geen enkele aanvraag naar de IPTV-servers
+    if [ "$s" = 30 ] && [ "${CACHED_START:-}" = 1 ]; then
+      local reqs=$(( $(count_req) - req0 ))
+      echo "$PLATFORM/$name: aanvragen naar de servers in de eerste 30 s: $reqs"
+      if [ "$reqs" -gt 0 ]; then echo "::error title=Start-rooktest $PLATFORM ($name)::$reqs aanvragen naar de IPTV-servers in de eerste 30 s na een start met bewaarde lijst"; FAIL=1; fi
+    fi
     rss=$(ps -o rss= -p "$pid" 2>/dev/null | tr -d ' '); [ -n "$rss" ] && [ "$rss" -gt "$peak" ] && peak=$rss
     [ -n "$rss" ] && [ $((s % 5)) = 0 ] && timeline="$timeline ${s}s:$((rss / 1024))"
   done
@@ -173,13 +184,13 @@ simulator() { # platform-runtime-naam app types...
   sim_run "$udid" "$app" 2-terugkerend -BingrSmoke YES -BingrSmokeKeychainMs "${SMOKE_KEYCHAIN_MS:-150}" -BingrSmokeM3U "$M3U" "${fresh[@]}"
   # build 143: bewuste crash → de volgende start moet het rapport van de startdiagnose hebben
   EXPECT_CRASH=1 sim_run "$udid" "$app" 2b-crash -BingrSmoke YES -BingrSmokeCrash YES -BingrSmokeM3U "$M3U" "${fresh[@]}"
-  sim_run "$udid" "$app" 2c-na-crash -BingrSmoke YES -BingrSmokeExpectCrashReport YES -BingrSmokeM3U "$M3U" "${fresh[@]}"
+  CACHED_START=1 sim_run "$udid" "$app" 2c-na-crash -BingrSmoke YES -BingrSmokeExpectCrashReport YES -BingrSmokeM3U "$M3U" "${fresh[@]}"
   if [ -n "${SMOKE_LIGHT:-}" ]; then
     xcrun simctl shutdown "$udid" >/dev/null 2>&1 || true; xcrun simctl delete "$udid" >/dev/null 2>&1 || true
     return
   fi
   more_titles
-  sim_run "$udid" "$app" 3-herstart -BingrSmoke YES -BingrSmokeKeychainMs "${SMOKE_KEYCHAIN_MS:-150}" -BingrSmokeM3U "$M3U" "${fresh[@]}"
+  CACHED_START=1 sim_run "$udid" "$app" 3-herstart -BingrSmoke YES -BingrSmokeKeychainMs "${SMOKE_KEYCHAIN_MS:-150}" -BingrSmokeM3U "$M3U" "${fresh[@]}"
   xcrun simctl uninstall "$udid" "$BUNDLE"; xcrun simctl install "$udid" "$app"
   make_m3u "$SRV/get.php" 40 6 Smoke 0
   sim_run "$udid" "$app" 4-kinderprofiel -BingrSmoke YES -BingrSmokeKeychainMs "${SMOKE_KEYCHAIN_MS:-150}" -BingrSmokeKids YES -BingrSmokeM3U "$M3U" "${fresh[@]}"

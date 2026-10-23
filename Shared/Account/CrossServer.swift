@@ -408,6 +408,11 @@ final class CrossServer: ObservableObject {
             return hit
         }
         guard fetch else { return nil }
+        // build 143: niets ophalen in de eerste minuut na de start (alleen bewaarde catalogi); later opnieuw proberen
+        if !force, StartDiagnostics.shared.uptime < 60 {
+            schedule(delay: max(5, 62 - StartDiagnostics.shared.uptime))
+            return nil
+        }
         if !force, let last = lastFetch[s.id], Date().timeIntervalSince(last) < Self.freshFor { return nil }
         if !force { await waitUntilNotPlaying() }
         lastFetch[s.id] = Date()

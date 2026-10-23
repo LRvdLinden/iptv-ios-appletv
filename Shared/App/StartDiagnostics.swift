@@ -96,6 +96,8 @@ final class StartDiagnostics: @unchecked Sendable {
         if let d = try? JSONEncoder().encode(r) { defaults.set(d, forKey: currentKey) }
     }
 
+    func has(_ name: String) -> Bool { lock.lock(); defer { lock.unlock() }; return record.marks.contains { $0.name == name } }
+
     /// Seconden sinds de start van de app
     var uptime: TimeInterval { Date().timeIntervalSince(t0) }
 

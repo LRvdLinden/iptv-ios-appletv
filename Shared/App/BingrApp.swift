@@ -115,7 +115,8 @@ struct BingrApp: App {
                 // build 97: Trakt en de account-sync hooguit eens per minuut (op de Mac wordt de app bij elke
                 // wissel tussen apps weer actief)
                 if app.traktRefreshDue() { Task { await trakt.refresh() } }
-                Task { await app.playlists.refreshIfDue() }
+                // build 143: bij terugkeer naar de app (niet bij het starten: dan plant `select` het verversen)
+                if app.stage == .main && StartDiagnostics.shared.uptime > PlaylistService.autoSettle { Task { await app.playlists.refreshIfDue() } }
                 // gekoppelde apparaten: heartbeat (of registreren) bij terugkeer naar de voorgrond
                 if app.accountRefreshDue() {
                     Task {
@@ -216,6 +217,9 @@ final class AppState: ObservableObject {
         StateSync.shared.start()
         // build 128: één lijst over alle servers (opzoeken op andere servers, remap, catalogmeta); wacht tijdens afspelen
         CrossServer.shared.start(playlists: playlists, isPlaying: { [weak self] in self?.playing != nil })
+        // build 143: automatisch verversen alleen als het hoofdscherm open is en er niets speelt
+        playlists.isPlaying = { [weak self] in self?.playing != nil }
+        playlists.mayAutoRefresh = { [weak self] in self?.stage == .main }
         // servers uit de Bingr-account geïmporteerd, gewijzigd of verwijderd → bibliotheek laden of verversen
         SourceSync.shared.changes
             .receive(on: DispatchQueue.main)
@@ -416,18 +420,8 @@ final class AppState: ObservableObject {
             }
             return
         }
-        guard let src = preferredSource else { return }
-        // build 130: de bibliotheek alvast laden, maar pas na de intro
-        Task { [weak self] in
-            guard let self else { return }
-            await self.afterSplash()
-            guard self.stage != .main else { return }   // intussen geopend: dat laadt zelf
-            if self.playlists.source?.id != src.id {
-                await self.playlists.select(src)
-            } else if change.updated.contains(src.id) {
-                await self.playlists.refresh(src, showSpinner: false)
-            }
-        }
+        // build 143: niet meer alvast laden of ophalen tijdens "Wie kijkt er?" of het pincodescherm: dat gebeurt pas als
+        // er een profiel gekozen is (`open(profile:)`), met de bewaarde lijst van schijf
     }
 
     /// Naar het tabblad Mijn Bingr, en daar (optioneel) meteen een pagina openen.

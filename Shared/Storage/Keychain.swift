@@ -93,7 +93,8 @@ enum Keychain {
         }
         guard let synced = result.synced, let legacy = result.legacy, let local = result.local else { return false }
         cacheLock.lock()
-        var fresh: [String: String?] = [:]
+        // start-rooktest: de simulator heeft zonder ondertekening geen bruikbare sleutelhanger; wat deze start schreef blijft
+        var fresh: [String: String?] = SmokeTest.isActive ? cache : [:]
         for (k, v) in legacy { fresh[k] = v }
         for (k, v) in synced { fresh[k] = v }   // synchroniseerbaar gaat voor (zoals `read`)
         cache = fresh

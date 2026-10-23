@@ -124,15 +124,7 @@ final class PlaylistService: ObservableObject {
             setRaw(cached)
             // build 140: volgens de instelling alle servers van het account die aan de beurt zijn. Build 141: de open
             // server meteen, de andere pas later en één voor één (zie `refreshIfDue`)
-            Task {
-                #if os(tvOS)
-                // build 143: Apple TV: de bewaarde lijst staat al in beeld; het verversen (ophalen, inlezen, gids) pas na
-                // de start, anders staan oude en nieuwe lijst tegelijk in het (kleine) geheugen
-                let up = StartDiagnostics.shared.uptime, settle: TimeInterval = SmokeTest.isActive ? 20 : 45
-                if up < settle { try? await Task.sleep(nanoseconds: UInt64((settle - up) * 1_000_000_000)) }
-                #endif
-                await refreshIfDue()
-            }
+            scheduleAutoRefresh()
             return
         }
         setRaw(Library())
@@ -155,6 +147,8 @@ final class PlaylistService: ObservableObject {
         }
         // laadtekst alleen voor de actieve server
         func say(_ t: String) { if ownsIndicator { loadingText = t } }
+        // build 143: startdiagnose: ophalen, binnen, ingelezen, bewaard (met het geheugen op elk moment)
+        StartDiagnostics.shared.mark(isActive ? "ophalen open server" : "ophalen andere server")
         do {
             var lib: Library
             let password = Keychain.get(s.passwordKey) ?? ""
@@ -162,11 +156,14 @@ final class PlaylistService: ObservableObject {
             case .m3u:
                 say(L("Downloading playlist…"))
                 guard let u = s.m3uURL.urlValue else { throw HTTPError.badURL }
-                let data = try await HTTP.get(u)
+                var data: Data? = try await HTTP.get(u)
+                StartDiagnostics.shared.mark("binnen")
                 say(L("Sorting channels and movies…"))
-                let text = String(decoding: data, as: UTF8.self)
+                let text = String(decoding: data ?? Data(), as: UTF8.self)
+                data = nil   // build 143: de ruwe bytes meteen vrijgeven (niet twee kopieën tijdens het inlezen)
                 let pid = s.id
-                lib = await Task.detached(priority: .userInitiated) { M3UParser.library(from: text, playlistID: pid) }.value
+                lib = await Task.detached(priority: isActive ? .userInitiated : .utility) { M3UParser.library(from: text, playlistID: pid) }.value
+                StartDiagnostics.shared.mark("ingelezen")
                 let epg = s.epgURL.urlValue ?? M3UParser.epgURL(fromHeader: text)
                 if let epg { say(L("Loading TV guide…")); lib.epg = await loadEPG(epg) }
             case .xtream:
@@ -213,6 +210,7 @@ final class PlaylistService: ObservableObject {
             } else {
                 writeCache(s, lib)     // andere afspeellijst op de achtergrond ververst
             }
+            StartDiagnostics.shared.mark("bewaard")
             return true
         } catch {
             guard source?.id == s.id else { return false }
@@ -246,16 +244,41 @@ final class PlaylistService: ObservableObject {
         scheduleOthers()
     }
 
+    /// Build 143: automatisch verversen na het openen met een bewaarde lijst. Bij het openen wordt NIETS opgehaald: de
+    /// bewaarde lijst staat meteen in beeld. Pas als de app al `autoSettle` seconden draait, er niets speelt en het
+    /// hoofdscherm open is: eerst de open server (alleen als die ouder is dan de ingestelde termijn), daarna de andere
+    /// één voor één (`scheduleOthers`). Een nieuwe server of profiel annuleert het.
+    static var autoSettle: TimeInterval { SmokeTest.isActive ? 35 : 45 }
+    private var autoTask: Task<Void, Never>?
+    func scheduleAutoRefresh() {
+        autoTask?.cancel()
+        othersTask?.cancel(); othersTask = nil
+        autoTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                let up = StartDiagnostics.shared.uptime
+                if up >= Self.autoSettle, !(self.isPlaying?() ?? false), self.mayAutoRefresh?() ?? true { break }
+                try? await Task.sleep(nanoseconds: UInt64(max(2, Self.autoSettle - up) * 1_000_000_000))
+            }
+            guard !Task.isCancelled, let self else { return }
+            await self.refreshIfDue()
+        }
+    }
+    /// Wordt er iets afgespeeld / mag het nu (hoofdscherm open)? Gezet door AppState.
+    var isPlaying: (() -> Bool)?
+    var mayAutoRefresh: (() -> Bool)?
+
     /// Build 141: de andere servers pas na `othersDelay` seconden (als de app dan nog openstaat), via
     /// `refreshAllIfDue` (één voor één, niet tijdens het afspelen, met een time-out).
     /// (in de start-rooktest korter, zodat het verversen van de grote servers binnen de test valt)
-    static var othersDelay: TimeInterval { SmokeTest.isActive ? 25 : 120 }
+    static var othersDelay: TimeInterval { SmokeTest.isActive ? 40 : 120 }
     private var othersTask: Task<Void, Never>?
     private func scheduleOthers() {
         guard othersTask == nil, CloudStore.shared.playlists.count > 1 else { return }
         othersTask = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(Self.othersDelay * 1_000_000_000))
             guard let self, !Task.isCancelled else { return }
+            if self.isPlaying?() ?? false { self.othersTask = nil; self.scheduleOthers(); return }
             await self.refreshAllIfDue()
             self.othersTask = nil
         }

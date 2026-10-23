@@ -187,7 +187,14 @@ enum SmokeTest {
             }
             guard let p = store.activeProfile ?? store.profiles.first else { say("geen profiel"); return }
             say("profiel openen (kids=\(p.kids))")
+            let opened = Date()
             app.open(profile: p)
+            // build 143: Home binnen 2 s na het kiezen van een profiel (bewaarde lijst, niets ophalen)
+            if !StartDiagnostics.shared.has("home") {
+                for _ in 0..<40 where !StartDiagnostics.shared.has("home") { await wait(0.1) }
+                let s = Date().timeIntervalSince(opened)
+                say(String(format: "Home na %.1f s", s) + (s > 2 ? " BINGR_SMOKE_FAIL (moet binnen 2 s)" : ""))
+            }
             if flag("-BingrSmokeCrash") {
                 await wait(4)
                 say("bewust crashen (test van de startdiagnose)")

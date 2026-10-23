@@ -153,6 +153,8 @@ targets:
             tmdb.org: {NSIncludesSubdomains: true, NSExceptionAllowsInsecureHTTPLoads: false}
             opensubtitles.com: {NSIncludesSubdomains: true, NSExceptionAllowsInsecureHTTPLoads: false}
         LSApplicationQueriesSchemes: [youtube]
+        # build 143: servers op het lokale netwerk (LAN-IP, .local) op een echte Apple TV
+        NSLocalNetworkUsageDescription: Bingr gebruikt het lokale netwerk om streams van je eigen server af te spelen.
         CFBundleLocalizations: [en, nl, de, fr, es, it, pt, tr, pl, ar, zh-Hans]
         CFBundleDevelopmentRegion: en
         # build 120: bingr://title?… (fallbackknop op bingr.online/titel/) en de deeplinks van pushmeldingen
