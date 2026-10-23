@@ -1,5 +1,64 @@
 [
  {
+  "build": 143,
+  "version": "1.0.1",
+  "date": "2026-10-23",
+  "items": [
+   {
+    "type": "fixed",
+    "platforms": [
+     "tvos"
+    ],
+    "nl": "De Apple TV-app haalt bij het openen niets meer op als er al een lijst bewaard is, gebruikt minder geheugen en loopt niet meer vast bij het starten",
+    "en": "The Apple TV app no longer downloads anything on launch when a saved list exists, uses less memory and no longer hangs at startup"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "Het pincodescherm van een beveiligd profiel verschijnt meteen",
+    "en": "The PIN screen for a protected profile now appears right away"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "Servers worden pas ververst als de app al even open is, één voor één en nooit tijdens het kijken",
+    "en": "Servers refresh only after the app has been open a while, one at a time and never while watching"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "Verder kijken toont de poster van de film of serie, ook bij titels die je eerder al keek",
+    "en": "Continue watching shows the movie or series poster, also for titles you watched earlier"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "Startdiagnose onder Instellingen → Over: liep de vorige start mis, dan zie je waar en stuur je het met één tik naar support",
+    "en": "Start diagnostics in Settings → About: if the last launch went wrong you see where, and can send it to support in one tap"
+   }
+  ]
+ },
+ {
   "build": 142,
   "version": "1.0.1",
   "date": "2026-10-23",

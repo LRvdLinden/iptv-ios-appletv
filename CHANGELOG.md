@@ -4,6 +4,30 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.1 · Build 143
+_23 oktober 2026_
+
+### iOS, iPadOS, tvOS en macOS
+
+**Nieuw**
+
+- Startdiagnose onder Instellingen → Over: liep de vorige start mis, dan zie je waar en stuur je het met één tik naar support
+
+**Verbeterd**
+
+- Servers worden pas ververst als de app al even open is, één voor één en nooit tijdens het kijken
+
+**Opgelost**
+
+- Het pincodescherm van een beveiligd profiel verschijnt meteen
+- Verder kijken toont de poster van de film of serie, ook bij titels die je eerder al keek
+
+### tvOS
+
+**Opgelost**
+
+- De Apple TV-app haalt bij het openen niets meer op als er al een lijst bewaard is, gebruikt minder geheugen en loopt niet meer vast bij het starten
+
 ## Versie 1.0.1 · Build 142
 _23 oktober 2026_
 
