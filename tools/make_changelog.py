@@ -3,15 +3,19 @@
 Formaat docs/changelog.json: lijst van builds (nieuwste eerst):
   {"build": 51, "version": "1.0.0", "date": "2026-10-12",
    "items": [{"type": "new"|"improved"|"fixed",
-              "platforms": ["ios","ipados","tvos","macos","android","androidtv","tizen","web","server"],
+              "platforms": ["ios","ipados","tvos","macos","android","androidtv","tizen","windows","web","server"],
               "nl": "…", "en": "…"}]}
-"androidtv" staat voor Android TV, Google TV en Fire TV; "tizen" voor Samsung TV (vanaf build 55).
+"androidtv" staat voor Android TV, Google TV en Fire TV; "tizen" voor Samsung TV (vanaf build 55);
+"windows" voor Bingr voor Windows (repo bingr-windows, vanaf build 140).
 
-"Alle apps" = alle apps in APPS, dus ook tizen. Builds van voor TIZEN_FROM hadden nog geen
-Samsung TV-app: daar telt een punt met de zes oudere apps (APPS zonder tizen) ook als "Alle apps".
+"Alle apps" = alle apps in APPS die bij die build al bestonden (SINCE): vanaf build 140 dus ook
+windows. Builds van voor TIZEN_FROM hadden nog geen Samsung TV-app: daar telt een punt met de zes
+oudere apps (APPS zonder tizen en windows) ook als "Alle apps" (en geldt het ook voor tizen).
+Voor windows gebeurt dat niet: oudere builds komen niet in de Windows-changelog.
 
 Gebruik: python3 tools/make_changelog.py                   → CHANGELOG.md (Apple + web)
          python3 tools/make_changelog.py --android <pad>   → <pad>/CHANGELOG.md (Android)
+         python3 tools/make_changelog.py --windows <pad>   → <pad>/CHANGELOG.md (Windows, repo bingr-windows)
          python3 tools/make_changelog.py --site <map>      → <map>/assets/changelog.json"""
 import json, sys, pathlib, shutil
 root = pathlib.Path(__file__).resolve().parent.parent
@@ -20,23 +24,29 @@ args = sys.argv[1:]
 def arg(n): return args[args.index(n) + 1] if n in args else None
 
 LABEL = {"ios": "iOS", "ipados": "iPadOS", "tvos": "tvOS", "macos": "macOS", "android": "Android", "androidtv": "Android TV",
-         "tizen": "Samsung TV (Tizen)", "web": "Website", "server": "Server"}
-ORDER = ["ios", "ipados", "tvos", "macos", "android", "androidtv", "tizen", "web", "server"]
-APPS = {"ios", "ipados", "tvos", "macos", "android", "androidtv", "tizen"}
+         "tizen": "Samsung TV (Tizen)", "windows": "Windows", "web": "Website", "server": "Server"}
+ORDER = ["ios", "ipados", "tvos", "macos", "android", "androidtv", "tizen", "windows", "web", "server"]
+APPS = {"ios", "ipados", "tvos", "macos", "android", "androidtv", "tizen", "windows"}
 TIZEN_FROM = 55  # eerste build met de Samsung TV-app
+WINDOWS_FROM = 140  # eerste build met de Windows-app
+SINCE = {"tizen": TIZEN_FROM, "windows": WINDOWS_FROM}
+
+def apps_at(build):
+    """De apps die bij deze build al bestonden ("Alle apps" van toen)."""
+    return {p for p in APPS if build >= SINCE.get(p, 0)}
 
 def platforms(i, build):
     """Platforms van een punt; vóór TIZEN_FROM is tizen inbegrepen als alle zes andere apps genoemd zijn."""
     s = set(i["platforms"])
-    if build < TIZEN_FROM and APPS - {"tizen"} <= s: s.add("tizen")
+    if build < TIZEN_FROM and APPS - {"tizen", "windows"} <= s: s.add("tizen")
     return s
 TYPES = [("new", "Nieuw"), ("improved", "Verbeterd"), ("fixed", "Opgelost")]
 MONTHS = ["januari", "februari", "maart", "april", "mei", "juni", "juli", "augustus", "september", "oktober", "november", "december"]
 def nl_date(iso):
     y, m, d = iso.split("-"); return f"{int(d)} {MONTHS[int(m) - 1]} {y}"
 
-def set_label(k):
-    if APPS <= set(k):
+def set_label(k, build):
+    if apps_at(build) <= set(k):
         extra = [n for p, n in (("web", "de website"), ("server", "de server")) if p in k]
         if not extra: return "Alle apps"
         return "Alle apps en " + extra[0] if len(extra) == 1 else "Alle apps, " + extra[0] + " en " + extra[1]
@@ -58,9 +68,9 @@ def md(keep, title, intro, core=None):
         for i in items:
             ps = platforms(i, e["build"])
             groups.setdefault(tuple(p for p in ORDER if p in ps), []).append(i)
-        def rank(k): return 0 if APPS <= set(k) else 1 + min(ORDER.index(p) for p in k) * 10 + len(k) * 0.1
+        def rank(k): return 0 if apps_at(e["build"]) <= set(k) else 1 + min(ORDER.index(p) for p in k) * 10 + len(k) * 0.1
         for k in sorted(groups, key=rank):
-            out += [f"### {set_label(k)}", ""]
+            out += [f"### {set_label(k, e['build'])}", ""]
             for t, head in TYPES:
                 rows = [i for i in groups[k] if i["type"] == t]
                 if not rows: continue
@@ -71,6 +81,11 @@ if arg("--android"):
     p = pathlib.Path(arg("--android")) / "CHANGELOG.md"
     p.write_text(md({"android", "androidtv", "tizen", "server"}, "Android en Samsung TV",
         "Alle versies van Bingr voor Android-telefoon en -tablet, Android TV, Google TV, Fire TV en Samsung TV (Tizen). iPhone, iPad, Apple TV en Mac: [iptv-ios-appletv](https://github.com/LRvdLinden/iptv-ios-appletv/blob/main/CHANGELOG.md) · alles: [bingr.online/changelog](https://bingr.online/changelog/).", core={"android", "androidtv", "tizen"}))
+    print(p)
+elif arg("--windows"):
+    p = pathlib.Path(arg("--windows")) / "CHANGELOG.md"
+    p.write_text(md({"windows", "server"}, "Windows",
+        "Alle versies van Bingr voor Windows (installer voor Windows 10 en 11). De app toont de webspeler van bingr.online: verbeteringen daaraan staan bij de website op [bingr.online/changelog](https://bingr.online/changelog/). iPhone, iPad, Apple TV en Mac: [iptv-ios-appletv](https://github.com/LRvdLinden/iptv-ios-appletv/blob/main/CHANGELOG.md) · Android en Samsung TV: [bingr-android](https://github.com/LRvdLinden/bingr-android/blob/main/CHANGELOG.md).", core={"windows"}))
     print(p)
 elif arg("--site"):
     d = pathlib.Path(arg("--site")) / "assets"; d.mkdir(exist_ok=True)
