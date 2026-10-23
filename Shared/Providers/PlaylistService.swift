@@ -891,7 +891,9 @@ final class PlaylistService: ObservableObject {
     }
     private func writeCache(_ s: PlaylistSource, _ lib: Library) {
         let url = Self.cacheURL(s)
-        Task.detached(priority: .background) {
+        // build 144: .utility i.p.v. .background: met .background stelde het systeem het wegschrijven soms zo lang uit
+        // dat de app eerder stopte; dan was er bij de volgende start geen bewaarde lijst en werd alles opnieuw opgehaald
+        Task.detached(priority: .utility) {
             if let d = try? JSONEncoder().encode(lib) { try? d.write(to: url, options: .atomic) }
         }
     }
