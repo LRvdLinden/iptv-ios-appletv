@@ -56,19 +56,19 @@ else: note("RLS", "alle tabellen in " + ", ".join(EXPOSED) + " hebben RLS aan")
 sec, code = lints("security")
 if sec is None: (fail if MODE == "gate" else warn).append(f"security-advisor niet gelezen (HTTP {code})")
 else:
+    # GitHub toont max. 10 annotaties per soort per stap: alles samen in een paar regels
     note("security-advisor", f"{len(sec)} bevinding(en) - {summary(sec)}")
-    for l in sec:
-        lvl = l.get("level")
-        if MODE == "report" and lvl in ("ERROR", "WARN", "INFO"): note(f"security {lvl}", label(l))
-        if lvl == "ERROR": fail.append(f"security-advisor ERROR: {label(l)}")
-        elif lvl == "WARN" and l.get("name") not in ACCEPTED_WARN: warn.append(f"security-advisor WARN: {label(l)}")
+    errs = [label(l) for l in sec if l.get("level") == "ERROR"]
+    warns = [label(l) for l in sec if l.get("level") == "WARN" and l.get("name") not in ACCEPTED_WARN]
+    if errs: fail.append("security-advisor ERROR: " + "; ".join(errs))
+    if warns: warn.append("security-advisor WARN: " + "; ".join(warns))
 if MODE == "report":
     perf, code = lints("performance")
     if perf is None: warn.append(f"performance-advisor niet gelezen (HTTP {code})")
     else:
         note("performance-advisor", f"{len(perf)} bevinding(en) - {summary(perf)}")
-        for l in perf:
-            if l.get("level") in ("ERROR", "WARN"): note(f"performance {l.get('level')}", label(l))
+        pw = [f"{l.get('level')} {label(l)}" for l in perf if l.get("level") in ("ERROR", "WARN")]
+        if pw: note("performance ERROR/WARN", "; ".join(pw))
     # Auth-instellingen die met inloggen te maken hebben (getallen en ja/nee, geen geheimen)
     code, c = req("GET", f"{API}/config/auth")
     if isinstance(c, dict):
