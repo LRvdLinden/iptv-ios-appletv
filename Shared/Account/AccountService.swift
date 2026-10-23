@@ -180,7 +180,7 @@ final class AccountService: ObservableObject {
 
     private func validate(email: String, password: String) throws {
         guard Self.isValidEmail(email) else { throw AccountError.message(L("Enter a valid email address.")) }
-        guard password.count >= 6 else { throw AccountError.message(L("Password must be at least 6 characters.")) }
+        guard password.count >= 8 else { throw AccountError.message(L("Password must be at least 8 characters.")) }   // build 141: server eist 8
     }
 
     /// Max. lengte van voor- en achternaam (user_metadata `first_name` / `last_name`).
@@ -219,7 +219,13 @@ final class AccountService: ObservableObject {
         guard Self.isValidEmail(mail) else { throw AccountError.message(L("Enter a valid email address.")) }
         guard !password.isEmpty else { throw AccountError.message(L("Incorrect email or password.")) }
         isBusy = true; defer { isBusy = false }
-        let r = try await post("/auth/v1/token?grant_type=password", ["email": mail, "password": password])
+        // build 141: via de functie `login` (blokkade per account, docs/ACCOUNT.md "Inloggen via de functie login");
+        // 200 = hetzelfde antwoord als /auth/v1/token. Functie (nog) niet uitgerold (404): direct naar /auth/v1/token.
+        var r = try await post("/functions/v1/login", ["email": mail, "password": password,
+                                                       "device_id": deviceID, "platform": Self.platform])
+        if r.status == 404 {
+            r = try await post("/auth/v1/token?grant_type=password", ["email": mail, "password": password])
+        }
         guard r.status == 200 else { throw Self.authError(r) }
         guard storeSession(r.json, fallbackEmail: mail) else { throw AccountError.generic }
     }
@@ -230,7 +236,8 @@ final class AccountService: ObservableObject {
         guard Self.isValidEmail(mail) else { throw AccountError.message(L("Enter a valid email address.")) }
         isBusy = true; defer { isBusy = false }
         let r = try await post("/auth/v1/recover?redirect_to=https%3A%2F%2Fbingr.online%2Freset", ["email": mail])
-        if r.status == 429 || r.status >= 500 { throw AccountError.generic }
+        if r.status == 429 { throw AccountError.message(L("Too many attempts. Wait a few minutes and try again.")) }   // build 141
+        if r.status >= 500 { throw AccountError.generic }
         return L("If an account exists, you'll receive an email to reset your password.")
     }
 
@@ -1358,6 +1365,13 @@ final class AccountService: ObservableObject {
     /// Supabase-foutcodes → teksten uit het contract.
     private static func authError(_ r: Response) -> AccountError {
         if isBanned(r) { return .banned }
+        // build 141: te veel pogingen (functie login met retry_after in seconden, of de Auth-limiet van /auth/v1/token)
+        if r.status == 429 {
+            if let secs = (r.json["retry_after"] as? NSNumber)?.doubleValue, secs > 0 {
+                return .message(L("Too many attempts. Try again in %d minutes.", max(1, Int((secs / 60).rounded(.up)))))
+            }
+            return .message(L("Too many attempts. Wait a few minutes and try again."))
+        }
         let code = (r.string("error_code") ?? r.string("error") ?? "").lowercased()
         let msg = (r.string("msg") ?? r.string("message") ?? r.string("error_description") ?? "").lowercased()
         switch code {
@@ -1369,7 +1383,7 @@ final class AccountService: ObservableObject {
         case "user_already_exists", "email_exists":
             return .message(L("An account with this email already exists."))
         case "weak_password":
-            return .message(L("Password must be at least 6 characters."))
+            return .message(L("Password must be at least 8 characters."))
         case "email_address_invalid", "validation_failed":
             return .message(L("Enter a valid email address."))
         default:
@@ -1378,7 +1392,7 @@ final class AccountService: ObservableObject {
             }
             if msg.contains("invalid login") { return .message(L("Incorrect email or password.")) }
             if msg.contains("not confirmed") { return .message(L("Confirm your email address first. Check your inbox.")) }
-            if msg.contains("password") && msg.contains("6") { return .message(L("Password must be at least 6 characters.")) }
+            if msg.contains("password") && (msg.contains("8") || msg.contains("weak")) { return .message(L("Password must be at least 8 characters.")) }
             return .generic
         }
     }

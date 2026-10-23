@@ -278,7 +278,7 @@
   "PIN for %@": "رمز %@",
   "Parental lock": "قفل الرقابة الأبوية",
   "Password": "كلمة المرور",
-  "Password must be at least 6 characters.": "يجب أن تتكون كلمة المرور من 6 أحرف على الأقل.",
+  "Password must be at least 8 characters.": "يجب أن تتكون كلمة المرور من 8 أحرف على الأقل.",
   "Pause": "إيقاف مؤقت",
   "Paused on Chromecast": "متوقف مؤقتًا على Chromecast",
   "Picture": "الصورة",
@@ -938,7 +938,8 @@
   "Only enter a code that is shown on your own TV.": "أدخل فقط رمزًا يظهر على تلفازك الخاص.",
   "Only enter a code that is shown on your own TV. Never enter a code someone else sent you.": "أدخل فقط رمزًا يظهر على تلفازك الخاص. لا تُدخل أبدًا رمزًا أرسله إليك شخص آخر.",
   "Too many wrong attempts. Try again in %@.": "محاولات خاطئة كثيرة. حاول مرة أخرى بعد %@.",
-  "“%@” (code created %@) gets full access to your Bingr account.": "سيحصل „%@” (أُنشئ الرمز %@) على وصول كامل إلى حساب Bingr الخاص بك."
+  "“%@” (code created %@) gets full access to your Bingr account.": "سيحصل „%@” (أُنشئ الرمز %@) على وصول كامل إلى حساب Bingr الخاص بك.",
+  "Too many attempts. Try again in %d minutes.": "محاولات كثيرة جدًا. حاول مرة أخرى بعد %d دقائق."
  },
  "de": {
   "%@ is now signed in.": "%@ ist jetzt angemeldet.",
@@ -1219,7 +1220,7 @@
   "PIN for %@": "PIN für %@",
   "Parental lock": "Kindersicherung",
   "Password": "Passwort",
-  "Password must be at least 6 characters.": "Das Passwort muss mindestens 6 Zeichen lang sein.",
+  "Password must be at least 8 characters.": "Das Passwort muss mindestens 8 Zeichen lang sein.",
   "Pause": "Pause",
   "Paused on Chromecast": "Pausiert auf Chromecast",
   "Picture": "Bild",
@@ -1879,7 +1880,8 @@
   "Only enter a code that is shown on your own TV.": "Gib nur einen Code ein, der auf deinem eigenen Fernseher angezeigt wird.",
   "Only enter a code that is shown on your own TV. Never enter a code someone else sent you.": "Gib nur einen Code ein, der auf deinem eigenen Fernseher angezeigt wird. Gib nie einen Code ein, den dir jemand anderes geschickt hat.",
   "Too many wrong attempts. Try again in %@.": "Zu viele falsche Versuche. Versuche es in %@ erneut.",
-  "“%@” (code created %@) gets full access to your Bingr account.": "„%@“ (Code erstellt %@) erhält vollen Zugriff auf dein Bingr-Konto."
+  "“%@” (code created %@) gets full access to your Bingr account.": "„%@“ (Code erstellt %@) erhält vollen Zugriff auf dein Bingr-Konto.",
+  "Too many attempts. Try again in %d minutes.": "Zu viele Versuche. Versuche es in %d Minuten erneut."
  },
  "es": {
   "%@ is now signed in.": "%@ ya ha iniciado sesión.",
@@ -2160,7 +2162,7 @@
   "PIN for %@": "PIN de %@",
   "Parental lock": "Control parental",
   "Password": "Contraseña",
-  "Password must be at least 6 characters.": "La contraseña debe tener al menos 6 caracteres.",
+  "Password must be at least 8 characters.": "La contraseña debe tener al menos 8 caracteres.",
   "Pause": "Pausa",
   "Paused on Chromecast": "En pausa en Chromecast",
   "Picture": "Imagen",
@@ -2820,7 +2822,8 @@
   "Only enter a code that is shown on your own TV.": "Introduce solo un código que aparezca en tu propio televisor.",
   "Only enter a code that is shown on your own TV. Never enter a code someone else sent you.": "Introduce solo un código que aparezca en tu propio televisor. Nunca introduzcas un código que te haya enviado otra persona.",
   "Too many wrong attempts. Try again in %@.": "Demasiados intentos incorrectos. Vuelve a intentarlo en %@.",
-  "“%@” (code created %@) gets full access to your Bingr account.": "«%@» (código creado %@) tendrá acceso completo a tu cuenta de Bingr."
+  "“%@” (code created %@) gets full access to your Bingr account.": "«%@» (código creado %@) tendrá acceso completo a tu cuenta de Bingr.",
+  "Too many attempts. Try again in %d minutes.": "Demasiados intentos. Vuelve a intentarlo en %d minutos."
  },
  "fr": {
   "%@ is now signed in.": "%@ est maintenant connecté.",
@@ -3101,7 +3104,7 @@
   "PIN for %@": "Code pour %@",
   "Parental lock": "Contrôle parental",
   "Password": "Mot de passe",
-  "Password must be at least 6 characters.": "Le mot de passe doit contenir au moins 6 caractères.",
+  "Password must be at least 8 characters.": "Le mot de passe doit contenir au moins 8 caractères.",
   "Pause": "Pause",
   "Paused on Chromecast": "En pause sur Chromecast",
   "Picture": "Image",
@@ -3761,7 +3764,8 @@
   "Only enter a code that is shown on your own TV.": "Saisissez uniquement un code affiché sur votre propre téléviseur.",
   "Only enter a code that is shown on your own TV. Never enter a code someone else sent you.": "Saisissez uniquement un code affiché sur votre propre téléviseur. Ne saisissez jamais un code que quelqu’un d’autre vous a envoyé.",
   "Too many wrong attempts. Try again in %@.": "Trop de tentatives incorrectes. Réessayez dans %@.",
-  "“%@” (code created %@) gets full access to your Bingr account.": "« %@ » (code créé %@) aura un accès complet à votre compte Bingr."
+  "“%@” (code created %@) gets full access to your Bingr account.": "« %@ » (code créé %@) aura un accès complet à votre compte Bingr.",
+  "Too many attempts. Try again in %d minutes.": "Trop de tentatives. Réessayez dans %d minutes."
  },
  "it": {
   "%@ is now signed in.": "%@ ha effettuato l’accesso.",
@@ -4042,7 +4046,7 @@
   "PIN for %@": "PIN per %@",
   "Parental lock": "Parental control",
   "Password": "Password",
-  "Password must be at least 6 characters.": "La password deve contenere almeno 6 caratteri.",
+  "Password must be at least 8 characters.": "La password deve contenere almeno 8 caratteri.",
   "Pause": "Pausa",
   "Paused on Chromecast": "In pausa su Chromecast",
   "Picture": "Immagine",
@@ -4702,7 +4706,8 @@
   "Only enter a code that is shown on your own TV.": "Inserisci solo un codice mostrato sulla tua TV.",
   "Only enter a code that is shown on your own TV. Never enter a code someone else sent you.": "Inserisci solo un codice mostrato sulla tua TV. Non inserire mai un codice che ti ha inviato qualcun altro.",
   "Too many wrong attempts. Try again in %@.": "Troppi tentativi errati. Riprova tra %@.",
-  "“%@” (code created %@) gets full access to your Bingr account.": "«%@» (codice creato %@) avrà accesso completo al tuo account Bingr."
+  "“%@” (code created %@) gets full access to your Bingr account.": "«%@» (codice creato %@) avrà accesso completo al tuo account Bingr.",
+  "Too many attempts. Try again in %d minutes.": "Troppi tentativi. Riprova tra %d minuti."
  },
  "nl": {
   "%@ is now signed in.": "%@ is nu ingelogd.",
@@ -4983,7 +4988,7 @@
   "PIN for %@": "Pincode voor %@",
   "Parental lock": "Kinderslot",
   "Password": "Wachtwoord",
-  "Password must be at least 6 characters.": "Wachtwoord moet minimaal 6 tekens hebben.",
+  "Password must be at least 8 characters.": "Wachtwoord moet minimaal 8 tekens hebben.",
   "Pause": "Pauzeren",
   "Paused on Chromecast": "Gepauzeerd op Chromecast",
   "Picture": "Beeld",
@@ -5643,7 +5648,8 @@
   "Only enter a code that is shown on your own TV.": "Voer alleen een code in die op je eigen tv staat.",
   "Only enter a code that is shown on your own TV. Never enter a code someone else sent you.": "Voer alleen een code in die op je eigen tv staat. Voer nooit een code in die iemand anders je heeft gestuurd.",
   "Too many wrong attempts. Try again in %@.": "Te veel foute pogingen. Probeer het opnieuw over %@.",
-  "“%@” (code created %@) gets full access to your Bingr account.": "„%@” (code aangemaakt %@) krijgt volledige toegang tot je Bingr-account."
+  "“%@” (code created %@) gets full access to your Bingr account.": "„%@” (code aangemaakt %@) krijgt volledige toegang tot je Bingr-account.",
+  "Too many attempts. Try again in %d minutes.": "Te veel pogingen. Probeer het over %d minuten opnieuw."
  },
  "pl": {
   "%@ is now signed in.": "%@ jest teraz zalogowany.",
@@ -5924,7 +5930,7 @@
   "PIN for %@": "PIN dla %@",
   "Parental lock": "Blokada rodzicielska",
   "Password": "Hasło",
-  "Password must be at least 6 characters.": "Hasło musi mieć co najmniej 6 znaków.",
+  "Password must be at least 8 characters.": "Hasło musi mieć co najmniej 8 znaków.",
   "Pause": "Wstrzymaj",
   "Paused on Chromecast": "Wstrzymano na Chromecaście",
   "Picture": "Obraz",
@@ -6584,7 +6590,8 @@
   "Only enter a code that is shown on your own TV.": "Wpisuj tylko kod widoczny na Twoim własnym telewizorze.",
   "Only enter a code that is shown on your own TV. Never enter a code someone else sent you.": "Wpisuj tylko kod widoczny na Twoim własnym telewizorze. Nigdy nie wpisuj kodu, który ktoś Ci przysłał.",
   "Too many wrong attempts. Try again in %@.": "Zbyt wiele błędnych prób. Spróbuj ponownie za %@.",
-  "“%@” (code created %@) gets full access to your Bingr account.": "„%@” (kod utworzony %@) otrzyma pełny dostęp do Twojego konta Bingr."
+  "“%@” (code created %@) gets full access to your Bingr account.": "„%@” (kod utworzony %@) otrzyma pełny dostęp do Twojego konta Bingr.",
+  "Too many attempts. Try again in %d minutes.": "Zbyt wiele prób. Spróbuj ponownie za %d min."
  },
  "pt": {
   "%@ is now signed in.": "%@ já tem sessão iniciada.",
@@ -6865,7 +6872,7 @@
   "PIN for %@": "PIN de %@",
   "Parental lock": "Bloqueio parental",
   "Password": "Palavra-passe",
-  "Password must be at least 6 characters.": "A palavra-passe deve ter pelo menos 6 caracteres.",
+  "Password must be at least 8 characters.": "A palavra-passe deve ter pelo menos 8 caracteres.",
   "Pause": "Pausa",
   "Paused on Chromecast": "Em pausa no Chromecast",
   "Picture": "Imagem",
@@ -7525,7 +7532,8 @@
   "Only enter a code that is shown on your own TV.": "Introduza apenas um código que apareça na sua própria TV.",
   "Only enter a code that is shown on your own TV. Never enter a code someone else sent you.": "Introduza apenas um código que apareça na sua própria TV. Nunca introduza um código que outra pessoa lhe enviou.",
   "Too many wrong attempts. Try again in %@.": "Demasiadas tentativas erradas. Tente novamente dentro de %@.",
-  "“%@” (code created %@) gets full access to your Bingr account.": "«%@» (código criado %@) terá acesso total à sua conta Bingr."
+  "“%@” (code created %@) gets full access to your Bingr account.": "«%@» (código criado %@) terá acesso total à sua conta Bingr.",
+  "Too many attempts. Try again in %d minutes.": "Demasiadas tentativas. Tente novamente dentro de %d minutos."
  },
  "tr": {
   "%@ is now signed in.": "%@ artık oturum açtı.",
@@ -7806,7 +7814,7 @@
   "PIN for %@": "%@ için PIN",
   "Parental lock": "Ebeveyn kilidi",
   "Password": "Parola",
-  "Password must be at least 6 characters.": "Şifre en az 6 karakter olmalı.",
+  "Password must be at least 8 characters.": "Şifre en az 8 karakter olmalı.",
   "Pause": "Duraklat",
   "Paused on Chromecast": "Chromecast'te duraklatıldı",
   "Picture": "Görüntü",
@@ -8466,7 +8474,8 @@
   "Only enter a code that is shown on your own TV.": "Yalnızca kendi TV'nizde görünen bir kodu girin.",
   "Only enter a code that is shown on your own TV. Never enter a code someone else sent you.": "Yalnızca kendi TV'nizde görünen bir kodu girin. Başkasının size gönderdiği bir kodu asla girmeyin.",
   "Too many wrong attempts. Try again in %@.": "Çok fazla hatalı deneme. %@ sonra tekrar deneyin.",
-  "“%@” (code created %@) gets full access to your Bingr account.": "“%@” (kod oluşturuldu: %@) Bingr hesabınıza tam erişim elde eder."
+  "“%@” (code created %@) gets full access to your Bingr account.": "“%@” (kod oluşturuldu: %@) Bingr hesabınıza tam erişim elde eder.",
+  "Too many attempts. Try again in %d minutes.": "Çok fazla deneme. %d dakika sonra tekrar deneyin."
  },
  "zh-Hans": {
   "%@ is now signed in.": "%@ 现已登录。",
@@ -8747,7 +8756,7 @@
   "PIN for %@": "%@ 的 PIN",
   "Parental lock": "家长锁",
   "Password": "密码",
-  "Password must be at least 6 characters.": "密码至少需要 6 个字符。",
+  "Password must be at least 8 characters.": "密码至少需要 8 个字符。",
   "Pause": "暂停",
   "Paused on Chromecast": "已在 Chromecast 上暂停",
   "Picture": "画面",
@@ -9407,6 +9416,7 @@
   "Only enter a code that is shown on your own TV.": "只输入显示在你自己电视上的代码。",
   "Only enter a code that is shown on your own TV. Never enter a code someone else sent you.": "只输入显示在你自己电视上的代码。切勿输入别人发给你的代码。",
   "Too many wrong attempts. Try again in %@.": "错误次数过多。请在 %@ 后重试。",
-  "“%@” (code created %@) gets full access to your Bingr account.": "“%@”（代码创建于 %@）将获得你的 Bingr 账户的完全访问权限。"
+  "“%@” (code created %@) gets full access to your Bingr account.": "“%@”（代码创建于 %@）将获得你的 Bingr 账户的完全访问权限。",
+  "Too many attempts. Try again in %d minutes.": "尝试次数过多。请在 %d 分钟后重试。"
  }
 }
