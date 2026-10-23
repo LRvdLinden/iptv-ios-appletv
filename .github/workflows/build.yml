@@ -205,7 +205,6 @@ jobs:
         if: steps.ios.outcome == 'success' && steps.tvos.outcome == 'success' && steps.macos.outcome == 'success' && steps.tvos_release.outcome == 'success' && steps.smoke_ios.outcome == 'success' && steps.smoke_tvos.outcome == 'success' && steps.smoke_macos.outcome == 'success'
         env:
           TOKEN: ${{ secrets.BINGR_INBOX_TOKEN }}
-          BINGR_SIGN_KEY: ${{ secrets.BINGR_BUILD_SIGN_KEY }}   # security M4: handtekening (zie README van bingr-beheer)
           BINGR_INBOX_REPO: LRvdLinden/bingr-inbox
         run: |
           set -euo pipefail
