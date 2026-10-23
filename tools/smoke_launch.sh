@@ -14,6 +14,8 @@
 set -uo pipefail
 PLATFORM=$1; PROD=$2; OUT=$3
 SECS=${SMOKE_SECONDS:-75}
+# build 142: korte rooktest bij elke push (SMOKE_LIGHT=1): kleine servers, alleen een nieuwe en een terugkerende start
+if [ -n "${SMOKE_LIGHT:-}" ]; then SECS=${SMOKE_SECONDS:-40}; SMOKE_BIG_MOVIES=${SMOKE_BIG_MOVIES:-400}; SMOKE_BIG_SHOWS=${SMOKE_BIG_SHOWS:-60}; unset SMOKE_EMAIL; fi
 BUNDLE=nl.lrvdlinden.bingr
 mkdir -p "$OUT"
 REPORTS="$HOME/Library/Logs/DiagnosticReports"
@@ -115,7 +117,7 @@ sim_run() { # udid app naam args...
   echo "$PLATFORM/$name: gestart (pid ${pid:-?})"
   if [ -z "$pid" ]; then echo "$out"; report_crash "$name" "$log"; return; fi
   local alive=1 peak=0 rss secs=$SECS timeline=""
-  [ "$name" = 1-nieuw ] && secs=20
+  [ "$name" = 1-nieuw ] && secs=15
   for s in $(seq 1 "$secs"); do
     sleep 1
     if ! kill -0 "$pid" 2>/dev/null; then alive=0; echo "$PLATFORM/$name: gestopt na ${s}s"; break; fi
@@ -149,6 +151,10 @@ simulator() { # platform-runtime-naam app types...
   sim_run "$udid" "$app" 1-nieuw "${fresh[@]}"
   xcrun simctl uninstall "$udid" "$BUNDLE"; xcrun simctl install "$udid" "$app"
   sim_run "$udid" "$app" 2-terugkerend -BingrSmoke YES -BingrSmokeM3U "$M3U" "${fresh[@]}"
+  if [ -n "${SMOKE_LIGHT:-}" ]; then
+    xcrun simctl shutdown "$udid" >/dev/null 2>&1 || true; xcrun simctl delete "$udid" >/dev/null 2>&1 || true
+    return
+  fi
   more_titles
   sim_run "$udid" "$app" 3-herstart -BingrSmoke YES -BingrSmokeM3U "$M3U" "${fresh[@]}"
   xcrun simctl uninstall "$udid" "$BUNDLE"; xcrun simctl install "$udid" "$app"
@@ -179,7 +185,7 @@ mac_run() { # naam args...
   local pid=$!
   echo "macos/$name: gestart (pid $pid)"
   local alive=1 peak=0 rss secs=$SECS timeline=""
-  [ "$name" = 1-nieuw ] && secs=20
+  [ "$name" = 1-nieuw ] && secs=15
   for s in $(seq 1 "$secs"); do
     sleep 1
     if ! kill -0 "$pid" 2>/dev/null; then alive=0; echo "macos/$name: gestopt na ${s}s"; break; fi

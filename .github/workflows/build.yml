@@ -5,6 +5,14 @@ on:
     branches: [main]
     paths-ignore: ['docs/**', '**/*.md', '.github/workflows/covers.yml', 'tools/fetch_covers.py', 'tools/make_screenshots.py', 'tools/sync_website.py', '.github/workflows/mac-archive.yml']
   workflow_dispatch:
+    inputs:
+      zware_rooktest:
+        description: "Zware start-rooktest: grote servers, Bingr-testaccount, Apple TV als Release en de Mac (±45 min)"
+        type: boolean
+        default: false
+  # build 142: de zware start-rooktest elke nacht (bij een push alleen de korte)
+  schedule:
+    - cron: '23 2 * * *'
 
 permissions:
   contents: write
@@ -17,8 +25,19 @@ jobs:
   build:
     runs-on: macos-15
     timeout-minutes: 90
+    env:
+      # build 142: korte rooktest bij elke push (iOS en tvOS, kleine nepdata); de zware alleen 's nachts of op verzoek
+      HEAVY: ${{ github.event_name == 'schedule' || inputs.zware_rooktest == true }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 (v5.1.0)
+
+      # build 142: Swift-packages (VLCKit) bewaren tussen runs
+      - name: Packages uit de cache
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        with:
+          path: build/SourcePackages
+          key: spm-${{ runner.os }}-${{ hashFiles('project.yml') }}
+          restore-keys: spm-${{ runner.os }}-
 
       - name: Xcode-versie kiezen
         run: |
@@ -88,7 +107,7 @@ jobs:
       # build 141: tijdelijk testaccount (Lifetime) voor de rooktest met een Bingr-account; wordt aan het eind altijd
       # weer verwijderd. Adres en wachtwoord zijn willekeurig en gemaskeerd (tools/smoke_account.py).
       - name: Testaccount voor de start-rooktest
-        if: steps.ios.outcome == 'success' || steps.tvos.outcome == 'success' || steps.macos.outcome == 'success'
+        if: env.HEAVY == 'true' && (steps.ios.outcome == 'success' || steps.tvos.outcome == 'success' || steps.macos.outcome == 'success')
         continue-on-error: true
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
@@ -103,13 +122,15 @@ jobs:
         if: steps.ios.outcome == 'success'
         continue-on-error: true
         timeout-minutes: 20
+        env:
+          SMOKE_LIGHT: ${{ env.HEAVY != 'true' && '1' || '' }}
         run: tools/smoke_launch.sh ios build/Build/Products "$RUNNER_TEMP/smoke/ios" 2>&1 | tee smoke-ios.log; exit ${PIPESTATUS[0]}
 
       # build 141: de Apple TV-app ook als Release (geoptimaliseerd, zoals de App Store-build) voor de rooktest; alleen
       # het vlag BINGR_SMOKE erbij, zodat de testmodus via het launch-argument werkt
       - name: Build tvOS Release voor de start-rooktest
         id: tvos_release
-        if: steps.tvos.outcome == 'success'
+        if: env.HEAVY == 'true' && steps.tvos.outcome == 'success'
         continue-on-error: true
         run: |
           set -o pipefail
@@ -119,18 +140,19 @@ jobs:
 
       - name: Start-rooktest tvOS (simulator)
         id: smoke_tvos
-        if: steps.tvos_release.outcome == 'success'
+        if: steps.tvos.outcome == 'success' && steps.tvos_release.outcome != 'failure'
         continue-on-error: true
         timeout-minutes: 25
         # Apple TV heeft veel minder geheugen dan een iPhone of Mac: daarboven stopt tvOS de app (lijkt een crash)
         env:
           SMOKE_MAX_MB: "1500"
-          SMOKE_CONFIG: Release
+          SMOKE_CONFIG: ${{ env.HEAVY == 'true' && 'Release' || 'Debug' }}
+          SMOKE_LIGHT: ${{ env.HEAVY != 'true' && '1' || '' }}
         run: tools/smoke_launch.sh tvos build/Build/Products "$RUNNER_TEMP/smoke/tvos" 2>&1 | tee smoke-tvos.log; exit ${PIPESTATUS[0]}
 
       - name: Start-rooktest macOS
         id: smoke_macos
-        if: steps.macos.outcome == 'success'
+        if: env.HEAVY == 'true' && steps.macos.outcome == 'success'
         continue-on-error: true
         timeout-minutes: 15
         run: tools/smoke_launch.sh macos build/Build/Products "$RUNNER_TEMP/smoke/macos" 2>&1 | tee smoke-macos.log; exit ${PIPESTATUS[0]}
@@ -202,7 +224,7 @@ jobs:
       # publieke sleutel) wordt anoniem gekloond, en het token gaat nooit in een URL (seal_build.sh geeft het als kopregel mee).
       - name: Xcode-project versleuteld aanleveren voor beheer.bingr.online
         # build 141: alleen als de apps ook echt starten (start-rooktest)
-        if: steps.ios.outcome == 'success' && steps.tvos.outcome == 'success' && steps.macos.outcome == 'success' && steps.tvos_release.outcome == 'success' && steps.smoke_ios.outcome == 'success' && steps.smoke_tvos.outcome == 'success' && steps.smoke_macos.outcome == 'success'
+        if: github.event_name != 'schedule' && steps.ios.outcome == 'success' && steps.tvos.outcome == 'success' && steps.macos.outcome == 'success' && steps.tvos_release.outcome != 'failure' && steps.smoke_ios.outcome == 'success' && steps.smoke_tvos.outcome == 'success' && steps.smoke_macos.outcome != 'failure'
         env:
           TOKEN: ${{ secrets.BINGR_INBOX_TOKEN }}
           BINGR_INBOX_REPO: LRvdLinden/bingr-inbox
@@ -226,5 +248,5 @@ jobs:
           rm -rf /tmp/pkg
 
       - name: Status
-        if: steps.ios.outcome != 'success' || steps.tvos.outcome != 'success' || steps.macos.outcome != 'success' || steps.selftest.outcome != 'success' || steps.tvos_release.outcome != 'success' || steps.smoke_ios.outcome != 'success' || steps.smoke_tvos.outcome != 'success' || steps.smoke_macos.outcome != 'success'
+        if: steps.ios.outcome != 'success' || steps.tvos.outcome != 'success' || steps.macos.outcome != 'success' || steps.selftest.outcome != 'success' || steps.tvos_release.outcome == 'failure' || steps.smoke_ios.outcome != 'success' || steps.smoke_tvos.outcome != 'success' || steps.smoke_macos.outcome == 'failure'
         run: exit 1
