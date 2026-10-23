@@ -126,7 +126,7 @@ sim_run() { # udid app naam args...
     # ook een crash van een hulpproces van de app telt
     local late; late=$(new_reports 1)
     if [ -n "$late" ]; then report_crash "$name" "$log"; return; fi
-    echo "$PLATFORM/$name: draait na ${SECS}s nog (geen crash)"
+    echo "$PLATFORM/$name: draait na ${secs}s nog (geen crash)"
     grep -a "BINGR_SMOKE" "$log" | tail -n 12 || true
     xcrun simctl io "$udid" screenshot --type=png "$OUT/$name.png" >/dev/null 2>&1 || true
     xcrun simctl terminate "$udid" "$BUNDLE" >/dev/null 2>&1 || true
@@ -152,6 +152,18 @@ simulator() { # platform-runtime-naam app types...
   xcrun simctl uninstall "$udid" "$BUNDLE"; xcrun simctl install "$udid" "$app"
   make_m3u "$SRV/get.php" 40 6 Smoke 0
   sim_run "$udid" "$app" 4-kinderprofiel -BingrSmoke YES -BingrSmokeKids YES -BingrSmokeM3U "$M3U" "${fresh[@]}"
+  if [ -n "${SMOKE_EMAIL:-}" ]; then
+    # met een Bingr-account (tijdelijk testaccount): de iPhone zet zijn gegevens in het account, de Apple TV (en de Mac)
+    # haalt alles van het account, zoals een gebruiker die op een tweede apparaat inlogt; daarna opnieuw starten met
+    # de sessie (de account-sync bij het starten)
+    xcrun simctl uninstall "$udid" "$BUNDLE"; xcrun simctl install "$udid" "$app"
+    if [ "$PLATFORM" = ios ]; then
+      sim_run "$udid" "$app" 5-account -BingrSmoke YES -BingrSmokeM3U "$M3U" -BingrSmokeEmail "$SMOKE_EMAIL" -BingrSmokePassword "$SMOKE_PASSWORD" "${fresh[@]}"
+    else
+      sim_run "$udid" "$app" 5-account -BingrSmoke YES -BingrSmokeNoSeed YES -BingrSmokeEmail "$SMOKE_EMAIL" -BingrSmokePassword "$SMOKE_PASSWORD" "${fresh[@]}"
+    fi
+    sim_run "$udid" "$app" 6-account-herstart -BingrSmoke YES -BingrSmokeEmail "$SMOKE_EMAIL" -BingrSmokePassword "$SMOKE_PASSWORD" "${fresh[@]}"
+  fi
   xcrun simctl shutdown "$udid" >/dev/null 2>&1 || true
   xcrun simctl delete "$udid" >/dev/null 2>&1 || true
 }
@@ -176,7 +188,7 @@ mac_run() { # naam args...
     local late; late=$(new_reports 1)
     kill "$pid" 2>/dev/null; sleep 2; kill -9 "$pid" 2>/dev/null || true
     if [ -n "$late" ]; then report_crash "$name" "$log"; return; fi
-    echo "macos/$name: draait na ${SECS}s nog (geen crash)"
+    echo "macos/$name: draait na ${secs}s nog (geen crash)"
     grep -a "BINGR_SMOKE" "$log" | tail -n 12 || true
     screencapture -x "$OUT/$name.png" 2>/dev/null || true
   else
@@ -192,7 +204,7 @@ case "$PLATFORM" in
     simulator iOS "$PROD/Debug-iphonesimulator/Bingr.app" "iPhone 16 Pro" "iPhone 17 Pro" "iPhone 16" "iPhone 15 Pro"
     ;;
   tvos)
-    simulator tvOS "$PROD/Debug-appletvsimulator/BingrTV.app" "Apple TV 4K (3rd generation)" "Apple TV 4K (3rd generation) (at 1080p)" "Apple TV 4K (2nd generation)" "Apple TV"
+    simulator tvOS "$PROD/${SMOKE_CONFIG:-Debug}-appletvsimulator/BingrTV.app" "Apple TV 4K (3rd generation)" "Apple TV 4K (3rd generation) (at 1080p)" "Apple TV 4K (2nd generation)" "Apple TV"
     ;;
   macos)
     mac_reset
@@ -205,6 +217,11 @@ case "$PLATFORM" in
     make_m3u "$SRV/get.php" 40 6 Smoke 0
     mac_run 4-kinderprofiel -BingrSmoke YES -BingrSmokeKids YES -BingrSmokeM3U "$M3U" -AppleLanguages "(nl)"
     mac_reset
+    if [ -n "${SMOKE_EMAIL:-}" ]; then
+      mac_run 5-account -BingrSmoke YES -BingrSmokeNoSeed YES -BingrSmokeEmail "$SMOKE_EMAIL" -BingrSmokePassword "$SMOKE_PASSWORD" -AppleLanguages "(nl)"
+      mac_run 6-account-herstart -BingrSmoke YES -BingrSmokeEmail "$SMOKE_EMAIL" -BingrSmokePassword "$SMOKE_PASSWORD" -AppleLanguages "(nl)"
+      mac_reset
+    fi
     ;;
   *) echo "onbekend platform $PLATFORM"; exit 2 ;;
 esac
