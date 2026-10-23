@@ -62,7 +62,7 @@ enum SmokeTest {
 
     static func keychainCall() {
         guard isActive else { return }
-        if Thread.isMainThread { statsLock.lock(); mainKeychainCalls += 1; statsLock.unlock() }
+        if Thread.isMainThread { statsLock.withLock { mainKeychainCalls += 1 } }
         if keychainDelay > 0 { usleep(keychainDelay * 1000) }
     }
 
@@ -225,7 +225,7 @@ enum SmokeTest {
                 await wait(6)
             }
             app.selectedTab = 0
-            statsLock.lock(); let calls = mainKeychainCalls; statsLock.unlock()
+            let calls = statsLock.withLock { mainKeychainCalls }
             say("sleutelhanger op de hoofdthread: \(calls) keer")
             say("klaar")
         }
