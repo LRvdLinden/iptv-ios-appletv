@@ -47,8 +47,10 @@ enum SmokeTest {
 
     /// Naar stderr (niet gebufferd), zodat de workflow het ook ziet als de app daarna crasht
     static func say(_ s: String) {
-        FileHandle.standardError.write(Data(("BINGR_SMOKE: " + s + "\n").utf8))
+        let t = String(format: "%.0f", Date().timeIntervalSince(started))
+        FileHandle.standardError.write(Data(("BINGR_SMOKE: [\(t)s] " + s + "\n").utf8))
     }
+    private static let started = Date()
 
     private static let seededKey = "smoke.seeded.v141"
 
