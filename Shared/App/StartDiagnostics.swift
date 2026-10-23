@@ -140,7 +140,7 @@ final class StartDiagnostics: @unchecked Sendable {
     // MARK: vangnetten
 
     private static var crashURL: URL {
-        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("diag-crash.v143.txt")
+        AppDirs.caches.appendingPathComponent("diag-crash.v143.txt")
     }
 
     private static func readCrashFile() -> String? {
@@ -150,22 +150,31 @@ final class StartDiagnostics: @unchecked Sendable {
     }
 
     private static func installHandlers() {
+        #if os(tvOS)
+        // build 144: op Apple TV (nog) geen signal-handlers en geen crashbestand bij de start (tot bewezen veilig op het
+        // toestel); de mijlpalen en de NSException-handler blijven
+        NSSetUncaughtExceptionHandler { e in StartDiagnostics.shared.noteException(e) }
+        return
+        #else
         // bestand vooraf openen: de signal-handler mag alleen write/backtrace gebruiken
         let path = crashURL.path
         FileManager.default.createFile(atPath: path, contents: nil)
         crashFD = open(path, O_WRONLY | O_TRUNC)
-        NSSetUncaughtExceptionHandler { e in
-            let d = StartDiagnostics.shared
-            d.lock.lock()
-            d.record.crash = "\(e.name.rawValue): \(e.reason ?? "")"
-            d.record.stack = Array(e.callStackSymbols.prefix(60))
-            let r = d.record
-            d.lock.unlock()
-            d.save(r)
-        }
+        NSSetUncaughtExceptionHandler { e in StartDiagnostics.shared.noteException(e) }
+        guard crashFD >= 0 else { return }
         for s in [SIGABRT, SIGSEGV, SIGBUS, SIGTRAP, SIGILL, SIGFPE] {
             signal(s, bingrSignalHandler)
         }
+        #endif
+    }
+
+    fileprivate func noteException(_ e: NSException) {
+        lock.lock()
+        record.crash = "\(e.name.rawValue): \(e.reason ?? "")"
+        record.stack = Array(e.callStackSymbols.prefix(60))
+        let r = record
+        lock.unlock()
+        save(r)
     }
 
     /// Test (start-rooktest, `-BingrSmokeCrash YES`): bewust crashen, de volgende start moet het rapport tonen.

@@ -126,17 +126,21 @@ jobs:
           SMOKE_LIGHT: ${{ env.HEAVY != 'true' && '1' || '' }}
         run: tools/smoke_launch.sh ios build/Build/Products "$RUNNER_TEMP/smoke/ios" 2>&1 | tee smoke-ios.log; exit ${PIPESTATUS[0]}
 
-      # build 141: de Apple TV-app ook als Release (geoptimaliseerd, zoals de App Store-build) voor de rooktest; alleen
-      # het vlag BINGR_SMOKE erbij, zodat de testmodus via het launch-argument werkt
-      - name: Build tvOS Release voor de start-rooktest
+      # build 141/144: de Apple TV-app voor de rooktest als Release (geoptimaliseerd, zoals de App Store-build), bij elke
+      # push, ad hoc ondertekend MET de echte entitlements (sleutelhanger-groep, user-management, iCloud KV), zodat de
+      # simulator ze ook toepast. Alleen het vlag BINGR_SMOKE erbij voor de testmodus.
+      - name: Build tvOS Release (ondertekend met entitlements) voor de start-rooktest
         id: tvos_release
-        if: env.HEAVY == 'true' && steps.tvos.outcome == 'success'
+        if: steps.tvos.outcome == 'success'
         continue-on-error: true
         run: |
           set -o pipefail
           xcodebuild build -project Bingr.xcodeproj -scheme BingrTV -configuration Release -derivedDataPath build \
             -destination 'generic/platform=tvOS Simulator' SWIFT_ACTIVE_COMPILATION_CONDITIONS=BINGR_SMOKE \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO 2>&1 | tail -n 40
+            CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER= \
+            CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=YES 2>&1 | tail -n 40
+          echo "--- entitlements van de gebouwde app:"
+          codesign -d --entitlements - build/Build/Products/Release-appletvsimulator/BingrTV.app 2>&1 | tail -n 30 || true
 
       - name: Start-rooktest tvOS (simulator)
         id: smoke_tvos
@@ -146,7 +150,7 @@ jobs:
         # Apple TV heeft veel minder geheugen dan een iPhone of Mac: daarboven stopt tvOS de app (lijkt een crash)
         env:
           SMOKE_MAX_MB: "700"
-          SMOKE_CONFIG: ${{ env.HEAVY == 'true' && 'Release' || 'Debug' }}
+          SMOKE_CONFIG: Release
           SMOKE_LIGHT: ${{ env.HEAVY != 'true' && '1' || '' }}
         run: tools/smoke_launch.sh tvos build/Build/Products "$RUNNER_TEMP/smoke/tvos" 2>&1 | tee smoke-tvos.log; exit ${PIPESTATUS[0]}
 

@@ -9,7 +9,7 @@ final class MetadataService: ObservableObject {
 
     @Published private(set) var cache: [String: TitleMetadata] = [:]   // key: "m|title|year" of "s|title|year"
     private var inFlight: [String: Task<TitleMetadata?, Never>] = [:]
-    private let cacheURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+    private let cacheURL = AppDirs.caches
         .appendingPathComponent("imdb-metadata.json")
     private var saveTask: Task<Void, Never>?
 

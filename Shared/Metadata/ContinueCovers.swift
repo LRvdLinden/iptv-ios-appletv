@@ -23,7 +23,7 @@ final class ContinueCovers: ObservableObject {
     }
 
     nonisolated private static var fileURL: URL {
-        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("continuecovers.v143.json")
+        AppDirs.caches.appendingPathComponent("continuecovers.v143.json")
     }
 
     private func load() {

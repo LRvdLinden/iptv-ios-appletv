@@ -526,7 +526,7 @@ final class TraktSync: ObservableObject {
     private struct Cache: Codable { var m: Set<String>; var e: [String: Set<String>]; var w: Set<String>; var a: String?; var t: TitleIndex?; var v: Int? }
     private static let cacheVersion = 2
     private var cacheURL: URL {
-        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("trakt-cache.json")
+        AppDirs.caches.appendingPathComponent("trakt-cache.json")
     }
     private func saveCache() {
         let c = Cache(m: watchedMovies, e: watchedEpisodes, w: watchlist, a: lastActivity, t: titleIndex, v: Self.cacheVersion)

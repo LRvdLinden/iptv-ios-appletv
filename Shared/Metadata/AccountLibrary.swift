@@ -137,8 +137,7 @@ final class NewOnBingr {
     private var saveTask: Task<Void, Never>?
 
     nonisolated private static var fileURL: URL {
-        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let dir = AppDirs.support
         return dir.appendingPathComponent("firstseen.v140.json")
     }
 

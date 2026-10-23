@@ -107,8 +107,7 @@ final class CrossServer: ObservableObject {
 
     private static let migratedKey = "crossserver.migrated.v128"
     nonisolated private static var fileURL: URL {
-        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let dir = AppDirs.support
         return dir.appendingPathComponent("catalogmeta.json")
     }
 

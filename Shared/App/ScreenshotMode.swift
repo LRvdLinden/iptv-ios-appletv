@@ -347,7 +347,7 @@ enum ScreenshotDemo {
     // MARK: bibliotheek
 
     private static func buildLibrary() {
-        let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("BingrScreenshots")
+        let dir = AppDirs.caches.appendingPathComponent("BingrScreenshots")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         func art<V: View>(_ name: String, _ size: CGSize, _ view: V) -> URL? { render(view, size: size, to: dir.appendingPathComponent(name + ".png")) }
 

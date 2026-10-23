@@ -877,7 +877,7 @@ final class PlaylistService: ObservableObject {
     // MARK: cache
 
     nonisolated static func cacheURL(_ s: PlaylistSource) -> URL {
-        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        AppDirs.caches
             .appendingPathComponent("library-\(s.id.uuidString).json")
     }
     nonisolated static func readCache(_ s: PlaylistSource) -> Library? {
@@ -953,7 +953,7 @@ extension PlaylistService {
 
     /// Catalogus zonder gids van een server die hier (nog) niet geopend is (build 128)
     nonisolated static func catalogURL(_ s: PlaylistSource) -> URL {
-        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        AppDirs.caches
             .appendingPathComponent("catalog-\(s.id.uuidString).json")
     }
 

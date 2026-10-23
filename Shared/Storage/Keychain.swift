@@ -59,6 +59,8 @@ enum Keychain {
 
     /// Alles in één keer gelezen (`warmUp`): een sleutel die niet in het geheugen staat, bestaat dan niet.
     private static var warm = false
+    /// Build 144: sleutels die deze start geschreven zijn; een (latere) `warmUp` overschrijft die niet met een oudere stand
+    private static var written = Set<String>(), writtenLocal = Set<String>()
 
     private static func cached(_ key: String, local: Bool) -> String?? {
         cacheLock.lock(); defer { cacheLock.unlock() }
@@ -97,8 +99,11 @@ enum Keychain {
         var fresh: [String: String?] = SmokeTest.isActive ? cache : [:]
         for (k, v) in legacy { fresh[k] = v }
         for (k, v) in synced { fresh[k] = v }   // synchroniseerbaar gaat voor (zoals `read`)
+        for k in written { if let v = cache[k] { fresh[k] = v } }
+        var freshLocal = local.mapValues { Optional($0) }
+        for k in writtenLocal { if let v = localCache[k] { freshLocal[k] = v } }
         cache = fresh
-        localCache = local.mapValues { Optional($0) }
+        localCache = freshLocal
         warm = true
         cacheLock.unlock()
         return true
@@ -157,6 +162,7 @@ enum Keychain {
 
     static func set(_ value: String?, for key: String) {
         remember(key, (value?.isEmpty ?? true) ? nil : value, local: false)
+        cacheLock.withLock { _ = written.insert(key) }
         serialAsync {
             if let value, !value.isEmpty { writeSynced(value, for: key) } else { deleteAll(key) }
             // build 97: een oude kopie in iCloud KV mag de wijziging niet later terugzetten
@@ -351,6 +357,7 @@ enum Keychain {
 
     static func setLocalOnly(_ value: String?, for key: String) {
         remember(key, (value?.isEmpty ?? true) ? nil : value, local: true)
+        cacheLock.withLock { _ = writtenLocal.insert(key) }
         serialAsync {
             let base: [String: Any] = [
                 kSecClass as String: kSecClassGenericPassword,

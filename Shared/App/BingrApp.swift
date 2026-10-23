@@ -13,8 +13,16 @@ struct BingrApp: App {
         StartDiagnostics.shared.start()   // build 143: startdiagnose (mijlpalen, vangnet), zo vroeg mogelijk
         // build 143: de hele sleutelhanger van Bingr in drie zoekopdrachten in het geheugen, vóór account en opslag
         // (anders tientallen losse zoekopdrachten op de hoofdthread)
-        Keychain.warmUp()
-        StartDiagnostics.shared.mark("sleutelhanger")
+        #if os(tvOS)
+        // build 144: op Apple TV niets met de sleutelhanger vóór het eerste beeld; op de achtergrond, fouten worden genegeerd
+        DispatchQueue.global(qos: .userInitiated).async {
+            let ok = Keychain.warmUp()
+            StartDiagnostics.shared.mark(ok ? "sleutelhanger" : "sleutelhanger (fout, per sleutel)")
+        }
+        #else
+        let ok = Keychain.warmUp()
+        StartDiagnostics.shared.mark(ok ? "sleutelhanger" : "sleutelhanger (fout, per sleutel)")
+        #endif
         SmokeTest.seedIfNeeded()
         let s = CloudStore.shared
         StartDiagnostics.shared.mark("opslag")

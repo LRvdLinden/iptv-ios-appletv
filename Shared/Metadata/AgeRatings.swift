@@ -36,7 +36,7 @@ final class AgeRatingService: ObservableObject {
     /// key: zelfde sleutel als MetadataService ("m|titel|jaar" / "s|titel|jaar"), met de titel zoals in de afspeellijst
     @Published private(set) var cache: [String: AgeInfo] = [:]
     private var inFlight: [String: Task<AgeInfo?, Never>] = [:]
-    private let cacheURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+    private let cacheURL = AppDirs.caches
         .appendingPathComponent("age-ratings.json")
     private var saveTask: Task<Void, Never>?
     private var prefetchTask: Task<Void, Never>?
