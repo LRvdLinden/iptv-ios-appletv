@@ -1,0 +1,235 @@
+commit: 6c4d05c41763e285864da5eed8263b8fee766709
+ios: success
+tvos: success
+macos: success
+selftest: success
+smoke: ios=success tvos=success macos=success
+
+=== selftest ===
+69 controles, 0 fout
+
+=== start-rooktest ===
+14820 get.php
+15445069 get2.php
+15149021 get3.php
+Simulator: iPhone 16 Pro / com.apple.CoreSimulator.SimRuntime.iOS-26-2
+ios/1-nieuw: gestart (pid 18123)
+ios/1-nieuw: geheugen (MB) per 5 s: 5s:258 10s:258 15s:258 20s:251
+ios/1-nieuw: piekgeheugen 259 MB
+ios/1-nieuw: draait na 20s nog (geen crash)
+ios/2-terugkerend: gestart (pid 20232)
+ios/2-terugkerend: geheugen (MB) per 5 s: 5s:264 10s:328 15s:410 20s:439 25s:554 30s:550 35s:564 40s:556 45s:526 50s:553 55s:516 60s:493 65s:385 70s:354 75s:346
+ios/2-terugkerend: piekgeheugen 593 MB
+ios/2-terugkerend: draait na 75s nog (geen crash)
+BINGR_SMOKE: [-0s] start (seeded=false)
+BINGR_SMOKE: [7s] account: geen · servers 3 · profielen 2
+BINGR_SMOKE: [7s] profiel openen (kids=false)
+BINGR_SMOKE: [38s] categorie uit
+BINGR_SMOKE: [42s] categorie aan
+BINGR_SMOKE: [46s] profiel kinderen
+BINGR_SMOKE: [53s] profiel hoofd
+BINGR_SMOKE: [59s] klaar
+ios/3-herstart: gestart (pid 25400)
+ios/3-herstart: geheugen (MB) per 5 s: 5s:264 10s:315 15s:472 20s:591 25s:573 30s:489 35s:463 40s:457 45s:455 50s:483 55s:503 60s:398 65s:280 70s:265 75s:266
+ios/3-herstart: piekgeheugen 598 MB
+ios/3-herstart: draait na 75s nog (geen crash)
+BINGR_SMOKE: [-0s] start (seeded=true)
+BINGR_SMOKE: [8s] account: geen · servers 3 · profielen 2
+BINGR_SMOKE: [8s] profiel openen (kids=false)
+BINGR_SMOKE: [39s] categorie uit
+BINGR_SMOKE: [43s] categorie aan
+BINGR_SMOKE: [48s] profiel kinderen
+BINGR_SMOKE: [54s] profiel hoofd
+BINGR_SMOKE: [60s] klaar
+ios/4-kinderprofiel: gestart (pid 31788)
+ios/4-kinderprofiel: geheugen (MB) per 5 s: 5s:293 10s:368 15s:410 20s:490 25s:541 30s:555 35s:617 40s:602 45s:645 50s:666 55s:517 60s:502 65s:502 70s:501 75s:501
+ios/4-kinderprofiel: piekgeheugen 675 MB
+ios/4-kinderprofiel: draait na 75s nog (geen crash)
+BINGR_SMOKE: [-0s] start (seeded=false)
+BINGR_SMOKE: [7s] account: geen · servers 3 · profielen 2
+BINGR_SMOKE: [7s] profiel openen (kids=true)
+BINGR_SMOKE: [38s] categorie uit
+BINGR_SMOKE: [42s] categorie aan
+BINGR_SMOKE: [46s] profiel kinderen
+BINGR_SMOKE: [52s] profiel kinderen
+BINGR_SMOKE: [59s] klaar
+ios/5-account: gestart (pid 36929)
+ios/5-account: geheugen (MB) per 5 s: 5s:265 10s:342 15s:412 20s:501 25s:598 30s:622 35s:687 40s:666 45s:636 50s:565 55s:579 60s:534 65s:431 70s:431 75s:387
+ios/5-account: piekgeheugen 740 MB
+ios/5-account: draait na 75s nog (geen crash)
+BINGR_SMOKE: [-0s] start (seeded=false)
+BINGR_SMOKE: [8s] ingelogd
+BINGR_SMOKE: [18s] na inloggen: kies profiel
+BINGR_SMOKE: [18s] account: ingelogd · servers 3 · profielen 2
+BINGR_SMOKE: [18s] profiel openen (kids=false)
+BINGR_SMOKE: [49s] categorie uit
+BINGR_SMOKE: [53s] categorie aan
+BINGR_SMOKE: [57s] profiel kinderen
+BINGR_SMOKE: [63s] profiel hoofd
+BINGR_SMOKE: [69s] klaar
+ios/6-account-herstart: gestart (pid 42287)
+ios/6-account-herstart: geheugen (MB) per 5 s: 5s:246 10s:373 15s:480 20s:525 25s:598 30s:588 35s:585 40s:585 45s:545 50s:465 55s:487 60s:520 65s:516 70s:516 75s:516
+ios/6-account-herstart: piekgeheugen 630 MB
+ios/6-account-herstart: draait na 75s nog (geen crash)
+BINGR_SMOKE: [-0s] start (seeded=true)
+BINGR_SMOKE: [11s] ingelogd
+BINGR_SMOKE: [15s] na inloggen: kies profiel
+BINGR_SMOKE: [15s] account: ingelogd · servers 3 · profielen 2
+BINGR_SMOKE: [15s] profiel openen (kids=false)
+BINGR_SMOKE: [46s] categorie uit
+BINGR_SMOKE: [50s] categorie aan
+BINGR_SMOKE: [55s] profiel kinderen
+BINGR_SMOKE: [61s] profiel hoofd
+BINGR_SMOKE: [67s] klaar
+Start-rooktest ios: geen crashes
+14820 get.php
+15445069 get2.php
+15149021 get3.php
+Simulator: Apple TV 4K (3rd generation) / com.apple.CoreSimulator.SimRuntime.tvOS-26-2
+tvos/1-nieuw: gestart (pid 59817)
+tvos/1-nieuw: geheugen (MB) per 5 s: 5s:194 10s:201 15s:200 20s:200
+tvos/1-nieuw: piekgeheugen 201 MB
+tvos/1-nieuw: draait na 20s nog (geen crash)
+tvos/2-terugkerend: gestart (pid 61449)
+tvos/2-terugkerend: geheugen (MB) per 5 s: 5s:193 10s:297 15s:460 20s:637 25s:682 30s:672 35s:672 40s:672 45s:664 50s:725 55s:647 60s:575 65s:575 70s:574 75s:570
+tvos/2-terugkerend: piekgeheugen 725 MB
+tvos/2-terugkerend: draait na 75s nog (geen crash)
+BINGR_SMOKE: [-0s] start (seeded=false)
+BINGR_SMOKE: [6s] account: geen · servers 3 · profielen 2
+BINGR_SMOKE: [6s] profiel openen (kids=false)
+BINGR_SMOKE: [37s] categorie uit
+BINGR_SMOKE: [41s] categorie aan
+BINGR_SMOKE: [45s] profiel kinderen
+BINGR_SMOKE: [51s] profiel hoofd
+BINGR_SMOKE: [57s] klaar
+tvos/3-herstart: gestart (pid 65709)
+tvos/3-herstart: geheugen (MB) per 5 s: 5s:195 10s:348 15s:532 20s:516 25s:550 30s:546 35s:542 40s:541 45s:543 50s:569 55s:569 60s:569 65s:503 70s:497 75s:497
+tvos/3-herstart: piekgeheugen 569 MB
+tvos/3-herstart: draait na 75s nog (geen crash)
+BINGR_SMOKE: [-0s] start (seeded=true)
+BINGR_SMOKE: [6s] account: geen · servers 3 · profielen 2
+BINGR_SMOKE: [6s] profiel openen (kids=false)
+BINGR_SMOKE: [36s] categorie uit
+BINGR_SMOKE: [41s] categorie aan
+BINGR_SMOKE: [45s] profiel kinderen
+BINGR_SMOKE: [51s] profiel hoofd
+BINGR_SMOKE: [57s] klaar
+tvos/4-kinderprofiel: gestart (pid 69926)
+tvos/4-kinderprofiel: geheugen (MB) per 5 s: 5s:197 10s:281 15s:329 20s:483 25s:498 30s:579 35s:660 40s:747 45s:735 50s:735 55s:726 60s:617 65s:617 70s:617 75s:617
+tvos/4-kinderprofiel: piekgeheugen 747 MB
+tvos/4-kinderprofiel: draait na 75s nog (geen crash)
+BINGR_SMOKE: [-0s] start (seeded=false)
+BINGR_SMOKE: [6s] account: geen · servers 3 · profielen 2
+BINGR_SMOKE: [6s] profiel openen (kids=true)
+BINGR_SMOKE: [36s] categorie uit
+BINGR_SMOKE: [41s] categorie aan
+BINGR_SMOKE: [45s] profiel kinderen
+BINGR_SMOKE: [51s] profiel kinderen
+BINGR_SMOKE: [57s] klaar
+tvos/5-account: gestart (pid 73911)
+tvos/5-account: geheugen (MB) per 5 s: 5s:197 10s:199 15s:265 20s:327 25s:413 30s:506 35s:606 40s:696 45s:684 50s:769 55s:813 60s:786 65s:786 70s:786 75s:786
+tvos/5-account: piekgeheugen 813 MB
+tvos/5-account: draait na 75s nog (geen crash)
+BINGR_SMOKE: [-0s] start (seeded=false)
+BINGR_SMOKE: [6s] ingelogd
+BINGR_SMOKE: [14s] na inloggen: kies profiel
+BINGR_SMOKE: [14s] account: ingelogd · servers 3 · profielen 2
+BINGR_SMOKE: [14s] profiel openen (kids=false)
+BINGR_SMOKE: [45s] categorie uit
+BINGR_SMOKE: [49s] categorie aan
+BINGR_SMOKE: [53s] profiel kinderen
+BINGR_SMOKE: [59s] profiel hoofd
+BINGR_SMOKE: [65s] klaar
+tvos/6-account-herstart: gestart (pid 77752)
+tvos/6-account-herstart: geheugen (MB) per 5 s: 5s:202 10s:426 15s:521 20s:560 25s:576 30s:577 35s:577 40s:577 45s:606 50s:626 55s:646 60s:646 65s:646 70s:646 75s:646
+tvos/6-account-herstart: piekgeheugen 654 MB
+tvos/6-account-herstart: draait na 75s nog (geen crash)
+BINGR_SMOKE: [-0s] start (seeded=true)
+BINGR_SMOKE: [6s] ingelogd
+BINGR_SMOKE: [10s] na inloggen: kies profiel
+BINGR_SMOKE: [10s] account: ingelogd · servers 3 · profielen 2
+BINGR_SMOKE: [10s] profiel openen (kids=false)
+BINGR_SMOKE: [40s] categorie uit
+BINGR_SMOKE: [44s] categorie aan
+BINGR_SMOKE: [49s] profiel kinderen
+BINGR_SMOKE: [55s] profiel hoofd
+BINGR_SMOKE: [61s] klaar
+Start-rooktest tvos: geen crashes
+14820 get.php
+15445069 get2.php
+15149021 get3.php
+macos/1-nieuw: gestart (pid 82091)
+macos/1-nieuw: geheugen (MB) per 5 s: 5s:67 10s:76 15s:75 20s:78
+macos/1-nieuw: piekgeheugen 78 MB
+macos/1-nieuw: draait na 20s nog (geen crash)
+macos/2-terugkerend: gestart (pid 82880)
+macos/2-terugkerend: geheugen (MB) per 5 s: 5s:78 10s:104 15s:252 20s:465 25s:533 30s:550 35s:550 40s:550 45s:550 50s:552 55s:552 60s:551 65s:551 70s:551 75s:551
+macos/2-terugkerend: piekgeheugen 553 MB
+macos/2-terugkerend: draait na 75s nog (geen crash)
+BINGR_SMOKE: [-0s] start (seeded=false)
+BINGR_SMOKE: [6s] account: geen · servers 3 · profielen 2
+BINGR_SMOKE: [6s] profiel openen (kids=false)
+BINGR_SMOKE: [37s] categorie uit
+BINGR_SMOKE: [41s] categorie aan
+BINGR_SMOKE: [45s] profiel kinderen
+BINGR_SMOKE: [51s] profiel hoofd
+BINGR_SMOKE: [58s] klaar
+macos/3-herstart: gestart (pid 86096)
+macos/3-herstart: geheugen (MB) per 5 s: 5s:79 10s:204 15s:404 20s:404 25s:411 30s:411 35s:411 40s:428 45s:428 50s:428 55s:428 60s:428 65s:428 70s:428 75s:428
+macos/3-herstart: piekgeheugen 429 MB
+macos/3-herstart: draait na 75s nog (geen crash)
+BINGR_SMOKE: [-0s] start (seeded=true)
+BINGR_SMOKE: [6s] account: geen · servers 3 · profielen 2
+BINGR_SMOKE: [6s] profiel openen (kids=false)
+BINGR_SMOKE: [37s] categorie uit
+BINGR_SMOKE: [41s] categorie aan
+BINGR_SMOKE: [45s] profiel kinderen
+BINGR_SMOKE: [51s] profiel hoofd
+BINGR_SMOKE: [57s] klaar
+macos/4-kinderprofiel: gestart (pid 89292)
+macos/4-kinderprofiel: geheugen (MB) per 5 s: 5s:79 10s:258 15s:369 20s:369 25s:376 30s:376 35s:376 40s:390 45s:399 50s:399 55s:399 60s:399 65s:399 70s:399 75s:399
+macos/4-kinderprofiel: piekgeheugen 399 MB
+macos/4-kinderprofiel: draait na 75s nog (geen crash)
+BINGR_SMOKE: [-0s] start (seeded=true)
+BINGR_SMOKE: [6s] account: geen · servers 3 · profielen 2
+BINGR_SMOKE: [6s] profiel openen (kids=false)
+BINGR_SMOKE: [36s] categorie uit
+BINGR_SMOKE: [41s] categorie aan
+BINGR_SMOKE: [45s] profiel kinderen
+BINGR_SMOKE: [51s] profiel hoofd
+BINGR_SMOKE: [57s] klaar
+macos/5-account: gestart (pid 93112)
+macos/5-account: geheugen (MB) per 5 s: 5s:83 10s:332 15s:419 20s:485 25s:516 30s:525 35s:524 40s:524 45s:524 50s:535 55s:535 60s:535 65s:535 70s:535 75s:534
+macos/5-account: piekgeheugen 537 MB
+macos/5-account: draait na 75s nog (geen crash)
+BINGR_SMOKE: [-0s] start (seeded=true)
+BINGR_SMOKE: [6s] ingelogd
+BINGR_SMOKE: [15s] na inloggen: kies profiel
+BINGR_SMOKE: [15s] account: ingelogd · servers 6 · profielen 4
+BINGR_SMOKE: [15s] profiel openen (kids=false)
+BINGR_SMOKE: [46s] categorie uit
+BINGR_SMOKE: [50s] categorie aan
+BINGR_SMOKE: [54s] profiel kinderen
+BINGR_SMOKE: [60s] profiel kinderen
+BINGR_SMOKE: [66s] profiel hoofd
+BINGR_SMOKE: [73s] klaar
+macos/6-account-herstart: gestart (pid 97462)
+macos/6-account-herstart: geheugen (MB) per 5 s: 5s:85 10s:314 15s:463 20s:463 25s:469 30s:469 35s:469 40s:469 45s:478 50s:478 55s:486 60s:486 65s:486 70s:486 75s:486
+macos/6-account-herstart: piekgeheugen 486 MB
+macos/6-account-herstart: draait na 75s nog (geen crash)
+BINGR_SMOKE: [-0s] start (seeded=true)
+BINGR_SMOKE: [5s] account: ingelogd · servers 6 · profielen 4
+BINGR_SMOKE: [5s] profiel openen (kids=false)
+BINGR_SMOKE: [36s] categorie uit
+BINGR_SMOKE: [40s] categorie aan
+BINGR_SMOKE: [44s] profiel kinderen
+BINGR_SMOKE: [51s] profiel kinderen
+BINGR_SMOKE: [57s] profiel hoofd
+BINGR_SMOKE: [63s] klaar
+Start-rooktest macos: geen crashes
+
+=== iOS errors ===
+
+=== tvOS errors ===
+
+=== macOS errors ===
