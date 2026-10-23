@@ -2,7 +2,7 @@
 //   deno test supabase/functions/support/support_test.ts
 import {
   addressOf, cleanText, compareVersionsDesc, deviceKind, deviceLabel, knownVersions, myDevices, langOf, parseNumber, safeSearch, sameText, statusAfter, ticketUrl, validateCreate, validateMessage,
-  validEmail, validToken, randomToken,
+  validEmail, validToken, randomToken, ownsTicket, emailProven,
 } from "./logic.ts";
 import { bodyHtml, esc, renderMail, subjectFor, type MailData } from "./templates.ts";
 
@@ -249,4 +249,24 @@ Deno.test("aanhef met de voornaam van het account: alleen in klantmails en allee
   ok(renderMail({ ...base, lang: "en", kind: "customer_reply", body: "x", firstName: "Ann" }).html.includes(">Hi Ann,</p>"), "EN");
   ok(renderMail({ ...base, firstName: "<b>Jo</b>" }).html.includes(">Hoi bJo/b,</p>"), "opgeschoond, geen HTML");
   ok(!renderMail({ ...base, kind: "support_created", firstName: "Léon" }).html.includes("Hoi Léon"), "niet in mails aan support@");
+});
+
+// security H1: eigendom alleen via user_id, nooit via e-mailadres
+Deno.test("ownsTicket: alleen hetzelfde user_id", () => {
+  ok(ownsTicket("u1", "u1"), "eigen ticket");
+  ok(!ownsTicket("u1", null), "gast-ticket (ook met hetzelfde adres) is niet van het account");
+  ok(!ownsTicket("u1", "u2"), "ander account");
+  ok(!ownsTicket(null, null), "niet ingelogd");
+  ok(!ownsTicket("", ""), "lege id");
+  ok(!ownsTicket(undefined, undefined), "geen id");
+});
+Deno.test("emailProven: autoconfirm (zelfde moment) of bevestigen uit telt niet", () => {
+  const auto = { created_at: "2026-10-23T10:00:00.120Z", email_confirmed_at: "2026-10-23T10:00:00.121Z" };
+  const real = { created_at: "2026-10-23T10:00:00Z", email_confirmed_at: "2026-10-23T10:03:12Z" };
+  ok(!emailProven(auto, true), "autoconfirm");
+  ok(emailProven(real, true), "echte bevestiging");
+  ok(!emailProven(real, false), "bevestigen staat uit: nooit bewezen");
+  ok(!emailProven({ created_at: real.created_at, email_confirmed_at: null }, true), "onbevestigd");
+  ok(!emailProven(null, true), "geen gebruiker");
+  ok(!emailProven({ created_at: "x", email_confirmed_at: "y" }, true), "ongeldige datums");
 });

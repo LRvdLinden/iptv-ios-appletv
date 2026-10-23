@@ -20,7 +20,11 @@
 //   versions {}                                  -> {known:[{version:"1.0.0 (81)", build, platforms:["ios","tvos",…]}]}  (zonder inloggen)
 //   mine    {} (ingelogd)                        -> {items:[{number, subject, status, created_at, last_reply_at, unread, token}]}
 //           mine en my_devices met een geblokkeerd account: 401 {error:"user_banned", banned:true} (create kan dan als gast)
-//   get     {n, t} of {n} (ingelogd, eigen ticket) -> {ticket:{…}, messages:[{author, body, created_at}]}
+//   get     {n, t} of {n} (ingelogd, eigen ticket) -> {ticket:{…, linked, can_link}, messages:[{author, body, created_at}]}
+//   link    {n, t} (ingelogd)                    -> {ok, already?}  (ticket met de geheime link aan het eigen account koppelen;
+//           al aan een ander account gekoppeld: 409 linked_elsewhere)
+//   Eigenaar van een ticket (security H1) is alleen het account met user_id: ingelogd aangemaakt, of gekoppeld met "link".
+//   Nooit op e-mailadres (met autoconfirm bewijst email_confirmed_at niets). mine toont alleen tickets met user_id.
 //   reply   {n, t?, message}                     -> {ok, status}   (gesloten ticket: 409 closed)
 //   close   {n, t?}                              -> {ok, status:"closed"}
 // Beheer (alleen met header x-support-secret = SUPPORT_ADMIN_SECRET; de functie admin in bingr-beheer stuurt dit door):
@@ -52,7 +56,7 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { isMailtestAddress, MAILTEST_HEADER, mailtestOk, smtpConfigured, smtpFrom, transport, withName } from "../_shared/mail.ts";
 import {
-  addressOf, beheerUrl, type DeviceRow, deviceKind, isStatus, type KnownVersion, knownVersions, myDevices, parseNumber, PRIORITIES, randomToken, safeSearch, sameText, type Status, statusAfter,
+  addressOf, beheerUrl, type DeviceRow, deviceKind, emailProven, isStatus, ownsTicket, type KnownVersion, knownVersions, myDevices, parseNumber, PRIORITIES, randomToken, safeSearch, sameText, type Status, statusAfter,
   ticketUrl, validateCreate, validateMessage, validToken,
 } from "./logic.ts";
 import { type MailData, renderMail } from "./templates.ts";
@@ -123,7 +127,7 @@ const ipHash = (ip: string) => sha256hex(`bingr-support|${ip}|${env("SUPABASE_SE
 const nowIso = () => new Date().toISOString();
 const hourAgo = () => new Date(Date.now() - 3600e3).toISOString();
 
-type User = { id: string; email?: string; email_confirmed_at?: string | null };
+type User = { id: string; email?: string; email_confirmed_at?: string | null; created_at?: string | null };
 /** Ingelogde gebruiker, null zonder (geldig) token. Een verlopen token telt als niet ingelogd. */
 async function userFrom(req: Request): Promise<User | null> {
   const u = await userOrBanned(req);
@@ -139,23 +143,31 @@ async function userOrBanned(req: Request): Promise<User | null | "banned"> {
   if (error || !data?.user) return null;
   return bannedUntilActive((data.user as { banned_until?: string }).banned_until) ? "banned" : data.user as User;
 }
-const ownsTicket = (u: User | null, t: Ticket) =>
-  !!u && (t.user_id === u.id || (!!u.email_confirmed_at && !!u.email && u.email.toLowerCase() === t.email.toLowerCase()));
+// bevestigen per e-mail verplicht? (app_settings.require_email_confirm, 60 s in het geheugen; bij een fout: nee)
+let confirmCache: { at: number; v: boolean } | null = null;
+async function requireConfirm(): Promise<boolean> {
+  if (confirmCache && Date.now() - confirmCache.at < 60_000) return confirmCache.v;
+  const { data, error } = await db.from("app_settings").select("value").eq("key", "require_email_confirm").maybeSingle();
+  const v = !error && data?.value === true;
+  confirmCache = { at: Date.now(), v };
+  return v;
+}
 
 async function ticketByNumber(n: number): Promise<Ticket | null> {
   const { data, error } = await db.from("support_tickets").select("*").eq("number", n).maybeSingle();
   if (error) throw new Error(error.message);
   return data as Ticket | null;
 }
-/** Ticket voor de klant: met nummer + geheime link, of als eigenaar ingelogd. Altijd hetzelfde antwoord als het niet mag. */
-async function customerTicket(req: Request, body: Record<string, unknown>): Promise<{ t: Ticket; user: User | null } | null> {
+/** Ticket voor de klant: met nummer + geheime link, of als eigenaar (user_id) ingelogd. Altijd hetzelfde antwoord als het
+ *  niet mag. viaLink = geopend met de geheime link (alleen dan kan een ingelogde klant het ticket aan zich koppelen). */
+async function customerTicket(req: Request, body: Record<string, unknown>): Promise<{ t: Ticket; user: User | null; viaLink: boolean } | null> {
   const n = parseNumber(body.n ?? body.number);
   if (!n) return null;
   const t = await ticketByNumber(n);
   if (!t) return null;
-  if (validToken(body.t) && sameText(body.t, t.access_token)) return { t, user: null };
   const user = await userFrom(req);
-  return ownsTicket(user, t) ? { t, user } : null;
+  if (validToken(body.t) && sameText(body.t, t.access_token)) return { t, user, viaLink: true };
+  return ownsTicket(user?.id, t.user_id) ? { t, user, viaLink: false } : null;
 }
 async function messagesOf(ticketId: string, includeNotes: boolean) {
   let q = db.from("support_messages").select("id,author,body,created_at,email_sent,email_error,source").eq("ticket_id", ticketId).order("created_at").order("id");
@@ -220,14 +232,15 @@ function mailData(t: Ticket, kind: MailData["kind"], extra: Partial<MailData> = 
     hasAccount: !!t.user_id, createdAt: t.created_at, replyByMail: imapConfigured(), ...extra,
   };
 }
-/** Voornaam voor de aanhef ("Hoi <voornaam>,"): alleen als het ticket bij een account hoort en naar het bevestigde adres van
- *  dat account gaat (user_metadata.first_name); anders, of als het opzoeken mislukt, "" (mail zonder aanhef). */
+/** Voornaam voor de aanhef ("Hoi <voornaam>,"): alleen als het ticket bij een account hoort en naar het aantoonbaar
+ *  bevestigde adres van dat account gaat (user_metadata.first_name, zie emailProven); anders, of als het opzoeken mislukt,
+ *  "" (mail zonder aanhef). */
 async function firstNameFor(t: Ticket): Promise<string> {
   if (!t.user_id) return "";
   try {
     const { data, error } = await db.auth.admin.getUserById(t.user_id);
     const u = data?.user;
-    if (error || !u?.email || !u.email_confirmed_at || u.email.toLowerCase() !== t.email.toLowerCase()) return "";
+    if (error || !u?.email || !emailProven(u, await requireConfirm()) || u.email.toLowerCase() !== t.email.toLowerCase()) return "";
     return firstNameOf(u);
   } catch { return ""; }
 }
@@ -388,9 +401,10 @@ async function handleCustomer(req: Request, action: string, body: Record<string,
       let mid: number;
       try { mid = await addMessage(t.id, "customer", input.message, "web"); }
       catch (e) { await db.from("support_tickets").delete().eq("id", t.id); throw e; }
-      // build 95: de bevestiging bevat alleen voor een ingelogde klant (bevestigd adres) het onderwerp en bericht;
-      // een gast kan een willekeurig adres invullen, die krijgt alleen nummer, een neutrale regel en de link
-      const full = !!user?.email_confirmed_at;
+      // build 95: de bevestiging bevat alleen voor een ingelogde klant met een aantoonbaar bevestigd adres het onderwerp en
+      // bericht (security H1: met autoconfirm is email_confirmed_at geen bewijs, zie emailProven); een gast of een account
+      // zonder bewezen adres krijgt alleen nummer, een neutrale regel en de link
+      const full = emailProven(user, await requireConfirm());
       const confirm = await confirmAllowed();
       if (!confirm) console.log("support: globale grens bereikt, geen bevestiging", t.number);
       const [c, s] = await Promise.all([
@@ -404,11 +418,9 @@ async function handleCustomer(req: Request, action: string, body: Record<string,
       const user = await userOrBanned(req);
       if (user === "banned") return json(BANNED_BODY, 401);
       if (!user) return json({ error: "not_signed_in" }, 401);
-      let q = db.from("support_tickets").select(`${PUBLIC_FIELDS},access_token,customer_seen_at`).order("last_reply_at", { ascending: false }).limit(100);
-      q = user.email_confirmed_at && user.email
-        ? q.or(`user_id.eq.${user.id},email.eq."${user.email.toLowerCase().replace(/["\\]/g, "")}"`)
-        : q.eq("user_id", user.id);
-      const { data, error } = await q;
+      // security H1: alleen tickets van dit account (user_id), nooit op e-mailadres
+      const { data, error } = await db.from("support_tickets").select(`${PUBLIC_FIELDS},access_token,customer_seen_at`).eq("user_id", user.id)
+        .order("last_reply_at", { ascending: false }).limit(100);
       if (error) throw new Error(error.message);
       return json({
         items: (data ?? []).map((t) => ({
@@ -433,10 +445,30 @@ async function handleCustomer(req: Request, action: string, body: Record<string,
       if (!(await rateOk(`support:get:${await ipHash(ip)}`, 60))) return json({ error: "rate_limited" }, 429); // per minuut
       const r = await customerTicket(req, body);
       if (!r) return json({ error: "not_found" }, 404);
-      const { t } = r;
+      const { t, user, viaLink } = r;
       await db.from("support_tickets").update({ customer_seen_at: nowIso() }).eq("id", t.id);
       const pub = Object.fromEntries(PUBLIC_FIELDS.split(",").map((k) => [k, (t as Record<string, unknown>)[k]]));
-      return json({ ticket: { ...pub, token: t.access_token, can_reply: t.status !== "closed" }, messages: await messagesOf(t.id, false) });
+      const linked = ownsTicket(user?.id, t.user_id);
+      return json({
+        ticket: { ...pub, token: t.access_token, can_reply: t.status !== "closed", linked, can_link: viaLink && !!user && !t.user_id },
+        messages: await messagesOf(t.id, false),
+      });
+    }
+    case "link": {
+      // security H1: een ticket alleen aan je account koppelen met de geheime link uit de mail (bewijs dat je die mail hebt)
+      if (!(await rateOk(`support:get:${await ipHash(ip)}`, 60))) return json({ error: "rate_limited" }, 429); // per minuut
+      const user = await userOrBanned(req);
+      if (user === "banned") return json(BANNED_BODY, 401);
+      if (!user) return json({ error: "not_signed_in" }, 401);
+      const r = await customerTicket(req, body);
+      if (!r || !r.viaLink) return json({ error: "not_found" }, 404);
+      const { t } = r;
+      if (t.user_id === user.id) return json({ ok: true, already: true });
+      if (t.user_id) return json({ error: "linked_elsewhere" }, 409);
+      const { data, error } = await db.from("support_tickets").update({ user_id: user.id, updated_at: nowIso() }).eq("id", t.id).is("user_id", null).select("id");
+      if (error) throw new Error(error.message);
+      if (!data?.length) return json({ error: "linked_elsewhere" }, 409);
+      return json({ ok: true });
     }
     case "reply": {
       const v = validateMessage(body.message);

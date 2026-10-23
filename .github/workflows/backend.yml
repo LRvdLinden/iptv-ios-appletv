@@ -947,6 +947,11 @@ jobs:
           if row.get("inbox") != 1: print("::error::support_inbox_state ontbreekt:", str(r)[:300]); raise SystemExit(1)
           print(f"::notice::Supporttickets: {c['total']} totaal, {c['active']} open, {c['unread']} ongelezen (nummers vanaf {row['seq']})")
           PY
+      - name: Eigendom van supporttickets testen (security H1)
+        if: steps.check.outputs.skip != '1'
+        # Account met hetzelfde adres als een gast-ticket ziet het niet; koppelen alleen met de geheime link; account verwijderen
+        # wist alleen gekoppelde tickets (supabase/tests/support_owner_e2e.py; testadressen @example.com, alles weer weg)
+        run: python3 -I supabase/tests/support_owner_e2e.py
       - name: Apparaten, supportformulier, koppelnaam en blokkade end-to-end testen
         if: steps.check.outputs.skip != '1'
         # Met een tijdelijk testaccount (wordt altijd weer verwijderd): register_device -> support/my_devices geeft het apparaat

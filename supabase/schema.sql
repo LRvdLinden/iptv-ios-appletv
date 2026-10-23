@@ -1334,7 +1334,8 @@ language sql security definer set search_path = public as $$
     'last_7d',  count(*) filter (where created_at > now() - interval '7 days'))
   from public.support_tickets;
 $$;
--- Bingr-account bij een ticket (op user_id, anders op e-mailadres): alleen een samenvatting voor het beheer.
+-- Bingr-account bij een ticket (op user_id, anders op e-mailadres): alleen een samenvatting voor het beheer. Gevonden op
+-- e-mailadres = linked false: dat account is NIET de eigenaar (security H1), het beheer toont het als "niet gekoppeld".
 create or replace function public.bingr_support_account(p_user uuid, p_email text) returns jsonb
 language plpgsql security definer set search_path = public, auth as $$
 declare u record; found_it boolean := false;
@@ -1355,7 +1356,8 @@ begin
     'platforms', (select coalesce(jsonb_agg(distinct d.platform), '[]'::jsonb) from public.account_devices d where d.user_id = u.id and d.platform <> ''),
     'app_versions', (select coalesce(jsonb_agg(distinct d.app_version), '[]'::jsonb) from public.account_devices d where d.user_id = u.id and d.app_version is not null),
     'last_seen_at', (select max(d.last_seen_at) from public.account_devices d where d.user_id = u.id),
-    'tickets', (select count(*) from public.support_tickets t where t.user_id = u.id or lower(t.email) = lower(u.email))
+    -- security H1: alleen gekoppelde tickets (user_id); een account op hetzelfde adres is geen bewijs van eigendom
+    'tickets', (select count(*) from public.support_tickets t where t.user_id = u.id)
   );
 end $$;
 revoke all on function public.bingr_support_counts() from public, anon, authenticated;
@@ -1423,17 +1425,16 @@ end $$;
 revoke all on function public.bingr_support_cleanup() from public, anon, authenticated;
 grant execute on function public.bingr_support_cleanup() to service_role;
 
--- build 95: account verwijderd -> ook de supporttickets (met berichten) van dat account: gekoppeld via user_id, of (bij
--- een bevestigd e-mailadres) met hetzelfde adres. Aan te roepen door het beheer vóór het verwijderen van de gebruiker; de
+-- build 95: account verwijderd -> ook de supporttickets (met berichten) van dat account. Security H1: alleen tickets die
+-- echt bij het account horen (user_id: ingelogd aangemaakt of met de geheime link gekoppeld), nooit op e-mailadres;
+-- gast-tickets met hetzelfde adres blijven staan. Aan te roepen door het beheer vóór het verwijderen van de gebruiker; de
 -- trigger hieronder doet het ook vanzelf bij elk verwijderen uit auth.users (device-auth delete_account en het beheer).
 create or replace function public.bingr_support_delete_user(uid uuid) returns int
 language plpgsql security definer set search_path = public as $$
-declare mail text; ok boolean; n int;
+declare n int;
 begin
   if uid is null then return 0; end if;
-  select lower(u.email), u.email_confirmed_at is not null into mail, ok from auth.users u where u.id = uid;
-  delete from public.support_tickets t
-  where t.user_id = uid or (coalesce(ok, false) and mail is not null and mail <> '' and t.email = mail);
+  delete from public.support_tickets t where t.user_id = uid;
   get diagnostics n = row_count;
   return n;
 end $$;

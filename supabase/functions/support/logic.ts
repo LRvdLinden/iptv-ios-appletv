@@ -216,3 +216,19 @@ export function addressOf(from: string): string {
   const m = /<([^>]+)>/.exec(from);
   return (m ? m[1] : from).trim();
 }
+
+/** Eigenaar van een ticket (security H1): alleen het account dat het ticket ingelogd aanmaakte of het met de geheime link
+ *  expliciet aan zich koppelde (user_id). Nooit op e-mailadres: met autoconfirm (bevestigen per e-mail uit) bewijst
+ *  email_confirmed_at niets, en ook daarna kan iemand een account met andermans adres hebben. */
+export const ownsTicket = (userId: string | null | undefined, ticketUserId: string | null | undefined) =>
+  typeof userId === "string" && userId !== "" && userId === ticketUserId;
+
+/** Is het e-mailadres van dit account aantoonbaar bevestigd (via de link in de bevestigingsmail)? Alleen als bevestigen per
+ *  e-mail verplicht is (app_settings.require_email_confirm) én de bevestiging echt later kwam dan het aanmaken: met
+ *  autoconfirm zet Supabase email_confirmed_at op hetzelfde moment als created_at. Gebruikt voor de volledige tekst in de
+ *  bevestigingsmail en de voornaam in de aanhef; nooit voor toegang tot tickets. */
+export function emailProven(u: { email_confirmed_at?: string | null; created_at?: string | null } | null | undefined, requireConfirm: boolean): boolean {
+  if (!requireConfirm || !u?.email_confirmed_at || !u.created_at) return false;
+  const c = Date.parse(u.created_at), e = Date.parse(u.email_confirmed_at);
+  return Number.isFinite(c) && Number.isFinite(e) && e - c >= 5000;
+}
