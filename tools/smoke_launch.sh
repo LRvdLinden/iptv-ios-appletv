@@ -13,38 +13,47 @@
 # De M3U komt van een lokale testserver met verzonnen titels.
 set -uo pipefail
 PLATFORM=$1; PROD=$2; OUT=$3
-SECS=${SMOKE_SECONDS:-28}
+SECS=${SMOKE_SECONDS:-75}
 BUNDLE=nl.lrvdlinden.bingr
 mkdir -p "$OUT"
 REPORTS="$HOME/Library/Logs/DiagnosticReports"
 mkdir -p "$REPORTS"
 FAIL=0
 
-# lokale M3U-testserver
+# lokale M3U-testserver: get.php (klein, de open server) en get2.php/get3.php (groot: veel titels over alle servers)
 SRV="$OUT/m3u"; mkdir -p "$SRV"
-python3 - "$SRV/get.php" <<'PY'
+make_m3u() { # bestand films series voorvoegsel extra
+  python3 - "$@" <<'PY'
 import sys
+path, movies, shows, pre, extra = sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), sys.argv[4], int(sys.argv[5])
 b = "http://127.0.0.1:8765"
 l = ["#EXTM3U"]
 for i in range(1, 13):
     g = "Smoke Kids" if i % 3 == 0 else "Smoke Live"
-    l += [f'#EXTINF:-1 tvg-id="smoke{i}" tvg-name="Smoke {i}" tvg-logo="{b}/logo{i}.png" group-title="{g}",Smoke {i} HD',
-          f"{b}/live/smoke/test/{i}.ts"]
-for i in range(1, 25):
-    g = "Kinderfilms" if i % 2 else "Smoke Films"
-    l += [f'#EXTINF:-1 tvg-id="" tvg-name="Smoke Movie {i} ({2000 + i})" tvg-logo="{b}/poster{i}.jpg" group-title="{g}",Smoke Movie {i} ({2000 + i})',
-          f"{b}/movie/smoke/test/{100 + i}.mp4"]
-for s in range(1, 5):
-    for e in range(1, 4):
-        g = "Kids Series" if s % 2 else "Smoke Series"
-        l += [f'#EXTINF:-1 tvg-id="" tvg-name="Smoke Show {s} S01E0{e}" tvg-logo="{b}/show{s}.jpg" group-title="{g}",Smoke Show {s} S01E0{e}',
-              f"{b}/series/smoke/test/{1000 + s * 10 + e}.mp4"]
-open(sys.argv[1], "w").write("\n".join(l) + "\n")
+    l += [f'#EXTINF:-1 tvg-id="{pre}{i}" tvg-name="{pre} {i}" tvg-logo="{b}/logo{i}.png" group-title="{g}",{pre} {i} HD',
+          f"{b}/live/smoke/test/{pre}{i}.ts"]
+for i in range(1, movies + extra + 1):
+    g = ["Kinderfilms", "Smoke Films", "Actie", "Drama", "Komedie"][i % 5]
+    l += [f'#EXTINF:-1 tvg-id="" tvg-name="{pre} Movie {i} ({1950 + i % 75})" tvg-logo="{b}/p/{pre}{i}.jpg" group-title="{g}",{pre} Movie {i} ({1950 + i % 75})',
+          f"{b}/movie/smoke/test/{pre}{100000 + i}.mp4"]
+for s in range(1, shows + 1):
+    g = "Kids Series" if s % 2 else "Smoke Series"
+    for e in range(1, 5):
+        l += [f'#EXTINF:-1 tvg-id="" tvg-name="{pre} Show {s} S01E0{e}" tvg-logo="{b}/s/{pre}{s}.jpg" group-title="{g}",{pre} Show {s} S01E0{e}',
+              f"{b}/series/smoke/test/{pre}{s * 10 + e}.mp4"]
+open(path, "w").write("\n".join(l) + "\n")
 PY
+}
+make_m3u "$SRV/get.php" 40 6 Smoke 0
+make_m3u "$SRV/get2.php" "${SMOKE_BIG_MOVIES:-20000}" "${SMOKE_BIG_SHOWS:-2500}" Groot 0
+make_m3u "$SRV/get3.php" "${SMOKE_BIG_MOVIES:-20000}" "${SMOKE_BIG_SHOWS:-2500}" Reus 0
+ls -la "$SRV" | awk '{print $5, $9}' | tail -n 3
 ( cd "$SRV" && exec python3 -m http.server 8765 --bind 127.0.0.1 ) >/dev/null 2>&1 &
 SRV_PID=$!
 trap 'kill $SRV_PID 2>/dev/null || true' EXIT
-M3U="http://127.0.0.1:8765/get.php"
+# tweede start: nieuwe titels op de open server (Nieuw op Bingr, billboard)
+more_titles() { make_m3u "$SRV/get.php" 40 6 Smoke 12; }
+M3U="http://127.0.0.1:8765/get"
 
 marker() { touch "$OUT/.mark"; sleep 1; }
 
@@ -82,6 +91,17 @@ report_crash() { # naam log
   FAIL=1
 }
 
+# piekgeheugen (RSS) van de app; boven SMOKE_MAX_MB (tvOS: ruim onder de grens van een Apple TV) faalt de test,
+# want op het apparaat stopt het systeem de app dan (lijkt een crash direct na het openen)
+check_memory() { # naam piek-kB
+  local mb=$(( $2 / 1024 ))
+  echo "$PLATFORM/$1: piekgeheugen ${mb} MB"
+  if [ -n "${SMOKE_MAX_MB:-}" ] && [ "$mb" -gt "$SMOKE_MAX_MB" ]; then
+    echo "::error title=Start-rooktest $PLATFORM ($1)::Piekgeheugen ${mb} MB boven ${SMOKE_MAX_MB} MB (op het apparaat stopt het systeem de app)"
+    FAIL=1
+  fi
+}
+
 # ---------- simulator (iOS / tvOS) ----------
 runtime() { xcrun simctl list runtimes -j | python3 -c "import json,sys; r=[x for x in json.load(sys.stdin)['runtimes'] if x['platform']=='$1' and x['isAvailable']]; print(sorted(r,key=lambda x:[int(p) for p in x['version'].split('.')])[-1]['identifier'])"; }
 pick() { for t in "$@"; do if xcrun simctl list devicetypes | grep -q "^$t ("; then echo "$t"; return; fi; done; return 1; }
@@ -94,11 +114,14 @@ sim_run() { # udid app naam args...
   local pid; pid=$(echo "$out" | grep -oE '[0-9]+$' | tail -1)
   echo "$PLATFORM/$name: gestart (pid ${pid:-?})"
   if [ -z "$pid" ]; then echo "$out"; report_crash "$name" "$log"; return; fi
-  local alive=1
-  for s in $(seq 1 "$SECS"); do
+  local alive=1 peak=0 rss secs=$SECS
+  [ "$name" = 1-nieuw ] && secs=20
+  for s in $(seq 1 "$secs"); do
     sleep 1
     if ! kill -0 "$pid" 2>/dev/null; then alive=0; echo "$PLATFORM/$name: gestopt na ${s}s"; break; fi
+    rss=$(ps -o rss= -p "$pid" 2>/dev/null | tr -d ' '); [ -n "$rss" ] && [ "$rss" -gt "$peak" ] && peak=$rss
   done
+  check_memory "$name" "$peak"
   if [ $alive = 1 ]; then
     # ook een crash van een hulpproces van de app telt
     local late; late=$(new_reports 1)
@@ -124,8 +147,10 @@ simulator() { # platform-runtime-naam app types...
   sim_run "$udid" "$app" 1-nieuw "${fresh[@]}"
   xcrun simctl uninstall "$udid" "$BUNDLE"; xcrun simctl install "$udid" "$app"
   sim_run "$udid" "$app" 2-terugkerend -BingrSmoke YES -BingrSmokeM3U "$M3U" "${fresh[@]}"
+  more_titles
   sim_run "$udid" "$app" 3-herstart -BingrSmoke YES -BingrSmokeM3U "$M3U" "${fresh[@]}"
   xcrun simctl uninstall "$udid" "$BUNDLE"; xcrun simctl install "$udid" "$app"
+  make_m3u "$SRV/get.php" 40 6 Smoke 0
   sim_run "$udid" "$app" 4-kinderprofiel -BingrSmoke YES -BingrSmokeKids YES -BingrSmokeM3U "$M3U" "${fresh[@]}"
   xcrun simctl shutdown "$udid" >/dev/null 2>&1 || true
   xcrun simctl delete "$udid" >/dev/null 2>&1 || true
@@ -139,11 +164,14 @@ mac_run() { # naam args...
   "$bin" "$@" > "$log" 2>&1 &
   local pid=$!
   echo "macos/$name: gestart (pid $pid)"
-  local alive=1
-  for s in $(seq 1 "$SECS"); do
+  local alive=1 peak=0 rss secs=$SECS
+  [ "$name" = 1-nieuw ] && secs=20
+  for s in $(seq 1 "$secs"); do
     sleep 1
     if ! kill -0 "$pid" 2>/dev/null; then alive=0; echo "macos/$name: gestopt na ${s}s"; break; fi
+    rss=$(ps -o rss= -p "$pid" 2>/dev/null | tr -d ' '); [ -n "$rss" ] && [ "$rss" -gt "$peak" ] && peak=$rss
   done
+  check_memory "$name" "$peak"
   if [ $alive = 1 ]; then
     local late; late=$(new_reports 1)
     kill "$pid" 2>/dev/null; sleep 2; kill -9 "$pid" 2>/dev/null || true
@@ -171,8 +199,10 @@ case "$PLATFORM" in
     mac_run 1-nieuw -AppleLanguages "(nl)"
     mac_reset
     mac_run 2-terugkerend -BingrSmoke YES -BingrSmokeM3U "$M3U" -AppleLanguages "(nl)"
+    more_titles
     mac_run 3-herstart -BingrSmoke YES -BingrSmokeM3U "$M3U" -AppleLanguages "(nl)"
     mac_reset
+    make_m3u "$SRV/get.php" 40 6 Smoke 0
     mac_run 4-kinderprofiel -BingrSmoke YES -BingrSmokeKids YES -BingrSmokeM3U "$M3U" -AppleLanguages "(nl)"
     mac_reset
     ;;

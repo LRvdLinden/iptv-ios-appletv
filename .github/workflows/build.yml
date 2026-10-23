@@ -16,7 +16,7 @@ concurrency:
 jobs:
   build:
     runs-on: macos-15
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 (v5.1.0)
 
@@ -92,21 +92,24 @@ jobs:
         id: smoke_ios
         if: steps.ios.outcome == 'success'
         continue-on-error: true
-        timeout-minutes: 15
+        timeout-minutes: 20
         run: tools/smoke_launch.sh ios build/Build/Products "$RUNNER_TEMP/smoke/ios" 2>&1 | tee smoke-ios.log; exit ${PIPESTATUS[0]}
 
       - name: Start-rooktest tvOS (simulator)
         id: smoke_tvos
         if: steps.tvos.outcome == 'success'
         continue-on-error: true
-        timeout-minutes: 15
+        timeout-minutes: 20
+        # Apple TV heeft veel minder geheugen dan een iPhone of Mac: daarboven stopt tvOS de app (lijkt een crash)
+        env:
+          SMOKE_MAX_MB: "1500"
         run: tools/smoke_launch.sh tvos build/Build/Products "$RUNNER_TEMP/smoke/tvos" 2>&1 | tee smoke-tvos.log; exit ${PIPESTATUS[0]}
 
       - name: Start-rooktest macOS
         id: smoke_macos
         if: steps.macos.outcome == 'success'
         continue-on-error: true
-        timeout-minutes: 10
+        timeout-minutes: 15
         run: tools/smoke_launch.sh macos build/Build/Products "$RUNNER_TEMP/smoke/macos" 2>&1 | tee smoke-macos.log; exit ${PIPESTATUS[0]}
 
       - name: Build-rapport publiceren (branch ci-logs)
@@ -125,7 +128,7 @@ jobs:
             tail -n 60 selftest.log || true
             echo
             echo "=== start-rooktest ==="
-            for p in ios tvos macos; do grep -aE "^(Simulator|$p/|Start-rooktest|== |app:|exception:|termination:|reason:|asi |thread |  [ 0-9][0-9] |-- |BINGR_SMOKE)" smoke-$p.log 2>/dev/null | grep -v '^::' | head -n 160; done
+            for p in ios tvos macos; do grep -aE "^(Simulator|$p/|[0-9]+ .*get|Start-rooktest|== |app:|exception:|termination:|reason:|asi |thread |  [ 0-9][0-9] |-- |BINGR_SMOKE)" smoke-$p.log 2>/dev/null | grep -v '^::' | head -n 160; done
             echo
             echo "=== iOS errors ==="
             grep -E "error:|warning: .*(unavailable|deprecated in)" ios.log | sort -u | head -300 || true

@@ -7,7 +7,9 @@ struct BingrApp: App {
     @StateObject private var localizer = Localizer.shared
     // Gedeelde objecten die alleen worden doorgegeven: niet als @StateObject, anders rekent de hele app-scene
     // opnieuw bij elke wijziging (bijv. elke nieuwe IMDb-score of sync-ronde). De schermen volgen ze zelf.
-    private let store = CloudStore.shared
+    // build 141: start-rooktest in CI (alleen Debug, launch-argument `-BingrSmoke YES`): eerst de testgegevens, dan pas
+    // CloudStore (die leest ze bij het aanmaken)
+    private let store: CloudStore = { SmokeTest.seedIfNeeded(); return CloudStore.shared }()
     private let trakt = TraktSync.shared
     private let meta = MetadataService.shared
     private let subs = OpenSubtitles.shared
@@ -30,8 +32,6 @@ struct BingrApp: App {
     #endif
 
     init() {
-        // build 141: start-rooktest in CI (alleen Debug, launch-argument `-BingrSmoke YES`)
-        SmokeTest.seedIfNeeded()
         // grotere beeldcache: posters (ook in de intro) laden direct
         URLCache.shared = URLCache(memoryCapacity: 64 * 1024 * 1024, diskCapacity: 400 * 1024 * 1024)
     }
