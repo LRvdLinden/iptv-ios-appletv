@@ -9,8 +9,8 @@
     "platforms": [
      "windows"
     ],
-    "nl": "Nieuw: Bingr voor Windows. Installeer Bingr op je Windows 10- of 11-pc en kijk je zenders, films en series in een eigen venster, met volledig scherm, mediatoetsen en je Bingr-account (inloggen met e-mail of koppelcode)",
-    "en": "New: Bingr for Windows. Install Bingr on your Windows 10 or 11 PC and watch your channels, movies and series in their own window, with full screen, media keys and your Bingr account (sign in with email or pairing code)"
+    "nl": "Bingr voor Windows: Installeer Bingr op je Windows 10- of 11-pc en kijk je zenders, films en series in een eigen venster, met volledig scherm, mediatoetsen en je Bingr-account (inloggen met e-mail of koppelcode)",
+    "en": "Bingr for Windows: Install Bingr on your Windows 10 or 11 PC and watch your channels, movies and series in their own window, with full screen, media keys and your Bingr account (sign in with email or pairing code)"
    },
    {
     "type": "new",
@@ -170,6 +170,14 @@
     ],
     "nl": "Mails aan support@bingr.online worden weer altijd een ticket, ook als ze al gelezen waren; reacties komen in het bestaande ticket en niets wordt dubbel geïmporteerd",
     "en": "Emails to support@bingr.online always become a ticket again, even if they were already read; replies go into the existing ticket and nothing is imported twice"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Windows staat op bingr.online, met een downloadknop voor de testversie (bingr.online/windows) en uitleg over Windows SmartScreen; de changelog toont het Windows-logo",
+    "en": "Windows is on bingr.online, with a download button for the test version (bingr.online/windows) and a note about Windows SmartScreen; the changelog shows the Windows logo"
    }
   ]
  },

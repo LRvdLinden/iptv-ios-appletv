@@ -32,6 +32,7 @@ _23 oktober 2026_
 **Verbeterd**
 
 - Bingr staat in de App Store voor iPhone en iPad: op bingr.online en support.bingr.online staat nu een App Store-knop naast TestFlight
+- Windows staat op bingr.online, met een downloadknop voor de testversie (bingr.online/windows) en uitleg over Windows SmartScreen; de changelog toont het Windows-logo
 
 **Opgelost**
 
