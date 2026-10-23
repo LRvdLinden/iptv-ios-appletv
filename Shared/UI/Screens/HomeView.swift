@@ -11,9 +11,17 @@ struct HomeView: View {
 
     @State private var detail: DetailTarget?
     @State private var hero: DetailTarget?
+    /// Build 140: vaste, roulerende selectie voor het billboard (Voor jou + Nieuw op Bingr), wisselt om de 8 seconden;
+    /// de start schuift elke dag één plek op (HeroRotation)
+    @State private var heroItems: [DetailTarget] = []
+    @State private var heroIndex = 0
     @State private var trendingMovies: [Movie] = []
     @State private var trendingSeries: [Series] = []
     @State private var forYou: [DetailTarget] = []
+    /// Build 140: zonder kijkgeschiedenis van dit profiel: populaire titels onder de kop "Populair"
+    @State private var forYouPopular = false
+    /// Build 140: Nieuw op Bingr: laatst toegevoegd aan de bibliotheek (alle servers), nieuwste eerst
+    @State private var newOnBingr: [DetailTarget] = []
     @State private var category: CategoryTarget?
     @State private var showSearch = false
     @State private var resumeChoice: ResumeChoice?
@@ -91,6 +99,7 @@ struct HomeView: View {
         .fullScreenCover(item: $browseOpen) { BrowseCategoryView(category: $0) }
         .background(Color.black)
         .task(id: prepareKey) { await prepare() }
+        .task(id: heroItems.map(\.id)) { await rotateHero() }
         .task(id: playlists.libraryVersion) {
             let v = playlists.libraryVersion
             guard indexVersion != v else { return }   // al gebouwd: niet bij elke terugkeer naar het tabblad
@@ -246,7 +255,8 @@ struct HomeView: View {
         case "continue": return !continueWatching.isEmpty
         case "mylist": return !(myListMovies.isEmpty && myListSeries.isEmpty)
         case "recent": return !index.recentTitles.isEmpty   // build 111: Home = films én series, laatste 30 dagen
-        case "upcoming", "streaming": return !(DiscoverKind(rawValue: key).flatMap { discover[$0] } ?? []).isEmpty
+        case "upcoming": return !(discover[.upcoming] ?? []).isEmpty
+        case "streaming": return !newOnBingrItems.isEmpty   // build 140: Nieuw op Bingr uit je bibliotheek
         case "foryou": return !forYou.isEmpty
         case "movies": return !index.popularMovies.isEmpty
         case "series": return !index.popularSeries.isEmpty
@@ -278,7 +288,7 @@ struct HomeView: View {
         case "mylist": myListRows
         case "recent": recentRow
         case "upcoming": discoverRow(.upcoming)
-        case "streaming": discoverRow(.streaming)
+        case "streaming": newOnBingrRow
         case "foryou": forYouRow
         case "live": favoriteChannelsRow
         case "movies":
@@ -554,7 +564,8 @@ struct HomeView: View {
     private var discoverKinds: [DiscoverKind] {
         guard filter == .all else { return [] }
         let rows = store.homeLayout.effective(collections: store.activeCollections)
-        return DiscoverKind.allCases.filter { k in rows.contains { $0.key == k.homeKey && $0.visible } }
+        // build 140: Nieuw op Bingr komt uit je eigen bibliotheek (NewOnBingr), niet meer van TMDB
+        return DiscoverKind.allCases.filter { k in k != .streaming && rows.contains { $0.key == k.homeKey && $0.visible } }
     }
 
     @ViewBuilder private func discoverRow(_ kind: DiscoverKind) -> some View {
@@ -588,6 +599,64 @@ struct HomeView: View {
         }
     }
 
+    /// Build 140: Nieuw op Bingr (op Films/Series alleen dat soort)
+    private var newOnBingrItems: [DetailTarget] {
+        newOnBingr.filter { t in
+            switch (filter, t) {
+            case (.movies, .series), (.series, .movie): return false
+            default: return true
+            }
+        }
+    }
+
+    @ViewBuilder private var newOnBingrRow: some View {
+        let items = newOnBingrItems
+        if !items.isEmpty {
+            MediaRow(title: L("New on Bingr"), onSeeAll: seeAll(L("New on Bingr"), items)) {
+                ForEach(items) { t in titleButton(t) }
+            }
+        }
+    }
+
+    /// Build 140: het billboard wisselt vanzelf (om de 8 seconden), niet tijdens het afspelen.
+    private func rotateHero() async {
+        guard heroItems.count > 1 else { return }
+        while !Task.isCancelled {
+            try? await Task.sleep(nanoseconds: UInt64(HeroRotation.interval * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            if app.playing != nil || Screenshots.isActive { continue }
+            heroIndex = (heroIndex + 1) % heroItems.count
+            withAnimation(.easeInOut(duration: 0.6)) { hero = heroItems[heroIndex] }
+        }
+    }
+
+    /// Build 140: de vaste selectie voor het billboard: om en om uit Voor jou (op volgorde van relevantie) en Nieuw op
+    /// Bingr, maximaal 8, met poster en van het soort van dit tabblad. Geen willekeur per opening.
+    private func updateHeroItems(forYouRanked: [DetailTarget]) {
+        guard !Screenshots.isActive else { return }
+        func ok(_ t: DetailTarget) -> Bool {
+            switch (filter, t) {
+            case (.movies, .series), (.series, .movie): return false
+            default: return t.posterURL != nil
+            }
+        }
+        let fy = forYouRanked.filter(ok), nw = newOnBingr.filter(ok)
+        let ids = HeroRotation.pick(forYou: fy.map(\.id), new: nw.map(\.id))
+        let byID = Dictionary((fy + nw).map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        var items = HeroRotation.rotated(ids.compactMap { byID[$0] }, day: HeroRotation.day(Date()))
+        if items.isEmpty {
+            // nog niets: de Top 10 van vandaag (vaste volgorde)
+            var t: [DetailTarget] = []
+            if filter != .series { t += trendingMovies.prefix(4).map { .movie($0) } }
+            if filter != .movies { t += trendingSeries.prefix(4).map { .series($0) } }
+            items = HeroRotation.rotated(t.filter(ok), day: HeroRotation.day(Date()))
+        }
+        guard !items.isEmpty, items.map(\.id) != heroItems.map(\.id) else { return }
+        heroItems = items
+        heroIndex = 0
+        if hero?.id != items[0].id { withAnimation(.easeInOut(duration: 0.4)) { hero = items[0] } }
+    }
+
     /// Poster van een titel uit je bibliotheek (film of serie), met het gewone menu.
     @ViewBuilder private func titleButton(_ t: DetailTarget) -> some View {
         switch t {
@@ -608,7 +677,9 @@ struct HomeView: View {
             }
             .cardButton()
             .contextMenu {
-                if let pid {
+                // build 140: de eigen server van de serie (een serie van een andere server kwam anders met de sleutel
+                // van de open server in Mijn lijst en verscheen daar niet)
+                if let pid = s.sourceID ?? pid {
                     Button { store.toggleMyList(pid, s.id); PlusCheckFeedback.toggled() } label: {
                         Label(store.inMyList(pid, s.id) ? L("Remove from My List") : L("Add to My List"),
                               systemImage: PlusCheckGlyph.symbol(store.inMyList(pid, s.id)))
@@ -727,7 +798,8 @@ struct HomeView: View {
             }
         }.sorted(by: Self.alphabetical)
         if !items.isEmpty {
-            MediaRow(title: L("For you"), onSeeAll: { category = CategoryTarget(title: L("For you"), items: items) }) {
+            let title = forYouPopular ? L("Popular") : L("For you")
+            MediaRow(title: title, onSeeAll: { category = CategoryTarget(title: title, items: items) }) {
                 ForEach(items) { t in
                     Button { detail = t } label: {
                         switch t {
@@ -952,7 +1024,12 @@ struct HomeView: View {
         let idx = await HomeIndexCache.shared.index(for: l, version: playlists.libraryVersion)
         guard !Task.isCancelled else { return }
         // 0. wat niet (meer) in de gefilterde lijst staat weghalen (ander profiel, leeftijdsgrens, verborgen groep)
-        func known(_ t: DetailTarget) -> Bool { t.isSeries ? idx.seriesByID[t.id] != nil : idx.movieByID[t.id] != nil }
+        // build 140: titels van een andere server (Voor jou, Nieuw op Bingr) worden hieronder opnieuw bepaald
+        if preparedKey != pkey { heroItems = []; newOnBingr = []; if !forYou.isEmpty { forYou = [] } }
+        func known(_ t: DetailTarget) -> Bool {
+            if let sid = t.sourceID, sid != pid { return true }
+            return t.isSeries ? idx.seriesByID[t.id] != nil : idx.movieByID[t.id] != nil
+        }
         if let h = hero, !known(h) { hero = nil }
         trendingMovies.removeAll { idx.movieByID[$0.id] == nil }
         trendingSeries.removeAll { idx.seriesByID[$0.id] == nil }
@@ -963,8 +1040,19 @@ struct HomeView: View {
         guard !Task.isCancelled else { return }
         let kids = store.activeProfile?.kids ?? false
         applyTrending(matcher, idx, movies: TrendingStore.cached(shows: false, kids: kids), series: TrendingStore.cached(shows: true, kids: kids))
-        if forYou.isEmpty { forYou = await buildForYou(useNetwork: false, matcher: matcher, idx: idx, lib: l) }
+        // build 140: de andere servers (gefilterd voor dit profiel) voor Nieuw op Bingr en Voor jou
+        let others = await AccountLibrary.shared.others(playlists)
         guard !Task.isCancelled else { return }
+        let fresh = await NewOnBingr.shared.titles(active: l, activeID: pid, others: others)
+        guard !Task.isCancelled else { return }
+        if fresh != newOnBingr { newOnBingr = fresh }
+        if forYou.isEmpty {
+            let r = await buildForYou(useNetwork: false, matcher: matcher, idx: idx, lib: l, others: others)
+            forYou = r.items
+            forYouPopular = r.popular
+        }
+        guard !Task.isCancelled else { return }
+        updateHeroItems(forYouRanked: forYou)
 
         // 2. daarna pas het netwerk (gedeeld door alle tabbladen, 6 uur bewaard)
         async let mv = TrendingStore.shared.get(shows: false, kids: kids)
@@ -972,23 +1060,25 @@ struct HomeView: View {
         let (m, s) = await (mv, sv)
         guard !Task.isCancelled else { return }
         applyTrending(matcher, idx, movies: m, series: s)
-        let fy = await buildForYou(useNetwork: true, matcher: matcher, idx: idx, lib: l)
+        let fy = await buildForYou(useNetwork: true, matcher: matcher, idx: idx, lib: l, others: others)
         guard !Task.isCancelled else { return }
-        forYou = fy
+        forYou = fy.items
+        forYouPopular = fy.popular
+        updateHeroItems(forYouRanked: fy.items)
         preparedKey = pkey
         preparedAt = Date()
     }
 
-    /// Billboard zonder te wachten: iets uit de Top 10-cache, anders willekeurig met poster (steekproef, niet de
-    /// hele lijst filteren).
+    /// Billboard zonder te wachten: iets uit de Top 10-cache, anders de eerste titel met poster.
+    /// Build 140: niet meer willekeurig; daarna neemt de vaste selectie (`updateHeroItems`) het over.
     private func quickHero(_ l: Library) -> DetailTarget? {
         if Screenshots.isActive, let t = ScreenshotDemo.hero(l, filter: filter) { return t }
         switch filter {
-        case .series: return (trendingSeries.first ?? HomeIndex.randomWithPoster(l.series)).map { .series($0) }
-        case .movies: return (trendingMovies.first ?? HomeIndex.randomWithPoster(l.movies)).map { .movie($0) }
+        case .series: return (trendingSeries.first ?? l.series.first { $0.poster != nil }).map { .series($0) }
+        case .movies: return (trendingMovies.first ?? l.movies.first { $0.poster != nil }).map { .movie($0) }
         case .all:
-            if let m = trendingMovies.randomElement() ?? HomeIndex.randomWithPoster(l.movies) { return .movie(m) }
-            return l.series.randomElement().map { .series($0) }
+            if let m = trendingMovies.first ?? l.movies.first(where: { $0.poster != nil }) { return .movie(m) }
+            return l.series.first { $0.poster != nil }.map { .series($0) }
         }
     }
 
@@ -1011,75 +1101,152 @@ struct HomeView: View {
         }
     }
 
-    /// "Voor jou": Trakt-aanbevelingen die in je lijst staan, aangevuld met
-    /// onbekeken titels uit de groepen waar je het meest kijkt, en trending.
-    /// P0-fix: opzoekingen via de HomeIndex in plaats van lussen door de hele bibliotheek op de hoofdthread.
-    private func buildForYou(useNetwork: Bool = true, matcher: TitleMatcher, idx: HomeIndex, lib: Library) async -> [DetailTarget] {
-        func ext(_ l: [TraktSync.TraktMedia]) -> [ExternalTitle] { l.compactMap { t in t.title.map { ExternalTitle(titles: [$0], year: t.year) } } }
+    /// Build 140: "Voor jou" van HET actieve profiel: de titels die dit profiel het meest/laatst keek (Verder kijken,
+    /// geschiedenis, bekeken), daarbij TMDB "recommendations" en "similar" (gekoppeld aan de bibliotheek van alle
+    /// servers), en titels uit dezelfde categorieën met de meeste genre-overlap. Nooit al bekeken of begonnen titels;
+    /// alleen wat in de (voor dit profiel gefilterde) bibliotheek staat. Het hoofdprofiel met Trakt krijgt ook zijn
+    /// Trakt-aanbevelingen. Zonder kijkgeschiedenis: populaire titels onder de kop "Populair" (`popular`).
+    private func buildForYou(useNetwork: Bool = true, matcher: TitleMatcher, idx: HomeIndex, lib: Library,
+                             others: [(UUID, Library)] = []) async -> (items: [DetailTarget], popular: Bool) {
+        // 1. wat dit profiel keek
+        var watches: [ForYouSeeds.Watch] = []
+        var seedTargets: [String: DetailTarget] = [:]
+        func note(_ t: DetailTarget?, _ at: Date) {
+            guard let t else { return }
+            let k = (t.isSeries ? "s|" : "m|") + t.id
+            seedTargets[k] = t
+            watches.append(.init(key: k, at: at.timeIntervalSince1970))
+        }
+        for (k, e) in store.progress where e.playlistID == nil || e.playlistID == pid {
+            if let m = idx.movieByID[k] { note(.movie(m), e.updated) }
+            else if let se = idx.seriesByTitle[e.title] { note(.series(se), e.updated) }
+        }
+        for h in store.history where store.belongsToActive(h.profileID) && (h.playlistID == nil || h.playlistID == pid) {
+            switch h.type {
+            case .movie: note(idx.movieByID[h.itemID].map { .movie($0) }, h.date)
+            case .series, .episode: note((idx.seriesByID[h.itemID] ?? idx.seriesByTitle[h.title]).map { .series($0) }, h.date)
+            case .live: break
+            }
+        }
+        for id in store.localWatched { if let m = idx.movieByID[id] { note(.movie(m), .distantPast) } }
+        let seeds = ForYouSeeds.rank(watches, limit: 6).compactMap { seedTargets[$0] }
+        guard !seeds.isEmpty else { return (popularTitles(idx), true) }
+
         var out: [DetailTarget] = []
         var seen = Set<String>()
+        let seedIDs = Set(seeds.map(\.id))
         func add(_ t: DetailTarget) {
-            guard !seen.contains(t.id), store.progress[t.id] == nil else { return }
+            guard !seen.contains(t.id), !seedIDs.contains(t.id), store.progress[t.id] == nil else { return }
             if filter == .movies, t.isSeries { return }
             if filter == .series, !t.isSeries { return }
             if case .movie(let m) = t, Playables.isWatched(movie: m, imdb: trakt.imdb(for: m)) { return }
-            if case .series(let s) = t, trakt.watchedCount(show: trakt.imdb(for: s)) > 0 { return }
+            if case .series(let x) = t, Playables.watchedEpisodeCount(x, imdb: trakt.imdb(for: x)) > 0 { return }
             seen.insert(t.id); out.append(t)
         }
-        // 1. vergelijkbaar met wat je (half) gekeken hebt
-        var seeds: [(imdb: String, show: Bool)] = []
-        let recentKeys = store.progress.sorted { $0.value.updated > $1.value.updated }.map(\.key)
-        let movieByID = idx.movieByID
-        for k in recentKeys {
-            if let m = movieByID[k], let i = trakt.imdb(for: m) { seeds.append((i, false)) }
-            // was `lib.series.first(where:)` per voortgangsitem: voortgang × series op de hoofdthread
-            else if let t = store.progress[k]?.title, let se = idx.seriesByTitle[t], let i = trakt.imdb(for: se) { seeds.append((i, true)) }
-            if seeds.count >= 4 { break }
-        }
-        for i in trakt.watchedEpisodes.keys.shuffled().prefix(2) { seeds.append((i, true)) }
-        for i in trakt.watchedMovies.shuffled().prefix(2) { seeds.append((i, false)) }
-        if filter == .movies { seeds.removeAll { $0.show } }
-        if filter == .series { seeds.removeAll { !$0.show } }
-        var seenSeeds = Set<String>()
-        for seed in seeds where useNetwork && seenSeeds.insert(seed.imdb).inserted {
-            let rel = await trakt.related(imdb: seed.imdb, shows: seed.show)
-            if seed.show { matcher.series(ext(rel), limit: 6).forEach { add(.series($0)) } }
-            else { matcher.movies(ext(rel), limit: 6).forEach { add(.movie($0)) } }
-        }
 
-        // 2. persoonlijke Trakt-aanbevelingen
-        let rmList = useNetwork ? await trakt.recommendations(shows: false) : []
-        let rsList = useNetwork ? await trakt.recommendations(shows: true) : []
-        let recMovies = matcher.movies(ext(rmList), limit: 40)
-        let recSeries = matcher.series(ext(rsList), limit: 40)
-        for (a, b) in zip(recMovies.prefix(15), recSeries.prefix(15)) { add(.movie(a)); add(.series(b)) }
-        recMovies.dropFirst(15).prefix(5).forEach { add(.movie($0)) }
-        recSeries.dropFirst(15).prefix(5).forEach { add(.series($0)) }
-
-        // groepen waar je in kijkt (voortgang, Mijn lijst, bekeken)
-        var groupScore: [String: Int] = [:]
-        // alleen titels met voortgang, in Mijn lijst of lokaal bekeken (snel, zonder de hele lijst door te lopen)
-        let keys = Set(store.progress.keys).union(store.localWatched)
-        for k in keys { if let m = movieByID[k] { groupScore[m.group, default: 0] += 1 } }
-        if let pid {
-            // via de sleutels van Mijn lijst (klein), niet per titel van de hele bibliotheek
-            for k in store.myList {
-                if let m = idx.movie(forKey: k, playlist: pid) { groupScore[m.group, default: 0] += 1 }
-                else if let s = idx.series(forKey: k, playlist: pid) { groupScore[s.group, default: 0] += 2 }
+        // 2. TMDB: aanbevelingen en vergelijkbare titels van wat dit profiel keek (eerst de open server, dan de andere)
+        if useNetwork {
+            let otherMatcher = await AccountLibrary.shared.othersMatcher(others)
+            for seed in seeds.prefix(4) {
+                let related = await relatedTitles(seed)
+                if Task.isCancelled { return (out, false) }
+                if seed.isSeries {
+                    matcher.series(related, limit: 8).forEach { add(.series($0)) }
+                    otherMatcher?.series(related, limit: 4).forEach { add(.series($0)) }
+                } else {
+                    matcher.movies(related, limit: 8).forEach { add(.movie($0)) }
+                    otherMatcher?.movies(related, limit: 4).forEach { add(.movie($0)) }
+                }
             }
         }
-        let topGroups = groupScore.sorted { $0.value > $1.value }.prefix(4).map(\.key)
-        for g in topGroups {
-            HomeIndex.sample(idx.movieGroupItems[g] ?? [], 5).forEach { add(.movie($0)) }
-            HomeIndex.sample(idx.seriesGroupItems[g] ?? [], 5).forEach { add(.series($0)) }
+
+        // 3. dezelfde categorieën, op genre-overlap (TMDB-genres uit de cache) en daarna score (op de achtergrond)
+        var seedGenres: [Int: Int] = [:], seedGroups: [String: Int] = [:]
+        let ratings = AgeRatingService.shared.cache
+        for t in seeds {
+            switch t {
+            case .movie(let m):
+                seedGroups[m.group, default: 0] += 1
+                for g in ratings[AgeRatingService.key(title: m.title, year: m.year, isShow: false)]?.genres ?? [] { seedGenres[g, default: 0] += 1 }
+            case .series(let x):
+                seedGroups[x.group, default: 0] += 1
+                for g in ratings[AgeRatingService.key(title: x.title, year: x.year, isShow: true)]?.genres ?? [] { seedGenres[g, default: 0] += 1 }
+            }
         }
-        // aanvullen met trending
-        for (a, b) in zip(trendingMovies.prefix(8), trendingSeries.prefix(8)) { add(.movie(a)); add(.series(b)) }
-        if out.count < 8 {
-            HomeIndex.sample(lib.movies, 6, where: { $0.poster != nil }).forEach { add(.movie($0)) }
-            HomeIndex.sample(lib.series, 6, where: { $0.poster != nil }).forEach { add(.series($0)) }
+        let groupMovies = filter == .series ? [] : seedGroups.keys.map { Array((idx.movieGroupItems[$0] ?? []).prefix(400)) }
+        let groupSeries = filter == .movies ? [] : seedGroups.keys.map { Array((idx.seriesGroupItems[$0] ?? []).prefix(400)) }
+        let sg = seedGenres, sgr = seedGroups
+        let ranked = await Task.detached(priority: .utility) { () -> [DetailTarget] in
+            var c: [(DetailTarget, Int, Double)] = []
+            for list in groupMovies {
+                for m in list {
+                    let g = Set(ratings[AgeRatingService.key(title: m.title, year: m.year, isShow: false)]?.genres ?? [])
+                    c.append((.movie(m), ForYouSeeds.score(genres: g, group: m.group, seedGenres: sg, seedGroups: sgr), m.rating ?? 0))
+                }
+            }
+            for list in groupSeries {
+                for x in list {
+                    let g = Set(ratings[AgeRatingService.key(title: x.title, year: x.year, isShow: true)]?.genres ?? [])
+                    c.append((.series(x), ForYouSeeds.score(genres: g, group: x.group, seedGenres: sg, seedGroups: sgr), x.rating ?? 0))
+                }
+            }
+            c.sort { a, b in a.1 != b.1 ? a.1 > b.1 : (a.2 != b.2 ? a.2 > b.2 : a.0.id < b.0.id) }
+            return c.prefix(120).map { $0.0 }
+        }.value
+        for t in ranked where out.count < 30 { add(t) }
+
+        // 4. hoofdprofiel met Trakt: zijn persoonlijke Trakt-aanbevelingen
+        if useNetwork && store.isMainActive && trakt.isLoggedIn && out.count < 30 {
+            func ext(_ l: [TraktSync.TraktMedia]) -> [ExternalTitle] { l.compactMap { t in t.title.map { ExternalTitle(titles: [$0], year: t.year) } } }
+            var rm: [TraktSync.TraktMedia] = [], rs: [TraktSync.TraktMedia] = []
+            if filter != .series { rm = await trakt.recommendations(shows: false) }
+            if filter != .movies { rs = await trakt.recommendations(shows: true) }
+            matcher.movies(ext(rm), limit: 10).forEach { add(.movie($0)) }
+            matcher.series(ext(rs), limit: 10).forEach { add(.series($0)) }
         }
-        return Array(out.prefix(30))
+        if out.isEmpty { return (popularTitles(idx), true) }
+        return (Array(out.prefix(30)), false)
+    }
+
+    /// Build 140: zonder kijkgeschiedenis: best beoordeelde/nieuwste titels met poster (rij "Populair")
+    private func popularTitles(_ idx: HomeIndex) -> [DetailTarget] {
+        var out: [DetailTarget] = []
+        let m = filter == .series ? [] : Array(idx.popularMovies.prefix(15))
+        let x = filter == .movies ? [] : Array(idx.popularSeries.prefix(15))
+        for i in 0..<max(m.count, x.count) {
+            if i < m.count { out.append(.movie(m[i])) }
+            if i < x.count { out.append(.series(x[i])) }
+        }
+        return out
+    }
+
+    /// Build 140: TMDB "recommendations" en "similar" van een titel, als titels om aan de bibliotheek te koppelen.
+    private func relatedTitles(_ t: DetailTarget) async -> [ExternalTitle] {
+        let raw: String, year: Int?, tmdb: Int?, imdb: String?
+        switch t {
+        case .movie(let m): raw = m.title; year = m.year; tmdb = m.tmdbID; imdb = trakt.imdb(for: m)
+        case .series(let x): raw = x.title; year = x.year; tmdb = x.tmdbID; imdb = trakt.imdb(for: x)
+        }
+        let parsed = TitleCleaner.parse(raw)
+        let show = t.isSeries
+        guard let r = await TMDB.details(imdb: imdb, tmdbID: tmdb, title: parsed.title, year: year ?? parsed.year, isShow: show) else {
+            return []
+        }
+        var out = r.recommendations.map { ExternalTitle(titles: [$0.title], year: $0.year) }
+        struct Similar: Decodable {
+            struct R: Decodable {
+                let title: String?, name: String?, original_title: String?, original_name: String?
+                let release_date: String?, first_air_date: String?
+            }
+            let results: [R]?
+        }
+        let sim: Similar? = await TMDB.get(show ? "/tv/\(r.id)/similar" : "/movie/\(r.id)/similar", ["language": TMDB.language])
+        for x in (sim?.results ?? []).prefix(15) {
+            let titles = [show ? x.name : x.title, show ? x.original_name : x.original_title].compactMap { $0 }
+            guard !titles.isEmpty else { continue }
+            out.append(ExternalTitle(titles: titles, year: (show ? x.first_air_date : x.release_date).flatMap { Int($0.prefix(4)) }))
+        }
+        return out
     }
 
 }

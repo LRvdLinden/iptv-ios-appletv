@@ -122,8 +122,8 @@ final class PlaylistService: ObservableObject {
         guard source?.id == s.id else { return }   // intussen een andere bron gekozen
         if let cached {
             setRaw(cached)
-            if !RefreshPolicy.current.isDue(age: cacheAge(s)) { return }
-            Task { await refresh(s, showSpinner: false) }
+            // build 140: volgens de instelling alle servers van het account die aan de beurt zijn (de open eerst)
+            Task { await refreshAllIfDue() }
             return
         }
         setRaw(Library())
@@ -215,10 +215,43 @@ final class PlaylistService: ObservableObject {
     }
 
     /// Bij terugkeren in de app: verversen als het volgens de instelling tijd is.
+    /// Build 140: niet alleen de open server, maar alle servers van het account (zoals "Nu vernieuwen" sinds build 130).
     func refreshIfDue() async {
-        guard let s = source, !isLoading, RefreshPolicy.current.isDue(age: cacheAge(s)),
-              RefreshPolicy.current != .manual else { return }
-        await refresh(s, showSpinner: false)
+        await refreshAllIfDue()
+    }
+
+    /// Build 140: laatste mislukte poging per server (niet vaker dan eens per 15 minuten opnieuw)
+    private var autoRefreshAttempt: [String: Date] = [:]
+    private var autoRefreshing = false
+
+    /// Build 140: "Server automatisch vernieuwen" (dagelijks, wekelijks …): elke server van het account waarvan de
+    /// bewaarde lijst te oud is, verversen. De open server eerst; de andere rustig op de achtergrond (niet tijdens het
+    /// afspelen, met een time-out). Loopt bij het openen van een server, bij terugkeer naar de voorgrond en
+    /// (`periodic`) elke 5 minuten zolang de app openstaat — ook na een herstart, want de leeftijd komt van de cache.
+    func refreshAllIfDue(periodic: Bool = false) async {
+        guard !Screenshots.isActive, !autoRefreshing, !refreshingAll, !isLoading else { return }
+        let all = CloudStore.shared.playlists
+        let activeID = source?.id
+        let ordered = all.filter { $0.id == activeID } + all.filter { $0.id != activeID }
+        let due = AutoRefresh.due(policy: RefreshPolicy.current.rawValue,
+                                  servers: ordered.map { (id: $0.id.uuidString, age: cacheAge($0)) },
+                                  lastAttempt: autoRefreshAttempt, now: Date(), periodic: periodic)
+        guard !due.isEmpty else { return }
+        autoRefreshing = true
+        defer { autoRefreshing = false }
+        var done: [UUID] = []
+        for id in due {
+            guard let p = CloudStore.shared.playlists.first(where: { $0.id.uuidString == id }) else { continue }
+            autoRefreshAttempt[id] = Date()
+            let isActive = p.id == source?.id
+            if !isActive { await CrossServer.shared.waitUntilNotPlaying() }
+            let ok = await CrossServer.withTimeout(isActive ? 300 : 120, { await self.refresh(p, showSpinner: false) }) ?? false
+            if ok {
+                done.append(p.id)
+                autoRefreshAttempt[id] = nil
+            }
+        }
+        if !done.isEmpty { CrossServer.shared.serversRefreshed(done) }
     }
 
     /// Build 130: alle servers van het account verversen ("Nu vernieuwen", "Alle servers nu verversen").
@@ -904,14 +937,9 @@ enum RefreshPolicy: String, CaseIterable, Identifiable {
         }
     }
 
+    /// Build 140: dezelfde regels als `AutoRefresh.isDue` (Build140.swift, getest in de zelftest)
     func isDue(age: TimeInterval?) -> Bool {
-        guard let age else { return true }
-        switch self {
-        case .manual: return false
-        case .launch: return age > 60
-        case .sixHours: return age > 6 * 3600
-        case .daily: return age > 24 * 3600
-        case .weekly: return age > 7 * 24 * 3600
-        }
+        guard let age else { return self != .manual }
+        return AutoRefresh.isDue(policy: rawValue, age: age)
     }
 }

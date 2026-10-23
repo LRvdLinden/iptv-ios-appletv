@@ -436,7 +436,8 @@ struct BrowseCategoryView: View {
         case .series:
             Button { detail = t } label: { Label(L("More info"), systemImage: "info.circle") }
         }
-        if let pid {
+        // build 140: de sleutel van de eigen server van de titel (anders kwam hij met de verkeerde server in Mijn lijst)
+        if let pid = t.sourceID ?? pid {
             Button { store.toggleMyList(pid, t.id); PlusCheckFeedback.toggled() } label: {
                 Label(store.inMyList(pid, t.id) ? L("Remove from My List") : L("Add to My List"),
                       systemImage: PlusCheckGlyph.symbol(store.inMyList(pid, t.id)))

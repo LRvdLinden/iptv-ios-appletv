@@ -1589,21 +1589,12 @@ final class StateSync {
     // MARK: - Lijsten: verschil en samenvoegen
 
     /// Aanwezig nu tegenover laatst bekend: nieuw → `at` = nu, verdwenen → verwijderd met `at` = nu.
+    /// Build 140: een bekende verwijdering met een even late of latere tijd (klok van een ander apparaat loopt voor)
+    /// overstemt een toevoeging hier niet meer (`ListStamp`, logica in Build140.swift → `ListMerge`).
     private static func diff(_ m: inout ListMeta, _ name: String, _ current: Set<String>, now: Double) {
-        var present = m.present[name] ?? [:]
-        var removed = m.removed[name] ?? [:]
-        for id in current where present[id] == nil {
-            // build 140: een bekende verwijdering met een even late of latere tijd (klok van een ander apparaat loopt
-            // voor) mag een toevoeging hier niet overstemmen; anders verdween een item meteen weer uit Mijn lijst
-            present[id] = ListStamp.addedAt(now: now, knownRemoval: removed[id])
-            if now > 0 { removed[id] = nil }
-        }
-        for id in present.keys where !current.contains(id) {
-            present[id] = nil
-            removed[id] = now
-        }
-        m.present[name] = present
-        m.removed[name] = removed
+        let r = ListMerge.diff((m.present[name] ?? [:], m.removed[name] ?? [:]), current: current, now: now)
+        m.present[name] = r.present
+        m.removed[name] = r.removed
     }
 
     /// Geordende lijst (nieuwste eerst, bijv. recente zenders): naar voren gehaald telt als nieuw.
@@ -1646,19 +1637,11 @@ final class StateSync {
         m.removed[name] = removed
     }
 
-    /// Per item wint de nieuwste `at`; bij gelijke tijd blijft het item staan.
+    /// Per item wint de nieuwste `at`; bij gelijke tijd blijft het item staan (`ListMerge`, Build140.swift).
     private static func mergeSet(local: (present: [String: Double], removed: [String: Double]),
                                  server: (present: [String: Double], removed: [String: Double]))
         -> (present: [String: Double], removed: [String: Double]) {
-        var present: [String: Double] = [:]
-        var removed: [String: Double] = [:]
-        let ids = Set(local.present.keys).union(local.removed.keys).union(server.present.keys).union(server.removed.keys)
-        for id in ids {
-            let p = max(local.present[id] ?? -1, server.present[id] ?? -1)
-            let r = max(local.removed[id] ?? -1, server.removed[id] ?? -1)
-            if p >= 0 && p >= r { present[id] = p } else if r >= 0 { removed[id] = r }
-        }
-        return (present, removed)
+        ListMerge.merge(local: local, server: server)
     }
 
     /// Lijst van de server: tekst (`"id"`), of objecten `{id, removed?, at}`; ook `{id: at}`.

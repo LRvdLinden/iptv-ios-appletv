@@ -304,6 +304,11 @@ final class CloudStore: ObservableObject {
         // build 97: met een Bingr-account staan voortgang, geschiedenis en foto's alleen lokaal (de account-sync
         // brengt ze mee); een oude of andermans kopie in iCloud KV dan niet lezen
         if accountCarriesBulk && Self.isBulkKey(key) { return local.data(forKey: key) }
+        // build 140: met een Bingr-account ook Mijn lijst, favorieten, bekeken, recente zenders en categorieën alleen
+        // lokaal lezen. Een ander apparaat zette anders via iCloud KV zijn (oudere) hele lijst over de lokale heen
+        // (de laatste schrijver wint per sleutel): een net toegevoegd item verdween dan weer uit Mijn lijst, en de
+        // volgende sync-ronde legde dat vast als verwijdering. De account-sync voegt per item samen.
+        if accountCarriesBulk && Self.isListKey(key) { return local.data(forKey: key) }
         return kv.data(forKey: key) ?? local.data(forKey: key)
     }
 
@@ -314,6 +319,8 @@ final class CloudStore: ObservableObject {
         if accountCarriesBulk && Self.isBulkKey(key) {
             // build 97: niet (meer) in iCloud KV (max 1 MB); een oude kopie opruimen
             if kv.object(forKey: key) != nil { kv.removeObject(forKey: key); kv.synchronize() }
+        } else if accountCarriesBulk && Self.isListKey(key) {
+            // build 140: lijsten gaan met een account alleen via de account-sync (zie `data(_:)`)
         } else if key == K.photos, let photos = value as? [UUID: Data] {
             // build 97: zonder account geen grote foto's in iCloud KV (lokaal blijven ze bewaard)
             let small = photos.filter { $0.value.count <= Self.maxCloudPhotoBytes }
@@ -337,6 +344,11 @@ final class CloudStore: ObservableObject {
     /// build 97: ingelogd bij een Bingr-account: voortgang, geschiedenis en foto's gaan via de account-sync,
     /// niet via iCloud KV
     private var accountCarriesBulk: Bool { Secrets.accountsConfigured && AccountService.shared.isSignedIn }
+
+    /// Build 140: lijsten per profiel (Mijn lijst, favorieten, bekeken, recente zenders, categorieën van build 128)
+    private static func isListKey(_ key: String) -> Bool {
+        [K.myList, K.favorites, K.watched, K.recent, K.categories].contains { key == $0 || key.hasPrefix($0 + ".") }
+    }
 
     /// Voortgang, geschiedenis (per profiel) en foto's
     private static func isBulkKey(_ key: String) -> Bool {

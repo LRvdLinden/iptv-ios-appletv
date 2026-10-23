@@ -235,9 +235,12 @@ final class AppState: ObservableObject {
             await StateSync.shared.syncNow()
         }
         // elke 5 minuten zolang de app open is
-        Task { @MainActor in
+        Task { @MainActor [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 300 * 1_000_000_000)
+                // build 140: "Server automatisch vernieuwen" ook als de app lang openstaat (bijv. Apple TV), voor alle
+                // servers van het account; los gestart, zodat de account-sync hieronder er niet op wacht
+                if let pl = self?.playlists, self?.stage == .main { Task { await pl.refreshAllIfDue(periodic: true) } }
                 await AccountService.shared.checkDevice(force: true)
                 // account_data opnieuw lezen: nieuwe of verwijderde profielfoto's van andere apparaten
                 await ProfileSync.shared.syncNow()

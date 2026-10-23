@@ -203,6 +203,31 @@ check(ListStamp.addedAt(now: 100, knownRemoval: 150) > 150, "verwijdering met vo
 check(ListStamp.addedAt(now: 100, knownRemoval: 100) > 100, "gelijke tijd: toevoeging wint")
 eq(ListStamp.addedAt(now: 0, knownRemoval: 150), 0, "eerste afstemming (tijd 0) blijft oud")
 
+// MARK: build 140: Mijn lijst — toevoegen, meteen syncen, tweede apparaat
+
+do {
+    // apparaat A: al afgestemd (Mijn lijst: x), voegt y toe en synct meteen; de server heeft y nog niet
+    let knownA: ListMerge.Stamps = (["s|x": 10], [:])
+    let afterAdd = ListMerge.diff(knownA, current: ["s|x", "s|y"], now: 100)
+    let serverStale: ListMerge.Stamps = (["s|x": 10], [:])
+    let mergedA = ListMerge.merge(local: afterAdd, server: serverStale)
+    check(mergedA.present["s|y"] != nil, "toevoegen → meteen sync → nog aanwezig")
+    // apparaat B (ander apparaat, ook afgestemd) leest de upload van A
+    let knownB: ListMerge.Stamps = (["s|x": 10], [:])
+    let localB = ListMerge.diff(knownB, current: ["s|x"], now: 105)
+    let mergedB = ListMerge.merge(local: localB, server: mergedA)
+    check(mergedB.present["s|y"] != nil, "tweede apparaat ziet het toegevoegde item")
+    check(mergedB.present["s|x"] != nil, "bestaand item blijft")
+    // eerder op een apparaat met een voorlopende klok verwijderd (t=150), nu hier (t=100) opnieuw toegevoegd
+    let knownC: ListMerge.Stamps = ([:], ["s|z": 150])
+    let localC = ListMerge.diff(knownC, current: ["s|z"], now: 100)
+    let mergedC = ListMerge.merge(local: localC, server: ([:], ["s|z": 150]))
+    check(mergedC.present["s|z"] != nil, "opnieuw toegevoegd na verwijdering met latere tijd: blijft in Mijn lijst")
+    // echte latere verwijdering op een ander apparaat wint wel
+    let mergedD = ListMerge.merge(local: afterAdd, server: (["s|x": 10], ["s|y": 200]))
+    check(mergedD.present["s|y"] == nil && mergedD.removed["s|y"] != nil, "latere verwijdering elders wint")
+}
+
 // MARK: build 140: ouderpoort
 
 struct FixedGen: RandomNumberGenerator {

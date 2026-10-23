@@ -114,6 +114,39 @@ enum ListStamp {
     }
 }
 
+/// Lijsten en sets per item samenvoegen (`{id, removed?, at}`; nieuwste `at` wint), zoals StateSync dat doet.
+enum ListMerge {
+    typealias Stamps = (present: [String: Double], removed: [String: Double])
+
+    /// Lokale stand tegenover de laatst bekende: nieuw → `at` = nu (zie `ListStamp`), verdwenen → verwijderd met nu.
+    static func diff(_ known: Stamps, current: Set<String>, now: Double) -> Stamps {
+        var present = known.present
+        var removed = known.removed
+        for id in current where present[id] == nil {
+            present[id] = ListStamp.addedAt(now: now, knownRemoval: removed[id])
+            if now > 0 { removed[id] = nil }
+        }
+        for id in present.keys where !current.contains(id) {
+            present[id] = nil
+            removed[id] = now
+        }
+        return (present, removed)
+    }
+
+    /// Per item wint de nieuwste `at`; bij gelijke tijd blijft het item staan.
+    static func merge(local: Stamps, server: Stamps) -> Stamps {
+        var present: [String: Double] = [:]
+        var removed: [String: Double] = [:]
+        let ids = Set(local.present.keys).union(local.removed.keys).union(server.present.keys).union(server.removed.keys)
+        for id in ids {
+            let p = max(local.present[id] ?? -1, server.present[id] ?? -1)
+            let r = max(local.removed[id] ?? -1, server.removed[id] ?? -1)
+            if p >= 0 && p >= r { present[id] = p } else if r >= 0 { removed[id] = r }
+        }
+        return (present, removed)
+    }
+}
+
 // MARK: - Ouderpoort (rekensom)
 
 struct ParentGateSum: Equatable {
