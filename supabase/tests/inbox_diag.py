@@ -34,6 +34,10 @@ note("inbox-stand", ", ".join(f"{k}={state.get(k)}" for k in ("uidvalidity", "la
 note("inbox-laatste-ronde", json.dumps(state.get("last_result")))
 code, lg = sql("select split_part(result, ':', 1) || coalesce(':' || nullif(split_part(result, ':', 2), ''), '') r, count(*)::int n, max(at)::text last "
                "from public.support_inbox_log where at > now() - interval '30 days' group by 1 order by 2 desc")
+code, dt = sql("select split_part(result, ':', 1) r, case when detail like 'vervolg op%' then 'vervolg_gesloten' when detail like 'verwijst naar%' then 'verwijzing_ander_adres' "
+               "when detail = 'ander adres' then 'ander_adres' when detail is null then '-' else 'overig' end d, count(*)::int n "
+               "from public.support_inbox_log where at > now() - interval '30 days' and result in ('new_ticket', 'imported') group by 1, 2 order by 3 desc")
+note("inbox-import-details-30d", "; ".join(f"{x['r']}/{x['d']}={x['n']}" for x in dt) if isinstance(dt, list) and dt else f"geen (HTTP {code})")
 note("inbox-logboek-30d", "; ".join(f"{x['r']}={x['n']} (laatst {x['last'][:16]})" for x in lg) if isinstance(lg, list) and lg else f"leeg (HTTP {code})")
 code, cr = sql("select j.jobname, j.schedule, j.active, (select count(*) from cron.job_run_details d where d.jobid = j.jobid and d.start_time > now() - interval '24 hours')::int runs, "
                "(select count(*) from cron.job_run_details d where d.jobid = j.jobid and d.start_time > now() - interval '24 hours' and d.status <> 'succeeded')::int failed, "
