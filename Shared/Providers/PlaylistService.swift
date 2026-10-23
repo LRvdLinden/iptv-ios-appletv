@@ -122,8 +122,9 @@ final class PlaylistService: ObservableObject {
         guard source?.id == s.id else { return }   // intussen een andere bron gekozen
         if let cached {
             setRaw(cached)
-            // build 140: volgens de instelling alle servers van het account die aan de beurt zijn (de open eerst)
-            Task { await refreshAllIfDue() }
+            // build 140: volgens de instelling alle servers van het account die aan de beurt zijn. Build 141: de open
+            // server meteen, de andere pas later en één voor één (zie `refreshIfDue`)
+            Task { await refreshIfDue() }
             return
         }
         setRaw(Library())
@@ -216,8 +217,40 @@ final class PlaylistService: ObservableObject {
 
     /// Bij terugkeren in de app: verversen als het volgens de instelling tijd is.
     /// Build 140: niet alleen de open server, maar alle servers van het account (zoals "Nu vernieuwen" sinds build 130).
+    ///
+    /// Build 141 (crash op Apple TV, build 140): bij het openen van de app ververste build 140 meteen álle servers
+    /// waarvan de lijst te oud was, ook vóór er een server open was (de app wordt bij het starten "actief"). Op een Apple
+    /// TV, die meestal één keer per dag opent, zijn dat elke keer alle servers: ophalen, inlezen en de gids van alle
+    /// grote servers tegelijk met het opstarten van de app. Het geheugen liep daardoor zo op dat tvOS de app direct na
+    /// het openen stopte. Nu: alleen de open server meteen (zoals tot build 139); de andere servers pas als de app al een
+    /// tijd draait, één voor één en niet tijdens het afspelen (`scheduleOthers`).
     func refreshIfDue() async {
-        await refreshAllIfDue()
+        guard !Screenshots.isActive, let s = source else { return }
+        let due = AutoRefresh.due(policy: RefreshPolicy.current.rawValue, servers: [(id: s.id.uuidString, age: cacheAge(s))],
+                                  lastAttempt: autoRefreshAttempt, now: Date(), periodic: false)
+        if !due.isEmpty, !isLoading, !autoRefreshing, !refreshingAll {
+            autoRefreshing = true
+            autoRefreshAttempt[s.id.uuidString] = Date()
+            let ok = await refresh(s, showSpinner: false)
+            autoRefreshing = false
+            if ok { autoRefreshAttempt[s.id.uuidString] = nil; CrossServer.shared.serversRefreshed([s.id]) }
+        }
+        scheduleOthers()
+    }
+
+    /// Build 141: de andere servers pas na `othersDelay` seconden (als de app dan nog openstaat), via
+    /// `refreshAllIfDue` (één voor één, niet tijdens het afspelen, met een time-out).
+    /// (in de start-rooktest korter, zodat het verversen van de grote servers binnen de test valt)
+    static var othersDelay: TimeInterval { SmokeTest.isActive ? 25 : 120 }
+    private var othersTask: Task<Void, Never>?
+    private func scheduleOthers() {
+        guard othersTask == nil, CloudStore.shared.playlists.count > 1 else { return }
+        othersTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(Self.othersDelay * 1_000_000_000))
+            guard let self, !Task.isCancelled else { return }
+            await self.refreshAllIfDue()
+            self.othersTask = nil
+        }
     }
 
     /// Build 140: laatste mislukte poging per server (niet vaker dan eens per 15 minuten opnieuw)
@@ -849,7 +882,12 @@ extension PlaylistService {
         case .stremio:
             return (try? await StremioClient(addons: await stremioAddons(s)).episodes(series)) ?? []
         default:
-            return []
+            // build 141: M3U/Stalker: de afleveringen staan in de catalogus van die server (op dit apparaat bewaard);
+            // de rijen over alle servers (Voor jou, Nieuw op Bingr) bewaren ze niet in het geheugen
+            let id = series.id
+            return await Task.detached(priority: .userInitiated) {
+                PlaylistService.readAnyCatalog(s)?.0.series.first { $0.id == id }?.episodes ?? []
+            }.value
         }
     }
 

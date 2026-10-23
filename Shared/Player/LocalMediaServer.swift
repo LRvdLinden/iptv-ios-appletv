@@ -23,6 +23,17 @@ final class LocalMediaServer: @unchecked Sendable {
 
     private init() {}
 
+    /// Build 141: op de Mac geen inkomende verbindingen (sandbox zonder `com.apple.security.network.server`, eis van
+    /// Apple). Casten en AirPlay werken daar gewoon, alleen eigen ondertitels (OpenSubtitles/bestand) niet; ondertitels
+    /// uit de stream wel. De app biedt het daar dan ook niet aan (zie `CastManager`, `AirPlaySubtitles`).
+    static var isAvailable: Bool {
+        #if os(macOS)
+        return false
+        #else
+        return true
+        #endif
+    }
+
     /// Bestand delen (vervangt een bestaand bestand met dezelfde naam). Geeft het pad (`/<token>/<naam>`)
     /// terug, of nil als de server niet kan starten.
     @discardableResult
@@ -52,11 +63,7 @@ final class LocalMediaServer: @unchecked Sendable {
 
     private func startLocked() -> Bool {
         if listener != nil { return true }
-        #if os(macOS)
-        // Mac: geen inkomende verbindingen (sandbox zonder com.apple.security.network.server, eis van Apple).
-        // Casten werkt, alleen eigen ondertitels/HLS via het toestel niet.
-        return false
-        #endif
+        guard Self.isAvailable else { return false }
         // vaste (willekeurige) poort, zodat de URL meteen bekend is; bezet → een andere proberen
         for _ in 0..<5 {
             let p = UInt16.random(in: 49_200...64_000)
@@ -249,7 +256,7 @@ enum AirPlaySubtitles {
 
     /// Lokale URL van de hoofdafspeellijst, of nil als het niet kan (geen HLS, geen netwerk, geen ondertitels).
     static func wrap(source: URL, subtitle file: URL, language: String?, duration: Double, delay: Double) async -> URL? {
-        guard ["http", "https"].contains(source.scheme?.lowercased() ?? ""), isHLS(source),
+        guard LocalMediaServer.isAvailable, ["http", "https"].contains(source.scheme?.lowercased() ?? ""), isHLS(source),
               let vtt = WebVTT.make(from: file, delay: delay),
               let host = LocalMediaServer.lanAddress() else { return nil }
         var req = URLRequest(url: source, timeoutInterval: 10)

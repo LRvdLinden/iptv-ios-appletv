@@ -67,8 +67,17 @@ struct MyBingrHeader: View {
             out = lib.movies.filter { store.inMyList(pid, $0.id) }.map { .movie($0) }
                 + lib.series.filter { store.inMyList(pid, $0.id) }.map { .series($0) }
         }
-        for k in store.myList where !isActive(k) {
-            if let m = cross.movie(forKey: k) { out.append(.movie(m)) } else if let s = cross.series(forKey: k) { out.append(.series(s)) }
+        for k in store.myList {
+            // build 141: ook TMDB-titels (bijv. een aanbeveling uit zoeken), zoals de rij Mijn lijst op Home
+            switch MyListID.origin(of: k, activeSID: pid?.uuidString) {
+            case .otherServer?:
+                if let m = cross.movie(forKey: k) { out.append(.movie(m)) } else if let s = cross.series(forKey: k) { out.append(.series(s)) }
+            case .external?:
+                if store.activeProfile?.effectiveAgeLimit == nil, let p = pid, let i = DiscoverKnown.shared.item(forKey: k, playlist: p) {
+                    out.append(i.target)
+                }
+            default: break
+            }
         }
         var seen = Set<String>()
         return out.filter { t in
@@ -149,7 +158,7 @@ struct MyBingrHeader: View {
                                                   },
                                                   onPrompt: { prompt = $0 })
                         } label: {
-                            ContinueCard(title: e.title, poster: e.artwork ?? poster(c.target), fraction: e.fraction,
+                            ContinueCard(title: e.title, poster: poster(c.target) ?? e.artwork, fraction: e.fraction,   // build 141: cover eerst
                                          caption: L("%d min left", Int(left / 60)))
                         }
                         .cardButton()

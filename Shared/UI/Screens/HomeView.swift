@@ -518,13 +518,16 @@ struct HomeView: View {
         _ = cross.version
         let ext = showExternalInMyList
         var mine: [(Movie, Double)] = [], other: [(Movie, Double)] = []
+        // build 141: herkomst per sleutel zoals in de zelftest (MyListID): open server, TMDB-titel of andere server
         for k in store.myList {
-            if isActive(k) {
-                if let m = index.movie(forKey: k, playlist: pid) ?? (ext ? DiscoverKnown.shared.movie(forKey: k, playlist: pid) : nil) {
-                    mine.append((m, cross.addedAt(k, field: "myList")))
-                }
-            } else if let m = cross.movie(forKey: k) {
-                other.append((m, cross.addedAt(k, field: "myList")))
+            switch MyListID.origin(of: k, activeSID: pid.uuidString) {
+            case .active?:
+                if let m = index.movie(forKey: k, playlist: pid) { mine.append((m, cross.addedAt(k, field: "myList"))) }
+            case .external?:
+                if ext, let m = DiscoverKnown.shared.movie(forKey: k, playlist: pid) { mine.append((m, cross.addedAt(k, field: "myList"))) }
+            case .otherServer?:
+                if let m = cross.movie(forKey: k) { other.append((m, cross.addedAt(k, field: "myList"))) }
+            case nil: break
             }
         }
         return Self.ordered(mine + other, identity: CrossServer.identity)
@@ -535,12 +538,14 @@ struct HomeView: View {
         let ext = showExternalInMyList
         var mine: [(Series, Double)] = [], other: [(Series, Double)] = []
         for k in store.myList {
-            if isActive(k) {
-                if let s = index.series(forKey: k, playlist: pid) ?? (ext ? DiscoverKnown.shared.series(forKey: k, playlist: pid) : nil) {
-                    mine.append((s, cross.addedAt(k, field: "myList")))
-                }
-            } else if let s = cross.series(forKey: k) {
-                other.append((s, cross.addedAt(k, field: "myList")))
+            switch MyListID.origin(of: k, activeSID: pid.uuidString) {
+            case .active?:
+                if let s = index.series(forKey: k, playlist: pid) { mine.append((s, cross.addedAt(k, field: "myList"))) }
+            case .external?:
+                if ext, let s = DiscoverKnown.shared.series(forKey: k, playlist: pid) { mine.append((s, cross.addedAt(k, field: "myList"))) }
+            case .otherServer?:
+                if let s = cross.series(forKey: k) { other.append((s, cross.addedAt(k, field: "myList"))) }
+            case nil: break
             }
         }
         return Self.ordered(mine + other, identity: CrossServer.identity)
@@ -613,7 +618,8 @@ struct HomeView: View {
         let items = newOnBingrItems
         if !items.isEmpty {
             MediaRow(title: L("New on Bingr"), onSeeAll: seeAll(L("New on Bingr"), items)) {
-                ForEach(items) { t in titleButton(t) }
+                // build 141: met het label Film/Serie, zoals bij Voor jou
+                ForEach(items) { t in titleButton(t, kindBadge: true) }
             }
         }
     }
@@ -625,8 +631,13 @@ struct HomeView: View {
             try? await Task.sleep(nanoseconds: UInt64(HeroRotation.interval * 1_000_000_000))
             guard !Task.isCancelled else { return }
             if app.playing != nil || Screenshots.isActive { continue }
-            heroIndex = (heroIndex + 1) % heroItems.count
-            withAnimation(.easeInOut(duration: 0.6)) { hero = heroItems[heroIndex] }
+            // build 141: de selectie kan intussen leeg of korter zijn (bijv. ander profiel of bibliotheek ververst,
+            // terwijl deze taak nog niet geannuleerd is, zoals op een tabblad dat niet in beeld is): nooit delen door
+            // nul of buiten de lijst lezen
+            let items = heroItems
+            guard items.count > 1 else { return }
+            heroIndex = (min(max(heroIndex, 0), items.count - 1) + 1) % items.count
+            withAnimation(.easeInOut(duration: 0.6)) { hero = items[heroIndex] }
         }
     }
 
@@ -658,14 +669,16 @@ struct HomeView: View {
     }
 
     /// Poster van een titel uit je bibliotheek (film of serie), met het gewone menu.
-    @ViewBuilder private func titleButton(_ t: DetailTarget) -> some View {
+    /// `kindBadge` (build 141): label FILM/SERIE linksboven, zoals bij Voor jou (rij Nieuw op Bingr)
+    @ViewBuilder private func titleButton(_ t: DetailTarget, kindBadge: Bool = false) -> some View {
         switch t {
         case .movie(let m):
             let imdb = trakt.imdb(for: m)
             Button { detail = t } label: {
                 PosterCard(title: m.title, poster: m.poster, imdbID: imdb,
                            watched: Playables.isWatched(movie: m, imdb: imdb),
-                           progress: store.progress[m.id]?.fraction, language: ContentLanguage.of(m))
+                           progress: store.progress[m.id]?.fraction,
+                           badge: kindBadge ? L("MOVIE") : nil, badgeAlignment: .topLeading, language: ContentLanguage.of(m))
             }
             .cardButton()
             .contextMenu { movieMenu(m, imdb: imdb) }
@@ -673,7 +686,9 @@ struct HomeView: View {
             let imdb = trakt.imdb(for: s)
             Button { detail = t } label: {
                 PosterCard(title: s.title, poster: s.poster, imdbID: imdb,
-                           watchedEpisodes: Playables.watchedEpisodeCount(s, imdb: imdb), language: ContentLanguage.of(s))
+                           badge: kindBadge ? L("SERIES") : nil,
+                           watchedEpisodes: Playables.watchedEpisodeCount(s, imdb: imdb),
+                           badgeAlignment: .topLeading, language: ContentLanguage.of(s))
             }
             .cardButton()
             .contextMenu {
@@ -724,8 +739,10 @@ struct HomeView: View {
     private func resolveExternalMyList() async {
         guard let pid else { return }
         // server-id hoofdletterongevoelig (web/Android/Samsung TV schrijven hem soms met kleine letters)
+        // build 141: TMDB-titels onder elke server-id (zie MyListID.origin)
+        _ = pid
         let ids = store.myList.compactMap { k -> String? in
-            guard let bar = k.firstIndex(of: "|"), k[..<bar].caseInsensitiveCompare(pid.uuidString) == .orderedSame else { return nil }
+            guard let bar = k.firstIndex(of: "|") else { return nil }
             let id = String(k[k.index(after: bar)...])
             return DiscoverItem.isExternal(id) ? id : nil
         }
@@ -938,8 +955,10 @@ struct HomeView: View {
             if filter == .movies && !isMovie { return nil }
             if filter == .series && isMovie { return nil }
             let left = max(0, e.position / max(e.fraction, 0.01) - e.position)
+            // build 141: de cover van de film of serie, niet het beeld van de scène (dat staat in de voortgang)
+            let cover = isMovie ? movieIDs[key]?.poster : index.seriesByTitle[e.title]?.poster
             return ContinueItem(id: key, title: e.title, subtitle: L("%d min left", Int(left / 60)),
-                                artwork: e.artwork, fraction: e.fraction, updated: e.updated, isMovie: isMovie,
+                                artwork: cover ?? e.artwork, fraction: e.fraction, updated: e.updated, isMovie: isMovie,
                                 position: e.position > 0 ? e.position : nil)
         }
         // films die je in een andere app (via Trakt) half hebt gekeken
@@ -956,13 +975,15 @@ struct HomeView: View {
         let full = server.uuidString + "|" + key
         let left = max(0, e.position / max(e.fraction, 0.01) - e.position)
         let isMovie: Bool
-        if let m = cross.movie(forKey: full), !cross.isMissing(full) { isMovie = true; _ = m }
-        else if cross.episodeSeries(playlist: server, key: key) != nil { isMovie = false }
+        var cover: URL?
+        if let m = cross.movie(forKey: full), !cross.isMissing(full) { isMovie = true; cover = m.poster }
+        else if let x = cross.episodeSeries(playlist: server, key: key) { isMovie = false; cover = x.poster }
         else if cross.isMissing(full), store.activeProfile?.effectiveAgeLimit == nil { isMovie = true }
         else { return nil }
         if filter == .movies && !isMovie { return nil }
         if filter == .series && isMovie && !cross.isMissing(full) { return nil }
-        return ContinueItem(id: key, title: e.title, subtitle: L("%d min left", Int(left / 60)), artwork: e.artwork,
+        // build 141: cover van de film/serie (niet het beeld van de scène)
+        return ContinueItem(id: key, title: e.title, subtitle: L("%d min left", Int(left / 60)), artwork: cover ?? e.artwork,
                             fraction: e.fraction, updated: e.updated, isMovie: isMovie,
                             position: e.position > 0 ? e.position : nil, source: server)
     }

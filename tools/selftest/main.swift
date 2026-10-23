@@ -302,5 +302,62 @@ eq(ForYouSeeds.rank([.init(key: "s1", at: 10), .init(key: "m1", at: 50), .init(k
    ["s1", "m1"], "meest bekeken, dan laatst bekeken")
 eq(ForYouSeeds.score(genres: [16, 35], group: "Kids", seedGenres: [16: 3], seedGroups: ["Kids": 1]), 5, "score")
 
+// MARK: build 141: Mijn lijst na zoeken (zoekresultaat, andere server, TMDB) — meteen zichtbaar, na sync, tweede apparaat
+
+eq(MyListID.forTitle(id: "m-123", tmdb: 603, isShow: false), "m-123" as String?, "titel uit een bibliotheek houdt zijn id")
+eq(MyListID.forTitle(id: "rec-tt0133093", tmdb: 603, isShow: false), "tmdb-movie-603" as String?, "aanbeveling → TMDB-id")
+eq(MyListID.forTitle(id: "rec-Dark", tmdb: 70523, isShow: true), "tmdb-tv-70523" as String?, "aanbeveling serie → TMDB-id")
+eq(MyListID.forTitle(id: "rec-x", tmdb: nil, isShow: false), nil as String?, "zonder TMDB-id geen Mijn lijst")
+let S1 = "AAAAAAAA-0000-0000-0000-000000000001", S2 = "BBBBBBBB-0000-0000-0000-000000000002"
+eq(MyListID.origin(of: "\(S1)|m7", activeSID: S1), .active, "open server")
+eq(MyListID.origin(of: "\(S1.lowercased())|m7", activeSID: S1), .active, "open server, kleine letters (web/Android)")
+eq(MyListID.origin(of: "\(S2)|m42", activeSID: S1), .otherServer, "andere server")
+eq(MyListID.origin(of: "\(S1)|tmdb-movie-603", activeSID: S1), .external, "TMDB-titel")
+eq(MyListID.origin(of: "\(S2)|tmdb-tv-1", activeSID: S1), .external, "TMDB-titel onder een andere server-id")
+eq(MyListID.origin(of: "kapot", activeSID: S1), nil as MyListID.Origin?, "geen geldige sleutel")
+do {
+    // apparaat A (open server S1) zoekt en zet drie treffers in Mijn lijst: van S1, van S2 en een TMDB-aanbeveling
+    let added = ["\(S1)|m7", "\(S2)|m42", "\(S1)|tmdb-movie-603"]
+    let knownA: ListMerge.Stamps = (["\(S1)|old": 10], [:])
+    let localA = ListMerge.diff(knownA, current: Set(added + ["\(S1)|old"]), now: 1_000)
+    // meteen zichtbaar: S1 uit de bibliotheek, S2 via CrossServer.noteListed (genormaliseerde sleutel), TMDB via DiscoverKnown
+    let shownA = MyListID.visible(keys: localA.present.map { ($0.key, $0.value) }, activeSID: S1,
+                                  active: ["m7": "Film 7", "old": "Oud"], other: ["\(S2.lowercased())|m42": "Film 42"],
+                                  external: ["tmdb-movie-603": "The Matrix"])
+    eq(Set(shownA), Set(["Film 7", "Film 42", "The Matrix", "Oud"]), "meteen zichtbaar in Mijn lijst (alle drie)")
+    eq(shownA.last, "Oud" as String?, "laatst toegevoegd eerst")
+    // sync: de server had alleen het oude item
+    let server0: ListMerge.Stamps = (["\(S1)|old": 10], [:])
+    let afterSync = ListMerge.merge(local: localA, server: server0)
+    for k in added { check(afterSync.present[k] != nil, "na sync nog aanwezig: \(k)") }
+    // tweede sync-ronde (de server geeft terug wat A uploadde): niets verdwijnt
+    let again = ListMerge.merge(local: ListMerge.diff(afterSync, current: Set(afterSync.present.keys), now: 1_010), server: afterSync)
+    eq(Set(again.present.keys), Set(afterSync.present.keys), "volgende ronde: lijst blijft gelijk")
+    // apparaat B (zelfde profiel, open server S2, al afgestemd op de oude stand) leest de upload
+    let knownB: ListMerge.Stamps = (["\(S1)|old": 10], [:])
+    let localB = ListMerge.diff(knownB, current: ["\(S1)|old"], now: 1_020)
+    let mergedB = ListMerge.merge(local: localB, server: afterSync)
+    for k in added { check(mergedB.present[k] != nil, "tweede apparaat heeft \(k)") }
+    let shownB = MyListID.visible(keys: mergedB.present.map { ($0.key, $0.value) }, activeSID: S2,
+                                  active: ["m42": "Film 42"], other: ["\(S1.lowercased())|m7": "Film 7", "\(S1.lowercased())|old": "Oud"],
+                                  external: ["tmdb-movie-603": "The Matrix"])
+    eq(Set(shownB), Set(["Film 7", "Film 42", "The Matrix", "Oud"]), "zichtbaar op het tweede apparaat")
+    // nieuw apparaat zonder eerdere afstemming (tijd 0) neemt alles over
+    let fresh = ListMerge.merge(local: ListMerge.diff(([:], [:]), current: [], now: 0), server: afterSync)
+    for k in added { check(fresh.present[k] != nil, "nieuw apparaat heeft \(k)") }
+}
+
+// MARK: build 141: Home — Nieuw op Bingr op de plek van Nieuw toegevoegd
+
+typealias HR = (key: String, visible: Bool)
+func rows(_ r: [HR]) -> [HR] { HomeRowOrder.newOnBingrAtRecent(r, key: { $0.key }, visible: { $0.visible }, make: { ($0, $1) }) }
+eq(rows([("continue", true), ("mylist", true), ("recent", true), ("upcoming", true), ("streaming", true), ("foryou", true)]).map(\.key),
+   ["continue", "mylist", "streaming", "upcoming", "foryou"], "Nieuw op Bingr verhuist naar de plek van Nieuw toegevoegd")
+eq(rows([("recent", true), ("streaming", false)]).map(\.visible), [false], "eigen aan/uit van Nieuw op Bingr blijft")
+eq(rows([("foryou", true), ("recent", false)]).map(\.key), ["foryou", "streaming"], "zonder streaming: op de plek van recent")
+eq(rows([("recent", false)]).map(\.visible), [false], "dan het aan/uit van recent")
+eq(rows([("streaming", true), ("foryou", true)]).map(\.key), ["streaming", "foryou"], "zonder recent: ongewijzigd")
+eq(rows([("recent", true), ("streaming", true)]).filter { $0.key == "streaming" }.count, 1, "maar één rij Nieuw op Bingr")
+
 print("\(checks) controles, \(failures) fout")
 exit(failures == 0 ? 0 : 1)

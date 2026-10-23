@@ -257,7 +257,9 @@ struct HomeLayout: Codable, Hashable {
     /// "live", dan zet Home hem vanzelf 5 rijen onder Nu live (zie `HomeView.homeSlots`). Zelfde sleutel op web en
     /// Android/Samsung TV; de oudere sleutels "genres" (web) en "categorytiles" (Android) lezen we als "browse".
     /// Build 111: "upcoming" (Binnenkort) en "streaming" (Nieuw op streamingdiensten), TMDB; standaard aan, na "recent".
-    static let knownKeys = ["continue", "mylist", "recent", "upcoming", "streaming", "foryou", "top10", "live", "browse", "categories", "movies", "series"]
+    /// Build 141: de rij "recent" (Nieuw toegevoegd) staat niet meer op Home; Nieuw op Bingr ("streaming") staat op zijn
+    /// plek. De opgeslagen sleutel "recent" blijft bewaard voor andere apps (zie `effective` en `applying`).
+    static let knownKeys = ["continue", "mylist", "streaming", "upcoming", "foryou", "top10", "live", "browse", "categories", "movies", "series"]
     /// Oudere sleutels van andere apps → huidige sleutel (plek en aan/uit blijven; dubbele vervallen)
     static let keyAliases = ["genres": "browse", "categorytiles": "browse"]
     /// Build 86: precies 5 getoonde rijen tussen Nu live (de rij "live") en de rij Categorieën (= de 6e rij eronder)
@@ -295,7 +297,7 @@ struct HomeLayout: Codable, Hashable {
         let valid = Set(Self.knownKeys).union(collectionKeys)
         var out: [Row] = []
         var seen = Set<String>()
-        for var r in rows {
+        for var r in Self.newOnBingrAtRecent(rows) {
             r.key = Self.keyAliases[r.key] ?? r.key
             if valid.contains(r.key) && seen.insert(r.key).inserted { out.append(r) }
         }
@@ -316,12 +318,25 @@ struct HomeLayout: Codable, Hashable {
         return out
     }
 
+    /// Build 141: "Nieuw toegevoegd" weg; Nieuw op Bingr verhuist naar die plek (met zijn eigen aan/uit, of dat van
+    /// "Nieuw toegevoegd" als Nieuw op Bingr nog niet in de indeling stond). Er is daarna één rij Nieuw op Bingr.
+    static func newOnBingrAtRecent(_ rows: [Row]) -> [Row] {
+        HomeRowOrder.newOnBingrAtRecent(rows, key: \.key, visible: \.visible, make: { Row(key: $0, visible: $1) })
+    }
+
     /// Een aangepaste lijst (van het scherm "Startscherm") terug in de opgeslagen rijen zetten; onbekende sleutels
     /// van andere apps blijven bewaard.
     func applying(_ edited: [Row]) -> HomeLayout {
         var l = self
         let editedKeys = Set(edited.map(\.key))
-        l.rows = edited + rows.filter { !editedKeys.contains($0.key) && !Self.knownKeys.contains($0.key)
+        var mine = edited
+        // build 141: "recent" (voor andere apps) direct vóór Nieuw op Bingr houden, anders verhuist die rij bij het
+        // lezen (`newOnBingrAtRecent`) naar waar "recent" toevallig stond
+        if let old = rows.first(where: { $0.key == "recent" }), !editedKeys.contains("recent"),
+           let si = mine.firstIndex(where: { $0.key == "streaming" }) {
+            mine.insert(old, at: si)
+        }
+        l.rows = mine + rows.filter { !editedKeys.contains($0.key) && !Self.knownKeys.contains($0.key) && $0.key != "recent"
             && Self.keyAliases[$0.key] == nil && !$0.key.hasPrefix(Self.collectionPrefix) }
         l.updatedAt = Date()
         return l

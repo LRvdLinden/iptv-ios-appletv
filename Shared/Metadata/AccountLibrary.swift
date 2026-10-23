@@ -17,9 +17,28 @@ final class AccountLibrary {
     private var matcherSig = ""
     private var matcher: TitleMatcher?
 
+    /// Build 141: één ronde tegelijk. Home, Films en Series vroegen dit tegelijk op (op Apple TV staan de tabbladen
+    /// tegelijk open): dan werd de catalogus van elke andere server drie keer tegelijk ingelezen en gefilterd, wat op
+    /// een Apple TV (weinig geheugen) bij grote servers tot een geheugenpiek en het stoppen van de app leidde.
+    private var inFlight: Task<[(UUID, Library)], Never>?
+    private var inFlightKey = ""
+    private var matcherTask: Task<TitleMatcher?, Never>?
+
     /// Gefilterde bibliotheken van de andere servers (zonder gids), in de volgorde van de servers.
     func others(_ playlists: PlaylistService) async -> [(UUID, Library)] {
         guard !Screenshots.isActive else { return [] }
+        let key = (playlists.source?.id.uuidString ?? "-") + "|" + CloudStore.shared.playlists.map(\.id.uuidString).joined(separator: ",")
+            + "|" + (CloudStore.shared.activeProfileID?.uuidString ?? "")
+        if let t = inFlight, inFlightKey == key { return await t.value }
+        let t = Task { @MainActor in await self.load(playlists) }
+        inFlight = t
+        inFlightKey = key
+        let r = await t.value
+        if inFlightKey == key { inFlight = nil }
+        return r
+    }
+
+    private func load(_ playlists: PlaylistService) async -> [(UUID, Library)] {
         let activeID = playlists.source?.id
         let sources = CloudStore.shared.playlists.filter { $0.id != activeID }
         var out: [(UUID, Library)] = []
@@ -39,8 +58,11 @@ final class AccountLibrary {
                 var l = PlaylistService.apply(raw, ctx)
                 l.epg = [:]
                 l.channels = []
-                l.movies = l.movies.map { var m = $0; m.sourceID = sid; return m }
-                l.series = l.series.map { var x = $0; x.sourceID = sid; return x }
+                // build 141: alleen wat de rijen nodig hebben (geen beschrijving, geen afleveringen): op een Apple TV
+                // met grote servers liep het geheugen anders zo op dat tvOS de app stopte. Afleveringen en details haalt
+                // de detailpagina zelf op bij die server (`PlaylistService.episodes(for:)`).
+                l.movies = l.movies.map { var m = $0; m.sourceID = sid; m.plot = nil; return m }
+                l.series = l.series.map { var x = $0; x.sourceID = sid; x.plot = nil; x.episodes = []; return x }
                 return l
             }.value
             guard let lib else { continue }
@@ -56,10 +78,16 @@ final class AccountLibrary {
         guard !libs.isEmpty else { return nil }
         let sig = libs.map { "\($0.0.uuidString):\($0.1.movies.count):\($0.1.series.count)" }.joined(separator: ",")
         if sig == matcherSig, let matcher { return matcher }
-        let movies = libs.flatMap { $0.1.movies }, series = libs.flatMap { $0.1.series }
-        let m = await Task.detached(priority: .utility) { TitleMatcher(movies: movies, series: series) }.value
+        // build 141: één opbouw tegelijk (zie `others`)
+        if let t = matcherTask, matcherSig == sig { return await t.value }
         matcherSig = sig
-        matcher = m
+        matcher = nil
+        let t = Task.detached(priority: .utility) { () -> TitleMatcher? in
+            TitleMatcher(movies: libs.flatMap { $0.1.movies }, series: libs.flatMap { $0.1.series })
+        }
+        matcherTask = t
+        let m = await t.value
+        if matcherSig == sig { matcher = m; matcherTask = nil }
         return m
     }
 }

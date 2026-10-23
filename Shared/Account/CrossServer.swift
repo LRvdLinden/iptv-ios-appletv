@@ -731,6 +731,43 @@ final class CrossServer: ObservableObject {
         }
     }
 
+    // MARK: - Mijn lijst: meta meeschrijven (build 141)
+
+    /// Een titel is net in Mijn lijst (of een collectie) gezet, bijv. vanuit een zoekresultaat. Staat hij op een andere
+    /// server dan de open server, dan staat hij meteen in de lijst (niet pas na de volgende opzoekronde). De meta (titel,
+    /// jaar, TMDB-id, poster, server) gaat mee in `catalogmeta`, zodat een ander apparaat hem ook meteen kan tonen,
+    /// ook als het de catalogus van die server nog niet heeft (docs/ACCOUNT.md → "Schrijven").
+    func noteListed(_ t: DetailTarget, server sid: UUID) {
+        guard !Screenshots.isActive, !DiscoverItem.isExternal(t.id) else { return }
+        let store = CloudStore.shared
+        let key = sid.uuidString + "|" + t.id
+        let n = CatalogKey.normalize(key)
+        let s = sid.uuidString.lowercased()
+        let sname = store.playlists.first { $0.id == sid }?.name
+        let now = Date().timeIntervalSince1970
+        let other = sid != playlists?.source?.id
+        let item: CatalogMeta.Item
+        switch t {
+        case .movie(var m):
+            item = .init(title: m.title, year: m.year, kind: .movie, tmdb: m.tmdbID, image: m.poster?.absoluteString, sid: s,
+                         serverName: sname, ep: nil, ch: nil, at: now)
+            if other { m.sourceID = sid; found[n] = Found(movie: m) }
+        case .series(var x):
+            item = .init(title: x.title, year: x.year, kind: .series, tmdb: x.tmdbID, image: x.poster?.absoluteString, sid: s,
+                         serverName: sname, ep: nil, ch: nil, at: now)
+            if other { x.sourceID = sid; found[n] = Found(series: x) }
+        }
+        if other {
+            missing[n] = nil
+            version &+= 1
+        }
+        if setMerged(key, item) {
+            persist()
+            StateSync.shared.catalogMetaChanged(delay: 3)
+        }
+        schedule(delay: 3)
+    }
+
     // MARK: - Sync (state-section `catalogmeta`)
 
     /// Server-versie samenvoegen (nieuwste `at` per sleutel), begrenzen en lokaal bewaren. Geeft de data terug als er

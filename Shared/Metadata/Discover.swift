@@ -130,10 +130,10 @@ final class DiscoverKnown: @unchecked Sendable {
         if let d = try? JSONEncoder().encode(all) { UserDefaults.standard.set(d, forKey: key) }
     }
 
-    /// Sleutel uit Mijn lijst ("<bron>|tmdb-movie-123") → de TMDB-titel, als die bekend is.
+    /// Sleutel uit Mijn lijst ("<bron>|tmdb-movie-123") → de TMDB-titel, als die bekend is. Build 141: ongeacht de
+    /// server-id (een TMDB-titel hoort bij geen server; een sleutel van een andere server bleef anders onzichtbaar).
     func item(forKey k: String, playlist: UUID) -> DiscoverItem? {
-        // server-id hoofdletterongevoelig (web/Android/Samsung TV schrijven hem soms met kleine letters)
-        guard let bar = k.firstIndex(of: "|"), k[..<bar].caseInsensitiveCompare(playlist.uuidString) == .orderedSame else { return nil }
+        guard let bar = k.firstIndex(of: "|") else { return nil }
         let id = String(k[k.index(after: bar)...])
         guard DiscoverItem.isExternal(id) else { return nil }
         return item(id)

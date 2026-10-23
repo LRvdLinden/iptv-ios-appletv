@@ -379,7 +379,8 @@ struct DetailView: View {
         VStack(spacing: tvScaled(12)) {
             playButton
             HStack(spacing: tvScaled(12)) {
-                myListButton
+                // build 141: alleen als de titel een bewaarbaar id heeft (aanbeveling: zodra het TMDB-id bekend is)
+                if listID != nil { myListButton }
                 if !DiscoverItem.isExternal(target.id) {   // build 111: TMDB-titels niet in collecties
                     circleButton(inAnyCollection ? "rectangle.stack.fill.badge.plus" : "rectangle.stack.badge.plus") {
                         collecting = .detail(target)
@@ -1047,7 +1048,15 @@ struct DetailView: View {
         }
     }
 
-    private var inMyList: Bool { pid.map { store.inMyList($0, target.id) } ?? false }
+    private var inMyList: Bool {
+        guard let pid, let id = listID else { return false }
+        return store.inMyList(pid, id)
+    }
+
+    /// Build 141: het id waaronder deze titel in Mijn lijst staat. Een titel die niet uit een bibliotheek komt (een
+    /// aanbeveling, "rec-…") krijgt zijn TMDB-id ("tmdb-movie-123", zoals Binnenkort op Bingr), zodat Mijn lijst hem op
+    /// elk apparaat kan tonen; tot nu toe kwam "rec-…" in de lijst en verscheen hij nergens. nil = (nog) niet bekend.
+    private var listID: String? { MyListID.forTitle(id: target.id, tmdb: shareTMDBID, isShow: !isMovie) }
 
     /// Staat deze titel in een eigen (handmatige) collectie?
     private var inAnyCollection: Bool {
@@ -1143,9 +1152,21 @@ struct DetailView: View {
     }
 
     private func toggleMyList() {
-        guard let pid else { return }
+        guard let pid, let id = listID else { return }
         let on = !inMyList
-        store.setMyList(pid, target.id, on)
+        if on {
+            if DiscoverItem.isExternal(id), let p = DiscoverItem.parse(id) {
+                // build 141: TMDB-titel: hier meteen bekend (Mijn lijst toont hem zonder eerst op te zoeken)
+                DiscoverKnown.shared.remember([DiscoverItem(tmdbID: p.tmdbID, isShow: p.isShow, title: title, originalTitle: nil,
+                                                            date: shareYear.map { String($0.prefix(4)) + "-01-01" },
+                                                            posterPath: TMDB.path(of: target.posterURL), backdropPath: nil,
+                                                            overview: nil, kind: .streaming)])
+            } else {
+                // build 141: ook van een andere server meteen in de lijst, met de meta voor andere apparaten
+                CrossServer.shared.noteListed(target, server: pid)
+            }
+        }
+        store.setMyList(pid, id, on)
         PlusCheckFeedback.toggled()
         if let imdb, store.isMainActive { Task { await trakt.setWatchlist(imdb: imdb, isShow: target.isSeries, on) } }
         flash(on ? L("Added to My List") : L("Removed from My List"))

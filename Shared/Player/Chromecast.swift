@@ -63,6 +63,13 @@ final class CastManager: ObservableObject {
         s.start(media: url, contentType: contentType, title: item.title, subtitle: item.subtitle ?? "",
                 image: item.artwork, live: item.type == .live, startAt: seconds,
                 subtitles: Self.spec(subtitles, delay: delay), style: Self.textStyle())
+        noteUnavailableSubtitle(subtitles)
+    }
+
+    /// Build 141: Mac: een eigen ondertitelbestand kan niet naar de Chromecast (geen lokale server); dat melden.
+    private func noteUnavailableSubtitle(_ c: SubtitleChoice?) {
+        guard !LocalMediaServer.isAvailable, let c, case .file = c.kind else { return }
+        subtitleNote = L("Your own subtitles can't be sent to the Chromecast from the Mac. Subtitles from the stream do work.")
     }
 
     /// Andere ondertitel gekozen tijdens het casten (of andere verschuiving).
@@ -70,6 +77,7 @@ final class CastManager: ObservableObject {
         guard let session else { return }
         subtitleNote = nil
         session.setSubtitles(Self.spec(choice, delay: delay), style: Self.textStyle())
+        noteUnavailableSubtitle(choice)
     }
 
     func togglePause() { session?.togglePause() }
@@ -85,7 +93,8 @@ final class CastManager: ObservableObject {
         let lang = c.language.map(TrackPreferences.baseCode)
         switch c.kind {
         case .file(let f):
-            guard let vtt = WebVTT.make(from: f, delay: delay) else { return nil }
+            // build 141: Mac: geen lokale server, dus geen eigen bestand naar de Chromecast (melding in `cast`)
+            guard LocalMediaServer.isAvailable, let vtt = WebVTT.make(from: f, delay: delay) else { return nil }
             return CastSubtitleSpec(vtt: vtt, key: "\(f.path)|\(delay)", name: c.name, language: lang, embeddedIndex: nil)
         case .embedded(let i):
             return CastSubtitleSpec(vtt: nil, key: "embedded-\(i)", name: c.name, language: lang, embeddedIndex: i)

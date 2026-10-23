@@ -109,6 +109,12 @@ enum TMDB {
         }
     }
 
+    /// Build 141: pad ("/abc.jpg") van een TMDB-afbeelding (https://image.tmdb.org/t/p/<maat>/abc.jpg), anders nil.
+    static func path(of url: URL?) -> String? {
+        guard let url, url.host?.hasSuffix("tmdb.org") == true, url.pathComponents.count >= 2 else { return nil }
+        return "/" + url.lastPathComponent
+    }
+
     static func img(_ path: String?, _ size: String) -> URL? {
         guard let path, !path.isEmpty else { return nil }
         return URL(string: "https://image.tmdb.org/t/p/\(size)\(path)")
