@@ -1377,6 +1377,11 @@ create index if not exists support_tickets_email_created_idx on public.support_t
 alter table public.support_inbox_state add column if not exists scan_until bigint;
 alter table public.support_inbox_state add column if not exists scan_cursor bigint;
 alter table public.support_inbox_state add column if not exists last_cleanup_at timestamptz;
+-- build 140: de import loopt niet meer met een cursor maar langs alle mails zonder het IMAP-trefwoord $BingrDone; het
+-- logboek per map en UIDVALIDITY/UID is het vangnet voor servers zonder trefwoorden (scan_until/scan_cursor ongebruikt).
+alter table public.support_inbox_log add column if not exists folder text;
+alter table public.support_inbox_log add column if not exists uidvalidity bigint;
+create index if not exists support_inbox_log_uid_idx on public.support_inbox_log (folder, uidvalidity, uid);
 
 -- build 95: captcha zonder derde partij (proof-of-work, actie challenge van de functie support): elke salt mag maar één
 -- keer een ticket maken. Alleen de functie (service role); dagelijks opgeruimd door bingr_support_cleanup.

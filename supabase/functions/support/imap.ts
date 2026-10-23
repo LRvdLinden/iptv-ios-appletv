@@ -182,15 +182,17 @@ export class Imap {
     });
   }
 
-  async select(box = "INBOX", readOnly = false): Promise<{ exists: number; uidvalidity: number | null; uidnext: number | null }> {
+  /** SELECT/EXAMINE; permanentFlags = de vlaggen die blijvend gezet mogen worden (null als de server ze niet noemt). */
+  async select(box = "INBOX", readOnly = false): Promise<{ exists: number; uidvalidity: number | null; uidnext: number | null; permanentFlags: string[] | null }> {
     const r = await this.command([readOnly ? "EXAMINE" : "SELECT", imapArg(box)]);
-    let exists = 0, uidvalidity: number | null = null, uidnext: number | null = null;
+    let exists = 0, uidvalidity: number | null = null, uidnext: number | null = null, permanentFlags: string[] | null = null;
     for (const u of r.untagged) {
       const m = /^\* (\d+) EXISTS/i.exec(u.text); if (m) exists = Number(m[1]);
       const v = /\[UIDVALIDITY (\d+)\]/i.exec(u.text); if (v) uidvalidity = Number(v[1]);
       const n = /\[UIDNEXT (\d+)\]/i.exec(u.text); if (n) uidnext = Number(n[1]);
+      const p = /\[PERMANENTFLAGS \(([^)]*)\)\]/i.exec(u.text); if (p) permanentFlags = p[1].trim().split(/\s+/).filter(Boolean);
     }
-    return { exists, uidvalidity, uidnext };
+    return { exists, uidvalidity, uidnext, permanentFlags };
   }
 
   async uidSearch(criteria: string): Promise<number[]> {

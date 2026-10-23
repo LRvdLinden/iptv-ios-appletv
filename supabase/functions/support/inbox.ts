@@ -14,23 +14,31 @@
 //        geen ticket     -> weigeren, laten staan
 //   5. ticket gevonden (onderwerp "[#1007]", of In-Reply-To/References van een ticketmail):
 //        afzender = e-mailadres van het ticket -> reactie van de klant (gesloten ticket: nieuw vervolgticket)
-//        ander adres                           -> weigeren, laten staan (de eigenaar ziet hem in de mailbox)
+//        ander adres, maar antwoord op een van onze mails met een willekeurige Message-ID (niet te raden)
+//                                              -> reactie in dat ticket (build 140)
+//        ander adres, alleen nummer/root-ID    -> nieuw ticket met een verwijzing naar dat ticket (build 140; vroeger
+//                                                 geweigerd en blijven liggen)
 //   6. geen ticket: nieuw ticket uit de mail (met limieten), met bevestigingsmail aan de afzender.
 // "Laten staan" = niet als gelezen gemarkeerd en niet verplaatst; verwerkte mails worden gelezen en (als die map bestaat)
 // naar Bingr-verwerkt verplaatst.
+// Build 140: elke ronde gaan ALLE mails in INBOX zonder het trefwoord $BingrDone langs (ook gelezen of oude mails; vroeger
+// alleen mails boven de laatst geziene UID en ongelezen mails van de laatste 7 dagen, waardoor mails die al gelezen waren
+// nooit een ticket werden). Na een definitieve beslissing krijgt de mail $BingrDone (en het logboek per UIDVALIDITY/UID
+// als vangnet als de server geen trefwoorden toestaat); dubbel importeren is uitgesloten op Message-ID.
 import { cleanText, LIMITS, type Lang, type Status } from "./logic.ts";
 import { type ParsedMail, stripReply } from "./mime.ts";
 
 export const DONE_FOLDER = "Bingr-verwerkt";
 export const MAX_FETCH_BYTES = 2 * 1024 * 1024;
 
-export type TicketLite = { number: number; email: string; status: Status; lang: Lang };
+/** strong = gevonden via een opgeslagen Message-ID van ons met een willekeurig deel (<bingr-ticket-1007.xyz@…>, niet te raden). */
+export type TicketLite = { number: number; email: string; status: Status; lang: Lang; strong?: boolean };
 export type Decision =
-  | { kind: "customer_reply"; ticket: TicketLite }
+  | { kind: "customer_reply"; ticket: TicketLite; otherSender?: boolean }
   | { kind: "agent_reply"; ticket: TicketLite }
-  | { kind: "new_ticket"; followUp: number | null }
+  | { kind: "new_ticket"; followUp: number | null; related?: number }
   | { kind: "ignore"; reason: "own_system" | "auto" | "bulk" | "bounce" | "spam" }
-  | { kind: "reject"; reason: "no_sender" | "auth_failed" | "agent_no_ticket" | "agent_unverified" | "sender_mismatch" };
+  | { kind: "reject"; reason: "no_sender" | "auth_failed" | "agent_no_ticket" | "agent_unverified" };
 
 const lc = (s: string) => s.trim().toLowerCase();
 
@@ -159,7 +167,11 @@ export function decide(mail: ParsedMail, tickets: TicketLite[], agents: string[]
   }
   const mine = tickets.find((t) => lc(t.email) === from);
   if (mine) return mine.status === "closed" ? { kind: "new_ticket", followUp: mine.number } : { kind: "customer_reply", ticket: mine };
-  if (tickets.length) return { kind: "reject", reason: "sender_mismatch" };
+  // build 140: ander adres (bv. een alias of doorgestuurd). Antwoord op een van onze mails met een niet te raden Message-ID:
+  // in dat ticket; anders (alleen een nummer in het onderwerp, dat kan iedereen typen) een nieuw ticket met een verwijzing.
+  const strong = tickets.find((t) => t.strong && t.status !== "closed");
+  if (strong) return { kind: "customer_reply", ticket: strong, otherSender: true };
+  if (tickets.length) return { kind: "new_ticket", followUp: null, related: tickets[0].number };
   return { kind: "new_ticket", followUp: null };
 }
 
@@ -217,6 +229,36 @@ export const FOLLOW_UP: Record<Lang, (n: number) => string> = {
   nl: (n) => `(Vervolg op gesloten ticket #${n})`,
   en: (n) => `(Follow-up to closed ticket #${n})`,
 };
+export const RELATED: Record<Lang, (n: number) => string> = {
+  nl: (n) => `(Verwijst naar ticket #${n}, maar komt van een ander e-mailadres)`,
+  en: (n) => `(Refers to ticket #${n}, but comes from a different email address)`,
+};
+export const OTHER_SENDER: Record<Lang, string> = {
+  nl: "(Via e-mail vanaf een ander adres dan dat van het ticket)",
+  en: "(By email from a different address than the ticket's)",
+};
+
+// ---- build 140: welke mails komen aan de beurt ----
+/** IMAP-trefwoord voor mails waarover een definitieve beslissing is genomen (verwerkt, genegeerd of geweigerd). */
+export const DONE_KEYWORD = "$BingrDone";
+/** Mag dit trefwoord gezet worden (PERMANENTFLAGS met \* of het trefwoord zelf)? Zonder PERMANENTFLAGS: nee. */
+export const keywordAllowed = (permanentFlags: string[] | null) =>
+  !!permanentFlags && permanentFlags.some((f) => f === "\\*" || f.toLowerCase() === DONE_KEYWORD.toLowerCase());
+/** Definitief = niet opnieuw proberen. Opnieuw: fouten (behalve na 3 pogingen) en de limiet per afzender (na een uur). */
+export const isFinal = (result: string) => !(result === "error" || result.startsWith("error:retry") || result === "rejected:rate_limited");
+/** Wachtrij: kandidaten (UID's zonder $BingrDone) min de UID's die volgens het logboek al definitief zijn, oudste eerst. */
+export function pickQueue(candidates: number[], doneInLog: Iterable<number>, max: number): { queue: number[]; pending: number } {
+  const done = new Set(doneInLog);
+  const todo = [...new Set(candidates)].filter((u) => u > 0 && !done.has(u)).sort((a, b) => a - b);
+  return { queue: todo.slice(0, Math.max(0, max)), pending: todo.length };
+}
+/** Plusmap van de mailtest (support+ci-…@ komt bij de hoster in INBOX.ci-…): alleen een geldig ci-label. */
+export const CI_TAG = /^ci-[a-z0-9]{6,24}$/;
+export function findCiFolder(list: { name: string; delim: string | null; flags: string[] }[], tag: string): string | null {
+  if (!CI_TAG.test(tag)) return null;
+  return list.find((b) => !b.flags.some((f) => /\\noselect|\\nonexistent/i.test(f)) &&
+    lc(b.delim ? b.name.split(b.delim).pop() ?? "" : b.name) === tag)?.name ?? null;
+}
 
 /** Datum voor IMAP SEARCH SINCE: 7-Oct-2026. */
 export function imapDate(d: Date): string {

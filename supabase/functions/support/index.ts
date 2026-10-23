@@ -35,7 +35,10 @@
 //   admin_reply en admin_status ook met header x-bingr-mailtest (workflow Diagnose, _shared/mail.ts), dan alleen voor
 //   testtickets van een testadres support+ci-…@bingr.online
 // Inbox-import (alleen met header x-support-cron = SUPPORT_CRON_SECRET; pg_cron roept dit elke 5 minuten aan, build 95):
-//   poll_inbox   {}  -> {ok, fetched, imported, …} of {skipped:"imap not configured"} of {ok:false, error}
+//   poll_inbox   {ci_tag?}  -> {ok, fetched, imported, new_tickets, …, reasons, inbox, pending, keywords} of {skipped:"imap not configured"} of {ok:false, error}
+//   Build 140: elke ronde alle mails in INBOX zonder het trefwoord $BingrDone (ook gelezen en oude), max. 25 per ronde, oudste
+//   eerst; idempotent op Message-ID. ci_tag (alleen met een geldige x-bingr-mailtest-sleutel): ook de plusmap INBOX.ci-… van
+//   de rooktest in Backend (supabase/tests/inbox_e2e.py), daar alleen mails van het testadres.
 //   Haalt nieuwe mails uit de INBOX van support@ (IMAP over TLS: BINGR_IMAP_HOST, BINGR_IMAP_PORT (993), BINGR_IMAP_USER,
 //   BINGR_IMAP_PASSWORD) en zet ze in het ticket (zie inbox.ts): reacties van klanten, antwoorden van support@ of een adres
 //   uit BINGR_SUPPORT_AGENTS (die gaan als gebrande mail naar de klant; build 95: alleen met DKIM van het afzenderdomein
@@ -57,8 +60,8 @@ import { BANNED_BODY, bannedUntilActive, isBanError } from "../_shared/ban.ts";
 import { Imap } from "./imap.ts";
 import { parseMessage, type ParsedMail } from "./mime.ts";
 import {
-  agentList, authservNames, candidateNumbers, cleanSubject, decide, type Decision, DONE_FOLDER, findFolder, FOLLOW_UP, guessLang, imapDate,
-  MAX_FETCH_BYTES, messageBody, referencedIds, senderName, type TicketLite,
+  agentList, authservNames, candidateNumbers, CI_TAG, cleanSubject, decide, type Decision, DONE_KEYWORD, findCiFolder, findFolder, FOLLOW_UP, guessLang,
+  isFinal, keywordAllowed, MAX_FETCH_BYTES, messageBody, OTHER_SENDER, pickQueue, referencedIds, RELATED, senderName, type TicketLite,
 } from "./inbox.ts";
 import { clientIp } from "../_shared/ip.ts";
 import { firstNameOf } from "../_shared/layout.ts";
@@ -269,7 +272,16 @@ Deno.serve(async (req) => {
     if (action === "poll_inbox") {
       const secret = env("SUPPORT_CRON_SECRET");
       if (!secret || !sameText(req.headers.get("x-support-cron") ?? "", secret)) return json({ error: "forbidden" }, 403);
-      return json(await pollInbox(String(body.source ?? "cron").slice(0, 20)));
+      // build 140: rooktest van de workflow Backend: ook de plusmap van een testadres (support+ci-…@ komt in INBOX.ci-…),
+      // alleen met een geldige mailtest-sleutel
+      let ciTag: string | null = null;
+      if (typeof body.ci_tag === "string" && CI_TAG.test(body.ci_tag)) {
+        if (!(await mailtestOk(req.headers.get(MAILTEST_HEADER), async () => (await db.from("app_settings").select("value").eq("key", "mailtest").maybeSingle()).data?.value))) {
+          return json({ error: "forbidden" }, 403);
+        }
+        ciTag = body.ci_tag;
+      }
+      return json(await pollInbox(String(body.source ?? "cron").slice(0, 20), ciTag));
     }
     if (action.startsWith("admin_")) {
       const secret = env("SUPPORT_ADMIN_SECRET");
@@ -589,14 +601,14 @@ async function inboxStatus() {
   };
 }
 
-async function inboxLog(uid: number, mail: ParsedMail | null, r: InboxResult) {
+async function inboxLog(uid: number, mail: ParsedMail | null, r: InboxResult, folder = "INBOX", uidvalidity: number | null = null) {
   await db.from("support_inbox_log").insert({
-    uid, message_id: mail?.messageId?.slice(0, 300) || null, sender: mail?.from?.address?.slice(0, 254) ?? null,
+    uid, folder: folder.slice(0, 200), uidvalidity, message_id: mail?.messageId?.slice(0, 300) || null, sender: mail?.from?.address?.slice(0, 254) ?? null,
     subject: mail?.subject?.slice(0, 200) ?? null, result: r.result, ticket_number: r.ticket ?? null, detail: r.detail?.slice(0, 300) ?? null,
   });
 }
 
-async function pollInbox(source: string) {
+async function pollInbox(source: string, ciTag: string | null = null) {
   if (!imapConfigured()) return { skipped: "imap not configured" };
   // nooit twee rondes tegelijk (pg_cron + knop in het beheer): korte lease in support_inbox_state
   const { data: got, error: lockErr } = await db.rpc("bingr_support_inbox_lock", { p_seconds: 120 });
@@ -604,106 +616,116 @@ async function pollInbox(source: string) {
   if (got !== true) return { ok: true, busy: true };
   const started = Date.now();
   const counts: Counts = { fetched: 0, imported: 0, agent: 0, new_tickets: 0, ignored: 0, rejected: 0, duplicates: 0, errors: 0 };
+  // per reden (alleen codes, geen adressen of onderwerpen), en hoeveel er nog wachten
+  const reasons: Record<string, number> = {};
+  let inboxTotal = 0, pending = 0, keywords = false;
   let imap: Imap | null = null;
   const upd: Record<string, unknown> = { last_poll_at: nowIso(), last_source: source };
-  let cleanupAt: string | null = null, backlogEnd: number | null = null;
+  let cleanupAt: string | null = null;
   try {
-    const { data: state } = await db.from("support_inbox_state").select("uidvalidity,last_uid,error_uid,error_count,scan_until,scan_cursor,last_cleanup_at").eq("id", 1).maybeSingle();
+    const { data: state } = await db.from("support_inbox_state").select("last_uid,error_uid,error_count,last_cleanup_at").eq("id", 1).maybeSingle();
     cleanupAt = state?.last_cleanup_at ?? null;
     imap = await Imap.connect({ host: env("BINGR_IMAP_HOST"), port: Number(env("BINGR_IMAP_PORT") || 993), timeoutMs: 20000 });
     await imap.login(env("BINGR_IMAP_USER"), env("BINGR_IMAP_PASSWORD"));
-    const done = findFolder(await imap.list().catch(() => []));
-    const sel = await imap.select("INBOX");
-    const fresh = !state?.uidvalidity || Number(state.uidvalidity) !== sel.uidvalidity || state.last_uid == null;
-    // build 95: eerste ronde (of de mailbox is opnieuw opgebouwd): de ongelezen mails van de laatste 7 dagen tot nu zijn
-    // een achterstand (scan_until = hoogste UID nu) die in porties over meerdere rondes wordt verwerkt (scan_cursor);
-    // vroeger alleen de laatste 25 en de rest werd overgeslagen. Nieuwe mails (UID > last_uid) gaan gewoon door.
-    let lastUid: number, scanUntil: number | null, scanCursor: number;
-    if (fresh) {
-      const top = sel.uidnext ? sel.uidnext - 1 : (await imap.uidSearch("ALL")).reduce((a, b) => Math.max(a, b), 0);
-      lastUid = Math.max(0, top); scanUntil = lastUid; scanCursor = 0;
-    } else {
-      lastUid = Number(state!.last_uid);
-      scanUntil = state?.scan_until == null ? null : Number(state.scan_until);
-      scanCursor = Number(state?.scan_cursor ?? 0);
-    }
-    const queue: { uid: number; backlog: boolean }[] = [];
-    if (scanUntil != null && scanCursor < scanUntil) {
-      const back = (await imap.uidSearch(`UNSEEN SINCE ${imapDate(new Date(Date.now() - 7 * 864e5))}`))
-        .filter((u) => u > scanCursor && u <= scanUntil!).sort((a, b) => a - b);
-      if (!back.length) { scanCursor = scanUntil; }
-      for (const uid of back.slice(0, IMAP_MAX_PER_RUN)) queue.push({ uid, backlog: true });
-      // past alles in deze ronde, dan is de achterstand na afloop klaar
-      if (back.length <= IMAP_MAX_PER_RUN && back.length) backlogEnd = back[back.length - 1];
-    }
-    if (queue.length < IMAP_MAX_PER_RUN) {
-      const fresh_ = (await imap.uidSearch(`UID ${lastUid + 1}:*`)).filter((u) => u > lastUid).sort((a, b) => a - b);
-      for (const uid of fresh_.slice(0, IMAP_MAX_PER_RUN - queue.length)) queue.push({ uid, backlog: false });
-    }
-    const seen: number[] = [], move: number[] = [];
-    let stopped = false;
-    for (const { uid, backlog } of queue) {
-      if (Date.now() - started > IMAP_BUDGET_MS) { stopped = true; break; }
-      let mail: ParsedMail | null = null;
-      let r: InboxResult;
-      try {
-        const [it] = await imap.uidFetch([uid], `(UID RFC822.SIZE BODY.PEEK[]<0.${MAX_FETCH_BYTES}>)`);
-        if (!it?.body) { r = { result: "error", detail: "geen inhoud", seen: false, move: false }; }
-        else {
-          counts.fetched++;
-          mail = parseMessage(it.body, { truncated: (it.size ?? 0) > MAX_FETCH_BYTES });
-          if (!mail.messageId) mail.messageId = `<imap-${sel.uidvalidity}-${uid}@bingr.invalid>`;
-          r = await handleMail(mail);
-        }
-      } catch (e) {
-        // databasefout of iets onverwachts: deze mail de volgende ronde opnieuw (niet voorbij deze UID gaan); lukt het
-        // drie rondes achter elkaar niet, dan overslaan (laten staan in de mailbox) zodat de rest niet blijft hangen
-        counts.errors++;
-        console.error("support inbox", uid, errText(e));
-        const tries = Number(state?.error_uid) === uid ? Number(state.error_count ?? 0) + 1 : 1;
-        if (tries < 3) {
-          await inboxLog(uid, mail, { result: "error", detail: `poging ${tries}: ${errText(e)}`, seen: false, move: false }).catch(() => {});
-          Object.assign(upd, { error_uid: uid, error_count: tries });
-          stopped = true;
-          break;
-        }
-        r = { result: "error:skipped", detail: `overgeslagen na ${tries} pogingen: ${errText(e)}`, seen: false, move: false };
-        counts.errors--;
+    const boxes = await imap.list().catch(() => []);
+    const done = findFolder(boxes);
+    const ciBox = ciTag ? findCiFolder(boxes, ciTag) : null;
+    // build 140: geen cursor meer (last_uid / alleen ongelezen van 7 dagen): alle mails zonder $BingrDone, oudste eerst
+    const folders = ciTag ? ["INBOX", ...(ciBox ? [ciBox] : [])] : ["INBOX"];
+    let lastUid = Number(state?.last_uid ?? 0), uidvalidity: number | null = null, stopped = false, moved: string | null = null;
+    for (const box of folders) {
+      if (stopped || Date.now() - started > IMAP_BUDGET_MS) { stopped = true; break; }
+      const sel = await imap.select(box);
+      if (box === "INBOX") { uidvalidity = sel.uidvalidity; inboxTotal = sel.exists; }
+      const kw = keywordAllowed(sel.permanentFlags);
+      if (box === "INBOX") keywords = kw;
+      const cands = sel.exists ? await imap.uidSearch(`NOT KEYWORD ${DONE_KEYWORD}`) : [];
+      // vangnet (server zonder trefwoorden, of het zetten mislukte): wat volgens het logboek al definitief is, overslaan
+      const doneInLog = new Set<number>();
+      for (let i = 0; i < cands.length; i += 500) {
+        const { data, error } = await db.from("support_inbox_log").select("uid,result").eq("folder", box).eq("uidvalidity", sel.uidvalidity ?? 0)
+          .in("uid", cands.slice(i, i + 500)).limit(5000);
+        if (error) throw new Error(error.message);
+        for (const r of data ?? []) if (isFinal(String(r.result))) doneInLog.add(Number(r.uid));
       }
-      await inboxLog(uid, mail, r).catch((e) => console.error("support inbox log", errText(e)));
-      const key = r.result.split(":")[0];
-      if (key === "imported") counts.imported++;
-      else if (key === "agent") counts.agent++;
-      else if (key === "new_ticket") counts.new_tickets++;
-      else if (key === "ignored") counts.ignored++;
-      else if (key === "duplicate") counts.duplicates++;
-      else if (key === "error") counts.errors++;
-      else counts.rejected++;
-      if (r.seen) seen.push(uid);
-      if (r.move) move.push(uid);
-      if (backlog) scanCursor = Math.max(scanCursor, uid);
-      else lastUid = Math.max(lastUid, uid);
+      // limiet per afzender: pas na een uur opnieuw (anders elke 5 minuten een logregel)
+      const { data: limited } = cands.length
+        ? await db.from("support_inbox_log").select("uid").eq("folder", box).eq("uidvalidity", sel.uidvalidity ?? 0).eq("result", "rejected:rate_limited")
+          .gte("at", hourAgo()).in("uid", cands.slice(0, 500)).limit(500)
+        : { data: [] };
+      for (const r of limited ?? []) doneInLog.add(Number(r.uid));
+      const { queue, pending: p } = pickQueue(cands, doneInLog, IMAP_MAX_PER_RUN - counts.fetched);
+      pending += p;
+      const seen: number[] = [], move: number[] = [], final: number[] = [];
+      for (const uid of queue) {
+        if (Date.now() - started > IMAP_BUDGET_MS) { stopped = true; break; }
+        let mail: ParsedMail | null = null;
+        let r: InboxResult;
+        try {
+          const [it] = await imap.uidFetch([uid], `(UID RFC822.SIZE BODY.PEEK[]<0.${MAX_FETCH_BYTES}>)`);
+          if (!it?.body) { r = { result: "error:retry", detail: "geen inhoud", seen: false, move: false }; }
+          else {
+            counts.fetched++;
+            mail = parseMessage(it.body, { truncated: (it.size ?? 0) > MAX_FETCH_BYTES });
+            if (!mail.messageId) mail.messageId = `<imap-${sel.uidvalidity}-${uid}@bingr.invalid>`;
+            r = await handleMail(mail, { ci: box !== "INBOX" });
+          }
+        } catch (e) {
+          // databasefout of iets onverwachts: deze mail de volgende ronde opnieuw; lukt het drie rondes achter elkaar niet,
+          // dan overslaan (blijft in de mailbox, met $BingrDone) zodat de rest niet blijft hangen
+          console.error("support inbox", uid, errText(e));
+          const tries = Number(state?.error_uid) === uid ? Number(state?.error_count ?? 0) + 1 : 1;
+          if (tries < 3) {
+            counts.errors++;
+            await inboxLog(uid, mail, { result: "error", detail: `poging ${tries}: ${errText(e)}`, seen: false, move: false }, box, sel.uidvalidity).catch(() => {});
+            Object.assign(upd, { error_uid: uid, error_count: tries });
+            stopped = true;
+            break;
+          }
+          r = { result: "error:skipped", detail: `overgeslagen na ${tries} pogingen: ${errText(e)}`, seen: false, move: false };
+        }
+        await inboxLog(uid, mail, r, box, sel.uidvalidity).catch((e) => console.error("support inbox log", errText(e)));
+        const key = r.result.split(":")[0];
+        if (key === "imported") counts.imported++;
+        else if (key === "agent") counts.agent++;
+        else if (key === "new_ticket") counts.new_tickets++;
+        else if (key === "ignored") counts.ignored++;
+        else if (key === "duplicate") counts.duplicates++;
+        else if (key === "error") counts.errors++;
+        else counts.rejected++;
+        if (key === "ignored" || key === "rejected" || key === "error") reasons[r.result] = (reasons[r.result] ?? 0) + 1;
+        if (isFinal(r.result)) { final.push(uid); pending--; }
+        if (r.seen) seen.push(uid);
+        if (r.move) move.push(uid);
+        if (box === "INBOX") lastUid = Math.max(lastUid, uid);
+      }
+      // eerst de vlaggen (blijven bij MOVE behouden), dan verplaatsen
+      const seenSet = new Set(seen);
+      if (kw) {
+        const both = final.filter((u) => seenSet.has(u)), only = final.filter((u) => !seenSet.has(u));
+        if (both.length) await imap.uidStore(both, `+FLAGS.SILENT (\\Seen ${DONE_KEYWORD})`);
+        if (only.length) await imap.uidStore(only, `+FLAGS.SILENT (${DONE_KEYWORD})`);
+        const rest = seen.filter((u) => !final.includes(u));
+        if (rest.length) await imap.uidStore(rest, "+FLAGS.SILENT (\\Seen)");
+      } else if (seen.length) await imap.uidStore(seen, "+FLAGS.SILENT (\\Seen)");
+      if (move.length && done && box === "INBOX") moved = await imap.uidMove(move, done);
     }
-    if (scanUntil != null && (scanCursor >= scanUntil || (backlogEnd != null && scanCursor >= backlogEnd))) { scanUntil = null; scanCursor = 0; }
-    if (seen.length) await imap.uidStore(seen, "+FLAGS.SILENT (\\Seen)");
-    let moved: string | null = null;
-    if (move.length && done) moved = await imap.uidMove(move, done);
     await imap.logout();
     imap = null;
+    const result = { ...counts, reasons, inbox: inboxTotal, pending: Math.max(0, pending), keywords, moved, more: stopped || pending > 0, ms: Date.now() - started };
     Object.assign(upd, {
       mailbox: done ? `INBOX → ${done}` : "INBOX", last_ok_at: nowIso(),
-      // build 95: altijd de stand bewaren (ook in de eerste ronde): wat nog niet verwerkt is, komt via scan_cursor of
-      // last_uid de volgende ronde aan de beurt; niets wordt overgeslagen
-      uidvalidity: sel.uidvalidity, last_uid: lastUid, scan_until: scanUntil, scan_cursor: scanUntil == null ? null : scanCursor,
+      uidvalidity, last_uid: lastUid, scan_until: null, scan_cursor: null,
       ...(stopped && counts.errors ? {} : { error_uid: null, error_count: 0 }),
-      last_error: counts.errors ? "Een mail gaf een fout; volgende ronde opnieuw (zie logboek)" : null, last_error_at: counts.errors ? nowIso() : null, last_result: { ...counts, moved, more: stopped || queue.length >= IMAP_MAX_PER_RUN || scanUntil != null, backlog: scanUntil != null, ms: Date.now() - started },
+      last_error: counts.errors ? "Een mail gaf een fout; volgende ronde opnieuw (zie logboek)" : null, last_error_at: counts.errors ? nowIso() : null,
+      last_result: result,
       ...(counts.imported + counts.agent + counts.new_tickets ? { last_import_at: nowIso() } : {}),
     });
-    return { ok: true, ...counts, folder: done, moved, ms: Date.now() - started };
+    return { ok: true, ...result, folder: done, ci_folder: ciTag ? !!ciBox : undefined };
   } catch (e) {
     const msg = errText(e);
     console.error("support inbox", msg);
-    Object.assign(upd, { last_error: msg, last_error_at: nowIso(), last_result: { ...counts, ms: Date.now() - started } });
+    Object.assign(upd, { last_error: msg, last_error_at: nowIso(), last_result: { ...counts, reasons, ms: Date.now() - started } });
     return { ok: false, error: msg, ...counts };
   } finally {
     imap?.close();
@@ -721,17 +743,23 @@ async function ticketsFor(mail: ParsedMail): Promise<(Ticket & TicketLite)[]> {
   const nums = candidateNumbers(mail);
   const ids = referencedIds(mail).map((i) => i.replace(/["\\,()]/g, "")).filter((i) => i.length > 2);
   let byId: string[] = [];
+  const strongIds = new Set<string>();
   if (ids.length) {
     const list = ids.map((i) => `"${i}"`).join(",");
-    const { data } = await db.from("support_messages").select("ticket_id").or(`mail_message_id.in.(${list}),message_id.in.(${list})`).limit(5);
+    const { data } = await db.from("support_messages").select("ticket_id,mail_message_id").or(`mail_message_id.in.(${list}),message_id.in.(${list})`).limit(20);
     byId = [...new Set((data ?? []).map((r) => r.ticket_id as string))];
+    // build 140: een antwoord op een van onze mails met een willekeurig deel in de Message-ID (niet te raden) telt als sterk
+    for (const r of data ?? []) {
+      const mid = String(r.mail_message_id ?? "");
+      if (/^<bingr-ticket-\d+\.[A-Za-z0-9_-]{6,}@/.test(mid) && ids.includes(mid)) strongIds.add(r.ticket_id as string);
+    }
   }
   if (!nums.length && !byId.length) return [];
   let q = db.from("support_tickets").select("*");
   q = nums.length && byId.length ? q.or(`number.in.(${nums.join(",")}),id.in.(${byId.join(",")})`) : nums.length ? q.in("number", nums) : q.in("id", byId);
   const { data, error } = await q.limit(10);
   if (error) throw new Error(error.message);
-  const list = (data ?? []) as (Ticket & TicketLite)[];
+  const list: (Ticket & TicketLite)[] = ((data ?? []) as (Ticket & TicketLite)[]).map((t) => ({ ...t, strong: strongIds.has(t.id) }));
   const ordered = nums.map((n) => list.find((t) => Number(t.number) === n)).filter((t): t is Ticket & TicketLite => !!t);
   for (const t of list) if (!ordered.includes(t)) ordered.push(t);
   return ordered;
@@ -740,7 +768,7 @@ async function ticketsFor(mail: ParsedMail): Promise<(Ticket & TicketLite)[]> {
 const isDup = (e: unknown) => (e as { code?: string })?.code === "23505";
 const mailRef = (mail: ParsedMail) => ({ messageId: mail.messageId.slice(0, 300), inReplyTo: mail.inReplyTo[0]?.slice(0, 300) ?? null });
 
-async function handleMail(mail: ParsedMail): Promise<InboxResult> {
+async function handleMail(mail: ParsedMail, opts: { ci?: boolean } = {}): Promise<InboxResult> {
   // al verwerkt (dezelfde Message-ID)? dan alleen als gelezen markeren en opruimen
   const { data: dup } = await db.from("support_messages").select("id").eq("message_id", mail.messageId.slice(0, 300)).limit(1);
   if (dup?.length) return { result: "duplicate", seen: true, move: true };
@@ -752,8 +780,9 @@ async function handleMail(mail: ParsedMail): Promise<InboxResult> {
     case "reject": return { result: `rejected:${d.reason}`, ticket: tickets[0]?.number ?? null, seen: false, move: false };
     case "customer_reply": {
       const t = d.ticket as Ticket & TicketLite;
-      const body = messageBody(mail, t.lang);
+      let body = messageBody(mail, t.lang);
       if (!body) return { result: "rejected:empty", ticket: t.number, seen: false, move: false };
+      if ("otherSender" in d && d.otherSender) body = `${OTHER_SENDER[t.lang]}\n\n${body}`.slice(0, 5000);
       const { count } = await db.from("support_messages").select("id", { count: "exact", head: true })
         .eq("ticket_id", t.id).eq("author", "customer").gte("created_at", hourAgo());
       if ((count ?? 0) >= 20) return { result: "rejected:rate_limited", ticket: t.number, seen: false, move: false };
@@ -763,7 +792,7 @@ async function handleMail(mail: ParsedMail): Promise<InboxResult> {
       if (status !== t.status) await addMessage(t.id, "event", status);
       // admin_seen_at blijft staan: het ticket is daardoor weer "ongelezen" in het beheer
       await db.from("support_tickets").update({ status, updated_at: now, last_reply_at: now, last_customer_at: now, closed_at: null }).eq("id", t.id);
-      return { result: "imported", ticket: t.number, seen: true, move: true };
+      return { result: "imported", ticket: t.number, detail: "otherSender" in d && d.otherSender ? "ander adres" : undefined, seen: true, move: true };
     }
     case "agent_reply": {
       const t = d.ticket as Ticket & TicketLite;
@@ -784,6 +813,8 @@ async function handleMail(mail: ParsedMail): Promise<InboxResult> {
     }
     case "new_ticket": {
       const email = mail.from!.address.toLowerCase().slice(0, LIMITS_EMAIL);
+      // build 140: in de plusmap van de rooktest alleen mails van het testadres zelf
+      if (opts.ci && !isMailtestAddress(email)) return { result: "ignored:not_ci", seen: false, move: false };
       if (!validEmailAddr(email)) return { result: "rejected:bad_email", seen: false, move: false };
       // build 95: per afzender 3 per uur (echt per uur); geen globale grens meer die alles tegenhoudt
       const byEmail = await countSince((q) => q.eq("email", email));
@@ -792,6 +823,7 @@ async function handleMail(mail: ParsedMail): Promise<InboxResult> {
       let body = messageBody(mail, lang);
       if (!body) return { result: "rejected:empty", seen: false, move: false };
       if (d.followUp) body = `${FOLLOW_UP[lang](d.followUp)}\n\n${body}`.slice(0, 5000);
+      else if (d.related) body = `${RELATED[lang](d.related)}\n\n${body}`.slice(0, 5000);
       const token = randomToken();
       const { data, error } = await db.from("support_tickets").insert({
         email, name: senderName(mail), subject: cleanSubject(mail.subject, lang), category: "overig", lang, access_token: token,
@@ -805,11 +837,14 @@ async function handleMail(mail: ParsedMail): Promise<InboxResult> {
         if (isDup(e)) return { result: "duplicate", seen: true, move: true };
         throw e;
       }
-      // bevestiging aan de afzender (met de link naar het ticket); geen melding aan support@: de mail staat daar al.
+      // bevestiging aan de afzender (met de link naar het ticket), zoals bij het formulier voor een gast.
       // build 95: zonder onderwerp en tekst (de afzender kan vervalst zijn), en niet boven de globale grens
       const c = (await confirmAllowed()) ? await toCustomer(t, mailData(t, "customer_created", { minimal: true })) : notSent("global_cap");
-      await markMail(mid, { ok: c.ok, error: c.error && `klant: ${c.error}`, messageId: c.messageId });
-      return { result: "new_ticket", ticket: t.number, detail: d.followUp ? `vervolg op #${d.followUp}` : undefined, seen: true, move: true };
+      // build 140: ook de melding aan support@ (met de link naar het beheer), want de mail zelf gaat naar Bingr-verwerkt;
+      // de push naar de beheer-app gaat vanzelf (functie push, nieuwe tickets). Testtickets (support+ci-…): geen melding.
+      const s = isMailtestAddress(email) ? null : await toSupport(t, mailData(t, "support_created", { body }));
+      await markMail(mid, { ok: c.ok && (s?.ok ?? true), error: [c.error && `klant: ${c.error}`, s?.error && `support: ${s.error}`].filter(Boolean).join("; ") || undefined, messageId: c.messageId });
+      return { result: "new_ticket", ticket: t.number, detail: d.followUp ? `vervolg op #${d.followUp}` : d.related ? `verwijst naar #${d.related}` : undefined, seen: true, move: true };
     }
   }
 }

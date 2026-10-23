@@ -1577,7 +1577,7 @@ jobs:
   inbox:
     needs: deploy
     runs-on: ubuntu-latest
-    timeout-minutes: 9
+    timeout-minutes: 18
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       REF: ${{ secrets.SUPABASE_PROJECT_REF }}
@@ -1602,6 +1602,21 @@ jobs:
           if isinstance(res, dict): print("::notice::Inbox-resultaat: " + ", ".join(f"{k}={v}" for k, v in res.items() if k not in ("log",))[:400])
           if row.get("last_error"): print(f"::warning::Inbox-fout ({row.get('last_error_at')}): {row['last_error']}")
           PY
+      # build 140: testmail naar support+ci-…@bingr.online -> nieuw ticket, antwoord met [#nummer] -> in dat ticket, dezelfde
+      # mail nog eens -> niet dubbel; daarna alles opgeruimd (geen push of melding aan de beheerder voor testtickets)
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 (v5.1.0)
+      - name: Support - inbox-rooktest (mail -> ticket)
+        env:
+          S_HOST: ${{ secrets.BINGR_SMTP_HOST }}
+          S_PORT: ${{ secrets.BINGR_SMTP_PORT }}
+          S_USER: ${{ secrets.BINGR_SMTP_USER }}
+          S_PASS: ${{ secrets.BINGR_SMTP_PASSWORD }}
+          S_FROM: ${{ secrets.BINGR_SMTP_FROM }}
+          I_HOST: ${{ secrets.BINGR_IMAP_HOST_SUPPORT || secrets.BINGR_IMAP_HOST }}
+          I_PORT: ${{ secrets.BINGR_IMAP_PORT_SUPPORT || secrets.BINGR_IMAP_PORT }}
+          I_USER: ${{ secrets.BINGR_IMAP_USER_SUPPORT || secrets.BINGR_IMAP_USER }}
+          I_PASS: ${{ secrets.BINGR_IMAP_PASSWORD_SUPPORT || secrets.BINGR_IMAP_PASSWORD }}
+        run: python3 -I supabase/tests/inbox_e2e.py
 
   # aparte job (eigen ruimte voor meldingen): voor- en achternaam bij een account (user_metadata first_name / last_name)
   namen:

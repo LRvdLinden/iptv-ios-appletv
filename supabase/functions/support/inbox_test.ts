@@ -4,6 +4,7 @@ import { decodeWords, htmlToText, parseAddresses, parseMessage, parseParams, REP
 import {
   agentList, authFailed, authservNames, automatedReason, candidateNumbers, cleanSubject, decide, dkimPassDomains, findFolder, guessLang, imapDate, messageBody,
   numberFromSubject, numbersFromIds, senderVerified, type TicketLite,
+  DONE_KEYWORD, findCiFolder, isFinal, keywordAllowed, pickQueue,
 } from "./inbox.ts";
 import { Imap, type ImapConn, tokenize } from "./imap.ts";
 import { renderMail } from "./templates.ts";
@@ -202,7 +203,11 @@ Deno.test("ticketnummers uit onderwerp en Message-ID's", () => {
 Deno.test("beslissen: klant, ander adres, agent, nieuw, gesloten, eigen, automatisch", () => {
   const klant = mailFrom("Klant <KLANT@example.com>");
   eq(decide(klant, [T(1007, "klant@example.com")], AGENTS), { kind: "customer_reply", ticket: T(1007, "klant@example.com") });
-  eq(decide(klant, [T(1007, "iemand@anders.nl")], AGENTS), { kind: "reject", reason: "sender_mismatch" });
+  // build 140: ander adres -> nooit meer blijven liggen: zwakke verwijzing (nummer) = nieuw ticket met verwijzing,
+  // sterke (antwoord op een willekeurige Message-ID van ons) = in dat ticket
+  eq(decide(klant, [T(1007, "iemand@anders.nl")], AGENTS), { kind: "new_ticket", followUp: null, related: 1007 });
+  eq(decide(klant, [{ ...T(1007, "iemand@anders.nl"), strong: true }], AGENTS), { kind: "customer_reply", ticket: { ...T(1007, "iemand@anders.nl"), strong: true }, otherSender: true });
+  eq(decide(klant, [{ ...T(1007, "iemand@anders.nl", "closed"), strong: true }], AGENTS), { kind: "new_ticket", followUp: null, related: 1007 });
   eq(decide(klant, [], AGENTS), { kind: "new_ticket", followUp: null });
   eq(decide(klant, [T(1007, "klant@example.com", "closed")], AGENTS), { kind: "new_ticket", followUp: 1007 });
   // build 95: agent alleen met DKIM van het eigen domein (bovenste Authentication-Results)
@@ -287,7 +292,8 @@ Deno.test("build 95: alleen de BOVENSTE Authentication-Results telt (onze server
   eq(authservNames("imap.hoster.nl", "MX.Google.com"), ["mx.google.com"]);
   // een klant mag nog steeds gewoon reageren (geen DKIM nodig), alleen vanaf het adres van het ticket
   eq(decide(mailFrom("klant@example.com", "", "Re: [#1007] x"), tk, AGENTS).kind, "customer_reply");
-  eq(decide(mailFrom("iemand@anders.nl", "", "Re: [#1007] x"), tk, AGENTS), { kind: "reject", reason: "sender_mismatch" });
+  // build 140: ander adres met alleen een nummer: niet in dat ticket, wel een nieuw ticket met verwijzing
+  eq(decide(mailFrom("iemand@anders.nl", "", "Re: [#1007] x"), tk, AGENTS), { kind: "new_ticket", followUp: null, related: 1007 });
 });
 
 Deno.test("build 95: blockquote alleen in een antwoord weghalen, en alleen het blok", () => {
@@ -353,13 +359,15 @@ function fakeServer(opts: { mails: Record<number, string>; folders?: string[]; m
         const C = cmd?.toUpperCase();
         if (C === "LOGIN") await w(opts.failLogin ? `${tag} NO [AUTHENTICATIONFAILED] Onjuist\r\n` : `${tag} OK [CAPABILITY IMAP4rev1 ${opts.move ? "MOVE " : ""}UIDPLUS] Welkom\r\n`);
         else if (C === "LIST") { for (const f of ["INBOX", ...(opts.folders ?? [])]) await w(`* LIST (\\HasNoChildren) "." ${f}\r\n`); await w(`${tag} OK LIST\r\n`); }
-        else if (C === "SELECT") await w(`* ${Object.keys(opts.mails).length} EXISTS\r\n* OK [UIDVALIDITY 777] ok\r\n* OK [UIDNEXT ${Math.max(0, ...Object.keys(opts.mails).map(Number)) + 1}] ok\r\n${tag} OK [READ-WRITE] SELECT\r\n`);
+        else if (C === "SELECT") await w(`* ${Object.keys(opts.mails).length} EXISTS\r\n* OK [UIDVALIDITY 777] ok\r\n* OK [UIDNEXT ${Math.max(0, ...Object.keys(opts.mails).map(Number)) + 1}] ok\r\n* OK [PERMANENTFLAGS (\\Seen \\Deleted \\*)] ok\r\n${tag} OK [READ-WRITE] SELECT\r\n`);
         else if (C === "UID" && /^SEARCH/i.test(arg)) {
           const r = /UID (\d+):\*/.exec(arg);
           const from = r ? Number(r[1]) : 0;
           let uids = Object.keys(opts.mails).map(Number).filter((u) => u >= from);
           if (r && !uids.length) uids = [Math.max(...Object.keys(opts.mails).map(Number))]; // n:* geeft altijd de laatste
           if (/UNSEEN/.test(arg)) uids = uids.filter((u) => !(flags[u] ?? []).includes("\\Seen"));
+          const kw = /NOT KEYWORD (\S+)/.exec(arg);
+          if (kw) uids = uids.filter((u) => !(flags[u] ?? []).includes(kw[1]));
           await w(`* SEARCH ${uids.join(" ")}\r\n${tag} OK SEARCH\r\n`);
         } else if (C === "UID" && /^FETCH/i.test(arg)) {
           const uid = Number(arg.split(" ")[1]);
@@ -368,7 +376,8 @@ function fakeServer(opts: { mails: Record<number, string>; folders?: string[]; m
           await w(body);
           await w(`)\r\n${tag} OK FETCH\r\n`);
         } else if (C === "UID" && /^STORE/i.test(arg)) {
-          for (const u of arg.split(" ")[1].split(",")) (flags[Number(u)] ??= []).push("\\Seen");
+          const fl = (/\(([^)]*)\)/.exec(arg)?.[1] ?? "").split(" ").filter(Boolean);
+          for (const u of arg.split(" ")[1].split(",")) (flags[Number(u)] ??= []).push(...fl);
           await w(`${tag} OK STORE\r\n`);
         } else if (C === "UID" && /^(MOVE|COPY)/i.test(arg)) await w(`${tag} OK done\r\n`);
         else if (C === "LOGOUT") { await w(`* BYE dag\r\n${tag} OK LOGOUT\r\n`); conn.close(); listener.close(); return { log, flags }; }
@@ -390,7 +399,9 @@ Deno.test("IMAP-client tegen een nep-server: login met literal, list, select, se
   const folder = findFolder(await c.list());
   eq(folder, "INBOX.Bingr-verwerkt");
   const sel = await c.select("INBOX");
-  eq(sel, { exists: 2, uidvalidity: 777, uidnext: 7 });
+  eq(sel, { exists: 2, uidvalidity: 777, uidnext: 7, permanentFlags: ["\\Seen", "\\Deleted", "\\*"] });
+  ok(keywordAllowed(sel.permanentFlags), "trefwoorden toegestaan");
+  eq(await c.uidSearch(`NOT KEYWORD ${DONE_KEYWORD}`), [5, 6]);
   eq(await c.uidSearch("UID 6:*"), [6]);
   eq(await c.uidSearch("UID 9:*"), [6]); // n:* geeft de laatste, de client filtert zelf
   const [it] = await c.uidFetch([5], "(UID RFC822.SIZE BODY.PEEK[]<0.2097152>)");
@@ -400,6 +411,8 @@ Deno.test("IMAP-client tegen een nep-server: login met literal, list, select, se
   eq(parseMessage(it.body!).messageId, "<CAF=abc123@mail.gmail.com>");
   await c.uidStore([5, 6], "+FLAGS.SILENT (\\Seen)");
   eq(await c.uidSearch("UNSEEN"), []);
+  await c.uidStore([5], `+FLAGS.SILENT (\\Seen ${DONE_KEYWORD})`);
+  eq(await c.uidSearch(`NOT KEYWORD ${DONE_KEYWORD}`), [6]);
   eq(await c.uidMove([5], folder!), "moved");
   await c.logout();
   const { log } = await srv.done;
@@ -427,4 +440,63 @@ Deno.test("IMAP-client: verkeerd wachtwoord, COPY zonder MOVE, time-out", async 
   try { await c3.login("a", "b"); err = ""; } catch (e) { err = (e as Error).message; }
   ok(/time-out/.test(err) && Date.now() - t0 < 2000, err);
   await s3.done;
+});
+
+Deno.test("build 140: wachtrij zonder cursor: ook gelezen en oude mails, oudste eerst, niets dubbel", () => {
+  // UID 3 en 4 lagen onder de oude last_uid en waren gelezen: vroeger nooit opgehaald, nu gewoon in de wachtrij
+  eq(pickQueue([9, 3, 4, 7, 7], [7], 25), { queue: [3, 4, 9], pending: 3 });
+  eq(pickQueue([1, 2, 3, 4], [], 2), { queue: [1, 2], pending: 4 });
+  eq(pickQueue([], [1], 25), { queue: [], pending: 0 });
+  // definitief (krijgt $BingrDone) vs. later opnieuw
+  for (const r of ["imported", "new_ticket", "duplicate", "agent", "ignored:auto", "ignored:spam", "rejected:auth_failed", "rejected:empty", "error:skipped"]) ok(isFinal(r), r);
+  for (const r of ["error", "error:retry", "rejected:rate_limited"]) ok(!isFinal(r), r);
+  // trefwoorden alleen als de server ze blijvend toestaat
+  ok(keywordAllowed(["\\Seen", "\\*"]), "\\*");
+  ok(keywordAllowed(["\\Seen", "$BingrDone"]), "expliciet");
+  ok(!keywordAllowed(["\\Seen", "\\Deleted"]), "zonder \\*");
+  ok(!keywordAllowed(null), "onbekend");
+});
+
+Deno.test("build 140: plusmap van de rooktest alleen met een geldig ci-label", () => {
+  const list = [
+    { name: "INBOX", delim: ".", flags: [] }, { name: "INBOX.ci-ab12cd34ef", delim: ".", flags: ["\\HasNoChildren"] },
+    { name: "INBOX.Prive", delim: ".", flags: [] },
+  ];
+  eq(findCiFolder(list, "ci-ab12cd34ef"), "INBOX.ci-ab12cd34ef");
+  eq(findCiFolder(list, "ci-onbekend1"), null);
+  eq(findCiFolder(list, "Prive"), null);
+  eq(findCiFolder(list, "INBOX"), null);
+});
+
+Deno.test("build 140: koppelen aan een bestaand ticket vs. nieuw ticket", () => {
+  const reply = parseMessage(crlf(`From: Klant <klant@example.com>
+To: support@bingr.online
+Subject: Re: [#1007] Bevestiging
+Message-ID: <r1@example.com>
+In-Reply-To: <bingr-ticket-1007@bingr.online>
+References: <bingr-ticket-1007@bingr.online>
+
+Nog een vraag.`));
+  // nummer uit In-Reply-To en onderwerp
+  eq(candidateNumbers(reply), [1007]);
+  eq(decide(reply, [T(1007, "klant@example.com")], AGENTS).kind, "customer_reply");
+  // zelfde mail, ticket van iemand anders en geen sterke verwijzing: nieuw ticket (niet weigeren)
+  eq(decide(reply, [T(1007, "ander@example.com")], AGENTS), { kind: "new_ticket", followUp: null, related: 1007 });
+  // gesloten ticket van de afzender: vervolgticket
+  eq(decide(reply, [T(1007, "klant@example.com", "closed")], AGENTS), { kind: "new_ticket", followUp: 1007 });
+  // geen verwijzing: nieuw ticket
+  const fresh = parseMessage(crlf(`From: Nieuw <nieuw@example.com>
+To: support@bingr.online
+Subject: Stream start niet
+Content-Type: text/html; charset=utf-8
+
+<p>Hallo,</p><p>de <b>stream</b> start niet.</p>`));
+  eq(candidateNumbers(fresh), []);
+  eq(decide(fresh, [], AGENTS), { kind: "new_ticket", followUp: null });
+  // html wordt platte tekst
+  ok(/Hallo,\s+de stream start niet\./.test(messageBody(fresh, "nl") ?? ""), messageBody(fresh, "nl") ?? "");
+  // testmail van de rooktest (plusadres) is gewoon een klant; eigen meldingen en autoreplies niet
+  eq(decide(mailFrom("support+ci-ab12cd34ef@bingr.online"), [], AGENTS), { kind: "new_ticket", followUp: null });
+  eq(decide(mailFrom("noreply@bingr.online"), [], AGENTS), { kind: "ignore", reason: "auto" });
+  eq(decide(mailFrom("Postmaster <postmaster@hoster.nl>"), [], AGENTS), { kind: "ignore", reason: "bounce" });
 });
