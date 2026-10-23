@@ -271,18 +271,30 @@ const DELETE_PER_10MIN_USER = 5, DELETE_PER_10MIN_IP = 20;
 // Wachtwoord controleren met een losse anon-client (eigen geheugen, niets bewaard): signInWithPassword op het e-mailadres
 // van de ingelogde gebruiker. Lukt het, dan wordt die nieuwe sessie meteen weer ingetrokken (alleen die, scope local).
 // Het wachtwoord komt nooit in een log.
-async function passwordOk(email: string, password: string, req: Request): Promise<PasswordCheck> {
+// build 141: eerst een login-ticket (bingr_login_ticket), zodat de Custom Access Token hook deze wachtwoordcontrole ook
+// toelaat als app_settings.login_via_function_required aan staat; account dicht (blokkade per account) = rate_limited.
+// Fout wachtwoord telt mee in dezelfde blokkade als de functie login (bingr_login_finish); gelukt = teller weg.
+async function passwordOk(userId: string, email: string, password: string, req: Request): Promise<PasswordCheck> {
   const key = Deno.env.get("SUPABASE_ANON_KEY") || req.headers.get("apikey") || "";
   const anon = createClient(Deno.env.get("SUPABASE_URL")!, key, { auth: { autoRefreshToken: false, persistSession: false } });
+  const { data: open, error: te } = await admin.rpc("bingr_login_ticket", { p_user: userId });
+  if (!te && open === false) return "rate_limited";
+  const finish = (result: "ok" | "wrong" | "other") =>
+    admin.rpc("bingr_login_finish", { p_user: userId, p_result: result }).then(() => {}, () => {});
   try {
     const { data, error } = await anon.auth.signInWithPassword({ email, password });
     if (data?.session && !error) {
       await anon.auth.signOut({ scope: "local" }).catch(() => {});
+      await finish("ok");
       return "ok";
     }
-    return passwordCheckResult(error as { status?: number; code?: string } | null);
+    const res = passwordCheckResult(error as { status?: number; code?: string } | null);
+    const code = (error as { code?: string } | null)?.code;
+    await finish(res === "wrong" && code === "invalid_credentials" ? "wrong" : "other");
+    return res;
   } catch (e) {
     console.error("delete_account wachtwoordcontrole", e instanceof Error ? e.message : e);
+    await finish("other");
     return "unavailable";
   }
 }
@@ -419,7 +431,7 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       if (await rateLimited(`da-del:u:${user.id}`, DELETE_PER_10MIN_USER, 600) || await rateLimited(`da-del:ip:${clientIp(req)}`, DELETE_PER_10MIN_IP, 600)) {
         return json({ error: "rate_limited" }, 429);
       }
-      const check = await passwordOk(user.email, password, req);
+      const check = await passwordOk(user.id, user.email, password, req);
       if (check === "rate_limited") return json({ error: "rate_limited" }, 429);
       if (check === "unavailable") return json({ error: "unavailable" }, 503);
       if (check !== "ok") return json({ error: "wrong_password" }, 403);

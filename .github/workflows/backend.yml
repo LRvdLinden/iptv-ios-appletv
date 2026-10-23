@@ -46,6 +46,9 @@ name: Backend
 # supabase/templates en verstuurt via _shared/mail.ts (BINGR_SMTP_*). Het geheim AUTH_MAIL_HOOK_SECRET maakt deze workflow zelf
 # (één keer, of opnieuw met de invoer auth_mail_new_secret); de Auth-SMTP blijft als terugval ingesteld. Job authmail test de
 # echte aanmelding end-to-end (supabase/tests/auth_mail_e2e.py: plus-adres van support@, controle via IMAP).
+# Inloggen (build 141, functie login): e-mail + wachtwoord via /functions/v1/login met blokkade per account (5 fouten in 15 min
+# = 15 min dicht, oplopend 30/60) zonder Team-plan; Custom Access Token hook bingr_access_token_hook (job beveiliging,
+# supabase/tests/login_function.py) eist een login-ticket als app_settings.login_via_function_required aan staat.
 on:
   push:
     branches: [main]
@@ -141,6 +144,14 @@ jobs:
         run: |
           for i in $(seq 1 20); do pg_isready -q && break; sleep 1; done
           sudo -u postgres bash supabase/tests/password_guard_test.sh
+      - name: Unittests (inloggen via de functie login)
+        # blokkeert de deploy (build 141): limieten per IP/e-mail (alleen hashes), blokkade per account (oplopend), login-tickets
+        # (enkel gebruik, < 60 s), de Custom Access Token hook (schakelaar, testmodus, andere routes, fail open) en de functie
+        # login zelf (logic_test.ts: contract, foutcodes, retry_after); een fout in de hook zou alle logins kunnen breken
+        run: |
+          for i in $(seq 1 20); do pg_isready -q && break; sleep 1; done
+          sudo -u postgres bash supabase/tests/login_function_test.sh
+          deno test supabase/functions/login/logic_test.ts
       - name: Unittests (bewaarplicht aankopen)
         # blokkeert de deploy: account verwijderen -> aankopen en terugbetalingen blijven zonder account (user_id null,
         # user_deleted_at), omzet en tellingen gelijk, RLS, migratie van on delete cascade en de bewaartermijn van 7 jaar na
@@ -467,6 +478,10 @@ jobs:
       - name: Edge Function device-auth
         if: steps.check.outputs.skip != '1'
         run: supabase functions deploy device-auth --project-ref "$REF" --no-verify-jwt --use-api
+      - name: Edge Function login
+        # build 141: inloggen met e-mail en wachtwoord met blokkade per account (docs/ACCOUNT.md "Inloggen via de functie login")
+        if: steps.check.outputs.skip != '1'
+        run: supabase functions deploy login --project-ref "$REF" --no-verify-jwt --use-api
       - name: Edge Function web-proxy
         if: steps.check.outputs.skip != '1'
         run: supabase functions deploy web-proxy --project-ref "$REF" --no-verify-jwt --use-api
@@ -1363,6 +1378,11 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 (v5.1.0)
       - name: Inlogbescherming - limieten, wachtwoorden en blokkade per account
         run: python3 -I supabase/tests/login_guard.py
+      - name: Inloggen via de functie login - hook, IP-doorgifte en end-to-end
+        # build 141: Custom Access Token hook aan (schakelaar login_via_function_required blijft zoals hij staat, standaard
+        # uit), rooktest met terugzetten, daarna login/blokkade/tickets end-to-end met tijdelijke accounts
+        if: ${{ !cancelled() }}
+        run: python3 -I supabase/tests/login_function.py
       - name: Beveiligingsadvisor en RLS - controle
         if: ${{ !cancelled() }}
         run: python3 -I supabase/tests/security_advisor.py gate

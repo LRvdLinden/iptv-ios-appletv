@@ -3422,6 +3422,148 @@ grant usage on schema public to supabase_auth_admin;
 grant execute on function public.bingr_password_attempt(jsonb) to supabase_auth_admin;
 -- <<< unittest password-guard
 
+-- ============================================================================================================
+-- build 141: inloggen via de Edge Function login (docs/ACCOUNT.md "Inloggen via de functie login (build 141)").
+-- De hook Password Verification Attempt (hierboven) kan op het Free-plan niet aan. Daarom loopt inloggen met e-mail en
+-- wachtwoord via de functie login: die telt per IP en per e-mail (alleen gezouten hashes), houdt de blokkade per account
+-- bij in auth_password_failures (dezelfde regels via bingr_password_attempt: 5 fouten in 15 min = 15 min dicht, oplopend
+-- 30/60) en laat het wachtwoord daarna door GoTrue zelf controleren (met Sb-Forwarded-For = het IP van de bezoeker).
+-- De directe route /auth/v1/token?grant_type=password gaat dicht met de Custom Access Token hook (Free-plan):
+-- bingr_access_token_hook eist bij authentication_method 'password' een vers login-ticket (enkel gebruik, < 60 s) dat de
+-- functie login (of device-auth bij delete_account) net heeft gezet. Schakelaar app_settings.login_via_function_required
+-- (standaard false = de hook laat alles door); testmodus per account: app_metadata.bingr_login_ticket_required = true.
+-- Alleen user_id, hashes en tijden; geen e-mailadressen, IP's of wachtwoorden. Een fout in de hook houdt niemand tegen.
+-- Het blok tussen de unittest-markeringen wordt ook los getest (supabase/tests/login_function_test.sh).
+-- >>> unittest login-function
+insert into public.app_settings (key, value) values ('login_via_function_required', 'false'::jsonb)
+on conflict (key) do nothing;
+
+-- Geheime salt voor de hashes van IP en e-mail in rate_limits (één keer in de database gemaakt, nooit in de repo of een log)
+create table if not exists public.login_guard_secret (
+  id   int primary key default 1 check (id = 1),
+  salt text not null check (char_length(salt) >= 32)
+);
+alter table public.login_guard_secret enable row level security;
+revoke all on public.login_guard_secret from public, anon, authenticated, service_role;
+insert into public.login_guard_secret (id, salt)
+values (1, encode(sha256(convert_to(gen_random_uuid()::text || gen_random_uuid()::text || clock_timestamp()::text, 'UTF8')), 'hex'))
+on conflict (id) do nothing;
+
+-- Login-tickets: de functie login zet er één vlak voor de wachtwoordcontrole door GoTrue; de hook verbruikt hem.
+create table if not exists public.login_tickets (
+  id         bigint generated always as identity primary key,
+  user_id    uuid not null references auth.users(id) on delete cascade,
+  created_at timestamptz not null default now()
+);
+create index if not exists login_tickets_user_idx on public.login_tickets (user_id, created_at);
+create index if not exists login_tickets_created_idx on public.login_tickets (created_at);
+alter table public.login_tickets enable row level security;
+revoke all on public.login_tickets from public, anon, authenticated;
+
+-- seconden tot het einde van het lopende venster van bingr_rate_hit (zelfde indeling in buckets)
+create or replace function public.bingr_login_window_left(p_window int) returns int
+language sql stable set search_path = '' as $$
+  select greatest(1, (p_window - (floor(extract(epoch from now()))::bigint % p_window))::int)
+$$;
+
+-- Begin van een inlogpoging (alleen service_role, functie login). Terug:
+--   {"status":"rate","retry_after":s}    te veel pogingen vanaf dit IP of voor dit e-mailadres
+--   {"status":"locked","retry_after":s}  account dicht (auth_password_failures)
+--   {"status":"continue","user_id":…}    door naar GoTrue; er staat een vers ticket (user_id ontbreekt = onbekend adres)
+create or replace function public.bingr_login_begin(p_email text, p_ip text, p_ip_max int default 30, p_ip_window int default 600,
+  p_email_max int default 10, p_email_window int default 900) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  e text := lower(btrim(coalesce(p_email, ''))); s text; uid uuid; lu timestamptz;
+begin
+  select salt into s from public.login_guard_secret where id = 1;
+  if not public.bingr_rate_hit('login:ip:' || encode(sha256(convert_to(s || '|ip|' || coalesce(p_ip, '?'), 'UTF8')), 'hex'), p_ip_max, p_ip_window) then
+    return jsonb_build_object('status', 'rate', 'retry_after', public.bingr_login_window_left(p_ip_window));
+  end if;
+  if not public.bingr_rate_hit('login:e:' || encode(sha256(convert_to(s || '|e|' || e, 'UTF8')), 'hex'), p_email_max, p_email_window) then
+    return jsonb_build_object('status', 'rate', 'retry_after', public.bingr_login_window_left(p_email_window));
+  end if;
+  -- verlopen tickets van iedereen weg (klein en geïndexeerd)
+  delete from public.login_tickets where created_at < now() - interval '5 minutes';
+  select u.id into uid from auth.users u where u.email = e limit 1;
+  if uid is null then return jsonb_build_object('status', 'continue'); end if;
+  select f.locked_until into lu from public.auth_password_failures f where f.user_id = uid;
+  if lu is not null and lu > now() then
+    return jsonb_build_object('status', 'locked', 'retry_after', greatest(1, ceil(extract(epoch from lu - now()))::int));
+  end if;
+  insert into public.login_tickets (user_id) values (uid);
+  return jsonb_build_object('status', 'continue', 'user_id', uid);
+end $$;
+
+-- Ticket los zetten zonder tellen (device-auth: wachtwoordcontrole bij delete_account). Terug: false = account dicht.
+create or replace function public.bingr_login_ticket(p_user uuid) returns boolean
+language plpgsql security definer set search_path = public as $$
+begin
+  if exists (select 1 from public.auth_password_failures where user_id = p_user and locked_until > now()) then return false; end if;
+  delete from public.login_tickets where user_id = p_user and created_at < now() - interval '60 seconds';
+  insert into public.login_tickets (user_id) values (p_user);
+  return true;
+end $$;
+
+-- Einde van een inlogpoging (alleen service_role). p_result: 'ok' (teller weg), 'wrong' (fout wachtwoord: tellen via
+-- bingr_password_attempt, zelfde regels als de hook), anders alleen het ticket weg. Openstaande tickets gaan altijd weg.
+-- Terug: {"status":"ok"} of {"status":"locked","retry_after":s} (deze fout gaf de blokkade).
+create or replace function public.bingr_login_finish(p_user uuid, p_result text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare r jsonb; lu timestamptz;
+begin
+  delete from public.login_tickets where user_id = p_user;
+  if p_user is null or p_result not in ('ok', 'wrong') then return jsonb_build_object('status', 'ok'); end if;
+  r := public.bingr_password_attempt(jsonb_build_object('user_id', p_user, 'valid', p_result = 'ok'));
+  if r ? 'error' then
+    select locked_until into lu from public.auth_password_failures where user_id = p_user;
+    return jsonb_build_object('status', 'locked', 'retry_after', greatest(1, ceil(extract(epoch from coalesce(lu, now() + interval '15 minutes') - now()))::int));
+  end if;
+  return jsonb_build_object('status', 'ok');
+end $$;
+
+-- Custom Access Token hook (Supabase Auth, ook op het Free-plan; aangezet door Backend). Laat de claims ongewijzigd.
+-- Alleen bij authentication_method 'password' en met de schakelaar aan (of de testmodus van dat account): een ticket van
+-- < 60 s verbruiken, anders weigeren (403). Verversen, links/OTP, herstel, uitnodiging en admin gaan nooit langs de eis.
+create or replace function public.bingr_access_token_hook(event jsonb) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare uid uuid; req boolean := false; tid bigint;
+begin
+  if coalesce(event->>'authentication_method', '') <> 'password' then
+    return jsonb_build_object('claims', event->'claims');
+  end if;
+  begin
+    uid := nullif(event->>'user_id', '')::uuid;
+    select coalesce((value #>> '{}')::boolean, false) into req from public.app_settings where key = 'login_via_function_required';
+    req := coalesce(req, false) or coalesce((event #>> '{claims,app_metadata,bingr_login_ticket_required}')::boolean, false);
+    if not req or uid is null then return jsonb_build_object('claims', event->'claims'); end if;
+    select id into tid from public.login_tickets
+    where user_id = uid and created_at > now() - interval '60 seconds'
+    order by created_at limit 1 for update skip locked;
+    if tid is null then
+      return jsonb_build_object('error', jsonb_build_object('http_code', 403,
+        'message', 'Sign in with the latest version of Bingr.'));
+    end if;
+    delete from public.login_tickets where id = tid;
+    return jsonb_build_object('claims', event->'claims');
+  exception when others then
+    raise warning 'bingr_access_token_hook: % (%)', sqlerrm, sqlstate;
+    return jsonb_build_object('claims', event->'claims');
+  end;
+end $$;
+
+revoke all on function public.bingr_login_window_left(int) from public, anon, authenticated;
+revoke all on function public.bingr_login_begin(text, text, int, int, int, int) from public, anon, authenticated;
+revoke all on function public.bingr_login_ticket(uuid) from public, anon, authenticated;
+revoke all on function public.bingr_login_finish(uuid, text) from public, anon, authenticated;
+revoke all on function public.bingr_access_token_hook(jsonb) from public, anon, authenticated, service_role;
+grant execute on function public.bingr_login_begin(text, text, int, int, int, int) to service_role;
+grant execute on function public.bingr_login_ticket(uuid) to service_role;
+grant execute on function public.bingr_login_finish(uuid, text) to service_role;
+grant usage on schema public to supabase_auth_admin;
+grant execute on function public.bingr_access_token_hook(jsonb) to supabase_auth_admin;
+-- <<< unittest login-function
+
 -- Opruimen (zoals hierboven), plus de tellers van de inlogbescherming per account.
 create or replace function public.bingr_cleanup() returns void
 language sql security definer set search_path = public as $$
