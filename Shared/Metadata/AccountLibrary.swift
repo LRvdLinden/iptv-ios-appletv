@@ -134,13 +134,14 @@ final class NewOnBingr {
         if changed { save() }
 
         let snapshot = all
+        let seenStamps = stamps
         return await Task.detached(priority: .utility) { () -> [DetailTarget] in
             var byKey: [String: DetailTarget] = [:]
             var items: [(id: String, provider: Double?)] = []
             var seen: [String: Double] = [:]
             for (sid, lib) in snapshot {
                 let s = sid?.uuidString ?? "-"
-                let fs = stamps[s] ?? [:]
+                let fs = seenStamps[s] ?? [:]
                 for m in lib.movies {
                     let key = s + "|m|" + m.id
                     byKey[key] = .movie(m)
