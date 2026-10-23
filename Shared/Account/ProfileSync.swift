@@ -213,6 +213,7 @@ final class ProfileSync {
     }
 
     private func performSync() async {
+        await Keychain.settleBeforeSync()   // build 144
         let account = AccountService.shared
         guard Secrets.accountsConfigured, account.isSignedIn else { return }
         let rows: [[String: Any]]

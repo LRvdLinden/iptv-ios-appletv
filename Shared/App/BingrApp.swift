@@ -57,7 +57,13 @@ struct BingrApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
-                .onAppear { StartDiagnostics.shared.mark("eerste frame") }   // build 143
+                .onAppear {
+                    StartDiagnostics.shared.mark("eerste frame")   // build 143
+                    // build 144: eenmalig uit de oude sleutelhanger en iCloud KV overzetten, op de achtergrond, ná het
+                    // eerste beeld; fouten worden stil opgevangen
+                    Keychain.migrateIfNeeded()
+                    CloudStore.importFromICloudOnce()
+                }
                 .id(localizer.language + "|" + shownAccent)     // taal of accentkleur wisselen → alles opnieuw opbouwen
                 .environmentObject(app)
                 .environmentObject(app.playlists)

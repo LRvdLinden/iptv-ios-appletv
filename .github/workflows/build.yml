@@ -47,6 +47,10 @@ jobs:
       - name: Vertalingen controleren
         run: python3 tools/extract_strings.py
 
+      # build 144: geen sleutelhanger of iCloud meer als opslag (alleen de eenmalige overzetting)
+      - name: Geen sleutelhanger of iCloud bij de start
+        run: python3 tools/check_no_keychain.py
+
       - name: Zelftest pure logica (build 128, CatalogMeta)
         id: selftest
         continue-on-error: true

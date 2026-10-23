@@ -266,7 +266,10 @@ final class CloudStore: ObservableObject {
         write(mainSourceID, K.mainSource)
     }
 
-    private let kv = NSUbiquitousKeyValueStore.default
+    /// Build 144: geen iCloud KV meer (alles via de Bingr-account, zonder account alleen dit apparaat). `kv` is een lege
+    /// stand-in, zodat de bestaande code niets meer naar iCloud schrijft of eruit leest; de eenmalige overname van wat er
+    /// alleen in iCloud stond, doet `importFromICloudOnce` (op de achtergrond, na het eerste beeld).
+    private let kv = NoCloudKV()
     private let local = UserDefaults.standard
     private var observer: NSObjectProtocol?
 
@@ -283,18 +286,7 @@ final class CloudStore: ObservableObject {
     private init() {
         // App Store-screenshots: niets uit iCloud of van dit apparaat lezen (de demo zet zijn eigen gegevens)
         if Screenshots.isActive { return }
-        observer = NotificationCenter.default.addObserver(
-            forName: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
-            object: kv, queue: .main) { [weak self] n in
-                // build 97: iCloud KV is vol (1 MB): loggen en het oudste weggooien
-                let reason = n.userInfo?[NSUbiquitousKeyValueStoreChangeReasonKey] as? Int
-                let quota = reason == NSUbiquitousKeyValueStoreQuotaViolationChange
-                Task { @MainActor [weak self] in
-                    if quota { self?.trimCloudForQuota() }
-                    self?.load(mergeProgress: true)
-                }
-            }
-        kv.synchronize()
+        // build 144: geen iCloud-melding meer volgen (geen iCloud KV)
         load(mergeProgress: false)
     }
 
@@ -317,7 +309,8 @@ final class CloudStore: ObservableObject {
         // build 141: adressen met inloggegevens (M3U/EPG) in de sleutelhanger, niet in iCloud KV
         let encoded: Data?
         if key == K.playlists, let list = value as? [PlaylistSource] {
-            encoded = try? JSONEncoder().encode(sealSecretURLs(list))
+            // build 144: volledige adressen alleen op dit apparaat (UserDefaults, geen iCloud); niets meer naar de sleutelhanger
+            encoded = try? JSONEncoder().encode(list)
         } else {
             encoded = try? JSONEncoder().encode(value)
         }
@@ -426,15 +419,53 @@ final class CloudStore: ObservableObject {
         let out = list.map { p in
             var p = p
             let k = Self.secretURLKeys(p.id)
+            // build 144: geen adres gevonden (de overzetting uit de sleutelhanger loopt nog): de verwijzing laten staan,
+            // nooit een leeg adres (dat zou de sync als "adres gewist" zien); `secretsMigrated` vult het later in
             if p.m3uURL.hasPrefix(Self.keychainURLMarker) {
-                p.m3uURL = keychainURL(k.m3u) ?? fallback(p.id, true)
-            } else if Self.urlHasCredentials(p.m3uURL) { reseal = true }
+                let v = keychainURL(k.m3u) ?? fallback(p.id, true)
+                if !v.isEmpty { p.m3uURL = v; reseal = true }
+            }
             if p.epgURL.hasPrefix(Self.keychainURLMarker) {
-                p.epgURL = keychainURL(k.epg) ?? fallback(p.id, false)
-            } else if Self.urlHasCredentials(p.epgURL) { reseal = true }
+                let v = keychainURL(k.epg) ?? fallback(p.id, false)
+                if !v.isEmpty { p.epgURL = v; reseal = true }
+            }
             return p
         }
         return (out, reseal)
+    }
+
+    /// Build 144: de overzetting uit de sleutelhanger is klaar: adressen die nog een verwijzing waren invullen.
+    func secretsMigrated() {
+        guard !Screenshots.isActive, playlists.contains(where: { $0.m3uURL.hasPrefix(Self.keychainURLMarker) || $0.epgURL.hasPrefix(Self.keychainURLMarker) }) else { return }
+        let (list, changed) = unsealSecretURLs(playlists)
+        guard changed else { return }
+        assign(\.playlists, list)
+        write(playlists, K.playlists)
+    }
+
+    /// Build 144: eenmalig wat alleen in iCloud KV stond (bijv. door een ander apparaat zonder account) naar dit apparaat,
+    /// op de achtergrond na het eerste beeld; daarna wordt iCloud KV niet meer gebruikt. Fouten: overslaan.
+    nonisolated static func importFromICloudOnce() {
+        let flag = "icloud.imported.v144"
+        guard !UserDefaults.standard.bool(forKey: flag) else { return }
+        DispatchQueue.global(qos: .utility).async {
+            let kv = NSUbiquitousKeyValueStore.default
+            kv.synchronize()
+            let all = kv.dictionaryRepresentation
+            let local = UserDefaults.standard
+            var imported = 0
+            let bases = ["playlists.v1", "favorites.v1", "mylist.v1", "progress.v1", "watched.v1", "recent.v1", "custom.v1",
+                         "parental.v1", "reminders.v1", "photos.v1", "history.v1", "profiles.v1", "mainsource.v1",
+                         "mainprofile.v1", "collections.v1", "homelayout.v1", "categories.v1"]
+            for (k, v) in all where bases.contains(where: { k == $0 || k.hasPrefix($0 + ".") }) {
+                guard local.object(forKey: k) == nil, let d = v as? Data else { continue }
+                local.set(d, forKey: k)
+                imported += 1
+            }
+            local.set(true, forKey: flag)
+            guard imported > 0 else { return }
+            Task { @MainActor in CloudStore.shared.load(mergeProgress: true) }
+        }
     }
 
     // MARK: grootte van iCloud KV (build 97)
@@ -535,13 +566,7 @@ final class CloudStore: ObservableObject {
         assign(\.collections, decode([BingrCollection].self, K.collections) ?? collections)
         assign(\.homeLayouts, decode([String: HomeLayout].self, K.homeLayout) ?? homeLayouts)
         if !Secrets.accountsConfigured { migrateLegacyCollections() }
-        // build 97: geheimen staan niet meer in iCloud KV maar in de iCloud-sleutelhanger; wat er van een oudere
-        // versie nog in KV staat, overzetten en uit KV halen — op de achtergrond, sleutelhanger-acties zijn traag
-        DispatchQueue.global(qos: .utility).async {
-            Keychain.migrateIfNeeded()   // build 143: niet bij elke iCloud-wijziging opnieuw de hele sleutelhanger door
-            // eigen API-sleutels kunnen ook via de iCloud-sleutelhanger veranderd zijn: de cache opnieuw lezen
-            DispatchQueue.main.async { Secrets.reload() }
-        }
+        // build 144: de overzetting uit de sleutelhanger/iCloud start na het eerste beeld (RootView), niet hier
         assign(\.reminders, (decode([ProgramReminder].self, K.reminders) ?? []).filter { $0.start > Date().addingTimeInterval(-3600) })
         let remote = scoped([String: ProgressEntry].self, K.progress) ?? [:]
         if mergeProgress {
@@ -1442,4 +1467,16 @@ extension ProgramReminder {
 
     /// Het profiel van deze herinnering (nil = hoofdprofiel).
     var owner: UUID? { profileID ?? Self.profile(fromID: id) }
+}
+
+
+/// Build 144: lege stand-in voor iCloud KV: niets lezen, niets schrijven (zie `CloudStore.kv`).
+private final class NoCloudKV {
+    func data(forKey: String) -> Data? { nil }
+    func object(forKey: String) -> Any? { nil }
+    func dictionary(forKey: String) -> [String: Any]? { nil }
+    func set(_ v: Any?, forKey: String) {}
+    func removeObject(forKey: String) {}
+    @discardableResult func synchronize() -> Bool { true }
+    var dictionaryRepresentation: [String: Any] { [:] }
 }

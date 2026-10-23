@@ -2,7 +2,7 @@
 
 Inloggen is **verplicht**. Flow: **splash → (geen geldige sessie) inlogscherm → "Wie kijkt er?" → app**. Met een geldige sessie gaat de app na de splash direct naar "Wie kijkt er?". Uitloggen brengt je terug naar het inlogscherm.
 
-De account regelt het inloggen en bewaart de **profielen** (zonder pincodes en eigen foto's). Servers, voortgang, lijsten en pincodes blijven zoals ze zijn (iCloud op Apple, lokaal op Android).
+De account regelt het inloggen en bewaart de **profielen** (zonder pincodes en eigen foto's). Servers, voortgang, lijsten en pincodes blijven zoals ze zijn (iCloud op Apple, lokaal op Android). (Sinds build 144 gebruiken de Apple-apps geen iCloud meer, zie "Build 144".)
 
 **Pushmeldingen** (registreren van apparaten, releasemeldingen, berichten uit het beheer en herinneringen via de functie `push`): zie [PUSH.md](PUSH.md).
 
@@ -1127,3 +1127,20 @@ Kies je bij het starten van de app in "Wie kijkt er?" een profiel en was het laa
 - **Voor jou** is per actief profiel. Het is gebaseerd op Verder kijken, de geschiedenis en wat bekeken is van dat profiel: de genres van de laatst/meest bekeken titels en (met TMDB) "recommendations"/"similar". Alleen titels die op een server van het account staan, zonder titels die al bekeken of uitgekeken zijn, met het kinder- en leeftijdsfilter. Zonder geschiedenis heet de rij "Popular" (NL "Populair").
 - **Nieuw op Bingr** toont de titels die het laatst aan de bibliotheek (alle servers) zijn toegevoegd, nieuwste eerst. Volgorde: de toevoegdatum van de provider (Xtream `added`, Plex/Jellyfin `addedAt`/`DateCreated`), anders het moment waarop de app de titel voor het eerst zag (lokaal per apparaat bewaard).
 - **Uitgelicht (hero)** is een vaste selectie van maximaal 8 titels: om en om uit Voor jou en Nieuw op Bingr, dubbele weg. De selectie wisselt vanzelf om de 8 seconden. Waar de selectie start, schuift elke dag één plek op (dagnummer modulo het aantal). Er is geen willekeur per opening.
+
+## Build 144 (Apple): geen sleutelhanger en geen iCloud meer
+
+- De Apple-apps bewaren niets meer in de (iCloud-)sleutelhanger of in iCloud KV. Wachtwoorden en tokens van servers,
+  M3U/EPG-adressen, pincodes, Trakt en OpenSubtitles staan lokaal in één bestand in de sandbox van de app (Application
+  Support, op Apple TV Caches als dat niet kan; bestandsbescherming tot de eerste ontgrendeling). Synchroniseren gaat
+  alleen via de account (`get_sources`/`put_sources` met `secrets`, `profile.<id>.pin`, `settings`/`connections`), zoals
+  hierboven; zonder account blijft alles op het apparaat.
+- **Eenmalige overzetting** (eerste start van build 144, op de achtergrond na het eerste beeld): wat er nog in de
+  sleutelhanger of de oude iCloud KV-spiegel staat, gaat naar dat bestand en daarna uit de sleutelhanger; wat alleen
+  in iCloud KV stond (lijsten van een ander apparaat zonder account) gaat naar de lokale opslag. De sync wacht hooguit
+  10 s op de overzetting. Lukt het lezen van de sleutelhanger niet (bijv. op Apple TV), dan vergeet de app zijn lokale
+  sync-stand, zodat de account de bron is (zoals bij een nieuw apparaat) en lege lokale waarden nooit als
+  "verwijderd" naar de server gaan.
+- **Contract:** ongewijzigd. `pin` blijft de pincode zelf (Android, Samsung TV en web lezen hem zo); een hash in de sync
+  vraagt een nieuwe sleutel (bijv. `pinHash`) in alle apps tegelijk.
+

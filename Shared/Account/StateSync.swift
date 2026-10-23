@@ -94,6 +94,13 @@ final class StateSync {
     /// 60: `subtitleLanguage: "off"` wordt `""` + `autoSubtitles: "off"`
     nonisolated static let settingsFormat = 60
 
+    /// Build 144: lokale sync-stand vergeten (de account is daarna de bron, zoals op een nieuw apparaat), zie
+    /// `Keychain.settleBeforeSync`.
+    func forgetLocalStamps() {
+        meta = Meta()
+        saveMeta()
+    }
+
     private func saveMeta() {
         if let d = try? JSONEncoder().encode(meta) { UserDefaults.standard.set(d, forKey: metaKey) }
     }
@@ -409,6 +416,8 @@ final class StateSync {
     private func performSync(_ sections: Set<String>?) async {
         let account = AccountService.shared
         guard Secrets.accountsConfigured, account.isSignedIn else { return }
+        // build 144: eerst de overzetting uit de sleutelhanger (pincodes, Trakt, OpenSubtitles) afwachten
+        await Keychain.settleBeforeSync()
         if let s = switchTask { await s.value }
         let store = CloudStore.shared
 

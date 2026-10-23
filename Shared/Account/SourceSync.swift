@@ -200,6 +200,8 @@ final class SourceSync {
     private func performSync() async {
         let account = AccountService.shared
         guard Secrets.accountsConfigured, account.isSignedIn else { return }
+        // build 144: eerst de overzetting uit de sleutelhanger (wachtwoorden van servers) afwachten
+        await Keychain.settleBeforeSync()
         let server: (sources: [[String: Any]], mainSourceID: String?, updatedAt: String?)
         do { server = try await account.getSources() } catch { return }
         guard !Task.isCancelled, account.isSignedIn else { return }
@@ -634,6 +636,13 @@ final class SourceSync {
 
     private func loadUpdated() -> [String: String] {
         UserDefaults.standard.dictionary(forKey: updatedKey) as? [String: String] ?? [:]
+    }
+
+    /// Build 144: lokale vingerafdrukken en tijden vergeten (de account is daarna de bron), zie
+    /// `Keychain.settleBeforeSync`.
+    func forgetLocalStamps() {
+        saveFingerprints([:])
+        saveUpdated([:])
     }
 
     private func saveUpdated(_ v: [String: String]) { UserDefaults.standard.set(v, forKey: updatedKey) }
