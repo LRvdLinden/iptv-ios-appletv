@@ -92,7 +92,9 @@ enum Secrets {
     static var supabaseAnonKey: String { value(.supabaseAnonKey) }
     /// Bingr-accounts beschikbaar in deze build (SUPABASE_URL en SUPABASE_ANON_KEY ingebouwd).
     static var accountsConfigured: Bool {
-        isSet(supabaseURL) && isSet(supabaseAnonKey) && URL(string: supabaseURL)?.host != nil
+        // build 141: start-rooktest (alleen Debug, launch-argument) zonder Bingr-account
+        if SmokeTest.isActive { return false }
+        return isSet(supabaseURL) && isSet(supabaseAnonKey) && URL(string: supabaseURL)?.host != nil
     }
 
     /// Nieuwe Trakt-apps (sinds okt. 2026) hebben alleen een Client ID (PKCE); het secret is optioneel.

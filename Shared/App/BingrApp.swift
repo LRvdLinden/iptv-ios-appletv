@@ -30,6 +30,8 @@ struct BingrApp: App {
     #endif
 
     init() {
+        // build 141: start-rooktest in CI (alleen Debug, launch-argument `-BingrSmoke YES`)
+        SmokeTest.seedIfNeeded()
         // grotere beeldcache: posters (ook in de intro) laden direct
         URLCache.shared = URLCache(memoryCapacity: 64 * 1024 * 1024, diskCapacity: 400 * 1024 * 1024)
     }
@@ -310,6 +312,7 @@ final class AppState: ObservableObject {
     func splashFinished() {
         markSplashDone()
         withAnimation(.easeInOut(duration: 0.5)) { stage = needsAuth ? .auth : .picker }
+        SmokeTest.drive(self)
     }
 
     /// Build 130: alle servers van het account zijn er voor elk profiel. Kiest een subprofiel een andere server, dan
