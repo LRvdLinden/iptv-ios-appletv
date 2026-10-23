@@ -139,8 +139,9 @@ enum SmokeTest {
         d.set((startInKids ? kids : main).id.uuidString, forKey: "activeProfileID")
         d.set(src.id.uuidString, forKey: "lastPlaylistID")
         d.set(true, forKey: "account.skipped")
-        // build 145: bij het openen meteen alle servers bijwerken, zonder vraag ("Servers laden bij openen: Altijd")
-        d.set(StartLoad.Mode.always.rawValue, forKey: StartLoad.key)
+        // build 145: "Servers laden bij openen: Vragen" (de standaard): met de bewaarde lijst de eerste 30 s niets ophalen;
+        // de test antwoordt daarna "Nu bijwerken" (zie `drive`)
+        d.set(StartLoad.Mode.ask.rawValue, forKey: StartLoad.key)
         d.set(true, forKey: StartLoad.migratedKey)
         d.set(true, forKey: seededKey)
         // build 143: het hoofdprofiel is met een pincode beveiligd (pincodescherm-test)
@@ -212,6 +213,14 @@ enum SmokeTest {
                 await wait(2.5)
                 app.selectedTab = tab
                 say("tabblad \(tab)")
+            }
+            // build 145: de vraag "Servers bijwerken?" pas na 30 s beantwoorden met "Nu bijwerken" (alle servers, één voor één)
+            if app.startPrompt {
+                while StartDiagnostics.shared.uptime < 32 { await wait(0.5) }
+                say("vraag servers bijwerken: Nu bijwerken")
+                app.answerStartPrompt(update: true)
+            } else {
+                say("vraag servers bijwerken: niet getoond")
             }
             #if !os(tvOS)
             app.showMyBingr()
