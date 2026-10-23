@@ -250,3 +250,70 @@ jobs:
       - name: Status
         if: steps.ios.outcome != 'success' || steps.tvos.outcome != 'success' || steps.macos.outcome != 'success' || steps.selftest.outcome != 'success' || steps.tvos_release.outcome == 'failure' || steps.smoke_ios.outcome != 'success' || steps.smoke_tvos.outcome != 'success' || steps.smoke_macos.outcome == 'failure'
         run: exit 1
+
+  # build 143: dezelfde korte start-rooktest met de nieuwste Xcode (SDK 27) en de nieuwste iOS/tvOS-simulator, zoals
+  # Léon de app nu bouwt en draait (tvOS 27). Uitkomst op de branch ci-logs-sdk27 (latest.txt); faalt bij een crash.
+  sdk27:
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 (v5.1.0)
+
+      - name: Nieuwste Xcode kiezen
+        run: |
+          ls -d /Applications/Xcode*.app || true
+          sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+          xcodebuild -version | tee versions.txt
+          xcrun simctl list runtimes | tee -a versions.txt
+
+      - name: Project genereren
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Build iOS en tvOS (simulator, nieuwste SDK)
+        id: build27
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          xcodebuild build -project Bingr.xcodeproj -scheme Bingr -derivedDataPath build \
+            -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO 2>&1 | tee ios27.log | tail -n 5
+          xcodebuild build -project Bingr.xcodeproj -scheme BingrTV -derivedDataPath build \
+            -destination 'generic/platform=tvOS Simulator' CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO 2>&1 | tee tvos27.log | tail -n 5
+
+      - name: Start-rooktest tvOS en iOS (nieuwste simulator)
+        id: smoke27
+        if: steps.build27.outcome == 'success'
+        continue-on-error: true
+        env:
+          SMOKE_LIGHT: "1"
+        run: |
+          set -o pipefail
+          tools/smoke_launch.sh tvos build/Build/Products "$RUNNER_TEMP/smoke/tvos" 2>&1 | tee smoke27-tvos.log; a=${PIPESTATUS[0]}
+          tools/smoke_launch.sh ios build/Build/Products "$RUNNER_TEMP/smoke/ios" 2>&1 | tee smoke27-ios.log; b=${PIPESTATUS[0]}
+          exit $(( a || b ))
+
+      - name: Rapport (branch ci-logs-sdk27)
+        if: always()
+        run: |
+          {
+            echo "commit: $GITHUB_SHA"
+            echo "build: ${{ steps.build27.outcome }}  smoke: ${{ steps.smoke27.outcome }}"
+            cat versions.txt 2>/dev/null | head -n 30
+            echo "=== build errors ==="
+            grep -hE "error:" ios27.log tvos27.log 2>/dev/null | sort -u | head -n 100
+            echo "=== start-rooktest ==="
+            cat smoke27-tvos.log smoke27-ios.log 2>/dev/null | grep -v '^::' | grep -v tabblad | head -n 400
+          } > "$RUNNER_TEMP/latest.txt"
+          git config user.name "github-actions"; git config user.email "actions@github.com"
+          git reset --hard -q
+          git switch --orphan ci-logs-sdk27-tmp
+          git rm -rf --quiet . || true
+          cp "$RUNNER_TEMP/latest.txt" latest.txt
+          git add latest.txt
+          git commit -q -m "sdk27 $GITHUB_SHA build=${{ steps.build27.outcome }} smoke=${{ steps.smoke27.outcome }}"
+          git push -f origin HEAD:ci-logs-sdk27
+
+      - name: Status
+        if: steps.build27.outcome != 'success' || steps.smoke27.outcome != 'success'
+        run: exit 1

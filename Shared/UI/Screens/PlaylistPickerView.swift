@@ -50,13 +50,7 @@ struct PlaylistPickerView: View {
 
                     LazyVGrid(columns: columns, spacing: tvScaled(26)) {
                         ForEach(Array(store.profiles.enumerated()), id: \.element.id) { i, p in
-                            Button {
-                                // build 140: was het laatst actieve profiel een kinderprofiel, dan eerst de rekensom;
-                                // profiel met pincode: daarna de pincode
-                                KidsGate.shared.pick(p) {
-                                    if ParentalControl.shared.hasPIN(profile: p.id) { pinFor = p } else { app.open(profile: p) }
-                                }
-                            } label: {
+                            Button { choose(p) } label: {
                                 AvatarTile(name: p.name, avatar: p.avatar, photo: store.photos[p.id],
                                            badge: store.isMain(p) && store.profiles.count > 1 ? "person.fill" : nil,
                                            locked: ParentalControl.shared.hasPIN(profile: p.id))
@@ -95,6 +89,8 @@ struct PlaylistPickerView: View {
                 } else if noServer { focus = .server } else { focus = .add }
             }
         }
+        // start-rooktest (build 143): een profiel kiezen zoals met de afstandsbediening
+        .onReceive(SmokeTest.pickProfile) { id in if let p = store.profiles.first(where: { $0.id == id }) { choose(p) } }
         .sheet(isPresented: $addingServer) { AddPlaylistView(existing: nil) }
         .sheet(isPresented: $addingProfile) { ProfileEditView(existing: nil) }
         .sheet(item: $editing) { p in ProfileEditView(existing: p) }
@@ -104,6 +100,15 @@ struct PlaylistPickerView: View {
                 Task { @MainActor in try? await Task.sleep(nanoseconds: 80_000_000); app.open(profile: p) }
                 return true
             }
+        }
+    }
+
+    /// Profiel kiezen. Build 140: was het laatst actieve profiel een kinderprofiel, dan eerst de rekensom; profiel met
+    /// pincode: daarna meteen de pincode (build 143: uit het geheugen, zonder op de sleutelhanger te wachten). Pas na de
+    /// juiste code wordt het profiel geopend en de server geladen.
+    private func choose(_ p: ViewerProfile) {
+        KidsGate.shared.pick(p) {
+            if ParentalControl.shared.hasPIN(profile: p.id) { pinFor = p } else { app.open(profile: p) }
         }
     }
 

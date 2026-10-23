@@ -97,6 +97,8 @@ struct BingrApp: App {
         .onChange(of: phase) { _, p in
             // App Store-screenshots: geen sync, geen verversen, geen account
             if p == .active && !Screenshots.isActive {
+                // build 143: sleutelhanger op de achtergrond opnieuw lezen (wijzigingen van andere apparaten)
+                Keychain.revalidate()
                 Secrets.reload()
                 store.load(mergeProgress: true)
                 // build 97: Trakt en de account-sync hooguit eens per minuut (op de Mac wordt de app bij elke
@@ -189,6 +191,11 @@ final class AppState: ObservableObject {
                 PiPCenter.shared.stopActive()
                 self.showAuthIfNeeded()
             }
+            .store(in: &bag)
+        // build 143: pincodes alvast in het geheugen (ook als er profielen bij komen)
+        ParentalControl.shared.prefetchPINs()
+        CloudStore.shared.$profiles.map { $0.map(\.id) }.removeDuplicates().dropFirst()
+            .sink { _ in ParentalControl.shared.prefetchPINs() }
             .store(in: &bag)
         ProfileSync.shared.start()
         SourceSync.shared.start()

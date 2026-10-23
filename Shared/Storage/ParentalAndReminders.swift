@@ -18,6 +18,14 @@ final class ParentalControl: ObservableObject {
 
     init() { loadAttempts() }
 
+    /// Build 143: de pincodes van alle profielen alvast (op de achtergrond) uit de sleutelhanger in het geheugen, zodat
+    /// "Wie kijkt er?" (slotje) en het kiezen van een beveiligd profiel meteen het pincodescherm tonen zonder op de
+    /// sleutelhanger te wachten.
+    func prefetchPINs() {
+        let keys = ["parental.pin"] + CloudStore.shared.profiles.map { "profile.\($0.id.uuidString).pin" }
+        Keychain.prefetch(keys, localOnly: [Self.attemptsKey])
+    }
+
     func verify(_ pin: String) -> Bool {
         guard attempt({ Keychain.get(pinKey).map { $0 == pin } ?? false }) else { return false }
         unlock()
@@ -259,6 +267,17 @@ struct PINPad: View {
     }
 
     var body: some View {
+        pad.onAppear {
+            // start-rooktest (build 143): tijd tot het pincodescherm meten en de testcode invoeren
+            guard let code = SmokeTest.pinShown() else { return }
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                if onDone(code) { dismiss() }
+            }
+        }
+    }
+
+    @ViewBuilder private var pad: some View {
         #if os(tvOS)
         // Apple TV: compact, één rij cijfers (zoals op tv gebruikelijk) — past op elk scherm, ook met overscan
         VStack(spacing: 34) {

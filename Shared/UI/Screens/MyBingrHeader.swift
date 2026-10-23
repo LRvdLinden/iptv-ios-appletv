@@ -158,7 +158,7 @@ struct MyBingrHeader: View {
                                                   },
                                                   onPrompt: { prompt = $0 })
                         } label: {
-                            ContinueCard(title: e.title, poster: poster(c.target) ?? e.artwork, fraction: e.fraction,   // build 141: cover eerst
+                            ContinueCard(title: e.title, poster: cover(c.target) ?? e.artwork, fraction: e.fraction,   // build 141/143: cover eerst
                                          caption: L("%d min left", Int(left / 60)))
                         }
                         .cardButton()
@@ -191,6 +191,14 @@ struct MyBingrHeader: View {
                 .padding(.vertical, 20)
                 #endif
             }
+        }
+    }
+
+    /// Build 143: de TMDB-poster (Verder kijken, zie ContinueCovers), anders de poster uit de bibliotheek
+    private func cover(_ t: DetailTarget) -> URL? {
+        switch t {
+        case .movie(let m): return ContinueCovers.shared.cover(title: m.title, year: m.year, isShow: false) ?? m.poster
+        case .series(let s): return ContinueCovers.shared.cover(title: s.title, year: s.year, isShow: true) ?? s.poster
         }
     }
 

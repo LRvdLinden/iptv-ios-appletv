@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 // MARK: - Start-rooktest (CI, build 141)
 //
@@ -52,6 +53,54 @@ enum SmokeTest {
     }
     private static let started = Date()
 
+    // MARK: build 143: trage sleutelhanger, hangende hoofdthread en de tijd tot het pincodescherm
+
+    /// `-BingrSmokeKeychainMs <ms>`: elke sleutelhanger-aanroep zoveel trager (zoals op een echt toestel)
+    private static let keychainDelay: UInt32 = { isActive ? UInt32(arg("-BingrSmokeKeychainMs").flatMap { Int($0) } ?? 0) : 0 }()
+    private static let statsLock = NSLock()
+    private static var mainKeychainCalls = 0
+
+    static func keychainCall() {
+        guard isActive else { return }
+        if Thread.isMainThread { statsLock.lock(); mainKeychainCalls += 1; statsLock.unlock() }
+        if keychainDelay > 0 { usleep(keychainDelay * 1000) }
+    }
+
+    /// Hoofdthread-bewaking: elke 250 ms een tik; staat de hoofdthread langer dan 1 s stil, dan in het log.
+    static func startHangMonitor() {
+        guard isActive else { return }
+        let t = Thread {
+            let lock = NSLock()
+            while true {
+                var answered = false
+                DispatchQueue.main.async { lock.lock(); answered = true; lock.unlock() }
+                Thread.sleep(forTimeInterval: 0.25)
+                var waited = 0.25
+                while true {
+                    lock.lock(); let ok = answered; lock.unlock()
+                    if ok { break }
+                    Thread.sleep(forTimeInterval: 0.05); waited += 0.05
+                }
+                if waited > 1.0 { say(String(format: "hoofdthread hing %.1f s", waited)) }
+            }
+        }
+        t.name = "bingr.smoke.hang"
+        t.start()
+    }
+
+    static let pickProfile = PassthroughSubject<UUID, Never>()
+    private static var pickAt: Date?
+    private static var pickPIN: String?
+
+    /// Het pincodescherm verschijnt: tijd sinds het kiezen in het log (> 1 s = fout); geeft de testcode terug.
+    static func pinShown() -> String? {
+        guard isActive, let t = pickAt, let pin = pickPIN else { return nil }
+        let s = Date().timeIntervalSince(t)
+        pickAt = nil
+        say(String(format: "pincodescherm na %.2f s", s) + (s > 1 ? " BINGR_SMOKE_FAIL (moet binnen 1 s)" : ""))
+        return pin
+    }
+
     private static let seededKey = "smoke.seeded.v141"
 
     /// Vóór alles (eerste opgeslagen eigenschap van BingrApp, vóór CloudStore): de stand van een terugkerende gebruiker
@@ -61,6 +110,7 @@ enum SmokeTest {
         guard isActive else { return }
         let d = UserDefaults.standard
         say("start (seeded=\(d.bool(forKey: seededKey)))")
+        startHangMonitor()
         guard !d.bool(forKey: seededKey) else { return }
         if noSeed { d.set(true, forKey: seededKey); return }
         let base = arg("-BingrSmokeM3U") ?? "http://127.0.0.1:9/get"
@@ -92,7 +142,10 @@ enum SmokeTest {
         // bij elke start alle servers verversen (zoals "Server automatisch vernieuwen: bij elke start")
         d.set("launch", forKey: "playlist.refresh")
         d.set(true, forKey: seededKey)
+        // build 143: het hoofdprofiel is met een pincode beveiligd (pincodescherm-test)
+        Keychain.set(smokePIN, for: "parental.pin")
     }
+    static let smokePIN = "2468"
 
     /// Na de intro: vanzelf het laatst actieve profiel openen, de tabbladen langslopen en daarna wijzigingen zoals een
     /// sync-ronde ze geeft (categorie uit en weer aan, wisselen naar het kinderprofiel en terug), met Home lang in beeld
@@ -111,6 +164,18 @@ enum SmokeTest {
             }
             let store = CloudStore.shared
             say("account: \(AccountService.shared.isSignedIn ? "ingelogd" : "geen") · servers \(store.playlists.count) · profielen \(store.profiles.count)")
+            // build 143: beveiligd profiel kiezen in "Wie kijkt er?": het pincodescherm moet er binnen 1 s zijn
+            if app.stage == .picker, !(store.activeProfile?.kids ?? false), let main = store.profiles.first(where: { store.isMain($0) }),
+               ParentalControl.shared.hasPIN(profile: main.id) {
+                await wait(2)
+                pickPIN = Keychain.get(ParentalControl.pinKey(for: main.id))
+                pickAt = Date()
+                say("beveiligd profiel kiezen")
+                pickProfile.send(main.id)
+                for _ in 0..<40 where app.stage != .main { await wait(0.25) }
+                if pickAt != nil { say("pincodescherm niet verschenen BINGR_SMOKE_FAIL") }
+                say("na pincode: \(app.stage == .main ? "profiel open" : "niet open")")
+            }
             guard let p = store.activeProfile ?? store.profiles.first else { say("geen profiel"); return }
             say("profiel openen (kids=\(p.kids))")
             app.open(profile: p)
@@ -139,6 +204,8 @@ enum SmokeTest {
                 await wait(6)
             }
             app.selectedTab = 0
+            statsLock.lock(); let calls = mainKeychainCalls; statsLock.unlock()
+            say("sleutelhanger op de hoofdthread: \(calls) keer")
             say("klaar")
         }
     }

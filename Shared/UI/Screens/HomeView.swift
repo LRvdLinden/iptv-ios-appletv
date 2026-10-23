@@ -40,6 +40,8 @@ struct HomeView: View {
     @ObservedObject private var browse = BrowseIndexStore.shared
     /// Build 128: items van andere servers (Mijn lijst, Verder kijken, favoriete zenders, collecties)
     @ObservedObject private var cross = CrossServer.shared
+    /// Build 143: echte posters voor Verder kijken (TMDB)
+    @ObservedObject private var covers = ContinueCovers.shared
     @State private var prompt: CrossServer.Prompt?
     /// P0-fix: `.task` start bij elke terugkeer naar het tabblad opnieuw. Onthouden wat al klaar is, zodat Home,
     /// Films en Series dan niet opnieuw door de hele bibliotheek lopen (dat bevroor de app).
@@ -118,6 +120,8 @@ struct HomeView: View {
                               language: Localizer.shared.language)) { await loadDiscover() }
         // build 111: TMDB-titels in Mijn lijst die dit apparaat nog niet kent (op een ander apparaat toegevoegd)
         .task(id: store.myList) { await resolveExternalMyList() }
+        // build 143: posters voor Verder kijken opzoeken (ook voor oude items en items van andere apparaten)
+        .task(id: continueCoverKey) { await resolveContinueCovers() }
         .task(id: collectionsKey) {
             let key = collectionsKey
             guard key != collectionsDone else { return }   // al bijgewerkt: niet bij elke terugkeer opnieuw
@@ -955,10 +959,11 @@ struct HomeView: View {
             if filter == .movies && !isMovie { return nil }
             if filter == .series && isMovie { return nil }
             let left = max(0, e.position / max(e.fraction, 0.01) - e.position)
-            // build 141: de cover van de film of serie, niet het beeld van de scène (dat staat in de voortgang)
-            let cover = isMovie ? movieIDs[key]?.poster : index.seriesByTitle[e.title]?.poster
+            // build 141/143: de cover van de film of serie, niet het beeld van de scène (dat staat in de voortgang)
+            let cover = continueCover(title: e.title, movie: isMovie ? movieIDs[key] : nil,
+                                      series: isMovie ? nil : index.seriesByTitle[e.title], fallback: e.artwork)
             return ContinueItem(id: key, title: e.title, subtitle: L("%d min left", Int(left / 60)),
-                                artwork: cover ?? e.artwork, fraction: e.fraction, updated: e.updated, isMovie: isMovie,
+                                artwork: cover, fraction: e.fraction, updated: e.updated, isMovie: isMovie,
                                 position: e.position > 0 ? e.position : nil)
         }
         // films die je in een andere app (via Trakt) half hebt gekeken
@@ -971,13 +976,41 @@ struct HomeView: View {
 
     /// Verder kijken van een andere server: film of aflevering (de serie moet daar zichtbaar zijn voor dit profiel);
     /// nog niet gevonden → de tegel met de bewaarde titel, bij aantikken zoeken of de melding.
+    /// Build 143: cover voor Verder kijken: de TMDB-poster (opgezocht), anders de poster uit de bibliotheek, anders het
+    /// opgeslagen beeld (nooit eerst het beeld van de scène).
+    private func continueCover(title: String, movie: Movie?, series: Series?, fallback: URL?) -> URL? {
+        if let m = movie { return covers.cover(title: m.title, year: m.year, isShow: false) ?? m.poster ?? fallback }
+        if let s = series { return covers.cover(title: s.title, year: s.year, isShow: true) ?? s.poster ?? fallback }
+        return covers.cover(title: title, year: nil, isShow: false) ?? fallback
+    }
+
+    private var continueCoverKey: String { store.progress.keys.sorted().joined(separator: ",") + "|\(indexVersion)" }
+
+    private func resolveContinueCovers() async {
+        let movieIDs = index.movieByID
+        var want: [(title: String, year: Int?, isShow: Bool)] = []
+        for (k, e) in store.progress where store.belongsToActive(e.profileID) {
+            if let m = movieIDs[k] { want.append((m.title, m.year, false)) }
+            else if let s = index.seriesByTitle[e.title] { want.append((s.title, s.year, true)) }
+            else if let pidOther = e.playlistID {
+                let full = pidOther.uuidString + "|" + k
+                if let m = cross.movie(forKey: full) { want.append((m.title, m.year, false)) }
+                else if let s = cross.episodeSeries(playlist: pidOther, key: k) { want.append((s.title, s.year, true)) }
+            }
+        }
+        await covers.resolve(want)
+    }
+
     private func foreignContinue(_ key: String, _ e: ProgressEntry, server: UUID) -> ContinueItem? {
         let full = server.uuidString + "|" + key
         let left = max(0, e.position / max(e.fraction, 0.01) - e.position)
         let isMovie: Bool
         var cover: URL?
-        if let m = cross.movie(forKey: full), !cross.isMissing(full) { isMovie = true; cover = m.poster }
-        else if let x = cross.episodeSeries(playlist: server, key: key) { isMovie = false; cover = x.poster }
+        if let m = cross.movie(forKey: full), !cross.isMissing(full) {
+            isMovie = true; cover = continueCover(title: e.title, movie: m, series: nil, fallback: nil)
+        } else if let x = cross.episodeSeries(playlist: server, key: key) {
+            isMovie = false; cover = continueCover(title: e.title, movie: nil, series: x, fallback: nil)
+        }
         else if cross.isMissing(full), store.activeProfile?.effectiveAgeLimit == nil { isMovie = true }
         else { return nil }
         if filter == .movies && !isMovie { return nil }

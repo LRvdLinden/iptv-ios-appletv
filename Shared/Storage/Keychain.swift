@@ -28,13 +28,77 @@ enum Keychain {
     /// build 97: werk op de wachtrij; al op de wachtrij (geneste aanroep) → direct, anders een deadlock
     private static func serial<T>(_ work: () -> T) -> T {
         if DispatchQueue.getSpecific(key: queueKey) == true { return work() }
+        #if DEBUG || BINGR_SMOKE
+        // start-rooktest: een trage sleutelhanger nabootsen (op een echte Apple TV/iPhone duurt elke aanroep veel
+        // langer dan in de simulator) en tellen hoe vaak de hoofdthread erop wacht
+        SmokeTest.keychainCall()
+        #endif
         return queue.sync(execute: work)
+    }
+
+    /// Build 143: schrijven zonder te wachten (het geheugen is al bijgewerkt); de wachtrij houdt de volgorde, en een
+    /// latere leesactie op de wachtrij komt pas na dit schrijven.
+    private static func serialAsync(_ work: @escaping () -> Void) {
+        if DispatchQueue.getSpecific(key: queueKey) == true { work(); return }
+        queue.async(execute: work)
+    }
+
+    // MARK: geheugen (build 143)
+    //
+    // Build 143: lezen uit het geheugen. Tot nu toe ging elke `get` (2 zoekopdrachten: synchroniseerbaar en oud
+    // lokaal) en `getLocalOnly` naar de sleutelhanger, vaak op de hoofdthread: bij het starten (account, sleutels,
+    // servers, pincode-teller), voor elke profieltegel in "Wie kijkt er?" (slotje) en bij het kiezen van een beveiligd
+    // profiel. Op een echt toestel is de sleutelhanger veel trager dan in de simulator, en de wachtrij is bij het
+    // starten bezig met de overzetting en de sync: de app hing dan seconden lang (pincodescherm kwam pas laat) en
+    // bij het starten kon de watchdog van het systeem de app stoppen. Nu: één keer lezen, daarna uit het geheugen;
+    // schrijven werkt het geheugen bij; `invalidate()` (app weer actief, iCloud-wijziging) leest opnieuw.
+
+    private static let cacheLock = NSLock()
+    private static var cache: [String: String?] = [:]
+    private static var localCache: [String: String?] = [:]
+
+    private static func cached(_ key: String, local: Bool) -> String?? {
+        cacheLock.lock(); defer { cacheLock.unlock() }
+        return local ? localCache[key] : cache[key]
+    }
+
+    private static func remember(_ key: String, _ value: String?, local: Bool) {
+        cacheLock.lock(); defer { cacheLock.unlock() }
+        if local { localCache[key] = .some(value) } else { cache[key] = .some(value) }
+    }
+
+    /// Alles opnieuw uit de sleutelhanger lezen (een ander apparaat kan synchroniseerbare items gewijzigd hebben), op de
+    /// achtergrond: tot het klaar is, blijven de bekende waarden gelden (de hoofdthread wacht nooit).
+    static func revalidate() {
+        cacheLock.lock(); let keys = Array(cache.keys), locals = Array(localCache.keys); cacheLock.unlock()
+        guard !keys.isEmpty || !locals.isEmpty else { return }
+        DispatchQueue.global(qos: .utility).async {
+            var changed: [String] = []
+            for k in keys {
+                let v = serial { read(k) }
+                if cached(k, local: false) != .some(v) { remember(k, v, local: false); changed.append(k) }
+            }
+            for k in locals { remember(k, readLocalOnly(k), local: true) }
+            guard !changed.isEmpty else { return }
+            DispatchQueue.main.async {
+                for k in changed { NotificationCenter.default.post(name: didChange, object: nil, userInfo: ["key": k]) }
+            }
+        }
+    }
+
+    /// Op de achtergrond alvast in het geheugen zetten (bijv. de pincodes van alle profielen).
+    static func prefetch(_ keys: [String], localOnly: [String] = []) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            for k in keys where cached(k, local: false) == nil { _ = get(k) }
+            for k in localOnly where cached(k, local: true) == nil { _ = getLocalOnly(k) }
+        }
     }
 
     // MARK: openbaar
 
     static func set(_ value: String?, for key: String) {
-        serial { () -> Void in
+        remember(key, (value?.isEmpty ?? true) ? nil : value, local: false)
+        serialAsync {
             if let value, !value.isEmpty { writeSynced(value, for: key) } else { deleteAll(key) }
             // build 97: een oude kopie in iCloud KV mag de wijziging niet later terugzetten
             purgeCloudCopy(key)
@@ -47,7 +111,10 @@ enum Keychain {
     static let didChange = Notification.Name("bingr.keychain.didChange")
 
     static func get(_ key: String) -> String? {
-        serial { read(key) }
+        if let c = cached(key, local: false) { return c }
+        let v = serial { read(key) }
+        remember(key, v, local: false)
+        return v
     }
 
     /// build 97: eenmalige (en herhaalbare) overzetting naar de iCloud-sleutelhanger:
@@ -56,6 +123,15 @@ enum Keychain {
     /// 2. oude, alleen-lokale items van eerdere builds omzetten naar synchroniseerbaar;
     /// 3. de spiegel uit iCloud KV verwijderen.
     /// Geeft de sleutels terug die veranderd zijn. Niet op de hoofdthread aanroepen (sleutelhanger is traag).
+    /// Build 143: de volledige overzetting één keer per start; daarna alleen nog als er (weer) een oude spiegel in iCloud KV
+    /// staat. Liep bij elke iCloud-wijziging en elke keer dat de app actief werd, en hield dan de wachtrij bezet.
+    private static var migratedThisLaunch = false
+    static func migrateIfNeeded() {
+        let first: Bool = { cacheLock.lock(); defer { cacheLock.unlock() }; let f = !migratedThisLaunch; migratedThisLaunch = true; return f }()
+        guard first || kv.object(forKey: cloudKey) != nil else { return }
+        migrateFromCloud()
+    }
+
     @discardableResult
     static func migrateFromCloud() -> [String] {
         var changed: [String] = []
@@ -83,6 +159,7 @@ enum Keychain {
             }
         }
         if !changed.isEmpty {
+            for k in changed { remember(k, serial { read(k) }, local: false) }
             DispatchQueue.main.async {
                 for k in changed { NotificationCenter.default.post(name: didChange, object: nil, userInfo: ["key": k]) }
             }
@@ -207,7 +284,8 @@ enum Keychain {
     private static let localOnlyService = "nl.lrvdlinden.bingr.device"
 
     static func setLocalOnly(_ value: String?, for key: String) {
-        serial { () -> Void in
+        remember(key, (value?.isEmpty ?? true) ? nil : value, local: true)
+        serialAsync {
             let base: [String: Any] = [
                 kSecClass as String: kSecClassGenericPassword,
                 kSecAttrService as String: localOnlyService,
@@ -235,6 +313,13 @@ enum Keychain {
     }
 
     static func getLocalOnly(_ key: String) -> String? {
+        if let c = cached(key, local: true) { return c }
+        let v = readLocalOnly(key)
+        remember(key, v, local: true)
+        return v
+    }
+
+    private static func readLocalOnly(_ key: String) -> String? {
         serial { () -> String? in
             let q: [String: Any] = [
                 kSecClass as String: kSecClassGenericPassword,

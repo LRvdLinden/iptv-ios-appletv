@@ -52,9 +52,39 @@ struct MainTabView: View {
 
     private var hasLive: Bool { !playlists.library.channels.isEmpty || !(playlists.source?.kind.isMediaServer ?? false) }
 
+    /// Build 143: de tabbladen die er nu echt zijn, op dit platform. Met de SDK van iOS/tvOS 27 kan een TabView crashen
+    /// als de selectie een tabblad is dat (nu) niet bestaat (release notes iOS/iPadOS 27: "TabView might crash when its
+    /// selection is set to a hidden or otherwise unavailable tab"). Bijv. Live TV dat tijdens het laden of na een
+    /// profielwissel even weg is, Mijn Bingr (5) dat alleen op Apple TV een tabblad is, Zoeken (4) en Downloads (6)
+    /// die op de iPhone geen tabblad zijn, of een opgeslagen starttabblad. De selectie valt daarom altijd terug op Home.
+    private var availableTabs: Set<Int> {
+        var t: Set<Int> = [0, 7]
+        if hasLive && showLive { t.insert(1) }
+        if showMovies { t.insert(2) }
+        if showSeries { t.insert(3) }
+        if !Self.isPhone { t.insert(4) }
+        #if os(iOS)
+        if !Self.isPhone { t.insert(6) }
+        #endif
+        #if os(tvOS)
+        t.insert(5)
+        #endif
+        return t
+    }
+
+    /// Altijd een bestaand tabblad (anders Home)
+    private var tabSelection: Binding<Int> {
+        Binding(get: {
+            let t = app.selectedTab ?? 0
+            return availableTabs.contains(t) ? t : 0
+        }, set: { v in
+            app.selectedTab = availableTabs.contains(v) ? v : 0
+        })
+    }
+
     var body: some View {
         ZStack {
-            TabView(selection: Binding(get: { app.selectedTab ?? 0 }, set: { app.selectedTab = $0 })) {
+            TabView(selection: tabSelection) {
                 HomeView(filter: .all).tag(0)
                     .tabItem { Label(L("Home"), systemImage: "house.fill") }
                 if hasLive && showLive {
@@ -120,6 +150,13 @@ struct MainTabView: View {
             openTitleLink()
         }
         .onChange(of: app.pendingTitleLink) { _, _ in openTitleLink() }
+        // build 143: verdwijnt het gekozen tabblad (bijv. Live TV), dan naar Home
+        .onChange(of: availableTabs) { _, tabs in
+            if let t = app.selectedTab, !tabs.contains(t) { app.selectedTab = 0 }
+        }
+        .onChange(of: app.selectedTab) { _, t in
+            if let t, !availableTabs.contains(t) { app.selectedTab = 0 }
+        }
         .onChange(of: playlists.isLoading) { was, loading in
             // klaar met laden, ook als de bibliotheek leeg bleef: dan het zoekscherm
             if was && !loading { openTitleLink(loaded: true) }
@@ -131,6 +168,7 @@ struct MainTabView: View {
                 let allowed = [0, hasLive && showLive ? 1 : -1, showMovies ? 2 : -1, showSeries ? 3 : -1]
                 app.selectedTab = allowed.contains(startTab) ? startTab : 0
             }
+            if let t = app.selectedTab, !availableTabs.contains(t) { app.selectedTab = 0 }   // build 143
         }
         #if !os(tvOS)
         .sheet(item: Self.screenshotWideDetail ? Binding<DetailTarget?>.constant(nil) : $pendingDetail) { DetailView(target: $0) }

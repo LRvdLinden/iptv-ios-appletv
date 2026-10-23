@@ -6,7 +6,7 @@
 #
 # Per platform vier starts:
 #   1. nieuwe installatie, gewone start (inlogscherm, zoals een nieuwe gebruiker)
-#   2. nieuwe installatie met `-BingrSmoke YES`: terugkerende gebruiker (M3U-server met inloggegevens, profielen,
+#   2. nieuwe installatie met `-BingrSmoke YES` (sleutelhanger 150 ms trager, zoals op een toestel): terugkerende gebruiker (M3U-server met inloggegevens, profielen,
 #      Mijn lijst); de app opent het profiel en loopt alle tabbladen langs (zie Shared/App/SmokeMode.swift)
 #   3. opnieuw starten op dezelfde installatie (opgeslagen stand, migraties bij de tweede start)
 #   4. nieuwe installatie met het kinderprofiel als laatst actieve profiel
@@ -95,6 +95,17 @@ report_crash() { # naam log
 
 # piekgeheugen (RSS) van de app; boven SMOKE_MAX_MB (tvOS: ruim onder de grens van een Apple TV) faalt de test,
 # want op het apparaat stopt het systeem de app dan (lijkt een crash direct na het openen)
+# build 143: pincodescherm te laat (BINGR_SMOKE_FAIL) of de hoofdthread langer dan 5 s vast = fout (op een toestel
+# stopt de watchdog de app dan, 0x8badf00d)
+check_log() { # naam log
+  local bad
+  bad=$(grep -aE "BINGR_SMOKE_FAIL|hoofdthread hing ([5-9]|[1-9][0-9]+)\.[0-9] s" "$2" | sed -E 's/^.*BINGR_SMOKE: //' | head -5)
+  if [ -n "$bad" ]; then
+    echo "::error title=Start-rooktest $PLATFORM ($1)::$(echo "$bad" | tr '\n' ' ')"
+    FAIL=1
+  fi
+}
+
 check_memory() { # naam piek-kB
   local mb=$(( $2 / 1024 ))
   echo "$PLATFORM/$1: piekgeheugen ${mb} MB"
@@ -126,6 +137,7 @@ sim_run() { # udid app naam args...
   done
   echo "$PLATFORM/$name: geheugen (MB) per 5 s:$timeline"
   check_memory "$name" "$peak"
+  check_log "$name" "$log"
   if [ $alive = 1 ]; then
     # ook een crash van een hulpproces van de app telt
     local late; late=$(new_reports 1)
@@ -150,27 +162,27 @@ simulator() { # platform-runtime-naam app types...
   xcrun simctl install "$udid" "$app"
   sim_run "$udid" "$app" 1-nieuw "${fresh[@]}"
   xcrun simctl uninstall "$udid" "$BUNDLE"; xcrun simctl install "$udid" "$app"
-  sim_run "$udid" "$app" 2-terugkerend -BingrSmoke YES -BingrSmokeM3U "$M3U" "${fresh[@]}"
+  sim_run "$udid" "$app" 2-terugkerend -BingrSmoke YES -BingrSmokeKeychainMs "${SMOKE_KEYCHAIN_MS:-150}" -BingrSmokeM3U "$M3U" "${fresh[@]}"
   if [ -n "${SMOKE_LIGHT:-}" ]; then
     xcrun simctl shutdown "$udid" >/dev/null 2>&1 || true; xcrun simctl delete "$udid" >/dev/null 2>&1 || true
     return
   fi
   more_titles
-  sim_run "$udid" "$app" 3-herstart -BingrSmoke YES -BingrSmokeM3U "$M3U" "${fresh[@]}"
+  sim_run "$udid" "$app" 3-herstart -BingrSmoke YES -BingrSmokeKeychainMs "${SMOKE_KEYCHAIN_MS:-150}" -BingrSmokeM3U "$M3U" "${fresh[@]}"
   xcrun simctl uninstall "$udid" "$BUNDLE"; xcrun simctl install "$udid" "$app"
   make_m3u "$SRV/get.php" 40 6 Smoke 0
-  sim_run "$udid" "$app" 4-kinderprofiel -BingrSmoke YES -BingrSmokeKids YES -BingrSmokeM3U "$M3U" "${fresh[@]}"
+  sim_run "$udid" "$app" 4-kinderprofiel -BingrSmoke YES -BingrSmokeKeychainMs "${SMOKE_KEYCHAIN_MS:-150}" -BingrSmokeKids YES -BingrSmokeM3U "$M3U" "${fresh[@]}"
   if [ -n "${SMOKE_EMAIL:-}" ]; then
     # met een Bingr-account (tijdelijk testaccount): de iPhone zet zijn gegevens in het account, de Apple TV (en de Mac)
     # haalt alles van het account, zoals een gebruiker die op een tweede apparaat inlogt; daarna opnieuw starten met
     # de sessie (de account-sync bij het starten)
     xcrun simctl uninstall "$udid" "$BUNDLE"; xcrun simctl install "$udid" "$app"
     if [ "$PLATFORM" = ios ]; then
-      sim_run "$udid" "$app" 5-account -BingrSmoke YES -BingrSmokeM3U "$M3U" -BingrSmokeEmail "$SMOKE_EMAIL" -BingrSmokePassword "$SMOKE_PASSWORD" "${fresh[@]}"
+      sim_run "$udid" "$app" 5-account -BingrSmoke YES -BingrSmokeKeychainMs "${SMOKE_KEYCHAIN_MS:-150}" -BingrSmokeM3U "$M3U" -BingrSmokeEmail "$SMOKE_EMAIL" -BingrSmokePassword "$SMOKE_PASSWORD" "${fresh[@]}"
     else
-      sim_run "$udid" "$app" 5-account -BingrSmoke YES -BingrSmokeNoSeed YES -BingrSmokeEmail "$SMOKE_EMAIL" -BingrSmokePassword "$SMOKE_PASSWORD" "${fresh[@]}"
+      sim_run "$udid" "$app" 5-account -BingrSmoke YES -BingrSmokeKeychainMs "${SMOKE_KEYCHAIN_MS:-150}" -BingrSmokeNoSeed YES -BingrSmokeEmail "$SMOKE_EMAIL" -BingrSmokePassword "$SMOKE_PASSWORD" "${fresh[@]}"
     fi
-    sim_run "$udid" "$app" 6-account-herstart -BingrSmoke YES -BingrSmokeEmail "$SMOKE_EMAIL" -BingrSmokePassword "$SMOKE_PASSWORD" "${fresh[@]}"
+    sim_run "$udid" "$app" 6-account-herstart -BingrSmoke YES -BingrSmokeKeychainMs "${SMOKE_KEYCHAIN_MS:-150}" -BingrSmokeEmail "$SMOKE_EMAIL" -BingrSmokePassword "$SMOKE_PASSWORD" "${fresh[@]}"
   fi
   xcrun simctl shutdown "$udid" >/dev/null 2>&1 || true
   xcrun simctl delete "$udid" >/dev/null 2>&1 || true
@@ -194,6 +206,7 @@ mac_run() { # naam args...
   done
   echo "$PLATFORM/$name: geheugen (MB) per 5 s:$timeline"
   check_memory "$name" "$peak"
+  check_log "$name" "$log"
   if [ $alive = 1 ]; then
     local late; late=$(new_reports 1)
     kill "$pid" 2>/dev/null; sleep 2; kill -9 "$pid" 2>/dev/null || true
@@ -220,16 +233,16 @@ case "$PLATFORM" in
     mac_reset
     mac_run 1-nieuw -AppleLanguages "(nl)"
     mac_reset
-    mac_run 2-terugkerend -BingrSmoke YES -BingrSmokeM3U "$M3U" -AppleLanguages "(nl)"
+    mac_run 2-terugkerend -BingrSmoke YES -BingrSmokeKeychainMs "${SMOKE_KEYCHAIN_MS:-150}" -BingrSmokeM3U "$M3U" -AppleLanguages "(nl)"
     more_titles
-    mac_run 3-herstart -BingrSmoke YES -BingrSmokeM3U "$M3U" -AppleLanguages "(nl)"
+    mac_run 3-herstart -BingrSmoke YES -BingrSmokeKeychainMs "${SMOKE_KEYCHAIN_MS:-150}" -BingrSmokeM3U "$M3U" -AppleLanguages "(nl)"
     mac_reset
     make_m3u "$SRV/get.php" 40 6 Smoke 0
-    mac_run 4-kinderprofiel -BingrSmoke YES -BingrSmokeKids YES -BingrSmokeM3U "$M3U" -AppleLanguages "(nl)"
+    mac_run 4-kinderprofiel -BingrSmoke YES -BingrSmokeKeychainMs "${SMOKE_KEYCHAIN_MS:-150}" -BingrSmokeKids YES -BingrSmokeM3U "$M3U" -AppleLanguages "(nl)"
     mac_reset
     if [ -n "${SMOKE_EMAIL:-}" ]; then
-      mac_run 5-account -BingrSmoke YES -BingrSmokeNoSeed YES -BingrSmokeEmail "$SMOKE_EMAIL" -BingrSmokePassword "$SMOKE_PASSWORD" -AppleLanguages "(nl)"
-      mac_run 6-account-herstart -BingrSmoke YES -BingrSmokeEmail "$SMOKE_EMAIL" -BingrSmokePassword "$SMOKE_PASSWORD" -AppleLanguages "(nl)"
+      mac_run 5-account -BingrSmoke YES -BingrSmokeKeychainMs "${SMOKE_KEYCHAIN_MS:-150}" -BingrSmokeNoSeed YES -BingrSmokeEmail "$SMOKE_EMAIL" -BingrSmokePassword "$SMOKE_PASSWORD" -AppleLanguages "(nl)"
+      mac_run 6-account-herstart -BingrSmoke YES -BingrSmokeKeychainMs "${SMOKE_KEYCHAIN_MS:-150}" -BingrSmokeEmail "$SMOKE_EMAIL" -BingrSmokePassword "$SMOKE_PASSWORD" -AppleLanguages "(nl)"
       mac_reset
     fi
     ;;

@@ -538,7 +538,7 @@ final class CloudStore: ObservableObject {
         // build 97: geheimen staan niet meer in iCloud KV maar in de iCloud-sleutelhanger; wat er van een oudere
         // versie nog in KV staat, overzetten en uit KV halen — op de achtergrond, sleutelhanger-acties zijn traag
         DispatchQueue.global(qos: .utility).async {
-            Keychain.migrateFromCloud()
+            Keychain.migrateIfNeeded()   // build 143: niet bij elke iCloud-wijziging opnieuw de hele sleutelhanger door
             // eigen API-sleutels kunnen ook via de iCloud-sleutelhanger veranderd zijn: de cache opnieuw lezen
             DispatchQueue.main.async { Secrets.reload() }
         }
