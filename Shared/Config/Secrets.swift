@@ -93,7 +93,7 @@ enum Secrets {
     /// Bingr-accounts beschikbaar in deze build (SUPABASE_URL en SUPABASE_ANON_KEY ingebouwd).
     static var accountsConfigured: Bool {
         // build 141: start-rooktest (alleen Debug, launch-argument) zonder Bingr-account
-        if SmokeTest.isActive { return false }
+        if SmokeTest.offline { return false }
         return isSet(supabaseURL) && isSet(supabaseAnonKey) && URL(string: supabaseURL)?.host != nil
     }
 

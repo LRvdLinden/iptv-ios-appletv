@@ -9,11 +9,13 @@ import Foundation
 // vanzelf het laatst actieve profiel en loopt hij alle tabbladen langs, zodat Home, Live TV, Films, Series,
 // Categorieën, Zoeken en Mijn Bingr echt getekend worden. Een tweede start (zelfde installatie) test de opgeslagen stand.
 // Het M3U-adres (`-BingrSmokeM3U http://127.0.0.1:…`) is een lokale testserver van de workflow met verzonnen titels.
-// In de App Store-build (Release) is dit altijd uit.
+// In de App Store-build (Release, zonder BINGR_SMOKE) is dit altijd uit.
 
 enum SmokeTest {
     static let isActive: Bool = {
-        #if DEBUG
+        // DEBUG, of BINGR_SMOKE: de Release-build die de workflow alleen voor deze test maakt (zoals de App Store-build,
+        // met optimalisaties); de Release-build voor de App Store heeft BINGR_SMOKE nooit
+        #if DEBUG || BINGR_SMOKE
         return flag("-BingrSmoke")
         #else
         return false
@@ -22,6 +24,14 @@ enum SmokeTest {
 
     /// `-BingrSmokeKids YES`: het kinderprofiel is het laatst actieve profiel (ouderpoort, kinderfilter)
     static var startInKids: Bool { flag("-BingrSmokeKids") }
+    /// Met een Bingr-account (tijdelijk testaccount van de workflow): `-BingrSmokeEmail` en `-BingrSmokePassword`.
+    /// Dan inloggen zoals in het inlogscherm, met de echte account-sync (profielen, servers, lijsten, categorieën).
+    static var accountEmail: String? { isActive ? arg("-BingrSmokeEmail") : nil }
+    private static var accountPassword: String? { isActive ? arg("-BingrSmokePassword") : nil }
+    /// Zonder account: Bingr-accounts uit (geen server)
+    static var offline: Bool { isActive && accountEmail == nil }
+    /// `-BingrSmokeNoSeed YES`: geen eigen testgegevens (tweede apparaat: alles komt van het account)
+    private static var noSeed: Bool { flag("-BingrSmokeNoSeed") }
 
     private static func flag(_ name: String) -> Bool {
         let args = ProcessInfo.processInfo.arguments
@@ -50,6 +60,7 @@ enum SmokeTest {
         let d = UserDefaults.standard
         say("start (seeded=\(d.bool(forKey: seededKey)))")
         guard !d.bool(forKey: seededKey) else { return }
+        if noSeed { d.set(true, forKey: seededKey); return }
         let base = arg("-BingrSmokeM3U") ?? "http://127.0.0.1:9/get"
         func server(_ name: String, _ file: String, _ color: Int) -> PlaylistSource {
             var s = PlaylistSource(name: name, kind: .m3u, avatar: PlaylistAvatar(symbol: "tv", colorIndex: color))
@@ -89,7 +100,15 @@ enum SmokeTest {
         Task { @MainActor in
             func wait(_ s: Double) async { try? await Task.sleep(nanoseconds: UInt64(s * 1_000_000_000)) }
             await wait(1.5)
+            if app.stage == .auth, let mail = accountEmail, let pw = accountPassword {
+                // zoals het inlogscherm: daarna registreert AuthView het apparaat, synct en gaat naar "Wie kijkt er?"
+                do { try await AccountService.shared.signIn(email: mail, password: pw); say("ingelogd") }
+                catch { say("inloggen mislukt: \(type(of: error))") }
+                for _ in 0..<40 where app.stage != .picker && app.stage != .main { await wait(0.5) }
+                say("na inloggen: \(app.stage == .picker ? "kies profiel" : "\(app.stage)")")
+            }
             let store = CloudStore.shared
+            say("account: \(AccountService.shared.isSignedIn ? "ingelogd" : "geen") · servers \(store.playlists.count) · profielen \(store.profiles.count)")
             guard let p = store.activeProfile ?? store.profiles.first else { say("geen profiel"); return }
             say("profiel openen (kids=\(p.kids))")
             app.open(profile: p)
