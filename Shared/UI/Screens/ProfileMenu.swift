@@ -119,17 +119,19 @@ struct ProfileMenuButton<MenuLabel: View>: View {
     #endif
 
     private func perform(_ action: ProfileMenuAction) {
+        // build 140: vanuit een kinderprofiel eerst de rekensom (KidsGate); Mijn Bingr vraagt hem zelf
         switch action {
         case .profile(let p):
             // profiel met pincode: eerst de pincode vragen (zoals bij "Wie kijkt er?")
-            if ParentalControl.shared.hasPIN(profile: p.id) { pinFor = p } else { app.open(profile: p) }
-        case .switchProfile: app.switchPlaylist()
+            let go = { if ParentalControl.shared.hasPIN(profile: p.id) { pinFor = p } else { app.open(profile: p) } }
+            if p.kids { go() } else { KidsGate.shared.require(go) }
+        case .switchProfile: KidsGate.shared.requireSwitch { app.switchPlaylist() }
         case .manageProfiles: app.showMyBingr(.profiles)
         case .myBingr: app.showMyBingr()
         case .settings: app.showMyBingr(.settings)
         case .account: app.showMyBingr(.account)
         case .support: showSupport = true
-        case .signOut: confirmSignOut = true
+        case .signOut: KidsGate.shared.require { confirmSignOut = true }
         }
     }
 }

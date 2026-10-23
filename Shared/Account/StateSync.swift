@@ -12,6 +12,8 @@ import CryptoKit
 /// - `reminders`: herinneringen (van alle profielen; per herinnering `profileID`, zie docs/ACCOUNT.md).
 /// - `collections`: eigen collecties (build 51), sinds build 54 per profiel (`profiles.<profielID>.items`); per item
 ///   wint de nieuwste `updatedAt`; in `profile.<id>` ook `homeLayout`.
+/// - `account` (build 140): wat voor het hele account geldt: `hiddenCategories` (categorieën uit voor alle
+///   niet-kinderprofielen, "<server-id kleine letters>|<categorienaam>") met `removed.hiddenCategories`.
 ///
 /// Lijsten en sets worden per item samengevoegd (`{id, removed?, at}`, nieuwste `at` wint), zodat ook een
 /// verwijdering doorkomt. Lokale wijzigingen worden herkend door de huidige stand te vergelijken met de laatst
@@ -85,6 +87,8 @@ final class StateSync {
         /// eenmalig opnieuw vastleggen, zonder dat het als eigen wijziging telt.
         /// (Een nieuwe meta begint met het huidige formaat; een opgeslagen meta van vóór build 54 heeft nil.)
         var settingsFormat: Int? = StateSync.settingsFormat
+        /// Build 140: section `account` (optioneel, zodat een opgeslagen meta van vóór build 140 gewoon te lezen is)
+        var account: ListMeta? = nil
     }
 
     /// 60: `subtitleLanguage: "off"` wordt `""` + `autoSubtitles: "off"`
@@ -201,6 +205,7 @@ final class StateSync {
         switch kind {
         case .reminders: schedule(["reminders"], delay: 3)
         case .collections: schedule(["collections"], delay: 3)
+        case .account: schedule(["account"], delay: 3)
         case .settings: settingsMaybeChanged()
         case .prefs:
             settingsMaybeChanged()
@@ -411,6 +416,7 @@ final class StateSync {
         _ = noteSettings()
         _ = noteConnections()
         noteReminders()
+        noteAccount()
         for p in store.profiles { noteProfile(p.id) }
         saveMeta()
 
@@ -436,6 +442,13 @@ final class StateSync {
             guard wants(name) else { continue }
             if let u = mergeProfile(p.id, server[name]) { uploads.append((name, u)) }
         }
+        // build 140: categorieën per account; eerst (eenmalig, na een volledige ronde zodat de per-profiel-sets van de
+        // server er zijn) de oude per-profiel-keuzes overnemen met een oude tijd
+        if sections == nil {
+            let added = store.migrateAccountCategories()
+            if !added.isEmpty { presetOldAccount(added) }
+        }
+        if wants("account"), let u = mergeAccount(server["account"]) { uploads.append(("account", u)) }
         // verwijderde profielen (tombstone): hun onderdeel op de server weg
         var deletes: [String] = []
         let localIDs = Set(store.profiles.map(\.id))
@@ -895,6 +908,78 @@ final class StateSync {
                                 "start": iso(r.start.timeIntervalSince1970)]
         if let p = r.profileID { j["profileID"] = p.uuidString.lowercased() }
         return j
+    }
+
+    // MARK: - account (build 140): categorieën voor het hele account
+
+    private static let accountField = "hiddenCategories"
+
+    private func noteAccount() {
+        var m = meta.account ?? ListMeta()
+        let now = m.seeded ? trustedNow() : 0
+        Self.diff(&m, Self.accountField, CloudStore.shared.hiddenCategories, now: now)
+        meta.account = m
+    }
+
+    /// Migratie (build 140): deze sleutels tellen als heel oud, zodat een keuze van een ander apparaat voorgaat.
+    private func presetOldAccount(_ keys: [String]) {
+        var m = meta.account ?? ListMeta()
+        var present = m.present[Self.accountField] ?? [:]
+        for k in keys where present[k] == nil { present[k] = 1 }
+        m.present[Self.accountField] = present
+        meta.account = m
+        saveMeta()
+    }
+
+    /// Server-id in kleine letters (build 140); bij twee schrijfwijzen telt de nieuwste tijd.
+    private static func normalizedKeys(_ d: [String: Double]) -> [String: Double] {
+        var out: [String: Double] = [:]
+        for (k, v) in d {
+            let n = AccountCategories.normalize(k)
+            out[n] = max(out[n] ?? -1, v)
+        }
+        return out
+    }
+
+    private func mergeAccount(_ remote: (data: Any, updatedAt: String?)?) -> [String: Any]? {
+        let store = CloudStore.shared
+        noteAccount()
+        var m = meta.account ?? ListMeta()
+        let data = remote?.data as? [String: Any] ?? [:]
+        let sectionAt = Self.time(data["updatedAt"]) ?? Self.time(remote?.updatedAt) ?? 0
+        var s = Self.decodeSet(data[Self.accountField], fallbackAt: sectionAt)
+        let removedAll = data["removed"] as? [String: Any] ?? [:]
+        for (k, v) in Self.timeMap(removedAll[Self.accountField]) { s.removed[k] = max(s.removed[k] ?? 0, v) }
+        let server = (present: Self.normalizedKeys(s.present), removed: Self.normalizedKeys(s.removed))
+        let merged = Self.mergeSet(local: (Self.normalizedKeys(m.present[Self.accountField] ?? [:]),
+                                           Self.normalizedKeys(m.removed[Self.accountField] ?? [:])),
+                                   server: server)
+        let removed = Self.pruned(merged.removed)
+        store.setSyncedAccountCategories(Set(merged.present.keys))
+        m.present[Self.accountField] = merged.present
+        m.removed[Self.accountField] = removed
+        m.seeded = true
+        meta.account = m
+
+        let mine = accountPayload(present: merged.present, removed: removed, extras: data)
+        guard remote != nil else {
+            return merged.present.isEmpty && removed.isEmpty ? nil : mine
+        }
+        let theirsMerged = Self.mergeSet(local: ([:], [:]), server: server)
+        let theirs = accountPayload(present: theirsMerged.present, removed: Self.pruned(theirsMerged.removed), extras: data)
+        return Self.same(Self.withoutUpdatedAt(mine), Self.withoutUpdatedAt(theirs)) ? nil : mine
+    }
+
+    private func accountPayload(present: [String: Double], removed: [String: Double], extras: [String: Any]) -> [String: Any] {
+        var out = extras
+        var items: [[String: Any]] = present.sorted { $0.key < $1.key }.map { ["id": $0.key, "at": Self.iso($0.value)] }
+        items += removed.sorted { $0.key < $1.key }.map { ["id": $0.key, "removed": true, "at": Self.iso($0.value)] }
+        out[Self.accountField] = items
+        var removedOut = extras["removed"] as? [String: Any] ?? [:]
+        removedOut[Self.accountField] = removed.mapValues { Self.iso($0) }
+        out["removed"] = removedOut
+        out["updatedAt"] = Self.iso(trustedNow())
+        return out
     }
 
     // MARK: - collections (build 51, per profiel sinds build 54)
@@ -1508,7 +1593,9 @@ final class StateSync {
         var present = m.present[name] ?? [:]
         var removed = m.removed[name] ?? [:]
         for id in current where present[id] == nil {
-            present[id] = now
+            // build 140: een bekende verwijdering met een even late of latere tijd (klok van een ander apparaat loopt
+            // voor) mag een toevoeging hier niet overstemmen; anders verdween een item meteen weer uit Mijn lijst
+            present[id] = ListStamp.addedAt(now: now, knownRemoval: removed[id])
             if now > 0 { removed[id] = nil }
         }
         for id in present.keys where !current.contains(id) {

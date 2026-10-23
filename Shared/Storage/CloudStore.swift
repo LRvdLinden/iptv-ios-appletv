@@ -29,7 +29,9 @@ final class CloudStore: ObservableObject {
     /// serie-id → "seizoen-aflevering" uit `localWatched` (één keer opgebouwd i.p.v. per poster de hele set door te lopen)
     private var localEpisodeIndex: [String: Set<String>]?
     @Published private(set) var recentChannels: [String] = []
-    /// Build 128: categorieën die dit profiel uit heeft gezet, over alle servers: "<server-id>|<categorienaam>"
+    /// Build 140: categorieën die uit staan voor het hele account (alle niet-kinderprofielen), over alle servers:
+    /// "<server-id kleine letters>|<categorienaam>" (state-section `account`, docs/ACCOUNT.md → "Build 140").
+    /// Tot build 139 per profiel (`profile.<id>.hiddenCategories`); die blijven onaangeroerd staan voor oudere apps.
     @Published private(set) var hiddenCategories: Set<String> = [] { didSet { hiddenGroupsCache = [:] } }
     private var hiddenGroupsCache: [UUID: Set<String>] = [:]
     @Published var lastSync: Date?
@@ -91,7 +93,17 @@ final class CloudStore: ObservableObject {
         assign(\.localWatched, scoped(Set<String>.self, K.watched) ?? [])
         assign(\.recentChannels, scoped([String].self, K.recent) ?? [])
         assign(\.history, scoped([HistoryEntry].self, K.history) ?? [])
-        assign(\.hiddenCategories, decode(Set<String>.self, pk(K.categories)) ?? [])
+    }
+
+    /// Build 140: verborgen categorieën van het account (alleen lokaal bewaard; de account-sync brengt ze mee).
+    private func loadAccountCategories() {
+        let set = (local.data(forKey: K.accountCategories)).flatMap { try? JSONDecoder().decode(Set<String>.self, from: $0) } ?? []
+        assign(\.hiddenCategories, set)
+    }
+
+    private func saveAccountCategories() {
+        guard !Screenshots.isActive, let d = try? JSONEncoder().encode(hiddenCategories) else { return }
+        local.set(d, forKey: K.accountCategories)
     }
 
     /// Bestaande afspeellijsten (vroeger = profielen) omzetten naar kijkprofielen.
@@ -265,7 +277,7 @@ final class CloudStore: ObservableObject {
                    photos = "photos.v1", history = "history.v1",
                    profiles = "profiles.v1", mainSource = "mainsource.v1", mainProfile = "mainprofile.v1",
                    collections = "collections.v1", homeLayout = "homelayout.v1",
-                   categories = "categories.v1"
+                   categories = "categories.v1", accountCategories = "categories.account.v140"
     }
 
     private init() {
@@ -393,6 +405,7 @@ final class CloudStore: ObservableObject {
         assign(\.mainProfileIDStored, decode(UUID.self, K.mainProfile))
         migrateToProfiles()
         loadProfileData()
+        loadAccountCategories()
         // zonder Bingr-account in deze build: migraties alleen lokaal (anders na de sync, zie ProfileSync/StateSync)
         if !Secrets.accountsConfigured { migrateLegacyAccent() }
         applyActiveAccent()
@@ -571,6 +584,8 @@ final class CloudStore: ObservableObject {
         local.removeObject(forKey: AccentChoice.legacyKey)
         local.removeObject(forKey: AccentChoice.migratedKey)
         favorites = []; myList = []; localWatched = []; recentChannels = []; history = []; progress = [:]; hiddenCategories = []
+        local.removeObject(forKey: K.accountCategories)
+        local.removeObject(forKey: Self.accountCategoriesMigratedKey)
         activeProfileID = nil
         activePlaylistID = nil
         local.removeObject(forKey: "activeProfileID")
@@ -590,7 +605,7 @@ final class CloudStore: ObservableObject {
     // MARK: overige gegevens via de Bingr-account (build 44, zie StateSync)
 
     /// Soort lokale wijziging, zodat StateSync weet wat er (vertraagd) naar de account moet.
-    enum StateEdit { case profile, progress, prefs, reminders, settings, collections }
+    enum StateEdit { case profile, progress, prefs, reminders, settings, collections, account }
     /// Eigen wijziging op dit apparaat: (profiel-ID of nil, soort). Niet bij overnemen uit iCloud of de account.
     let stateEdited = PassthroughSubject<(UUID?, StateEdit), Never>()
 
@@ -622,9 +637,10 @@ final class CloudStore: ObservableObject {
     func profileData(_ id: UUID) -> ProfileData {
         // het actieve profiel: wat nu in het geheugen staat (dat is altijd het nieuwste)
         if id == activeProfileID {
+            // build 140: `hiddenCategories` is in het geheugen de account-set; de per-profiel-set (van oudere apps) van schijf
             return ProfileData(favorites: favorites, myList: myList, watched: localWatched,
                                recentChannels: recentChannels, history: history, progress: progress,
-                               hiddenCategories: hiddenCategories)
+                               hiddenCategories: decode(Set<String>.self, "\(K.categories).\(id.uuidString)") ?? [])
         }
         func read<T: Decodable>(_ t: T.Type, _ base: String) -> T? {
             if let v = decode(t, "\(base).\(id.uuidString)") { return v }
@@ -656,7 +672,6 @@ final class CloudStore: ObservableObject {
             // alleen wat veranderd is: anders tekent elk scherm opnieuw bij elke sync-ronde
             assign(\.favorites, d.favorites); assign(\.myList, d.myList); assign(\.localWatched, d.watched)
             assign(\.recentChannels, d.recentChannels); assign(\.history, d.history); assign(\.progress, d.progress)
-            assign(\.hiddenCategories, d.hiddenCategories)
         }
     }
 
@@ -988,39 +1003,46 @@ final class CloudStore: ObservableObject {
         edited(.profile)
     }
 
-    // MARK: categorieën per profiel (build 128, docs/ACCOUNT.md → "Categorieën per profiel")
+    // MARK: categorieën per account (build 140, docs/ACCOUNT.md → "Build 140"; tot build 139 per profiel)
 
-    static func categoryKey(_ playlist: UUID, _ group: String) -> String { "\(playlist.uuidString)|\(group)" }
+    /// Sleutel van een categorie: server-id in kleine letters, categorienaam exact (build 140)
+    static func categoryKey(_ playlist: UUID, _ group: String) -> String {
+        AccountCategories.key(sid: playlist.uuidString, group: group)
+    }
 
-    /// Categorieën die het actieve profiel op deze server uit heeft gezet (server-id hoofdletterongevoelig).
+    /// Categorieën die op deze server uit staan voor het account (server-id hoofdletterongevoelig). Kinderprofielen
+    /// gebruiken deze set niet (zie `PlaylistService.context(for:)`).
     func hiddenGroups(for playlist: UUID) -> Set<String> {
         if let c = hiddenGroupsCache[playlist] { return c }
-        let p = playlist.uuidString
-        var out = Set<String>()
-        for k in hiddenCategories {
-            guard let bar = k.firstIndex(of: "|"), k[..<bar].caseInsensitiveCompare(p) == .orderedSame else { continue }
-            out.insert(String(k[k.index(after: bar)...]))
-        }
+        let out = AccountCategories.groups(hiddenCategories, sid: playlist.uuidString)
         hiddenGroupsCache[playlist] = out
         return out
     }
 
     func isCategoryHidden(_ playlist: UUID, _ group: String) -> Bool { hiddenGroups(for: playlist).contains(group) }
 
-    /// Categorieën aan of uit voor het actieve profiel. `items`: (server, categorienaam).
+    /// Categorieën aan of uit voor het hele account. `items`: (server, categorienaam).
     func setCategories(_ items: [(UUID, String)], hidden: Bool) {
         var set = hiddenCategories
         for (pl, g) in items {
-            let found = set.filter { Self.sameKey($0, pl, g) }
-            if hidden { if found.isEmpty { set.insert(Self.categoryKey(pl, g)) } } else { set.subtract(found) }
+            let k = Self.categoryKey(pl, g)
+            if hidden { set.insert(k) } else { set.remove(k) }
         }
         guard set != hiddenCategories else { return }
         hiddenCategories = set
-        write(hiddenCategories, pk(K.categories))
-        edited(.profile)
+        saveAccountCategories()
+        stateEdited.send((mainProfileID, .account))
     }
 
-    /// Server verwijderd: zijn categoriekeuzes uit alle profielen (build 128).
+    /// Account-set uit de Bingr-account (StateSync, section `account`).
+    func setSyncedAccountCategories(_ set: Set<String>) {
+        guard set != hiddenCategories else { return }
+        hiddenCategories = set
+        saveAccountCategories()
+    }
+
+    /// Server verwijderd: zijn categoriekeuzes weg uit de account-set (als verwijdering, dus gesynct) en, zoals sinds
+    /// build 128, uit de per-profiel-sets.
     private func purgeCategories(of playlist: UUID) {
         let p = playlist.uuidString
         func strip(_ s: Set<String>) -> Set<String> {
@@ -1028,6 +1050,12 @@ final class CloudStore: ObservableObject {
                 guard let bar = k.firstIndex(of: "|") else { return true }
                 return k[..<bar].caseInsensitiveCompare(p) != .orderedSame
             }
+        }
+        let account = strip(hiddenCategories)
+        if account != hiddenCategories {
+            hiddenCategories = account
+            saveAccountCategories()
+            stateEdited.send((mainProfileID, .account))
         }
         for prof in profiles {
             var d = profileData(prof.id)
@@ -1037,6 +1065,24 @@ final class CloudStore: ObservableObject {
             setProfileData(prof.id, d)
             stateEdited.send((prof.id, .profile))
         }
+    }
+
+    nonisolated static let accountCategoriesMigratedKey = "categories.migrated.v140"
+    var accountCategoriesMigrated: Bool { local.bool(forKey: Self.accountCategoriesMigratedKey) }
+
+    /// Eenmalige migratie (build 140, per apparaat): de unie van de per-profiel-sets van alle niet-kinderprofielen naar
+    /// de account-set. Geeft de toegevoegde sleutels terug (StateSync geeft ze een oude tijd, zodat een keuze die een
+    /// ander apparaat al in `account` maakte voorgaat). De per-profiel-sets blijven staan (oudere apps).
+    @discardableResult
+    func migrateAccountCategories() -> [String] {
+        guard !Screenshots.isActive, !profiles.isEmpty, !accountCategoriesMigrated else { return [] }
+        local.set(true, forKey: Self.accountCategoriesMigratedKey)
+        let union = AccountCategories.migrate(profiles.filter { !$0.kids }.map { profileData($0.id).hiddenCategories })
+        let added = union.subtracting(hiddenCategories)
+        guard !added.isEmpty else { return [] }
+        hiddenCategories.formUnion(added)
+        saveAccountCategories()
+        return Array(added)
     }
 
     /// Eenmalige migratie (build 128): categorieën die tot build 127 voor het hele account per server uit stonden
@@ -1059,7 +1105,7 @@ final class CloudStore: ObservableObject {
                 for h in customization(src.id).hidden where h.hasPrefix("group:") {
                     let g = String(h.dropFirst("group:".count))
                     guard !d.hiddenCategories.contains(where: { Self.sameKey($0, src.id, g) }) else { continue }
-                    let k = Self.categoryKey(src.id, g)
+                    let k = "\(src.id.uuidString)|\(g)"
                     d.hiddenCategories.insert(k)
                     added[prof.id, default: []].append(k)
                     changed = true

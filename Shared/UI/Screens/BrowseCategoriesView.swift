@@ -9,6 +9,8 @@ struct BrowseCategoriesView: View {
     var modal = false
     /// Build 86: geopend vanuit Mijn Bingr (in de navigatie): titel in de navigatiebalk
     var pushed = false
+    /// Build 140: als tabblad (naast Series): ook de categorieën van Live TV
+    var asTab = false
 
     @EnvironmentObject var playlists: PlaylistService
     @EnvironmentObject var meta: MetadataService
@@ -17,21 +19,29 @@ struct BrowseCategoriesView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var scope: BrowseScope?
     @State private var open: BrowseCategory?
+    /// Build 140: Live TV gekozen (alleen als tabblad)
+    @State private var live = false
+    @State private var openGroup: ChannelGroupTarget?
 
     private var current: BrowseScope { scope ?? initialScope }
+    private var showsLive: Bool { asTab && !playlists.library.channels.isEmpty }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: tvScaled(22)) {
                 header
-                let idx = store.index
-                let genres = idx.genres.filter { $0.count(current) > 0 }
-                let server = idx.server.filter { $0.count(current) > 0 }
-                if genres.isEmpty && server.isEmpty {
-                    emptyState
+                if live && showsLive {
+                    liveSection
                 } else {
-                    if !genres.isEmpty { section(L("Genres"), genres) }
-                    if !server.isEmpty { section(L("From your server"), server) }
+                    let idx = store.index
+                    let genres = idx.genres.filter { $0.count(current) > 0 }
+                    let server = idx.server.filter { $0.count(current) > 0 }
+                    if genres.isEmpty && server.isEmpty {
+                        emptyState
+                    } else {
+                        if !genres.isEmpty { section(L("Genres"), genres) }
+                        if !server.isEmpty { section(L("From your server"), server) }
+                    }
                 }
             }
             .padding(.bottom, 40)
@@ -42,6 +52,7 @@ struct BrowseCategoriesView: View {
             store.refresh(playlists)
         }
         .fullScreenCover(item: $open) { BrowseCategoryView(category: $0, initialScope: current) }
+        .fullScreenCover(item: $openGroup) { ChannelGroupView(group: $0.name) }
         .navigationTitle(pushed ? L("Categories") : "")
     }
 
@@ -63,11 +74,25 @@ struct BrowseCategoriesView: View {
                     #endif
                 }
             }
-            Picker("", selection: Binding(get: { current }, set: { scope = $0 })) {
-                ForEach(BrowseScope.allCases) { s in Text(s.title).tag(s) }
+            if showsLive {
+                // build 140: Live TV, Films, Series (en Alles)
+                Picker("", selection: Binding(get: { live ? "live" : current.rawValue },
+                                              set: { v in
+                                                  if v == "live" { live = true }
+                                                  else { live = false; scope = BrowseScope(rawValue: v) }
+                                              })) {
+                    Text(L("Live TV")).tag("live")
+                    ForEach(BrowseScope.allCases) { s in Text(s.title).tag(s.rawValue) }
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: tvScaled(560))
+            } else {
+                Picker("", selection: Binding(get: { current }, set: { scope = $0 })) {
+                    ForEach(BrowseScope.allCases) { s in Text(s.title).tag(s) }
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: tvScaled(420))
             }
-            .pickerStyle(.segmented)
-            .frame(maxWidth: tvScaled(420))
         }
         .padding(.horizontal, Theme.edge)
         .padding(.top, tvScaled(modal ? 16 : 8))
@@ -83,6 +108,45 @@ struct BrowseCategoriesView: View {
             }
         }
         .frame(maxWidth: .infinity).padding(.top, 80)
+    }
+
+    /// Build 140: categorieën van Live TV (de zendergroepen zoals Live TV ze toont, al gefilterd voor dit profiel)
+    @ViewBuilder private var liveSection: some View {
+        let groups = channelGroups
+        if groups.isEmpty {
+            VStack(spacing: 12) {
+                Image(systemName: "dot.radiowaves.left.and.right").font(.system(size: tvScaled(40))).foregroundStyle(Theme.secondary)
+                Text(L("No channels found.")).foregroundStyle(Theme.secondary)
+            }
+            .frame(maxWidth: .infinity).padding(.top, 80)
+        } else {
+            LazyVGrid(columns: columns, spacing: tvScaled(12)) {
+                ForEach(groups) { g in
+                    Button { openGroup = ChannelGroupTarget(name: g.name) } label: {
+                        ChannelGroupTile(title: g.name, count: g.count, logos: g.logos)
+                    }
+                    .cardButton()
+                    .tileHover()
+                    .accessibilityLabel("\(g.name), \(L("%d channels", g.count))")
+                }
+            }
+            .padding(.horizontal, Theme.edge)
+            #if os(tvOS)
+            .padding(.vertical, 20)
+            #endif
+        }
+    }
+
+    private var channelGroups: [ChannelGroupInfo] {
+        var order: [String] = []
+        var count: [String: Int] = [:]
+        var logos: [String: [URL]] = [:]
+        for c in playlists.library.channels {
+            if count[c.group] == nil { order.append(c.group) }
+            count[c.group, default: 0] += 1
+            if let l = c.logo, (logos[c.group]?.count ?? 0) < 4 { logos[c.group, default: []].append(l) }
+        }
+        return order.map { ChannelGroupInfo(name: $0, count: count[$0] ?? 0, logos: logos[$0] ?? []) }
     }
 
     private var columns: [GridItem] {
@@ -432,3 +496,111 @@ private struct MacHoverLift: ViewModifier {
     }
 }
 #endif
+
+// MARK: - Build 140: categorieën van Live TV
+
+struct ChannelGroupInfo: Identifiable {
+    let name: String
+    let count: Int
+    let logos: [URL]
+    var id: String { name }
+}
+
+struct ChannelGroupTarget: Identifiable, Hashable {
+    let name: String
+    var id: String { name }
+}
+
+/// Tegel van een zendergroep: naam en aantal, met een paar zenderlogo's.
+struct ChannelGroupTile: View {
+    let title: String
+    let count: Int
+    let logos: [URL]
+    @Environment(\.tvFocused) private var focused
+
+    var body: some View {
+        ZStack(alignment: .bottomLeading) {
+            LinearGradient(colors: [Color(hex: 0x27272A), Color(hex: 0x111114)], startPoint: .topLeading, endPoint: .bottomTrailing)
+            HStack(spacing: tvScaled(6)) {
+                ForEach(Array(logos.prefix(3).enumerated()), id: \.offset) { _, u in
+                    RemoteImage(url: u, contentMode: .fit, placeholder: "", maxPixel: 200)
+                        .frame(width: tvScaled(34), height: tvScaled(34))
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+            .padding(tvScaled(10))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: tvScaled(16), weight: .heavy))
+                    .foregroundStyle(.white)
+                    .lineLimit(2).minimumScaleFactor(0.7)
+                Text(L("%d channels", count))
+                    .font(.system(size: tvScaled(11), weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.8))
+            }
+            .padding(tvScaled(10))
+        }
+        .aspectRatio(16.0 / 9.5, contentMode: .fit)
+        .clipShape(RoundedRectangle(cornerRadius: tvScaled(8)))
+        .overlay(RoundedRectangle(cornerRadius: tvScaled(8)).stroke(.white.opacity(focused ? 0.9 : 0.08), lineWidth: focused ? 3 : 1))
+        .contentShape(RoundedRectangle(cornerRadius: tvScaled(8)))
+    }
+}
+
+/// De zenders van één groep; kiezen = afspelen (zappen binnen de groep, zoals vanuit Live TV).
+struct ChannelGroupView: View {
+    let group: String
+    @EnvironmentObject var app: AppState
+    @EnvironmentObject var playlists: PlaylistService
+    @Environment(\.dismiss) private var dismiss
+
+    private var channels: [Channel] { uniqueByID(playlists.library.channels.filter { $0.group == group }) }
+
+    private var columns: [GridItem] {
+        #if os(tvOS)
+        Array(repeating: GridItem(.flexible(), spacing: 40, alignment: .top), count: 4)
+        #else
+        [GridItem(.adaptive(minimum: 160, maximum: 260), spacing: 12, alignment: .top)]
+        #endif
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: tvScaled(16)) {
+                HStack(spacing: 12) {
+                    Text(group).font(.system(size: tvScaled(26), weight: .heavy)).foregroundStyle(.white).lineLimit(2)
+                    Spacer()
+                    #if !os(tvOS)
+                    Button { dismiss() } label: {
+                        Image(systemName: "xmark").font(.system(size: 17, weight: .semibold)).foregroundStyle(.white)
+                            .frame(width: 40, height: 40).background(.ultraThinMaterial, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(L("Close"))
+                    #endif
+                }
+                .padding(.horizontal, Theme.edge)
+                .padding(.top, tvScaled(16))
+                let list = channels
+                LazyVGrid(columns: columns, spacing: tvScaled(12)) {
+                    ForEach(list) { c in
+                        Button {
+                            let lib = playlists.library
+                            app.play(Playables.channel(c, now: lib.nowPlaying(c)), zap: list)
+                        } label: {
+                            ChannelCard(channel: c, now: playlists.library.nowPlaying(c))
+                        }
+                        .cardButton()
+                    }
+                }
+                .padding(.horizontal, Theme.edge)
+                #if os(tvOS)
+                .padding(.vertical, 20)
+                #endif
+            }
+            .padding(.bottom, 40)
+        }
+        .background(Theme.bg.ignoresSafeArea())
+        .preferredColorScheme(.dark)
+    }
+}

@@ -1,5 +1,5 @@
 // Zelftest van de pure logica van build 128 (Shared/Account/CatalogMeta.swift), los van de app gebouwd in CI:
-//   swiftc -O Shared/Account/CatalogMeta.swift tools/selftest/main.swift -o selftest && ./selftest
+//   swiftc -O Shared/Account/CatalogMeta.swift Shared/Account/Build140.swift tools/selftest/main.swift -o selftest && ./selftest
 import Foundation
 
 var failures = 0
@@ -162,6 +162,119 @@ let epItem = CatalogMeta.Item(title: "Breaking Bad", year: 2008, kind: .episode,
 eq(idx.match(epItem), "xs1", "aflevering → serie")
 eq(CatalogIdentity.title(kind: .movie, title: "NL | Dune (2021)", year: nil, tmdb: nil),
    CatalogIdentity.title(kind: .movie, title: "Dune [4K]", year: 2021, tmdb: nil), "zelfde werk = zelfde identiteit")
+
+
+// MARK: build 140: kindercategorieën
+
+check(KidsCategory.isKids("NL | Kinderfilms"), "NL | Kinderfilms")
+check(KidsCategory.isKids("|EN| Kids"), "|EN| Kids")
+check(KidsCategory.isKids("EN - Cartoon Network"), "EN - Cartoon Network")
+check(KidsCategory.isKids("[NL] Disney+"), "[NL] Disney+")
+check(KidsCategory.isKids("Familiefilms"), "Familiefilms")
+check(KidsCategory.isKids("NL: Nick Jr."), "Nick Jr.")
+check(KidsCategory.isKids("BE | Ketnet"), "Ketnet")
+check(KidsCategory.isKids("Z@pp"), "Z@pp")
+check(KidsCategory.isKids("Kid - Fun"), "Kid als eerste woord, geen landcode")
+check(KidsCategory.isKids("Jeugdseries"), "Jeugdseries")
+check(KidsCategory.isKids("Animatie"), "Animatie")
+check(KidsCategory.isKids("Baby TV"), "Baby TV")
+check(!KidsCategory.isKids("Anime"), "anime is geen kindercategorie")
+check(!KidsCategory.isKids("NL | Kidnap thrillers"), "kidnap telt niet")
+check(!KidsCategory.isKids("Babylon"), "babylon telt niet")
+check(!KidsCategory.isKids("Adult Swim cartoons"), "adult wint altijd")
+check(!KidsCategory.isKids("XXX Kids"), "xxx wint altijd")
+check(!KidsCategory.isKids("Kinder 18+"), "18+ wint altijd")
+check(!KidsCategory.isKids("NL | Films"), "gewone categorie")
+check(!KidsCategory.isKids(""), "lege naam")
+eq(KidsCategory.normalize("NL | |EN| Kids"), "kids", "landprefix herhaald weg")
+
+// MARK: build 140: categorieën per account
+
+eq(AccountCategories.key(sid: "ABCD-EF", group: "NL | Films"), "abcd-ef|NL | Films", "sleutel: server-id klein, naam exact")
+eq(AccountCategories.normalize("ABCD|Sport|HD"), "abcd|Sport|HD", "normaliseren: alleen het eerste deel")
+eq(AccountCategories.migrate([["AB|x", "cd|y"], ["ab|x", "EF|z"]]), Set(["ab|x", "cd|y", "ef|z"]), "migratie: unie, kleine letters")
+eq(AccountCategories.groups(["ab|x", "AB|y", "cd|z"], sid: "Ab"), Set(["x", "y"]), "groepen per server, hoofdletterongevoelig")
+
+// MARK: build 140: Mijn lijst — eigen toevoeging na een verwijdering met een latere tijd
+
+eq(ListStamp.addedAt(now: 100, knownRemoval: nil), 100, "geen verwijdering bekend")
+eq(ListStamp.addedAt(now: 100, knownRemoval: 50), 100, "oudere verwijdering")
+check(ListStamp.addedAt(now: 100, knownRemoval: 150) > 150, "verwijdering met voorlopende klok: toevoeging komt erna")
+check(ListStamp.addedAt(now: 100, knownRemoval: 100) > 100, "gelijke tijd: toevoeging wint")
+eq(ListStamp.addedAt(now: 0, knownRemoval: 150), 0, "eerste afstemming (tijd 0) blijft oud")
+
+// MARK: build 140: ouderpoort
+
+struct FixedGen: RandomNumberGenerator {
+    var state: UInt64
+    mutating func next() -> UInt64 { state = state &* 6364136223846793005 &+ 1442695040888963407; return state }
+}
+var gen = FixedGen(state: 42)
+for _ in 0..<500 {
+    let s = ParentGateSum.random(using: &gen)
+    if s.multiply { check((6...12).contains(s.a) && (3...9).contains(s.b), "vermenigvuldiging binnen bereik") }
+    else { check((11...49).contains(s.a) && (11...49).contains(s.b), "optelling tweecijferig") }
+    check(s.answer < 1000, "antwoord past in 3 cijfers")
+}
+eq(ParentGateSum(a: 7, b: 8, multiply: true).text, "7 × 8 = ?", "tekst vermenigvuldiging")
+eq(ParentGateSum(a: 23, b: 46, multiply: false).answer, 69, "optelling")
+var gate = ParentGateState(sum: ParentGateSum(a: 7, b: 8, multiply: true))
+eq(ParentGateState.sanitize("5a6x7 9"), "567", "alleen cijfers, max 3")
+check(!gate.readyToCheck("5"), "nog niet vanzelf controleren")
+check(gate.readyToCheck("56"), "vanzelf controleren bij 2 cijfers")
+eq(gate.submit("55"), .wrong, "fout 1")
+eq(gate.submit("54"), .wrong, "fout 2")
+let otherSum = ParentGateSum(a: 9, b: 9, multiply: true)
+eq(gate.submit("1", next: { otherSum }), .newSum, "fout 3 = nieuwe som")
+eq(gate.sum, otherSum, "nieuwe som gezet")
+eq(gate.attempts, 0, "pogingen opnieuw")
+eq(gate.submit("81"), .correct, "goed antwoord")
+
+// MARK: build 140: uitgelicht
+
+eq(HeroRotation.pick(forYou: ["a", "b", "c"], new: ["x", "b", "y"]), ["a", "x", "b", "c", "y"], "om en om, zonder dubbele")
+eq(HeroRotation.pick(forYou: (1...20).map(String.init), new: []).count, 8, "maximaal 8")
+eq(HeroRotation.rotated(["a", "b", "c"], day: 4), ["b", "c", "a"], "start schuift per dag")
+eq(HeroRotation.rotated(["a", "b", "c"], day: 4), HeroRotation.rotated(["a", "b", "c"], day: 4), "deterministisch")
+eq(HeroRotation.start(day: -1, count: 3), 2, "negatieve dag")
+let utc = { () -> Calendar in var c = Calendar(identifier: .gregorian); c.timeZone = TimeZone(identifier: "UTC")!; return c }()
+eq(HeroRotation.day(Date(timeIntervalSince1970: 86_400 * 3 + 100), calendar: utc), 3, "dagnummer")
+
+// MARK: build 140: Nieuw op Bingr
+
+var seenMap: [String: Double] = [:]
+check(FirstSeen.update(&seenMap, ids: ["a", "b"], now: 500, seeded: false), "eerste keer: vastgelegd")
+eq(seenMap["a"], 0 as Double?, "eerste keer telt niet als nieuw")
+FirstSeen.update(&seenMap, ids: ["a", "b", "c"], now: 600, seeded: true)
+eq(seenMap["c"], 600 as Double?, "nieuw id krijgt nu")
+check(!FirstSeen.update(&seenMap, ids: ["a", "c"], now: 700, seeded: true), "niets nieuws")
+eq(FirstSeen.newest([("a", nil), ("b", 300), ("c", nil), ("d", 900)], firstSeen: seenMap, limit: 10), ["d", "c", "b"],
+   "provider-datum, anders eerste keer gezien; zonder tijd niet")
+eq(FirstSeen.newest([("x", 5), ("y", 5)], firstSeen: [:], limit: 1), ["x"], "gelijke tijd op id, limiet")
+
+// MARK: build 140: server automatisch vernieuwen
+
+check(!AutoRefresh.isDue(policy: "manual", age: nil), "handmatig nooit")
+check(AutoRefresh.isDue(policy: "daily", age: nil), "geen cache = nu")
+check(AutoRefresh.isDue(policy: "daily", age: 25 * 3600), "dagelijks na 25 uur")
+check(!AutoRefresh.isDue(policy: "daily", age: 3 * 3600), "dagelijks niet na 3 uur")
+check(AutoRefresh.isDue(policy: "weekly", age: 8 * 86_400), "wekelijks na 8 dagen")
+check(!AutoRefresh.isDue(policy: "weekly", age: 2 * 86_400), "wekelijks niet na 2 dagen")
+check(AutoRefresh.isDue(policy: "launch", age: 120), "bij elke start")
+check(!AutoRefresh.isDue(policy: "launch", age: 120, periodic: true), "bij elke start: niet periodiek")
+check(AutoRefresh.isDue(policy: "garbage", age: 30 * 3600), "onbekend = dagelijks")
+let refNow = Date(timeIntervalSince1970: 1_000_000)
+eq(AutoRefresh.due(policy: "daily", servers: [("A", 30 * 3600), ("B", 3600), ("C", nil), ("D", 40 * 3600)],
+                   lastAttempt: ["D": refNow.addingTimeInterval(-60)], now: refNow, periodic: true),
+   ["A", "C"], "alle servers van het account die te oud zijn, niet net geprobeerd")
+eq(AutoRefresh.due(policy: "daily", servers: [("D", 40 * 3600)], lastAttempt: ["D": refNow.addingTimeInterval(-3600)],
+                   now: refNow, periodic: true), ["D"], "na 15 minuten opnieuw proberen")
+
+// MARK: build 140: Voor jou
+
+eq(ForYouSeeds.rank([.init(key: "s1", at: 10), .init(key: "m1", at: 50), .init(key: "s1", at: 20), .init(key: "m2", at: 40)], limit: 2),
+   ["s1", "m1"], "meest bekeken, dan laatst bekeken")
+eq(ForYouSeeds.score(genres: [16, 35], group: "Kids", seedGenres: [16: 3], seedGroups: ["Kids": 1]), 5, "score")
 
 print("\(checks) controles, \(failures) fout")
 exit(failures == 0 ? 0 : 1)

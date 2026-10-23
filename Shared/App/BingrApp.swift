@@ -140,6 +140,9 @@ final class AppState: ObservableObject {
     @Published var selectedTab: Int?
     /// Profielmenu (build 72): Mijn Bingr openen, eventueel meteen op een pagina (Instellingen, Account…)
     @Published var myBingrRequest: MyBingrRequest?
+    /// Build 140: op iPhone, iPad en Mac is Mijn Bingr geen tabblad meer (daar staat nu Categorieën): via het profiel
+    /// bovenin opent het als blad. Apple TV houdt het tabblad met de avatar aan het eind van de menubalk.
+    @Published var showingMyBingr = false
     /// build 97: laatste keer dat Trakt en de account-sync bij het actief worden van de app liepen (of bij het starten)
     var lastTraktRefresh: Date = .distantPast
     var lastAccountRefresh: Date = .distantPast
@@ -400,7 +403,11 @@ final class AppState: ObservableObject {
 
     /// Naar het tabblad Mijn Bingr, en daar (optioneel) meteen een pagina openen.
     func showMyBingr(_ route: MyBingrRoute? = nil) {
+        #if os(tvOS)
         selectedTab = 5
+        #else
+        showingMyBingr = true
+        #endif
         myBingrRequest = MyBingrRequest(route: route)
     }
 
@@ -449,6 +456,8 @@ struct RootView: View {
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
+                // build 140: ouderpoort (rekensom) om een kinderprofiel te verlaten
+                .kidsGateHost(KidsGate.shared)
             Group {
                 if account.isSignedIn && account.deviceLimit != nil && (app.stage == .picker || app.stage == .main) {
                     // limiet bereikt (sessie van vóór build 39): eerst een apparaat verwijderen, of Cancel = uitloggen

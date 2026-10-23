@@ -152,6 +152,8 @@ final class CrossServer: ObservableObject {
     func migrateCategories() {
         let added = CloudStore.shared.migrateLegacyCategories()
         for (p, keys) in added { StateSync.shared.presetOld(profile: p, field: "hiddenCategories", keys: keys) }
+        // build 140: zonder Bingr-account meteen naar de account-set (met account: na de eerste volledige sync-ronde)
+        if !(Secrets.accountsConfigured && AccountService.shared.isSignedIn) { CloudStore.shared.migrateAccountCategories() }
     }
 
     /// Een opzoekronde inplannen (wijzigingen komen vaak vlak na elkaar)

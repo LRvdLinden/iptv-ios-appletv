@@ -24,8 +24,51 @@ struct MyBingrView: View {
 
     private var isMain: Bool { store.isMainOrSolo }
     private var signedIn: Bool { Secrets.accountsConfigured && account.isSignedIn }
+    /// Build 140: als blad geopend (iPhone, iPad en Mac; daar is Mijn Bingr geen tabblad meer): met sluitknop
+    var modal = false
+    @Environment(\.dismiss) private var dismiss
+    /// Build 140: kinderprofiel: de rekensom is voor dit bezoek opgelost
+    @State private var unlocked = false
+
+    private var gated: Bool { (store.activeProfile?.kids ?? false) && !unlocked && !Screenshots.isActive }
 
     var body: some View {
+        Group {
+            if gated {
+                KidsGateInline {
+                    unlocked = true
+                    KidsGate.shared.adultSession = true
+                }
+                .overlay(alignment: .topTrailing) { closeButton }
+            } else {
+                content
+            }
+        }
+        .onChange(of: store.activeProfileID) { _, _ in
+            unlocked = false
+            KidsGate.shared.adultSession = false
+        }
+        .onDisappear {
+            unlocked = false
+            KidsGate.shared.adultSession = false
+        }
+    }
+
+    @ViewBuilder private var closeButton: some View {
+        #if !os(tvOS)
+        if modal {
+            Button { dismiss() } label: {
+                Image(systemName: "xmark").font(.system(size: 17, weight: .semibold)).foregroundStyle(.white)
+                    .frame(width: 40, height: 40).background(.ultraThinMaterial, in: Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(L("Close"))
+            .padding(16)
+        }
+        #endif
+    }
+
+    private var content: some View {
         NavigationStack(path: $path) {
             ScrollViewReader { proxy in
                 List {
@@ -49,6 +92,15 @@ struct MyBingrView: View {
             }
             .navigationTitle(store.activeProfile?.name ?? L("My Bingr"))
             .navigationDestination(for: MyBingrRoute.self) { destination($0) }
+            #if !os(tvOS)
+            .toolbar {
+                if modal {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button(L("Done")) { dismiss() }
+                    }
+                }
+            }
+            #endif
         }
         .supportPage(isPresented: $showSupport)
         .task(id: playlists.libraryVersion) { browse.refresh(playlists) }

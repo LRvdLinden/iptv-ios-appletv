@@ -98,7 +98,8 @@ final class ParentalControl: ObservableObject {
     /// Mag dit profiel dit zien?
     func allowed(rated: String?, group: String, limit: Int?, genre: String? = nil, strict: Bool = false, info: AgeInfo? = nil) -> Bool {
         guard !isUnlocked else { return true }
-        return Self.allowedFor(rated: rated, group: group, limit: limit, genre: genre, strict: strict, info: info)
+        return Self.allowedFor(rated: rated, group: group, limit: limit, genre: genre, strict: strict, info: info,
+                               kids: CloudStore.shared.activeProfile?.kids ?? false)
     }
 
     /// Mag het actieve profiel deze film/serie zien? (Zelfde regel als de afspeellijst.)
@@ -121,7 +122,14 @@ final class ParentalControl: ObservableObject {
     /// Onbekende leeftijd bij een kinderprofiel / grens t/m 12 → streng: alleen een kindergroep of
     /// genre animatie/familie/kids, en nooit horror, thriller, misdaad of oorlog.
     nonisolated static func allowedFor(rated: String?, group: String, limit: Int?, genre: String? = nil,
-                                       strict: Bool = false, info: AgeInfo? = nil) -> Bool {
+                                       strict: Bool = false, info: AgeInfo? = nil, kids: Bool = false) -> Bool {
+        // build 140: kinderprofiel: alleen uit een kindercategorie (docs/ACCOUNT.md → "Build 140"); een bekende
+        // classificatie boven de grens niet, een onbekende wel (hij komt uit een kindercategorie)
+        if kids {
+            guard KidsCategory.isKids(group) else { return false }
+            if let age = info?.age ?? Self.minimumAge(rated) { return age <= (limit ?? 12) }
+            return true
+        }
         guard let limit else { return true }
         if Self.isAdultGroup(group) { return false }
         if let age = info?.age ?? Self.minimumAge(rated) { return age <= limit }

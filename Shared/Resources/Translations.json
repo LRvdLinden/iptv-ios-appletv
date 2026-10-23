@@ -927,7 +927,11 @@
   "“%@” was on “%@”, but that server has been removed, and you have no other server to search.": "كان “%@” على “%@”، لكن هذا الخادم حُذف، وليس لديك خادم آخر للبحث فيه.",
   "“%@” was on “%@”, but that server has been removed. This title wasn't found on your other servers (%@).": "كان “%@” على “%@”، لكن هذا الخادم حُذف. لم يُعثر على هذا العنوان على خوادمك الأخرى (%@).",
   "Refreshing server %d of %d…": "جارٍ تحديث الخادم %d من %d…",
-  "Couldn't refresh: %@": "تعذّر التحديث: %@"
+  "Couldn't refresh: %@": "تعذّر التحديث: %@",
+  "Ask a grown-up": "اطلب من شخص بالغ",
+  "Solve this sum to leave the kids profile.": "حُلّ هذه العملية لمغادرة ملف الأطفال.",
+  "That's not right. Try again.": "هذا غير صحيح. حاول مرة أخرى.",
+  "New sum": "عملية جديدة"
  },
  "de": {
   "%@ is now signed in.": "%@ ist jetzt angemeldet.",
@@ -1857,7 +1861,11 @@
   "“%@” was on “%@”, but that server has been removed, and you have no other server to search.": "„%@“ war auf „%@“, aber dieser Server wurde gelöscht, und du hast keinen anderen Server, auf dem wir suchen können.",
   "“%@” was on “%@”, but that server has been removed. This title wasn't found on your other servers (%@).": "„%@“ war auf „%@“, aber dieser Server wurde gelöscht. Auf deinen anderen Servern (%@) wurde dieser Titel nicht gefunden.",
   "Refreshing server %d of %d…": "Server %d von %d wird aktualisiert…",
-  "Couldn't refresh: %@": "Nicht aktualisiert: %@"
+  "Couldn't refresh: %@": "Nicht aktualisiert: %@",
+  "Ask a grown-up": "Frag einen Erwachsenen",
+  "Solve this sum to leave the kids profile.": "Löse diese Rechenaufgabe, um das Kinderprofil zu verlassen.",
+  "That's not right. Try again.": "Das stimmt nicht. Versuch es noch einmal.",
+  "New sum": "Neue Aufgabe"
  },
  "es": {
   "%@ is now signed in.": "%@ ya ha iniciado sesión.",
@@ -2787,7 +2795,11 @@
   "“%@” was on “%@”, but that server has been removed, and you have no other server to search.": "«%@» estaba en «%@», pero ese servidor se ha eliminado y no tienes otro servidor en el que buscar.",
   "“%@” was on “%@”, but that server has been removed. This title wasn't found on your other servers (%@).": "«%@» estaba en «%@», pero ese servidor se ha eliminado. Este título no se ha encontrado en tus otros servidores (%@).",
   "Refreshing server %d of %d…": "Actualizando servidor %d de %d…",
-  "Couldn't refresh: %@": "No se pudo actualizar: %@"
+  "Couldn't refresh: %@": "No se pudo actualizar: %@",
+  "Ask a grown-up": "Pregunta a un adulto",
+  "Solve this sum to leave the kids profile.": "Resuelve esta operación para salir del perfil infantil.",
+  "That's not right. Try again.": "No es correcto. Inténtalo de nuevo.",
+  "New sum": "Nueva operación"
  },
  "fr": {
   "%@ is now signed in.": "%@ est maintenant connecté.",
@@ -3717,7 +3729,11 @@
   "“%@” was on “%@”, but that server has been removed, and you have no other server to search.": "« %@ » était sur « %@ », mais ce serveur a été supprimé, et tu n’as aucun autre serveur sur lequel chercher.",
   "“%@” was on “%@”, but that server has been removed. This title wasn't found on your other servers (%@).": "« %@ » était sur « %@ », mais ce serveur a été supprimé. Ce titre est introuvable sur tes autres serveurs (%@).",
   "Refreshing server %d of %d…": "Actualisation du serveur %d sur %d…",
-  "Couldn't refresh: %@": "Échec de l’actualisation : %@"
+  "Couldn't refresh: %@": "Échec de l’actualisation : %@",
+  "Ask a grown-up": "Demande à un adulte",
+  "Solve this sum to leave the kids profile.": "Résous ce calcul pour quitter le profil enfant.",
+  "That's not right. Try again.": "Ce n'est pas ça. Réessaie.",
+  "New sum": "Nouveau calcul"
  },
  "it": {
   "%@ is now signed in.": "%@ ha effettuato l’accesso.",
@@ -4647,7 +4663,11 @@
   "“%@” was on “%@”, but that server has been removed, and you have no other server to search.": "«%@» era su «%@», ma quel server è stato rimosso e non hai altri server su cui cercare.",
   "“%@” was on “%@”, but that server has been removed. This title wasn't found on your other servers (%@).": "«%@» era su «%@», ma quel server è stato rimosso. Questo titolo non è stato trovato sugli altri tuoi server (%@).",
   "Refreshing server %d of %d…": "Aggiornamento server %d di %d…",
-  "Couldn't refresh: %@": "Aggiornamento non riuscito: %@"
+  "Couldn't refresh: %@": "Aggiornamento non riuscito: %@",
+  "Ask a grown-up": "Chiedi a un adulto",
+  "Solve this sum to leave the kids profile.": "Risolvi questo calcolo per uscire dal profilo bambini.",
+  "That's not right. Try again.": "Non è corretto. Riprova.",
+  "New sum": "Nuovo calcolo"
  },
  "nl": {
   "%@ is now signed in.": "%@ is nu ingelogd.",
@@ -5577,7 +5597,11 @@
   "“%@” was on “%@”, but that server has been removed, and you have no other server to search.": "‘%@’ stond op ‘%@’, maar die server is verwijderd, en je hebt geen andere server waarop we kunnen zoeken.",
   "“%@” was on “%@”, but that server has been removed. This title wasn't found on your other servers (%@).": "‘%@’ stond op ‘%@’, maar die server is verwijderd. Op je andere servers (%@) is deze titel niet gevonden.",
   "Refreshing server %d of %d…": "Server %d van %d verversen…",
-  "Couldn't refresh: %@": "Niet gelukt: %@"
+  "Couldn't refresh: %@": "Niet gelukt: %@",
+  "Ask a grown-up": "Vraag een volwassene",
+  "Solve this sum to leave the kids profile.": "Los deze som op om het kinderprofiel te verlaten.",
+  "That's not right. Try again.": "Dat klopt niet. Probeer het nog eens.",
+  "New sum": "Nieuwe som"
  },
  "pl": {
   "%@ is now signed in.": "%@ jest teraz zalogowany.",
@@ -6507,7 +6531,11 @@
   "“%@” was on “%@”, but that server has been removed, and you have no other server to search.": "„%@” był na „%@”, ale ten serwer został usunięty, a nie masz innego serwera do przeszukania.",
   "“%@” was on “%@”, but that server has been removed. This title wasn't found on your other servers (%@).": "„%@” był na „%@”, ale ten serwer został usunięty. Tego tytułu nie znaleziono na Twoich innych serwerach (%@).",
   "Refreshing server %d of %d…": "Odświeżanie serwera %d z %d…",
-  "Couldn't refresh: %@": "Nie udało się odświeżyć: %@"
+  "Couldn't refresh: %@": "Nie udało się odświeżyć: %@",
+  "Ask a grown-up": "Poproś dorosłego",
+  "Solve this sum to leave the kids profile.": "Rozwiąż to działanie, aby opuścić profil dziecka.",
+  "That's not right. Try again.": "To nie jest poprawne. Spróbuj ponownie.",
+  "New sum": "Nowe działanie"
  },
  "pt": {
   "%@ is now signed in.": "%@ já tem sessão iniciada.",
@@ -7437,7 +7465,11 @@
   "“%@” was on “%@”, but that server has been removed, and you have no other server to search.": "“%@” estava em “%@”, mas esse servidor foi removido e não tens outro servidor onde procurar.",
   "“%@” was on “%@”, but that server has been removed. This title wasn't found on your other servers (%@).": "“%@” estava em “%@”, mas esse servidor foi removido. Este título não foi encontrado nos teus outros servidores (%@).",
   "Refreshing server %d of %d…": "A atualizar servidor %d de %d…",
-  "Couldn't refresh: %@": "Não foi possível atualizar: %@"
+  "Couldn't refresh: %@": "Não foi possível atualizar: %@",
+  "Ask a grown-up": "Pede a um adulto",
+  "Solve this sum to leave the kids profile.": "Resolve esta conta para sair do perfil infantil.",
+  "That's not right. Try again.": "Não está certo. Tenta novamente.",
+  "New sum": "Nova conta"
  },
  "tr": {
   "%@ is now signed in.": "%@ artık oturum açtı.",
@@ -8367,7 +8399,11 @@
   "“%@” was on “%@”, but that server has been removed, and you have no other server to search.": "“%@” “%@” üzerindeydi, ancak bu sunucu silindi ve aranacak başka bir sunucun yok.",
   "“%@” was on “%@”, but that server has been removed. This title wasn't found on your other servers (%@).": "“%@” “%@” üzerindeydi, ancak bu sunucu silindi. Bu başlık diğer sunucularında (%@) bulunamadı.",
   "Refreshing server %d of %d…": "Sunucu %d / %d yenileniyor…",
-  "Couldn't refresh: %@": "Yenilenemedi: %@"
+  "Couldn't refresh: %@": "Yenilenemedi: %@",
+  "Ask a grown-up": "Bir yetişkine sor",
+  "Solve this sum to leave the kids profile.": "Çocuk profilinden çıkmak için bu işlemi çöz.",
+  "That's not right. Try again.": "Bu doğru değil. Tekrar dene.",
+  "New sum": "Yeni işlem"
  },
  "zh-Hans": {
   "%@ is now signed in.": "%@ 现已登录。",
@@ -9297,6 +9333,10 @@
   "“%@” was on “%@”, but that server has been removed, and you have no other server to search.": "“%@”曾在“%@”上，但该服务器已被删除，而你没有其他可供搜索的服务器。",
   "“%@” was on “%@”, but that server has been removed. This title wasn't found on your other servers (%@).": "“%@”曾在“%@”上，但该服务器已被删除。在你的其他服务器（%@）上未找到此标题。",
   "Refreshing server %d of %d…": "正在刷新服务器（%d/%d）…",
-  "Couldn't refresh: %@": "未能刷新：%@"
+  "Couldn't refresh: %@": "未能刷新：%@",
+  "Ask a grown-up": "请大人帮忙",
+  "Solve this sum to leave the kids profile.": "解答这道算术题即可离开儿童资料。",
+  "That's not right. Try again.": "答案不对，请再试一次。",
+  "New sum": "新题目"
  }
 }

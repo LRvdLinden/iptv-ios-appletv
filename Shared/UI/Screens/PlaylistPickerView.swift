@@ -51,8 +51,11 @@ struct PlaylistPickerView: View {
                     LazyVGrid(columns: columns, spacing: tvScaled(26)) {
                         ForEach(Array(store.profiles.enumerated()), id: \.element.id) { i, p in
                             Button {
-                                // profiel met pincode: eerst de pincode vragen
-                                if ParentalControl.shared.hasPIN(profile: p.id) { pinFor = p } else { app.open(profile: p) }
+                                // build 140: was het laatst actieve profiel een kinderprofiel, dan eerst de rekensom;
+                                // profiel met pincode: daarna de pincode
+                                KidsGate.shared.pick(p) {
+                                    if ParentalControl.shared.hasPIN(profile: p.id) { pinFor = p } else { app.open(profile: p) }
+                                }
                             } label: {
                                 AvatarTile(name: p.name, avatar: p.avatar, photo: store.photos[p.id],
                                            badge: store.isMain(p) && store.profiles.count > 1 ? "person.fill" : nil,

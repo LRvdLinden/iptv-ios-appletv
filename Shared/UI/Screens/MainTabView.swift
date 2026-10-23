@@ -69,7 +69,11 @@ struct MainTabView: View {
                     HomeView(filter: .series).tag(3)
                         .tabItem { Label(L("Series"), systemImage: "rectangle.stack.fill") }
                 }
-                // Build 86: Categorieën staan in Mijn Bingr (Bibliotheek) en als rij op Home, niet meer als tabblad
+                // Build 140: Categorieën (Live TV, Films, Series) naast Series, op de plek van Mijn Bingr. Mijn Bingr
+                // zit nu achter het profiel bovenin (Apple TV: de avatar aan het eind van de menubalk).
+                // Kinderprofiel: alleen kindercategorieën (de bibliotheek is al gefilterd).
+                BrowseCategoriesView(asTab: true).tag(7)
+                    .tabItem { Label(L("Categories"), systemImage: "square.grid.2x2") }
                 // iPhone toont max. 5 tabbladen (anders "Meer"); zoeken zit daar al als vergrootglas op Home/Films/Series
                 if !Self.isPhone {
                     SearchView().tag(4)
@@ -82,8 +86,10 @@ struct MainTabView: View {
                         .tabItem { Label(L("Downloads"), systemImage: "arrow.down.circle") }
                 }
                 #endif
+                #if os(tvOS)
                 MyBingrView().tag(5)
                     .tabItem { myBingrTab }
+                #endif
             }
             #if os(iOS)
             .toolbarBackground(.black.opacity(0.92), for: .tabBar)
@@ -134,6 +140,12 @@ struct MainTabView: View {
         .fullScreenCover(item: $pendingDetail) { DetailView(target: $0) }
         #endif
         .fullScreenCover(item: $linkSearch) { SearchView(modal: true, initialQuery: $0.query) }
+        #if os(iOS)
+        // build 140: Mijn Bingr via het profiel bovenin (geen tabblad meer)
+        .sheet(isPresented: $app.showingMyBingr) { MyBingrView(modal: true).presentationDragIndicator(.visible) }
+        #elseif os(macOS)
+        .fullScreenCover(isPresented: $app.showingMyBingr) { MyBingrView(modal: true) }
+        #endif
         // App Store-screenshots: scherm "categories" (categorieën aan/uit)
         .fullScreenCover(isPresented: $screenshotCategories) {
             NavigationStack { CategoriesView().navigationTitle(L("Categories")) }

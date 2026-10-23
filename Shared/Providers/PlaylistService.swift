@@ -54,17 +54,18 @@ final class PlaylistService: ObservableObject {
             .store(in: &bag)
         // ander profiel gekozen of leeftijdsgrens van het profiel gewijzigd → opnieuw filteren
         CloudStore.shared.$profiles.combineLatest(CloudStore.shared.$activeProfileID)
-            .map { list, id in list.first { $0.id == id }.map { "\($0.effectiveAgeLimit ?? 0)-\($0.strictAgeFilter)" } }
+            .map { list, id in list.first { $0.id == id }.map { "\($0.effectiveAgeLimit ?? 0)-\($0.strictAgeFilter)-\($0.kids)" } }
             .removeDuplicates()
             .dropFirst()
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.applyCustomizations() }
             .store(in: &bag)
-        // build 128: categorieën aan/uit per profiel gewijzigd (ook via de sync) → opnieuw filteren
+        // build 140: categorieën aan/uit voor het account gewijzigd (ook via de sync) → opnieuw filteren. Build 140:
+        // even wachten, zodat een reeks tikken in Instellingen → Categorieën één keer filtert (niet per tik)
         CloudStore.shared.$hiddenCategories
             .removeDuplicates()
             .dropFirst()
-            .receive(on: RunLoop.main)
+            .debounce(for: .milliseconds(600), scheduler: RunLoop.main)
             .sink { [weak self] _ in self?.applyCustomizations() }
             .store(in: &bag)
         // nieuwe IMDb-classificaties binnen → leeftijdsfilter opnieuw toepassen
@@ -309,13 +310,16 @@ final class PlaylistService: ObservableObject {
         /// Build 128: categorieën die het actieve profiel op deze server uit heeft gezet (categorienaam zoals de server
         /// hem levert). De oude `group:`-items in `custom.hidden` gelden sinds build 128 niet meer voor categorieën.
         var hiddenGroups: Set<String> = []
+        /// Build 140: kinderprofiel: alleen inhoud uit kindercategorieën (KidsCategory), de account-brede verborgen
+        /// categorieën gelden dan niet
+        var kids = false
 
         /// Dezelfde regels (alles behalve de classificaties zelf)? Dan mag de vorige uitkomst blijven staan
         /// tot de nieuwe klaar is, en hoeft een gelijke uitkomst niet opnieuw gepubliceerd te worden.
         func sameRules(as o: FilterContext) -> Bool {
             playlist == o.playlist && ageLimit == o.ageLimit && strict == o.strict && parentalEnabled == o.parentalEnabled
                 && autoLockAdult == o.autoLockAdult && unlocked == o.unlocked && lockedGroups == o.lockedGroups
-                && custom == o.custom && hiddenGroups == o.hiddenGroups
+                && custom == o.custom && hiddenGroups == o.hiddenGroups && kids == o.kids
         }
     }
 
@@ -324,17 +328,18 @@ final class PlaylistService: ObservableObject {
         let st = CloudStore.shared
         let pc = st.parental
         var custom = st.customization(s.id)
-        // build 128: categorieën aan/uit staan per profiel (CloudStore.hiddenCategories); de oude account-brede
-        // `group:`-items blijven op de server staan voor oudere apps, maar tellen hier niet meer mee
+        // build 140: categorieën aan/uit staan voor het hele account (CloudStore.hiddenCategories; build 128–139 per
+        // profiel); de oude `group:`-items blijven op de server staan voor oudere apps, maar tellen hier niet mee
         // (App Store-screenshots: de demo verbergt groepen nog op de oude manier)
         if !Screenshots.isActive { custom.hidden = custom.hidden.filter { !$0.hasPrefix("group:") } }
+        let kids = st.activeProfile?.kids ?? false
         return FilterContext(custom: custom, playlist: s.id,
                              ageLimit: st.activeProfile?.effectiveAgeLimit, strict: st.activeProfile?.strictAgeFilter ?? false,
                              parentalEnabled: pc.enabled, lockedGroups: pc.lockedGroups, autoLockAdult: pc.autoLockAdult,
                              unlocked: ParentalControl.shared.isUnlocked,
                              meta: (st.activeProfile?.effectiveAgeLimit != nil) ? MetadataService.shared.cache : [:],
                              ratings: (st.activeProfile?.effectiveAgeLimit != nil) ? AgeRatingService.shared.cache : [:],
-                             hiddenGroups: st.hiddenGroups(for: s.id))
+                             hiddenGroups: kids ? [] : st.hiddenGroups(for: s.id), kids: kids)
     }
 
     /// Filter voor een andere afspeellijst met de leeftijdsgrens van het actieve profiel (nil = geen grens).
@@ -419,12 +424,13 @@ final class PlaylistService: ObservableObject {
         let pc = st.parental
         var c = c
         if !Screenshots.isActive { c.hidden = c.hidden.filter { !$0.hasPrefix("group:") } }
+        let kids = st.activeProfile?.kids ?? false
         return apply(raw, FilterContext(custom: c, playlist: playlist, ageLimit: ageLimit, strict: strict,
                                         parentalEnabled: pc.enabled, lockedGroups: pc.lockedGroups, autoLockAdult: pc.autoLockAdult,
                                         unlocked: ParentalControl.shared.isUnlocked,
                                         meta: ageLimit != nil ? MetadataService.shared.cache : [:],
                                         ratings: ageLimit != nil ? AgeRatingService.shared.cache : [:],
-                                        hiddenGroups: st.hiddenGroups(for: playlist)))
+                                        hiddenGroups: kids ? [] : st.hiddenGroups(for: playlist), kids: kids))
     }
 
     nonisolated static func apply(_ raw: Library, _ ctx: FilterContext) -> Library {
@@ -437,12 +443,12 @@ final class PlaylistService: ObservableObject {
         func movieOK(_ m: Movie) -> Bool {
             let k = MetadataService.key(title: m.title, year: m.year, isShow: false), md = ctx.meta[k]
             return ParentalControl.allowedFor(rated: md?.rated, group: m.group, limit: ageLimit, genre: md?.genre,
-                                              strict: strict, info: ctx.ratings[k])
+                                              strict: strict, info: ctx.ratings[k], kids: ctx.kids)
         }
         func seriesOK(_ s: Series) -> Bool {
             let k = MetadataService.key(title: s.title, year: s.year, isShow: true), md = ctx.meta[k]
             return ParentalControl.allowedFor(rated: md?.rated, group: s.group, limit: ageLimit, genre: md?.genre,
-                                              strict: strict, info: ctx.ratings[k])
+                                              strict: strict, info: ctx.ratings[k], kids: ctx.kids)
         }
         func group(_ g: String) -> String {
             let merged = c.merged[g] ?? g
@@ -453,7 +459,9 @@ final class PlaylistService: ObservableObject {
         func visible(_ id: String, _ g: String) -> Bool {
             if c.hidden.contains(id) { return false }
             if let ok = groupOK[g] { return ok }
-            let ok = !c.hidden.contains(Customization.groupKey(g))
+            // build 140: kinderprofiel: alleen kindercategorieën (naam zoals de server hem levert)
+            let ok = (!ctx.kids || KidsCategory.isKids(g))
+                && !c.hidden.contains(Customization.groupKey(g))
                 && !c.hidden.contains(Customization.groupKey(c.merged[g] ?? g))
                 && !ctx.hiddenGroups.contains(g)
                 && !isLocked(g)
@@ -467,10 +475,16 @@ final class PlaylistService: ObservableObject {
         lib.channels = raw.channels.filter { visible($0.id, $0.group) }.map { ch in
             var x = ch; x.group = group(ch.group); x.name = c.renamed[ch.id] ?? ch.name; return x
         }
-        let ageFilter = ageLimit != nil && !ctx.unlocked
+        // build 140: een kinderprofiel filtert altijd (ook als het kinderslot van het hoofdaccount even open staat)
+        let ageFilter = (ageLimit != nil && !ctx.unlocked) || ctx.kids
         if ageFilter {
-            // kinderprofiel: alleen kinderzenders (groep of zendernaam); de gids volgt deze lijst
-            lib.channels = lib.channels.filter { ParentalControl.channelAllowed(name: $0.name, group: $0.group, limit: ageLimit, strict: strict) }
+            if ctx.kids {
+                // build 140: zenders volgen alleen de (kinder)categorie; nooit een zender met een volwassenennaam
+                lib.channels = lib.channels.filter { !ParentalControl.isAdultGroup($0.name) }
+            } else {
+                // leeftijdsgrens: alleen kinderzenders (groep of zendernaam) bij een strenge grens
+                lib.channels = lib.channels.filter { ParentalControl.channelAllowed(name: $0.name, group: $0.group, limit: ageLimit, strict: strict) }
+            }
             let ids = Set(lib.channels.map { $0.epgID ?? $0.id })
             lib.epg = lib.epg.filter { ids.contains($0.key) }
         }
