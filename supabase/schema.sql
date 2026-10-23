@@ -432,6 +432,36 @@ end $$;
 revoke all on function public.bingr_rate_hit(text, int, int) from public, anon, authenticated;
 grant execute on function public.bingr_rate_hit(text, int, int) to service_role;
 
+-- Security M1/L6: gebruik van de web-proxy per account (aanvragen en bytes per uur), in de database zodat de limiet geldt
+-- over alle instanties van de functie heen. De functie web-proxy telt in het geheugen en schrijft in porties
+-- (bingr_proxy_usage); terug: aanvragen in het huidige uur en bytes in de laatste 24 uur. Oude rijen van dat account
+-- (> 2 dagen) gaan meteen weg. Limieten en noodrem: app_settings.proxy_limits (zie web-proxy/policy.ts).
+create table if not exists public.proxy_usage (
+  user_id  uuid not null references auth.users(id) on delete cascade,
+  bucket   timestamptz not null,
+  requests int not null default 0,
+  bytes    bigint not null default 0,
+  primary key (user_id, bucket)
+);
+alter table public.proxy_usage enable row level security;
+revoke all on public.proxy_usage from anon, authenticated;
+create or replace function public.bingr_proxy_usage(p_user uuid, p_requests int, p_bytes bigint) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare b timestamptz := date_trunc('hour', now()); r int; nb bigint;
+begin
+  if p_user is null then return null; end if;
+  insert into public.proxy_usage (user_id, bucket, requests, bytes)
+  values (p_user, b, greatest(coalesce(p_requests, 0), 0), greatest(coalesce(p_bytes, 0), 0))
+  on conflict (user_id, bucket) do update
+    set requests = public.proxy_usage.requests + excluded.requests, bytes = public.proxy_usage.bytes + excluded.bytes
+  returning requests into r;
+  select coalesce(sum(bytes), 0) into nb from public.proxy_usage where user_id = p_user and bucket > b - interval '24 hours';
+  delete from public.proxy_usage where user_id = p_user and bucket < b - interval '2 days';
+  return jsonb_build_object('requests_hour', r, 'bytes_day', nb);
+end $$;
+revoke all on function public.bingr_proxy_usage(uuid, int, bigint) from public, anon, authenticated;
+grant execute on function public.bingr_proxy_usage(uuid, int, bigint) to service_role;
+
 -- build 95: globale teller voor beheer-inlogpogingen (alle IP's samen), los van de teller per IP. Elke poging is een
 -- rij; die wordt nooit teruggezet als een IP geblokkeerd raakt (vroeger zette dat failures op 0, waardoor een geblokkeerd
 -- IP niet meer meetelde voor de globale grens). Meer dan 60 pogingen in een uur = alles 15 min dicht (admin_login_lock).

@@ -7,6 +7,7 @@
 // TMDB-sleutel: function-secret BINGR_TMDB_API_KEY (zelfde als de nieuwsbrief); nooit in een antwoord of log.
 // Geen logging van IP-adressen; de limiet (60 per minuut) houdt alleen een gehashte sleutel met een zout per instantie bij.
 import { cacheKey, Limiter, type Meta, parseQuery, searchQuery, tmdbAuth, toMeta, type Want } from "./logic.ts";
+import { clientIp } from "../_shared/ip.ts";
 
 const API = "https://api.themoviedb.org/3";
 const KEY = Deno.env.get("BINGR_TMDB_API_KEY") ?? "";
@@ -31,9 +32,7 @@ const CC_OK = "public, max-age=3600, s-maxage=86400";
 const CC_MISS = "public, max-age=600, s-maxage=3600";
 
 async function ipKey(req: Request): Promise<string> {
-  const h = req.headers;
-  const xff = (h.get("x-forwarded-for") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
-  const ip = (h.get("cf-connecting-ip") || h.get("x-real-ip") || xff[xff.length - 1] || "?").slice(0, 64);
+  const ip = clientIp(req); // security L7: _shared/ip.ts
   const d = await crypto.subtle.digest("SHA-256", new Uint8Array([...SALT, ...new TextEncoder().encode(ip)]));
   return btoa(String.fromCharCode(...new Uint8Array(d).slice(0, 12)));
 }

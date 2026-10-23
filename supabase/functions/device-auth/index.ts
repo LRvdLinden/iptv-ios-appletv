@@ -47,7 +47,8 @@
 //   delete_watch_stats {profile_id?} (ingelogd) -> {ok}   (zonder profile_id: alle profielen)
 //   announcements   {lang?} (ingelogd) -> {items:[]}  (build 62; sinds build 117 altijd leeg: berichten alleen als pushmelding)
 //   ping            {}                  -> {ok:true}  (statuscontrole, zonder inloggen)
-//   config          {platform?, device_id?} (ingelogd) -> {traktClientID, traktClientSecret, openSubtitlesAPIKey, omdbAPIKey, tmdbAPIKey, entitlements}
+//   config          {platform?, device_id?} (ingelogd) -> {traktClientID?, traktClientSecret?, openSubtitlesAPIKey, omdbAPIKey, tmdbAPIKey, entitlements}
+//                   security L5: Trakt-sleutels alleen voor Lifetime (functie trakt); max. 60 per uur per account (429 rate_limited).
 //                   App-sleutels staan alleen als function-secrets op de server (BINGR_*), nooit in de openbare repo.
 //   entitlements    {platform?, device_id?} (ingelogd) -> {plan:"free"|"lifetime", limits:{streams, devices, servers|null},
 //                   features:{stats, now_watching, trakt, multi_server, themes}, upgrade:{url, link, price, price_en}}
@@ -104,13 +105,15 @@ function sessionIdFrom(req: Request): string | null {
   } catch { return null; }
 }
 // Abonnement van een account (account_plans; geen rij = gratis). strict: bij een databasefout een fout gooien
-// (entitlements -> 500); anders ruim rekenen (lifetime), zodat een storing nooit afspelen of inloggen tegenhoudt.
+// (entitlements -> 500; heartbeat/config laten de entitlements dan weg, de apps houden de laatst bekende). Anders
+// security L3: fail closed naar de Gratis-limieten (een uitgelokte databasefout geeft nooit Lifetime). Er wordt nergens
+// iets gewist op grond van deze limieten: alleen nieuwe apparaten/streams/servers boven de grens worden geweigerd.
 async function planRow(userId: string, strict = false): Promise<PlanRow> {
   const { data, error } = await admin.from("account_plans").select("plan,max_streams,max_devices").eq("user_id", userId).maybeSingle();
   if (error) {
     console.error("account_plans", error.message);
     if (strict) throw new Error(error.message);
-    return { plan: "lifetime" };
+    return { plan: "free" };
   }
   return data ?? null;
 }
@@ -135,7 +138,10 @@ async function callerPlatform(userId: string, body: Record<string, unknown>, dev
   return platformFromDevice(data?.platform);
 }
 async function entitlementsFor(userId: string, body: Record<string, unknown>, devicePlatform?: string | null, strict = false) {
-  const [row, links, platform] = await Promise.all([planRow(userId, strict), upgradeLinks(), callerPlatform(userId, body, devicePlatform)]);
+  // security L3: altijd strict, zodat een databasefout nooit "Gratis" als entitlements naar de apps stuurt (strict blijft
+  // als parameter voor de aanroepers; zonder strict vangen die de fout af en laten ze de entitlements weg)
+  void strict;
+  const [row, links, platform] = await Promise.all([planRow(userId, true), upgradeLinks(), callerPlatform(userId, body, devicePlatform)]);
   return entitlements(row, links, platform);
 }
 async function listDevices(userId: string, current?: string) {
@@ -517,7 +523,15 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
         try { const o = await open_(row.data); stored = Array.isArray(o?.sources) ? o.sources : []; }
         catch (e) { console.error("put_sources", e instanceof Error ? e.message : e); return json({ error: "decrypt_failed" }, 500); }
       }
-      const payload = { sources: mergeSources(stored, incoming), mainSourceID: main };
+      const merged = mergeSources(stored, incoming);
+      // security L4: serverlimiet van het abonnement (Gratis 1) ook op de server. Alleen groeien boven de grens wordt
+      // geweigerd; wie (van vóór de limiet) al meer servers had, houdt die en kan ze bijwerken of verwijderen.
+      const live = (l: unknown[]) => l.filter((o: any) => o && o.deleted !== true).length;
+      const maxServers = limitsFor(await planRow(user.id)).servers;
+      if (maxServers != null && live(merged) > Math.max(maxServers, live(stored))) {
+        return json({ error: "server_limit", limit: maxServers, feature: "multi_server", plan: "free" }, 403);
+      }
+      const payload = { sources: merged, mainSourceID: main };
       if (JSON.stringify(payload).length > 512 * 1024) return json({ error: "too_large" }, 413);
       const updated_at = new Date().toISOString();
       const { error } = await admin.from("account_sources").upsert({ user_id: user.id, data: await seal(payload), updated_at });
@@ -677,11 +691,17 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       const user = await authed(req);
       if (user instanceof Response) return user;
       const env = (k: string) => Deno.env.get(k) ?? "";
-      let ent: unknown = undefined;
+      // security L5: app-sleutels niet onbeperkt uitdelen: max. 60 keer per uur per account (de apps vragen ze bij het
+      // opstarten en na inloggen), en de Trakt-sleutels alleen aan wie Trakt mag gebruiken (Lifetime). Ontbreekt een veld,
+      // dan houden de apps hun opgeslagen waarde (zie AccountService); bij een databasefout dus geen Trakt-velden.
+      const { data: okRate, error: rateErr } = await admin.rpc("bingr_rate_hit", { p_key: `config:${user.id}`, p_max: 60, p_window: 3600 });
+      if (rateErr) console.error("config rate", rateErr.message);
+      else if (okRate !== true) return json({ error: "rate_limited" }, 429);
+      let ent: Awaited<ReturnType<typeof entitlementsFor>> | undefined = undefined;
       try { ent = await entitlementsFor(user.id, body); } catch (e) { console.error("config entitlements", e instanceof Error ? e.message : e); }
+      const trakt = ent?.features?.trakt === true;
       return json({
-        traktClientID: env("BINGR_TRAKT_CLIENT_ID"),
-        traktClientSecret: env("BINGR_TRAKT_CLIENT_SECRET"),
+        ...(trakt ? { traktClientID: env("BINGR_TRAKT_CLIENT_ID"), traktClientSecret: env("BINGR_TRAKT_CLIENT_SECRET") } : {}),
         openSubtitlesAPIKey: env("BINGR_OPENSUBTITLES_API_KEY"),
         omdbAPIKey: env("BINGR_OMDB_API_KEY"),
         tmdbAPIKey: env("BINGR_TMDB_API_KEY"),

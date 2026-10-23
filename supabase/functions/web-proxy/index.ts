@@ -35,9 +35,20 @@
 // build 95: geblokkeerd account (ban uit het beheer) -> 401 {error:"user_banned", banned:true} (ook de GET-vorm, binnen 5 min);
 // elke aanvraag naar een server (ook elke doorverwijzing, probe en osfile) controleert vlak ervoor de DNS (A en AAAA; een
 // DNS-fout of time-out = weigeren) en http-doelen gaan naar het gecontroleerde IP-adres met de eigen Host-header (geen DNS-rebinding).
+// Security M1/M2/L8 (23-10-2026, zie policy.ts en pinned.ts):
+//   - alleen de paden die de webspeler gebruikt (API's, streams, media/EPG/afbeeldingen, de eigen M3U/EPG-URL); anders 403
+//     path_not_allowed. Poorten 80, 443 en >= 1024 behalve bekende interne diensten (403 port_not_allowed). Een door de proxy
+//     ondertekende URL uit een afspeellijst moet media teruggeven (anders 403 content_not_allowed).
+//   - http én https naar het gecontroleerde IP (pinned.ts; TLS met SNI en certificaat op de hostnaam): geen DNS-rebinding.
+//     Noodschakelaar: function-secret BINGR_PROXY_PIN_IP=0 = terug naar fetch met een dubbele DNS-controle.
+//   - gebruik per account in de database (bingr_proxy_usage): aanvragen per uur en bytes per 24 uur, lager voor Gratis;
+//     429 quota_exceeded. app_settings.proxy_limits: {enabled, free, lifetime} (enabled false = noodrem, 503 unavailable).
+//   - antwoorden nooit als HTML/script (text/plain), altijd nosniff + CSP sandbox, niet-media als attachment.
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { b64url, isHlsPlaylist, rewritePlaylist, unb64url } from "./hls.ts";
 import { ipLiteral, isBlockedIP } from "./ip.ts";
+import { type Allow, allowFromSources, hostAllowed, mediaLike, overQuota, pathAllowed, portAllowed, quotaSettings, type QuotaSettings, safeContentType, safetyHeaders } from "./policy.ts";
+import { pinnedFetch } from "./pinned.ts";
 import { BANNED_BODY, bannedUntilActive, isBanError } from "../_shared/ban.ts";
 
 const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {
@@ -296,43 +307,80 @@ async function open_(data: string): Promise<any> {
   const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: all.subarray(0, 12) }, await sourcesKey(), all.subarray(12));
   return JSON.parse(new TextDecoder().decode(pt));
 }
-// "tv.example.co.uk" -> "example.co.uk", "a.b.example.com" -> "example.com" (eenvoudige benadering, genoeg voor IPTV-hosts)
-function baseDomain(host: string): string {
-  if (/^[\d.]+$/.test(host) || host.includes(":")) return host;
-  const p = host.split(".");
-  if (p.length <= 2) return host;
-  const sld = p[p.length - 2];
-  const two = p[p.length - 1].length === 2 && /^(co|com|net|org|gov|ac|edu|ne|or)$/.test(sld);
-  return p.slice(two ? -3 : -2).join(".");
-}
-const hostCache = new Map<string, { hosts: Set<string>; until: number }>();
-async function allowedHosts(userId: string): Promise<Set<string>> {
-  const hit = hostCache.get(userId);
-  if (hit && hit.until > Date.now()) return hit.hosts;
-  const hosts = new Set<string>();
+const allowCache = new Map<string, { allow: Allow; until: number }>();
+async function allowedHosts(userId: string): Promise<Allow> {
+  const hit = allowCache.get(userId);
+  if (hit && hit.until > Date.now()) return hit.allow;
   const { data: row, error } = await admin.from("account_sources").select("data").eq("user_id", userId).maybeSingle();
   if (error) throw new Error(error.message);
-  if (row?.data) {
-    const o = await open_(row.data);
-    for (const s of Array.isArray(o?.sources) ? o.sources : []) {
-      if (!s || s.deleted === true) continue;
-      for (const f of ["m3uURL", "epgURL", "serverURL"]) {
-        try {
-          const v = String(s[f] ?? "").trim();
-          if (!v) continue;
-          const h = new URL(/^[a-z]+:\/\//i.test(v) ? v : `https://${v}`).hostname.toLowerCase();
-          if (h) { hosts.add(h); hosts.add("*." + baseDomain(h)); }
-        } catch { /* geen geldige URL */ }
-      }
-    }
+  const allow = allowFromSources(row?.data ? (await open_(row.data))?.sources : []);
+  if (allowCache.size > 5000) allowCache.clear();
+  allowCache.set(userId, { allow, until: Date.now() + 60_000 });
+  return allow;
+}
+
+// ---- gebruik per account (security M1/L6): in het geheugen tellen, in porties naar de database ----
+let quotaCache: { at: number; v: QuotaSettings } | null = null;
+async function quotaConf(): Promise<QuotaSettings> {
+  if (quotaCache && Date.now() - quotaCache.at < 60_000) return quotaCache.v;
+  const { data, error } = await admin.from("app_settings").select("value").eq("key", "proxy_limits").maybeSingle();
+  if (error) console.error("web-proxy proxy_limits", error.message);
+  const v = quotaSettings(error ? (quotaCache?.v ?? null) : data?.value);
+  quotaCache = { at: Date.now(), v };
+  return v;
+}
+// abonnement (5 min in het geheugen); een databasefout telt als Gratis (fail closed, L3)
+const planCache = new Map<string, { plan: "free" | "lifetime"; until: number }>();
+async function planOf(userId: string): Promise<"free" | "lifetime"> {
+  const hit = planCache.get(userId);
+  if (hit && hit.until > Date.now()) return hit.plan;
+  const { data, error } = await admin.from("account_plans").select("plan").eq("user_id", userId).maybeSingle();
+  if (error) console.error("web-proxy account_plans", error.message);
+  const plan = !error && data?.plan === "lifetime" ? "lifetime" : "free";
+  if (planCache.size > 5000) planCache.clear();
+  planCache.set(userId, { plan, until: Date.now() + (error ? 30_000 : 300_000) });
+  return plan;
+}
+type Usage = { req: number; bytes: number; at: number; used: { requests_hour: number; bytes_day: number } | null };
+const usage = new Map<string, Usage>();
+const FLUSH_REQ = 25, FLUSH_BYTES = 64 * 1024 * 1024, FLUSH_MS = 15_000;
+function usageOf(user: string): Usage {
+  let u = usage.get(user);
+  if (!u) {
+    if (usage.size > 10_000) usage.clear();
+    u = { req: 0, bytes: 0, at: 0, used: null };
+    usage.set(user, u);
   }
-  if (hostCache.size > 5000) hostCache.clear();
-  hostCache.set(userId, { hosts, until: Date.now() + 60_000 });
-  return hosts;
+  return u;
 }
-function hostAllowed(host: string, hosts: Set<string>) {
-  return hosts.has(host) || hosts.has("*." + baseDomain(host));
+async function flushUsage(user: string, u: Usage) {
+  const req = u.req, bytes = u.bytes;
+  u.req = 0; u.bytes = 0; u.at = Date.now();
+  const { data, error } = await admin.rpc("bingr_proxy_usage", { p_user: user, p_requests: req, p_bytes: bytes });
+  if (error || !data) {
+    // database even weg: niet tegenhouden (de teller per minuut in het geheugen blijft), straks opnieuw schrijven
+    console.error("web-proxy usage", error?.message ?? "leeg");
+    u.req += req; u.bytes += bytes;
+    return;
+  }
+  u.used = { requests_hour: Number(data.requests_hour) || 0, bytes_day: Number(data.bytes_day) || 0 };
 }
+/** null = mag; anders het foutantwoord (noodrem 503, limiet 429 quota_exceeded). */
+async function quotaBlock(req: Request, user: string): Promise<Response | null> {
+  const json = jsonFor(req);
+  const conf = await quotaConf();
+  if (!conf.enabled) return json({ error: "unavailable" }, 503);
+  const u = usageOf(user);
+  u.req++;
+  if (!u.used || u.req >= FLUSH_REQ || u.bytes >= FLUSH_BYTES || Date.now() - u.at > FLUSH_MS) await flushUsage(user, u);
+  const q = conf[await planOf(user)];
+  if (u.used && overQuota({ requests_hour: u.used.requests_hour + u.req, bytes_day: u.used.bytes_day + u.bytes }, q)) {
+    return json({ error: "quota_exceeded" }, 429);
+  }
+  return null;
+}
+const countBytes = (user: string, n: number) => { usageOf(user).bytes += n; };
+
 // nooit naar interne adressen, ook niet via een doorverwijzing. build 95: IP-controle in ip.ts (isBlockedIP, getest).
 function privateHost(host: string) {
   const h = host.toLowerCase().replace(/\.$/, "");
@@ -350,8 +398,8 @@ type Lookup = { addrs: string[] } | Blocked;
 const DNS_TIMEOUT_MS = 2500;
 let dnsMissingLogged = false;
 /** build 95: voor ping/statuscontrole: kan deze runtime DNS opvragen en IP's vastzetten? */
-export function proxyCaps() { return { dns: typeof Deno.resolveDns === "function", pin: !!pinnedClient() }; }
-// alleen goedgekeurde adressen, kort: wordt alleen gebruikt voor http-doelen, die naar het IP zelf gaan (vastgezet)
+export function proxyCaps() { return { dns: typeof Deno.resolveDns === "function", pin: pinOn() }; }
+// alleen goedgekeurde adressen, kort (60 s): de verbinding gaat naar precies een van deze adressen (pinned.ts)
 const dnsCache = new Map<string, { addrs: string[]; until: number }>();
 async function resolveOne(host: string, type: "A" | "AAAA"): Promise<string[] | null> {
   const ctl = new AbortController();
@@ -390,44 +438,32 @@ async function lookup(hostIn: string, useCache: boolean): Promise<Lookup> {
   return { addrs };
 }
 
-// build 95: http-doelen naar het gecontroleerde IP-adres, met de eigen Host-header (geen DNS-rebinding tussen controle
-// en verbinding). Deno's fetch negeert een eigen Host-header, behalve met een client met allowHost (Deno >= 1.44).
-// Standaard UIT (aan met function-secret BINGR_PROXY_PIN_IP=1): of de runtime van de server die Host-header echt
-// meestuurt is niet zeker, en zonder zou een IPTV-server met meerdere sites op één IP de verkeerde site geven. Uit:
-// vlak voor elke aanvraag opnieuw DNS opvragen, en elk adres moet publiek zijn.
-let pinClient: Deno.HttpClient | null | undefined;
-function pinnedClient(): Deno.HttpClient | null {
-  if (pinClient !== undefined) return pinClient;
-  pinClient = null;
-  if (Deno.env.get("BINGR_PROXY_PIN_IP") !== "1") return pinClient;
-  try {
-    if (typeof Deno.createHttpClient === "function") pinClient = Deno.createHttpClient({ allowHost: true });
-  } catch (e) { console.error("web-proxy: createHttpClient", e instanceof Error ? e.message : e); }
-  if (!pinClient) console.error("web-proxy: geen allowHost-client; http-doelen met een tweede DNS-controle in plaats van een vast IP");
-  return pinClient;
-}
+// security M2: http én https naar het gecontroleerde IP-adres (pinned.ts), zodat er tussen controle en verbinding geen
+// andere DNS-uitkomst kan komen. Noodschakelaar BINGR_PROXY_PIN_IP=0: terug naar fetch op hostnaam met een tweede
+// DNS-controle vlak ervoor (oud gedrag, alleen voor als de eigen client op deze runtime niet werkt).
+const pinOn = () => Deno.env.get("BINGR_PROXY_PIN_IP") !== "0" && typeof Deno.connect === "function" && typeof Deno.startTls === "function";
 
 /**
- * build 95: één aanvraag (GET, redirect: manual) met een DNS-controle vlak ervoor. http: naar het gecontroleerde IP
- * (Host-header = de echte host), https: hostnaam blijft (TLS/SNI), maar de DNS is net opnieuw gecontroleerd.
+ * Eén aanvraag (GET, geen automatische doorverwijzing) met een DNS-controle vlak ervoor, naar precies dat IP-adres.
  */
 async function guardedFetch(url: URL, headers: Record<string, string>, signal: AbortSignal): Promise<Response | Blocked> {
+  if (!portAllowed(url)) return { error: "port_not_allowed", status: 403 };
   const host = url.hostname;
-  const client = url.protocol === "http:" ? pinnedClient() : null;
-  const r = await lookup(host, !!client);
+  const r = await lookup(host, true);
   if ("error" in r) return r;
-  if (client && r.addrs.length) {
-    const ip = r.addrs.find((x) => !x.includes(":")) ?? r.addrs[0]; // IPv4 eerst
-    const pinned = new URL(url.toString());
-    pinned.hostname = ip.includes(":") ? `[${ip}]` : ip;
-    return await fetch(pinned, { method: "GET", headers: { ...headers, Host: url.host }, redirect: "manual", signal, client });
+  if (pinOn() && r.addrs.length) {
+    // IPv4 eerst; lukt verbinden niet, dan het volgende gecontroleerde adres (max. 3)
+    const order = [...r.addrs.filter((x) => !x.includes(":")), ...r.addrs.filter((x) => x.includes(":"))].slice(0, 3);
+    let last: unknown = null;
+    for (const ip of order) {
+      try { return await pinnedFetch(url, { ip, headers, signal }); }
+      catch (e) { last = e; if (signal.aborted) throw e; }
+    }
+    throw last ?? new Error("connect_failed");
   }
-  if (url.protocol === "http:") {
-    // geen vast IP mogelijk: vlak ervoor nog een keer opvragen; ook dan moet elk adres publiek zijn. Niet dezelfde set
-    // eisen: CDN's en round-robin-DNS geven bij elke vraag andere adressen (dat zou echte streams weigeren).
-    const again = await lookup(host, false);
-    if ("error" in again) return again;
-  }
+  // noodschakelaar of geen DNS in deze runtime: vlak ervoor nog een keer opvragen; ook dan moet elk adres publiek zijn
+  const again = await lookup(host, false);
+  if ("error" in again) return again;
   return await fetch(url, { method: "GET", headers, redirect: "manual", signal });
 }
 
@@ -479,7 +515,12 @@ async function probe(req: Request, target: URL, user: string) {
   if (proxyLimited(user)) return json({ error: "rate_limited" }, 429);
   const host = target.hostname.toLowerCase();
   // DNS-controle volgt in guardedFetch, vlak voor elke aanvraag
-  if (privateHost(host) || !hostAllowed(host, await allowedHosts(user))) return json({ error: "host_not_allowed" }, 403);
+  const allow = await allowedHosts(user);
+  if (privateHost(host) || !hostAllowed(host, allow)) return json({ error: "host_not_allowed" }, 403);
+  if (!portAllowed(target)) return json({ error: "port_not_allowed" }, 403);
+  if (!pathAllowed(target, allow, false).ok) return json({ error: "path_not_allowed" }, 403);
+  const qb = await quotaBlock(req, user);
+  if (qb) return qb;
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), 20_000);
   // de webspeler geeft het na een paar seconden op (HLS-controle): dan ook de aanvraag naar de server stoppen
@@ -489,7 +530,7 @@ async function probe(req: Request, target: URL, user: string) {
   if ("error" in up) {
     clearTimeout(timer);
     // build 95: intern adres (na DNS, ook via een doorverwijzing) blijft een 403, zoals vóór de DNS-controle in guardedFetch
-    if (up.error === "host_not_allowed") return json({ error: "host_not_allowed" }, 403);
+    if (up.error === "host_not_allowed" || up.error === "port_not_allowed") return json({ error: up.error }, 403);
     return json({ probe: true, error: up.error, ms: Date.now() - t0 });
   }
   const { res, url, hosts } = up;
@@ -505,6 +546,7 @@ async function probe(req: Request, target: URL, user: string) {
     await reader?.cancel();
   } catch { /* afgebroken: wat er is */ }
   clearTimeout(timer);
+  countBytes(user, n);
   const all = new Uint8Array(Math.min(n, PROBE_BYTES));
   let o = 0;
   for (const p of parts) { const take = Math.min(p.byteLength, all.length - o); all.set(p.subarray(0, take), o); o += take; if (o >= all.length) break; }
@@ -529,7 +571,14 @@ async function proxy(req: Request, opts: { target: URL; range: string | null; us
 
   const host = target.hostname.toLowerCase();
   if (privateHost(host)) return json({ error: "host_not_allowed" }, 403);
-  if (!opts.trusted && !hostAllowed(host, await allowedHosts(user))) return json({ error: "host_not_allowed" }, 403);
+  if (!portAllowed(target)) return json({ error: "port_not_allowed" }, 403);
+  if (!opts.trusted) {
+    const allow = await allowedHosts(user);
+    if (!hostAllowed(host, allow)) return json({ error: "host_not_allowed" }, 403);
+    if (!pathAllowed(target, allow, false).ok) return json({ error: "path_not_allowed" }, 403);
+  }
+  const qb = await quotaBlock(req, user);
+  if (qb) return qb;
   // DNS (intern adres?) controleert guardedFetch vlak voor elke aanvraag, ook bij elke doorverwijzing
 
   // GET-bereik voor iets dat geen afspeellijst is: begrenzen tot GET_CHUNK. Open (bytes=N-, Chrome/Firefox) én gesloten
@@ -558,7 +607,13 @@ async function proxy(req: Request, opts: { target: URL; range: string | null; us
 
   const len = Number(res.headers.get("content-length") ?? "");
   const ctype = res.headers.get("content-type") ?? "";
-  const out = new Headers({ ...corsFor(req), "Cache-Control": "no-store", "X-Final-URL": url.toString(), "X-Upstream-Status": String(res.status) });
+  // security M1: een ondertekende URL uit een afspeellijst (mag naar elke publieke host) moet media teruggeven
+  if (opts.trusted && res.ok && !mediaLike(ctype) && !/\.m3u8?$/i.test(url.pathname)) {
+    clearTimeout(timer); await res.body?.cancel();
+    return json({ error: "content_not_allowed" }, 403);
+  }
+  const safeType = safeContentType(ctype);
+  const out = new Headers({ ...corsFor(req), ...safetyHeaders(safeType), "Cache-Control": "no-store", "X-Final-URL": url.toString(), "X-Upstream-Status": String(res.status) });
   if (hosts.length) out.set("X-Redirect-Hosts", hosts.join(","));
   if (range) out.set("X-Upstream-Range", res.status === 206 ? "yes" : "no");
 
@@ -586,12 +641,12 @@ async function proxy(req: Request, opts: { target: URL; range: string | null; us
           part = part.subarray(skip); skip = 0;
         }
         if (sent + part.byteLength > want) part = part.subarray(0, want - sent);
-        if (part.byteLength) { c.enqueue(part); sent += part.byteLength; }
+        if (part.byteLength) { c.enqueue(part); sent += part.byteLength; countBytes(user, part.byteLength); }
         if (sent >= want) { clearTimeout(timer); c.terminate(); }
       },
       flush() { clearTimeout(timer); },
     });
-    if (ctype) out.set("content-type", ctype);
+    out.set("content-type", safeType);
     out.set("content-length", String(want));
     out.set("content-range", `bytes ${from}-${from + want - 1}/${len}`);
     out.set("accept-ranges", "bytes");
@@ -633,16 +688,20 @@ async function proxy(req: Request, opts: { target: URL; range: string | null; us
       const t = encodeURIComponent(opts.token ?? "");
       text = rewritePlaylist(text, url.toString(), (abs) => `${SELF_URL}?u=${b64url(abs)}&t=${t}&s=${sigs.get(abs)}`);
       out.set("content-type", "application/vnd.apple.mpegurl");
-    } else if (ctype) out.set("content-type", ctype);
+      for (const [k, v] of Object.entries(safetyHeaders("application/vnd.apple.mpegurl"))) out.set(k, v);
+      out.delete("Content-Disposition");
+    } else out.set("content-type", safeType);
+    countBytes(user, n0(text));
     return new Response(text, { status: res.status, headers: out });
   }
 
   // komt er toch gecomprimeerd iets binnen, dan pakt fetch het uit en klopt de lengte niet meer: dan zonder lengte
   const encoded = /^(gzip|br|deflate|zstd)/i.test(res.headers.get("content-encoding") ?? "");
-  for (const h of ["content-type", "content-length", "content-range", "accept-ranges", "last-modified", "etag"]) {
+  for (const h of ["content-length", "content-range", "accept-ranges", "last-modified", "etag"]) {
     const v = res.headers.get(h);
     if (v && !(encoded && h === "content-length")) out.set(h, v);
   }
+  out.set("content-type", safeType);
   if (!res.body) { clearTimeout(timer); return new Response(null, { status: res.status, headers: out }); }
 
   // doorstromen zonder te bufferen; boven 200 MB of na 120 s afbreken
@@ -650,6 +709,7 @@ async function proxy(req: Request, opts: { target: URL; range: string | null; us
   const cap = new TransformStream<Uint8Array, Uint8Array>({
     transform(chunk, c) {
       seen += chunk.byteLength;
+      countBytes(user, chunk.byteLength);
       if (seen > MAX_BYTES) { ctl.abort(); c.error(new Error("too_large")); return; }
       c.enqueue(chunk);
     },
@@ -657,6 +717,8 @@ async function proxy(req: Request, opts: { target: URL; range: string | null; us
   });
   return new Response(res.body.pipeThrough(cap), { status: res.status, headers: out });
 }
+
+const n0 = (t: string) => t.length;
 
 function parseTarget(raw: string): URL | null {
   let u: URL;

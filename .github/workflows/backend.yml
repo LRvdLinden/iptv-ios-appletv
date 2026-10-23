@@ -80,6 +80,9 @@ jobs:
           deno-version: v2.x
       - name: Unittests (statistieken)
         run: deno test supabase/functions/device-auth/stats_test.ts supabase/functions/device-auth/naming_test.ts supabase/functions/device-auth/password_test.ts supabase/functions/_shared/ban_test.ts supabase/functions/web-proxy/ip_test.ts
+      - name: Unittests (web-proxy, security M1/M2)
+        # blokkeert de deploy: welke hosts/paden/poorten, veilige content-types, limieten, en de verbinding naar een vast IP
+        run: deno test --allow-net=127.0.0.1 supabase/functions/web-proxy/policy_test.ts supabase/functions/web-proxy/pinned_test.ts supabase/functions/web-proxy/hls_test.ts
       - name: Unittests (pushmeldingen)
         # blokkeert de deploy: JWT (APNs/FCM/VAPID), Web Push-versleuteling (RFC 8291-testvector), payloads, taal, dedup,
         # en de meldingen naar de beheer-app (teksten, samenvatten, statusovergangen, watermerken, topic)
@@ -1060,6 +1063,24 @@ jobs:
                   blocked = code == 403 and (r.get("error") == "host_not_allowed" or "raw" in r)
                   if not blocked: fail.append(f"web-proxy {body}: HTTP {code} {str(r)[:200]} (verwacht 403)")
               if not any("web-proxy" in f for f in fail): print("::notice::web-proxy: interne adressen geweigerd (403), token werkt")
+              # security M1/M2/L8: alleen paden van de eigen server; antwoord via een vast IP (ook https), nooit als HTML
+              code, r = req("POST", DA, {"action": "put_sources", "sources": [{"id": "ci-src", "name": "CI", "type": "xtream", "serverURL": "https://example.com", "updatedAt": "2026-01-01T00:00:00Z"}], "mainSourceID": "ci-src"}, user)
+              if code != 200: fail.append(f"put_sources HTTP {code}: {str(r)[:200]}")
+              else:
+                  # (de proxy heeft de lijst van dit account nog niet opgehaald: interne adressen werden al vóór de lijst geweigerd)
+                  for body, want in (({"url": "https://example.com/"}, "path_not_allowed"), ({"url": "https://example.com:6379/player_api.php"}, "port_not_allowed"),
+                                     ({"url": "https://evil.example.org/player_api.php"}, "host_not_allowed")):
+                      code, r = req("POST", WP, body, user)
+                      if code != 403 or r.get("error") != want: fail.append(f"web-proxy {body['url']}: HTTP {code} {str(r)[:120]} (verwacht 403 {want})")
+                  rq = urllib.request.Request(WP, data=json.dumps({"url": "https://example.com/player_api.php"}).encode(), method="POST",
+                                              headers={"Content-Type": "application/json", **user})
+                  try:
+                      with urllib.request.urlopen(rq, timeout=30) as resp: st, hd = resp.status, resp.headers
+                  except urllib.error.HTTPError as e: st, hd = e.code, e.headers
+                  ct = (hd.get("content-type") or "").lower()
+                  if st not in (200, 404) or "html" in ct or hd.get("x-content-type-options") != "nosniff" or not (hd.get("content-security-policy") or "").startswith("sandbox"):
+                      fail.append(f"web-proxy https via vast IP: HTTP {st}, type {ct}, nosniff {hd.get('x-content-type-options')}, csp {hd.get('content-security-policy')}")
+                  if not any("web-proxy" in f or "put_sources" in f for f in fail): print(f"::notice::web-proxy: pad-/poort-/hostcontrole werkt; https via vast IP (HTTP {st}), geen HTML ({ct}), nosniff en CSP sandbox")
               # 3. blokkeren (zoals het beheer: ban, sessies blijven bestaan) -> de apps moeten user_banned zien
               code, r = req("PUT", f"{BASE}/auth/v1/admin/users/{uid}", {"ban_duration": "1h"}, adm)
               if code != 200: fail.append(f"ban HTTP {code}: {str(r)[:200]}")

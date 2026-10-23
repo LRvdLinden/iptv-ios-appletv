@@ -224,7 +224,7 @@ Het avatar-icoon wordt ook gewoon meegestuurd, zodat er altijd iets te tonen is.
 De repo is openbaar, dus de sleutels voor Trakt, OpenSubtitles, OMDb en TMDB worden niet in de app gebouwd. De app haalt ze op bij de server:
 
 - **Aanroep:** device-auth `{"action":"config"}` met `Authorization: Bearer <access_token>`.
-- **Antwoord:** `{traktClientID, traktClientSecret, openSubtitlesAPIKey, omdbAPIKey, tmdbAPIKey}`. Een waarde kan `""` zijn.
+- **Antwoord:** `{traktClientID, traktClientSecret, openSubtitlesAPIKey, omdbAPIKey, tmdbAPIKey}`. Een waarde kan `""` zijn. Security L5 (server, 23-10-2026): `traktClientID`/`traktClientSecret` alleen voor Lifetime (functie `trakt`); ontbreekt een veld, dan houdt de app zijn opgeslagen waarde. Max. 60 aanvragen per uur per account (429 `rate_limited`).
 - **Wanneer:** na elke login en bij het starten met een geldige sessie, op de achtergrond.
 - **Bewaren:** alleen lokaal, op Apple in de sleutelhanger zonder iCloud, op Android in privé-instellingen. Zo werkt de app daarna ook offline.
 - **Uitloggen:** de opgehaalde sleutels blijven staan.
@@ -265,7 +265,7 @@ Servers horen bij het account. Na het (opnieuw) installeren, na een update en op
 | Actie (device-auth, met `Authorization: Bearer <access_token>`) | Body | Antwoord |
 |---|---|---|
 | `get_sources` | `{}` | `{sources:[…], mainSourceID, updatedAt}`. Voor een nieuw account: `sources: []`, `updatedAt: null`. |
-| `put_sources` | `{sources:[…], mainSourceID}` | `{ok, updatedAt}`. Stuurt altijd de **hele** lijst, inclusief tombstones. Maximaal 512 KB, 100 bronnen. Sinds build 60 voegt de server samen (zie "Build 60"). |
+| `put_sources` | `{sources:[…], mainSourceID}` | `{ok, updatedAt}`. Stuurt altijd de **hele** lijst, inclusief tombstones. Maximaal 512 KB, 100 bronnen. Sinds build 60 voegt de server samen (zie "Build 60"). Security L4: meer niet-verwijderde bronnen dan het abonnement toestaat (Gratis 1) geeft 403 `{error:"server_limit", limit}`, tenzij het account er al zoveel had (bestaande servers blijven altijd staan). Planfout = Gratis-limieten (L3), er wordt nooit iets gewist. |
 
 **Bron (gedeeld formaat, gelijk op iOS en Android)**
 
