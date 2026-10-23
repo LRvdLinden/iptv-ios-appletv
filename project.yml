@@ -218,7 +218,6 @@ targets:
       properties:
         com.apple.security.app-sandbox: true
         com.apple.security.network.client: true
-        com.apple.security.network.server: true
         com.apple.security.files.user-selected.read-only: true
         # zelfde iCloud-opslag als iPhone, iPad en Apple TV
         com.apple.developer.ubiquity-kvstore-identifier: $(TeamIdentifierPrefix)nl.lrvdlinden.bingr

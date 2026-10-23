@@ -52,6 +52,11 @@ final class LocalMediaServer: @unchecked Sendable {
 
     private func startLocked() -> Bool {
         if listener != nil { return true }
+        #if os(macOS)
+        // Mac: geen inkomende verbindingen (sandbox zonder com.apple.security.network.server, eis van Apple).
+        // Casten werkt, alleen eigen ondertitels/HLS via het toestel niet.
+        return false
+        #endif
         // vaste (willekeurige) poort, zodat de URL meteen bekend is; bezet → een andere proberen
         for _ in 0..<5 {
             let p = UInt16.random(in: 49_200...64_000)
