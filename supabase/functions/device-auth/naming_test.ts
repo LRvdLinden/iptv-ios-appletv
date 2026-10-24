@@ -12,7 +12,7 @@ Deno.test("soort: start-apparaat en register-platform komen overeen", () => {
 });
 
 Deno.test("soort: webspeler (weergavenaam bij start, browser bij aanmelden)", () => {
-  eq(["Chrome op Mac", "Safari on iPad", "Firefox op Windows", "Edge", "browser"].map(deviceKind), ["web", "web", "web", "web", "web"]);
+  eq(["Chrome op Mac", "Safari on iPad", "Firefox op Windows", "Edge", "browser", "windows"].map(deviceKind), ["web", "web", "web", "web", "web", "web"]);
 });
 
 Deno.test("label voor het naamveld", () => {

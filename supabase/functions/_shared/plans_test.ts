@@ -62,6 +62,8 @@ Deno.test("platform uit de aanvraag of van het apparaat", () => {
   eq(platformFromDevice("tizen"), "tizen");
   eq(platformFromDevice("Samsung TV"), "tizen");
   eq(platformFromDevice("browser"), "web");
+  eq(platformFromDevice("windows"), "web");
+  eq(normalizePlatform("Windows"), "web");
 });
 
 Deno.test("upgrade-link per platform", () => {

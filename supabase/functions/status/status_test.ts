@@ -212,3 +212,13 @@ Deno.test({
     console.log("   ", r.detail, `${r.ms} ms`);
   },
 });
+
+Deno.test("Openbare download: alleen HEAD (telt niet als download), 200 = up", async () => {
+  const seen: string[] = [];
+  const head = (status: number) => ctxWith((_u, init) => { seen.push(String(init?.method ?? "GET")); return new Response(null, { status, headers: { "content-length": String(8 * 1048576) } }); });
+  const ok = await runCheck({ kind: "head", target: "https://beheer.bingr.online/dl.php?app=windows" } as never, head(200));
+  eq([ok.ok, ok.code, ok.detail], [true, 200, "8 MB"]);
+  const gone = await runCheck({ kind: "head", target: "https://beheer.bingr.online/dl.php?app=windows" } as never, head(404));
+  eq([gone.ok, gone.error], [false, "HTTP 404"]);
+  eq(seen, ["HEAD", "HEAD"]);
+});

@@ -73,7 +73,7 @@ export function normalizePlatform(v: unknown): Platform | null {
 }
 
 // platform van een geregistreerd apparaat (account_devices.platform: "iPhone", "iPad", "Mac", "Apple TV", "Android",
-// "Android tablet", "Android TV", "Google TV", "Fire TV", "tizen", "browser", …)
+// "Android tablet", "Android TV", "Google TV", "Fire TV", "tizen", "browser", "windows", …)
 export function platformFromDevice(v: unknown): Platform | null {
   const s = String(v ?? "").trim().toLowerCase();
   if (!s) return null;
@@ -82,7 +82,8 @@ export function platformFromDevice(v: unknown): Platform | null {
   if (/^(ipad|ipados)$/.test(s)) return "ipados";
   if (/^(mac|macos|mac catalyst)$/.test(s)) return "macos";
   if (/^(tizen|samsung tv)$/.test(s)) return "tizen";
-  if (/^(browser|web)$/.test(s)) return "web";
+  // de Windows-app (bingr-windows) is de webspeler in een eigen venster: upgrade-link en functies zoals web
+  if (/^(browser|web|windows)$/.test(s)) return "web";
   if (/(android ?tv|google ?tv|fire ?tv|androidtv)/.test(s)) return "androidtv";
   if (/^android/.test(s)) return "android";
   return null;

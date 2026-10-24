@@ -48,6 +48,7 @@ export async function runCheck(m: Monitor, ctx: Ctx): Promise<CheckResult> {
       case "tls": return await checkTls(m.target, ctx);
       case "build": return await checkBuild(m.target, ctx);
       case "reach": return await checkReach(m.target, ctx);
+      case "head": return await checkHead(m.target, ctx);
       case "push": return await checkPush(ctx);
       // oude monitors (vóór build 107): downloads in bingr-beheer/versions bestaan niet meer -> afgesloten opslag
       case "gh_asset": return await checkBuild(ASSET_PLATFORM[(m.target.split("|")[1] || "").toLowerCase()] ?? "", ctx);
@@ -138,6 +139,21 @@ export async function checkReach(url: string, ctx: Ctx): Promise<CheckResult> {
     await res.body?.cancel();
     if (res.status < 100 || res.status > 599) return { ok: false, code: res.status, ms, error: `HTTP ${res.status}` };
     return { ok: true, code: res.status, ms, degraded: slow(ms), detail: `bereikbaar (HTTP ${res.status})` };
+  });
+}
+
+// ---- openbare download (bv. de Windows-installer via dl.php?app=windows): alleen HEAD, zodat de controle niets
+// downloadt en niet als download telt. 200 = up; volgt doorverwijzingen (bingr.online/windows -> dl.php). ----
+export async function checkHead(url: string, ctx: Ctx): Promise<CheckResult> {
+  const f = ctx.fetch ?? fetch;
+  const t = now();
+  return await withTimeout(async (signal) => {
+    const res = await f(url, { method: "HEAD", signal, redirect: "follow", headers: { "User-Agent": UA, "Cache-Control": "no-cache" } });
+    const ms = since(t);
+    await res.body?.cancel();
+    if (res.status !== 200) return { ok: false, code: res.status, ms, error: `HTTP ${res.status}` };
+    const len = Number(res.headers.get("content-length") ?? "");
+    return { ok: true, code: res.status, ms, degraded: slow(ms), detail: len > 0 ? `${Math.round(len / 1048576)} MB` : null };
   });
 }
 

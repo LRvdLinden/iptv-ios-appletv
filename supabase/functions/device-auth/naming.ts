@@ -5,11 +5,11 @@ export const NAME_MAX = 40;
 
 // Soort apparaat. `device` bij start ("Apple TV", "Mac", "iPhone", "Android TV", "Fire TV", "Android", "Samsung TV") en
 // `platform` bij register_device ("Apple TV", "iPhone", "iPad", "Mac", "Android", "Android tablet", "Android TV",
-// "Google TV", "Fire TV", "tizen", "browser") komen zo op dezelfde soort uit.
+// "Google TV", "Fire TV", "tizen", "browser", "windows") komen zo op dezelfde soort uit. De Windows-app is de webspeler.
 const KIND: Record<string, string> = {
   "apple tv": "tvos", tvos: "tvos", iphone: "ios", ipad: "ios", ios: "ios", ipados: "ios", mac: "macos", macos: "macos",
   android: "android", "android tablet": "android", "android tv": "androidtv", "google tv": "androidtv", "fire tv": "androidtv",
-  androidtv: "androidtv", tizen: "tizen", "samsung tv": "tizen", browser: "web", web: "web",
+  androidtv: "androidtv", tizen: "tizen", "samsung tv": "tizen", browser: "web", web: "web", windows: "web",
 };
 // De webspeler start met zijn weergavenaam ("Chrome op Mac", "Safari on iPad") en meldt zich aan met platform "browser".
 const BROWSER = /\b(browser|chrome|chromium|safari|firefox|edge|opera|brave|vivaldi|samsung internet)\b/i;

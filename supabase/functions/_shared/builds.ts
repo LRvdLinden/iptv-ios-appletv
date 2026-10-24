@@ -3,7 +3,7 @@
 // dl.php accepteert een kortgeldige, ondertekende link: HMAC-SHA256 met het function-secret BINGR_BUILDS_KEY, zelfde formaat
 // als de functie admin in bingr-beheer. Sleutel, tokens en links komen nooit in een log of resultaat.
 export const BUILDS_DL = "https://beheer.bingr.online/dl.php";
-export const BUILD_PLATFORMS = ["android", "tizen", "apple", "beheer"] as const;
+export const BUILD_PLATFORMS = ["android", "tizen", "apple", "beheer", "windows"] as const;
 export type BuildEntry = { build?: number; date?: string; file?: string; path?: string; size?: number };
 export type BuildManifest = { platforms?: Record<string, BuildEntry> };
 
