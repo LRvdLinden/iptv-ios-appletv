@@ -72,6 +72,15 @@ create policy "avatars eigen wijzigen" on storage.objects for update to authenti
 create policy "avatars eigen verwijderen" on storage.objects for delete to authenticated
   using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
 
+-- Afbeeldingen van eigen mailings uit het beheer (bingr-beheer, functie admin, actie mailing_image_upload): openbare bucket
+-- "mail-assets" (de afbeelding moet in elke mailclient zonder inlog te laden zijn), alleen PNG, JPEG en GIF tot 2 MB.
+-- Bewust geen policies op storage.objects voor deze bucket: anon en authenticated kunnen er niets uploaden, wijzigen,
+-- verwijderen of opsommen; lezen gaat alleen via de openbare URL van één bestand. Schrijven alleen met de service role
+-- (de functie admin), met een willekeurige naam m/<jjjj>/<mm>/<32 hex>.<ext> zonder persoonsgegevens. Geen changelog (beheer).
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('mail-assets', 'mail-assets', true, 2097152, array['image/png', 'image/jpeg', 'image/gif'])
+on conflict (id) do update set public = true, file_size_limit = 2097152, allowed_mime_types = array['image/png', 'image/jpeg', 'image/gif'];
+
 -- Servers en afspeellijsten per account, versleuteld (AES-GCM) door de Edge Function met BINGR_SOURCES_KEY.
 -- Alleen de Edge Function (service role) leest en schrijft hierin.
 create table if not exists public.account_sources (

@@ -3,7 +3,7 @@
 // doelgroep (opt-out, geblokkeerd, onbevestigd, verwijderd, taal) en de verzendronde (idempotent, limiet, fouten).
 // Alleen testadressen (example.invalid).
 import {
-  type AccountRow, bodyToHtml, bodyToText, budgetOf, cleanContent, cleanUrl, countAudience, eligible, inlineHtml, type MailingContent,
+  type AccountRow, bodyToHtml, bodyToText, budgetOf, cleanContent, cleanUrl, countAudience, eligible, imageAlt, inlineHtml, type MailingContent,
   mailingView, parseBlocks, type Recipient, recipientLang, renderMailing, runMailing, type Take,
 } from "./mailing.ts";
 
@@ -100,12 +100,25 @@ Deno.test("mail: nieuwsbrief-abonnees met afmeldlink, aanhef, knop en afbeelding
   ok(m.html.includes(">BINGR<") && m.html.includes("#E50914"), "logo met rode streep");
   ok(m.html.includes("Hoi Léon b,"), "aanhef met opgeschoonde naam (< > weg)");
   ok(m.html.includes('src="https://bingr.online/assets/img/nl/tv_home.jpg"'), "afbeelding");
+  const img = m.html.match(/<img [^>]*>/)?.[0] ?? "";
+  ok(/height:auto/.test(img) && !/background/.test(img) && !/height="/.test(img), "afbeelding zonder achtergrond of vaste hoogte (geen donker vlak als hij niet laadt)");
+  ok(img.includes('alt="Nieuw in Bingr"'), "korte alt-tekst");
+  ok(!/<div style="[^"]*background[^"]*">\s*(<a [^>]*>)?<img/.test(m.html), "geen kader met achtergrond om de afbeelding");
   ok(m.html.includes(">Lees meer</a>"), "knop");
   ok(m.html.includes("https://bingr.online/unsubscribe/?k=news&amp;t=abc") && m.html.includes(">Afmelden</a>"), "afmeldlink");
   ok(m.html.includes("ingeschreven voor de nieuwsbrief"), "reden");
   ok(!m.html.includes("Servicebericht"), "geen servicelabel");
   ok(m.text.includes("Hoi Léon b,") && m.text.includes("Lees meer: https://bingr.online/") && m.text.includes("Afmelden: https://bingr.online/unsubscribe/"), "tekstversie");
   ok(!m.text.includes("<"), "tekst zonder HTML");
+});
+
+Deno.test("mail: korte alt-tekst bij een lang onderwerp", () => {
+  eq(imageAlt("Bingr Lifetime is nu beschikbaar!"), "Bingr Lifetime is nu beschikbaar!", "kort blijft");
+  const long = imageAlt("x".repeat(150));
+  eq(Array.from(long).length, 60, "max. 60 tekens");
+  ok(long.endsWith("…"), "met beletselteken");
+  const m = renderMailing({ lang: "nl", content: content({ nl: { subject: "a ".repeat(70), body: "Tekst", button: "Lees meer" } }), audience: "newsletter" });
+  ok(/alt="[^"]{1,80}"/.test(m.html), "alt kort in de mail");
 });
 
 Deno.test("mail: servicebericht zonder afmeldlink, met reden; EN-versie; test-onderwerp", () => {

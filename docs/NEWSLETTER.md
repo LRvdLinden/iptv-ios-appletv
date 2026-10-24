@@ -175,6 +175,13 @@ Code: `supabase/functions/newsletter/mailing.ts` (logica, opmaak, mail), tests `
 
 - Onderwerp NL + EN (max. 150 tekens), tekst NL + EN (max. 8000 tekens per taal), optioneel een afbeelding (https-URL,
   bovenaan, 500 px breed) en een knop (tekst NL + EN, max. 40 tekens, en één https-URL).
+- Afbeelding: uploaden in het beheer (openbare bucket `mail-assets` in `supabase/schema.sql`: PNG, JPEG of GIF tot 2 MB,
+  schrijven alleen via de functie `admin` met de service role, willekeurige bestandsnaam) of een directe link. De functie
+  `admin` controleert een link vóór voorbeeld, testmail en versturen (https, openbare host, max. 3 doorverwijzingen,
+  content-type en inhoud PNG/JPEG/GIF, max. 2 MB; SVG, WebP, webpagina's en deellinks van Drive/iCloud/Dropbox geweigerd).
+  In de mail staat de afbeelding zonder achtergrond en met `height:auto` en een korte alt-tekst (onderwerp, max. 60 tekens),
+  zodat een afbeelding die toch niet laadt geen groot donker vlak geeft. De workflow Backend meldt (stap *Eigen mailing -
+  afbeeldingen van recente mailings*) per recente mailing alleen de soort probleem, nooit de URL.
 - Opmaak (markdown-achtig, alles wordt ge-escaped; geen eigen HTML of stijlen): lege regel = nieuwe alinea, `# Kop`,
   `## Kleinere kop`, `**vet**`, `[linktekst](https://…)` en losse `https://`-links, `- punt` / `* punt` (opsomming),
   `1. punt` (genummerd). Alleen https-links en -afbeeldingen (geen http, javascript:, IP-adressen of inloggegevens in de URL).

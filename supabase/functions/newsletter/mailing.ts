@@ -188,13 +188,21 @@ const preheaderOf = (text: string) => {
   return Array.from(s).length > 140 ? Array.from(s).slice(0, 139).join("").trimEnd() + "…" : s;
 };
 
+/** Korte alt-tekst voor de afbeelding bovenaan: het onderwerp, hoogstens 60 tekens. */
+export function imageAlt(subject: string): string {
+  const a = Array.from(subject.replace(/\s+/g, " ").trim());
+  return a.length > 60 ? a.slice(0, 59).join("").trimEnd() + "…" : a.join("");
+}
+
 /** De hele mail: {subject, html, text}. */
 export function renderMailing(o: RenderOpts): { subject: string; html: string; text: string } {
   const t = TEXT[o.lang], c = o.content[o.lang], img = o.content.image, url = o.content.button_url;
   const subject = (o.test ? t.test : "") + c.subject;
   const service = o.audience === "service";
+  // geen achtergrond of vaste hoogte: laadt de afbeelding niet (of blokkeert de ontvanger afbeeldingen), dan geen groot donker
+  // vlak met een gebroken-afbeelding-icoon, alleen de korte alt-tekst. De functie admin controleert de URL vóór het versturen.
   const imgTag = img
-    ? `<img src="${esc(img)}" width="500" alt="${esc(c.subject)}" style="display:block;width:100%;max-width:500px;height:auto;border:0;border-radius:8px;background:#1f1f1f">`
+    ? `<img src="${esc(img)}" width="500" alt="${esc(imageAlt(c.subject))}" style="display:block;width:100%;max-width:500px;height:auto;border:0;outline:none;text-decoration:none;border-radius:8px;color:#b3b3b3;font-size:13px;line-height:18px">`
     : "";
   const content = [
     greeting(o.lang, o.firstName),

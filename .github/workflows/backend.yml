@@ -967,6 +967,76 @@ jobs:
           # 5. één ronde eigen mailing (alleen tellingen; loopt er geen mailing, dan gebeurt er niets; geen testmail naar leden)
           curl -s --max-time 170 -X POST "$F" "${J[@]}" -H "x-newsletter-secret: $(cat "$RUNNER_TEMP/newsletter_cron_secret")" -d '{"action":"mailing_cron"}' > /tmp/m.json
           grep -Eq '"ok": ?true' /tmp/m.json && echo "::notice::eigen mailing: $(cat /tmp/m.json)" || { echo "::error::eigen mailing: $(head -c 300 /tmp/m.json)"; exit 1; }
+      - name: Eigen mailing - afbeeldingen van recente mailings
+        # Controle (alleen waarschuwing): laden de afbeeldingen van de laatste eigen mailings in een mailclient? Meldt alleen
+        # de soort (deellink, webpagina, SVG/WebP, inlog, te groot …), het mailing-id en de datum; nooit de URL of de host.
+        if: steps.check.outputs.skip != '1'
+        continue-on-error: true
+        run: |
+          python3 - <<'PY'
+          import ipaddress, json, os, re, socket, ssl, urllib.error, urllib.parse, urllib.request
+          ref, tok = os.environ["REF"], os.environ["SUPABASE_ACCESS_TOKEN"]
+          q = ("select id, created_at::date::text as d, content->>'image' as image from public.mailings "
+               "where coalesce(content->>'image', '') <> '' order by id desc limit 5")
+          req = urllib.request.Request(f"https://api.supabase.com/v1/projects/{ref}/database/query", data=json.dumps({"query": q}).encode(),
+                                       headers={"Authorization": f"Bearer {tok}", "Content-Type": "application/json", "User-Agent": "bingr-backend"})
+          try: rows = json.load(urllib.request.urlopen(req, timeout=30))
+          except Exception as e: print(f"::warning::mailafbeeldingen: query mislukt ({type(e).__name__})"); raise SystemExit(0)
+          if not isinstance(rows, list) or not rows: print("::notice::mailafbeeldingen: geen eigen mailings met een afbeelding"); raise SystemExit(0)
+          SHARE = {"drive.google.com": "Google Drive", "docs.google.com": "Google Docs", "photos.google.com": "Google Foto's", "photos.app.goo.gl": "Google Foto's",
+                   "icloud.com": "iCloud", "dropbox.com": "Dropbox", "onedrive.live.com": "OneDrive", "1drv.ms": "OneDrive", "sharepoint.com": "OneDrive/SharePoint",
+                   "wetransfer.com": "WeTransfer", "we.tl": "WeTransfer"}
+          def soort(host):
+              h = host.lower()
+              if h == f"{ref}.supabase.co": return "eigen opslag"
+              for d, n in SHARE.items():
+                  if h == d or h.endswith("." + d): return f"deellink {n}"
+              return "andere host"
+          def sniff(b):
+              if b[:8] == b"\x89PNG\r\n\x1a\n": return "png"
+              if b[:3] == b"\xff\xd8\xff": return "jpeg"
+              if b[:6] in (b"GIF87a", b"GIF89a"): return "gif"
+              if b[:4] == b"RIFF" and b[8:12] == b"WEBP": return "webp"
+              t = b[:512].decode("utf-8", "ignore").lstrip().lower()
+              if "<svg" in t[:300]: return "svg"
+              if t.startswith(("<!doctype html", "<html", "<head", "<!--")): return "html"
+              return "onbekend"
+          class NoRedirectToPrivate(urllib.request.HTTPRedirectHandler):
+              max_redirections = 3
+          opener = urllib.request.build_opener(NoRedirectToPrivate())
+          for r in rows:
+              mid, d, url = r.get("id"), r.get("d"), r.get("image") or ""
+              tag = f"mailing {mid} ({d})"
+              try: u = urllib.parse.urlsplit(url)
+              except Exception: print(f"::warning::{tag}: afbeelding-URL onleesbaar"); continue
+              kind = soort(u.hostname or "")
+              ext = (re.search(r"\.([a-z0-9]{2,5})$", u.path.lower()) or [None, "geen"])[1]
+              try:
+                  ips = {a[4][0] for a in socket.getaddrinfo(u.hostname, 443)}
+                  if any(not ipaddress.ip_address(i.split("%")[0]).is_global for i in ips): print(f"::warning::{tag}: afbeelding op een niet-openbaar adres"); continue
+              except Exception: print(f"::warning::{tag}: afbeelding: host niet gevonden ({kind})"); continue
+              status, ct, body, err = 0, "", b"", ""
+              try:
+                  res = opener.open(urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Macintosh) AppleWebKit/605.1.15 Mail", "Accept": "image/*"}), timeout=15)
+                  status, ct, body = res.status, res.headers.get("content-type", ""), res.read(2 * 1024 * 1024 + 1)
+                  final = soort(urllib.parse.urlsplit(res.geturl()).hostname or "")
+              except urllib.error.HTTPError as e: status, ct, final = e.code, e.headers.get("content-type", ""), kind
+              except Exception as e: err, final = type(e).__name__, kind
+              ct = re.sub(r"[^a-z0-9/+.-]", "", ct.split(";")[0].strip().lower())[:40] or "geen"
+              inh = sniff(body) if body else "leeg"
+              size = "> 2 MB" if len(body) > 2 * 1024 * 1024 else f"{max(1, round(len(body) / 1024))} kB"
+              if err: probleem = f"niet te laden ({err})"
+              elif status in (401, 403, 407): probleem = "achter een inlog / niet openbaar"
+              elif status >= 400: probleem = f"HTTP {status}"
+              elif ct in ("text/html", "application/xhtml+xml") or inh == "html": probleem = "webpagina, geen afbeelding"
+              elif ct == "image/svg+xml" or inh == "svg": probleem = "SVG (niet in alle mailclients)"
+              elif ct == "image/webp" or inh == "webp": probleem = "WebP (niet in alle mailclients)"
+              elif len(body) > 2 * 1024 * 1024: probleem = "groter dan 2 MB"
+              elif inh not in ("png", "jpeg", "gif") or ct not in ("image/png", "image/jpeg", "image/jpg", "image/gif"): probleem = "geen PNG/JPG/GIF"
+              else: probleem = ""
+              msg = f"{tag}: afbeelding {kind}{'' if final == kind else f' -> {final}'}, extensie {ext}; HTTP {status or '-'}, content-type {ct}, inhoud {inh}, {size}"
+              print(f"::warning::{msg} -> {probleem}" if probleem else f"::notice::{msg} -> in orde")
+          PY
       - name: Edge Function title-meta
         if: steps.check.outputs.skip != '1'
         run: supabase functions deploy title-meta --project-ref "$REF" --no-verify-jwt --use-api
