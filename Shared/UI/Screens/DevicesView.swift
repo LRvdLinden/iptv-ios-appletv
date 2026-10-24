@@ -9,7 +9,7 @@ enum DeviceText {
     static func icon(_ d: AccountService.Device) -> String {
         // Apple TV altijd met het symbool "appletv" (ook bij een andere schrijfwijze van het platform)
         if isAppleTV(d.platform, name: d.name) { return "appletv" }
-        if isTizen(d.platform) { return "tv" }
+        if isTizen(d.platform) || isWebOS(d.platform) { return "tv" }
         if isWindows(d.platform) { return "pc" }
         if isBrowser(d.platform) { return "globe" }
         switch d.platform {
@@ -36,6 +36,12 @@ enum DeviceText {
         platform.caseInsensitiveCompare("tizen") == .orderedSame || platform.caseInsensitiveCompare("Samsung TV") == .orderedSame
     }
 
+    /// Build 147: de LG TV-app (webOS) meldt zich met platform `webos`.
+    static func isWebOS(_ platform: String) -> Bool {
+        let p = platform.lowercased().replacingOccurrences(of: " ", with: "")
+        return p == "webos" || p == "lgtv" || p == "lgwebos"
+    }
+
     /// Build 146: de Windows-app (webspeler in een eigen venster) meldt zich met platform `windows`.
     static func isWindows(_ platform: String) -> Bool {
         platform.caseInsensitiveCompare("windows") == .orderedSame
@@ -46,9 +52,10 @@ enum DeviceText {
         platform.caseInsensitiveCompare("browser") == .orderedSame
     }
 
-    /// Platformnaam zoals getoond onder de apparaatnaam (`tizen` wordt "Samsung TV", `browser` wordt "Browser").
+    /// Platformnaam zoals getoond onder de apparaatnaam (`tizen` wordt "Samsung TV", `webos` wordt "LG TV", `browser` wordt "Browser").
     static func platformLabel(_ platform: String) -> String {
         if isTizen(platform) { return L("Samsung TV") }
+        if isWebOS(platform) { return "LG TV" }
         if isWindows(platform) { return "Windows" }
         if isBrowser(platform) { return L("Browser") }
         return platform
