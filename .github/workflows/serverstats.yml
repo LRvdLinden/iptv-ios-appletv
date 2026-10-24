@@ -46,10 +46,13 @@ jobs:
               try: return code, json.loads(raw or b"{}")
               except Exception: return code, None
           def sql(q): return req("POST", f"{API}/database/query", {"query": q})
-          Q = ("select coalesce(regexp_extract(request.url, r'/functions/v1/([A-Za-z0-9_-]+)'), regexp_extract(request.pathname, r'^/([A-Za-z0-9_-]+)')) as fn, "
-               "count(*) as calls, countif(response.status_code >= 500) as errors, avg(m.execution_time_ms) as avg_ms "
-               "from function_edge_logs cross join unnest(metadata) as m cross join unnest(m.response) as response cross join unnest(m.request) as request "
-               "group by fn")
+          # analytics endpoint "logs" (ClickHouse-SQL, één tabel logs met source_name en de map log_attributes; logs.all is weg)
+          Q = ("SELECT coalesce(nullIf(extract(log_attributes['request.url'], '/functions/v1/([A-Za-z0-9_-]+)'), ''), "
+               "nullIf(extract(log_attributes['request.pathname'], '^/(?:functions/v1/)?([A-Za-z0-9_-]+)'), '')) AS fn, "
+               "count() AS calls, countIf(toInt32OrZero(log_attributes['response.status_code']) >= 500) AS errors, "
+               "avg(toFloat64OrZero(log_attributes['execution_time_ms'])) AS avg_ms "
+               "FROM logs WHERE source_name = 'function_edge_logs' GROUP BY fn")
+          KEYS = "SELECT k, count() AS n FROM logs ARRAY JOIN mapKeys(log_attributes) AS k WHERE source_name = 'function_edge_logs' GROUP BY k ORDER BY k"
           now = datetime.datetime.now(datetime.timezone.utc)
           today = now.date()
           days = [today - datetime.timedelta(days=1), today] if now.hour < 2 else [today]
@@ -58,10 +61,17 @@ jobs:
               start = datetime.datetime.combine(d, datetime.time(), datetime.timezone.utc)
               end = min(start + datetime.timedelta(days=1), now)
               qs = urllib.parse.urlencode({"sql": Q, "iso_timestamp_start": start.isoformat().replace("+00:00", "Z"), "iso_timestamp_end": end.isoformat().replace("+00:00", "Z")})
-              code, body = req("GET", f"{API}/analytics/endpoints/logs.all?{qs}")
+              code, body = req("GET", f"{API}/analytics/endpoints/logs?{qs}")
               rows = body.get("result") if isinstance(body, dict) else None
               if code != 200 or not isinstance(rows, list) or (isinstance(body, dict) and body.get("error")):
-                  print(f"::warning::logs van {d}: niet op te halen (HTTP {code})"); continue
+                  err = body.get("error") if isinstance(body, dict) else None
+                  msg = (err.get("message") if isinstance(err, dict) else err) if err else (body.get("message") if isinstance(body, dict) else "")
+                  print(f"::warning::logs van {d}: niet op te halen (HTTP {code}) {re.sub(r'[^A-Za-z0-9 ._:()-]', ' ', str(msg or ''))[:160]}"); continue
+              if not any(re.fullmatch(r"[a-z0-9_-]{1,40}", str(r.get("fn") or "")) for r in rows):
+                  # geen functienamen: alleen de NAMEN van de velden tonen (geen waarden), om de query bij te stellen
+                  c2, b2 = req("GET", f"{API}/analytics/endpoints/logs?" + urllib.parse.urlencode({"sql": KEYS, "iso_timestamp_start": start.isoformat().replace("+00:00", "Z"), "iso_timestamp_end": end.isoformat().replace("+00:00", "Z")}))
+                  ks = [str(x.get("k")) for x in (b2.get("result") or [])] if isinstance(b2, dict) else []
+                  print(f"::warning::{d}: {len(rows)} rijen zonder functienaam; velden: {', '.join(k for k in ks if re.fullmatch(r'[A-Za-z0-9_.]{1,60}', k))[:900]}")
               fn = {}
               for r in rows:
                   name = str(r.get("fn") or "")
