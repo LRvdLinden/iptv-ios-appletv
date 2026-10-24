@@ -294,7 +294,7 @@ enum DeviceModelName {
     }()
 }
 
-// MARK: - Diagnose-bijlage (`diagnostics`, schema 1)
+// MARK: - Diagnose-bijlage (`diagnostics`, schema 1; build 147: schema 2)
 
 /// Bouwt de bijlage volgens het contract. Alleen vaste velden; tekst gaat door `StartDiag.scrub` (geen URL's, e-mail,
 /// paden met een gebruikersmap). Nooit namen, servernamen, gebruikersnamen of titels.
@@ -319,6 +319,12 @@ struct SupportDiagnostics {
     var memory: [String: Any]?
     var crash: [String: Any]?
     var state: [String: Any]?
+    /// Build 147 (schema 2): `start` (summary, appMs, userWaitMs, maxHangMs, previous), `fetch` per server en soort,
+    /// `network` (type, online, …) en `storage` (totalMB, cacheMB, catalogMB, downloadsMB, freeMB)
+    var start: [String: Any]?
+    var fetch: [[String: Any]] = []
+    var network: [String: Any]?
+    var storage: [String: Any]?
 
     /// Naam van een mijlpaal volgens `^[a-z][a-z0-9_.-]{0,39}$` ("profiel gekozen" → "profiel_gekozen"); nil = onbruikbaar.
     static func milestoneName(_ s: String) -> String? {
@@ -373,7 +379,7 @@ struct SupportDiagnostics {
             "os": String(os.prefix(20)), "osVersion": String(osVersion.prefix(30)), "language": language,
         ]
         if let screen { device["screen"] = screen }
-        var out: [String: Any] = ["schema": 1, "kind": kind.rawValue, "createdAt": Self.iso(createdAt), "app": app, "device": device]
+        var out: [String: Any] = ["schema": 2, "kind": kind.rawValue, "createdAt": Self.iso(createdAt), "app": app, "device": device]
         var seen = Set<String>()
         let ms: [[String: Any]] = milestones.compactMap { m in
             guard let n = Self.milestoneName(m.name), seen.insert(n).inserted else { return nil }
@@ -385,6 +391,10 @@ struct SupportDiagnostics {
         if let memory { out["memory"] = memory }
         if let crash { out["crash"] = crash }
         if let state { out["state"] = state }
+        if let start { out["start"] = start }
+        if !fetch.isEmpty { out["fetch"] = Array(fetch.prefix(30)) }
+        if let network { out["network"] = network }
+        if let storage { out["storage"] = storage }
         return out
     }
 

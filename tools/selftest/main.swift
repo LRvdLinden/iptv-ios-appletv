@@ -502,7 +502,7 @@ do {
                                   model: "Apple TV 4K (3rd generation)", os: "tvOS", osVersion: "26.1", language: "nl-NL")
     diag.milestones = [("gestart", 0, nil), ("profiel gekozen", 1.31, nil), ("gestart", 2, nil), ("servers_loaded", 5.2, true)]
     let j = diag.json
-    eq(j["schema"] as? Int, 1 as Int?, "schema 1")
+    eq(j["schema"] as? Int, 2 as Int?, "schema 2 (build 147)")
     eq((j["app"] as? [String: Any])?["platform"] as? String, "tvos" as String?, "platform")
     let ms = j["milestones"] as? [[String: Any]] ?? []
     eq(ms.map { $0["name"] as? String ?? "" }, ["gestart", "profiel_gekozen", "servers_loaded"], "mijlpalen uniek en geldig")
@@ -519,6 +519,114 @@ do {
     check(GuideExpiry.isExpired(latestEnd: now.addingTimeInterval(600), now: now), "gids loopt over 10 min leeg: verlopen")
     check(!GuideExpiry.isExpired(latestEnd: now.addingTimeInterval(6 * 3600), now: now), "gids voor 6 uur: niet verlopen")
     check(!GuideExpiry.isExpired(latestEnd: nil, now: now), "geen gids: geen melding")
+}
+
+// MARK: build 147: starttijden, vorige start, ophalen, opslag en de hoofdthread (10k titels onder een tijdsgrens)
+
+do {
+    func ms(_ t0: Date) -> Double { Date().timeIntervalSince(t0) * 1000 }
+    // eerlijke starttijden: wachten op de gebruiker (profielkeuze → profiel gekozen, pincodescherm → pincode goed)
+    let marks: [StartDiag.Mark] = [.init(name: "gestart", t: 0), .init(name: "account", t: 0.2), .init(name: "profielkeuze", t: 4.1),
+                                   .init(name: "profiel gekozen", t: 6.8), .init(name: "pincodescherm", t: 6.9),
+                                   .init(name: "pincode goed", t: 10.9), .init(name: "klaar", t: 14.4)]
+    let sp = StartTiming.split(marks, end: 14.4)
+    eq(sp.userWaitMs, 6700, "wachten op de gebruiker: 2,7 s profielkeuze + 4,0 s pincode")
+    eq(sp.appMs, 7700, "app-tijd = totaal min wachten")
+    eq(StartTiming.split(Array(marks.prefix(5)), end: 8).userWaitMs, 3800, "pincodescherm zonder einde loopt tot het eind")
+    eq(StartTiming.summary(appMs: 3000, hang: 0, crashed: false), .good, "goed")
+    eq(StartTiming.summary(appMs: 7700, hang: nil, crashed: false), .slow, "app-tijd boven 5 s = traag")
+    eq(StartTiming.summary(appMs: 1000, hang: 2.5, crashed: false), .slow, "hang boven 2 s = traag")
+    eq(StartTiming.summary(appMs: 1000, hang: 80.1, crashed: false), .hung, "hang boven 10 s = vastgelopen")
+    eq(StartTiming.summary(appMs: 1000, hang: nil, crashed: true), .hung, "crash = vastgelopen")
+    // vorige start
+    check(StartPrevious.waitingOnUser(Array(marks.prefix(5))), "op het pincodescherm: wachten op de gebruiker")
+    check(!StartPrevious.waitingOnUser(marks), "pincode goed: niet meer wachten")
+    eq(StartPrevious.problem(crashed: false, hang: nil, finished: false, waitingOnUser: true), .none, "niet klaar maar wachtend: geen probleem")
+    eq(StartPrevious.problem(crashed: false, hang: nil, finished: false, waitingOnUser: false), .notFinished, "niet klaar")
+    eq(StartPrevious.problem(crashed: false, hang: 80.1, finished: true, waitingOnUser: false), .hang, "hang")
+    eq(StartPrevious.problem(crashed: true, hang: 80.1, finished: true, waitingOnUser: false), .crash, "crash gaat voor")
+    var rec = StartDiag.Record(build: "1.0.1 (147)", os: "iOS 27.2", started: 0)
+    rec.marks = Array(marks.prefix(5))
+    check(StartDiag.analyze(rec) == nil, "op het pincodescherm gestopt: geen rapport (wachten op de gebruiker)")
+    rec.hang = 12; rec.hangTask = "sync toepassen"; rec.hangFg = true; rec.hangStack = ["0 Bingr +0x10", "1 Bingr /Users/jan/x.swift"]
+    let hp = StartDiag.analyze(rec)
+    eq(hp?.kind, StartDiag.Problem.Kind.hang as StartDiag.Problem.Kind?, "hang boven 10 s: rapport")
+    eq(hp?.task, "sync toepassen" as String?, "taak in het rapport")
+    check(!(hp?.stack.joined() ?? "").contains("/Users/jan"), "geen gebruikersmap in de stack")
+    check(StartDiag.text(hp!).contains("Taak: sync toepassen"), "taak in de tekst")
+    // oude records (build 146) blijven leesbaar
+    let old = #"{"build":"1.0.1 (146)","os":"iOS 27.2","started":1,"marks":[],"finished":true,"stack":[]}"#
+    check((try? JSONDecoder().decode(StartDiag.Record.self, from: Data(old.utf8))) != nil, "record van build 146 leesbaar")
+
+    // taak/fase op de hoofdthread
+    let a = MainTasks.shared.begin("catalogus filteren")
+    let b = MainTasks.shared.begin("sync toepassen")
+    eq(MainTasks.shared.current, "sync toepassen, catalogus filteren" as String?, "laatste taak eerst")
+    MainTasks.shared.end(b); MainTasks.shared.end(a)
+    eq(MainTasks.shared.current, nil as String?, "geen taak meer")
+    eq(MainTasks.shared.run("x") { 7 }, 7, "run geeft de uitkomst")
+
+    // ophalen per soort
+    eq(FetchStatus.status(delivered: 10259, visible: 10259), .ok, "geleverd")
+    eq(FetchStatus.status(delivered: 0, visible: 0), .empty, "provider leverde niets")
+    eq(FetchStatus.status(delivered: nil, visible: nil), .failed, "mislukt")
+    eq(FetchStatus.status(delivered: 120, visible: 0), .hidden, "alles verborgen")
+    eq(FetchStatus.code(URLError(.timedOut)), "timeout", "foutcode time-out")
+    let rows = FetchStatus.rows(servers: [[.init(kind: .live, delivered: 1056, error: nil, at: 0),
+                                           .init(kind: .movie, delivered: 10259, error: nil, at: 0),
+                                           .init(kind: .series, delivered: nil, error: "timeout", at: 0)]],
+                                visible: [[.live: 1056, .movie: 0, .series: 0]])
+    eq(rows.count, 3, "drie soorten")
+    eq(rows[0]["server"] as? String, "s1" as String?, "server geanonimiseerd")
+    eq(rows[1]["status"] as? String, "hidden" as String?, "films verborgen")
+    eq(rows[2]["status"] as? String, "failed" as String?, "series mislukt")
+    eq(rows[2]["error"] as? String, "timeout" as String?, "foutcode mee")
+    check(JSONSerialization.isValidJSONObject(rows), "fetch is geldige JSON")
+
+    // opslag telt op tot het totaal
+    let st = StorageBreakdown.make(appBytes: 156 << 20, catalogBytes: 40 << 20, downloadBytes: 10 << 20, freeBytes: 2000 << 20)
+    eq(st.cacheMB + st.catalogMB + st.downloadsMB, st.totalMB, "cache + catalogus + downloads = totaal")
+    eq(st.totalMB, 156, "totaal")
+    eq(st.freeMB, 2000 as Int?, "vrij")
+    let st2 = StorageBreakdown.make(appBytes: 1 << 20, catalogBytes: 5 << 20, downloadBytes: 0, freeBytes: nil)
+    eq(st2.totalMB, 5, "totaal nooit kleiner dan de delen")
+
+    eq(StackFormat.line(3, image: "/private/var/containers/Bundle/Application/X/Bingr.app/Bingr", symbol: nil, offset: 0, imageOffset: 0x1a2b),
+       "3 Bingr +0x1a2b", "stackregel zonder symbool: alleen de naam van het bestand")
+    eq(StackFormat.line(0, image: "SwiftUI", symbol: "body.getter", offset: 12, imageOffset: 0), "0 SwiftUI body.getter + 12", "stackregel met symbool")
+
+    // 10k films / 1k zenders: wat er nu nog op de hoofdthread draait, ruim onder 250 ms
+    let pid = UUID().uuidString
+    let movieIDs = (0..<10_000).map { "xv\($0)" }
+    var myList = Set<String>()
+    for i in stride(from: 0, to: 10_000, by: 20) { myList.insert(pid + "|xv\(i)") }        // 500 in Mijn lijst
+    for i in 0..<200 { myList.insert(pid.lowercased() + "|xs\(i)") }                      // web: kleine letters
+    var t0 = Date()
+    var hits = 0
+    for id in movieIDs where ListKeys.contains(myList, playlist: pid, item: id) { hits += 1 }
+    for i in 0..<1_000 where ListKeys.contains(myList, playlist: pid, item: "x\(i)") { hits += 1 }
+    let tKeys = ms(t0)
+    eq(hits, 500, "Mijn lijst: 500 treffers")
+    check(ListKeys.contains(myList, playlist: pid, item: "xs5"), "sleutel met kleine letters")
+    check(tKeys < 250, "10k films + 1k zenders langs Mijn lijst: \(Int(tKeys)) ms (max. 250)")
+
+    t0 = Date()
+    var known: [String: Double] = [:]
+    FirstSeen.update(&known, ids: movieIDs.map { "m|" + $0 }, now: 1, seeded: false)
+    let more = (0..<10_100).map { "m|xv\($0)" }
+    check(FirstSeen.update(&known, ids: more, now: 2, seeded: true), "100 nieuwe titels")
+    let items = more.map { (id: $0, provider: Double?.none) }
+    let newest = FirstSeen.newest(items, firstSeen: known, limit: 120)
+    let tSeen = ms(t0)
+    eq(newest.count, 100, "nieuw op Bingr: alleen de nieuwe")
+    check(tSeen < 250, "eerste keer gezien + nieuwste met 10k titels: \(Int(tSeen)) ms (max. 250)")
+
+    t0 = Date()
+    var origins = 0
+    for k in myList where MyListID.origin(of: k, activeSID: pid) == .active { origins += 1 }
+    let tOrigin = ms(t0)
+    eq(origins, 700, "herkomst: open server")
+    check(tOrigin < 250, "herkomst van Mijn lijst: \(Int(tOrigin)) ms (max. 250)")
 }
 
 print("\(checks) controles, \(failures) fout")

@@ -152,6 +152,8 @@ final class PlaylistService: ObservableObject {
         func say(_ t: String) { if ownsIndicator { loadingText = t } }
         // build 143: startdiagnose: ophalen, binnen, ingelezen, bewaard (met het geheugen op elk moment)
         StartDiagnostics.shared.mark(isActive ? "ophalen open server" : "ophalen andere server")
+        // build 147: uitkomst per soort voor de diagnose (Xtream per lijst, de rest de hele lijst)
+        var fetchStatus: [FetchStatus.Entry]?
         do {
             var lib: Library
             let password = Keychain.get(s.passwordKey) ?? ""
@@ -174,7 +176,9 @@ final class PlaylistService: ObservableObject {
                 let x = XtreamClient(source: s, password: password)
                 try await x.authenticate()
                 say(L("Fetching live TV, movies and series…"))
-                lib = try await x.library(playlistID: s.id)
+                let (xl, st) = try await x.libraryWithStatus(playlistID: s.id)
+                lib = xl
+                fetchStatus = st
                 let epg = s.epgURL.urlValue ?? x.xmltvURL
                 if let epg { say(L("Loading TV guide…")); lib.epg = await loadEPG(epg) }
             case .stalker:
@@ -208,6 +212,7 @@ final class PlaylistService: ObservableObject {
             }
             // build 145: gestopt (wissel van profiel of server, time-out): niets half bijgewerkts wegschrijven
             try Task.checkCancellation()
+            if let fetchStatus { FetchLog.shared.note(s.id, fetchStatus) } else { FetchLog.shared.noteLibrary(s.id, lib) }
             if source?.id == s.id {
                 setRaw(lib)
                 writeCache(s, lib)
@@ -218,9 +223,11 @@ final class PlaylistService: ObservableObject {
             StartDiagnostics.shared.mark("bewaard")
             return true
         } catch {
-            guard source?.id == s.id else { return false }
             // build 145: gestopt is geen fout
-            if error is CancellationError || (error as? URLError)?.code == .cancelled { return false }
+            let cancelled = error is CancellationError || (error as? URLError)?.code == .cancelled
+            if !cancelled { FetchLog.shared.noteLibrary(s.id, nil, error: error) }
+            guard source?.id == s.id else { return false }
+            if cancelled { return false }
             if rawLibrary.channels.isEmpty && rawLibrary.movies.isEmpty && rawLibrary.series.isEmpty {
                 self.error = error.localizedDescription
             }
@@ -359,8 +366,10 @@ final class PlaylistService: ObservableObject {
 
     private func setRaw(_ lib: Library) {
         if !lib.isEmptyLibrary { StartDiagnostics.shared.mark("catalogus") }   // build 143
-        rawLibrary = lib
-        applyCustomizations()
+        MainTasks.shared.run("catalogus tonen") {
+            rawLibrary = lib
+            applyCustomizations()
+        }
     }
 
     /// Alles wat het filteren nodig heeft, als losse waarden — zodat het op de achtergrond kan (grote lijsten).
@@ -456,9 +465,11 @@ final class PlaylistService: ObservableObject {
             }.value
             guard gen == self.filterGeneration else { return }   // intussen opnieuw gefilterd
             if let result {
-                self.library = result
-                self.libraryRawVersion = rv
-                self.libraryContext = ctx
+                MainTasks.shared.run("gefilterde catalogus tonen") {
+                    self.library = result
+                    self.libraryRawVersion = rv
+                    self.libraryContext = ctx
+                }
             }
             if self.isFiltering { self.isFiltering = false }
         }

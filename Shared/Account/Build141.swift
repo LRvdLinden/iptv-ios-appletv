@@ -97,6 +97,13 @@ enum StartDiag {
         var stack: [String] = []
         /// Hoogste geheugengebruik tijdens de start (MB)
         var peakMB: Int? = nil
+        /// Build 147: bij de langste hang: de taak/fase op de hoofdthread, of de app op de voorgrond stond, en een
+        /// momentopname van de stack van de hoofdthread (alleen code-symbolen)
+        var hangTask: String? = nil
+        var hangFg: Bool? = nil
+        var hangStack: [String]? = nil
+        /// Build 147: aantal hangs boven 2 s (op de voorgrond)
+        var hangs: Int? = nil
     }
     struct Problem: Codable, Equatable {
         enum Kind: String, Codable { case crash, hang, notFinished }
@@ -110,6 +117,9 @@ enum StartDiag {
         var crash: String?
         var stack: [String]
         var peakMB: Int? = nil
+        /// Build 147: taak/fase op de hoofdthread tijdens de hang en of de app op de voorgrond stond
+        var task: String? = nil
+        var foreground: Bool? = nil
     }
 
     static let hangLimit: Double = 10
@@ -128,9 +138,11 @@ enum StartDiag {
         }
         if let h = r.hang, h >= hangLimit {
             return Problem(kind: .hang, build: r.build, os: r.os, at: r.started, lastMark: r.hangAt ?? last, seconds: h,
-                           marks: r.marks, crash: nil, stack: [], peakMB: r.peakMB)
+                           marks: r.marks, crash: nil, stack: scrub(lines: r.hangStack ?? []), peakMB: r.peakMB,
+                           task: r.hangTask, foreground: r.hangFg)
         }
-        if !r.finished {
+        // build 147: wachten op de gebruiker (profielkeuze, pincodescherm) is geen vastgelopen start
+        if !r.finished && !StartPrevious.waitingOnUser(r.marks) {
             return Problem(kind: .notFinished, build: r.build, os: r.os, at: r.started, lastMark: last, seconds: dur,
                            marks: r.marks, crash: nil, stack: [], peakMB: r.peakMB)
         }
@@ -142,7 +154,10 @@ enum StartDiag {
         var out: [String] = []
         switch p.kind {
         case .crash: out.append("Vorige start: gestopt (crash) na \(fmt(p.seconds)) s, bij \"\(p.lastMark)\"")
-        case .hang: out.append("Vorige start: hoofdthread \(fmt(p.seconds)) s vast bij \"\(p.lastMark)\" (watchdog-vermoeden)")
+        case .hang:
+            out.append("Vorige start: hoofdthread \(fmt(p.seconds)) s vast bij \"\(p.lastMark)\""
+                       + (p.foreground == false ? " (achtergrond)" : " (voorgrond)"))
+            if let t = p.task { out.append("Taak: \(t)") }
         case .notFinished: out.append("Vorige start: niet klaar, laatste mijlpaal \"\(p.lastMark)\" na \(fmt(p.seconds)) s (gestopt door het systeem, bijv. geheugen of watchdog)")
         }
         if let m = p.peakMB { out.append("Geheugen: hoogste \(m) MB") }

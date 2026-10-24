@@ -250,19 +250,69 @@ struct XtreamClient {
     }
 
     func library(playlistID: UUID) async throws -> Library {
+        try await libraryWithStatus(playlistID: playlistID).0
+    }
+
+    /// Build 147: catalogus plus de uitkomst per soort (zenders, films, series) voor de diagnose. Elke lijst wordt los
+    /// opgehaald, met een ruime time-out (grote providers rekenen soms lang aan `get_series` voor het eerste byte komt)
+    /// en één nieuwe poging; een fout bij series raakt films en zenders niet (en andersom).
+    func libraryWithStatus(playlistID: UUID) async throws -> (Library, [FetchStatus.Entry]) {
         guard let lc = api("get_live_categories"), let ls = api("get_live_streams"),
               let vc = api("get_vod_categories"), let vs = api("get_vod_streams"),
               let sc = api("get_series_categories"), let ss = api("get_series") else { throw HTTPError.badURL }
 
-        async let liveCats = (try? HTTP.json(LossyList<Cat>.self, lc))?.items ?? []
-        async let live = (try? HTTP.json(LossyList<Live>.self, ls))?.items ?? []
-        async let vodCats = (try? HTTP.json(LossyList<Cat>.self, vc))?.items ?? []
-        async let vod = (try? HTTP.json(LossyList<Vod>.self, vs))?.items ?? []
-        async let serCats = (try? HTTP.json(LossyList<Cat>.self, sc))?.items ?? []
-        async let ser = (try? HTTP.json(LossyList<SeriesDTO>.self, ss))?.items ?? []
+        async let liveCats = Self.list(Cat.self, lc, timeout: 60)
+        async let live = Self.list(Live.self, ls, timeout: 120)
+        async let vodCats = Self.list(Cat.self, vc, timeout: 60)
+        async let vod = Self.list(Vod.self, vs, timeout: 180)
+        async let serCats = Self.list(Cat.self, sc, timeout: 60)
+        async let ser = Self.list(SeriesDTO.self, ss, timeout: 180)
 
-        return makeLibrary(liveCats: await liveCats, live: await live, vodCats: await vodCats, vod: await vod,
-                           serCats: await serCats, series: await ser)
+        let (l, v, s) = await (live, vod, ser)
+        let lib = makeLibrary(liveCats: await liveCats.items, live: l.items, vodCats: await vodCats.items, vod: v.items,
+                              serCats: await serCats.items, series: s.items)
+        let now = Date().timeIntervalSince1970
+        let status: [FetchStatus.Entry] = [
+            .init(kind: .live, delivered: l.error == nil ? lib.channels.count : nil, error: l.error.map(Self.fetchCode), at: now),
+            .init(kind: .movie, delivered: v.error == nil ? lib.movies.count : nil, error: v.error.map(Self.fetchCode), at: now),
+            .init(kind: .series, delivered: s.error == nil ? lib.series.count : nil, error: s.error.map(Self.fetchCode), at: now),
+        ]
+        return (lib, status)
+    }
+
+    /// Eén lijst (tolerant gelezen) met een eigen time-out en één nieuwe poging bij een fout (niet na annuleren).
+    private static func list<T: Decodable>(_ t: T.Type, _ url: URL, timeout: TimeInterval) async -> (items: [T], error: Error?) {
+        var last: Error?
+        for attempt in 0..<2 {
+            if Task.isCancelled { return ([], CancellationError()) }
+            do {
+                var req = URLRequest(url: url)
+                req.timeoutInterval = timeout
+                let (d, h) = try await HTTP.data(req)
+                guard (200..<300).contains(h.statusCode) else { throw HTTPError.status(h.statusCode, "") }
+                do { return (try JSONDecoder.lenient.decode(LossyList<T>.self, from: d).items, nil) }
+                catch { throw HTTPError.decoding("") }
+            } catch {
+                last = error
+                if error is CancellationError || (error as? URLError)?.code == .cancelled { break }
+                // inloggegevens of de lijst zelf zijn fout: opnieuw proberen helpt niet
+                if case HTTPError.status(let c, _)? = error as? HTTPError, [401, 403, 404].contains(c) { break }
+                if attempt == 0 { try? await Task.sleep(nanoseconds: 1_500_000_000) }
+            }
+        }
+        return ([], last)
+    }
+
+    /// Korte foutcode zonder URL of tekst van de server (diagnose)
+    static func fetchCode(_ error: Error) -> String {
+        if let h = error as? HTTPError {
+            switch h {
+            case .badURL: return "bad_url"
+            case .status(let c, _): return "http_\(c)"
+            case .decoding: return "decode"
+            }
+        }
+        return FetchStatus.code(error)
     }
 
     /// Zet de (tolerant gelezen) lijsten om naar een Library. Ook gebruikt door "Bron controleren",

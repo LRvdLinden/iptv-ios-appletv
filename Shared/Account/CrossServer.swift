@@ -480,10 +480,12 @@ final class CrossServer: ObservableObject {
         guard let pl = playlists, !Screenshots.isActive else { return }
         if !interactive { await waitUntilQuiet() }
         guard !Task.isCancelled else { return }
-        migrateCategories()
-        applyRemapEverywhere()
         let store = CloudStore.shared
-        var refs = gatherRefs()
+        var refs = MainTasks.shared.run("catalogmeta en remap") { () -> [String: Ref] in
+            migrateCategories()
+            applyRemapEverywhere()
+            return gatherRefs()
+        }
         if let only {
             let wanted = Set(only.map(CatalogKey.normalize))
             refs = refs.filter { wanted.contains($0.key) }
@@ -622,7 +624,7 @@ final class CrossServer: ObservableObject {
         }
 
         if metaChanged {
-            prune()
+            MainTasks.shared.run("catalogmeta bijwerken") { prune() }
             persist()
             StateSync.shared.catalogMetaChanged(delay: isPlaying() ? 30 : 3)
         }

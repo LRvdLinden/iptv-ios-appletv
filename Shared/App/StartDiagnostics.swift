@@ -4,6 +4,9 @@ import SwiftUI
 #if canImport(UIKit)
 import UIKit
 #endif
+#if os(macOS)
+import AppKit
+#endif
 
 /// Build 143: eigen startdiagnose, zodat zichtbaar wordt waar een start misgaat, ook zonder Xcode of crashlog.
 ///
@@ -21,15 +24,22 @@ final class StartDiagnostics: @unchecked Sendable {
     private let defaults = UserDefaults.standard
     private let currentKey = "diag.start.current.v143"
     private let problemKey = "diag.start.problem.v143"
+    private let previousKey = "diag.start.previous.v147"
     private let lock = NSLock()
     private var record: StartDiag.Record
     private let t0 = Date()
-    /// Laatste moment dat de hoofdthread reageerde (bewaking)
-    private var mainAlive = Date()
+    /// Laatste moment dat de hoofdthread reageerde (bewaking), in monotone seconden (`DispatchTime`)
+    private var mainAlive: Double = 0
     private var started = false
+    /// Build 147: staat de app op de voorgrond? (achtergrond telt niet als hang)
+    private var foreground = true
+    /// Build 147: lopende hang (begin) en of er al een stack van gemaakt is
+    private var hangSampled = 0.0
 
     /// Het rapport van de vorige start (nil = die ging goed of is gewist)
     private(set) var lastProblem: StartDiag.Problem?
+    /// Build 147: samenvatting van de vorige start (ook zonder probleem), voor `start.previous` in elke diagnose
+    private(set) var previous: [String: Any]?
 
     private init() {
         let info = Bundle.main.infoDictionary
@@ -45,6 +55,8 @@ final class StartDiagnostics: @unchecked Sendable {
         record = StartDiag.Record(build: build, os: os, started: Date().timeIntervalSince1970)
     }
 
+    private static func now() -> Double { Double(DispatchTime.now().uptimeNanoseconds) / 1e9 }
+
     // MARK: starten
 
     /// Zo vroeg mogelijk (eerste opgeslagen eigenschap van BingrApp): de vorige start beoordelen, de vangnetten zetten en
@@ -54,6 +66,8 @@ final class StartDiagnostics: @unchecked Sendable {
         guard !started else { lock.unlock(); return }
         started = true
         lock.unlock()
+        MainThreadSampler.captureMainThread()
+        NetworkType.shared.start()   // build 147: verbinding vroeg volgen
         let crashLog = Self.readCrashFile()
         let prev = defaults.data(forKey: currentKey).flatMap { try? JSONDecoder().decode(StartDiag.Record.self, from: $0) }
         if let p = StartDiag.analyze(prev, crashLog: crashLog) {
@@ -62,15 +76,54 @@ final class StartDiagnostics: @unchecked Sendable {
         } else {
             lastProblem = defaults.data(forKey: problemKey).flatMap { try? JSONDecoder().decode(StartDiag.Problem.self, from: $0) }
         }
+        if let prev {
+            let pv = Self.previousSummary(prev, crashLog: crashLog)
+            previous = pv
+            if JSONSerialization.isValidJSONObject(pv), let d = try? JSONSerialization.data(withJSONObject: pv) {
+                defaults.set(d, forKey: previousKey)
+            }
+        } else if let d = defaults.data(forKey: previousKey) {
+            previous = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any]
+        }
         Self.installHandlers()
+        observeForeground()
         mark("gestart")
         startWatch()
     }
 
-    /// Mijlpaal (alleen de eerste keer per naam), meteen weggeschreven.
+    /// Build 147: `start.previous` (schema 2): probleem, mijlpaal, seconden, voorgrond, taak en stack van de vorige start.
+    private static func previousSummary(_ r: StartDiag.Record, crashLog: String?) -> [String: Any] {
+        let crashed = r.crash != nil || !(crashLog ?? "").isEmpty
+        let problem = StartPrevious.problem(crashed: crashed, hang: r.hang, finished: r.finished,
+                                            waitingOnUser: StartPrevious.waitingOnUser(r.marks))
+        var out: [String: Any] = ["problem": problem.rawValue, "at": SupportDiagnostics.iso(Date(timeIntervalSince1970: r.started))]
+        if let b = SupportDiagnostics.buildNumber(r.build) { out["build"] = b }
+        let lastMark = (problem == .hang ? r.hangAt : nil) ?? r.marks.last?.name
+        if let m = lastMark.flatMap(SupportDiagnostics.milestoneName) { out["milestone"] = m }
+        switch problem {
+        case .hang:
+            out["seconds"] = r.hang ?? 0
+            out["foreground"] = r.hangFg ?? true
+            if let t = r.hangTask { out["task"] = String(StartDiag.scrub(t).prefix(60)) }
+            let st = StartDiag.scrub(lines: r.hangStack ?? [])
+            if !st.isEmpty { out["stack"] = Array(st.prefix(30)) }
+        case .crash:
+            out["seconds"] = r.marks.last?.t ?? 0
+            let lines = (crashLog.map { $0.split(separator: "\n").map(String.init) } ?? []) + r.stack
+            let st = StartDiag.scrub(lines: lines)
+            if !st.isEmpty { out["stack"] = Array(st.prefix(30)) }
+        case .notFinished, .none:
+            out["seconds"] = r.marks.last?.t ?? 0
+            if let t = r.hangTask { out["task"] = String(StartDiag.scrub(t).prefix(60)) }
+        }
+        return out
+    }
+
+    /// Mijlpaal (alleen de eerste keer per naam), meteen weggeschreven. Build 147: ook na "klaar" (max. 40), zodat te zien
+    /// is wat er daarna gebeurde.
     func mark(_ name: String) {
         lock.lock()
-        if record.marks.contains(where: { $0.name == name }) || record.finished { lock.unlock(); return }
+        if record.marks.contains(where: { $0.name == name }) || record.marks.count >= 40 { lock.unlock(); return }
         let mb = Self.footprintMB()
         record.marks.append(.init(name: name, t: (Date().timeIntervalSince(t0) * 10).rounded() / 10, mb: mb))
         if let mb { record.peakMB = max(record.peakMB ?? 0, mb) }
@@ -101,6 +154,15 @@ final class StartDiagnostics: @unchecked Sendable {
     /// Build 146: mijlpalen van deze start (voor de tab Diagnose en de bijlage `milestones`)
     var currentMarks: [StartDiag.Mark] { lock.lock(); defer { lock.unlock() }; return record.marks }
 
+    /// Build 147: deze start: app-tijd, wachten op de gebruiker, langste hang en de samenvatting (goed/traag/vastgelopen)
+    var currentStart: (split: StartTiming.Split, maxHang: Double, summary: StartTiming.Summary, finished: Bool) {
+        lock.lock(); let r = record; lock.unlock()
+        let end = r.marks.first { $0.name == StartDiag.finalMark }?.t
+        let split = StartTiming.split(r.marks, end: end)
+        let hang = r.hang ?? 0
+        return (split, hang, StartTiming.summary(appMs: split.appMs, hang: hang, crashed: false), r.finished)
+    }
+
     /// Seconden sinds de start van de app
     var uptime: TimeInterval { Date().timeIntervalSince(t0) }
 
@@ -109,30 +171,89 @@ final class StartDiagnostics: @unchecked Sendable {
         defaults.removeObject(forKey: problemKey)
     }
 
-    // MARK: hoofdthread-bewaking (watchdog-vermoeden)
+    // MARK: voorgrond / achtergrond (build 147)
 
+    private func observeForeground() {
+        let nc = NotificationCenter.default
+        #if canImport(UIKit)
+        nc.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: nil) { [weak self] _ in self?.setForeground(false) }
+        nc.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: nil) { [weak self] _ in self?.setForeground(true) }
+        nc.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: nil) { [weak self] _ in self?.setForeground(true) }
+        #elseif os(macOS)
+        nc.addObserver(forName: NSApplication.didHideNotification, object: nil, queue: nil) { [weak self] _ in self?.setForeground(false) }
+        nc.addObserver(forName: NSApplication.didUnhideNotification, object: nil, queue: nil) { [weak self] _ in self?.setForeground(true) }
+        #endif
+    }
+
+    private func setForeground(_ fg: Bool) {
+        lock.lock()
+        foreground = fg
+        mainAlive = Self.now()   // de tijd op de achtergrond telt nooit als hang
+        lock.unlock()
+    }
+
+    // MARK: hoofdthread-bewaking
+
+    /// Build 147: elke halve seconde. Een hang telt alleen op de voorgrond; was het proces zelf stilgezet (achtergrond,
+    /// slaapstand: de bewaking liep zelf ook niet), dan begint de meting opnieuw. Vanaf 2 s: de taak/fase en een
+    /// momentopname van de stack van de hoofdthread (bij 2 s en nog eens bij 8 s, de laatste blijft). Loopt de hele sessie.
     private func startWatch() {
+        lock.lock(); mainAlive = Self.now(); lock.unlock()
         let t = Thread { [weak self] in
+            var lastTick = StartDiagnostics.now()
+            var lastMem = 0.0
             while let self {
-                DispatchQueue.main.async { self.lock.lock(); self.mainAlive = Date(); self.lock.unlock() }
-                Thread.sleep(forTimeInterval: 1)
+                DispatchQueue.main.async { let n = StartDiagnostics.now(); self.lock.lock(); self.mainAlive = n; self.lock.unlock() }
+                Thread.sleep(forTimeInterval: 0.5)
+                let now = StartDiagnostics.now()
+                let gap = now - lastTick
+                lastTick = now
                 self.lock.lock()
-                let stuck = Date().timeIntervalSince(self.mainAlive)
+                if gap > 3 || !self.foreground {
+                    // het proces stond stil (of de app is op de achtergrond): geen hang
+                    self.mainAlive = now
+                    self.hangSampled = 0
+                    self.lock.unlock()
+                    continue
+                }
+                let stuck = now - self.mainAlive
                 var r: StartDiag.Record?
                 // geheugen: hoogste waarde bewaren (een kill door de geheugenlimiet laat verder geen spoor na)
-                if let mb = StartDiagnostics.footprintMB(), mb >= (self.record.peakMB ?? 0) + 25 {
-                    self.record.peakMB = mb
-                    r = self.record
+                if now - lastMem >= 1 {
+                    lastMem = now
+                    if let mb = StartDiagnostics.footprintMB(), mb >= (self.record.peakMB ?? 0) + 25 {
+                        self.record.peakMB = mb
+                        r = self.record
+                    }
                 }
-                if stuck >= StartDiag.hangLimit, stuck > (self.record.hang ?? 0) + 2 {
-                    self.record.hang = (stuck * 10).rounded() / 10
-                    self.record.hangAt = self.record.marks.last?.name
-                    r = self.record
+                var wantSample = false
+                if stuck >= StartTiming.slowHang {
+                    if self.hangSampled == 0 {
+                        self.record.hangs = (self.record.hangs ?? 0) + 1
+                        wantSample = true
+                    } else if stuck >= 8 && self.hangSampled < 8 {
+                        wantSample = true
+                    }
+                    if stuck > (self.record.hang ?? 0) + 0.4 {
+                        self.record.hang = (stuck * 10).rounded() / 10
+                        self.record.hangAt = self.record.marks.last?.name
+                        self.record.hangTask = MainTasks.shared.current
+                        self.record.hangFg = true
+                        r = self.record
+                    }
+                } else if stuck < 1 {
+                    self.hangSampled = 0
                 }
-                let done = self.record.finished && Date().timeIntervalSince(self.t0) > 600
+                let isLongest = (self.record.hang ?? 0) <= stuck + 0.5
                 self.lock.unlock()
+                if wantSample {
+                    let stack = MainThreadSampler.sample()
+                    self.lock.lock()
+                    self.hangSampled = stuck
+                    if isLongest, !stack.isEmpty { self.record.hangStack = stack; r = self.record }
+                    self.lock.unlock()
+                }
                 if let r { self.save(r) }
-                if done { return }   // na de start niet meer nodig
             }
         }
         t.name = "bingr.diag.watch"
@@ -221,6 +342,9 @@ struct StartDiagnosticsSection: View {
 
     var body: some View {
         Section {
+            // build 147: samenvatting bovenaan (goed / traag / vastgelopen, app-tijd en wachten op de gebruiker)
+            Text(verbatim: DiagnosticsBuilder.summaryLine(problem: problem))
+                .font(.footnote.weight(.semibold))
             if let p = problem {
                 Text(verbatim: StartDiag.text(p))
                     .font(.system(.footnote, design: .monospaced))
@@ -267,7 +391,7 @@ struct StartDiagnosticsSection: View {
             do {
                 let n = try await SupportCenter.shared.create(
                     subject: "Startdiagnose \(AppDevice.osName) build \(p.build)",
-                    message: String(StartDiag.text(p).prefix(4900)), category: "apps",
+                    message: String((DiagnosticsBuilder.summaryLineNL(problem: p) + "\n" + StartDiag.text(p)).prefix(4900)), category: "apps",
                     diagnostics: DiagnosticsBuilder.start(problem: p).json)
                 result = L("Sent as ticket #%@", String(n))
             } catch {

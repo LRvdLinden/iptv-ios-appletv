@@ -433,6 +433,11 @@ final class StateSync {
         do { server = try await account.getState(sections: sections.map { Array($0).sorted() }) } catch { return }
         guard !Task.isCancelled, account.isSignedIn else { return }
         func wants(_ s: String) -> Bool { sections?.contains(s) ?? true }
+        // build 147: pincode-hashes (PBKDF2, 100.000 iteraties) vooraf buiten de hoofdthread uitrekenen
+        await preparePins(server)
+        defer { pinMade = [:]; pinMatch = [:] }
+        let taskID = MainTasks.shared.begin("sync toepassen")
+        defer { MainTasks.shared.end(taskID) }
 
         var uploads: [(String, [String: Any])] = []
         if wants("connections"), let u = await mergeConnections(server["connections"]) { uploads.append(("connections", u)) }
@@ -472,6 +477,7 @@ final class StateSync {
         if sections == nil || sections?.contains("connections") == true { meta.connectionsSeeded = true }
         ready = true
         saveMeta()
+        MainTasks.shared.end(taskID)
 
         for (name, data) in uploads {
             guard account.isSignedIn, !Task.isCancelled else { return }
@@ -481,6 +487,45 @@ final class StateSync {
             guard account.isSignedIn, !Task.isCancelled else { return }
             try? await account.deleteState(section: name)
         }
+    }
+
+    // MARK: - pincodes vooraf hashen (build 147)
+
+    /// Uitkomsten van PBKDF2 die vóór het samenvoegen buiten de hoofdthread berekend zijn: pincode → hash, en
+    /// "bewaarde hash + pincode" → klopt. Voorheen liep dit tijdens het toepassen van de sync op de hoofdthread.
+    private var pinMade: [String: String] = [:]
+    private var pinMatch: [String: Bool] = [:]
+
+    private func makePin(_ plain: String) -> String? { pinMade[plain] ?? PinHash.make(pin: plain)?.string }
+    private func pinMatches(_ stored: String, _ plain: String) -> Bool {
+        pinMatch[stored + "\u{1}" + plain] ?? PinHash.matches(stored: stored, pin: plain)
+    }
+
+    private func preparePins(_ server: [String: (data: Any, updatedAt: String?)]) async {
+        var plains = Set<String>()
+        var pairs = Set<String>()
+        for p in CloudStore.shared.profiles {
+            let local = Keychain.get(ParentalControl.pinKey(for: p.id))
+            if let l = local, PinHash.isLegacyPlain(l) { plains.insert(l) }
+            guard let data = server[profileSection(p.id)]?.data as? [String: Any],
+                  case .legacy(let plain, _) = PinState.read(data, sectionAt: 0, time: { Self.time($0) }) else { continue }
+            plains.insert(plain)
+            if let l = local { pairs.insert(l + "\u{1}" + plain) }
+        }
+        guard !plains.isEmpty || !pairs.isEmpty else { return }
+        let ps = plains, pr = pairs
+        let (made, match) = await Task.detached(priority: .userInitiated) { () -> ([String: String], [String: Bool]) in
+            var made: [String: String] = [:], match: [String: Bool] = [:]
+            for p in ps { if let h = PinHash.make(pin: p)?.string { made[p] = h } }
+            for k in pr {
+                let parts = k.split(separator: "\u{1}", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
+                guard parts.count == 2 else { continue }
+                match[k] = PinHash.matches(stored: parts[0], pin: parts[1])
+            }
+            return (made, match)
+        }.value
+        pinMade = made
+        pinMatch = match
     }
 
     // MARK: - connections
@@ -1436,8 +1481,8 @@ final class StateSync {
                 case .hash(let h, _): sp = h.string
                 case .legacy(let plain, _):
                     // dezelfde pincode die hier al als hash staat: die hash houden (geen nieuwe salt bij elke ronde)
-                    if let mine = pin, PinHash.matches(stored: mine, pin: plain) { sp = PinHash.isLegacyPlain(mine) ? PinHash.make(pin: plain)?.string : mine }
-                    else { sp = PinHash.make(pin: plain)?.string }
+                    if let mine = pin, pinMatches(mine, plain) { sp = PinHash.isLegacyPlain(mine) ? makePin(plain) : mine }
+                    else { sp = makePin(plain) }
                 case .removed, .absent: sp = nil
                 }
                 if sp != pin {
@@ -1561,7 +1606,7 @@ final class StateSync {
         out["prefs"] = p
         // build 146: alleen de hash (`pinHash`), `pin` altijd null; een oude lokale pincode wordt hier alsnog gehasht
         let hashed: PinHash? = pin.flatMap { p in
-            PinHash(string: p) ?? (PinHash.isLegacyPlain(p) ? PinHash.make(pin: p) : nil)
+            PinHash(string: p) ?? (PinHash.isLegacyPlain(p) ? (pinMade[p].flatMap(PinHash.init(string:)) ?? PinHash.make(pin: p)) : nil)
         }
         out["pinHash"] = hashed.map { $0.json as Any } ?? NSNull()
         // (alleen bij de vergelijkingsvorm van de server: een oude leesbare pincode, zodat er altijd geüpload wordt)

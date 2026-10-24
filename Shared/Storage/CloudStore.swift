@@ -1024,8 +1024,10 @@ final class CloudStore: ObservableObject {
     private func keys(in set: Set<String>, _ playlist: UUID, _ item: String) -> Set<String> {
         set.filter { Self.sameKey($0, playlist, item) }
     }
+    /// Build 147: twee opzoekingen (server-id in hoofdletters of kleine letters), niet meer de hele set doorlopen: dat
+    /// was per tegel en per film O(n) op de hoofdthread (bijv. Mijn Bingr liep zo voor elke schermverversing door alle films).
     private func contains(_ set: Set<String>, _ playlist: UUID, _ item: String) -> Bool {
-        set.contains(key(playlist, item)) || set.contains { Self.sameKey($0, playlist, item) }
+        set.contains(key(playlist, item)) || ListKeys.contains(set, playlist: playlist.uuidString, item: item)
     }
 
     func toggleFavorite(_ playlist: UUID, _ item: String) {

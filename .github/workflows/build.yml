@@ -62,7 +62,7 @@ jobs:
         continue-on-error: true
         run: |
           set -o pipefail
-          swiftc -O Shared/Account/CatalogMeta.swift Shared/Account/Build140.swift Shared/Account/Build141.swift Shared/Account/Build145.swift Shared/Account/Build146.swift tools/selftest/main.swift -o "$RUNNER_TEMP/selftest" 2>&1 | tee selftest.log
+          swiftc -O Shared/Account/CatalogMeta.swift Shared/Account/Build140.swift Shared/Account/Build141.swift Shared/Account/Build145.swift Shared/Account/Build146.swift Shared/Account/Build147.swift tools/selftest/main.swift -o "$RUNNER_TEMP/selftest" 2>&1 | tee selftest.log
           "$RUNNER_TEMP/selftest" 2>&1 | tee -a selftest.log
 
       - name: App-sleutels inbouwen (alleen bij een privé-repo)

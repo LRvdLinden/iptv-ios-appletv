@@ -300,7 +300,7 @@ struct NewTicketView: View {
 
     /// Na een problematische start: de startdiagnose; anders de app-diagnose (app en apparaat, zonder netwerkcheck)
     private var diagnostics: SupportDiagnostics {
-        if let p = StartDiagnostics.shared.lastProblem { return DiagnosticsBuilder.start(problem: p) }
+        if let p = StartDiagnostics.shared.lastProblem { return DiagnosticsBuilder.start(problem: p, playlists: playlists) }
         var d = DiagnosticsBuilder.base(.app)
         let store = CloudStore.shared
         let lib = playlists.library
@@ -315,6 +315,8 @@ struct NewTicketView: View {
         if let s = store.lastSync { state["lastSync"] = SupportDiagnostics.iso(s) }
         if let plan = EntitlementsService.shared.plan { state["plan"] = plan.rawValue }
         d.state = state
+        // build 147: altijd de startdiagnose (deze en de vorige start), ophalen per server, verbinding en opslag
+        DiagnosticsBuilder.enrich(&d, problem: nil, playlists: playlists)
         return d
     }
 

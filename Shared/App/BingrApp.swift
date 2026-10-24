@@ -11,17 +11,12 @@ struct BingrApp: App {
     // CloudStore (die leest ze bij het aanmaken)
     private let store: CloudStore = {
         StartDiagnostics.shared.start()   // build 143: startdiagnose (mijlpalen, vangnet), zo vroeg mogelijk
-        // build 143: de hele sleutelhanger van Bingr in drie zoekopdrachten in het geheugen, vóór account en opslag
-        // (anders tientallen losse zoekopdrachten op de hoofdthread)
+        // build 144: de geheimen staan in een eigen bestand (geen sleutelhanger meer); alvast inlezen. Build 147: geen
+        // mijlpaal "sleutelhanger" meer (dat klopte niet: het is het lezen van één klein bestand)
         #if os(tvOS)
-        // build 144: op Apple TV niets met de sleutelhanger vóór het eerste beeld; op de achtergrond, fouten worden genegeerd
-        DispatchQueue.global(qos: .userInitiated).async {
-            let ok = Keychain.warmUp()
-            StartDiagnostics.shared.mark(ok ? "sleutelhanger" : "sleutelhanger (fout, per sleutel)")
-        }
+        DispatchQueue.global(qos: .userInitiated).async { _ = Keychain.warmUp() }
         #else
-        let ok = Keychain.warmUp()
-        StartDiagnostics.shared.mark(ok ? "sleutelhanger" : "sleutelhanger (fout, per sleutel)")
+        Keychain.warmUp()
         #endif
         SmokeTest.seedIfNeeded()
         let s = CloudStore.shared
@@ -273,6 +268,11 @@ final class AppState: ObservableObject {
             await SourceSync.shared.syncNow()
             // Trakt, OpenSubtitles, instellingen, lijsten, voortgang, pincodes en herinneringen
             await StateSync.shared.syncNow()
+        }
+        // build 147: opslag voor de diagnose alvast meten (buiten de hoofdthread, ruim na de start)
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 90_000_000_000)
+            await StorageSnapshot.shared.refresh()
         }
         // elke 5 minuten zolang de app open is
         Task { @MainActor [weak self] in

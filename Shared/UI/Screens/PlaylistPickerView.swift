@@ -80,9 +80,9 @@ struct PlaylistPickerView: View {
             }
         }
         .onAppear {
-            // build 143: startdiagnose; blijft de gebruiker hier, dan is de start na 10 s klaar
+            // build 143: startdiagnose. Build 147: hier wacht de app op de gebruiker (telt niet als app-tijd); "klaar"
+            // komt pas als Home met de catalogus in beeld is (HomeView)
             StartDiagnostics.shared.mark("profielkeuze")
-            Task { try? await Task.sleep(nanoseconds: 10_000_000_000); StartDiagnostics.shared.mark("klaar") }
             appeared = true   // gegevens zijn al geladen; iCloud-wijzigingen komen vanzelf binnen
             // Apple TV: meteen op het (laatst gebruikte) profiel staan, niet op Beheren
             Task { @MainActor in

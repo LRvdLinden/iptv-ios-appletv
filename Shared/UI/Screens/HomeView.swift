@@ -116,10 +116,21 @@ struct HomeView: View {
         .task(id: playlists.libraryVersion) { if filter == .all { browse.refresh(playlists) } }
         .onAppear {
             if filter == .all { browse.refresh(playlists) }
-            // build 143: startdiagnose (Home in beeld; 10 s later is de start klaar)
+            // build 143: startdiagnose (Home in beeld). Build 147: "klaar" = Home met de catalogus in beeld (niet meer
+            // laden of filteren, hooguit 60 s wachten), plus een seconde om de rijen te tekenen
             if filter == .all {
                 StartDiagnostics.shared.mark("home")
-                Task { try? await Task.sleep(nanoseconds: 10_000_000_000); StartDiagnostics.shared.mark("klaar") }
+                if !StartDiagnostics.shared.has(StartDiag.finalMark) {
+                    Task { @MainActor in
+                        var waited = 0.0
+                        while waited < 60 && (playlists.isLoading || playlists.isFiltering || playlists.library.isEmptyLibrary) {
+                            try? await Task.sleep(nanoseconds: 250_000_000)
+                            waited += 0.25
+                        }
+                        try? await Task.sleep(nanoseconds: 1_000_000_000)
+                        StartDiagnostics.shared.mark(StartDiag.finalMark)
+                    }
+                }
             }
         }
         // build 111: TMDB-rijen (12 uur bewaard) zodra de index er is; opnieuw bij ander profiel, taal of indeling

@@ -11,6 +11,9 @@ struct MyBingrHeader: View {
     /// Build 128: items van andere servers
     @ObservedObject private var cross = CrossServer.shared
     @State private var prompt: CrossServer.Prompt?
+    /// Build 147: de gedeelde index (op de achtergrond gebouwd) i.p.v. per schermverversing door de hele bibliotheek
+    @State private var index = HomeIndex()
+    @State private var indexVersion = -1
 
     private var lib: Library { playlists.library }
     private var pid: UUID? { playlists.source?.id }
@@ -24,8 +27,8 @@ struct MyBingrHeader: View {
     /// Build 128: over alle servers (andere servers via CrossServer)
     private var continueItems: [ContinueEntry] {
         _ = cross.version
-        let movies = Dictionary(lib.movies.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
-        let seriesByTitle = Dictionary(lib.series.map { ($0.title, $0) }, uniquingKeysWith: { a, _ in a })
+        let movies = index.movieByID
+        let seriesByTitle = index.seriesByTitle
         var seen = Set<String>()
         return store.progress
             .filter { store.belongsToActive($0.value.profileID) }
@@ -53,7 +56,12 @@ struct MyBingrHeader: View {
 
     private var favoriteChannels: [Channel] {
         _ = cross.version
-        let active = pid.map { p in lib.channels.filter { store.isFavorite(p, $0.id) } } ?? []
+        // build 147: via de sleutels en de index (niet elke zender langs de favorieten)
+        let active: [Channel] = pid.map { p in
+            store.favorites.filter { isActive($0) }
+                .sorted { cross.addedAt($0, field: "favorites") > cross.addedAt($1, field: "favorites") }
+                .compactMap { index.channel(forKey: $0, playlist: p) }
+        } ?? []
         let other = store.favorites.filter { !isActive($0) }
             .sorted { cross.addedAt($0, field: "favorites") > cross.addedAt($1, field: "favorites") }
             .compactMap { cross.channel(forKey: $0) }
@@ -63,11 +71,15 @@ struct MyBingrHeader: View {
     private var myListItems: [DetailTarget] {
         _ = cross.version
         var out: [DetailTarget] = []
+        // build 147: via de sleutels van Mijn lijst en de index, laatst toegevoegd eerst (niet elke film langs de lijst)
+        let keys = store.myList.sorted { cross.addedAt($0, field: "myList") > cross.addedAt($1, field: "myList") }
         if let pid {
-            out = lib.movies.filter { store.inMyList(pid, $0.id) }.map { .movie($0) }
-                + lib.series.filter { store.inMyList(pid, $0.id) }.map { .series($0) }
+            for k in keys where MyListID.origin(of: k, activeSID: pid.uuidString) == .active {
+                if let m = index.movie(forKey: k, playlist: pid) { out.append(.movie(m)) }
+                else if let x = index.series(forKey: k, playlist: pid) { out.append(.series(x)) }
+            }
         }
-        for k in store.myList {
+        for k in keys {
             // build 141: ook TMDB-titels (bijv. een aanbeveling uit zoeken), zoals de rij Mijn lijst op Home
             switch MyListID.origin(of: k, activeSID: pid?.uuidString) {
             case .otherServer?:
@@ -114,6 +126,14 @@ struct MyBingrHeader: View {
         }
         .resumeDialog($resumeChoice) { detail = $0 }
         .crossServerPrompt($prompt)
+        .task(id: playlists.libraryVersion) {
+            let v = playlists.libraryVersion
+            guard v != indexVersion else { return }
+            let built = await HomeIndexCache.shared.index(for: playlists.library, version: v)
+            guard !Task.isCancelled else { return }
+            index = built
+            indexVersion = v
+        }
         .padding(.vertical, tvScaled(8))
         #if !os(tvOS)
         .sheet(item: $detail) { DetailView(target: $0).presentationDragIndicator(.visible) }
@@ -246,10 +266,25 @@ struct MyBingrHeader: View {
 /// Tabbladicoon "Mijn Bingr": de profielfoto (rond), zoals bij Netflix.
 @MainActor
 enum ProfileTabIcon {
-    static func image(_ store: CloudStore, size side: CGFloat = 26) -> UIImage? {
+    /// Build 147: één keer per profiel/foto/grootte tekenen (dit stond in de body van de tabbalk: bij elke
+    /// schermverversing de foto opnieuw decoderen en tekenen op de hoofdthread)
+    @MainActor private static var cache: (key: String, image: UIImage?)?
+
+    @MainActor static func image(_ store: CloudStore, size side: CGFloat = 26) -> UIImage? {
         guard let p = store.activeProfile else { return nil }
+        let photo = store.photos[p.id]
+        var fp = -1
+        if let photo { fp = photo.count &+ photo.prefix(64).hashValue &+ photo.suffix(64).hashValue }
+        let key = "\(p.id.uuidString)|\(fp)|\(p.avatar.symbol)|\(side)"
+        if let c = cache, c.key == key { return c.image }
+        let out = render(p, photo: photo, side: side)
+        cache = (key, out)
+        return out
+    }
+
+    private static func render(_ p: ViewerProfile, photo: Data?, side: CGFloat) -> UIImage? {
         let img: UIImage
-        if let d = store.photos[p.id], let i = UIImage(data: d) { img = i }
+        if let d = photo, let i = UIImage(data: d) { img = i }
         else if p.avatar.isIllustration, let i = UIImage(named: p.avatar.symbol) { img = i }
         else { return nil }
         let size = CGSize(width: side, height: side)

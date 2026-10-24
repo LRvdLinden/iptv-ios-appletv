@@ -168,29 +168,33 @@ final class NewOnBingr {
         await load()
         var all: [(UUID?, Library)] = [(activeID, active)]
         all += others.map { (Optional($0.0), $0.1) }
-        // eerste keer gezien bijwerken, alleen voor titels zonder datum van de provider
-        var changed = false
-        var stamps: [String: [String: Double]] = [:]
+        // eerste keer gezien bijwerken, alleen voor titels zonder datum van de provider. Build 147: buiten de hoofdthread
+        // (tienduizenden titels per server; dit liep op de hoofdthread bij elke opbouw van Home)
         let now = Date().timeIntervalSince1970
-        for (sid, lib) in all {
-            guard let sid else { continue }
-            let k = sid.uuidString
-            let ids = lib.movies.filter { $0.addedAt == nil }.map { "m|" + $0.id }
-                + lib.series.filter { $0.addedAt == nil }.map { "s|" + $0.id }
-            let seeded = firstSeen[k] != nil
-            var known = firstSeen[k] ?? [:]
-            if FirstSeen.update(&known, ids: ids, now: now, seeded: seeded) || !seeded {
-                firstSeen[k] = known
-                changed = true
+        let before = firstSeen
+        let snapshot = all
+        let (updated, stamps) = await Task.detached(priority: .utility) { () -> ([String: [String: Double]], [String: [String: Double]]) in
+            var updated: [String: [String: Double]] = [:]
+            var stamps: [String: [String: Double]] = [:]
+            for (sid, lib) in snapshot {
+                guard let sid else { continue }
+                let k = sid.uuidString
+                let ids = lib.movies.filter { $0.addedAt == nil }.map { "m|" + $0.id }
+                    + lib.series.filter { $0.addedAt == nil }.map { "s|" + $0.id }
+                let seeded = before[k] != nil
+                var known = before[k] ?? [:]
+                if FirstSeen.update(&known, ids: ids, now: now, seeded: seeded) || !seeded { updated[k] = known }
+                stamps[k] = known
             }
-            stamps[k] = known
-        }
+            return (updated, stamps)
+        }.value
+        var changed = !updated.isEmpty
+        for (k, v) in updated { firstSeen[k] = v }
         // servers die er niet meer zijn: weg
         let live = Set(CloudStore.shared.playlists.map(\.id.uuidString))
         for k in firstSeen.keys where !live.contains(k) { firstSeen[k] = nil; changed = true }
         if changed { save() }
 
-        let snapshot = all
         let seenStamps = stamps
         return await Task.detached(priority: .utility) { () -> [DetailTarget] in
             var byKey: [String: DetailTarget] = [:]

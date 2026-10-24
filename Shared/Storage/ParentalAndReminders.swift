@@ -472,11 +472,12 @@ struct PINPad: View {
             let entered = pin
             checking = true
             Task { @MainActor in
-                if limited { await parental.prepare(entered) }
+                // build 147: altijd vooraf afleiden (ook zonder wachttijd), nooit PBKDF2 op de hoofdthread
+                await parental.prepare(entered)
                 let ok = onDone(entered)
                 parental.forgetPrepared()
                 checking = false
-                if ok { dismiss() } else { shake.toggle(); pin = "" }
+                if ok { StartDiagnostics.shared.mark("pincode goed"); dismiss() } else { shake.toggle(); pin = "" }
             }
         }
     }

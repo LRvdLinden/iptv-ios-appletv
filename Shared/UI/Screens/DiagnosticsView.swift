@@ -114,7 +114,8 @@ enum DiagnosticsBuilder {
     }
 
     /// Startdiagnose: de mijlpalen (en de crash) van de vorige start als er een rapport is, anders die van deze start.
-    static func start(problem: StartDiag.Problem?) -> SupportDiagnostics {
+    /// Build 147: altijd met `start` (deze start én de vorige), `fetch`, `network` en `storage` (schema 2).
+    static func start(problem: StartDiag.Problem?, playlists: PlaylistService? = nil) -> SupportDiagnostics {
         var d = base(.start)
         let marks = problem?.marks ?? StartDiagnostics.shared.currentMarks
         d.milestones = marks.map { (name: $0.name, seconds: $0.t, ok: nil) }
@@ -122,7 +123,69 @@ enum DiagnosticsBuilder {
             d.crash = SupportDiagnostics.crash(from: p)
             if let peak = p.peakMB { d.memory?["appMB"] = peak }
         }
+        enrich(&d, problem: problem, playlists: playlists)
         return d
+    }
+
+    /// Build 147 (schema 2): startsamenvatting, vorige start, ophalen per server, verbinding en opslag. Bij elke diagnose.
+    static func enrich(_ d: inout SupportDiagnostics, problem: StartDiag.Problem?, playlists: PlaylistService?) {
+        d.start = startBlock(problem: problem)
+        if let pl = playlists ?? CrossServer.shared.playlists { d.fetch = FetchLog.shared.rows(playlists: pl) }
+        var net: [String: Any] = ["type": NetworkType.shared.current]
+        if let on = NetworkType.shared.isOnline { net["online"] = on }
+        if let old = d.state?["network"] as? [String: Any] {
+            for k in ["backend", "backendMs", "provider", "providerMs"] { if let v = old[k] { net[k] = v } }
+            if var s = d.state { var n = old; n["type"] = net["type"]; s["network"] = n; d.state = s }
+        }
+        d.network = net
+        d.storage = StorageSnapshot.shared.json
+    }
+
+    /// `start`: deze start (app-tijd, wachten op de gebruiker, langste hang) of de start van het rapport, en altijd de
+    /// vorige start (`previous`) met zijn probleem.
+    static func startBlock(problem: StartDiag.Problem?) -> [String: Any] {
+        var out: [String: Any]
+        if let p = problem {
+            let split = StartTiming.split(p.marks, end: p.marks.first { $0.name == StartDiag.finalMark }?.t)
+            var sum = StartTiming.summary(appMs: split.appMs, hang: p.kind == .hang ? p.seconds : nil, crashed: p.kind == .crash)
+            if p.kind == .notFinished && sum == .good { sum = .slow }
+            out = ["summary": sum.rawValue, "appMs": split.appMs, "userWaitMs": split.userWaitMs]
+            if p.kind == .hang { out["maxHangMs"] = Int(p.seconds * 1000) }
+        } else {
+            let c = StartDiagnostics.shared.currentStart
+            out = ["summary": c.summary.rawValue, "appMs": c.split.appMs, "userWaitMs": c.split.userWaitMs,
+                   "maxHangMs": Int(c.maxHang * 1000)]
+        }
+        if let prev = StartDiagnostics.shared.previous { out["previous"] = prev }
+        return out
+    }
+
+    /// Vaste Nederlandse samenvatting voor de tekst van een ticket (zoals de rest van die tekst)
+    static func summaryLineNL(problem: StartDiag.Problem?) -> String {
+        let b = startBlock(problem: problem)
+        let sum = StartTiming.Summary(rawValue: b["summary"] as? String ?? "") ?? .good
+        let title = sum == .good ? "goed" : sum == .slow ? "traag" : "vastgelopen"
+        let app = Double(b["appMs"] as? Int ?? 0) / 1000, wait = Double(b["userWaitMs"] as? Int ?? 0) / 1000
+        var line = "Start: \(title) (app \(String(format: "%.1f", app)) s, wachten op de gebruiker \(String(format: "%.1f", wait)) s)"
+        if let prev = b["previous"] as? [String: Any], let pr = prev["problem"] as? String, pr != "none" {
+            line += " · vorige start: \(pr)" + ((prev["seconds"] as? Double).map { " \(String(format: "%.1f", $0)) s" } ?? "")
+                + ((prev["task"] as? String).map { ", taak \($0)" } ?? "")
+        }
+        return line
+    }
+
+    /// Samenvatting voor bovenaan (tekst): "Start: goed / traag / vastgelopen" met app-tijd en wachttijd.
+    static func summaryLine(problem: StartDiag.Problem?) -> String {
+        let b = startBlock(problem: problem)
+        let sum = StartTiming.Summary(rawValue: b["summary"] as? String ?? "") ?? .good
+        let title: String
+        switch sum {
+        case .good: title = L("Start: good")
+        case .slow: title = L("Start: slow")
+        case .hung: title = L("Start: stuck")
+        }
+        let app = Double(b["appMs"] as? Int ?? 0) / 1000, wait = Double(b["userWaitMs"] as? Int ?? 0) / 1000
+        return title + " · " + L("app %@ s, waiting for you %@ s", String(format: "%.1f", app), String(format: "%.1f", wait))
     }
 }
 
@@ -154,7 +217,7 @@ final class DiagnosticsModel: ObservableObject {
         let backend = await account.backendPing()
         let provider = await Self.providerCheck(playlists.source)
         func level(_ ok: Bool, _ ms: Int) -> String { !ok ? "fail" : (ms > 1500 ? "slow" : "ok") }
-        var network: [String: Any] = ["online": backend.ok || provider?.ok == true, "type": "unknown",
+        var network: [String: Any] = ["online": backend.ok || provider?.ok == true, "type": NetworkType.shared.current,
                                       "backend": level(backend.ok, backend.ms), "backendMs": backend.ms]
         if let provider {
             network["provider"] = level(provider.ok, provider.ms)
@@ -163,20 +226,11 @@ final class DiagnosticsModel: ObservableObject {
             network["provider"] = "skipped"
         }
 
-        // opslag (mappen doorlopen buiten de hoofdthread)
-        let catalogs = store.playlists.map { PlaylistService.cacheURL($0) }
-        let sizes = await Task.detached(priority: .utility) { () -> (cache: Int, db: Int, support: Int, downloads: Int, free: Int?) in
-            #if os(iOS)
-            let downloads = DiagnosticsModel.sizeMB(AppDirs.support.appendingPathComponent("Downloads", isDirectory: true))
-            #else
-            let downloads = 0
-            #endif
-            return (DiagnosticsModel.sizeMB(AppDirs.caches), catalogs.reduce(0) { $0 + DiagnosticsModel.fileMB($1) },
-                    DiagnosticsModel.sizeMB(AppDirs.support), downloads, DiagnosticsModel.freeMB())
-        }.value
-        let cacheMB = sizes.cache, dbMB = sizes.db, downloadsMB = sizes.downloads
-        var storage: [String: Any] = ["cacheMB": cacheMB, "dbMB": dbMB, "usedMB": sizes.cache + sizes.support]
-        if let free = sizes.free { storage["freeMB"] = free }
+        // opslag (build 147: één totaal met cache, catalogus en downloads die samen het totaal zijn; buiten de hoofdthread)
+        let st = await StorageSnapshot.shared.refresh()
+        let cacheMB = st.cacheMB, dbMB = st.catalogMB, downloadsMB = st.downloadsMB
+        var storage: [String: Any] = ["cacheMB": cacheMB, "dbMB": dbMB, "usedMB": st.totalMB]
+        if let free = st.freeMB { storage["freeMB"] = free }
 
         // servers: aantal, soort en hoe lang geleden bijgewerkt (zonder naam of adres)
         let lib = playlists.library
@@ -194,6 +248,8 @@ final class DiagnosticsModel: ObservableObject {
         if let sync = store.lastSync { state["lastSync"] = SupportDiagnostics.iso(sync) }
         if let plan = EntitlementsService.shared.plan { state["plan"] = plan.rawValue }
         d.state = state
+        // build 147: altijd ook de startdiagnose (deze en de vorige start), ophalen per server, verbinding en opslag
+        DiagnosticsBuilder.enrich(&d, problem: nil, playlists: playlists)
         report = d
 
         // wat er in beeld (en in het bericht) komt
@@ -209,10 +265,19 @@ final class DiagnosticsModel: ObservableObject {
         if let provider {
             r.append(Row(title: L("Your server"), value: provider.ok ? L("Reachable (%d ms)", provider.ms) : L("Not reachable")))
         }
-        r.append(Row(title: L("Cache"), value: "\(cacheMB) MB"))
+        r.insert(Row(title: L("Start"), value: DiagnosticsBuilder.summaryLine(problem: nil)), at: 0)
+        r.append(Row(title: L("Connection"), value: Self.networkTitle(NetworkType.shared.current)))
+        r.append(Row(title: L("Storage"), value: "\(st.totalMB) MB"))
+        r.append(Row(title: "  " + L("Cache"), value: "\(cacheMB) MB"))
+        r.append(Row(title: "  " + L("Catalog"), value: "\(dbMB) MB"))
         #if os(iOS)
-        r.append(Row(title: L("Downloads"), value: "\(downloadsMB) MB"))
+        r.append(Row(title: "  " + L("Downloads"), value: "\(downloadsMB) MB"))
         #endif
+        if let free = st.freeMB { r.append(Row(title: L("Free on this device"), value: "\(free) MB")) }
+        for f in d.fetch {
+            guard let srv = f["server"] as? String, let kind = f["kind"] as? String, let status = f["status"] as? String else { continue }
+            r.append(Row(title: "\(srv.uppercased()) · \(Self.kindTitle(kind))", value: Self.fetchTitle(status, count: f["count"] as? Int, error: f["error"] as? String)))
+        }
         if let app = StartDiagnostics.footprintMB() {
             r.append(Row(title: L("Memory"), value: "\(app) MB / \(Int(ProcessInfo.processInfo.physicalMemory / 1_048_576)) MB"))
         }
@@ -229,7 +294,16 @@ final class DiagnosticsModel: ObservableObject {
         t.append("Laatste account-sync: \(store.lastSync.map { Self.relativeNL($0) } ?? "–")")
         t.append("Bingr-server: \(backend.ok ? "bereikbaar" : "niet bereikbaar") (\(backend.ms) ms)"
                  + (provider.map { " · eigen server: \($0.ok ? "bereikbaar" : "niet bereikbaar") (\($0.ms) ms)" } ?? ""))
-        t.append("Opslag: cache \(cacheMB) MB, catalogus \(dbMB) MB, downloads \(downloadsMB) MB")
+        t.append("Verbinding: \(NetworkType.shared.current)")
+        t.append("Opslag: totaal \(st.totalMB) MB (cache \(cacheMB) MB, catalogus \(dbMB) MB, downloads \(downloadsMB) MB)"
+                 + (st.freeMB.map { ", vrij \($0) MB" } ?? ""))
+        for f in d.fetch {
+            t.append("Ophalen \(f["server"] ?? "?") \(f["kind"] ?? "?"): \(f["status"] ?? "?")"
+                     + ((f["count"] as? Int).map { " (\($0))" } ?? "") + ((f["error"] as? String).map { " fout \($0)" } ?? ""))
+        }
+        // build 147: altijd de startdiagnose erbij (deze start en de vorige)
+        t.insert(DiagnosticsBuilder.summaryLineNL(problem: nil), at: 1)
+        if let p = StartDiagnostics.shared.lastProblem { t.append(StartDiag.text(p)) }
         text = t.joined(separator: "\n")
     }
 
@@ -270,6 +344,33 @@ final class DiagnosticsModel: ObservableObject {
             return (resp is HTTPURLResponse, Int(Date().timeIntervalSince(t0) * 1000))
         } catch {
             return (false, Int(Date().timeIntervalSince(t0) * 1000))
+        }
+    }
+
+    static func networkTitle(_ t: String) -> String {
+        switch t {
+        case "wifi": return L("Wi-Fi")
+        case "cellular": return L("Mobile")
+        case "ethernet": return L("Ethernet")
+        case "none": return L("Offline")
+        default: return L("Unknown")
+        }
+    }
+
+    static func kindTitle(_ k: String) -> String {
+        switch k {
+        case "live": return L("Live TV")
+        case "movie": return L("Movies")
+        default: return L("Series")
+        }
+    }
+
+    static func fetchTitle(_ status: String, count: Int?, error: String?) -> String {
+        switch status {
+        case "ok": return L("Delivered (%d)", count ?? 0)
+        case "empty": return L("Provider delivered nothing")
+        case "hidden": return L("All hidden (%d)", count ?? 0)
+        default: return L("Fetch failed (%@)", error ?? "?")
         }
     }
 
