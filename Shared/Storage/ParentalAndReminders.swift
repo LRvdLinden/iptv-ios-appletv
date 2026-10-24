@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import UserNotifications
+import CryptoKit
 
 /// Kinderslot: pincode in de iCloud-sleutelhanger, groepen op slot, sessie-ontgrendeling.
 @MainActor
@@ -14,7 +15,8 @@ final class ParentalControl: ObservableObject {
     var hasPIN: Bool { Keychain.get(pinKey) != nil }
     var isUnlocked: Bool { (unlockedUntil ?? .distantPast) > Date() }
 
-    func setPIN(_ pin: String?) { Keychain.set(pin, for: pinKey) }
+    /// Build 146: alleen de hash (`PinHash`, PBKDF2) wordt bewaard, nooit de pincode zelf.
+    func setPIN(_ pin: String?) { Keychain.set(Self.stored(pin), for: pinKey) }
 
     init() { loadAttempts() }
 
@@ -24,16 +26,117 @@ final class ParentalControl: ObservableObject {
     func prefetchPINs() {
         let keys = ["parental.pin"] + CloudStore.shared.profiles.map { "profile.\($0.id.uuidString).pin" }
         Keychain.prefetch(keys, localOnly: [Self.attemptsKey])
+        migrateLocalPINs()
     }
 
     func verify(_ pin: String) -> Bool {
-        guard attempt({ Keychain.get(pinKey).map { $0 == pin } ?? false }) else { return false }
+        guard attempt({ matches(Keychain.get(pinKey), pin) }) else { return false }
         unlock()
         return true
     }
 
     /// Alleen controleren (één titel toestaan), zónder de hele bibliotheek te ontgrendelen.
-    func check(_ pin: String) -> Bool { attempt { Keychain.get(pinKey).map { $0 == pin } ?? false } }
+    func check(_ pin: String) -> Bool { attempt { matches(Keychain.get(pinKey), pin) } }
+
+    // MARK: pincode als hash (build 146, docs/ACCOUNT.md "Pincode als hash")
+
+    /// Wat er bewaard wordt: de hash als tekst (nil = geen pincode).
+    static func stored(_ pin: String?) -> String? {
+        guard let pin, !pin.isEmpty else { return nil }
+        return PinHash.make(pin: pin)?.string
+    }
+
+    /// Afgeleide sleutels die het pincodescherm buiten de hoofdthread alvast berekende (`prepare`), per salt en iteraties.
+    private var derived: [String: Data] = [:]
+    private var derivedFor = ""
+
+    /// Pincode tegen de bewaarde waarde (hash, of nog een oude pincode van vóór build 146). Gebruikt een al
+    /// berekende afleiding van `prepare` als die er is (anders hier afleiden).
+    private func matches(_ stored: String?, _ pin: String) -> Bool {
+        guard let stored, !stored.isEmpty else { return false }
+        if let h = PinHash(string: stored) {
+            if derivedFor == pin, let d = derived[Self.derivationKey(h)] { return PinHash.constantTimeEqual(d, h.hash) }
+            return h.verify(pin)
+        }
+        return PinHash.matches(stored: stored, pin: pin)
+    }
+
+    nonisolated private static func derivationKey(_ h: PinHash) -> String { "\(h.iter)|\(h.salt.base64EncodedString())" }
+
+    /// Pincodescherm: de PBKDF2-afleiding voor alle bewaarde hashes buiten de hoofdthread berekenen (100.000 iteraties),
+    /// zodat de controle daarna meteen klaar is. Daarna wordt de pincode met `verify`/`check` gecontroleerd (met de
+    /// wachttijd na foute pogingen zoals altijd).
+    func prepare(_ pin: String) async {
+        let keys = ["parental.pin"] + Keychain.keys(withPrefix: "profile.").filter { $0.hasSuffix(".pin") }
+        let hashes = keys.compactMap { Keychain.get($0).flatMap(PinHash.init(string:)) }
+        guard !hashes.isEmpty, PinHash.isValidPIN(pin) else { return }
+        let out = await Task.detached(priority: .userInitiated) { () -> [String: Data] in
+            var r: [String: Data] = [:]
+            for h in hashes where r[Self.derivationKey(h)] == nil {
+                if let d = PinHash.derive(pin: pin, salt: h.salt, iterations: h.iter) { r[Self.derivationKey(h)] = d }
+            }
+            return r
+        }.value
+        derived = out
+        derivedFor = pin
+    }
+
+    /// Na de controle de afgeleide sleutels weer vergeten.
+    func forgetPrepared() {
+        derived = [:]
+        derivedFor = ""
+    }
+
+    /// Oude lokale pincodes (t/m build 145 stond de pincode zelf hier) meteen hashen, buiten de hoofdthread. De tijd van
+    /// de pincode (`pinUpdatedAt`) verandert daardoor niet (zie `consumeMigration`).
+    func migrateLocalPINs() {
+        guard !migrating else { return }
+        migrating = true
+        Task { @MainActor in
+            defer { self.migrating = false }
+            // niet tijdens het opstarten: pas na het eerste beeld (zoals de overzetting van build 144)
+            var waited = 0
+            while !StartDiagnostics.shared.has("eerste frame") && waited < 60 {
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                waited += 1
+            }
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            await Keychain.waitForMigration()
+            let keys = ["parental.pin"] + Keychain.keys(withPrefix: "profile.").filter { $0.hasSuffix(".pin") }
+            let legacy: [(String, String)] = keys.compactMap { k in
+                guard let v = Keychain.get(k), PinHash.isLegacyPlain(v), PinHash.isValidPIN(v) else { return nil }
+                return (k, v)
+            }
+            guard !legacy.isEmpty else { return }
+            let hashed = await Task.detached(priority: .utility) { () -> [(String, String, String)] in
+                legacy.compactMap { pair in PinHash.make(pin: pair.1).map { (pair.0, pair.1, $0.string) } }
+            }.value
+            var marks = UserDefaults.standard.dictionary(forKey: Self.migratedKey) as? [String: String] ?? [:]
+            for (k, old, hashedValue) in hashed where Keychain.get(k) == old {
+                marks[k] = Self.fingerprint(hashedValue)
+                UserDefaults.standard.set(marks, forKey: Self.migratedKey)
+                Keychain.set(hashedValue, for: k)
+            }
+            self.objectWillChange.send()
+        }
+    }
+    private var migrating = false
+    nonisolated private static let migratedKey = "pin.migrated.v146"
+
+    nonisolated static func fingerprint(_ s: String) -> String {
+        SHA256.hash(data: Data(s.utf8)).map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// StateSync: is deze nieuwe lokale waarde alleen de omzetting van de oude pincode naar een hash? Dan telt het niet
+    /// als een nieuwe pincode (`pinUpdatedAt` blijft). Eenmalig per omzetting.
+    nonisolated static func consumeMigration(key: String, value: String?) -> Bool {
+        guard let value else { return false }
+        var marks = UserDefaults.standard.dictionary(forKey: migratedKey) as? [String: String] ?? [:]
+        guard let fp = marks[key] else { return false }
+        marks[key] = nil
+        UserDefaults.standard.set(marks, forKey: migratedKey)
+        return fp == fingerprint(value)
+    }
 
     // MARK: wachttijd na foute pincodes (build 141)
     // Na 5 foute pogingen een oplopende wachttijd (30 s, 1 min, 5 min, 15 min, daarna 1 uur per poging), voor alle
@@ -104,10 +207,11 @@ final class ParentalControl: ObservableObject {
         CloudStore.shared.mainProfileID == profileID ? "parental.pin" : "profile.\(profileID.uuidString).pin"
     }
     func hasPIN(profile: UUID) -> Bool { Keychain.get(Self.pinKey(for: profile)) != nil }
-    func setPIN(_ pin: String?, profile: UUID) { Keychain.set(pin, for: Self.pinKey(for: profile)); objectWillChange.send() }
+    /// Build 146: alleen de hash wordt bewaard (en via StateSync als `pinHash` gedeeld).
+    func setPIN(_ pin: String?, profile: UUID) { Keychain.set(Self.stored(pin), for: Self.pinKey(for: profile)); objectWillChange.send() }
     /// Juiste pincode voor dit profiel? (Bij het hoofdaccount ook meteen 30 min ontgrendelen.)
     func verify(_ pin: String, profile: UUID) -> Bool {
-        guard attempt({ Keychain.get(Self.pinKey(for: profile)).map { $0 == pin } ?? false }) else { return false }
+        guard attempt({ matches(Keychain.get(Self.pinKey(for: profile)), pin) }) else { return false }
         if CloudStore.shared.mainProfileID == profile { unlock() }
         return true
     }
@@ -247,6 +351,8 @@ struct PINPad: View {
     @ObservedObject private var parental = ParentalControl.shared
     @State private var pin = ""
     @State private var shake = false
+    /// build 146: de pincode wordt gecontroleerd (hash afleiden)
+    @State private var checking = false
 
     /// build 141: melding tijdens de wachttijd na te veel foute pogingen (telt elke seconde af)
     @ViewBuilder private var waitNotice: some View {
@@ -258,6 +364,12 @@ struct PINPad: View {
                         .font(.footnote).foregroundStyle(Theme.imdb).multilineTextAlignment(.center)
                 }
             }
+        }
+    }
+
+    @ViewBuilder private var checkingNotice: some View {
+        if checking {
+            Text(L("Checking…")).font(.footnote).foregroundStyle(Theme.secondary)
         }
     }
 
@@ -287,6 +399,7 @@ struct PINPad: View {
                 .lineLimit(2).minimumScaleFactor(0.7).frame(maxWidth: 1100)
             dots(size: 22, spacing: 22)
             waitNotice
+            checkingNotice
             HStack(spacing: 14) {
                 ForEach(["1","2","3","4","5","6","7","8","9","0","⌫"], id: \.self) { k in
                     Button { tap(k) } label: {
@@ -313,6 +426,7 @@ struct PINPad: View {
                 Text(title).font(.system(size: 20, weight: .bold)).multilineTextAlignment(.center)
                 dots(size: 16, spacing: 14)
                 waitNotice
+                checkingNotice
                 LazyVGrid(columns: Array(repeating: GridItem(.fixed(70), spacing: 14), count: 3), spacing: 14) {
                     ForEach(["1","2","3","4","5","6","7","8","9","","0","⌫"], id: \.self) { k in
                         if k.isEmpty { Color.clear.frame(height: 70) } else {
@@ -347,13 +461,23 @@ struct PINPad: View {
     }
 
     private func tap(_ k: String) {
+        guard !checking else { return }
         if k == "⌫" { if !pin.isEmpty { pin.removeLast() }; return }
         guard pin.count < 4 else { return }
         // build 141: tijdens de wachttijd geen invoer
         if limited, parental.waitRemaining > 0 { shake.toggle(); pin = ""; return }
         pin += k
         if pin.count == 4 {
-            if onDone(pin) { dismiss() } else { shake.toggle(); pin = "" }
+            // build 146: de hash (PBKDF2) eerst buiten de hoofdthread afleiden, dan pas controleren
+            let entered = pin
+            checking = true
+            Task { @MainActor in
+                if limited { await parental.prepare(entered) }
+                let ok = onDone(entered)
+                parental.forgetPrepared()
+                checking = false
+                if ok { dismiss() } else { shake.toggle(); pin = "" }
+            }
         }
     }
 }

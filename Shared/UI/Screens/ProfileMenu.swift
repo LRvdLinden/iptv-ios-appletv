@@ -3,6 +3,8 @@ import SwiftUI
 /// Pagina's van Mijn Bingr die vanuit het profielmenu (of de lijst zelf) geopend worden.
 enum MyBingrRoute: Hashable {
     case settings, account, profiles, trakt, history, collections, stats, homeLayout, network, categories
+    /// Build 146: Support in de app (ook vanuit een pushmelding of `bingr://support`)
+    case support
     #if os(iOS)
     case downloads
     #endif
@@ -23,6 +25,8 @@ extension CloudStore {
 enum ProfileMenuAction {
     case profile(ViewerProfile)
     case switchProfile, manageProfiles, myBingr, settings, account, support, signOut
+    /// Build 146: alle servers één voor één vernieuwen (zoals de knop Vernieuwen), met de bijwerk-indicator
+    case refreshServers
 }
 
 /// Profielmenu achter de avatar: andere profielen (direct wisselen, met pincode als die er is),
@@ -33,9 +37,10 @@ struct ProfileMenuButton<MenuLabel: View>: View {
     @EnvironmentObject var app: AppState
     @EnvironmentObject var store: CloudStore
     @ObservedObject private var account = AccountService.shared
+    /// Build 146: ongelezen supportantwoorden (bolletje op de avatar, aantal bij Support)
+    @ObservedObject private var support = SupportCenter.shared
     @State private var pinFor: ViewerProfile?
     @State private var confirmSignOut = false
-    @State private var showSupport = false
     #if os(tvOS)
     @State private var showMenu = false
     #endif
@@ -44,6 +49,19 @@ struct ProfileMenuButton<MenuLabel: View>: View {
 
     private var others: [ViewerProfile] { store.profiles.filter { $0.id != store.activeProfileID } }
     private var signedIn: Bool { Secrets.accountsConfigured && account.isSignedIn }
+    /// Build 146: "Servers vernieuwen" (niet bij een kinderprofiel)
+    private var canRefresh: Bool { !(store.activeProfile?.kids ?? false) && !store.playlists.isEmpty }
+    private var supportTitle: String { support.unread > 0 ? "\(L("Support")) (\(support.unread))" : L("Support") }
+
+    /// Avatar met een rood bolletje bij ongelezen supportantwoorden
+    private var badgedLabel: some View {
+        label().overlay(alignment: .topTrailing) {
+            if support.unread > 0 {
+                Circle().fill(Color.red).frame(width: tvScaled(9), height: tvScaled(9)).offset(x: 2, y: -2)
+                    .accessibilityLabel(L("%d unread", support.unread))
+            }
+        }
+    }
 
     var body: some View {
         menu
@@ -60,16 +78,15 @@ struct ProfileMenuButton<MenuLabel: View>: View {
                 Button(L("Sign out"), role: .destructive) { Task { await account.signOut() } }
                 Button(L("Cancel"), role: .cancel) {}
             }
-            .supportPage(isPresented: $showSupport)
     }
 
     #if os(tvOS)
     private var menu: some View {
-        Button { showMenu = true } label: { label() }
+        Button { showMenu = true } label: { badgedLabel }
             .plainTVButton()
             .sheet(isPresented: $showMenu) {
                 TVProfileMenu(others: others, canManage: store.isMainOrSolo && !store.profiles.isEmpty,
-                              signedIn: signedIn) { action in
+                              signedIn: signedIn, canRefresh: canRefresh, supportTitle: supportTitle) { action in
                     showMenu = false
                     // eerst het menu laten sluiten, dan pas een volgend scherm (pincode, bevestiging) tonen
                     Task { @MainActor in
@@ -92,6 +109,9 @@ struct ProfileMenuButton<MenuLabel: View>: View {
                 }
             }
             Section {
+                if canRefresh {
+                    Button { perform(.refreshServers) } label: { Label(L("Refresh servers"), systemImage: "arrow.clockwise") }
+                }
                 Button { perform(.switchProfile) } label: { Label(L("Switch profile"), systemImage: "person.2") }
                 if store.isMainOrSolo && !store.profiles.isEmpty {
                     Button { perform(.manageProfiles) } label: { Label(L("Manage profiles"), systemImage: "pencil") }
@@ -101,7 +121,7 @@ struct ProfileMenuButton<MenuLabel: View>: View {
                 if signedIn {
                     Button { perform(.account) } label: { Label(L("Account and devices"), systemImage: "person.crop.circle") }
                 }
-                Button { perform(.support) } label: { Label(L("Support"), systemImage: "questionmark.circle") }
+                Button { perform(.support) } label: { Label(supportTitle, systemImage: "questionmark.circle") }
             }
             if signedIn {
                 Section {
@@ -110,7 +130,7 @@ struct ProfileMenuButton<MenuLabel: View>: View {
                     }
                 }
             }
-        } label: { label() }
+        } label: { badgedLabel }
         .menuStyle(.button)
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
@@ -130,8 +150,12 @@ struct ProfileMenuButton<MenuLabel: View>: View {
         case .myBingr: app.showMyBingr()
         case .settings: app.showMyBingr(.settings)
         case .account: app.showMyBingr(.account)
-        case .support: showSupport = true
+        case .support: app.showMyBingr(.support)
         case .signOut: KidsGate.shared.require { confirmSignOut = true }
+        case .refreshServers:
+            // zoals de knop Vernieuwen: alle servers één voor één, op de achtergrond met het "Bijwerken"-pilletje
+            guard canRefresh else { return }
+            Task { await app.playlists.refreshAll() }
         }
     }
 }
@@ -177,6 +201,8 @@ private struct TVProfileMenu: View {
     let others: [ViewerProfile]
     let canManage: Bool
     let signedIn: Bool
+    let canRefresh: Bool
+    let supportTitle: String
     let onPick: (ProfileMenuAction) -> Void
     @EnvironmentObject var store: CloudStore
     @FocusState private var focus: Target?
@@ -206,12 +232,13 @@ private struct TVProfileMenu: View {
                 .focusSection()
             }
             VStack(spacing: 10) {
+                if canRefresh { row(L("Refresh servers"), "arrow.clockwise", .refreshServers) }
                 row(L("Switch profile"), "person.2", .switchProfile).focused($focus, equals: .first)
                 if canManage { row(L("Manage profiles"), "pencil", .manageProfiles) }
                 row(L("My Bingr"), "person", .myBingr)
                 row(L("Settings"), "gearshape", .settings)
                 if signedIn { row(L("Account and devices"), "person.crop.circle", .account) }
-                row(L("Support"), "questionmark.circle", .support)
+                row(supportTitle, "questionmark.circle", .support)
                 if signedIn {
                     Divider().padding(.vertical, 6)
                     row(L("Sign out"), "rectangle.portrait.and.arrow.right", .signOut, destructive: true)

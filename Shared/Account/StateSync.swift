@@ -1280,9 +1280,14 @@ final class StateSync {
         Self.diffTimed(&m, "history", hist, now: now, inferRemovals: false)
         let pfp = Self.fingerprint(Self.prefs(of: profile))
         if pfp != m.prefs.fp { m.prefs = Stamp(fp: pfp, at: first || m.prefs.fp == nil ? m.prefs.at : now) }
-        let pin = Keychain.get(ParentalControl.pinKey(for: id))
+        let pinKeyName = ParentalControl.pinKey(for: id)
+        let pin = Keychain.get(pinKeyName)
         let pinFP = Self.hash(pin ?? "")
-        if pinFP != m.pin.fp { m.pin = Stamp(fp: pinFP, at: first || m.pin.fp == nil ? m.pin.at : now) }
+        if pinFP != m.pin.fp {
+            // build 146: de oude lokale pincode alleen omgezet naar een hash = geen nieuwe pincode (tijd blijft)
+            let migrated = ParentalControl.consumeMigration(key: pinKeyName, value: pin)
+            m.pin = Stamp(fp: pinFP, at: first || m.pin.fp == nil || migrated ? m.pin.at : now)
+        }
         meta.profiles[id.uuidString] = m
     }
 
@@ -1403,21 +1408,38 @@ final class StateSync {
         let pinKey = ParentalControl.pinKey(for: id)
         var pin = Keychain.get(pinKey)
         var pinAt = m.pin.at
+        // build 146: `pin`, `pinHash` en `pinUpdatedAt` zijn één geheel; een geldige hash gaat voor, een `pin` als tekst
+        // (oude app) wordt meteen gehasht met dezelfde `pinUpdatedAt` (docs/ACCOUNT.md "Pincode als hash")
+        let serverPin = PinState.read(data, sectionAt: sectionAt, time: { Self.time($0) })
         do {
-            let hasPin = data.keys.contains("pin")
-            let sp = (data["pin"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            let hasPin = serverPin != .absent
             // `pin: null` zonder eigen tijd telt als heel oud (anders verdwijnt een lokale pincode bij de eerste sync)
-            let spAt = hasPin ? (Self.time(data["pinUpdatedAt"]) ?? (sp != nil ? sectionAt : 0)) : 0
+            let spAt = serverPin.at ?? 0
+            let spPresent: Bool
+            switch serverPin {
+            case .hash, .legacy: spPresent = true
+            case .removed, .absent: spPresent = false
+            }
             let take: Bool
             if let mine = pinAt {
                 take = hasPin && spAt > mine
-            } else if hasPin && (sp != nil || spAt > 0) {
+            } else if hasPin && (spPresent || spAt > 0) {
                 take = true   // eerste keer: de server weet het (of de pincode is elders bewust verwijderd)
             } else {
                 take = false
                 if pin != nil { pinAt = trustedNow() }   // migratie: lokale pincode naar de server
             }
             if take {
+                // pas hier afleiden (PBKDF2), alleen als de pincode van de server overgenomen wordt
+                let sp: String?
+                switch serverPin {
+                case .hash(let h, _): sp = h.string
+                case .legacy(let plain, _):
+                    // dezelfde pincode die hier al als hash staat: die hash houden (geen nieuwe salt bij elke ronde)
+                    if let mine = pin, PinHash.matches(stored: mine, pin: plain) { sp = PinHash.isLegacyPlain(mine) ? PinHash.make(pin: plain)?.string : mine }
+                    else { sp = PinHash.make(pin: plain)?.string }
+                case .removed, .absent: sp = nil
+                }
                 if sp != pin {
                     Keychain.set(sp, for: pinKey)
                     ParentalControl.shared.objectWillChange.send()
@@ -1491,9 +1513,7 @@ final class StateSync {
                 .prefix(Self.maxHistory).map { $0.raw.merging(["at": Self.iso($0.at), "date": Self.iso($0.at)]) { _, b in b } },
             prefs: sp.map { $0.filter { $0.key != "updatedAt" } } ?? [:],
             prefsAt: sp.map { Self.time($0["updatedAt"]) ?? sectionAt },
-            pin: (data["pin"] as? String).flatMap { $0.isEmpty ? nil : $0 },
-            pinAt: data.keys.contains("pin")
-                ? (Self.time(data["pinUpdatedAt"]) ?? ((data["pin"] as? String).map { $0.isEmpty ? 0 : sectionAt } ?? 0)) : nil,
+            pin: Self.theirPin(serverPin), pinAt: serverPin.at, serverLegacyPin: Self.legacyPin(serverPin),
             extras: data)
         // staan er verwijderingen alleen in de oude velden (iOS vóór build 60), upload dan ook zonder
         // verdere wijziging, zodat Android en Tizen ze in `removed` zien
@@ -1507,6 +1527,7 @@ final class StateSync {
     private func profilePayload(sets: [String: [String: Double]], removed: [String: [String: Double]],
                                 progress: [String: [String: Any]], history: [[String: Any]],
                                 prefs: [String: Any], prefsAt: Double?, pin: String?, pinAt: Double?,
+                                serverLegacyPin: String? = nil,
                                 homeLayout: [String: Any]? = nil, extras: [String: Any]) -> [String: Any] {
         var out = extras
         if let homeLayout { out["homeLayout"] = homeLayout }
@@ -1538,7 +1559,13 @@ final class StateSync {
         var p = prefs
         p["updatedAt"] = Self.iso(prefsAt ?? 0)
         out["prefs"] = p
-        out["pin"] = Self.orNull(pin)
+        // build 146: alleen de hash (`pinHash`), `pin` altijd null; een oude lokale pincode wordt hier alsnog gehasht
+        let hashed: PinHash? = pin.flatMap { p in
+            PinHash(string: p) ?? (PinHash.isLegacyPlain(p) ? PinHash.make(pin: p) : nil)
+        }
+        out["pinHash"] = hashed.map { $0.json as Any } ?? NSNull()
+        // (alleen bij de vergelijkingsvorm van de server: een oude leesbare pincode, zodat er altijd geüpload wordt)
+        out["pin"] = serverLegacyPin.map { $0 as Any } ?? NSNull()
         out["pinUpdatedAt"] = Self.iso(pinAt ?? 0)
         out["updatedAt"] = Self.iso(trustedNow())
         return out
@@ -1738,6 +1765,18 @@ final class StateSync {
 
     /// Optionele waarde → de waarde of JSON-null.
     private static func orNull(_ v: Any?) -> Any { v ?? NSNull() }
+
+    /// Build 146: de pincode van de server in dezelfde vorm als de lokale (hash als tekst) om te vergelijken; een oude
+    /// `pin` als tekst blijft tekst, zodat de app na het hashen altijd uploadt.
+    private static func theirPin(_ s: PinState) -> String? {
+        if case .hash(let h, _) = s { return h.string }
+        return nil
+    }
+
+    private static func legacyPin(_ s: PinState) -> String? {
+        if case .legacy(let plain, _) = s { return plain }
+        return nil
+    }
 
     private static func withoutUpdatedAt(_ d: [String: Any]) -> [String: Any] {
         var d = d

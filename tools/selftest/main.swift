@@ -411,5 +411,115 @@ do {
     eq(rt, r, "record via JSON")
 }
 
+// MARK: build 146: pincode als hash (testvectoren uit docs/ACCOUNT.md)
+
+do {
+    func b64(_ s: String) -> Data { Data(base64Encoded: s)! }
+    let salt1 = b64("AAECAwQFBgcICQoLDA0ODw==")
+    eq(salt1, Data((0..<16).map { UInt8($0) }), "salt 1 = 00…0f")
+    eq(PinHash.derive(pin: "1234", salt: salt1, iterations: 100_000)?.base64EncodedString(),
+       "hp5sg1DFvrCsw5n7qsO2DSIEM4lrJqZHc00NjxWG4fo=" as String?, "vector 1234")
+    let salt2 = b64("QmluZ3ItcGluLXRlc3QtMQ==")
+    eq(String(data: salt2, encoding: .utf8), "Bingr-pin-test-1" as String?, "salt 2 = ASCII")
+    eq(PinHash.derive(pin: "0000", salt: salt2, iterations: 100_000)?.base64EncodedString(),
+       "+fGTeA7fJpt28Rrq3DjQxUFemZFqDW4eAb85/ZRYHg8=" as String?, "vector 0000")
+    let salt3 = b64("//79/Pv6+fj39vX08/Lx8A==")
+    eq(salt3, Data((0..<16).map { UInt8(0xff - $0) }), "salt 3 = ff…f0")
+    eq(PinHash.derive(pin: "98765432", salt: salt3, iterations: 100_000)?.base64EncodedString(),
+       "ZPbmm6a1FOjvmJWC0XNDHIDHyxK4739iaGZkx4Oid7c=" as String?, "vector 98765432")
+    eq(PinHash.derive(pin: "1234", salt: salt1, iterations: 1)?.base64EncodedString(),
+       "i/F57D1qcIBBiv5AzlKB8LqqXqCNwubIJuZH8P6K1uI=" as String?, "1 iteratie")
+    eq(PinHash.derive(pin: "1234", salt: salt1, iterations: 2)?.base64EncodedString(),
+       "oNCs4eO5peWpZXM8MGUdRebd/Uv8TI0RC7CQ7Ngh0N4=" as String?, "2 iteraties")
+    let v1 = PinHash(json: ["alg": "pbkdf2-sha256", "iter": 100000, "salt": "AAECAwQFBgcICQoLDA0ODw==",
+                            "hash": "hp5sg1DFvrCsw5n7qsO2DSIEM4lrJqZHc00NjxWG4fo="])
+    check(v1 != nil, "geldig pinHash-object")
+    check(v1?.verify("1234") == true, "1234 klopt")
+    check(v1?.verify("1235") == false, "1235 fout")
+    check(v1?.verify("01234") == false, "01234 fout (voorloopnul telt)")
+    check(v1?.verify("123") == false, "te kort")
+    eq(PinHash.make(pin: "1234", salt: salt1), v1, "make met vaste salt = vector")
+    let made = PinHash.make(pin: "4321")!
+    eq(made.iter, 100_000, "schrijven: 100.000 iteraties")
+    eq(made.salt.count, 16, "salt 16 bytes")
+    eq(made.hash.count, 32, "hash 32 bytes")
+    check(made.verify("4321") && !made.verify("4322"), "nieuwe hash controleren")
+    check(PinHash.make(pin: "4321")!.salt != made.salt, "nieuwe salt per pincode")
+    eq(PinHash(string: made.string), made, "lokale tekst terug naar de hash")
+    eq(PinHash(json: made.json), made, "json terug naar de hash")
+    check(PinHash.make(pin: "12a4") == nil && PinHash.make(pin: "123456789") == nil, "ongeldige pincode")
+    check(PinHash(json: ["alg": "sha1", "iter": 100000, "salt": made.json["salt"]!, "hash": made.json["hash"]!]) == nil, "onbekend alg")
+    check(PinHash(json: ["alg": "pbkdf2-sha256", "iter": 1000, "salt": made.json["salt"]!, "hash": made.json["hash"]!]) == nil, "te weinig iteraties")
+    check(PinHash(json: ["alg": "pbkdf2-sha256", "iter": 100000, "salt": made.json["salt"]!, "hash": "AAAA"]) == nil, "hash te kort")
+    check(PinHash.matches(stored: made.string, pin: "4321"), "lokaal: hash")
+    check(PinHash.matches(stored: "4321", pin: "4321") && !PinHash.matches(stored: "4321", pin: "1234"), "lokaal: oude pincode")
+    check(!PinHash.matches(stored: nil, pin: "4321"), "lokaal: geen pincode")
+    check(PinHash.isLegacyPlain("0123") && !PinHash.isLegacyPlain(made.string), "oude pincode herkennen")
+    check(PinHash.constantTimeEqual(Data([1, 2]), Data([1, 2])) && !PinHash.constantTimeEqual(Data([1, 2]), Data([1, 2, 3])), "vaste-tijdvergelijking")
+
+    // regels voor het lezen van profile.<id>
+    func t(_ v: Any?) -> Double? { (v as? NSNumber)?.doubleValue }
+    eq(PinState.read(["pinHash": v1!.json, "pin": "9999", "pinUpdatedAt": 50], sectionAt: 99, time: t), .hash(v1!, at: 50), "hash wint van pin")
+    eq(PinState.read(["pin": "1234", "pinUpdatedAt": 40], sectionAt: 99, time: t), .legacy("1234", at: 40), "oude pin: migreren met dezelfde tijd")
+    eq(PinState.read(["pin": "1234", "pinHash": NSNull(), "pinUpdatedAt": 40], sectionAt: 99, time: t), .legacy("1234", at: 40), "pinHash null + pin")
+    eq(PinState.read(["pin": NSNull(), "pinHash": NSNull(), "pinUpdatedAt": 70], sectionAt: 99, time: t), .removed(at: 70), "verwijderd")
+    eq(PinState.read(["pin": NSNull()], sectionAt: 99, time: t), .removed(at: 0), "pin null zonder tijd = heel oud")
+    eq(PinState.read(["prefs": [:]], sectionAt: 99, time: t), .absent, "niets over de pincode")
+    eq(PinState.read(["pinHash": ["alg": "argon2", "x": 1]], sectionAt: 99, time: t), .absent, "onbekend formaat wist niets")
+}
+
+// MARK: build 146: support, apparaat, diagnose, tv-gids
+
+do {
+    eq(SupportLogic.group(status: "new", group: nil), .open, "new = Open")
+    eq(SupportLogic.group(status: "pending", group: nil), .inProgress, "pending = In behandeling")
+    eq(SupportLogic.group(status: "open", group: nil), .inProgress, "open = In behandeling")
+    eq(SupportLogic.group(status: "resolved", group: nil), .closed, "resolved = Gesloten")
+    eq(SupportLogic.group(status: "x", group: "closed"), .closed, "group van de server wint")
+    eq(SupportLogic.validate(subject: "Hi", message: "lang genoeg bericht", reply: false), "subject_missing" as String?, "onderwerp te kort")
+    eq(SupportLogic.validate(subject: "Hallo", message: "kort", reply: false), "message_too_short" as String?, "bericht te kort")
+    eq(SupportLogic.validate(subject: nil, message: "ok", reply: true), nil as String?, "reactie mag kort")
+    eq(SupportLogic.validate(subject: nil, message: String(repeating: "https://a.nl ", count: 7), reply: true), "too_many_links" as String?, "te veel links")
+    let d1 = SupportLogic.deeplink(URL(string: "bingr://support/ticket?n=1042")!)
+    check(d1.isSupport && d1.number == 1042, "deeplink ticket")
+    let d2 = SupportLogic.deeplink(URL(string: "bingr://support")!)
+    check(d2.isSupport && d2.number == nil, "deeplink lijst")
+    let d3 = SupportLogic.deeplink(URL(string: "bingr:support/ticket?n=7")!)
+    check(d3.isSupport && d3.number == 7, "deeplink zonder //")
+    check(!SupportLogic.deeplink(URL(string: "bingr://live?channel=1")!).isSupport, "andere deeplink")
+    check(SupportLogic.deeplink(URL(string: "bingr://support/ticket?n=abc")!).number == nil, "ongeldig nummer = lijst")
+
+    eq(DeviceModelName.name("AppleTV14,1"), "Apple TV 4K (3rd generation)", "Apple TV 4K 3e generatie")
+    eq(DeviceModelName.name("iPhone17,1"), "iPhone 16 Pro", "iPhone 16 Pro")
+    eq(DeviceModelName.name("iPad16,5"), "iPad Pro 13-inch (M4)", "iPad Pro M4")
+    eq(DeviceModelName.name("MacBookPro18,3"), "MacBook Pro", "Mac-familie")
+    eq(DeviceModelName.name("iPhone99,9"), "iPhone99,9", "onbekend = identifier")
+
+    eq(SupportDiagnostics.milestoneName("profiel gekozen"), "profiel_gekozen" as String?, "mijlpaal met spatie")
+    eq(SupportDiagnostics.milestoneName("1abc"), "abc" as String?, "mijlpaal begint met letter")
+    eq(SupportDiagnostics.buildNumber("1.0.1 (146)"), 146 as Int?, "build uit de versie")
+    var diag = SupportDiagnostics(kind: .app, platform: "tvos", version: "1.0.1", build: 146, engine: "vlc", deviceType: "tv",
+                                  model: "Apple TV 4K (3rd generation)", os: "tvOS", osVersion: "26.1", language: "nl-NL")
+    diag.milestones = [("gestart", 0, nil), ("profiel gekozen", 1.31, nil), ("gestart", 2, nil), ("servers_loaded", 5.2, true)]
+    let j = diag.json
+    eq(j["schema"] as? Int, 1 as Int?, "schema 1")
+    eq((j["app"] as? [String: Any])?["platform"] as? String, "tvos" as String?, "platform")
+    let ms = j["milestones"] as? [[String: Any]] ?? []
+    eq(ms.map { $0["name"] as? String ?? "" }, ["gestart", "profiel_gekozen", "servers_loaded"], "mijlpalen uniek en geldig")
+    eq(ms[1]["ms"] as? Int, 1310 as Int?, "ms")
+    check(JSONSerialization.isValidJSONObject(j), "geldige JSON")
+    let p = StartDiag.Problem(kind: .crash, build: "1.0.1 (145)", os: "tvOS 26.1", at: 0, lastMark: "x", seconds: 1, marks: [],
+                              crash: "NSRangeException: index 3 beyond bounds jan@example.com", stack: ["0 Bingr x + 1"])
+    let c = SupportDiagnostics.crash(from: p)
+    eq(c?["type"] as? String, "NSRangeException" as String?, "crash-type")
+    check(!(c?["reason"] as? String ?? "").contains("@"), "geen e-mail in de crash")
+    eq(c?["build"] as? Int, 145 as Int?, "crash-build")
+
+    let now = Date(timeIntervalSince1970: 1_000_000)
+    check(GuideExpiry.isExpired(latestEnd: now.addingTimeInterval(600), now: now), "gids loopt over 10 min leeg: verlopen")
+    check(!GuideExpiry.isExpired(latestEnd: now.addingTimeInterval(6 * 3600), now: now), "gids voor 6 uur: niet verlopen")
+    check(!GuideExpiry.isExpired(latestEnd: nil, now: now), "geen gids: geen melding")
+}
+
 print("\(checks) controles, \(failures) fout")
 exit(failures == 0 ? 0 : 1)

@@ -10,6 +10,7 @@ enum DeviceText {
         // Apple TV altijd met het symbool "appletv" (ook bij een andere schrijfwijze van het platform)
         if isAppleTV(d.platform, name: d.name) { return "appletv" }
         if isTizen(d.platform) { return "tv" }
+        if isWindows(d.platform) { return "pc" }
         if isBrowser(d.platform) { return "globe" }
         switch d.platform {
         case "iPhone": return "iphone"
@@ -35,6 +36,11 @@ enum DeviceText {
         platform.caseInsensitiveCompare("tizen") == .orderedSame || platform.caseInsensitiveCompare("Samsung TV") == .orderedSame
     }
 
+    /// Build 146: de Windows-app (webspeler in een eigen venster) meldt zich met platform `windows`.
+    static func isWindows(_ platform: String) -> Bool {
+        platform.caseInsensitiveCompare("windows") == .orderedSame
+    }
+
     /// Webspeler op bingr.online/web (build 62) meldt zich met platform `browser` (naam bv. "Chrome op Mac").
     static func isBrowser(_ platform: String) -> Bool {
         platform.caseInsensitiveCompare("browser") == .orderedSame
@@ -43,6 +49,7 @@ enum DeviceText {
     /// Platformnaam zoals getoond onder de apparaatnaam (`tizen` wordt "Samsung TV", `browser` wordt "Browser").
     static func platformLabel(_ platform: String) -> String {
         if isTizen(platform) { return L("Samsung TV") }
+        if isWindows(platform) { return "Windows" }
         if isBrowser(platform) { return L("Browser") }
         return platform
     }

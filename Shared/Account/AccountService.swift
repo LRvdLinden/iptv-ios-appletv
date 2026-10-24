@@ -483,6 +483,9 @@ final class AccountService: ObservableObject {
                 // build 82: ingetrokken omdat het account geblokkeerd is → met melding
                 if (r.json["banned"] as? Bool) == true || r.string("reason")?.lowercased() == "banned" { blockedLocally() }
                 else { revokedLocally() }
+            } else if r.status == 200 {
+                // build 146: ongelezen supportantwoorden (badge), ook zonder push (Apple TV)
+                Task { @MainActor in await SupportCenter.shared.refresh(quiet: true) }
             }
         } catch {
             // offline of tijdelijke fout: niets doen (de app blijft werken)
@@ -969,10 +972,39 @@ final class AccountService: ObservableObject {
         throw FeatureLockedError(feature: r.string("feature"))
     }
 
-    // MARK: - Profielen per account (account_data via PostgREST)
+    // MARK: - Profielen per account (build 146: versleuteld via device-auth `get_profiles`/`put_profiles`)
 
-    /// `profiles` uit `account_data` (nil = nog geen rij op de server).
+    /// De profielenlijst van het account, met tombstones (nil = nog geen rij op de server). Build 146: device-auth
+    /// `get_profiles`; alleen als de functie die actie nog niet kent (400 `unknown_action`, terugrol) stil de oude
+    /// REST-route op `account_data`.
     func fetchAccountProfiles() async throws -> [[String: Any]]? {
+        let r = try await authorized { token in
+            try await self.post("/functions/v1/device-auth", ["action": "get_profiles"], bearer: token)
+        }
+        if r.status == 400, r.string("error") == "unknown_action" { return try await legacyFetchProfiles() }
+        guard r.status == 200, r.json["error"] == nil, let list = r.json["profiles"] as? [Any] else { throw AccountError.generic }
+        let profiles = list.compactMap { $0 as? [String: Any] }
+        if profiles.isEmpty, r.json["updatedAt"] == nil || r.json["updatedAt"] is NSNull { return nil }
+        return profiles
+    }
+
+    /// De hele profielenlijst opslaan (build 146: device-auth `put_profiles`). Geeft de samengevoegde lijst van de server
+    /// terug (die de app direct toepast); nil bij de oude REST-route.
+    @discardableResult
+    func saveAccountProfiles(_ profiles: [[String: Any]]) async throws -> [[String: Any]]? {
+        let r = try await authorized { token in
+            try await self.post("/functions/v1/device-auth", ["action": "put_profiles", "profiles": profiles], bearer: token)
+        }
+        if r.status == 400, r.string("error") == "unknown_action" {
+            try await legacySaveProfiles(profiles)
+            return nil
+        }
+        guard r.status == 200, (r.json["ok"] as? Bool) == true else { throw AccountError.generic }
+        return (r.json["profiles"] as? [Any])?.compactMap { $0 as? [String: Any] }
+    }
+
+    /// Tot build 145 (alleen nog als terugval): `account_data` rechtstreeks via PostgREST.
+    private func legacyFetchProfiles() async throws -> [[String: Any]]? {
         let r = try await authorized { token in
             try await self.send("GET", "/rest/v1/account_data?select=profiles,updated_at", body: nil, bearer: token)
         }
@@ -982,8 +1014,7 @@ final class AccountService: ObservableObject {
         return first["profiles"] as? [[String: Any]] ?? []
     }
 
-    /// De hele profielenlijst opslaan (upsert op user_id).
-    func saveAccountProfiles(_ profiles: [[String: Any]]) async throws {
+    private func legacySaveProfiles(_ profiles: [[String: Any]]) async throws {
         let r = try await authorized { token in
             guard let uid = self.userID else { throw AccountError.generic }
             let f = ISO8601DateFormatter()
@@ -1320,6 +1351,7 @@ final class AccountService: ObservableObject {
         setRegistered(false)
         deviceLimit = nil
         isSignedIn = false
+        SupportCenter.shared.reset()   // build 146: geen tickets of badge van een vorig account
     }
 
     // MARK: - HTTP
@@ -1399,53 +1431,29 @@ final class AccountService: ObservableObject {
     }
 }
 
-// MARK: - Build 143: startdiagnose als supportticket
+// MARK: - Build 146: support vanuit de app (functie `support`, acties `app_*`) en de netwerkcheck
 
 extension AccountService {
-    /// Rapport van de startdiagnose als supportticket (functie `support`, actie `create`, met de captcha zoals het
-    /// formulier op support.bingr.online). Alleen ingelogd; het adres is altijd dat van het account (de functie zet het).
-    /// Geeft het ticketnummer terug.
-    func sendDiagnosticTicket(subject: String, message: String) async throws -> Int {
-        guard isSignedIn, let mail = email else { throw AccountError.generic }
-        let token = try await validAccessToken()
-        let c = try await post("/functions/v1/support", ["action": "challenge"])
-        guard c.status == 200, let salt = c.string("salt"), let sig = c.string("signature"),
-              let diff = c.number("difficulty"), let exp = c.number("expires") else { throw AccountError.generic }
-        let difficulty = Int(diff)
-        // nonce zoeken waarbij SHA-256(salt + nonce) met `difficulty` nul-bits begint (gemiddeld 2^18 pogingen)
-        let nonce: Int? = await Task.detached(priority: .userInitiated) { () -> Int? in
-            for n in 0..<50_000_000 {
-                if Task.isCancelled { return nil }
-                let h = SHA256.hash(data: Data((salt + String(n)).utf8))
-                var zeros = 0
-                for b in h {
-                    if b == 0 { zeros += 8; continue }
-                    zeros += b.leadingZeroBitCount
-                    break
-                }
-                if zeros >= difficulty { return n }
-            }
-            return nil
-        }.value
-        guard let nonce else { throw AccountError.generic }
-        #if os(tvOS)
-        let platform = "tvos"
-        #elseif os(macOS)
-        let platform = "macos"
-        #else
-        let platform = "ios"
-        #endif
-        let info = Bundle.main.infoDictionary
-        let version = "\(info?["CFBundleShortVersionString"] as? String ?? "?") (\(info?["CFBundleVersion"] as? String ?? "?"))"
-        let body: [String: Any] = [
-            "action": "create", "name": "Bingr-app", "email": mail, "category": "apps", "platform": platform,
-            "app_version": version, "subject": subject, "message": message, "lang": Localizer.shared.language,
-            "device_id": deviceID, "elapsed_ms": 10_000,
-            "pow": ["salt": salt, "difficulty": difficulty, "expires": Int(exp), "signature": sig, "nonce": String(nonce)],
-        ]
-        let r = try await post("/functions/v1/support", body, bearer: token)
-        if r.status == 429 { throw AccountError.message(L("Too many attempts. Wait a few minutes and try again.")) }
-        guard r.status == 200, let n = r.number("number") else { throw AccountError.generic }
-        return Int(n)
+    /// Eén aanroep van de functie `support` met de sessie van het account (`Authorization: Bearer`). Bij 401 één keer
+    /// vernieuwen en opnieuw (`authorized`); `user_banned` → melding zoals bij "Geblokkeerd account".
+    func supportCall(_ action: String, _ body: [String: Any] = [:]) async throws -> (status: Int, json: [String: Any]) {
+        guard Secrets.accountsConfigured, isSignedIn else { throw AccountError.generic }
+        var b = body
+        b["action"] = action
+        let r = try await authorized { token in
+            try await self.post("/functions/v1/support", b, bearer: token)
+        }
+        return (r.status, r.json)
+    }
+
+    /// Netwerkcheck voor de diagnose: device-auth `ping` (zonder inloggen). `ms` = tijd tot het antwoord.
+    func backendPing() async -> (ok: Bool, ms: Int) {
+        let t0 = Date()
+        do {
+            let r = try await post("/functions/v1/device-auth", ["action": "ping"])
+            return ((200..<300).contains(r.status), Int(Date().timeIntervalSince(t0) * 1000))
+        } catch {
+            return (false, Int(Date().timeIntervalSince(t0) * 1000))
+        }
     }
 }

@@ -27,6 +27,8 @@ final class ProfileSync {
     private var again = false
     /// Er is lokaal iets dat zeker naar de server moet (bijv. een foto of een tombstone).
     private var dirty = false
+    /// Build 146: samengevoegde lijst uit het antwoord van `put_profiles`, toe te passen in de volgende ronde
+    private var applyAfterPut: [[String: Any]]?
     /// Onbekende velden van de server per profiel (bewaren en weer meesturen)
     private let extrasKey = "account.profileExtras.v1"
     /// Per profiel de `updated` van de foto die dit apparaat heeft (*photoVersion*), alleen lokaal
@@ -46,7 +48,7 @@ final class ProfileSync {
     private var photoAgain = false
     private var photoChanged = false
     /// Velden die nooit (zo) naar de server gaan; `photo` zet `payload()` zelf
-    private static let privateKeys = ["pin", "pinCode", "pin_code", "photo", "photoData", "customPhoto"]
+    private static let privateKeys = ["pin", "pinHash", "pinCode", "pin_code", "photo", "photoData", "customPhoto"]
     /// Tombstones ouder dan dit mogen bij het uploaden weg
     private static let tombstoneLifetime: TimeInterval = 90 * 24 * 3600
 
@@ -106,6 +108,7 @@ final class ProfileSync {
         running?.cancel()
         ready = false
         dirty = false
+        applyAfterPut = nil
         remotePhotos = [:]
         for k in [extrasKey, versionsKey, pendingKey, updatedKey, fingerprintKey, tombstonesKey, "account.profileFingerprints.v1"] {
             UserDefaults.standard.removeObject(forKey: k)
@@ -217,7 +220,14 @@ final class ProfileSync {
         let account = AccountService.shared
         guard Secrets.accountsConfigured, account.isSignedIn else { return }
         let rows: [[String: Any]]
-        do { rows = try await account.fetchAccountProfiles() ?? [] } catch { return }
+        // build 146: de samengevoegde lijst uit het antwoord van `put_profiles` direct toepassen (zonder nieuwe GET)
+        let fromPut = applyAfterPut
+        applyAfterPut = nil
+        if let fromPut {
+            rows = fromPut
+        } else {
+            do { rows = try await account.fetchAccountProfiles() ?? [] } catch { return }
+        }
         guard !Task.isCancelled, account.isSignedIn else { return }
 
         let store = CloudStore.shared
@@ -379,7 +389,8 @@ final class ProfileSync {
                 return mine > (Self.date(r.updatedAt) ?? .distantPast)
             }
             || pruned.keys.contains { k in UUID(uuidString: k).map { serverTombs[$0] == nil } ?? false }
-        if needs { await upload() }
+        // na het toepassen van de lijst uit `put_profiles` niet meteen opnieuw uploaden (de volgende ronde doet dat)
+        if needs && fromPut == nil { await upload() }
     }
 
     // MARK: - Profielfoto's
@@ -570,8 +581,13 @@ final class ProfileSync {
     private func upload() async {
         guard ready, AccountService.shared.isSignedIn else { return }
         do {
-            try await AccountService.shared.saveAccountProfiles(payload())
+            let merged = try await AccountService.shared.saveAccountProfiles(payload())
             dirty = false
+            // build 146: wat de server nu heeft (samengevoegd) meteen toepassen, in dezelfde ronde
+            if let merged {
+                applyAfterPut = merged
+                again = true
+            }
         } catch {
             // stil: de volgende wijziging, start of heartbeat probeert het opnieuw
         }

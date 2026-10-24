@@ -27,6 +27,9 @@ struct LiveTVView: View {
     @State private var offsetFor: Channel?
     /// Voor welke lijstversie groepen en evenementen klaar zijn (niet bij elke terugkeer naar Live TV opnieuw)
     @State private var groupsVersion = -1
+    /// Build 146: einde van het laatste programma in de gids (nil = geen gids) en of de melding weggeklikt is
+    @State private var guideEnd: Date?
+    @State private var guideNoticeClosed = false
 
     enum Mode: String { case list, grid }
     struct ProgramTarget: Identifiable { var id: String { channel.id + p.id }; let channel: Channel; let p: EPGProgram }
@@ -315,7 +318,53 @@ struct LiveTVView: View {
         #endif
     }
 
+    /// Build 146: de gids volgt "Servers laden bij openen" en ververst niet meer zelf op tijd. Loopt hij leeg, dan een
+    /// kleine, niet-blokkerende melding met Bijwerken (alle servers, zoals Servers vernieuwen).
+    @ViewBuilder private var guideNotice: some View {
+        if !guideNoticeClosed, !playlists.isRefreshing, !playlists.refreshingAll, GuideExpiry.isExpired(latestEnd: guideEnd) {
+            HStack(spacing: tvScaled(10)) {
+                Image(systemName: "calendar.badge.exclamationmark").foregroundStyle(Theme.imdb)
+                Text(L("The TV guide has expired. Update your servers."))
+                    .font(.system(size: tvScaled(13), weight: .semibold))
+                    .lineLimit(2)
+                Spacer(minLength: 8)
+                Button(L("Update")) {
+                    guideNoticeClosed = true
+                    Task { await playlists.refreshAll() }
+                }
+                #if os(tvOS)
+                .buttonStyle(.bordered)
+                #else
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                #endif
+                Button { guideNoticeClosed = true } label: { Image(systemName: "xmark") }
+                    .plainTVButton()
+                    .accessibilityLabel(L("Close"))
+            }
+            .padding(.horizontal, tvScaled(12)).padding(.vertical, tvScaled(8))
+            .background(Theme.elevated, in: RoundedRectangle(cornerRadius: tvScaled(10)))
+            .padding(.horizontal, tvScaled(12)).padding(.bottom, tvScaled(6))
+            .transition(.opacity)
+        }
+    }
+
     @ViewBuilder private var channelArea: some View {
+        VStack(spacing: 0) {
+            guideNotice
+            channelAreaContent
+        }
+        .task(id: playlists.libraryVersion) {
+            let epg = lib.epg
+            let end = await Task.detached(priority: .utility) { () -> Date? in
+                epg.values.compactMap { $0.last?.end }.max()
+            }.value
+            guideEnd = end
+            if end.map({ !GuideExpiry.isExpired(latestEnd: $0) }) ?? true { guideNoticeClosed = false }
+        }
+    }
+
+    @ViewBuilder private var channelAreaContent: some View {
         if mode == .grid {
             GuideGridView(channels: visibleChannels,
                           onPlay: { c in play(c) },

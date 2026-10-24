@@ -47,35 +47,48 @@ struct AppSettingsView: View {
     enum PinMode: String, Identifiable { case set, change, unlock, disable, lockOff, autoLockOff; var id: String { rawValue } }
 
 
+    /// Build 146: Instellingen in tabs (op alle apps gelijk). nil = het overzicht met alle tabs.
+    let tab: SettingsTab?
+    @ObservedObject private var support = SupportCenter.shared
+
+    init(tab: SettingsTab? = nil) { self.tab = tab }
+
     var body: some View {
         List {
-            playlistSection
-            // build 130: de servers van het account zijn er voor elk profiel (kiezen, vernieuwen, controleren);
-            // toevoegen, wijzigen en verwijderen blijft bij het hoofdaccount (zie serverSection)
-            serverSection
-            refreshSection
-            openSubtitlesSection
-            playerSection
-            parentalSection
-            interfaceSection
-            #if !os(tvOS)
-            if Secrets.accountsConfigured && account.isSignedIn { notificationsSection }
-            #endif
-            languageSection
-            if isMain { adminFooterSections }
-            Section(L("About")) {
-                LabeledContent(L("IMDb data"), value: Secrets.isSet(Secrets.omdbAPIKey) ? L("Active (OMDb)") : L("No OMDb key"))
-                // build 112: verplichte bronvermelding van TMDB en JustWatch (stond eerder onder de Home-rijen)
-                Text(DiscoverKind.attribution)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+            switch tab {
+            case nil:
+                tabList
+            case .general?:
+                languageSection
+                interfaceSection
+                #if !os(tvOS)
+                if Secrets.accountsConfigured && account.isSignedIn { notificationsSection }
+                #endif
+            case .playback?:
+                playerSection
+            case .languages?:
+                languageTracksSection
+                openSubtitlesSection
+            case .servers?:
+                // build 130: de servers van het account zijn er voor elk profiel (kiezen, vernieuwen, controleren);
+                // toevoegen, wijzigen en verwijderen blijft bij het hoofdaccount (zie serverSection)
+                serverSection
+                refreshSection
+            case .profiles?:
+                playlistSection
+                parentalSection
+            case .account?:
+                accountTab
+            case .connections?:
+                connectionsSection
+                if isMain { advancedSection }
+            case .support?, .diagnostics?:
+                EmptyView()   // eigen schermen (zie destination)
+            case .about?:
+                aboutSection
             }
-            // build 143: rapport van de vorige start (crash, hang of niet klaar), als supportticket te sturen
-            StartDiagnosticsSection()
-            if isMain { advancedSection }
         }
-        .navigationTitle(L("Settings"))
+        .navigationTitle(tab?.title ?? L("Settings"))
         // persoonlijke kijkvoorkeuren horen bij het profiel
         .onChange(of: subtitleMode) { _, v in store.updateActivePreferences { $0.subtitleMode = v } }
         .onAppear(perform: migrateSubtitlePreferences)
@@ -147,14 +160,87 @@ struct AppSettingsView: View {
     /// Hoofdaccount (of nog geen profielen): mag de server en alles instellen.
     private var isMain: Bool { store.isMainActive || store.profiles.isEmpty || store.activeProfileID == nil }
 
-    @ViewBuilder private var adminFooterSections: some View {
-                Section {
-                    LabeledContent(L("Playlists"), value: "\(store.playlists.count)")
-                    LabeledContent(L("Watch progress"), value: L("%d titles", store.progress.count))
-                    if let d = store.lastSync { LabeledContent(L("Last sync"), value: d.formatted(date: .omitted, time: .shortened)) }
-                } header: { Text("iCloud") } footer: {
-                    Text(L("Playlists, avatars, favorites, My List, watch progress, reminders, your changes and your Trakt/OpenSubtitles sign-in are shared via iCloud between iPhone, iPad, Mac and Apple TV."))
+    // MARK: build 146: tabs
+
+    /// Overzicht van alle tabs (Apple TV: met de afstandsbediening omhoog/omlaag)
+    @ViewBuilder private var tabList: some View {
+        Section {
+            ForEach(SettingsTab.allCases) { t in
+                NavigationLink { destination(t) } label: {
+                    HStack {
+                        Label(t.title, systemImage: t.icon)
+                        Spacer(minLength: 8)
+                        if t == .support { CountBadge(count: support.unread) }
+                    }
                 }
+            }
+        }
+    }
+
+    @ViewBuilder private func destination(_ t: SettingsTab) -> some View {
+        switch t {
+        case .support: SupportView()
+        case .diagnostics: DiagnosticsView()
+        default: AppSettingsView(tab: t)
+        }
+    }
+
+    /// Account: abonnement, apparaten, wie kijkt er nu, uitloggen
+    @ViewBuilder private var accountTab: some View {
+        if Secrets.accountsConfigured && account.isSignedIn {
+            Section { PlanRow() } header: { Text(L("Subscription")) }
+            AccountSettingsSection()
+        } else {
+            Section {
+                Text(L("You're not signed in. Sign in to sync your servers, profiles and lists between your devices."))
+                    .foregroundStyle(Theme.secondary)
+                Button { app.showAuth() } label: { Label(L("Sign in"), systemImage: "person.crop.circle") }
+            }
+        }
+    }
+
+    /// Koppelingen: Trakt en OpenSubtitles
+    private var connectionsSection: some View {
+        Section {
+            NavigationLink { TraktSettingsView() } label: {
+                Label { Text(verbatim: "Trakt") } icon: { Image(systemName: "checkmark.rectangle.stack.fill") }
+            }
+            if subs.isLoggedIn {
+                LabeledContent(L("OpenSubtitles"), value: subs.username ?? L("Signed in"))
+                if isMain {
+                    Button(role: .destructive) { Task { await subs.logout() } } label: {
+                        Label(L("Sign out of OpenSubtitles"), systemImage: "rectangle.portrait.and.arrow.right")
+                    }
+                }
+            } else if isMain {
+                Button { signInToOpenSubtitles() } label: {
+                    Label(L("Sign in to OpenSubtitles"), systemImage: "captions.bubble")
+                }
+            } else {
+                LabeledContent(L("OpenSubtitles"), value: L("Not connected"))
+            }
+        } header: { Text(L("Connections")) } footer: {
+            Text(L("The server, Trakt and OpenSubtitles belong to the main account and are used by all profiles."))
+        }
+    }
+
+    /// Over: versie, build, privacy en voorwaarden
+    @ViewBuilder private var aboutSection: some View {
+        Section {
+            LabeledContent(L("Version"), value: AppDevice.version)
+            LabeledContent(L("Build"), value: AppDevice.build.map(String.init) ?? "?")
+            WebLinkRow(title: L("Privacy"), icon: "hand.raised", url: URL(string: "https://bingr.online/privacy.html")!)
+            WebLinkRow(title: L("Terms"), icon: "doc.plaintext", url: URL(string: "https://bingr.online/voorwaarden/")!)
+            LabeledContent(L("IMDb data"), value: Secrets.isSet(Secrets.omdbAPIKey) ? L("Active (OMDb)") : L("No OMDb key"))
+        } header: { Text(L("About")) } footer: {
+            // build 112: verplichte bronvermelding van TMDB en JustWatch
+            Text(DiscoverKind.attribution)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        Section { AboutFooter() }
+            .listRowBackground(Color.clear)
     }
 
     /// Geavanceerd, helemaal onderaan: eigen app-sleutels. Normaal komen die van de Bingr-server.
@@ -192,6 +278,9 @@ struct AppSettingsView: View {
                     Button { editingProfile = p } label: { Label(L("Edit profile"), systemImage: "pencil") }
                 }
                 Button { app.switchPlaylist() } label: { Label(L("Switch profile"), systemImage: "person.2.circle") }
+                if isMain && !store.profiles.isEmpty {
+                    NavigationLink { ProfilesManageView() } label: { Label(L("Manage profiles"), systemImage: "person.2") }
+                }
             } header: { Text(L("Profile")) } footer: {
                 if !isMain { Text(L("The server and all settings are managed in the main account.")) }
             }
@@ -332,7 +421,7 @@ struct AppSettingsView: View {
             .disabled(playlists.refreshingAll)
             refreshStatus
         } header: { Text(L("Update playlists")) } footer: {
-            Text(L("Applies to this device only. Ask: after you choose a profile, Bingr asks whether to update your servers. You can always update manually."))
+            Text(L("Applies to this device only. Ask: after you choose a profile, Bingr asks whether to update your servers. You can always update manually.") + " " + L("The TV guide is updated together with your servers."))
         }
     }
 
@@ -340,27 +429,6 @@ struct AppSettingsView: View {
         Section {
             Picker(L("Player engine"), selection: $engine) {
                 ForEach(PlayerController.EngineChoice.allCases, id: \.rawValue) { Text($0.title).tag($0.rawValue) }
-            }
-            .pickerStyle(.menu)
-            Picker(L("Subtitle size"), selection: $subtitleSize) {
-                ForEach(SubtitleSize.allCases, id: \.rawValue) { Text($0.title).tag($0.rawValue) }
-            }
-            .pickerStyle(.menu)
-            // build 59: voorkeurstaal (standaard de app-taal) en automatische ondertitels
-            Picker(L("Preferred audio language"), selection: $audioLanguage) {
-                Text(L("App language (%@)", TrackPreferences.name(TrackPreferences.appLanguage))).tag("")
-                // build 60: geen audiospoor kiezen, zoals Android ("stream")
-                Text(L("As in the stream")).tag(TrackPreferences.streamAudio)
-                ForEach(TrackPreferences.sortedCodes, id: \.self) { Text(TrackPreferences.label($0)).tag($0) }
-            }
-            .pickerStyle(.menu)
-            Picker(L("Subtitles automatically"), selection: $subtitleMode) {
-                ForEach(TrackPreferences.SubtitleMode.allCases) { Text($0.title).tag($0.rawValue) }
-            }
-            .pickerStyle(.menu)
-            Picker(L("Preferred subtitle language"), selection: $subtitleLanguage) {
-                Text(L("App language (%@)", TrackPreferences.name(TrackPreferences.appLanguage))).tag("")
-                ForEach(TrackPreferences.sortedCodes, id: \.self) { Text(TrackPreferences.label($0)).tag($0) }
             }
             .pickerStyle(.menu)
             Picker(L("Zap delay"), selection: $zapDelay) {
@@ -386,8 +454,45 @@ struct AppSettingsView: View {
             Text(L("Also turn on Settings → Video and Audio → Match Content (Dynamic Range and Frame Rate) on your Apple TV."))
                 .font(.caption).foregroundStyle(Theme.secondary)
             #endif
+            #if !os(tvOS)
+            // build 82: trailer zonder geluid in de kop van film- en seriepagina's
+            Toggle(L("Play trailers automatically"), isOn: $autoplayTrailers)
+            if autoplayTrailers {
+                Text(L("Muted, on movie and series pages. Not in Low Data Mode or with Reduce Motion on."))
+                    .font(.caption).foregroundStyle(Theme.secondary)
+            }
+            #endif
         } header: { Text(L("Player")) } footer: {
-            Text(L("Automatic uses the Apple player for HLS and MP4 (HDR, Dolby Vision, Atmos, AirPlay, Picture in Picture) and VLC for everything else. If a stream fails, Bingr switches over and reconnects automatically. The default languages are chosen automatically when a stream has them.") + " " + L("Subtitles automatically: when needed shows subtitles in your preferred language only if the audio is in another language, using a track in the stream or else the best match from OpenSubtitles (requires sign-in); always shows them for every movie and episode.") + " " + L("With a zap delay, quickly zapping only shows the channel banner; the stream starts once you stop.") + " " + L("Deinterlacing applies to the VLC player and removes comb lines from interlaced TV channels. Start with last channel opens the channel you watched last right after choosing your profile."))
+            Text(L("Automatic uses the Apple player for HLS and MP4 (HDR, Dolby Vision, Atmos, AirPlay, Picture in Picture) and VLC for everything else. If a stream fails, Bingr switches over and reconnects automatically. The default languages are chosen automatically when a stream has them.") + " " + L("With a zap delay, quickly zapping only shows the channel banner; the stream starts once you stop.") + " " + L("Deinterlacing applies to the VLC player and removes comb lines from interlaced TV channels. Start with last channel opens the channel you watched last right after choosing your profile."))
+        }
+    }
+
+    /// Build 146: tab Taal en ondertitels (audio- en ondertiteltaal, grootte, automatische ondertitels)
+    private var languageTracksSection: some View {
+        Section {
+            // build 59: voorkeurstaal (standaard de app-taal) en automatische ondertitels
+            Picker(L("Preferred audio language"), selection: $audioLanguage) {
+                Text(L("App language (%@)", TrackPreferences.name(TrackPreferences.appLanguage))).tag("")
+                // build 60: geen audiospoor kiezen, zoals Android ("stream")
+                Text(L("As in the stream")).tag(TrackPreferences.streamAudio)
+                ForEach(TrackPreferences.sortedCodes, id: \.self) { Text(TrackPreferences.label($0)).tag($0) }
+            }
+            .pickerStyle(.menu)
+            Picker(L("Preferred subtitle language"), selection: $subtitleLanguage) {
+                Text(L("App language (%@)", TrackPreferences.name(TrackPreferences.appLanguage))).tag("")
+                ForEach(TrackPreferences.sortedCodes, id: \.self) { Text(TrackPreferences.label($0)).tag($0) }
+            }
+            .pickerStyle(.menu)
+            Picker(L("Subtitles automatically"), selection: $subtitleMode) {
+                ForEach(TrackPreferences.SubtitleMode.allCases) { Text($0.title).tag($0.rawValue) }
+            }
+            .pickerStyle(.menu)
+            Picker(L("Subtitle size"), selection: $subtitleSize) {
+                ForEach(SubtitleSize.allCases, id: \.rawValue) { Text($0.title).tag($0.rawValue) }
+            }
+            .pickerStyle(.menu)
+        } header: { Text(L("Audio and subtitles")) } footer: {
+            Text(L("Subtitles automatically: when needed shows subtitles in your preferred language only if the audio is in another language, using a track in the stream or else the best match from OpenSubtitles (requires sign-in); always shows them for every movie and episode.") + " " + L("These choices apply to this profile only."))
         }
     }
 
@@ -424,7 +529,9 @@ struct AppSettingsView: View {
                 }
             }
         } header: { Text(L("PIN code")) } footer: {
-            Text(L("With a PIN, the profile asks for the code when it is chosen in “Who's watching?”."))
+            Text(L("With a PIN, the profile asks for the code when it is chosen in “Who's watching?”.")
+                 + (store.activeProfile.map { parental.hasPIN(profile: $0.id) } ?? false
+                    ? " " + L("Also update Bingr on your other devices, otherwise the PIN won't work there.") : ""))
         }
     }
 
@@ -440,26 +547,12 @@ struct AppSettingsView: View {
                 Text(L("Series")).tag(3)
             }
             .pickerStyle(.menu)
-            // build 128: categorieën aan/uit per profiel (elk profiel zijn eigen keuze)
-            NavigationLink { CategoriesView() } label: {
-                Label(L("Categories on/off (NL, BE, DE…)"), systemImage: "line.3.horizontal.decrease.circle")
+            NavigationLink { HomeLayoutView() } label: {
+                Label(L("Home screen"), systemImage: "rectangle.grid.1x2")
             }
-            #if !os(tvOS)
-            // build 82: trailer zonder geluid in de kop van film- en seriepagina's
-            Toggle(L("Play trailers automatically"), isOn: $autoplayTrailers)
-            if autoplayTrailers {
-                Text(L("Muted, on movie and series pages. Not in Low Data Mode or with Reduce Motion on."))
-                    .font(.caption).foregroundStyle(Theme.secondary)
-            }
-            #endif
             Toggle(L("Show Live TV"), isOn: $showLive)
             Toggle(L("Show Movies"), isOn: $showMovies)
             Toggle(L("Show Series"), isOn: $showSeries)
-            if isMain {
-                NavigationLink { ManageView() } label: {
-                    Label(L("Rename, hide and reorder"), systemImage: "slider.horizontal.below.rectangle")
-                }
-            }
         } header: { Text(L("Interface")) }
     }
 
@@ -501,6 +594,42 @@ struct AppSettingsView: View {
                 ForEach(Localizer.supported, id: \.code) { Text($0.name).tag($0.code) }
             }
             .pickerStyle(.menu)
+        }
+    }
+}
+
+/// Build 146: de tabs van Instellingen, op alle apps in dezelfde volgorde.
+enum SettingsTab: String, CaseIterable, Identifiable {
+    case general, playback, languages, servers, profiles, account, connections, support, diagnostics, about
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .general: return L("General")
+        case .playback: return L("Playback")
+        case .languages: return L("Language and subtitles")
+        case .servers: return L("Servers")
+        case .profiles: return L("Profiles and parental controls")
+        case .account: return L("Account")
+        case .connections: return L("Connections")
+        case .support: return L("Support")
+        case .diagnostics: return L("Diagnostics")
+        case .about: return L("About")
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .general: return "gearshape"
+        case .playback: return "play.rectangle"
+        case .languages: return "captions.bubble"
+        case .servers: return "server.rack"
+        case .profiles: return "person.2"
+        case .account: return "person.crop.circle"
+        case .connections: return "link"
+        case .support: return "questionmark.circle"
+        case .diagnostics: return "stethoscope"
+        case .about: return "info.circle"
         }
     }
 }
