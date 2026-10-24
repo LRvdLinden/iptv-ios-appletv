@@ -325,6 +325,10 @@ struct SupportDiagnostics {
     var fetch: [[String: Any]] = []
     var network: [String: Any]?
     var storage: [String: Any]?
+    /// Build 148 (schema 3): app-taal, de laatste keren bijwerken per server en haperingen tijdens het afspelen
+    var lang: String?
+    var updates: [[String: Any]] = []
+    var playback: [String: Any]?
 
     /// Naam van een mijlpaal volgens `^[a-z][a-z0-9_.-]{0,39}$` ("profiel gekozen" → "profiel_gekozen"); nil = onbruikbaar.
     static func milestoneName(_ s: String) -> String? {
@@ -374,16 +378,18 @@ struct SupportDiagnostics {
         var app: [String: Any] = ["platform": platform, "version": String(version.prefix(20))]
         if let build { app["build"] = build }
         if let engine { app["engine"] = String(engine.prefix(30)) }
+        if let lang { app["lang"] = AppLang.code(lang) }
         var device: [String: Any] = [
             "type": deviceType, "model": String(StartDiag.scrub(model).prefix(80)), "manufacturer": manufacturer,
             "os": String(os.prefix(20)), "osVersion": String(osVersion.prefix(30)), "language": language,
         ]
         if let screen { device["screen"] = screen }
-        var out: [String: Any] = ["schema": 2, "kind": kind.rawValue, "createdAt": Self.iso(createdAt), "app": app, "device": device]
+        var out: [String: Any] = ["schema": 3, "kind": kind.rawValue, "createdAt": Self.iso(createdAt), "app": app, "device": device]
         var seen = Set<String>()
         let ms: [[String: Any]] = milestones.compactMap { m in
-            guard let n = Self.milestoneName(m.name), seen.insert(n).inserted else { return nil }
-            var d: [String: Any] = ["name": n, "ms": Int(min(600_000, max(0, (m.seconds * 1000).rounded())))]
+            // build 148 (schema 3): `code` in plaats van de oude naam
+            guard let n = DiagCode.code(m.name) ?? Self.milestoneName(m.name), seen.insert(n).inserted else { return nil }
+            var d: [String: Any] = ["code": n, "ms": Int(min(3_600_000, max(0, (m.seconds * 1000).rounded())))]
             if let ok = m.ok { d["ok"] = ok }
             return d
         }
@@ -395,6 +401,8 @@ struct SupportDiagnostics {
         if !fetch.isEmpty { out["fetch"] = Array(fetch.prefix(30)) }
         if let network { out["network"] = network }
         if let storage { out["storage"] = storage }
+        if !updates.isEmpty { out["updates"] = Array(updates.prefix(5)) }
+        if let playback { out["playback"] = playback }
         return out
     }
 

@@ -502,10 +502,10 @@ do {
                                   model: "Apple TV 4K (3rd generation)", os: "tvOS", osVersion: "26.1", language: "nl-NL")
     diag.milestones = [("gestart", 0, nil), ("profiel gekozen", 1.31, nil), ("gestart", 2, nil), ("servers_loaded", 5.2, true)]
     let j = diag.json
-    eq(j["schema"] as? Int, 2 as Int?, "schema 2 (build 147)")
+    eq(j["schema"] as? Int, 3 as Int?, "schema 3 (build 148)")
     eq((j["app"] as? [String: Any])?["platform"] as? String, "tvos" as String?, "platform")
     let ms = j["milestones"] as? [[String: Any]] ?? []
-    eq(ms.map { $0["name"] as? String ?? "" }, ["gestart", "profiel_gekozen", "servers_loaded"], "mijlpalen uniek en geldig")
+    eq(ms.map { $0["code"] as? String ?? "" }, ["started", "profile_picked", "servers_loaded"], "mijlpalen als code, uniek en geldig")
     eq(ms[1]["ms"] as? Int, 1310 as Int?, "ms")
     check(JSONSerialization.isValidJSONObject(j), "geldige JSON")
     let p = StartDiag.Problem(kind: .crash, build: "1.0.1 (145)", os: "tvOS 26.1", at: 0, lastMark: "x", seconds: 1, marks: [],
@@ -627,6 +627,175 @@ do {
     let tOrigin = ms(t0)
     eq(origins, 700, "herkomst: open server")
     check(tOrigin < 250, "herkomst van Mijn lijst: \(Int(tOrigin)) ms (max. 250)")
+}
+
+// MARK: build 148: codes, schema 3, bijwerken per server, geleverd/zichtbaar, haperingen, grote catalogus in stukken
+
+func footprintMB148() -> Double {
+    var info = task_vm_info_data_t()
+    var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<integer_t>.size)
+    let kr = withUnsafeMutablePointer(to: &info) {
+        $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count) }
+    }
+    return kr == KERN_SUCCESS ? Double(info.phys_footprint) / 1_048_576 : 0
+}
+
+/// Hoogste geheugengebruik tijdens `work` (elke 2 ms gemeten op een eigen thread), boven het beginniveau
+final class Peak148: @unchecked Sendable {
+    let lock = NSLock()
+    var peak: Double
+    var running = true
+    init(_ p: Double) { peak = p }
+}
+
+func peakDuring148(_ work: () -> Void) -> Double {
+    let base = footprintMB148()
+    let box = Peak148(base)
+    let t = Thread {
+        while true {
+            let v = footprintMB148()
+            box.lock.lock(); box.peak = max(box.peak, v); let go = box.running; box.lock.unlock()
+            if !go { break }
+            usleep(2000)
+        }
+    }
+    t.start()
+    work()
+    box.lock.lock(); box.running = false; box.lock.unlock()
+    usleep(10_000)
+    box.lock.lock(); defer { box.lock.unlock() }
+    return max(0, max(box.peak, footprintMB148()) - base)
+}
+
+do {
+    // codes
+    eq(DiagCode.code("profiel gekozen"), "profile_picked" as String?, "oude naam → code")
+    eq(DiagCode.code("klaar"), "ready" as String?, "klaar → ready")
+    eq(DiagCode.code("ready"), "ready" as String?, "code blijft")
+    eq(DiagCode.code("gefilterde catalogus tonen"), "apply" as String?, "taak → apply")
+    eq(DiagCode.code("servers_loaded"), "servers_loaded" as String?, "oude snake-naam blijft")
+    eq(DiagCode.code("1 x"), nil as String?, "ongeldig")
+    eq(DiagCode.task("catalog_filter, sync_apply"), "catalog_filter" as String?, "laatste taak eerst")
+    check(DiagCode.fixed.allSatisfy(DiagCode.isValid) && DiagCode.isValid(DiagCode.playbackStall), "alle codes geldig")
+    eq(DiagCode.fixed.count, 26, "vaste lijst")
+    eq(AppLang.code("nl"), "nl", "taal nl"); eq(AppLang.code("zh-Hans"), "zh-Hans", "taal zh-Hans"); eq(AppLang.code("NL!"), "en", "ongeldige taal")
+    let old: [StartDiag.Mark] = [.init(name: "gestart", t: 0), .init(name: "profielkeuze", t: 1), .init(name: "profile_picked", t: 3), .init(name: "ready", t: 5)]
+    eq(StartTiming.split(old, end: 5).userWaitMs, 2000, "wachten: oude naam en code door elkaar")
+    eq(StartDiag.finalMark, "ready", "klaar = ready")
+
+    // JSON in stukken
+    let j1 = Data(#" [ {"a":"x,]}","b":[1,2,{"c":"\"]"}]} , 5, "s" , null ] "#.utf8)
+    eq(JSONChunks.elementRanges(j1)?.count, 4 as Int?, "lijst met lastige strings")
+    let j2 = Data(#"{"2":{"n":2},"0":{"n":0},"1":{"n":1}}"#.utf8)
+    struct N: Decodable { let n: Int }
+    var got: [Int] = []
+    JSONChunks.decode(N.self, from: j2, chunk: 2) { got += $0.map(\.n) }
+    eq(got, [0, 1, 2], "genummerd object op volgorde")
+    eq(JSONChunks.elementRanges(Data("false".utf8)), nil as [Range<Int>]?, "false = geen lijst")
+    eq(JSONChunks.elementRanges(Data("[]".utf8))?.count, 0 as Int?, "lege lijst")
+    var lossy: [Int] = []
+    let st = JSONChunks.decode(N.self, from: Data(#"[{"n":1},{"x":1},{"n":3}]"#.utf8), chunk: 2) { lossy += $0.map(\.n) }
+    eq(lossy, [1, 3], "kapot item overgeslagen"); eq(st?.elements, 3 as Int?, "elementen geteld")
+
+    // bijwerken per server
+    var u = UpdatePhases.Update(server: "A", at: 0)
+    UpdatePhases.add(&u, code: "parse", ms: 20, memMB: 300)
+    UpdatePhases.add(&u, code: "fetch", ms: 10, memMB: 200)
+    UpdatePhases.add(&u, code: "fetch", ms: 5, memMB: 250)
+    UpdatePhases.add(&u, code: "onbekend", ms: 5, memMB: 999)
+    eq(u.phases.map(\.code), ["fetch", "parse"], "fasen op volgorde"); eq(u.phases[0].ms, 15, "fase opgeteld"); eq(u.peakMB, 300 as Int?, "piek")
+    var list: [UpdatePhases.Update] = []
+    for i in 0..<7 { var x = u; x.server = i % 2 == 0 ? "A" : "Z"; x.at = Double(i); UpdatePhases.push(&list, x) }
+    eq(list.count, 5, "max. 5 bewaard"); eq(list.first?.at, 6 as Double?, "nieuwste eerst")
+    let rows = UpdatePhases.rows(list, servers: ["B", "A"], iso: { "\($0.timeIntervalSince1970)" })
+    eq(rows.count, 3, "onbekende server valt weg"); eq(rows.first?["server"] as? String, "s2" as String?, "server geanonimiseerd")
+    check(JSONSerialization.isValidJSONObject(rows), "updates geldige JSON")
+
+    // geleverd en zichtbaar
+    eq(HiddenCounts.make(delivered: 36593, visible: 10286, categories: 26307, kids: 0, duplicates: 0),
+       HiddenCounts.Counts(categories: 26307, kids: 0, duplicates: 0, other: 0), "films: verborgen door categorieën")
+    eq(HiddenCounts.make(delivered: 100, visible: 40, categories: 30, kids: 50, duplicates: 5),
+       HiddenCounts.Counts(categories: 30, kids: 30, duplicates: 0, other: 0), "nooit meer dan het verschil")
+    eq(HiddenCounts.make(delivered: 100, visible: 40, categories: 10, kids: 0, duplicates: 5).other, 45, "rest = overig")
+
+    // haperingen
+    var tr = StallTracker()
+    eq(tr.tick(.buffering, now: 0), nil as StallTracker.Stall?, "opstarten telt niet")
+    _ = tr.tick(.playing, now: 1)
+    _ = tr.tick(.playing, now: 5.5)
+    _ = tr.tick(.buffering, now: 6)
+    eq(tr.tick(.playing, now: 7.2), StallTracker.Stall(at: 5, ms: 1200), "hapering na 5 s, 1,2 s lang")
+    eq(tr.tick(.playing, now: 8), nil as StallTracker.Stall?, "geen tweede melding")
+
+    let lh = LongestHang.json(seconds: 5.5, task: "gefilterde catalogus tonen", milestone: "klaar", foreground: true, stack: ["0 Bingr x"])
+    eq(lh["ms"] as? Int, 5500 as Int?, "hang ms"); eq(lh["task"] as? String, "apply" as String?, "hang taak als code")
+    eq(lh["milestone"] as? String, "ready" as String?, "hang mijlpaal als code")
+
+    // grote catalogus (37k films, 12k zenders, 9k series) in stukken inlezen: tijd per stap en geheugen
+    struct Vod148: Decodable {
+        let stream_id: Int; let name: String?; let stream_icon: String?; let category_id: String?; let added: String?
+        let container_extension: String?; let rating: Double?
+    }
+    struct Light148 { let id: String; let title: String; let group: String; let poster: URL? }
+    func makeJSON(_ n: Int, kind: String) -> Data {
+        var out = Data("[".utf8)
+        out.reserveCapacity(n * 420)
+        for i in 0..<n {
+            if i > 0 { out.append(0x2C) }
+            out.append(contentsOf: Array(#"{"num":\#(i),"name":"NL | \#(kind) titel nummer \#(i) (20\#(10 + i % 15))","stream_type":"\#(kind)","stream_id":\#(i),"stream_icon":"https://img.example.org/p/\#(i % 9000).jpg","rating":"\#(i % 10).5","rating_5based":3.2,"added":"17\#(i % 100)00000","is_adult":"0","category_id":"\#(i % 600)","container_extension":"mkv","custom_sid":"","direct_source":"","plot":"Een korte beschrijving van titel \#(i), met \"aanhalingstekens\" en een [haak]."}"#.utf8))
+        }
+        out.append(0x5D)
+        return out
+    }
+    struct Flexy148: Decodable {
+        let stream_id: Int; let name: String?; let stream_icon: String?; let category_id: String?
+        enum K: String, CodingKey { case stream_id, name, stream_icon, category_id }
+        init(from d: Decoder) throws {
+            let c = try d.container(keyedBy: K.self)
+            stream_id = try c.decode(Int.self, forKey: .stream_id)
+            name = try? c.decode(String.self, forKey: .name); stream_icon = try? c.decode(String.self, forKey: .stream_icon)
+            category_id = try? c.decode(String.self, forKey: .category_id)
+        }
+    }
+    _ = Vod148.self
+    let sets: [(String, Int)] = [("movie", 37_000), ("live", 12_000), ("series", 9_000)]
+    var datas: [Data] = sets.map { makeJSON($0.1, kind: $0.0) }
+    print("build 148: testlijsten \(datas.map { $0.count / 1_048_576 }) MB")
+    var groups: [String: String] = [:]
+    for g in 0..<600 { groups["\(g)"] = "Categorie \(g)" }
+    var chunkedTotal = 0.0, worst = 0.0
+    var counts: [Int] = []
+    let chunkedPeak = peakDuring148 {
+        for (k, d) in datas.enumerated() {
+            let t0 = Date()
+            var light: [Light148] = []
+            light.reserveCapacity(sets[k].1)
+            let st = JSONChunks.decode(Flexy148.self, from: d, chunk: 1500) { items in
+                for v in items {
+                    light.append(Light148(id: "xv\(v.stream_id)", title: v.name ?? "", group: groups[v.category_id ?? ""] ?? "Overig",
+                                          poster: v.stream_icon.flatMap(URL.init(string:))))
+                }
+            }
+            let ms = Date().timeIntervalSince(t0) * 1000
+            chunkedTotal += ms
+            worst = max(worst, st?.maxChunkMs ?? 0)
+            counts.append(light.count)
+            print("build 148: \(sets[k].0) \(sets[k].1): \(Int(ms)) ms in \(st?.chunks ?? 0) stappen, langste stap \(Int(st?.maxChunkMs ?? 0)) ms")
+        }
+    }
+    eq(counts, [37_000, 12_000, 9_000], "37k films, 12k zenders, 9k series in stukken ingelezen")
+    if worst > 250 { print("WAARSCHUWING build 148: langste stap \(Int(worst)) ms (doel max. 250 ms; gedeelde CI-runner)") }
+    var wholeCounts: [Int] = []
+    let wholePeak = peakDuring148 {
+        for d in datas {
+            let all = (try? JSONDecoder().decode([Flexy148].self, from: d)) ?? []
+            wholeCounts.append(all.map { Light148(id: "xv\($0.stream_id)", title: $0.name ?? "", group: groups[$0.category_id ?? ""] ?? "Overig",
+                                                    poster: $0.stream_icon.flatMap(URL.init(string:))) }.count)
+        }
+    }
+    eq(wholeCounts, counts, "zelfde uitkomst als in één keer")
+    print("build 148: geheugen tijdens inlezen: in één keer +\(Int(wholePeak)) MB, in stukken +\(Int(chunkedPeak)) MB; totaal in stukken \(Int(chunkedTotal)) ms")
+    datas = []
 }
 
 print("\(checks) controles, \(failures) fout")

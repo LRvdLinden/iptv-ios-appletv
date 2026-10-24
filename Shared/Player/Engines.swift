@@ -145,8 +145,17 @@ final class VLCEngine: PlaybackEngine {
         // ondertitels: VLC tekent ze standaard erg groot (zeker op een tv)
         media.addOption(":sub-text-scale=\(SubtitleSize.current.vlcScale)")
         media.addOption(":freetype-rel-fontsize=\(SubtitleSize.current == .large ? 16 : SubtitleSize.current == .medium ? 18 : 20)")
-        // build 59: kleinere buffer = sneller beeld (was 1500 ms live / 3000 ms films); VLC herverbindt zelf bij haperen
-        media.addOption(":network-caching=\(live ? 1000 : 1200)")
+        // build 59: kleinere buffer = sneller beeld (was 1500 ms live / 3000 ms films); VLC herverbindt zelf bij haperen.
+        // Build 148: live had met 1000 ms te weinig buffer: IPTV-providers leveren een live-TS-stream precies op
+        // afspeelsnelheid, dus de buffer groeit na het starten niet meer bij. Na een paar seconden was hij leeg bij het
+        // eerste beetje netwerkschommeling (wifi, de provider) en haperde het beeld kort. Apple TV (vast aan de tv,
+        // zappen mag iets langer duren) 3000 ms, de rest 2000 ms (zoals vóór build 59 iets ruimer).
+        #if os(tvOS)
+        let liveCaching = 3000
+        #else
+        let liveCaching = 2000
+        #endif
+        media.addOption(":network-caching=\(live ? liveCaching : 1200)")
         media.addOption(":http-user-agent=\(Secrets.userAgent)")
         media.addOption(":http-reconnect")
         if !silent, let audio = TrackPreferences.autoAudio {
@@ -367,12 +376,16 @@ final class AVEngine: PlaybackEngine {
         self.asset?.cancelLoading()
         self.asset = asset
         let item = AVPlayerItem(asset: asset)
+        // build 148: live automatisch (0): met maar 4 s vooruit kon AVPlayer bij HLS met segmenten van 6–10 s het
+        // volgende segment pas laden als de buffer bijna leeg was, en haperde het na ±5 s. Het live-venster van de
+        // afspeellijst begrenst de buffer zelf al.
         #if os(tvOS)
         // build 143: Apple TV (weinig geheugen): films/series niet onbeperkt vooruit bufferen (0 = automatisch, kan groot worden)
-        item.preferredForwardBufferDuration = live ? 4 : 30
+        item.preferredForwardBufferDuration = live ? 0 : 30
         #else
-        item.preferredForwardBufferDuration = live ? 4 : 0
+        item.preferredForwardBufferDuration = 0
         #endif
+        player.automaticallyWaitsToMinimizeStalling = true
         if silent {
             item.preferredPeakBitRate = 2_500_000
             item.preferredMaximumResolution = CGSize(width: 960, height: 540)
@@ -396,6 +409,9 @@ final class AVEngine: PlaybackEngine {
         ]
         player.replaceCurrentItem(with: item)
         loadGroups(asset, for: item)
+        // build 148: live met `play` (wacht tot er genoeg gebufferd is), niet `playImmediately`: dat start ook met een
+        // bijna lege buffer en gaf bij live na een paar seconden een hapering
+        if live { player.rate = rate; return }
         guard let s = startFraction, s > 0.01 else { player.playImmediately(atRate: rate); return }
         // build 59: hervatten — eerst naar de positie, dan pas afspelen (niet eerst het begin laden en tonen)
         Task { @MainActor [weak self] in
@@ -419,7 +435,7 @@ final class AVEngine: PlaybackEngine {
             self.player.playImmediately(atRate: self.rate)
         }
     }
-    func play() { player.playImmediately(atRate: rate) }
+    func play() { if live { player.rate = rate } else { player.playImmediately(atRate: rate) } }
     func pause() { player.pause() }
     func stop() {
         player.pause(); player.replaceCurrentItem(with: nil)

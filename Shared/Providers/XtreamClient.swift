@@ -256,42 +256,69 @@ struct XtreamClient {
     /// Build 147: catalogus plus de uitkomst per soort (zenders, films, series) voor de diagnose. Elke lijst wordt los
     /// opgehaald, met een ruime time-out (grote providers rekenen soms lang aan `get_series` voor het eerste byte komt)
     /// en één nieuwe poging; een fout bij series raakt films en zenders niet (en andersom).
-    func libraryWithStatus(playlistID: UUID) async throws -> (Library, [FetchStatus.Entry]) {
+    ///
+    /// Build 148: eerst alles tegelijk ophalen (`onFetched` als dat klaar is), daarna de lijsten één voor één en in
+    /// stukken inlezen (`JSONChunks`): nooit de hele lijst als tussenboom in het geheugen, de ruwe bytes van een lijst
+    /// meteen weg na het inlezen, en de items per stuk meteen omgezet naar de lichte modellen.
+    func libraryWithStatus(playlistID: UUID, onFetched: (@Sendable () -> Void)? = nil) async throws -> (Library, [FetchStatus.Entry]) {
         guard let lc = api("get_live_categories"), let ls = api("get_live_streams"),
               let vc = api("get_vod_categories"), let vs = api("get_vod_streams"),
               let sc = api("get_series_categories"), let ss = api("get_series") else { throw HTTPError.badURL }
-
-        async let liveCats = Self.list(Cat.self, lc, timeout: 60)
-        async let live = Self.list(Live.self, ls, timeout: 120)
-        async let vodCats = Self.list(Cat.self, vc, timeout: 60)
-        async let vod = Self.list(Vod.self, vs, timeout: 180)
-        async let serCats = Self.list(Cat.self, sc, timeout: 60)
-        async let ser = Self.list(SeriesDTO.self, ss, timeout: 180)
-
-        let (l, v, s) = await (live, vod, ser)
-        let lib = makeLibrary(liveCats: await liveCats.items, live: l.items, vodCats: await vodCats.items, vod: v.items,
-                              serCats: await serCats.items, series: s.items)
+        let jobs: [(String, URL, TimeInterval)] = [("lc", lc, 60), ("ls", ls, 120), ("vc", vc, 60), ("vs", vs, 180),
+                                                   ("sc", sc, 60), ("ss", ss, 180)]
+        var got: [String: (data: Data?, error: Error?)] = await withTaskGroup(of: (String, Data?, Error?).self) { g in
+            for (k, u, t) in jobs { g.addTask { let r = await Self.download(u, timeout: t); return (k, r.data, r.error) } }
+            var out: [String: (data: Data?, error: Error?)] = [:]
+            for await (k, d, e) in g { out[k] = (d, e) }
+            return out
+        }
+        onFetched?()
+        func take(_ k: String) -> (data: Data?, error: Error?) { got.removeValue(forKey: k) ?? (nil, nil) }
+        func cats(_ k: String) -> [String: String] {
+            let r = take(k)
+            guard let d = r.data, let list = try? JSONDecoder.lenient.decode(LossyList<Cat>.self, from: d) else { return [:] }
+            return Self.catMap(list.items)
+        }
+        let lcMap = cats("lc"), vcMap = cats("vc"), scMap = cats("sc")
+        var lib = Library()
+        /// Eén lijst in stukken inlezen; de bytes gaan daarna meteen weg (`take`)
+        func read<T: Decodable>(_ k: String, _ t: T.Type, _ each: ([T]) -> Void) -> Error? {
+            var r = take(k)
+            guard let d = r.data else { return r.error }
+            r.data = nil
+            if JSONChunks.decode(t, from: d, chunk: 1500, decoder: JSONDecoder.lenient, each: each) == nil {
+                // geen lijst: leeg (zoals `false` of `{}`), of geen JSON (bijv. een HTML-foutpagina)
+                if (try? JSONSerialization.jsonObject(with: d, options: [.fragmentsAllowed])) == nil, !d.isEmpty {
+                    return HTTPError.decoding("")
+                }
+            }
+            return nil
+        }
+        let lErr = read("ls", Live.self) { lib.channels += mapLive($0, lcMap) }
+        try Task.checkCancellation()
+        let vErr = read("vs", Vod.self) { lib.movies += mapVod($0, vcMap) }
+        try Task.checkCancellation()
+        let sErr = read("ss", SeriesDTO.self) { lib.series += mapSeries($0, scMap) }
         let now = Date().timeIntervalSince1970
         let status: [FetchStatus.Entry] = [
-            .init(kind: .live, delivered: l.error == nil ? lib.channels.count : nil, error: l.error.map(Self.fetchCode), at: now),
-            .init(kind: .movie, delivered: v.error == nil ? lib.movies.count : nil, error: v.error.map(Self.fetchCode), at: now),
-            .init(kind: .series, delivered: s.error == nil ? lib.series.count : nil, error: s.error.map(Self.fetchCode), at: now),
+            .init(kind: .live, delivered: lErr == nil ? lib.channels.count : nil, error: lErr.map(Self.fetchCode), at: now),
+            .init(kind: .movie, delivered: vErr == nil ? lib.movies.count : nil, error: vErr.map(Self.fetchCode), at: now),
+            .init(kind: .series, delivered: sErr == nil ? lib.series.count : nil, error: sErr.map(Self.fetchCode), at: now),
         ]
         return (lib, status)
     }
 
-    /// Eén lijst (tolerant gelezen) met een eigen time-out en één nieuwe poging bij een fout (niet na annuleren).
-    private static func list<T: Decodable>(_ t: T.Type, _ url: URL, timeout: TimeInterval) async -> (items: [T], error: Error?) {
+    /// Eén lijst ophalen (zonder inlezen) met een eigen time-out en één nieuwe poging bij een fout (niet na annuleren).
+    private static func download(_ url: URL, timeout: TimeInterval) async -> (data: Data?, error: Error?) {
         var last: Error?
         for attempt in 0..<2 {
-            if Task.isCancelled { return ([], CancellationError()) }
+            if Task.isCancelled { return (nil, CancellationError()) }
             do {
                 var req = URLRequest(url: url)
                 req.timeoutInterval = timeout
                 let (d, h) = try await HTTP.data(req)
                 guard (200..<300).contains(h.statusCode) else { throw HTTPError.status(h.statusCode, "") }
-                do { return (try JSONDecoder.lenient.decode(LossyList<T>.self, from: d).items, nil) }
-                catch { throw HTTPError.decoding("") }
+                return (d, nil)
             } catch {
                 last = error
                 if error is CancellationError || (error as? URLError)?.code == .cancelled { break }
@@ -300,7 +327,7 @@ struct XtreamClient {
                 if attempt == 0 { try? await Task.sleep(nanoseconds: 1_500_000_000) }
             }
         }
-        return ([], last)
+        return (nil, last)
     }
 
     /// Korte foutcode zonder URL of tekst van de server (diagnose)
@@ -315,46 +342,60 @@ struct XtreamClient {
         return FetchStatus.code(error)
     }
 
+    static func catMap(_ cats: [Cat]) -> [String: String] {
+        Dictionary(cats.compactMap { c in c.category_id.string.map { ($0, c.category_name ?? L("Other")) } },
+                   uniquingKeysWith: { a, _ in a })
+    }
+
     /// Zet de (tolerant gelezen) lijsten om naar een Library. Ook gebruikt door "Bron controleren",
     /// zodat die precies telt wat de app zelf inleest.
     func makeLibrary(liveCats: [Cat], live: [Live], vodCats: [Cat], vod: [Vod], serCats: [Cat], series ser: [SeriesDTO]) -> Library {
-        func map(_ cats: [Cat]) -> [String: String] {
-            Dictionary(cats.compactMap { c in c.category_id.string.map { ($0, c.category_name ?? L("Other")) } },
-                       uniquingKeysWith: { a, _ in a })
-        }
-        let lcMap = map(liveCats), vcMap = map(vodCats), scMap = map(serCats)
-        let liveExt = preferHLS ? "m3u8" : "ts"
-
         var lib = Library()
-        lib.channels = live.compactMap { l in
+        lib.channels = mapLive(live, Self.catMap(liveCats))
+        lib.movies = mapVod(vod, Self.catMap(vodCats))
+        lib.series = mapSeries(ser, Self.catMap(serCats))
+        return lib
+    }
+
+    func mapLive(_ live: [Live], _ lcMap: [String: String]) -> [Channel] {
+        let liveExt = preferHLS ? "m3u8" : "ts"
+        let other = L("Other")
+        return live.compactMap { l in
             guard let sid = l.stream_id.string else { return nil }
             return Channel(id: "x\(sid)", name: l.name ?? "Channel", logo: l.stream_icon?.urlValue,
-                           group: lcMap[l.category_id?.string ?? ""] ?? L("Other"),
+                           group: lcMap[l.category_id?.string ?? ""] ?? other,
                            streamURL: URL(string: "\(server)/live/\(username)/\(password)/\(sid).\(liveExt)"),
                            epgID: l.epg_channel_id.flatMap { $0.isEmpty ? nil : $0 },
                            number: l.num?.int,
                            catchupDays: l.tv_archive?.int == 1 ? (l.tv_archive_duration?.int ?? 0) : 0)
         }
-        lib.movies = vod.compactMap { v in
+    }
+
+    func mapVod(_ vod: [Vod], _ vcMap: [String: String]) -> [Movie] {
+        let other = L("Other")
+        return vod.compactMap { v in
             guard let sid = v.stream_id.string else { return nil }
             let p = TitleCleaner.parse(v.name ?? "")
             return Movie(id: "xv\(sid)", title: p.title, year: v.year?.int ?? p.year, poster: v.stream_icon?.urlValue,
-                         group: vcMap[v.category_id?.string ?? ""] ?? L("Other"),
+                         group: vcMap[v.category_id?.string ?? ""] ?? other,
                          streamURL: URL(string: "\(server)/movie/\(username)/\(password)/\(sid).\(v.container_extension ?? "mp4")"),
                          rating: v.rating?.double,
                          addedAt: v.added?.double.map { Date(timeIntervalSince1970: $0) },
                          xtreamVodID: Int(sid), tmdbID: v.tmdb)
         }
-        lib.series = ser.compactMap { s in
+    }
+
+    func mapSeries(_ ser: [SeriesDTO], _ scMap: [String: String]) -> [Series] {
+        let other = L("Other")
+        return ser.compactMap { s in
             guard let sid = s.series_id.int else { return nil }
             let p = TitleCleaner.parse(s.name ?? "")
             let y = s.year?.int ?? s.releaseDate.flatMap { Int($0.prefix(4)) } ?? p.year
             return Series(id: "xs\(sid)", title: p.title, year: y, poster: s.cover?.urlValue,
-                          group: scMap[s.category_id?.string ?? ""] ?? L("Other"),
+                          group: scMap[s.category_id?.string ?? ""] ?? other,
                           plot: s.plot, rating: s.rating?.double, xtreamSeriesID: sid, tmdbID: s.tmdb,
                           addedAt: s.last_modified?.double.flatMap { $0 > 0 ? Date(timeIntervalSince1970: $0) : nil })
         }
-        return lib
     }
 
     // MARK: Bron controleren

@@ -111,6 +111,8 @@ final class PlayerController: ObservableObject {
 
     /// De engine uit `init` is nog niet gebruikt
     private var freshEngine = false
+    /// Build 148: haperingen na het eerste beeld (diagnose, `playback_stall`)
+    private var stallTracker = StallTracker()
     /// Build 59: wacht na de start op het eerste beeld (spinner meteen weg, tijdmeting)
     private var startWatch: Task<Void, Never>?
     /// Build 59: OpenSubtitles nodig in deze taal (het spelerscherm haalt ze op de achtergrond op)
@@ -213,6 +215,7 @@ final class PlayerController: ObservableObject {
         self.url = url
         errorText = nil; didScrobbleStart = false; stallSince = nil; reloadPending = false; stableTicks = 0
         tracksApplied = false; playingTicks = 0
+        stallTracker = StallTracker()
         #if os(tvOS)
         displayTicks = 0; displayMatched = false
         #endif
@@ -285,6 +288,13 @@ final class PlayerController: ObservableObject {
 
     private func tick() {
         let st = engine.state
+        // build 148: haperingen (bufferen of opnieuw openen na het eerste beeld) vastleggen voor de diagnose
+        if !isPreview && !silent {
+            let s: StallTracker.State = st == .playing ? .playing : (st == .buffering || st == .opening) ? .buffering : .other
+            if let stall = stallTracker.tick(s, now: Date().timeIntervalSince1970) {
+                PlaybackLog.shared.note(stall, engine: usingApple ? "apple" : "vlc", format: PlaybackLog.format(url), live: isLive)
+            }
+        }
         if pauseWhenReady && st == .playing { pauseWhenReady = false; pause() }
         // alleen publiceren wat veranderd is (elke toewijzing laat de schermen die deze speler volgen opnieuw tekenen)
         let playingNow = engine.isPlaying

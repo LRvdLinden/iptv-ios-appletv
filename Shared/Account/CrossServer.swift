@@ -481,7 +481,7 @@ final class CrossServer: ObservableObject {
         if !interactive { await waitUntilQuiet() }
         guard !Task.isCancelled else { return }
         let store = CloudStore.shared
-        var refs = MainTasks.shared.run("catalogmeta en remap") { () -> [String: Ref] in
+        var refs = MainTasks.shared.run("catalog_meta") { () -> [String: Ref] in
             migrateCategories()
             applyRemapEverywhere()
             return gatherRefs()
@@ -624,7 +624,7 @@ final class CrossServer: ObservableObject {
         }
 
         if metaChanged {
-            MainTasks.shared.run("catalogmeta bijwerken") { prune() }
+            MainTasks.shared.run("catalog_meta") { prune() }
             persist()
             StateSync.shared.catalogMetaChanged(delay: isPlaying() ? 30 : 3)
         }

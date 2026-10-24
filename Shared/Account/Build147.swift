@@ -7,7 +7,9 @@ import Foundation
 
 enum StartTiming {
     /// Mijlpalen waarop de app op de gebruiker wacht, met de mijlpaal waarop dat wachten stopt.
-    static let waits: [(start: String, end: String)] = [("profielkeuze", "profiel gekozen"), ("pincodescherm", "pincode goed")]
+    static let waits: [(start: String, end: String)] = [("profile_picker", "profile_picked"), ("pin_screen", "pin_ok")]
+    /// Build 148: oude namen (build 143–147) en codes allebei
+    static func named(_ m: StartDiag.Mark, _ code: String) -> Bool { DiagCode.code(m.name) == code }
 
     struct Split: Equatable { var appMs: Int; var userWaitMs: Int }
 
@@ -16,8 +18,8 @@ enum StartTiming {
         let stop = end ?? marks.map(\.t).max() ?? 0
         var wait = 0.0
         for w in waits {
-            guard let s = marks.first(where: { $0.name == w.start }), s.t <= stop else { continue }
-            let e = marks.first(where: { $0.name == w.end && $0.t >= s.t }).map { min($0.t, stop) } ?? stop
+            guard let s = marks.first(where: { named($0, w.start) }), s.t <= stop else { continue }
+            let e = marks.first(where: { named($0, w.end) && $0.t >= s.t }).map { min($0.t, stop) } ?? stop
             wait += max(0, e - s.t)
         }
         wait = min(wait, stop)
@@ -95,7 +97,7 @@ enum StartPrevious {
     /// Wachtte de app bij de laatste mijlpaal op de gebruiker (profielkeuze of pincodescherm zonder einde)?
     static func waitingOnUser(_ marks: [StartDiag.Mark]) -> Bool {
         for w in StartTiming.waits {
-            if marks.contains(where: { $0.name == w.start }) && !marks.contains(where: { $0.name == w.end }) { return true }
+            if marks.contains(where: { StartTiming.named($0, w.start) }) && !marks.contains(where: { StartTiming.named($0, w.end) }) { return true }
         }
         return false
     }

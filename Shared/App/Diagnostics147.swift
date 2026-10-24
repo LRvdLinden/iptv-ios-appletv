@@ -99,6 +99,9 @@ final class StorageSnapshot {
     }
 }
 
+/// Build 148: wat er van één soort zichtbaar is en waarom de rest verborgen is
+struct FetchVisibility: Codable, Equatable, Sendable { var visible: Int; var hidden: HiddenCounts.Counts }
+
 /// Laatste uitkomst van het ophalen per server en soort (zenders, films, series), op het apparaat bewaard (zonder URL,
 /// naam of tekst van de server). `PlaylistService.refresh` schrijft hem; de diagnose leest hem.
 @MainActor
@@ -106,10 +109,27 @@ final class FetchLog {
     static let shared = FetchLog()
     private let key = "diag.fetch.v147"
     private var entries: [String: [FetchStatus.Entry]] = [:]
+    /// Build 148: per server en soort wat de gebruiker ziet en waarom de rest verborgen is
+    typealias Visibility = FetchVisibility
+    private let visKey = "diag.visible.v148"
+    private var visibility: [String: [String: Visibility]] = [:]
 
     private init() {
         if let d = UserDefaults.standard.data(forKey: key),
            let e = try? JSONDecoder().decode([String: [FetchStatus.Entry]].self, from: d) { entries = e }
+        if let d = UserDefaults.standard.data(forKey: visKey),
+           let v = try? JSONDecoder().decode([String: [String: Visibility]].self, from: d) { visibility = v }
+    }
+
+    /// Build 148: na het filteren: zichtbaar en verborgen per soort
+    func noteVisibility(_ server: UUID, _ v: [FetchStatus.Kind: Visibility]) {
+        var m: [String: Visibility] = [:]
+        for (k, x) in v { m[k.rawValue] = x }
+        guard visibility[server.uuidString] != m else { return }
+        visibility[server.uuidString] = m
+        let live = Set(CloudStore.shared.playlists.map(\.id.uuidString))
+        for k in visibility.keys where !live.contains(k) { visibility[k] = nil }
+        if let d = try? JSONEncoder().encode(visibility) { UserDefaults.standard.set(d, forKey: visKey) }
     }
 
     func note(_ server: UUID, _ list: [FetchStatus.Entry]) {
@@ -158,6 +178,18 @@ final class FetchLog {
                 visible.append([:])
             }
         }
-        return FetchStatus.rows(servers: all, visible: visible)
+        var rows = FetchStatus.rows(servers: all, visible: visible)
+        // build 148 (schema 3): geleverd, zichtbaar en de reden van het verschil
+        for i in rows.indices {
+            guard let srv = rows[i]["server"] as? String, let idx = Int(srv.dropFirst()), idx >= 1, idx <= servers.count,
+                  let kind = rows[i]["kind"] as? String, rows[i]["status"] as? String != "failed",
+                  let delivered = rows[i]["count"] as? Int else { continue }
+            rows[i]["delivered"] = delivered
+            guard let v = visibility[servers[idx - 1].id.uuidString]?[kind] else { continue }
+            rows[i]["visible"] = min(v.visible, delivered)
+            rows[i]["hidden"] = ["categories": v.hidden.categories, "kids": v.hidden.kids,
+                                 "duplicates": v.hidden.duplicates, "other": v.hidden.other]
+        }
+        return rows
     }
 }

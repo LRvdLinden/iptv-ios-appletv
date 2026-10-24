@@ -139,6 +139,10 @@ enum DiagnosticsBuilder {
         }
         d.network = net
         d.storage = StorageSnapshot.shared.json
+        // build 148 (schema 3): app-taal, de laatste 5 keer bijwerken, haperingen tijdens het afspelen
+        d.lang = Localizer.shared.language
+        d.updates = UpdateLog.shared.rows
+        d.playback = PlaybackLog.shared.json
     }
 
     /// `start`: deze start (app-tijd, wachten op de gebruiker, langste hang) of de start van het rapport, en altijd de
@@ -146,7 +150,7 @@ enum DiagnosticsBuilder {
     static func startBlock(problem: StartDiag.Problem?) -> [String: Any] {
         var out: [String: Any]
         if let p = problem {
-            let split = StartTiming.split(p.marks, end: p.marks.first { $0.name == StartDiag.finalMark }?.t)
+            let split = StartTiming.split(p.marks, end: p.marks.first { StartTiming.named($0, StartDiag.finalMark) }?.t)
             var sum = StartTiming.summary(appMs: split.appMs, hang: p.kind == .hang ? p.seconds : nil, crashed: p.kind == .crash)
             if p.kind == .notFinished && sum == .good { sum = .slow }
             out = ["summary": sum.rawValue, "appMs": split.appMs, "userWaitMs": split.userWaitMs]
@@ -155,23 +159,15 @@ enum DiagnosticsBuilder {
             let c = StartDiagnostics.shared.currentStart
             out = ["summary": c.summary.rawValue, "appMs": c.split.appMs, "userWaitMs": c.split.userWaitMs,
                    "maxHangMs": Int(c.maxHang * 1000)]
+            // build 148 (schema 3): langste hang van deze start, met taak, mijlpaal, voorgrond en stack
+            let h = StartDiagnostics.shared.currentHang
+            if h.seconds > 0 {
+                out["longestHang"] = LongestHang.json(seconds: h.seconds, task: h.task, milestone: h.milestone,
+                                                      foreground: h.foreground, stack: h.stack)
+            }
         }
         if let prev = StartDiagnostics.shared.previous { out["previous"] = prev }
         return out
-    }
-
-    /// Vaste Nederlandse samenvatting voor de tekst van een ticket (zoals de rest van die tekst)
-    static func summaryLineNL(problem: StartDiag.Problem?) -> String {
-        let b = startBlock(problem: problem)
-        let sum = StartTiming.Summary(rawValue: b["summary"] as? String ?? "") ?? .good
-        let title = sum == .good ? "goed" : sum == .slow ? "traag" : "vastgelopen"
-        let app = Double(b["appMs"] as? Int ?? 0) / 1000, wait = Double(b["userWaitMs"] as? Int ?? 0) / 1000
-        var line = "Start: \(title) (app \(String(format: "%.1f", app)) s, wachten op de gebruiker \(String(format: "%.1f", wait)) s)"
-        if let prev = b["previous"] as? [String: Any], let pr = prev["problem"] as? String, pr != "none" {
-            line += " · vorige start: \(pr)" + ((prev["seconds"] as? Double).map { " \(String(format: "%.1f", $0)) s" } ?? "")
-                + ((prev["task"] as? String).map { ", taak \($0)" } ?? "")
-        }
-        return line
     }
 
     /// Samenvatting voor bovenaan (tekst): "Start: goed / traag / vastgelopen" met app-tijd en wachttijd.
@@ -266,6 +262,7 @@ final class DiagnosticsModel: ObservableObject {
             r.append(Row(title: L("Your server"), value: provider.ok ? L("Reachable (%d ms)", provider.ms) : L("Not reachable")))
         }
         r.insert(Row(title: L("Start"), value: DiagnosticsBuilder.summaryLine(problem: nil)), at: 0)
+        if let h = DiagText.longestHang() { r.insert(Row(title: " ", value: h), at: 1) }
         r.append(Row(title: L("Connection"), value: Self.networkTitle(NetworkType.shared.current)))
         r.append(Row(title: L("Storage"), value: "\(st.totalMB) MB"))
         r.append(Row(title: "  " + L("Cache"), value: "\(cacheMB) MB"))
@@ -276,8 +273,17 @@ final class DiagnosticsModel: ObservableObject {
         if let free = st.freeMB { r.append(Row(title: L("Free on this device"), value: "\(free) MB")) }
         for f in d.fetch {
             guard let srv = f["server"] as? String, let kind = f["kind"] as? String, let status = f["status"] as? String else { continue }
-            r.append(Row(title: "\(srv.uppercased()) · \(Self.kindTitle(kind))", value: Self.fetchTitle(status, count: f["count"] as? Int, error: f["error"] as? String)))
+            // build 148: "36.593 geleverd · 10.286 zichtbaar (26.307 verborgen door categorieën)"
+            let value = (status == "failed" ? nil : DiagText.delivered(f))
+                ?? Self.fetchTitle(status, count: f["count"] as? Int, error: f["error"] as? String)
+            r.append(Row(title: "\(srv.uppercased()) · \(Self.kindTitle(kind))", value: value))
         }
+        // build 148: de laatste keren bijwerken per server (fasen met duur en geheugen)
+        for u in d.updates {
+            r.append(Row(title: L("Update %@", (u["server"] as? String ?? "?").uppercased()), value: DiagText.update(u)))
+        }
+        // build 148: haperingen tijdens het afspelen
+        r.append(Row(title: L("Playback"), value: DiagText.stalls(PlaybackLog.shared.entries)))
         if let app = StartDiagnostics.footprintMB() {
             r.append(Row(title: L("Memory"), value: "\(app) MB / \(Int(ProcessInfo.processInfo.physicalMemory / 1_048_576)) MB"))
         }
@@ -285,25 +291,11 @@ final class DiagnosticsModel: ObservableObject {
         r.append(Row(title: L("Watch progress"), value: L("%d titles", store.progress.count)))
         rows = r
 
-        // tekst voor het ticket (vast Nederlands, zoals de startdiagnose; zonder namen of adressen)
-        var t: [String] = ["App-diagnose \(AppDevice.osName) \(AppDevice.osVersion), build \(AppDevice.version) (\(AppDevice.build.map(String.init) ?? "?"))"]
-        t.append("Apparaat: \(AppDevice.type) · \(AppDevice.model) · taal \(AppDevice.language)")
-        t.append("Servers: \(store.playlists.count) (\(updated.map { $0.map { Self.relativeNL($0) } ?? "nog niet geladen" }.joined(separator: ", ")))")
-        t.append("Servers laden bij openen: \(mode.rawValue)")
-        t.append("Profielen: \(store.profiles.count) · zenders \(lib.channels.count), films \(lib.movies.count), series \(lib.series.count)")
-        t.append("Laatste account-sync: \(store.lastSync.map { Self.relativeNL($0) } ?? "–")")
-        t.append("Bingr-server: \(backend.ok ? "bereikbaar" : "niet bereikbaar") (\(backend.ms) ms)"
-                 + (provider.map { " · eigen server: \($0.ok ? "bereikbaar" : "niet bereikbaar") (\($0.ms) ms)" } ?? ""))
-        t.append("Verbinding: \(NetworkType.shared.current)")
-        t.append("Opslag: totaal \(st.totalMB) MB (cache \(cacheMB) MB, catalogus \(dbMB) MB, downloads \(downloadsMB) MB)"
-                 + (st.freeMB.map { ", vrij \($0) MB" } ?? ""))
-        for f in d.fetch {
-            t.append("Ophalen \(f["server"] ?? "?") \(f["kind"] ?? "?"): \(f["status"] ?? "?")"
-                     + ((f["count"] as? Int).map { " (\($0))" } ?? "") + ((f["error"] as? String).map { " fout \($0)" } ?? ""))
-        }
-        // build 147: altijd de startdiagnose erbij (deze start en de vorige)
-        t.insert(DiagnosticsBuilder.summaryLineNL(problem: nil), at: 1)
-        if let p = StartDiagnostics.shared.lastProblem { t.append(StartDiag.text(p)) }
+        // tekst voor het ticket (build 148: in de taal van de app, dezelfde regels als in beeld; zonder namen of adressen)
+        var t: [String] = [L("App diagnostics") + " \(AppDevice.osName) \(AppDevice.osVersion), build \(AppDevice.version) (\(AppDevice.build.map(String.init) ?? "?"))"]
+        t.append("\(L("Device type")): \(AppDevice.typeTitle) · \(AppDevice.model) · \(L("Language")) \(AppDevice.language)")
+        t += r.map { $0.title.trimmingCharacters(in: .whitespaces).isEmpty ? $0.value : "\($0.title.trimmingCharacters(in: .whitespaces)): \($0.value)" }
+        if let p = StartDiagnostics.shared.lastProblem { t.append(DiagText.problem(p)) }
         text = t.joined(separator: "\n")
     }
 
@@ -314,7 +306,7 @@ final class DiagnosticsModel: ObservableObject {
         result = nil
         defer { sending = false }
         do {
-            let n = try await SupportCenter.shared.create(subject: "App-diagnose \(AppDevice.osName) build \(AppDevice.build.map(String.init) ?? "?")",
+            let n = try await SupportCenter.shared.create(subject: L("App diagnostics %@ build %@", AppDevice.osName, AppDevice.build.map(String.init) ?? "?"),
                                                           message: text, category: "apps", diagnostics: report.json)
             result = L("Sent as ticket #%@", String(n))
         } catch {

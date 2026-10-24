@@ -99,12 +99,13 @@ final class StartDiagnostics: @unchecked Sendable {
         var out: [String: Any] = ["problem": problem.rawValue, "at": SupportDiagnostics.iso(Date(timeIntervalSince1970: r.started))]
         if let b = SupportDiagnostics.buildNumber(r.build) { out["build"] = b }
         let lastMark = (problem == .hang ? r.hangAt : nil) ?? r.marks.last?.name
-        if let m = lastMark.flatMap(SupportDiagnostics.milestoneName) { out["milestone"] = m }
+        // build 148 (schema 3): mijlpaal en taak als code
+        if let m = lastMark.flatMap({ DiagCode.code($0) ?? SupportDiagnostics.milestoneName($0) }) { out["milestone"] = m }
         switch problem {
         case .hang:
             out["seconds"] = r.hang ?? 0
             out["foreground"] = r.hangFg ?? true
-            if let t = r.hangTask { out["task"] = String(StartDiag.scrub(t).prefix(60)) }
+            if let t = r.hangTask { out["task"] = DiagCode.task(t) ?? String(StartDiag.scrub(t).prefix(60)) }
             let st = StartDiag.scrub(lines: r.hangStack ?? [])
             if !st.isEmpty { out["stack"] = Array(st.prefix(30)) }
         case .crash:
@@ -114,14 +115,16 @@ final class StartDiagnostics: @unchecked Sendable {
             if !st.isEmpty { out["stack"] = Array(st.prefix(30)) }
         case .notFinished, .none:
             out["seconds"] = r.marks.last?.t ?? 0
-            if let t = r.hangTask { out["task"] = String(StartDiag.scrub(t).prefix(60)) }
+            if let t = r.hangTask { out["task"] = DiagCode.task(t) ?? String(StartDiag.scrub(t).prefix(60)) }
         }
         return out
     }
 
     /// Mijlpaal (alleen de eerste keer per naam), meteen weggeschreven. Build 147: ook na "klaar" (max. 40), zodat te zien
     /// is wat er daarna gebeurde.
-    func mark(_ name: String) {
+    func mark(_ raw: String) {
+        // build 148: mijlpalen als code (oude Nederlandse namen worden omgezet)
+        let name = DiagCode.code(raw) ?? raw
         lock.lock()
         if record.marks.contains(where: { $0.name == name }) || record.marks.count >= 40 { lock.unlock(); return }
         let mb = Self.footprintMB()
@@ -149,7 +152,19 @@ final class StartDiagnostics: @unchecked Sendable {
         if let d = try? JSONEncoder().encode(r) { defaults.set(d, forKey: currentKey) }
     }
 
-    func has(_ name: String) -> Bool { lock.lock(); defer { lock.unlock() }; return record.marks.contains { $0.name == name } }
+    func has(_ raw: String) -> Bool {
+        let name = DiagCode.code(raw) ?? raw
+        lock.lock(); defer { lock.unlock() }; return record.marks.contains { $0.name == name }
+    }
+
+    /// Build 148: langste hang van deze start (`start.longestHang`): duur, taak, mijlpaal, voorgrond en stack
+    var currentHang: (seconds: Double, task: String?, milestone: String?, foreground: Bool, stack: [String]) {
+        lock.lock(); let r = record; lock.unlock()
+        return (r.hang ?? 0, r.hangTask, r.hangAt, r.hangFg ?? true, StartDiag.scrub(lines: r.hangStack ?? []))
+    }
+
+    /// Build 148: hoogste geheugengebruik van deze sessie (MB)
+    var peakMB: Int? { lock.lock(); defer { lock.unlock() }; return record.peakMB }
 
     /// Build 146: mijlpalen van deze start (voor de tab Diagnose en de bijlage `milestones`)
     var currentMarks: [StartDiag.Mark] { lock.lock(); defer { lock.unlock() }; return record.marks }
@@ -157,7 +172,7 @@ final class StartDiagnostics: @unchecked Sendable {
     /// Build 147: deze start: app-tijd, wachten op de gebruiker, langste hang en de samenvatting (goed/traag/vastgelopen)
     var currentStart: (split: StartTiming.Split, maxHang: Double, summary: StartTiming.Summary, finished: Bool) {
         lock.lock(); let r = record; lock.unlock()
-        let end = r.marks.first { $0.name == StartDiag.finalMark }?.t
+        let end = r.marks.first { StartTiming.named($0, StartDiag.finalMark) }?.t
         let split = StartTiming.split(r.marks, end: end)
         let hang = r.hang ?? 0
         return (split, hang, StartTiming.summary(appMs: split.appMs, hang: hang, crashed: false), r.finished)
@@ -346,7 +361,7 @@ struct StartDiagnosticsSection: View {
             Text(verbatim: DiagnosticsBuilder.summaryLine(problem: problem))
                 .font(.footnote.weight(.semibold))
             if let p = problem {
-                Text(verbatim: StartDiag.text(p))
+                Text(verbatim: DiagText.problem(p))
                     .font(.system(.footnote, design: .monospaced))
                     .lineLimit(14)
                     .fixedSize(horizontal: false, vertical: true)
@@ -373,12 +388,15 @@ struct StartDiagnosticsSection: View {
                     .foregroundStyle(Theme.green)
                 let marks = StartDiagnostics.shared.currentMarks
                 if !marks.isEmpty {
-                    Text(verbatim: marks.map { m in "\(m.name) \(String(format: "%.1f", m.t))s" + (m.mb.map { " \($0)MB" } ?? "") }
-                        .joined(separator: " · "))
+                    Text(verbatim: DiagText.marks(marks))
                         .font(.system(.footnote, design: .monospaced))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+            }
+            // build 148: langste hang van deze start (duur, taak, mijlpaal)
+            if let h = DiagText.longestHang() {
+                Text(verbatim: h).font(.footnote).foregroundStyle(.secondary)
             }
         } header: { Text(L("Start diagnostics")) }
     }
@@ -390,8 +408,8 @@ struct StartDiagnosticsSection: View {
             defer { sending = false }
             do {
                 let n = try await SupportCenter.shared.create(
-                    subject: "Startdiagnose \(AppDevice.osName) build \(p.build)",
-                    message: String((DiagnosticsBuilder.summaryLineNL(problem: p) + "\n" + StartDiag.text(p)).prefix(4900)), category: "apps",
+                    subject: L("Start diagnostics %@ build %@", AppDevice.osName, p.build),
+                    message: String((DiagnosticsBuilder.summaryLine(problem: p) + "\n" + DiagText.problem(p)).prefix(4900)), category: "apps",
                     diagnostics: DiagnosticsBuilder.start(problem: p).json)
                 result = L("Sent as ticket #%@", String(n))
             } catch {

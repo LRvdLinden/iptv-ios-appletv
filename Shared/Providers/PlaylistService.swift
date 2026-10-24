@@ -36,12 +36,12 @@ final class PlaylistService: ObservableObject {
         CloudStore.shared.$customizations.combineLatest(CloudStore.shared.$parental)
             .dropFirst()
             .receive(on: RunLoop.main)
-            .sink { [weak self] _, _ in self?.applyCustomizations() }
+            .sink { [weak self] _, _ in _ = self?.applyCustomizations() }
             .store(in: &bag)
         ParentalControl.shared.$unlockedUntil
             .dropFirst()
             .receive(on: RunLoop.main)
-            .sink { [weak self] _ in self?.applyCustomizations() }
+            .sink { [weak self] _ in _ = self?.applyCustomizations() }
             .store(in: &bag)
         // profiel aangepast (bijv. leeftijdsfilter) → bijwerken
         CloudStore.shared.$playlists
@@ -58,7 +58,7 @@ final class PlaylistService: ObservableObject {
             .removeDuplicates()
             .dropFirst()
             .receive(on: RunLoop.main)
-            .sink { [weak self] _ in self?.applyCustomizations() }
+            .sink { [weak self] _ in _ = self?.applyCustomizations() }
             .store(in: &bag)
         // build 140: categorieën aan/uit voor het account gewijzigd (ook via de sync) → opnieuw filteren. Build 140:
         // even wachten, zodat een reeks tikken in Instellingen → Categorieën één keer filtert (niet per tik)
@@ -66,7 +66,7 @@ final class PlaylistService: ObservableObject {
             .removeDuplicates()
             .dropFirst()
             .debounce(for: .milliseconds(600), scheduler: RunLoop.main)
-            .sink { [weak self] _ in self?.applyCustomizations() }
+            .sink { [weak self] _ in _ = self?.applyCustomizations() }
             .store(in: &bag)
         // nieuwe IMDb-classificaties binnen → leeftijdsfilter opnieuw toepassen
         MetadataService.shared.$cache
@@ -94,7 +94,7 @@ final class PlaylistService: ObservableObject {
         idleRefilter = Task { [weak self] in
             await ScrollActivity.shared.waitUntilIdle()
             guard !Task.isCancelled else { return }
-            self?.applyCustomizations()
+            _ = self?.applyCustomizations()
         }
     }
 
@@ -150,8 +150,10 @@ final class PlaylistService: ObservableObject {
         }
         // laadtekst alleen voor de actieve server
         func say(_ t: String) { if ownsIndicator { loadingText = t } }
-        // build 143: startdiagnose: ophalen, binnen, ingelezen, bewaard (met het geheugen op elk moment)
-        StartDiagnostics.shared.mark(isActive ? "ophalen open server" : "ophalen andere server")
+        // build 143: startdiagnose: ophalen, ingelezen, bewaard (met het geheugen op elk moment). Build 148: als code.
+        StartDiagnostics.shared.mark("fetch")
+        // build 148: fasen van dit bijwerken (ophalen, inlezen, indexeren, toepassen, bewaren) met duur en geheugen
+        let rec = UpdateRecorder(server: s.id)
         // build 147: uitkomst per soort voor de diagnose (Xtream per lijst, de rest de hele lijst)
         var fetchStatus: [FetchStatus.Entry]?
         do {
@@ -162,36 +164,39 @@ final class PlaylistService: ObservableObject {
                 say(L("Downloading playlist…"))
                 guard let u = s.m3uURL.urlValue else { throw HTTPError.badURL }
                 var data: Data? = try await HTTP.get(u)
-                StartDiagnostics.shared.mark("binnen")
+                rec.end("fetch")
                 say(L("Sorting channels and movies…"))
                 let text = String(decoding: data ?? Data(), as: UTF8.self)
                 data = nil   // build 143: de ruwe bytes meteen vrijgeven (niet twee kopieën tijdens het inlezen)
                 let pid = s.id
                 lib = await Task.detached(priority: isActive ? .userInitiated : .utility) { M3UParser.library(from: text, playlistID: pid) }.value
-                StartDiagnostics.shared.mark("ingelezen")
+                rec.end("parse")
                 let epg = s.epgURL.urlValue ?? M3UParser.epgURL(fromHeader: text)
-                if let epg { say(L("Loading TV guide…")); lib.epg = await loadEPG(epg) }
+                if let epg { say(L("Loading TV guide…")); lib.epg = await loadEPG(epg, rec) }
             case .xtream:
                 say(L("Signing in to server…"))
                 let x = XtreamClient(source: s, password: password)
                 try await x.authenticate()
                 say(L("Fetching live TV, movies and series…"))
-                let (xl, st) = try await x.libraryWithStatus(playlistID: s.id)
+                let (xl, st) = try await x.libraryWithStatus(playlistID: s.id, onFetched: { rec.end("fetch") })
+                rec.end("parse")
                 lib = xl
                 fetchStatus = st
                 let epg = s.epgURL.urlValue ?? x.xmltvURL
-                if let epg { say(L("Loading TV guide…")); lib.epg = await loadEPG(epg) }
+                if let epg { say(L("Loading TV guide…")); lib.epg = await loadEPG(epg, rec) }
             case .stalker:
                 say(L("Connecting to portal…"))
                 let st = (source?.id == s.id ? stalker : nil) ?? StalkerClient(source: s)
                 try await st.connect()
                 say(L("Fetching channels and videos…"))
                 lib = try await st.library()
-                if let epg = s.epgURL.urlValue { lib.epg = await loadEPG(epg) }
+                rec.end("fetch")
+                if let epg = s.epgURL.urlValue { lib.epg = await loadEPG(epg, rec) }
             case .jellyfin, .emby:
                 say(L("Fetching your library…"))
                 let jf = JellyfinClient(source: s, session: Self.session(s))
                 lib = try await jf.library()
+                rec.end("fetch")
             case .plex:
                 say(L("Fetching your library…"))
                 guard var session = Self.session(s) else { throw MediaError.notLoggedIn }
@@ -203,28 +208,44 @@ final class PlaylistService: ObservableObject {
                     Keychain.setCodable(session, for: Self.sessionKey(s))
                     lib = try await PlexClient(session: session).library()
                 }
+                rec.end("fetch")
             case .stremio:
                 say(L("Loading Stremio add-ons…"))
                 let addons = await Self.stremioAddons(s)
                 if source?.id == s.id { stremioAddons = addons }
                 say(L("Fetching catalogs…"))
                 lib = await StremioClient(addons: addons).library()
+                rec.end("fetch")
             }
+            StartDiagnostics.shared.mark("parse")
             // build 145: gestopt (wissel van profiel of server, time-out): niets half bijgewerkts wegschrijven
             try Task.checkCancellation()
             if let fetchStatus { FetchLog.shared.note(s.id, fetchStatus) } else { FetchLog.shared.noteLibrary(s.id, lib) }
             if source?.id == s.id {
-                setRaw(lib)
-                writeCache(s, lib)
+                // build 148: filteren (indexeren) op de achtergrond, op de hoofdthread alleen het eindresultaat
+                let t0 = Date()
+                let task = setRaw(lib)
+                var applyMs = Date().timeIntervalSince(t0) * 1000
+                if let task { let r = await task.value; rec.add("index", ms: r.indexMs); applyMs += r.applyMs }
+                rec.add("apply", ms: applyMs)
                 SplashPosters.save(from: lib)
             } else {
-                writeCache(s, lib)     // andere afspeellijst op de achtergrond ververst
+                // andere afspeellijst op de achtergrond ververst: zichtbaar en verborgen tellen (diagnose)
+                let ctx = context(for: s), raw = lib
+                let t0 = Date()
+                let vis = await Task.detached(priority: .utility) { Self.visibilityStats(raw, Self.apply(raw, ctx), ctx) }.value
+                rec.add("index", ms: Date().timeIntervalSince(t0) * 1000)
+                FetchLog.shared.noteVisibility(s.id, vis)
             }
-            StartDiagnostics.shared.mark("bewaard")
+            await writeCache(s, lib)
+            rec.end("save")
+            StartDiagnostics.shared.mark("save")
+            UpdateLog.shared.save(rec.finish(.ok))
             return true
         } catch {
             // build 145: gestopt is geen fout
             let cancelled = error is CancellationError || (error as? URLError)?.code == .cancelled
+            UpdateLog.shared.save(rec.finish(cancelled ? .cancelled : .failed))
             if !cancelled { FetchLog.shared.noteLibrary(s.id, nil, error: error) }
             guard source?.id == s.id else { return false }
             if cancelled { return false }
@@ -346,6 +367,17 @@ final class PlaylistService: ObservableObject {
         return await Task.detached(priority: .utility) { XMLTVParser.parse(d) }.value
     }
 
+    /// Build 148: gids ophalen (fase `fetch`) en inlezen (fase `parse`), de ruwe bytes meteen weer weg
+    private func loadEPG(_ url: URL, _ rec: UpdateRecorder) async -> [String: [EPGProgram]] {
+        var data = try? await HTTP.get(url)
+        rec.end("fetch")
+        guard let d = data else { return [:] }
+        data = nil
+        let out = await Task.detached(priority: .utility) { XMLTVParser.parse(d) }.value
+        rec.end("parse")
+        return out
+    }
+
     // MARK: sessies (Plex / Jellyfin / Emby / Stremio)
 
     static func sessionKey(_ s: PlaylistSource) -> String { "playlist.\(s.id.uuidString).session" }
@@ -364,13 +396,28 @@ final class PlaylistService: ObservableObject {
 
     // MARK: aanpassingen toepassen
 
-    private func setRaw(_ lib: Library) {
-        if !lib.isEmptyLibrary { StartDiagnostics.shared.mark("catalogus") }   // build 143
-        MainTasks.shared.run("catalogus tonen") {
+    /// Build 148: nieuwe ongefilterde lijst. De oude wordt buiten de hoofdthread vrijgegeven (tienduizenden titels en
+    /// de gids opruimen kostte seconden op de hoofdthread); het filteren loopt op de achtergrond (`Task`).
+    @discardableResult
+    private func setRaw(_ lib: Library) -> Task<ApplyTiming, Never>? {
+        if !lib.isEmptyLibrary { StartDiagnostics.shared.mark("catalog") }   // build 143
+        return MainTasks.shared.run("apply") {
+            let old = rawLibrary
             rawLibrary = lib
-            applyCustomizations()
+            OffMain.release(old)
+            return applyCustomizations()
         }
     }
+
+    /// Build 148: de gefilterde lijst publiceren; de vorige buiten de hoofdthread vrijgeven
+    private func publish(_ lib: Library) {
+        let old = library
+        library = lib
+        OffMain.release(old)
+    }
+
+    /// Build 148: duur van het filteren op de achtergrond (`index`) en van het publiceren op de hoofdthread (`apply`)
+    struct ApplyTiming: Sendable { var indexMs: Double = 0; var applyMs: Double = 0 }
 
     /// Alles wat het filteren nodig heeft, als losse waarden — zodat het op de achtergrond kan (grote lijsten).
     struct FilterContext {
@@ -431,8 +478,10 @@ final class PlaylistService: ObservableObject {
     @Published private(set) var isFiltering = false
 
     /// Filtert de lijst (verbergen, kinderslot, leeftijd) op de achtergrond; de app blijft direct reageren.
-    func applyCustomizations() {
-        guard let s = source else { library = rawLibrary; libraryRawVersion = -1; return }
+    /// Build 148: geeft de taak terug (met de duur van filteren en publiceren), zodat het bijwerken erop kan wachten.
+    @discardableResult
+    func applyCustomizations() -> Task<ApplyTiming, Never>? {
+        guard let s = source else { publish(rawLibrary); libraryRawVersion = -1; return nil }
         let ctx = context(for: s)
         let raw = rawLibrary
         // profiel met leeftijdsgrens: classificaties op de achtergrond aanvullen (TMDB, gecachet)
@@ -446,33 +495,73 @@ final class PlaylistService: ObservableObject {
         // kleine lijsten: meteen; grote lijsten: op de achtergrond
         if raw.channels.count + raw.movies.count + raw.series.count < 3000 {
             let lib = Self.apply(raw, ctx)
-            if let previous, Self.sameContent(previous, lib) { return }
-            library = lib
+            FetchLog.shared.noteVisibility(s.id, Self.visibilityStats(raw, lib, ctx))
+            if let previous, Self.sameContent(previous, lib) { return nil }
+            publish(lib)
             libraryRawVersion = rv
             libraryContext = ctx
-            return
+            return nil
         }
         // kinderprofiel/leeftijdsgrens: niets ongefilterds laten zien terwijl er gefilterd wordt
         // (alleen bij een nieuwe lijst; bij opnieuw filteren blijft de vorige uitkomst staan tot de nieuwe klaar is)
-        if ctx.ageLimit != nil && previous == nil { library = Library(); libraryRawVersion = -1 }
+        if ctx.ageLimit != nil && previous == nil { publish(Library()); libraryRawVersion = -1 }
         // stil opnieuw filteren (vorige uitkomst blijft staan): geen extra schermverversingen voor de spinner
         if previous == nil { isFiltering = true }
-        Task {
-            let result: Library? = await Task.detached(priority: .userInitiated) { () -> Library? in
+        let sid = s.id
+        return Task {
+            var timing = ApplyTiming()
+            let t0 = Date()
+            let (result, vis) = await Task.detached(priority: .userInitiated) { () -> (Library?, [FetchStatus.Kind: FetchVisibility]) in
                 let lib = Self.apply(raw, ctx)
-                if let previous, Self.sameContent(previous, lib) { return nil }
-                return lib
+                let vis = Self.visibilityStats(raw, lib, ctx)
+                if let previous, Self.sameContent(previous, lib) { return (nil, vis) }
+                return (lib, vis)
             }.value
-            guard gen == self.filterGeneration else { return }   // intussen opnieuw gefilterd
+            timing.indexMs = Date().timeIntervalSince(t0) * 1000
+            guard gen == self.filterGeneration else { return timing }   // intussen opnieuw gefilterd
+            let t1 = Date()
+            FetchLog.shared.noteVisibility(sid, vis)
             if let result {
-                MainTasks.shared.run("gefilterde catalogus tonen") {
-                    self.library = result
+                MainTasks.shared.run("apply") {
+                    self.publish(result)
                     self.libraryRawVersion = rv
                     self.libraryContext = ctx
                 }
             }
             if self.isFiltering { self.isFiltering = false }
+            timing.applyMs = Date().timeIntervalSince(t1) * 1000
+            return timing
         }
+    }
+
+    /// Build 148 (diagnose): per soort zichtbaar, en hoeveel er verborgen is door categorieën of het kinderfilter
+    /// (de rest: leeftijd, kinderslot, eigen verborgen titels = overig). Dubbele titels laat de app gewoon staan.
+    nonisolated static func visibilityStats(_ raw: Library, _ lib: Library, _ ctx: FilterContext) -> [FetchStatus.Kind: FetchVisibility] {
+        let c = ctx.custom
+        var cat: [String: Bool] = [:], kid: [String: Bool] = [:]
+        func catHidden(_ g: String) -> Bool {
+            if let v = cat[g] { return v }
+            let v = !ctx.kids && (ctx.hiddenGroups.contains(g) || c.hidden.contains(Customization.groupKey(g))
+                                  || c.hidden.contains(Customization.groupKey(c.merged[g] ?? g)))
+            cat[g] = v
+            return v
+        }
+        func kidsHidden(_ g: String) -> Bool {
+            guard ctx.kids else { return false }
+            if let v = kid[g] { return v }
+            let v = !KidsCategory.isKids(g)
+            kid[g] = v
+            return v
+        }
+        func stats(_ groups: [String], visible: Int) -> FetchVisibility {
+            var cats = 0, kids = 0
+            for g in groups { if catHidden(g) { cats += 1 } else if kidsHidden(g) { kids += 1 } }
+            return FetchVisibility(visible: visible, hidden: HiddenCounts.make(delivered: groups.count, visible: visible,
+                                                                               categories: cats, kids: kids, duplicates: 0))
+        }
+        return [.live: stats(raw.channels.map(\.group), visible: lib.channels.count),
+                .movie: stats(raw.movies.map(\.group), visible: lib.movies.count),
+                .series: stats(raw.series.map(\.group), visible: lib.series.count)]
     }
 
     /// Zelfde zenders, films en series (met dezelfde namen/groepen) uit dezelfde ongefilterde lijst?
@@ -870,13 +959,14 @@ final class PlaylistService: ObservableObject {
         let a = try? FileManager.default.attributesOfItem(atPath: Self.cacheURL(s).path)
         return (a?[.modificationDate] as? Date).map { Date().timeIntervalSince($0) }
     }
-    private func writeCache(_ s: PlaylistSource, _ lib: Library) {
+    /// Build 148: wachten tot het bewaard is (fase `save` van het bijwerken)
+    private func writeCache(_ s: PlaylistSource, _ lib: Library) async {
         let url = Self.cacheURL(s)
         // build 144: .utility i.p.v. .background: met .background stelde het systeem het wegschrijven soms zo lang uit
         // dat de app eerder stopte; dan was er bij de volgende start geen bewaarde lijst en werd alles opnieuw opgehaald
-        Task.detached(priority: .utility) {
+        await Task.detached(priority: .utility) {
             if let d = try? JSONEncoder().encode(lib) { try? d.write(to: url, options: .atomic) }
-        }
+        }.value
     }
     func clearCache(_ s: PlaylistSource) { try? FileManager.default.removeItem(at: Self.cacheURL(s)) }
 }

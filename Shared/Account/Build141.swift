@@ -123,7 +123,7 @@ enum StartDiag {
     }
 
     static let hangLimit: Double = 10
-    static let finalMark = "klaar"
+    static let finalMark = "ready"
 
     /// Wat er mis was met de vorige start (nil = die kwam gewoon bij "klaar", zonder crash of lange hang).
     static func analyze(_ r: Record?, crashLog: String? = nil) -> Problem? {

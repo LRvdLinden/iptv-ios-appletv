@@ -436,7 +436,7 @@ final class StateSync {
         // build 147: pincode-hashes (PBKDF2, 100.000 iteraties) vooraf buiten de hoofdthread uitrekenen
         await preparePins(server)
         defer { pinMade = [:]; pinMatch = [:] }
-        let taskID = MainTasks.shared.begin("sync toepassen")
+        let taskID = MainTasks.shared.begin("sync_apply")
         defer { MainTasks.shared.end(taskID) }
 
         var uploads: [(String, [String: Any])] = []
