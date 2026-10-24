@@ -698,7 +698,9 @@ final class PlayerController: ObservableObject {
         // audio: de voorkeurstaal (instelling, anders de app-taal) als de stream meer dan één audiotaal heeft
         // bij "zoals in de stream" niets kiezen
         let tracks = engine.audioTracks
-        if let prefAudio = TrackPreferences.autoAudio, tracks.count > 1, let t = tracks.first(where: { TrackPreferences.matches($0, code: prefAudio) }), t.id != engine.currentAudio {
+        // build 148: bij live niet meer wisselen na de start: de voorkeurstaal is al vóór het afspelen gekozen (VLC
+        // `:audio-language`, AVPlayer `setMediaSelectionCriteria`); een wissel tijdens live leegde de buffer (hapering ±5 s)
+        if !isLive, let prefAudio = TrackPreferences.autoAudio, tracks.count > 1, let t = tracks.first(where: { TrackPreferences.matches($0, code: prefAudio) }), t.id != engine.currentAudio {
             engine.selectAudio(t)
         }
         // na het wisselen van engine: hetzelfde spoor als daarvoor (op taal, anders op naam)
@@ -734,7 +736,7 @@ final class PlayerController: ObservableObject {
         let mode = TrackPreferences.subtitleMode
         if mode == .off {
             // oude instelling "ondertitels uit": ook een standaardspoor van de stream uitzetten
-            if TrackPreferences.subtitle == "off" { engine.selectSubtitle(nil) }
+            if TrackPreferences.subtitle == "off", engine.currentSubtitle != nil { engine.selectSubtitle(nil) }
             return
         }
         let want = TrackPreferences.preferredSubtitle

@@ -232,8 +232,15 @@ final class VLCEngine: PlaybackEngine {
     var subtitleTracks: [MediaTrack] { tracks(player.videoSubTitlesNames, player.videoSubTitlesIndexes).filter { $0.id != "-1" } }
     var currentAudio: String? { String(player.currentAudioTrackIndex) }
     var currentSubtitle: String? { player.currentVideoSubTitleIndex == -1 ? nil : String(player.currentVideoSubTitleIndex) }
-    func selectAudio(_ t: MediaTrack) { if let i = Int32(t.id) { player.currentAudioTrackIndex = i } }
-    func selectSubtitle(_ t: MediaTrack?) { player.currentVideoSubTitleIndex = t.flatMap { Int32($0.id) } ?? -1 }
+    // build 148: alleen wisselen als het spoor echt anders is: een spoorwissel (ook naar hetzelfde spoor) laat VLC de
+    // stroom opnieuw kiezen, en dat gaf bij live een korte hapering een paar seconden na de start
+    func selectAudio(_ t: MediaTrack) {
+        if let i = Int32(t.id), player.currentAudioTrackIndex != i { player.currentAudioTrackIndex = i }
+    }
+    func selectSubtitle(_ t: MediaTrack?) {
+        let i = t.flatMap { Int32($0.id) } ?? -1
+        if player.currentVideoSubTitleIndex != i { player.currentVideoSubTitleIndex = i }
+    }
     func addSubtitle(_ file: URL) { _ = player.addPlaybackSlave(file, type: .subtitle, enforce: true) }
     func setSubtitleDelay(_ seconds: Double) { player.currentVideoSubTitleDelay = Int(seconds * 1_000_000) }
 
@@ -518,14 +525,21 @@ final class AVEngine: PlaybackEngine {
     }
     var currentAudio: String? { current(.audible) }
     var currentSubtitle: String? { current(.legible) }
+    // build 148: alleen wisselen als het spoor echt anders is (een mediaselectie leegt bij HLS de buffer; bij live gaf
+    // dat een hapering een paar seconden na de start, als de voorkeurssporen werden toegepast)
     func selectAudio(_ t: MediaTrack) {
-        guard let g = group(.audible), let i = Int(t.id), i < g.options.count else { return }
-        player.currentItem?.select(g.options[i], in: g)
+        guard let g = group(.audible), let i = Int(t.id), i < g.options.count, let item = player.currentItem else { return }
+        if item.currentMediaSelection.selectedMediaOption(in: g) == g.options[i] { return }
+        item.select(g.options[i], in: g)
     }
     func selectSubtitle(_ t: MediaTrack?) {
-        guard let g = group(.legible) else { return }
-        if let t, let i = Int(t.id), i < g.options.count { player.currentItem?.select(g.options[i], in: g) }
-        else { player.currentItem?.select(nil, in: g) }
+        guard let g = group(.legible), let item = player.currentItem else { return }
+        let current = item.currentMediaSelection.selectedMediaOption(in: g)
+        if let t, let i = Int(t.id), i < g.options.count {
+            if current != g.options[i] { item.select(g.options[i], in: g) }
+        } else if current != nil {
+            item.select(nil, in: g)
+        }
     }
     func addSubtitle(_ file: URL) {}
     func setSubtitleDelay(_ seconds: Double) {}   // externe ondertitels: via de eigen overlay
