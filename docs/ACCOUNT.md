@@ -1596,3 +1596,80 @@ die echte build- en aanleverjob(s), niet naar test- of rooktest-jobs en niet naa
 - **Builds:** het pakket (`.ipk`) gaat versleuteld naar de privé inbox met `tools/seal_build.sh` van bingr-beheer, platform
   `webos` (zie de README daar). Niet openbaar: alleen via het beheer (tab Downloads, kortgeldige link).
 - **Changelog:** platform `webos` (vanaf build 147).
+
+## Build 148: diagnose-schema 3 (codes, langste hang, bijwerken per server, geleverd en zichtbaar, app-taal)
+
+Server: functie `support` accepteert schema 3 vanaf build 148. **Terugwaarts compatibel:** schema 1 en 2 blijven geldig en
+worden opgeslagen en getoond zoals in build 146/147. Een app die schema 3 stuurt naar een oudere server krijgt
+`diagnostics:"stripped"` (de nieuwe velden vallen weg, de rest komt door als schema 2).
+
+### 1. Diagnose-bijlage, schema 3
+
+Alles van schema 2 (zie "Build 147") blijft, met `schema: 3` en daarbovenop:
+
+| Veld | Type | Inhoud |
+|---|---|---|
+| `schema` | getal | `3` (een hoger getal wordt als 3 gelezen; `2` = schema 2, zonder of `1` = schema 1) |
+| `app.lang` | taalcode | de **app-taal** (de taal waarin de app de teksten toont, niet die van het systeem): `nl`, `en`, `de`, … (`^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$`, ≤ 12) |
+| `milestones[].code` | code | mijlpaal als **code** (zie de vaste lijst hieronder), in plaats van `name`. `name` (de oude naam) mag nog meekomen; elke mijlpaal heeft `code` of `name` |
+| `start.longestHang` | object, optioneel | langste hang van de hoofdthread in **deze** start: `{ms, task, milestone, foreground, stack}` |
+| `start.longestHang.ms` | getal (0–3 600 000) | duur van de hang in ms |
+| `start.longestHang.task` | code | actieve taak of fase tijdens de hang (code uit de lijst, bv. `apply`, `catalog_sort`) |
+| `start.longestHang.milestone` | code | laatste mijlpaal vóór de hang (bv. `ready`) |
+| `start.longestHang.foreground` | boolean | stond de app op de voorgrond? |
+| `start.longestHang.stack` | lijst, max. 30 regels van ≤ 200 | momentopname van de stack van de hoofdthread, gesymboliseerd (opgeschoond zoals `start.previous.stack`) |
+| `start.previous.task`, `start.previous.milestone` | code | in schema 3 ook als code (tekst van schema 2 blijft toegestaan en wordt opgeschoond) |
+| `updates` | lijst, max. **5** | de laatste keren bijwerken van een server, nieuwste eerst |
+| `updates[].server` | `s1` … `s99` | server geanonimiseerd, zoals bij `fetch` |
+| `updates[].at` | ISO-8601 | begin van het bijwerken |
+| `updates[].phases` | lijst, max. **5** | `{code, ms, memMB}` in volgorde: `code` = `fetch` (ophalen) \| `parse` (inlezen) \| `index` (indexeren) \| `apply` (toepassen) \| `save` (bewaren); `ms` = duur (0–3 600 000); `memMB` = geheugen van de app aan het eind van de fase (0–100 000) |
+| `updates[].totalMs` | getal (0–3 600 000) | totale duur |
+| `updates[].peakMB` | getal (0–100 000) | piekgeheugen tijdens het bijwerken |
+| `updates[].result` | `ok` \| `failed` \| `cancelled` | uitkomst |
+| `fetch[].delivered` | getal (0–10 000 000) | wat de provider leverde (vóór filters) |
+| `fetch[].visible` | getal (0–10 000 000) | wat de gebruiker ziet |
+| `fetch[].hidden` | object | reden van het verschil, aantallen: `{categories, kids, duplicates, other}` (verborgen categorieën, kinderfilter, dubbel, overig) |
+
+`fetch[].count` (schema 2) mag blijven; het beheer toont bij schema 3 `delivered` en `visible`, bv.
+"Films: 36.593 geleverd · 10.286 zichtbaar (26.307 verborgen door categorieën)".
+
+**Codes** (mijlpalen, taken en fasen): snake_case Engels, `^[a-z][a-z0-9_]{0,39}$`. Vaste lijst:
+
+`started`, `storage`, `account`, `first_frame`, `intro_done`, `profile_picker`, `profile_picked`, `pin_screen`, `pin_ok`,
+`profile`, `servers`, `home`, `catalog`, `ready`, `fetch`, `parse`, `index`, `apply`, `save`, `sync_apply`,
+`catalog_filter`, `catalog_sort`, `catalog_meta`, `pin_migrate`, `rows_build`, `guide_parse`.
+
+- Nieuwe codes alleen in deze stijl, en altijd melden (dan komt de vertaling erbij in het beheer). Een onbekende code in
+  de juiste stijl komt door en wordt in het beheer als code getoond.
+- De bijlage bevat **alleen codes en getallen**, geen teksten in de app-taal. De app vertaalt de codes zelf voor de tabs
+  Diagnose en Support (NL, EN en de andere app-talen); het beheer vertaalt ze naar het Nederlands, ook de oude namen
+  van schema 1/2 (`launch`, `session`, `splash`, `profiles`, `sources`, `servers_loaded`, `epg`, …).
+
+Voorbeeld (komt ongewijzigd door, zie `EXAMPLE3` in `diagnostics_test.ts`):
+
+```json
+{"schema":3,"kind":"start","createdAt":"2026-10-24T14:04:00.000Z",
+ "app":{"platform":"ios","version":"1.0.1","build":148,"engine":"vlc","lang":"nl"},
+ "device":{"type":"phone","model":"iPhone 17 Pro Max","manufacturer":"Apple","os":"iOS","osVersion":"27.2","language":"nl-NL"},
+ "start":{"summary":"slow","appMs":5300,"userWaitMs":11600,"maxHangMs":5500,
+  "longestHang":{"ms":5500,"task":"apply","milestone":"ready","foreground":true,"stack":["0 Bingr CatalogStore.apply(_:) + 210","1 Bingr ServerSync.finish() + 64"]},
+  "previous":{"problem":"hang","milestone":"ready","seconds":110,"foreground":true,"task":"apply","build":147}},
+ "milestones":[{"code":"started","ms":0},{"code":"first_frame","ms":300},{"code":"profile_picked","ms":12100},{"code":"ready","ms":16900},{"code":"fetch","ms":20800},{"code":"save","ms":42300}],
+ "updates":[{"server":"s1","at":"2026-10-24T14:04:20.000Z","phases":[{"code":"fetch","ms":3900,"memMB":210},{"code":"parse","ms":6200,"memMB":455},
+   {"code":"index","ms":2100,"memMB":430},{"code":"apply","ms":5500,"memMB":440},{"code":"save","ms":3800,"memMB":320}],"totalMs":21500,"peakMB":455,"result":"ok"}],
+ "fetch":[{"server":"s1","kind":"live","status":"ok","delivered":11784,"visible":1056,"hidden":{"categories":10728,"kids":0,"duplicates":0,"other":0}},
+  {"server":"s1","kind":"movie","status":"ok","delivered":36593,"visible":10286,"hidden":{"categories":26307,"kids":0,"duplicates":0,"other":0}},
+  {"server":"s1","kind":"series","status":"ok","delivered":8773,"visible":3570,"hidden":{"categories":5203,"kids":0,"duplicates":0,"other":0}}],
+ "network":{"type":"wifi","online":true},
+ "memory":{"appMB":455,"lowMemory":false},
+ "state":{"signedIn":true,"profiles":2,"servers":1,"channels":1056,"movies":10286,"series":3570}}
+```
+
+- **Opschonen:** zoals schema 2. Codes die niet aan het patroon voldoen vallen weg; `updates` zonder geldige `server` of
+  met meer dan 5 items/fasen worden ingekort; fasen met een onbekende code vallen weg. Elke aanpassing =
+  `diagnostics:"stripped"`.
+- **Grenzen:** gelijk aan schema 2 (ruw 48 KB, aanvraag 80 KB, na opschonen 20 KB). Inkorten bij te groot: `crash.stack`,
+  `start.previous.stack`, `start.longestHang.stack`, `milestones`, `fetch`, daarna `updates`.
+- **Beheer:** toont schema 3 met de codes in het Nederlands, de langste hang van deze start (duur, taak, mijlpaal,
+  voorgrond, stack), de laatste 5 keer bijwerken per server met per fase ms en MB (balkje), per soort "geleverd ·
+  zichtbaar (x verborgen door categorieën / kinderfilter / dubbel)" en de app-taal. **Kopiëren** neemt dit allemaal mee.
