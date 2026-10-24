@@ -11,12 +11,12 @@ enum MainThreadSampler {
     private static let maxFrames = 40
     nonisolated(unsafe) private static var mainPort: mach_port_t = 0
 
-    /// Op de hoofdthread aanroepen (zo vroeg mogelijk), anders via pthread.
+    /// Op de hoofdthread aanroepen (zo vroeg mogelijk); anders op de hoofdthread ingepland.
     static func captureMainThread() {
         if Thread.isMainThread {
             mainPort = mach_thread_self()
         } else {
-            mainPort = pthread_mach_thread_np(pthread_main_thread_np())
+            DispatchQueue.main.async { mainPort = mach_thread_self() }
         }
     }
 
