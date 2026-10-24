@@ -90,6 +90,11 @@ jobs:
           c3, b3 = req("GET", f"{API}/analytics/endpoints/logs?" + urllib.parse.urlencode({"sql": CQ, "iso_timestamp_start": start.isoformat().replace("+00:00", "Z"), "iso_timestamp_end": end.isoformat().replace("+00:00", "Z")}))
           ks = [f"{x.get('k')}={x.get('n')}" for x in (b3.get("result") or []) if re.fullmatch(r"[A-Za-z0-9_.]{1,80}", str(x.get("k")))] if isinstance(b3, dict) else []
           print(f"::notice::landcode in de logs (6 uur): {', '.join(ks) or 'geen veld met country'} (HTTP {c3})")
+          EQ = ("SELECT substring(event_message, 1, 40) AS m, count() AS n FROM logs WHERE source = 'function_logs' "
+                "AND startsWith(event_message, 'country') GROUP BY m ORDER BY n DESC LIMIT 5")
+          c4, b4 = req("GET", f"{API}/analytics/endpoints/logs?" + urllib.parse.urlencode({"sql": EQ, "iso_timestamp_start": start.isoformat().replace("+00:00", "Z"), "iso_timestamp_end": end.isoformat().replace("+00:00", "Z")}))
+          es = [f"{re.sub(r'[^A-Za-z0-9 _-]', '', str(x.get('m')))}={x.get('n')}" for x in (b4.get("result") or [])] if isinstance(b4, dict) else []
+          print(f"::notice::fouten bij het opslaan van het land (6 uur): {', '.join(es) or 'geen'} (HTTP {c4})")
           # controle: komen de dagrijen, de piekmeting en de landen binnen? (alleen aantallen)
           c, r = sql("select (select count(*) from public.admin_server_daily) as days, "
                      "(select count(*) from cron.job where jobname in ('bingr-server-sample', 'bingr-server-snapshot') and active) as jobs, "
