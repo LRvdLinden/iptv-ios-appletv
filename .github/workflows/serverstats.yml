@@ -87,8 +87,10 @@ jobs:
           end = now; start = now - datetime.timedelta(hours=6)
           CQ = ("SELECT concat(source, ':', k) AS k, count() AS n FROM logs ARRAY JOIN mapKeys(log_attributes) AS k WHERE source IN ('function_edge_logs', 'edge_logs') "
                 "AND (positionCaseInsensitive(k, 'country') > 0 OR positionCaseInsensitive(k, 'cf_ip') > 0) GROUP BY k "
-                "UNION ALL SELECT concat('device-auth:', extract(log_attributes['request.url'], '/functions/v1/([a-z-]+)')) AS k, count() AS n FROM logs "
-                "WHERE source = 'function_edge_logs' AND position(log_attributes['request.url'], 'device-auth') > 0 GROUP BY k")
+                "UNION ALL SELECT concat('device-auth-cc:', if(match(log_attributes['request.headers.cf_ipcountry'], '^[A-Z]{2}$') AND log_attributes['request.headers.cf_ipcountry'] != 'XX', 'geldig', 'leeg')) AS k, count() AS n FROM logs "
+                "WHERE source = 'function_edge_logs' AND position(log_attributes['request.url'], 'device-auth') > 0 GROUP BY k "
+                "UNION ALL SELECT concat('device-auth-status:', log_attributes['response.status_code']) AS k, count() AS n FROM logs "
+                "WHERE source = 'function_edge_logs' AND position(log_attributes['request.url'], 'device-auth') > 0 AND timestamp > now() - INTERVAL 30 MINUTE GROUP BY k")
           c3, b3 = req("GET", f"{API}/analytics/endpoints/logs?" + urllib.parse.urlencode({"sql": CQ, "iso_timestamp_start": start.isoformat().replace("+00:00", "Z"), "iso_timestamp_end": end.isoformat().replace("+00:00", "Z")}))
           ks = [f"{x.get('k')}={x.get('n')}" for x in (b3.get("result") or []) if re.fullmatch(r"[A-Za-z0-9_.:-]{1,80}", str(x.get("k")))] if isinstance(b3, dict) else []
           print(f"::notice::landcode in de logs (6 uur): {', '.join(ks) or 'geen veld met country'} (HTTP {c3})")
