@@ -3564,6 +3564,332 @@ grant usage on schema public to supabase_auth_admin;
 grant execute on function public.bingr_access_token_hook(jsonb) to supabase_auth_admin;
 -- <<< unittest login-function
 
+-- ============================================================================================================
+-- Beheer (bingr-beheer, functie admin): Kijkt nu, tab Server, landen en Windows. Alleen voor het beheer: geen changelog.
+-- Alles hier is alleen voor de service role (de functie admin en device-auth); nooit voor anon of authenticated.
+
+-- 1. Platformgroep van een apparaat (account_devices.platform is wat de app stuurt: "iPhone", "iPad", "Mac", "Apple TV",
+--    "Android", "Android tablet", "Android TV", "Google TV", "Fire TV", "tizen", "browser", sinds de Windows-app "windows").
+--    Zelfde regels als platformFromDevice in _shared/plans.ts, plus windows. Onbekend = 'other'.
+create or replace function public.bingr_platform_group(p text) returns text
+language sql immutable set search_path = public as $$
+  select case
+    when s ~ '^(apple ?tv|tvos)$' then 'tvos'
+    when s ~ '^(iphone|ios)$' then 'ios'
+    when s ~ '^(ipad|ipados)$' then 'ipados'
+    when s ~ '^(mac|macos|mac catalyst)$' then 'macos'
+    when s ~ '^(tizen|samsung tv)$' then 'tizen'
+    when s ~ '^(windows|win32|win64)$' then 'windows'
+    when s ~ '^(browser|web)$' then 'web'
+    when s ~ '(android ?tv|google ?tv|fire ?tv|androidtv)' then 'androidtv'
+    when s ~ '^android' then 'android'
+    else 'other' end
+  from (select lower(btrim(coalesce(p, ''))) s) x;
+$$;
+revoke all on function public.bingr_platform_group(text) from public, anon, authenticated;
+grant execute on function public.bingr_platform_group(text) to service_role;
+
+-- 2. Land per account (laatst gezien) en per apparaat. Alleen de landcode (ISO 3166-1 alpha-2) die Cloudflare vóór de
+--    Edge Functions meegeeft (header cf-ipcountry, bepaald uit het netwerk); nooit het IP-adres. device-auth zet het bij
+--    register_device en heartbeat (_shared/country.ts). Hoogstens één schrijfactie per uur per account als het land gelijk
+--    blijft. Gaat mee bij het verwijderen van het account (on delete cascade).
+create table if not exists public.account_country (
+  user_id    uuid primary key references auth.users(id) on delete cascade,
+  country    text not null check (country ~ '^[A-Z]{2}$'),
+  updated_at timestamptz not null default now()
+);
+create index if not exists account_country_cc_idx on public.account_country (country);
+alter table public.account_country enable row level security;
+revoke all on public.account_country from anon, authenticated;
+alter table public.account_devices add column if not exists country text;
+
+create or replace function public.bingr_set_country(p_user uuid, p_device text, p_country text) returns void
+language plpgsql security definer set search_path = public as $$
+declare cc text := upper(btrim(coalesce(p_country, '')));
+begin
+  -- XX = onbekend, T1 = Tor (Cloudflare); alleen echte landcodes
+  if p_user is null or cc !~ '^[A-Z]{2}$' or cc in ('XX', 'T1') then return; end if;
+  insert into public.account_country as c (user_id, country) values (p_user, cc)
+  on conflict (user_id) do update set country = excluded.country, updated_at = now()
+    where c.country <> excluded.country or c.updated_at < now() - interval '1 hour';
+  if coalesce(p_device, '') <> '' then
+    update public.account_devices set country = cc where user_id = p_user and device_id = p_device and country is distinct from cc;
+  end if;
+exception when foreign_key_violation then
+  return; -- account net verwijderd
+end $$;
+revoke all on function public.bingr_set_country(uuid, text, text) from public, anon, authenticated;
+grant execute on function public.bingr_set_country(uuid, text, text) to service_role;
+
+-- Verdeling per land voor het overzicht: accounts (laatst gezien land) en hoeveel daarvan actief in 30 dagen.
+create or replace function public.bingr_admin_countries() returns jsonb
+language sql stable security definer set search_path = public, auth as $$
+  select jsonb_build_object(
+    'accounts', (select count(*) from auth.users),
+    'known', (select count(*) from public.account_country c join auth.users u on u.id = c.user_id),
+    'items', coalesce((select jsonb_agg(jsonb_build_object('country', x.country, 'accounts', x.n, 'active_30d', x.a) order by x.n desc, x.country)
+      from (select c.country, count(*) n,
+                   count(*) filter (where exists (select 1 from public.account_logins l where l.user_id = c.user_id
+                                                  and l.day > (now() at time zone 'utc')::date - 30)) a
+              from public.account_country c join auth.users u on u.id = c.user_id group by c.country) x), '[]'::jsonb));
+$$;
+revoke all on function public.bingr_admin_countries() from public, anon, authenticated;
+grant execute on function public.bingr_admin_countries() to service_role;
+
+-- Filter van de gebruikerslijst, nu ook op land: 'country:NL' (laatst gezien land) of 'country:?' (nog onbekend).
+-- Zelfde als hierboven voor de andere filters (deze definitie vervangt die van bovenaan dit bestand).
+create or replace function public.bingr_admin_user_match(p_user uuid, p_filter text) returns boolean
+language plpgsql stable security definer set search_path = public, auth as $$
+declare f text := coalesce(p_filter, '');
+begin
+  if f like 'country:%' then
+    if f = 'country:?' then return not exists (select 1 from public.account_country c where c.user_id = p_user); end if;
+    return exists (select 1 from public.account_country c where c.user_id = p_user and c.country = substr(f, 9, 2));
+  end if;
+  return case f
+    when 'blocked' then exists (select 1 from public.account_blocks b where b.user_id = p_user and b.lifted_at is null)
+    when 'lifetime' then exists (select 1 from public.account_plans p where p.user_id = p_user and p.plan = 'lifetime')
+    when 'free' then not exists (select 1 from public.account_plans p where p.user_id = p_user and p.plan = 'lifetime')
+    when 'custom' then exists (select 1 from public.account_plans p where p.user_id = p_user and (p.max_streams is not null or p.max_devices is not null))
+    else true end;
+end $$;
+revoke all on function public.bingr_admin_user_match(uuid, text) from public, anon, authenticated;
+grant execute on function public.bingr_admin_user_match(uuid, text) to service_role;
+
+-- 3. Kijkt nu (tegel op het overzicht): wie kijkt er nu, met account, profiel, apparaat, platform, titel en soort.
+--    Zelfde grens als stats.watching_now (ping in de laatste 90 s). Titels en profielnamen kunnen versleuteld zijn
+--    (`enc1:…`, build 146); de functie admin ontsleutelt ze in het geheugen en maskeert het e-mailadres. Max. 500 rijen.
+create or replace function public.bingr_admin_streams_now() returns jsonb
+language sql stable security definer set search_path = public, auth as $$
+  select coalesce(jsonb_agg(jsonb_build_object(
+      'user_id', s.user_id, 'email', u.email,
+      'first_name', nullif(btrim(u.raw_user_meta_data->>'first_name'), ''), 'last_name', nullif(btrim(u.raw_user_meta_data->>'last_name'), ''),
+      'plan', coalesce(p.plan, 'free'), 'country', c.country,
+      'device_name', d.name, 'platform', d.platform, 'platform_group', public.bingr_platform_group(d.platform),
+      'app_version', d.app_version, 'device_country', d.country,
+      'profile_name', s.profile_name, 'title', s.title, 'series_title', s.series_title, 'kind', s.kind,
+      'started_at', s.started_at, 'last_ping', s.last_ping) order by s.started_at desc), '[]'::jsonb)
+  from (select * from public.account_streams where last_ping > now() - interval '90 seconds' order by started_at desc limit 500) s
+  join auth.users u on u.id = s.user_id
+  left join public.account_devices d on d.user_id = s.user_id and d.device_id = s.device_id
+  left join public.account_plans p on p.user_id = s.user_id
+  left join public.account_country c on c.user_id = s.user_id;
+$$;
+revoke all on function public.bingr_admin_streams_now() from public, anon, authenticated;
+grant execute on function public.bingr_admin_streams_now() to service_role;
+
+-- 4. Tab Server: actuele stand (bingr_admin_server_now) en één rij per dag (admin_server_daily, UTC) voor de grafieken.
+--    Alleen aantallen en groottes; geen gegevens per persoon. pg_cron: bingr-server-sample (elke 5 min: piek van
+--    gelijktijdige streams) en bingr-server-snapshot (elk uur: de rij van vandaag bijwerken). 800 dagen bewaard.
+create table if not exists public.admin_server_daily (
+  day        date primary key,
+  data       jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+alter table public.admin_server_daily enable row level security;
+revoke all on public.admin_server_daily from anon, authenticated;
+
+-- schatting van het aantal rijen (statistieken van Postgres, geen count(*) op grote tabellen); null = bestaat niet
+create or replace function public.bingr_rel_rows(p_rel text) returns bigint
+language sql stable security definer set search_path = public as $$
+  select case when c.reltuples < 0 then null else c.reltuples::bigint end
+  from pg_class c where c.oid = to_regclass(p_rel);
+$$;
+revoke all on function public.bingr_rel_rows(text) from public, anon, authenticated;
+
+-- Grootte van de opslag per bucket (storage.objects.metadata.size), alleen aantallen en bytes.
+create or replace function public.bingr_storage_usage() returns jsonb
+language plpgsql stable security definer set search_path = public, storage as $$
+declare r jsonb;
+begin
+  select coalesce(jsonb_agg(jsonb_build_object('bucket', b.id, 'public', b.public, 'objects', coalesce(o.n, 0), 'bytes', coalesce(o.bytes, 0)) order by b.id), '[]'::jsonb)
+  into r from storage.buckets b
+  left join (select bucket_id, count(*) n, sum(coalesce((metadata->>'size')::bigint, 0)) bytes from storage.objects group by 1) o on o.bucket_id = b.id;
+  return r;
+exception when others then
+  return '[]'::jsonb;
+end $$;
+revoke all on function public.bingr_storage_usage() from public, anon, authenticated;
+
+-- Cron-jobs (pg_cron): naam, schema, aan/uit, laatste uitvoering en fouten in 24 uur. Geen commando's (daar kan een
+-- geheim in staan) en geen foutmeldingen (kunnen servergegevens bevatten). Zonder pg_cron: [].
+create or replace function public.bingr_cron_jobs() returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare r jsonb;
+begin
+  execute $q$
+    select coalesce(jsonb_agg(jsonb_build_object('name', j.jobname, 'schedule', j.schedule, 'active', j.active,
+        'last_start', l.start_time, 'last_end', l.end_time, 'last_status', l.status,
+        'runs_24h', coalesce(s.runs, 0), 'failed_24h', coalesce(s.failed, 0)) order by j.jobname), '[]'::jsonb)
+    from cron.job j
+    left join lateral (select d.start_time, d.end_time, d.status from cron.job_run_details d where d.jobid = j.jobid
+                       order by d.start_time desc limit 1) l on true
+    left join lateral (select count(*) runs, count(*) filter (where d.status = 'failed') failed from cron.job_run_details d
+                       where d.jobid = j.jobid and d.start_time > now() - interval '24 hours') s on true $q$ into r;
+  return r;
+exception when others then
+  return '[]'::jsonb;
+end $$;
+revoke all on function public.bingr_cron_jobs() from public, anon, authenticated;
+
+-- Tellers van één UTC-dag (voor admin_server_daily). Groottes en totalen zijn de stand op het moment van meten.
+create or replace function public.bingr_server_metrics(p_day date) returns jsonb
+language plpgsql stable security definer set search_path = public, auth as $$
+declare a timestamptz := p_day::timestamptz at time zone 'utc'; b timestamptz := (p_day + 1)::timestamptz at time zone 'utc';
+  st jsonb := public.bingr_storage_usage(); res jsonb;
+begin
+  res := jsonb_build_object(
+    'db_bytes', pg_database_size(current_database()),
+    'storage_bytes', (select coalesce(sum((e->>'bytes')::bigint), 0) from jsonb_array_elements(st) e),
+    'storage_objects', (select coalesce(sum((e->>'objects')::bigint), 0) from jsonb_array_elements(st) e),
+    'accounts', (select count(*) from auth.users),
+    'new_users', (select count(*) from auth.users where created_at >= a and created_at < b),
+    'active_users', (select count(*) from public.account_logins where day = p_day),
+    'devices', (select count(*) from public.account_devices),
+    'devices_active', (select jsonb_object_agg(g, n) from (select public.bingr_platform_group(platform) g, count(*) n
+                         from public.account_devices where last_seen_at > b - interval '30 days' and created_at < b group by 1) x),
+    'streams_started', (select count(*) from public.account_watch_log where started_at >= a and started_at < b),
+    'signins', coalesce((select n from public.bingr_audit_logins(2) where day = p_day), 0),
+    'login_failures', (select coalesce(sum(failures), 0) from public.auth_password_failures where updated_at >= a and updated_at < b),
+    'login_locks', (select count(*) from public.auth_password_failures where locked_until is not null and updated_at >= a and updated_at < b),
+    'blocked', (select count(distinct user_id) from public.account_blocks where lifted_at is null),
+    'proxy_requests', (select coalesce(sum(requests), 0) from public.proxy_usage where bucket >= a and bucket < b),
+    'proxy_bytes', (select coalesce(sum(bytes), 0) from public.proxy_usage where bucket >= a and bucket < b),
+    'push_sent', (select count(*) from public.push_deliveries where state = 'sent' and sent_at >= a and sent_at < b),
+    'push_failed', (select count(*) from public.push_deliveries where state in ('failed', 'invalid') and created_at >= a and created_at < b),
+    'mail_sent', (select count(*) from public.newsletter_deliveries where state = 'sent' and done_at >= a and done_at < b)
+               + (select count(*) from public.mailing_recipients where state = 'sent' and done_at >= a and done_at < b),
+    'mail_failed', (select count(*) from public.newsletter_deliveries where state = 'failed' and done_at >= a and done_at < b)
+               + (select count(*) from public.mailing_recipients where state = 'failed' and done_at >= a and done_at < b),
+    'rows', jsonb_build_object(
+      'account_watch_log', public.bingr_rel_rows('public.account_watch_log'), 'account_watch_stats', public.bingr_rel_rows('public.account_watch_stats'),
+      'admin_audit', public.bingr_rel_rows('public.admin_audit'), 'status_checks', public.bingr_rel_rows('public.status_checks'),
+      'push_deliveries', public.bingr_rel_rows('public.push_deliveries'), 'support_messages', public.bingr_rel_rows('public.support_messages'),
+      'rate_limits', public.bingr_rel_rows('public.rate_limits'), 'proxy_usage', public.bingr_rel_rows('public.proxy_usage'))
+  );
+  return res;
+end $$;
+revoke all on function public.bingr_server_metrics(date) from public, anon, authenticated;
+
+-- Elke 5 minuten: gelijktijdige streams nu; piek van vandaag (en per uur) in admin_server_daily.
+create or replace function public.bingr_admin_server_sample() returns void
+language plpgsql security definer set search_path = public as $$
+declare n int; d date := (now() at time zone 'utc')::date; h text := extract(hour from now() at time zone 'utc')::int::text;
+begin
+  select count(*) into n from public.account_streams where last_ping > now() - interval '90 seconds';
+  insert into public.admin_server_daily as x (day, data) values (d, jsonb_build_object('streams_peak', n, 'peak_h', jsonb_build_object(h, n)))
+  on conflict (day) do update set
+    data = x.data || jsonb_build_object(
+      'streams_peak', greatest(coalesce((x.data->>'streams_peak')::int, 0), n),
+      'peak_h', coalesce(x.data->'peak_h', '{}'::jsonb) || jsonb_build_object(h, greatest(coalesce((x.data->'peak_h'->>h)::int, 0), n))),
+    updated_at = now();
+end $$;
+revoke all on function public.bingr_admin_server_sample() from public, anon, authenticated;
+grant execute on function public.bingr_admin_server_sample() to service_role;
+
+-- Elk uur: de rij van vandaag bijwerken (en kort na middernacht die van gisteren afmaken). De piek en de gegevens van
+-- de Edge Functions (fn, gezet door de workflow Serverstatistieken) blijven staan.
+create or replace function public.bingr_admin_server_snapshot() returns void
+language plpgsql security definer set search_path = public as $$
+declare d date := (now() at time zone 'utc')::date; dd date;
+begin
+  foreach dd in array case when extract(hour from now() at time zone 'utc') < 1 then array[d - 1, d] else array[d] end loop
+    insert into public.admin_server_daily as x (day, data) values (dd, public.bingr_server_metrics(dd))
+    on conflict (day) do update set data = x.data || public.bingr_server_metrics(dd), updated_at = now();
+  end loop;
+  delete from public.admin_server_daily where admin_server_daily.day < d - 800;
+end $$;
+revoke all on function public.bingr_admin_server_snapshot() from public, anon, authenticated;
+grant execute on function public.bingr_admin_server_snapshot() to service_role;
+
+-- Actuele stand voor de tab Server (de functie admin): groottes, tabellen, opslag, cron, wachtrijen en tellers van vandaag.
+create or replace function public.bingr_admin_server_now() returns jsonb
+language plpgsql stable security definer set search_path = public, auth as $$
+declare d date := (now() at time zone 'utc')::date;
+begin
+  return jsonb_build_object(
+    'at', now(), 'day', d,
+    'today', public.bingr_server_metrics(d) || coalesce((select jsonb_build_object('streams_peak', x.data->'streams_peak', 'peak_h', x.data->'peak_h', 'fn', x.data->'fn')
+                                                         from public.admin_server_daily x where x.day = d), '{}'::jsonb),
+    'db', jsonb_build_object('bytes', pg_database_size(current_database()), 'version', current_setting('server_version_num')::int,
+                             'connections', (select count(*) from pg_stat_activity where datname = current_database())),
+    'tables', coalesce((select jsonb_agg(jsonb_build_object('name', t.name, 'bytes', t.bytes, 'rows', t.rows) order by t.bytes desc) from (
+        select n.nspname || '.' || c.relname as name, pg_total_relation_size(c.oid) as bytes,
+               case when c.reltuples < 0 then null else c.reltuples::bigint end as rows
+          from pg_class c join pg_namespace n on n.oid = c.relnamespace
+         where c.relkind in ('r', 'p') and n.nspname in ('public', 'auth', 'storage', 'cron', 'net')
+         order by pg_total_relation_size(c.oid) desc limit 20) t), '[]'::jsonb),
+    'counts', jsonb_build_object(
+      'accounts', (select count(*) from auth.users), 'confirmed', (select count(*) from auth.users where email_confirmed_at is not null),
+      'active_7d', (select count(distinct user_id) from public.account_logins where day > d - 7),
+      'active_30d', (select count(distinct user_id) from public.account_logins where day > d - 30),
+      'devices', (select count(*) from public.account_devices),
+      'streams_now', (select count(*) from public.account_streams where last_ping > now() - interval '90 seconds'),
+      'support_tickets', (select count(*) from public.support_tickets), 'push_devices', (select count(*) from public.push_devices),
+      'blocked', (select count(distinct user_id) from public.account_blocks where lifted_at is null),
+      'locked_now', (select count(*) from public.auth_password_failures where locked_until > now())),
+    'devices', coalesce((select jsonb_agg(jsonb_build_object('platform', g, 'devices', n, 'active_30d', a, 'live', l) order by n desc) from (
+        select public.bingr_platform_group(platform) g, count(*) n,
+               count(*) filter (where last_seen_at > now() - interval '30 days') a,
+               count(*) filter (where last_seen_at > now() - interval '15 minutes') l
+          from public.account_devices group by 1) x), '[]'::jsonb),
+    'storage', public.bingr_storage_usage(),
+    'cron', public.bingr_cron_jobs(),
+    'queues', jsonb_build_object(
+      'push', (select count(*) from public.push_deliveries where state in ('queued', 'sending')),
+      'newsletter', (select count(*) from public.newsletter_deliveries where state in ('queued', 'sending')),
+      'mailing', (select count(*) from public.mailing_recipients where state in ('queued', 'sending')),
+      'status_mail', (select count(*) from public.status_mail_queue where done_at is null and not cancelled)),
+    'proxy_30d', (select jsonb_build_object('requests', coalesce(sum(requests), 0), 'bytes', coalesce(sum(bytes), 0), 'accounts', count(distinct user_id))
+                    from public.proxy_usage where bucket > now() - interval '30 days'),
+    'first_day', (select min(day) from public.admin_server_daily)
+  );
+end $$;
+revoke all on function public.bingr_admin_server_now() from public, anon, authenticated;
+grant execute on function public.bingr_admin_server_now() to service_role;
+
+-- Dagrijen voor de grafieken (p_from t/m p_to, hoogstens 800 dagen).
+create or replace function public.bingr_admin_server_days(p_from date, p_to date) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(jsonb_build_object('day', day, 'data', data) order by day), '[]'::jsonb)
+  from public.admin_server_daily where day >= p_from and day <= p_to and day > p_to - 800;
+$$;
+revoke all on function public.bingr_admin_server_days(date, date) from public, anon, authenticated;
+grant execute on function public.bingr_admin_server_days(date, date) to service_role;
+
+-- Gegevens van de Edge Functions per dag (alleen de workflow Serverstatistieken, met de Management API in GitHub-secrets):
+-- p_fn = {"device-auth": {"calls": n, "errors": n, "avg_ms": n, "p95_ms": n}, …}. Overschrijft alleen data.fn van die dag.
+create or replace function public.bingr_admin_server_fn(p_day date, p_fn jsonb) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if p_day is null or jsonb_typeof(p_fn) is distinct from 'object' then return; end if;
+  insert into public.admin_server_daily as x (day, data) values (p_day, jsonb_build_object('fn', p_fn))
+  on conflict (day) do update set data = x.data || jsonb_build_object('fn', p_fn), updated_at = now();
+end $$;
+revoke all on function public.bingr_admin_server_fn(date, jsonb) from public, anon, authenticated;
+grant execute on function public.bingr_admin_server_fn(date, jsonb) to service_role;
+
+-- Planning (pg_cron, zonder geheim: alleen SQL in de database). cron.schedule met dezelfde naam werkt de taak bij.
+do $$ begin
+  perform cron.schedule('bingr-server-sample', '*/5 * * * *', $cmd$ select public.bingr_admin_server_sample(); $cmd$);
+  perform cron.schedule('bingr-server-snapshot', '41 * * * *', $cmd$ select public.bingr_admin_server_snapshot(); $cmd$);
+exception when others then
+  raise notice 'pg_cron niet beschikbaar (tab Server zonder dagrijen): %', sqlerrm;
+end $$;
+do $$ begin
+  -- meteen een rij voor vandaag (anders pas na het eerste uur)
+  if not exists (select 1 from public.admin_server_daily where day = (now() at time zone 'utc')::date) then
+    perform public.bingr_admin_server_snapshot();
+  end if;
+end $$;
+
+-- 5. Windows op de statuspagina (groep Apps): de GitHub-build van bingr-windows (zoals Apple) en de openbare download
+--    (bingr.online/windows -> dl.php?app=windows; soort head: alleen HEAD, telt niet als download).
+insert into public.status_monitors (id, name_nl, name_en, grp, kind, target, keyword, interval_min, public, enabled, builtin, sort) values
+  ('windows',  'Windows',            'Windows',          'apps', 'gh_workflow', 'LRvdLinden/bingr-windows|build.yml|main',        null, 15, true, true, true, 40),
+  ('exe',      'Windows-download',   'Windows download', 'apps', 'head',        'https://beheer.bingr.online/dl.php?app=windows', null, 15, true, true, true, 45)
+on conflict (id) do nothing;
+
 -- Opruimen (zoals hierboven), plus de tellers van de inlogbescherming per account.
 create or replace function public.bingr_cleanup() returns void
 language sql security definer set search_path = public as $$
