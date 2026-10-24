@@ -62,6 +62,7 @@ import { cleanDeviceName, deviceKind, deviceTypeLabel } from "./naming.ts";
 import { type PasswordCheck, passwordCheckResult } from "./password.ts";
 import { BANNED_BODY, bannedUntilActive, isBanError } from "../_shared/ban.ts";
 import { clientIp } from "../_shared/ip.ts";
+import { countryOf } from "../_shared/country.ts";
 import {
   entitlements, featureLocked, limitsFor, normalizePlan, normalizePlatform, normalizeUpgradeLink, platformFromDevice,
   type PlanRow, type UpgradeLink,
@@ -153,6 +154,15 @@ async function listDevices(userId: string, current?: string) {
 // goedkeuren is ingelogd (signed_in_at), zodat een ander apparaat van dezelfde soort dat toevallig opstart hem niet krijgt.
 // De naam krijgt custom_name = true: de standaardnaam van de app overschrijft hem daarna niet meer. Een fout stopt het
 // aanmelden nooit.
+// Land voor het beheer (alleen de landcode uit cf-ipcountry, nooit het IP; _shared/country.ts). Een fout blokkeert niets
+// en komt zonder land of account in het log.
+async function saveCountry(req: Request, userId: string, deviceId: string) {
+  const cc = countryOf(req);
+  if (!cc) return;
+  const { error } = await admin.rpc("bingr_set_country", { p_user: userId, p_device: deviceId, p_country: cc });
+  if (error && error.code !== "PGRST202") console.error("country", error.code ?? "fout");
+}
+
 async function pendingName(userId: string, deviceId: string, platform: string) {
   try {
     const since = new Date(Date.now() - 15 * 60 * 1000).toISOString();
@@ -469,6 +479,7 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
         return json({ error: "device_limit", limit, plan: normalizePlan(row?.plan), devices: await listDevices(user.id) }, 403);
       }
       await pendingName(user.id, device_id, platform);
+      await saveCountry(req, user.id, device_id);
       return json({ ok: true, limit });
     }
     case "heartbeat": {
@@ -484,6 +495,7 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       if (av) patch.app_version = av;
       if (ov) patch.os_version = ov;
       await admin.from("account_devices").update(patch).eq("user_id", user.id).eq("device_id", device_id);
+      await saveCountry(req, user.id, device_id);
       // actief vandaag (statistieken); één rij per account per dag
       await admin.from("account_logins").upsert({ user_id: user.id, day: new Date().toISOString().slice(0, 10) },
         { onConflict: "user_id,day", ignoreDuplicates: true });

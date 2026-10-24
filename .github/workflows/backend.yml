@@ -87,7 +87,7 @@ jobs:
         with:
           deno-version: v2.9.6   # vast (security M5); bijwerken = bewuste wijziging
       - name: Unittests (statistieken)
-        run: deno test supabase/functions/device-auth/stats_test.ts supabase/functions/device-auth/naming_test.ts supabase/functions/device-auth/password_test.ts supabase/functions/_shared/ban_test.ts supabase/functions/web-proxy/ip_test.ts
+        run: deno test supabase/functions/device-auth/stats_test.ts supabase/functions/device-auth/naming_test.ts supabase/functions/device-auth/password_test.ts supabase/functions/_shared/ban_test.ts supabase/functions/web-proxy/ip_test.ts supabase/functions/_shared/country_test.ts
       - name: Unittests (web-proxy, security M1/M2)
         # blokkeert de deploy: welke hosts/paden/poorten, veilige content-types, limieten, en de verbinding naar een vast IP
         run: deno test --allow-net=127.0.0.1 supabase/functions/web-proxy/policy_test.ts supabase/functions/web-proxy/pinned_test.ts supabase/functions/web-proxy/hls_test.ts
