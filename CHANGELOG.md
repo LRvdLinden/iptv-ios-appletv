@@ -4,6 +4,59 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.1 · Build 146
+_24 oktober 2026_
+
+### Alle apps en de website
+
+**Nieuw**
+
+- Support in de app (Instellingen → Support): je tickets in Open, In behandeling en Gesloten bekijken, reageren, sluiten en een nieuw ticket maken, met een badge bij een nieuw antwoord
+- Diagnose in Instellingen: startdiagnose en app-diagnose met je apparaat, systeem, netwerk, opslag en geheugen, zonder persoonsgegevens met één knop naar support te sturen
+- Servers vernieuwen in het profielmenu, boven Wissel profiel
+
+**Verbeterd**
+
+- Instellingen opnieuw ingedeeld in tabs: Algemeen, Afspelen, Taal en ondertitels, Servers, Profielen en kinderslot, Account, Koppelingen, Support, Diagnose en Over
+- De tv-gids wordt samen met je servers bijgewerkt; is hij verlopen, dan zie je een melding met Bijwerken
+- Windows-apparaten heten Windows, met een eigen icoon, in de apparatenlijst en bij Wie kijkt er nu
+
+### Alle apps, de website en de server
+
+**Verbeterd**
+
+- Pincodes worden alleen nog als beveiligde hash bewaard en gesynchroniseerd en zijn niet meer terug te lezen
+- Profielen synchroniseren versleuteld via de Bingr-server
+
+### iOS, iPadOS, macOS, Android, Windows en Website
+
+**Nieuw**
+
+- Pushmelding bij een antwoord van support; tikken opent het ticket
+
+### Windows en Website
+
+**Verbeterd**
+
+- Na 5 foute pincodes geldt ook in de webspeler een oplopende wachttijd
+
+### Website
+
+**Verbeterd**
+
+- Privacyverklaring: we bewaren het land waaruit je de apps gebruikt (alleen de landcode, geen IP-adres)
+- Statuspagina: Windows erbij (build en download)
+
+### Server
+
+**Verbeterd**
+
+- Kijkgeschiedenis, statistieken en supportberichten staan versleuteld opgeslagen
+
+**Opgelost**
+
+- Profielfoto's zijn beter afgeschermd per account
+
 ## Versie 1.0.1 · Build 145
 _24 oktober 2026_
 

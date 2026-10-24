@@ -1,5 +1,204 @@
 [
  {
+  "build": 146,
+  "version": "1.0.1",
+  "date": "2026-10-24",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web",
+     "windows"
+    ],
+    "nl": "Support in de app (Instellingen → Support): je tickets in Open, In behandeling en Gesloten bekijken, reageren, sluiten en een nieuw ticket maken, met een badge bij een nieuw antwoord",
+    "en": "Support in the app (Settings → Support): view your tickets in Open, In progress and Closed, reply, close them and create a new ticket, with a badge when there's a new reply"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "macos",
+     "android",
+     "web",
+     "windows"
+    ],
+    "nl": "Pushmelding bij een antwoord van support; tikken opent het ticket",
+    "en": "Push notification when support replies; tap to open the ticket"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web",
+     "windows"
+    ],
+    "nl": "Diagnose in Instellingen: startdiagnose en app-diagnose met je apparaat, systeem, netwerk, opslag en geheugen, zonder persoonsgegevens met één knop naar support te sturen",
+    "en": "Diagnostics in Settings: start and app diagnostics with your device, system, network, storage and memory, sent to support in one tap without personal data"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web",
+     "windows"
+    ],
+    "nl": "Instellingen opnieuw ingedeeld in tabs: Algemeen, Afspelen, Taal en ondertitels, Servers, Profielen en kinderslot, Account, Koppelingen, Support, Diagnose en Over",
+    "en": "Settings reorganised into tabs: General, Playback, Language and subtitles, Servers, Profiles and parental lock, Account, Connections, Support, Diagnostics and About"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web",
+     "windows",
+     "server"
+    ],
+    "nl": "Pincodes worden alleen nog als beveiligde hash bewaard en gesynchroniseerd en zijn niet meer terug te lezen",
+    "en": "PINs are now only stored and synced as a secure hash and can no longer be read back"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "web",
+     "windows"
+    ],
+    "nl": "Na 5 foute pincodes geldt ook in de webspeler een oplopende wachttijd",
+    "en": "After 5 wrong PINs the web player now also applies an increasing waiting time"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web",
+     "windows",
+     "server"
+    ],
+    "nl": "Profielen synchroniseren versleuteld via de Bingr-server",
+    "en": "Profiles now sync encrypted via the Bingr server"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web",
+     "windows"
+    ],
+    "nl": "Servers vernieuwen in het profielmenu, boven Wissel profiel",
+    "en": "Refresh servers from the profile menu, above Switch profile"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web",
+     "windows"
+    ],
+    "nl": "De tv-gids wordt samen met je servers bijgewerkt; is hij verlopen, dan zie je een melding met Bijwerken",
+    "en": "The TV guide is updated together with your servers; when it has expired you see a notice with Update"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web",
+     "windows"
+    ],
+    "nl": "Windows-apparaten heten Windows, met een eigen icoon, in de apparatenlijst en bij Wie kijkt er nu",
+    "en": "Windows devices show as Windows, with their own icon, in the device list and in Watching now"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "windows"
+    ],
+    "nl": "De Windows-app meldt zich bij je account als Windows",
+    "en": "The Windows app registers with your account as Windows"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Kijkgeschiedenis, statistieken en supportberichten staan versleuteld opgeslagen",
+    "en": "Watch history, statistics and support messages are stored encrypted"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Profielfoto's zijn beter afgeschermd per account",
+    "en": "Profile photos are better protected per account"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Privacyverklaring: we bewaren het land waaruit je de apps gebruikt (alleen de landcode, geen IP-adres)",
+    "en": "Privacy policy: we store the country you use the apps from (country code only, no IP address)"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Statuspagina: Windows erbij (build en download)",
+    "en": "Status page: Windows added (build and download)"
+   }
+  ]
+ },
+ {
   "build": 145,
   "version": "1.0.1",
   "date": "2026-10-24",
