@@ -26,7 +26,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      # bij voorkeur een fijnmazig token met alleen analytics_logs_read en database-schrijfrecht (SUPABASE_LOGS_TOKEN),
+      # anders het bestaande SUPABASE_ACCESS_TOKEN
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_LOGS_TOKEN || secrets.SUPABASE_ACCESS_TOKEN }}
       REF: ${{ secrets.SUPABASE_PROJECT_REF }}
     steps:
       - name: Edge Functions per dag
@@ -46,13 +48,13 @@ jobs:
               try: return code, json.loads(raw or b"{}")
               except Exception: return code, None
           def sql(q): return req("POST", f"{API}/database/query", {"query": q})
-          # analytics endpoint "logs" (ClickHouse-SQL, één tabel logs met source_name en de map log_attributes; logs.all is weg)
+          # analytics endpoint "logs" (ClickHouse-SQL, één tabel logs met de kolom source en de map log_attributes; logs.all is weg)
           Q = ("SELECT coalesce(nullIf(extract(log_attributes['request.url'], '/functions/v1/([A-Za-z0-9_-]+)'), ''), "
                "nullIf(extract(log_attributes['request.pathname'], '^/(?:functions/v1/)?([A-Za-z0-9_-]+)'), '')) AS fn, "
                "count() AS calls, countIf(toInt32OrZero(log_attributes['response.status_code']) >= 500) AS errors, "
                "avg(toFloat64OrZero(log_attributes['execution_time_ms'])) AS avg_ms "
-               "FROM logs WHERE source_name = 'function_edge_logs' GROUP BY fn")
-          KEYS = "SELECT k, count() AS n FROM logs ARRAY JOIN mapKeys(log_attributes) AS k WHERE source_name = 'function_edge_logs' GROUP BY k ORDER BY k"
+               "FROM logs WHERE source = 'function_edge_logs' GROUP BY fn")
+          KEYS = "SELECT k, count() AS n FROM logs ARRAY JOIN mapKeys(log_attributes) AS k WHERE source = 'function_edge_logs' GROUP BY k ORDER BY k"
           now = datetime.datetime.now(datetime.timezone.utc)
           today = now.date()
           days = [today - datetime.timedelta(days=1), today] if now.hour < 2 else [today]
