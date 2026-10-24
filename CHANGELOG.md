@@ -4,6 +4,35 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.1 · Build 148
+_25 oktober 2026_
+
+### Alle apps en de website
+
+**Verbeterd**
+
+- Een heel grote catalogus wordt in kleine stukjes ingelezen en toegepast, zodat de app blijft reageren en minder geheugen gebruikt
+- Diagnose in de taal van de app, met de langste hapering, het bijwerken per server, geleverd naast zichtbaar en haperingen tijdens het afspelen
+
+### iOS, iPadOS, tvOS en macOS
+
+**Opgelost**
+
+- Live tv via VLC en HLS bouwt een grotere buffer op, zodat netwerkschommelingen niet meer tot een hapering leiden
+
+### iOS, iPadOS, tvOS, macOS, Android, Android TV, Samsung TV (Tizen) en LG TV (webOS)
+
+**Opgelost**
+
+- Live tv hapert niet meer kort na een paar seconden afspelen: het audio- of ondertitelspoor wordt niet meer opnieuw gekozen als dat niet nodig is
+
+### Server
+
+**Verbeterd**
+
+- Een diagnose bij een supportvraag laat nu zien waar de app bij het starten en bijwerken op wacht, hoeveel van je catalogus verborgen is en of het afspelen haperde
+- Mails van Bingr: de afbeelding staat niet meer in een donker kader en een afbeelding die niet laadt geeft geen groot leeg vlak meer
+
 ## Versie 1.0.1 · Build 147
 _24 oktober 2026_
 

@@ -1,5 +1,88 @@
 [
  {
+  "build": 148,
+  "version": "1.0.1",
+  "date": "2026-10-25",
+  "items": [
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "webos"
+    ],
+    "nl": "Live tv hapert niet meer kort na een paar seconden afspelen: het audio- of ondertitelspoor wordt niet meer opnieuw gekozen als dat niet nodig is",
+    "en": "Live TV no longer stutters a few seconds into playback: the audio or subtitle track is no longer re-selected when it isn't needed"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "Live tv via VLC en HLS bouwt een grotere buffer op, zodat netwerkschommelingen niet meer tot een hapering leiden",
+    "en": "Live TV via VLC and HLS builds a larger buffer, so network fluctuations no longer cause a stutter"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "webos",
+     "web",
+     "windows"
+    ],
+    "nl": "Een heel grote catalogus wordt in kleine stukjes ingelezen en toegepast, zodat de app blijft reageren en minder geheugen gebruikt",
+    "en": "A very large catalog is read and applied in small steps, so the app stays responsive and uses less memory"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "webos",
+     "web",
+     "windows"
+    ],
+    "nl": "Diagnose in de taal van de app, met de langste hapering, het bijwerken per server, geleverd naast zichtbaar en haperingen tijdens het afspelen",
+    "en": "Diagnostics in the app language, with the longest hang, server updates per step, delivered next to visible and playback stalls"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Een diagnose bij een supportvraag laat nu zien waar de app bij het starten en bijwerken op wacht, hoeveel van je catalogus verborgen is en of het afspelen haperde",
+    "en": "A diagnostic report sent with a support request now shows what the app waits on during startup and updates, how much of your catalogue is hidden and whether playback stalled"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Mails van Bingr: de afbeelding staat niet meer in een donker kader en een afbeelding die niet laadt geeft geen groot leeg vlak meer",
+    "en": "Emails from Bingr: the image no longer sits in a dark frame and an image that doesn't load no longer leaves a large empty area"
+   }
+  ]
+ },
+ {
   "build": 147,
   "version": "1.0.1",
   "date": "2026-10-24",
