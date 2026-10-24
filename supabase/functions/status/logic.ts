@@ -12,6 +12,8 @@ export interface CheckResult {
   error?: string | null;
   detail?: string | null;
   skip?: boolean;
+  /** build 147: de controle heeft de storing zelf al bevestigd (bv. 2 mislukte builds op rij): meteen een storing */
+  confirmed?: boolean;
 }
 
 export interface MonitorState {
@@ -46,7 +48,7 @@ export function evaluate(prev: MonitorState, r: CheckResult): Evaluation {
     return { fail_streak: 0, ok_streak, checkState, current: prev.open && !close ? "down" : checkState, open: false, close };
   }
   const fail_streak = prev.fail_streak + 1;
-  const open = !prev.open && fail_streak >= FAILS_TO_OPEN;
+  const open = !prev.open && (fail_streak >= FAILS_TO_OPEN || r.confirmed === true);
   const down = prev.open || open;
   return { fail_streak, ok_streak: 0, checkState: down ? "down" : "degraded", current: down ? "down" : "degraded", open, close: false };
 }
@@ -117,4 +119,58 @@ export function durationS(start: string, end: string | null, now = Date.now()): 
 export function shortError(e: unknown): string {
   const s = e instanceof Error ? (e.name === "TimeoutError" || e.name === "AbortError" ? "timeout" : e.message) : String(e);
   return s.replace(/\s+/g, " ").trim().slice(0, 160) || "error";
+}
+
+// ---- build 147: GitHub-build-monitors (Apple, Android, Windows, webOS) ----
+// Alleen de echte build- en aanleverjob(s) tellen (doel "repo|workflow|branch|job1,job2"), niet test- of rooktest-jobs
+// en niet de conclusie van de hele run. Geannuleerde, overgeslagen en lopende runs tellen niet: dan geldt de laatste
+// afgeronde run. Eén mislukte run = verminderd; een storing pas na 2 mislukte runs op rij, of als een mislukte build al
+// langer dan 2 uur de laatste is.
+export const GH_DOWN_AFTER_RUNS = 2;
+export const GH_DOWN_AFTER_MS = 2 * 3600_000;
+export interface GhJob { name?: string; status?: string; conclusion?: string | null }
+export interface GhRun { id?: number; run_number?: number; head_sha?: string; status?: string; conclusion?: string | null; updated_at?: string; created_at?: string }
+/** Uitkomst van één afgeronde run voor de monitor: true = goed, false = mislukt, null = telt niet. */
+export type RunOutcome = boolean | null;
+
+const NOT_COUNTED = ["cancelled", "skipped", "neutral", "stale"];
+const FAILED = ["failure", "timed_out", "startup_failure", "action_required"];
+// jobs die nooit tellen als er geen vaste jobnamen zijn opgegeven (of die niet in de run voorkomen)
+export const TEST_JOB = /(test|smoke|rook|lint|screenshot|sdk\d+|e2e|check)/i;
+
+/** Jobnamen uit het doel ("build" of "apk,tizen"); leeg = alle jobs behalve test-jobs. */
+export function ghJobNames(target: string): string[] {
+  return (target.split("|")[3] || "").split(",").map((s) => s.trim()).filter(Boolean);
+}
+/** Hoort deze job bij de namen? Ook matrix-jobs: "build (ios)" bij "build". */
+const jobMatches = (job: string, names: string[]) => names.some((n) => job === n || job.startsWith(`${n} (`));
+
+/** Wordt een run meegeteld, en zo ja: is de echte build goed? */
+export function runOutcome(run: GhRun, jobs: GhJob[] | null, names: string[]): RunOutcome {
+  if (run.status && run.status !== "completed") return null; // loopt nog
+  if (NOT_COUNTED.includes(String(run.conclusion))) return null; // geannuleerd (vervangen door een nieuwere push) e.d.
+  if (!jobs) return run.conclusion === "success" ? true : FAILED.includes(String(run.conclusion)) ? false : null;
+  let rel = names.length ? jobs.filter((j) => jobMatches(String(j.name ?? ""), names)) : [];
+  if (!rel.length) rel = jobs.filter((j) => !TEST_JOB.test(String(j.name ?? "")));
+  // jobs die niet gedraaid hebben (overgeslagen, geannuleerd) tellen niet; geen enkele = de run telt niet
+  const done = rel.filter((j) => (j.status ?? "completed") === "completed" && !NOT_COUNTED.includes(String(j.conclusion)));
+  if (!done.length) return null;
+  if (done.some((j) => FAILED.includes(String(j.conclusion)))) return false;
+  return done.every((j) => j.conclusion === "success") ? true : null;
+}
+
+export interface GhCounted { run: GhRun; ok: boolean }
+/** Uitkomst voor de monitor uit de meegetelde runs (nieuwste eerst). */
+export function ghVerdict(counted: GhCounted[], now = Date.now()): CheckResult {
+  const last = counted[0];
+  if (!last) return { ok: true, skip: true, error: "nog geen afgeronde build" };
+  const detail = `run ${last.run.run_number ?? "?"} (${String(last.run.head_sha ?? "").slice(0, 7)})`;
+  if (last.ok) return { ok: true, detail };
+  let fails = 0;
+  for (const c of counted) { if (c.ok) break; fails++; }
+  const at = Date.parse(last.run.updated_at ?? last.run.created_at ?? "");
+  const old = Number.isFinite(at) && now - at > GH_DOWN_AFTER_MS;
+  if (fails >= GH_DOWN_AFTER_RUNS) return { ok: false, confirmed: true, error: `build mislukt (${fails} runs op rij)`, detail };
+  if (old) return { ok: false, confirmed: true, error: "build mislukt (al langer dan 2 uur de laatste)", detail };
+  return { ok: true, degraded: true, error: "laatste build mislukt (1 run)", detail: `${detail}: mislukt` };
 }

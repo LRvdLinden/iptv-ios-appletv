@@ -64,15 +64,18 @@ Deno.test("platform uit de aanvraag of van het apparaat", () => {
   eq(platformFromDevice("browser"), "web");
   eq(platformFromDevice("windows"), "web");
   eq(normalizePlatform("Windows"), "web");
+  // build 147: LG webOS
+  eq(platformFromDevice("webos"), "webos"); eq(platformFromDevice("LG TV"), "webos"); eq(platformFromDevice("LG webOS"), "webos");
+  eq(normalizePlatform("webOS"), "webos");
 });
 
 Deno.test("upgrade-link per platform", () => {
   const s = DEFAULT_UPGRADE_LINK;
   for (const p of ["ios", "ipados", "tvos", "macos"] as const) eq(upgradeLinkFor(s, p), false, p);
-  for (const p of ["android", "androidtv", "tizen", "web"] as const) eq(upgradeLinkFor(s, p), true, p);
+  for (const p of ["android", "androidtv", "tizen", "web", "webos"] as const) eq(upgradeLinkFor(s, p), true, p);
   eq(upgradeLinkFor(s, null), false, "onbekend platform");
   const on = normalizeUpgradeLink({ apple: true, web: false, android: "ja" });
-  eq(on, { apple: true, android: true, androidtv: true, tizen: true, web: false }, "ongeldige waarde = standaard");
+  eq(on, { apple: true, android: true, androidtv: true, tizen: true, web: false, webos: true }, "ongeldige waarde = standaard");
   eq(upgradeLinkFor(on, "tvos"), true);
   eq(normalizeUpgradeLink(null), DEFAULT_UPGRADE_LINK);
   eq(normalizeUpgradeLink([true]), DEFAULT_UPGRADE_LINK);

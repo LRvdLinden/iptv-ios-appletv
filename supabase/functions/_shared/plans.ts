@@ -10,8 +10,8 @@ export type Plan = "free" | "lifetime";
 export type Limits = { streams: number; devices: number; servers: number | null };
 export type Features = { stats: boolean; now_watching: boolean; trakt: boolean; multi_server: boolean; themes: boolean };
 export type PlanRow = { plan?: unknown; max_streams?: unknown; max_devices?: unknown } | null | undefined;
-export type UpgradeLink = { apple: boolean; android: boolean; androidtv: boolean; tizen: boolean; web: boolean };
-export type Platform = "ios" | "ipados" | "tvos" | "macos" | "android" | "androidtv" | "tizen" | "web";
+export type UpgradeLink = { apple: boolean; android: boolean; androidtv: boolean; tizen: boolean; web: boolean; webos: boolean };
+export type Platform = "ios" | "ipados" | "tvos" | "macos" | "android" | "androidtv" | "tizen" | "web" | "webos";
 export type Entitlements = {
   plan: Plan;
   limits: Limits;
@@ -33,8 +33,9 @@ export const PRICE_CENTS = 499;
 export const PRICE_CURRENCY = "eur";
 export const PRODUCT_NAME = "Bingr Lifetime";
 // standaard: in de Apple-apps geen link naar de betaalpagina (alleen de vergelijking), elders wel
-export const DEFAULT_UPGRADE_LINK: UpgradeLink = { apple: false, android: true, androidtv: true, tizen: true, web: true };
-export const PLATFORMS: Platform[] = ["ios", "ipados", "tvos", "macos", "android", "androidtv", "tizen", "web"];
+// build 147: webos = de LG-tv-app (bingr-webos)
+export const DEFAULT_UPGRADE_LINK: UpgradeLink = { apple: false, android: true, androidtv: true, tizen: true, web: true, webos: true };
+export const PLATFORMS: Platform[] = ["ios", "ipados", "tvos", "macos", "android", "androidtv", "tizen", "web", "webos"];
 // grenzen voor een eigen limiet uit het beheer
 export const MAX_STREAMS_CAP = 50;
 export const MAX_DEVICES_CAP = 200;
@@ -82,6 +83,8 @@ export function platformFromDevice(v: unknown): Platform | null {
   if (/^(ipad|ipados)$/.test(s)) return "ipados";
   if (/^(mac|macos|mac catalyst)$/.test(s)) return "macos";
   if (/^(tizen|samsung tv)$/.test(s)) return "tizen";
+  // build 147: de LG-tv-app meldt zich aan als "webos" (of "LG TV" / "LG webOS")
+  if (/^(webos|lg ?tv|lg ?webos)$/.test(s)) return "webos";
   // de Windows-app (bingr-windows) is de webspeler in een eigen venster: upgrade-link en functies zoals web
   if (/^(browser|web|windows)$/.test(s)) return "web";
   if (/(android ?tv|google ?tv|fire ?tv|androidtv)/.test(s)) return "androidtv";

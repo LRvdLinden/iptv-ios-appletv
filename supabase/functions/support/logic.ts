@@ -5,7 +5,7 @@ export const STATUSES = ["new", "open", "pending", "resolved", "closed"] as cons
 export type Status = typeof STATUSES[number];
 export const PRIORITIES = ["low", "normal", "high", "urgent"] as const;
 export const CATEGORIES = ["account", "afspelen", "apps", "website", "overig"] as const;
-export const PLATFORMS = ["ios", "tvos", "macos", "android", "androidtv", "tizen", "web", "windows"] as const;
+export const PLATFORMS = ["ios", "tvos", "macos", "android", "androidtv", "tizen", "web", "windows", "webos"] as const;
 
 // Labels voor de klant (site en e-mail). "pending" = wij wachten op de klant.
 export const STATUS_LABEL: Record<Lang, Record<Status, string>> = {
@@ -25,7 +25,7 @@ export const CATEGORY_LABEL: Record<Lang, Record<string, string>> = {
 };
 export const PLATFORM_LABEL: Record<string, string> = {
   ios: "iPhone / iPad", tvos: "Apple TV", macos: "Mac", android: "Android",
-  androidtv: "Android TV / Google TV / Fire TV", tizen: "Samsung TV", web: "Browser", windows: "Windows",
+  androidtv: "Android TV / Google TV / Fire TV", tizen: "Samsung TV", web: "Browser", windows: "Windows", webos: "LG TV (webOS)",
 };
 
 export const LIMITS = { name: 80, email: 254, subject: 120, message: 5000, appVersion: 40, minSubject: 3, minMessage: 10, deviceId: 128 };
@@ -37,6 +37,8 @@ const DEVICE_KIND: Record<string, typeof PLATFORMS[number]> = {
   iphone: "ios", ipad: "ios", ios: "ios", ipados: "ios", "apple tv": "tvos", tvos: "tvos", mac: "macos", macos: "macos",
   android: "android", "android tablet": "android", "android tv": "androidtv", "google tv": "androidtv", "fire tv": "androidtv",
   androidtv: "androidtv", tizen: "tizen", "samsung tv": "tizen", browser: "web", web: "web",
+  // build 147: LG-tv-app
+  webos: "webos", "lg tv": "webos", "lg webos": "webos",
 };
 /** Platform van een apparaat (zoals de app het registreert) als platform van een ticket; onbekend: null. */
 export const deviceKind = (platform: unknown) => DEVICE_KIND[String(platform ?? "").trim().toLowerCase()] ?? null;
@@ -44,7 +46,7 @@ export const deviceKind = (platform: unknown) => DEVICE_KIND[String(platform ?? 
 export function deviceLabel(platform: unknown): string {
   const p = String(platform ?? "").trim();
   const l = p.toLowerCase();
-  return l === "tizen" ? "Samsung TV" : l === "browser" ? "Browser" : p;
+  return l === "tizen" ? "Samsung TV" : l === "webos" ? "LG TV" : l === "browser" ? "Browser" : p;
 }
 /** "1.0.0 (74)" -> [1, 0, 0, 74]; alle getallen op volgorde. */
 const versionParts = (v: string) => (v.match(/\d+/g) ?? []).map(Number);

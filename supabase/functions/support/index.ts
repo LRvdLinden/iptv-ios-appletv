@@ -341,8 +341,8 @@ Deno.serve(async (req) => {
   let body: Record<string, unknown>;
   try {
     const text = await req.text();
-    // build 146: 64 KB (een bericht van max. 5000 tekens plus een diagnose-bijlage van max. 32 KB)
-    if (text.length > 64 * 1024) return json({ error: "too_large" }, 413);
+    // build 147: 80 KB (een bericht van max. 5000 tekens plus een diagnose-bijlage van max. 48 KB; build 146: 64 KB)
+    if (text.length > 80 * 1024) return json({ error: "too_large" }, 413);
     body = JSON.parse(text || "{}");
     if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error();
   } catch { return json({ error: "bad_json" }, 400); }

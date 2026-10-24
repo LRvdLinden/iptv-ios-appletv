@@ -3606,6 +3606,7 @@ language sql immutable set search_path = public as $$
     when s ~ '^(ipad|ipados)$' then 'ipados'
     when s ~ '^(mac|macos|mac catalyst)$' then 'macos'
     when s ~ '^(tizen|samsung tv)$' then 'tizen'
+    when s ~ '^(webos|lg ?tv|lg ?webos)$' then 'webos'
     when s ~ '^(windows|win32|win64)$' then 'windows'
     when s ~ '^(browser|web)$' then 'web'
     when s ~ '(android ?tv|google ?tv|fire ?tv|androidtv)' then 'androidtv'
@@ -4165,3 +4166,27 @@ begin
     end;
   end loop;
 end $$;
+
+-- ============================================================================================================
+-- Build 147 (server): GitHub-build-monitors kijken alleen naar de echte build- en aanleverjob(s), en LG webOS.
+-- Doel van gh_workflow: "repo|workflow|branch|job1,job2" (functie status, checks.ts/logic.ts). Eén mislukte run =
+-- verminderd; storing pas na 2 mislukte runs op rij of als een mislukte build langer dan 2 uur de laatste is.
+-- Geannuleerde en lopende runs tellen niet; test- en rooktest-jobs (sdk27, emulator, smoke) ook niet.
+--   apple       iptv-ios-appletv build.yml  job build        (niet sdk27)
+--   windows     bingr-windows    build.yml  job windows
+--   android-ci  bingr-android    build.yml  jobs apk, tizen  (bouwen en aanleveren van APK en .wgt; niet de Rooktest)
+--   webos       bingr-webos      build.yml  job build        (telt pas mee zodra de workflow bestaat: 404 = overslaan)
+update public.status_monitors set target = 'LRvdLinden/iptv-ios-appletv|build.yml|main|build'
+ where id = 'apple' and kind = 'gh_workflow' and target = 'LRvdLinden/iptv-ios-appletv|build.yml|main';
+update public.status_monitors set target = 'LRvdLinden/bingr-windows|build.yml|main|windows'
+ where id = 'windows' and kind = 'gh_workflow' and target = 'LRvdLinden/bingr-windows|build.yml|main';
+insert into public.status_monitors (id, name_nl, name_en, grp, kind, target, keyword, interval_min, public, enabled, builtin, sort) values
+  ('android-ci', 'Android-build (GitHub)', 'Android build (GitHub)', 'apps', 'gh_workflow', 'LRvdLinden/bingr-android|build.yml|main|apk,tizen', null, 15, false, true, true, 15),
+  ('webos',      'LG TV',                  'LG TV',                  'apps', 'gh_workflow', 'LRvdLinden/bingr-webos|build.yml|main|build',       null, 15, true,  true, true, 50),
+  ('ipk',        'LG TV-build (opslag)',   'LG TV build (storage)',  'apps', 'build',       'webos',                                             null, 15, false, true, true, 55)
+on conflict (id) do nothing;
+-- upgrade-link: webos erbij (standaard aan, zoals de andere tv's)
+update public.app_settings set value = value || '{"webos": true}'::jsonb
+ where key = 'upgrade_link' and not (value ? 'webos');
+-- Storingen die door de oude logica (elke controle van dezelfde rode run telde als fout) openstaan, sluiten vanzelf:
+-- dezelfde run geeft nu "verminderd" (ok), en na 2 goede controles gaat de storing en de automatische melding dicht.

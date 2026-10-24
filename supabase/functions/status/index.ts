@@ -297,9 +297,10 @@ async function run(force: boolean, onlyId: string | null, source: string) {
       }
       const ev = evaluate({ fail_streak: m.fail_streak, ok_streak: m.ok_streak, open: open.has(m.id) }, r);
       rows.push({ monitor_id: m.id, at, ok: r.ok, state: ev.checkState, status_code: r.code ?? null, ms: r.ms ?? null,
-        error: r.ok ? null : (r.error ?? "fout").slice(0, 160), detail: r.detail ? String(r.detail).slice(0, 160) : null });
+        error: r.ok ? (r.degraded && r.error ? r.error.slice(0, 160) : null) : (r.error ?? "fout").slice(0, 160), detail: r.detail ? String(r.detail).slice(0, 160) : null });
       updates.push(db.from("status_monitors").update({
-        last_checked_at: at, last_state: ev.current, last_ms: r.ms ?? null, last_error: r.ok ? null : (r.error ?? "fout").slice(0, 160),
+        last_checked_at: at, last_state: ev.current, last_ms: r.ms ?? null,
+        last_error: r.ok ? (r.degraded && r.error ? r.error.slice(0, 160) : null) : (r.error ?? "fout").slice(0, 160),
         fail_streak: ev.fail_streak, ok_streak: ev.ok_streak,
       }).eq("id", m.id));
       if (ev.open) events.push({ kind: "open", monitor: m, cause: r.error ?? null, started_at: at });

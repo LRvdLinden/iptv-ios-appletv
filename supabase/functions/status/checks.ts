@@ -1,6 +1,6 @@
 // Bingr-status: de controles zelf. Elke controle krijgt maximaal TIMEOUT_MS en geeft een CheckResult terug.
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
-import { type CheckResult, shortError } from "./logic.ts";
+import { type CheckResult, type GhCounted, GH_DOWN_AFTER_RUNS, type GhJob, ghJobNames, type GhRun, ghVerdict, runOutcome, shortError } from "./logic.ts";
 import { type BuildEntry, BUILD_PLATFORMS, BUILDS_DL, fetchBuildManifest, signBuildToken } from "../_shared/builds.ts";
 
 export const TIMEOUT_MS = 10_000;
@@ -334,7 +334,7 @@ const limited = (res: Response) => res.status === 429 || (res.status === 403 && 
 export { BUILD_PLATFORMS, BUILDS_DL, signBuildToken };
 const ASSET_PLATFORM: Record<string, string> = { ".apk": "android", ".wgt": "tizen", ".zip": "apple" };
 
-/** target: "android" | "tizen" | "apple" | "beheer" — staat de nieuwste build van dat platform in de opslag en is hij op te halen? */
+/** target: "android" | "tizen" | "apple" | "beheer" | "windows" | "webos" — staat de nieuwste build van dat platform in de opslag en is hij op te halen? */
 export async function checkBuild(target: string, ctx: Ctx): Promise<CheckResult> {
   const plat = (target || "").trim().toLowerCase();
   if (!(BUILD_PLATFORMS as readonly string[]).includes(plat)) return { ok: false, error: `onbekend platform "${plat}"` };
@@ -351,7 +351,8 @@ export async function checkBuild(target: string, ctx: Ctx): Promise<CheckResult>
     try { m = await (ctx.cache.get(cacheKey) as Promise<{ platforms?: Record<string, BuildEntry> }>); }
     catch (e) { return { ok: false, ms: since(t), error: shortError(e) }; }
     const v = m?.platforms?.[plat];
-    if (!v?.path || !v.file) return { ok: false, ms: since(t), error: "geen build in de opslag" };
+    // build 147: een nieuw platform (webos) zonder eerste build telt nog niet mee
+    if (!v?.path || !v.file) return plat === "webos" ? { ok: true, skip: true, ms: since(t), error: "nog geen build in de opslag" } : { ok: false, ms: since(t), error: "geen build in de opslag" };
     const res = await f(`${BUILDS_DL}?t=${await signBuildToken(key, v.path, 60)}`,
       { method: "HEAD", signal, headers: { "User-Agent": UA }, redirect: "error" });
     await res.body?.cancel();
@@ -364,8 +365,16 @@ export async function checkBuild(target: string, ctx: Ctx): Promise<CheckResult>
   });
 }
 
+/**
+ * build 147: GitHub-build (doel "repo|workflow|branch|job1,job2"). Alleen de echte build- en aanleverjob(s) tellen
+ * (Apple: build; Android: apk,tizen; Windows: windows; webOS: build), niet test-/rooktest-jobs en niet de conclusie van de
+ * hele run. Geannuleerde en lopende runs tellen niet. Eén mislukte run = verminderd; storing pas na 2 mislukte runs op
+ * rij of als een mislukte build langer dan 2 uur de laatste is (logic.ts, ghVerdict). Bestaat de workflow (nog) niet,
+ * dan telt de monitor niet mee (bv. webOS zolang bingr-webos geen build.yml heeft).
+ */
 export async function checkGhWorkflow(target: string, ctx: Ctx): Promise<CheckResult> {
   const [repo, file, branch = "main"] = target.split("|");
+  const names = ghJobNames(target);
   const f = ctx.fetch ?? fetch;
   const t = now();
   return await withTimeout(async (signal) => {
@@ -373,22 +382,39 @@ export async function checkGhWorkflow(target: string, ctx: Ctx): Promise<CheckRe
       { signal, headers: ghHeaders(ctx) });
     if (res.ok) {
       const j = await res.json();
-      // geannuleerde of overgeslagen builds (bv. ingehaald door een nieuwere push) tellen niet mee
-      const run = (j.workflow_runs ?? []).find((r: { conclusion?: string }) => !["cancelled", "skipped", "neutral", "stale"].includes(String(r.conclusion)));
-      const ms = since(t);
-      if (!run) return { ok: true, skip: true, error: "nog geen build" };
-      const detail = `run ${run.run_number} (${String(run.head_sha ?? "").slice(0, 7)})`;
-      return run.conclusion === "success" ? { ok: true, ms, detail } : { ok: false, ms, error: `laatste build: ${run.conclusion}`, detail };
+      const runs = ((j.workflow_runs ?? []) as GhRun[]).filter((r) => runOutcome(r, null, []) !== null); // geannuleerd, overgeslagen: weg
+      const counted: GhCounted[] = [];
+      // per run de jobs; stoppen zodra we weten hoe het staat (goed, of genoeg mislukte runs op rij); max. 5 aanvragen
+      for (const run of runs.slice(0, 5)) {
+        let jobs: GhJob[] | null = null;
+        if (run.id != null) {
+          const jr = await f(`https://api.github.com/repos/${repo}/actions/runs/${run.id}/jobs?filter=latest&per_page=100`, { signal, headers: ghHeaders(ctx) });
+          if (!jr.ok) {
+            await jr.body?.cancel();
+            if (limited(jr)) return { ok: true, skip: true, ms: since(t), error: "GitHub-limiet bereikt" };
+            return { ok: false, code: jr.status, ms: since(t), error: `GitHub API HTTP ${jr.status} (jobs)` };
+          }
+          jobs = ((await jr.json()).jobs ?? []) as GhJob[];
+        }
+        const o = runOutcome(run, jobs, names);
+        if (o === null) continue;
+        counted.push({ run, ok: o });
+        if (o || counted.length >= GH_DOWN_AFTER_RUNS) break;
+      }
+      return { ...ghVerdict(counted), ms: since(t) };
     }
     await res.body?.cancel();
+    // workflow of repo bestaat (nog) niet: niet meetellen (verschijnt pas op de statuspagina met de eerste run)
+    if (res.status === 404) return { ok: true, skip: true, ms: since(t), error: "workflow nog niet aanwezig" };
     if (!limited(res)) return { ok: false, code: res.status, ms: since(t), error: `GitHub API HTTP ${res.status}` };
-    // terugval: de statusbadge (geen API-limiet)
+// terugval: de statusbadge (geen API-limiet)
     const b = await f(`https://github.com/${repo}/actions/workflows/${encodeURIComponent(file)}/badge.svg?branch=${encodeURIComponent(branch)}`,
       { signal, headers: { "User-Agent": UA } });
     const svg = await b.text();
     const ms = since(t);
     if (/>\s*passing\s*</i.test(svg)) return { ok: true, ms, detail: "badge: passing" };
-    if (/>\s*failing\s*</i.test(svg)) return { ok: false, ms, error: "laatste build: failure", detail: "badge: failing" };
+    // de badge kent alleen de hele run (ook test-jobs): hoogstens verminderd
+    if (/>\s*failing\s*</i.test(svg)) return { ok: true, degraded: true, ms, error: "laatste run: failure", detail: "badge: failing" };
     return { ok: true, skip: true, ms, error: "GitHub-limiet bereikt" };
   });
 }

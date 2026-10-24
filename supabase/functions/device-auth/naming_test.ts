@@ -18,6 +18,9 @@ Deno.test("soort: webspeler (weergavenaam bij start, browser bij aanmelden)", ()
 Deno.test("label voor het naamveld", () => {
   eq(deviceTypeLabel("Apple TV"), "Apple TV");
   eq(deviceTypeLabel("tizen"), "Samsung TV");
+  // build 147: LG webOS
+  eq(["webos", "LG TV", "LG webOS"].map(deviceKind), ["webos", "webos", "webos"]);
+  eq(deviceTypeLabel("webos"), "LG TV"); eq(deviceTypeLabel("LG TV"), "LG TV");
   eq(deviceTypeLabel(""), "TV");
   eq(deviceTypeLabel(null), "TV");
 });

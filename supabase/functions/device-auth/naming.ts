@@ -10,6 +10,8 @@ const KIND: Record<string, string> = {
   "apple tv": "tvos", tvos: "tvos", iphone: "ios", ipad: "ios", ios: "ios", ipados: "ios", mac: "macos", macos: "macos",
   android: "android", "android tablet": "android", "android tv": "androidtv", "google tv": "androidtv", "fire tv": "androidtv",
   androidtv: "androidtv", tizen: "tizen", "samsung tv": "tizen", browser: "web", web: "web", windows: "web",
+  // build 147: LG-tv-app (bingr-webos): platform "webos", device "LG TV" of "LG webOS"
+  webos: "webos", "lg tv": "webos", "lg webos": "webos", lgtv: "webos",
 };
 // De webspeler start met zijn weergavenaam ("Chrome op Mac", "Safari on iPad") en meldt zich aan met platform "browser".
 const BROWSER = /\b(browser|chrome|chromium|safari|firefox|edge|opera|brave|vivaldi|samsung internet)\b/i;
@@ -23,6 +25,7 @@ export function deviceTypeLabel(v: unknown): string {
   const s = String(v ?? "").trim().slice(0, 40);
   const l = s.toLowerCase();
   if (l === "tizen") return "Samsung TV";
+  if (l === "webos") return "LG TV";
   if (l === "browser") return "Browser";
   return s || "TV";
 }

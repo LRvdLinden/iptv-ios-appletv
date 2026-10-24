@@ -71,6 +71,7 @@ Deno.test("apparaten van het account: platform, labels, volgorde en versies", ()
   eq(deviceLabel("tizen"), "Samsung TV");
   eq(deviceLabel("browser"), "Browser");
   eq(deviceLabel("Apple TV"), "Apple TV");
+  eq([deviceKind("webos"), deviceKind("LG TV"), deviceLabel("webos")], ["webos", "webos", "LG TV"]); // build 147
   eq(["1.0.0 (9)", "1.0.0 (74)", "0.9 (100)", "1.0.1 (2)", "1.0.0 (75)"].sort(compareVersionsDesc), ["1.0.1 (2)", "1.0.0 (75)", "1.0.0 (74)", "1.0.0 (9)", "0.9 (100)"]);
   const r = myDevices([
     { device_id: "a", name: "Woonkamer", platform: "tizen", app_version: "1.0.0 (75)", os_version: "Tizen 6.5", last_seen_at: "2026-10-01T10:00:00Z" },
@@ -297,4 +298,5 @@ Deno.test("build 146: naam, versie en systeem voor een ticket uit de app", () =>
   eq(osFromDiag(null), null);
   const r = validateCreate({ ...good, platform: "windows" });
   ok(r.ok, "windows is een geldig platform");
+  ok(validateCreate({ ...good, platform: "webos" }).ok, "build 147: webos is een geldig platform");
 });

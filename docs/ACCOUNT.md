@@ -747,7 +747,7 @@ Een aparte Edge Function `status` controleert elke 5 minuten de backend, de webs
 - **`ping`** (nieuw in device-auth en web-proxy): `{action:"ping"}` geeft `{ok:true}`, zonder inloggen en zonder database. Alleen voor de statuscontrole.
 - **Openbaar:** `GET /functions/v1/status?action=public` (of POST `{action:"public"}`), zonder sleutel, ~60 s in de cache. Antwoord: `{generated_at, overall:{state, down, degraded}, groups:[{id, name:{nl,en}, monitors:[{id, name:{nl,en}, state, checked_at, ms24, uptime:{d1,d7,d30,d90}, days:[{d, u, s}] (90 dagen)}]}], incidents:[{id, monitor_id, name, started_at, ended_at, duration_s}] (30 dagen)}`. `state` is `up`, `degraded` (verminderd) of `down`; `s` per dag ook `none` (geen gegevens). Alleen openbare monitors; nooit gebruikers- of apparaataantallen.
 - **Intern** (header `x-status-secret` = function-secret `STATUS_CRON_SECRET`, alleen pg_cron en de functie `admin`): `run` (controleren), `admin` (alles, ook niet-openbare monitors, actieve apparaten per platform en de planning), `checks`, `monitor_save`, `monitor_delete`. Het beheer gebruikt dit via `admin` `{action:"status", op:…}`.
-- **Regels:** time-out 10 s per controle. Eén fout = verminderd, twee fouten op rij = storing (incident open), twee goede controles op rij = storing voorbij. Trager dan 5 s = verminderd; TLS-certificaat van bingr.online minder dan 14 dagen geldig = verminderd. Uptime telt alleen storingen als uit.
+- **Regels:** time-out 10 s per controle. Eén fout = verminderd, twee fouten op rij = storing (incident open), twee goede controles op rij = storing voorbij. GitHub-builds tellen per run en alleen de echte build-jobs: zie "Build 147" → "Statuspagina: GitHub-builds". Trager dan 5 s = verminderd; TLS-certificaat van bingr.online minder dan 14 dagen geldig = verminderd. Uptime telt alleen storingen als uit.
 - **Tabellen:** `status_monitors`, `status_checks` (ruwe controles, 90 dagen bewaard), `status_daily` (dagtotalen, Nederlandse tijd), `status_incidents`. Alleen de service role kan erbij.
 - **Planning:** pg_cron-taak `bingr-status` (elke 5 min) roept via pg_net de functie aan. De Backend-workflow zet de taak bij elke deploy opnieuw klaar met het geheim; dat staat nooit in de repo.
 - **Meldingen:** bij het openen en sluiten van een storing een e-mail naar `BINGR_ALERT_EMAIL` (optioneel), via dezelfde SMTP-instellingen als de berichten.
@@ -1490,3 +1490,109 @@ voorheen.
 `put_state`, versleutelde kijkgegevens, supportberichten, inbox-logboek en pushpayloads, `app_*` in support, diagnose-
 bijlage, push `support_reply`, aangescherpte regels voor profielfoto's, onderhoud `maint_seal`, unittests en een
 end-to-end-test in de workflow *Backend*.
+
+
+## Build 147: diagnose-schema 2, eerlijke statuspagina en LG webOS
+
+Server: live in build 147 (functies `support`, `device-auth`, `status`, schema). **Terugwaarts compatibel:** schema 1
+blijft geldig en wordt opgeslagen en getoond zoals in build 146; apps die schema 2 sturen terwijl een oudere server
+draait, krijgen `diagnostics:"stripped"` (de nieuwe velden vallen dan weg).
+
+### 1. Diagnose-bijlage, schema 2
+
+Alles van schema 1 (zie "Build 146" → "Diagnose-bijlage") blijft, met `schema: 2` en daarbovenop:
+
+| Veld | Type | Inhoud |
+|---|---|---|
+| `schema` | getal | `2` (een hoger getal wordt als 2 gelezen; zonder of `1` = schema 1, dan vallen de velden hieronder weg) |
+| `start.summary` | `good` \| `slow` \| `hung` | **goed / traag / vastgelopen**. Traag = app-tijd boven 5 s of een hang boven 2 s; vastgelopen = een hang boven 10 s of een crash (de app rekent dit uit) |
+| `start.appMs` | getal (0–3 600 000) | app-tijd van deze start in ms, **zonder** wachten op de gebruiker |
+| `start.userWaitMs` | getal (0–86 400 000) | wachten op de gebruiker: profielkeuze getoond → profiel gekozen, en pincodescherm → pincode goed |
+| `start.maxHangMs` | getal, optioneel | langste hang van de hoofdthread in deze start |
+| `start.previous.problem` | `none` \| `hang` \| `crash` \| `not_finished` | probleem bij de **vorige** start (`not_finished` = de app kwam niet tot `ready` en is gestopt) |
+| `start.previous.milestone` | naam (als `milestones`) | laatste mijlpaal vóór het probleem, bv. `ready` |
+| `start.previous.seconds` | getal (0–86 400, 1 decimaal) | duur van de hang (of tijd tot de crash) in seconden |
+| `start.previous.foreground` | boolean | stond de app op de voorgrond? (een "hang" op de achtergrond is geen hang; stuur dan `none`) |
+| `start.previous.task` | tekst (≤ 60) | actieve taak of fase, bv. `"catalogus sorteren"`, `"sync toepassen"`, `"pin migreren"` |
+| `start.previous.stack` | lijst, max. 30 regels van ≤ 200 | momentopname van de stack van de hoofdthread (waar het platform dat toelaat), gesymboliseerd |
+| `start.previous.at`, `.build` | ISO-8601, getal | optioneel: wanneer en in welke build |
+| `fetch` | lijst, max. 30 | `{server, kind, status, count?, error?}` per server en soort |
+| `fetch[].server` | `s1` … `s99` | server **geanonimiseerd** op volgorde in de app; nooit een naam of adres |
+| `fetch[].kind` | `live` \| `movie` \| `series` | zenders, films, series |
+| `fetch[].status` | `ok` \| `empty` \| `failed` \| `hidden` | geleverd / provider leverde niets / ophalen mislukt / alles verborgen (verborgen categorieën of kinderfilter) |
+| `fetch[].count` | getal | aantal (bij `ok` geleverd, bij `hidden` het aantal dat verborgen is) |
+| `fetch[].error` | tekst (≤ 60) | korte foutcode zonder URL: `timeout`, `HTTP 503`, `parse`, `auth`, `ENOTFOUND` |
+| `network.type` | `wifi` \| `cellular` \| `ethernet` \| `unknown` (ook `none`, `other`) | verbinding, vroeg bij de start gevolgd; browser: `navigator.connection`, anders `unknown`. Optioneel ook `online`, `backend`/`backendMs`, `provider`/`providerMs`, `vpn` zoals `state.network` |
+| `storage` | object | `totalMB` = `cacheMB` + `catalogMB` + `downloadsMB` (samen het totaal van Bingr), plus `freeMB` (vrij op het apparaat, waar dat kan) |
+
+`network` en `storage` staan in schema 2 **bovenaan**; `state.network` en `state.storage` (schema 1) blijven
+toegestaan, maar het beheer toont bij schema 2 de nieuwe. De mijlpaal `keychain`/"sleutelhanger" vervalt (Apple). Een
+mijlpaal mag nu tot 3 600 000 ms (wachten op de gebruiker telt mee in de tijd sinds de start).
+
+Voorbeeld (komt ongewijzigd door, zie `EXAMPLE2` in `diagnostics_test.ts`):
+
+```json
+{"schema":2,"kind":"start","createdAt":"2026-10-24T10:15:00.000Z",
+ "app":{"platform":"ios","version":"1.0.1","build":147,"engine":"vlc"},
+ "device":{"type":"phone","model":"iPhone 17 Pro Max","manufacturer":"Apple","os":"iOS","osVersion":"27.2","language":"nl-NL","screen":"1320x2868"},
+ "start":{"summary":"hung","appMs":7400,"userWaitMs":7000,"maxHangMs":1200,
+  "previous":{"problem":"hang","milestone":"ready","seconds":80.1,"foreground":true,"task":"catalogus sorteren",
+   "at":"2026-10-24T09:58:00.000Z","build":146,"stack":["0 Bingr CatalogStore.sort(_:) + 312","1 Bingr HomeViewModel.rebuildRows() + 88"]}},
+ "milestones":[{"name":"launch","ms":0},{"name":"session","ms":200},{"name":"first_frame","ms":300},{"name":"ready","ms":14400}],
+ "fetch":[{"server":"s1","kind":"live","status":"ok","count":1056},{"server":"s1","kind":"movie","status":"ok","count":10259},
+  {"server":"s1","kind":"series","status":"failed","count":0,"error":"timeout"},{"server":"s2","kind":"series","status":"empty","count":0},
+  {"server":"s2","kind":"movie","status":"hidden","count":812}],
+ "network":{"type":"wifi","online":true},
+ "storage":{"totalMB":156,"cacheMB":24,"catalogMB":120,"downloadsMB":12,"freeMB":81234},
+ "memory":{"usedMB":332,"appMB":332,"lowMemory":false},
+ "state":{"signedIn":true,"profiles":2,"servers":2,"channels":1056,"movies":10259,"series":0}}
+```
+
+- **Opschonen (beide schema's):** stack-regels (`crash.stack`, `start.previous.stack`) en foutteksten (`crash.type`,
+  `crash.reason`, `start.previous.task`, `fetch[].error`) worden niet meer helemaal weggegooid, maar de gevoelige stukken
+  worden vervangen: URL → `[url]`, e-mailadres → `[e-mail]`, IP-adres (ook met poort) → `[ip]`, MAC-adres → `[mac]`,
+  servernaam (`iptv.provider.tv`, `host.example.com:8080`) → `[host]`, `username=`/`password=`/`token=`… → `…=[x]`,
+  een pad → `…/<bestandsnaam>` (`/Users/…/Player.swift:10` → `…/Player.swift:10`). Symbolen zoals
+  `Bingr.PlayerView.play()` of `nl.lrvdlinden.bingr.MainActivity` blijven staan. Andere tekstvelden (model, taal, …) die
+  op iets persoonlijks lijken, vallen zoals in build 146 helemaal weg. Elke aanpassing = `diagnostics:"stripped"`.
+- **Grenzen:** ruwe bijlage max. **48 KB** (was 32 KB; groter = 413 `diagnostics_too_large`), de hele aanvraag max.
+  **80 KB** (was 64 KB; groter = 413 `too_large`), na opschonen max. **20 KB** (was 12 KB). Is het dan te groot, dan
+  worden eerst `crash.stack`, dan `start.previous.stack`, dan `milestones` en `fetch` ingekort.
+- `app.platform` kent nu ook **`webos`** (LG TV).
+- **Altijd meesturen:** elke diagnose uit een app (knop "Naar support sturen" of een ticket met "Diagnose meesturen") bevat
+  `start` met de huidige en de vorige start.
+- **Beheer:** de diagnose bij een ticket toont bovenaan in rood een probleem bij de vorige start (hang, crash of niet klaar,
+  met fase, duur, voorgrond en taak), de samenvatting als gekleurd label, de `fetch`-status per soort en een knop
+  **Kopiëren** (hele diagnose als leesbare tekst). Schema 1 wordt getoond zoals in build 146.
+
+### 2. Statuspagina: GitHub-builds
+
+De monitors van soort `gh_workflow` hebben als doel `repo|workflow|branch|job1,job2` en kijken alleen naar de uitkomst van
+die echte build- en aanleverjob(s), niet naar test- of rooktest-jobs en niet naar de conclusie van de hele run.
+
+| Monitor | Repo, workflow | Jobs die tellen | Openbaar |
+|---|---|---|---|
+| `apple` | iptv-ios-appletv, `build.yml` | `build` (niet `sdk27`) | ja |
+| `windows` | bingr-windows, `build.yml` | `windows` | ja |
+| `android-ci` | bingr-android, `build.yml` | `apk`, `tizen` (niet de workflow Rooktest) | nee (beheer); openbaar blijven de opslagmonitors `apk`/`wgt` |
+| `webos` | bingr-webos, `build.yml` | `build` (bestaat die job niet: alle jobs behalve test/smoke/lint) | ja, zodra de workflow bestaat |
+
+- Geannuleerde, overgeslagen en lopende runs tellen niet, en ook een run waarin de build-job zelf is overgeslagen niet:
+  dan geldt de laatste afgeronde run. Matrix-jobs (`build (ios)`) tellen bij hun naam.
+- **Eén mislukte run = verminderd** (geel). **Storing** (incident, "Grote storing") pas na **2 mislukte runs op rij**, of als
+  een mislukte build **langer dan 2 uur** de laatste is. Dezelfde rode run telt niet opnieuw bij elke controle.
+- Bestaat de workflow (nog) niet (404), dan telt de monitor niet mee en staat hij niet op de statuspagina (webOS tot de
+  eerste run). Bij de GitHub-limiet: overslaan; de terugval op de badge geeft hoogstens "verminderd".
+- Een storing die nog door de oude regels openstond, sluit vanzelf: dezelfde run geeft nu "verminderd", en na twee goede
+  controles gaat het incident en de automatische melding dicht.
+
+### 3. LG webOS (`webos`)
+
+- **device-auth `register_device`:** `platform: "webos"` (ook `"LG TV"` / `"LG webOS"` worden herkend), `name` bv. `"LG TV"`
+  of de eigen naam. Soort `webos` (koppelen via bingr.online/koppelen met `device: "LG TV"`), label "LG TV",
+  platformgroep `webos` in het beheer, upgrade-link `webos` (standaard aan).
+- **Support:** ticketplatform `webos` ("LG TV (webOS)"), diagnose `app.platform: "webos"`, `device.type: "tv"`,
+  `device.manufacturer: "LG"`, `device.os: "webOS"`.
+- **Builds:** het pakket (`.ipk`) gaat versleuteld naar de privé inbox met `tools/seal_build.sh` van bingr-beheer, platform
+  `webos` (zie de README daar). Niet openbaar: alleen via het beheer (tab Downloads, kortgeldige link).
+- **Changelog:** platform `webos` (vanaf build 147).
