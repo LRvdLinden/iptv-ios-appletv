@@ -176,7 +176,7 @@ final class SupportCenter: ObservableObject {
 
     // MARK: - Teksten
 
-    static func message(for code: String, status: Int) -> String {
+    nonisolated static func message(for code: String, status: Int) -> String {
         switch code {
         case "subject_missing", "subject_too_long": return L("Enter a subject of 3 to 120 characters.")
         case "message_too_short", "message_missing": return L("Write at least 10 characters.")
@@ -192,7 +192,7 @@ final class SupportCenter: ObservableObject {
     }
 
     /// Status zoals op support.bingr.online
-    static func statusTitle(_ status: String) -> String {
+    nonisolated static func statusTitle(_ status: String) -> String {
         switch status {
         case "new": return L("New")
         case "open": return L("In progress")
@@ -203,7 +203,7 @@ final class SupportCenter: ObservableObject {
         }
     }
 
-    static func groupTitle(_ g: SupportLogic.Group) -> String {
+    nonisolated static func groupTitle(_ g: SupportLogic.Group) -> String {
         switch g {
         case .open: return L("Open")
         case .inProgress: return L("In progress")
@@ -211,7 +211,7 @@ final class SupportCenter: ObservableObject {
         }
     }
 
-    static func categoryTitle(_ c: String) -> String {
+    nonisolated static func categoryTitle(_ c: String) -> String {
         switch c {
         case "account": return L("Account and sign-in")
         case "afspelen": return L("Playback and streams")
