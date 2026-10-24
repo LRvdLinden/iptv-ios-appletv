@@ -14,8 +14,11 @@ insert into public.account_devices (user_id, device_id, app_version) values
   ('00000000-0000-4000-8000-0000000000a2', 'd3', '1.0.1 (146)'),
   ('00000000-0000-4000-8000-0000000000a2', 'd4', null);
 
--- standaardstand: mirror
-select pg_temp.ok((select value #>> '{}' from public.app_settings where key = 'profiles_legacy') = 'mirror', 'standaard mirror');
+-- build 148: het schema zet de stand eenmalig van mirror naar auto (merkteken profiles_legacy_auto_148; het blok draaide al
+-- twee keer); daarna mag het beheer of Léon de stand vrij kiezen. De tests hieronder gaan uit van mirror.
+select pg_temp.ok((select value #>> '{}' from public.app_settings where key = 'profiles_legacy') = 'auto', 'build 148: auto');
+select pg_temp.ok(exists (select 1 from public.app_settings where key = 'profiles_legacy_auto_148'), 'build 148: merkteken');
+update public.app_settings set value = '"mirror"' where key = 'profiles_legacy';
 select pg_temp.ok(not has_column_privilege('authenticated', 'public.account_data', 'sealed', 'select'), 'sealed niet leesbaar voor apps');
 select pg_temp.ok(not has_column_privilege('authenticated', 'public.account_data', 'sealed', 'update'), 'sealed niet schrijfbaar voor apps');
 select pg_temp.ok(not has_column_privilege('authenticated', 'public.account_data', 'profile_count', 'insert'), 'profile_count niet schrijfbaar');
