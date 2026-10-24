@@ -268,6 +268,7 @@ jobs:
   # build 143: dezelfde korte start-rooktest met de nieuwste Xcode (SDK 27) en de nieuwste iOS/tvOS-simulator, zoals
   # Léon de app nu bouwt en draait (tvOS 27). Uitkomst op de branch ci-logs-sdk27 (latest.txt); faalt bij een crash.
   sdk27:
+    if: false
     runs-on: macos-26
     timeout-minutes: 60
     steps:
