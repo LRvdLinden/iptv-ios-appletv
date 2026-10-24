@@ -1,5 +1,172 @@
 [
  {
+  "build": 147,
+  "version": "1.0.1",
+  "date": "2026-10-24",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "webos"
+    ],
+    "nl": "Bingr voor LG-tv's met webOS: dezelfde app als op Samsung TV, met de gewone afstandsbediening of de Magic Remote (wijzen, klikken en scrollen)",
+    "en": "Bingr for LG TVs with webOS: the same app as on Samsung TV, with the regular remote or the Magic Remote (point, click and scroll)"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "webos"
+    ],
+    "nl": "Speler met de eigen video van de tv voor HLS en MP4; TS-streams die de tv niet zelf speelt gaan via een extra speler",
+    "en": "Player uses the TV's own video for HLS and MP4; TS streams the TV can't play itself go through an extra player"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "webos"
+    ],
+    "nl": "Support en diagnose met het model, de webOS-versie en het netwerk van de tv",
+    "en": "Support and diagnostics with the TV's model, webOS version and network"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web",
+     "windows"
+    ],
+    "nl": "Na het starten loopt Bingr niet meer vast bij een grote bibliotheek: zwaar werk zoals sorteren, filteren, Mijn lijst, de tv-gids, opslaan en pincodes gebeurt op de achtergrond of in kleine stukjes",
+    "en": "Bingr no longer freezes after starting with a large library: heavy work such as sorting, filtering, My List, the TV guide, saving and PINs runs in the background or in small steps"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "web",
+     "windows"
+    ],
+    "nl": "Series en films van grote of trage Xtream-servers worden los van elkaar opgehaald, met meer tijd en een nieuwe poging; een trage serieslijst houdt films en zenders niet meer op",
+    "en": "Series and movies from large or slow Xtream servers are fetched separately, with more time and a retry; a slow series list no longer holds up movies and channels"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web",
+     "windows",
+     "webos"
+    ],
+    "nl": "De startdiagnose toont bovenaan of de start goed, traag of vastgelopen was, met app-tijd los van wachten op jou en de vorige start",
+    "en": "Start diagnostics show at the top whether the start was good, slow or stuck, with app time separate from waiting for you and the previous start"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web",
+     "windows"
+    ],
+    "nl": "Bij vastlopen legt de diagnose vast welke taak het was en of de app op de voorgrond stond",
+    "en": "When the app freezes, diagnostics record which task it was and whether the app was in the foreground"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web",
+     "windows"
+    ],
+    "nl": "De diagnose toont per server of zenders, films en series geleverd zijn, leeg waren, mislukten of allemaal verborgen zijn, plus de soort verbinding en de opslag als één totaal",
+    "en": "Diagnostics show per server whether channels, movies and series were delivered, empty, failed or all hidden, plus the connection type and storage as one total"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web",
+     "windows",
+     "webos"
+    ],
+    "nl": "Een diagnose naar support bevat altijd de startdiagnose van deze en de vorige start",
+    "en": "Diagnostics sent to support always include the start diagnostics of this and the previous start"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "web",
+     "windows"
+    ],
+    "nl": "Een LG-tv staat in je apparatenlijst en bij Wie kijkt er nu als LG TV",
+    "en": "An LG TV shows as LG TV in your device list and in Watching now"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "server",
+     "web"
+    ],
+    "nl": "Statuspagina: een mislukte build geeft niet meer meteen een grote storing; alleen de echte build telt, en pas na twee mislukte builds op rij (of na 2 uur) is het een storing",
+    "en": "Status page: a failed build no longer shows a major outage right away; only the actual build counts, and it becomes an outage only after two failed builds in a row (or after 2 hours)"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Support: de diagnose uit de app is uitgebreider en adressen en servernamen worden er beter uit gehaald",
+    "en": "Support: diagnostics from the app are more detailed and addresses and server names are removed more thoroughly"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "server"
+    ],
+    "nl": "De server kent de LG TV-app (webOS)",
+    "en": "The server supports the LG TV app (webOS)"
+   }
+  ]
+ },
+ {
   "build": 146,
   "version": "1.0.1",
   "date": "2026-10-24",

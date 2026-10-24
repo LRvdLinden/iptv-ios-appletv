@@ -4,6 +4,53 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.1 · Build 147
+_24 oktober 2026_
+
+### Alle apps en de website
+
+**Verbeterd**
+
+- De startdiagnose toont bovenaan of de start goed, traag of vastgelopen was, met app-tijd los van wachten op jou en de vorige start
+- Een diagnose naar support bevat altijd de startdiagnose van deze en de vorige start
+
+### iOS, iPadOS, tvOS, macOS, Windows en Website
+
+**Opgelost**
+
+- Series en films van grote of trage Xtream-servers worden los van elkaar opgehaald, met meer tijd en een nieuwe poging; een trage serieslijst houdt films en zenders niet meer op
+
+### iOS, iPadOS, tvOS, macOS, Android, Android TV, Samsung TV (Tizen), Windows en Website
+
+**Nieuw**
+
+- Een LG-tv staat in je apparatenlijst en bij Wie kijkt er nu als LG TV
+
+**Verbeterd**
+
+- Bij vastlopen legt de diagnose vast welke taak het was en of de app op de voorgrond stond
+- De diagnose toont per server of zenders, films en series geleverd zijn, leeg waren, mislukten of allemaal verborgen zijn, plus de soort verbinding en de opslag als één totaal
+
+**Opgelost**
+
+- Na het starten loopt Bingr niet meer vast bij een grote bibliotheek: zwaar werk zoals sorteren, filteren, Mijn lijst, de tv-gids, opslaan en pincodes gebeurt op de achtergrond of in kleine stukjes
+
+### Website en Server
+
+**Verbeterd**
+
+- Statuspagina: een mislukte build geeft niet meer meteen een grote storing; alleen de echte build telt, en pas na twee mislukte builds op rij (of na 2 uur) is het een storing
+
+### Server
+
+**Nieuw**
+
+- De server kent de LG TV-app (webOS)
+
+**Verbeterd**
+
+- Support: de diagnose uit de app is uitgebreider en adressen en servernamen worden er beter uit gehaald
+
 ## Versie 1.0.1 · Build 146
 _24 oktober 2026_
 
