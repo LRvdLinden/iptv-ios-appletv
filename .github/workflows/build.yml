@@ -57,12 +57,12 @@ jobs:
       - name: Geen sleutelhanger of iCloud bij de start
         run: python3 tools/check_no_keychain.py
 
-      - name: Zelftest pure logica (build 128, CatalogMeta)
+      - name: Zelftest pure logica (build 128, CatalogMeta; build 146 pincode-hash, support, diagnose)
         id: selftest
         continue-on-error: true
         run: |
           set -o pipefail
-          swiftc -O Shared/Account/CatalogMeta.swift Shared/Account/Build140.swift Shared/Account/Build141.swift Shared/Account/Build145.swift tools/selftest/main.swift -o "$RUNNER_TEMP/selftest" 2>&1 | tee selftest.log
+          swiftc -O Shared/Account/CatalogMeta.swift Shared/Account/Build140.swift Shared/Account/Build141.swift Shared/Account/Build145.swift Shared/Account/Build146.swift tools/selftest/main.swift -o "$RUNNER_TEMP/selftest" 2>&1 | tee selftest.log
           "$RUNNER_TEMP/selftest" 2>&1 | tee -a selftest.log
 
       - name: App-sleutels inbouwen (alleen bij een privé-repo)
@@ -227,7 +227,7 @@ jobs:
           git add smoke 2>/dev/null || true
           # build 105: het Xcode-project staat niet meer op ci-logs (de branch is openbaar); alleen de logs
           git commit -m "build $GITHUB_SHA ios=${{ steps.ios.outcome }} tvos=${{ steps.tvos.outcome }} macos=${{ steps.macos.outcome }} smoke=${{ steps.smoke_ios.outcome }}/${{ steps.smoke_tvos.outcome }}/${{ steps.smoke_macos.outcome }}"
-          git push -f origin HEAD:ci-logs
+          git push -f origin HEAD:ci-logs-wip146
 
       # Xcode-project versleuteld naar de PRIVÉ repo LRvdLinden/bingr-inbox (tools/seal_build.sh van bingr-beheer, branch
       # inbox-apple); de workflow Builds van bingr-beheer haalt het daar op en zet het in de afgesloten map builds/ op de
@@ -238,7 +238,7 @@ jobs:
       # publieke sleutel) wordt anoniem gekloond, en het token gaat nooit in een URL (seal_build.sh geeft het als kopregel mee).
       - name: Xcode-project versleuteld aanleveren voor beheer.bingr.online
         # build 141: alleen als de apps ook echt starten (start-rooktest)
-        if: github.event_name != 'schedule' && steps.ios.outcome == 'success' && steps.tvos.outcome == 'success' && steps.macos.outcome == 'success' && steps.tvos_release.outcome != 'failure' && steps.smoke_ios.outcome != 'failure' && steps.smoke_tvos.outcome != 'failure' && steps.smoke_macos.outcome != 'failure'
+        if: false && github.event_name != 'schedule' && steps.ios.outcome == 'success' && steps.tvos.outcome == 'success' && steps.macos.outcome == 'success' && steps.tvos_release.outcome != 'failure' && steps.smoke_ios.outcome != 'failure' && steps.smoke_tvos.outcome != 'failure' && steps.smoke_macos.outcome != 'failure'
         env:
           TOKEN: ${{ secrets.BINGR_INBOX_TOKEN }}
           BINGR_INBOX_REPO: LRvdLinden/bingr-inbox
@@ -295,9 +295,10 @@ jobs:
           xcodebuild build -project Bingr.xcodeproj -scheme BingrTV -derivedDataPath build \
             -destination 'generic/platform=tvOS Simulator' CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO 2>&1 | tee tvos27.log | tail -n 5
 
+      # build 146: geen simulator-rooktest bij een push (Léon test de Apple-apps zelf); alleen 's nachts of via Run workflow
       - name: Start-rooktest tvOS en iOS (nieuwste simulator)
         id: smoke27
-        if: steps.build27.outcome == 'success'
+        if: steps.build27.outcome == 'success' && github.event_name != 'push'
         continue-on-error: true
         env:
           SMOKE_LIGHT: "1"
@@ -329,5 +330,5 @@ jobs:
           git push -f origin HEAD:ci-logs-sdk27
 
       - name: Status
-        if: steps.build27.outcome != 'success' || steps.smoke27.outcome != 'success'
+        if: steps.build27.outcome != 'success' || steps.smoke27.outcome == 'failure'
         run: exit 1
