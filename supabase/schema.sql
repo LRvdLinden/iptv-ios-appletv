@@ -60,10 +60,15 @@ drop policy if exists "avatars eigen wijzigen" on storage.objects;
 drop policy if exists "avatars eigen verwijderen" on storage.objects;
 create policy "avatars eigen lezen" on storage.objects for select to authenticated
   using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
+-- build 146: alleen <eigen user_id>/<profiel-id>.jpg (één map diep, geen andere namen), en wijzigen ook met with check:
+-- zonder with check kon een bestand via "verplaatsen" (update van name) in de map van een ander account belanden.
 create policy "avatars eigen toevoegen" on storage.objects for insert to authenticated
-  with check (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
+  with check (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text
+    and name ~ '^[0-9a-f-]{36}/[A-Za-z0-9._-]{1,80}\.jpg$');
 create policy "avatars eigen wijzigen" on storage.objects for update to authenticated
-  using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
+  using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text)
+  with check (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text
+    and name ~ '^[0-9a-f-]{36}/[A-Za-z0-9._-]{1,80}\.jpg$');
 create policy "avatars eigen verwijderen" on storage.objects for delete to authenticated
   using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
 
@@ -676,8 +681,7 @@ begin
         (select coalesce(jsonb_agg(distinct d.platform), '[]'::jsonb) from public.account_devices d where d.user_id = u.id) as platforms,
         (select coalesce(jsonb_agg(distinct d.app_version), '[]'::jsonb) from public.account_devices d where d.user_id = u.id and d.app_version is not null) as app_versions,
         (select max(d.last_seen_at) from public.account_devices d where d.user_id = u.id) as last_seen_at,
-        (select count(*) from public.account_data a, jsonb_array_elements(case when jsonb_typeof(a.profiles) = 'array' then a.profiles else '[]'::jsonb end) e
-          where a.user_id = u.id and coalesce(e->>'deleted', 'false') <> 'true') as profile_count,
+        coalesce((select public.bingr_profile_count(a) from public.account_data a where a.user_id = u.id), 0) as profile_count,
         coalesce((select p.email_opt_out from public.account_email_prefs p where p.user_id = u.id), false) as email_opt_out,
         (select jsonb_build_object('until', b.until, 'created_at', b.created_at) from public.account_blocks b
           where b.user_id = u.id and b.lifted_at is null order by b.created_at desc limit 1) as blocked,
@@ -709,8 +713,7 @@ begin
     'blocks', coalesce((select jsonb_agg(jsonb_build_object('id', b.id, 'reason', b.reason, 'until', b.until, 'created_at', b.created_at,
         'notified', b.notified, 'lifted_at', b.lifted_at, 'lifted_by', b.lifted_by) order by b.created_at desc)
       from (select * from public.account_blocks where user_id = u.id order by created_at desc limit 20) b), '[]'::jsonb),
-    'profile_count', (select count(*) from public.account_data a, jsonb_array_elements(case when jsonb_typeof(a.profiles) = 'array' then a.profiles else '[]'::jsonb end) e
-          where a.user_id = u.id and coalesce(e->>'deleted', 'false') <> 'true'),
+    'profile_count', coalesce((select public.bingr_profile_count(a) from public.account_data a where a.user_id = u.id), 0),
     'email_opt_out', coalesce((select p.email_opt_out from public.account_email_prefs p where p.user_id = u.id), false),
     'plan', coalesce((select jsonb_build_object('plan', p.plan, 'max_streams', p.max_streams, 'max_devices', p.max_devices, 'source', p.source,
         'note', p.note, 'granted_by', p.granted_by, 'created_at', p.created_at, 'updated_at', p.updated_at)
@@ -1003,6 +1006,13 @@ alter table public.account_streams add column if not exists series_id text;
 alter table public.account_streams add column if not exists series_title text;
 alter table public.account_streams add column if not exists tz text;
 alter table public.account_streams add column if not exists last_accounted_at timestamptz;
+-- build 146: titels versleuteld. device-auth rekent soort, sleutel en weergavenaam zelf uit (device-auth/watch.ts, zelfde
+-- regels als bingr_stats_item) en geeft ze mee; stat_sealed = true betekent: title/series_title/profile_name zijn `enc1:…`
+-- en stat_kind/stat_key/stat_title gelden (stat_key van een titel = 'h:<HMAC>', stat_title versleuteld).
+alter table public.account_streams add column if not exists stat_sealed boolean not null default false;
+alter table public.account_streams add column if not exists stat_kind text;
+alter table public.account_streams add column if not exists stat_key text;
+alter table public.account_streams add column if not exists stat_title text;
 
 create table if not exists public.account_watch_stats (
   user_id      uuid not null references auth.users(id) on delete cascade,
@@ -1034,6 +1044,7 @@ revoke all on public.bingr_migrations from anon, authenticated;
 -- Welke titel telt een stream: soort, sleutel en weergavenaam. Oude apps sturen geen series_id: dan de serietitel uit de
 -- streamtitel ("Serie · S1:E2 · Naam", "Serie S01E02", "Serie - S1E2") met sleutel 't:<serietitel in kleine letters>'.
 -- Live: de zendernaam vóór " · " (de apps zetten het programma erachter). Onbekende soort = niet tellen (kind null).
+-- >>> unittest stats-item
 create or replace function public.bingr_stats_item(p_kind text, p_content_id text, p_series_id text, p_series_title text, p_title text)
 returns table(kind text, item_key text, title text)
 language plpgsql immutable set search_path = public as $$
@@ -1059,6 +1070,7 @@ begin
   title := left(title, 200); item_key := left(item_key, 200);
   return next;
 end $$;
+-- <<< unittest stats-item
 
 -- Lokale dag in een tijdzone; een onbekende tijdzone valt terug op Europe/Amsterdam.
 create or replace function public.bingr_local_day(p_tz text, p_at timestamptz default now()) returns date
@@ -1082,7 +1094,11 @@ begin
   update public.account_streams set last_accounted_at = greatest(v_end, coalesce(last_accounted_at, v_end))
   where user_id = p_user and device_id = p_device;
   if secs <= 0 then return; end if;
-  select * into it from public.bingr_stats_item(s.kind, s.content_id, s.series_id, s.series_title, s.title);
+  if s.stat_sealed then
+    select s.stat_kind as kind, s.stat_key as item_key, s.stat_title as title into it;
+  else
+    select * into it from public.bingr_stats_item(s.kind, s.content_id, s.series_id, s.series_title, s.title);
+  end if;
   if it.kind is null or coalesce(it.item_key, '') = '' then return; end if;
   insert into public.account_watch_stats as w (user_id, profile_id, profile_name, day, kind, item_key, title, episodes, minutes, plays)
   values (p_user, coalesce(s.profile_id, ''), s.profile_name, public.bingr_local_day(s.tz, v_end), it.kind, it.item_key, it.title,
@@ -1100,10 +1116,15 @@ grant execute on function public.bingr_stream_account(uuid, text, int, int) to s
 
 -- stream_start met series_id, series_title en tz: eerst de lopende stream op dit apparaat bijschrijven,
 -- dan zoals voorheen (limiet, geschiedenis), en één weergave (plays) voor de nieuwe titel.
+-- build 146: p_sealed = true -> p_title, p_series_title, p_profile_name en p_device_name zijn versleuteld (`enc1:…`) en
+-- p_stat_kind/p_stat_key/p_stat_title zijn de uitkomst van bingr_stats_item (uitgerekend door device-auth, watch.ts).
 drop function if exists public.bingr_stream_start(uuid, text, text, text, text, text, text, int, int);
+drop function if exists public.bingr_stream_start(uuid, text, text, text, text, text, text, int, int, text, text, text);
 create or replace function public.bingr_stream_start(p_user uuid, p_device text, p_profile_id text, p_profile_name text,
   p_title text, p_kind text, p_content_id text, p_limit int, p_ttl_seconds int,
-  p_series_id text default null, p_series_title text default null, p_tz text default null)
+  p_series_id text default null, p_series_title text default null, p_tz text default null,
+  p_sealed boolean default false, p_stat_kind text default null, p_stat_key text default null, p_stat_title text default null,
+  p_device_name text default null)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare n int; old_log bigint; dev_name text; dev_platform text; new_log bigint; it record;
 begin
@@ -1116,18 +1137,24 @@ begin
   select log_id into old_log from public.account_streams where user_id = p_user and device_id = p_device;
   if old_log is not null then update public.account_watch_log set ended_at = now() where id = old_log and user_id = p_user; end if;
   select name, platform into dev_name, dev_platform from public.account_devices where user_id = p_user and device_id = p_device;
+  if coalesce(p_sealed, false) then dev_name := p_device_name; end if;
   insert into public.account_watch_log (user_id, device_id, device_name, platform, profile_id, profile_name, title, kind, content_id)
   values (p_user, p_device, dev_name, dev_platform, p_profile_id, p_profile_name, p_title, p_kind, p_content_id)
   returning id into new_log;
   insert into public.account_streams (user_id, device_id, profile_id, profile_name, title, kind, content_id, log_id, started_at, last_ping,
-    series_id, series_title, tz, last_accounted_at)
+    series_id, series_title, tz, last_accounted_at, stat_sealed, stat_kind, stat_key, stat_title)
   values (p_user, p_device, p_profile_id, p_profile_name, p_title, p_kind, p_content_id, new_log, now(), now(),
-    p_series_id, p_series_title, p_tz, now())
+    p_series_id, p_series_title, p_tz, now(), coalesce(p_sealed, false), p_stat_kind, p_stat_key, p_stat_title)
   on conflict (user_id, device_id) do update set profile_id = excluded.profile_id, profile_name = excluded.profile_name,
     title = excluded.title, kind = excluded.kind, content_id = excluded.content_id, log_id = excluded.log_id,
     started_at = excluded.started_at, last_ping = excluded.last_ping, series_id = excluded.series_id,
-    series_title = excluded.series_title, tz = excluded.tz, last_accounted_at = excluded.last_accounted_at;
-  select * into it from public.bingr_stats_item(p_kind, p_content_id, p_series_id, p_series_title, p_title);
+    series_title = excluded.series_title, tz = excluded.tz, last_accounted_at = excluded.last_accounted_at,
+    stat_sealed = excluded.stat_sealed, stat_kind = excluded.stat_kind, stat_key = excluded.stat_key, stat_title = excluded.stat_title;
+  if coalesce(p_sealed, false) then
+    select p_stat_kind as kind, p_stat_key as item_key, p_stat_title as title into it;
+  else
+    select * into it from public.bingr_stats_item(p_kind, p_content_id, p_series_id, p_series_title, p_title);
+  end if;
   if it.kind is not null and coalesce(it.item_key, '') <> '' then
     insert into public.account_watch_stats as w (user_id, profile_id, profile_name, day, kind, item_key, title, plays)
     values (p_user, coalesce(p_profile_id, ''), p_profile_name, public.bingr_local_day(p_tz), it.kind, it.item_key, it.title, 1)
@@ -1136,8 +1163,8 @@ begin
   end if;
   return jsonb_build_object('ok', true);
 end $$;
-revoke all on function public.bingr_stream_start(uuid, text, text, text, text, text, text, int, int, text, text, text) from public, anon, authenticated;
-grant execute on function public.bingr_stream_start(uuid, text, text, text, text, text, text, int, int, text, text, text) to service_role;
+revoke all on function public.bingr_stream_start(uuid, text, text, text, text, text, text, int, int, text, text, text, boolean, text, text, text, text) from public, anon, authenticated;
+grant execute on function public.bingr_stream_start(uuid, text, text, text, text, text, text, int, int, text, text, text, boolean, text, text, text, text) to service_role;
 
 -- Statistieken voor een periode (p_from t/m p_to, lokale dagen), voor één profiel of alle (p_profile null).
 -- Per dag of per maand (p_by_month) en per soort; titels (top 50 per soort) en tellers; minuten per profiel.
@@ -3922,12 +3949,189 @@ revoke all on function public.bingr_rate_peek(text, int, int) from public, anon,
 grant execute on function public.bingr_rate_peek(text, int, int) to service_role;
 
 -- ============================================================================================================
+-- Build 146: alles versleuteld (docs/ACCOUNT.md, "Build 146"). Profielen, pincodes (als hash in de versleutelde state),
+-- kijkgegevens, supportberichten en diagnose-bijlagen staan niet meer leesbaar in de database. Versleutelen gebeurt in de
+-- Edge Functions met BINGR_SOURCES_KEY (AES-256-GCM, _shared/sealed.ts); de database ziet alleen `enc1:…` of base64.
+-- >>> unittest profiles
+-- 1. Profielen: account_data.sealed = seal({profiles}) is de bron van waarheid (device-auth get_profiles/put_profiles).
+--    account_data.profiles blijft alleen een leesbare kopie voor apps van build 145 en ouder, zolang die er zijn:
+--    app_settings.profiles_legacy = "mirror" (standaard: altijd een kopie) | "auto" (alleen voor accounts met een apparaat
+--    < build 146 of een directe schrijfactie in de laatste 30 dagen) | "off" (geen kopie meer; rechtstreeks schrijven via
+--    REST geweigerd). profile_count = aantal profielen zonder tombstones (beheer); legacy_at = laatste directe schrijfactie
+--    van een oude app/pagina; plain_cleared = de kopie is bewust leeg gemaakt (profiles = []).
+alter table public.account_data add column if not exists sealed text;
+alter table public.account_data add column if not exists sealed_at timestamptz;
+alter table public.account_data add column if not exists profile_count int;
+alter table public.account_data add column if not exists legacy_at timestamptz;
+alter table public.account_data add column if not exists plain_cleared boolean not null default false;
+
+-- Rechtstreeks schrijven door een app (PostgREST met de sessie van de gebruiker, rol authenticated): de versleutelde lijst
+-- en de beheervelden kan de app niet aanraken; legacy_at en profile_count worden gezet. Met profiles_legacy = "off":
+-- weigeren (42501 -> PostgREST 403, hint bingr_profiles_moved). Schrijven door de functies (service role) gaat ongemoeid.
+create or replace function public.bingr_account_data_legacy() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare role text := coalesce(nullif(current_setting('request.jwt.claims', true), '')::jsonb->>'role', '');
+  mode text;
+begin
+  if role not in ('authenticated', 'anon') then return new; end if;
+  select value #>> '{}' into mode from public.app_settings where key = 'profiles_legacy';
+  if coalesce(mode, 'mirror') = 'off' then
+    raise exception 'profiles_moved' using errcode = '42501', hint = 'bingr_profiles_moved',
+      detail = 'Profiles are stored via device-auth (get_profiles / put_profiles) since build 146.';
+  end if;
+  if tg_op = 'UPDATE' then
+    new.sealed := old.sealed; new.sealed_at := old.sealed_at;
+  else
+    new.sealed := null; new.sealed_at := null;
+  end if;
+  new.legacy_at := now();
+  new.plain_cleared := false;
+  new.profile_count := (select count(*) from jsonb_array_elements(case when jsonb_typeof(new.profiles) = 'array' then new.profiles else '[]'::jsonb end) e
+    where jsonb_typeof(e) = 'object' and coalesce(e->>'deleted', 'false') <> 'true');
+  return new;
+end $$;
+revoke all on function public.bingr_account_data_legacy() from public, anon, authenticated;
+drop trigger if exists bingr_account_data_legacy on public.account_data;
+create trigger bingr_account_data_legacy before insert or update on public.account_data
+  for each row execute function public.bingr_account_data_legacy();
+
+-- Aantal profielen voor het beheer: de kolom (gezet door device-auth en de trigger), anders zoals voorheen uit de lijst.
+create or replace function public.bingr_profile_count(a public.account_data) returns int
+language sql stable set search_path = public as $$
+  select coalesce(a.profile_count, (select count(*)::int from jsonb_array_elements(case when jsonb_typeof(a.profiles) = 'array' then a.profiles else '[]'::jsonb end) e
+    where jsonb_typeof(e) = 'object' and coalesce(e->>'deleted', 'false') <> 'true'));
+$$;
+revoke all on function public.bingr_profile_count(public.account_data) from public, anon, authenticated;
+grant execute on function public.bingr_profile_count(public.account_data) to service_role;
+
+insert into public.app_settings (key, value) values ('profiles_legacy', '"mirror"'::jsonb) on conflict (key) do nothing;
+-- Rechten van oude apps: alleen user_id, profiles en updated_at (staat ook bij de beveiligingsadvisor onderaan).
+revoke select, insert, update on public.account_data from authenticated;
+grant select (user_id, profiles, updated_at), insert (user_id, profiles, updated_at), update (user_id, profiles, updated_at)
+  on public.account_data to authenticated;
+
+-- Stand van de overgang (beheer en de workflow Backend): alleen aantallen.
+create or replace function public.bingr_profiles_status() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object(
+    'mode', coalesce((select value #>> '{}' from public.app_settings where key = 'profiles_legacy'), 'mirror'),
+    'accounts', (select count(*) from public.account_data),
+    'sealed', (select count(*) from public.account_data where sealed is not null),
+    'unsealed', (select count(*) from public.account_data where sealed is null and jsonb_typeof(profiles) = 'array' and jsonb_array_length(profiles) > 0),
+    'plain', (select count(*) from public.account_data where not plain_cleared and jsonb_typeof(profiles) = 'array' and jsonb_array_length(profiles) > 0),
+    'legacy_writes_30d', (select count(*) from public.account_data where legacy_at > now() - interval '30 days'),
+    'old_devices', (select count(*) from public.account_devices where coalesce(substring(app_version from '\((\d{1,7})\)\s*$')::int, 0) < 146),
+    'accounts_with_old_devices', (select count(distinct user_id) from public.account_devices where coalesce(substring(app_version from '\((\d{1,7})\)\s*$')::int, 0) < 146)
+  );
+$$;
+revoke all on function public.bingr_profiles_status() from public, anon, authenticated;
+grant execute on function public.bingr_profiles_status() to service_role;
+-- <<< unittest profiles
+
+-- 2. Kijkgegevens: bestaande statistiekrijen versleutelen (onderhoud door device-auth, actie maint_seal). Per rij:
+--    nieuwe sleutel (een titelsleutel 't:…' wordt 'h:<HMAC>'), versleutelde titel en profielnaam. Bestaat de nieuwe
+--    sleutel al voor die dag (twee oude rijen met dezelfde HMAC), dan worden ze opgeteld. p_rows: [{user_id, profile_id,
+--    day, kind, old_key, new_key, title, profile_name}].
+-- >>> unittest stats-seal
+create or replace function public.bingr_stats_seal(p_rows jsonb) returns int
+language plpgsql security definer set search_path = public as $$
+declare r record; n int := 0;
+begin
+  for r in select * from jsonb_to_recordset(coalesce(p_rows, '[]'::jsonb))
+    as x(user_id uuid, profile_id text, day date, kind text, old_key text, new_key text, title text, profile_name text)
+  loop
+    if r.new_key is null or r.new_key = '' then continue; end if;
+    if r.new_key = r.old_key then
+      update public.account_watch_stats set title = r.title, profile_name = r.profile_name
+      where user_id = r.user_id and profile_id = r.profile_id and day = r.day and kind = r.kind and item_key = r.old_key;
+    else
+      insert into public.account_watch_stats as w (user_id, profile_id, profile_name, day, kind, item_key, title, episodes, minutes, plays, updated_at)
+      select s.user_id, s.profile_id, r.profile_name, s.day, s.kind, r.new_key, r.title, s.episodes, s.minutes, s.plays, s.updated_at
+      from public.account_watch_stats s
+      where s.user_id = r.user_id and s.profile_id = r.profile_id and s.day = r.day and s.kind = r.kind and s.item_key = r.old_key
+      on conflict (user_id, profile_id, day, kind, item_key) do update set
+        minutes = w.minutes + excluded.minutes, plays = w.plays + excluded.plays,
+        episodes = (select coalesce((array_agg(distinct e))[1:500], '{}'::text[]) from unnest(w.episodes || excluded.episodes) e),
+        title = coalesce(w.title, excluded.title), profile_name = coalesce(w.profile_name, excluded.profile_name),
+        updated_at = greatest(w.updated_at, excluded.updated_at);
+      delete from public.account_watch_stats
+      where user_id = r.user_id and profile_id = r.profile_id and day = r.day and kind = r.kind and item_key = r.old_key;
+    end if;
+    n := n + 1;
+  end loop;
+  return n;
+end $$;
+revoke all on function public.bingr_stats_seal(jsonb) from public, anon, authenticated;
+grant execute on function public.bingr_stats_seal(jsonb) to service_role;
+-- <<< unittest stats-seal
+
+-- Wat nog leesbaar is (voor het onderhoud, in porties; alleen sleutels en de leesbare waarden die versleuteld moeten worden).
+create or replace function public.bingr_unsealed(p_what text, p_limit int default 200) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare lim int := least(greatest(coalesce(p_limit, 200), 1), 1000);
+begin
+  if p_what = 'stats' then
+    return coalesce((select jsonb_agg(to_jsonb(x)) from (
+      select user_id, profile_id, day, kind, item_key, title, profile_name from public.account_watch_stats
+      where (title is not null and title not like 'enc1:%') or (profile_name is not null and profile_name not like 'enc1:%') or item_key like 't:%'
+      limit lim) x), '[]'::jsonb);
+  elsif p_what = 'log' then
+    return coalesce((select jsonb_agg(to_jsonb(x)) from (
+      select id, title, profile_name, device_name from public.account_watch_log
+      where (title is not null and title not like 'enc1:%') or (profile_name is not null and profile_name not like 'enc1:%')
+         or (device_name is not null and device_name not like 'enc1:%')
+      limit lim) x), '[]'::jsonb);
+  elsif p_what = 'streams' then
+    return coalesce((select jsonb_agg(to_jsonb(x)) from (
+      select user_id, device_id, title, kind, content_id, series_id, series_title, profile_name from public.account_streams
+      where not stat_sealed limit lim) x), '[]'::jsonb);
+  elsif p_what = 'messages' then
+    return coalesce((select jsonb_agg(to_jsonb(x)) from (
+      select id, body from public.support_messages where author in ('customer', 'support', 'note') and body not like 'enc1:%'
+      limit lim) x), '[]'::jsonb);
+  elsif p_what = 'inbox_log' then
+    return coalesce((select jsonb_agg(to_jsonb(x)) from (
+      select id, sender, subject, detail from public.support_inbox_log
+      where (sender is not null and sender not like 'enc1:%') or (subject is not null and subject not like 'enc1:%')
+         or (detail is not null and detail not like 'enc1:%')
+      limit lim) x), '[]'::jsonb);
+  end if;
+  return '[]'::jsonb;
+end $$;
+revoke all on function public.bingr_unsealed(text, int) from public, anon, authenticated;
+grant execute on function public.bingr_unsealed(text, int) to service_role;
+
+-- 3. Support uit de app (device-auth/support build 146): diagnose-bijlage per bericht (versleuteld, `enc1:…`) en het
+--    apparaat van het ticket uit de bijlage (soort en model; geen persoonsgegevens, leesbaar voor het overzicht in het beheer).
+alter table public.support_messages add column if not exists diagnostics text;
+alter table public.support_messages drop constraint if exists support_messages_source_chk;
+alter table public.support_messages add constraint support_messages_source_chk check (source is null or source in ('web', 'email', 'admin', 'app'));
+alter table public.support_tickets add column if not exists device_type text;
+alter table public.support_tickets add column if not exists device_model text;
+alter table public.support_tickets add column if not exists source text;
+do $$ begin
+  alter table public.support_tickets add constraint support_tickets_device_type_chk
+    check (device_type is null or device_type in ('phone', 'tablet', 'tv', 'desktop', 'browser'));
+exception when duplicate_object then null; end $$;
+do $$ begin
+  alter table public.support_tickets add constraint support_tickets_source_chk check (source is null or source in ('web', 'email', 'app'));
+exception when duplicate_object then null; end $$;
+
+-- 4. Pushmelding bij een antwoord van support (kind support_reply; payload versleuteld in payload.sealed).
+alter table public.push_messages drop constraint if exists push_messages_kind_check;
+alter table public.push_messages add constraint push_messages_kind_check check (kind in ('release', 'admin', 'reminder', 'support_reply'));
+
+-- ============================================================================================================
 -- Beveiligingsadvisor van Supabase (docs/ACCOUNT.md "Inlogbescherming"; Backend controleert hem na elke deploy):
 -- 1. account_data: alleen wat de apps nodig hebben (authenticated lezen/toevoegen/wijzigen via RLS; anon niets, geen
 --    delete/truncate; verwijderen gaat via device-auth met de service role).
 revoke all on public.account_data from anon;
 revoke delete, truncate, references, trigger on public.account_data from authenticated;
-grant select, insert, update on public.account_data to authenticated;
+-- build 146: alleen de kolommen van oude apps (user_id, profiles, updated_at); de versleutelde lijst (sealed) en de
+-- beheervelden zijn niet te lezen of te schrijven met de sessie van een gebruiker.
+revoke select, insert, update on public.account_data from authenticated;
+grant select (user_id, profiles, updated_at), insert (user_id, profiles, updated_at), update (user_id, profiles, updated_at)
+  on public.account_data to authenticated;
 -- 2. RLS-policies met (select auth.uid()): één keer per query uitgerekend i.p.v. per rij (performance-advisor
 --    auth_rls_initplan); zelfde betekenis.
 drop policy if exists "eigen gegevens lezen" on public.account_data;

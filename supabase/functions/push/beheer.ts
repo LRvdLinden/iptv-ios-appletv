@@ -2,6 +2,7 @@
 // (elke minuut): nieuwe tickets, klantantwoorden, builds en statuswijzigingen naar apparaten in admin_push_devices, via APNs
 // met topic BEHEER_APNS_TOPIC (standaard nl.lrvdlinden.bingr.beheer) en dezelfde APNS_KEY_P8/ID/TEAM.
 // Logs en het antwoord bevatten alleen tellingen en foutcodes: nooit tokens, onderwerpen, berichten of e-mailadressen.
+import { openField } from "../_shared/sealed.ts";
 import { fetchBuildManifest } from "../_shared/builds.ts";
 import type { Apns } from "./channels.ts";
 import {
@@ -36,8 +37,10 @@ async function loadMonitors(db: Db): Promise<MonitorNow[]> {
 
 // testtickets van de mailtest (workflow Diagnose, adres support+ci-…@bingr.online) geven geen melding; ze worden direct verwijderd
 const CI_TICKET = "support+ci-%@bingr.online";
+// build 146: ook de testaccounts van de workflow Backend (@example.com, nooit een echte klant)
+const CI_ACCOUNT = "%@example.com";
 async function newTickets(db: Db, after: number): Promise<TicketRow[]> {
-  const { data, error } = await db.from("support_tickets").select("number,subject").gt("number", after).not("email", "like", CI_TICKET)
+  const { data, error } = await db.from("support_tickets").select("number,subject").gt("number", after).not("email", "like", CI_TICKET).not("email", "like", CI_ACCOUNT)
     .order("number").limit(50);
   if (error) throw new Error(`support_tickets: ${error.code ?? "fout"}`);
   return (data ?? []) as TicketRow[];
@@ -53,15 +56,16 @@ async function newReplies(db: Db, after: number): Promise<{ rows: ReplyRow[]; ma
   if (!cust.length) return { rows: [], maxId };
   const ids = [...new Set(cust.map((r) => r.ticket_id))];
   const [tk, firsts] = await Promise.all([
-    db.from("support_tickets").select("id,number").in("id", ids).not("email", "like", CI_TICKET),
+    db.from("support_tickets").select("id,number").in("id", ids).not("email", "like", CI_TICKET).not("email", "like", CI_ACCOUNT),
     db.from("support_messages").select("id,ticket_id").in("ticket_id", ids).eq("author", "customer").order("id").limit(1000),
   ]);
   const num = new Map(((tk.data ?? []) as { id: string; number: number }[]).map((t) => [t.id, Number(t.number)]));
   const first = new Map<string, number>();
   for (const r of (firsts.data ?? []) as { id: number; ticket_id: string }[]) if (!first.has(r.ticket_id)) first.set(r.ticket_id, Number(r.id));
-  const rows = cust.filter((r) => num.has(r.ticket_id)).map((r) => ({
-    id: Number(r.id), number: num.get(r.ticket_id)!, body: r.body, first: first.get(r.ticket_id) === Number(r.id),
-  }));
+  // build 146: berichttekst staat versleuteld (`enc1:…`, _shared/sealed.ts); oude berichten zijn nog leesbaar
+  const rows = await Promise.all(cust.filter((r) => num.has(r.ticket_id)).map(async (r) => ({
+    id: Number(r.id), number: num.get(r.ticket_id)!, body: await openField(r.body), first: first.get(r.ticket_id) === Number(r.id),
+  })));
   return { rows, maxId };
 }
 

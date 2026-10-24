@@ -157,6 +157,15 @@ jobs:
           for i in $(seq 1 20); do pg_isready -q && break; sleep 1; done
           sudo -u postgres bash supabase/tests/login_function_test.sh
           deno test supabase/functions/login/logic_test.ts
+      - name: Unittests (build 146, alles versleuteld)
+        # blokkeert de deploy: pincode-hash (testvectoren, WebCrypto en pure JS, serverregels), profielen (samenvoegen,
+        # versleutelen, overgangsstanden, botsingen), diagnose-bijlage (schema, strippen, grenzen), kijkgegevens
+        # (statsItem = bingr_stats_item, HMAC-sleutels), en in SQL de trigger voor oude apps, de kolomrechten en
+        # bingr_stats_seal (supabase/tests/profiles_test.sh)
+        run: |
+          deno test --allow-env supabase/functions/_shared/pin_test.ts supabase/functions/_shared/profiles_test.ts supabase/functions/_shared/diagnostics_test.ts supabase/functions/device-auth/watch_test.ts
+          for i in $(seq 1 20); do pg_isready -q && break; sleep 1; done
+          sudo -u postgres bash supabase/tests/profiles_test.sh
       - name: Unittests (bewaarplicht aankopen)
         # blokkeert de deploy: account verwijderen -> aankopen en terugbetalingen blijven zonder account (user_id null,
         # user_deleted_at), omzet en tellingen gelijk, RLS, migratie van on delete cascade en de bewaartermijn van 7 jaar na
@@ -480,6 +489,15 @@ jobs:
           rm -f /tmp/hook.json
           [ "$code" -lt 300 ] || { echo "::error::Send Email Hook aanzetten mislukt (HTTP $code)"; exit 1; }
           echo "::notice::Send Email Hook staat aan: accountmails via auth-mail (nodemailer, BINGR_SMTP_*)"
+      - name: Build 146 - onderhoudsgeheim
+        # geheim voor device-auth maint_seal/profiles_status (alleen deze workflow): per deploy nieuw, nooit in de repo of het log
+        if: steps.check.outputs.skip != '1'
+        run: |
+          SECRET="$(openssl rand -hex 32)"
+          echo "::add-mask::$SECRET"
+          supabase secrets set --project-ref "$REF" BINGR_MAINT_SECRET="$SECRET" >/dev/null
+          umask 077; printf '%s' "$SECRET" > "$RUNNER_TEMP/maint_secret"
+          echo "::notice::BINGR_MAINT_SECRET op de server gezet"
       - name: Edge Function device-auth
         if: steps.check.outputs.skip != '1'
         run: supabase functions deploy device-auth --project-ref "$REF" --no-verify-jwt --use-api
@@ -726,6 +744,156 @@ jobs:
           supabase secrets set --project-ref "$REF" NEWSLETTER_CRON_SECRET="$SECRET" >/dev/null
           umask 077; printf '%s' "$SECRET" > "$RUNNER_TEMP/newsletter_cron_secret"
           echo "::notice::NEWSLETTER_CRON_SECRET ${N_CRON:+(vast) }op de server gezet"
+      - name: Build 146 - bestaande gegevens versleutelen
+        # eenmalig (en bij elke deploy controleren): profielen, kijkgegevens en supportberichten die nog leesbaar zijn,
+        # versleutelen via device-auth maint_seal (in porties van max. 35 s). Daarna de stand van de overgang (alleen aantallen).
+        if: steps.check.outputs.skip != '1'
+        run: |
+          python3 - <<'PY'
+          import json, os, time, urllib.request, urllib.error
+          REF = os.environ["REF"]; SEC = open(os.path.join(os.environ["RUNNER_TEMP"], "maint_secret")).read()
+          URL = f"https://{REF}.supabase.co/functions/v1/device-auth"
+          def call(body):
+              r = urllib.request.Request(URL, data=json.dumps(body).encode(), method="POST", headers={"Content-Type": "application/json", "x-bingr-maint": SEC})
+              try:
+                  with urllib.request.urlopen(r, timeout=90) as resp: return resp.status, json.loads(resp.read() or b"{}")
+              except urllib.error.HTTPError as e: return e.code, {"raw": e.read()[:200].decode("utf-8", "replace")}
+              except Exception as e: return 0, {"raw": str(e)[:200]}
+          # de nieuwe functie moet het geheim al kennen (secrets set herstart de functie): even proberen
+          for i in range(12):
+              code, r = call({"action": "profiles_status"})
+              if code == 200: break
+              time.sleep(5)
+          if code != 200: print(f"::error::profiles_status gaf HTTP {code}: {r}"); raise SystemExit(1)
+          print("::notice::Overgang profielen vooraf:", json.dumps(r))
+          bad = False
+          for what in ["profiles", "stats", "log", "streams", "messages", "inbox_log", "pins"]:
+              total = failed = 0; after = None; done = False
+              for i in range(200):
+                  code, r = call({"action": "maint_seal", "what": what, **({"after": after} if after else {})})
+                  if code != 200: print(f"::error::maint_seal {what} gaf HTTP {code}: {r}"); bad = True; break
+                  total += int(r.get("processed") or 0); failed += int(r.get("failed") or 0); after = r.get("next")
+                  if r.get("done"): done = True; break
+              note = f"{what}: {total} verwerkt" + (f", {failed} mislukt" if failed else "") + ("" if done else " (nog niet klaar, volgende deploy gaat verder)")
+              print(("::warning::" if failed or not done else "::notice::") + "Versleutelen " + note + (f" ({r.get('skipped')})" if r.get("skipped") else ""))
+          code, r = call({"action": "profiles_status"})
+          print("::notice::Overgang profielen na afloop:", json.dumps(r))
+          if code == 200 and int(r.get("unsealed") or 0) > 0: print(f"::warning::nog {r['unsealed']} profielrij(en) niet versleuteld")
+          if bad: raise SystemExit(1)
+          PY
+      - name: Build 146 - end-to-end (profielen, pincode, support uit de app)
+        # tijdelijk account: put_profiles/get_profiles (samenvoegen, versleuteld in de database), schrijven van een oude app
+        # via REST, pincode als hash (pin nooit leesbaar), support app_create/app_list/app_get/app_reply/app_close met een
+        # diagnose-bijlage (versleuteld, gestript), en alles weer weg. Geen persoonsgegevens in het log.
+        if: steps.check.outputs.skip != '1'
+        run: |
+          python3 - <<'PY'
+          import json, os, secrets, sys, urllib.request, urllib.error
+          REF = os.environ["REF"]; MGMT = os.environ["SUPABASE_ACCESS_TOKEN"]
+          BASE = f"https://{REF}.supabase.co"; PUB = "sb_publishable_lpIup6Omq5kW2k3oICGZ4g_HPGac5A3"
+          def req(method, url, body=None, headers=None):
+              h = {"Content-Type": "application/json", **(headers or {})}
+              r = urllib.request.Request(url, data=None if body is None else json.dumps(body).encode(), method=method, headers=h)
+              try:
+                  with urllib.request.urlopen(r, timeout=60) as resp: raw = resp.read(); code = resp.status
+              except urllib.error.HTTPError as e: raw = e.read(); code = e.code
+              try: return code, json.loads(raw or b"{}")
+              except Exception: return code, {"raw": raw[:200].decode("utf-8", "replace")}
+          def sql(q):
+              return req("POST", f"https://api.supabase.com/v1/projects/{REF}/database/query", {"query": q}, {"Authorization": f"Bearer {MGMT}"})
+          code, keys = req("GET", f"https://api.supabase.com/v1/projects/{REF}/api-keys?reveal=true", headers={"Authorization": f"Bearer {MGMT}"})
+          key = None
+          for k in keys if isinstance(keys, list) else []:
+              v = k.get("api_key") or ""
+              if v and (k.get("name") == "service_role" or k.get("type") == "secret") and "·" not in v: key = v; break
+          if not key: print(f"::warning::build 146 end-to-end overgeslagen: geen geheime sleutel (HTTP {code})"); sys.exit(0)
+          print(f"::add-mask::{key}")
+          adm = {"apikey": key, **({"Authorization": f"Bearer {key}"} if key.startswith("ey") else {})}
+          email, pw = f"ci-{secrets.token_hex(6)}@example.com", secrets.token_urlsafe(18)
+          code, u = req("POST", f"{BASE}/auth/v1/admin/users", {"email": email, "password": pw, "email_confirm": True,
+                        "user_metadata": {"first_name": "CI", "last_name": "Test"}}, adm)
+          uid = u.get("id")
+          if not uid: print(f"::error::testaccount aanmaken mislukt (HTTP {code})"); sys.exit(1)
+          fail = []
+          try:
+              code, t = req("POST", f"{BASE}/auth/v1/token?grant_type=password", {"email": email, "password": pw}, {"apikey": PUB})
+              tok = t.get("access_token")
+              if not tok: raise SystemExit(f"inloggen testaccount mislukt (HTTP {code})")
+              print(f"::add-mask::{tok}")
+              user = {"apikey": PUB, "Authorization": f"Bearer {tok}"}
+              DA, SU = f"{BASE}/functions/v1/device-auth", f"{BASE}/functions/v1/support"
+              # 1. profielen via device-auth
+              P = [{"id": "CI-MAIN", "name": "CI hoofd", "isMain": True, "order": 0, "updatedAt": "2026-10-24T10:00:00Z"},
+                   {"id": "CI-KIDS", "name": "CI kids", "kids": True, "ageLimit": 12, "order": 1, "updatedAt": "2026-10-24T10:00:00Z"}]
+              code, r = req("POST", DA, {"action": "put_profiles", "profiles": P}, user)
+              if code != 200 or len(r.get("profiles") or []) != 2: fail.append(f"put_profiles HTTP {code}: {str(r)[:200]}")
+              code, r = req("POST", DA, {"action": "put_profiles", "profiles": [{"id": "CI-KIDS", "name": "oud", "updatedAt": "2026-10-01T00:00:00Z"},
+                            {"id": "CI-NEW", "name": "CI nieuw", "order": 2, "updatedAt": "2026-10-24T11:00:00Z"}]}, user)
+              names = {p["id"]: p.get("name") for p in r.get("profiles") or []}
+              if names != {"CI-MAIN": "CI hoofd", "CI-KIDS": "CI kids", "CI-NEW": "CI nieuw"}: fail.append(f"samenvoegen: {names}")
+              c2, rows = sql(f"select sealed is not null as s, sealed not like '%CI hoofd%' as hidden, profile_count from public.account_data where user_id = '{uid}'")
+              row = rows[0] if isinstance(rows, list) and rows else {}
+              if not (row.get("s") and row.get("hidden") and row.get("profile_count") == 3): fail.append(f"account_data niet versleuteld: {row}")
+              # 2. oude app schrijft rechtstreeks (zoals build 145): get_profiles neemt het mee
+              code, r = req("GET", f"{BASE}/rest/v1/account_data?select=profiles,updated_at", None, user)
+              if code != 200: fail.append(f"oude app lezen HTTP {code}")
+              old = (r[0]["profiles"] if isinstance(r, list) and r else []) + [{"id": "CI-OLD", "name": "CI oude app", "order": 3, "updatedAt": "2026-10-24T12:00:00Z"}]
+              code, r = req("POST", f"{BASE}/rest/v1/account_data", {"user_id": uid, "profiles": old, "updated_at": "2026-10-24T12:00:00Z"},
+                            {**user, "Prefer": "resolution=merge-duplicates,return=minimal"})
+              if code >= 300: fail.append(f"oude app schrijven HTTP {code}: {str(r)[:200]}")
+              code, r = req("GET", f"{BASE}/rest/v1/account_data?select=sealed", None, user)
+              if code < 400: fail.append(f"sealed leesbaar voor de app (HTTP {code})")
+              code, r = req("POST", DA, {"action": "get_profiles"}, user)
+              if "CI-OLD" not in {p["id"] for p in r.get("profiles") or []}: fail.append(f"get_profiles zonder schrijfactie oude app: {str(r)[:200]}")
+              # 3. pincode als hash
+              H = {"alg": "pbkdf2-sha256", "iter": 100000, "salt": "AAECAwQFBgcICQoLDA0ODw==", "hash": "hp5sg1DFvrCsw5n7qsO2DSIEM4lrJqZHc00NjxWG4fo="}
+              code, r = req("POST", DA, {"action": "put_state", "section": "profile.CI-KIDS", "data": {"pin": "1234", "pinHash": H, "pinUpdatedAt": "2026-10-24T10:00:00Z", "updatedAt": "2026-10-24T10:00:00Z"}}, user)
+              code, r = req("POST", DA, {"action": "put_state", "section": "profile.CI-KIDS", "data": {"pin": "1234", "pinUpdatedAt": "2026-10-01T00:00:00Z", "myList": []}}, user)
+              code, r = req("POST", DA, {"action": "get_state", "sections": ["profile.CI-KIDS"]}, user)
+              d = ((r.get("sections") or {}).get("profile.CI-KIDS") or {}).get("data") or {}
+              if d.get("pin") is not None or (d.get("pinHash") or {}).get("hash") != H["hash"]: fail.append(f"pincode: pin={d.get('pin') is not None}, hash={bool(d.get('pinHash'))}")
+              code, r = req("POST", DA, {"action": "put_state", "section": "profile.CI-KIDS", "data": {"pinHash": {"alg": "md5"}}}, user)
+              if code != 400 or r.get("error") != "bad_pin_hash": fail.append(f"ongeldige pinHash HTTP {code}")
+              # 4. support uit de app
+              DG = {"kind": "app", "app": {"platform": "tvos", "version": "1.0.1", "build": 146},
+                    "device": {"type": "tv", "model": "Apple TV 4K (3rd generation)", "os": "tvOS", "osVersion": "26.1", "language": "nl-NL"},
+                    "state": {"servers": 1, "network": {"online": True, "type": "wifi", "backend": "ok"}}, "secret": "http://example.com/x"}
+              code, r = req("POST", SU, {"action": "app_create", "subject": "CI-test build 146", "message": "Testbericht uit de workflow Backend.",
+                            "category": "apps", "lang": "nl", "diagnostics": DG}, user)
+              n = r.get("number")
+              if code != 200 or not n or r.get("diagnostics") != "stripped": fail.append(f"app_create HTTP {code}: {str(r)[:200]}")
+              else:
+                  code, r = req("POST", SU, {"action": "app_list"}, user)
+                  if code != 200 or not any(i.get("number") == n and i.get("group") == "open" for i in r.get("items") or []): fail.append(f"app_list HTTP {code}: {str(r)[:200]}")
+                  code, r = req("POST", SU, {"action": "app_reply", "number": n, "message": "Tweede bericht.", "diagnostics": {"kind": "start", "app": {"platform": "tvos"}}}, user)
+                  if code != 200: fail.append(f"app_reply HTTP {code}: {str(r)[:200]}")
+                  code, r = req("POST", SU, {"action": "app_get", "number": n}, user)
+                  msgs = r.get("messages") or []
+                  if code != 200 or r.get("ticket", {}).get("device_type") != "tv" or not any((m.get("diagnostics") or {}).get("kind") == "app" for m in msgs):
+                      fail.append(f"app_get HTTP {code}: {str(r)[:300]}")
+                  c2, rows = sql(f"select count(*) filter (where m.body not like 'enc1:%' and m.author <> 'event') as plain, count(*) filter (where m.diagnostics like 'enc1:%') as diag "
+                                 f"from public.support_messages m join public.support_tickets t on t.id = m.ticket_id where t.number = {int(n)}")
+                  row = rows[0] if isinstance(rows, list) and rows else {}
+                  if row.get("plain") != 0 or row.get("diag") != 2: fail.append(f"supportberichten niet versleuteld: {row}")
+                  code, r = req("POST", SU, {"action": "app_get", "number": n + 100000}, user)
+                  if code != 404: fail.append(f"ander ticket gaf HTTP {code}")
+                  code, r = req("POST", SU, {"action": "app_close", "number": n}, user)
+                  if code != 200 or r.get("group") != "closed": fail.append(f"app_close HTTP {code}")
+                  code, r = req("POST", SU, {"action": "app_reply", "number": n, "message": "na sluiten"}, user)
+                  if code != 409: fail.append(f"reageren op gesloten ticket gaf HTTP {code}")
+              code, r = req("POST", SU, {"action": "app_list"}, {"apikey": PUB})
+              if code != 401: fail.append(f"app_list zonder inloggen gaf HTTP {code}")
+              c2, rows = sql("select count(*) as n from pg_constraint where conname = 'push_messages_kind_check' and pg_get_constraintdef(oid) like '%support_reply%'")
+              if not (isinstance(rows, list) and rows and rows[0].get("n") == 1): fail.append("push_messages accepteert support_reply niet")
+          finally:
+              sql(f"delete from public.support_tickets where user_id = '{uid}'")
+              code, _ = req("DELETE", f"{BASE}/auth/v1/admin/users/{uid}", None, adm)
+              if code >= 300: print(f"::warning::testaccount verwijderen gaf HTTP {code}")
+          if fail:
+              for f in fail: print(f"::error::build 146: {f}")
+              sys.exit(1)
+          print("::notice::build 146: profielen, pincode en support uit de app werken (versleuteld)")
+          PY
       - name: Edge Function newsletter
         if: steps.check.outputs.skip != '1'
         run: supabase functions deploy newsletter --project-ref "$REF" --no-verify-jwt --use-api

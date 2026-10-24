@@ -10,6 +10,9 @@ De account regelt het inloggen en bewaart de **profielen** (zonder pincodes en e
 
 Bestaande gebruikers houden al hun profielen: het inlogscherm komt vóór "Wie kijkt er?" en raakt geen lokale gegevens aan.
 
+> **Sinds build 146** staan de profielen versleuteld en lezen en schrijven de apps ze via device-auth `get_profiles` /
+> `put_profiles`; de REST-route hieronder is alleen nog voor apps van build 145 en ouder. Zie "Build 146".
+
 Tabel `account_data`: één rij per account, `{user_id, profiles, updated_at}`. Lezen en schrijven gaat via PostgREST met de sessie van de gebruiker:
 - Lezen: `GET {URL}/rest/v1/account_data?select=profiles,updated_at` + `apikey` + `Authorization: Bearer <access_token>`. Antwoord: `[]` of `[{profiles, updated_at}]`.
 - Schrijven: `POST {URL}/rest/v1/account_data` + dezelfde headers + `Prefer: resolution=merge-duplicates,return=minimal`, body `{"user_id":"<user.id>","profiles":[…],"updated_at":"<ISO-8601 nu>"}`.
@@ -1142,5 +1145,348 @@ Kies je bij het starten van de app in "Wie kijkt er?" een profiel en was het laa
   sync-stand, zodat de account de bron is (zoals bij een nieuw apparaat) en lege lokale waarden nooit als
   "verwijderd" naar de server gaan.
 - **Contract:** ongewijzigd. `pin` blijft de pincode zelf (Android, Samsung TV en web lezen hem zo); een hash in de sync
-  vraagt een nieuwe sleutel (bijv. `pinHash`) in alle apps tegelijk.
+  vraagt een nieuwe sleutel (bijv. `pinHash`) in alle apps tegelijk. Die komt in build 146: zie "Build 146" → "Pincode als hash".
 
+
+## Build 146: alles versleuteld, pincode als hash en support in de app
+
+Server: live sinds build 146 (functies `device-auth`, `support`, `push`, schema). De apps (Apple, Android/Android TV,
+Samsung TV, webspeler/Windows, bingr.online) bouwen hiertegen in hun eigen build. **Alles is terugwaarts compatibel:**
+apps van build 145 en ouder blijven werken zoals nu; zie per onderdeel wat ze zien.
+
+Versleuteld betekent overal: AES-256-GCM in de Edge Functions met `BINGR_SOURCES_KEY` (function-secret, nooit in de repo of
+de database), dezelfde sleutel als bij servers en state sinds build 43. De database ziet alleen base64 of een veld
+`enc1:<base64(nonce‖ciphertext‖tag)>` (`supabase/functions/_shared/sealed.ts`). Apps versleutelen niets zelf; ze praten
+altijd via de functies, met `apikey` en `Authorization: Bearer <access_token>`.
+
+### Wat versleuteld is en wat bewust leesbaar blijft
+
+| Gegevens | Waar | Build 146 |
+|---|---|---|
+| Profielen (naam, avatar, kids, ageLimit, isMain, order, accentColor, photo, tombstones) | `account_data.sealed` | **versleuteld**; `account_data.profiles` is alleen nog een leesbare kopie voor oude apps zolang die er zijn (zie "Overgang") |
+| Pincodes | state `profile.<id>` (al versleuteld) | **hash** (`pinHash`), `pin` nooit meer leesbaar op de server zodra er een hash is |
+| Servers, wachtwoorden, tokens, instellingen, lijsten, voortgang, herinneringen | `account_sources`, `account_state` | al versleuteld (build 43/44) |
+| Titels, serietitels, profiel- en apparaatnamen van lopende streams, kijkgeschiedenis (8 dagen) en statistieken (400 dagen) | `account_streams`, `account_watch_log`, `account_watch_stats` | **versleuteld** per veld; een statistieksleutel die van een titel kwam (`t:<titel>`) is nu `h:<HMAC>` per account |
+| Supportberichten (klant, support, notities) en diagnose-bijlagen | `support_messages.body`, `.diagnostics` | **versleuteld**; statuswijzigingen (`event`) zijn geen inhoud en blijven leesbaar |
+| Inbox-logboek van support@ (afzender, onderwerp, detail; 30 dagen) | `support_inbox_log` | **versleuteld** |
+| Payload van pushherinneringen en supportmeldingen (programma, zender, profielnaam, onderwerp) | `push_messages.payload.sealed` | **versleuteld** (`start_ms` en het ticketnummer blijven leesbaar voor de planning) |
+| Profielfoto's | Storage-bucket `avatars` | **beschermd, niet versleuteld** (zie "Profielfoto's") |
+| E-mailadres, voor- en achternaam, taal | `auth.users` | leesbaar: Supabase Auth heeft ze nodig om in te loggen en te mailen; het beheer zoekt erop |
+| Onderwerp, naam en e-mailadres van een ticket | `support_tickets` | leesbaar: het beheer zoekt erop (`ilike`), de inbox-import koppelt mails op adres en nummer, de mails hebben ze nodig |
+| Apparaatnamen, platform, app- en systeemversie | `account_devices` | leesbaar: het beheer toont de apparaten van een account, support.bingr.online/mijn kiest erop, de streamfuncties lezen ze in SQL |
+| Push-tokens | `push_devices` | leesbaar: de wachtrij koppelt in SQL op token (uniek per kanaal); een token is zonder onze APNs/FCM/VAPID-sleutels niets waard |
+| Abonnement, aankopen (zonder betaalgegevens), blokkades (reden), statusabonnees (adres), mailinglijsten | diverse | leesbaar: het beheer en de mailfuncties rekenen en zoeken ermee; geen inhoud van de gebruiker |
+| Kijkgegevens als getal (minuten, aantal, dag, soort, content-id's van afleveringen) | `account_watch_stats` | leesbaar: de server telt en groepeert ermee in SQL (geen titels) |
+
+De bestaande rijen zijn bij de deploy van build 146 versleuteld (workflow *Backend*, stap "bestaande gegevens
+versleutelen", device-auth `maint_seal`; draait bij elke deploy opnieuw en is dan meteen klaar).
+
+### 1. Profielen versleuteld
+
+**Nu (build 145 en ouder):** alle apps en bingr.online lezen en schrijven `account_data.profiles` rechtstreeks via
+PostgREST (RLS): Apple (`AccountService.swift`), Android (`ProfileSync.kt`), Samsung TV (`tizen/js/account.js`), webspeler
+(`web/js/account.js`), bingr.online (`account/index.html`, `assets/js/console.js`, `assets/js/userbtn.js`) en
+support.bingr.online (`assets/js/userbtn.js`, kopie van bingr.online).
+
+**Vanaf build 146: alleen nog via device-auth.**
+
+| Actie | Body | Antwoord |
+|---|---|---|
+| `get_profiles` | `{}` | `{profiles:[…], updatedAt}` (ook tombstones; `updatedAt` = laatste opslag, `null` voor een nieuw account) |
+| `put_profiles` | `{profiles:[…]}` (de **hele** lijst met tombstones, zoals nu) | `{ok:true, profiles:[samengevoegde lijst], updatedAt}` |
+
+Fouten: 400 `bad_profiles` (geen lijst), 413 `too_large` (> 512 KB), 429 `rate_limited` (> 60 `put_profiles` per minuut
+per account), 503 `try_again` (vier keer achter elkaar een gelijktijdige schrijfactie: later opnieuw), 401/503 zoals bij
+alle acties. Het profielformaat verandert niet (zie "Profielen (`account_data.profiles`): alle velden" bij build 60).
+Pincodes horen niet in de lijst: `pin`, `pinHash` en `pinCode` worden door de server weggehaald.
+
+**Samenvoegen op de server** (zodat een apparaat met een verouderde lijst nooit iets wist):
+- per `id` (hoofdletterongevoelig; de schrijfwijze van de winnende versie blijft) wint de versie met de nieuwste tijd
+  (`updatedAt`, bij een tombstone ook `deletedAt`); bij gelijke tijd de binnenkomende;
+- een tombstone wint nooit van een levend hoofdprofiel (`isMain: true`);
+- velden die alleen in de verliezende (levende) versie staan blijven bewaard (behalve `deleted`/`deletedAt`): een app die
+  een veld nog niet kent, wist het dus niet. **Een veld wissen = het op `null` zetten** (zoals `photo: null`);
+- een profiel dat alleen op de server staat blijft staan; verwijderen gaat altijd via een tombstone;
+- tombstones ouder dan 90 dagen gaan weg; de lijst komt terug gesorteerd op `order`, dan `id`.
+
+**Wat de app doet** (de regels van build 38/41/54 voor migreren, importeren en samenvoegen blijven hetzelfde, alleen de
+transportlaag wisselt):
+1. Overal waar nu `GET /rest/v1/account_data?select=profiles,updated_at` staat: `get_profiles`. Waar nu `POST
+   /rest/v1/account_data` (of supabase-js `update`) staat: `put_profiles`. Pas de lijst uit het antwoord van
+   `put_profiles` direct toe (dat is wat de server nu heeft).
+2. Zelfde momenten als nu: na login, bij het starten, bij terugkeer naar de voorgrond en bij elke heartbeat lezen; na een
+   eigen wijziging (met de bestaande vertraging) de hele lijst uploaden.
+3. Nooit meer rechtstreeks `account_data` lezen of schrijven. Krijgt `get_profiles` 400 `unknown_action` (functie te oud,
+   kan alleen bij een terugrol): stil terugvallen op de oude REST-route.
+
+**Overgang voor oude apps** (`app_settings.profiles_legacy`, jsonb-tekst; zet het beheer of Léon met SQL):
+
+| Stand | Leesbare kopie in `account_data.profiles` | Oude app (≤ 145) |
+|---|---|---|
+| `"mirror"` (standaard, nu) | altijd, gelijk aan de versleutelde lijst | werkt precies zoals nu. Schrijft hij rechtstreeks, dan neemt de server dat bij de volgende `get_profiles`/`put_profiles` mee (samenvoegen) en versleutelt het |
+| `"auto"` | alleen voor accounts met een apparaat met build < 146 (of zonder versie) in `account_devices`, of waar een oude app/pagina in de laatste 30 dagen rechtstreeks schreef; anders leeg (`[]`) | meldt een oude app zich aan (`register_device`/`heartbeat`) bij een account met een lege kopie, dan zet de server de kopie meteen terug |
+| `"off"` | nergens; alles leeg | leest een lege lijst (`[]`) en probeert zijn lokale profielen te uploaden; dat weigert de database (403, `hint` `bingr_profiles_moved`). De app werkt met zijn lokale profielen, maar synchroniseert ze niet meer |
+
+- Kolomrechten: met de sessie van een gebruiker zijn alleen `user_id`, `profiles` en `updated_at` te lezen en te
+  schrijven; de versleutelde lijst (`sealed`) en de beheervelden niet. Een trigger zet bij elke rechtstreekse schrijfactie
+  `legacy_at` en `profile_count` (beheer).
+- **Wanneer omzetten:** naar `"auto"` zodra bingr.online (`account/`, `console.js`, `userbtn.js`) en support.bingr.online
+  (`userbtn.js`, opnieuw kopiëren) `get_profiles`/`put_profiles` gebruiken; naar `"off"` als het beheer (of
+  `profiles_status` in de workflow) geen apparaten met build < 146 meer laat zien. Daarna staat er nergens meer leesbare
+  profieldata in de database. SQL: `update public.app_settings set value = '"auto"' where key = 'profiles_legacy';`
+  (`'"off"'`, terug: `'"mirror"'`). De volgende deploy (of `maint_seal` met `what:"profiles"`) maakt de kopieën leeg; in
+  `"off"` hasht hij ook de laatste leesbare pincodes (`what:"pins"`).
+- De stand van de overgang (alleen aantallen) geeft `bingr_profiles_status()` (workflow *Backend*, stap "bestaande gegevens
+  versleutelen").
+
+**Profielfoto's (build 40).** Ze staan in de privé-bucket `avatars` op `<user_id>/<profiel-id>.jpg`; alleen de eigenaar
+kan ze lezen, schrijven en verwijderen (RLS op `storage.objects`), niemand anders. Build 146 maakt dat strenger: alleen
+precies `<eigen user_id>/<profiel-id>.jpg` (één map diep) en ook bij wijzigen een `with check`, zodat een bestand niet via
+"verplaatsen" in de map van een ander account kan belanden (dat kon voorheen). De foto's zelf worden **niet** door Bingr
+versleuteld: alle apps halen ze rechtstreeks bij Storage op (tot 1 MB per profiel, bij elke heartbeat gecontroleerd); door
+de Edge Function zou elke foto als base64 door de functie moeten, voor elk apparaat. Storage versleutelt de bestanden at
+rest. De apps hoeven hiervoor niets te veranderen.
+
+### 2. Pincode als hash
+
+In state-section `profile.<id>` komt naast `pin` en `pinUpdatedAt` het veld **`pinHash`**:
+
+```json
+{"alg":"pbkdf2-sha256","iter":100000,"salt":"<base64, 16 bytes>","hash":"<base64, 32 bytes>"}
+```
+
+- **Afleiding:** PBKDF2-HMAC-SHA256, wachtwoord = de pincode als ASCII-cijfers precies zoals ingetypt (4 t/m 8 cijfers;
+  voorloopnullen tellen mee, `"0123"` ≠ `"123"`), salt = 16 willekeurige bytes (CSPRNG), **100.000** iteraties, 32 bytes
+  uitvoer. base64 = standaard (RFC 4648 §4, met `+`, `/` en `=`). Volgorde van de sleutels maakt niet uit.
+- **Nieuwe salt** bij elke nieuwe pincode (en per profiel). Lezen: gebruik `iter` en `salt` uit het object (een latere
+  build mag het aantal verhogen; accepteer 10.000 t/m 2.000.000); schrijven: altijd 100.000. Onbekend `alg` = geen geldige
+  hash.
+- **Controleren:** afleiden met de ingetypte pincode en vergelijken in vaste tijd. Doe het buiten de UI-thread; op de
+  Samsung TV kan het zonder WebCrypto ~1–3 s duren (toon de cijfers dan als "controleren…").
+- **Platforms:** Swift `CCKeyDerivationPBKDF(kCCPBKDF2, …, kCCPRFHmacAlgSHA256, 100000, …, 32)` (CommonCrypto; of
+  CryptoKit-vrij met dezelfde parameters); Kotlin `SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")` met
+  `PBEKeySpec(pin.toCharArray(), salt, 100000, 256)` (cijfers zijn ASCII, dus gelijk aan UTF-8); JavaScript
+  `crypto.subtle.deriveBits({name:"PBKDF2", hash:"SHA-256", salt, iterations:100000}, key, 256)`; Tizen-webview of een
+  browser zonder `crypto.subtle` (geen veilige context): de pure-JavaScript-functie `pbkdf2Js` uit
+  `supabase/functions/_shared/pin.ts` (ES5 na `const`/`let` → `var`), die dezelfde uitkomst geeft.
+- **Referentie en test:** `supabase/functions/_shared/pin.ts` (`makePinHash`, `verifyPin`, `pbkdf2Js`,
+  `normalizePinSection`) en `pin_test.ts` (`deno test supabase/functions/_shared/pin_test.ts`).
+
+**Testvectoren** (iter 100.000, dkLen 32; nagerekend met WebCrypto, pure JS en Python `hashlib.pbkdf2_hmac`):
+
+| pincode | salt (base64) | salt (hex) | hash (base64) |
+|---|---|---|---|
+| `1234` | `AAECAwQFBgcICQoLDA0ODw==` | `000102030405060708090a0b0c0d0e0f` | `hp5sg1DFvrCsw5n7qsO2DSIEM4lrJqZHc00NjxWG4fo=` |
+| `0000` | `QmluZ3ItcGluLXRlc3QtMQ==` | ASCII `Bingr-pin-test-1` | `+fGTeA7fJpt28Rrq3DjQxUFemZFqDW4eAb85/ZRYHg8=` |
+| `98765432` | `//79/Pv6+fj39vX08/Lx8A==` | `fffefdfcfbfaf9f8f7f6f5f4f3f2f1f0` | `ZPbmm6a1FOjvmJWC0XNDHIDHyxK4739iaGZkx4Oid7c=` |
+
+Extra (alleen om de lus te testen): `1234` met de eerste salt en 1 iteratie = `i/F57D1qcIBBiv5AzlKB8LqqXqCNwubIJuZH8P6K1uI=`,
+met 2 iteraties = `oNCs4eO5peWpZXM8MGUdRebd/Uv8TI0RC7CQ7Ngh0N4=`. `1235` of `01234` tegen de eerste vector = fout.
+
+**Regels voor apps vanaf build 146:**
+- `pin`, `pinHash` en `pinUpdatedAt` zijn samen één geheel: het geheel met de nieuwste `pinUpdatedAt` wint (zoals nu `pin`).
+- **Pincode instellen of wijzigen:** nieuwe `pinHash` (nieuwe salt), `pin: null`, `pinUpdatedAt` = nu, uploaden.
+- **Pincode verwijderen:** `pinHash: null`, `pin: null`, `pinUpdatedAt` = nu.
+- **Lezen:** is `pinHash` er (geldig object), dan geldt alleen de hash; `pin` negeren. Ontbreekt `pinHash` (sleutel er
+  niet, of `null` zonder nieuwere tijd) en is `pin` een tekst: dat is een pincode van een oude app. **Hash die meteen**
+  (ook zonder dat iemand hem intypt), zet `pinHash`, `pin: null` en **laat `pinUpdatedAt` ongewijzigd**, en upload.
+- Lokaal bewaren: alleen de hash (in de beveiligde lokale opslag zoals nu de pincode), nooit de pincode zelf.
+
+**Wat de server doet** (`put_state` op `profile.<id>`, `normalizePinSection`): naast een geldige `pinHash` maakt hij `pin`
+altijd `null`; een ongeldige `pinHash` = 400 `{error:"bad_pin_hash"}`. Heeft de server al een hash en komt er een upload
+zonder de sleutel `pinHash` (een oude app), dan blijft de opgeslagen hash staan en wordt `pin` `null`; is de `pin` van die
+upload nieuwer (`pinUpdatedAt`), dan hasht de server hem zelf, en `pin: null` met een nieuwere tijd betekent: verwijderd.
+`get_state` geeft naast een geldige hash nooit een `pin`. Zolang er voor een profiel nog geen hash is (alleen oude apps),
+verandert er niets. In de stand `profiles_legacy = "off"` hasht het onderhoud ook de laatste leesbare pincodes.
+
+**Wat oude apps (≤ 145) dan zien:** `pin: null`.
+- Na de **migratie** (hash met dezelfde `pinUpdatedAt`) houden oude apparaten die de pincode al hadden hun lokale
+  pincode: Apple en Android nemen een pincode van de server alleen over als `pinUpdatedAt` strikt nieuwer is. Het profiel
+  blijft daar dus beveiligd.
+- **Wijzigt** iemand de pincode in een nieuwe app (nieuwere `pinUpdatedAt`), of installeert iemand een oude app opnieuw,
+  dan neemt de oude app `pin: null` over: **het profiel heeft op dat oude apparaat geen pincode** tot de app is bijgewerkt.
+  Stelt een oude app daarna zelf een pincode in, dan hasht de server die (hij staat nooit leesbaar op de server) en geldt
+  hij in de nieuwe apps; de oude app zelf kent hem lokaal.
+- Advies in de nieuwe apps (optioneel): bij een profiel met pincode in Instellingen → Kinderslot de regel "Werk Bingr ook
+  bij op je andere apparaten, anders werkt de pincode daar niet." / "Also update Bingr on your other devices, otherwise the
+  PIN won't work there."
+
+### 3. Support vanuit de app
+
+Een tab (of scherm) **Support** in alle apps: tickets bekijken in drie groepen (**Open**, **In behandeling**, **Gesloten**),
+een ticket openen met het gesprek, reageren, een nieuw ticket maken en een **startdiagnose** of **app-diagnose**
+meesturen. In een actief kinderprofiel komt eerst de ouderpoort (rekensom, build 140), zoals bij Mijn Bingr.
+
+`POST {URL}/functions/v1/support`, headers `apikey`, `Content-Type: application/json` en **altijd** `Authorization: Bearer
+<access_token>`. Eigenaar van een ticket is alleen het account met `user_id` (security H1): tickets die in de app of
+ingelogd op support.bingr.online zijn gemaakt, of met de geheime link gekoppeld. Een ticket van een ander account (of dat
+niet bestaat) geeft altijd 404 `not_found`. CORS: support.bingr.online, bingr.online (webspeler, ook in de Windows-app),
+`file://`/`null` (Samsung TV) en localhost; native apps sturen geen Origin.
+
+| Actie | Body | Antwoord |
+|---|---|---|
+| `app_list` | `{status?: "all" \| "open" \| "in_progress" \| "closed"}` | `{items:[ticket…], counts:{open, in_progress, closed, unread}}` (max. 200, laatst bijgewerkt eerst; `counts` altijd over alle eigen tickets) |
+| `app_get` | `{number, mark_read?: true}` | `{ticket, messages:[{author, body, created_at, diagnostics?:{kind, createdAt}}]}`; zet het ticket op gelezen tenzij `mark_read: false` |
+| `app_mark_read` | `{number}` | `{ok:true}` |
+| `app_reply` | `{number, message, diagnostics?}` | `{ok:true, status, group, diagnostics:"accepted"\|"stripped"\|null}`; gesloten ticket: 409 `closed` |
+| `app_create` | `{subject, message, category, diagnostics?, device_id?, platform?, app_version?, lang?}` | `{ok:true, number, status, group, email_sent, diagnostics}` |
+| `app_close` | `{number}` | `{ok:true, status:"closed", group:"closed"}` |
+
+- **ticket** = `{number, subject, status, group, category, platform, app_version, device_name, device_type, device_model,
+  os_version, created_at, last_reply_at, closed_at, can_reply}` en in `app_list` ook `unread_count` en `unread`.
+- **status** (zoals op de site): `new` (Nieuw), `open` (In behandeling), `pending` (Wacht op jouw reactie), `resolved`
+  (Opgelost), `closed` (Gesloten). **group** voor de tabs: `open` = new; `in_progress` = open en pending; `closed` =
+  resolved en closed. Toon bij `pending` het label "Wacht op jouw reactie". Reageren op een opgelost ticket zet het weer op
+  In behandeling; gesloten = alleen lezen (`can_reply: false`), met een knop naar een nieuw ticket.
+- **author**: `customer` (jij), `support` (Bingr Support) en `event` (statuswijziging, `body` = de nieuwe status). Interne
+  notities komen nooit mee. `body` is platte tekst (max. 5000 tekens); links mogen aanklikbaar.
+- **Ongelezen** = berichten van support na het laatst openen (`app_get`/`app_mark_read`). De tab krijgt een badge met
+  `counts.unread`. Vernieuwen: bij het openen van de tab, bij terugkeer naar de voorgrond en bij elke heartbeat (elke
+  5 minuten) `app_list`; zo zien ook apparaten zonder push (Apple TV, Android TV, Samsung TV) een nieuw antwoord.
+- **category**: `account`, `afspelen`, `apps`, `website`, `overig` (labels zoals op support.bingr.online: "Account en
+  inloggen", "Afspelen en streams", "Apps en installeren", "Website en webspeler", "Overig"). **subject** 3–120 tekens,
+  **message** 10–5000 (reactie 1–5000), max. 6 links. **lang** `nl`/`en` (taal van de mails). **device_id** = het eigen
+  device_id (naam, platform en systeemversie komen dan uit `account_devices`). **platform** en **app_version** mogen weg:
+  de server neemt ze uit de bijlage (`app.platform`, `app.version` + `app.build`).
+- **Nieuw ticket zonder captcha** (geen proof-of-work, geen lokveld): naam en e-mailadres komen van het account (voor- en
+  achternaam, anders "Bingr-app"). Limieten: **5 per uur en 15 per dag per account**, 10 per uur per IP; reageren 4 per
+  minuut en 20 per uur per ticket; alle `app_*` samen 120 per minuut per account. Daarboven 429 `rate_limited`. Zonder
+  account blijft support.bingr.online/nieuw met de bestaande captcha (`create` + `pow`); de apps gebruiken die route niet
+  meer (iOS deed dat tot nu toe).
+- **Fouten:** 401 `not_signed_in` (sessie vernieuwen en één keer opnieuw) of `user_banned` (melding zoals bij "Geblokkeerd
+  account"), 404 `not_found`, 409 `closed`, 400 met `{error, field}` zoals het formulier (`subject_missing`,
+  `subject_too_long`, `message_too_short`, `message_too_long`, `message_missing`, `too_many_links`, `bad_category`,
+  `bad_status`, `bad_diagnostics`), 413 `diagnostics_too_large` / `too_large` (aanvraag > 64 KB), 429 `rate_limited`.
+- **Mails** blijven zoals nu: bevestiging aan de klant (met de tekst alleen bij een aantoonbaar bevestigd adres), een
+  melding aan support@, en bij een antwoord uit het beheer of per mail een mail aan de klant.
+
+#### Diagnose-bijlage (`diagnostics`, schema 1)
+
+Optioneel bij `app_create` en `app_reply`. Twee soorten: **`start`** (startdiagnose: hoe het opstarten verliep, ook na een
+crash) en **`app`** (app-diagnose op verzoek van de gebruiker). De app toont vóór het versturen wat er meegaat ("Diagnose
+meesturen" aan/uit, standaard aan, met "Bekijken").
+
+| Veld | Type | Inhoud |
+|---|---|---|
+| `schema` | getal | `1` |
+| `kind` | tekst, **verplicht** | `start` \| `app` |
+| `createdAt` | ISO-8601 | wanneer gemaakt |
+| `app.platform` | tekst, **verplicht** | `ios`, `ipados`, `tvos`, `macos`, `android`, `androidtv` (ook Google TV/Fire TV), `tizen`, `web`, `windows` |
+| `app.version`, `app.build` | tekst (≤ 20), getal | `"1.0.1"`, `146` |
+| `app.engine` | tekst (≤ 30) | speler: `apple`, `vlc`, `exo`, `avplay`, `hls.js`, … |
+| `device.type` | tekst | `phone`, `tablet`, `tv`, `desktop`, `browser` |
+| `device.model` | tekst (≤ 80) | model, géén eigen naam: `"Apple TV 4K (3rd generation)"`, `"iPhone 16 Pro"`, `Build.MODEL` (`"SM-S921B"`, `"AFTKA"`), Samsung-modelcode (`"QE55Q80C"`), browser: weglaten |
+| `device.manufacturer` | tekst (≤ 40) | `Apple`, `Build.MANUFACTURER`, `Samsung` |
+| `device.os`, `device.osVersion` | tekst (≤ 20 / ≤ 30) | `tvOS` + `26.1`, `Android` + `15`, `Tizen` + `9.0`, `Windows` + `11`, browser: systeem van de browser |
+| `device.language` | BCP 47 | `nl-NL` |
+| `device.browser`, `device.screen` | tekst | `"Chrome 141"` (alleen web/Windows), `"3840x2160"` |
+| `milestones` | lijst, max. 40 | `{name, ms, ok?}`: `name` = `^[a-z][a-z0-9_.-]{0,39}$` (bv. `splash`, `session`, `profiles`, `sources`, `servers_loaded`, `epg`, `first_frame`), `ms` = milliseconden sinds de start (0–600000) |
+| `memory` | object | `usedMB`, `totalMB`, `appMB` (getallen), `lowMemory` (boolean) |
+| `crash` | object | laatste crash: `at`, `type` (≤ 80, bv. `EXC_BAD_ACCESS`, `java.lang.IllegalStateException`), `reason` (≤ 300), `stack` (max. 50 regels van ≤ 200 tekens, gesymboliseerd: `"0 Bingr PlayerView.play() + 120"`), `build` |
+| `state` | object | `signedIn`, `profiles`, `servers` (aantallen), `serverKinds` (soorten, zoals `kind` van een bron: `"Xtream Codes"`), `lastSync` (ISO), `lastSyncOk`, `plan` (`free`/`lifetime`), `pushEnabled`, `channels`, `movies`, `series` (aantallen), `uptimeS` |
+| `state.network` | object | `online`, `type` (`wifi`, `ethernet`, `cellular`, `none`, `other`, `unknown`), `backend` en `provider` (`ok`, `slow`, `fail`, `skipped`, `unknown`) met `backendMs`/`providerMs`, `vpn` |
+| `state.storage` | object | `usedMB`, `freeMB`, `cacheMB`, `dbMB` |
+
+Voorbeeld (precies dit komt ongewijzigd door, zie `diagnostics_test.ts`):
+
+```json
+{"schema":1,"kind":"app","createdAt":"2026-10-24T10:15:00.000Z",
+ "app":{"platform":"tvos","version":"1.0.1","build":146,"engine":"vlc"},
+ "device":{"type":"tv","model":"Apple TV 4K (3rd generation)","manufacturer":"Apple","os":"tvOS","osVersion":"26.1","language":"nl-NL","screen":"3840x2160"},
+ "milestones":[{"name":"splash","ms":420},{"name":"profiles","ms":1310},{"name":"servers_loaded","ms":5200,"ok":true}],
+ "memory":{"usedMB":812,"totalMB":3072,"appMB":410,"lowMemory":false},
+ "crash":{"at":"2026-10-23T21:02:11.000Z","type":"EXC_BAD_ACCESS","reason":"KERN_INVALID_ADDRESS","stack":["0 Bingr PlayerView.play() + 120","1 Bingr LiveTV.zap(to:) + 44"],"build":145},
+ "state":{"signedIn":true,"profiles":3,"servers":2,"serverKinds":["Xtream Codes","M3U / M3U8"],"lastSync":"2026-10-24T10:14:02.000Z","lastSyncOk":true,
+  "plan":"lifetime","pushEnabled":false,"channels":12450,"movies":30210,"series":4120,"uptimeS":5400,
+  "network":{"online":true,"type":"ethernet","backend":"ok","backendMs":180,"provider":"slow","providerMs":2900,"vpn":false},
+  "storage":{"usedMB":950,"freeMB":18000,"cacheMB":640,"dbMB":120}}}
+```
+
+- **Nooit meesturen:** e-mailadressen, namen (ook niet de apparaatnaam "iPhone van …"), gebruikersnamen, wachtwoorden,
+  tokens, URL's of servernamen (ook niet van de IPTV-provider), IP- of MAC-adressen, paden met een gebruikersmap, titels of
+  zenders. De **server** houdt alleen de velden hierboven over (met vaste typen en lengtes) en gooit elke tekst weg die op
+  een URL, e-mailadres, IP-/MAC-adres, gebruikersmap of `username=`/`password=`/`token=` lijkt; het antwoord zegt dan
+  `diagnostics:"stripped"`. Ongeldig `kind` of `app.platform`: 400 `bad_diagnostics` (`field`); ruw groter dan 32 KB: 413;
+  na opschonen max. 12 KB (de stack en mijlpalen worden dan ingekort). De bijlage wordt versleuteld bewaard.
+- **Startdiagnose:** de app houdt bij het opstarten de mijlpalen bij en bewaart bij een crash de gesymboliseerde stack
+  (Apple: `MXCrashDiagnostic`/eigen handler; Android: `Thread.setDefaultUncaughtExceptionHandler`; web/Tizen:
+  `window.onerror`/`unhandledrejection`). Na een crash biedt de app bij de volgende start in de Support-tab "Startdiagnose
+  meesturen" aan (bij een nieuw ticket of een reactie).
+- **App-diagnose:** op verzoek ("Diagnose maken"): de `state`-velden, een korte netwerkcheck (backend: device-auth `ping`;
+  provider: een `HEAD`/`GET` op de eigen server zonder iets te loggen of mee te sturen), opslag en geheugen.
+
+#### Pushmelding bij een antwoord (`support_reply`)
+
+Reageert support op een ticket met een account (in het beheer, of per mail via support@), dan krijgt de eigenaar naast de
+mail een pushmelding op al zijn apparaten met systeem-push (`push_devices`: iPhone, iPad, Mac, Android, webspeler) waar
+hij met dat account is ingelogd. Eén melding per antwoord. Formaat zoals bij de andere pushmeldingen (docs/PUSH.md):
+
+- `title`: NL "Nieuw antwoord op je supportvraag", EN "New reply to your support request" (nl voor apparaten in het
+  Nederlands, anders en). `body`: `#<nummer> · <onderwerp>` (onderwerp max. 100 tekens). Nooit de tekst van het antwoord.
+- `data`: `{kind:"support_reply", ticket:"<nummer>", deeplink:"bingr://support/ticket?n=<nummer>", url, msg_id}` (APNs ook
+  plat naast `aps`, `thread-id` `support_reply`; FCM data-only, eigen kanaal "Support"; Web Push in `data`). `url` =
+  `https://support.bingr.online/ticket/?n=<nummer>` (opent het ticket als je daar ingelogd bent) of voor de webspeler
+  `https://bingr.online/web/#/support/ticket?n=<nummer>`.
+- **Tikken:** open de Support-tab met dat ticket (`app_get`). Is de app niet ingelogd: na het inloggen de Support-tab met
+  de ticketlijst. Geeft `app_get` 404 (ander account op dit apparaat, of het ticket bestaat niet meer): de ticketlijst.
+  Kinderprofiel actief: eerst de ouderpoort. Deeplink `bingr://support` (zonder ticket) opent de lijst.
+- **Zonder push** (Apple TV, Android TV, Samsung TV, of push uit): de badge op de Support-tab via `counts.unread` van
+  `app_list` (zie hierboven). Geen eigen banner of venster.
+
+### 4. Kijkgegevens (alleen server)
+
+`stream_start`, `stream_ping`, `stream_stop`, `list_streams`, `watch_log` en `watch_stats` werken en antwoorden precies
+zoals voorheen; de apps hoeven niets te veranderen. In de database staan titel, serietitel, profielnaam en apparaatnaam nu
+versleuteld; device-auth rekent de statistiek-uitkomst (soort, sleutel, weergavenaam) zelf uit (`device-auth/watch.ts`,
+gelijk aan `bingr_stats_item`) en geeft een titelsleutel als `h:<HMAC>` door. Het beheer ziet alleen aantallen, zoals
+voorheen.
+
+### 5. Checklist per platform (build 146)
+
+**Apple (iOS, iPadOS, tvOS, macOS)**
+- [ ] Profielen: `fetchProfiles`/`uploadProfiles` (`AccountService.swift`, `ProfileSync.swift`) naar device-auth
+  `get_profiles`/`put_profiles`; lijst uit het `put_profiles`-antwoord toepassen; nooit meer `/rest/v1/account_data`.
+- [ ] Pincode: `pinHash` (PBKDF2, CommonCrypto) schrijven en controleren; `pin` alleen lezen zonder hash, dan meteen hashen
+  met dezelfde `pinUpdatedAt` en uploaden; lokaal alleen de hash; testvectoren in een unittest.
+- [ ] Support-tab (iPhone/iPad/Mac in Mijn Bingr of als tab; Apple TV als scherm in Instellingen): lijst met Open / In
+  behandeling / Gesloten, ticket met gesprek, reageren, nieuw ticket, diagnose meesturen; `app_*` gebruiken (de oude
+  `create`-met-captcha in `AccountService.swift` weg).
+- [ ] Diagnose: mijlpalen bij het opstarten, crash-stack (MetricKit of eigen handler), app-diagnose; `device.model` uit
+  `hw.machine` naar een leesbare naam ("Apple TV 4K (3rd generation)").
+- [ ] Push `support_reply` (iOS/iPadOS/macOS): `ticket`/`deeplink` lezen, `bingr://support/ticket?n=` en `bingr://support`
+  afhandelen (niet ingelogd → na login de lijst; 404 → de lijst; kinderprofiel → ouderpoort). tvOS: badge via `app_list`.
+- [ ] Badge op de Support-tab met `counts.unread` (bij openen, voorgrond, heartbeat).
+
+**Android en Android TV (Google TV, Fire TV)**
+- [ ] Profielen: `ProfileSync.kt` (`call("/rest/v1/account_data…")`) naar `get_profiles`/`put_profiles`.
+- [ ] Pincode: `pinHash` met `PBKDF2WithHmacSHA256`; zelfde lees-/migratieregels; testvectoren in een unittest.
+- [ ] Support-scherm (telefoon/tablet en tv-navigatie met de afstandsbediening), `app_*`, diagnose (`Build.MODEL`,
+  `Build.MANUFACTURER`, `UncaughtExceptionHandler`).
+- [ ] FCM `support_reply`: notificatiekanaal "Support"/"Support", tik → deeplink; Android TV: badge via `app_list`.
+
+**Samsung TV (Tizen, `bingr-android/tizen`)**
+- [ ] Profielen: `tizen/js/account.js` (`rest('GET'|'POST', '/rest/v1/account_data')`) naar `get_profiles`/`put_profiles`;
+  `tizen/test/fake_backend.py` meenemen.
+- [ ] Pincode: `crypto.subtle` als beschikbaar, anders `pbkdf2Js` (kopie uit `_shared/pin.ts`, ES5); controleren met
+  "controleren…" in beeld.
+- [ ] Support-scherm met de afstandsbediening (lijst, ticket, reageren met het tv-toetsenbord, nieuw ticket, diagnose:
+  `device.type:"tv"`, model via `tizen.systeminfo` `BUILD.model`); geen push: badge via `app_list`.
+
+**Webspeler (`bingr-website/web`, ook in de Windows-app)**
+- [ ] Profielen: `web/js/account.js` en het profielbeheer in `web/js/sync.js` naar `get_profiles`/`put_profiles`.
+- [ ] Pincode: WebCrypto PBKDF2 (`pinHash`), `pbkdf2Js` als terugval; zelfde regels.
+- [ ] Support-tab `#/support` en `#/support/ticket?n=<nummer>` (doel van `url` in de Web Push), `app_*`, diagnose
+  (`device.type:"browser"`; in de Windows-app `app.platform:"windows"`, `device.type:"desktop"`).
+- [ ] Service worker: `support_reply` openen op `data.url`.
+
+**bingr.online (`bingr-website`) en support.bingr.online (`bingr-support`)**
+- [ ] `account/index.html`, `assets/js/console.js` en `assets/js/userbtn.js` naar `get_profiles`/`put_profiles` (geen
+  supabase-js `from("account_data")` meer); daarna `userbtn.js` opnieuw kopiëren naar bingr-support.
+- [ ] Daarna `profiles_legacy` op `"auto"`; als er geen apparaten < 146 meer zijn op `"off"`.
+- [ ] support.bingr.online zelf: geen wijziging nodig (`mine`/`get`/`reply` werken zoals nu; berichten worden door de
+  functie ontsleuteld; ook tickets uit de app staan in Mijn tickets).
+
+**Server (deze build, klaar):** `get_profiles`/`put_profiles`, versleutelde profielen en overgang, pincoderegels in
+`put_state`, versleutelde kijkgegevens, supportberichten, inbox-logboek en pushpayloads, `app_*` in support, diagnose-
+bijlage, push `support_reply`, aangescherpte regels voor profielfoto's, onderhoud `maint_seal`, unittests en een
+end-to-end-test in de workflow *Backend*.

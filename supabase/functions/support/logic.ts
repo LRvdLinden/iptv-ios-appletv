@@ -5,7 +5,7 @@ export const STATUSES = ["new", "open", "pending", "resolved", "closed"] as cons
 export type Status = typeof STATUSES[number];
 export const PRIORITIES = ["low", "normal", "high", "urgent"] as const;
 export const CATEGORIES = ["account", "afspelen", "apps", "website", "overig"] as const;
-export const PLATFORMS = ["ios", "tvos", "macos", "android", "androidtv", "tizen", "web"] as const;
+export const PLATFORMS = ["ios", "tvos", "macos", "android", "androidtv", "tizen", "web", "windows"] as const;
 
 // Labels voor de klant (site en e-mail). "pending" = wij wachten op de klant.
 export const STATUS_LABEL: Record<Lang, Record<Status, string>> = {
@@ -25,7 +25,7 @@ export const CATEGORY_LABEL: Record<Lang, Record<string, string>> = {
 };
 export const PLATFORM_LABEL: Record<string, string> = {
   ios: "iPhone / iPad", tvos: "Apple TV", macos: "Mac", android: "Android",
-  androidtv: "Android TV / Google TV / Fire TV", tizen: "Samsung TV", web: "Browser",
+  androidtv: "Android TV / Google TV / Fire TV", tizen: "Samsung TV", web: "Browser", windows: "Windows",
 };
 
 export const LIMITS = { name: 80, email: 254, subject: 120, message: 5000, appVersion: 40, minSubject: 3, minMessage: 10, deviceId: 128 };
@@ -231,4 +231,43 @@ export function emailProven(u: { email_confirmed_at?: string | null; created_at?
   if (!requireConfirm || !u?.email_confirmed_at || !u.created_at) return false;
   const c = Date.parse(u.created_at), e = Date.parse(u.email_confirmed_at);
   return Number.isFinite(c) && Number.isFinite(e) && e - c >= 5000;
+}
+
+// ---- build 146: support vanuit de app (acties app_*, docs/ACCOUNT.md "Build 146" → "Support vanuit de app") ----
+/** Tabbladen in de app: open (nieuw), in behandeling (in behandeling of wacht op jouw reactie), gesloten (opgelost/gesloten). */
+export type StatusGroup = "open" | "in_progress" | "closed";
+export function statusGroup(s: unknown): StatusGroup {
+  return s === "new" ? "open" : s === "open" || s === "pending" ? "in_progress" : "closed";
+}
+export const STATUS_GROUPS: Record<StatusGroup, Status[]> = { open: ["new"], in_progress: ["open", "pending"], closed: ["resolved", "closed"] };
+
+/** Naam voor een ticket uit de app: voor- en achternaam van het account (opgeschoond), anders "Bingr-app". */
+export function accountName(meta: unknown): string {
+  const m = meta && typeof meta === "object" ? meta as Record<string, unknown> : {};
+  const n = [cleanText(m.first_name, 50), cleanText(m.last_name, 50)].filter(Boolean).join(" ").replace(/[<>]/g, "");
+  return cleanText(n, LIMITS.name) || "Bingr-app";
+}
+
+/** Ongelezen antwoorden per ticket: berichten van support na customer_seen_at (nooit gezien = alle). */
+export function unreadCounts(tickets: { id: string; customer_seen_at: string | null }[], supportMsgs: { ticket_id: string; created_at: string }[]): Map<string, number> {
+  const seen = new Map(tickets.map((t) => [t.id, t.customer_seen_at ? Date.parse(t.customer_seen_at) : 0]));
+  const out = new Map<string, number>();
+  for (const m of supportMsgs) {
+    const s = seen.get(m.ticket_id);
+    if (s === undefined) continue;
+    if (Date.parse(m.created_at) > s) out.set(m.ticket_id, (out.get(m.ticket_id) ?? 0) + 1);
+  }
+  return out;
+}
+
+/** "1.0.1 (146)" uit de bijlage (app.version + app.build), anders null. */
+export function versionFromDiag(d: { app?: { version?: string; build?: number } } | null | undefined): string | null {
+  const v = d?.app?.version, b = d?.app?.build;
+  if (!v && !b) return null;
+  return cleanText(`${v ?? "?"}${b ? ` (${b})` : ""}`, LIMITS.appVersion) || null;
+}
+/** "tvOS 26.1" uit de bijlage (device.os + device.osVersion), anders null. */
+export function osFromDiag(d: { device?: { os?: string; osVersion?: string } } | null | undefined): string | null {
+  const s = [d?.device?.os, d?.device?.osVersion].filter(Boolean).join(" ");
+  return cleanText(s, 40) || null;
 }

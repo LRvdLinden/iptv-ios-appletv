@@ -7,9 +7,10 @@ import {
 import {
   apnsOutcome, apnsPayload, checkRegister, checkTarget, fcmMessage, fcmOutcome, normLang, parseReminders, releaseKey, releaseText,
   reminderBody, reminderDue, reminderKey, reminderProfile, renderNotice, ttlFor, webPayload, webpushHostAllowed, webpushOutcome,
+  supportKey, supportLinks, supportText,
 } from "./logic.ts";
 import { Channels } from "./channels.ts";
-import { seal, unseal } from "../_shared/sealed.ts";
+import { openJsonField, seal, sealJsonField, unseal } from "../_shared/sealed.ts";
 
 function eq(a: unknown, b: unknown, msg = "") {
   const x = JSON.stringify(a), y = JSON.stringify(b);
@@ -350,4 +351,31 @@ Deno.test("versleutelde state (zelfde formaat als device-auth)", async () => {
   const key = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32))));
   const data = { items: [{ id: "a" }], updatedAt: "2026-10-16T00:00:00Z" };
   eq(await unseal(await seal(data, key), key), data);
+});
+
+Deno.test("build 146: antwoord van support (support_reply): tekst, links, data en ttl", () => {
+  const nl = renderNotice({ id: 77, kind: "support_reply", payload: { number: 1007, subject: "  Stream   hapert  " } }, { platform: "ios", lang: "nl" });
+  eq(nl.title, "Nieuw antwoord op je supportvraag");
+  eq(nl.body, "#1007 · Stream hapert");
+  eq(nl.data, { kind: "support_reply", msg_id: "77", url: "https://support.bingr.online/ticket/?n=1007", deeplink: "bingr://support/ticket?n=1007", ticket: "1007" });
+  const en = renderNotice({ id: 78, kind: "support_reply", payload: { number: 1008, subject: "x".repeat(300) } }, { platform: "web", lang: "de" });
+  eq(en.title, "New reply to your support request");
+  eq(en.body.length, "#1008 · ".length + 100, "onderwerp max. 100 tekens");
+  eq(en.data.url, "https://bingr.online/web/#/support/ticket?n=1008", "webspeler opent zijn eigen tab Support");
+  eq(supportText("nl", 9, "").body, "#9", "zonder onderwerp");
+  eq(supportKey(5), "support:5");
+  eq(ttlFor({ id: 1, kind: "support_reply" }, 0), 3 * 86400);
+  const ap = apnsPayload(nl) as Record<string, unknown>;
+  eq((ap.aps as { "thread-id": string })["thread-id"], "support_reply");
+  eq(ap.ticket, "1007", "plat naast aps");
+  eq((fcmMessage("t".repeat(30), nl).message.data as Record<string, string>).ticket, "1007");
+  eq(supportLinks(1, "android").deeplink, "bingr://support/ticket?n=1");
+});
+
+Deno.test("build 146: versleutelde payload (herinnering) ontsleutelt naar hetzelfde", async () => {
+  const k = btoa(String.fromCharCode(...new Uint8Array(32).fill(7)));
+  const sealed = await sealJsonField({ title: "Journaal", channel_name: "NPO 1" }, k);
+  ok(sealed.startsWith("enc1:"), "voorvoegsel");
+  eq(await openJsonField(sealed, k), { title: "Journaal", channel_name: "NPO 1" });
+  eq(await openJsonField("geen", k), null);
 });

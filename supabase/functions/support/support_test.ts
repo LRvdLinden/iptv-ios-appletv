@@ -37,7 +37,7 @@ Deno.test("ongeldige tickets", () => {
   eq(err({ email: "a@b" }), "bad_email");
   eq(err({ email: "a..b@x.nl" }), "bad_email");
   eq(err({ category: "betaling" }), "bad_category");
-  eq(err({ platform: "windows" }), "bad_platform");
+  eq(err({ platform: "symbian" }), "bad_platform");
   eq(err({ platform: "" }), "ok", "platform leeg mag");
   eq(err({ subject: "Hi" }), "subject_missing");
   eq(err({ subject: "x".repeat(121) }), "subject_too_long");
@@ -269,4 +269,32 @@ Deno.test("emailProven: autoconfirm (zelfde moment) of bevestigen uit telt niet"
   ok(!emailProven({ created_at: real.created_at, email_confirmed_at: null }, true), "onbevestigd");
   ok(!emailProven(null, true), "geen gebruiker");
   ok(!emailProven({ created_at: "x", email_confirmed_at: "y" }, true), "ongeldige datums");
+});
+
+// ---- build 146: support vanuit de app ----
+import { accountName, osFromDiag, STATUS_GROUPS, statusGroup, unreadCounts, versionFromDiag } from "./logic.ts";
+
+Deno.test("build 146: statusgroepen voor de tabs in de app", () => {
+  eq(["new", "open", "pending", "resolved", "closed", "x"].map(statusGroup), ["open", "in_progress", "in_progress", "closed", "closed", "closed"]);
+  eq(STATUS_GROUPS, { open: ["new"], in_progress: ["open", "pending"], closed: ["resolved", "closed"] });
+});
+
+Deno.test("build 146: ongelezen antwoorden per ticket", () => {
+  const m = unreadCounts(
+    [{ id: "a", customer_seen_at: "2026-10-24T10:00:00Z" }, { id: "b", customer_seen_at: null }],
+    [{ ticket_id: "a", created_at: "2026-10-24T09:00:00Z" }, { ticket_id: "a", created_at: "2026-10-24T11:00:00Z" },
+     { ticket_id: "b", created_at: "2026-10-01T00:00:00Z" }, { ticket_id: "z", created_at: "2026-10-24T11:00:00Z" }],
+  );
+  eq([...m.entries()], [["a", 1], ["b", 1]]);
+});
+
+Deno.test("build 146: naam, versie en systeem voor een ticket uit de app", () => {
+  eq(accountName({ first_name: " Léon ", last_name: "van der <b>Linden" }), "Léon van der bLinden");
+  eq(accountName(null), "Bingr-app");
+  eq(versionFromDiag({ app: { version: "1.0.1", build: 146 } }), "1.0.1 (146)");
+  eq(versionFromDiag({}), null);
+  eq(osFromDiag({ device: { os: "tvOS", osVersion: "26.1" } }), "tvOS 26.1");
+  eq(osFromDiag(null), null);
+  const r = validateCreate({ ...good, platform: "windows" });
+  ok(r.ok, "windows is een geldig platform");
 });

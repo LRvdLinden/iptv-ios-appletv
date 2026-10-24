@@ -35,6 +35,16 @@
 //   get_state       {sections?:[naam…]} (ingelogd) -> {sections:{naam:{data, updatedAt}}}
 //   put_state       {section, data}      (ingelogd) -> {ok, updatedAt}     (versleuteld; data = willekeurige JSON)
 //   delete_state    {section}            (ingelogd) -> {ok}
+//                   build 146: put_state op profile.<id> volgt de pincoderegels (pinHash, _shared/pin.ts): naast een
+//                   geldige pinHash is pin altijd null; ongeldige pinHash -> 400 {error:"bad_pin_hash"}.
+//   get_profiles    {}                   (ingelogd) -> {profiles:[…], updatedAt}   (build 146, versleuteld; ook tombstones)
+//   put_profiles    {profiles:[…]}       (ingelogd) -> {ok, profiles:[samengevoegd], updatedAt}
+//                   samenvoegen per id (nieuwste updatedAt/deletedAt wint, hoofdprofiel nooit weg); 400 bad_profiles,
+//                   413 too_large (512 KB, 100 stuks), 429 rate_limited (60/min), 503 try_again. Zie docs/ACCOUNT.md "Build 146".
+//   maint_seal      {what, after?}  (header x-bingr-maint = BINGR_MAINT_SECRET; workflow Backend) -> {what, processed, next?, done}
+//   profiles_status {}              (zelfde header) -> aantallen van de overgang (bingr_profiles_status)
+//   Build 146: titels, serietitels, profiel- en apparaatnamen van streams, kijkgeschiedenis en statistieken staan versleuteld
+//   in de database (watch.ts); de antwoorden aan de apps zijn ongewijzigd.
 //   stream_start    {device_id, profile_id, profile_name, title, kind, content_id, series_id?, series_title?, tz?} (ingelogd)
 //                   -> {ok, limit} | 403 {error:"stream_limit", limit, plan, streams:[…]}   (limit: gratis 1, lifetime 3, of eigen limiet;
 //                   build 68: series_id/series_title/tz voor statistieken)
@@ -63,6 +73,11 @@ import { type PasswordCheck, passwordCheckResult } from "./password.ts";
 import { BANNED_BODY, bannedUntilActive, isBanError } from "../_shared/ban.ts";
 import { clientIp } from "../_shared/ip.ts";
 import { countryOf } from "../_shared/country.ts";
+import { openField, seal, sealField, unseal } from "../_shared/sealed.ts";
+import { normalizePinSection, parsePinHash, validPin } from "../_shared/pin.ts";
+import { buildOf, cleanProfiles, PROFILES_BUILD } from "../_shared/profiles.ts";
+import { currentMode, profileNames, readProfiles, syncProfiles } from "../_shared/profiles_store.ts";
+import { openRows, privateKey, sealedStream } from "./watch.ts";
 import {
   entitlements, featureLocked, limitsFor, normalizePlan, normalizePlatform, normalizeUpgradeLink, platformFromDevice,
   type PlanRow, type UpgradeLink,
@@ -183,32 +198,9 @@ async function removeDevice(userId: string, deviceId: string) {
   await admin.from("account_devices").delete().eq("user_id", userId).eq("device_id", deviceId);
   await admin.from("account_streams").delete().eq("user_id", userId).eq("device_id", deviceId);
 }
-// AES-GCM met BINGR_SOURCES_KEY (32 bytes, base64); wordt eenmalig door de Backend-workflow aangemaakt.
+// AES-GCM met BINGR_SOURCES_KEY (32 bytes, base64; eenmalig aangemaakt door de Backend-workflow): _shared/sealed.ts.
 // Elke seal() krijgt een eigen willekeurige nonce van 12 bytes (veilig tot ~2^32 versleutelingen per sleutel).
-let keyPromise: Promise<CryptoKey> | null = null;
-function sourcesKey(): Promise<CryptoKey> {
-  if (!keyPromise) {
-    keyPromise = (async () => {
-      const raw = Uint8Array.from(atob(Deno.env.get("BINGR_SOURCES_KEY") ?? ""), (c) => c.charCodeAt(0));
-      if (raw.length !== 32) throw new Error("sources_key_missing");
-      return crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["encrypt", "decrypt"]);
-    })();
-    keyPromise.catch(() => { keyPromise = null; });
-  }
-  return keyPromise;
-}
-async function seal(obj: unknown): Promise<string> {
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await sourcesKey(), new TextEncoder().encode(JSON.stringify(obj))));
-  const out = new Uint8Array(iv.length + ct.length); out.set(iv); out.set(ct, iv.length);
-  let s = ""; for (let i = 0; i < out.length; i += 8192) s += String.fromCharCode(...out.subarray(i, i + 8192));
-  return btoa(s);
-}
-async function open_(data: string): Promise<any> {
-  const all = Uint8Array.from(atob(data), (c) => c.charCodeAt(0));
-  const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: all.subarray(0, 12) }, await sourcesKey(), all.subarray(12));
-  return JSON.parse(new TextDecoder().decode(pt));
-}
+const open_ = unseal;
 const s80 = (v: unknown) => (v == null ? null : String(v).slice(0, 80));
 const s200 = (v: unknown) => (v == null ? null : String(v).slice(0, 200));
 // Build 62: appversie ("1.0.0 (62)") en systeemversie, max. 40 tekens; leeg/ontbrekend = niet meegestuurd.
@@ -228,7 +220,8 @@ async function activeStreams(userId: string) {
     .eq("user_id", userId).gte("last_ping", fresh).order("started_at", { ascending: true });
   const { data: devs } = await admin.from("account_devices").select("device_id,name,platform,signed_in_at,created_at").eq("user_id", userId);
   const map = new Map((devs ?? []).map((d) => [d.device_id, d]));
-  return (rows ?? []).map((r) => {
+  // build 146: titel en profielnaam staan versleuteld (oude rijen nog leesbaar)
+  return (await openRows(rows ?? [], ["title", "profile_name"])).map((r) => {
     const d = map.get(r.device_id);
     return { ...r, device_name: d?.name ?? null, platform: d?.platform ?? null, signed_in_at: d?.signed_in_at ?? d?.created_at ?? null };
   });
@@ -326,6 +319,116 @@ function mergeSources(stored: unknown[], incoming: unknown[]) {
   }
   const cut = Date.now() - TOMBSTONE_MS;
   return [...out.values(), ...loose].filter((o: any) => !(o?.deleted === true && (isoMs(o.deletedAt) || isoMs(o.updatedAt)) < cut));
+}
+
+// Build 146: een app van build < 146 meldt zich (register_device/heartbeat) bij een account waarvan de leesbare kopie van de
+// profielen leeg is gemaakt (stand "auto"): eerst de kopie terugzetten, zodat die app niet denkt dat er geen profielen zijn
+// (hij zou dan zijn lokale lijst als nieuw uploaden). In de stand "mirror" is er altijd een kopie, in "off" nooit.
+async function legacyMirror(userId: string, appVersion: unknown) {
+  try {
+    if (buildOf(appVersion) >= PROFILES_BUILD) return;
+    if ((await currentMode(admin)) !== "auto") return;
+    const { data } = await admin.from("account_data").select("plain_cleared").eq("user_id", userId).maybeSingle();
+    if (data?.plain_cleared) await syncProfiles(admin, userId, null);
+  } catch (e) { console.error("legacy_mirror", e instanceof Error ? e.message : "fout"); }
+}
+
+// Build 146: onderhoud (workflow Backend, header x-bingr-maint = BINGR_MAINT_SECRET): bestaande gegevens versleutelen,
+// in porties. what: profiles (alle account_data-rijen: versleutelen en de leesbare kopie volgens profiles_legacy),
+// stats, log, streams (kijkgegevens), messages en inbox_log (support), pins (pincodes in profile.<id> hashen; alleen in de
+// stand "off").
+// Antwoord {what, processed, next?, done}. Nooit inhoud in het antwoord of de logs.
+const MAINT_BUDGET_MS = 35_000;
+async function maint(what: string, after: string | null): Promise<Record<string, unknown>> {
+  const until = Date.now() + MAINT_BUDGET_MS;
+  let processed = 0, failed = 0;
+  if (what === "profiles" || what === "pins") {
+    if (what === "pins" && (await currentMode(admin)) !== "off") return { what, processed: 0, done: true, skipped: "mode_not_off" };
+    let cursor = after;
+    while (Date.now() < until) {
+      let q = admin.from(what === "profiles" ? "account_data" : "account_state").select(what === "profiles" ? "user_id" : "user_id,section,data")
+        .order("user_id").limit(what === "profiles" ? 100 : 50);
+      if (what === "pins") q = q.like("section", "profile.%").order("section");
+      if (cursor && what === "profiles") q = q.gt("user_id", cursor);
+      else if (cursor) {
+        const [u, sec] = cursor.split("|");
+        q = q.or(`user_id.gt.${u},and(user_id.eq.${u},section.gt.${sec})`);
+      }
+      const { data, error } = await q;
+      if (error) throw new Error(error.message);
+      const rows = (data ?? []) as { user_id: string; section?: string; data?: string }[];
+      if (!rows.length) return { what, processed, failed, done: true };
+      for (const r of rows) {
+        if (Date.now() >= until) return { what, processed, failed, next: cursor, done: false };
+        try {
+          if (what === "profiles") { const res = await syncProfiles(admin, r.user_id, null); if ("error" in res) failed++; }
+          else {
+            const cur = await open_(r.data!);
+            if (cur && typeof cur === "object" && validPin(cur.pin) && !parsePinHash(cur.pinHash)) {
+              const n = await normalizePinSection(null, { ...cur, pinHash: null });
+              if (!("error" in n)) await admin.from("account_state").update({ data: await seal(n.data) }).eq("user_id", r.user_id).eq("section", r.section!).eq("data", r.data!);
+            }
+          }
+          processed++;
+        } catch (e) { failed++; console.error("maint", what, e instanceof Error ? e.message.slice(0, 80) : "fout"); }
+        cursor = what === "profiles" ? r.user_id : `${r.user_id}|${r.section}`;
+      }
+    }
+    return { what, processed, failed, next: cursor, done: false };
+  }
+  if (!["stats", "log", "streams", "messages", "inbox_log"].includes(what)) return { error: "bad_what" };
+  while (Date.now() < until) {
+    const { data: rows, error } = await admin.rpc("bingr_unsealed", { p_what: what, p_limit: 200 });
+    if (error) throw new Error(error.message);
+    // deno-lint-ignore no-explicit-any
+    const list = (rows ?? []) as any[];
+    if (!list.length) return { what, processed, failed, done: true };
+    if (what === "stats") {
+      const out: Record<string, unknown>[] = [];
+      for (const r of list) {
+        out.push({
+          user_id: r.user_id, profile_id: r.profile_id, day: r.day, kind: r.kind, old_key: r.item_key,
+          new_key: await privateKey(r.user_id, r.item_key),
+          title: r.title == null ? null : (String(r.title).startsWith("enc1:") ? r.title : await sealField(r.title)),
+          profile_name: r.profile_name == null ? null : (String(r.profile_name).startsWith("enc1:") ? r.profile_name : await sealField(r.profile_name)),
+        });
+      }
+      const { error: e2 } = await admin.rpc("bingr_stats_seal", { p_rows: out });
+      if (e2) throw new Error(e2.message);
+      processed += out.length;
+    } else if (what === "log") {
+      for (const r of list) {
+        const patch: Record<string, unknown> = {};
+        for (const f of ["title", "profile_name", "device_name"]) if (r[f] != null && !String(r[f]).startsWith("enc1:")) patch[f] = await sealField(r[f]);
+        const { error: e2 } = await admin.from("account_watch_log").update(patch).eq("id", r.id);
+        if (e2) { failed++; continue; }
+        processed++;
+      }
+    } else if (what === "messages" || what === "inbox_log") {
+      // supportberichten (tekst) en het inbox-logboek (afzender, onderwerp, detail); alleen als de rij nog gelijk is
+      const table = what === "messages" ? "support_messages" : "support_inbox_log";
+      const fields = what === "messages" ? ["body"] : ["sender", "subject", "detail"];
+      for (const r of list) {
+        const patch: Record<string, unknown> = {};
+        for (const f of fields) if (r[f] != null && !String(r[f]).startsWith("enc1:")) patch[f] = await sealField(r[f]);
+        let q = admin.from(table).update(patch).eq("id", r.id);
+        if (what === "messages") q = q.eq("body", r.body);
+        const { error: e2 } = await q;
+        if (e2) { failed++; continue; }
+        processed++;
+      }
+    } else {
+      for (const r of list) {
+        const s = await sealedStream(r.user_id, r);
+        const { error: e2 } = await admin.from("account_streams").update({ ...s, stat_sealed: true })
+          .eq("user_id", r.user_id).eq("device_id", r.device_id).eq("stat_sealed", false);
+        if (e2) { failed++; continue; }
+        processed++;
+      }
+    }
+    if (failed > 50) return { what, processed, failed, done: false };
+  }
+  return { what, processed, failed, done: false };
 }
 
 const MAX_BODY = 2 * 1024 * 1024;
@@ -480,6 +583,7 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       }
       await pendingName(user.id, device_id, platform);
       await saveCountry(req, user.id, device_id);
+      await legacyMirror(user.id, body.app_version);
       return json({ ok: true, limit });
     }
     case "heartbeat": {
@@ -496,6 +600,7 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       if (ov) patch.os_version = ov;
       await admin.from("account_devices").update(patch).eq("user_id", user.id).eq("device_id", device_id);
       await saveCountry(req, user.id, device_id);
+      await legacyMirror(user.id, av ?? null);
       // actief vandaag (statistieken); één rij per account per dag
       await admin.from("account_logins").upsert({ user_id: user.id, day: new Date().toISOString().slice(0, 10) },
         { onConflict: "user_id,day", ignoreDuplicates: true });
@@ -570,7 +675,12 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       const { data: rows } = await q;
       const out: Record<string, unknown> = {};
       for (const r of rows ?? []) {
-        try { out[r.section] = { data: await open_(r.data), updatedAt: r.updated_at }; } catch { /* onleesbaar: overslaan */ }
+        try {
+          const data = await open_(r.data);
+          // build 146: naast een geldige pinHash is pin altijd null (ook als een rij van vóór de regel nog beide had)
+          if (r.section.startsWith("profile.") && data && typeof data === "object" && parsePinHash(data.pinHash) && data.pin != null) data.pin = null;
+          out[r.section] = { data, updatedAt: r.updated_at };
+        } catch { /* onleesbaar: overslaan */ }
       }
       return json({ sections: out });
     }
@@ -585,8 +695,18 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
         const { data: exists } = await admin.from("account_state").select("section").eq("user_id", user.id).eq("section", section).maybeSingle();
         if (!exists) return json({ error: "too_many_sections" }, 413);
       }
+      let data: unknown = body.data ?? null;
+      // build 146: pincode als hash (docs/ACCOUNT.md "Build 146"); zodra er een pinHash is, staat pin nooit meer leesbaar
+      if (section.startsWith("profile.") && data && typeof data === "object" && !Array.isArray(data)) {
+        const { data: cur } = await admin.from("account_state").select("data").eq("user_id", user.id).eq("section", section).maybeSingle();
+        let stored: unknown = null;
+        if (cur?.data) { try { stored = await open_(cur.data); } catch { stored = null; } }
+        const n = await normalizePinSection(stored, data);
+        if ("error" in n) return json({ error: n.error }, 400);
+        data = n.data;
+      }
       const updated_at = new Date().toISOString();
-      const { error } = await admin.from("account_state").upsert({ user_id: user.id, section, data: await seal(body.data ?? null), updated_at });
+      const { error } = await admin.from("account_state").upsert({ user_id: user.id, section, data: await seal(data), updated_at });
       if (error) throw new Error(error.message);
       return json({ ok: true, updatedAt: updated_at });
     }
@@ -595,6 +715,48 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       if (user instanceof Response) return user;
       await admin.from("account_state").delete().eq("user_id", user.id).eq("section", String(body.section ?? "").slice(0, 80));
       return json({ ok: true });
+    }
+    case "get_profiles": {
+      // build 146: profielen versleuteld (docs/ACCOUNT.md "Build 146"); ook tombstones. Wat een oude app rechtstreeks in
+      // account_data.profiles schreef, is meegenomen (en wordt meteen versleuteld bewaard).
+      const user = await authed(req);
+      if (user instanceof Response) return user;
+      const r = await syncProfiles(admin, user.id, null);
+      if ("error" in r) {
+        if (r.error === "busy") { const x = await readProfiles(admin, user.id); return json({ profiles: x.list, updatedAt: x.row?.updated_at ?? null }); }
+        return json({ error: r.error }, 413);
+      }
+      return json({ profiles: r.list, updatedAt: r.updatedAt });
+    }
+    case "put_profiles": {
+      // build 146: de hele lijst (met tombstones); de server voegt samen per id (nieuwste updatedAt/deletedAt wint) en geeft
+      // de samengevoegde lijst terug. Max. 100 profielen (met tombstones) en 512 KB.
+      const user = await authed(req);
+      if (user instanceof Response) return user;
+      const incoming = cleanProfiles(body.profiles);
+      if (!incoming) return json({ error: "bad_profiles" }, 400);
+      if (JSON.stringify(incoming).length > 512 * 1024) return json({ error: "too_large" }, 413);
+      if (await rateLimited(`da-prof:u:${user.id}`, 60, 60)) return json({ error: "rate_limited" }, 429);
+      const r = await syncProfiles(admin, user.id, incoming);
+      if ("error" in r) return r.error === "busy" ? json({ error: "try_again" }, 503) : json({ error: r.error }, 413);
+      return json({ ok: true, profiles: r.list, updatedAt: r.updatedAt });
+    }
+    case "maint_seal": {
+      // build 146: onderhoud door de workflow Backend (geheim per deploy; zie maint())
+      const secret = Deno.env.get("BINGR_MAINT_SECRET") ?? "";
+      if (secret.length < 32 || !same(req.headers.get("x-bingr-maint") ?? "", secret)) return json({ error: "forbidden" }, 403);
+      const what = String(body.what ?? "");
+      const after = typeof body.after === "string" && body.after.length <= 200 ? body.after : null;
+      const r = await maint(what, after);
+      return json(r, "error" in r ? 400 : 200);
+    }
+    case "profiles_status": {
+      // build 146: stand van de overgang (alleen aantallen), voor de workflow Backend
+      const secret = Deno.env.get("BINGR_MAINT_SECRET") ?? "";
+      if (secret.length < 32 || !same(req.headers.get("x-bingr-maint") ?? "", secret)) return json({ error: "forbidden" }, 403);
+      const { data, error } = await admin.rpc("bingr_profiles_status");
+      if (error) throw new Error(error.message);
+      return json(data);
     }
     case "stream_start": {
       const user = await authed(req);
@@ -606,11 +768,19 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       const row = await planRow(user.id), limit = limitsFor(row).streams;
       // verlopen streams weg, tellen, geschiedenis en stream in één transactie met een slot per account,
       // zodat gelijktijdige starts nooit boven de limiet uitkomen
+      // build 146: titel, serietitel, profiel- en apparaatnaam versleuteld; de statistiek-uitkomst rekent watch.ts uit
+      const sv = await sealedStream(user.id, {
+        title: s200(body.title), kind: s80(body.kind), content_id: s200(body.content_id), series_id: s200(body.series_id || null),
+        series_title: s200(body.series_title || null), profile_name: s80(body.profile_name),
+      });
+      const { data: dev } = await admin.from("account_devices").select("name").eq("user_id", user.id).eq("device_id", device_id).maybeSingle();
       const { data: r, error } = await admin.rpc("bingr_stream_start", {
-        p_user: user.id, p_device: device_id, p_profile_id: s80(body.profile_id), p_profile_name: s80(body.profile_name),
-        p_title: s200(body.title), p_kind: s80(body.kind), p_content_id: s200(body.content_id),
+        p_user: user.id, p_device: device_id, p_profile_id: s80(body.profile_id), p_profile_name: sv.profile_name,
+        p_title: sv.title, p_kind: s80(body.kind), p_content_id: s200(body.content_id),
         p_limit: limit, p_ttl_seconds: Math.round(STREAM_TTL_MS / 1000),
-        p_series_id: s200(body.series_id || null), p_series_title: s200(body.series_title || null), p_tz: validTz(body.tz),
+        p_series_id: s200(body.series_id || null), p_series_title: sv.series_title, p_tz: validTz(body.tz),
+        p_sealed: true, p_stat_kind: sv.stat_kind, p_stat_key: sv.stat_key, p_stat_title: sv.stat_title,
+        p_device_name: await sealField(dev?.name ?? null),
       });
       if (error) throw new Error(error.message);
       if (r?.error === "stream_limit") {
@@ -624,16 +794,25 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       const user = await authed(req);
       if (user instanceof Response) return user;
       const device_id = String(body.device_id ?? "").slice(0, 80);
-      const { data: cur } = await admin.from("account_streams").select("log_id,last_ping").eq("user_id", user.id).eq("device_id", device_id).maybeSingle();
+      const { data: cur } = await admin.from("account_streams").select("log_id,last_ping,title,kind,content_id,series_id,series_title")
+        .eq("user_id", user.id).eq("device_id", device_id).maybeSingle();
       // geen stream, of te lang geen ping (telde al niet meer mee): opnieuw stream_start, zodat de limiet weer geldt
       if (!cur || Date.now() - isoMs(cur.last_ping) > STREAM_TTL_MS) return json({ stopped: true });
       const now = new Date().toISOString();
       const patch: Record<string, unknown> = { last_ping: now };
-      if (body.title) patch.title = s200(body.title);
-      if (body.kind) patch.kind = s80(body.kind);
-      if (body.content_id) patch.content_id = s200(body.content_id);
-      if (body.series_id) patch.series_id = s200(body.series_id);
-      if (body.series_title) patch.series_title = s200(body.series_title);
+      if (body.title || body.kind || body.content_id || body.series_id || body.series_title) {
+        // build 146: nieuwe titel e.d. = opnieuw versleutelen en de statistiek-uitkomst opnieuw uitrekenen
+        const next = {
+          title: body.title ? s200(body.title) : await openField(cur.title), kind: body.kind ? s80(body.kind) : cur.kind,
+          content_id: body.content_id ? s200(body.content_id) : cur.content_id, series_id: body.series_id ? s200(body.series_id) : cur.series_id,
+          series_title: body.series_title ? s200(body.series_title) : await openField(cur.series_title),
+        };
+        const sv = await sealedStream(user.id, next);
+        Object.assign(patch, {
+          title: sv.title, kind: next.kind, content_id: next.content_id, series_id: next.series_id, series_title: sv.series_title,
+          stat_sealed: true, stat_kind: sv.stat_kind, stat_key: sv.stat_key, stat_title: sv.stat_title,
+        });
+      }
       // eerst de kijktijd tot nu bijschrijven (op de titel die tot nu liep), dan pas de wijzigingen
       await account(user.id, device_id);
       await admin.from("account_streams").update(patch).eq("user_id", user.id).eq("device_id", device_id);
@@ -667,7 +846,7 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       const { data } = await admin.from("account_watch_log")
         .select("device_name,platform,profile_id,profile_name,title,kind,content_id,started_at,ended_at")
         .eq("user_id", user.id).gte("started_at", since).order("started_at", { ascending: false }).limit(1000);
-      const entries = (data ?? []).map((e) => ({
+      const entries = (await openRows(data ?? [], ["title", "profile_name", "device_name"])).map((e) => ({
         ...e, minutes: Math.max(0, Math.round((Date.parse(e.ended_at) - Date.parse(e.started_at)) / 60000)),
       })).filter((e) => e.minutes >= 1 || Date.now() - Date.parse(e.started_at) < 5 * 60000);
       return json({ entries });
@@ -684,15 +863,13 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
         p_user: user.id, p_profile: profileId, p_from: range.from, p_to: range.to, p_by_month: range.byMonth,
       });
       if (error) throw new Error(error.message);
-      // profielnamen zoals ze nu heten (de statistieken bewaren de naam van toen)
-      const names = new Map<string, string>();
-      if (profileId == null) {
-        const { data: acc } = await admin.from("account_data").select("profiles").eq("user_id", user.id).maybeSingle();
-        for (const p of Array.isArray(acc?.profiles) ? acc.profiles : []) {
-          if (p && typeof p === "object" && p.id && !p.deleted && p.name) names.set(String(p.id), String(p.name));
-        }
-      }
-      return json(buildStats(raw ?? {}, range, { profileId, tz, profileNames: names }));
+      // profielnamen zoals ze nu heten (de statistieken bewaren de naam van toen); build 146: uit de versleutelde profielen
+      const names = profileId == null ? await profileNames(admin, user.id) : new Map<string, string>();
+      // build 146: titels en profielnamen in de statistieken zijn versleuteld
+      const st = (raw ?? {}) as { items?: Record<string, unknown>[]; profiles?: Record<string, unknown>[] };
+      if (Array.isArray(st.items)) st.items = await openRows(st.items, ["title"]);
+      if (Array.isArray(st.profiles)) st.profiles = await openRows(st.profiles, ["profile_name"]);
+      return json(buildStats(st as Parameters<typeof buildStats>[0], range, { profileId, tz, profileNames: names }));
     }
     case "delete_watch_stats": {
       const user = await authed(req);

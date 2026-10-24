@@ -91,6 +91,25 @@ export function reminderLinks(channelId: string, profileId: string | null) {
   const q = `channel=${encodeURIComponent(channelId)}${profileId ? `&profile=${encodeURIComponent(profileId)}` : ""}`;
   return { url: `${SITE}/web/#/live?${q}`, deeplink: `bingr://live?${q}` };
 }
+// Build 146: antwoord van support op een ticket. Deeplink voor alle apps; url = publieke terugval (webspeler: de tab
+// Support daar, anders support.bingr.online, dat het ticket opent als je ingelogd bent met het account van het ticket).
+export const SUPPORT_SITE = "https://support.bingr.online";
+export function supportLinks(number: number, platform: string) {
+  const n = encodeURIComponent(String(number));
+  return {
+    url: platform === "web" ? `${SITE}/web/#/support/ticket?n=${n}` : `${SUPPORT_SITE}/ticket/?n=${n}`,
+    deeplink: `bingr://support/ticket?n=${n}`,
+  };
+}
+const SUPPORT_TITLE = { nl: "Nieuw antwoord op je supportvraag", en: "New reply to your support request" };
+/** Tekst: nl voor apparaten in het Nederlands, anders en. Alleen het nummer en het onderwerp, nooit het bericht zelf. */
+export function supportText(lang: unknown, number: number, subject: string) {
+  const l = normLang(lang) === "nl" ? "nl" : "en";
+  const subj = [...String(subject ?? "").replace(/\s+/g, " ").trim()].slice(0, 100).join("");
+  return { title: SUPPORT_TITLE[l], body: subj ? `#${number} · ${subj}` : `#${number}` };
+}
+export const supportKey = (messageId: number | string) => `support:${messageId}`;
+
 // Alleen https-links uit het beheer; anders geen url (de app opent zichzelf).
 export function safeUrl(v: unknown): string | null {
   const s = String(v ?? "").trim();
@@ -121,6 +140,11 @@ export function renderNotice(m: MessageRow, d: DevInfo): Notice {
     const l = releaseLinks(d.platform, build);
     return { ...t, data: noticeData("release", m.id, l.url, l.deeplink) };
   }
+  if (m.kind === "support_reply") {
+    const n = Number(p.number);
+    const l = supportLinks(n, d.platform);
+    return { ...supportText(d.lang, n, String(p.subject ?? "")), data: { ...noticeData("support_reply", m.id, l.url, l.deeplink), ticket: String(n) } };
+  }
   if (m.kind === "reminder") {
     const l = reminderLinks(String(p.channel_id ?? ""), p.profile_id ? String(p.profile_id) : null);
     const body = reminderBody(d.lang, { profileName: p.profile_name ? String(p.profile_name) : null, title: String(p.title ?? ""), startMs: Number(p.start_ms) }, d.tz);
@@ -132,6 +156,7 @@ export function renderNotice(m: MessageRow, d: DevInfo): Notice {
 // Hoe lang een pushdienst het bericht mag bewaren (s): herinnering tot de start, overige 1 dag.
 export function ttlFor(m: MessageRow, nowMs: number): number {
   if (m.kind === "reminder") return Math.max(30, Math.floor((Number(m.payload?.start_ms) - nowMs) / 1000));
+  if (m.kind === "support_reply") return 3 * 86400;
   return 86400;
 }
 // APNs: {aps:{alert:{title, body}, sound}, data:{kind, url?, deeplink?, msg_id}} en dezelfde sleutels ook plat naast aps

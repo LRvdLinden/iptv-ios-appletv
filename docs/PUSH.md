@@ -40,7 +40,7 @@ POST `/functions/v1/push` met JSON:
 ## Berichten (payload naar de app)
 
 Elke push heeft `title`, `body` en `data`:
-- `data.kind`: `release` | `admin` | `reminder`
+- `data.kind`: `release` | `admin` | `reminder` | `support_reply` (build 146)
 - `data.url`: universele link om te openen (altijd https, publieke fallback); ontbreekt alleen bij een beheerbericht zonder link
 - `data.deeplink`: `bingr://…` voor de app (optioneel)
 - `data.msg_id`: id in push_messages (dedup in de app: zelfde msg_id twee keer = één keer tonen)
@@ -57,6 +57,21 @@ Tikken:
   als dat bestaat, anders de URL in de browser). Publieke URL: `https://bingr.online/changelog/?p=<platform>#build-<build>`.
 - `admin`: `data.url` als het beheer een link meegaf, anders de app openen.
 - `reminder`: `bingr://live?channel=<id>&profile=<profiel-id>` (zelfde als de lokale herinnering).
+- `support_reply` (build 146): `bingr://support/ticket?n=<nummer>`, extra `data.ticket` = het nummer; `url` =
+  `https://support.bingr.online/ticket/?n=<nummer>` (webspeler: `https://bingr.online/web/#/support/ticket?n=<nummer>`).
+  App opent de Support-tab met dat ticket; niet ingelogd of 404 = de ticketlijst (ACCOUNT.md, "Build 146" →
+  "Pushmelding bij een antwoord").
+
+## Antwoord van support (build 146)
+
+Reageert support op een ticket met een account (beheer `admin_reply` of per mail via de inbox-import), dan zet de functie
+`support` een bericht `kind: "support_reply"` in `push_messages` (`dedup_key` = `support:<id van het supportbericht>`,
+`target: {accounts:[user_id]}`, `payload: {sealed}` met nummer en onderwerp versleuteld), zet alle push-apparaten van dat
+account in de wachtrij (`bingr_push_enqueue`) en roept `push` `admin_progress` aan (header `x-push-secret` =
+`PUSH_ADMIN_SECRET`), zodat hij meteen verstuurd wordt; anders binnen een minuut via de cron. Tekst: nl "Nieuw antwoord op
+je supportvraag" / en "New reply to your support request", body `#<nummer> · <onderwerp>` (nooit de tekst van het
+antwoord). TTL 3 dagen. Testaccounts van de workflow (`@example.com`) en mailtest-tickets krijgen niets. Komt niet in
+`admin_history`.
 
 ## Releasemelding (per build, vanuit het beheer)
 
@@ -101,7 +116,8 @@ zendernaam. Na de start wordt een herinnering niet meer verstuurd.
 ## Server (supabase/functions/push, supabase/schema.sql)
 
 - Tabellen `push_devices` (één rij per (account, apparaat), token uniek per kanaal), `push_messages` (één rij per bericht,
-  `dedup_key` = `release:<groep>:<build>` of `reminder:<account>:<herinnering-id>`, tellingen in `counts`) en `push_deliveries`
+  `dedup_key` = `release:<groep>:<build>`, `reminder:<account>:<herinnering-id>` of `support:<bericht-id>`, tellingen in
+  `counts`; build 146: de payload van herinneringen en supportmeldingen staat versleuteld in `payload.sealed`) en `push_deliveries`
   (één rij per (bericht, apparaat), status queued/sent/failed/invalid). RLS aan, geen rechten voor anon/authenticated.
 - Verwijderen: account → cascade; apparaat uit `account_devices` (device-auth `remove_device`, beheer) → trigger
   `bingr_push_device_removed` op (user_id, device_id). Ongeldige token (APNs 410/BadDeviceToken, FCM UNREGISTERED, Web Push

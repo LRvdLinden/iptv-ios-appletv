@@ -27,6 +27,20 @@
 //   Nooit op e-mailadres (met autoconfirm bewijst email_confirmed_at niets). mine toont alleen tickets met user_id.
 //   reply   {n, t?, message}                     -> {ok, status}   (gesloten ticket: 409 closed)
 //   close   {n, t?}                              -> {ok, status:"closed"}
+// Build 146, apps (altijd ingelogd, eigenaar alleen via user_id; contract docs/ACCOUNT.md "Build 146" → "Support vanuit de app"):
+//   app_list      {status?: all|open|in_progress|closed} -> {items:[{number, subject, status, group, category, platform, …,
+//                 last_reply_at, unread_count, unread}], counts:{open, in_progress, closed, unread}}
+//   app_get       {number, mark_read?=true}      -> {ticket:{…, can_reply}, messages:[{author, body, created_at, diagnostics?:{kind, createdAt}}]}
+//   app_mark_read {number}                       -> {ok}
+//   app_reply     {number, message, diagnostics?} -> {ok, status, group, diagnostics: accepted|stripped|null}  (gesloten: 409 closed)
+//   app_create    {subject, message, category, diagnostics?, device_id?, platform?, app_version?, lang?}
+//                 -> {ok, number, status, group, email_sent, diagnostics}  (geen captcha; 5/uur en 15/dag per account, 10/uur per IP)
+//   app_close     {number}                       -> {ok, status:"closed", group:"closed"}
+//   Fouten: 401 not_signed_in / user_banned, 404 not_found (ook een ticket van een ander account), 400 bad_diagnostics /
+//   validatiefouten zoals create, 413 diagnostics_too_large, 429 rate_limited.
+// Build 146: berichttekst, diagnose-bijlage en het inbox-logboek (afzender, onderwerp, detail) staan versleuteld in de
+//   database (_shared/sealed.ts, `enc1:…`). Een antwoord van support (beheer of per mail) op een ticket met account geeft
+//   een pushmelding (kind support_reply, functie push) naast de mail.
 // Beheer (alleen met header x-support-secret = SUPPORT_ADMIN_SECRET; de functie admin in bingr-beheer stuurt dit door):
 //   admin_counts {}                               -> {new, open, pending, resolved, closed, active, unread, total, last_7d}
 //   admin_list   {status?: active|all|<status>, q?, page?, page_size?} -> {total, page, page_size, items:[…], counts}
@@ -70,6 +84,10 @@ import {
 import { clientIp } from "../_shared/ip.ts";
 import { firstNameOf } from "../_shared/layout.ts";
 import { makeChallenge, powKey, verifyPow } from "./pow.ts";
+import { openField, openJsonField, sealField, sealJsonField } from "../_shared/sealed.ts";
+import { cleanDiagnostics, ticketPlatform } from "../_shared/diagnostics.ts";
+import { supportKey } from "../push/logic.ts";
+import { accountName, osFromDiag, STATUS_GROUPS, statusGroup, type StatusGroup, unreadCounts, versionFromDiag } from "./logic.ts";
 
 const env = (k: string) => Deno.env.get(k) ?? "";
 const SUPPORT_SITE = env("BINGR_SUPPORT_SITE") || "https://support.bingr.online";
@@ -98,7 +116,9 @@ async function knownBuilds(): Promise<KnownVersion[]> {
   }
 }
 
-const ORIGIN = /^https:\/\/support\.bingr\.online$|^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
+// build 146: ook de webspeler (bingr.online/web, ook in de Windows-app) en de Samsung TV-app (Tizen-webview: Origin
+// "file://" of "null") voor de acties app_* met de sessie van het account. Native apps sturen geen Origin.
+const ORIGIN = /^https:\/\/(support\.)?bingr\.online$|^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$|^file:\/\/$|^null$/;
 function corsFor(req: Request): Record<string, string> {
   const origin = req.headers.get("Origin") ?? "";
   return {
@@ -115,6 +135,7 @@ type Json = (b: unknown, s?: number) => Response;
 type Ticket = {
   id: string; number: number; user_id: string | null; email: string; name: string; subject: string; category: string;
   platform: string | null; app_version: string | null; device_id: string | null; device_name: string | null; os_version: string | null; status: Status; priority: string; lang: "nl" | "en";
+  device_type?: string | null; device_model?: string | null; source?: string | null;
   access_token: string; created_at: string; updated_at: string; last_reply_at: string; last_customer_at: string;
   last_support_at: string | null; admin_seen_at: string | null; customer_seen_at: string | null; closed_at: string | null;
 };
@@ -169,16 +190,25 @@ async function customerTicket(req: Request, body: Record<string, unknown>): Prom
   if (validToken(body.t) && sameText(body.t, t.access_token)) return { t, user, viaLink: true };
   return ownsTicket(user?.id, t.user_id) ? { t, user, viaLink: false } : null;
 }
+// build 146: berichttekst en diagnose-bijlage staan versleuteld (`enc1:…`); oude berichten zijn nog leesbaar (openField).
+// includeNotes = beheer: ook notities en de volledige bijlage. Klant (site/app): zonder notities, bijlage als samenvatting.
 async function messagesOf(ticketId: string, includeNotes: boolean) {
-  let q = db.from("support_messages").select("id,author,body,created_at,email_sent,email_error,source").eq("ticket_id", ticketId).order("created_at").order("id");
+  let q = db.from("support_messages").select("id,author,body,created_at,email_sent,email_error,source,diagnostics").eq("ticket_id", ticketId).order("created_at").order("id");
   if (!includeNotes) q = q.neq("author", "note");
   const { data, error } = await q.limit(500);
   if (error) throw new Error(error.message);
-  return (data ?? []).map((m) => includeNotes ? m : { author: m.author, body: m.body, created_at: m.created_at });
+  return await Promise.all((data ?? []).map(async (m) => {
+    const body = await openField(m.body) ?? "";
+    const diag = m.diagnostics ? await openJsonField(m.diagnostics) : null;
+    if (includeNotes) { const { diagnostics: _d, ...rest } = m; return { ...rest, body, diagnostics: diag }; }
+    return { author: m.author, body, created_at: m.created_at, ...(diag ? { diagnostics: { kind: diag.kind ?? null, createdAt: diag.createdAt ?? null } } : {}) };
+  }));
 }
-type Source = "web" | "email" | "admin";
-async function addMessage(ticketId: string, author: string, body: string, source: Source | null = null, mail?: { messageId: string; inReplyTo: string | null }) {
-  const row: Record<string, unknown> = { ticket_id: ticketId, author, body };
+type Source = "web" | "email" | "admin" | "app";
+async function addMessage(ticketId: string, author: string, body: string, source: Source | null = null, mail?: { messageId: string; inReplyTo: string | null }, diagnostics?: unknown) {
+  // statuswijzigingen (event) zijn geen inhoud: leesbaar; al het andere versleuteld
+  const row: Record<string, unknown> = { ticket_id: ticketId, author, body: author === "event" ? body : await sealField(body) ?? "" };
+  if (diagnostics) row.diagnostics = await sealJsonField(diagnostics);
   if (source) row.source = source;
   if (mail) { row.message_id = mail.messageId; row.in_reply_to = mail.inReplyTo; }
   const { data, error } = await db.from("support_messages").insert(row).select("id").single();
@@ -244,7 +274,10 @@ async function firstNameFor(t: Ticket): Promise<string> {
     return firstNameOf(u);
   } catch { return ""; }
 }
-const toCustomer = async (t: Ticket, d: MailData) =>
+// build 146: testaccounts van de workflow Backend (adres @example.com/.net/.org, RFC 2606: nooit een echte klant) krijgen
+// geen mails, en support@ krijgt er geen melding van
+const testAddress = (e: string | null | undefined) => /@example\.(com|net|org)$/i.test(String(e ?? ""));
+const toCustomer = async (t: Ticket, d: MailData) => testAddress(t.email) ? notSent("test_address") :
   send(t.email, renderMail({ ...d, firstName: d.firstName ?? await firstNameFor(t) }), { number: t.number, first: d.kind === "customer_created", auto: d.kind !== "customer_reply", kind: d.kind });
 // build 95: boven dit aantal nieuwe tickets per uur (alle samen) geen bevestigingsmails meer aan klanten (tickets worden wel
 // opgeslagen en support krijgt de melding): een veiligheidsgrens tegen misbruik als mailkanon, die niemand buitensluit
@@ -253,10 +286,49 @@ const confirmAllowed = async () => (await countSince((q) => q)) < GLOBAL_CONFIRM
 const notSent = (error: string): Sent => ({ ok: false, error });
 // Reply-To van een melding: met de inbox-import het supportadres zelf (het antwoord van de eigenaar komt dan via de import in
 // het ticket en gaat als gebrande mail naar de klant); zonder import het adres van de klant (antwoord gaat direct naar de klant)
-const toSupport = (t: Ticket, d: MailData) =>
+const toSupport = (t: Ticket, d: MailData) => testAddress(t.email) ? Promise.resolve(notSent("test_address")) :
   send(SUPPORT_EMAIL(), renderMail(d), { number: t.number, replyTo: imapConfigured() ? addressOf(SUPPORT_FROM()) : t.email, first: d.kind === "support_created", auto: true, kind: d.kind });
 async function markMail(messageId: number, r: Sent) {
   await db.from("support_messages").update({ email_sent: r.ok, email_error: r.ok ? null : r.error ?? null, ...(r.messageId && r.ok ? { mail_message_id: r.messageId } : {}) }).eq("id", messageId);
+}
+
+// ---- build 146: pushmelding aan de eigenaar bij een antwoord van support ----
+// Alleen voor tickets met een account (user_id). Eén melding per supportbericht (dedup_key support:<bericht-id>), naar alle
+// push-apparaten van het account (functie push, docs/PUSH.md). Payload versleuteld: alleen nummer en onderwerp, nooit de
+// tekst van het antwoord. Daarna wordt de functie push direct aangezet (admin_progress); lukt dat niet, dan verstuurt de
+// cron van push hem binnen een minuut. Een fout hier houdt het antwoord (en de mail) nooit tegen.
+function background(p: Promise<unknown>) {
+  const rt = (globalThis as { EdgeRuntime?: { waitUntil(p: Promise<unknown>): void } }).EdgeRuntime;
+  const safe = p.catch((e) => console.error("support push achtergrond", e instanceof Error ? e.message.slice(0, 80) : "fout"));
+  if (rt?.waitUntil) rt.waitUntil(safe);
+}
+async function notifyOwner(t: Ticket, messageId: number): Promise<number> {
+  if (!t.user_id || isMailtestAddress(t.email)) return 0;
+  try {
+    const { data: m, error } = await db.from("push_messages").upsert({
+      kind: "support_reply", dedup_key: supportKey(messageId), target: { accounts: [t.user_id] }, created_by: "support",
+      payload: { sealed: await sealJsonField({ number: t.number, subject: t.subject }) },
+    }, { onConflict: "dedup_key", ignoreDuplicates: true }).select("id");
+    if (error) throw new Error(error.message);
+    const id = m?.[0]?.id;
+    if (!id) return 0;
+    const { data: n, error: e2 } = await db.rpc("bingr_push_enqueue", { p_message: id, p_all: false, p_accounts: [t.user_id], p_platforms: null, p_below_build: null });
+    if (e2) throw new Error(e2.message);
+    await db.rpc("bingr_push_refresh", { p_ids: [id] });
+    const devices = Number(n ?? 0);
+    const secret = env("PUSH_ADMIN_SECRET");
+    if (devices > 0 && secret) {
+      background(fetch(`${env("SUPABASE_URL").replace(/\/+$/, "")}/functions/v1/push`, {
+        method: "POST", signal: AbortSignal.timeout(30_000),
+        headers: { "Content-Type": "application/json", "x-push-secret": secret, ...(env("SUPABASE_ANON_KEY") ? { apikey: env("SUPABASE_ANON_KEY") } : {}) },
+        body: JSON.stringify({ action: "admin_progress", message_id: id }),
+      }).then((r) => r.body?.cancel()));
+    }
+    return devices;
+  } catch (e) {
+    console.error("support push", e instanceof Error ? e.message.slice(0, 120) : "fout");
+    return 0;
+  }
 }
 
 // ---- server ----
@@ -269,7 +341,8 @@ Deno.serve(async (req) => {
   let body: Record<string, unknown>;
   try {
     const text = await req.text();
-    if (text.length > 32 * 1024) return json({ error: "too_large" }, 413);
+    // build 146: 64 KB (een bericht van max. 5000 tekens plus een diagnose-bijlage van max. 32 KB)
+    if (text.length > 64 * 1024) return json({ error: "too_large" }, 413);
     body = JSON.parse(text || "{}");
     if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error();
   } catch { return json({ error: "bad_json" }, 400); }
@@ -502,9 +575,170 @@ async function handleCustomer(req: Request, action: string, body: Record<string,
       await markMail(mid, await toSupport(nt, mailData(nt, "support_closed")));
       return json({ ok: true, status: "closed" });
     }
+    case "app_list": case "app_get": case "app_mark_read": case "app_reply": case "app_create": case "app_close":
+      return await handleApp(req, action, body, json);
     default:
       return json({ error: "unknown_action" }, 400);
   }
+}
+
+// ---- build 146: support vanuit de app (docs/ACCOUNT.md "Build 146" → "Support vanuit de app") ----
+// Altijd met de sessie van het account (Authorization: Bearer <access_token>); eigenaar alleen via user_id (security H1),
+// nooit via e-mailadres of de geheime link. Een ticket van een ander account (of dat niet bestaat) = 404 not_found.
+const APP_TICKET_FIELDS = "id,number,user_id,email,name,subject,category,platform,app_version,device_name,device_type,device_model,os_version,status,lang,access_token,created_at,updated_at,last_reply_at,last_support_at,customer_seen_at,closed_at";
+const appTicket = (t: Record<string, unknown>, unread?: number) => ({
+  number: t.number, subject: t.subject, status: t.status, group: statusGroup(t.status), category: t.category, platform: t.platform ?? null,
+  app_version: t.app_version ?? null, device_name: t.device_name ?? null, device_type: t.device_type ?? null, device_model: t.device_model ?? null,
+  os_version: t.os_version ?? null, created_at: t.created_at, last_reply_at: t.last_reply_at, closed_at: t.closed_at ?? null,
+  can_reply: t.status !== "closed",
+  ...(unread !== undefined ? { unread_count: unread, unread: unread > 0 } : {}),
+});
+// limieten voor een nieuw ticket uit de app (geen captcha): per account 5 per uur en 15 per dag, per IP 10 per uur
+const APP_CREATE_PER_HOUR = 5, APP_CREATE_PER_DAY = 15, APP_CREATE_PER_IP_HOUR = 10;
+
+async function handleApp(req: Request, action: string, body: Record<string, unknown>, json: Json): Promise<Response> {
+  const user = await userOrBanned(req);
+  if (user === "banned") return json(BANNED_BODY, 401);
+  if (!user) return json({ error: "not_signed_in" }, 401);
+  if (!(await rateOk(`support:app:${user.id}`, 120))) return json({ error: "rate_limited" }, 429); // per minuut, alle acties samen
+  const own = async (): Promise<Ticket | null> => {
+    const n = parseNumber(body.number ?? body.n);
+    if (!n) return null;
+    const { data, error } = await db.from("support_tickets").select("*").eq("number", n).eq("user_id", user.id).maybeSingle();
+    if (error) throw new Error(error.message);
+    return data as Ticket | null;
+  };
+  // diagnose-bijlage (optioneel): opschonen volgens het schema; ongeldige kern = 400, te groot = 413
+  const diag = (): { ok: true; value: Record<string, unknown> | null; note: "accepted" | "stripped" | null } | { ok: false; res: Response } => {
+    if (body.diagnostics == null) return { ok: true, value: null, note: null };
+    const d = cleanDiagnostics(body.diagnostics);
+    if (!d.ok) return { ok: false, res: json({ error: d.error, field: d.field ?? "diagnostics" }, d.error === "diagnostics_too_large" ? 413 : 400) };
+    return { ok: true, value: d.value, note: d.stripped ? "stripped" : "accepted" };
+  };
+
+  switch (action) {
+    case "app_list": {
+      const filter = String(body.status ?? "all");
+      let q = db.from("support_tickets").select(APP_TICKET_FIELDS).eq("user_id", user.id);
+      if (filter in STATUS_GROUPS) q = q.in("status", STATUS_GROUPS[filter as StatusGroup]);
+      else if (filter !== "all") return json({ error: "bad_status" }, 400);
+      const { data, error } = await q.order("last_reply_at", { ascending: false }).limit(200);
+      if (error) throw new Error(error.message);
+      const tickets = (data ?? []) as (Ticket & { customer_seen_at: string | null })[];
+      // ongelezen = antwoorden van support na het laatst openen (ook voor de teller op de tab en apparaten zonder push)
+      let msgs: { ticket_id: string; created_at: string }[] = [];
+      if (tickets.length) {
+        const { data: m, error: me } = await db.from("support_messages").select("ticket_id,created_at")
+          .in("ticket_id", tickets.map((t) => t.id)).eq("author", "support").limit(5000);
+        if (me) throw new Error(me.message);
+        msgs = (m ?? []) as typeof msgs;
+      }
+      const unread = unreadCounts(tickets, msgs);
+      // tellers altijd over alle eigen tickets (ook met een filter)
+      const { data: all } = filter === "all" ? { data: tickets } : await db.from("support_tickets").select("id,status").eq("user_id", user.id).limit(1000);
+      const counts = { open: 0, in_progress: 0, closed: 0, unread: 0 };
+      for (const t of (all ?? []) as { status: string }[]) counts[statusGroup(t.status)]++;
+      const items = tickets.map((t) => appTicket(t as unknown as Record<string, unknown>, unread.get(t.id) ?? 0));
+      counts.unread = filter === "all" ? items.reduce((n, t) => n + (t.unread ? 1 : 0), 0) : await (async () => {
+        const { data: ids } = await db.from("support_tickets").select("id,customer_seen_at").eq("user_id", user.id).limit(1000);
+        const list = (ids ?? []) as { id: string; customer_seen_at: string | null }[];
+        if (!list.length) return 0;
+        const { data: m } = await db.from("support_messages").select("ticket_id,created_at").in("ticket_id", list.map((t) => t.id)).eq("author", "support").limit(5000);
+        return [...unreadCounts(list, (m ?? []) as typeof msgs).values()].filter((n) => n > 0).length;
+      })();
+      return json({ items, counts });
+    }
+    case "app_get": {
+      const t = await own();
+      if (!t) return json({ error: "not_found" }, 404);
+      if (body.mark_read !== false) await db.from("support_tickets").update({ customer_seen_at: nowIso() }).eq("id", t.id);
+      return json({ ticket: appTicket(t as unknown as Record<string, unknown>), messages: await messagesOf(t.id, false) });
+    }
+    case "app_mark_read": {
+      const t = await own();
+      if (!t) return json({ error: "not_found" }, 404);
+      await db.from("support_tickets").update({ customer_seen_at: nowIso() }).eq("id", t.id);
+      return json({ ok: true });
+    }
+    case "app_reply": {
+      const v = validateMessage(body.message);
+      if (!v.ok) return json({ error: v.error, field: v.field }, 400);
+      const d = diag();
+      if (!d.ok) return d.res;
+      const t = await own();
+      if (!t) return json({ error: "not_found" }, 404);
+      if (t.status === "closed") return json({ error: "closed" }, 409);
+      if (!(await rateOk(`support:reply:${t.id}`, 4))) return json({ error: "rate_limited" }, 429); // per minuut
+      const { count } = await db.from("support_messages").select("id", { count: "exact", head: true })
+        .eq("ticket_id", t.id).eq("author", "customer").gte("created_at", hourAgo());
+      if ((count ?? 0) >= 20) return json({ error: "rate_limited" }, 429);
+      const status = statusAfter(t.status, "customer");
+      const now = nowIso();
+      const mid = await addMessage(t.id, "customer", v.value, "app", undefined, d.value);
+      if (status !== t.status) await addMessage(t.id, "event", status);
+      await db.from("support_tickets").update({ status, updated_at: now, last_reply_at: now, last_customer_at: now, customer_seen_at: now, closed_at: null }).eq("id", t.id);
+      const nt = { ...t, status };
+      await markMail(mid, await toSupport(nt, mailData(nt, "support_reply", { body: v.value })));
+      return json({ ok: true, status, group: statusGroup(status), diagnostics: d.note });
+    }
+    case "app_close": {
+      const t = await own();
+      if (!t) return json({ error: "not_found" }, 404);
+      if (t.status === "closed") return json({ ok: true, status: "closed", group: "closed" });
+      const now = nowIso();
+      await db.from("support_tickets").update({ status: "closed", closed_at: now, updated_at: now }).eq("id", t.id);
+      const mid = await addMessage(t.id, "event", "closed");
+      const nt = { ...t, status: "closed" as Status };
+      await markMail(mid, await toSupport(nt, mailData(nt, "support_closed")));
+      return json({ ok: true, status: "closed", group: "closed" });
+    }
+    case "app_create": {
+      if (!user.email) return json({ error: "not_signed_in" }, 401);
+      const d = diag();
+      if (!d.ok) return d.res;
+      const dv = d.value as { app?: { platform?: string; version?: string; build?: number }; device?: { type?: string; model?: string; os?: string; osVersion?: string } } | null;
+      // zelfde controle als het formulier, met naam en adres van het account (geen lokveld, geen captcha)
+      const v = validateCreate({
+        name: accountName((user as { user_metadata?: unknown }).user_metadata), email: user.email, category: body.category,
+        platform: body.platform ?? ticketPlatform(dv?.app?.platform), app_version: body.app_version ?? versionFromDiag(dv),
+        subject: body.subject, message: body.message, lang: body.lang, device_id: body.device_id,
+      });
+      if (!v.ok) return json({ error: v.error, field: v.field }, 400);
+      const ih = await ipHash(clientIp(req));
+      if (!(await rateOk(`support:app-create:h:${user.id}`, APP_CREATE_PER_HOUR, 3600)) || !(await rateOk(`support:app-create:d:${user.id}`, APP_CREATE_PER_DAY, 86400))
+        || !(await rateOk(`support:app-create:ip:${ih}`, APP_CREATE_PER_IP_HOUR, 3600))) return json({ error: "rate_limited" }, 429);
+      const input = v.value;
+      let device: DeviceRow | null = null;
+      if (input.device_id) {
+        const { data: dr } = await db.from("account_devices").select("device_id,name,platform,app_version,os_version,last_seen_at")
+          .eq("user_id", user.id).eq("device_id", input.device_id).maybeSingle();
+        device = (dr as DeviceRow | null) ?? null;
+      }
+      const token = randomToken();
+      const { data, error } = await db.from("support_tickets").insert({
+        user_id: user.id, email: input.email, name: input.name, subject: input.subject, category: input.category,
+        platform: (device && deviceKind(device.platform)) || input.platform, app_version: input.app_version || device?.app_version || null,
+        lang: input.lang, access_token: token, ip_hash: ih, source: "app",
+        device_id: device?.device_id ?? null, device_name: device ? (device.name || "").slice(0, 80) || null : null,
+        os_version: (device?.os_version || "").slice(0, 40) || osFromDiag(dv),
+        device_type: dv?.device?.type ?? null, device_model: dv?.device?.model ?? null,
+      }).select("*").single();
+      if (error) throw new Error(error.message);
+      const t = data as Ticket;
+      let mid: number;
+      try { mid = await addMessage(t.id, "customer", input.message, "app", undefined, d.value); }
+      catch (e) { await db.from("support_tickets").delete().eq("id", t.id); throw e; }
+      const full = emailProven(user, await requireConfirm());
+      const confirm = await confirmAllowed();
+      const [c, sp] = await Promise.all([
+        confirm ? toCustomer(t, mailData(t, "customer_created", full ? { body: input.message } : { minimal: true })) : Promise.resolve(notSent("global_cap")),
+        toSupport(t, mailData(t, "support_created", { body: input.message })),
+      ]);
+      await markMail(mid, { ok: c.ok && sp.ok, error: [c.error && `klant: ${c.error}`, sp.error && `support: ${sp.error}`].filter(Boolean).join(" · ") || undefined });
+      return json({ ok: true, number: t.number, status: t.status, group: statusGroup(t.status), email_sent: c.ok, diagnostics: d.note });
+    }
+  }
+  return json({ error: "unknown_action" }, 400);
 }
 
 async function handleAdmin(action: string, body: Record<string, unknown>, json: Json): Promise<Response> {
@@ -521,7 +755,7 @@ async function handleAdmin(action: string, body: Record<string, unknown>, json: 
     const page = Math.max(Math.floor(Number(body.page ?? 0) || 0), 0);
     const st = String(body.status ?? "active");
     let q = db.from("support_tickets")
-      .select("number,subject,email,name,status,priority,category,platform,lang,user_id,created_at,updated_at,last_reply_at,last_customer_at,last_support_at,admin_seen_at", { count: "exact" });
+      .select("number,subject,email,name,status,priority,category,platform,lang,user_id,created_at,updated_at,last_reply_at,last_customer_at,last_support_at,admin_seen_at,source,device_type,device_model,os_version", { count: "exact" });
     if (st === "active") q = q.in("status", ["new", "open", "pending"]);
     else if (isStatus(st)) q = q.eq("status", st);
     const n = parseNumber(body.q);
@@ -566,9 +800,9 @@ async function handleAdmin(action: string, body: Record<string, unknown>, json: 
         closed_at: status === "closed" ? now : null,
       }).eq("id", t.id);
       const nt = { ...t, status };
-      const r = await toCustomer(nt, mailData(nt, "customer_reply", { body: v.value }));
+      const [r, pushed] = await Promise.all([toCustomer(nt, mailData(nt, "customer_reply", { body: v.value })), notifyOwner(nt, mid)]);
       await markMail(mid, r);
-      return json({ ok: true, status, email_sent: r.ok, email_error: r.error ?? null });
+      return json({ ok: true, status, email_sent: r.ok, email_error: r.error ?? null, push_devices: pushed });
     }
     case "admin_status": {
       const upd: Record<string, unknown> = { updated_at: now };
@@ -629,14 +863,16 @@ async function inboxStatus() {
   return {
     configured: imapConfigured(), smtp: smtpConfigured(), host: env("BINGR_IMAP_HOST") || null, user: env("BINGR_IMAP_USER") || null,
     agents: agents().length, extra_agents: !!env("BINGR_SUPPORT_AGENTS").trim(), cron: !!env("SUPPORT_CRON_SECRET"),
-    state: state ?? null, log: log ?? [],
+    state: state ?? null,
+    log: await Promise.all((log ?? []).map(async (l) => ({ ...l, sender: await openField(l.sender), subject: await openField(l.subject), detail: await openField(l.detail) }))),
   };
 }
 
 async function inboxLog(uid: number, mail: ParsedMail | null, r: InboxResult, folder = "INBOX", uidvalidity: number | null = null) {
   await db.from("support_inbox_log").insert({
-    uid, folder: folder.slice(0, 200), uidvalidity, message_id: mail?.messageId?.slice(0, 300) || null, sender: mail?.from?.address?.slice(0, 254) ?? null,
-    subject: mail?.subject?.slice(0, 200) ?? null, result: r.result, ticket_number: r.ticket ?? null, detail: r.detail?.slice(0, 300) ?? null,
+    // build 146: afzender, onderwerp en detail versleuteld (het beheer toont ze via admin_inbox)
+    uid, folder: folder.slice(0, 200), uidvalidity, message_id: mail?.messageId?.slice(0, 300) || null, sender: await sealField(mail?.from?.address?.slice(0, 254) ?? null),
+    subject: await sealField(mail?.subject?.slice(0, 200) ?? null), result: r.result, ticket_number: r.ticket ?? null, detail: await sealField(r.detail?.slice(0, 300) ?? null),
   });
 }
 
@@ -839,9 +1075,9 @@ async function handleMail(mail: ParsedMail, opts: { ci?: boolean } = {}): Promis
         status, updated_at: now, last_reply_at: now, last_support_at: now, admin_seen_at: now, closed_at: null,
       }).eq("id", t.id);
       const nt = { ...t, status };
-      const r = await toCustomer(nt, mailData(nt, "customer_reply", { body }));
+      const [r] = await Promise.all([toCustomer(nt, mailData(nt, "customer_reply", { body })), notifyOwner(nt, mid)]);
       await markMail(mid, r);
-      return { result: "agent", ticket: t.number, detail: r.ok ? `gemaild aan ${t.email}` : `niet gemaild: ${r.error ?? ""}`, seen: true, move: true };
+      return { result: "agent", ticket: t.number, detail: r.ok ? "gemaild aan de klant" : `niet gemaild: ${r.error ?? ""}`, seen: true, move: true };
     }
     case "new_ticket": {
       const email = mail.from!.address.toLowerCase().slice(0, LIMITS_EMAIL);

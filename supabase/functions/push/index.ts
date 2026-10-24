@@ -14,12 +14,15 @@
 //   admin_history  {page?} -> {items:[{id, kind, title, …, queued, sent, failed, invalid, errors}], page, has_more}
 // Planning (header x-push-secret = PUSH_CRON_SECRET, pg_cron elke minuut):
 //   cron        {} -> {ok, reminders, sent, failed, invalid, queued_left, beheer:{notices, sent, invalid, failed, skipped?}}
+// Build 146: kind support_reply (antwoord van support op een ticket van het account) zet de functie support zelf in de
+//   wachtrij (push_messages + bingr_push_enqueue) en roept daarna admin_progress aan; de cron verstuurt de rest.
 //               (herinneringen + resterende batches + adminNotify: meldingen naar de beheer-app, zie beheer.ts)
 // Fouten: 401 {error:"not_signed_in"} / BANNED_BODY, 403 {error:"forbidden"}, 400 {error:"bad_…"}.
 // Logs bevatten nooit tokens, geheimen of e-mailadressen.
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { BANNED_BODY, bannedUntilActive, isBanError } from "../_shared/ban.ts";
-import { unseal } from "../_shared/sealed.ts";
+import { openJsonField, sealJsonField, unseal } from "../_shared/sealed.ts";
+import { profilesOrEmpty } from "../_shared/profiles_store.ts";
 import { sameSecret } from "./crypto.ts";
 import { Channels, type DeviceRow } from "./channels.ts";
 import { adminNotify, type BeheerResult } from "./beheer.ts";
@@ -94,7 +97,14 @@ async function runBatch(messageId: number | null, t: Totals): Promise<number> {
     admin.from("push_messages").select("id,kind,title_nl,body_nl,title_en,body_en,url,payload").in("id", msgIds),
   ]);
   const devs = new Map(((devRes.data ?? []) as (DeviceRow & { lang: string; tz: string | null })[]).map((d) => [d.id, d]));
-  const msgs = new Map(((msgRes.data ?? []) as MessageRow[]).map((m) => [m.id, m]));
+  // build 146: payload van herinneringen en supportantwoorden staat versleuteld in payload.sealed
+  const msgRows = await Promise.all(((msgRes.data ?? []) as MessageRow[]).map(async (m) => {
+    const p = m.payload ?? {};
+    if (typeof p.sealed !== "string") return m;
+    const { sealed, ...rest } = p;
+    return { ...m, payload: { ...rest, ...((await openJsonField(sealed)) ?? {}) } };
+  }));
+  const msgs = new Map(msgRows.map((m) => [m.id, m]));
   const results: { id: number; state: string; error?: string; tok?: string }[] = [];
   const now = Date.now();
   let i = 0;
@@ -148,13 +158,17 @@ async function reminders(nowMs: number): Promise<number> {
         let due;
         try { due = parseReminders(await unseal(row.data)).filter((r) => reminderDue(r.startMs, nowMs)); } catch { continue; }
         if (!due.length) continue;
-        const { data: ad } = await admin.from("account_data").select("profiles").eq("user_id", row.user_id).maybeSingle();
+        // build 146: profielen uit de versleutelde lijst; titel, zender en profielnaam versleuteld in de payload
+        const profiles = await profilesOrEmpty(admin, row.user_id);
         for (const r of due) {
-          const prof = reminderProfile(ad?.profiles, r.profileId);
+          const prof = reminderProfile(profiles, r.profileId);
           const key = reminderKey(row.user_id, r.id);
           await admin.from("push_messages").upsert({
             kind: "reminder", dedup_key: key, target: { accounts: [row.user_id] }, created_by: "cron",
-            payload: { title: r.title, channel_id: r.channelId, channel_name: r.channelName, profile_id: prof.id, profile_name: prof.name, start_ms: r.startMs },
+            payload: {
+              start_ms: r.startMs,
+              sealed: await sealJsonField({ title: r.title, channel_id: r.channelId, channel_name: r.channelName, profile_id: prof.id, profile_name: prof.name }),
+            },
           }, { onConflict: "dedup_key", ignoreDuplicates: true });
           const { data: m } = await admin.from("push_messages").select("id").eq("dedup_key", key).maybeSingle();
           if (!m) continue;
