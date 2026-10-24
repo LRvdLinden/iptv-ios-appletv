@@ -5,9 +5,11 @@
 // persoonsgegeven, adres of naam lijkt (URL, e-mailadres, IP-adres, pad met een gebruikersmap) gaat eruit, en in
 // stack-regels en foutteksten wordt zo'n stuk vervangen ([url], [e-mail], [ip], [host], …/bestand). Pure logica,
 // getest in diagnostics_test.ts.
+// Build 148: schema 3 (docs/ACCOUNT.md, "Build 148"): mijlpalen en taken als codes, `start.longestHang`, `updates`
+// (laatste 5 keer bijwerken per server met fasen), `fetch[]` met delivered/visible/hidden en `app.lang`.
 
 export const DIAG_SCHEMA = 1;
-export const DIAG_SCHEMAS = [1, 2] as const;
+export const DIAG_SCHEMAS = [1, 2, 3] as const;
 export const DIAG_MAX_IN = 48 * 1024;   // ruwe JSON van de app: groter = 413 diagnostics_too_large (build 146: 32 KB)
 export const DIAG_MAX_OUT = 20 * 1024;  // na opschonen: groter wordt ingekort (stacks, mijlpalen, fetch) (build 146: 12 KB)
 
@@ -15,6 +17,14 @@ export const START_SUMMARY = ["good", "slow", "hung"] as const;
 export const PREV_PROBLEMS = ["none", "hang", "crash", "not_finished"] as const;
 export const FETCH_KINDS = ["live", "movie", "series"] as const;
 export const FETCH_STATUS = ["ok", "empty", "failed", "hidden"] as const;
+export const UPDATE_PHASES = ["fetch", "parse", "index", "apply", "save"] as const;
+export const UPDATE_RESULTS = ["ok", "failed", "cancelled"] as const;
+/** Vaste codes voor mijlpalen, taken en fasen (schema 3). Een onbekende code in dezelfde stijl komt ook door. */
+export const DIAG_CODES = ["started", "storage", "account", "first_frame", "intro_done", "profile_picker", "profile_picked", "pin_screen",
+  "pin_ok", "profile", "servers", "home", "catalog", "ready", "fetch", "parse", "index", "apply", "save", "sync_apply", "catalog_filter",
+  "catalog_sort", "catalog_meta", "pin_migrate", "rows_build", "guide_parse"] as const;
+export const MAX_UPDATES = 5;
+export const MAX_PHASES = 5;
 
 export const DIAG_KINDS = ["start", "app"] as const;
 export const DIAG_PLATFORMS = ["ios", "ipados", "tvos", "macos", "android", "androidtv", "tizen", "web", "windows", "webos"] as const;
@@ -90,6 +100,10 @@ function iso(v: unknown): string | undefined {
   return Number.isFinite(t) ? new Date(t).toISOString() : undefined;
 }
 const NAME = /^[a-z][a-z0-9_.-]{0,39}$/;
+const CODE = /^[a-z][a-z0-9_]{0,39}$/;
+const code = (v: unknown) => (typeof v === "string" && CODE.test(v) ? v : undefined);
+const SERVER = /^s[1-9][0-9]?$/;
+const server = (v: unknown) => (typeof v === "string" && SERVER.test(v) ? v : undefined);
 /** Lege objecten en undefined weglaten. */
 function compact(o: Obj): Obj | undefined {
   const out: Obj = {};
@@ -125,33 +139,59 @@ export function cleanDiagnostics(input: unknown): DiagResult {
   const net = isObj(s.network) ? s.network : {};
   const sto = isObj(s.storage) ? s.storage : {};
 
+  // schema 3 (of nieuwer: dan alleen wat schema 3 kent); 2 = schema 2; zonder of 1 = schema 1
+  const schema = typeof input.schema === "number" && input.schema >= 3 ? 3 : typeof input.schema === "number" && input.schema >= 2 ? 2 : DIAG_SCHEMA;
+  const v2 = schema >= 2, v3 = schema >= 3;
   const milestones = (Array.isArray(input.milestones) ? input.milestones : []).slice(0, 60)
-    .filter((x: unknown) => isObj(x) && typeof x.name === "string" && NAME.test(x.name))
-    .map((x: Obj) => compact({ name: x.name, ms: num(x.ms, 0, 3_600_000, true), ok: bool(x.ok) }))
+    .filter(isObj)
+    .map((x: Obj) => {
+      const c3 = v3 ? code(x.code) : undefined;
+      const name = typeof x.name === "string" && NAME.test(x.name) ? x.name : undefined;
+      if (!c3 && !name) return undefined;
+      return compact({ code: c3, name, ms: num(x.ms, 0, 3_600_000, true), ok: bool(x.ok) });
+    })
     .filter((x: Obj | undefined) => x && x.ms !== undefined)
     .slice(0, 40);
   const stack = c ? scrubList(c.stack, 50, 200) : [];
-  // schema 2 (of nieuwer: dan alleen wat schema 2 kent); zonder of 1 = schema 1
-  const schema = typeof input.schema === "number" && input.schema >= 2 ? 2 : DIAG_SCHEMA;
-  const v2 = schema === 2;
   const st = v2 && isObj(input.start) ? input.start : null;
   const prev = st && isObj(st.previous) ? st.previous : null;
   const net2 = v2 && isObj(input.network) ? input.network : {};
   const sto2 = v2 && isObj(input.storage) ? input.storage : {};
+  const N = (v: unknown) => num(v, 0, 10_000_000, true);
   const fetch = v2 && Array.isArray(input.fetch)
     ? input.fetch.slice(0, 60).filter(isObj).map((x: Obj) => {
-      const server = typeof x.server === "string" && /^s[1-9][0-9]?$/.test(x.server) ? x.server : undefined;
+      const srv = server(x.server);
       const kind = oneOf(x.kind, FETCH_KINDS), status = oneOf(x.status, FETCH_STATUS);
-      if (!server || !kind || !status) return undefined;
-      return compact({ server, kind, status, count: num(x.count, 0, 10_000_000, true), error: scrubText(x.error, 60) });
+      if (!srv || !kind || !status) return undefined;
+      const h = v3 && isObj(x.hidden) ? x.hidden : null;
+      return compact({
+        server: srv, kind, status, count: N(x.count),
+        delivered: v3 ? N(x.delivered) : undefined, visible: v3 ? N(x.visible) : undefined,
+        hidden: h ? compact({ categories: N(h.categories), kids: N(h.kids), duplicates: N(h.duplicates), other: N(h.other) }) : undefined,
+        error: scrubText(x.error, 60),
+      });
     }).filter((x: Obj | undefined): x is Obj => !!x).slice(0, 30)
     : [];
+  const hang = st && v3 && isObj(st.longestHang) ? st.longestHang : null;
+  const MS = (v: unknown) => num(v, 0, 3_600_000, true), MB = (v: unknown) => num(v, 0, 100_000);
+  const updates = v3 && Array.isArray(input.updates)
+    ? input.updates.slice(0, MAX_UPDATES * 4).filter(isObj).map((u: Obj) => {
+      const srv = server(u.server);
+      if (!srv) return undefined;
+      const phases = (Array.isArray(u.phases) ? u.phases : []).slice(0, MAX_PHASES * 4).filter(isObj).map((p: Obj) => {
+        const c3 = oneOf(p.code, UPDATE_PHASES);
+        return c3 ? compact({ code: c3, ms: MS(p.ms), memMB: MB(p.memMB) }) : undefined;
+      }).filter((p: Obj | undefined): p is Obj => !!p).slice(0, MAX_PHASES);
+      return compact({ server: srv, at: iso(u.at), phases, totalMs: MS(u.totalMs), peakMB: MB(u.peakMB), result: oneOf(u.result, UPDATE_RESULTS) });
+    }).filter((u: Obj | undefined): u is Obj => !!u).slice(0, MAX_UPDATES)
+    : [];
+  const lang = v3 && typeof a.lang === "string" && a.lang.length <= 12 && /^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})?$/.test(a.lang) ? a.lang : undefined;
 
   const value = compact({
     schema,
     kind,
     createdAt: iso(input.createdAt),
-    app: compact({ platform, version: str(a.version, 20), build: num(a.build, 1, 9_999_999, true), engine: str(a.engine, 30) }),
+    app: compact({ platform, version: str(a.version, 20), build: num(a.build, 1, 9_999_999, true), engine: str(a.engine, 30), lang }),
     device: compact({
       type: oneOf(d.type, DEVICE_TYPES), model: str(d.model, 80), manufacturer: str(d.manufacturer, 40), os: str(d.os, 20),
       osVersion: str(d.osVersion, 30), language: typeof d.language === "string" && /^[A-Za-z]{2,3}(?:[-_][A-Za-z0-9]{2,8}){0,3}$/.test(d.language) ? d.language.slice(0, 20) : undefined,
@@ -160,6 +200,10 @@ export function cleanDiagnostics(input: unknown): DiagResult {
     start: st ? compact({
       summary: oneOf(st.summary, START_SUMMARY), appMs: num(st.appMs, 0, 3_600_000, true), userWaitMs: num(st.userWaitMs, 0, 86_400_000, true),
       maxHangMs: num(st.maxHangMs, 0, 86_400_000, true),
+      longestHang: hang ? compact({
+        ms: MS(hang.ms), task: code(hang.task), milestone: code(hang.milestone), foreground: bool(hang.foreground),
+        stack: scrubList(hang.stack, 30, 200),
+      }) : undefined,
       previous: prev ? compact({
         problem: oneOf(prev.problem, PREV_PROBLEMS), milestone: typeof prev.milestone === "string" && NAME.test(prev.milestone) ? prev.milestone : undefined,
         seconds: num(prev.seconds, 0, 86_400), foreground: bool(prev.foreground), task: scrubText(prev.task, 60),
@@ -167,6 +211,7 @@ export function cleanDiagnostics(input: unknown): DiagResult {
       }) : undefined,
     }) : undefined,
     milestones,
+    updates,
     fetch,
     network: v2 ? compact({
       type: oneOf(net2.type, NET_TYPES), online: bool(net2.online), backend: oneOf(net2.backend, CHECKS), backendMs: num(net2.backendMs, 0, 600_000, true),
@@ -196,9 +241,16 @@ export function cleanDiagnostics(input: unknown): DiagResult {
   while (JSON.stringify(value).length > DIAG_MAX_OUT) {
     if (value.crash?.stack?.length > 5) value.crash.stack = half(value.crash.stack);
     else if (value.start?.previous?.stack?.length > 5) value.start.previous.stack = half(value.start.previous.stack);
+    else if (value.start?.longestHang?.stack?.length > 5) value.start.longestHang.stack = half(value.start.longestHang.stack);
     else if (value.milestones?.length > 5) value.milestones = half(value.milestones);
     else if (value.fetch?.length > 6) value.fetch = half(value.fetch);
-    else { delete value.crash; delete value.milestones; if (value.start?.previous) delete value.start.previous.stack; break; }
+    else if (value.updates?.length > 1) value.updates = half(value.updates);
+    else {
+      delete value.crash; delete value.milestones;
+      if (value.start?.previous) delete value.start.previous.stack;
+      if (value.start?.longestHang) delete value.start.longestHang.stack;
+      break;
+    }
   }
   return { ok: true, value, stripped: !covered(input, value) };
 }

@@ -1673,3 +1673,12 @@ Voorbeeld (komt ongewijzigd door, zie `EXAMPLE3` in `diagnostics_test.ts`):
 - **Beheer:** toont schema 3 met de codes in het Nederlands, de langste hang van deze start (duur, taak, mijlpaal,
   voorgrond, stack), de laatste 5 keer bijwerken per server met per fase ms en MB (balkje), per soort "geleverd ·
   zichtbaar (x verborgen door categorieën / kinderfilter / dubbel)" en de app-taal. **Kopiëren** neemt dit allemaal mee.
+
+### 2. Profielkopie voor oude apps: `"auto"`
+
+`app_settings.profiles_legacy` gaat bij de deploy van build 148 eenmalig van `"mirror"` naar `"auto"` (zie "Build 146" →
+"Overgang voor oude apps"): bingr.online en support.bingr.online gebruiken `get_profiles`/`put_profiles`, en oude
+apps/pagina's schreven de laatste 30 dagen niet meer rechtstreeks. Een leesbare kopie in `account_data.profiles` staat dan
+alleen nog bij accounts met een apparaat ouder dan build 146; de stap "bestaande gegevens versleutelen" maakt de andere
+kopieën leeg. Het merkteken `profiles_legacy_auto_148` voorkomt dat een latere deploy een handmatige terugzetting naar
+`"mirror"` ongedaan maakt. Naar `"off"` pas als `profiles_status` geen accounts met oude apparaten meer telt.

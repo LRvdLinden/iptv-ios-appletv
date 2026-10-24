@@ -4015,6 +4015,15 @@ revoke all on function public.bingr_profile_count(public.account_data) from publ
 grant execute on function public.bingr_profile_count(public.account_data) to service_role;
 
 insert into public.app_settings (key, value) values ('profiles_legacy', '"mirror"'::jsonb) on conflict (key) do nothing;
+-- Build 148: eenmalig van "mirror" naar "auto" (bingr.online en support.bingr.online gebruiken get_profiles/put_profiles;
+-- leesbare kopie alleen nog voor accounts met een apparaat ouder dan build 146). Het merkteken profiles_legacy_auto_148
+-- zorgt dat een latere deploy een handmatige terugzetting (naar "mirror") niet overschrijft.
+do $$
+begin
+  if exists (select 1 from public.app_settings where key = 'profiles_legacy_auto_148') then return; end if;
+  update public.app_settings set value = '"auto"'::jsonb where key = 'profiles_legacy' and value = '"mirror"'::jsonb;
+  insert into public.app_settings (key, value) values ('profiles_legacy_auto_148', jsonb_build_object('at', now()));
+end $$;
 -- Rechten van oude apps: alleen user_id, profiles en updated_at (staat ook bij de beveiligingsadvisor onderaan).
 revoke select, insert, update on public.account_data from authenticated;
 grant select (user_id, profiles, updated_at), insert (user_id, profiles, updated_at), update (user_id, profiles, updated_at)

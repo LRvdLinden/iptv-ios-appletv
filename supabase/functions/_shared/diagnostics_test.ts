@@ -1,5 +1,5 @@
 // Tests voor de diagnose-bijlage (build 146): deno test supabase/functions/_shared/diagnostics_test.ts
-import { cleanDiagnostics, DIAG_MAX_IN, DIAG_MAX_OUT, looksPersonal, scrubText, ticketPlatform } from "./diagnostics.ts";
+import { cleanDiagnostics, DIAG_CODES, DIAG_MAX_IN, DIAG_MAX_OUT, looksPersonal, scrubText, ticketPlatform } from "./diagnostics.ts";
 
 function eq(a: unknown, b: unknown, msg = "") {
   const x = JSON.stringify(a), y = JSON.stringify(b);
@@ -122,8 +122,8 @@ Deno.test("schema 2: velden alleen bij schema 2; schema 1 blijft schema 1", () =
   eq([r.value.schema, r.value.start, r.value.fetch, r.value.network, r.value.storage], [1, undefined, undefined, undefined, undefined]);
   const z = cleanDiagnostics(rest); // zonder schema = 1
   ok(z.ok && z.value.schema === 1 && !z.value.start, "zonder schema");
-  const v3 = cleanDiagnostics({ ...EXAMPLE2, schema: 3, extra: { x: 1 } }); // nieuwer: als 2, onbekend weg
-  ok(v3.ok && v3.value.schema === 2 && v3.value.start?.summary === "hung" && !v3.value.extra && v3.stripped, "schema 3");
+  const v3 = cleanDiagnostics({ ...EXAMPLE2, schema: 3, extra: { x: 1 } }); // build 148: schema 3 bestaat, onbekend weg
+  ok(v3.ok && v3.value.schema === 3 && v3.value.start?.summary === "hung" && !v3.value.extra && v3.stripped, "schema 3");
   ok(cleanDiagnostics({ kind: "start", schema: 2, app: { platform: "webos" } }).ok, "webos");
 });
 
@@ -192,4 +192,98 @@ Deno.test("hulpjes", () => {
   ok(looksPersonal("rtmp://x") && looksPersonal("a@b.nl") && looksPersonal("10.0.0.1") && looksPersonal("AA:BB:CC:DD:EE:FF") && looksPersonal("C:\\Users\\leon"), "persoonlijk");
   ok(!looksPersonal("Apple TV 4K (3rd generation)") && !looksPersonal("SM-T870") && !looksPersonal("26.1"), "gewoon");
   eq(ticketPlatform("ipados"), "ios"); eq(ticketPlatform("windows"), "windows"); eq(ticketPlatform(undefined), null);
+});
+
+// build 148: diagnose-schema 3 (docs/ACCOUNT.md, "Build 148")
+export const EXAMPLE3 = {
+  schema: 3, kind: "start", createdAt: "2026-10-24T14:04:00.000Z",
+  app: { platform: "ios", version: "1.0.1", build: 148, engine: "vlc", lang: "nl" },
+  device: { type: "phone", model: "iPhone 17 Pro Max", manufacturer: "Apple", os: "iOS", osVersion: "27.2", language: "nl-NL" },
+  start: {
+    summary: "slow", appMs: 5300, userWaitMs: 11600, maxHangMs: 5500,
+    longestHang: { ms: 5500, task: "apply", milestone: "ready", foreground: true, stack: ["0 Bingr CatalogStore.apply(_:) + 210", "1 Bingr ServerSync.finish() + 64"] },
+    previous: { problem: "hang", milestone: "ready", seconds: 110, foreground: true, task: "apply", build: 147 },
+  },
+  milestones: [{ code: "started", ms: 0 }, { code: "first_frame", ms: 300 }, { code: "profile_picked", ms: 12100 }, { code: "ready", ms: 16900 },
+    { code: "fetch", ms: 20800 }, { code: "save", ms: 42300 }],
+  updates: [{ server: "s1", at: "2026-10-24T14:04:20.000Z", phases: [{ code: "fetch", ms: 3900, memMB: 210 }, { code: "parse", ms: 6200, memMB: 455 },
+    { code: "index", ms: 2100, memMB: 430 }, { code: "apply", ms: 5500, memMB: 440 }, { code: "save", ms: 3800, memMB: 320 }], totalMs: 21500, peakMB: 455, result: "ok" }],
+  fetch: [
+    { server: "s1", kind: "live", status: "ok", delivered: 11784, visible: 1056, hidden: { categories: 10728, kids: 0, duplicates: 0, other: 0 } },
+    { server: "s1", kind: "movie", status: "ok", delivered: 36593, visible: 10286, hidden: { categories: 26307, kids: 0, duplicates: 0, other: 0 } },
+    { server: "s1", kind: "series", status: "ok", delivered: 8773, visible: 3570, hidden: { categories: 5203, kids: 0, duplicates: 0, other: 0 } },
+  ],
+  network: { type: "wifi", online: true },
+  memory: { appMB: 455, lowMemory: false },
+  state: { signedIn: true, profiles: 2, servers: 1, channels: 1056, movies: 10286, series: 3570 },
+};
+
+Deno.test("schema 3: voorbeeld uit het contract komt ongewijzigd door", () => {
+  const r = cleanDiagnostics(EXAMPLE3);
+  if (!r.ok) throw new Error(r.error);
+  eq(r.value, EXAMPLE3); eq(r.stripped, false);
+  // het voorbeeld in ACCOUNT.md is gelijk aan EXAMPLE3
+  const doc = Deno.readTextFileSync(new URL("../../../docs/ACCOUNT.md", import.meta.url));
+  const block = doc.split("## Build 148")[1].split("```json")[1].split("```")[0];
+  eq(JSON.parse(block), EXAMPLE3, "ACCOUNT.md");
+  for (const c of DIAG_CODES) ok(/^[a-z][a-z0-9_]{0,39}$/.test(c) && doc.includes("`" + c + "`"), `code ${c} in het contract`);
+});
+
+Deno.test("schema 3: nieuwe velden alleen bij schema 3; schema 2 en 1 blijven geldig", () => {
+  const r2 = cleanDiagnostics({ ...EXAMPLE3, schema: 2 });
+  if (!r2.ok) throw new Error(r2.error);
+  ok(r2.stripped, "stripped");
+  eq([r2.value.schema, r2.value.updates, r2.value.start.longestHang, r2.value.app.lang, r2.value.milestones, r2.value.fetch[0].delivered],
+    [2, undefined, undefined, undefined, undefined, undefined]);
+  eq(r2.value.fetch[0], { server: "s1", kind: "live", status: "ok" });
+  const r1 = cleanDiagnostics({ ...EXAMPLE3, schema: 1 });
+  ok(r1.ok && r1.value.schema === 1 && !r1.value.start && !r1.value.updates && !r1.value.fetch, "schema 1");
+  const r4 = cleanDiagnostics({ ...EXAMPLE3, schema: 4 });
+  ok(r4.ok && r4.value.schema === 3 && r4.value.updates.length === 1, "nieuwer = 3");
+  // oude naam naast de code mag
+  const both = cleanDiagnostics({ ...EXAMPLE3, milestones: [{ code: "ready", name: "servers_loaded", ms: 10 }, { name: "launch", ms: 0 }] });
+  ok(both.ok && !both.stripped, "code + naam");
+  if (both.ok) eq(both.value.milestones, [{ code: "ready", name: "servers_loaded", ms: 10 }, { name: "launch", ms: 0 }]);
+});
+
+Deno.test("schema 3: grenzen (updates 5 x 5 fasen, stack 30 regels) en opsommingen", () => {
+  const phase = (code: string, i: number) => ({ code, ms: i, memMB: i });
+  const r = cleanDiagnostics({
+    schema: 3, kind: "app", app: { platform: "android", lang: "Nederlands" },
+    start: { longestHang: { ms: -1, task: "Catalogus sorteren!", milestone: "ready", foreground: "ja", stack: Array.from({ length: 80 }, (_, i) => `${i} Bingr f()`) } },
+    milestones: [{ code: "Klaar", ms: 1 }, { code: "ready", ms: 2 }, { code: "a.b", ms: 3 }],
+    updates: [
+      { server: "provider.example.com", phases: [phase("fetch", 1)] },
+      { server: "s1", result: "boom", phases: [phase("fetch", 1), phase("download", 2), phase("parse", 3), phase("index", 4), phase("apply", 5), phase("save", 6), phase("save", 7)], totalMs: 99_999_999 },
+      ...Array.from({ length: 10 }, (_, i) => ({ server: `s${i + 2}`, result: "cancelled", peakMB: 200_000 })),
+    ],
+    fetch: [{ server: "s1", kind: "movie", status: "ok", delivered: -4, visible: "12", hidden: { categories: 3, kids: "x", junk: 1 } }],
+  });
+  if (!r.ok) throw new Error(r.error);
+  ok(r.stripped, "stripped");
+  eq(r.value.app, { platform: "android" }, "lang weg");
+  eq(r.value.start.longestHang.stack.length, 30, "stack max. 30");
+  eq([r.value.start.longestHang.task, r.value.start.longestHang.milestone, r.value.start.longestHang.ms, r.value.start.longestHang.foreground], [undefined, "ready", undefined, undefined]);
+  eq(r.value.milestones, [{ code: "ready", ms: 2 }]);
+  eq(r.value.updates.length, 5, "max. 5 keer bijwerken");
+  eq(r.value.updates[0].server, "s1");
+  eq(r.value.updates[0].phases.map((p: { code: string }) => p.code), ["fetch", "parse", "index", "apply", "save"], "max. 5 fasen, onbekend weg");
+  eq([r.value.updates[0].result, r.value.updates[0].totalMs, r.value.updates[1].peakMB], [undefined, undefined, undefined]);
+  eq(r.value.fetch[0], { server: "s1", kind: "movie", status: "ok", visible: 12, hidden: { categories: 3 } });
+});
+
+Deno.test("schema 3: geen adressen in de stack van de langste hang; te groot blijft begrensd", () => {
+  const r = cleanDiagnostics({ ...EXAMPLE3, start: { ...EXAMPLE3.start, longestHang: { ...EXAMPLE3.start.longestHang,
+    stack: ["0 Bingr XtreamClient.get(http://provider.example:8080/get.php?username=leon&password=geheim) + 4", "1 /Users/leon/Bingr/Store.swift:9"] } } });
+  if (!r.ok) throw new Error(r.error);
+  eq(r.value.start.longestHang.stack, ["0 Bingr XtreamClient.get([url]) + 4", "1 …/Store.swift:9"]);
+  const long = (i: number) => `${i} Bingr ${"Frame".repeat(38)}`;
+  const big = cleanDiagnostics({ ...EXAMPLE3, crash: { type: "X", stack: Array.from({ length: 50 }, (_, i) => long(i)) },
+    start: { ...EXAMPLE3.start, longestHang: { ...EXAMPLE3.start.longestHang, stack: Array.from({ length: 30 }, (_, i) => long(i)) },
+      previous: { ...EXAMPLE3.start.previous, stack: Array.from({ length: 30 }, (_, i) => long(i)) } },
+    updates: Array.from({ length: 5 }, (_, i) => ({ ...EXAMPLE3.updates[0], server: `s${i + 1}` })),
+    milestones: Array.from({ length: 40 }, (_, i) => ({ code: `stap_${i}`, ms: i })) });
+  if (!big.ok) throw new Error(big.error);
+  ok(JSON.stringify(big.value).length <= DIAG_MAX_OUT, "binnen de grens");
+  ok(big.value.start.longestHang.ms === 5500 && big.value.updates.length >= 1, "kern blijft");
 });

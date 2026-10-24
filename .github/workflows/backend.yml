@@ -163,7 +163,7 @@ jobs:
         # (statsItem = bingr_stats_item, HMAC-sleutels), en in SQL de trigger voor oude apps, de kolomrechten en
         # bingr_stats_seal (supabase/tests/profiles_test.sh)
         run: |
-          deno test --allow-env supabase/functions/_shared/pin_test.ts supabase/functions/_shared/profiles_test.ts supabase/functions/_shared/diagnostics_test.ts supabase/functions/device-auth/watch_test.ts
+          deno test --allow-env --allow-read supabase/functions/_shared/pin_test.ts supabase/functions/_shared/profiles_test.ts supabase/functions/_shared/diagnostics_test.ts supabase/functions/device-auth/watch_test.ts
           for i in $(seq 1 20); do pg_isready -q && break; sleep 1; done
           sudo -u postgres bash supabase/tests/profiles_test.sh
       - name: Unittests (bewaarplicht aankopen)
