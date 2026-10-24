@@ -94,6 +94,13 @@ final class ParentalControl: ObservableObject {
         migrating = true
         Task { @MainActor in
             defer { self.migrating = false }
+            // niet tijdens het opstarten: pas na het eerste beeld (zoals de overzetting van build 144)
+            var waited = 0
+            while !StartDiagnostics.shared.has("eerste frame") && waited < 60 {
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                waited += 1
+            }
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
             await Keychain.waitForMigration()
             let keys = ["parental.pin"] + Keychain.keys(withPrefix: "profile.").filter { $0.hasSuffix(".pin") }
             let legacy: [(String, String)] = keys.compactMap { k in

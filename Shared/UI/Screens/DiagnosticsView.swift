@@ -14,7 +14,7 @@ import AppKit
 // MARK: - Apparaat
 
 @MainActor
-enum DeviceInfo {
+enum AppDevice {
     /// Hardware-identifier: `hw.machine` (iPhone15,2, AppleTV14,1), op de Mac `hw.model` (Mac14,2); in de simulator het
     /// gesimuleerde model.
     nonisolated static let identifier: String = {
@@ -102,11 +102,11 @@ enum DeviceInfo {
 enum DiagnosticsBuilder {
     /// Gemeenschappelijk deel: app en apparaat (bij elke diagnose)
     static func base(_ kind: SupportDiagnostics.Kind) -> SupportDiagnostics {
-        var d = SupportDiagnostics(kind: kind, platform: AccountService.entitlementsPlatform, version: DeviceInfo.version,
-                                   build: DeviceInfo.build, engine: UserDefaults.standard.string(forKey: "player.engine") ?? "auto",
-                                   deviceType: DeviceInfo.type, model: DeviceInfo.model, os: DeviceInfo.osName,
-                                   osVersion: DeviceInfo.osVersion, language: DeviceInfo.language)
-        d.screen = DeviceInfo.screen
+        var d = SupportDiagnostics(kind: kind, platform: AccountService.entitlementsPlatform, version: AppDevice.version,
+                                   build: AppDevice.build, engine: UserDefaults.standard.string(forKey: "player.engine") ?? "auto",
+                                   deviceType: AppDevice.type, model: AppDevice.model, os: AppDevice.osName,
+                                   osVersion: AppDevice.osVersion, language: AppDevice.language)
+        d.screen = AppDevice.screen
         var mem: [String: Any] = ["totalMB": Int(ProcessInfo.processInfo.physicalMemory / 1_048_576)]
         if let app = StartDiagnostics.footprintMB() { mem["appMB"] = app }
         d.memory = mem
@@ -221,8 +221,8 @@ final class DiagnosticsModel: ObservableObject {
         rows = r
 
         // tekst voor het ticket (vast Nederlands, zoals de startdiagnose; zonder namen of adressen)
-        var t: [String] = ["App-diagnose \(DeviceInfo.osName) \(DeviceInfo.osVersion), build \(DeviceInfo.version) (\(DeviceInfo.build.map(String.init) ?? "?"))"]
-        t.append("Apparaat: \(DeviceInfo.type) · \(DeviceInfo.model) · taal \(DeviceInfo.language)")
+        var t: [String] = ["App-diagnose \(AppDevice.osName) \(AppDevice.osVersion), build \(AppDevice.version) (\(AppDevice.build.map(String.init) ?? "?"))"]
+        t.append("Apparaat: \(AppDevice.type) · \(AppDevice.model) · taal \(AppDevice.language)")
         t.append("Servers: \(store.playlists.count) (\(updated.map { $0.map { Self.relativeNL($0) } ?? "nog niet geladen" }.joined(separator: ", ")))")
         t.append("Servers laden bij openen: \(mode.rawValue)")
         t.append("Profielen: \(store.profiles.count) · zenders \(lib.channels.count), films \(lib.movies.count), series \(lib.series.count)")
@@ -240,7 +240,7 @@ final class DiagnosticsModel: ObservableObject {
         result = nil
         defer { sending = false }
         do {
-            let n = try await SupportCenter.shared.create(subject: "App-diagnose \(DeviceInfo.osName) build \(DeviceInfo.build.map(String.init) ?? "?")",
+            let n = try await SupportCenter.shared.create(subject: "App-diagnose \(AppDevice.osName) build \(AppDevice.build.map(String.init) ?? "?")",
                                                           message: text, category: "apps", diagnostics: report.json)
             result = L("Sent as ticket #%@", String(n))
         } catch {
@@ -367,11 +367,11 @@ struct DiagnosticsView: View {
 struct DeviceInfoSection: View {
     var body: some View {
         Section(L("This device")) {
-            LabeledContent(L("Device type"), value: DeviceInfo.typeTitle)
-            LabeledContent(L("Model"), value: DeviceInfo.model)
-            LabeledContent(L("System"), value: "\(DeviceInfo.osName) \(DeviceInfo.osVersion)")
-            LabeledContent(L("App version"), value: "\(DeviceInfo.version) (\(DeviceInfo.build.map(String.init) ?? "?"))")
-            LabeledContent(L("Language"), value: DeviceInfo.language)
+            LabeledContent(L("Device type"), value: AppDevice.typeTitle)
+            LabeledContent(L("Model"), value: AppDevice.model)
+            LabeledContent(L("System"), value: "\(AppDevice.osName) \(AppDevice.osVersion)")
+            LabeledContent(L("App version"), value: "\(AppDevice.version) (\(AppDevice.build.map(String.init) ?? "?"))")
+            LabeledContent(L("Language"), value: AppDevice.language)
         }
     }
 }

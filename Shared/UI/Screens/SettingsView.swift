@@ -227,8 +227,8 @@ struct AppSettingsView: View {
     /// Over: versie, build, privacy en voorwaarden
     @ViewBuilder private var aboutSection: some View {
         Section {
-            LabeledContent(L("Version"), value: DeviceInfo.version)
-            LabeledContent(L("Build"), value: DeviceInfo.build.map(String.init) ?? "?")
+            LabeledContent(L("Version"), value: AppDevice.version)
+            LabeledContent(L("Build"), value: AppDevice.build.map(String.init) ?? "?")
             WebLinkRow(title: L("Privacy"), icon: "hand.raised", url: URL(string: "https://bingr.online/privacy.html")!)
             WebLinkRow(title: L("Terms"), icon: "doc.plaintext", url: URL(string: "https://bingr.online/voorwaarden/")!)
             LabeledContent(L("IMDb data"), value: Secrets.isSet(Secrets.omdbAPIKey) ? L("Active (OMDb)") : L("No OMDb key"))

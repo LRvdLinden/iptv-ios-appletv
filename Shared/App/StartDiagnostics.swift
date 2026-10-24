@@ -266,7 +266,7 @@ struct StartDiagnosticsSection: View {
             defer { sending = false }
             do {
                 let n = try await SupportCenter.shared.create(
-                    subject: "Startdiagnose \(DeviceInfo.osName) build \(p.build)",
+                    subject: "Startdiagnose \(AppDevice.osName) build \(p.build)",
                     message: String(StartDiag.text(p).prefix(4900)), category: "apps",
                     diagnostics: DiagnosticsBuilder.start(problem: p).json)
                 result = L("Sent as ticket #%@", String(n))
