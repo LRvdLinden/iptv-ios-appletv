@@ -15,7 +15,8 @@ struct MyBingrView: View {
     @AppStorage("ui.showMovies") private var showMovies = true
     @AppStorage("ui.showSeries") private var showSeries = true
     @State private var path: [MyBingrRoute] = []
-    @State private var showSupport = false
+    /// Build 146: ongelezen supportantwoorden (badge bij Instellingen en Support)
+    @ObservedObject private var support = SupportCenter.shared
     #if os(tvOS)
     /// De footer is niet focusbaar: bij de laatste rij er zelf naartoe scrollen
     @FocusState private var lastRowFocused: Bool
@@ -102,7 +103,6 @@ struct MyBingrView: View {
             }
             #endif
         }
-        .supportPage(isPresented: $showSupport)
         .task(id: playlists.libraryVersion) { browse.refresh(playlists) }
         .onAppear(perform: applyRequest)
         .onChange(of: app.myBingrRequest) { _, _ in applyRequest() }
@@ -175,7 +175,7 @@ struct MyBingrView: View {
                 row(.profiles, L("Manage profiles"), "person.2", count: store.profiles.count)
             }
             row(.homeLayout, L("Home screen"), "rectangle.grid.1x2")
-            row(.settings, L("Settings"), "gearshape")
+            row(.settings, L("Settings"), "gearshape", badge: support.unread)
             if signedIn {
                 row(.account, L("Account and devices"), "person.crop.circle")
                 // build 88: abonnement (Gratis of Lifetime) met de limieten
@@ -186,17 +186,9 @@ struct MyBingrView: View {
         } header: { Text(L("Profile")) }
     }
 
+    /// Build 146: Support in de app (tickets, reageren, nieuw ticket), met het aantal ongelezen antwoorden
     private var supportRow: some View {
-        Button { showSupport = true } label: {
-            HStack {
-                Label { Text(L("Support")).foregroundStyle(Color.primary) } icon: { Image(systemName: "questionmark.circle") }
-                Spacer(minLength: 8)
-                #if !os(tvOS)
-                Image(systemName: "arrow.up.right").font(.footnote.weight(.semibold)).foregroundStyle(Theme.secondary)
-                #endif
-            }
-            .contentShape(Rectangle())
-        }
+        row(.support, L("Support"), "questionmark.circle", badge: support.unread)
     }
 
     @ViewBuilder private func markLast<V: View>(_ v: V) -> some View {
@@ -207,13 +199,15 @@ struct MyBingrView: View {
         #endif
     }
 
-    private func row(_ route: MyBingrRoute, _ title: String, _ icon: String, count: Int? = nil, locked: Bool = false) -> some View {
+    private func row(_ route: MyBingrRoute, _ title: String, _ icon: String, count: Int? = nil, locked: Bool = false,
+                     badge: Int = 0) -> some View {
         NavigationLink(value: route) {
             HStack {
                 Label(title, systemImage: icon)
                 Spacer(minLength: 8)
                 if locked { LifetimePill() }
                 if let count { Text(verbatim: "\(count)").foregroundStyle(Theme.secondary) }
+                CountBadge(count: badge)
             }
         }
     }
@@ -221,6 +215,7 @@ struct MyBingrView: View {
     @ViewBuilder private func destination(_ r: MyBingrRoute) -> some View {
         switch r {
         case .settings: AppSettingsView()
+        case .support: SupportView()
         case .account: AccountDevicesView()
         case .profiles: ProfilesManageView()
         case .trakt: TraktSettingsView()

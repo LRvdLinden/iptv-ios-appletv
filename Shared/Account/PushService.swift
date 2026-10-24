@@ -35,6 +35,9 @@ final class PushService: NSObject, ObservableObject {
         case reminder(channelID: String, profileID: UUID?, playlistID: UUID?)
         /// Build 120: film of serie uit een link (e-mail van Bingr, `bingr://title`): detailpagina of zoekscherm.
         case title(TitleLink)
+        /// Build 146: antwoord van support (`support_reply`, `bingr://support/ticket?n=`): de Support-tab met dat ticket
+        /// (nil = de ticketlijst, `bingr://support`)
+        case support(Int?)
     }
 
     @Published private(set) var status: SystemStatus = .unknown
@@ -393,6 +396,8 @@ final class PushService: NSObject, ObservableObject {
         var url: URL?
         var deeplink: URL?
         var msgID: String?
+        /// Build 146: ticketnummer bij `support_reply`
+        var ticket: String?
         /// Lokale herinnering (ReminderCenter): zender, server en profiel uit de userInfo
         var channelID: String?
         var playlistID: UUID?
@@ -419,6 +424,7 @@ final class PushService: NSObject, ObservableObject {
         if let u = str("url").flatMap(URL.init(string:)), u.scheme?.lowercased() == "https" { p.url = u }
         if let u = str("deeplink").flatMap(URL.init(string:)), u.scheme?.lowercased() == "bingr" { p.deeplink = u }
         p.msgID = str("msg_id")
+        p.ticket = str("ticket")
         p.channelID = str("channelID")
         p.playlistID = str("playlistID").flatMap(UUID.init(uuidString:))
         p.profileID = str("profileID").flatMap(UUID.init(uuidString:))
@@ -435,6 +441,9 @@ final class PushService: NSObject, ObservableObject {
         }
         if let link = p.deeplink, handle(deeplink: link, fallback: p.url) { return }
         switch p.kind {
+        case "support_reply":
+            // build 146: zonder (bruikbare) deeplink: het ticketnummer uit `data.ticket`, anders de lijst
+            pendingRoute = .support(p.ticket.flatMap { Int($0) })
         case "admin":
             // link van het beheer, anders alleen de app openen
             if let u = p.url { open(u) }
@@ -471,6 +480,12 @@ final class PushService: NSObject, ObservableObject {
         guard let c = URLComponents(url: deeplink, resolvingAgainstBaseURL: false) else { return false }
         func q(_ name: String) -> String? {
             c.queryItems?.first { $0.name == name }?.value?.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        // build 146: bingr://support (lijst) en bingr://support/ticket?n=<nummer>
+        let support = SupportLogic.deeplink(deeplink)
+        if support.isSupport {
+            pendingRoute = .support(support.number)
+            return true
         }
         // bingr://changelog?… (host) of bingr:changelog?… (pad)
         let target = (c.host?.isEmpty == false ? c.host! : c.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))).lowercased()
@@ -526,8 +541,11 @@ extension PushService: UNUserNotificationCenterDelegate {
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,
                                             withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
         let isPush = notification.request.trigger is UNPushNotificationTrigger
-        let msgID = Self.payload(notification.request.content.userInfo).msgID
+        let payload = Self.payload(notification.request.content.userInfo)
+        let msgID = payload.msgID
         Task { @MainActor in
+            // build 146: nieuw antwoord van support → de badge meteen bijwerken
+            if payload.kind == "support_reply" { Task { await SupportCenter.shared.refresh(quiet: true, force: true) } }
             let show = PushService.shared.presentationAllowed(msgID: msgID, isPush: isPush)
             completionHandler(show ? [.banner, .list, .sound] : [])
         }

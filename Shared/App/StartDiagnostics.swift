@@ -98,6 +98,9 @@ final class StartDiagnostics: @unchecked Sendable {
 
     func has(_ name: String) -> Bool { lock.lock(); defer { lock.unlock() }; return record.marks.contains { $0.name == name } }
 
+    /// Build 146: mijlpalen van deze start (voor de tab Diagnose en de bijlage `milestones`)
+    var currentMarks: [StartDiag.Mark] { lock.lock(); defer { lock.unlock() }; return record.marks }
+
     /// Seconden sinds de start van de app
     var uptime: TimeInterval { Date().timeIntervalSince(t0) }
 
@@ -207,17 +210,18 @@ private func bingrSignalHandler(_ sig: Int32) {
     raise(sig)
 }
 
-/// Build 143: Mijn Bingr → Instellingen → Over: het rapport van de vorige start (crash, hang of niet klaar), met een knop
-/// om het als supportticket te sturen. Niets te melden: niets te zien.
+/// Build 143/146: Instellingen → Diagnose: het rapport van de vorige start (crash, hang of niet klaar), met een knop om
+/// het als supportticket te sturen (build 146: `app_create` met de startdiagnose als bijlage). Zonder rapport: de
+/// mijlpalen van deze start.
 struct StartDiagnosticsSection: View {
-    @EnvironmentObject var account: AccountService
+    @ObservedObject private var account = AccountService.shared
     @State private var problem = StartDiagnostics.shared.lastProblem
     @State private var sending = false
     @State private var result: String?
 
     var body: some View {
-        if let p = problem {
-            Section(L("Start diagnostics")) {
+        Section {
+            if let p = problem {
                 Text(verbatim: StartDiag.text(p))
                     .font(.system(.footnote, design: .monospaced))
                     .lineLimit(14)
@@ -228,7 +232,7 @@ struct StartDiagnosticsSection: View {
                         send(p)
                     } label: {
                         HStack {
-                            Label(L("Send as support ticket"), systemImage: "paperplane")
+                            Label(L("Send to support"), systemImage: "paperplane")
                             if sending { Spacer(); ProgressView() }
                         }
                     }
@@ -240,8 +244,19 @@ struct StartDiagnosticsSection: View {
                     StartDiagnostics.shared.clearProblem()
                     problem = nil
                 }
+            } else {
+                Label(L("The previous start went fine."), systemImage: "checkmark.circle")
+                    .foregroundStyle(Theme.green)
+                let marks = StartDiagnostics.shared.currentMarks
+                if !marks.isEmpty {
+                    Text(verbatim: marks.map { m in "\(m.name) \(String(format: "%.1f", m.t))s" + (m.mb.map { " \($0)MB" } ?? "") }
+                        .joined(separator: " · "))
+                        .font(.system(.footnote, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
-        }
+        } header: { Text(L("Start diagnostics")) }
     }
 
     private func send(_ p: StartDiag.Problem) {
@@ -250,11 +265,13 @@ struct StartDiagnosticsSection: View {
         Task { @MainActor in
             defer { sending = false }
             do {
-                let n = try await account.sendDiagnosticTicket(subject: "Startdiagnose \(p.os) build \(p.build)",
-                                                               message: StartDiag.text(p))
+                let n = try await SupportCenter.shared.create(
+                    subject: "Startdiagnose \(DeviceInfo.osName) build \(p.build)",
+                    message: String(StartDiag.text(p).prefix(4900)), category: "apps",
+                    diagnostics: DiagnosticsBuilder.start(problem: p).json)
                 result = L("Sent as ticket #%@", String(n))
             } catch {
-                result = L("Couldn't send. Try again later.")
+                result = error.localizedDescription
             }
         }
     }

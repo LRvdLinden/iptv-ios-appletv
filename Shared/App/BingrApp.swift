@@ -322,6 +322,15 @@ final class AppState: ObservableObject {
         withAnimation(.easeInOut(duration: 0.4)) { stage = .auth }
     }
 
+    /// Build 146: Instellingen → Account zonder account: naar het inlogscherm
+    func showAuth() {
+        guard Secrets.accountsConfigured, !Screenshots.isActive else { return }
+        playing = nil
+        showMultiview = false
+        showingMyBingr = false
+        withAnimation(.easeInOut(duration: 0.4)) { stage = .auth }
+    }
+
     /// Ingelogd (of zonder account verder) → "Wie kijkt er?"
     func authFinished(skipped: Bool = false) {
         if skipped { skippedAccounts = true }
@@ -601,6 +610,13 @@ struct RootView: View {
             app.playing = nil
             app.showMultiview = false
             app.pendingTitleLink = link
+        case let .support(number):
+            // build 146: Support-tab met dat ticket (404 of niet ingelogd: de lijst); een kinderprofiel krijgt eerst de
+            // ouderpoort (Mijn Bingr vraagt die zelf)
+            app.playing = nil
+            app.showMultiview = false
+            SupportCenter.shared.requestedTicket = number
+            app.showMyBingr(.support)
         }
     }
 
