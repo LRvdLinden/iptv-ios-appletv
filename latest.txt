@@ -1,0 +1,21 @@
+commit: 3af25f92d52c9b36d447f9eebdd0a7763b6f3f6f
+ios: success
+tvos: success
+macos: success
+selftest: success
+smoke: ios=skipped tvos=skipped macos=skipped
+
+=== selftest ===
+1271 controles, 0 fout
+
+=== start-rooktest ===
+
+=== iOS errors ===
+/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/Storage/Keychain.swift:161:14: warning: instance method 'lock' is unavailable from asynchronous contexts; Use async-safe scoped locking instead; this is an error in the Swift 6 language mode
+/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/Storage/Keychain.swift:161:57: warning: instance method 'unlock' is unavailable from asynchronous contexts; Use async-safe scoped locking instead; this is an error in the Swift 6 language mode
+/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/Storage/Keychain.swift:176:131: warning: instance method 'unlock' is unavailable from asynchronous contexts; Use async-safe scoped locking instead; this is an error in the Swift 6 language mode
+/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/Storage/Keychain.swift:176:14: warning: instance method 'lock' is unavailable from asynchronous contexts; Use async-safe scoped locking instead; this is an error in the Swift 6 language mode
+
+=== tvOS errors ===
+
+=== macOS errors ===
