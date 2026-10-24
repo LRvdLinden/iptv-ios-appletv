@@ -1,0 +1,84 @@
+name: Serverstatistieken
+
+# Tab Server in het beheer (bingr-beheer): aanroepen, fouten (5xx) en duur per Edge Function per dag. Die staan alleen in de
+# logs van Supabase (Management API, analytics endpoint logs.all). Deze workflow gebruikt het token dat al als GitHub-secret
+# SUPABASE_ACCESS_TOKEN bestaat (ook voor de workflow Backend): een persoonlijk token van Supabase heeft geen scopes en geeft
+# toegang tot alle projecten, dus het komt bewust NIET als function-secret in een Edge Function.
+# Alleen aantallen per functie gaan naar de database (bingr_admin_server_fn -> admin_server_daily.data.fn). In het log van
+# deze openbare repo alleen "gelukt" en het aantal functies; geen getallen, logregels, adressen of tokens.
+# Ook een controle (alleen aantallen) of de dagrijen en de landen binnenkomen. Geen changelog (beheer).
+
+on:
+  schedule:
+    - cron: '23 0 * * *'   # gisteren afmaken (UTC)
+    - cron: '53 */6 * * *' # vandaag tot nu
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: serverstats
+  cancel-in-progress: false
+
+jobs:
+  stats:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+    steps:
+      - name: Edge Functions per dag
+        run: |
+          if [ -z "$SUPABASE_ACCESS_TOKEN" ] || [ -z "$REF" ]; then echo "::notice::geen SUPABASE_ACCESS_TOKEN/SUPABASE_PROJECT_REF: overgeslagen"; exit 0; fi
+          python3 - <<'PY'
+          import datetime, json, os, re, urllib.parse, urllib.request, urllib.error
+          REF = os.environ["REF"]; MGMT = os.environ["SUPABASE_ACCESS_TOKEN"]
+          API = f"https://api.supabase.com/v1/projects/{REF}"
+          def req(method, url, body=None):
+              h = {"Authorization": f"Bearer {MGMT}", "Content-Type": "application/json"}
+              r = urllib.request.Request(url, data=None if body is None else json.dumps(body).encode(), method=method, headers=h)
+              try:
+                  with urllib.request.urlopen(r, timeout=60) as resp: raw = resp.read(); code = resp.status
+              except urllib.error.HTTPError as e: raw = e.read(); code = e.code
+              except Exception: return 0, None
+              try: return code, json.loads(raw or b"{}")
+              except Exception: return code, None
+          def sql(q): return req("POST", f"{API}/database/query", {"query": q})
+          Q = ("select coalesce(regexp_extract(request.url, r'/functions/v1/([A-Za-z0-9_-]+)'), regexp_extract(request.pathname, r'^/([A-Za-z0-9_-]+)')) as fn, "
+               "count(*) as calls, countif(response.status_code >= 500) as errors, avg(m.execution_time_ms) as avg_ms "
+               "from function_edge_logs cross join unnest(metadata) as m cross join unnest(m.response) as response cross join unnest(m.request) as request "
+               "group by fn")
+          now = datetime.datetime.now(datetime.timezone.utc)
+          today = now.date()
+          days = [today - datetime.timedelta(days=1), today] if now.hour < 2 else [today]
+          ok = 0
+          for d in days:
+              start = datetime.datetime.combine(d, datetime.time(), datetime.timezone.utc)
+              end = min(start + datetime.timedelta(days=1), now)
+              qs = urllib.parse.urlencode({"sql": Q, "iso_timestamp_start": start.isoformat().replace("+00:00", "Z"), "iso_timestamp_end": end.isoformat().replace("+00:00", "Z")})
+              code, body = req("GET", f"{API}/analytics/endpoints/logs.all?{qs}")
+              rows = body.get("result") if isinstance(body, dict) else None
+              if code != 200 or not isinstance(rows, list) or (isinstance(body, dict) and body.get("error")):
+                  print(f"::warning::logs van {d}: niet op te halen (HTTP {code})"); continue
+              fn = {}
+              for r in rows:
+                  name = str(r.get("fn") or "")
+                  if not re.fullmatch(r"[a-z0-9_-]{1,40}", name): continue
+                  fn[name] = {"calls": int(r.get("calls") or 0), "errors": int(r.get("errors") or 0), "avg_ms": round(float(r.get("avg_ms") or 0), 1)}
+              c, _ = sql(f"select public.bingr_admin_server_fn('{d.isoformat()}'::date, $j${json.dumps(fn)}$j$::jsonb);")
+              if c not in (200, 201): print(f"::warning::opslaan van {d}: HTTP {c}"); continue
+              ok += 1
+              print(f"::notice::{d}: gegevens van {len(fn)} functies opgeslagen")
+          # controle: komen de dagrijen, de piekmeting en de landen binnen? (alleen aantallen)
+          c, r = sql("select (select count(*) from public.admin_server_daily) as days, "
+                     "(select count(*) from cron.job where jobname in ('bingr-server-sample', 'bingr-server-snapshot') and active) as jobs, "
+                     "(select count(*) from public.account_country) as countries_known, (select count(*) from auth.users) as accounts, "
+                     "(select count(*) from public.account_country where updated_at > now() - interval '1 day') as countries_24h;")
+          if c in (200, 201) and isinstance(r, list) and r:
+              x = r[0]
+              print(f"::notice::tab Server: {x.get('days')} dagrijen, {x.get('jobs')}/2 cron-jobs actief; land bekend van {x.get('countries_known')} van {x.get('accounts')} accounts ({x.get('countries_24h')} in 24 uur bijgewerkt)")
+          else:
+              print(f"::warning::controle tab Server: HTTP {c}")
+          PY
