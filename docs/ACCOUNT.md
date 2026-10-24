@@ -1628,6 +1628,7 @@ Alles van schema 2 (zie "Build 147") blijft, met `schema: 3` en daarbovenop:
 | `updates[].result` | `ok` \| `failed` \| `cancelled` | uitkomst |
 | `fetch[].delivered` | getal (0–10 000 000) | wat de provider leverde (vóór filters) |
 | `fetch[].visible` | getal (0–10 000 000) | wat de gebruiker ziet |
+| `playback.stalls` | lijst, max. **20** | haperingen tijdens het afspelen (code `playback_stall`): `{atMs, ms, engine?, format?}`; `atMs` = tijd na de start van de app (0–86 400 000), `ms` = duur van de hapering (0–3 600 000), `engine` (≤ 30) zoals `app.engine`, `format` (≤ 20) bv. `hls`, `ts`, `mp4`. Geen titel, zender of URL |
 | `fetch[].hidden` | object | reden van het verschil, aantallen: `{categories, kids, duplicates, other}` (verborgen categorieën, kinderfilter, dubbel, overig) |
 
 `fetch[].count` (schema 2) mag blijven; het beheer toont bij schema 3 `delivered` en `visible`, bv.
@@ -1637,7 +1638,7 @@ Alles van schema 2 (zie "Build 147") blijft, met `schema: 3` en daarbovenop:
 
 `started`, `storage`, `account`, `first_frame`, `intro_done`, `profile_picker`, `profile_picked`, `pin_screen`, `pin_ok`,
 `profile`, `servers`, `home`, `catalog`, `ready`, `fetch`, `parse`, `index`, `apply`, `save`, `sync_apply`,
-`catalog_filter`, `catalog_sort`, `catalog_meta`, `pin_migrate`, `rows_build`, `guide_parse`.
+`catalog_filter`, `catalog_sort`, `catalog_meta`, `pin_migrate`, `rows_build`, `guide_parse`, `playback_stall`.
 
 - Nieuwe codes alleen in deze stijl, en altijd melden (dan komt de vertaling erbij in het beheer). Een onbekende code in
   de juiste stijl komt door en wordt in het beheer als code getoond.
@@ -1672,7 +1673,8 @@ Voorbeeld (komt ongewijzigd door, zie `EXAMPLE3` in `diagnostics_test.ts`):
   `start.previous.stack`, `start.longestHang.stack`, `milestones`, `fetch`, daarna `updates`.
 - **Beheer:** toont schema 3 met de codes in het Nederlands, de langste hang van deze start (duur, taak, mijlpaal,
   voorgrond, stack), de laatste 5 keer bijwerken per server met per fase ms en MB (balkje), per soort "geleverd ·
-  zichtbaar (x verborgen door categorieën / kinderfilter / dubbel)" en de app-taal. **Kopiëren** neemt dit allemaal mee.
+  zichtbaar (x verborgen door categorieën / kinderfilter / dubbel)", de app-taal en de haperingen tijdens het afspelen
+  (aantal, langste, tijd na de start). **Kopiëren** neemt dit allemaal mee.
 
 ### 2. Profielkopie voor oude apps: `"auto"`
 

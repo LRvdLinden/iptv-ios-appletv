@@ -287,3 +287,22 @@ Deno.test("schema 3: geen adressen in de stack van de langste hang; te groot bli
   ok(JSON.stringify(big.value).length <= DIAG_MAX_OUT, "binnen de grens");
   ok(big.value.start.longestHang.ms === 5500 && big.value.updates.length >= 1, "kern blijft");
 });
+
+Deno.test("schema 3: haperingen tijdens het afspelen (playback.stalls, max. 20)", () => {
+  const pb = { stalls: [{ atMs: 125000, ms: 2300, engine: "vlc", format: "ts" }, { atMs: 300000, ms: 800 }] };
+  const r = cleanDiagnostics({ ...EXAMPLE3, playback: pb });
+  if (!r.ok) throw new Error(r.error);
+  eq(r.value.playback, pb); eq(r.stripped, false);
+  const bad = cleanDiagnostics({ ...EXAMPLE3, playback: { extra: 1, stalls: [
+    { atMs: -1, ms: 10 }, { atMs: 5, ms: 99_999_999 }, { atMs: 5, ms: 10, engine: "http://p.example/live.ts", format: "hls", title: "Film" },
+    ...Array.from({ length: 40 }, (_, i) => ({ atMs: i * 1000, ms: 100 })),
+  ] } });
+  if (!bad.ok) throw new Error(bad.error);
+  ok(bad.stripped, "stripped");
+  eq(bad.value.playback.stalls.length, 20, "max. 20");
+  eq(bad.value.playback.stalls[0], { atMs: 5, ms: 10, format: "hls" });
+  const v2 = cleanDiagnostics({ ...EXAMPLE2, playback: pb });
+  ok(v2.ok && !v2.value.playback, "alleen schema 3");
+  const none = cleanDiagnostics({ ...EXAMPLE3, playback: { stalls: [] } });
+  ok(none.ok && !none.value.playback, "leeg weg");
+});

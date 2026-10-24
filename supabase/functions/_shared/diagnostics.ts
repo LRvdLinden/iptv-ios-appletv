@@ -22,9 +22,10 @@ export const UPDATE_RESULTS = ["ok", "failed", "cancelled"] as const;
 /** Vaste codes voor mijlpalen, taken en fasen (schema 3). Een onbekende code in dezelfde stijl komt ook door. */
 export const DIAG_CODES = ["started", "storage", "account", "first_frame", "intro_done", "profile_picker", "profile_picked", "pin_screen",
   "pin_ok", "profile", "servers", "home", "catalog", "ready", "fetch", "parse", "index", "apply", "save", "sync_apply", "catalog_filter",
-  "catalog_sort", "catalog_meta", "pin_migrate", "rows_build", "guide_parse"] as const;
+  "catalog_sort", "catalog_meta", "pin_migrate", "rows_build", "guide_parse", "playback_stall"] as const;
 export const MAX_UPDATES = 5;
 export const MAX_PHASES = 5;
+export const MAX_STALLS = 20;
 
 export const DIAG_KINDS = ["start", "app"] as const;
 export const DIAG_PLATFORMS = ["ios", "ipados", "tvos", "macos", "android", "androidtv", "tizen", "web", "windows", "webos"] as const;
@@ -185,6 +186,15 @@ export function cleanDiagnostics(input: unknown): DiagResult {
       return compact({ server: srv, at: iso(u.at), phases, totalMs: MS(u.totalMs), peakMB: MB(u.peakMB), result: oneOf(u.result, UPDATE_RESULTS) });
     }).filter((u: Obj | undefined): u is Obj => !!u).slice(0, MAX_UPDATES)
     : [];
+  // haperingen tijdens het afspelen (schema 3, code playback_stall): max. 20, getallen begrensd
+  const pb = v3 && isObj(input.playback) ? input.playback : null;
+  const stalls = pb && Array.isArray(pb.stalls)
+    ? pb.stalls.slice(0, MAX_STALLS * 4).filter(isObj).map((x: Obj) => {
+      const atMs = num(x.atMs, 0, 86_400_000, true), ms = num(x.ms, 0, 3_600_000, true);
+      if (atMs === undefined || ms === undefined) return undefined;
+      return compact({ atMs, ms, engine: str(x.engine, 30), format: str(x.format, 20) });
+    }).filter((x: Obj | undefined): x is Obj => !!x).slice(0, MAX_STALLS)
+    : [];
   const lang = v3 && typeof a.lang === "string" && a.lang.length <= 12 && /^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})?$/.test(a.lang) ? a.lang : undefined;
 
   const value = compact({
@@ -212,6 +222,7 @@ export function cleanDiagnostics(input: unknown): DiagResult {
     }) : undefined,
     milestones,
     updates,
+    playback: stalls.length ? { stalls } : undefined,
     fetch,
     network: v2 ? compact({
       type: oneOf(net2.type, NET_TYPES), online: bool(net2.online), backend: oneOf(net2.backend, CHECKS), backendMs: num(net2.backendMs, 0, 600_000, true),
