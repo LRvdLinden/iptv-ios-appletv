@@ -36,6 +36,7 @@ jobs:
                   if c != 429 or not wait: return c, b
                   time.sleep(wait)
           SAFE = re.compile(r"[^A-Za-z_ :()=<>|-]")
+          NUM = re.compile(r"[^A-Za-z0-9_ .:()=<>|/+-]")
           def show(title, sql, hours, cols):
               c, b = logs(sql, hours)
               rows = (b or {}).get("result") if isinstance(b, dict) else None
@@ -46,12 +47,18 @@ jobs:
                   for k in cols:
                       v = r.get(k)
                       if isinstance(v, (int, float)): out.append(f"{k}={round(v, 1)}")
-                      else: out.append(f"{k}={SAFE.sub('', re.sub(r'[^ ]*[.@/:][^ ]*', '<x>', str(v)) if k == 'msg' else str(v))[:60]}")
+                      else: out.append(f"{k}={(SAFE.sub('', re.sub(r'[^ ]*[.@/:][^ ]*', '<x>', str(v))) if k == 'msg' else NUM.sub('', str(v)))[:60]}")
                   print("  ", " ".join(out))
           WP = "source = 'function_edge_logs' AND position(log_attributes['request.url'], '/functions/v1/web-proxy') > 0"
           A = "log_attributes"
-          show("velden (namen) van function_edge_logs voor web-proxy",
-               f"SELECT k, count() AS n FROM logs ARRAY JOIN mapKeys({A}) AS k WHERE {WP} GROUP BY k ORDER BY k", 6, ["k", "n"])
+          show("niet-2xx details, 72 uur",
+               f"SELECT toStartOfHour(timestamp) AS h, {A}['request.method'] AS m, {A}['response.status_code'] AS s, {A}['response.headers.sb_error_code'] AS sb, "
+               f"{A}['response.headers.content_type'] AS ct, count() AS n, avg(toFloat64OrZero({A}['execution_time_ms'])) AS avg_ms, max(toFloat64OrZero({A}['execution_time_ms'])) AS max_ms, "
+               f"max(toFloat64OrZero({A}['response.headers.content_length'])) AS max_len FROM logs WHERE {WP} AND toInt32OrZero({A}['response.status_code']) NOT BETWEEN 200 AND 299 "
+               f"GROUP BY h, m, s, sb, ct ORDER BY h DESC LIMIT 60", 72, ["h", "m", "s", "sb", "ct", "n", "avg_ms", "max_ms", "max_len"])
+          show("grootste 2xx-antwoorden POST, 72 uur",
+               f"SELECT {A}['response.status_code'] AS s, {A}['response.headers.content_type'] AS ct, toFloat64OrZero({A}['response.headers.content_length']) AS len, "
+               f"toFloat64OrZero({A}['execution_time_ms']) AS ms FROM logs WHERE {WP} AND {A}['request.method'] = 'POST' ORDER BY ms DESC LIMIT 15", 72, ["s", "ct", "len", "ms"])
           show("per methode en status, 48 uur",
                f"SELECT {A}['request.method'] AS m, {A}['response.status_code'] AS s, {A}['response.headers.x_upstream_status'] AS up, "
                f"{A}['response.headers.content_type'] AS ct, count() AS n, avg(toFloat64OrZero({A}['execution_time_ms'])) AS avg_ms, "
