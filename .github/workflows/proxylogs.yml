@@ -51,14 +51,20 @@ jobs:
                   print("  ", " ".join(out))
           WP = "source = 'function_edge_logs' AND position(log_attributes['request.url'], '/functions/v1/web-proxy') > 0"
           A = "log_attributes"
-          FP = f"coalesce(nullIf(extract({A}['request.url'], '/functions/v1/([A-Za-z0-9_-]+)'), ''), nullIf(extract({A}['request.pathname'], '^/(?:functions/v1/)?([A-Za-z0-9_-]+)'), ''))"
-          show("alle functies: laatste aanroep en aantal, 72 uur",
-               f"SELECT {FP} AS fn, count() AS n, max(timestamp) AS last FROM logs WHERE source = 'function_edge_logs' GROUP BY fn ORDER BY last DESC LIMIT 30", 72, ["fn", "n", "last"])
-          show("edge_logs (gateway) naar web-proxy per uur en status, 48 uur",
-               "SELECT toStartOfHour(timestamp) AS h, toString(response.status_code) AS s, count() AS n FROM edge_logs CROSS JOIN unnest(metadata) AS m CROSS JOIN unnest(m.request) AS request CROSS JOIN unnest(m.response) AS response "
-               "WHERE position(request.path, 'web-proxy') > 0 GROUP BY h, s ORDER BY h DESC LIMIT 40", 48, ["h", "s", "n"])
-          show("logs: bronnen met web-proxy in de url, 48 uur",
-               f"SELECT source AS src, {A}['response.status_code'] AS s, count() AS n, max(timestamp) AS last FROM logs WHERE position({A}['request.url'], 'web-proxy') > 0 OR position({A}['request.path'], 'web-proxy') > 0 OR position({A}['request.pathname'], 'web-proxy') > 0 GROUP BY src, s ORDER BY last DESC LIMIT 30", 48, ["src", "s", "n", "last"])
+          for hrs in (3, 24):
+              show(f"web-proxy per methode, status, type ({hrs} uur)",
+                   f"SELECT {A}['request.method'] AS m, {A}['response.status_code'] AS s, {A}['response.headers.sb_error_code'] AS sb, {A}['response.headers.content_type'] AS ct, count() AS n, "
+                   f"avg(toFloat64OrZero({A}['execution_time_ms'])) AS avg_ms, max(toFloat64OrZero({A}['execution_time_ms'])) AS max_ms, max(toFloat64OrZero({A}['response.headers.content_length'])) AS max_len, "
+                   f"min(timestamp) AS first, max(timestamp) AS last FROM logs WHERE {WP} GROUP BY m, s, sb, ct ORDER BY last DESC LIMIT 40", hrs,
+                   ["m", "s", "sb", "ct", "n", "avg_ms", "max_ms", "max_len", "first", "last"])
+          show("web-proxy POST niet-2xx per uur (24 uur)",
+               f"SELECT toStartOfHour(timestamp) AS h, {A}['response.status_code'] AS s, count() AS n FROM logs WHERE {WP} AND {A}['request.method'] = 'POST' "
+               f"AND toInt32OrZero({A}['response.status_code']) NOT BETWEEN 200 AND 299 GROUP BY h, s ORDER BY h DESC LIMIT 40", 24, ["h", "s", "n"])
+          show("console van web-proxy en limieten (24 uur)",
+               "SELECT substring(event_message, 1, 80) AS msg, count() AS n, max(timestamp) AS last FROM logs WHERE source = 'function_logs' "
+               "AND NOT startsWith(event_message, 'booted') AND event_message != 'shutdown' AND (positionCaseInsensitive(event_message, 'web-proxy') > 0 "
+               "OR positionCaseInsensitive(event_message, 'limit') > 0 OR positionCaseInsensitive(event_message, 'memory') > 0 OR positionCaseInsensitive(event_message, 'error') > 0) "
+               "GROUP BY msg ORDER BY n DESC LIMIT 25", 24, ["msg", "n", "last"])
           PY
       - name: Naar de tijdelijke branch ci-proxylogs
         run: |
