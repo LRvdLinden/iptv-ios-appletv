@@ -13,7 +13,9 @@
 // Antwoorden nooit als HTML/script: zulke types worden text/plain, en altijd nosniff + CSP sandbox (en voor niet-media
 // Content-Disposition: attachment), zodat niets op *.supabase.co als pagina kan draaien (phishing, L8).
 
-export type Allow = { hosts: Set<string>; exact: Set<string> };
+// prefixes: "host|/pad" van een serverURL met een pad ervoor (Xtream-panels achter een map, bv. http://host:8080/pad): daaronder
+// gelden dezelfde API- en streampaden (spoedfix 25-10-2026)
+export type Allow = { hosts: Set<string>; exact: Set<string>; prefixes?: Set<string> };
 
 // "tv.example.co.uk" -> "example.co.uk", "a.b.example.com" -> "example.com" (eenvoudige benadering, genoeg voor IPTV-hosts)
 export function baseDomain(host: string): string {
@@ -29,7 +31,7 @@ const exactKey = (u: URL) => `${u.protocol}//${u.host.toLowerCase()}${u.pathname
 
 /** Toegestane hosts en exacte URL's (M3U/EPG) uit de ontsleutelde bronnen van het account. */
 export function allowFromSources(sources: unknown): Allow {
-  const hosts = new Set<string>(), exact = new Set<string>();
+  const hosts = new Set<string>(), exact = new Set<string>(), prefixes = new Set<string>();
   for (const s of Array.isArray(sources) ? sources : []) {
     if (!s || typeof s !== "object" || (s as { deleted?: unknown }).deleted === true) continue;
     for (const f of ["m3uURL", "epgURL", "serverURL"]) {
@@ -40,6 +42,10 @@ export function allowFromSources(sources: unknown): Allow {
         const h = u.hostname.toLowerCase();
         if (!h) continue;
         hosts.add(h); hosts.add("*." + baseDomain(h));
+        if (f === "serverURL") {
+          const pre = u.pathname.replace(/\/+$/, "").replace(/\/(player_api|get|panel_api|portal)\.php$/i, "");
+          if (pre && pre !== "/" && !pre.includes("..")) prefixes.add(`${h}|${pre.toLowerCase()}`);
+        }
         if (f !== "serverURL" && u.pathname && u.pathname !== "/") {
           exact.add(exactKey(u));
           // dezelfde lijst op http én https (veel panels kennen beide)
@@ -50,7 +56,7 @@ export function allowFromSources(sources: unknown): Allow {
       } catch { /* geen geldige URL */ }
     }
   }
-  return { hosts, exact };
+  return { hosts, exact, prefixes };
 }
 
 export function hostAllowed(host: string, allow: Allow) {
@@ -72,8 +78,13 @@ export type PathCheck = { ok: true } | { ok: false; reason: "path_not_allowed" }
 export function pathAllowed(u: URL, allow: Allow, trusted: boolean): PathCheck {
   if (trusted) return { ok: true };
   if (allow.exact.has(exactKey(u))) return { ok: true };
-  const p = u.pathname;
-  if (API_PATH.test(p) || STREAM_PREFIX.test(p) || XTREAM_SHORT.test(p) || MEDIA_EXT.test(p)) return { ok: true };
+  const known = (p: string) => API_PATH.test(p) || STREAM_PREFIX.test(p) || XTREAM_SHORT.test(p) || MEDIA_EXT.test(p);
+  if (known(u.pathname)) return { ok: true };
+  const host = u.hostname.toLowerCase(), lp = u.pathname.toLowerCase();
+  for (const pr of allow.prefixes ?? []) {
+    const i = pr.indexOf("|"), h = pr.slice(0, i), pre = pr.slice(i + 1);
+    if (h === host && lp.startsWith(pre + "/") && known(u.pathname.slice(pre.length))) return { ok: true };
+  }
   return { ok: false, reason: "path_not_allowed" };
 }
 
@@ -143,4 +154,38 @@ export function quotaSettings(v: unknown): QuotaSettings {
 }
 export function overQuota(used: { requests_hour: number; bytes_day: number }, q: Quota): boolean {
   return used.requests_hour > q.requests_hour || used.bytes_day > q.bytes_day;
+}
+
+// ---- spoedfix 25-10-2026: foutsoorten en een logregel zonder host, IP, URL of inloggegevens ----
+/** Fouten bij het ophalen bij de server van de gebruiker (502/504); de webspeler toont per soort een eigen melding. */
+export const UPSTREAM_ERRORS = ["dns_failed", "connect_refused", "connect_reset", "connect_timeout", "connect_failed", "tls_failed", "tls_timeout",
+  "no_response", "bad_response", "timeout", "upstream_failed"] as const;
+export type UpstreamError = typeof UPSTREAM_ERRORS[number];
+export function upstreamStatus(kind: string): number {
+  return kind === "timeout" || kind === "connect_timeout" || kind === "tls_timeout" ? 504 : 502;
+}
+/** Soort pad (geen pad zelf): api, live, vod, series, playlist, epg, image, media of other. */
+export function pathKind(u: URL): string {
+  const p = u.pathname.toLowerCase();
+  if (/\/(player_api|panel_api|get|portal)\.php$|\/server\/load\.php$/.test(p)) return "api";
+  if (/\/xmltv\.php$|\.xml(\.gz)?$|^\/(epg|xmltv)\//.test(p)) return "epg";
+  if (/^\/live\//.test(p)) return "live";
+  if (/^\/movies?\//.test(p)) return "vod";
+  if (/^\/series\//.test(p)) return "series";
+  if (/\.m3u8?$/.test(p)) return "playlist";
+  if (/\.(jpe?g|png|webp|gif|svg|bmp|ico|avif)$/.test(p)) return "image";
+  if (MEDIA_EXT.test(p)) return "media";
+  return "other";
+}
+/** Xtream-actie uit de query (alleen een bekende vorm, anders "-"); nooit username/password. */
+export function actionName(u: URL): string {
+  const a = u.searchParams.get("action") ?? "";
+  if (!a) return pathKind(u) === "api" ? "login" : "-";
+  return /^[a-z_]{1,40}$/i.test(a) ? a.toLowerCase() : "?";
+}
+/** Eén logregel voor een mislukte aanvraag: alleen soort, status, actie, protocol, duur, bytes en aantal doorverwijzingen. */
+export function failLog(o: { error?: string; upstream?: number; target: URL; ms: number; redirects?: number; bytes?: number; form: "post" | "get" | "probe" }): string {
+  const err = o.error && /^[a-z_]{1,40}$/.test(o.error) ? o.error : (o.error ? "?" : "-");
+  return `web-proxy fout=${err} upstream=${Number.isFinite(o.upstream) ? o.upstream : "-"} vorm=${o.form} pad=${pathKind(o.target)} actie=${actionName(o.target)} ` +
+    `https=${o.target.protocol === "https:" ? 1 : 0} ms=${Math.round(o.ms)} bytes=${Math.max(0, Math.round(o.bytes ?? 0))} doorverwijzingen=${o.redirects ?? 0}`;
 }

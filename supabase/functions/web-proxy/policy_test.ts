@@ -82,3 +82,57 @@ Deno.test("limieten: standaard, grenzen en noodrem", () => {
   ok(overQuota({ requests_hour: 501, bytes_day: 0 }, { requests_hour: 500, bytes_day: 10 }), "boven aantal");
   ok(!overQuota({ requests_hour: 500, bytes_day: 10 }, { requests_hour: 500, bytes_day: 10 }), "precies op de grens mag");
 });
+
+// ---- spoedfix 25-10-2026 (http_502 in de webspeler) ----
+import { actionName, failLog, pathKind, UPSTREAM_ERRORS, upstreamStatus } from "./policy.ts";
+
+Deno.test("allowlist: alle aanroepen van de webspeler (login, categorieën, lijsten, series, EPG, M3U, streams)", () => {
+  const base = "http://tv.provider.example:8080";
+  for (const p of [
+    "/player_api.php?username=u&password=p",
+    ...["get_live_categories", "get_live_streams", "get_vod_categories", "get_vod_streams", "get_series_categories", "get_series",
+      "get_series_info&series_id=1", "get_vod_info&vod_id=1", "get_short_epg&stream_id=1", "get_simple_data_table&stream_id=1"]
+      .map((a) => `/player_api.php?username=u&password=p&action=${a}`),
+    "/xmltv.php?username=u&password=p", "/get.php?username=u&password=p&type=m3u_plus&output=ts",
+    "/live/u/p/1.ts", "/live/u/p/1.m3u8", "/movie/u/p/2.mkv", "/series/u/p/3.mp4", "/timeshift/u/p/60/2026-10-25:12-00/1.ts", "/u/p/1",
+  ]) ok(pathAllowed(new URL(base + p), allow, false).ok, p);
+  // M3U/EPG van de eigen bron, http én https
+  ok(pathAllowed(new URL("http://lists.example.org/raw/abc123"), allow, false).ok, "M3U op http");
+  ok(pathAllowed(new URL("https://epg.example.net/guide.xml.gz"), allow, false).ok, "EPG");
+  // wat niet nodig is blijft dicht
+  for (const p of ["/admin", "/", "/index.php", "/api/v1/users", "/player_api.php.bak", "/.env"]) ok(!pathAllowed(new URL(base + p), allow, false).ok, "dicht: " + p);
+});
+Deno.test("allowlist: serverURL met een pad ervoor (panel in een map)", () => {
+  const a = allowFromSources([{ serverURL: "http://panel.example.com:2095/xc/" }]);
+  ok(pathAllowed(new URL("http://panel.example.com:2095/xc/player_api.php?username=u&password=p&action=get_vod_streams"), a, false).ok, "API onder het pad");
+  ok(pathAllowed(new URL("http://panel.example.com:2095/xc/movie/u/p/1.mp4"), a, false).ok, "film onder het pad");
+  ok(!pathAllowed(new URL("http://panel.example.com:2095/xc/admin/login"), a, false).ok, "beheer onder het pad blijft dicht");
+  ok(!pathAllowed(new URL("http://panel.example.com:2095/andere/admin"), a, false).ok, "ander pad");
+  ok(!pathAllowed(new URL("http://other.example.org/xc/admin"), a, false).ok, "andere host");
+  ok(!hostAllowed("evil.example.org", a), "geen andere hosts (SSRF)");
+  const b = allowFromSources([{ serverURL: "http://panel.example.com/xc/player_api.php" }]);
+  ok(pathAllowed(new URL("http://panel.example.com/xc/player_api.php?action=get_series"), b, false).ok, "serverURL met player_api.php erin");
+});
+Deno.test("foutsoorten: 504 voor time-outs, anders 502", () => {
+  for (const k of UPSTREAM_ERRORS) ok(upstreamStatus(k) === (/timeout/.test(k) ? 504 : 502), k);
+});
+Deno.test("logregel: nooit host, gebruiker, wachtwoord of URL", () => {
+  const t = new URL("https://geheim-panel.example.com:8443/player_api.php?username=jan%40mail.nl&password=Wachtwoord123&action=get_vod_streams");
+  const l = failLog({ error: "tls_failed", target: t, ms: 512.4, form: "post" });
+  ok(l === "web-proxy fout=tls_failed upstream=- vorm=post pad=api actie=get_vod_streams https=1 ms=512 bytes=0 doorverwijzingen=0", l);
+  for (const bad of ["geheim", "example", "8443", "jan", "mail", "Wachtwoord", "player_api"]) ok(!l.includes(bad), "lekt " + bad);
+  ok(actionName(new URL("http://h.example/player_api.php?username=u&password=p")) === "login", "login");
+  ok(actionName(new URL("http://h.example/player_api.php?action=<script>")) === "?", "vreemde actie");
+  ok(failLog({ error: "x y", target: t, ms: 1, form: "get" }).includes("fout=?"), "vreemde code");
+  ok(failLog({ upstream: 502, target: new URL("http://h.example/movie/u/p/1.mkv"), ms: 3, redirects: 2, form: "post" }).includes("upstream=502 vorm=post pad=vod actie=-"), "upstream-status");
+  ok(pathKind(new URL("http://h.example/xmltv.php")) === "epg" && pathKind(new URL("http://h.example/live/u/p/1.ts")) === "live", "padsoort");
+});
+Deno.test("limieten: boven de limiet is 429 quota_exceeded (overQuota), Lifetime ruimer", () => {
+  const q = quotaSettings(null);
+  ok(!overQuota({ requests_hour: q.free.requests_hour, bytes_day: 0 }, q.free), "op de grens mag");
+  ok(overQuota({ requests_hour: q.free.requests_hour + 1, bytes_day: 0 }, q.free), "erboven niet");
+  ok(overQuota({ requests_hour: 0, bytes_day: q.free.bytes_day + 1 }, q.free), "bytes");
+  ok(!overQuota({ requests_hour: q.free.requests_hour + 1, bytes_day: 0 }, q.lifetime), "Lifetime ruimer");
+  // een lijst van 200 MB past ruim in de daglimiet van Gratis
+  ok(!overQuota({ requests_hour: 10, bytes_day: 200 * 1024 ** 2 }, q.free), "grote lijst");
+});

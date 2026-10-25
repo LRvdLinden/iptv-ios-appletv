@@ -30,8 +30,12 @@
 // Antwoord: de body van de server, gestreamd, met dezelfde status (200/206/4xx/5xx) en content-type, content-length,
 // content-range, accept-ranges. Fouten van de proxy zelf zijn JSON {error}:
 //   400 bad_json/bad_url/bad_range · 401 not_signed_in/bad_token/user_banned · 403 host_not_allowed · 405 method_not_allowed
-//   413 too_large (> 200 MB) · 416 (bereik voorbij het einde) · 429 rate_limited · 502 upstream_failed/range_not_supported
-//   · 503 unavailable · 504 timeout
+//   413 too_large (> 200 MB) · 416 (bereik voorbij het einde) · 429 rate_limited/quota_exceeded · 503 unavailable
+//   · 502 (spoedfix 25-10-2026: per stap) dns_failed, connect_refused, connect_reset, connect_failed, tls_failed, no_response,
+//     bad_response, upstream_failed, range_not_supported · 504 timeout, connect_timeout, tls_timeout
+//   Een fout van de server van de gebruiker zelf komt ongewijzigd door, met X-Upstream-Status; de proxy-eigen fouten hebben
+//   die kop niet. Elke 5xx van de proxy en elke >= 400 van de server (POST) geeft één logregel (policy.ts failLog): alleen
+//   soort, status, padsoort, Xtream-actie, https ja/nee, duur en bytes; nooit host, IP, URL of inloggegevens.
 // build 95: geblokkeerd account (ban uit het beheer) -> 401 {error:"user_banned", banned:true} (ook de GET-vorm, binnen 5 min);
 // elke aanvraag naar een server (ook elke doorverwijzing, probe en osfile) controleert vlak ervoor de DNS (A en AAAA; een
 // DNS-fout of time-out = weigeren) en http-doelen gaan naar het gecontroleerde IP-adres met de eigen Host-header (geen DNS-rebinding).
@@ -47,8 +51,9 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { b64url, isHlsPlaylist, rewritePlaylist, unb64url } from "./hls.ts";
 import { ipLiteral, isBlockedIP } from "./ip.ts";
-import { type Allow, allowFromSources, hostAllowed, mediaLike, overQuota, pathAllowed, portAllowed, quotaSettings, type QuotaSettings, safeContentType, safetyHeaders } from "./policy.ts";
-import { pinnedFetch } from "./pinned.ts";
+import { type Allow, allowFromSources, failLog, hostAllowed, mediaLike, overQuota, pathAllowed, portAllowed, quotaSettings, type QuotaSettings, safeContentType, safetyHeaders, upstreamStatus } from "./policy.ts";
+import { PinnedError, pinnedFetch } from "./pinned.ts";
+import { capStream } from "./stream.ts";
 import { BANNED_BODY, bannedUntilActive, isBanError } from "../_shared/ban.ts";
 
 const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {
@@ -429,9 +434,10 @@ async function lookup(hostIn: string, useCache: boolean): Promise<Lookup> {
   }
   const [a, aaaa] = await Promise.all([resolveOne(host, "A"), resolveOne(host, "AAAA")]);
   // een fout bij één van beide (bv. een kapotte AAAA-server) mag; beide fout = weigeren
-  if (a == null && aaaa == null) return { error: "upstream_failed", status: 502 };
+  // spoedfix 25-10: eigen code (dns_failed) in plaats van upstream_failed, zodat de webspeler het juiste zegt
+  if (a == null && aaaa == null) return { error: "dns_failed", status: 502 };
   const addrs = [...(a ?? []), ...(aaaa ?? [])];
-  if (!addrs.length) return { error: "upstream_failed", status: 502 };
+  if (!addrs.length) return { error: "dns_failed", status: 502 };
   if (addrs.some(isBlockedIP)) return { error: "host_not_allowed", status: 403 };
   if (dnsCache.size > 5000) dnsCache.clear();
   dnsCache.set(host, { addrs, until: Date.now() + 60_000 });
@@ -497,8 +503,11 @@ async function upstream(target: URL, range: string | null, ctl: AbortController)
         hosts.push(host + (next.port ? ":" + next.port : ""));
         res = null;
       }
-    } catch {
-      return ctl.signal.aborted ? { error: "timeout", status: 504 } : { error: "upstream_failed", status: 502 };
+    } catch (e) {
+      if (ctl.signal.aborted) return { error: "timeout", status: 504 };
+      // spoedfix 25-10: welke stap mislukte (verbinden, TLS, antwoord); nooit host of IP
+      const kind = e instanceof PinnedError ? e.kind : "upstream_failed";
+      return { error: kind, status: upstreamStatus(kind) };
     }
     if (!res) return { error: "upstream_failed", status: 502 };
     const retry = attempt === 0 && hosts.length > 0 && [401, 403, 404, 410, 500, 502, 503, 509].includes(res.status);
@@ -529,6 +538,7 @@ async function probe(req: Request, target: URL, user: string) {
   const up = await upstream(target, `bytes=0-${PROBE_BYTES - 1}`, ctl);
   if ("error" in up) {
     clearTimeout(timer);
+    console.warn(failLog({ error: up.error, target, ms: Date.now() - t0, form: "probe" }));
     // build 95: intern adres (na DNS, ook via een doorverwijzing) blijft een 403, zoals vóór de DNS-controle in guardedFetch
     if (up.error === "host_not_allowed" || up.error === "port_not_allowed") return json({ error: up.error }, 403);
     return json({ probe: true, error: up.error, ms: Date.now() - t0 });
@@ -601,9 +611,16 @@ async function proxy(req: Request, opts: { target: URL; range: string | null; us
   const timer = setTimeout(() => ctl.abort(), TIMEOUT_MS);
   // de browser breekt af (doorspoelen, sluiten): ook de aanvraag naar de server stoppen, anders telt die als tweede verbinding
   try { req.signal?.addEventListener("abort", () => ctl.abort()); } catch { /* geen signal in deze runtime */ }
+  const t0 = Date.now();
   const up = await upstream(target, range, ctl);
-  if ("error" in up) { clearTimeout(timer); return json({ error: up.error }, up.status); }
+  if ("error" in up) {
+    clearTimeout(timer);
+    if (up.status >= 500) console.warn(failLog({ error: up.error, target, ms: Date.now() - t0, form: get ? "get" : "post" }));
+    return json({ error: up.error }, up.status);
+  }
   const { res, url, hosts } = up;
+  // de server van de gebruiker zelf gaf een fout (wordt ongewijzigd doorgegeven, met X-Upstream-Status): wel loggen
+  if (res.status >= 400 && !get) console.warn(failLog({ upstream: res.status, target, ms: Date.now() - t0, redirects: hosts.length, form: "post" }));
 
   const len = Number(res.headers.get("content-length") ?? "");
   const ctype = res.headers.get("content-type") ?? "";
@@ -704,17 +721,11 @@ async function proxy(req: Request, opts: { target: URL; range: string | null; us
   out.set("content-type", safeType);
   if (!res.body) { clearTimeout(timer); return new Response(null, { status: res.status, headers: out }); }
 
-  // doorstromen zonder te bufferen; boven 200 MB of na 120 s afbreken
-  let seen = 0;
-  const cap = new TransformStream<Uint8Array, Uint8Array>({
-    transform(chunk, c) {
-      seen += chunk.byteLength;
-      countBytes(user, chunk.byteLength);
-      if (seen > MAX_BYTES) { ctl.abort(); c.error(new Error("too_large")); return; }
-      c.enqueue(chunk);
-    },
-    flush() { clearTimeout(timer); },
-  });
+  // doorstromen zonder te bufferen (stream.ts); boven 200 MB of na 120 s afbreken
+  const cap = capStream(MAX_BYTES, (n) => countBytes(user, n), () => {
+    console.warn(failLog({ error: "too_large", target, ms: Date.now() - t0, bytes: MAX_BYTES, form: get ? "get" : "post" }));
+    ctl.abort();
+  }, () => clearTimeout(timer));
   return new Response(res.body.pipeThrough(cap), { status: res.status, headers: out });
 }
 
