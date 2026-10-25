@@ -1258,5 +1258,16 @@ do {
     check(after.kept < before.kept * 0.7, "vast geheugen met overslaan duidelijk lager (\(Int(after.kept)) vs \(Int(before.kept)) MB)")
 }
 
+// MARK: build 151: rij Zenders op Home
+do {
+    let groups: [(group: String, ids: [String])] = [("Klein", ["k1"]), ("Groot", ["g1", "g2", "g3", "g4"]), ("Midden", ["m1", "m2", "m3"])]
+    let logo: (String) -> Bool = { $0 != "g2" }
+    eq(ChannelLogoRow.pick(first: ["m2", "x9", "m2"], groups: groups, hasLogo: logo, max: 6), ["m2", "x9", "g1", "m1", "k1", "g3"],
+       "recent/favorieten eerst, dan om de beurt uit de grootste categorieën, met logo eerst")
+    eq(ChannelLogoRow.pick(first: [], groups: groups, hasLogo: logo, max: 20).count, 8, "alle zenders hooguit één keer")
+    eq(ChannelLogoRow.pick(first: [], groups: groups, hasLogo: logo, max: 20).last, "g2", "zonder logo als laatste")
+    eq(ChannelLogoRow.pick(first: (0..<30).map { "r\($0)" }, groups: groups, hasLogo: logo).count, 15, "hooguit 15")
+}
+
 print("\(checks) controles, \(failures) fout")
 exit(failures == 0 ? 0 : 1)

@@ -56,6 +56,8 @@ struct HomeView: View {
     @State private var discover: [DiscoverKind: [DiscoverEntry]] = [:]
     /// Build 111: telt op als TMDB-titels uit Mijn lijst (van een ander apparaat) opgezocht zijn
     @State private var discoverKnownTick = 0
+    /// Build 151: rij Zenders (zenderlogo's van de eigen server)
+    @State private var logoChannels: [Channel] = []
 
     private var lib: Library { playlists.library }
     private var pid: UUID? { playlists.source?.id }
@@ -140,6 +142,9 @@ struct HomeView: View {
                               language: Localizer.shared.language)) { await loadDiscover() }
         // build 111: TMDB-titels in Mijn lijst die dit apparaat nog niet kent (op een ander apparaat toegevoegd)
         .task(id: store.myList) { await resolveExternalMyList() }
+        // build 151: rij Zenders opnieuw kiezen bij een nieuwe lijst, andere recente/favoriete zenders of ander profiel
+        .task(id: LogoChannelsKey(version: playlists.libraryVersion, recent: store.recentChannels, favorites: store.favorites,
+                                  profile: store.activeProfileID)) { await buildLogoChannels() }
         // build 143: posters voor Verder kijken opzoeken (ook voor oude items en items van andere apparaten)
         .task(id: continueCoverKey) { await resolveContinueCovers() }
         .task(id: collectionsKey) {
@@ -228,6 +233,8 @@ struct HomeView: View {
         case browse
         /// Build 149: Ontdek categorieën
         case discover
+        /// Build 151: rij Zenders (logo's)
+        case channels
         var id: Self { self }
     }
 
@@ -278,6 +285,11 @@ struct HomeView: View {
             let at = out.firstIndex(of: .browse).map { $0 + 1 } ?? min(3, out.count)
             out.insert(.discover, at: at)
         }
+        // build 151: rij Zenders direct na Ontdek categorieën (anders na Categorieën, anders als 4e rij)
+        if !logoChannels.isEmpty {
+            let at = (out.firstIndex(of: .discover) ?? out.firstIndex(of: .browse)).map { $0 + 1 } ?? min(3, out.count)
+            out.insert(.channels, at: at)
+        }
         return out
     }
 
@@ -303,6 +315,88 @@ struct HomeView: View {
                 }
             }
             .onAppear { providerLogos.load() }
+        }
+    }
+
+    struct LogoChannelsKey: Equatable {
+        var version: Int
+        var recent: [String]
+        var favorites: Set<String>
+        var profile: UUID?
+    }
+
+    /// Build 151: zenders voor de rij Zenders: recent bekeken en favorieten (van de open server) eerst, aangevuld uit de
+    /// grootste zichtbare live-categorieën; hooguit 15. De lijst is al gefilterd (verborgen categorieën, kinderslot en
+    /// bij een kinderprofiel alleen kinderzenders die het kinderfilter toelaat).
+    private func buildLogoChannels() async {
+        guard filter == .all, let pid else { logoChannels = []; return }
+        let channels = lib.channels
+        guard !channels.isEmpty else { if !logoChannels.isEmpty { logoChannels = [] }; return }
+        let p = pid.uuidString
+        func local(_ k: String) -> String? {
+            guard k.count > p.count + 1, k.prefix(p.count).caseInsensitiveCompare(p) == .orderedSame else { return nil }
+            return String(k.dropFirst(p.count + 1))
+        }
+        let favKeys = store.favorites.sorted { cross.addedAt($0, field: "favorites") > cross.addedAt($1, field: "favorites") }
+        let first = (store.recentChannels + favKeys).compactMap(local)
+        let picked = await Task.detached(priority: .utility) { () -> [Channel] in
+            var byID: [String: Channel] = [:]
+            var order: [String] = [], ids: [String: [String]] = [:]
+            for c in channels {
+                if byID[c.id] == nil { byID[c.id] = c }
+                if ids[c.group] == nil { order.append(c.group) }
+                ids[c.group, default: []].append(c.id)
+            }
+            let groups = order.map { (group: $0, ids: ids[$0] ?? []) }
+            let pick = ChannelLogoRow.pick(first: first.filter { byID[$0] != nil }, groups: groups,
+                                           hasLogo: { byID[$0]?.logo != nil })
+            return pick.compactMap { byID[$0] }
+        }.value
+        guard !Task.isCancelled else { return }
+        if picked.map(\.id) != logoChannels.map(\.id) { logoChannels = picked }
+    }
+
+    /// Build 151: rij Zenders: het logo van de zender op een neutrale achtergrond (zonder logo de opgeschoonde naam),
+    /// eronder klein het programma van nu; klikken start de zender meteen
+    @ViewBuilder private var logoChannelsRow: some View {
+        let list = logoChannels
+        if !list.isEmpty {
+            let w = Theme.landscapeWidth * 0.62
+            MediaRow(title: L("Channels")) {
+                ForEach(list) { c in
+                    let now = lib.nowPlaying(c)
+                    let name = CategoryName.clean(c.name, title: true)
+                    Button {
+                        app.play(Playables.channel(c, now: now), zap: list)
+                    } label: {
+                        VStack(alignment: .leading, spacing: tvScaled(5)) {
+                            ZStack {
+                                Color(hex: 0x1C1C1E)
+                                if c.logo != nil {
+                                    RemoteImage(url: c.logo, contentMode: .fit, placeholder: name, maxPixel: 360)
+                                        .padding(tvScaled(14))
+                                } else {
+                                    Text(name).font(.system(size: tvScaled(15), weight: .bold)).foregroundStyle(.white.opacity(0.9))
+                                        .multilineTextAlignment(.center).lineLimit(2).minimumScaleFactor(0.7).padding(tvScaled(10))
+                                }
+                            }
+                            .frame(width: w, height: w * 0.5625)
+                            .clipShape(RoundedRectangle(cornerRadius: tvScaled(8)))
+                            Text(now?.title ?? name).font(.system(size: tvScaled(11)))
+                                .foregroundStyle(Theme.secondary).lineLimit(1)
+                                .frame(width: w, alignment: .leading)
+                        }
+                    }
+                    .cardButton()
+                    .tileHover()
+                    .accessibilityLabel(now.map { "\(name), \($0.title)" } ?? name)
+                    .contextMenu {
+                        Button { collecting = .channel(c) } label: {
+                            Label(L("Add to collection…"), systemImage: "rectangle.stack.badge.plus")
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -336,6 +430,7 @@ struct HomeView: View {
             if let g = index.seriesGroups.first(where: { $0.id == id }) { seriesRow(g.id, Array(g.items.prefix(40)), all: g.items) }
         case .browse: browseRow
         case .discover: discoverRow
+        case .channels: logoChannelsRow
         case .key(let key): homeRow(key)
         }
     }

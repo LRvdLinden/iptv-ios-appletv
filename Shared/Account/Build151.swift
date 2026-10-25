@@ -177,3 +177,41 @@ enum SourcePreference {
         rank(group: new, want: want) < rank(group: old, want: want)
     }
 }
+
+// MARK: - Rij "Zenders" op Home
+
+/// Build 151: welke zenders de rij "Zenders" op Home toont (zenderlogo's van de eigen server, zoals een rij
+/// streamingdiensten). Eerst de recent bekeken zenders en de favorieten, daarna om de beurt uit de grootste zichtbare
+/// live-categorieën (zenders met een logo eerst). Zonder dubbele, hooguit `max`.
+enum ChannelLogoRow {
+    static func pick(first: [String], groups: [(group: String, ids: [String])], hasLogo: (String) -> Bool,
+                     max: Int = 15, topGroups: Int = 6) -> [String] {
+        var out: [String] = []
+        var seen = Set<String>()
+        for id in first where out.count < max && seen.insert(id).inserted { out.append(id) }
+        guard out.count < max else { return out }
+        let top = groups.enumerated()
+            .sorted { $0.element.ids.count != $1.element.ids.count ? $0.element.ids.count > $1.element.ids.count : $0.offset < $1.offset }
+            .prefix(topGroups).map(\.element.ids)
+        // eerst alleen met logo, daarna (als dat niet genoeg is) ook zonder
+        for needLogo in [true, false] {
+            var pos = Array(repeating: 0, count: top.count)
+            var progress = true
+            while out.count < max && progress {
+                progress = false
+                for (gi, ids) in top.enumerated() where out.count < max {
+                    while pos[gi] < ids.count {
+                        let id = ids[pos[gi]]
+                        pos[gi] += 1
+                        if seen.contains(id) || (needLogo && !hasLogo(id)) { continue }
+                        seen.insert(id)
+                        out.append(id)
+                        progress = true
+                        break
+                    }
+                }
+            }
+        }
+        return out
+    }
+}
