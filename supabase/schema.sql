@@ -81,6 +81,13 @@ insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_typ
 values ('mail-assets', 'mail-assets', true, 2097152, array['image/png', 'image/jpeg', 'image/gif'])
 on conflict (id) do update set public = true, file_size_limit = 2097152, allowed_mime_types = array['image/png', 'image/jpeg', 'image/gif'];
 
+-- Land-IP-tabel voor device-auth (_shared/geoip.ts): privé-bucket "geoip" met alleen country.bin.gz (DB-IP "IP to Country
+-- Lite", CC BY 4.0, compact gemaakt door tools/geoip_build.py; workflow GeoIP werkt hem maandelijks bij). Geen policies: alleen de
+-- service role leest en schrijft. Bevat geen gegevens van gebruikers.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('geoip', 'geoip', false, 10485760, array['application/gzip', 'application/octet-stream'])
+on conflict (id) do update set public = false, file_size_limit = 10485760, allowed_mime_types = array['application/gzip', 'application/octet-stream'];
+
 -- Servers en afspeellijsten per account, versleuteld (AES-GCM) door de Edge Function met BINGR_SOURCES_KEY.
 -- Alleen de Edge Function (service role) leest en schrijft hierin.
 create table if not exists public.account_sources (
@@ -3626,9 +3633,9 @@ $$;
 revoke all on function public.bingr_platform_group(text) from public, anon, authenticated;
 grant execute on function public.bingr_platform_group(text) to service_role;
 
--- 2. Land per account (laatst gezien) en per apparaat. Alleen de landcode (ISO 3166-1 alpha-2) die Cloudflare vóór de
---    Edge Functions meegeeft (header cf-ipcountry, bepaald uit het netwerk); nooit het IP-adres. device-auth zet het bij
---    register_device en heartbeat (_shared/country.ts). Hoogstens één schrijfactie per uur per account als het land gelijk
+-- 2. Land per account (laatst gezien) en per apparaat. Alleen de landcode (ISO 3166-1 alpha-2); nooit het IP-adres.
+--    device-auth bepaalt hem in de functie zelf uit het IP-adres van de aanvraag met de eigen land-IP-tabel (bucket geoip,
+--    _shared/geoip.ts; cf-ipcountry komt niet tot in de functie) en zet hem bij register_device en heartbeat (_shared/country.ts). Hoogstens één schrijfactie per uur per account als het land gelijk
 --    blijft. Gaat mee bij het verwijderen van het account (on delete cascade).
 create table if not exists public.account_country (
   user_id    uuid primary key references auth.users(id) on delete cascade,

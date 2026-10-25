@@ -1,0 +1,75 @@
+name: GeoIP
+
+# Land-IP-tabel voor device-auth (land per account in het beheer, _shared/geoip.ts): "IP to Country Lite" van DB-IP
+# (https://db-ip.com, CC BY 4.0, bronvermelding: "IP Geolocation by DB-IP"), compact gemaakt met tools/geoip_build.py en als
+# country.bin.gz in de privé-bucket geoip van Storage gezet (bucket: supabase/schema.sql, workflow Backend). DB-IP brengt de
+# lijst elke maand uit; deze workflow haalt hem op de 3e op (valt terug op de vorige maand). Functies die al draaien laden de
+# nieuwe tabel bij hun volgende koude start. De tabel bevat geen gegevens van gebruikers; in het log alleen aantallen.
+# Secrets: SUPABASE_ACCESS_TOKEN en SUPABASE_PROJECT_REF (zoals Backend). Geen changelog (server-onderhoud).
+
+on:
+  schedule:
+    - cron: '17 4 3 * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['tools/geoip_build.py', '.github/workflows/geoip.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: geoip
+  cancel-in-progress: false
+
+jobs:
+  geoip:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 (v5.1.0)
+      - name: DB-IP Lite ophalen en compact maken
+        run: |
+          set -e
+          ok=""
+          for m in "$(date -u +%Y-%m)" "$(date -u -d "$(date -u +%Y-%m-01) -1 month" +%Y-%m)"; do
+            if curl -fsSL --retry 3 -o "$RUNNER_TEMP/dbip.csv.gz" "https://download.db-ip.com/free/dbip-country-lite-$m.csv.gz"; then ok="$m"; break; fi
+          done
+          [ -n "$ok" ] || { echo "::error::DB-IP Lite niet te downloaden"; exit 1; }
+          gzip -t "$RUNNER_TEMP/dbip.csv.gz"
+          python3 -I tools/geoip_build.py "$RUNNER_TEMP/dbip.csv.gz" "$RUNNER_TEMP/country.bin.gz" | sed "s/^/::notice::DB-IP $ok: /"
+      - name: Naar Storage (bucket geoip)
+        if: env.SUPABASE_ACCESS_TOKEN != '' && env.REF != ''
+        run: |
+          python3 - <<'PY'
+          import json, os, sys, urllib.request, urllib.error
+          REF = os.environ["REF"]; MGMT = os.environ["SUPABASE_ACCESS_TOKEN"]
+          def req(method, url, data=None, headers=None):
+              r = urllib.request.Request(url, data=data, method=method, headers=headers or {})
+              try:
+                  with urllib.request.urlopen(r, timeout=120) as resp: return resp.status, resp.read()
+              except urllib.error.HTTPError as e: return e.code, e.read()
+              except Exception: return 0, b""
+          code, raw = req("GET", f"https://api.supabase.com/v1/projects/{REF}/api-keys?reveal=true", headers={"Authorization": f"Bearer {MGMT}"})
+          key = None
+          try: keys = json.loads(raw or b"[]")
+          except Exception: keys = []
+          for k in keys if isinstance(keys, list) else []:
+              v = k.get("api_key") or ""
+              if v and (k.get("name") == "service_role" or k.get("type") == "secret") and "·" not in v: key = v; break
+          if not key: print(f"::error::geen geheime sleutel (HTTP {code})"); sys.exit(1)
+          print(f"::add-mask::{key}")
+          adm = {"apikey": key, **({"Authorization": f"Bearer {key}"} if key.startswith("ey") else {})}
+          base = f"https://{REF}.supabase.co/storage/v1"
+          # bucket voor het geval Backend nog niet gedraaid heeft (privé, zoals in schema.sql)
+          req("POST", f"{base}/bucket", json.dumps({"id": "geoip", "name": "geoip", "public": False}).encode(), {**adm, "Content-Type": "application/json"})
+          data = open(os.path.join(os.environ["RUNNER_TEMP"], "country.bin.gz"), "rb").read()
+          code, _ = req("POST", f"{base}/object/geoip/country.bin.gz", data, {**adm, "Content-Type": "application/gzip", "x-upsert": "true", "cache-control": "3600"})
+          if code >= 300: print(f"::error::upload mislukt (HTTP {code})"); sys.exit(1)
+          code, back = req("GET", f"{base}/object/authenticated/geoip/country.bin.gz", headers=adm)
+          if code != 200 or back != data: print(f"::error::controle na upload mislukt (HTTP {code})"); sys.exit(1)
+          print(f"::notice::land-IP-tabel in Storage gezet ({len(data) // 1024} KB)")
+          PY

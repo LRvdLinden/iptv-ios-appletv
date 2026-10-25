@@ -72,7 +72,8 @@ import { cleanDeviceName, deviceKind, deviceTypeLabel } from "./naming.ts";
 import { type PasswordCheck, passwordCheckResult } from "./password.ts";
 import { BANNED_BODY, bannedUntilActive, isBanError } from "../_shared/ban.ts";
 import { clientIp } from "../_shared/ip.ts";
-import { countryOf } from "../_shared/country.ts";
+import { countryFor, countryOf, visitorIp } from "../_shared/country.ts";
+import { gunzip, loadTable, lookup } from "../_shared/geoip.ts";
 import { openField, seal, sealField, unseal } from "../_shared/sealed.ts";
 import { normalizePinSection, parsePinHash, validPin } from "../_shared/pin.ts";
 import { buildOf, cleanProfiles, PROFILES_BUILD } from "../_shared/profiles.ts";
@@ -169,10 +170,23 @@ async function listDevices(userId: string, current?: string) {
 // goedkeuren is ingelogd (signed_in_at), zodat een ander apparaat van dezelfde soort dat toevallig opstart hem niet krijgt.
 // De naam krijgt custom_name = true: de standaardnaam van de app overschrijft hem daarna niet meer. Een fout stopt het
 // aanmelden nooit.
-// Land voor het beheer (alleen de landcode uit cf-ipcountry, nooit het IP; _shared/country.ts). Een fout blokkeert niets
-// en komt zonder land of account in het log.
+// Land voor het beheer (alleen de landcode, nooit het IP; _shared/country.ts en _shared/geoip.ts). De land-IP-tabel komt één
+// keer per koude start uit de privé-bucket geoip; is hij er na 3 s nog niet, dan dit keer geen land (volgende heartbeat wel).
+// Een fout blokkeert niets en komt zonder land, IP of account in het log.
+const geoTable = () => loadTable(async () => {
+  const { data, error } = await admin.storage.from("geoip").download("country.bin.gz");
+  if (error || !data) { console.error("country tabel", error?.name ?? "ontbreekt"); return null; }
+  return await gunzip(new Uint8Array(await data.arrayBuffer()));
+});
+const geoTableQuick = () => Promise.race([geoTable(), new Promise<null>((r) => setTimeout(() => r(null), 3000))]);
+// op de achtergrond (EdgeRuntime.waitUntil), zodat het laden van de tabel het antwoord aan de app niet ophoudt
+function inBackground(p: Promise<unknown>) {
+  const rt = (globalThis as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } }).EdgeRuntime;
+  if (rt?.waitUntil) rt.waitUntil(p.catch(() => {})); else p.catch(() => {});
+}
 async function saveCountry(req: Request, userId: string, deviceId: string) {
-  const cc = countryOf(req);
+  let cc: string | null = null;
+  try { cc = await countryFor(req, geoTableQuick); } catch { cc = null; }
   if (!cc) return;
   const { error } = await admin.rpc("bingr_set_country", { p_user: userId, p_device: deviceId, p_country: cc });
   if (error && error.code !== "PGRST202") console.error("country", error.code ?? "fout");
@@ -582,7 +596,7 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
         return json({ error: "device_limit", limit, plan: normalizePlan(row?.plan), devices: await listDevices(user.id) }, 403);
       }
       await pendingName(user.id, device_id, platform);
-      await saveCountry(req, user.id, device_id);
+      inBackground(saveCountry(req, user.id, device_id));
       await legacyMirror(user.id, body.app_version);
       return json({ ok: true, limit });
     }
@@ -599,7 +613,7 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       if (av) patch.app_version = av;
       if (ov) patch.os_version = ov;
       await admin.from("account_devices").update(patch).eq("user_id", user.id).eq("device_id", device_id);
-      await saveCountry(req, user.id, device_id);
+      inBackground(saveCountry(req, user.id, device_id));
       await legacyMirror(user.id, av ?? null);
       // actief vandaag (statistieken); één rij per account per dag
       await admin.from("account_logins").upsert({ user_id: user.id, day: new Date().toISOString().slice(0, 10) },
@@ -747,10 +761,13 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       if (secret.length < 32 || !same(req.headers.get("x-bingr-maint") ?? "", secret)) return json({ error: "forbidden" }, 403);
       const names = [...req.headers.keys()].filter((k) => /country|geo|^cf-|region|city|forwarded|real-ip|client-ip|via|x-sb|x-region/i.test(k)).sort();
       const xff = (req.headers.get("x-forwarded-for") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
-      const probe = await admin.rpc("bingr_set_country", { p_user: null, p_device: "", p_country: "NL" });
+      const t = await geoTable();
+      const cf = (req.headers.get("cf-connecting-ip") ?? "").trim();
+      const cc = (ip: string | undefined) => (t && ip ? lookup(t, ip) ?? "--" : "--");
       return json({
-        names, cc_ok: countryOf(req) !== null, xff_count: xff.length, xff_first_ip: xff.length > 0 && /^[0-9a-f:.]{2,45}$/i.test(xff[0]),
-        cf_connecting_ip: req.headers.has("cf-connecting-ip"), rpc: probe.error ? (probe.error.code ?? "fout") : "ok",
+        names, cc_ok: countryOf(req) !== null, xff_count: xff.length, table: t ? t.v4.length : 0,
+        cf_eq_first: cf !== "" && cf === xff[0], cf_eq_last: cf !== "" && cf === xff[xff.length - 1], cf_cloudflare: /^2a06:98c0:/i.test(cf),
+        cc_cf: cc(cf), cc_first: cc(xff[0]), cc_last: cc(xff[xff.length - 1]), cc_chosen: cc(visitorIp(req) ?? undefined),
       });
     }
     case "maint_seal": {
