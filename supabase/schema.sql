@@ -2517,10 +2517,13 @@ create table if not exists public.newsletter_settings (
   updated_at timestamptz not null default now()
 );
 insert into public.newsletter_settings (id) values (1) on conflict (id) do nothing;
+-- Secties aan/uit (beheer, actie set_sections): Top 10 deze week en Populair. Standaard aan.
+alter table public.newsletter_settings add column if not exists show_top10 boolean not null default true;
+alter table public.newsletter_settings add column if not exists show_popular boolean not null default true;
 alter table public.newsletter_settings enable row level security;
 revoke all on public.newsletter_settings from anon, authenticated;
 
--- Eén rij per editie (edition_key uniek, bv. 2026-10-18-sun): de inhoud per taal ({nl:{featured,fresh,soon,popular}, en:…})
+-- Eén rij per editie (edition_key uniek, bv. 2026-10-18-sun): de inhoud per taal ({nl:{featured,fresh,soon,popular,top10}, en:…})
 -- wordt bij het aanmaken vastgelegd, zodat iedereen dezelfde mail krijgt en de volgende edities kunnen ontdubbelen.
 -- cursor = laatste account-id dat aan de wachtrij is toegevoegd.
 create table if not exists public.newsletter_editions (

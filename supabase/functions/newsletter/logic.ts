@@ -78,8 +78,21 @@ export type Item = {
   overview: string;
   poster: string | null;
   backdrop: string | null;
+  /** TMDB-genre-id's (max. 3, volgorde van TMDB); `genre` = naam van het eerste genre in de taal van de mail */
+  genres?: number[];
+  genre?: string;
+  /** TMDB-score (vote_average, alleen met genoeg stemmen) en IMDb-score (via OMDb, als de sleutel er is) */
+  score?: number | null;
+  imdb?: number | null;
 };
-export type Edition = { featured: Item | null; fresh: Item[]; soon: Item[]; popular: Item[] };
+/** Top 10 van deze week, films en series apart (zoals de rijen "Top 10" in de apps). */
+export type Top10 = { movies: Item[]; tv: Item[] };
+/** Welke bronnen deze editie gebruikt (voor de bronvermelding onderaan). */
+export type Credits = { trakt?: boolean; omdb?: boolean };
+export type Edition = { featured: Item | null; fresh: Item[]; soon: Item[]; popular: Item[]; top10?: Top10; credits?: Credits };
+/** Schakelaars per sectie (newsletter_settings.show_top10 / show_popular); standaard aan. */
+export type Sections = { top10: boolean; popular: boolean };
+export const ALL_SECTIONS: Sections = { top10: true, popular: true };
 export type Content = Record<Lang, Edition>;
 
 const IMG_PATH = /^\/[A-Za-z0-9_-]{1,80}\.(jpg|jpeg|png|webp)$/;
@@ -106,8 +119,17 @@ export function toItem(r: Record<string, unknown>, kind?: Kind): Item | null {
   const poster = imgPath(r.poster_path);
   if (!title || !poster) return null;
   const date = day(mt === "tv" ? r.first_air_date : r.release_date);
-  return { type: mt, id, title, year: date ? Number(date.slice(0, 4)) : null, date, overview: clean(r.overview, 260), poster, backdrop: imgPath(r.backdrop_path) };
+  const it: Item = { type: mt, id, title, year: date ? Number(date.slice(0, 4)) : null, date, overview: clean(r.overview, 260), poster, backdrop: imgPath(r.backdrop_path) };
+  // genre_ids (lijsten) of genres [{id, name}] (details)
+  const g = Array.isArray(r.genre_ids) ? r.genre_ids : Array.isArray(r.genres) ? (r.genres as { id?: unknown }[]).map((x) => x?.id) : [];
+  const genres = g.map(Number).filter((n) => Number.isInteger(n) && n > 0 && n < 1e6).slice(0, 3);
+  if (genres.length) it.genres = genres;
+  const sc = Number(r.vote_average), votes = Number(r.vote_count);
+  if (Number.isFinite(sc) && sc > 0 && sc <= 10 && votes >= MIN_VOTES) it.score = Math.round(sc * 10) / 10;
+  return it;
 }
+/** Minimaal aantal stemmen voordat de TMDB-score in de mail mag (anders zegt hij weinig). */
+export const MIN_VOTES = 20;
 export const ref = (i: { type: Kind; id: number }) => `${i.type}:${i.id}`;
 
 /** Om en om films en series (populairste eerst, zoals Discover.swift), zonder dubbele. */
@@ -131,11 +153,41 @@ export function tmdbQueries(lang: Lang, ms: number) {
     freshTv: ["/discover/tv", { ...base, watch_region: REGION, with_watch_monetization_types: "flatrate", "first_air_date.gte": dayOffset(ms, -120), "first_air_date.lte": today }],
     soonMovies: ["/movie/upcoming", { language, region: REGION, page: "1" }],
     soonTv: ["/discover/tv", { ...base, "first_air_date.gte": dayOffset(ms, 1), "first_air_date.lte": dayOffset(ms, 60) }],
-    popular: ["/trending/all/week", { language }],
+    // Top 10 deze week: TMDB trending (zelfde bron als de rijen "Top 10" in de apps, RichSources.swift), per soort
+    trendMovies: ["/trending/movie/week", { language }],
+    trendTv: ["/trending/tv/week", { language }],
+    // Populair: TMDB popular (geen IMDb: daar is geen openbare API en scrapen mag niet)
+    popularMovies: ["/movie/popular", { language, region: REGION, page: "1" }],
+    popularTv: ["/tv/popular", { language, page: "1" }],
   } as const satisfies Record<string, readonly [string, Record<string, string>]>;
 }
 
-export const LIMITS = { fresh: 6, soon: 4, popular: 5 };
+export const LIMITS = { fresh: 6, soon: 4, popular: 6, top10: 10 };
+
+export type Lists = {
+  freshMovies: Item[]; freshTv: Item[]; soonMovies: Item[]; soonTv: Item[];
+  popularMovies: Item[]; popularTv: Item[]; trendMovies: Item[]; trendTv: Item[];
+  /** Trakt trending (al aangevuld met TMDB-gegevens): vult de Top 10 aan als TMDB te weinig geeft */
+  traktMovies?: Item[]; traktTv?: Item[];
+};
+
+/**
+ * Top 10 van één soort, zoals TrendingStore in de apps: eerst TMDB trending, dan Trakt trending, en als terugval de
+ * populaire titels (in de apps is dat de eigen top uit de bibliotheek; die bestaat aan de serverkant niet). Geen
+ * dubbele, niets uit de toekomst. De volgorde van de bron blijft (het is een ranglijst).
+ */
+export function top10Of(today: string, ...sources: (Item[] | undefined)[]): Item[] {
+  const out: Item[] = [], seen = new Set<string>();
+  for (const src of sources) {
+    for (const x of src ?? []) {
+      if (out.length >= LIMITS.top10) return out;
+      if (seen.has(ref(x)) || (x.date && x.date > today)) continue;
+      seen.add(ref(x));
+      out.push(x);
+    }
+  }
+  return out;
+}
 
 /**
  * Inhoud van één editie uit de TMDB-lijsten. `recentFeatured` = uitgelichte titels van de vorige 2 edities (ref "movie:1"),
@@ -143,12 +195,18 @@ export const LIMITS = { fresh: 6, soon: 4, popular: 5 };
  * niet getoond zijn voor.
  */
 export function buildEdition(
-  lists: { freshMovies: Item[]; freshTv: Item[]; soonMovies: Item[]; soonTv: Item[]; popular: Item[] },
-  ms: number, recentFeatured: Set<string>, recentShown: Set<string> = new Set(),
+  lists: Lists, ms: number, recentFeatured: Set<string>, recentShown: Set<string> = new Set(),
 ): Edition {
   const today = dayOffset(ms, 0);
   const fresh = interleave(lists.freshMovies, lists.freshTv).filter((x) => !x.date || x.date <= today);
-  const popular = lists.popular.filter((x) => !x.date || x.date <= today);
+  const popular = interleave(lists.popularMovies, lists.popularTv).filter((x) => !x.date || x.date <= today);
+  const top10: Top10 = {
+    movies: top10Of(today, lists.trendMovies, lists.traktMovies, lists.popularMovies),
+    tv: top10Of(today, lists.trendTv, lists.traktTv, lists.popularTv),
+  };
+  const traktRefs = new Set([...(lists.traktMovies ?? []), ...(lists.traktTv ?? [])].map(ref));
+  const trendRefs = new Set([...lists.trendMovies, ...lists.trendTv].map(ref));
+  const trakt = [...top10.movies, ...top10.tv].some((x) => traktRefs.has(ref(x)) && !trendRefs.has(ref(x)));
   // uitgelicht: een titel met achtergrond en omschrijving die de vorige 2 edities niet uitgelicht waren
   const pool = [...fresh, ...popular];
   const ok = (x: Item) => !!x.backdrop && !recentFeatured.has(ref(x));
@@ -163,14 +221,60 @@ export function buildEdition(
   const freshOut = pick(fresh, LIMITS.fresh);
   const soonAll = interleave(lists.soonMovies, lists.soonTv).filter((x) => x.date && x.date > today);
   const soon = pick(soonAll.slice(0, 20), LIMITS.soon).sort((a, b) => (a.date ?? "").localeCompare(b.date ?? "") || a.title.localeCompare(b.title));
-  // populair: de volgorde van TMDB houden (een top-lijst), alleen wat al in deze mail staat overslaan
-  const pop = popular.filter((x) => !used.has(ref(x))).slice(0, LIMITS.popular);
-  return { featured, fresh: freshOut, soon, popular: pop };
+  // populair: de volgorde van TMDB houden, maar niets wat al in deze mail staat (ook niet in de Top 10)
+  const inTop = new Set([...top10.movies, ...top10.tv].map(ref));
+  const pop = popular.filter((x) => !used.has(ref(x)) && !inTop.has(ref(x))).slice(0, LIMITS.popular);
+  return { featured, fresh: freshOut, soon, popular: pop, top10, credits: trakt ? { trakt: true } : {} };
+}
+
+/** Secties die in het beheer uit staan weghalen (Top 10 en/of Populair). */
+export function applySections(e: Edition, s: Sections): Edition {
+  return { ...e, popular: s.popular ? e.popular : [], top10: s.top10 ? e.top10 : { movies: [], tv: [] } };
+}
+/** Schakelaars uit een rij van newsletter_settings (ontbrekende kolom = aan). */
+export const sectionsOf = (row: Record<string, unknown> | null | undefined): Sections =>
+  ({ top10: row?.show_top10 !== false, popular: row?.show_popular !== false });
+
+/** Genre-namen (TMDB /genre/…/list) per soort: id -> naam. */
+export type GenreMap = { movie: Map<number, string>; tv: Map<number, string> };
+export function genreMap(movie: unknown, tv: unknown): GenreMap {
+  const m = (j: unknown) => {
+    const out = new Map<number, string>();
+    const g = (j as { genres?: unknown })?.genres;
+    for (const x of Array.isArray(g) ? g : []) {
+      const id = Number((x as { id?: unknown })?.id), name = clean((x as { name?: unknown })?.name, 40);
+      if (Number.isInteger(id) && id > 0 && name) out.set(id, name);
+    }
+    return out;
+  };
+  return { movie: m(movie), tv: m(tv) };
+}
+/** Eerste genre in de taal van de mail; "Action & Adventure" -> "Action & Adventure" (zoals TMDB het noemt). */
+export function withGenre(i: Item, g: GenreMap): Item {
+  const name = (i.genres ?? []).map((id) => g[i.type].get(id)).find(Boolean);
+  return name ? { ...i, genre: name } : i;
+}
+export function mapEdition(e: Edition, f: (i: Item) => Item): Edition {
+  return {
+    ...e, featured: e.featured ? f(e.featured) : null, fresh: e.fresh.map(f), soon: e.soon.map(f), popular: e.popular.map(f),
+    ...(e.top10 ? { top10: { movies: e.top10.movies.map(f), tv: e.top10.tv.map(f) } } : {}),
+  };
+}
+
+/** IMDb-id ("tt1234567") of null. */
+export const imdbId = (v: unknown): string | null => (typeof v === "string" && /^tt\d{5,10}$/.test(v) ? v : null);
+/** IMDb-score uit een OMDb-antwoord ("7.8", "N/A") -> 7.8 of null. */
+export function omdbRating(j: unknown): number | null {
+  const o = j as { Response?: unknown; imdbRating?: unknown } | null;
+  if (!o || o.Response === "False") return null;
+  const n = Number(String(o.imdbRating ?? "").replace(",", "."));
+  return Number.isFinite(n) && n > 0 && n <= 10 ? Math.round(n * 10) / 10 : null;
 }
 
 /** Alle refs in een editie (voor het ontdubbelen van de volgende). */
 export function editionRefs(e: Partial<Edition> | null | undefined): { featured: string[]; shown: string[] } {
   if (!e) return { featured: [], shown: [] };
+  // de Top 10 telt niet mee: een ranglijst mag terugkomen, en hij mag het raster "Nieuw" niet verdringen
   const all = [e.featured, ...(e.fresh ?? []), ...(e.soon ?? []), ...(e.popular ?? [])].filter(Boolean) as Item[];
   return { featured: e.featured ? [ref(e.featured)] : [], shown: all.map(ref) };
 }

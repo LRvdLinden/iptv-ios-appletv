@@ -7,6 +7,8 @@
 // Beheer (header x-newsletter-secret = NEWSLETTER_ADMIN_SECRET; functie admin in bingr-beheer):
 //   status      {} -> {enabled, next:{key, at}, recipients:{nl, en, total}, editions:[{key, created_at, recipients, sent, failed, done}]}
 //   set_enabled {enabled} -> {ok, enabled}
+//   set_sections {top10?, popular?} -> {ok, sections:{top10, popular}}   (secties Top 10 / Populair aan of uit; status geeft
+//               ze ook terug als sections; geldt voor nieuwe edities en het voorbeeld, niet voor een editie die al loopt)
 //   preview     {to, lang?} -> {ok}   (huidige editie naar één adres, onderwerp met "[Voorbeeld]", max. 10 per uur)
 //   render      {lang} -> {subject, html}
 //   welcome_preview {to, lang?} -> {ok}   (welkomstmail naar één adres, "[Voorbeeld]", aanhef met een voorbeeldnaam;
@@ -30,8 +32,8 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import { isMailtestAddress, MAILTEST_HEADER, mailtestOk, smtpConfigured, transport } from "../_shared/mail.ts";
 import { clientIp } from "../_shared/ip.ts";
 import {
-  type Content, dueEdition, type Edition, editionRefs, langOf, type Lang, nextEdition, oneClickUrl, sameSecret, SITE, smtpCode,
-  smtpTemporary, unsubPageUrl, unsubToken, unsubUser, validEmail,
+  applySections, type Content, dueEdition, type Edition, editionRefs, langOf, type Lang, nextEdition, oneClickUrl, sameSecret,
+  type Sections, sectionsOf, SITE, smtpCode, smtpTemporary, unsubPageUrl, unsubToken, unsubUser, validEmail,
 } from "./logic.ts";
 import { renderNewsletter } from "./render.ts";
 import { renderWelcome, SAMPLE_NAME, showNewsletter, WELCOME_BATCH } from "./welcome.ts";
@@ -94,17 +96,27 @@ async function makeContent(ms: number, excludeKey?: string): Promise<Content> {
   const key = env("BINGR_TMDB_API_KEY");
   if (!key) throw new Error("tmdb_not_configured");
   const r = await recent(excludeKey);
-  return await buildContent(ms, key, r.featured, r.shown);
+  // Trakt (Top 10, zoals de apps) en OMDb (IMDb-scores, zoals de apps) zijn optioneel: zonder sleutel alleen TMDB
+  return await buildContent(ms, { tmdb: key, trakt: env("BINGR_TRAKT_CLIENT_ID"), omdb: env("BINGR_OMDB_API_KEY") }, r.featured, r.shown);
 }
+/** Instellingen (één rij): aan/uit en de schakelaars per sectie. select("*"): werkt ook vóór de nieuwe kolommen bestaan. */
+async function settings(): Promise<{ enabled: boolean; sections: Sections }> {
+  const { data } = await admin.from("newsletter_settings").select("*").eq("id", 1).maybeSingle();
+  const row = (data ?? null) as Record<string, unknown> | null;
+  return { enabled: row?.enabled === true, sections: sectionsOf(row) };
+}
+const withSections = (c: Content, s: Sections): Content => ({ nl: applySections(c.nl, s), en: applySections(c.en ?? c.nl, s) });
 // voorbeeld/render: de editie die nu verstuurd wordt, anders een concept (10 minuten in het geheugen)
 let draft: { at: number; content: Content } | null = null;
+// (een lopende editie heeft de secties van toen al toegepast; een concept krijgt de huidige schakelaars)
 async function currentContent(): Promise<Content> {
   const { data } = await admin.from("newsletter_editions").select("content").is("finished_at", null).order("created_at", { ascending: false }).limit(1);
   if (data?.length) return (data[0] as { content: Content }).content;
-  if (draft && Date.now() - draft.at < 600_000) return draft.content;
+  const { sections } = await settings();
+  if (draft && Date.now() - draft.at < 600_000) return withSections(draft.content, sections);
   const content = await makeContent(Date.now(), nextEdition(Date.now()).key);
   draft = { at: Date.now(), content };
-  return content;
+  return withSections(content, sections);
 }
 const editionFor = (c: Content, lang: Lang): Edition => c?.[lang] ?? c?.nl ?? { featured: null, fresh: [], soon: [], popular: [] };
 
@@ -155,15 +167,16 @@ async function sendEdition(e: EditionRow, until: number, t: Totals): Promise<boo
 
 async function cron() {
   const started = Date.now();
-  const { data: st } = await admin.from("newsletter_settings").select("enabled").eq("id", 1).maybeSingle();
-  if (!st?.enabled) return { ok: true, enabled: false, due: null, sent: 0, failed: 0, retry: 0, left: 0 };
+  const st = await settings();
+  if (!st.enabled) return { ok: true, enabled: false, due: null, sent: 0, failed: 0, retry: 0, left: 0 };
   await admin.rpc("bingr_news_cleanup");
   const due = dueEdition(started);
   let created = false;
   if (due) {
     const { data: have } = await admin.from("newsletter_editions").select("id").eq("edition_key", due.key).maybeSingle();
     if (!have) {
-      const content = await makeContent(started, due.key);
+      // secties die uit staan niet in de editie: iedereen krijgt dezelfde mail, ook als de schakelaar later verandert
+      const content = withSections(await makeContent(started, due.key), st.sections);
       const { data: rc } = await admin.rpc("bingr_news_recipients");
       const { data: ins, error } = await admin.from("newsletter_editions")
         .upsert({ edition_key: due.key, content, recipients: Number((rc as { total?: number })?.total ?? 0) }, { onConflict: "edition_key", ignoreDuplicates: true })
@@ -444,7 +457,7 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
     return json(await mailingCron());
   }
   const MAILING = ["mailing_status", "mailing_render", "mailing_test", "mailing_send", "mailing_cancel"];
-  if (![...MAILING, "status", "set_enabled", "preview", "render", "welcome_preview", "welcome_render"].includes(action)) return json({ error: "unknown_action" }, 400);
+  if (![...MAILING, "status", "set_enabled", "set_sections", "preview", "render", "welcome_preview", "welcome_render"].includes(action)) return json({ error: "unknown_action" }, 400);
   const mailtest = (action === "preview" || action === "welcome_preview" || action === "mailing_test") && isMailtestAddress(body.to) &&
     await mailtestOk(req.headers.get(MAILTEST_HEADER), async () => (await admin.from("app_settings").select("value").eq("key", "mailtest").maybeSingle()).data?.value);
   if (!mailtest && !secretOk(req, "NEWSLETTER_ADMIN_SECRET")) return json({ error: "forbidden" }, 403);
@@ -452,7 +465,7 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
   switch (action) {
     case "status": {
       const [st, rc, ed, welcome] = await Promise.all([
-        admin.from("newsletter_settings").select("enabled").eq("id", 1).maybeSingle(),
+        settings(),
         admin.rpc("bingr_news_recipients"),
         admin.from("newsletter_editions").select("edition_key,created_at,recipients,sent,failed,finished_at").order("created_at", { ascending: false }).limit(10),
         welcomeCounts(),
@@ -460,7 +473,7 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       if (rc.error) throw new Error(`recipients: ${rc.error.code ?? "fout"}`);
       const r = (rc.data ?? {}) as Record<string, number>;
       return json({
-        enabled: !!st.data?.enabled, next: nextEdition(Date.now()),
+        enabled: st.enabled, sections: st.sections, next: nextEdition(Date.now()),
         recipients: { nl: Number(r.nl ?? 0), en: Number(r.en ?? 0), total: Number(r.total ?? 0) },
         editions: ((ed.data ?? []) as EditionRow[]).map((e) => ({
           key: e.edition_key, created_at: e.created_at, recipients: e.recipients, sent: e.sent, failed: e.failed, done: !!e.finished_at,
@@ -473,6 +486,18 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       const { error } = await admin.from("newsletter_settings").upsert({ id: 1, enabled: body.enabled, updated_at: new Date().toISOString() });
       if (error) throw new Error(`settings: ${error.code ?? "fout"}`);
       return json({ ok: true, enabled: body.enabled });
+    }
+    case "set_sections": {
+      const patch: Record<string, unknown> = {};
+      for (const [k, col] of [["top10", "show_top10"], ["popular", "show_popular"]] as const) {
+        if (body[k] === undefined) continue;
+        if (typeof body[k] !== "boolean") return json({ error: "bad_sections" }, 400);
+        patch[col] = body[k];
+      }
+      if (!Object.keys(patch).length) return json({ error: "bad_sections" }, 400);
+      const { error } = await admin.from("newsletter_settings").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", 1);
+      if (error) throw new Error(`settings: ${error.code ?? "fout"}`);
+      return json({ ok: true, sections: (await settings()).sections });
     }
     case "render": {
       const lang: Lang = body.lang === "en" ? "en" : "nl";

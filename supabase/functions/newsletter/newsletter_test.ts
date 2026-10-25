@@ -58,9 +58,12 @@ const it = (type: "movie" | "tv", id: number, extra: Partial<Item> = {}): Item =
   type, id, title: `${type} ${id}`, year: 2026, date: "2026-10-01", overview: "Omschrijving", poster: `/p${id}.jpg`, backdrop: `/b${id}.jpg`, ...extra,
 });
 const NOW = ms("2026-10-18T07:00:00Z");
+const L0 = { freshMovies: [], freshTv: [], soonMovies: [], soonTv: [], popularMovies: [], popularTv: [], trendMovies: [] as Item[], trendTv: [] as Item[] };
+// genoeg trending, zodat de Top 10 niet uit Populair hoeft aan te vullen
+L0.trendMovies = Array.from({ length: 10 }, (_, n) => it("movie", 100 + n));
 
 Deno.test("inhoud: uitgelicht ontdubbelen over de vorige 2 edities", () => {
-  const lists = { freshMovies: [it("movie", 1), it("movie", 2)], freshTv: [it("tv", 1), it("tv", 2)], soonMovies: [], soonTv: [], popular: [it("movie", 9)] };
+  const lists = { ...L0, freshMovies: [it("movie", 1), it("movie", 2)], freshTv: [it("tv", 1), it("tv", 2)], popularMovies: [it("movie", 9)] };
   eq(buildEdition(lists, NOW, new Set()).featured?.id, 1, "eerste");
   const e = buildEdition(lists, NOW, new Set(["movie:1", "tv:1"]));
   eq([e.featured?.type, e.featured?.id], ["movie", 2], "vorige uitgelichte overgeslagen");
@@ -79,9 +82,9 @@ Deno.test("inhoud: uitgelicht ontdubbelen over de vorige 2 edities", () => {
 
 Deno.test("inhoud: binnenkort op datum, alleen toekomst; nieuw niet in de toekomst", () => {
   const e = buildEdition({
+    ...L0,
     freshMovies: [it("movie", 1, { date: "2026-12-01" }), it("movie", 2)], freshTv: [],
     soonMovies: [it("movie", 5, { date: "2026-11-20" }), it("movie", 6, { date: "2026-10-10" })], soonTv: [it("tv", 7, { date: "2026-10-30" })],
-    popular: [],
   }, NOW, new Set());
   eq(e.fresh.map((x) => x.id), [], "toekomstige titel niet in Nieuw, nr. 2 is uitgelicht");
   eq(e.featured?.id, 2);
@@ -113,7 +116,8 @@ Deno.test("TMDB: ophalen met v3 en v4, vertalen zonder Nederlandse tekst in de E
   eq(l.freshMovies.length, 1);
   ok(seen.every((s) => s.url.searchParams.get("api_key") && !s.auth), "v3 als api_key");
   ok(seen.some((s) => s.url.pathname === "/3/discover/movie" && s.url.searchParams.get("watch_region") === "NL" && s.url.searchParams.get("with_watch_monetization_types") === "flatrate"), "streaming in NL");
-  ok(seen.some((s) => s.url.pathname === "/3/trending/all/week"), "populair");
+  ok(seen.some((s) => s.url.pathname === "/3/movie/popular") && seen.some((s) => s.url.pathname === "/3/tv/popular"), "populair");
+  ok(seen.some((s) => s.url.pathname === "/3/trending/movie/week") && seen.some((s) => s.url.pathname === "/3/trending/tv/week"), "top 10");
   ok(seen.every((s) => s.url.searchParams.get("language") === "nl-NL"), "taal");
   seen.length = 0;
   await fetchLists("en", NOW, "eyJhbGciOiJIUzI1NiJ9." + "a".repeat(80) + ".sig", fake);
@@ -152,7 +156,7 @@ Deno.test("HTML: huisstijl, escapen van TMDB-tekst, knoppen, voettekst", () => {
   }
   const nl = renderNewsletter({ lang: "nl", edition: ed, unsubscribeUrl: "https://u", year: 2026 });
   ok(nl.html.includes("Bingr levert zelf geen films of series. Of een titel bij jou te zien is, hangt af van je eigen bron."), "eerlijke zin");
-  ok(nl.html.includes("Bekijk in Bingr") && nl.html.includes("Meer info") && nl.html.includes("Binnenkort") && nl.html.includes("Populair deze week"), "secties nl");
+  ok(nl.html.includes("Bekijk in Bingr") && nl.html.includes("Meer info") && nl.html.includes("Binnenkort") && nl.html.includes(">Populair<"), "secties nl");
   ok(nl.html.includes(">5 nov<"), "datum bij binnenkort");
   const en = renderNewsletter({ lang: "en", edition: ed, unsubscribeUrl: "https://u", year: 2026 });
   ok(en.html.includes("Watch in Bingr") && en.html.includes("Coming soon") && en.html.includes(">Nov 5<") && en.html.includes('lang="en"'), "secties en");

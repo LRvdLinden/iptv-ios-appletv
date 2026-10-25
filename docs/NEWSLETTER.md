@@ -27,18 +27,35 @@ Per editie, eenmalig bij het aanmaken vastgelegd in `newsletter_editions.content
 | Uitgelicht (achtergrond, titel, omschrijving, knoppen) | eerste titel uit "Nieuw om te kijken" (anders Populair) met achtergrond, die de **vorige 2 edities niet uitgelicht** was | 1 |
 | Nieuw om te kijken | `/discover/movie` + `/discover/tv`, `watch_region=NL`, `with_watch_monetization_types=flatrate`, laatste 90 (films) / 120 (series) dagen, om en om, populairste eerst (zoals "Nieuw op Bingr" in `Shared/Metadata/Discover.swift`); titels die de vorige 2 edities niet toonden gaan voor | 6 |
 | Binnenkort (met datum) | `/movie/upcoming` (regio NL) + `/discover/tv` met eerste uitzending in de komende 60 dagen; alleen toekomst, op datum | 4 |
-| Populair deze week | `/trending/all/week` (films en series, geen personen) | 5 |
+| Top 10 deze week (films en series apart, elk 2 rijen van 5 posters met rangnummer, jaar · genre en score) | zoals de rijen "Top 10" in de apps (`TrendingStore` in `Shared/UI/Components/TitleMatcher.swift`): TMDB `/trending/movie/week` en `/trending/tv/week`, aangevuld met Trakt trending (`/movies/trending`, `/shows/trending`, function-secret `BINGR_TRAKT_CLIENT_ID`, poster en titel via TMDB-details) en als terugval TMDB populair (de eigen top uit de bibliotheek van de apps bestaat aan de serverkant niet). Volgorde van de bron, geen dubbele, niets uit de toekomst. Schakelaar `show_top10` | 10 + 10 |
+| Populair (3 kolommen, soort · jaar · genre en score) | TMDB `/movie/popular` (regio NL) + `/tv/popular`, om en om, zonder titels die al in deze mail staan (ook niet in de Top 10). Schakelaar `show_popular` | 6 |
+
+**IMDb:** IMDb heeft geen openbare API en scrapen mag niet volgens hun voorwaarden; dat gebeurt dus nergens. De score bij
+de Top 10 en Populair is de **IMDb-score via OMDb** (function-secret `BINGR_OMDB_API_KEY`, dezelfde bron als de IMDb-scores
+in de apps): IMDb-id uit Trakt of TMDB `/{movie|tv}/{id}/external_ids`, score uit `omdbapi.com/?i=tt…` (hoogstens 40
+titels per editie, 5 tegelijk). Zonder OMDb-sleutel, of als OMDb niets geeft: de TMDB-score (`vote_average`, alleen
+met minstens 20 stemmen), als "TMDB 7,3". De sectie heet daarom "Populair" en niet "Populair op IMDb". Genres:
+TMDB `/genre/movie/list` en `/genre/tv/list` per taal (eerste genre van de titel). Trakt- en OMDb-fouten zijn nooit
+fataal (dan zonder die gegevens). Sleutels worden nooit gelogd; de Trakt-client-id gaat alleen in de kop `trakt-api-key`.
+
+**Schakelaars per sectie** (`newsletter_settings.show_top10` / `show_popular`, standaard aan; beheer: actie
+`set_sections`): een sectie die uit staat komt niet in een nieuwe editie (bij het aanmaken toegepast, zodat iedereen
+dezelfde mail krijgt) en niet in het voorbeeld van de volgende editie. Een editie die al loopt verandert niet.
 
 De keuze wordt op de Nederlandse lijsten gemaakt; de Engelse mail krijgt dezelfde titels met Engelse titel en omschrijving
 (geen Engelse omschrijving bekend: zonder omschrijving, nooit Nederlandse tekst). Nooit namen of logo's van
 streamingdiensten, geen prijzen. Vaste zin in elke mail: "Bingr levert zelf geen films of series. Of een titel bij jou te
 zien is, hangt af van je eigen bron." / "Bingr doesn't provide any movies or series itself. Whether you can watch a title
-depends on your own source." Voettekst: afmelden, privacy, support en klein "Film- en seriegegevens: TMDB" (TMDB-voorwaarden).
+depends on your own source." Voettekst: afmelden, privacy, support en klein de bronvermelding: altijd "Film- en
+seriegegevens: TMDB. Deze mail gebruikt de TMDB API, maar is niet goedgekeurd of gecertificeerd door TMDB."
+(TMDB-voorwaarden), en alleen als ze gebruikt zijn "Streaminggegevens: JustWatch." (Nieuw om te kijken),
+"Top 10 mede op basis van Trakt." en "IMDb-scores via OMDb." (`content.<taal>.credits`, `{trakt?, omdb?}`).
 Alle TMDB-tekst wordt ge-escaped; afbeeldingen alleen van `image.tmdb.org` met een gecontroleerd pad.
 
 ## Links naar een titel
 
-Knoppen ("Bekijk in Bingr" / "Meer info"), posters en titels linken naar de universele link
+Knoppen ("Bekijk in Bingr" / "Meer info"), posters en titels (ook in de Top 10 en Populair) linken naar de universele
+link (zonder trackers of persoonsgegevens: alleen `type`, `id`, `q` en `y`)
 
 ```
 https://bingr.online/titel/?type=movie|tv&id=<tmdb-id>&q=<titel, url-encoded>&y=<jaar>
@@ -115,8 +132,9 @@ aangemaakt door *Backend*; zonder of fout geheim → 403 `{error:"forbidden"}`).
 
 | actie | invoer | antwoord |
 |---|---|---|
-| `status` | `{}` | `{enabled, next:{key, at}, recipients:{nl, en, total}, editions:[{key, created_at, recipients, sent, failed, done}], welcome:{sent_7d, pending} \| null}` (laatste 10 edities, nieuwste eerst; `at` = ISO-tijd in UTC; `welcome` = welkomstmails, alleen aantallen) |
+| `status` | `{}` | `{enabled, sections:{top10, popular}, next:{key, at}, recipients:{nl, en, total}, editions:[{key, created_at, recipients, sent, failed, done}], welcome:{sent_7d, pending} \| null}` (laatste 10 edities, nieuwste eerst; `at` = ISO-tijd in UTC; `welcome` = welkomstmails, alleen aantallen) |
 | `set_enabled` | `{enabled: true\|false}` | `{ok, enabled}`; 400 `bad_enabled` |
+| `set_sections` | `{top10?: true\|false, popular?: true\|false}` | `{ok, sections:{top10, popular}}`; 400 `bad_sections` (geen of geen boolean). `status` geeft ook `sections:{top10, popular}` |
 | `preview` | `{to, lang?: "nl"\|"en"}` | `{ok}`: de huidige editie (die nu verstuurd wordt, anders een concept van de volgende) alleen naar dat adres, onderwerp begint met `[Voorbeeld]`. 400 `bad_email`, 429 `rate_limited` (10 per uur), 503 `smtp_not_configured` / `tmdb_not_configured`, 502 `{error:"send_failed", code}` |
 | `render` | `{lang: "nl"\|"en"}` | `{subject, html}` van de huidige editie (zonder aanhef, afmeldlink zonder token) |
 | `welcome_preview` | `{to, lang?: "nl"\|"en"}` | `{ok}`: de welkomstmail alleen naar dat adres, onderwerp `[Voorbeeld] …`, aanhef met de voorbeeldnaam *Alex*. Zelfde limiet als `preview` (samen 10 per uur), zelfde fouten |

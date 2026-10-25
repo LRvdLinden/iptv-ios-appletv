@@ -100,7 +100,8 @@ jobs:
         # HTML (escapen van TMDB-tekst), universele links, afmeldtoken, TMDB v3/v4
         # en de welkomstmail (opbouw, escapen, aanhef, links, selectie, eerste uitrol)
         # en de eigen mailing uit het beheer (invoer, opmaak/escapen, NL/EN, doelgroep, verzendronde, limiet per uur)
-        run: deno test supabase/functions/newsletter/newsletter_test.ts supabase/functions/newsletter/welcome_test.ts supabase/functions/newsletter/mailing_test.ts
+        # en de secties Top 10 / Populair (nep-TMDB/Trakt/OMDb, schakelaars, links naar bingr.online/titel/, tags en alt-teksten)
+        run: deno test supabase/functions/newsletter/newsletter_test.ts supabase/functions/newsletter/welcome_test.ts supabase/functions/newsletter/mailing_test.ts supabase/functions/newsletter/sections_test.ts
       - name: Unittests (deelpreview)
         # blokkeert de deploy: validatie (type/id/q/y), TMDB-antwoord -> metadata (nl met terugval en, afbeeldingen), limiet
         run: deno test supabase/functions/title-meta/title_meta_test.ts
@@ -938,7 +939,7 @@ jobs:
           F="https://$REF.supabase.co/functions/v1/newsletter"
           J=(-H "Content-Type: application/json")
           # 1. beheeracties en cron zonder (of met fout) geheim -> 403
-          for a in status set_enabled preview render cron welcome_preview welcome_render welcome_cron mailing_status mailing_render mailing_test mailing_send mailing_cancel mailing_cron; do
+          for a in status set_enabled set_sections preview render cron welcome_preview welcome_render welcome_cron mailing_status mailing_render mailing_test mailing_send mailing_cancel mailing_cron; do
             code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$F" "${J[@]}" -H "x-newsletter-secret: fout-geheim-0000000000000000" -d "{\"action\":\"$a\"}")
             [ "$code" = 403 ] || { echo "::error::newsletter $a met fout geheim gaf HTTP $code"; exit 1; }
             code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$F" "${J[@]}" -d "{\"action\":\"$a\"}")
