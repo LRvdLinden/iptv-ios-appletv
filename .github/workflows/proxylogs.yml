@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   logs:
@@ -17,9 +17,10 @@ jobs:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_LOGS_TOKEN || secrets.SUPABASE_ACCESS_TOKEN }}
       REF: ${{ secrets.SUPABASE_PROJECT_REF }}
     steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 (v5.1.0)
       - name: web-proxy (alleen aggregaten)
         run: |
-          python3 - <<'PY'
+          python3 - <<'PY' > "$RUNNER_TEMP/proxylogs.txt"
           import datetime, json, os, re, time, urllib.error, urllib.parse, urllib.request
           API = f"https://api.supabase.com/v1/projects/{os.environ['REF']}/analytics/endpoints/logs"
           def logs(sql, hours):
@@ -67,3 +68,10 @@ jobs:
                "OR positionCaseInsensitive(event_message, 'shutdown') > 0 OR positionCaseInsensitive(event_message, 'boot') > 0) "
                "GROUP BY msg ORDER BY n DESC LIMIT 25", 48, ["msg", "n"])
           PY
+      - name: Naar de tijdelijke branch ci-proxylogs
+        run: |
+          git config user.name "github-actions"; git config user.email "actions@github.com"
+          git switch --orphan ci-proxylogs-tmp
+          git rm -rf --quiet . || true
+          cp "$RUNNER_TEMP/proxylogs.txt" proxylogs.txt
+          git add proxylogs.txt && git commit -qm "proxylogs (aggregaten)" && git push -f origin HEAD:ci-proxylogs
