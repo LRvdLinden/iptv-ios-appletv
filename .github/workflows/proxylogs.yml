@@ -1,0 +1,69 @@
+name: Proxylogs (tijdelijk)
+
+# Tijdelijk (spoedfout http_502 in de webspeler): alleen aantallen, statuscodes, duur en foutsoorten van web-proxy.
+# Nooit URL's, hosts, IP's, gebruikers of tokens in dit (openbare) log. Wordt na de diagnose weer verwijderd.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  logs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_LOGS_TOKEN || secrets.SUPABASE_ACCESS_TOKEN }}
+      REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+    steps:
+      - name: web-proxy (alleen aggregaten)
+        run: |
+          python3 - <<'PY'
+          import datetime, json, os, re, time, urllib.error, urllib.parse, urllib.request
+          API = f"https://api.supabase.com/v1/projects/{os.environ['REF']}/analytics/endpoints/logs"
+          def logs(sql, hours):
+              for wait in (5, 10, 20, 30, 0):
+                  end = datetime.datetime.now(datetime.timezone.utc); start = end - datetime.timedelta(hours=hours)
+                  qs = urllib.parse.urlencode({"sql": sql, "iso_timestamp_start": start.strftime("%Y-%m-%dT%H:%M:%SZ"), "iso_timestamp_end": end.strftime("%Y-%m-%dT%H:%M:%SZ")})
+                  r = urllib.request.Request(f"{API}?{qs}", headers={"Authorization": f"Bearer {os.environ['SUPABASE_ACCESS_TOKEN']}"})
+                  try:
+                      with urllib.request.urlopen(r, timeout=60) as resp: c, b = resp.status, json.loads(resp.read() or b"{}")
+                  except urllib.error.HTTPError as e:
+                      c, b = e.code, None
+                  except Exception: c, b = 0, None
+                  if c != 429 or not wait: return c, b
+                  time.sleep(wait)
+          SAFE = re.compile(r"[^A-Za-z_ :()=<>|-]")
+          def show(title, sql, hours, cols):
+              c, b = logs(sql, hours)
+              rows = (b or {}).get("result") if isinstance(b, dict) else None
+              print(f"== {title} (HTTP {c}, {len(rows) if isinstance(rows, list) else '-'} rijen)")
+              if isinstance(b, dict) and b.get("error"): print("   fout:", SAFE.sub(" ", str(b.get("error")))[:200])
+              for r in rows or []:
+                  out = []
+                  for k in cols:
+                      v = r.get(k)
+                      if isinstance(v, (int, float)): out.append(f"{k}={round(v, 1)}")
+                      else: out.append(f"{k}={SAFE.sub('', re.sub(r'[^ ]*[.@/:][^ ]*', '<x>', str(v)) if k == 'msg' else str(v))[:60]}")
+                  print("  ", " ".join(out))
+          WP = "source = 'function_edge_logs' AND position(log_attributes['request.url'], '/functions/v1/web-proxy') > 0"
+          A = "log_attributes"
+          show("velden (namen) van function_edge_logs voor web-proxy",
+               f"SELECT k, count() AS n FROM logs ARRAY JOIN mapKeys({A}) AS k WHERE {WP} GROUP BY k ORDER BY k", 6, ["k", "n"])
+          show("per methode en status, 48 uur",
+               f"SELECT {A}['request.method'] AS m, {A}['response.status_code'] AS s, {A}['response.headers.x_upstream_status'] AS up, "
+               f"{A}['response.headers.content_type'] AS ct, count() AS n, avg(toFloat64OrZero({A}['execution_time_ms'])) AS avg_ms, "
+               f"max(toFloat64OrZero({A}['execution_time_ms'])) AS max_ms FROM logs WHERE {WP} GROUP BY m, s, up, ct ORDER BY n DESC LIMIT 40", 48,
+               ["m", "s", "up", "ct", "n", "avg_ms", "max_ms"])
+          show("POST-status per uur, 72 uur",
+               f"SELECT toStartOfHour(timestamp) AS h, countIf({A}['response.status_code'] = '200') AS ok, countIf({A}['response.status_code'] = '502') AS e502, "
+               f"countIf(toInt32OrZero({A}['response.status_code']) >= 400 AND {A}['response.status_code'] != '502') AS other FROM logs "
+               f"WHERE {WP} AND {A}['request.method'] = 'POST' GROUP BY h ORDER BY h", 72, ["h", "ok", "e502", "other"])
+          show("console van functies (foutsoorten, alleen letters), 48 uur",
+               "SELECT substring(event_message, 1, 80) AS msg, count() AS n FROM logs WHERE source = 'function_logs' "
+               "AND (positionCaseInsensitive(event_message, 'web-proxy') > 0 OR positionCaseInsensitive(event_message, 'limit') > 0 "
+               "OR positionCaseInsensitive(event_message, 'memory') > 0 OR positionCaseInsensitive(event_message, 'uncaught') > 0 "
+               "OR positionCaseInsensitive(event_message, 'shutdown') > 0 OR positionCaseInsensitive(event_message, 'boot') > 0) "
+               "GROUP BY msg ORDER BY n DESC LIMIT 25", 48, ["msg", "n"])
+          PY
