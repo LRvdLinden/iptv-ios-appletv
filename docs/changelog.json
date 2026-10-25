@@ -1,5 +1,144 @@
 [
  {
+  "build": 149,
+  "version": "1.0.1",
+  "date": "2026-10-25",
+  "items": [
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "webos",
+     "web",
+     "windows"
+    ],
+    "nl": "Geen haperingen meer bij sync toepassen en bewaren: datums worden niet meer per item opnieuw opgemaakt",
+    "en": "No more stutters when applying sync and saving: dates are no longer formatted again for every item"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "android",
+     "androidtv",
+     "tizen",
+     "webos",
+     "web",
+     "windows"
+    ],
+    "nl": "Grote servers laden sneller en met veel minder geheugen; verborgen categorieën worden niet meer ingelezen",
+    "en": "Large servers load faster and use far less memory; hidden categories are no longer loaded"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "Bewaren van grote catalogi gebruikt veel minder geheugen",
+    "en": "Saving large catalogs uses much less memory"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "android",
+     "androidtv",
+     "tizen",
+     "webos"
+    ],
+    "nl": "Een heel grote server stopt netjes met een melding in plaats van de app te laten wegvallen",
+    "en": "A very large server now stops cleanly with a message instead of the app closing"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "webos",
+     "web",
+     "windows"
+    ],
+    "nl": "Op Home een rij Ontdek categorieën met posters, een gekleurde balk en het logo van de streamingdienst",
+    "en": "A Discover categories row on Home with posters, a coloured bar and the streaming service logo"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "webos",
+     "web",
+     "windows"
+    ],
+    "nl": "Zoeken vindt meer: losse woorden in elke volgorde, zonder accenten en voorvoegsels en met een kleine typefout",
+    "en": "Search finds more: separate words in any order, ignoring accents and prefixes, with a small typo"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web",
+     "windows"
+    ],
+    "nl": "Zoeken doorzoekt ook de catalogi van Stremio-add-ons",
+    "en": "Search also looks through Stremio add-on catalogs"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "web",
+     "windows"
+    ],
+    "nl": "Zoeken toont ook treffers uit verborgen categorieën, onderaan",
+    "en": "Search also shows matches from hidden categories, at the bottom"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "webos"
+    ],
+    "nl": "Diagnose: de bereikbaarheid van je eigen server en de fase toepassen worden goed gemeten",
+    "en": "Diagnostics: your own server's reachability and the apply step are measured correctly"
+   }
+  ]
+ },
+ {
   "build": 148,
   "version": "1.0.1",
   "date": "2026-10-25",

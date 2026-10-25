@@ -4,6 +4,59 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.1 · Build 149
+_25 oktober 2026_
+
+### Alle apps en de website
+
+**Nieuw**
+
+- Op Home een rij Ontdek categorieën met posters, een gekleurde balk en het logo van de streamingdienst
+
+**Verbeterd**
+
+- Zoeken vindt meer: losse woorden in elke volgorde, zonder accenten en voorvoegsels en met een kleine typefout
+
+**Opgelost**
+
+- Geen haperingen meer bij sync toepassen en bewaren: datums worden niet meer per item opnieuw opgemaakt
+
+### iOS, iPadOS, tvOS en macOS
+
+**Verbeterd**
+
+- Bewaren van grote catalogi gebruikt veel minder geheugen
+
+### iOS, iPadOS, tvOS, macOS, Windows en Website
+
+**Verbeterd**
+
+- Zoeken toont ook treffers uit verborgen categorieën, onderaan
+
+### iOS, iPadOS, tvOS, Android, Android TV, Samsung TV (Tizen) en LG TV (webOS)
+
+**Opgelost**
+
+- Een heel grote server stopt netjes met een melding in plaats van de app te laten wegvallen
+
+### iOS, iPadOS, tvOS, macOS, Android, Android TV, Windows en Website
+
+**Verbeterd**
+
+- Zoeken doorzoekt ook de catalogi van Stremio-add-ons
+
+### iOS, iPadOS, tvOS, macOS, Android, Android TV, Samsung TV (Tizen) en LG TV (webOS)
+
+**Opgelost**
+
+- Diagnose: de bereikbaarheid van je eigen server en de fase toepassen worden goed gemeten
+
+### Android, Android TV, Samsung TV (Tizen), Windows, LG TV (webOS) en Website
+
+**Verbeterd**
+
+- Grote servers laden sneller en met veel minder geheugen; verborgen categorieën worden niet meer ingelezen
+
 ## Versie 1.0.1 · Build 148
 _25 oktober 2026_
 
