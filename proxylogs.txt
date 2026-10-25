@@ -1,0 +1,12 @@
+== failLog-regels web-proxy (6 uur, HTTP 200)
+   web-proxy fout=connect_refused upstream=- vorm=post pad=api actie=login https=1 ms=30 bytes=0 doorverwijzingen=0 n= 1 last= 2026-10-25T14:52:05.665000
+   web-proxy fout=connect_refused upstream=- vorm=post pad=api actie=login https=1 ms=33 bytes=0 doorverwijzingen=0 n= 1 last= 2026-10-25T14:51:28.718000
+   web-proxy fout=- upstream=404 vorm=post pad=api actie=login https=1 ms=62 bytes=0 doorverwijzingen=0 n= 1 last= 2026-10-25T14:46:37.057000
+   web-proxy fout=connect_refused upstream=- vorm=post pad=api actie=login https=1 ms=36 bytes=0 doorverwijzingen=0 n= 1 last= 2026-10-25T14:43:46.871000
+   web-proxy fout=connect_refused upstream=- vorm=post pad=api actie=login https=1 ms=31 bytes=0 doorverwijzingen=0 n= 1 last= 2026-10-25T14:43:35.527000
+== web-proxy POST-status (2 uur) (HTTP 200, 5 rijen)
+   s=502 n=27 last=2026-10-25T14:52:05.670000
+   s=200 n=106 last=2026-10-25T14:46:41.431000
+   s=404 n=1 last=2026-10-25T14:46:37.069000
+   s=403 n=5 last=2026-10-25T14:46:35.998000
+   s=401 n=1 last=2026-10-25T14:45:26.304000
