@@ -23,10 +23,14 @@ jobs:
           python3 - <<'PY' > "$RUNNER_TEMP/proxylogs.txt"
           import datetime, json, os, re, time, urllib.error, urllib.parse, urllib.request
           API = f"https://api.supabase.com/v1/projects/{os.environ['REF']}/analytics/endpoints/logs"
-          def logs(sql, hours):
+          def logs(sql, hours, start=None):
               for wait in (5, 10, 20, 30, 0):
-                  end = datetime.datetime.now(datetime.timezone.utc); start = end - datetime.timedelta(hours=hours)
-                  qs = urllib.parse.urlencode({"sql": sql, "iso_timestamp_start": start.strftime("%Y-%m-%dT%H:%M:%SZ"), "iso_timestamp_end": end.strftime("%Y-%m-%dT%H:%M:%SZ")})
+                  if start is None:
+                      end = datetime.datetime.now(datetime.timezone.utc); st = end - datetime.timedelta(hours=hours)
+                  else:
+                      st = start; end = start + datetime.timedelta(hours=hours)
+                  start_ = st
+                  qs = urllib.parse.urlencode({"sql": sql, "iso_timestamp_start": start_.strftime("%Y-%m-%dT%H:%M:%SZ"), "iso_timestamp_end": end.strftime("%Y-%m-%dT%H:%M:%SZ")})
                   r = urllib.request.Request(f"{API}?{qs}", headers={"Authorization": f"Bearer {os.environ['SUPABASE_ACCESS_TOKEN']}"})
                   try:
                       with urllib.request.urlopen(r, timeout=60) as resp: c, b = resp.status, json.loads(resp.read() or b"{}")
@@ -37,8 +41,8 @@ jobs:
                   time.sleep(wait)
           SAFE = re.compile(r"[^A-Za-z_ :()=<>|-]")
           NUM = re.compile(r"[^A-Za-z0-9_ .:()=<>|/+-]")
-          def show(title, sql, hours, cols):
-              c, b = logs(sql, hours)
+          def show(title, sql, hours, cols, start=None):
+              c, b = logs(sql, hours, start)
               rows = (b or {}).get("result") if isinstance(b, dict) else None
               print(f"== {title} (HTTP {c}, {len(rows) if isinstance(rows, list) else '-'} rijen)")
               if isinstance(b, dict) and b.get("error"): print("   fout:", SAFE.sub(" ", str(b.get("error")))[:200])
@@ -52,12 +56,20 @@ jobs:
           WP = "source = 'function_edge_logs' AND position(log_attributes['request.url'], '/functions/v1/web-proxy') > 0"
           A = "log_attributes"
           U = f"{A}['request.sb.auth_user']"
-          show("gebruikers met 502 vandaag: hun POST-uitkomsten per uur (geen id's)",
-               f"SELECT toStartOfHour(timestamp) AS h, {A}['response.status_code'] AS s, {A}['response.headers.content_type'] AS ct, count() AS n, uniqExact({U}) AS users, "
-               f"avg(toFloat64OrZero({A}['execution_time_ms'])) AS avg_ms, max(toFloat64OrZero({A}['response.headers.content_length'])) AS max_len FROM logs WHERE {WP} AND {A}['request.method'] = 'POST' "
-               f"AND {U} IN (SELECT {U} FROM logs WHERE {WP} AND {A}['response.status_code'] = '502') GROUP BY h, s, ct ORDER BY h DESC LIMIT 40", 24, ["h", "s", "ct", "n", "users", "avg_ms", "max_len"])
-          show("502-rijen: content_length en content_length van het verzoek",
-               f"SELECT {A}['response.headers.content_length'] AS rl, {A}['request.headers.content_length'] AS ql, toFloat64OrZero({A}['execution_time_ms']) AS ms, timestamp AS t FROM logs WHERE {WP} AND {A}['response.status_code'] = '502' ORDER BY t", 24, ["rl", "ql", "ms", "t"])
+          U = f"{A}['request.sb.auth_user']"
+          import datetime as dt
+          SUB = f"(SELECT {U} FROM logs WHERE {WP} AND {A}['response.status_code'] = '502')"
+          # eerst de getroffen gebruiker(s) bepalen in de laatste 24 uur, dan als hash-vergelijking in eerdere vensters (geen id's in het log)
+          c, b = logs(f"SELECT DISTINCT {U} AS u FROM logs WHERE {WP} AND {A}['response.status_code'] = '502'", 24)
+          ids = [str(r.get("u")) for r in ((b or {}).get("result") or []) if re.fullmatch(r"[0-9a-f-]{36}", str(r.get("u") or ""))]
+          print("getroffen gebruikers:", len(ids))
+          IN = "(" + ",".join("'" + i + "'" for i in ids) + ")" if ids else "('')"
+          for day in ("2026-10-22", "2026-10-23", "2026-10-24", "2026-10-25"):
+              st = dt.datetime.fromisoformat(day + "T00:00:00+00:00")
+              show(f"getroffen gebruiker(s) {day}: POST per uur, status en type",
+                   f"SELECT toStartOfHour(timestamp) AS h, {A}['response.status_code'] AS s, {A}['response.headers.content_type'] AS ct, count() AS n, "
+                   f"max(toFloat64OrZero({A}['response.headers.content_length'])) AS max_len FROM logs WHERE {WP} AND {A}['request.method'] = 'POST' AND {U} IN {IN} "
+                   f"GROUP BY h, s, ct ORDER BY h LIMIT 60", 24, ["h", "s", "ct", "n", "max_len"], st)
           PY
       - name: Naar de tijdelijke branch ci-proxylogs
         run: |
