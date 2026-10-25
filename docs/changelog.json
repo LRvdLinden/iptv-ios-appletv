@@ -1,5 +1,88 @@
 [
  {
+  "build": 151,
+  "version": "1.0.1",
+  "date": "2026-10-25",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "webos",
+     "web",
+     "windows"
+    ],
+    "nl": "Nieuwe rij Zenders op Home met de logo's van je eigen zenders: je recente zenders en favorieten eerst, met het programma van nu eronder; klikken start de zender meteen",
+    "en": "New Channels row on Home with the logos of your own channels: your recent channels and favourites first, with what's on now underneath; clicking starts the channel right away"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "webos",
+     "web",
+     "windows"
+    ],
+    "nl": "Een titel of zender die op meerdere servers staat, staat maar één keer in de rijen op Home, uit de bron in je taal; de andere servers kies je op de detailpagina",
+    "en": "A title or channel available on several servers appears only once in the rows on Home, from the source in your language; pick another server on the details page"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "Grote servers met veel verborgen categorieën laden veel zuiniger: wat verborgen is wordt alleen geteld, niet ingelezen (vooral op Apple TV)",
+    "en": "Large servers with many hidden categories load far more efficiently: hidden items are only counted, not loaded (especially on Apple TV)"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "Categorieën en Beheren tonen het aantal titels of zenders per categorie, ook van verborgen categorieën, met nette namen",
+    "en": "Categories and Manage show the number of titles or channels per category, including hidden ones, with clean names"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "Bij dezelfde titel in samengevoegde categorieën gaat de bron in je audio- of app-taal voor",
+    "en": "For the same title in merged categories, the source in your audio or app language comes first"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "web",
+     "windows"
+    ],
+    "nl": "Synchroniseren van Mijn lijst, voortgang en geschiedenis gebeurt op de achtergrond, zonder haperingen, ook bij een groot profiel",
+    "en": "Syncing My List, progress and history now runs in the background without stutters, even with a large profile"
+   }
+  ]
+ },
+ {
   "build": 150,
   "version": "1.0.1",
   "date": "2026-10-25",

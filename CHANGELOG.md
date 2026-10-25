@@ -4,6 +4,33 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.1 · Build 151
+_25 oktober 2026_
+
+### Alle apps en de website
+
+**Nieuw**
+
+- Nieuwe rij Zenders op Home met de logo's van je eigen zenders: je recente zenders en favorieten eerst, met het programma van nu eronder; klikken start de zender meteen
+
+**Verbeterd**
+
+- Een titel of zender die op meerdere servers staat, staat maar één keer in de rijen op Home, uit de bron in je taal; de andere servers kies je op de detailpagina
+
+### iOS, iPadOS, tvOS en macOS
+
+**Verbeterd**
+
+- Grote servers met veel verborgen categorieën laden veel zuiniger: wat verborgen is wordt alleen geteld, niet ingelezen (vooral op Apple TV)
+- Categorieën en Beheren tonen het aantal titels of zenders per categorie, ook van verborgen categorieën, met nette namen
+- Bij dezelfde titel in samengevoegde categorieën gaat de bron in je audio- of app-taal voor
+
+### Windows en Website
+
+**Verbeterd**
+
+- Synchroniseren van Mijn lijst, voortgang en geschiedenis gebeurt op de achtergrond, zonder haperingen, ook bij een groot profiel
+
 ## Versie 1.0.1 · Build 150
 _25 oktober 2026_
 
