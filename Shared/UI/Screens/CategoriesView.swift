@@ -15,8 +15,8 @@ struct CategoriesView: View {
     @State private var kind: ManageView.Kind = .live
     @State private var filter = ""
     @State private var index = CategoryIndex()
-    /// Getikt maar nog niet opgeslagen: categorie → aan
-    @State private var pending: [String: Bool] = [:]
+    /// Getikt maar nog niet opgeslagen: bron (server + exacte naam) → aan
+    @State private var pending: [CategoryIndex.Source: Bool] = [:]
     @State private var commitTask: Task<Void, Never>?
 
     private var pid: UUID? { playlists.source?.id }
@@ -34,6 +34,7 @@ struct CategoriesView: View {
                         servers: store.playlists.map(\.id))
     }
 
+    /// Build 150: weergavenamen (opgeschoond en samengevoegd: "| NL | NETFLIX" + "| MULTI | NETFLIX" = "Netflix")
     private var allGroups: [String] { index.groups[kind] ?? [] }
 
     private var groups: [String] {
@@ -44,23 +45,31 @@ struct CategoriesView: View {
     private var prefixes: [CategoryIndex.Prefix] {
         let p = index.prefixes[kind] ?? []
         guard !filter.isEmpty else { return p }
-        let visible = Set(groups)
+        let visible = Set(groups.flatMap { sources(of: $0) })
         return p.compactMap { x in
-            let g = x.groups.filter { visible.contains($0) }
-            return g.isEmpty ? nil : CategoryIndex.Prefix(code: x.code, groups: g)
+            let g = x.sources.filter { visible.contains($0) }
+            return g.isEmpty ? nil : CategoryIndex.Prefix(code: x.code, sources: g)
         }
     }
 
-    private func servers(of g: String) -> [UUID] { index.servers[kind]?[g] ?? pid.map { [$0] } ?? [] }
-
-    /// Aan = op geen enkele server uitgezet (een tik die nog niet is opgeslagen telt meteen mee)
-    private func isOn(_ g: String, hidden: Set<String>) -> Bool {
-        if let p = pending[g] { return p }
-        return !servers(of: g).contains { hidden.contains(CloudStore.categoryKey($0, g)) }
+    /// De bronnen achter een weergavenaam: per server de exacte naam (zo staan ze in het account)
+    private func sources(of g: String) -> [CategoryIndex.Source] {
+        if let list = index.sources[kind]?[g], !list.isEmpty { return list }
+        return pid.map { [CategoryIndex.Source(server: $0, name: g)] } ?? []
     }
 
-    private func set(_ list: [String], on: Bool) {
-        for g in list { pending[g] = on }
+    private func isOn(_ x: CategoryIndex.Source, hidden: Set<String>) -> Bool {
+        if let p = pending[x] { return p }
+        return !hidden.contains(CloudStore.categoryKey(x.server, x.name))
+    }
+
+    /// Aan = geen enkele bron uitgezet (een tik die nog niet is opgeslagen telt meteen mee)
+    private func isOn(_ g: String, hidden: Set<String>) -> Bool {
+        !sources(of: g).contains { !isOn($0, hidden: hidden) }
+    }
+
+    private func set(_ list: [CategoryIndex.Source], on: Bool) {
+        for x in list { pending[x] = on }
         commitTask?.cancel()
         commitTask = Task { @MainActor in
             try? await Task.sleep(nanoseconds: 450_000_000)
@@ -69,26 +78,37 @@ struct CategoriesView: View {
         }
     }
 
+    private func set(groups list: [String], on: Bool) { set(list.flatMap { sources(of: $0) }, on: on) }
+
     /// De getikte keuzes in één keer opslaan (één wijziging, één keer filteren, één upload)
     private func commit() {
         commitTask = nil
         guard !pending.isEmpty else { return }
-        let map = index.servers[kind] ?? [:]
         var on: [(UUID, String)] = [], off: [(UUID, String)] = []
-        for (g, v) in pending {
-            for sid in map[g] ?? pid.map { [$0] } ?? [] {
-                if v { on.append((sid, g)) } else { off.append((sid, g)) }
-            }
+        for (x, v) in pending {
+            if v { on.append((x.server, x.name)) } else { off.append((x.server, x.name)) }
         }
         pending = [:]
         if !on.isEmpty { store.setCategories(on, hidden: false) }
         if !off.isEmpty { store.setCategories(off, hidden: true) }
     }
 
-    private func serverNames(_ g: String) -> String? {
-        guard store.playlists.count > 1, let ids = index.servers[kind]?[g] else { return nil }
-        let names = ids.compactMap { id in store.playlists.first { $0.id == id }?.name }
-        return names.isEmpty ? nil : names.joined(separator: " · ")
+    /// Onderregel: talen van de bronnen ("NL · Multi") en, met meer servers, de servers
+    private func caption(_ g: String) -> String? {
+        var parts: [String] = []
+        if let ls = index.labels[kind]?[g], !ls.isEmpty { parts.append(ls.joined(separator: " · ")) }
+        if store.playlists.count > 1 {
+            var ids: [UUID] = []
+            for x in sources(of: g) where !ids.contains(x.server) { ids.append(x.server) }
+            let names = ids.compactMap { id in store.playlists.first { $0.id == id }?.name }
+            if !names.isEmpty { parts.append(names.joined(separator: " · ")) }
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " — ")
+    }
+
+    private func title(_ g: String) -> String {
+        if let first = sources(of: g).first(where: { $0.server == pid }), let r = c.renamed[Customization.groupKey(first.name)] { return r }
+        return g
     }
 
     var body: some View {
@@ -109,13 +129,13 @@ struct CategoriesView: View {
                     ScrollView(.horizontal, showsIndicators: false) {
                         LazyHStack(spacing: tvScaled(10)) {
                             ForEach(pre, id: \.code) { p in
-                                let onCount = p.groups.filter { isOn($0, hidden: hidden) }.count
-                                let allOn = onCount == p.groups.count
-                                Button { set(p.groups, on: !allOn) } label: {
+                                let onCount = p.sources.filter { isOn($0, hidden: hidden) }.count
+                                let allOn = onCount == p.sources.count
+                                Button { set(p.sources, on: !allOn) } label: {
                                     HStack(spacing: 6) {
                                         Image(systemName: allOn ? "checkmark.circle.fill" : (onCount == 0 ? "circle" : "minus.circle.fill"))
                                         Text(p.code).fontWeight(.bold)
-                                        Text("\(onCount)/\(p.groups.count)").foregroundStyle(allOn ? Theme.onAccent.opacity(0.75) : Theme.secondary)
+                                        Text("\(onCount)/\(p.sources.count)").foregroundStyle(allOn ? Theme.onAccent.opacity(0.75) : Theme.secondary)
                                     }
                                     .font(.system(size: tvScaled(14)))
                                     .padding(.horizontal, tvScaled(12)).padding(.vertical, tvScaled(7))
@@ -134,9 +154,9 @@ struct CategoriesView: View {
 
             Section {
                 HStack {
-                    Button(L("All on")) { set(list, on: true) }
+                    Button(L("All on")) { set(groups: list, on: true) }
                     Spacer()
-                    Button(L("All off")) { set(list, on: false) }
+                    Button(L("All off")) { set(groups: list, on: false) }
                 }
                 #if !os(tvOS)
                 .buttonStyle(.borderless)
@@ -145,11 +165,11 @@ struct CategoriesView: View {
                     HStack { Spacer(); ProgressView(); Spacer() }
                 }
                 ForEach(list, id: \.self) { g in
-                    Toggle(isOn: Binding(get: { isOn(g, hidden: hidden) }, set: { set([g], on: $0) })) {
+                    Toggle(isOn: Binding(get: { isOn(g, hidden: hidden) }, set: { set(groups: [g], on: $0) })) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(c.renamed[Customization.groupKey(g)] ?? g).lineLimit(1)
-                            if let names = serverNames(g) {
-                                Text(names).font(.caption).foregroundStyle(Theme.secondary).lineLimit(1)
+                            Text(title(g)).lineLimit(1)
+                            if let cap = caption(g) {
+                                Text(cap).font(.caption).foregroundStyle(Theme.secondary).lineLimit(1)
                             }
                         }
                     }
@@ -195,14 +215,19 @@ struct CategoriesView: View {
 }
 
 /// Build 140: de categorieën van alle servers, één keer opgebouwd (zie `CategoriesView`).
+/// Build 150: per opgeschoonde naam één regel (hoofdletterongevoelig, over talen, kwaliteit en servers heen); aan/uit
+/// geldt voor alle bronnen eronder. Het account bewaart nog steeds per bron (`server|exacte naam`).
 struct CategoryIndex: Sendable {
-    struct Prefix: Sendable { var code: String; var groups: [String] }
+    struct Source: Sendable, Hashable { var server: UUID; var name: String }
+    struct Prefix: Sendable { var code: String; var sources: [Source] }
 
-    /// Per onderdeel: de categorieën (open server eerst, daarna in de volgorde van de servers, zonder dubbele)
+    /// Per onderdeel: de weergavenamen (open server eerst, daarna in de volgorde van de servers, zonder dubbele)
     var groups: [ManageView.Kind: [String]] = [:]
-    /// Per onderdeel: categorie → de servers waar hij voorkomt
-    var servers: [ManageView.Kind: [String: [UUID]]] = [:]
-    /// Per onderdeel: voorvoegsels ("NL", "BE" …) met hun categorieën
+    /// Per onderdeel: weergavenaam → de bronnen eronder
+    var sources: [ManageView.Kind: [String: [Source]]] = [:]
+    /// Per onderdeel: weergavenaam → talen van de bronnen ("NL", "Multi")
+    var labels: [ManageView.Kind: [String: [String]]] = [:]
+    /// Per onderdeel: voorvoegsels ("NL", "BE" …) met hun bronnen
     var prefixes: [ManageView.Kind: [Prefix]] = [:]
     var building = false
 
@@ -215,20 +240,28 @@ struct CategoryIndex: Sendable {
         var x = CategoryIndex()
         for kind in ManageView.Kind.allCases {
             var order: [String] = []
-            var map: [String: [UUID]] = [:]
+            var byKey: [String: String] = [:]          // samenvoegsleutel → weergavenaam
+            var map: [String: [Source]] = [:]
+            var labels: [String: [String]] = [:]
+            var pre: [String: [Source]] = [:]
             for (sid, byKind) in lists {
                 for g in byKind[kind] ?? [] {
-                    if map[g] == nil { order.append(g) }
-                    if !(map[g]?.contains(sid) ?? false) { map[g, default: []].append(sid) }
+                    let parsed = CategoryName.parse(g)
+                    let k = CategoryName.mergeKey(parsed.name)
+                    let shown: String
+                    if let s = byKey[k] { shown = s } else { shown = parsed.name; byKey[k] = shown; order.append(shown) }
+                    let src = Source(server: sid, name: g)
+                    if !(map[shown]?.contains(src) ?? false) { map[shown, default: []].append(src) }
+                    for l in parsed.labels where !(labels[shown]?.contains(l) ?? false) { labels[shown, default: []].append(l) }
+                    if let p = parsed.prefixLabels.first { pre[p, default: []].append(src) }
                 }
             }
             x.groups[kind] = order
-            x.servers[kind] = map
-            var pre: [String: [String]] = [:]
-            for g in order { if let p = CategoryPrefix.of(g) { pre[p, default: []].append(g) } }
+            x.sources[kind] = map
+            x.labels[kind] = labels
             x.prefixes[kind] = pre
                 .sorted { $0.value.count != $1.value.count ? $0.value.count > $1.value.count : $0.key < $1.key }
-                .map { Prefix(code: $0.key, groups: $0.value) }
+                .map { Prefix(code: $0.key, sources: $0.value) }
         }
         return x
     }
@@ -236,17 +269,8 @@ struct CategoryIndex: Sendable {
 
 /// Voorvoegsel zoals "NL", "BE", "DE", "TK" vooraan een categorienaam.
 enum CategoryPrefix {
-    private static let prefixRE = try! NSRegularExpression(
-        pattern: #"^\s*[\|\[\(\{]?\s*([A-Z]{2,4}|[A-Z]{2}\+)\s*(?:[\|\]\)\}:\-–•]|\s{1,}\|)"#)
-    /// gewone woorden die toevallig vooraan staan niet als land tellen
-    private static let skip: Set<String> = ["THE", "AND", "FOR", "ALL", "NEW", "TOP", "VOD", "TV"]
-
-    static func of(_ g: String) -> String? {
-        guard let m = prefixRE.firstMatch(in: g, range: NSRange(g.startIndex..., in: g)),
-              let r = Range(m.range(at: 1), in: g) else { return nil }
-        let p = String(g[r]).uppercased()
-        return skip.contains(p) ? nil : p
-    }
+    /// Build 150: via `CategoryName` (ook "| NL |", "¦", "MULTI / LINGO", "[EN]", "NL:" …)
+    static func of(_ g: String) -> String? { CategoryName.prefixLabel(g) }
 }
 
 extension CategoriesView {

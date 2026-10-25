@@ -13,7 +13,8 @@ enum TitleCleaner {
 
     static func parse(_ raw: String) -> Parsed {
         // taallabels ("Animal (IT)", "EN-Animal", "NL SUBS") eerst weg, met dezelfde regels als de covers (build 59)
-        var s = ContentLanguage.displayTitle(raw)
+        // build 150: andere pipe-tekens ("¦", "│", "｜") als "|", zoals bij de categorieën
+        var s = ContentLanguage.displayTitle(CategoryName.normalizeSeparators(raw))
         // landcodes/labels vooraan weg (eventueel meerdere)
         for _ in 0..<2 { s = replace(prefix, in: s, with: "") }
 

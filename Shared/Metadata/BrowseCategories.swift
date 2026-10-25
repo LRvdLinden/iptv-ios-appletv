@@ -268,7 +268,10 @@ struct BrowseIndex: Sendable {
         var serverMembers: [String: [Int]] = [:]
 
         func votes(_ s: String?) -> Int { s.flatMap { Int($0.filter(\.isNumber)) } ?? 0 }
-        func add(_ target: DetailTarget, title: String, year: Int?, group: String, rating: Double?, added: Date?, isShow: Bool) {
+        // build 150: per categorie van de server dezelfde titel maar één keer (samengevoegde categorieën)
+        var serverSeen: [String: Set<String>] = [:]
+        func add(_ target: DetailTarget, title: String, year: Int?, group: String, rating: Double?, added: Date?, isShow: Bool,
+                 dedupe: String) {
             let k = MetadataService.key(title: title, year: year, isShow: isShow)
             let md = meta[k]
             let i = entries.count
@@ -282,13 +285,17 @@ struct BrowseIndex: Sendable {
             gs.formUnion(BrowseGenre.fromTMDB(tmdb[k]?.genres ?? []))
             for g in gs { genreMembers[g].append(i) }
             if serverMembers[group] == nil { serverOrder.append(group) }
-            serverMembers[group, default: []].append(i)
+            if serverSeen[group, default: []].insert(dedupe).inserted { serverMembers[group, default: []].append(i) }
         }
         for m in lib.movies {
-            add(.movie(m), title: m.title, year: m.year, group: m.group, rating: m.rating, added: m.addedAt, isShow: false)
+            add(.movie(m), title: m.title, year: m.year, group: m.group, rating: m.rating, added: m.addedAt, isShow: false,
+                dedupe: "m" + CategoryMerge.titleKey(id: m.id, title: ContentLanguage.displayTitle(m.title), year: m.year,
+                                                     tmdb: m.tmdbID, imdb: m.imdbID))
         }
         for s in lib.series {
-            add(.series(s), title: s.title, year: s.year, group: s.group, rating: s.rating, added: nil, isShow: true)
+            add(.series(s), title: s.title, year: s.year, group: s.group, rating: s.rating, added: nil, isShow: true,
+                dedupe: "s" + CategoryMerge.titleKey(id: s.id, title: ContentLanguage.displayTitle(s.title), year: s.year,
+                                                     tmdb: s.tmdbID, imdb: s.imdbID))
         }
 
         func category(id: String, title: String, source: BrowseCategory.Source, members: [Int], colors: (UInt32, UInt32)) -> BrowseCategory {

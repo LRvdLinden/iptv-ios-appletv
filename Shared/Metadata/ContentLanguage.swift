@@ -173,7 +173,7 @@ struct ContentLanguage: Hashable, Sendable {
         cache.lock.lock()
         if let hit = cache.titles[raw] { cache.lock.unlock(); return hit }
         cache.lock.unlock()
-        let r = computeTitle(raw)
+        let r = computeTitle(CategoryName.normalizeSeparators(raw))   // build 150: ook "¦", "│", "｜"
         cache.lock.lock()
         if cache.titles.count > 60_000 { cache.titles.removeAll(keepingCapacity: true) }
         cache.titles[raw] = r
@@ -185,7 +185,7 @@ struct ContentLanguage: Hashable, Sendable {
         cache.lock.lock()
         if let hit = cache.groups[group] { cache.lock.unlock(); return hit }
         cache.lock.unlock()
-        let r = computeGroup(group)
+        let r = computeGroup(CategoryName.normalizeSeparators(group))
         cache.lock.lock()
         cache.groups[group] = r
         cache.lock.unlock()

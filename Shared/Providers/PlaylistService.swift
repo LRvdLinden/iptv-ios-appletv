@@ -635,9 +635,24 @@ final class PlaylistService: ObservableObject {
             return ParentalControl.allowedFor(rated: md?.rated, group: s.group, limit: ageLimit, genre: md?.genre,
                                               strict: strict, info: ctx.ratings[k], kids: ctx.kids)
         }
+        // build 150: de naam opgeschoond (taal-, land- en kwaliteitslabels weg, nette hoofdletters) en gelijke namen
+        // (hoofdletterongevoelig) als één categorie; een eigen naam (hernoemen) gaat voor. Per groep één keer.
+        var groupName: [String: String] = [:]
+        var firstName: [String: String] = [:]
         func group(_ g: String) -> String {
+            if let v = groupName[g] { return v }
             let merged = c.merged[g] ?? g
-            return c.renamed[Customization.groupKey(merged)] ?? merged
+            let v: String
+            if let r = c.renamed[Customization.groupKey(merged)] {
+                v = r
+            } else {
+                let name = CategoryName.clean(merged)
+                let k = CategoryName.mergeKey(name)
+                if let first = firstName[k] { v = first } else { firstName[k] = name; v = name }
+            }
+            groupName[g] = v
+            CategoryMerge.note(display: v, raw: g)
+            return v
         }
         // per groep één keer uitrekenen (tienduizenden titels delen maar een paar honderd groepen)
         var groupOK: [String: Bool] = [:]
@@ -681,7 +696,13 @@ final class PlaylistService: ObservableObject {
         }
         // eigen volgorde: groepen, dan kanalen binnen een groep
         if !c.groupOrder.isEmpty || !c.channelOrder.isEmpty {
-            let gIndex = Dictionary(c.groupOrder.enumerated().map { ($1, $0) }, uniquingKeysWith: { a, _ in a })
+            // build 150: de eigen volgorde staat op de namen van de server; de rijen hebben de opgeschoonde naam
+            var gIndex: [String: Int] = [:]
+            for (i, g) in c.groupOrder.enumerated() {
+                if gIndex[g] == nil { gIndex[g] = i }
+                let shown = group(g)
+                if gIndex[shown] == nil { gIndex[shown] = i }
+            }
             let natural = Dictionary(orderedUnique(lib.channels.map(\.group)).enumerated().map { ($1, $0 + 10_000) },
                                      uniquingKeysWith: { a, _ in a })
             var cIndex: [String: Int] = [:]

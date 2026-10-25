@@ -232,6 +232,9 @@ struct AppSettingsView: View {
             WebLinkRow(title: L("Privacy"), icon: "hand.raised", url: URL(string: "https://bingr.online/privacy.html")!)
             WebLinkRow(title: L("Terms"), icon: "doc.plaintext", url: URL(string: "https://bingr.online/voorwaarden/")!)
             LabeledContent(L("IMDb data"), value: Secrets.isSet(Secrets.omdbAPIKey) ? L("Active (OMDb)") : L("No OMDb key"))
+            // build 150: bronvermelding: titelgegevens van TMDB, streamingdiensten (watch providers) van JustWatch
+            LabeledContent(L("Movie and series data"), value: "TMDB")
+            LabeledContent(L("Streaming data"), value: "JustWatch")
         } header: { Text(L("About")) } footer: {
             // build 112: verplichte bronvermelding van TMDB en JustWatch
             Text(DiscoverKind.attribution)

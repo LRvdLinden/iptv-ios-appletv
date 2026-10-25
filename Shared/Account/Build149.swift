@@ -230,34 +230,34 @@ enum SharedFormatters {
 
 // MARK: - Ontdek categorieën (Home)
 
-/// Build 149: categorienaam van de server opschonen voor de rij "Ontdek categorieën":
+/// Build 149 (vanaf build 150 alleen nog voor titels, zie `CategoryName.clean` in Build150.swift): categorienaam van de server opschonen voor de rij "Ontdek categorieën":
 /// voorvoegsels als "NL | ", "|EN| ", "[NL] ", "4K - ", "VOD: " en kwaliteitslabels eraf, "Netflix" blijft "Netflix".
-enum CategoryName {
-    private static let tags: Set<String> = ["4k", "uhd", "fhd", "hd", "sd", "hevc", "h265", "vod", "vip", "multi", "multisub",
+extension CategoryName {
+    private static let legacyTags: Set<String> = ["4k", "uhd", "fhd", "hd", "sd", "hevc", "h265", "vod", "vip", "multi", "multisub",
                                             "nl", "be", "en", "uk", "us", "de", "fr", "es", "it", "tr", "pl", "pt", "ar", "nld", "eng",
                                             "ex", "exyu", "fhd/hd", "hd/fhd", "movies", "series"]
-    private static let separators: Set<Character> = ["|", "-", ":", "•", "·", "/", "_", "–", "—", "»", "▶", "★", "*", "#"]
+    private static let legacySeparators: Set<Character> = ["|", "-", ":", "•", "·", "/", "_", "–", "—", "»", "▶", "★", "*", "#"]
 
     /// `title`: voor titels voorzichtiger: alleen labels in hoofdletters ("NL | ", "4K - ", "[NL]"), zodat
     /// "Ex-Machina" en "(500) Days of Summer" heel blijven.
-    static func clean(_ raw: String, title: Bool = false) -> String {
+    static func legacyClean(_ raw: String, title: Bool = false) -> String {
         var s = Substring(raw.trimmingCharacters(in: .whitespacesAndNewlines))
         // voorvoegsels, zo vaak als nodig ("NL | 4K - Netflix")
         for _ in 0..<4 {
             let before = s
-            s = s.drop { $0 == " " || separators.contains($0) }
+            s = s.drop { $0 == " " || legacySeparators.contains($0) }
             if let open = s.first, open == "[" || open == "(" || open == "{",
                let close = s.firstIndex(of: open == "[" ? "]" : open == "(" ? ")" : "}"), s.distance(from: s.startIndex, to: close) <= 12,
-               !title || isLabel(s[s.index(after: s.startIndex)..<close]) {
+               !title || legacyIsLabel(s[s.index(after: s.startIndex)..<close]) {
                 s = s[s.index(after: close)...]
                 continue
             }
             // eerste woord tot een scheidingsteken
-            if let sep = s.firstIndex(where: { separators.contains($0) }) {
+            if let sep = s.firstIndex(where: { legacySeparators.contains($0) }) {
                 let head = s[..<sep].trimmingCharacters(in: .whitespaces).lowercased()
                 let rawHead = s[..<sep].trimmingCharacters(in: .whitespaces)
                 let titleOK = !title || (rawHead == rawHead.uppercased() && (s[sep] == "|" || s[sep] == ":" || s.index(after: sep) == s.endIndex || s[s.index(after: sep)] == " "))
-                if titleOK, !head.isEmpty, head.count <= 8, tags.contains(head) || head.split(separator: " ").allSatisfy({ tags.contains(String($0)) }) {
+                if titleOK, !head.isEmpty, head.count <= 8, legacyTags.contains(head) || head.split(separator: " ").allSatisfy({ legacyTags.contains(String($0)) }) {
                     s = s[s.index(after: sep)...]
                     continue
                 }
@@ -271,32 +271,47 @@ enum CategoryName {
             guard words.count > 1, let last = words.last else { break }
             let rawW = last.trimmingCharacters(in: CharacterSet(charactersIn: "[](){}|-"))
             let w = rawW.lowercased()
-            guard tags.contains(w), !title || rawW == rawW.uppercased() else { break }
+            guard legacyTags.contains(w), !title || rawW == rawW.uppercased() else { break }
             out = words.dropLast().joined(separator: " ").trimmingCharacters(in: CharacterSet(charactersIn: " -|:"))
         }
         return out.isEmpty ? raw.trimmingCharacters(in: .whitespacesAndNewlines) : out
     }
 
     /// Inhoud tussen haakjes is een label ("NL", "4K", "EN"): een bekend label in hoofdletters
-    private static func isLabel(_ s: Substring) -> Bool {
+    private static func legacyIsLabel(_ s: Substring) -> Bool {
         let t = s.trimmingCharacters(in: .whitespaces)
-        return !t.isEmpty && t == t.uppercased() && tags.contains(t.lowercased())
+        return !t.isEmpty && t == t.uppercased() && legacyTags.contains(t.lowercased())
     }
 }
 
 /// Build 149: categorie → streamingdienst van TMDB (`/watch/providers`, `provider_name`), voor het logo in de balk.
 /// Alleen een duidelijke match; anders nil (dan de naam als tekst).
 enum ProviderMatch {
-    /// Ingekorte naam → TMDB-naam (zoals TMDB hem in NL noemt)
-    static let aliases: [String: String] = [
-        "hbo": "HBO Max", "hbomax": "HBO Max",
-        "prime": "Amazon Prime Video", "primevideo": "Amazon Prime Video", "amazon": "Amazon Prime Video",
-        "amazonprime": "Amazon Prime Video", "amazonprimevideo": "Amazon Prime Video",
-        "disney": "Disney Plus", "disneyplus": "Disney Plus",
-        "skyshowtime": "SkyShowtime", "netflix": "Netflix", "viaplay": "Viaplay", "videoland": "Videoland",
-        "appletv": "Apple TV+", "appletvplus": "Apple TV+", "paramount": "Paramount Plus", "paramountplus": "Paramount Plus",
-        "npostart": "NPO Start", "npoplus": "NPO Plus", "pathethuis": "Pathé Thuis", "canalplus": "Canal+",
+    /// Ingekorte naam → TMDB-namen (zoals TMDB ze in NL noemt; build 150: meer dan één, TMDB hernoemt diensten soms)
+    static let aliases: [String: [String]] = [
+        "hbo": ["HBO Max", "Max"], "hbomax": ["HBO Max", "Max"], "max": ["HBO Max", "Max"],
+        "prime": ["Amazon Prime Video", "Prime Video", "Amazon Video"], "primevideo": ["Amazon Prime Video", "Prime Video"],
+        "amazon": ["Amazon Prime Video", "Prime Video", "Amazon Video"], "amazonprime": ["Amazon Prime Video", "Prime Video"],
+        "amazonprimevideo": ["Amazon Prime Video", "Prime Video"],
+        "disney": ["Disney Plus", "Disney+"], "disneyplus": ["Disney Plus", "Disney+"],
+        "skyshowtime": ["SkyShowtime", "Sky Showtime"], "netflix": ["Netflix", "Netflix basic with Ads", "Netflix Standard with Ads"],
+        "viaplay": ["Viaplay"], "videoland": ["Videoland"],
+        "appletv": ["Apple TV+", "Apple TV Plus", "Apple TV"], "appletvplus": ["Apple TV+", "Apple TV Plus", "Apple TV"],
+        "paramount": ["Paramount Plus", "Paramount+"], "paramountplus": ["Paramount Plus", "Paramount+"],
+        "npo": ["NPO Start", "NPO Plus"], "npostart": ["NPO Start", "NPO Plus"], "npoplus": ["NPO Plus", "NPO Start"],
+        "pathethuis": ["Pathé Thuis", "Pathe Thuis"], "canalplus": ["Canal+", "Canal Plus"],
+        "vtmgo": ["VTM GO", "VTM Go"], "streamz": ["Streamz"], "discoveryplus": ["Discovery+", "Discovery Plus"],
+        "mubi": ["MUBI", "Mubi"], "dazn": ["DAZN"], "nlziet": ["NLZIET", "NLZiet"], "kijk": ["KIJK", "Kijk"],
     ]
+
+    /// Eerste alias die TMDB kent (exact of op sleutel)
+    private static func alias(_ k: String, _ providers: [String: String], _ byKey: [String: String]) -> String? {
+        for a in aliases[k] ?? [] {
+            if providers[a] != nil { return a }
+            if let n = byKey[key(a)] { return n }
+        }
+        return nil
+    }
 
     /// Kleine letters en cijfers; "+" telt als "plus"
     static func key(_ s: String) -> String {
@@ -317,20 +332,14 @@ enum ProviderMatch {
         var byKey: [String: String] = [:]
         for name in providers.keys { byKey[key(name)] = name }
         if let n = byKey[k] { return n }
-        if let a = aliases[k] {
-            if providers[a] != nil { return a }
-            if let n = byKey[key(a)] { return n }
-        }
+        if let a = alias(k, providers, byKey) { return a }
         // "Netflix Films", "Disney+ Series": de categorie begint met de dienst (langste eerst)
         let words = CategoryName.clean(category).lowercased().split(whereSeparator: { $0 == " " || $0 == "-" || $0 == "|" })
         for n in stride(from: min(3, words.count), through: 1, by: -1) {
             let head = key(words.prefix(n).joined())
             guard head.count >= 3 else { continue }
             if let name = byKey[head] { return name }
-            if let a = aliases[head] {
-                if providers[a] != nil { return a }
-                if let name = byKey[key(a)] { return name }
-            }
+            if let a = alias(head, providers, byKey) { return a }
         }
         return nil
     }

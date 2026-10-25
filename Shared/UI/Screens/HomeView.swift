@@ -1502,7 +1502,12 @@ struct HomeIndex {
             x.movieByID[m.id] = m
             if let i = m.imdbID, !i.isEmpty { x.movieByIMDb[i] = m }
         }
-        for g in mOrder { mGroups[g] = uniqueByID(mGroups[g] ?? []) }
+        // build 150: samengevoegde categorieën ("NL | Netflix" + "Multi | Netflix"): dezelfde titel maar één keer
+        for g in mOrder {
+            mGroups[g] = CategoryMerge.unique(uniqueByID(mGroups[g] ?? [])) {
+                CategoryMerge.titleKey(id: $0.id, title: ContentLanguage.displayTitle($0.title), year: $0.year, tmdb: $0.tmdbID, imdb: $0.imdbID)
+            }
+        }
         x.movieGroups = mOrder.map { Group(id: $0, items: mGroups[$0] ?? []) }
         x.movieGroupItems = mGroups
         var sOrder: [String] = [], sGroups: [String: [Series]] = [:]
@@ -1513,7 +1518,11 @@ struct HomeIndex {
             x.seriesTitles.insert(s.title)
             if x.seriesByTitle[s.title] == nil { x.seriesByTitle[s.title] = s }
         }
-        for g in sOrder { sGroups[g] = uniqueByID(sGroups[g] ?? []) }
+        for g in sOrder {
+            sGroups[g] = CategoryMerge.unique(uniqueByID(sGroups[g] ?? [])) {
+                CategoryMerge.titleKey(id: $0.id, title: ContentLanguage.displayTitle($0.title), year: $0.year, tmdb: $0.tmdbID, imdb: $0.imdbID)
+            }
+        }
         x.seriesGroups = sOrder.map { Group(id: $0, items: sGroups[$0] ?? []) }
         x.seriesGroupItems = sGroups
         for c in lib.channels { x.channelByID[c.id] = c }

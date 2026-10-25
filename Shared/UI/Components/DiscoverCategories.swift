@@ -64,6 +64,8 @@ struct DiscoverCategory: Identifiable {
     let colors: (UInt32, UInt32)
     let count: Int
     let category: BrowseCategory
+    /// Build 150: talen/servers van de samengevoegde bronnen ("NL", "Multi"), als chips op de tegel
+    var labels: [String] = []
 
     /// Vaste, smaakvolle palet (balkkleur op naam)
     static let palette: [(UInt32, UInt32)] = [
@@ -81,7 +83,7 @@ struct DiscoverCategory: Identifiable {
             let title = CategoryName.clean(c.title)
             return DiscoverCategory(id: c.id, title: title, covers: Array(c.covers(.all).prefix(4)),
                                     colors: palette[ProviderMatch.paletteIndex(title.lowercased(), count: palette.count)],
-                                    count: c.count(.all), category: c)
+                                    count: c.count(.all), category: c, labels: CategoryMerge.labels(c.title))
         }
     }
 }
@@ -126,6 +128,15 @@ struct DiscoverCategoryTile: View {
                             .foregroundStyle(.white)
                             .lineLimit(1).minimumScaleFactor(0.55)
                             .shadow(color: .black.opacity(0.35), radius: 3)
+                        if item.labels.count > 1 {
+                            Spacer(minLength: 0)
+                            Text(item.labels.prefix(3).joined(separator: " · "))
+                                .font(.system(size: tvScaled(11), weight: .bold))
+                                .foregroundStyle(.white.opacity(0.9))
+                                .lineLimit(1)
+                                .padding(.horizontal, tvScaled(6)).padding(.vertical, tvScaled(2))
+                                .background(Color.black.opacity(0.28), in: Capsule())
+                        }
                     }
                     .padding(.horizontal, tvScaled(12))
                 }

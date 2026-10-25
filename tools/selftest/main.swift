@@ -1034,5 +1034,114 @@ do {
     print("build 149: zoeken in 123k titels (vooraf berekende sleutels): \(Int(ms)) ms, \(hits) treffers")
 }
 
+// MARK: build 150: taal- en landvoorvoegsels overal weg, gelijke categorieën samen
+
+do {
+    func cn(_ s: String) -> String { CategoryName.clean(s) }
+    // voorbeelden uit de opdracht
+    eq(cn("| NL | NETFLIX"), "Netflix", "| NL | NETFLIX")
+    eq(cn("| MULTI / LINGO | NETFLIX"), "Netflix", "| MULTI / LINGO | NETFLIX")
+    eq(cn("NL: Bioscoop"), "Bioscoop", "NL: Bioscoop")
+    eq(cn("[EN] Disney+ 4K"), "Disney+", "[EN] Disney+ 4K")
+    eq(cn("BE ¦ VTM GO"), "VTM GO", "BE ¦ VTM GO")
+    eq(cn("NETFLIX (NL)"), "Netflix", "NETFLIX (NL)")
+    eq(cn("TR - DIZI"), "Dizi", "TR - DIZI")
+    eq(cn("4K | UHD | SPORT"), "Sport", "4K | UHD | SPORT")
+    eq(cn("| NL | BIOSCOOP"), "Bioscoop", "rijkop | NL | BIOSCOOP")
+    eq(cn("| NL | VIDEOLAND"), "Videoland", "| NL | VIDEOLAND")
+    // randgevallen
+    eq(cn("NL"), "NL", "alleen NL blijft")
+    eq(cn("4K"), "4K", "4K als echte categorie blijft")
+    eq(cn("| NL |"), "NL", "alleen een label met pipes")
+    eq(cn("Kids NL"), "Kids", "Kids NL")
+    eq(cn("NL Kids"), "Kids", "NL Kids")
+    eq(cn("│ NL │ Netflix"), "Netflix", "box-pipe")
+    eq(cn("｜EN｜ Netflix"), "Netflix", "brede pipe")
+    eq(cn("NL • Netflix"), "Netflix", "punt")
+    eq(cn("» NL « Netflix"), "Netflix", "» «")
+    eq(cn("★ NL ★ Netflix"), "Netflix", "sterren")
+    eq(cn("{NL} Netflix"), "Netflix", "accolades")
+    eq(cn("NL — Netflix"), "Netflix", "lang streepje")
+    eq(cn("MULTI-LINGO: Netflix"), "Netflix", "MULTI-LINGO")
+    eq(cn("MULTI LANG | Netflix"), "Netflix", "MULTI LANG")
+    eq(cn("MULTISUB | Netflix"), "Netflix", "MULTISUB")
+    eq(cn("VOSTFR - Netflix"), "Netflix", "VOSTFR")
+    eq(cn("SERIES | NETFLIX"), "Netflix", "SERIES als voorvoegsel")
+    eq(cn("FILMS: Actie"), "Actie", "FILMS als voorvoegsel")
+    eq(cn("Series"), "Series", "SERIES alleen blijft")
+    eq(cn("Nederlands | Kids"), "Kids", "taal voluit")
+    eq(cn("Dutch: Kids"), "Kids", "Dutch voluit")
+    eq(cn("Kids - Vlaams"), "Kids", "taal voluit achteraan")
+    eq(cn("Netflix - NL"), "Netflix", "- NL achteraan")
+    eq(cn("Netflix [MULTI]"), "Netflix", "[MULTI] achteraan")
+    eq(cn("NL | HEVC | H265 | HDR | Films 2024"), "Films 2024", "kwaliteit in de rij")
+    eq(cn("NLD | Netflix"), "Netflix", "drieletterig")
+    eq(cn("SCI-FI"), "Sci-Fi", "SCI-FI blijft heel")
+    eq(cn("NL: Sci-Fi"), "Sci-Fi", "Sci-Fi blijft heel")
+    eq(cn("AC/DC Live"), "AC/DC Live", "AC/DC blijft")
+    eq(cn("Actie & Avontuur"), "Actie & Avontuur", "gewone naam")
+    eq(cn("Disney+"), "Disney+", "Disney+")
+    eq(cn("NPO 1 FHD"), "NPO 1", "NPO 1 FHD")
+    eq(cn("Serie A"), "Serie A", "Serie A")
+    // hoofdletters
+    eq(cn("NL | HBO MAX"), "HBO Max", "HBO Max")
+    eq(cn("BBC"), "BBC", "BBC")
+    eq(cn("UK | BBC ONE"), "BBC One", "BBC One")
+    eq(cn("NL | NPO START"), "NPO Start", "NPO Start")
+    eq(cn("NL | RTL 4"), "RTL 4", "RTL 4")
+    eq(cn("NL | SBS6"), "SBS6", "SBS6")
+    eq(cn("US | ESPN"), "ESPN", "ESPN")
+    eq(cn("F1 TV"), "F1 TV", "F1 TV")
+    eq(cn("SKYSHOWTIME"), "SkyShowtime", "SkyShowtime")
+    eq(cn("NL | ZIGGO SPORT"), "Ziggo Sport", "Ziggo Sport")
+    eq(cn("TOP 10"), "Top 10", "woord met cijfer blijft, TOP wordt Top")
+    eq(cn("NL | DE BESTE FILMS"), "De Beste Films", "DE als lidwoord")
+    eq(cn("Netflix"), "Netflix", "gemengd blijft")
+    // labels (chips) en snelknoppen
+    eq(CategoryName.parse("| MULTI / LINGO | NETFLIX").labels, ["Multi"], "label Multi")
+    eq(CategoryName.parse("| NL | NETFLIX").labels, ["NL"], "label NL")
+    eq(CategoryName.prefixLabel("BE ¦ VTM GO"), "BE" as String?, "snelknop BE")
+    eq(CategoryName.prefixLabel("Netflix"), nil as String?, "geen voorvoegsel")
+    eq(CategoryName.prefixLabel("NLD | Netflix"), "NL" as String?, "NLD = NL")
+    // samenvoegen (hoofdletterongevoelig, over talen en kwaliteit heen)
+    let a = CategoryName.mergeKey(cn("| NL | NETFLIX")), b = CategoryName.mergeKey(cn("| MULTI / LINGO | NETFLIX"))
+    eq(a, b, "Netflix 2x = 1 categorie")
+    eq(CategoryName.mergeKey(cn("4K | Netflix")), a, "Netflix 4K = Netflix")
+    check(CategoryName.mergeKey(cn("NL | Videoland")) != a, "Videoland apart")
+    // ontdubbelen
+    struct T150 { let id: String; let title: String; let year: Int?; let tmdb: Int? }
+    let items = [T150(id: "1", title: "The Batman", year: 2022, tmdb: 414906), T150(id: "2", title: "The Batman", year: 2022, tmdb: 414906),
+                 T150(id: "3", title: "Dune", year: 2021, tmdb: nil), T150(id: "4", title: "DUNE", year: 2021, tmdb: nil),
+                 T150(id: "5", title: "Halloween", year: nil, tmdb: nil), T150(id: "6", title: "Halloween", year: nil, tmdb: nil)]
+    let u = CategoryMerge.unique(items) { CategoryMerge.titleKey(id: $0.id, title: $0.title, year: $0.year, tmdb: $0.tmdb, imdb: nil) }
+    eq(u.map(\.id), ["1", "3", "5", "6"], "zelfde TMDB-id of titel + jaar één keer; zonder jaar niet samen")
+    let pref = CategoryMerge.unique(items.prefix(2).map { $0 }, key: { _ in "x" }, better: { n, _ in n.id == "2" })
+    eq(pref.map(\.id), ["2"], "voorkeursbron")
+    // logo's: de opgeschoonde naam matcht
+    let prov150 = ["Netflix": "/n", "Videoland": "/v", "Disney Plus": "/d", "HBO Max": "/h", "Amazon Prime Video": "/p",
+                   "SkyShowtime": "/s", "Viaplay": "/vp", "Apple TV+": "/a", "NPO Start": "/npo"]
+    eq(ProviderMatch.match("| NL | NETFLIX", providers: prov150), "Netflix" as String?, "logo Netflix")
+    eq(ProviderMatch.match("| MULTI / LINGO | NETFLIX", providers: prov150), "Netflix" as String?, "logo Netflix (multi)")
+    eq(ProviderMatch.match("| NL | VIDEOLAND", providers: prov150), "Videoland" as String?, "logo Videoland")
+    eq(ProviderMatch.match("[EN] Disney+ 4K", providers: prov150), "Disney Plus" as String?, "logo Disney+")
+    eq(ProviderMatch.match("NL | HBO MAX", providers: prov150), "HBO Max" as String?, "logo HBO Max")
+    eq(ProviderMatch.match("NL | HBO MAX", providers: ["Max": "/m"]), "Max" as String?, "logo HBO Max als Max")
+    eq(ProviderMatch.match("NL ¦ PRIME VIDEO", providers: prov150), "Amazon Prime Video" as String?, "logo Prime Video")
+    eq(ProviderMatch.match("NL | SKYSHOWTIME", providers: prov150), "SkyShowtime" as String?, "logo SkyShowtime")
+    eq(ProviderMatch.match("NL | VIAPLAY", providers: prov150), "Viaplay" as String?, "logo Viaplay")
+    eq(ProviderMatch.match("EN | APPLE TV+", providers: prov150), "Apple TV+" as String?, "logo Apple TV+")
+    eq(ProviderMatch.match("EN | APPLE TV+", providers: ["Apple TV": "/a"]), "Apple TV" as String?, "logo Apple TV (nieuwe naam)")
+    eq(ProviderMatch.match("NL | NPO START", providers: prov150), "NPO Start" as String?, "logo NPO Start")
+    eq(ProviderMatch.match("NL | NPO", providers: ["NPO Plus": "/np"]), "NPO Plus" as String?, "logo NPO Plus")
+    // zoeken: dezelfde pipes
+    eq(SearchMatch.normalize("│NL│ Amélie (2001)").text, "amelie", "zoeken met box-pipe")
+    // snelheid: 2000 categorieën
+    let t0 = Date()
+    for i in 0..<2000 { _ = CategoryName.parse("| NL | CATEGORIE \(i) 4K") }
+    let ms = Date().timeIntervalSince(t0) * 1000
+    print("build 150: 2000 categorienamen opschonen \(Int(ms)) ms")
+    check(ms < 2000, "2000 categorienamen binnen 2 s")
+}
+
 print("\(checks) controles, \(failures) fout")
 exit(failures == 0 ? 0 : 1)
