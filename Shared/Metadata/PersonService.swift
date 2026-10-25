@@ -77,8 +77,7 @@ final class PersonService {
 
     private static func date(_ s: String?) -> Date? {
         guard let s, s.count >= 10 else { return nil }
-        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "yyyy-MM-dd"
-        return f.date(from: String(s.prefix(10)))
+        return FastISO.day(s)   // build 149
     }
 
     // MARK: ophalen

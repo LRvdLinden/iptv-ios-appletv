@@ -121,10 +121,7 @@ enum CatalogTime {
     }()
     private static let lock = NSLock()
 
-    static func iso(_ t: Double) -> String {
-        lock.lock(); defer { lock.unlock() }
-        return withFraction.string(from: Date(timeIntervalSince1970: t))
-    }
+    static func iso(_ t: Double) -> String { FastISO.string(t) }   // build 149: zonder opmaker en slot
 
     /// ISO-8601 of een getal (seconden of milliseconden) → seconden sinds 1970
     static func parse(_ v: Any?) -> Double? {
@@ -133,6 +130,7 @@ enum CatalogTime {
             return d > 100_000_000_000 ? d / 1000 : d
         }
         guard let s = v as? String, !s.isEmpty else { return nil }
+        if let t = FastISO.seconds(s) { return t }   // build 149
         lock.lock(); defer { lock.unlock() }
         if let d = withFraction.date(from: s) ?? plain.date(from: s) { return d.timeIntervalSince1970 }
         if let d = Double(s) { return d > 100_000_000_000 ? d / 1000 : d }

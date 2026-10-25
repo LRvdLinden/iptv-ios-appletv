@@ -626,11 +626,7 @@ final class SourceSync {
 
     private static func now() -> String { iso(Date()) }
 
-    private static func iso(_ d: Date) -> String {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return f.string(from: d)
-    }
+    private static func iso(_ d: Date) -> String { FastISO.string(d) }   // build 149
 
     // MARK: - Opslag van sync-gegevens
 

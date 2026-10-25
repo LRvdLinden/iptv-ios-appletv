@@ -368,11 +368,7 @@ struct SupportDiagnostics {
         return c
     }
 
-    static func iso(_ d: Date) -> String {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return f.string(from: d)
-    }
+    static func iso(_ d: Date) -> String { FastISO.string(d) }   // build 149
 
     var json: [String: Any] {
         var app: [String: Any] = ["platform": platform, "version": String(version.prefix(20))]

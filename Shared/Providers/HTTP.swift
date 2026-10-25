@@ -57,6 +57,7 @@ extension JSONDecoder {
         d.dateDecodingStrategy = .custom { dec in
             let c = try dec.singleValueContainer()
             let s = try c.decode(String.self)
+            if let date = FastISO.date(s) { return date }   // build 149
             for f in [ISO8601DateFormatter.withFraction, ISO8601DateFormatter.plain] {
                 if let date = f.date(from: s) { return date }
             }

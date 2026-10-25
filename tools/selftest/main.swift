@@ -798,5 +798,90 @@ do {
     datas = []
 }
 
+// MARK: build 149: snelle ISO-8601-parser en -opmaker (geen DateFormatter per item)
+
+do {
+    let ref = ISO8601DateFormatter(); ref.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    let refPlain = ISO8601DateFormatter(); refPlain.formatOptions = [.withInternetDateTime]
+    func near(_ a: Double?, _ b: Double?, _ what: String, line: Int = #line) {
+        guard let a, let b else { check(a == nil && b == nil, "\(what): verwacht \(String(describing: b)), kreeg \(String(describing: a))", line: line); return }
+        check(abs(a - b) < 0.0005, "\(what): verwacht \(b), kreeg \(a)", line: line)
+    }
+    let cases = ["2026-10-25T09:09:14.123Z", "2026-10-25T09:09:14Z", "2026-10-25T11:09:14+02:00", "1999-12-31T23:59:59.999Z",
+                 "2024-02-29T00:00:00.000-05:30", "1970-01-01T00:00:00Z", "2038-01-19T03:14:08.5Z", "1969-07-20T20:17:40Z"]
+    for c in cases {
+        near(FastISO.seconds(c), (ref.date(from: c) ?? refPlain.date(from: c))?.timeIntervalSince1970, "iso \(c)")
+    }
+    // Postgres-vormen
+    near(FastISO.seconds("2026-10-12T10:15:30.123456+00:00"), 1_791_800_130.123456, "postgres met microseconden")
+    near(FastISO.seconds("2026-10-12 10:15:30+00"), 1_791_800_130, "postgres met spatie en +00")
+    near(FastISO.seconds("2026-10-12T10:15:30.1234567Z"), 1_791_800_130.1234567, "jellyfin 7 decimalen")
+    near(FastISO.seconds("2026-10-12T10:15:30", defaultUTC: true), 1_791_800_130, "zonder zone als UTC")
+    near(FastISO.seconds("2026-10-12T12:15:30+0200"), 1_791_800_130, "zone zonder dubbele punt")
+    near(FastISO.seconds("2026-10-12T10:15Z"), 1_791_800_100, "zonder seconden")
+    // ongeldig
+    for bad in ["", "2026-10-12", "2026-10-12T10:15:30", "2026-13-01T00:00:00Z", "2026-02-30T00:00:00Z", "2025-02-29T00:00:00Z",
+                "2026-10-12T24:00:00Z", "2026-10-12T10:15:30.Z", "2026-10-12T10:15:30Zx", "abcd-10-12T10:15:30Z", "1791022530"] {
+        check(FastISO.seconds(bad) == nil, "ongeldig geweigerd: '\(bad)'")
+    }
+    // schrijven = ISO8601DateFormatter met fracties, en heen en terug stabiel
+    var rng = SystemRandomNumberGenerator()
+    var mismatch = 0, unstable = 0
+    for _ in 0..<5000 {
+        let t = Double(Int.random(in: -2_000_000_000...4_000_000_000, using: &rng)) + Double(Int.random(in: 0...999, using: &rng)) / 1000
+        let s = FastISO.string(t)
+        let r = ref.string(from: Date(timeIntervalSince1970: t))
+        // zelfde seconde; de milliseconden mogen 1 verschillen (afronden of afkappen bij ISO8601DateFormatter)
+        if s.prefix(19) != r.prefix(19) || s.count != r.count || abs((FastISO.seconds(s) ?? 0) - (FastISO.seconds(r) ?? 99)) > 0.0011 {
+            mismatch += 1; if mismatch <= 3 { print("verschil: \(s) / \(r)") }
+        }
+        if let back = FastISO.seconds(s), FastISO.string(back) == s, abs(back - t) < 0.0005 {} else { unstable += 1 }
+    }
+    eq(mismatch, 0, "opmaak gelijk aan ISO8601DateFormatter (5000 willekeurige tijden)")
+    eq(unstable, 0, "heen en terug stabiel")
+    eq(FastISO.string(0), "1970-01-01T00:00:00.000Z", "nulpunt")
+    eq(FastISO.string(1_791_800_130.5, fraction: false), "2026-10-12T10:15:30Z", "zonder fractie")
+    eq(CatalogTime.parse("2026-10-12T10:15:30.000Z"), 1_791_800_130, "CatalogTime via de snelle parser")
+    eq(CatalogTime.iso(1_791_800_130), "2026-10-12T10:15:30.000Z", "CatalogTime.iso via de snelle opmaker")
+    // alleen datum, in de eigen tijdzone (zoals DateFormatter "yyyy-MM-dd")
+    let dayRef = DateFormatter(); dayRef.locale = Locale(identifier: "en_US_POSIX"); dayRef.dateFormat = "yyyy-MM-dd"
+    for tz in ["Europe/Amsterdam", "America/New_York", "Asia/Tokyo", "UTC"] {
+        let zone = TimeZone(identifier: tz)!
+        dayRef.timeZone = zone
+        for d in ["2026-10-25", "2026-03-29", "2024-02-29", "2000-01-01"] {
+            eq(FastISO.day(d + "T12:00:00Z", timeZone: zone), dayRef.date(from: d), "dag \(d) in \(tz)")
+        }
+    }
+    check(FastISO.day("2026-02-30") == nil && FastISO.day("2026-10") == nil, "ongeldige dag geweigerd")
+    // XMLTV
+    let x = DateFormatter(); x.locale = Locale(identifier: "en_US_POSIX"); x.dateFormat = "yyyyMMddHHmmss Z"
+    for c in ["20261025120000 +0100", "20261025120000 -0530", "20260101000000 +0000"] {
+        eq(FastISO.xmltv(c), x.date(from: c), "xmltv \(c)")
+    }
+    eq(FastISO.xmltv("20261025120000")?.timeIntervalSince1970, 1_792_929_600, "xmltv zonder zone = UTC")
+    eq(FastISO.xmltv(" 20261025120000 +0100 ")?.timeIntervalSince1970, 1_792_926_000, "xmltv met spaties")
+    check(FastISO.xmltv("2026102512") == nil && FastISO.xmltv("x") == nil, "xmltv te kort geweigerd")
+    eq(SharedFormatters.posix("yyyy-MM-dd") === SharedFormatters.posix("yyyy-MM-dd"), true, "gedeelde opmaker per formaat")
+
+    // snelheid: 100.000 tijdstempels (sync van een groot account)
+    let stamps = (0..<100_000).map { FastISO.string(1_700_000_000 + Double($0) * 37.123) }
+    var t0 = Date()
+    var sum = 0.0
+    for s in stamps { sum += FastISO.seconds(s) ?? 0 }
+    let fastMs = Date().timeIntervalSince(t0) * 1000
+    t0 = Date()
+    for s in stamps.prefix(5_000) {
+        let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        sum += f.date(from: s)?.timeIntervalSince1970 ?? 0
+    }
+    let oldMs = Date().timeIntervalSince(t0) * 1000 * 20
+    t0 = Date()
+    for i in 0..<100_000 { sum += Double(FastISO.string(Double(i) * 11.5).utf8.count) }
+    let writeMs = Date().timeIntervalSince(t0) * 1000
+    check(sum > 0, "som")
+    print("build 149: 100k tijdstempels lezen \(Int(fastMs)) ms (oud, opmaker per item, geschat \(Int(oldMs)) ms); 100k schrijven \(Int(writeMs)) ms")
+    check(fastMs < 1000, "100k tijdstempels lezen binnen 1 s (was \(Int(fastMs)) ms)")
+}
+
 print("\(checks) controles, \(failures) fout")
 exit(failures == 0 ? 0 : 1)

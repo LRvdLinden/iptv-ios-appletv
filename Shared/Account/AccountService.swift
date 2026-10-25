@@ -844,13 +844,8 @@ final class AccountService: ObservableObject {
     /// "2026-10-13" of een volledige tijdstempel → Date.
     nonisolated private static func parseDay(_ v: Any?) -> Date? {
         if let d = parseDate(v) { return d }
-        guard let s = v as? String, s.count >= 10 else { return nil }
-        let f = DateFormatter()
-        f.calendar = Calendar(identifier: .gregorian)
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.timeZone = .current
-        f.dateFormat = "yyyy-MM-dd"
-        return f.date(from: String(s.prefix(10)))
+        guard let s = v as? String, s.utf8.count >= 10 else { return nil }
+        return FastISO.day(s)   // build 149: geen DateFormatter per regel
     }
 
     /// `profile_id` (build 57): string of ontbrekend/leeg bij oudere regels.
@@ -886,12 +881,11 @@ final class AccountService: ObservableObject {
     /// Postgres-tijdstempel (`2026-10-12T10:15:30.123456+00:00`) → Date.
     nonisolated static func parseDate(_ v: Any?) -> Date? {
         guard var s = v as? String, !s.isEmpty else { return nil }
+        if let t = FastISO.date(s) { return t }   // build 149: snel, zonder opmaker
         if let r = s.range(of: #"\.\d+"#, options: .regularExpression) { s.removeSubrange(r) }
         if !s.contains("T") { s = s.replacingOccurrences(of: " ", with: "T") }
         if s.hasSuffix("+00") { s += ":00" }
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime]
-        return f.date(from: s)
+        return FastISO.date(s) ?? ISO8601DateFormatter.plain.date(from: s)
     }
 
     // MARK: - App-sleutels van de server (build 41)
@@ -1017,9 +1011,7 @@ final class AccountService: ObservableObject {
     private func legacySaveProfiles(_ profiles: [[String: Any]]) async throws {
         let r = try await authorized { token in
             guard let uid = self.userID else { throw AccountError.generic }
-            let f = ISO8601DateFormatter()
-            f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            let body: [String: Any] = ["user_id": uid, "profiles": profiles, "updated_at": f.string(from: Date())]
+            let body: [String: Any] = ["user_id": uid, "profiles": profiles, "updated_at": FastISO.string(Date())]
             return try await self.send("POST", "/rest/v1/account_data", body: body, bearer: token,
                                        headers: ["Prefer": "resolution=merge-duplicates,return=minimal"])
         }

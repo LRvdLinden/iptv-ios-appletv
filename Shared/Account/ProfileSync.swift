@@ -537,11 +537,7 @@ final class ProfileSync {
         return id.uuidString
     }
 
-    private static func now() -> String {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return f.string(from: Date())
-    }
+    private static func now() -> String { FastISO.string(Date()) }   // build 149
 
     /// Is de `updated` van de server nieuwer dan de lokale photoVersion?
     private static func isNewer(_ server: String, than local: String) -> Bool {
@@ -716,11 +712,7 @@ final class ProfileSync {
     /// ISO-8601 (met of zonder fracties) of Postgres-tijdstempel → Date. Ontbreekt = nil (telt als heel oud).
     nonisolated static func date(_ v: Any?) -> Date? {
         guard let s = v as? String, !s.isEmpty else { return nil }
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let d = f.date(from: s) { return d }
-        f.formatOptions = [.withInternetDateTime]
-        if let d = f.date(from: s) { return d }
+        // build 149: snelle parser (was twee nieuwe ISO8601DateFormatters per aanroep)
         return AccountService.parseDate(s)
     }
 

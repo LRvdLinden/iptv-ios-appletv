@@ -58,14 +58,7 @@ enum StatsText {
             + last.formatted(.dateTime.day().month(.abbreviated).locale(loc))
     }
 
-    private static func formatter(_ format: String) -> DateFormatter {
-        let f = DateFormatter()
-        f.calendar = Calendar(identifier: .gregorian)
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.timeZone = .current
-        f.dateFormat = format
-        return f
-    }
+    private static func formatter(_ format: String) -> DateFormatter { SharedFormatters.posix(format) }   // build 149
 
     /// Alle staven van de periode, ook zonder kijktijd: dagen ("yyyy-MM-dd") of maanden ("yyyy-MM").
     static func bucketDates(_ period: AccountService.StatsPeriod, offset: Int) -> [(key: String, date: Date)] {

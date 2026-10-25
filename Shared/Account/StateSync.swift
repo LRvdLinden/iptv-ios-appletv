@@ -1783,11 +1783,7 @@ final class StateSync {
         return out
     }
 
-    private static func iso(_ t: Double) -> String {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return f.string(from: Date(timeIntervalSince1970: t))
-    }
+    private static func iso(_ t: Double) -> String { FastISO.string(t) }   // build 149
 
     private static func canonical(_ v: Any) -> Data? {
         guard JSONSerialization.isValidJSONObject([v]) else { return nil }

@@ -266,11 +266,10 @@ enum TMDB {
 
     static func season(tvID: Int, season: Int) async -> [String: TitleDetails.EpisodeInfo] {
         let r: SeasonR? = await get("/tv/\(tvID)/season/\(season)", ["language": language])
-        let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"
         var out: [String: TitleDetails.EpisodeInfo] = [:]
         for e in r?.episodes ?? [] {
             out["\(season)-\(e.episode_number)"] = .init(title: e.name, overview: e.overview, still: img(e.still_path, "w500"),
-                                                         airDate: e.air_date.flatMap { df.date(from: $0) }, runtime: e.runtime)
+                                                         airDate: e.air_date.flatMap { FastISO.day($0) }, runtime: e.runtime)
         }
         return out
     }

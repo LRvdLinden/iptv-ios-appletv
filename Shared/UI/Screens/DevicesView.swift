@@ -87,20 +87,13 @@ enum DeviceText {
         return L("Last used %@", value)
     }
 
+    // build 149: gedeeld per taal, niet per regel
     private static var dateFormatter: DateFormatter {
-        let f = DateFormatter()
-        f.locale = Localizer.shared.locale
-        f.dateStyle = .medium
-        f.timeStyle = .none
-        return f
+        SharedFormatters.styled(locale: Localizer.shared.locale, date: .medium, time: .none)
     }
 
     private static var timeFormatter: DateFormatter {
-        let f = DateFormatter()
-        f.locale = Localizer.shared.locale
-        f.dateStyle = .none
-        f.timeStyle = .short
-        return f
+        SharedFormatters.styled(locale: Localizer.shared.locale, date: .none, time: .short)
     }
 }
 

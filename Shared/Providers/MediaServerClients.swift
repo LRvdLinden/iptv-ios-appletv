@@ -23,6 +23,7 @@ enum DeviceInfo {
 /// ISO-datums met 0–7 decimalen (Jellyfin/Emby gebruiken er 7).
 func parseISODate(_ s: String?) -> Date? {
     guard var s else { return nil }
+    if let d = FastISO.date(s, defaultUTC: true) { return d }   // build 149: 0–9 decimalen, zonder opmaker
     if let dot = s.firstIndex(of: "."), let end = s[dot...].firstIndex(where: { $0 == "Z" || $0 == "+" || $0 == "-" }) {
         s.removeSubrange(dot..<end)
     }
@@ -126,8 +127,8 @@ struct JellyfinClient {
             }
             let now = Date()
             if !ch.isEmpty, let pu = url("/LiveTv/Programs", ["UserId": uid,
-                    "MinEndDate": ISO8601DateFormatter.plain.string(from: now),
-                    "MaxStartDate": ISO8601DateFormatter.plain.string(from: now.addingTimeInterval(86400 * 2))]),
+                    "MinEndDate": FastISO.string(now, fraction: false),
+                    "MaxStartDate": FastISO.string(now.addingTimeInterval(86400 * 2), fraction: false)]),
                let pd = try? await jsonRequest(pu, headers: authHeader),
                let progs = try? JSONDecoder().decode(Items.self, from: pd).Items {
                 for p in progs {

@@ -470,7 +470,7 @@ struct XtreamClient {
     func catchupURL(channel: Channel, program: EPGProgram) -> URL? {
         guard channel.id.hasPrefix("x") else { return nil }
         let sid = channel.id.dropFirst()
-        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd:HH-mm"; f.timeZone = .current
+        let f = SharedFormatters.posix("yyyy-MM-dd:HH-mm")   // build 149: gedeeld
         let minutes = Int(program.end.timeIntervalSince(program.start) / 60)
         return URL(string: "\(server)/timeshift/\(username)/\(password)/\(minutes)/\(f.string(from: program.start))/\(sid).ts")
     }

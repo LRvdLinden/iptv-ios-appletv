@@ -33,8 +33,10 @@ final class XMLTVParser: NSObject, XMLParserDelegate {
     }
 
     private static func date(_ s: String?) -> Date? {
-        guard let s = s?.trimmingCharacters(in: .whitespaces) else { return nil }
-        return fmt.date(from: s) ?? fmtNoTZ.date(from: String(s.prefix(14)))
+        guard let s else { return nil }
+        if let d = FastISO.xmltv(s) { return d }   // build 149: per programma zonder ICU
+        let t = s.trimmingCharacters(in: .whitespaces)
+        return fmt.date(from: t) ?? fmtNoTZ.date(from: String(t.prefix(14)))
     }
 
     func parser(_ parser: XMLParser, didStartElement name: String, namespaceURI: String?,

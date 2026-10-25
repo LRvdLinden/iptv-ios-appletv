@@ -176,12 +176,11 @@ final class DetailsService: ObservableObject {
             if let rt = i.episode_run_time?.int, rt > 0 { d.runtime = L("%d min", rt) }
             tmdbHint = i.tmdb?.int
         }
-        let df = DateFormatter(); df.dateFormat = "yyyy-MM-dd"
         for (season, eps) in si.episodes ?? [:] {
             for e in eps {
                 let s = e.season?.int ?? Int(season) ?? 1, n = e.episode_num?.int ?? 0
                 d.episodeInfo["\(s)-\(n)"] = .init(title: e.title, overview: e.info?.plot, still: e.info?.movie_image?.urlValue,
-                                                   airDate: (e.info?.releasedate ?? e.info?.air_date).flatMap { df.date(from: String($0.prefix(10))) },
+                                                   airDate: (e.info?.releasedate ?? e.info?.air_date).flatMap { FastISO.day($0) },
                                                    runtime: e.info?.duration_secs?.int.map { $0 / 60 })
             }
         }
