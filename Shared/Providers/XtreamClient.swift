@@ -282,7 +282,11 @@ struct XtreamClient {
     /// Build 148: eerst alles tegelijk ophalen (`onFetched` als dat klaar is), daarna de lijsten één voor één en in
     /// stukken inlezen (`JSONChunks`): nooit de hele lijst als tussenboom in het geheugen, de ruwe bytes van een lijst
     /// meteen weg na het inlezen, en de items per stuk meteen omgezet naar de lichte modellen.
-    func libraryWithStatus(playlistID: UUID, onFetched: (@Sendable () -> Void)? = nil) async throws -> (Library, [FetchStatus.Entry]) {
+    ///
+    /// Build 151: `skip` (verborgen categorieën): die items worden niet als zender/film/serie ingelezen, alleen geteld per
+    /// categorie en (films en series) als compacte rij voor het zoeken bewaard (`Library.skipped`), zoals Android en web.
+    func libraryWithStatus(playlistID: UUID, onFetched: (@Sendable () -> Void)? = nil,
+                           skip: SkipFilter? = nil) async throws -> (Library, [FetchStatus.Entry]) {
         guard let lc = api("get_live_categories"), let ls = api("get_live_streams"),
               let vc = api("get_vod_categories"), let vs = api("get_vod_streams"),
               let sc = api("get_series_categories"), let ss = api("get_series") else { throw HTTPError.badURL }
@@ -319,19 +323,70 @@ struct XtreamClient {
         // build 149: per stuk het geheugen bewaken; bijna op = stoppen met de melding (niet wegvallen)
         var tooLarge = false
         func guardMemory() { if !tooLarge && ServerTooLargeError.nearLimit() { tooLarge = true } }
-        let lErr = read("ls", Live.self) { guard !tooLarge else { return }; lib.channels += mapLive($0, lcMap); guardMemory() }
+        // build 151: verborgen categorieën alleen tellen (en films/series als compacte zoekrij)
+        let other = L("Other")
+        let skipped = skip.map { _ in SkippedCatalog.Builder() }
+        func group(_ id: Flex?, _ map: [String: String]) -> String { map[id?.string ?? ""] ?? other }
+        let lErr = read("ls", Live.self) { chunk in
+            guard !tooLarge else { return }
+            if let skip, let skipped {
+                let keep = chunk.filter { l in
+                    let g = group(l.category_id, lcMap)
+                    guard skip.skip(g) else { return true }
+                    skipped.count(.live, g)
+                    return false
+                }
+                lib.channels += mapLive(keep, lcMap)
+            } else { lib.channels += mapLive(chunk, lcMap) }
+            guardMemory()
+        }
         try Task.checkCancellation()
         if tooLarge { throw ServerTooLargeError() }
-        let vErr = read("vs", Vod.self) { guard !tooLarge else { return }; lib.movies += mapVod($0, vcMap); guardMemory() }
+        let vErr = read("vs", Vod.self) { chunk in
+            guard !tooLarge else { return }
+            if let skip, let skipped {
+                let keep = chunk.filter { v in
+                    let g = group(v.category_id, vcMap)
+                    guard skip.skip(g) else { return true }
+                    if let sid = v.stream_id.string {
+                        skipped.add(.movie, id: "xv\(sid)", title: v.name ?? "", group: g, year: v.year?.int,
+                                    poster: v.stream_icon, ext: v.container_extension, tmdb: v.tmdb)
+                    } else { skipped.count(.movie, g) }
+                    return false
+                }
+                lib.movies += mapVod(keep, vcMap)
+            } else { lib.movies += mapVod(chunk, vcMap) }
+            guardMemory()
+        }
         try Task.checkCancellation()
         if tooLarge { throw ServerTooLargeError() }
-        let sErr = read("ss", SeriesDTO.self) { guard !tooLarge else { return }; lib.series += mapSeries($0, scMap); guardMemory() }
+        let sErr = read("ss", SeriesDTO.self) { chunk in
+            guard !tooLarge else { return }
+            if let skip, let skipped {
+                let keep = chunk.filter { x in
+                    let g = group(x.category_id, scMap)
+                    guard skip.skip(g) else { return true }
+                    if let sid = x.series_id.int {
+                        skipped.add(.series, id: "xs\(sid)", title: x.name ?? "", group: g,
+                                    year: x.year?.int ?? x.releaseDate.flatMap { Int($0.prefix(4)) }, poster: x.cover, tmdb: x.tmdb)
+                    } else { skipped.count(.series, g) }
+                    return false
+                }
+                lib.series += mapSeries(keep, scMap)
+            } else { lib.series += mapSeries(chunk, scMap) }
+            guardMemory()
+        }
         if tooLarge { throw ServerTooLargeError() }
+        lib.skipped = skipped?.finish()
         let now = Date().timeIntervalSince1970
+        let sk = lib.skipped
         let status: [FetchStatus.Entry] = [
-            .init(kind: .live, delivered: lErr == nil ? lib.channels.count : nil, error: lErr.map(Self.fetchCode), at: now),
-            .init(kind: .movie, delivered: vErr == nil ? lib.movies.count : nil, error: vErr.map(Self.fetchCode), at: now),
-            .init(kind: .series, delivered: sErr == nil ? lib.series.count : nil, error: sErr.map(Self.fetchCode), at: now),
+            .init(kind: .live, delivered: lErr == nil ? SkippedCatalog.delivered(loaded: lib.channels.count, sk, .live) : nil,
+                  error: lErr.map(Self.fetchCode), at: now),
+            .init(kind: .movie, delivered: vErr == nil ? SkippedCatalog.delivered(loaded: lib.movies.count, sk, .movie) : nil,
+                  error: vErr.map(Self.fetchCode), at: now),
+            .init(kind: .series, delivered: sErr == nil ? SkippedCatalog.delivered(loaded: lib.series.count, sk, .series) : nil,
+                  error: sErr.map(Self.fetchCode), at: now),
         ]
         return (lib, status)
     }
@@ -424,6 +479,24 @@ struct XtreamClient {
                           plot: s.plot, rating: s.rating?.double, xtreamSeriesID: sid, tmdbID: s.tmdb,
                           addedAt: s.last_modified?.double.flatMap { $0 > 0 ? Date(timeIntervalSince1970: $0) : nil })
         }
+    }
+
+    /// Build 151: een treffer uit de compacte zoekindex (verborgen categorie) als film, zoals `mapVod` hem maakt
+    func movie(_ r: SkippedCatalog.Row, group: String) -> Movie? {
+        guard r.k == .movie, r.i.hasPrefix("xv") else { return nil }
+        let sid = String(r.i.dropFirst(2))
+        let p = TitleCleaner.parse(r.t)
+        return Movie(id: r.i, title: p.title, year: r.y ?? p.year, poster: r.p?.urlValue, group: group,
+                     streamURL: URL(string: "\(server)/movie/\(username)/\(password)/\(sid).\(r.x ?? "mp4")"),
+                     xtreamVodID: Int(sid), tmdbID: r.d)
+    }
+
+    /// Build 151: idem als serie (afleveringen worden bij openen opgehaald)
+    func series(_ r: SkippedCatalog.Row, group: String) -> Series? {
+        guard r.k == .series, r.i.hasPrefix("xs"), let sid = Int(r.i.dropFirst(2)) else { return nil }
+        let p = TitleCleaner.parse(r.t)
+        return Series(id: r.i, title: p.title, year: r.y ?? p.year, poster: r.p?.urlValue, group: group,
+                      xtreamSeriesID: sid, tmdbID: r.d)
     }
 
     // MARK: Bron controleren

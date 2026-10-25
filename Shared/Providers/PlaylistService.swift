@@ -178,7 +178,8 @@ final class PlaylistService: ObservableObject {
                 let x = XtreamClient(source: s, password: password)
                 try await x.authenticate()
                 say(L("Fetching live TV, movies and series…"))
-                let (xl, st) = try await x.libraryWithStatus(playlistID: s.id, onFetched: { rec.end("fetch") })
+                // build 151: verborgen categorieën niet inlezen (alleen tellen + compacte zoekindex)
+                let (xl, st) = try await x.libraryWithStatus(playlistID: s.id, onFetched: { rec.end("fetch") }, skip: skipFilter(for: s))
                 rec.end("parse")
                 lib = xl
                 fetchStatus = st
@@ -454,13 +455,16 @@ final class PlaylistService: ObservableObject {
         /// Build 140: kinderprofiel: alleen inhoud uit kindercategorieën (KidsCategory), de account-brede verborgen
         /// categorieën gelden dan niet
         var kids = false
+        /// Build 151: gewenste taallabels ("NL", "BE", "EN" …): bij dubbele titels in samengevoegde categorieën gaat
+        /// de bron in de audio- of app-taal voor, dan een meertalige bron, dan de rest
+        var want: [String] = []
 
         /// Dezelfde regels (alles behalve de classificaties zelf)? Dan mag de vorige uitkomst blijven staan
         /// tot de nieuwe klaar is, en hoeft een gelijke uitkomst niet opnieuw gepubliceerd te worden.
         func sameRules(as o: FilterContext) -> Bool {
             playlist == o.playlist && ageLimit == o.ageLimit && strict == o.strict && parentalEnabled == o.parentalEnabled
                 && autoLockAdult == o.autoLockAdult && unlocked == o.unlocked && lockedGroups == o.lockedGroups
-                && custom == o.custom && hiddenGroups == o.hiddenGroups && kids == o.kids
+                && custom == o.custom && hiddenGroups == o.hiddenGroups && kids == o.kids && want == o.want
         }
     }
 
@@ -480,7 +484,39 @@ final class PlaylistService: ObservableObject {
                              unlocked: ParentalControl.shared.isUnlocked,
                              meta: (st.activeProfile?.effectiveAgeLimit != nil) ? MetadataService.shared.cache : [:],
                              ratings: (st.activeProfile?.effectiveAgeLimit != nil) ? AgeRatingService.shared.cache : [:],
-                             hiddenGroups: kids ? [] : st.hiddenGroups(for: s.id), kids: kids)
+                             hiddenGroups: kids ? [] : st.hiddenGroups(for: s.id), kids: kids,
+                             want: SourcePreference.want(audio: [TrackPreferences.preferredAudio], app: TrackPreferences.appLanguage))
+    }
+
+    /// Build 151: wat bij het ophalen van deze server niet ingelezen hoeft te worden (categorie uit). Nil = alles
+    /// inlezen (kinderprofiel: daar gelden de verborgen categorieën niet; App Store-screenshots).
+    func skipFilter(for s: PlaylistSource) -> SkipFilter? {
+        guard !Screenshots.isActive else { return nil }
+        let ctx = context(for: s)
+        guard !ctx.kids, !ctx.hiddenGroups.isEmpty || ctx.custom.hidden.contains(where: { $0.hasPrefix("group:") }) else { return nil }
+        return SkipFilter { Self.categoryHidden($0, ctx) }
+    }
+
+    /// Build 151: categorie uit (zelfde regel als in `apply` en de diagnose; kinderslot telt hier niet, dat kan open)
+    nonisolated static func categoryHidden(_ g: String, _ ctx: FilterContext) -> Bool {
+        let c = ctx.custom
+        return !ctx.kids && (ctx.hiddenGroups.contains(g) || c.hidden.contains(Customization.groupKey(g))
+                             || c.hidden.contains(Customization.groupKey(c.merged[g] ?? g)))
+    }
+
+    /// Build 151: niet ingelezen categorie die nu wél zichtbaar is (aangezet, ander profiel)? Dan deze server op de
+    /// achtergrond opnieuw ophalen (één keer per lijst). Andere servers krijgen hem bij hun volgende keer bijwerken.
+    private var refetchedRaw = -1
+    private func refetchIfUnhidden(_ s: PlaylistSource, _ ctx: FilterContext) {
+        guard let sk = rawLibrary.skipped, refetchedRaw != rawVersion, !Screenshots.isActive,
+              !refreshingAll, updateTask == nil, !isLoading else { return }
+        let still: (String) -> Bool = { g in ctx.kids ? !KidsCategory.isKids(g) : Self.categoryHidden(g, ctx) }
+        guard sk.needsRefetch(stillHidden: still) else { return }
+        refetchedRaw = rawVersion
+        Task { @MainActor [weak self] in
+            guard let self, self.source?.id == s.id else { return }
+            _ = await self.refresh(s, showSpinner: false)
+        }
     }
 
     /// Filter voor een andere afspeellijst met de leeftijdsgrens van het actieve profiel (nil = geen grens).
@@ -500,6 +536,7 @@ final class PlaylistService: ObservableObject {
         guard let s = source else { publish(rawLibrary); libraryRawVersion = -1; return nil }
         let ctx = context(for: s)
         let raw = rawLibrary
+        refetchIfUnhidden(s, ctx)   // build 151
         // profiel met leeftijdsgrens: classificaties op de achtergrond aanvullen (TMDB, gecachet)
         if ctx.ageLimit != nil { AgeRatingService.shared.prefetch(raw) }
         filterGeneration += 1
@@ -569,15 +606,17 @@ final class PlaylistService: ObservableObject {
             kid[g] = v
             return v
         }
-        func stats(_ groups: [String], visible: Int) -> FetchVisibility {
-            var cats = 0, kids = 0
+        // build 151: niet ingelezen items (verborgen categorieën) tellen als geleverd en verborgen door categorieën
+        func stats(_ groups: [String], visible: Int, skipped: Int) -> FetchVisibility {
+            var cats = skipped, kids = 0
             for g in groups { if catHidden(g) { cats += 1 } else if kidsHidden(g) { kids += 1 } }
-            return FetchVisibility(visible: visible, hidden: HiddenCounts.make(delivered: groups.count, visible: visible,
+            return FetchVisibility(visible: visible, hidden: HiddenCounts.make(delivered: groups.count + skipped, visible: visible,
                                                                                categories: cats, kids: kids, duplicates: 0))
         }
-        return [.live: stats(raw.channels.map(\.group), visible: lib.channels.count),
-                .movie: stats(raw.movies.map(\.group), visible: lib.movies.count),
-                .series: stats(raw.series.map(\.group), visible: lib.series.count)]
+        let sk = raw.skipped
+        return [.live: stats(raw.channels.map(\.group), visible: lib.channels.count, skipped: sk?.count(.live) ?? 0),
+                .movie: stats(raw.movies.map(\.group), visible: lib.movies.count, skipped: sk?.count(.movie) ?? 0),
+                .series: stats(raw.series.map(\.group), visible: lib.series.count, skipped: sk?.count(.series) ?? 0)]
     }
 
     /// Zelfde zenders, films en series (met dezelfde namen/groepen) uit dezelfde ongefilterde lijst?
@@ -670,6 +709,7 @@ final class PlaylistService: ObservableObject {
             return ok
         }
         var lib = raw
+        lib.skipped = nil   // build 151: de compacte index hoort alleen bij de ongefilterde lijst
         // programma's per zender op begintijd (nodig voor het snelle opzoeken van nu/straks per rij)
         lib.epg = Library.sortedEPG(raw.epg)
         lib.channels = raw.channels.filter { visible($0.id, $0.group) }.map { ch in
@@ -688,12 +728,18 @@ final class PlaylistService: ObservableObject {
             let ids = Set(lib.channels.map { $0.epgID ?? $0.id })
             lib.epg = lib.epg.filter { ids.contains($0.key) }
         }
-        lib.movies = raw.movies.filter { visible($0.id, $0.group) && (!ageFilter || movieOK($0)) }.map { m in
+        let keptMovies = raw.movies.filter { visible($0.id, $0.group) && (!ageFilter || movieOK($0)) }
+        lib.movies = keptMovies.map { m in
             var x = m; x.group = group(m.group); x.title = c.renamed[m.id] ?? m.title; return x
         }
-        lib.series = raw.series.filter { visible($0.id, $0.group) && (!ageFilter || seriesOK($0)) }.map { se in
+        let keptSeries = raw.series.filter { visible($0.id, $0.group) && (!ageFilter || seriesOK($0)) }
+        lib.series = keptSeries.map { se in
             var x = se; x.group = group(se.group); x.title = c.renamed[se.id] ?? se.title; return x
         }
+        // build 151: samengevoegde categorieën: de bron in de audio-/app-taal eerst (dan meertalig, dan de rest), zodat
+        // bij dubbele titels die bron blijft (`CategoryMerge.unique` houdt de eerste)
+        preferSources(&lib.movies, raw: keptMovies.map(\.group), group: \.group, want: ctx.want)
+        preferSources(&lib.series, raw: keptSeries.map(\.group), group: \.group, want: ctx.want)
         // eigen volgorde: groepen, dan kanalen binnen een groep
         if !c.groupOrder.isEmpty || !c.channelOrder.isEmpty {
             // build 150: de eigen volgorde staat op de namen van de server; de rijen hebben de opgeschoonde naam
@@ -715,6 +761,35 @@ final class PlaylistService: ObservableObject {
             }
         }
         return lib
+    }
+
+    /// Build 151: binnen elke samengevoegde categorie (meer dan één bron) de items op bronvoorkeur zetten (stabiel);
+    /// de plekken van de categorie in de lijst blijven gelijk, andere categorieën worden niet aangeraakt.
+    nonisolated static func preferSources<T>(_ items: inout [T], raw: [String], group: KeyPath<T, String>, want: [String]) {
+        guard !want.isEmpty, raw.count == items.count, items.count > 1 else { return }
+        var sources: [String: String] = [:]          // weergavenaam → eerste bron
+        var merged = Set<String>()
+        for (i, x) in items.enumerated() {
+            let d = x[keyPath: group]
+            if let first = sources[d] { if first != raw[i] { merged.insert(d) } } else { sources[d] = raw[i] }
+        }
+        guard !merged.isEmpty else { return }
+        var rank: [String: Int] = [:]
+        func r(_ g: String) -> Int {
+            if let v = rank[g] { return v }
+            let v = SourcePreference.rank(group: g, want: want)
+            rank[g] = v
+            return v
+        }
+        var slots: [String: [Int]] = [:]
+        for (i, x) in items.enumerated() where merged.contains(x[keyPath: group]) { slots[x[keyPath: group], default: []].append(i) }
+        for (_, idx) in slots {
+            let ordered = idx.enumerated().sorted { a, b in
+                let ra = r(raw[a.element]), rb = r(raw[b.element])
+                return ra != rb ? ra < rb : a.offset < b.offset
+            }.map { items[$0.element] }
+            for (k, i) in idx.enumerated() { items[i] = ordered[k] }
+        }
     }
 
     // MARK: details
@@ -904,6 +979,8 @@ final class PlaylistService: ObservableObject {
             var channels: [String] = []
             var movies: [(text: String, year: Int?)] = []
             var series: [(text: String, year: Int?)] = []
+            /// Build 151: de compacte zoekindex (verborgen categorieën)
+            var rows: [(text: String, year: Int?)] = []
         }
         private let lock = NSLock()
         private var cache: [String: Keys] = [:]
@@ -916,6 +993,7 @@ final class PlaylistService: ObservableObject {
             k.channels = lib.channels.map { SearchMatch.normalize($0.name).text }
             k.movies = lib.movies.map { m -> (text: String, year: Int?) in let n = SearchMatch.normalize(m.title); return (text: n.text, year: n.year ?? m.year) }
             k.series = lib.series.map { x -> (text: String, year: Int?) in let n = SearchMatch.normalize(x.title); return (text: n.text, year: n.year ?? x.year) }
+            k.rows = (lib.skipped?.rows ?? []).map { r -> (text: String, year: Int?) in let n = SearchMatch.normalize(r.t); return (text: n.text, year: n.year ?? r.y) }
             lock.lock()
             if cache.count > 6 { cache.removeAll() }   // oude lijsten vergeten
             cache[id] = k
@@ -944,6 +1022,8 @@ final class PlaylistService: ObservableObject {
         let lib = library, raw = rawLibrary
         let libID = "lib-\(source?.id.uuidString ?? "")-\(libraryVersion)", rawID = "raw-\(source?.id.uuidString ?? "")-\(rawVersion)"
         let ctx = source.map { context(for: $0) }
+        // build 151: treffers uit de compacte zoekindex (niet ingelezen verborgen categorieën) als film/serie
+        let xc: XtreamClient? = source.flatMap { $0.kind == .xtream ? XtreamClient(source: $0, password: Keychain.get($0.passwordKey) ?? "") : nil }
         let addons = source?.kind == .stremio ? stremioAddons : []
         async let remote: Library = addons.isEmpty ? Library() : Self.withTimeout149(6) { await StremioClient(addons: addons).search(q) }
         var r = await Task.detached(priority: .userInitiated) { () -> SearchResults in
@@ -953,12 +1033,22 @@ final class PlaylistService: ObservableObject {
             r.movies = Self.ranked(lib.movies, k.movies, query, boost: { SearchMatch.boost(rating: $0.rating, added: $0.addedAt) }, limit: 200)
             r.series = Self.ranked(lib.series, k.series, query, boost: { SearchMatch.boost(rating: $0.rating, added: $0.addedAt) }, limit: 200)
             // verborgen categorieën: treffers uit de ongefilterde lijst die alleen door het verbergen wegvallen
-            if let ctx, !ctx.kids, raw.movies.count + raw.series.count > lib.movies.count + lib.series.count {
+            let skippedRows = raw.skipped?.rows.count ?? 0
+            if let ctx, !ctx.kids, raw.movies.count + raw.series.count > lib.movies.count + lib.series.count || skippedRows > 0 {
                 let rk = SearchKeys.shared.keys(rawID, raw)
                 let shownM = Set(lib.movies.map(\.id)), shownS = Set(lib.series.map(\.id))
                 var cand = Library()
-                cand.movies = Self.ranked(raw.movies, rk.movies, query, boost: { _ in 0 }, limit: 400).filter { !shownM.contains($0.id) }
-                cand.series = Self.ranked(raw.series, rk.series, query, boost: { _ in 0 }, limit: 400).filter { !shownS.contains($0.id) }
+                if raw.movies.count + raw.series.count > lib.movies.count + lib.series.count {
+                    cand.movies = Self.ranked(raw.movies, rk.movies, query, boost: { _ in 0 }, limit: 400).filter { !shownM.contains($0.id) }
+                    cand.series = Self.ranked(raw.series, rk.series, query, boost: { _ in 0 }, limit: 400).filter { !shownS.contains($0.id) }
+                }
+                if let sk = raw.skipped, let xc, skippedRows > 0 {
+                    for row in Self.ranked(sk.rows, rk.rows, query, boost: { _ in 0 }, limit: 400) {
+                        let g = sk.group(of: row)
+                        if row.k == .movie, let m = xc.movie(row, group: g) { cand.movies.append(m) }
+                        else if row.k == .series, let x = xc.series(row, group: g) { cand.series.append(x) }
+                    }
+                }
                 if !cand.movies.isEmpty || !cand.series.isEmpty {
                     var open = ctx
                     open.hiddenGroups = []
@@ -1112,6 +1202,7 @@ final class PlaylistService: ObservableObject {
             try w.array("movies", lib.movies)
             try w.array("series", lib.series)
             try w.dictionary("epg", lib.epg)
+            if let sk = lib.skipped { try w.value("skipped", sk) }   // build 151
             try w.finish()
         } catch {
             w.cancel()

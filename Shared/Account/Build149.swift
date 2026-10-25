@@ -419,6 +419,12 @@ final class ChunkedJSONWriter {
         try put("}")
     }
 
+    /// Build 151: `"key":<waarde>` in één keer gecodeerd (kleine of compacte waarden)
+    func value<T: Encodable>(_ k: String, _ v: T) throws {
+        try key(k)
+        try put(try Self.pool { try encoder.encode(v) })
+    }
+
     /// Afronden: sluiten en het bestand op zijn plek zetten
     func finish() throws {
         try put("}")

@@ -105,13 +105,13 @@ final class SourceCheck: ObservableObject {
         rows = [
             catRow(L("Live categories"), lc),
             itemRow(L("Live channels"), ls, parsed: lib.channels.count, after: afterSettings.channels.count,
-                    vis: visible.channels.count, app: inApp?.channels.count),
+                    vis: visible.channels.count, app: inApp.map { SkippedCatalog.delivered(loaded: $0.channels.count, $0.skipped, .live) }),
             catRow(L("Movie categories"), vc),
             itemRow(L("Movies"), vs, parsed: lib.movies.count, after: afterSettings.movies.count,
-                    vis: visible.movies.count, app: inApp?.movies.count),
+                    vis: visible.movies.count, app: inApp.map { SkippedCatalog.delivered(loaded: $0.movies.count, $0.skipped, .movie) }),
             catRow(L("Series categories"), sc),
             itemRow(L("Series"), ss, parsed: lib.series.count, after: afterSettings.series.count,
-                    vis: visible.series.count, app: inApp?.series.count),
+                    vis: visible.series.count, app: inApp.map { SkippedCatalog.delivered(loaded: $0.series.count, $0.skipped, .series) }),
         ]
 
         // steekproef: krijgen series ook afleveringen?
@@ -229,9 +229,9 @@ final class SourceCheck: ObservableObject {
             return r
         }
         var out = [
-            make(L("Live channels"), lib.channels.count, after.channels.count, vis.channels.count, app?.channels.count),
-            make(L("Movies"), lib.movies.count, after.movies.count, vis.movies.count, app?.movies.count),
-            make(L("Series"), lib.series.count, after.series.count, vis.series.count, app?.series.count),
+            make(L("Live channels"), lib.channels.count, after.channels.count, vis.channels.count, app.map { SkippedCatalog.delivered(loaded: $0.channels.count, $0.skipped, .live) }),
+            make(L("Movies"), lib.movies.count, after.movies.count, vis.movies.count, app.map { SkippedCatalog.delivered(loaded: $0.movies.count, $0.skipped, .movie) }),
+            make(L("Series"), lib.series.count, after.series.count, vis.series.count, app.map { SkippedCatalog.delivered(loaded: $0.series.count, $0.skipped, .series) }),
         ]
         if episodes {
             func eps(_ l: Library) -> Int { l.series.reduce(0) { $0 + $1.episodes.count } }

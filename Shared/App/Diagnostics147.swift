@@ -166,9 +166,10 @@ final class FetchLog {
             var list = entries[s.id.uuidString] ?? []
             if list.isEmpty, active, !playlists.rawLibrary.isEmptyLibrary {
                 let r = playlists.rawLibrary
-                list = [.init(kind: .live, delivered: r.channels.count, error: nil, at: now),
-                        .init(kind: .movie, delivered: r.movies.count, error: nil, at: now),
-                        .init(kind: .series, delivered: r.series.count, error: nil, at: now)]
+                // build 151: met de niet ingelezen items uit verborgen categorieën
+                list = [.init(kind: .live, delivered: SkippedCatalog.delivered(loaded: r.channels.count, r.skipped, .live), error: nil, at: now),
+                        .init(kind: .movie, delivered: SkippedCatalog.delivered(loaded: r.movies.count, r.skipped, .movie), error: nil, at: now),
+                        .init(kind: .series, delivered: SkippedCatalog.delivered(loaded: r.series.count, r.skipped, .series), error: nil, at: now)]
             }
             all.append(list)
             if active, !playlists.isFiltering {

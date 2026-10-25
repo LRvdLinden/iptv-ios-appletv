@@ -1143,5 +1143,120 @@ do {
     check(ms < 2000, "2000 categorienamen binnen 2 s")
 }
 
+// MARK: build 151: verborgen categorieën niet inlezen (tellen + compacte zoekindex), bronvoorkeur bij samenvoegen
+
+struct Dto151: Decodable { let stream_id: Int; let name: String?; let stream_icon: String?; let category_id: String?
+                           let container_extension: String?; let rating: String?; let added: String?; let year: String? }
+/// Zoals `Movie` in de app (twee URL's, datum, getallen)
+struct Full151 { var id: String; var title: String; var year: Int?; var poster: URL?; var group: String; var streamURL: URL?
+                 var rating: Double?; var addedAt: Date?; var vodID: Int?; var plot: String? }
+func json151(_ n: Int, prefix: String, cats: Int) -> Data {
+    var out = "["
+    out.reserveCapacity(n * 230)
+    for i in 0..<n {
+        if i > 0 { out += "," }
+        out += "{\"num\":\(i),\"name\":\"NL | \(prefix) titel \(i) (20\(10 + i % 15))\",\"stream_type\":\"movie\",\"stream_id\":\(i),"
+        out += "\"stream_icon\":\"http://img.example.com/posters/\(prefix)/\(i).jpg\",\"rating\":\"\(i % 10).5\",\"rating_5based\":3.2,"
+        out += "\"added\":\"\(1_700_000_000 + i)\",\"category_id\":\"\(i % cats)\",\"container_extension\":\"mkv\",\"custom_sid\":\"\",\"direct_source\":\"\"}"
+    }
+    return Data((out + "]").utf8)
+}
+do {
+    // klein: tellen per categorie, rijen, geleverd, opnieuw ophalen
+    let skip = SkipFilter { $0.hasPrefix("FR") }
+    let b = SkippedCatalog.Builder()
+    var asked = 0
+    let memo = SkipFilter { g in asked += 1; return g == "X" }
+    for _ in 0..<5 { _ = memo.skip("X"); _ = memo.skip("Y") }
+    eq(asked, 2, "per categorie één keer gevraagd")
+    check(skip.skip("FR | Films") && !skip.skip("NL | Films"), "verborgen categorie")
+    b.count(.live, "FR | Info"); b.count(.live, "FR | Info"); b.count(.live, "FR | Sport")
+    b.add(.movie, id: "xv1", title: "FR | Amélie (2001)", group: "FR | Films", year: 2001, poster: "http://x/1.jpg", ext: "mkv", tmdb: 194)
+    b.add(.movie, id: "xv2", title: "FR | Léon", group: "FR | Films", ext: "mp4")
+    b.add(.series, id: "xs9", title: "FR | Lupin", group: "FR | Séries")
+    let sk = b.finish()!
+    eq(sk.count(.live), 3, "zenders geteld")
+    eq(sk.count(.movie), 2, "films geteld")
+    eq(sk.counts(.live)["FR | Info"], 2 as Int?, "per categorie")
+    eq(sk.groupNames(.live), ["FR | Info", "FR | Sport"], "volgorde categorieën")
+    eq(sk.rows.count, 3, "alleen films en series als rij")
+    eq(sk.group(of: sk.rows[2]), "FR | Séries", "categorie van een rij")
+    eq(sk.rows[1].x, nil as String?, "mp4 niet bewaard")
+    eq(sk.rows[0].x, "mkv" as String?, "andere extensie wel")
+    eq(SkippedCatalog.delivered(loaded: 10, sk, .live), 13, "geleverd = ingelezen + overgeslagen")
+    let gc = SkippedCatalog.groupCounts(loaded: ["NL | Info", "NL | Info", "FR | Info"], sk, .live)
+    eq(gc.map(\.group), ["NL | Info", "FR | Info", "FR | Sport"], "categorieën met de overgeslagen erbij")
+    eq(gc.map(\.count), [2, 3, 1], "aantallen opgeteld")
+    check(!sk.needsRefetch(stillHidden: { $0.hasPrefix("FR") }), "alles nog verborgen: niet opnieuw ophalen")
+    check(sk.needsRefetch(stillHidden: { $0 != "FR | Sport" }), "categorie aangezet: opnieuw ophalen")
+    check(SkippedCatalog.Builder().finish() == nil, "niets overgeslagen = geen index")
+    let back = try? JSONDecoder().decode(SkippedCatalog.self, from: JSONEncoder().encode(sk))
+    eq(back, sk, "index bewaren en terug inlezen")
+
+    // bronvoorkeur
+    let want = SourcePreference.want(audio: ["nl"], app: "en")
+    eq(want, ["NL", "BE", "EN", "UK", "US"], "gewenste labels: audio eerst, dan app-taal")
+    check(SourcePreference.rank(group: "| NL | NETFLIX", want: want) < SourcePreference.rank(group: "| MULTI | NETFLIX", want: want), "NL voor Multi")
+    check(SourcePreference.rank(group: "| MULTI | NETFLIX", want: want) < SourcePreference.rank(group: "| DE | NETFLIX", want: want), "Multi voor DE")
+    check(SourcePreference.rank(group: "EN | Netflix", want: want) < SourcePreference.rank(group: "Netflix", want: want), "EN voor zonder label")
+    check(!SourcePreference.better("DE | Netflix", than: "FR | Netflix", want: want), "gelijke rang: de eerste blijft")
+    struct T151 { let id: String; let key: String; let group: String }
+    let items = [T151(id: "a", key: "k1", group: "DE | Netflix"), T151(id: "b", key: "k1", group: "NL | Netflix"),
+                 T151(id: "c", key: "k2", group: "MULTI | Netflix"), T151(id: "d", key: "k2", group: "DE | Netflix")]
+    let u = CategoryMerge.unique(items, key: { $0.key }, better: { SourcePreference.better($0.group, than: $1.group, want: want) })
+    eq(u.map(\.id), ["b", "c"], "dubbel: NL wint van DE, Multi van DE")
+
+    // groot: 123k films, 30k series, 12k zenders, 80% in verborgen categorieën (100 categorieën per soort, 0–79 uit)
+    let sizes = [("m", 123_000), ("s", 30_000), ("c", 12_000)]
+    func run(skipping: Bool) -> (peak: Double, kept: Double, full: Int, rows: Int, ms: Double, cacheMB: Double) {
+        var full: [Full151] = []
+        var catalog: SkippedCatalog?
+        var keptMB = 0.0, cacheMB = 0.0
+        let t0 = Date()
+        let peak = peakDuring148 {
+            let base = footprintMB148()
+            let builder = SkippedCatalog.Builder()
+            let filter = SkipFilter { g in (Int(g.dropFirst(4)) ?? 0) < 80 }
+            for (p, n) in sizes {
+                var data: Data? = json151(n, prefix: p, cats: 100)
+                let kind: SkippedCatalog.Kind = p == "m" ? .movie : (p == "s" ? .series : .live)
+                _ = JSONChunks.decode(Dto151.self, from: data!, chunk: 1500) { chunk in
+                    for v in chunk {
+                        let g = "Cat " + (v.category_id ?? "0")
+                        if skipping, filter.skip(g) {
+                            if kind == .live { builder.count(.live, g) }
+                            else { builder.add(kind, id: "x" + p + String(v.stream_id), title: v.name ?? "", group: g,
+                                               year: v.year.flatMap { Int($0) }, poster: v.stream_icon, ext: v.container_extension) }
+                            continue
+                        }
+                        full.append(Full151(id: "x" + p + String(v.stream_id), title: v.name ?? "", year: v.year.flatMap { Int($0) },
+                                            poster: v.stream_icon.flatMap { URL(string: $0) }, group: g,
+                                            streamURL: URL(string: "http://server.example.com:8080/movie/user/pass/\(v.stream_id).mkv"),
+                                            rating: v.rating.flatMap { Double($0) }, addedAt: v.added.flatMap { Double($0) }.map { Date(timeIntervalSince1970: $0) },
+                                            vodID: v.stream_id, plot: nil))
+                    }
+                }
+                data = nil
+            }
+            catalog = builder.finish()
+            keptMB = footprintMB148() - base
+            // bewaarde lijst (cache): grootte van de index
+            if let c = catalog, let d = try? JSONEncoder().encode(c) { cacheMB = Double(d.count) / 1_048_576 }
+        }
+        let ms = Date().timeIntervalSince(t0) * 1000
+        let out = (peak, keptMB, full.count, catalog?.rows.count ?? 0, ms, cacheMB)
+        full = []; catalog = nil
+        return out
+    }
+    let before = run(skipping: false)
+    let after = run(skipping: true)
+    eq(before.full, 165_000, "zonder overslaan alles ingelezen")
+    eq(after.full, 33_000, "met overslaan 20% ingelezen")
+    eq(after.rows, 122_400, "films en series uit verborgen categorieën in de zoekindex")
+    print("build 151: 123k/30k/12k, 80% verborgen: vóór piek +\(Int(before.peak)) MB, vast +\(Int(before.kept)) MB (\(Int(before.ms)) ms); "
+          + "na piek +\(Int(after.peak)) MB, vast +\(Int(after.kept)) MB (\(Int(after.ms)) ms), index \(String(format: "%.1f", after.cacheMB)) MB als JSON")
+    check(after.kept < before.kept * 0.7, "vast geheugen met overslaan duidelijk lager (\(Int(after.kept)) vs \(Int(before.kept)) MB)")
+}
+
 print("\(checks) controles, \(failures) fout")
 exit(failures == 0 ? 0 : 1)

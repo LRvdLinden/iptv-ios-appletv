@@ -22,14 +22,17 @@ struct ManageView: View {
     private var pid: UUID? { playlists.source?.id }
     private var c: Customization { pid.map { store.customization($0) } ?? Customization() }
 
-    private var rawGroups: [String] {
+    /// Build 151: categorieën met aantallen, ook de niet ingelezen (verborgen) categorieën (`Library.skipped`)
+    private var groupCounts: [(group: String, count: Int)] {
         let raw = playlists.rawLibrary
         switch section {
-        case .live: return orderedUnique(raw.channels.map(\.group))
-        case .movies: return orderedUnique(raw.movies.map(\.group))
-        case .series: return orderedUnique(raw.series.map(\.group))
+        case .live: return SkippedCatalog.groupCounts(loaded: raw.channels.map(\.group), raw.skipped, .live)
+        case .movies: return SkippedCatalog.groupCounts(loaded: raw.movies.map(\.group), raw.skipped, .movie)
+        case .series: return SkippedCatalog.groupCounts(loaded: raw.series.map(\.group), raw.skipped, .series)
         }
     }
+
+    private var rawGroups: [String] { groupCounts.map(\.group) }
 
     /// Groepen in de eigen volgorde, zonder groepen die in een andere zijn samengevoegd.
     private var groups: [String] {
@@ -49,9 +52,10 @@ struct ManageView: View {
             .pickerStyle(.segmented)
             .listRowBackground(Color.clear)
 
+            let counts = Dictionary(groupCounts.map { ($0.group, $0.count) }, uniquingKeysWith: +)
             Section {
                 ForEach(Array(groups.enumerated()), id: \.element) { i, g in
-                    groupRow(g, index: i)
+                    groupRow(g, index: i, count: counts[g] ?? 0)
                 }
                 .onMove(perform: section == .live ? move : nil)
             } header: {
@@ -70,9 +74,9 @@ struct ManageView: View {
                 Section(L("Merged")) {
                     ForEach(merged, id: \.self) { g in
                         HStack {
-                            Text(g)
+                            Text(CategoryName.clean(g))
                             Image(systemName: "arrow.right").foregroundStyle(Theme.secondary)
-                            Text(c.merged[g] ?? "").foregroundStyle(Theme.secondary)
+                            Text(c.merged[g].map(display) ?? "").foregroundStyle(Theme.secondary)
                             Spacer()
                             Button(L("Undo")) { update { $0.merged[g] = nil } }
                         }
@@ -110,9 +114,20 @@ struct ManageView: View {
         }
     }
 
-    private func display(_ g: String) -> String { c.renamed[Customization.groupKey(g)] ?? g }
+    /// Build 151: de opgeschoonde naam (zoals overal in de app, `CategoryName`), een eigen naam gaat voor
+    private func display(_ g: String) -> String { c.renamed[Customization.groupKey(g)] ?? CategoryName.clean(g) }
 
-    @ViewBuilder private func groupRow(_ g: String, index: Int) -> some View {
+    /// Onderregel: aantal en de weggehaalde talen ("NL · Multi")
+    private func caption(_ g: String, count: Int) -> String? {
+        var parts: [String] = []
+        if count > 0 { parts.append(section == .live ? L("%d channels", count) : L("%d titles", count)) }
+        let labels = CategoryName.parse(g).labels
+        if !labels.isEmpty { parts.append(labels.joined(separator: " · ")) }
+        if c.renamed[Customization.groupKey(g)] != nil { parts.append(CategoryName.clean(g)) }
+        return parts.isEmpty ? nil : parts.joined(separator: " — ")
+    }
+
+    @ViewBuilder private func groupRow(_ g: String, index: Int, count: Int) -> some View {
         let key = Customization.groupKey(g)
         // build 128: verbergen van een categorie = categorie uit voor dit profiel (zoals in Categorieën aan/uit)
         let hidden = pid.map { store.isCategoryHidden($0, g) } ?? false
@@ -120,7 +135,7 @@ struct ManageView: View {
         let label = HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text(display(g)).foregroundStyle(hidden ? Theme.secondary : .white).strikethrough(hidden)
-                if display(g) != g { Text(g).font(.caption).foregroundStyle(Theme.secondary) }
+                if let cap = caption(g, count: count) { Text(cap).font(.caption).foregroundStyle(Theme.secondary).lineLimit(1) }
             }
             Spacer()
             if locked { Image(systemName: "lock.fill").foregroundStyle(Theme.imdb) }
@@ -243,7 +258,7 @@ struct ChannelsManageView: View {
             }
             .onMove(perform: move)
         }
-        .navigationTitle(group)
+        .navigationTitle(c.renamed[Customization.groupKey(group)] ?? CategoryName.clean(group))
         #if os(iOS)
         .toolbar { EditButton() }
         #endif

@@ -30,7 +30,9 @@ struct CategoriesView: View {
     }
     private var indexKey: IndexKey {
         let raw = playlists.rawLibrary
-        return IndexKey(pid: pid, counts: [raw.channels.count, raw.movies.count, raw.series.count],
+        let sk = raw.skipped
+        return IndexKey(pid: pid, counts: [raw.channels.count, raw.movies.count, raw.series.count,
+                                           sk?.count(.live) ?? 0, sk?.count(.movie) ?? 0, sk?.count(.series) ?? 0],
                         servers: store.playlists.map(\.id))
     }
 
@@ -93,9 +95,10 @@ struct CategoriesView: View {
         if !off.isEmpty { store.setCategories(off, hidden: true) }
     }
 
-    /// Onderregel: talen van de bronnen ("NL · Multi") en, met meer servers, de servers
+    /// Onderregel: aantal (build 151), talen van de bronnen ("NL · Multi") en, met meer servers, de servers
     private func caption(_ g: String) -> String? {
         var parts: [String] = []
+        if let n = index.counts[kind]?[g], n > 0 { parts.append(kind == .live ? L("%d channels", n) : L("%d titles", n)) }
         if let ls = index.labels[kind]?[g], !ls.isEmpty { parts.append(ls.joined(separator: " · ")) }
         if store.playlists.count > 1 {
             var ids: [UUID] = []
@@ -200,7 +203,7 @@ struct CategoriesView: View {
         let active = pid
         let others = store.playlists.filter { $0.id != active }
         let built = await Task.detached(priority: .userInitiated) { () -> CategoryIndex in
-            var lists: [(UUID, [ManageView.Kind: [String]])] = []
+            var lists: [(UUID, [ManageView.Kind: [(group: String, count: Int)]])] = []
             if let active { lists.append((active, CategoryIndex.groups(of: raw))) }
             // alleen servers die nog bestaan (een verwijderde server verdwijnt meteen uit dit scherm)
             for p in others {
@@ -229,14 +232,18 @@ struct CategoryIndex: Sendable {
     var labels: [ManageView.Kind: [String: [String]]] = [:]
     /// Per onderdeel: voorvoegsels ("NL", "BE" …) met hun bronnen
     var prefixes: [ManageView.Kind: [Prefix]] = [:]
+    /// Build 151: per onderdeel: weergavenaam → aantal zenders/titels (ook niet ingelezen verborgen categorieën)
+    var counts: [ManageView.Kind: [String: Int]] = [:]
     var building = false
 
-    static func groups(of lib: Library) -> [ManageView.Kind: [String]] {
-        [.live: orderedUnique(lib.channels.map(\.group)), .movies: orderedUnique(lib.movies.map(\.group)),
-         .series: orderedUnique(lib.series.map(\.group))]
+    /// Build 151: met aantallen, en ook de categorieën die niet zijn ingelezen (verborgen, `Library.skipped`)
+    static func groups(of lib: Library) -> [ManageView.Kind: [(group: String, count: Int)]] {
+        [.live: SkippedCatalog.groupCounts(loaded: lib.channels.map(\.group), lib.skipped, .live),
+         .movies: SkippedCatalog.groupCounts(loaded: lib.movies.map(\.group), lib.skipped, .movie),
+         .series: SkippedCatalog.groupCounts(loaded: lib.series.map(\.group), lib.skipped, .series)]
     }
 
-    static func build(_ lists: [(UUID, [ManageView.Kind: [String]])]) -> CategoryIndex {
+    static func build(_ lists: [(UUID, [ManageView.Kind: [(group: String, count: Int)]])]) -> CategoryIndex {
         var x = CategoryIndex()
         for kind in ManageView.Kind.allCases {
             var order: [String] = []
@@ -244,13 +251,15 @@ struct CategoryIndex: Sendable {
             var map: [String: [Source]] = [:]
             var labels: [String: [String]] = [:]
             var pre: [String: [Source]] = [:]
+            var counts: [String: Int] = [:]
             for (sid, byKind) in lists {
-                for g in byKind[kind] ?? [] {
+                for (g, n) in byKind[kind] ?? [] {
                     let parsed = CategoryName.parse(g)
                     let k = CategoryName.mergeKey(parsed.name)
                     let shown: String
                     if let s = byKey[k] { shown = s } else { shown = parsed.name; byKey[k] = shown; order.append(shown) }
                     let src = Source(server: sid, name: g)
+                    counts[shown, default: 0] += n
                     if !(map[shown]?.contains(src) ?? false) { map[shown, default: []].append(src) }
                     for l in parsed.labels where !(labels[shown]?.contains(l) ?? false) { labels[shown, default: []].append(l) }
                     if let p = parsed.prefixLabels.first { pre[p, default: []].append(src) }
@@ -259,6 +268,7 @@ struct CategoryIndex: Sendable {
             x.groups[kind] = order
             x.sources[kind] = map
             x.labels[kind] = labels
+            x.counts[kind] = counts
             x.prefixes[kind] = pre
                 .sorted { $0.value.count != $1.value.count ? $0.value.count > $1.value.count : $0.key < $1.key }
                 .map { Prefix(code: $0.key, sources: $0.value) }

@@ -226,8 +226,11 @@ struct Library: Codable {
     var movies: [Movie] = []
     var series: [Series] = []
     var epg: [String: [EPGProgram]] = [:]   // key = epgID of channel.id
+    /// Build 151: niet ingelezen items uit verborgen categorieën (tellingen per categorie en een compacte zoekindex);
+    /// alleen in de ongefilterde lijst (`rawLibrary`) en de cache, niet in de gefilterde `library`
+    var skipped: SkippedCatalog? = nil
 
-    var isEmptyLibrary: Bool { channels.isEmpty && movies.isEmpty && series.isEmpty }
+    var isEmptyLibrary: Bool { channels.isEmpty && movies.isEmpty && series.isEmpty && (skipped?.isEmpty ?? true) }
     var channelGroups: [String] { orderedUnique(channels.map(\.group)) }
     var movieGroups: [String] { orderedUnique(movies.map(\.group)) }
     var seriesGroups: [String] { orderedUnique(series.map(\.group)) }
