@@ -318,21 +318,28 @@ final class DiagnosticsModel: ObservableObject {
 
     // MARK: hulpjes
 
-    /// HEAD op de eigen server (alleen bereikbaarheid: elk HTTP-antwoord telt). nil = geen server of geen adres.
+    /// Bereikbaarheid van de eigen server (elk HTTP-antwoord telt). nil = geen server of geen adres.
+    /// Build 149: geen HEAD meer (veel IPTV-servers weigeren of negeren dat), maar een kleine GET: bij Xtream de
+    /// `player_api.php`-login, anders alleen de eerste bytes (Range) en stoppen zodra de kop binnen is.
     private static func providerCheck(_ s: PlaylistSource?) async -> (ok: Bool, ms: Int)? {
         guard let s else { return nil }
         let raw = s.kind == .m3u ? s.m3uURL : s.serverURL
-        guard let url = URL(string: raw.trimmingCharacters(in: .whitespacesAndNewlines)),
+        var target = URL(string: raw.trimmingCharacters(in: .whitespacesAndNewlines))
+        if s.kind == .xtream {
+            target = XtreamClient(source: s, password: Keychain.get(s.passwordKey) ?? "").loginURL() ?? target
+        }
+        guard let url = target,
               let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https", url.host != nil else { return nil }
         var req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 8)
-        req.httpMethod = "HEAD"
+        req.httpMethod = "GET"
+        if s.kind != .xtream { req.setValue("bytes=0-1023", forHTTPHeaderField: "Range") }
         let c = URLSessionConfiguration.ephemeral
         c.timeoutIntervalForRequest = 8
         let session = URLSession(configuration: c)
         defer { session.invalidateAndCancel() }
         let t0 = Date()
         do {
-            let (_, resp) = try await session.data(for: req)
+            let (_, resp) = try await session.bytes(for: req)   // alleen de kop; de rest wordt afgebroken
             return (resp is HTTPURLResponse, Int(Date().timeIntervalSince(t0) * 1000))
         } catch {
             return (false, Int(Date().timeIntervalSince(t0) * 1000))

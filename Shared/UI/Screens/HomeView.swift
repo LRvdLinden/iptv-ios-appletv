@@ -38,6 +38,8 @@ struct HomeView: View {
     @State private var showCategories = false
     @State private var browseOpen: BrowseCategory?
     @ObservedObject private var browse = BrowseIndexStore.shared
+    /// Build 149: logo's van streamingdiensten (TMDB) voor de rij Ontdek categorieën
+    @ObservedObject private var providerLogos = ProviderLogos.shared
     /// Build 128: items van andere servers (Mijn lijst, Verder kijken, favoriete zenders, collecties)
     @ObservedObject private var cross = CrossServer.shared
     /// Build 143: echte posters voor Verder kijken (TMDB)
@@ -224,6 +226,8 @@ struct HomeView: View {
         case top10Series, top10Movies
         case movieGroup(String), seriesGroup(String)
         case browse
+        /// Build 149: Ontdek categorieën
+        case discover
         var id: Self { self }
     }
 
@@ -268,7 +272,38 @@ struct HomeView: View {
             }
             slots.insert((.browse, true), at: min(at, slots.count))
         }
-        return slots.filter { $0.shown }.map { $0.slot }
+        var out = slots.filter { $0.shown }.map { $0.slot }
+        // build 149: Ontdek categorieën direct na de rij Categorieën, anders als 4e rij
+        if !discoverCategories.isEmpty {
+            let at = out.firstIndex(of: .browse).map { $0 + 1 } ?? min(3, out.count)
+            out.insert(.discover, at: at)
+        }
+        return out
+    }
+
+    /// Build 149: de grootste zichtbare categorieën van de server (bibliotheek is al gefilterd)
+    private var discoverCategories: [DiscoverCategory] {
+        DiscoverCategory.build(browse.index, kids: store.activeProfile?.kids ?? false)
+    }
+
+    /// Build 149: rij Ontdek categorieën: tegels met posters en een gekleurde balk (of het logo van de dienst)
+    @ViewBuilder private var discoverRow: some View {
+        let items = discoverCategories
+        if !items.isEmpty {
+            let w = Theme.landscapeWidth * 1.15
+            MediaRow(title: L("Discover categories")) {
+                ForEach(items) { c in
+                    let logo = providerLogos.logo(for: c.category.title)
+                    Button { browseOpen = c.category } label: {
+                        DiscoverCategoryTile(item: c, logo: logo).frame(width: w)
+                    }
+                    .cardButton()
+                    .tileHover()
+                    .accessibilityLabel("\(logo?.name ?? c.title), \(L("%d titles", c.count))")
+                }
+            }
+            .onAppear { providerLogos.load() }
+        }
     }
 
     /// Toont deze vaste rij (of collectie) iets?
@@ -300,6 +335,7 @@ struct HomeView: View {
         case .seriesGroup(let id):
             if let g = index.seriesGroups.first(where: { $0.id == id }) { seriesRow(g.id, Array(g.items.prefix(40)), all: g.items) }
         case .browse: browseRow
+        case .discover: discoverRow
         case .key(let key): homeRow(key)
         }
     }

@@ -13,6 +13,9 @@ struct XtreamClient {
         server = s; username = source.username; self.password = password; preferHLS = source.preferHLS
     }
 
+    /// Build 149: login-adres (`player_api.php` zonder actie), voor de bereikbaarheidscheck in de diagnose
+    func loginURL() -> URL? { api() }
+
     private func api(_ action: String? = nil, _ extra: [String: String] = [:]) -> URL? {
         var c = URLComponents(string: server + "/player_api.php")
         var q = [URLQueryItem(name: "username", value: username), URLQueryItem(name: "password", value: password)]

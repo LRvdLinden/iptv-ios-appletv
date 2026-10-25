@@ -1103,7 +1103,8 @@
   "Succeeded": "نجح",
   "Task: %@": "المهمة: %@",
   "Update %@": "تحديث %@",
-  "after \"%@\"": "بعد \"%@\""
+  "after \"%@\"": "بعد \"%@\"",
+  "Discover categories": "اكتشف الفئات"
  },
  "de": {
   "%@ is now signed in.": "%@ ist jetzt angemeldet.",
@@ -2209,7 +2210,8 @@
   "Succeeded": "Erfolgreich",
   "Task: %@": "Aufgabe: %@",
   "Update %@": "Aktualisierung %@",
-  "after \"%@\"": "nach „%@\""
+  "after \"%@\"": "nach „%@\"",
+  "Discover categories": "Kategorien entdecken"
  },
  "es": {
   "%@ is now signed in.": "%@ ya ha iniciado sesión.",
@@ -3315,7 +3317,8 @@
   "Succeeded": "Correcto",
   "Task: %@": "Tarea: %@",
   "Update %@": "Actualización %@",
-  "after \"%@\"": "tras \"%@\""
+  "after \"%@\"": "tras \"%@\"",
+  "Discover categories": "Descubre categorías"
  },
  "fr": {
   "%@ is now signed in.": "%@ est maintenant connecté.",
@@ -4421,7 +4424,8 @@
   "Succeeded": "Réussi",
   "Task: %@": "Tâche : %@",
   "Update %@": "Mise à jour %@",
-  "after \"%@\"": "après « %@ »"
+  "after \"%@\"": "après « %@ »",
+  "Discover categories": "Découvrir les catégories"
  },
  "it": {
   "%@ is now signed in.": "%@ ha effettuato l’accesso.",
@@ -5527,7 +5531,8 @@
   "Succeeded": "Riuscito",
   "Task: %@": "Attività: %@",
   "Update %@": "Aggiornamento %@",
-  "after \"%@\"": "dopo \"%@\""
+  "after \"%@\"": "dopo \"%@\"",
+  "Discover categories": "Scopri le categorie"
  },
  "nl": {
   "%@ is now signed in.": "%@ is nu ingelogd.",
@@ -6633,7 +6638,8 @@
   "Succeeded": "Gelukt",
   "Task: %@": "Taak: %@",
   "Update %@": "Bijwerken %@",
-  "after \"%@\"": "na \"%@\""
+  "after \"%@\"": "na \"%@\"",
+  "Discover categories": "Ontdek categorieën"
  },
  "pl": {
   "%@ is now signed in.": "%@ jest teraz zalogowany.",
@@ -7739,7 +7745,8 @@
   "Succeeded": "Udało się",
   "Task: %@": "Zadanie: %@",
   "Update %@": "Aktualizacja %@",
-  "after \"%@\"": "po „%@\""
+  "after \"%@\"": "po „%@\"",
+  "Discover categories": "Odkryj kategorie"
  },
  "pt": {
   "%@ is now signed in.": "%@ já tem sessão iniciada.",
@@ -8845,7 +8852,8 @@
   "Succeeded": "Concluído",
   "Task: %@": "Tarefa: %@",
   "Update %@": "Atualização %@",
-  "after \"%@\"": "após \"%@\""
+  "after \"%@\"": "após \"%@\"",
+  "Discover categories": "Descobrir categorias"
  },
  "tr": {
   "%@ is now signed in.": "%@ artık oturum açtı.",
@@ -9951,7 +9959,8 @@
   "Succeeded": "Başarılı",
   "Task: %@": "Görev: %@",
   "Update %@": "Güncelleme %@",
-  "after \"%@\"": "\"%@\" sonrası"
+  "after \"%@\"": "\"%@\" sonrası",
+  "Discover categories": "Kategorileri keşfet"
  },
  "zh-Hans": {
   "%@ is now signed in.": "%@ 现已登录。",
@@ -11057,6 +11066,7 @@
   "Succeeded": "成功",
   "Task: %@": "任务：%@",
   "Update %@": "更新 %@",
-  "after \"%@\"": "在“%@”之后"
+  "after \"%@\"": "在“%@”之后",
+  "Discover categories": "发现分类"
  }
 }

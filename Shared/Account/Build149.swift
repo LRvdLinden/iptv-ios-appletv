@@ -227,3 +227,199 @@ enum SharedFormatters {
         return f
     }
 }
+
+// MARK: - Ontdek categorieën (Home)
+
+/// Build 149: categorienaam van de server opschonen voor de rij "Ontdek categorieën":
+/// voorvoegsels als "NL | ", "|EN| ", "[NL] ", "4K - ", "VOD: " en kwaliteitslabels eraf, "Netflix" blijft "Netflix".
+enum CategoryName {
+    private static let tags: Set<String> = ["4k", "uhd", "fhd", "hd", "sd", "hevc", "h265", "vod", "vip", "multi", "multisub",
+                                            "nl", "be", "en", "uk", "us", "de", "fr", "es", "it", "tr", "pl", "pt", "ar", "nld", "eng",
+                                            "ex", "exyu", "fhd/hd", "hd/fhd", "movies", "series"]
+    private static let separators: Set<Character> = ["|", "-", ":", "•", "·", "/", "_", "–", "—", "»", "▶", "★", "*", "#"]
+
+    static func clean(_ raw: String) -> String {
+        var s = Substring(raw.trimmingCharacters(in: .whitespacesAndNewlines))
+        // voorvoegsels, zo vaak als nodig ("NL | 4K - Netflix")
+        for _ in 0..<4 {
+            let before = s
+            s = s.drop { $0 == " " || separators.contains($0) }
+            if let open = s.first, open == "[" || open == "(" || open == "{",
+               let close = s.firstIndex(of: open == "[" ? "]" : open == "(" ? ")" : "}"), s.distance(from: s.startIndex, to: close) <= 12 {
+                s = s[s.index(after: close)...]
+                continue
+            }
+            // eerste woord tot een scheidingsteken
+            if let sep = s.firstIndex(where: { separators.contains($0) }) {
+                let head = s[..<sep].trimmingCharacters(in: .whitespaces).lowercased()
+                if !head.isEmpty, head.count <= 8, tags.contains(head) || head.split(separator: " ").allSatisfy({ tags.contains(String($0)) }) {
+                    s = s[s.index(after: sep)...]
+                    continue
+                }
+            }
+            if s == before { break }
+        }
+        var out = String(s).trimmingCharacters(in: .whitespaces)
+        // achteraan: " 4K", " (NL)", " [HD]", " - NL"
+        for _ in 0..<3 {
+            let words = out.split(separator: " ")
+            guard words.count > 1, let last = words.last else { break }
+            let w = last.trimmingCharacters(in: CharacterSet(charactersIn: "[](){}|-")).lowercased()
+            guard tags.contains(w) else { break }
+            out = words.dropLast().joined(separator: " ").trimmingCharacters(in: CharacterSet(charactersIn: " -|:"))
+        }
+        return out.isEmpty ? raw.trimmingCharacters(in: .whitespacesAndNewlines) : out
+    }
+}
+
+/// Build 149: categorie → streamingdienst van TMDB (`/watch/providers`, `provider_name`), voor het logo in de balk.
+/// Alleen een duidelijke match; anders nil (dan de naam als tekst).
+enum ProviderMatch {
+    /// Ingekorte naam → TMDB-naam (zoals TMDB hem in NL noemt)
+    static let aliases: [String: String] = [
+        "hbo": "HBO Max", "hbomax": "HBO Max",
+        "prime": "Amazon Prime Video", "primevideo": "Amazon Prime Video", "amazon": "Amazon Prime Video",
+        "amazonprime": "Amazon Prime Video", "amazonprimevideo": "Amazon Prime Video",
+        "disney": "Disney Plus", "disneyplus": "Disney Plus",
+        "skyshowtime": "SkyShowtime", "netflix": "Netflix", "viaplay": "Viaplay", "videoland": "Videoland",
+        "appletv": "Apple TV+", "appletvplus": "Apple TV+", "paramount": "Paramount Plus", "paramountplus": "Paramount Plus",
+        "npostart": "NPO Start", "npoplus": "NPO Plus", "pathethuis": "Pathé Thuis", "canalplus": "Canal+",
+    ]
+
+    /// Kleine letters en cijfers; "+" telt als "plus"
+    static func key(_ s: String) -> String {
+        var out = ""
+        out.unicodeScalars.reserveCapacity(s.utf8.count)
+        for u in s.lowercased().folding(options: .diacriticInsensitive, locale: nil).unicodeScalars {
+            if u == "+" { out += "plus" }
+            else if ("a"..."z").contains(u) || ("0"..."9").contains(u) { out.unicodeScalars.append(u) }
+        }
+        return out
+    }
+
+    /// `providers`: TMDB-naam → logo-pad. Geeft de TMDB-naam terug.
+    static func match(_ category: String, providers: [String: String]) -> String? {
+        guard !providers.isEmpty else { return nil }
+        let k = key(CategoryName.clean(category))
+        guard k.count >= 3 else { return nil }
+        var byKey: [String: String] = [:]
+        for name in providers.keys { byKey[key(name)] = name }
+        if let n = byKey[k] { return n }
+        if let a = aliases[k] {
+            if providers[a] != nil { return a }
+            if let n = byKey[key(a)] { return n }
+        }
+        // "Netflix Films", "Disney+ Series": de categorie begint met de dienst (langste eerst)
+        let words = CategoryName.clean(category).lowercased().split(whereSeparator: { $0 == " " || $0 == "-" || $0 == "|" })
+        for n in stride(from: min(3, words.count), through: 1, by: -1) {
+            let head = key(words.prefix(n).joined())
+            guard head.count >= 3 else { continue }
+            if let name = byKey[head] { return name }
+            if let a = aliases[head] {
+                if providers[a] != nil { return a }
+                if let name = byKey[key(a)] { return name }
+            }
+        }
+        return nil
+    }
+
+    /// Vaste kleur uit de palet op naam (zelfde naam = zelfde kleur)
+    static func paletteIndex(_ name: String, count: Int) -> Int {
+        var h: UInt32 = 5381
+        for u in name.unicodeScalars { h = (h &* 33) &+ u.value }
+        return Int(h % UInt32(max(1, count)))
+    }
+}
+
+// MARK: - Bewaren in stukken
+
+/// Build 149: een JSON-object met grote lijsten in stukken naar een bestand schrijven, zonder de hele JSON eerst als
+/// één `Data` in het geheugen te bouwen (bij 123k films ging het geheugen bij bewaren van 945 MB naar 1,7 GB).
+/// De uitkomst is precies wat `JSONEncoder` van het hele object maakt (zelfde sleutels en waarden), dus lezen werkt
+/// ongewijzigd. Atomisch: eerst een tijdelijk bestand, daarna verwisselen.
+final class ChunkedJSONWriter {
+    private let handle: FileHandle
+    private let tmp: URL
+    private let target: URL
+    private let encoder: JSONEncoder
+    private var first = true
+    private(set) var bytes = 0
+    let chunk: Int
+
+    init(url: URL, encoder: JSONEncoder = JSONEncoder(), chunk: Int = 2000) throws {
+        target = url
+        tmp = url.deletingLastPathComponent().appendingPathComponent(".\(url.lastPathComponent).\(UUID().uuidString).tmp")
+        guard FileManager.default.createFile(atPath: tmp.path, contents: nil) else { throw CocoaError(.fileWriteUnknown) }
+        handle = try FileHandle(forWritingTo: tmp)
+        self.encoder = encoder
+        self.chunk = max(1, chunk)
+        try put("{")
+    }
+
+    private func put(_ s: String) throws { try put(Data(s.utf8)) }
+    private func put(_ d: Data) throws { try handle.write(contentsOf: d); bytes += d.count }
+
+    private func key(_ k: String) throws {
+        try put((first ? "" : ",") + String(decoding: try encoder.encode(k), as: UTF8.self) + ":")
+        first = false
+    }
+
+    /// `"key":[…]`, per `chunk` elementen gecodeerd
+    func array<T: Encodable>(_ k: String, _ xs: [T]) throws {
+        try key(k)
+        try put("[")
+        var i = 0
+        while i < xs.count {
+            let j = min(xs.count, i + chunk)
+            let d = try Self.pool { try encoder.encode(Array(xs[i..<j])) }
+            if i > 0 { try put(",") }
+            try put(d.subdata(in: 1..<(d.count - 1)))   // zonder [ ]
+            i = j
+        }
+        try put("]")
+    }
+
+    /// `"key":{…}`, per `chunk` sleutels gecodeerd
+    func dictionary<V: Encodable>(_ k: String, _ dict: [String: V]) throws {
+        try key(k)
+        try put("{")
+        let keys = Array(dict.keys)
+        var i = 0
+        while i < keys.count {
+            let j = min(keys.count, i + chunk)
+            var part: [String: V] = [:]
+            part.reserveCapacity(j - i)
+            for x in keys[i..<j] { part[x] = dict[x] }
+            let d = try Self.pool { try encoder.encode(part) }
+            if i > 0 { try put(",") }
+            try put(d.subdata(in: 1..<(d.count - 1)))   // zonder { }
+            i = j
+        }
+        try put("}")
+    }
+
+    /// Afronden: sluiten en het bestand op zijn plek zetten
+    func finish() throws {
+        try put("}")
+        try handle.close()
+        if FileManager.default.fileExists(atPath: target.path) {
+            _ = try FileManager.default.replaceItemAt(target, withItemAt: tmp)
+        } else {
+            try FileManager.default.moveItem(at: tmp, to: target)
+        }
+    }
+
+    /// Afbreken: tijdelijk bestand weg
+    func cancel() {
+        try? handle.close()
+        try? FileManager.default.removeItem(at: tmp)
+    }
+
+    private static func pool<R>(_ work: () throws -> R) throws -> R {
+        #if canImport(ObjectiveC)
+        return try autoreleasepool { try work() }
+        #else
+        return try work()
+        #endif
+    }
+}

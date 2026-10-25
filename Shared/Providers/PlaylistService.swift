@@ -227,6 +227,11 @@ final class PlaylistService: ObservableObject {
                 let task = setRaw(lib)
                 var applyMs = Date().timeIntervalSince(t0) * 1000
                 if let task { let r = await task.value; rec.add("index", ms: r.indexMs); applyMs += r.applyMs }
+                // build 149: "toepassen" telt ook het tekenen van de nieuwe lijst (SwiftUI rekent pas na het publiceren;
+                // daardoor stond hij op 0 ms): wachten tot de hoofdthread weer vrij is
+                let t2 = Date()
+                await Self.mainSettled()
+                applyMs += Date().timeIntervalSince(t2) * 1000
                 rec.add("apply", ms: applyMs)
                 SplashPosters.save(from: lib)
             } else {
@@ -253,6 +258,16 @@ final class PlaylistService: ObservableObject {
                 self.error = error.localizedDescription
             }
             return false
+        }
+    }
+
+    /// Build 149: wacht tot de hoofdthread het lopende werk (o.a. het tekenen na een publicatie) af heeft: eerst
+    /// achter de huidige wachtrij, dan een timer in een volgende ronde van de runloop (na de schermupdate).
+    static func mainSettled() async {
+        await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+            DispatchQueue.main.async {
+                DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(1)) { c.resume() }
+            }
         }
     }
 
@@ -965,8 +980,24 @@ final class PlaylistService: ObservableObject {
         // build 144: .utility i.p.v. .background: met .background stelde het systeem het wegschrijven soms zo lang uit
         // dat de app eerder stopte; dan was er bij de volgende start geen bewaarde lijst en werd alles opnieuw opgehaald
         await Task.detached(priority: .utility) {
-            if let d = try? JSONEncoder().encode(lib) { try? d.write(to: url, options: .atomic) }
+            // build 149: in stukken naar het bestand (geen volledige kopie van de hele lijst als JSON in het geheugen)
+            try? Self.writeLibrary(lib, to: url)
         }.value
+    }
+
+    /// Build 149: zelfde JSON als `JSONEncoder().encode(lib)`, maar in stukken weggeschreven (ChunkedJSONWriter)
+    nonisolated static func writeLibrary(_ lib: Library, to url: URL) throws {
+        let w = try ChunkedJSONWriter(url: url, chunk: 2000)
+        do {
+            try w.array("channels", lib.channels)
+            try w.array("movies", lib.movies)
+            try w.array("series", lib.series)
+            try w.dictionary("epg", lib.epg)
+            try w.finish()
+        } catch {
+            w.cancel()
+            throw error
+        }
     }
     func clearCache(_ s: PlaylistSource) { try? FileManager.default.removeItem(at: Self.cacheURL(s)) }
 }
@@ -1058,7 +1089,7 @@ extension PlaylistService {
     nonisolated static func writeCatalog(_ s: PlaylistSource, _ lib: Library) {
         var l = lib
         l.epg = [:]
-        if let d = try? JSONEncoder().encode(l) { try? d.write(to: catalogURL(s), options: .atomic) }
+        try? writeLibrary(l, to: catalogURL(s))   // build 149: in stukken
     }
 }
 

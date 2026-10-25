@@ -883,5 +883,83 @@ do {
     check(fastMs < 1000, "100k tijdstempels lezen binnen 1 s (was \(Int(fastMs)) ms)")
 }
 
+// MARK: build 149: Ontdek categorieën (naam opschonen, streamingdienst herkennen)
+
+eq(CategoryName.clean("NL | Netflix"), "Netflix", "NL | weg")
+eq(CategoryName.clean("|EN| Disney+"), "Disney+", "|EN| weg")
+eq(CategoryName.clean("[NL] HBO Max"), "HBO Max", "[NL] weg")
+eq(CategoryName.clean("4K - Prime Video"), "Prime Video", "4K - weg")
+eq(CategoryName.clean("NL | 4K - Netflix"), "Netflix", "twee voorvoegsels")
+eq(CategoryName.clean("VOD: SkyShowtime"), "SkyShowtime", "VOD: weg")
+eq(CategoryName.clean("Videoland 4K"), "Videoland", "4K achteraan weg")
+eq(CategoryName.clean("NL: Sci-Fi"), "Sci-Fi", "streepje in de naam blijft")
+eq(CategoryName.clean("Actie & Avontuur"), "Actie & Avontuur", "gewone naam blijft")
+eq(CategoryName.clean("NL"), "NL", "alleen een label blijft staan")
+let providers = ["Netflix": "/n.jpg", "Disney Plus": "/d.jpg", "HBO Max": "/h.jpg", "Amazon Prime Video": "/p.jpg",
+                 "SkyShowtime": "/s.jpg", "Viaplay": "/v.jpg", "Videoland": "/vl.jpg", "Apple TV+": "/a.jpg"]
+eq(ProviderMatch.match("NL | Netflix", providers: providers), "Netflix" as String?, "Netflix")
+eq(ProviderMatch.match("Disney+", providers: providers), "Disney Plus" as String?, "Disney+ via de alias")
+eq(ProviderMatch.match("NL | HBO", providers: providers), "HBO Max" as String?, "HBO via de alias")
+eq(ProviderMatch.match("4K - Prime Video", providers: providers), "Amazon Prime Video" as String?, "Prime Video")
+eq(ProviderMatch.match("Sky Showtime", providers: providers), "SkyShowtime" as String?, "Sky Showtime met spatie")
+eq(ProviderMatch.match("Viaplay Series", providers: providers), "Viaplay" as String?, "begint met de dienst")
+eq(ProviderMatch.match("VOD | Videoland", providers: providers), "Videoland" as String?, "Videoland")
+eq(ProviderMatch.match("Apple TV+", providers: providers), "Apple TV+" as String?, "Apple TV+")
+eq(ProviderMatch.match("Actie", providers: providers), nil as String?, "geen dienst")
+eq(ProviderMatch.match("Netflix", providers: [:]), nil as String?, "zonder lijst (geen netwerk) geen logo")
+check(ProviderMatch.paletteIndex("Netflix", count: 8) == ProviderMatch.paletteIndex("Netflix", count: 8), "vaste kleur op naam")
+
+// MARK: build 149: bewaren in stukken (zelfde JSON, zonder volledige kopie in het geheugen)
+
+struct Item149: Codable, Equatable { let id: String; let title: String; let group: String; let poster: URL?; let rating: Double?; let added: Date? }
+struct Lib149: Codable, Equatable { var channels: [Item149] = []; var movies: [Item149] = []; var series: [Item149] = []; var epg: [String: [Item149]] = [:] }
+func makeItems149(_ n: Int, _ p: String) -> [Item149] {
+    (0..<n).map { Item149(id: "\(p)\($0)", title: "Titel \"\($0)\" é ✓", group: "Groep \($0 % 300)",
+                          poster: $0 % 3 == 0 ? nil : URL(string: "http://example.com/p/\($0).jpg"),
+                          rating: $0 % 5 == 0 ? nil : Double($0 % 100) / 10, added: Date(timeIntervalSince1970: 1_700_000_000 + Double($0))) }
+}
+do {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("selftest149-\(UUID().uuidString)")
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    // klein: zelfde uitkomst, ook lege lijsten en een bestaand bestand overschrijven
+    var small = Lib149(channels: makeItems149(5, "c"), movies: [], series: makeItems149(4501, "s"))
+    small.epg = ["a": makeItems149(3, "e"), "b": [], "c\"x": makeItems149(1, "q")]
+    let f = dir.appendingPathComponent("lib.json")
+    try? Data("oud".utf8).write(to: f)
+    func write(_ l: Lib149, _ url: URL, chunk: Int = 2000) throws {
+        let w = try ChunkedJSONWriter(url: url, chunk: chunk)
+        try w.array("channels", l.channels); try w.array("movies", l.movies); try w.array("series", l.series)
+        try w.dictionary("epg", l.epg); try w.finish()
+    }
+    do {
+        try write(small, f, chunk: 1000)
+        let back = try JSONDecoder().decode(Lib149.self, from: Data(contentsOf: f))
+        eq(back, small, "in stukken geschreven = origineel na inlezen")
+        let viaWhole = try JSONDecoder().decode(Lib149.self, from: JSONEncoder().encode(small))
+        eq(back, viaWhole, "zelfde als JSONEncoder in één keer")
+        let left = (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []
+        eq(left, ["lib.json"], "geen tijdelijke bestanden over")
+    } catch { check(false, "schrijven in stukken: \(error)") }
+
+    // groot: 123k films, 30k series, 12k zenders (zoals server 2): geheugen bij bewaren, vóór en na
+    var big = Lib149(channels: makeItems149(12_000, "c"), movies: makeItems149(123_000, "m"), series: makeItems149(30_000, "s"))
+    let f2 = dir.appendingPathComponent("big.json")
+    var t0 = Date()
+    let wholePeak = peakDuring148 { if let d = try? JSONEncoder().encode(big) { try? d.write(to: f2, options: .atomic) } }
+    let wholeMs = Date().timeIntervalSince(t0) * 1000
+    let wholeSize = (try? FileManager.default.attributesOfItem(atPath: f2.path)[.size] as? Int) ?? 0
+    t0 = Date()
+    let chunkPeak = peakDuring148 { try? write(big, f2) }
+    let chunkMs = Date().timeIntervalSince(t0) * 1000
+    let chunkSize = (try? FileManager.default.attributesOfItem(atPath: f2.path)[.size] as? Int) ?? 0
+    eq(chunkSize, wholeSize, "zelfde bestandsgrootte")
+    let back = try? JSONDecoder().decode(Lib149.self, from: Data(contentsOf: f2))
+    eq(back?.movies.count, 123_000, "grote lijst terug ingelezen")
+    print("build 149: bewaren 123k/30k/12k (\(wholeSize / 1_048_576) MB): in één keer +\(Int(wholePeak)) MB in \(Int(wholeMs)) ms, in stukken +\(Int(chunkPeak)) MB in \(Int(chunkMs)) ms")
+    check(chunkPeak <= wholePeak + 5, "in stukken niet meer geheugen dan in één keer")
+    big = Lib149()
+}
+
 print("\(checks) controles, \(failures) fout")
 exit(failures == 0 ? 0 : 1)
