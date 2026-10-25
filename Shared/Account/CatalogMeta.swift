@@ -34,7 +34,7 @@ enum CatalogKey {
 
 enum CatalogNorm {
     static func fold(_ s: String) -> String {
-        s.folding(options: [.diacriticInsensitive, .caseInsensitive, .widthInsensitive], locale: nil).lowercased()
+        s.folding(options: [.diacriticInsensitive, .caseInsensitive, .widthInsensitive], locale: nil).lowercased().nativeUTF8   // build 149
     }
 
     private static func re(_ p: String) -> NSRegularExpression { try! NSRegularExpression(pattern: p) }
@@ -46,7 +46,7 @@ enum CatalogNorm {
     private static let trailingCode = re(#"\s+-\s+[A-Za-z]{2,3}\s*$"#)
 
     private static func replace(_ r: NSRegularExpression, _ s: String, _ t: String = "") -> String {
-        r.stringByReplacingMatches(in: s, range: NSRange(s.startIndex..., in: s), withTemplate: t)
+        r.stringByReplacingMatches(in: s, range: NSRange(s.startIndex..., in: s), withTemplate: t).nativeUTF8   // build 149
     }
 
     /// Titel van een film/serie → (genormaliseerd, jaar). "NL | The Batman (2022) [4K]" → ("thebatman", 2022)

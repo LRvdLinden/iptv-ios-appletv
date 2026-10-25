@@ -52,7 +52,7 @@ final class TraktSync: ObservableObject {
         }
 
         static func norm(_ t: String) -> String {
-            t.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: nil)
+            t.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: nil).nativeUTF8
              .filter { $0.isLetter || $0.isNumber }
         }
         mutating func add(title: String?, year: Int?, imdb: String, show: Bool, tmdb: Int? = nil) {

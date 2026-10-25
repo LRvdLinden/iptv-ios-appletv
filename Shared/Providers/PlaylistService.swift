@@ -254,7 +254,8 @@ final class PlaylistService: ObservableObject {
             if !cancelled { FetchLog.shared.noteLibrary(s.id, nil, error: error) }
             guard source?.id == s.id else { return false }
             if cancelled { return false }
-            if rawLibrary.channels.isEmpty && rawLibrary.movies.isEmpty && rawLibrary.series.isEmpty {
+            // build 149: te groot voor het geheugen: altijd melden (de bewaarde lijst blijft staan)
+            if (rawLibrary.channels.isEmpty && rawLibrary.movies.isEmpty && rawLibrary.series.isEmpty) || error is ServerTooLargeError {
                 self.error = error.localizedDescription
             }
             return false
@@ -854,7 +855,9 @@ final class PlaylistService: ObservableObject {
     struct SearchResults {
         var channels: [Channel] = []; var movies: [Movie] = []; var series: [Series] = []
         var other: [OtherHit] = []
-        var isEmpty: Bool { channels.isEmpty && movies.isEmpty && series.isEmpty && other.isEmpty }
+        /// Build 149: treffers in verborgen categorieën (onderaan, met label)
+        var hiddenMovies: [Movie] = []; var hiddenSeries: [Series] = []
+        var isEmpty: Bool { channels.isEmpty && movies.isEmpty && series.isEmpty && other.isEmpty && hiddenMovies.isEmpty && hiddenSeries.isEmpty }
     }
 
     /// Treffer in een andere afspeellijst.
@@ -870,16 +873,90 @@ final class PlaylistService: ObservableObject {
     }
 
     nonisolated static func normTitle(_ t: String) -> String { fold(t).filter { $0.isLetter || $0.isNumber } }
-    nonisolated static func fold(_ s: String) -> String { s.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: nil) }
+    nonisolated static func fold(_ s: String) -> String { s.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: nil).nativeUTF8 }
 
+    /// Build 149: zoeksleutels (SearchMatch.normalize) één keer per lijst berekend, op de achtergrond, en bewaard
+    /// tot de lijst verandert; niet bij elke zoekopdracht opnieuw.
+    final class SearchKeys: @unchecked Sendable {
+        static let shared = SearchKeys()
+        struct Keys: Sendable {
+            var channels: [String] = []
+            var movies: [(text: String, year: Int?)] = []
+            var series: [(text: String, year: Int?)] = []
+        }
+        private let lock = NSLock()
+        private var cache: [String: Keys] = [:]
+
+        func keys(_ id: String, _ lib: Library) -> Keys {
+            lock.lock()
+            if let k = cache[id] { lock.unlock(); return k }
+            lock.unlock()
+            var k = Keys()
+            k.channels = lib.channels.map { SearchMatch.normalize($0.name).text }
+            k.movies = lib.movies.map { m -> (text: String, year: Int?) in let n = SearchMatch.normalize(m.title); return (text: n.text, year: n.year ?? m.year) }
+            k.series = lib.series.map { x -> (text: String, year: Int?) in let n = SearchMatch.normalize(x.title); return (text: n.text, year: n.year ?? x.year) }
+            lock.lock()
+            if cache.count > 6 { cache.removeAll() }   // oude lijsten vergeten
+            cache[id] = k
+            lock.unlock()
+            return k
+        }
+    }
+
+    /// Treffers gerangschikt (score + kleine bonus voor recent en populair), stabiel bij gelijke score
+    nonisolated static func ranked<T>(_ items: [T], _ keys: [(text: String, year: Int?)], _ q: SearchMatch.Query,
+                                      boost: (T) -> Int, limit: Int) -> [T] {
+        var hits: [(i: Int, s: Int)] = []
+        for (i, k) in keys.enumerated() where i < items.count {
+            if let sc = SearchMatch.score(q, text: k.text, year: k.year) { hits.append((i, sc + boost(items[i]))) }
+        }
+        hits.sort { $0.s != $1.s ? $0.s > $1.s : $0.i < $1.i }
+        return hits.prefix(limit).map { items[$0.i] }
+    }
+
+    /// Build 149: op woorden (elk woord, willekeurige volgorde, woordbegin of deel, één typefout bij 5+ letters),
+    /// gerangschikt; alles op de achtergrond. Bij Stremio ook via de zoek-catalogi van de add-ons. Treffers in
+    /// verborgen categorieën onderaan (niet bij een kinderprofiel; kinderslot en leeftijd blijven gelden).
     func search(_ q: String, allPlaylists: Bool = true) async -> SearchResults {
-        let t = Self.fold(q.trimmingCharacters(in: .whitespaces))
-        guard t.count >= 2 else { return SearchResults() }
-        func m(_ s: String) -> Bool { Self.fold(s).contains(t) }
-        // films én series én zenders, uit álle categorieën (ongeacht het tabblad waarin je zoekt)
-        var r = SearchResults(channels: Array(library.channels.filter { m($0.name) }.prefix(60)),
-                              movies: Array(library.movies.filter { m($0.title) }.prefix(200)),
-                              series: Array(library.series.filter { m($0.title) }.prefix(200)))
+        let query = SearchMatch.query(q)
+        guard q.trimmingCharacters(in: .whitespaces).count >= 2, !query.words.isEmpty else { return SearchResults() }
+        let lib = library, raw = rawLibrary
+        let libID = "lib-\(source?.id.uuidString ?? "")-\(libraryVersion)", rawID = "raw-\(source?.id.uuidString ?? "")-\(rawVersion)"
+        let ctx = source.map { context(for: $0) }
+        let addons = source?.kind == .stremio ? stremioAddons : []
+        async let remote: Library = addons.isEmpty ? Library() : Self.withTimeout149(6) { await StremioClient(addons: addons).search(q) }
+        var r = await Task.detached(priority: .userInitiated) { () -> SearchResults in
+            var r = SearchResults()
+            let k = SearchKeys.shared.keys(libID, lib)
+            r.channels = Self.ranked(lib.channels, k.channels.map { (text: $0, year: nil as Int?) }, query, boost: { _ in 0 }, limit: 60)
+            r.movies = Self.ranked(lib.movies, k.movies, query, boost: { SearchMatch.boost(rating: $0.rating, added: $0.addedAt) }, limit: 200)
+            r.series = Self.ranked(lib.series, k.series, query, boost: { SearchMatch.boost(rating: $0.rating, added: $0.addedAt) }, limit: 200)
+            // verborgen categorieën: treffers uit de ongefilterde lijst die alleen door het verbergen wegvallen
+            if let ctx, !ctx.kids, raw.movies.count + raw.series.count > lib.movies.count + lib.series.count {
+                let rk = SearchKeys.shared.keys(rawID, raw)
+                let shownM = Set(lib.movies.map(\.id)), shownS = Set(lib.series.map(\.id))
+                var cand = Library()
+                cand.movies = Self.ranked(raw.movies, rk.movies, query, boost: { _ in 0 }, limit: 400).filter { !shownM.contains($0.id) }
+                cand.series = Self.ranked(raw.series, rk.series, query, boost: { _ in 0 }, limit: 400).filter { !shownS.contains($0.id) }
+                if !cand.movies.isEmpty || !cand.series.isEmpty {
+                    var open = ctx
+                    open.hiddenGroups = []
+                    open.custom.hidden = ctx.custom.hidden.filter { !$0.hasPrefix("group:") }
+                    let ok = Self.apply(cand, open)   // kinderslot, leeftijd en eigen verborgen titels blijven gelden
+                    r.hiddenMovies = Array(ok.movies.prefix(60))
+                    r.hiddenSeries = Array(ok.series.prefix(60))
+                }
+            }
+            return r
+        }.value
+        // Stremio: treffers van de add-ons erbij, zonder dubbele (IMDb-id of titel + jaar)
+        let extra = await remote
+        if !extra.movies.isEmpty || !extra.series.isEmpty {
+            var seen = Set(r.movies.map { $0.imdbID ?? "\(Self.normTitle($0.title))|\($0.year ?? 0)" })
+            for m in extra.movies where seen.insert(m.imdbID ?? "\(Self.normTitle(m.title))|\(m.year ?? 0)").inserted { r.movies.append(m) }
+            seen = Set(r.series.map { $0.imdbID ?? "\(Self.normTitle($0.title))|\($0.year ?? 0)" })
+            for x in extra.series where seen.insert(x.imdbID ?? "\(Self.normTitle(x.title))|\(x.year ?? 0)").inserted { r.series.append(x) }
+        }
         guard allPlaylists else { return r }
         // zoeken in de cache van alle andere afspeellijsten
         let others = CloudStore.shared.playlists.filter { $0.id != source?.id }
@@ -887,26 +964,47 @@ final class PlaylistService: ObservableObject {
         // build 130: elk profiel ziet alle servers, met zijn eigen filter per server (leeftijd, kinderslot, categorieën)
         let ageCtx = Dictionary(uniqueKeysWithValues: others.map { p in (p.id, context(for: p)) })
         r.other = await Task.detached(priority: .userInitiated) {
-            var hits: [OtherHit] = []
+            var hits: [(hit: OtherHit, score: Int)] = []
             for p in others {
                 guard let raw = Self.readCache(p) else { continue }
                 let lib = ageCtx[p.id].map { Self.apply(raw, $0) } ?? raw
-                for c in lib.channels where Self.fold(c.name).contains(t) {
-                    hits.append(OtherHit(playlist: p, itemID: c.id, title: c.name, subtitle: liveLabel, artwork: c.logo, isLive: true))
-                    if hits.count > 80 { break }
+                var live = 0
+                for c in lib.channels {
+                    guard live < 80, let sc = SearchMatch.score(query, text: SearchMatch.normalize(c.name).text) else { continue }
+                    live += 1
+                    hits.append((OtherHit(playlist: p, itemID: c.id, title: c.name, subtitle: liveLabel, artwork: c.logo, isLive: true), sc))
                 }
-                for mv in lib.movies where Self.fold(mv.title).contains(t) {
-                    hits.append(OtherHit(playlist: p, itemID: mv.id, title: mv.title, subtitle: mv.year.map(String.init) ?? "", artwork: mv.poster))
+                for mv in lib.movies {
+                    let n = SearchMatch.normalize(mv.title)
+                    guard let sc = SearchMatch.score(query, text: n.text, year: n.year ?? mv.year) else { continue }
+                    hits.append((OtherHit(playlist: p, itemID: mv.id, title: mv.title, subtitle: mv.year.map(String.init) ?? "", artwork: mv.poster), sc))
                 }
-                for se in lib.series where Self.fold(se.title).contains(t) {
-                    hits.append(OtherHit(playlist: p, itemID: se.id, title: se.title, subtitle: se.year.map(String.init) ?? "", artwork: se.poster))
+                for se in lib.series {
+                    let n = SearchMatch.normalize(se.title)
+                    guard let sc = SearchMatch.score(query, text: n.text, year: n.year ?? se.year) else { continue }
+                    hits.append((OtherHit(playlist: p, itemID: se.id, title: se.title, subtitle: se.year.map(String.init) ?? "", artwork: se.poster), sc))
                 }
             }
-            // Live TV altijd als laatste; verder de volgorde houden (stabiel)
-            let kept = hits.prefix(120)
+            // beste eerst; Live TV altijd als laatste
+            let sorted = hits.enumerated().sorted { $0.element.score != $1.element.score ? $0.element.score > $1.element.score : $0.offset < $1.offset }
+                .map(\.element.hit)
+            let kept = sorted.prefix(120)
             return kept.filter { !$0.isLive } + kept.filter { $0.isLive }
         }.value
         return r
+    }
+
+    /// Build 149: werk met een tijdslimiet (zoeken bij add-ons mag de lokale treffers niet ophouden)
+    nonisolated static func withTimeout149(_ seconds: Double, _ work: @escaping @Sendable () async -> Library) async -> Library {
+        await withTaskGroup(of: Library?.self) { g in
+            g.addTask { await work() }
+            g.addTask { try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000)); return nil }
+            for await r in g {
+                if let r { g.cancelAll(); return r }
+                g.cancelAll(); return Library()
+            }
+            return Library()
+        }
     }
 
     /// Dezelfde titel in andere groepen of andere afspeellijsten ("Andere bronnen").

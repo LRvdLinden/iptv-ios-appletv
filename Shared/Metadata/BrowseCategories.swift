@@ -114,7 +114,7 @@ struct BrowseGenre: Sendable {
 
     /// Kleine letters, zonder accenten; alles behalve letters/cijfers/-/spatie wordt een spatie
     static func normalize(_ s: String) -> String {
-        let f = s.folding(options: [.diacriticInsensitive, .caseInsensitive, .widthInsensitive], locale: nil).lowercased()
+        let f = s.folding(options: [.diacriticInsensitive, .caseInsensitive, .widthInsensitive], locale: nil).lowercased().nativeUTF8
         return String(f.map { $0.isLetter || $0.isNumber || $0 == "-" ? $0 : " " })
     }
 

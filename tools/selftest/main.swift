@@ -914,9 +914,16 @@ check(ProviderMatch.paletteIndex("Netflix", count: 8) == ProviderMatch.paletteIn
 struct Item149: Codable, Equatable { let id: String; let title: String; let group: String; let poster: URL?; let rating: Double?; let added: Date? }
 struct Lib149: Codable, Equatable { var channels: [Item149] = []; var movies: [Item149] = []; var series: [Item149] = []; var epg: [String: [Item149]] = [:] }
 func makeItems149(_ n: Int, _ p: String) -> [Item149] {
-    (0..<n).map { Item149(id: "\(p)\($0)", title: "Titel \"\($0)\" é ✓", group: "Groep \($0 % 300)",
-                          poster: $0 % 3 == 0 ? nil : URL(string: "http://example.com/p/\($0).jpg"),
-                          rating: $0 % 5 == 0 ? nil : Double($0 % 100) / 10, added: Date(timeIntervalSince1970: 1_700_000_000 + Double($0))) }
+    var out: [Item149] = []
+    out.reserveCapacity(n)
+    for i in 0..<n {
+        let poster: URL? = i % 3 == 0 ? nil : URL(string: "http://example.com/p/" + String(i) + ".jpg")
+        let rating: Double? = i % 5 == 0 ? nil : Double(i % 100) / 10
+        let added = Date(timeIntervalSince1970: 1_700_000_000 + Double(i))
+        out.append(Item149(id: p + String(i), title: "Titel \"" + String(i) + "\" é ✓", group: "Groep " + String(i % 300),
+                           poster: poster, rating: rating, added: added))
+    }
+    return out
 }
 do {
     let dir = FileManager.default.temporaryDirectory.appendingPathComponent("selftest149-\(UUID().uuidString)")
@@ -959,6 +966,72 @@ do {
     print("build 149: bewaren 123k/30k/12k (\(wholeSize / 1_048_576) MB): in één keer +\(Int(wholePeak)) MB in \(Int(wholeMs)) ms, in stukken +\(Int(chunkPeak)) MB in \(Int(chunkMs)) ms")
     check(chunkPeak <= wholePeak + 5, "in stukken niet meer geheugen dan in één keer")
     big = Lib149()
+}
+
+// MARK: build 149: native strings bij het normaliseren
+
+do {
+    var titles: [String] = []
+    for i in 0..<120_000 { titles.append("NL | Amélie de " + String(i % 977) + " Película (20" + String(i % 25 + 10) + ") [4K]") }
+    var t0 = Date()
+    var n1 = 0
+    for t in titles { n1 += t.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: nil).filter { $0.isLetter || $0.isNumber }.count }
+    let bridgedMs = Date().timeIntervalSince(t0) * 1000
+    t0 = Date()
+    var n2 = 0
+    for t in titles { n2 += t.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: nil).nativeUTF8.filter { $0.isLetter || $0.isNumber }.count }
+    let nativeMs = Date().timeIntervalSince(t0) * 1000
+    eq(n2, n1, "zelfde uitkomst met native strings")
+    t0 = Date()
+    var n3 = 0
+    for t in titles.prefix(30_000) { n3 += CatalogNorm.title(t).norm.count }
+    let normMs = Date().timeIntervalSince(t0) * 1000 * 4
+    check(n3 > 0, "titels genormaliseerd")
+    print("build 149: 120k titels vouwen+filteren: overbrugd \(Int(bridgedMs)) ms, native \(Int(nativeMs)) ms; CatalogNorm.title 120k (geschat) \(Int(normMs)) ms")
+}
+
+// MARK: build 149: zoeken op woorden (accenten, volgorde, voorvoegsels, deelwoorden, typefout)
+
+do {
+    func sc(_ q: String, _ title: String, year: Int? = nil) -> Int? {
+        let n = SearchMatch.normalize(title)
+        return SearchMatch.score(SearchMatch.query(q), text: n.text, year: n.year ?? year)
+    }
+    eq(SearchMatch.normalize("NL | Amélie (2001)").text, "amelie", "voorvoegsel, accent en jaar weg")
+    eq(SearchMatch.normalize("NL | Amélie (2001)").year, 2001, "jaar apart")
+    eq(SearchMatch.normalize("Fast & Furious").text, "fast furious", "& telt niet mee")
+    eq(SearchMatch.normalize("Fast and Furious").text, "fast furious", "and telt niet mee")
+    eq(SearchMatch.normalize("Ex-Machina").text, "ex machina", "Ex- is geen label")
+    eq(SearchMatch.normalize("(500) Days of Summer").text, "500 days of summer", "(500) blijft")
+    eq(SearchMatch.normalize("[NL] Schindler's List 4K").text, "schindlers list", "[NL], apostrof en 4K")
+    eq(sc("amelie", "NL | Amélie (2001)"), 1000, "zonder accent = exacte titel")
+    eq(sc("AMÉLIE", "Amelie"), 1000, "hoofdletters en accent in de zoekterm")
+    eq(sc("furious fast", "Fast & Furious"), 600, "woordvolgorde maakt niet uit")
+    eq(sc("fast and furious", "Fast & Furious"), 1000, "and/& gelijk")
+    eq(sc("batman", "[NL] The Batman"), 600, "woordbegin")
+    eq(sc("the bat", "4K - The Batman"), 750, "begint met (deel van een woord)")
+    eq(sc("the batman", "The Batman Returns"), 800, "begint met hele woorden")
+    eq(sc("tman", "The Batman"), 400, "deel van een woord")
+    eq(sc("dune two", "4K - Dune: Part Two"), 600, "woorden met voorvoegsel en leestekens")
+    eq(sc("interstelar", "Interstellar"), 200, "één typefout bij 5+ letters")
+    eq(sc("intrestellar", "Interstellar"), 200, "omgewisselde letters")
+    eq(sc("btmn", "Batman"), nil as Int?, "geen typefout bij minder dan 5 letters")
+    eq(sc("xyz", "Batman"), nil as Int?, "geen treffer")
+    eq(sc("batman 2022", "The Batman (2022)"), 650, "jaartal in de zoekterm telt mee")
+    eq(sc("ex machina", "Ex-Machina"), 1000, "Ex-Machina")
+    eq(sc("500 days", "(500) Days of Summer"), 800, "(500) Days of Summer")
+    eq(sc("npo 1", "NL: NPO 1 FHD"), 1000, "zender met voorvoegsel en kwaliteit")
+    check(SearchMatch.boost(rating: 8, added: Date()) > SearchMatch.boost(rating: 5, added: nil), "recent en populair iets hoger")
+    // snelheid: 123k titels met vooraf berekende sleutels
+    var keys: [String] = []
+    for i in 0..<123_000 { keys.append(SearchMatch.normalize("NL | Film nummer " + String(i) + " Deel " + String(i % 7) + " (2020)").text) }
+    let q = SearchMatch.query("nummer deel 3")
+    let t0 = Date()
+    var hits = 0
+    for k in keys where SearchMatch.score(q, text: k) != nil { hits += 1 }
+    let ms = Date().timeIntervalSince(t0) * 1000
+    check(hits > 0, "treffers in 123k titels")
+    print("build 149: zoeken in 123k titels (vooraf berekende sleutels): \(Int(ms)) ms, \(hits) treffers")
 }
 
 print("\(checks) controles, \(failures) fout")

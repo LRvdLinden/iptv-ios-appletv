@@ -1,4 +1,23 @@
 import Foundation
+#if os(iOS) || os(tvOS)
+import os
+#endif
+
+/// Build 149: het geheugen raakt op tijdens het bijwerken (heel grote server, vooral op Apple TV): netjes stoppen,
+/// de vorige (bewaarde) lijst blijft staan.
+struct ServerTooLargeError: LocalizedError {
+    var errorDescription: String? { L("This server is very large. Hide categories you don't use and it will load faster.") }
+
+    /// Bijna aan de geheugengrens van de app? (iOS/tvOS: wat het systeem de app nog geeft; macOS: nooit)
+    static func nearLimit() -> Bool {
+        #if os(iOS) || os(tvOS)
+        let left = os_proc_available_memory()
+        return left > 0 && left < 220 * 1_048_576
+        #else
+        return false
+        #endif
+    }
+}
 
 /// Xtream Codes player_api.php
 struct XtreamClient {
@@ -297,11 +316,17 @@ struct XtreamClient {
             }
             return nil
         }
-        let lErr = read("ls", Live.self) { lib.channels += mapLive($0, lcMap) }
+        // build 149: per stuk het geheugen bewaken; bijna op = stoppen met de melding (niet wegvallen)
+        var tooLarge = false
+        func guardMemory() { if !tooLarge && ServerTooLargeError.nearLimit() { tooLarge = true } }
+        let lErr = read("ls", Live.self) { guard !tooLarge else { return }; lib.channels += mapLive($0, lcMap); guardMemory() }
         try Task.checkCancellation()
-        let vErr = read("vs", Vod.self) { lib.movies += mapVod($0, vcMap) }
+        if tooLarge { throw ServerTooLargeError() }
+        let vErr = read("vs", Vod.self) { guard !tooLarge else { return }; lib.movies += mapVod($0, vcMap); guardMemory() }
         try Task.checkCancellation()
-        let sErr = read("ss", SeriesDTO.self) { lib.series += mapSeries($0, scMap) }
+        if tooLarge { throw ServerTooLargeError() }
+        let sErr = read("ss", SeriesDTO.self) { guard !tooLarge else { return }; lib.series += mapSeries($0, scMap); guardMemory() }
+        if tooLarge { throw ServerTooLargeError() }
         let now = Date().timeIntervalSince1970
         let status: [FetchStatus.Entry] = [
             .init(kind: .live, delivered: lErr == nil ? lib.channels.count : nil, error: lErr.map(Self.fetchCode), at: now),

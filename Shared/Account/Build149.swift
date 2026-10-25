@@ -238,21 +238,26 @@ enum CategoryName {
                                             "ex", "exyu", "fhd/hd", "hd/fhd", "movies", "series"]
     private static let separators: Set<Character> = ["|", "-", ":", "•", "·", "/", "_", "–", "—", "»", "▶", "★", "*", "#"]
 
-    static func clean(_ raw: String) -> String {
+    /// `title`: voor titels voorzichtiger: alleen labels in hoofdletters ("NL | ", "4K - ", "[NL]"), zodat
+    /// "Ex-Machina" en "(500) Days of Summer" heel blijven.
+    static func clean(_ raw: String, title: Bool = false) -> String {
         var s = Substring(raw.trimmingCharacters(in: .whitespacesAndNewlines))
         // voorvoegsels, zo vaak als nodig ("NL | 4K - Netflix")
         for _ in 0..<4 {
             let before = s
             s = s.drop { $0 == " " || separators.contains($0) }
             if let open = s.first, open == "[" || open == "(" || open == "{",
-               let close = s.firstIndex(of: open == "[" ? "]" : open == "(" ? ")" : "}"), s.distance(from: s.startIndex, to: close) <= 12 {
+               let close = s.firstIndex(of: open == "[" ? "]" : open == "(" ? ")" : "}"), s.distance(from: s.startIndex, to: close) <= 12,
+               !title || isLabel(s[s.index(after: s.startIndex)..<close]) {
                 s = s[s.index(after: close)...]
                 continue
             }
             // eerste woord tot een scheidingsteken
             if let sep = s.firstIndex(where: { separators.contains($0) }) {
                 let head = s[..<sep].trimmingCharacters(in: .whitespaces).lowercased()
-                if !head.isEmpty, head.count <= 8, tags.contains(head) || head.split(separator: " ").allSatisfy({ tags.contains(String($0)) }) {
+                let rawHead = s[..<sep].trimmingCharacters(in: .whitespaces)
+                let titleOK = !title || (rawHead == rawHead.uppercased() && (s[sep] == "|" || s[sep] == ":" || s.index(after: sep) == s.endIndex || s[s.index(after: sep)] == " "))
+                if titleOK, !head.isEmpty, head.count <= 8, tags.contains(head) || head.split(separator: " ").allSatisfy({ tags.contains(String($0)) }) {
                     s = s[s.index(after: sep)...]
                     continue
                 }
@@ -264,11 +269,18 @@ enum CategoryName {
         for _ in 0..<3 {
             let words = out.split(separator: " ")
             guard words.count > 1, let last = words.last else { break }
-            let w = last.trimmingCharacters(in: CharacterSet(charactersIn: "[](){}|-")).lowercased()
-            guard tags.contains(w) else { break }
+            let rawW = last.trimmingCharacters(in: CharacterSet(charactersIn: "[](){}|-"))
+            let w = rawW.lowercased()
+            guard tags.contains(w), !title || rawW == rawW.uppercased() else { break }
             out = words.dropLast().joined(separator: " ").trimmingCharacters(in: CharacterSet(charactersIn: " -|:"))
         }
         return out.isEmpty ? raw.trimmingCharacters(in: .whitespacesAndNewlines) : out
+    }
+
+    /// Inhoud tussen haakjes is een label ("NL", "4K", "EN"): een bekend label in hoofdletters
+    private static func isLabel(_ s: Substring) -> Bool {
+        let t = s.trimmingCharacters(in: .whitespaces)
+        return !t.isEmpty && t == t.uppercased() && tags.contains(t.lowercased())
     }
 }
 
@@ -421,5 +433,140 @@ final class ChunkedJSONWriter {
         #else
         return try work()
         #endif
+    }
+}
+
+// MARK: - Native strings
+
+extension String {
+    /// Build 149: als native UTF-8-string (geen overbrugde NSString). Uitkomsten van `folding`, `lowercased` op
+    /// Foundation-strings en NSRegularExpression zijn vaak overbrugd; teken voor teken doorlopen kostte daardoor
+    /// seconden over tienduizenden titels (`_foreignIndex`). Eén keer omzetten is goedkoop.
+    var nativeUTF8: String {
+        var s = self
+        s.makeContiguousUTF8()
+        return s
+    }
+}
+
+// MARK: - Zoeken (punt 7)
+
+/// Build 149: zoeken op woorden in plaats van de letterlijke zin. Zoekterm en titel worden op dezelfde manier
+/// genormaliseerd (hoofdletters, accenten, leestekens, `&` = `and`, voorvoegsels als "NL |", "4K -", "[NL]",
+/// jaartal tussen haakjes apart); elk woord moet voorkomen, in willekeurige volgorde, als woordbegin of als deel
+/// van een woord. Woorden van 5+ letters mogen één typefout hebben.
+enum SearchMatch {
+    struct Query: Sendable {
+        let full: String        // genormaliseerd, woorden met één spatie
+        let words: [String]     // zonder "and"
+        let year: Int?
+        var isEmpty: Bool { words.isEmpty && year == nil }
+    }
+
+    /// Genormaliseerde titel: woorden met één spatie, en het jaar tussen haakjes apart
+    static func normalize(_ raw: String) -> (text: String, year: Int?) {
+        var s = CategoryName.clean(raw, title: true)
+        var year: Int?
+        // "(2022)" of "[2022]" apart
+        if s.contains("(") || s.contains("["), let r = s.range(of: #"[\(\[]\s*(19|20)\d{2}\s*[\)\]]"#, options: .regularExpression) {
+            year = Int(s[r].filter(\.isNumber))
+            s.removeSubrange(r)
+        }
+        let folded = s.folding(options: [.diacriticInsensitive, .caseInsensitive, .widthInsensitive], locale: nil).lowercased().nativeUTF8
+        var out = ""
+        out.reserveCapacity(folded.utf8.count + 4)
+        var space = true
+        for ch in folded {
+            if ch == "+" {
+                if !space { out.append(" ") }
+                out += "plus "
+                space = true
+            } else if ch.isLetter || ch.isNumber {
+                out.append(ch); space = false
+            } else if ch == "'" || ch == "’" {
+                continue   // "Schindler's" = "schindlers"
+            } else if !space {
+                out.append(" "); space = true
+            }
+        }
+        if out.hasSuffix(" ") { out.removeLast() }
+        // "&" en "and" tellen niet mee ("Fast & Furious" = "Fast and Furious" = "fast furious")
+        let words = out.split(separator: " ").filter { $0 != "and" }
+        return (words.isEmpty ? out : words.joined(separator: " "), year)
+    }
+
+    static func query(_ q: String) -> Query {
+        let n = normalize(q)
+        var words = n.text.split(separator: " ").map(String.init).filter { $0 != "and" }
+        var year = n.year
+        // los jaartal in de zoekterm ("batman 2022") telt ook als jaar, maar blijft ook een woord (titels als "1917")
+        if year == nil, let last = words.last, last.count == 4, let y = Int(last), (1900...2099).contains(y), words.count > 1 { year = y; words.removeLast() }
+        return Query(full: words.joined(separator: " "), words: words, year: year)
+    }
+
+    /// Score: exacte titel 1000, begint met 800, alle woorden als woordbegin 600, alle woorden erin 400,
+    /// met één typefout 200; nil = geen treffer. `text` = `normalize(titel).text` (vooraf berekend).
+    static func score(_ q: Query, text: String, year: Int? = nil) -> Int? {
+        guard !q.words.isEmpty else { return nil }
+        var base: Int
+        if text == q.full {
+            base = 1000
+        } else if text.hasPrefix(q.full) && (text.count == q.full.count || text.dropFirst(q.full.count).first == " ") {
+            base = 800
+        } else if text.hasPrefix(q.full) {
+            base = 750
+        } else {
+            let tw = text.split(separator: " ")
+            var allPrefix = true, allContained = true, typos = 0
+            for w in q.words {
+                if tw.contains(where: { $0.hasPrefix(w) }) { continue }
+                allPrefix = false
+                if text.contains(w) { continue }
+                allContained = false
+                if w.count >= 5, typos == 0, tw.contains(where: { oneEdit(w, $0) }) { typos += 1; continue }
+                return nil
+            }
+            base = allPrefix ? 600 : (allContained ? 400 : 200)
+        }
+        if let qy = q.year, let y = year {
+            if qy == y { base += 50 } else { base -= 100 }
+        }
+        return base
+    }
+
+    /// Hoogstens één bewerking (vervangen, invoegen, weglaten, of twee buren omgewisseld) tussen `a` en `b`
+    /// (of het begin van `b` even lang als `a`).
+    static func oneEdit(_ a: String, _ b: Substring) -> Bool {
+        let x = Array(a.unicodeScalars), full = Array(b.unicodeScalars)
+        if abs(x.count - full.count) > 1 && full.count < x.count { return false }
+        func within(_ y: [Unicode.Scalar]) -> Bool {
+            if abs(x.count - y.count) > 1 { return false }
+            var i = 0, j = 0, edits = 0
+            while i < x.count && j < y.count {
+                if x[i] == y[j] { i += 1; j += 1; continue }
+                edits += 1
+                if edits > 1 { return false }
+                if x.count == y.count {
+                    // omwisseling ("bamtan" ↔ "batman"-achtig: buren)
+                    if i + 1 < x.count, x[i] == y[j + 1], x[i + 1] == y[j] { i += 2; j += 2; continue }
+                    i += 1; j += 1
+                } else if x.count > y.count { i += 1 } else { j += 1 }
+            }
+            return edits + (x.count - i) + (y.count - j) <= 1
+        }
+        if within(full) { return true }
+        // begin van een langer woord ("interstelar" in "interstellarr…")
+        if full.count > x.count + 1 {
+            return within(Array(full.prefix(x.count))) || within(Array(full.prefix(x.count + 1)))
+        }
+        return false
+    }
+
+    /// Kleine bonus voor recente en populaire titels (max. 40), zodat ze bij gelijke score hoger staan
+    static func boost(rating: Double?, added: Date?, now: Date = Date()) -> Int {
+        var b = 0
+        if let r = rating, r > 0 { b += Int(min(10, r) * 2) }                 // tot 20
+        if let a = added { let days = now.timeIntervalSince(a) / 86400; if days < 30 { b += 20 } else if days < 180 { b += 10 } }
+        return b
     }
 }

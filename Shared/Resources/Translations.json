@@ -1104,7 +1104,9 @@
   "Task: %@": "المهمة: %@",
   "Update %@": "تحديث %@",
   "after \"%@\"": "بعد \"%@\"",
-  "Discover categories": "اكتشف الفئات"
+  "Discover categories": "اكتشف الفئات",
+  "This server is very large. Hide categories you don't use and it will load faster.": "هذا الخادم كبير جدًا. أخفِ الفئات التي لا تستخدمها وسيُحمَّل بشكل أسرع.",
+  "In hidden categories": "في الفئات المخفية"
  },
  "de": {
   "%@ is now signed in.": "%@ ist jetzt angemeldet.",
@@ -2211,7 +2213,9 @@
   "Task: %@": "Aufgabe: %@",
   "Update %@": "Aktualisierung %@",
   "after \"%@\"": "nach „%@\"",
-  "Discover categories": "Kategorien entdecken"
+  "Discover categories": "Kategorien entdecken",
+  "This server is very large. Hide categories you don't use and it will load faster.": "Dieser Server ist sehr groß. Blende Kategorien aus, die du nicht nutzt, dann lädt er schneller.",
+  "In hidden categories": "In ausgeblendeten Kategorien"
  },
  "es": {
   "%@ is now signed in.": "%@ ya ha iniciado sesión.",
@@ -3318,7 +3322,9 @@
   "Task: %@": "Tarea: %@",
   "Update %@": "Actualización %@",
   "after \"%@\"": "tras \"%@\"",
-  "Discover categories": "Descubre categorías"
+  "Discover categories": "Descubre categorías",
+  "This server is very large. Hide categories you don't use and it will load faster.": "Este servidor es muy grande. Oculta las categorías que no uses y cargará más rápido.",
+  "In hidden categories": "En categorías ocultas"
  },
  "fr": {
   "%@ is now signed in.": "%@ est maintenant connecté.",
@@ -4425,7 +4431,9 @@
   "Task: %@": "Tâche : %@",
   "Update %@": "Mise à jour %@",
   "after \"%@\"": "après « %@ »",
-  "Discover categories": "Découvrir les catégories"
+  "Discover categories": "Découvrir les catégories",
+  "This server is very large. Hide categories you don't use and it will load faster.": "Ce serveur est très volumineux. Masque les catégories que tu n'utilises pas pour qu'il se charge plus vite.",
+  "In hidden categories": "Dans les catégories masquées"
  },
  "it": {
   "%@ is now signed in.": "%@ ha effettuato l’accesso.",
@@ -5532,7 +5540,9 @@
   "Task: %@": "Attività: %@",
   "Update %@": "Aggiornamento %@",
   "after \"%@\"": "dopo \"%@\"",
-  "Discover categories": "Scopri le categorie"
+  "Discover categories": "Scopri le categorie",
+  "This server is very large. Hide categories you don't use and it will load faster.": "Questo server è molto grande. Nascondi le categorie che non usi e si caricherà più velocemente.",
+  "In hidden categories": "Nelle categorie nascoste"
  },
  "nl": {
   "%@ is now signed in.": "%@ is nu ingelogd.",
@@ -6639,7 +6649,9 @@
   "Task: %@": "Taak: %@",
   "Update %@": "Bijwerken %@",
   "after \"%@\"": "na \"%@\"",
-  "Discover categories": "Ontdek categorieën"
+  "Discover categories": "Ontdek categorieën",
+  "This server is very large. Hide categories you don't use and it will load faster.": "Deze server is erg groot. Verberg categorieën die je niet gebruikt, dan laadt hij sneller.",
+  "In hidden categories": "In verborgen categorieën"
  },
  "pl": {
   "%@ is now signed in.": "%@ jest teraz zalogowany.",
@@ -7746,7 +7758,9 @@
   "Task: %@": "Zadanie: %@",
   "Update %@": "Aktualizacja %@",
   "after \"%@\"": "po „%@\"",
-  "Discover categories": "Odkryj kategorie"
+  "Discover categories": "Odkryj kategorie",
+  "This server is very large. Hide categories you don't use and it will load faster.": "Ten serwer jest bardzo duży. Ukryj kategorie, których nie używasz, a będzie ładować się szybciej.",
+  "In hidden categories": "W ukrytych kategoriach"
  },
  "pt": {
   "%@ is now signed in.": "%@ já tem sessão iniciada.",
@@ -8853,7 +8867,9 @@
   "Task: %@": "Tarefa: %@",
   "Update %@": "Atualização %@",
   "after \"%@\"": "após \"%@\"",
-  "Discover categories": "Descobrir categorias"
+  "Discover categories": "Descobrir categorias",
+  "This server is very large. Hide categories you don't use and it will load faster.": "Este servidor é muito grande. Oculta as categorias que não usas e carregará mais depressa.",
+  "In hidden categories": "Em categorias ocultas"
  },
  "tr": {
   "%@ is now signed in.": "%@ artık oturum açtı.",
@@ -9960,7 +9976,9 @@
   "Task: %@": "Görev: %@",
   "Update %@": "Güncelleme %@",
   "after \"%@\"": "\"%@\" sonrası",
-  "Discover categories": "Kategorileri keşfet"
+  "Discover categories": "Kategorileri keşfet",
+  "This server is very large. Hide categories you don't use and it will load faster.": "Bu sunucu çok büyük. Kullanmadığın kategorileri gizlersen daha hızlı yüklenir.",
+  "In hidden categories": "Gizli kategorilerde"
  },
  "zh-Hans": {
   "%@ is now signed in.": "%@ 现已登录。",
@@ -11067,6 +11085,8 @@
   "Task: %@": "任务：%@",
   "Update %@": "更新 %@",
   "after \"%@\"": "在“%@”之后",
-  "Discover categories": "发现分类"
+  "Discover categories": "发现分类",
+  "This server is very large. Hide categories you don't use and it will load faster.": "此服务器非常大。隐藏你不使用的分类，加载会更快。",
+  "In hidden categories": "在隐藏的分类中"
  }
 }

@@ -13,7 +13,7 @@ final class TitleMatcher: @unchecked Sendable {
     private let seriesIndex: [String: Int]
 
     static func norm(_ t: String) -> String {
-        t.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: nil).filter { $0.isLetter || $0.isNumber }
+        t.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: nil).nativeUTF8.filter { $0.isLetter || $0.isNumber }
     }
 
     init(movies: [Movie], series: [Series]) {

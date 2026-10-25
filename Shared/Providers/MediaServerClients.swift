@@ -294,6 +294,8 @@ struct StremioClient {
         var resources: [String]
         var types: [String]
         var catalogs: [Catalog]
+        /// Build 149: catalogi met zoeken (`extra` met `search`), zoals Stremio zelf zoekt; nil bij oude caches
+        var search: [Catalog]? = nil
         struct Catalog: Codable, Hashable { var type: String; var id: String; var name: String }
     }
 
@@ -321,6 +323,13 @@ struct StremioClient {
         let resources: [String] = (obj["resources"] as? [Any] ?? []).compactMap { r in
             (r as? String) ?? ((r as? [String: Any])?["name"] as? String)
         }
+        // build 149: catalogi die zoeken ondersteunen (`extra: [{name: "search"}]` of `extraSupported: ["search"]`)
+        let searchable: [Addon.Catalog] = (obj["catalogs"] as? [[String: Any]] ?? []).compactMap { c in
+            guard let t = c["type"] as? String, let id = c["id"] as? String else { return nil }
+            let names = (c["extra"] as? [[String: Any]] ?? []).compactMap { $0["name"] as? String } + (c["extraSupported"] as? [String] ?? [])
+            guard names.contains("search") else { return nil }
+            return Addon.Catalog(type: t, id: id, name: (c["name"] as? String) ?? id)
+        }
         let catalogs: [Addon.Catalog] = (obj["catalogs"] as? [[String: Any]] ?? []).compactMap { c in
             guard let t = c["type"] as? String, let id = c["id"] as? String else { return nil }
             let extras = (c["extra"] as? [[String: Any]] ?? [])
@@ -330,7 +339,7 @@ struct StremioClient {
         }
         let base = m.replacingOccurrences(of: "/manifest.json", with: "")
         return Addon(base: base, name: obj["name"] as? String ?? "Addon", resources: resources,
-                     types: obj["types"] as? [String] ?? [], catalogs: catalogs)
+                     types: obj["types"] as? [String] ?? [], catalogs: catalogs, search: searchable)
     }
 
     let addons: [Addon]
@@ -359,7 +368,37 @@ struct StremioClient {
                     }
                 }
             }
-            for await (cat, metas) in group {
+            for await (cat, metas) in group { Self.add(metas, cat, to: &lib) }
+        }
+        return lib
+    }
+
+    /// Build 149: zoeken via de catalogi van de add-ons die `search` ondersteunen
+    /// (`/catalog/{type}/{id}/search={q}.json`), zoals Stremio zelf. Max. 4 catalogi per add-on.
+    func search(_ q: String) async -> Library {
+        var lib = Library()
+        var allowed = CharacterSet.urlPathAllowed
+        allowed.remove(charactersIn: "/?&=#%")
+        guard let enc = q.trimmingCharacters(in: .whitespaces).addingPercentEncoding(withAllowedCharacters: allowed), !enc.isEmpty else { return lib }
+        await withTaskGroup(of: (Addon.Catalog, [Meta]).self) { group in
+            for a in addons where a.resources.contains("catalog") {
+                for c in (a.search ?? []).prefix(4) where c.type == "movie" || c.type == "series" {
+                    group.addTask {
+                        guard let u = URL(string: "\(a.base)/catalog/\(c.type)/\(c.id)/search=\(enc).json"),
+                              let d = try? await HTTP.get(u),
+                              let m = try? JSONDecoder().decode(Metas.self, from: d).metas else { return (c, []) }
+                        return (c, m)
+                    }
+                }
+            }
+            for await (cat, metas) in group { Self.add(metas, cat, to: &lib) }
+        }
+        return lib
+    }
+
+    private static func add(_ metas: [Meta], _ cat: Addon.Catalog, to lib: inout Library) {
+        do {
+            do {   // (zelfde omzetting als in library())
                 let groupName = "\(cat.name) · \(cat.type == "movie" ? L("Movies") : L("Series"))"
                 for m in metas where m.id.hasPrefix("tt") {
                     let year = m.releaseInfo.flatMap { Int($0.prefix(4)) }
@@ -375,7 +414,6 @@ struct StremioClient {
                 }
             }
         }
-        return lib
     }
 
     func episodes(_ series: Series) async throws -> [Episode] {
