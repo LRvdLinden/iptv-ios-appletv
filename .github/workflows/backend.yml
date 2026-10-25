@@ -744,6 +744,38 @@ jobs:
           supabase secrets set --project-ref "$REF" NEWSLETTER_CRON_SECRET="$SECRET" >/dev/null
           umask 077; printf '%s' "$SECRET" > "$RUNNER_TEMP/newsletter_cron_secret"
           echo "::notice::NEWSLETTER_CRON_SECRET ${N_CRON:+(vast) }op de server gezet"
+      - name: TIJDELIJK - diagnose land
+        # alleen headernamen, ja/nee en aantallen; nooit waarden, IP-adressen of accountgegevens. Wordt weer verwijderd.
+        if: steps.check.outputs.skip != '1'
+        continue-on-error: true
+        run: |
+          python3 - <<'PY'
+          import json, os, re, time, urllib.request, urllib.error
+          REF = os.environ["REF"]; SEC = open(os.path.join(os.environ["RUNNER_TEMP"], "maint_secret")).read()
+          URL = f"https://{REF}.supabase.co/functions/v1/device-auth"
+          def call(body):
+              r = urllib.request.Request(URL, data=json.dumps(body).encode(), method="POST", headers={"Content-Type": "application/json", "x-bingr-maint": SEC})
+              try:
+                  with urllib.request.urlopen(r, timeout=60) as resp: return resp.status, json.loads(resp.read() or b"{}")
+              except urllib.error.HTTPError as e: return e.code, {}
+              except Exception: return 0, {}
+          for i in range(12):
+              code, r = call({"action": "diag_geo"})
+              if code == 200: break
+              time.sleep(5)
+          safe = {k: (v if isinstance(v, (bool, int)) else [x for x in v if re.fullmatch(r"[a-z0-9-]{1,40}", str(x))] if isinstance(v, list) else re.sub(r"[^A-Za-z0-9_]", "", str(v))[:20]) for k, v in (r or {}).items()}
+          print(f"::notice::diagnose land (HTTP {code}): {json.dumps(safe)}")
+          q = ("select (select count(*) from public.account_country) cc, (select count(*) from public.account_devices where country is not null) dev_cc, "
+               "(select count(*) from public.account_devices where last_seen_at > now() - interval '1 day') dev_24h, "
+               "(select count(*) from public.account_devices where created_at > now() - interval '2 days') dev_new, "
+               "(to_regprocedure('public.bingr_set_country(uuid,text,text)') is not null) fn")
+          rq = urllib.request.Request(f"https://api.supabase.com/v1/projects/{REF}/database/query", data=json.dumps({"query": q}).encode(), method="POST",
+              headers={"Authorization": f"Bearer {os.environ['SUPABASE_ACCESS_TOKEN']}", "Content-Type": "application/json"})
+          try:
+              with urllib.request.urlopen(rq, timeout=60) as resp: rows = json.loads(resp.read() or b"[]")
+              print(f"::notice::diagnose land database: {json.dumps(rows[0] if rows else {})}")
+          except Exception as e: print(f"::warning::diagnose land database mislukt: {type(e).__name__}")
+          PY
       - name: Build 146 - bestaande gegevens versleutelen
         # eenmalig (en bij elke deploy controleren): profielen, kijkgegevens en supportberichten die nog leesbaar zijn,
         # versleutelen via device-auth maint_seal (in porties van max. 35 s). Daarna de stand van de overgang (alleen aantallen).
