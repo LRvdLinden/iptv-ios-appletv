@@ -215,3 +215,61 @@ enum ChannelLogoRow {
         return out
     }
 }
+
+// MARK: - Geen dubbele titels in de rijen op Home (meer servers)
+
+/// Build 151: dezelfde titel op meer servers staat in een rij op Home maar één keer. Een item is dubbel als één van
+/// zijn sleutels al gezien is (TMDB-id, IMDb-id, genormaliseerde titel + jaar; zenders: de opgeschoonde naam). Van de
+/// dubbele blijft de bron met de laagste rang (audio-/app-taal, dan de actieve server, dan de rest) op de plek van
+/// de eerste; bij gelijke rang de eerste (bij Verder kijken: de meest recente, want die lijst is al op tijd gesorteerd).
+enum HomeDedupe {
+    /// Sleutels van een film of serie. `title`: de titel zonder taallabels (door de aanroeper opgeschoond).
+    static func titleKeys(series: Bool, title: String, year: Int?, tmdb: Int?, imdb: String?) -> [String] {
+        let k = series ? "s" : "m"
+        var out: [String] = []
+        if let t = tmdb, t > 0 { out.append(k + "|t\(t)") }
+        if let i = imdb?.lowercased(), !i.isEmpty { out.append(k + "|i" + i) }
+        let n = ProviderMatch.key(title)
+        if !n.isEmpty { out.append(k + "|n" + n + "|\(year ?? 0)") }
+        return out
+    }
+
+    /// Sleutel van een zender: de opgeschoonde naam ("NL | NPO 1 HD" = "NPO 1")
+    static func channelKey(_ name: String) -> String {
+        "c|" + CategoryName.mergeKey(CategoryName.clean(name, title: true))
+    }
+
+    /// Op volgorde, zonder dubbele; `rank` lager = betere bron (die neemt de plek van de eerste over)
+    static func unique<T>(_ items: [T], keys: (T) -> [String], rank: (T) -> Int = { _ in 0 }) -> [T] {
+        guard items.count > 1 else { return items }
+        var at: [String: Int] = [:]
+        var out: [T] = []
+        var ranks: [Int] = []
+        out.reserveCapacity(items.count)
+        for x in items {
+            let ks = keys(x)
+            if let i = ks.lazy.compactMap({ at[$0] }).first {
+                let r = rank(x)
+                if r < ranks[i] { out[i] = x; ranks[i] = r }
+                for k in ks where at[k] == nil { at[k] = i }
+                continue
+            }
+            let i = out.count
+            for k in ks { at[k] = i }
+            out.append(x)
+            ranks.append(rank(x))
+        }
+        return out
+    }
+
+    /// Rang van een bron: taal (0 audio-taal, 1 app-taal, 2 meertalig, 3 anders) × 2 + (0 actieve server, 1 andere)
+    static func rank(audio: String?, multi: Bool, preferredAudio: String, appLanguage: String, active: Bool) -> Int {
+        let a = audio.map { String($0.lowercased().prefix(2)) }
+        let lang: Int
+        if let a, a == preferredAudio.lowercased().prefix(2) { lang = 0 }
+        else if let a, a == appLanguage.lowercased().prefix(2) { lang = 1 }
+        else if multi { lang = 2 }
+        else { lang = 3 }
+        return lang * 2 + (active ? 0 : 1)
+    }
+}

@@ -1269,5 +1269,32 @@ do {
     eq(ChannelLogoRow.pick(first: (0..<30).map { "r\($0)" }, groups: groups, hasLogo: logo).count, 15, "hooguit 15")
 }
 
+// MARK: build 151: geen dubbele titels op Home bij twee servers
+do {
+    struct H151 { let id: String; let server: String; let title: String; let year: Int?; let tmdb: Int?; let audio: String?; let at: Double }
+    // server A (actief) en B met overlappende titels
+    let a = [H151(id: "a1", server: "A", title: "The Batman", year: 2022, tmdb: 414906, audio: "en", at: 5),
+             H151(id: "a2", server: "A", title: "Dune", year: 2021, tmdb: nil, audio: nil, at: 4),
+             H151(id: "a3", server: "A", title: "Oppenheimer", year: 2023, tmdb: 872585, audio: nil, at: 1)]
+    let b = [H151(id: "b1", server: "B", title: "The Batman", year: 2022, tmdb: nil, audio: "nl", at: 9),
+             H151(id: "b2", server: "B", title: "Dune", year: 2021, tmdb: 438631, audio: nil, at: 8),
+             H151(id: "b3", server: "B", title: "Barbie", year: 2023, tmdb: 346698, audio: nil, at: 2),
+             H151(id: "b4", server: "B", title: "Oppenheimer", year: 2023, tmdb: 872585, audio: nil, at: 7)]
+    func keys(_ x: H151) -> [String] { HomeDedupe.titleKeys(series: false, title: x.title, year: x.year, tmdb: x.tmdb, imdb: nil) }
+    func rank(_ x: H151) -> Int { HomeDedupe.rank(audio: x.audio, multi: false, preferredAudio: "nl", appLanguage: "nl", active: x.server == "A") }
+    let row = HomeDedupe.unique(a + b, keys: keys, rank: rank)
+    eq(row.map(\.id), ["b1", "a2", "a3", "b3"], "één per titel: NL-bron wint, anders de actieve server")
+    let byTitle = Dictionary(grouping: row, by: { $0.title })
+    check(byTitle.values.allSatisfy { $0.count == 1 }, "geen dubbelen in de rij")
+    // Verder kijken: op tijd (nieuwste eerst), dezelfde titel één tegel met de meest recente voortgang
+    let cont = HomeDedupe.unique((a + b).sorted { $0.at > $1.at }, keys: keys)
+    eq(cont.map(\.id), ["b1", "b2", "b4", "b3"], "Verder kijken: meest recente voortgang blijft")
+    // zenders op de opgeschoonde naam
+    eq(HomeDedupe.channelKey("NL | NPO 1"), HomeDedupe.channelKey("NPO 1"), "zender: zelfde opgeschoonde naam")
+    let ch = HomeDedupe.unique(["NL | NPO 1", "RTL 4", "NPO 1", "NL: RTL 4"], keys: { [HomeDedupe.channelKey($0)] })
+    eq(ch, ["NL | NPO 1", "RTL 4"], "zenders ontdubbeld")
+    eq(HomeDedupe.rank(audio: nil, multi: true, preferredAudio: "nl", appLanguage: "en", active: false), 5, "meertalig, andere server")
+}
+
 print("\(checks) controles, \(failures) fout")
 exit(failures == 0 ? 0 : 1)

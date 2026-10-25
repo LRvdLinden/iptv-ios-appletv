@@ -318,6 +318,39 @@ struct HomeView: View {
         }
     }
 
+    // MARK: build 151: geen dubbele titels in de rijen (meer servers)
+
+    private func dedupeKeys(_ m: Movie) -> [String] {
+        HomeDedupe.titleKeys(series: false, title: ContentLanguage.searchTitle(m.title), year: m.year, tmdb: m.tmdbID, imdb: m.imdbID)
+    }
+    private func dedupeKeys(_ x: Series) -> [String] {
+        HomeDedupe.titleKeys(series: true, title: ContentLanguage.searchTitle(x.title), year: x.year, tmdb: x.tmdbID, imdb: x.imdbID)
+    }
+    private func dedupeKeys(_ t: DetailTarget) -> [String] {
+        switch t { case .movie(let m): return dedupeKeys(m); case .series(let x): return dedupeKeys(x) }
+    }
+    /// Bron in de audio-/app-taal eerst, dan de actieve server, dan de rest
+    private func sourceRank(_ lang: ContentLanguage?, _ sid: UUID?) -> Int {
+        HomeDedupe.rank(audio: lang?.audioBase, multi: (lang?.multi ?? false) || (lang?.dual ?? false),
+                        preferredAudio: TrackPreferences.preferredAudio, appLanguage: TrackPreferences.appLanguage,
+                        active: sid == nil || sid == pid)
+    }
+    private func sourceRank(_ t: DetailTarget) -> Int {
+        switch t {
+        case .movie(let m): return sourceRank(ContentLanguage.of(m), m.sourceID)
+        case .series(let x): return sourceRank(ContentLanguage.of(x), x.sourceID)
+        }
+    }
+    private func dedupeTitles(_ xs: [DetailTarget]) -> [DetailTarget] {
+        HomeDedupe.unique(xs, keys: { (t: DetailTarget) in dedupeKeys(t) }, rank: { (t: DetailTarget) in sourceRank(t) })
+    }
+    private func dedupeTitles(_ xs: [Movie]) -> [Movie] {
+        HomeDedupe.unique(xs, keys: { (m: Movie) in dedupeKeys(m) }, rank: { (m: Movie) in sourceRank(ContentLanguage.of(m), m.sourceID) })
+    }
+    private func dedupeTitles(_ xs: [Series]) -> [Series] {
+        HomeDedupe.unique(xs, keys: { (x: Series) in dedupeKeys(x) }, rank: { (x: Series) in sourceRank(ContentLanguage.of(x), x.sourceID) })
+    }
+
     struct LogoChannelsKey: Equatable {
         var version: Int
         var recent: [String]
@@ -349,8 +382,9 @@ struct HomeView: View {
             }
             let groups = order.map { (group: $0, ids: ids[$0] ?? []) }
             let pick = ChannelLogoRow.pick(first: first.filter { byID[$0] != nil }, groups: groups,
-                                           hasLogo: { byID[$0]?.logo != nil })
-            return pick.compactMap { byID[$0] }
+                                           hasLogo: { byID[$0]?.logo != nil }, max: 30)
+            // build 151: dezelfde zender (opgeschoonde naam, bijv. in twee categorieën of in HD en SD) één keer
+            return Array(HomeDedupe.unique(pick.compactMap { byID[$0] }, keys: { [HomeDedupe.channelKey($0.name)] }).prefix(15))
         }.value
         guard !Task.isCancelled else { return }
         if picked.map(\.id) != logoChannels.map(\.id) { logoChannels = picked }
@@ -683,7 +717,7 @@ struct HomeView: View {
             case nil: break
             }
         }
-        return Self.ordered(mine + other, identity: CrossServer.identity)
+        return dedupeTitles(Self.ordered(mine + other, identity: CrossServer.identity))   // build 151
     }
     private var myListSeries: [Series] {
         guard let pid else { return [] }
@@ -701,7 +735,7 @@ struct HomeView: View {
             case nil: break
             }
         }
-        return Self.ordered(mine + other, identity: CrossServer.identity)
+        return dedupeTitles(Self.ordered(mine + other, identity: CrossServer.identity))   // build 151
     }
 
     /// Eén tegel per titel (de eerste, dus de open server), daarna laatst toegevoegd eerst (bij gelijke tijd op titel)
@@ -727,7 +761,9 @@ struct HomeView: View {
     }
 
     @ViewBuilder private func discoverRow(_ kind: DiscoverKind) -> some View {
-        let list = discover[kind] ?? []
+        // build 151: dezelfde titel (op meer servers) één keer
+        let list = HomeDedupe.unique(discover[kind] ?? [], keys: { (e: DiscoverEntry) -> [String] in e.match.map { dedupeKeys($0) } ?? ["e|" + e.item.id] },
+                                     rank: { (e: DiscoverEntry) -> Int in e.match.map { sourceRank($0) } ?? 9 })
         if !list.isEmpty {
             VStack(alignment: .leading, spacing: tvScaled(4)) {
                 MediaRow(title: kind.title) {
@@ -1120,7 +1156,11 @@ struct HomeView: View {
             let known = Set(out.map(\.id))
             out += traktContinue.filter { !known.contains($0.id) }
         }
-        return Array(out.sorted { $0.updated > $1.updated }.prefix(20))
+        // build 151: hetzelfde item op twee servers één tegel, met de meest recente voortgang (de lijst staat op tijd)
+        let sorted = out.sorted { $0.updated > $1.updated }
+        return Array(HomeDedupe.unique(sorted, keys: { c in
+            HomeDedupe.titleKeys(series: !c.isMovie, title: ContentLanguage.searchTitle(c.title), year: nil, tmdb: nil, imdb: nil)
+        }).prefix(20))
     }
 
     /// Verder kijken van een andere server: film of aflevering (de serie moet daar zichtbaar zijn voor dit profiel);
@@ -1248,10 +1288,11 @@ struct HomeView: View {
         guard !Task.isCancelled else { return }
         let fresh = await NewOnBingr.shared.titles(active: l, activeID: pid, others: others)
         guard !Task.isCancelled else { return }
-        if fresh != newOnBingr { newOnBingr = fresh }
+        let freshUnique = dedupeTitles(fresh)   // build 151
+        if freshUnique != newOnBingr { newOnBingr = freshUnique }
         if forYou.isEmpty {
             let r = await buildForYou(useNetwork: false, matcher: matcher, idx: idx, lib: l, others: others)
-            forYou = r.items
+            forYou = dedupeTitles(r.items)
             forYouPopular = r.popular
         }
         guard !Task.isCancelled else { return }
@@ -1265,9 +1306,9 @@ struct HomeView: View {
         applyTrending(matcher, idx, movies: m, series: s)
         let fy = await buildForYou(useNetwork: true, matcher: matcher, idx: idx, lib: l, others: others)
         guard !Task.isCancelled else { return }
-        forYou = fy.items
+        forYou = dedupeTitles(fy.items)
         forYouPopular = fy.popular
-        updateHeroItems(forYouRanked: fy.items)
+        updateHeroItems(forYouRanked: forYou)
         preparedKey = pkey
         preparedAt = Date()
     }
@@ -1291,15 +1332,15 @@ struct HomeView: View {
         if filter != .series {
             let found = uniqueByID(matcher.movies(movies))
             if found.count >= 5 || trendingMovies.isEmpty {
-                trendingMovies = found.count >= 5 ? found : found + idx.localTopMovies
-                    .filter { m in !found.contains { $0.id == m.id } }
+                trendingMovies = dedupeTitles(found.count >= 5 ? found : found + idx.localTopMovies
+                    .filter { m in !found.contains { $0.id == m.id } })
             }
         }
         if filter != .movies {
             let found = uniqueByID(matcher.series(series))
             if found.count >= 5 || trendingSeries.isEmpty {
-                trendingSeries = found.count >= 5 ? found : found + idx.localTopSeries
-                    .filter { s in !found.contains { $0.id == s.id } }
+                trendingSeries = dedupeTitles(found.count >= 5 ? found : found + idx.localTopSeries
+                    .filter { s in !found.contains { $0.id == s.id } })
             }
         }
     }
