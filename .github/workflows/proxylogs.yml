@@ -51,13 +51,13 @@ jobs:
                   print("  ", " ".join(out))
           WP = "source = 'function_edge_logs' AND position(log_attributes['request.url'], '/functions/v1/web-proxy') > 0"
           A = "log_attributes"
-          show("velden van function_logs (namen)",
-               f"SELECT k, count() AS n FROM logs ARRAY JOIN mapKeys({A}) AS k WHERE source = 'function_logs' GROUP BY k ORDER BY k", 2, ["k", "n"])
-          show("function_logs 14:00-14:40 UTC (geen newsletter/booted/shutdown)",
-               f"SELECT {A}['level'] AS lvl, {A}['function_id'] AS fid, substring(event_message, 1, 120) AS msg, count() AS n, min(timestamp) AS first FROM logs WHERE source = 'function_logs' "
-               "AND timestamp > toDateTime('2026-10-25 13:30:00') AND NOT startsWith(event_message, 'booted') AND event_message != 'shutdown' AND NOT startsWith(event_message, 'newsletter') "
-               "GROUP BY lvl, fid, msg ORDER BY first LIMIT 40", 2, ["lvl", "fid", "msg", "n", "first"])
-          show("function_id van web-proxy", f"SELECT {A}['function_id'] AS fid, {A}['version'] AS v, count() AS n, min(timestamp) AS first, max(timestamp) AS last FROM logs WHERE {WP} GROUP BY fid, v ORDER BY last DESC", 24, ["fid", "v", "n", "first", "last"])
+          U = f"{A}['request.sb.auth_user']"
+          show("gebruikers met 502 vandaag: hun POST-uitkomsten per uur (geen id's)",
+               f"SELECT toStartOfHour(timestamp) AS h, {A}['response.status_code'] AS s, {A}['response.headers.content_type'] AS ct, count() AS n, uniqExact({U}) AS users, "
+               f"avg(toFloat64OrZero({A}['execution_time_ms'])) AS avg_ms, max(toFloat64OrZero({A}['response.headers.content_length'])) AS max_len FROM logs WHERE {WP} AND {A}['request.method'] = 'POST' "
+               f"AND {U} IN (SELECT {U} FROM logs WHERE {WP} AND {A}['response.status_code'] = '502') GROUP BY h, s, ct ORDER BY h DESC LIMIT 40", 24, ["h", "s", "ct", "n", "users", "avg_ms", "max_len"])
+          show("502-rijen: content_length en content_length van het verzoek",
+               f"SELECT {A}['response.headers.content_length'] AS rl, {A}['request.headers.content_length'] AS ql, toFloat64OrZero({A}['execution_time_ms']) AS ms, timestamp AS t FROM logs WHERE {WP} AND {A}['response.status_code'] = '502' ORDER BY t", 24, ["rl", "ql", "ms", "t"])
           PY
       - name: Naar de tijdelijke branch ci-proxylogs
         run: |
