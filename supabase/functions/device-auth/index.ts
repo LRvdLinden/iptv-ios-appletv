@@ -72,8 +72,8 @@ import { cleanDeviceName, deviceKind, deviceTypeLabel } from "./naming.ts";
 import { type PasswordCheck, passwordCheckResult } from "./password.ts";
 import { BANNED_BODY, bannedUntilActive, isBanError } from "../_shared/ban.ts";
 import { clientIp } from "../_shared/ip.ts";
-import { countryFor, countryOf, visitorIp } from "../_shared/country.ts";
-import { gunzip, loadTable, lookup } from "../_shared/geoip.ts";
+import { countryFor } from "../_shared/country.ts";
+import { gunzip, loadTable } from "../_shared/geoip.ts";
 import { openField, seal, sealField, unseal } from "../_shared/sealed.ts";
 import { normalizePinSection, parsePinHash, validPin } from "../_shared/pin.ts";
 import { buildOf, cleanProfiles, PROFILES_BUILD } from "../_shared/profiles.ts";
@@ -754,21 +754,6 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       const r = await syncProfiles(admin, user.id, incoming);
       if ("error" in r) return r.error === "busy" ? json({ error: "try_again" }, 503) : json({ error: r.error }, 413);
       return json({ ok: true, profiles: r.list, updatedAt: r.updatedAt });
-    }
-    case "diag_geo": {
-      // TIJDELIJK (diagnose land): alleen NAMEN van headers en ja/nee, nooit waarden of IP-adressen. Wordt weer verwijderd.
-      const secret = Deno.env.get("BINGR_MAINT_SECRET") ?? "";
-      if (secret.length < 32 || !same(req.headers.get("x-bingr-maint") ?? "", secret)) return json({ error: "forbidden" }, 403);
-      const names = [...req.headers.keys()].filter((k) => /country|geo|^cf-|region|city|forwarded|real-ip|client-ip|via|x-sb|x-region/i.test(k)).sort();
-      const xff = (req.headers.get("x-forwarded-for") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
-      const t = await geoTable();
-      const cf = (req.headers.get("cf-connecting-ip") ?? "").trim();
-      const cc = (ip: string | undefined) => (t && ip ? lookup(t, ip) ?? "--" : "--");
-      return json({
-        names, cc_ok: countryOf(req) !== null, xff_count: xff.length, table: t ? t.v4.length : 0,
-        cf_eq_first: cf !== "" && cf === xff[0], cf_eq_last: cf !== "" && cf === xff[xff.length - 1], cf_cloudflare: /^2a06:98c0:/i.test(cf),
-        cc_cf: cc(cf), cc_first: cc(xff[0]), cc_last: cc(xff[xff.length - 1]), cc_chosen: cc(visitorIp(req) ?? undefined),
-      });
     }
     case "maint_seal": {
       // build 146: onderhoud door de workflow Backend (geheim per deploy; zie maint())
