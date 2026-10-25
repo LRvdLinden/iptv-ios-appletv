@@ -55,21 +55,17 @@ jobs:
                   print("  ", " ".join(out))
           WP = "source = 'function_edge_logs' AND position(log_attributes['request.url'], '/functions/v1/web-proxy') > 0"
           A = "log_attributes"
-          U = f"{A}['request.sb.auth_user']"
-          U = f"{A}['request.sb.auth_user']"
-          import datetime as dt
-          SUB = f"(SELECT {U} FROM logs WHERE {WP} AND {A}['response.status_code'] = '502')"
-          # eerst de getroffen gebruiker(s) bepalen in de laatste 24 uur, dan als hash-vergelijking in eerdere vensters (geen id's in het log)
-          c, b = logs(f"SELECT DISTINCT {U} AS u FROM logs WHERE {WP} AND {A}['response.status_code'] = '502'", 24)
-          ids = [str(r.get("u")) for r in ((b or {}).get("result") or []) if re.fullmatch(r"[0-9a-f-]{36}", str(r.get("u") or ""))]
-          print("getroffen gebruikers:", len(ids))
-          IN = "(" + ",".join("'" + i + "'" for i in ids) + ")" if ids else "('')"
-          for day in ("2026-10-22", "2026-10-23", "2026-10-24", "2026-10-25"):
-              st = dt.datetime.fromisoformat(day + "T00:00:00+00:00")
-              show(f"getroffen gebruiker(s) {day}: POST per uur, status en type",
-                   f"SELECT toStartOfHour(timestamp) AS h, {A}['response.status_code'] AS s, {A}['response.headers.content_type'] AS ct, count() AS n, "
-                   f"max(toFloat64OrZero({A}['response.headers.content_length'])) AS max_len FROM logs WHERE {WP} AND {A}['request.method'] = 'POST' AND {U} IN {IN} "
-                   f"GROUP BY h, s, ct ORDER BY h LIMIT 60", 24, ["h", "s", "ct", "n", "max_len"], st)
+          # failLog-regels (policy.ts): bevatten per ontwerp geen host, IP, URL of inloggegevens; toch alleen het vaste patroon tonen
+          c, b = logs("SELECT event_message AS line, count() AS n, max(timestamp) AS last FROM logs WHERE source = 'function_logs' "
+                      "AND startsWith(event_message, 'web-proxy fout=') GROUP BY line ORDER BY last DESC LIMIT 40", 6)
+          print(f"== failLog-regels web-proxy (6 uur, HTTP {c})")
+          PAT = re.compile(r"web-proxy fout=[a-z_?-]+ upstream=[0-9-]+ vorm=[a-z]+ pad=[a-z]+ actie=[a-z_?-]+ https=[01] ms=\d+ bytes=\d+ doorverwijzingen=\d+")
+          for r in ((b or {}).get("result") or []):
+              m = PAT.fullmatch(str(r.get("line") or "").strip())
+              line = re.sub(r" ms=\d+", lambda x: x.group(0), m.group(0)) if m else "(ander formaat, niet getoond)"
+              print("  ", line, "n=", r.get("n"), "last=", NUM.sub("", str(r.get("last"))))
+          show("web-proxy POST-status (2 uur)",
+               f"SELECT {A}['response.status_code'] AS s, count() AS n, max(timestamp) AS last FROM logs WHERE {WP} AND {A}['request.method'] = 'POST' GROUP BY s ORDER BY last DESC", 2, ["s", "n", "last"])
           PY
       - name: Naar de tijdelijke branch ci-proxylogs
         run: |
