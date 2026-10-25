@@ -1,5 +1,87 @@
 [
  {
+  "build": 150,
+  "version": "1.0.1",
+  "date": "2026-10-25",
+  "items": [
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "webos",
+     "web",
+     "windows"
+    ],
+    "nl": "Taal-, land- en kwaliteitsaanduidingen zoals \"| NL |\", \"MULTI / LINGO\", \"[EN]\" of \"4K\" verdwijnen overal uit de namen van categorieën, en namen in hoofdletters krijgen nette hoofdletters",
+    "en": "Language, country and quality tags such as \"| NL |\", \"MULTI / LINGO\", \"[EN]\" or \"4K\" are removed from category names everywhere, and all-caps names get proper capitalisation"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "webos",
+     "web",
+     "windows"
+    ],
+    "nl": "Categorieën met dezelfde naam worden één categorie, zonder dubbele titels en met de talen als label; aan- en uitzetten geldt voor alle bronnen tegelijk",
+    "en": "Categories with the same name are merged into one, without duplicate titles and with the languages as labels; turning them on or off applies to all sources at once"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "webos",
+     "web",
+     "windows"
+    ],
+    "nl": "Ontdek categorieën toont Netflix niet meer twee keer en toont de logo's van streamingdiensten weer",
+    "en": "Discover categories no longer shows Netflix twice and shows the streaming service logos again"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "tizen",
+     "webos"
+    ],
+    "nl": "Zoeken vindt ook titels in verborgen categorieën en via de zoekcatalogi van Stremio-add-ons",
+    "en": "Search also finds titles in hidden categories and through the search catalogs of Stremio add-ons"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "tizen",
+     "webos"
+    ],
+    "nl": "Bij Over staat nu ook de bronvermelding Streamingdata: JustWatch",
+    "en": "About now also credits Streaming data: JustWatch"
+   }
+  ]
+ },
+ {
   "build": 149,
   "version": "1.0.1",
   "date": "2026-10-25",
