@@ -43,8 +43,8 @@
 //   - alleen de paden die de webspeler gebruikt (API's, streams, media/EPG/afbeeldingen, de eigen M3U/EPG-URL); anders 403
 //     path_not_allowed. Poorten 80, 443 en >= 1024 behalve bekende interne diensten (403 port_not_allowed). Een door de proxy
 //     ondertekende URL uit een afspeellijst moet media teruggeven (anders 403 content_not_allowed).
-//   - http én https naar het gecontroleerde IP (pinned.ts; TLS met SNI en certificaat op de hostnaam): geen DNS-rebinding.
-//     Noodschakelaar: function-secret BINGR_PROXY_PIN_IP=0 = terug naar fetch met een dubbele DNS-controle.
+//   - optionele vast-IP-verbinding voor http en https (pinned.ts; TLS met SNI). Wegens verbindingsregressie
+//     standaard fetch op hostnaam met dubbele DNS-controle; BINGR_PROXY_PIN_IP=1 schakelt vast-IP weer in.
 //   - gebruik per account in de database (bingr_proxy_usage): aanvragen per uur en bytes per 24 uur, lager voor Gratis;
 //     429 quota_exceeded. app_settings.proxy_limits: {enabled, free, lifetime} (enabled false = noodrem, 503 unavailable).
 //   - antwoorden nooit als HTML/script (text/plain), altijd nosniff + CSP sandbox, niet-media als attachment.
@@ -444,13 +444,13 @@ async function lookup(hostIn: string, useCache: boolean): Promise<Lookup> {
   return { addrs };
 }
 
-// security M2: http én https naar het gecontroleerde IP-adres (pinned.ts), zodat er tussen controle en verbinding geen
-// andere DNS-uitkomst kan komen. Noodschakelaar BINGR_PROXY_PIN_IP=0: terug naar fetch op hostnaam met een tweede
-// DNS-controle vlak ervoor (oud gedrag, alleen voor als de eigen client op deze runtime niet werkt).
-const pinOn = () => Deno.env.get("BINGR_PROXY_PIN_IP") !== "0" && typeof Deno.connect === "function" && typeof Deno.startTls === "function";
+// Herstel 27-10-2026: na de pin-wijziging van 23-10 weigeren sommige IPTV-servers de ruwe TCP-verbinding.
+// Standaard daarom weer fetch op hostnaam, met de bestaande host-/pad-/poort- en dubbele DNS-controle.
+// Vast-IP-transport blijft opt-in via BINGR_PROXY_PIN_IP=1, voor een later gecontroleerd herstel.
+const pinOn = () => Deno.env.get("BINGR_PROXY_PIN_IP") === "1" && typeof Deno.connect === "function" && typeof Deno.startTls === "function";
 
 /**
- * Eén aanvraag (GET, geen automatische doorverwijzing) met een DNS-controle vlak ervoor, naar precies dat IP-adres.
+ * Eén aanvraag (GET, geen automatische doorverwijzing) met DNS-controle; alleen bij expliciete opt-in naar een vast IP.
  */
 async function guardedFetch(url: URL, headers: Record<string, string>, signal: AbortSignal): Promise<Response | Blocked> {
   if (!portAllowed(url)) return { error: "port_not_allowed", status: 403 };
@@ -467,7 +467,7 @@ async function guardedFetch(url: URL, headers: Record<string, string>, signal: A
     }
     throw last ?? new Error("connect_failed");
   }
-  // noodschakelaar of geen DNS in deze runtime: vlak ervoor nog een keer opvragen; ook dan moet elk adres publiek zijn
+  // Standaardroute: vlak voor fetch nogmaals DNS controleren; ieder geretourneerd IP moet publiek zijn
   const again = await lookup(host, false);
   if ("error" in again) return again;
   return await fetch(url, { method: "GET", headers, redirect: "manual", signal });
