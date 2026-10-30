@@ -191,7 +191,7 @@ struct PersonView: View {
                             PosterCard(title: m.title, poster: m.poster, watched: Playables.isWatched(movie: m, imdb: trakt.imdb(for: m)), language: ContentLanguage.of(m))
                         case .series(let s):
                             PosterCard(title: s.title, poster: s.poster,
-                                       watchedEpisodes: Playables.watchedEpisodeCount(s, imdb: trakt.imdb(for: s)), language: ContentLanguage.of(s))
+                                       watched: Playables.isSeriesWatched(s, imdb: trakt.imdb(for: s)), watchedEpisodes: Playables.watchedEpisodeCount(s, imdb: trakt.imdb(for: s)), language: ContentLanguage.of(s))
                         }
                     }
                 }

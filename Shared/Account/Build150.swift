@@ -383,6 +383,19 @@ enum CategoryName {
     }
 }
 
+// MARK: - Build 154: voorvoegsels van titels
+
+extension CategoryName {
+    /// Build 154: is dit stuk vóór ":" / "-" / "|" een taal- of landcode (in hoofdletters), een kwaliteitswoord of een
+    /// bekend IPTV-woord (de lijsten hierboven)? Dan mag het als voorvoegsel van een titel weg ("NL: Bioscoop"),
+    /// anders niet ("NCIS: Hawaii", "BBC - Planet Earth"). Alleen IPTV-woorden ("VOD", "Films") alleen als er daarna
+    /// letters staan.
+    static func isTagPhrase(_ s: Substring, restHasLetters: Bool) -> Bool {
+        guard hasContent(s), let tags = phrase(s, mode: .separated, prefix: true) else { return false }
+        return !onlyWords(tags) || restHasLetters
+    }
+}
+
 // MARK: - Build 153: zendernamen
 
 /// Build 153 (melding Léon: "overal zie ik nog ┃NL┃"): zendernamen werden nergens opgeschoond, alleen categorieën en

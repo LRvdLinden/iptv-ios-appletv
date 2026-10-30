@@ -159,44 +159,57 @@ actor TraktClient {
 
     /// Trakt-tokens zijn eenmalig bij verversen: eerst de account lezen (een ander apparaat kan al
     /// ververst hebben), daarna pas zelf verversen, en de nieuwe tokens meteen terugzetten in de account.
-    private var refreshing: Task<Void, Never>?
+    /// Build 154 (docs/ACCOUNT.md, "Trakt"): verversen pas als het token minder dan 1 uur geldig is of na een 401
+    /// (was: < 24 uur, dus bij elk verzoek); één verversing tegelijk per apparaat (single-flight); een mislukte
+    /// verversing leest eerst `connections` opnieuw en neemt een nieuwer token over, en wist het token **nooit**
+    /// (dus nooit `trakt: null` in het account). Alleen een bewuste uitlog wist het.
+    private var refreshTask: Task<String, Error>?
+    /// Laatste verversing mislukt (voor de diagnose; nooit het token zelf)
+    private(set) var lastRefreshFailure: String?
 
-    private func validToken() async throws -> String {
+    private func validToken(forceRefresh: Bool = false) async throws -> String {
+        guard let t = tokens else { throw TraktError.notLoggedIn }
+        guard forceRefresh || TraktTokenPolicy.needsRefresh(expiresAt: t.expiresAt) else { return t.accessToken }
+        if let r = refreshTask { return try await r.value }
+        let stale = t.accessToken
+        let task = Task { () throws -> String in try await self.performRefresh(stale: stale, force: forceRefresh) }
+        refreshTask = task
+        defer { refreshTask = nil }
+        return try await task.value
+    }
+
+    private func performRefresh(stale: String, force: Bool) async throws -> String {
+        // eerst de account: een ander apparaat kan al ververst hebben
+        await StateSync.beforeTraktRefresh()
         guard var t = tokens else { throw TraktError.notLoggedIn }
-        if t.expiresAt.timeIntervalSinceNow < 24 * 3600 {
-            if let r = refreshing {
-                await r.value
-            } else {
-                let r = Task { await StateSync.beforeTraktRefresh() }
-                refreshing = r
-                await r.value
-                refreshing = nil
-            }
-            guard let latest = tokens else { throw TraktError.notLoggedIn }
-            t = latest
-        }
-        if t.expiresAt.timeIntervalSinceNow < 24 * 3600 {
-            // Inloggen gaat met een apparaatcode (geen redirect). Bij verversen eist Trakt wel een
-            // geregistreerde redirect-URI; we proberen de veilige https-variant en de oude "oob".
-            var refreshed = false, unauthorized = 0
-            for redirect in Self.redirectURIs {
-                let req = try oauthRequest("/oauth/token", oauthBody([
-                    "refresh_token": t.refreshToken, "redirect_uri": redirect, "grant_type": "refresh_token"]))
-                let (d, r) = try await HTTP.data(req)
-                if r.statusCode == 200, let n = try? JSONDecoder().decode(TokenResponse.self, from: d) {
-                    let user = t.username; t = n.tokens; t.username = user
-                    Keychain.setCodable(t, for: tokenKey)
-                    refreshed = true
-                    await StateSync.traktTokensRefreshed()
-                    break
-                }
-                if r.statusCode == 401 || r.statusCode == 400 { unauthorized += 1 }
-            }
-            if !refreshed && unauthorized == Self.redirectURIs.count && t.expiresAt < Date() {
-                Keychain.set(nil, for: tokenKey); throw TraktError.notLoggedIn
+        if t.accessToken != stale, !TraktTokenPolicy.needsRefresh(expiresAt: t.expiresAt) { return t.accessToken }
+        if !force, !TraktTokenPolicy.needsRefresh(expiresAt: t.expiresAt) { return t.accessToken }
+        // Inloggen gaat met een apparaatcode (geen redirect). Bij verversen eist Trakt wel een
+        // geregistreerde redirect-URI; we proberen de veilige https-variant en de oude "oob".
+        for redirect in Self.redirectURIs {
+            let req = try oauthRequest("/oauth/token", oauthBody([
+                "refresh_token": t.refreshToken, "redirect_uri": redirect, "grant_type": "refresh_token"]))
+            guard let res = try? await HTTP.data(req) else { continue }
+            let (d, r) = res
+            if r.statusCode == 200, let n = try? JSONDecoder().decode(TokenResponse.self, from: d) {
+                let user = t.username; t = n.tokens; t.username = user
+                Keychain.setCodable(t, for: tokenKey)
+                lastRefreshFailure = nil
+                await StateSync.traktTokensRefreshed()
+                Task { @MainActor in TraktSync.shared.tokenRefreshed() }
+                return t.accessToken
             }
         }
-        return t.accessToken
+        // mislukt: de account opnieuw lezen en een nieuwer token overnemen; anders het huidige houden (nooit wissen)
+        await StateSync.beforeTraktRefresh()
+        lastRefreshFailure = ISO8601DateFormatter().string(from: Date())
+        if let latest = tokens,
+           TraktTokenPolicy.afterFailedRefresh(local: (access: t.accessToken, expiresAt: t.expiresAt),
+                                               account: (access: latest.accessToken, expiresAt: latest.expiresAt)) == .adopt {
+            return latest.accessToken
+        }
+        if t.expiresAt > Date() { return t.accessToken }
+        throw TraktError.refreshFailed
     }
 
     // MARK: requests
@@ -207,15 +220,29 @@ actor TraktClient {
         return h
     }
 
-    func get<T: Decodable>(_ path: String, query: [String: String] = [:], auth: Bool = true) async throws -> T {
-        var c = URLComponents(url: base.appendingPathComponent(path), resolvingAgainstBaseURL: false)!
-        if !query.isEmpty { c.queryItems = query.map { URLQueryItem(name: $0, value: $1) } }
-        var r = URLRequest(url: c.url!)
+    /// Verzoek met token; bij een 401 één keer verversen en het verzoek opnieuw doen. 429 → `TraktError.rateLimited`.
+    private func send(_ base: URLRequest, auth: Bool) async throws -> (Data, HTTPURLResponse) {
+        var r = base
         var token: String?
         if auth { token = try await validToken() }
         headers(token).forEach { r.setValue($1, forHTTPHeaderField: $0) }
-        let (d, h) = try await HTTP.data(r)
-        guard (200..<300).contains(h.statusCode) else { throw HTTPError.status(h.statusCode, String(decoding: d, as: UTF8.self)) }
+        var (d, h) = try await HTTP.data(r)
+        if auth, h.statusCode == 401 {
+            token = try await validToken(forceRefresh: true)
+            headers(token).forEach { r.setValue($1, forHTTPHeaderField: $0) }
+            (d, h) = try await HTTP.data(r)
+        }
+        if h.statusCode == 429 {
+            throw TraktError.rateLimited(TraktBackoff.retryAfter(h.value(forHTTPHeaderField: "Retry-After")))
+        }
+        return (d, h)
+    }
+
+    func get<T: Decodable>(_ path: String, query: [String: String] = [:], auth: Bool = true) async throws -> T {
+        var c = URLComponents(url: base.appendingPathComponent(path), resolvingAgainstBaseURL: false)!
+        if !query.isEmpty { c.queryItems = query.map { URLQueryItem(name: $0, value: $1) } }
+        let (d, h) = try await send(URLRequest(url: c.url!), auth: auth)
+        guard (200..<300).contains(h.statusCode) else { throw HTTPError.status(h.statusCode, "Trakt") }
         return try JSONDecoder.lenient.decode(T.self, from: d)
     }
 
@@ -223,13 +250,10 @@ actor TraktClient {
     func postRaw(_ path: String, body: Any, auth: Bool = true) async throws -> Data {
         var r = URLRequest(url: base.appendingPathComponent(path))
         r.httpMethod = "POST"
-        var token: String?
-        if auth { token = try await validToken() }
-        headers(token).forEach { r.setValue($1, forHTTPHeaderField: $0) }
         r.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (d, h) = try await HTTP.data(r)
+        let (d, h) = try await send(r, auth: auth)
         guard (200..<300).contains(h.statusCode) || h.statusCode == 409 else {
-            throw HTTPError.status(h.statusCode, String(decoding: d, as: UTF8.self))
+            throw HTTPError.status(h.statusCode, "Trakt")
         }
         return d
     }
@@ -237,9 +261,7 @@ actor TraktClient {
     func delete(_ path: String) async throws {
         var r = URLRequest(url: base.appendingPathComponent(path))
         r.httpMethod = "DELETE"
-        let token = try await validToken()
-        headers(token).forEach { r.setValue($1, forHTTPHeaderField: $0) }
-        _ = try await HTTP.data(r)
+        _ = try await send(r, auth: true)
     }
 
     func post<T: Decodable>(_ path: String, body: Any, auth: Bool = true) async throws -> T {
@@ -250,8 +272,14 @@ actor TraktClient {
 
 enum TraktError: LocalizedError {
     case notLoggedIn, expired, denied(Int)
+    /// Build 154: verversen mislukt en het token is verlopen (het blijft bewaard; opnieuw proberen of opnieuw koppelen)
+    case refreshFailed
+    /// Build 154: 429, met `Retry-After` in seconden
+    case rateLimited(Double?)
     var errorDescription: String? {
         switch self {
+        case .refreshFailed: return L("Trakt: could not connect")
+        case .rateLimited: return L("Trakt: could not connect")
         case .notLoggedIn: return L("Not signed in to Trakt.")
         case .expired: return L("The code has expired. Please try again.")
         case .denied(let c): return L("Trakt refused the connection (%d).", c)

@@ -415,7 +415,7 @@ struct BrowseCategoryView: View {
             case .series(let s):
                 let imdb = trakt.imdb(for: s)
                 PosterCard(title: s.title, poster: s.poster ?? meta.cached(s)?.poster, imdbID: imdb,
-                           watchedEpisodes: Playables.watchedEpisodeCount(s, imdb: imdb),
+                           watched: Playables.isSeriesWatched(s, imdb: imdb), watchedEpisodes: Playables.watchedEpisodeCount(s, imdb: imdb),
                            width: width, language: ContentLanguage.of(s))
             }
         }
@@ -430,7 +430,7 @@ struct BrowseCategoryView: View {
             Button { play(m) } label: { Label(L("Play"), systemImage: "play.fill") }
             let watched = Playables.isWatched(movie: m, imdb: imdb)
             Button {
-                store.setLocalWatched(m.id, !watched)
+                Watched154.setMovie(m, imdb: imdb, !watched)   // build 154: ook de inhoudssleutels
                 Task { await trakt.setWatched(Playables.movie(m, imdb: imdb), !watched) }
             } label: { Label(watched ? L("Mark as unwatched") : L("Mark as watched"), systemImage: watched ? "eye.slash" : "checkmark.circle") }
         case .series:

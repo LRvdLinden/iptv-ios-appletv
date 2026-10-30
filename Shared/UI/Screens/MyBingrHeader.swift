@@ -245,7 +245,7 @@ struct MyBingrHeader: View {
                                                progress: fraction, language: ContentLanguage.of(m))
                                 case .series(let s):
                                     let imdb = trakt.imdb(for: s)
-                                    PosterCard(title: s.title, poster: s.poster, imdbID: imdb, progress: fraction,
+                                    PosterCard(title: s.title, poster: s.poster, imdbID: imdb, watched: Playables.isSeriesWatched(s, imdb: imdb), progress: fraction,
                                                watchedEpisodes: Playables.watchedEpisodeCount(s, imdb: imdb),
                                                language: ContentLanguage.of(s))
                                 }

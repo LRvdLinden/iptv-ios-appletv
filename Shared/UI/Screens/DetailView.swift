@@ -617,10 +617,17 @@ struct DetailView: View {
                 Spacer()
                 let list = episodes.filter { $0.season == season }
                 if !list.isEmpty {
-                    let all = list.allSatisfy { Playables.isWatched($0, imdb: imdb) }
+                    let all = list.allSatisfy { Playables.isWatched($0, imdb: imdb, series: seriesTarget) }
                     Button {
-                        for e in list { store.setEpisodeWatched(e, !all) }
-                        if let imdb { Task { await trakt.setWatched(show: imdb, episodes: list, !all) } }
+                        // build 154: ook de inhoudssleutels (gezien op alle servers) en daarna "serie gezien"
+                        for e in list { Watched154.setEpisode(e, series: seriesTarget, imdb: imdb, !all, updateSeries: false) }
+                        if let s = seriesTarget {
+                            Watched154.updateSeriesFlag(s, imdb: imdb, episodes: episodes)
+                            if trakt.isLoggedIn, let first = list.first {
+                                let show = Playables.episode(first, of: s, imdb: imdb)
+                                Task { await trakt.setWatched(show: show, imdb: imdb, episodes: list, !all) }
+                            }
+                        }
                     } label: {
                         Image(systemName: all ? "checkmark.circle.fill" : "checkmark.circle")
                             .font(.system(size: tvScaled(22))).foregroundStyle(all ? Theme.red : Theme.secondary)
@@ -717,7 +724,7 @@ struct DetailView: View {
 
     /// Gezien = 1, half gekeken = de voortgang, anders 0.
     private func episodeFraction(_ e: Episode) -> Double {
-        if Playables.isWatched(e, imdb: imdb) { return 1 }
+        if Playables.isWatched(e, imdb: imdb, series: seriesTarget) { return 1 }
         return min(max(store.progress[e.id]?.fraction ?? 0, 0), 1)
     }
 
@@ -769,7 +776,7 @@ struct DetailView: View {
 
     private func episodeCard(_ e: Episode, _ s: Series) -> some View {
         let i = info(e)
-        let watched = Playables.isWatched(e, imdb: imdb)
+        let watched = Playables.isWatched(e, imdb: imdb, series: seriesTarget)
         let progress = store.progress[e.id]?.fraction
         let w = tvScaled(290)
         return Button { ageChecked { app.play(Playables.episode(e, of: s, imdb: imdb)) } } label: {
@@ -820,7 +827,7 @@ struct DetailView: View {
         #endif
         .contextMenu {
             Button {
-                store.setEpisodeWatched(e, !watched)
+                Watched154.setEpisode(e, series: s, imdb: imdb, !watched)   // build 154: ook de inhoudssleutels
                 Task { await trakt.setWatched(Playables.episode(e, of: s, imdb: imdb), !watched) }
             } label: { Label(watched ? L("Mark as unwatched") : L("Mark as watched"), systemImage: watched ? "eye.slash" : "checkmark.circle") }
         }
@@ -1035,6 +1042,12 @@ struct DetailView: View {
         return false
     }
 
+    /// Build 154: de serie van deze pagina (voor de inhoudssleutels van de afleveringen)
+    private var seriesTarget: Series? {
+        if case .series(let s) = target { return s }
+        return nil
+    }
+
     /// Mijn lijst van dít profiel (de Trakt-watchlist volgt mee, maar bepaalt niet wat er in je lijst staat).
     /// Build 128: geopend vanaf een plek zonder eigen afhandeling (bijv. "Alles bekijken") en nog niet gevonden op zijn
     /// server: nu zoeken; gevonden → die titel openen, anders de melding (en daarna deze pagina sluiten)
@@ -1068,7 +1081,7 @@ struct DetailView: View {
         // de laatst bekeken aflevering met voortgang (niet zomaar de eerste in de lijst)
         let started = episodes.compactMap { e in store.progress[e.id].flatMap { $0.fraction > 0.02 && $0.fraction < 0.95 ? (e, $0.updated) : nil } }
         if let resumed = started.max(by: { $0.1 < $1.1 })?.0 { return resumed }
-        return episodes.first { !Playables.isWatched($0, imdb: imdb) } ?? episodes.first
+        return episodes.first { !Playables.isWatched($0, imdb: imdb, series: seriesTarget) } ?? episodes.first
     }
 
     /// Leeftijdsfilter van dit profiel: boven de grens alleen met pincode.
@@ -1175,7 +1188,7 @@ struct DetailView: View {
     private func toggleWatchedMovie() {
         guard case .movie(let m) = target else { return }
         let w = isWatchedTitle
-        store.setLocalWatched(m.id, !w)
+        Watched154.setMovie(m, imdb: imdb, !w)   // build 154: ook de inhoudssleutels
         Task { await trakt.setWatched(Playables.movie(m, imdb: imdb), !w) }
     }
 
@@ -1267,7 +1280,7 @@ struct DetailView: View {
         episodes = await epsTask?.value ?? []
         // al begonnen met kijken: het seizoen van de volgende aflevering; anders het nieuwste seizoen
         let started = episodes.contains { e in
-            (store.progress[e.id]?.fraction ?? 0) > 0.02 || Playables.isWatched(e, imdb: imdb)
+            (store.progress[e.id]?.fraction ?? 0) > 0.02 || Playables.isWatched(e, imdb: imdb, series: seriesTarget)
         }
         if started, let n = nextEpisode { season = n.season } else if let newest = seasons.last { season = newest }
         loading = false

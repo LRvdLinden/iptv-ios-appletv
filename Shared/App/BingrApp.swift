@@ -123,7 +123,8 @@ struct BingrApp: App {
                 store.load(mergeProgress: true)
                 // build 97: Trakt en de account-sync hooguit eens per minuut (op de Mac wordt de app bij elke
                 // wissel tussen apps weer actief)
-                if app.traktRefreshDue() { Task { await trakt.refresh() } }
+                // build 154: bij terugkeer naar de voorgrond ook de Trakt-wachtrij opnieuw proberen
+                if app.traktRefreshDue() { Task { await trakt.appBecameActive() } }
                 // build 145: bij terugkeer naar de app niets ophalen en niet opnieuw vragen (één keer per keer openen)
                 // gekoppelde apparaten: heartbeat (of registreren) bij terugkeer naar de voorgrond
                 if app.accountRefreshDue() {

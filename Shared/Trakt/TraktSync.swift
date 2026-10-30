@@ -13,6 +13,32 @@ final class TraktSync: ObservableObject {
     @Published private(set) var watchedMovies: Set<String> = []                 // imdb
     @Published private(set) var watchedEpisodes: [String: Set<String>] = [:]    // show-imdb → "s-e"
     @Published private(set) var watchlist: Set<String> = []                     // imdb
+    /// Build 154: Trakt-gezien als inhoudssleutels (`w:m:`, `w:e:`, `w:s:`; docs/ACCOUNT.md "Build 154"), alleen in het
+    /// geheugen en de cache, nooit in het account. Ook items zonder IMDb-id tellen mee.
+    @Published private(set) var watchedKeys: Set<String> = [] { didSet { keyEpisodeIndex = nil } }
+    private var keyEpisodeIndex: [String: Set<String>]?
+    /// "seizoen-aflevering" die op Trakt gezien zijn, per show-vorm (inhoudssleutels)
+    func contentWatchedEpisodes(forms: [String]) -> Set<String> {
+        guard isLoggedIn, profileAllowed, !watchedKeys.isEmpty else { return [] }
+        if keyEpisodeIndex == nil { keyEpisodeIndex = CloudStore.episodeIndex(watchedKeys) }
+        var out = Set<String>()
+        for f in forms { if let x = keyEpisodeIndex?[f] { out.formUnion(x) } }
+        return out
+    }
+    /// Build 154: show-vorm (`tmdb:…`, `imdb:…`, `t:…|jaar`) → uitgezonden afleveringen (Trakt `aired_episodes`)
+    private(set) var airedByShow: [String: Int] = [:]
+    /// Build 154: blijvende wachtrij voor gezien en niet-gezien (`/sync/history` en `/sync/history/remove`)
+    private var queue = TraktQueue.load(TraktSync.queueURL)
+    nonisolated static var queueURL: URL { AppDirs.support.appendingPathComponent("trakt-queue.json") }
+    private var flushing = false
+    private var periodic: Timer?
+    /// Items die nu afspelen (scrobble start → stop/pauze), voor het periodiek ophalen
+    private var playingIDs: Set<String> = []
+    /// Al vanuit de speler als gezien doorgegeven (de speler bewaart elke paar seconden)
+    private var markedFromPlayer: Set<String> = []
+    /// Diagnose: wachtrij en wat Trakt niet kende
+    var queueCount: Int { queue.entries.count }
+    var notFoundItems: [String] { queue.notFound }
     @Published private(set) var playback: [PlaybackItem] = []
     @Published private(set) var lastRefresh: Date?
     /// Bezig met synchroniseren (draaiende pijltjes in Mijn Bingr)
@@ -119,11 +145,13 @@ final class TraktSync: ObservableObject {
     private func resolveIMDb(_ item: PlayableItem) async -> String? {
         if let i = item.imdbID { return i }
         let show = item.type == .episode
+        // build 154: met een TMDB-id (van de server) is zoeken op titel niet nodig: Trakt krijgt `ids.tmdb`
+        if let t = item.tmdbID, t > 0 { return titleIndex.imdb(tmdb: t, show: show) }
         let c = cleaned(item.title)
         if let i = titleIndex.imdb(title: item.title, year: nil, show: show) ?? titleIndex.imdb(title: c.title, year: c.year, show: show) {
             return i
         }
-        let year = show ? c.year : (c.year ?? item.subtitle.flatMap { Int($0) })
+        let year = item.year ?? (show ? c.year : (c.year ?? item.subtitle.flatMap { Int($0) }))
         guard let hit = await lookup(title: c.title, year: year, isShow: show), let i = hit.ids.imdb else { return nil }
         titleIndex.add(title: item.title, year: nil, imdb: i, show: show)
         titleIndex.add(title: hit.title, year: hit.year, imdb: i, show: show)
@@ -146,6 +174,150 @@ final class TraktSync: ObservableObject {
 
     private init() {
         Task { await bootstrap() }
+        startPeriodic()
+    }
+
+    // MARK: build 154: periodiek ophalen, terugkeer naar de voorgrond, wachtrij
+
+    /// Elke 15 minuten: de wachtrij opnieuw proberen, en ophalen zolang er niets afspeelt.
+    private func startPeriodic() {
+        periodic?.invalidate()
+        periodic = Timer.scheduledTimer(withTimeInterval: 15 * 60, repeats: true) { _ in
+            Task { @MainActor in await TraktSync.shared.periodicTick() }
+        }
+    }
+
+    func periodicTick() async {
+        guard isLoggedIn, profileAllowed else { return }
+        await flushQueue()
+        if playingIDs.isEmpty { await refresh() }
+    }
+
+    /// Terug naar de voorgrond: wachtrij opnieuw proberen en ophalen (altijd eerst `/sync/last_activities`).
+    func appBecameActive() async {
+        guard isLoggedIn, profileAllowed else { return }
+        await flushQueue()
+        await refresh()
+    }
+
+    /// Na een geslaagde tokenverversing (TraktClient): de wachtrij opnieuw proberen.
+    func tokenRefreshed() {
+        Task { await self.flushQueue() }
+    }
+
+    /// Inhoudssleutels van een afspeelbaar item (film of aflevering)
+    static func contentKeys(_ item: PlayableItem, imdb: String?) -> [String] {
+        let tmdb = item.tmdbID.map { String($0) }
+        if item.type == .episode {
+            return WatchKeys.episode(show: item.title, year: item.year, tmdb: tmdb, imdb: imdb, season: item.season, episode: item.episode)
+        }
+        return WatchKeys.movie(title: item.title, year: item.year ?? item.subtitle.flatMap { Int($0) }, tmdb: tmdb, imdb: imdb)
+    }
+
+    /// Gezien op Trakt: één van de inhoudssleutels (jaar ±1) staat in Trakt-gezien.
+    func isWatched(keys: [String]) -> Bool {
+        isLoggedIn && profileAllowed && WatchKeys.matches(watchedKeys, keys: keys)
+    }
+
+    /// Uitgezonden afleveringen volgens Trakt voor een van de show-vormen
+    func aired(forms: [String]) -> Int? {
+        for f in forms { if let a = airedByShow[f] { return a } }
+        return nil
+    }
+
+    /// `ids` voor Trakt: tmdb en/of imdb, wat bekend is
+    private static func ids(tmdb: Int?, imdb: String?) -> [String: Any] {
+        var d: [String: Any] = [:]
+        if let t = tmdb, t > 0 { d["tmdb"] = t }
+        if let i = WatchKeys.cleanIMDb(imdb) { d["imdb"] = i }
+        return d
+    }
+
+    /// In de wachtrij zetten (blijft bewaard tot Trakt het heeft).
+    private func enqueue(_ item: PlayableItem, imdb: String?, watched: Bool, at: Date = Date()) {
+        let isEp = item.type == .episode && item.season != nil && item.episode != nil
+        let c = TitleCleaner.parse(item.title)
+        let year = item.year ?? c.year ?? (isEp ? nil : item.subtitle.flatMap { Int($0) })
+        let e = TraktQueueEntry(op: watched ? .add : .remove, kind: isEp ? .episode : .movie, tmdb: item.tmdbID, imdb: imdb,
+                                title: c.title, year: year, season: isEp ? item.season : nil, episode: isEp ? item.episode : nil,
+                                watchedAt: at.timeIntervalSince1970)
+        queue.enqueue(e)
+        queue.save(Self.queueURL)
+    }
+
+    /// Vinkjes meteen in de app (de wachtrij zorgt dat Trakt het krijgt)
+    private func applyLocally(_ item: PlayableItem, imdb: String?, watched: Bool) {
+        let keys = Self.contentKeys(item, imdb: imdb)
+        if watched { watchedKeys.formUnion(keys) } else { watchedKeys.subtract(WatchKeys.removal(watchedKeys, ownIDs: [], keys: keys)) }
+        guard let imdb else { return }
+        if item.type == .episode, let s = item.season, let e = item.episode {
+            if watched { watchedEpisodes[imdb, default: []].insert("\(s)-\(e)") } else { watchedEpisodes[imdb]?.remove("\(s)-\(e)") }
+        } else if item.type != .episode {
+            if watched { watchedMovies.insert(imdb) } else { watchedMovies.remove(imdb) }
+        }
+    }
+
+    /// De speler markeerde iets lokaal als gezien (zelfde grens als lokaal): ook naar Trakt, via de wachtrij.
+    func markWatchedFromPlayer(_ item: PlayableItem) {
+        guard isLoggedIn, profileAllowed, Self.scrobbleEnabled, item.type != .live, EntitlementsService.shared.allows(.trakt),
+              !markedFromPlayer.contains(item.id) else { return }
+        markedFromPlayer.insert(item.id)
+        Task {
+            let imdb = await self.resolveIMDb(item)
+            self.enqueue(item, imdb: imdb, watched: true)
+            self.applyLocally(item, imdb: imdb, watched: true)
+            self.saveCache()
+            await self.flushQueue()
+        }
+    }
+
+    /// De wachtrij naar Trakt: bij de start, bij terugkeer naar de voorgrond, na een verversing en elke 15 minuten,
+    /// met backoff (en `Retry-After` bij een 429). Wat Trakt niet kent (`not_found`) komt in de diagnose.
+    func flushQueue() async {
+        guard isLoggedIn, profileAllowed, !flushing, !queue.entries.isEmpty, EntitlementsService.shared.allows(.trakt) else { return }
+        flushing = true
+        defer { flushing = false }
+        let now = Date().timeIntervalSince1970
+        // zonder id: eerst zoeken (alleen een treffer met de juiste titel en het juiste jaar)
+        let unresolved = queue.entries.filter { !$0.hasIDs && $0.nextAt <= now }
+        for e in unresolved {
+            let hit = await lookup(title: e.title ?? "", year: e.year, isShow: e.kind == .episode)
+            guard let idx = queue.entries.firstIndex(where: { $0.itemKey == e.itemKey && $0.watchedAt == e.watchedAt }) else { continue }
+            if let h = hit, (h.ids.tmdb ?? 0) > 0 || WatchKeys.cleanIMDb(h.ids.imdb) != nil {
+                var x = queue.entries.remove(at: idx)
+                x.tmdb = h.ids.tmdb; x.imdb = h.ids.imdb
+                queue.enqueue(x)
+            } else if e.attempts < 2 {
+                queue.failed([e], now: now)
+            } else {
+                queue.entries.remove(at: idx)
+                queue.noteNotFound([e.title ?? "?"])
+                lastScrobble = L("Not found on Trakt: %@", e.title ?? "")
+                lastScrobbleDate = Date()
+            }
+        }
+        for op in [TraktQueueEntry.Op.add, .remove] {
+            let batch = Array(queue.due(now: now).filter { $0.op == op }.prefix(100))
+            guard !batch.isEmpty else { continue }
+            do {
+                let d = try await client.postRaw(op == .add ? "/sync/history" : "/sync/history/remove", body: TraktQueue.body(batch))
+                let resp = (try? JSONSerialization.jsonObject(with: d) as? [String: Any]) ?? [:]
+                let nf = TraktQueue.notFound(in: resp, batch: batch)
+                if let first = nf.first {
+                    queue.noteNotFound(nf.map { $0.title ?? "?" })
+                    lastScrobble = L("Not found on Trakt: %@", first.title ?? "")
+                    lastScrobbleDate = Date()
+                }
+                queue.remove(batch)
+            } catch TraktError.rateLimited(let after) {
+                queue.failed(batch, now: now, retryAfter: after)
+                break
+            } catch {
+                queue.failed(batch, now: now)
+                lastError = error.localizedDescription
+            }
+        }
+        queue.save(Self.queueURL)
     }
 
     /// Trakt hoort bij het hoofdaccount: andere profielen zien geen Trakt-vinkjes, -voortgang of -aanbevelingen
@@ -166,6 +338,7 @@ final class TraktSync: ObservableObject {
         } else {
             isLoggedIn = false
             watchedMovies = []; watchedEpisodes = [:]; watchlist = []; playback = []
+            watchedKeys = []; airedByShow = [:]
         }
     }
 
@@ -178,7 +351,7 @@ final class TraktSync: ObservableObject {
         isLoggedIn = loggedIn
         username = name
         loadCache()
-        if isLoggedIn { await refresh(); await loadProfile() }
+        if isLoggedIn { await refresh(); await flushQueue(); await loadProfile() }
     }
 
     // MARK: inloggen
@@ -199,6 +372,7 @@ final class TraktSync: ObservableObject {
         guard tokens != nil else {
             isLoggedIn = false; username = nil
             watchedMovies = []; watchedEpisodes = [:]; watchlist = []; playback = []; titleIndex = TitleIndex()
+            watchedKeys = []; airedByShow = [:]
             displayName = nil; avatar = nil
             saveCache()
             return
@@ -222,6 +396,9 @@ final class TraktSync: ObservableObject {
         await client.logout()
         isLoggedIn = false; username = nil
         watchedMovies = []; watchedEpisodes = [:]; watchlist = []; playback = []; titleIndex = TitleIndex()
+        watchedKeys = []; airedByShow = [:]
+        // bewuste uitlog: de wachtrij hoort bij dit Trakt-account
+        queue = TraktQueue(); queue.save(Self.queueURL)
         saveCache()
     }
 
@@ -230,7 +407,7 @@ final class TraktSync: ObservableObject {
     private struct LastActivities: Decodable { let all: String? }
     private struct WatchedMovie: Decodable { struct M: Decodable { let title: String?; let year: Int?; let ids: TraktIDs }; let movie: M }
     private struct WatchedShow: Decodable {
-        struct S: Decodable { let title: String?; let year: Int?; let ids: TraktIDs }
+        struct S: Decodable { let title: String?; let year: Int?; let ids: TraktIDs; let aired_episodes: Int? }
         struct Season: Decodable { struct E: Decodable { let number: Int }; let number: Int; let episodes: [E] }
         let show: S; let seasons: [Season]?
     }
@@ -269,11 +446,12 @@ final class TraktSync: ObservableObject {
         }
         do {
             let act: LastActivities = try await client.get("/sync/last_activities")
-            if !force, let a = act.all, a == lastActivity, !watchedMovies.isEmpty || !watchedEpisodes.isEmpty {
+            if !force, let a = act.all, a == lastActivity, !watchedMovies.isEmpty || !watchedEpisodes.isEmpty || !watchedKeys.isEmpty {
                 lastRefresh = Date(); return
             }
             async let m: [WatchedMovie] = client.get("/sync/watched/movies")
-            async let s: [WatchedShow] = client.get("/sync/watched/shows")
+            // build 154: extended=full voor `aired_episodes` (serie helemaal gezien)
+            async let s: [WatchedShow] = client.get("/sync/watched/shows", query: ["extended": "full"])
             async let p: [Playback] = client.get("/sync/playback")
             async let w: [WatchlistItem] = client.get("/sync/watchlist")
 
@@ -284,6 +462,30 @@ final class TraktSync: ObservableObject {
             // intussen naar een ander profiel gewisseld of uitgelogd? dan de vinkjes van het hoofdaccount niet tonen
             guard profileAllowed, isLoggedIn else { return }
             watchedMovies = Set(movies.compactMap { $0.movie.ids.imdb })
+            // build 154: inhoudssleutels (tmdb, imdb en titel + jaar), ook voor items zonder IMDb-id
+            var keys = Set<String>()
+            var aired: [String: Int] = [:]
+            for x in movies {
+                keys.formUnion(WatchKeys.movie(title: x.movie.title ?? "", year: x.movie.year,
+                                               tmdb: x.movie.ids.tmdb.map { String($0) }, imdb: x.movie.ids.imdb))
+            }
+            for show in shows {
+                let forms = WatchKeys.showForms(title: show.show.title ?? "", year: show.show.year,
+                                                tmdb: show.show.ids.tmdb.map { String($0) }, imdb: show.show.ids.imdb)
+                var regular = 0
+                for season in show.seasons ?? [] {
+                    for e in season.episodes {
+                        keys.formUnion(WatchKeys.episode(forms: forms, season: season.number, episode: e.number))
+                        if season.number > 0 { regular += 1 }
+                    }
+                }
+                if let a = show.show.aired_episodes, a > 0 {
+                    for f in forms { aired[f] = a }
+                    if WatchKeys.seriesComplete(watched: regular, aired: a, onServer: 0) { for f in forms { keys.insert("w:s:" + f) } }
+                }
+            }
+            watchedKeys = keys
+            airedByShow = aired
             var tIndex = titleIndex
             for x in movies {
                 if let i = x.movie.ids.imdb { tIndex.add(title: x.movie.title, year: x.movie.year, imdb: i, show: false, tmdb: x.movie.ids.tmdb) }
@@ -340,34 +542,26 @@ final class TraktSync: ObservableObject {
     // MARK: schrijven
 
     func setWatched(_ item: PlayableItem, _ watched: Bool) async {
-        guard isLoggedIn, let imdb = await resolveIMDb(item) else { return }
-        let body: [String: Any]
-        if item.type == .episode, let s = item.season, let e = item.episode {
-            body = ["shows": [["ids": ["imdb": imdb], "seasons": [["number": s, "episodes": [["number": e]]]]]]]
-            var set = watchedEpisodes[imdb] ?? []
-            if watched { set.insert("\(s)-\(e)") } else { set.remove("\(s)-\(e)") }
-            watchedEpisodes[imdb] = set
-        } else {
-            body = ["movies": [["ids": ["imdb": imdb]]]]
-            if watched { watchedMovies.insert(imdb) } else { watchedMovies.remove(imdb) }
-        }
+        guard isLoggedIn, profileAllowed else { return }
+        // build 154: via de blijvende wachtrij (met `watched_at` en ids tmdb/imdb), niet meer los en zonder nieuwe poging
+        let imdb = await resolveIMDb(item)
+        enqueue(item, imdb: imdb, watched: watched)
+        applyLocally(item, imdb: imdb, watched: watched)
         saveCache()
-        do { try await client.postRaw(watched ? "/sync/history" : "/sync/history/remove", body: body) }
-        catch { lastError = error.localizedDescription }
+        await flushQueue()
     }
 
-    /// Hele seizoen of serie in één keer afvinken.
-    func setWatched(show imdb: String, episodes: [Episode], _ watched: Bool) async {
-        guard isLoggedIn else { return }
-        let bySeason = Dictionary(grouping: episodes, by: \.season)
-        let seasons = bySeason.map { s, eps in ["number": s, "episodes": eps.map { ["number": $0.number] }] as [String: Any] }
-        var set = watchedEpisodes[imdb] ?? []
-        for e in episodes { if watched { set.insert("\(e.season)-\(e.number)") } else { set.remove("\(e.season)-\(e.number)") } }
-        watchedEpisodes[imdb] = set
+    /// Hele seizoen of serie in één keer afvinken (build 154: via de wachtrij). `show`: de serie als afspeelbaar item.
+    func setWatched(show: PlayableItem, imdb: String?, episodes: [Episode], _ watched: Bool) async {
+        guard isLoggedIn, profileAllowed else { return }
+        for e in episodes {
+            var it = show
+            it.type = .episode; it.season = e.season; it.episode = e.number; it.id = e.id
+            enqueue(it, imdb: imdb, watched: watched)
+            applyLocally(it, imdb: imdb, watched: watched)
+        }
         saveCache()
-        do { try await client.postRaw(watched ? "/sync/history" : "/sync/history/remove",
-                                      body: ["shows": [["ids": ["imdb": imdb], "seasons": seasons]]]) }
-        catch { lastError = error.localizedDescription }
+        await flushQueue()
     }
 
     /// Zet een titel op of van de Trakt-watchlist (spiegelt Mijn lijst van het hoofdaccount).
@@ -391,54 +585,56 @@ final class TraktSync: ObservableObject {
     /// Uitkomst van een scrobble (voor een melding in de speler en de status in Mijn Bingr).
     enum ScrobbleResult { case ok, notFound, failed, skipped }
 
+    /// Build 154: `watched` = de speler vond het lokaal gezien (zelfde grens als lokaal: 85%, of meer dan 70% met minder
+    /// dan 3 minuten over). Bij een stop zonder die grens gaat de voortgang onder de 80% naar Trakt, zodat Trakt niet
+    /// eerder "gezien" zet dan Bingr; het gezien zelf gaat via de wachtrij (`markWatchedFromPlayer`).
     @discardableResult
-    func scrobble(_ action: ScrobbleAction, item: PlayableItem, progress: Double) async -> ScrobbleResult {
-        guard isLoggedIn, Self.scrobbleEnabled, item.type != .live, EntitlementsService.shared.allows(.trakt) else { return .skipped }
-        guard let imdb = await resolveIMDb(item) else {
+    func scrobble(_ action: ScrobbleAction, item: PlayableItem, progress: Double, watched: Bool = false) async -> ScrobbleResult {
+        if action == .start { playingIDs.insert(item.id) } else { playingIDs.remove(item.id) }
+        guard isLoggedIn, profileAllowed, Self.scrobbleEnabled, item.type != .live, EntitlementsService.shared.allows(.trakt) else { return .skipped }
+        let imdb = await resolveIMDb(item)
+        let ids = Self.ids(tmdb: item.tmdbID, imdb: imdb)
+        guard !ids.isEmpty else {
             lastScrobble = L("Not found on Trakt: %@", item.title)
             return .notFound
         }
         let isEpisode = item.type == .episode && item.season != nil && item.episode != nil
-        var body: [String: Any] = ["progress": min(max(progress * 100, 0), 100), "app_version": "1.0.0"]
+        var p = min(max(progress * 100, 0), 100)
+        if action == .stop && !watched { p = min(p, 79) }
+        var body: [String: Any] = ["progress": p, "app_version": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.3"]
         if isEpisode, let s = item.season, let e = item.episode {
-            body["show"] = ["ids": ["imdb": imdb]]
+            body["show"] = ["ids": ids]
             body["episode"] = ["season": s, "number": e]
         } else {
-            body["movie"] = ["ids": ["imdb": imdb]]
+            body["movie"] = ["ids": ids]
         }
         let name = isEpisode ? "\(item.title) S\(item.season ?? 0)E\(item.episode ?? 0)" : item.title
         var result: ScrobbleResult = .ok
         do {
             try await client.postRaw("/scrobble/\(action.rawValue)", body: body)
+        } catch HTTPError.status(let code, _) where code == 404 {
+            // Trakt kent het item niet: niet als "gelukt" tellen
+            result = .notFound
         } catch {
             result = .failed
             lastError = error.localizedDescription
         }
-        let watched = action == .stop && progress >= 0.8
-        if watched {
-            // scrobble mislukt? dan direct in je Trakt-geschiedenis zetten, zodat het toch als gezien staat
-            if result == .failed {
-                let hist: [String: Any] = isEpisode
-                    ? ["shows": [["ids": ["imdb": imdb], "seasons": [["number": item.season ?? 0, "episodes": [["number": item.episode ?? 0]]]]]]]
-                    : ["movies": [["ids": ["imdb": imdb]]]]
-                if (try? await client.postRaw("/sync/history", body: hist)) != nil { result = .ok; lastError = nil }
-            }
-            if result == .ok {
-                if isEpisode, let s = item.season, let e = item.episode { watchedEpisodes[imdb, default: []].insert("\(s)-\(e)") }
-                else { watchedMovies.insert(imdb) }
-                saveCache()
-            }
+        if action == .stop && watched && result != .ok {
+            // scrobble mislukt: de wachtrij zorgt dat het gezien toch bij Trakt komt
+            markWatchedFromPlayer(item)
         }
         switch (action, result) {
         case (_, .failed): lastScrobble = L("Could not reach Trakt for %@", name)
+        case (_, .notFound): lastScrobble = L("Not found on Trakt: %@", name)
         case (.stop, .ok): lastScrobble = watched ? L("Marked as watched on Trakt: %@", name) : L("Progress saved on Trakt: %@", name)
         case (.start, .ok): lastScrobble = L("Watching on Trakt: %@", name)
         default: break
         }
         lastScrobbleDate = Date()
-        // na het kijken de vinkjes van Trakt ophalen (ook wat je intussen elders keek)
+        // na het kijken de vinkjes van Trakt ophalen (ook wat je intussen elders keek), 3 seconden na de stop
         if action == .stop {
             try? await Task.sleep(nanoseconds: 3_000_000_000)
+            await flushQueue()
             await refresh(force: true)
         }
         return result
@@ -451,12 +647,16 @@ final class TraktSync: ObservableObject {
 
     func lookup(title: String, year: Int?, isShow: Bool) async -> TraktMedia? {
         guard Secrets.isSet(Secrets.traktClientID) else { return nil }
-        var q = ["query": title, "extended": "full", "limit": "5"]
-        if let year { q["years"] = String(year) }
-        let hits: [SearchHit]? = try? await client.get("/search/\(isShow ? "show" : "movie")", query: q, auth: false)
-        if let h = hits?.first { return h.movie ?? h.show }
-        if year != nil { return await lookup(title: title, year: nil, isShow: isShow) }
-        return nil
+        // build 154: een treffer alleen met de juiste titel (norm) en het juiste jaar (±1), niet blind de eerste
+        func search(_ years: Int?) async -> TraktMedia? {
+            var q = ["query": title, "extended": "full", "limit": "10"]
+            if let years { q["years"] = String(years) }
+            let hits: [SearchHit]? = try? await client.get("/search/\(isShow ? "show" : "movie")", query: q, auth: false)
+            let media = (hits ?? []).compactMap { $0.movie ?? $0.show }
+            return TraktMatch.pick(media, title: title, year: year, hitTitle: { $0.title }, hitYear: { $0.year })
+        }
+        if let year, let m = await search(year) { return m }
+        return await search(nil)
     }
 
     func lookup(imdb: String) async -> TraktMedia? {
@@ -523,18 +723,24 @@ final class TraktSync: ObservableObject {
     // MARK: cache (zodat vinkjes direct zichtbaar zijn bij opstarten)
 
     /// `v`: versie van de cache; bij een oudere versie alles opnieuw ophalen (build 75: TMDB-ids en jaren in de index)
-    private struct Cache: Codable { var m: Set<String>; var e: [String: Set<String>]; var w: Set<String>; var a: String?; var t: TitleIndex?; var v: Int? }
-    private static let cacheVersion = 2
+    /// build 154: `k` = inhoudssleutels, `ae` = uitgezonden afleveringen per show-vorm
+    private struct Cache: Codable {
+        var m: Set<String>; var e: [String: Set<String>]; var w: Set<String>; var a: String?; var t: TitleIndex?; var v: Int?
+        var k: Set<String>?; var ae: [String: Int]?
+    }
+    private static let cacheVersion = 3
     private var cacheURL: URL {
         AppDirs.caches.appendingPathComponent("trakt-cache.json")
     }
     private func saveCache() {
-        let c = Cache(m: watchedMovies, e: watchedEpisodes, w: watchlist, a: lastActivity, t: titleIndex, v: Self.cacheVersion)
+        let c = Cache(m: watchedMovies, e: watchedEpisodes, w: watchlist, a: lastActivity, t: titleIndex, v: Self.cacheVersion,
+                      k: watchedKeys, ae: airedByShow)
         if let d = try? JSONEncoder().encode(c) { try? d.write(to: cacheURL) }
     }
     private func loadCache() {
         guard isLoggedIn, profileAllowed, let d = try? Data(contentsOf: cacheURL), let c = try? JSONDecoder().decode(Cache.self, from: d) else { return }
         watchedMovies = c.m; watchedEpisodes = c.e; watchlist = c.w; titleIndex = c.t ?? TitleIndex()
+        watchedKeys = c.k ?? []; airedByShow = c.ae ?? [:]
         // oude cache (zonder TMDB-ids/jaren): de volgende verversing niet overslaan
         lastActivity = c.v == Self.cacheVersion ? c.a : nil
     }

@@ -34,10 +34,11 @@ struct PosterCard: View {
                 .clipped()
             if watched { WatchedBadge().padding(6) }
             // linksboven: het label van "Voor jou" (SERIE/FILM) en daaronder "N BEKEKEN" (build 75, zoals op bingr.online)
-            if topBadge || watchedEpisodes > 0 {
+            // build 154: een serie die helemaal gezien is (`w:s:`) toont het vinkje in plaats van "N bekeken"
+            if topBadge || (watchedEpisodes > 0 && !watched) {
                 VStack(alignment: .leading, spacing: tvScaled(3)) {
                     if topBadge, let badge { PosterLabel(text: badge) }
-                    if watchedEpisodes > 0 { WatchedEpisodesLabel(count: watchedEpisodes) }
+                    if watchedEpisodes > 0 && !watched { WatchedEpisodesLabel(count: watchedEpisodes) }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .padding(tvScaled(6))

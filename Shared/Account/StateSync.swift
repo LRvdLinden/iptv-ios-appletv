@@ -1314,6 +1314,12 @@ final class StateSync {
         let d = store.profileData(id)
         Self.diff(&m, "myList", d.myList, now: now)
         Self.diff(&m, "favorites", d.favorites, now: now)
+        // build 154: inhoudssleutels uit de migratie krijgen de `at` van hun oude id-sleutel (Watched154.migrate)
+        let inherit = Watched154.takeInherit(id)
+        if !inherit.isEmpty, var present = m.present["watched"] {
+            for (new, old) in inherit where present[new] == nil { if let at = present[old] { present[new] = at } }
+            m.present["watched"] = present
+        }
         Self.diff(&m, "watched", d.watched, now: now)
         Self.diff(&m, "hiddenCategories", d.hiddenCategories, now: now)
         Self.diffOrdered(&m, "recentChannels", d.recentChannels, now: now)

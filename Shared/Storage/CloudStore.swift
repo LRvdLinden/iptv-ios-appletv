@@ -24,10 +24,12 @@ final class CloudStore: ObservableObject {
     @Published private(set) var myList: Set<String> = []
     @Published private(set) var progress: [String: ProgressEntry] = [:] // key: itemKey
     @Published private(set) var localWatched: Set<String> = [] {      // bekeken in Bingr (per profiel), naast Trakt
-        didSet { localEpisodeIndex = nil }
+        didSet { localEpisodeIndex = nil; contentEpisodeIndex = nil }
     }
     /// serie-id → "seizoen-aflevering" uit `localWatched` (één keer opgebouwd i.p.v. per poster de hele set door te lopen)
     private var localEpisodeIndex: [String: Set<String>]?
+    /// Build 154: show-vorm (`tmdb:…`, `imdb:…`, `t:…|jaar`) → "seizoen-aflevering" uit de `w:e:`-sleutels
+    private var contentEpisodeIndex: [String: Set<String>]?
     @Published private(set) var recentChannels: [String] = []
     /// Build 140: categorieën die uit staan voor het hele account (alle niet-kinderprofielen), over alle servers:
     /// "<server-id kleine letters>|<categorienaam>" (state-section `account`, docs/ACCOUNT.md → "Build 140").
@@ -1124,6 +1126,53 @@ final class CloudStore: ObservableObject {
             localEpisodeIndex = idx
         }
         return localEpisodeIndex?[id] ?? []
+    }
+
+    /// Build 154: "gezien" als inhoudssleutels (`w:e:<show>|s-e`) per show-vorm, voor het label "N bekeken"
+    func contentWatchedEpisodes(forms: [String]) -> Set<String> {
+        if contentEpisodeIndex == nil { contentEpisodeIndex = Self.episodeIndex(localWatched) }
+        var out = Set<String>()
+        for f in forms { if let x = contentEpisodeIndex?[f] { out.formUnion(x) } }
+        return out
+    }
+
+    /// `w:e:<show>|<s>-<e>` → show → {"s-e"} (de show-vorm kan zelf een "|" bevatten: `t:<norm>|<jaar>`)
+    nonisolated static func episodeIndex(_ set: Set<String>) -> [String: Set<String>] {
+        var idx: [String: Set<String>] = [:]
+        for k in set where k.hasPrefix("w:e:") {
+            guard let bar = k.lastIndex(of: "|") else { continue }
+            let form = k[k.index(k.startIndex, offsetBy: 4)..<bar]
+            idx[String(form), default: []].insert(String(k[k.index(after: bar)...]))
+        }
+        return idx
+    }
+
+    /// Build 154: de set "gezien" van een profiel (het actieve, of een ander bestaand profiel)
+    func watchedSet(profile: UUID? = nil) -> Set<String> {
+        if let other = otherProfile(profile) { return profileData(other).watched }
+        return localWatched
+    }
+
+    /// Build 154: meerdere sleutels tegelijk (id-sleutel en inhoudssleutels), in één keer bewaard
+    @discardableResult
+    func setLocalWatched(keys: [String], _ watched: Bool, profile: UUID? = nil) -> Bool {
+        guard !keys.isEmpty else { return false }
+        if let other = otherProfile(profile) {
+            var d = profileData(other)
+            let before = d.watched
+            if watched { d.watched.formUnion(keys) } else { d.watched.subtract(keys) }
+            guard d.watched != before else { return false }
+            setProfileData(other, d)
+            stateEdited.send((other, .profile))
+            return true
+        }
+        var next = localWatched
+        if watched { next.formUnion(keys) } else { next.subtract(keys) }
+        guard next != localWatched else { return false }
+        localWatched = next
+        write(localWatched, pk(K.watched))
+        edited(.profile)
+        return true
     }
 
     func setLocalWatched(_ itemKey: String, _ watched: Bool, profile: UUID? = nil) {

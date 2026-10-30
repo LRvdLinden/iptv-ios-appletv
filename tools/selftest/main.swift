@@ -1446,5 +1446,163 @@ do {
     check(ms < 4000, "20000 zendernamen binnen 4 s")
 }
 
+// MARK: build 154: gezien over alle servers (inhoudssleutels) en betrouwbare Trakt-sync
+// De gedeelde gevallen komen uit docs/watched_keys_cases.json (bron: iptv-ios-appletv, niet hier wijzigen).
+do {
+    let here = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+    let paths = [here.appendingPathComponent("docs/watched_keys_cases.json"),
+                 URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+                    .deletingLastPathComponent().appendingPathComponent("docs/watched_keys_cases.json")]
+    let caseData = paths.lazy.compactMap { try? Data(contentsOf: $0) }.first
+    check(caseData != nil, "build 154: docs/watched_keys_cases.json gevonden")
+    let cases = caseData.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
+    func str(_ v: Any?) -> String? { v as? String }
+    func int(_ v: Any?) -> Int? { (v as? NSNumber)?.intValue }
+    func strs(_ v: Any?) -> [String] { (v as? [Any])?.compactMap { $0 as? String } ?? [] }
+
+    // norm
+    let norms = (cases["norm"] as? [[Any]]) ?? []
+    check(norms.count >= 10, "build 154: norm-gevallen geladen")
+    for c in norms { if let a = str(c[0]), let b = str(c[1]) { eq(WatchKeys.norm(a), b, "norm \(a)") } }
+    // titelopschoning
+    let cleans = (cases["clean"] as? [[Any]]) ?? []
+    check(cleans.count >= 13, "build 154: clean-gevallen geladen")
+    for c in cleans {
+        guard let a = str(c[0]), let b = str(c[1]) else { continue }
+        let r = TitleRules154.clean(a)
+        eq(r.title, b, "clean titel \(a)")
+        eq(r.year, int(c[2]), "clean jaar \(a)")
+    }
+    // filmsleutels
+    let mk = (cases["movieKeys"] as? [[String: Any]]) ?? []
+    check(mk.count >= 4, "build 154: movieKeys geladen")
+    for c in mk {
+        let t = str(c["title"]) ?? ""
+        eq(WatchKeys.movie(title: t, year: int(c["year"]), tmdb: str(c["tmdb"]), imdb: str(c["imdb"])), strs(c["keys"]), "filmsleutels \(t)")
+    }
+    // afleveringssleutels
+    let ek = (cases["episodeKeys"] as? [[String: Any]]) ?? []
+    check(ek.count >= 3, "build 154: episodeKeys geladen")
+    for c in ek {
+        let t = str(c["show"]) ?? ""
+        eq(WatchKeys.episode(show: t, year: int(c["year"]), tmdb: str(c["tmdb"]), imdb: str(c["imdb"]),
+                             season: int(c["season"]), episode: int(c["episode"])), strs(c["keys"]), "afleveringssleutels \(t)")
+    }
+    // seriesleutels
+    let sk = (cases["showKeys"] as? [[String: Any]]) ?? []
+    check(sk.count >= 1, "build 154: showKeys geladen")
+    for c in sk {
+        let t = str(c["show"]) ?? ""
+        eq(WatchKeys.show(title: t, year: int(c["year"]), tmdb: str(c["tmdb"]), imdb: str(c["imdb"])), strs(c["keys"]), "seriesleutels \(t)")
+    }
+    // opzoeken (jaar ±1, jaar 0 alleen 0, tmdb/imdb)
+    let lk = (cases["lookup"] as? [[String: Any]]) ?? []
+    check(lk.count >= 6, "build 154: lookup-gevallen geladen")
+    for (i, c) in lk.enumerated() {
+        let keys = WatchKeys.movie(title: str(c["title"]) ?? "", year: int(c["year"]), tmdb: str(c["tmdb"]), imdb: str(c["imdb"]))
+        eq(WatchKeys.matches(Set(strs(c["stored"])), keys: keys), (c["watched"] as? Bool) ?? false, "lookup geval \(i + 1)")
+    }
+
+    // uitvinken haalt alle sleutels weg (ook de oude id-sleutel en een titelsleutel met jaar ±1)
+    let dune = WatchKeys.movie(title: "Dune", year: 2022, tmdb: "438631", imdb: "tt1160419")
+    let stored: Set<String> = ["xv123", "w:m:tmdb:438631", "w:m:imdb:tt1160419", "w:m:t:dune|2021", "w:m:t:anders|2021"]
+    let gone = WatchKeys.removal(stored, ownIDs: ["xv123"], keys: dune)
+    let left = stored.subtracting(gone)
+    eq(left, ["w:m:t:anders|2021"], "uitvinken: alle sleutels van het item weg")
+    check(!WatchKeys.matches(left, keys: dune), "uitvinken: daarna niet meer gezien")
+
+    // migratie van oude id-sleutels: alleen wat bij een bekend item hoort, met de oude sleutel als bron van `at`
+    let old: Set<String> = ["xv1", "ep:s9|1-2", "onbekend", "w:m:tmdb:5"]
+    let plan = WatchKeys.migration(old) { k in
+        switch k {
+        case "xv1": return WatchKeys.movie(title: "The Matrix", year: 1999, tmdb: "603", imdb: nil)
+        case "ep:s9|1-2": return WatchKeys.episode(show: "Game of Thrones", year: 2011, tmdb: "1399", imdb: nil, season: 1, episode: 2)
+        default: return nil
+        }
+    }
+    eq(plan["w:m:tmdb:603"], "xv1", "migratie: film tmdb")
+    eq(plan["w:m:t:thematrix|1999"], "xv1", "migratie: film titel")
+    eq(plan["w:e:tmdb:1399|1-2"], "ep:s9|1-2", "migratie: aflevering")
+    eq(plan.count, 4, "migratie: niets geraden voor onbekende sleutels")
+    // de `at` gaat mee: ListMerge.diff ziet een sleutel die al een `at` heeft niet als nieuw
+    var known: ListMerge.Stamps = (["xv1": 100], [:])
+    for (n, o) in plan { if let at = known.present[o] { known.present[n] = at } }
+    let after = ListMerge.diff(known, current: old.union(plan.keys), now: 500)
+    eq(after.present["w:m:tmdb:603"], 100, "migratie: zelfde at als de oude sleutel")
+    // uitvinken → alle sleutels in removed met dezelfde tijd
+    let un = ListMerge.diff(after, current: old.union(plan.keys).subtracting(["xv1", "w:m:tmdb:603", "w:m:t:thematrix|1999"]), now: 900)
+    eq(un.removed["xv1"], 900, "uitvinken: oude id in removed")
+    eq(un.removed["w:m:tmdb:603"], 900, "uitvinken: tmdb in removed")
+    eq(un.removed["w:m:t:thematrix|1999"], 900, "uitvinken: titel in removed")
+
+    // serie gezien
+    check(WatchKeys.seriesComplete(watched: 10, aired: 10, onServer: 8), "serie: alle uitgezonden gezien")
+    check(!WatchKeys.seriesComplete(watched: 8, aired: 10, onServer: 8), "serie: Trakt-aantal gaat voor")
+    check(WatchKeys.seriesComplete(watched: 8, aired: nil, onServer: 8), "serie: zonder Trakt het aantal op de server")
+    check(!WatchKeys.seriesComplete(watched: 0, aired: nil, onServer: 0), "serie: zonder afleveringen nooit gezien")
+
+    // token: niet verversen bij > 1 uur geldig, wel bij < 1 uur (401: zie TraktClient, altijd één keer verversen)
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+    check(!TraktTokenPolicy.needsRefresh(expiresAt: now.addingTimeInterval(3 * 3600), now: now), "token: 3 uur geldig, niet verversen")
+    check(!TraktTokenPolicy.needsRefresh(expiresAt: now.addingTimeInterval(23 * 3600), now: now), "token: 23 uur geldig, niet verversen")
+    check(TraktTokenPolicy.needsRefresh(expiresAt: now.addingTimeInterval(1800), now: now), "token: 30 min geldig, verversen")
+    check(TraktTokenPolicy.needsRefresh(expiresAt: now.addingTimeInterval(-60), now: now), "token: verlopen, verversen")
+    // mislukte verversing zet nooit null: alleen houden of een nieuwer token uit het account overnemen
+    let loc = (access: "a", expiresAt: now)
+    eq(TraktTokenPolicy.afterFailedRefresh(local: loc, account: nil), .keep, "mislukt zonder account-token: houden")
+    eq(TraktTokenPolicy.afterFailedRefresh(local: loc, account: (access: "a", expiresAt: now)), .keep, "mislukt, zelfde token: houden")
+    eq(TraktTokenPolicy.afterFailedRefresh(local: loc, account: (access: "b", expiresAt: now.addingTimeInterval(86400))), .adopt,
+       "mislukt, nieuwer token in het account: overnemen")
+    eq(TraktTokenPolicy.afterFailedRefresh(local: loc, account: (access: "b", expiresAt: now.addingTimeInterval(-86400))), .keep,
+       "mislukt, ouder token in het account: houden")
+
+    // wachtrij overleeft een herstart, nieuwere wijziging vervangt de oudere, backoff en Retry-After
+    let qURL = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("selftest-trakt-queue-\(getpid()).json")
+    var q = TraktQueue()
+    q.enqueue(TraktQueueEntry(op: .add, kind: .movie, tmdb: 603, imdb: nil, title: "The Matrix", year: 1999, season: nil, episode: nil, watchedAt: 1000))
+    q.enqueue(TraktQueueEntry(op: .add, kind: .episode, tmdb: 1399, imdb: "tt0944947", title: "Game of Thrones", year: 2011, season: 1, episode: 2, watchedAt: 1001))
+    q.enqueue(TraktQueueEntry(op: .remove, kind: .movie, tmdb: 603, imdb: nil, title: "The Matrix", year: 1999, season: nil, episode: nil, watchedAt: 1002))
+    eq(q.entries.count, 2, "wachtrij: nieuwere wijziging vervangt de oudere")
+    q.save(qURL)
+    let q2 = TraktQueue.load(qURL)
+    eq(q2, q, "wachtrij: overleeft een herstart")
+    try? FileManager.default.removeItem(at: qURL)
+    var q3 = q2
+    let batch = q3.due(now: 2000)
+    eq(batch.count, 2, "wachtrij: alles klaar om te sturen")
+    q3.failed(batch, now: 2000)
+    eq(q3.due(now: 2010).count, 0, "wachtrij: backoff na een mislukking")
+    eq(q3.due(now: 2031).count, 2, "wachtrij: na 30 s opnieuw")
+    q3.failed(batch, now: 3000, retryAfter: 120)
+    eq(q3.due(now: 3100).count, 0, "wachtrij: Retry-After wordt gevolgd")
+    eq(TraktBackoff.retryAfter("120"), 120, "Retry-After in seconden")
+    check(TraktBackoff.delay(attempts: 30) <= 1800, "backoff hooguit 30 min")
+    let body = TraktQueue.body(batch.filter { $0.op == .add })
+    let eps = ((body["shows"] as? [[String: Any]])?.first?["seasons"] as? [[String: Any]])?.first?["episodes"] as? [[String: Any]]
+    check(eps?.first?["watched_at"] != nil, "history: watched_at meegestuurd")
+    let ids = (body["shows"] as? [[String: Any]])?.first?["ids"] as? [String: Any]
+    eq(ids?["tmdb"] as? Int, 1399, "history: ids.tmdb")
+    eq(ids?["imdb"] as? String, "tt0944947", "history: ids.imdb")
+    let nf = TraktQueue.notFound(in: ["not_found": ["movies": [["ids": ["tmdb": 603]]]]], batch: batch)
+    eq(nf.count, 1, "not_found herkend (niet als gelukt)")
+    // zonder id niet sturen (eerst zoeken)
+    var q4 = TraktQueue()
+    q4.enqueue(TraktQueueEntry(op: .add, kind: .movie, tmdb: nil, imdb: nil, title: "X", year: nil, season: nil, episode: nil, watchedAt: 1))
+    eq(q4.due(now: 10).count, 0, "wachtrij: zonder id niet sturen")
+
+    // zoektreffer alleen met de juiste titel en het juiste jaar
+    check(TraktMatch.accept(title: "NL | Dune (2021)", year: 2021, hitTitle: "Dune", hitYear: 2021), "zoeken: zelfde titel en jaar")
+    check(TraktMatch.accept(title: "Dune", year: 2022, hitTitle: "Dune", hitYear: 2021), "zoeken: jaar ±1")
+    check(!TraktMatch.accept(title: "Dune", year: 2021, hitTitle: "Dune", hitYear: 1984), "zoeken: ander jaar geweigerd")
+    check(!TraktMatch.accept(title: "Dune", year: 2021, hitTitle: "Dune: Part Two", hitYear: 2021), "zoeken: andere titel geweigerd")
+    let picked = TraktMatch.pick([("Dune", 1984), ("Dune", 2021)], title: "Dune", year: nil, hitTitle: { $0.0 }, hitYear: { $0.1 })
+    check(picked == nil, "zoeken zonder jaar: twee treffers, geen keus")
+
+    // gezien-grens
+    check(WatchedThreshold.reached(position: 0.86, duration: 6000, currentTime: 5160), "grens 85%")
+    check(WatchedThreshold.reached(position: 0.75, duration: 700, currentTime: 525), "grens 70% en < 3 min over")
+    check(!WatchedThreshold.reached(position: 0.8, duration: 6000, currentTime: 4800), "80% met 20 min over: niet gezien")
+}
+
 print("\(checks) controles, \(failures) fout")
 exit(failures == 0 ? 0 : 1)

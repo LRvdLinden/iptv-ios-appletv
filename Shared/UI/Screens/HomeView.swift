@@ -605,7 +605,7 @@ struct HomeView: View {
                         case .series(let se):
                             let imdb = trakt.imdb(for: se)
                             PosterCard(title: se.title, poster: se.poster, imdbID: imdb,
-                                       watchedEpisodes: Playables.watchedEpisodeCount(se, imdb: imdb), language: ContentLanguage.of(se))
+                                       watched: Playables.isSeriesWatched(se, imdb: imdb), watchedEpisodes: Playables.watchedEpisodeCount(se, imdb: imdb), language: ContentLanguage.of(se))
                         }
                     }
                     .cardButton()
@@ -665,7 +665,7 @@ struct HomeView: View {
                             case .series(let se):
                                 let imdb = trakt.imdb(for: se)
                                 PosterCard(title: se.title, poster: se.poster, imdbID: imdb,
-                                           watchedEpisodes: Playables.watchedEpisodeCount(se, imdb: imdb), language: ContentLanguage.of(se))
+                                           watched: Playables.isSeriesWatched(se, imdb: imdb), watchedEpisodes: Playables.watchedEpisodeCount(se, imdb: imdb), language: ContentLanguage.of(se))
                             }
                         }
                         .cardButton()
@@ -877,7 +877,7 @@ struct HomeView: View {
             let imdb = trakt.imdb(for: s)
             Button { detail = t } label: {
                 PosterCard(title: s.title, poster: s.poster, imdbID: imdb,
-                           badge: kindBadge ? L("SERIES") : nil,
+                           watched: Playables.isSeriesWatched(s, imdb: imdb), badge: kindBadge ? L("SERIES") : nil,
                            watchedEpisodes: Playables.watchedEpisodeCount(s, imdb: imdb),
                            badgeAlignment: .topLeading, language: ContentLanguage.of(s))
             }
@@ -1018,7 +1018,7 @@ struct HomeView: View {
                         case .series(let s):
                             // "N BEKEKEN" komt onder het label SERIE (zoals op bingr.online)
                             PosterCard(title: s.title, poster: s.poster,
-                                       badge: L("SERIES"), watchedEpisodes: Playables.watchedEpisodeCount(s, imdb: trakt.imdb(for: s)),
+                                       watched: Playables.isSeriesWatched(s, imdb: trakt.imdb(for: s)), badge: L("SERIES"), watchedEpisodes: Playables.watchedEpisodeCount(s, imdb: trakt.imdb(for: s)),
                                        badgeAlignment: .topLeading, language: ContentLanguage.of(s))
                         }
                     }
@@ -1065,7 +1065,7 @@ struct HomeView: View {
                 let imdb = trakt.imdb(for: s)
                 Button { open(.series(s), .myList) } label: {
                     PosterCard(title: s.title, poster: s.poster, imdbID: imdb,
-                               watchedEpisodes: Playables.watchedEpisodeCount(s, imdb: imdb), language: ContentLanguage.of(s))
+                               watched: Playables.isSeriesWatched(s, imdb: imdb), watchedEpisodes: Playables.watchedEpisodeCount(s, imdb: imdb), language: ContentLanguage.of(s))
                 }
                 .cardButton()
                 .contextMenu {
@@ -1107,7 +1107,7 @@ struct HomeView: View {
         Button { play(.movie(m)) } label: { Label(L("Play"), systemImage: "play.fill") }
         let watched = Playables.isWatched(movie: m, imdb: imdb)
         Button {
-            store.setLocalWatched(m.id, !watched)
+            Watched154.setMovie(m, imdb: imdb, !watched)   // build 154: ook de inhoudssleutels
             Task { await trakt.setWatched(Playables.movie(m, imdb: imdb), !watched) }
         } label: { Label(watched ? L("Mark as unwatched") : L("Mark as watched"), systemImage: watched ? "eye.slash" : "checkmark.circle") }
         if let pid = m.sourceID ?? pid {
@@ -1141,6 +1141,8 @@ struct HomeView: View {
             // build 128: ook van andere servers (opgezocht in de catalogus van die server, zie CrossServer)
             if let other = e.playlistID, other != pid { return foreignContinue(key, e, server: other) }
             let isMovie = movieIDs[key] != nil
+            // build 154: een gezien item valt eruit (ook als het op een andere server of op Trakt gezien is)
+            if let m = movieIDs[key], Playables.isWatched(movie: m, imdb: trakt.imdb(for: m)) { return nil }
             // afleveringen alleen als de serie (nog) zichtbaar is voor dit profiel (niet verborgen/op slot/te oud)
             if !isMovie && !seriesTitles.contains(e.title) { return nil }
             if filter == .movies && !isMovie { return nil }

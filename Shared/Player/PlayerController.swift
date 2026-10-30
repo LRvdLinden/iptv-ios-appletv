@@ -12,7 +12,10 @@ final class PlayerController: ObservableObject {
     enum EngineChoice: String, CaseIterable { case auto, apple, vlc }
     enum Aspect: String, CaseIterable { case fit, fill, r169, r43 }
 
-    @Published var item: PlayableItem
+    @Published var item: PlayableItem {
+        // build 154: ander item (zappen, volgende aflevering): de gezien-grens opnieuw
+        didSet { if item.id != oldValue.id { reachedWatched = false } }
+    }
     @Published private(set) var engine: PlaybackEngine
     @Published private(set) var usingApple = false
     @Published private(set) var isPlaying = false
@@ -54,6 +57,9 @@ final class PlayerController: ObservableObject {
 
     private var timer: Timer?
     private var lastSaved = Date.distantPast
+    /// Build 154: lokaal als gezien gemarkeerd (zelfde grens voor Trakt: de scrobble-stop gaat anders onder de 80%)
+    private var reachedWatched = false
+    private var backgroundObserver: NSObjectProtocol?
     private var didScrobbleStart = false
     private var stallSince: Date?
     private var attempts = 0
@@ -341,6 +347,7 @@ final class PlayerController: ObservableObject {
 
         if isPlaying && !didScrobbleStart && duration > 0 && !isPreview {
             didScrobbleStart = true
+            observeBackgroundForTrakt()
             let it = item, p = position
             Task { @MainActor [weak self] in
                 // kort laten zien dat Trakt meekijkt (of waarom niet)
@@ -545,7 +552,11 @@ final class PlayerController: ObservableObject {
         recordHistory()
         timer?.invalidate(); timer = nil
         saveProgress()
-        if !isPreview { let p = position, it = item; Task { await TraktSync.shared.scrobble(.stop, item: it, progress: p) } }
+        if !isPreview {
+            let p = position, it = item, w = reachedWatched
+            Task { await TraktSync.shared.scrobble(.stop, item: it, progress: p, watched: w) }
+        }
+        if let o = backgroundObserver { NotificationCenter.default.removeObserver(o); backgroundObserver = nil }
         // voortgang bij stoppen meteen naar de Bingr-account
         if !isPreview { StateSync.shared.playbackStopped(profile: playbackProfileID) }
         engine.stop()
@@ -553,6 +564,23 @@ final class PlayerController: ObservableObject {
         #if !os(tvOS)
         if airPlayServing { AirPlaySubtitles.stop(); airPlayServing = false }
         airPlayWrapped = false
+        #endif
+    }
+
+    /// Build 154: naar de achtergrond → scrobble-stop met de huidige positie (Trakt ziet anders nooit een stop);
+    /// weer actief en nog aan het spelen → opnieuw een start.
+    private func observeBackgroundForTrakt() {
+        #if os(iOS) || os(tvOS)
+        guard backgroundObserver == nil else { return }
+        let nc = NotificationCenter.default
+        backgroundObserver = nc.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, !self.isPreview, !self.stopped else { return }
+                let it = self.item, p = self.position, w = self.reachedWatched
+                Task { await TraktSync.shared.scrobble(.stop, item: it, progress: p, watched: w) }
+                self.didScrobbleStart = false   // bij terugkeer en verder spelen: opnieuw een start
+            }
+        }
         #endif
     }
 
@@ -650,7 +678,7 @@ final class PlayerController: ObservableObject {
         releaseAwake()
         position = 1
         saveProgress()
-        if !isPreview { let it = item; Task { await TraktSync.shared.scrobble(.stop, item: it, progress: 1) } }
+        if !isPreview { let it = item; Task { await TraktSync.shared.scrobble(.stop, item: it, progress: 1, watched: true) } }
         if !isPreview { StateSync.shared.playbackStopped(profile: playbackProfileID) }
         onFinished?()
     }
@@ -675,13 +703,13 @@ final class PlayerController: ObservableObject {
         // build 97: voor het profiel dat keek toen het afspelen begon (niet het profiel dat nu toevallig actief is)
         let prof = playbackProfileID ?? store.activeProfileID
         // gezien: bijna uitgekeken, of alleen de aftiteling nog over — per profiel, ook zonder Trakt
-        let left = duration - currentTime
-        if position >= 0.85 || (duration > 600 && left < 180 && position > 0.7) {
+        // build 154: `WatchedThreshold` (Build154.swift), dezelfde grens als op Android en web
+        if WatchedThreshold.reached(position: position, duration: duration, currentTime: currentTime) {
             store.clearProgress(item.id, profile: prof)
-            store.setLocalWatched(item.id, true, profile: prof)
-            if item.type == .episode, let sid = item.seriesID, let s = item.season, let e = item.episode {
-                store.setLocalWatched(CloudStore.episodeKey(series: sid, season: s, episode: e), true, profile: prof)
-            }
+            // build 154: id-sleutel én inhoudssleutels (gezien op alle servers), en via de wachtrij naar Trakt
+            Watched154.setItem(item, true, profile: prof)
+            reachedWatched = true
+            if prof == nil || prof == store.activeProfileID { TraktSync.shared.markWatchedFromPlayer(item) }
         } else if position > 0.02 {
             store.setProgress(item.id, ProgressEntry(fraction: position, position: currentTime, updated: Date(),
                                                      title: item.title, artwork: item.artwork, playlistID: item.sourceID ?? store.activePlaylistID,

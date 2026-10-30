@@ -332,6 +332,11 @@ struct PlayableItem: Identifiable, Hashable {
     var burnedSubtitles: String? = nil
     /// Build 59: positie in seconden om te hervatten (sneller starten in VLC, zonder eerst vanaf 0 te bufferen)
     var resumeSeconds: Double? = nil
+    /// Build 154: TMDB-id van de film of (bij een aflevering) de serie, van de server; voor `ids.tmdb` naar Trakt en de
+    /// inhoudssleutels van "gezien"
+    var tmdbID: Int? = nil
+    /// Build 154: jaar van de film of serie (inhoudssleutels en zoeken op Trakt)
+    var year: Int? = nil
 }
 
 // MARK: - Metadata -----------------------------------------------------------

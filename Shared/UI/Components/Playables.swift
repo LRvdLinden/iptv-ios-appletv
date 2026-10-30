@@ -4,11 +4,13 @@ import SwiftUI
 @MainActor
 enum Playables {
     static func movie(_ m: Movie, imdb: String?) -> PlayableItem {
-        var p = PlayableItem(id: m.id, title: m.title, subtitle: m.year.map(String.init), url: m.streamURL, type: .movie,
+        var p = PlayableItem(id: m.id, title: m.title, subtitle: m.year.map { String($0) }, url: m.streamURL, type: .movie,
                              imdbID: imdb, artwork: m.poster, stalkerCmd: m.stalkerCmd,
                              resumeAt: resume(m.id, imdb: imdb))
         if m.streamURL == nil, m.stalkerCmd == nil, let id = m.imdbID ?? imdb { p.stremio = "movie|\(id)" }
         p.sourceID = m.sourceID   // build 128: afspelen via de eigen server van de titel
+        p.tmdbID = m.tmdbID ?? ContentLanguage.Facts.shared.tmdbID(m.id)   // build 154: ids.tmdb naar Trakt
+        p.year = m.year
         applyLanguage(ContentLanguage.of(m), to: &p)
         return p
     }
@@ -29,6 +31,8 @@ enum Playables {
         if e.streamURL == nil, e.id.hasPrefix("se") { p.stremio = "series|\(e.id.dropFirst(2))" }
         p.seriesID = s.id
         p.sourceID = s.sourceID ?? e.sourceID
+        p.tmdbID = s.tmdbID ?? ContentLanguage.Facts.shared.tmdbID(s.id)   // build 154: de serie, voor ids.tmdb naar Trakt
+        p.year = s.year
         applyLanguage(ContentLanguage.of(s), to: &p)
         return p
     }
@@ -45,15 +49,18 @@ enum Playables {
         return TraktSync.shared.playbackProgress(movie: imdb) ?? 0
     }
 
+    /// Build 154: ook via de inhoudssleutels (tmdb, imdb, titel + jaar), dus ook als je het op een andere server keek
     static func isWatched(movie m: Movie, imdb: String?) -> Bool {
-        TraktSync.shared.isWatched(movie: imdb) || CloudStore.shared.localWatched.contains(m.id)
+        TraktSync.shared.isWatched(movie: imdb) || Watched154.isWatched(movie: m, imdb: imdb)
     }
 
-    static func isWatched(_ e: Episode, imdb: String?) -> Bool {
+    static func isWatched(_ e: Episode, imdb: String?, series: Series? = nil) -> Bool {
         TraktSync.shared.isWatched(show: imdb, season: e.season, episode: e.number)
-            || CloudStore.shared.localWatched.contains(e.id)
-            || CloudStore.shared.localWatched.contains(CloudStore.episodeKey(series: e.seriesID, season: e.season, episode: e.number))
+            || Watched154.isWatched(e, series: series, imdb: imdb)
     }
+
+    /// Build 154: seriekaart "gezien" (`w:s:`: alle uitgezonden afleveringen gezien)
+    static func isSeriesWatched(_ s: Series, imdb: String?) -> Bool { Watched154.isSeriesWatched(s, imdb: imdb) }
 
     /// Aantal bekeken afleveringen van een serie voor het label "N BEKEKEN" (build 75): Trakt (alleen het hoofdaccount;
     /// bij andere profielen is die leeg) samen met wat dit profiel in Bingr afvinkte of uitkeek, zonder dubbeltellingen.
@@ -61,6 +68,7 @@ enum Playables {
         let store = CloudStore.shared
         var keys = TraktSync.shared.watchedEpisodeKeys(show: imdb)
         keys.formUnion(store.localWatchedEpisodes(series: s.id))
+        keys.formUnion(Watched154.watchedEpisodeKeys(s, imdb: imdb))   // build 154: ook van andere servers
         // oudere markeringen op aflevering-id (van vóór de sleutel per serie)
         for e in s.episodes where store.localWatched.contains(e.id) { keys.insert("\(e.season)-\(e.number)") }
         return keys.count

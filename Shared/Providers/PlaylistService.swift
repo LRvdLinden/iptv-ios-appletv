@@ -438,6 +438,8 @@ final class PlaylistService: ObservableObject {
         let old = library
         library = lib
         OffMain.release(old)
+        // build 154: eenmalig per profiel en server oude "gezien"-id's aanvullen met inhoudssleutels
+        Watched154.migrate(lib, playlist: source?.id)
     }
 
     /// Build 148: duur van het filteren op de achtergrond (`index`) en van het publiceren op de hoofdthread (`apply`)

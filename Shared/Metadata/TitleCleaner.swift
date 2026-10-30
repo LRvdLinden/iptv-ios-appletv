@@ -5,11 +5,10 @@ import Foundation
 enum TitleCleaner {
     struct Parsed { var title: String; var year: Int?; var season: Int?; var episode: Int? }
 
-    private static let prefix = try! NSRegularExpression(pattern: #"^\s*(\|[^|]{1,12}\||\[[^\]]{1,12}\]|[A-Z]{2,4}\s*[-:|]\s+)"#)
     private static let episode = try! NSRegularExpression(pattern: #"[Ss](\d{1,2})\s*[Ee](\d{1,3})"#)
-    private static let year = try! NSRegularExpression(pattern: #"[\(\[\s-](19\d{2}|20\d{2})[\)\]]?"#)
     private static let junk = try! NSRegularExpression(
-        pattern: #"(?i)\b(4k|uhd|fhd|hd|sd|hevc|h\.?265|x265|x264|1080p|720p|2160p|multi|subs?|nl ?sub|vost\w*|dolby|atmos|hdr10?\+?|dv)\b|\[[^\]]*\]|\([^\)]*\)"#)
+        // build 154: "Multi", "Sub" en "VOST" alleen in hoofdletters ("Sub Zero" blijft heel)
+        pattern: #"(?i)\b(4k|uhd|fhd|hd|sd|hevc|h\.?265|x265|x264|1080p|720p|2160p|dolby|atmos|hdr10?\+?|dv)\b|\b(?-i:MULTI|SUBS?|NL ?SUBS?|VOST[A-Z]*)\b|\[[^\]]*\]|\([^\)]*\)"#)
 
     static func parse(_ raw: String) -> Parsed {
         // taallabels ("Animal (IT)", "EN-Animal", "NL SUBS") eerst weg, met dezelfde regels als de covers (build 59)
@@ -17,8 +16,9 @@ enum TitleCleaner {
         // build 153: alle pipe-varianten uit `CategoryName.pipes`; stukken tussen pipes vooraan/achteraan haalt
         // `ContentLanguage.displayTitle` weg (`CategoryName.pipeBlocks`)
         var s = ContentLanguage.displayTitle(CategoryName.normalizeSeparators(raw))
-        // landcodes/labels vooraan weg (eventueel meerdere)
-        for _ in 0..<2 { s = replace(prefix, in: s, with: "") }
+        // landcodes/labels vooraan weg (eventueel meerdere). Build 154: alleen een taal-/landcode, kwaliteitswoord of
+        // IPTV-woord ("NCIS: Hawaii", "FBI: Most Wanted" en "BBC - Planet Earth" blijven heel)
+        s = TitleRules154.stripPrefixes(s)
 
         var season: Int?, ep: Int?
         if let m = episode.firstMatch(in: s, range: NSRange(s.startIndex..., in: s)) {
@@ -26,12 +26,11 @@ enum TitleCleaner {
             if let r = Range(m.range, in: s) { s = String(s[..<r.lowerBound]) }
         }
 
-        var y: Int?
-        let matches = year.matches(in: s, range: NSRange(s.startIndex..., in: s))
-        if let m = matches.last {
-            y = Int(sub(s, m.range(at: 1)))
-            if let r = Range(m.range, in: s) { s.removeSubrange(r) }
-        }
+        // build 154: een jaartal alleen tussen haakjes/blokhaken of achter "-"/"|" (1900 … volgend jaar);
+        // "Blade Runner 2049" en "1917" blijven heel
+        let yr = TitleRules154.extractYear(s)
+        let y = yr.year
+        s = yr.title
 
         s = replace(junk, in: s, with: " ")
         s = s.replacingOccurrences(of: "_", with: " ")

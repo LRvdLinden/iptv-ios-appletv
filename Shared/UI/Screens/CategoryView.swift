@@ -109,7 +109,7 @@ struct CategoryView: View {
                     // serie: "N BEKEKEN" linksboven (build 75); de score staat rechtsboven
                     if case .series(let s) = t {
                         let n = Playables.watchedEpisodeCount(s, imdb: trakt.imdb(for: s))
-                        if n > 0 {
+                        if n > 0 && !watched(t) {
                             WatchedEpisodesLabel(count: n).padding(tvScaled(6))
                                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                         }
@@ -181,6 +181,8 @@ struct CategoryView: View {
     }
     private func watched(_ t: DetailTarget) -> Bool {
         if case .movie(let m) = t { return Playables.isWatched(movie: m, imdb: trakt.imdb(for: m)) }
+        // build 154: een serie is gezien als alle uitgezonden afleveringen gezien zijn (`w:s:`)
+        if case .series(let s) = t { return Playables.isSeriesWatched(s, imdb: trakt.imdb(for: s)) }
         return false
     }
 }
