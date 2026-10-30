@@ -1,14 +1,22 @@
 // Bingr-abonnementen: Gratis en Lifetime (docs/ACCOUNT.md, "Abonnementen"). Pure logica zonder database, zodat
 // device-auth (limieten, functies, upgrade-link) en de unittests (plans_test.ts) precies hetzelfde rekenen.
-//   free     -> 1 stream (gelijktijdige kijker), 8 apparaten, 1 server, geen statistieken / nu aan het kijken / Trakt / meerdere servers / thema's
+//   free     -> 1 stream (gelijktijdige kijker), 2 apparaten (build 157, was 8), 1 server, geen statistieken / nu aan het kijken /
+//               Trakt / meerdere servers / thema's / Verder kijken / kinderprofielen / OpenSubtitles
 //   lifetime -> 3 streams, 15 apparaten, onbeperkt servers, alles aan
+// Build 157: continue_watching, kids_profiles en opensubtitles erbij. Oudere apps kennen die sleutels niet en negeren ze; een app
+// die een sleutel mist (oudere server) behandelt hem als false (= Gratis). Alleen de apparatenlimiet dwingt de server af
+// (register_device); apparaten die al ingelogd zijn, blijven ingelogd.
 // De streamlimiet is Bingr's eigen telling (account_streams), los van de limiet van de IPTV-provider
 // (Xtream max_connections); die controleren de apps apart bij het afspelen.
 // Per account kan het beheer max_streams / max_devices verhogen (null = standaard van het abonnement).
 
 export type Plan = "free" | "lifetime";
 export type Limits = { streams: number; devices: number; servers: number | null };
-export type Features = { stats: boolean; now_watching: boolean; trakt: boolean; multi_server: boolean; themes: boolean };
+export type Features = {
+  stats: boolean; now_watching: boolean; trakt: boolean; multi_server: boolean; themes: boolean;
+  // build 157
+  continue_watching: boolean; kids_profiles: boolean; opensubtitles: boolean;
+};
 export type PlanRow = { plan?: unknown; max_streams?: unknown; max_devices?: unknown } | null | undefined;
 export type UpgradeLink = { apple: boolean; android: boolean; androidtv: boolean; tizen: boolean; web: boolean; webos: boolean };
 export type Platform = "ios" | "ipados" | "tvos" | "macos" | "android" | "androidtv" | "tizen" | "web" | "webos";
@@ -22,7 +30,7 @@ export type Entitlements = {
 };
 
 export const PLAN_DEFAULTS: Record<Plan, Limits> = {
-  free: { streams: 1, devices: 8, servers: 1 },
+  free: { streams: 1, devices: 2, servers: 1 }, // build 157: 2 apparaten (was 8)
   lifetime: { streams: 3, devices: 15, servers: null },
 };
 export const UPGRADE_URL = "https://bingr.online/upgrade/";
@@ -62,7 +70,10 @@ export function limitsFor(row: PlanRow): Limits {
 
 export function featuresFor(plan: Plan): Features {
   const on = plan === "lifetime";
-  return { stats: on, now_watching: on, trakt: on, multi_server: on, themes: on };
+  return {
+    stats: on, now_watching: on, trakt: on, multi_server: on, themes: on,
+    continue_watching: on, kids_profiles: on, opensubtitles: on,
+  };
 }
 
 // platform uit de aanvraag (ios, ipados, tvos, macos, android, androidtv, tizen, web), hoofdletterongevoelig; anders null

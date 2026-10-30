@@ -12,14 +12,14 @@ Deno.test("abonnement: geen rij of onbekend = gratis", () => {
   eq(normalizePlan(undefined), "free");
   eq(normalizePlan("pro"), "free");
   eq(normalizePlan("lifetime"), "lifetime");
-  eq(limitsFor(null), { streams: 1, devices: 8, servers: 1 });
-  eq(limitsFor({ plan: "free" }), { streams: 1, devices: 8, servers: 1 });
+  eq(limitsFor(null), { streams: 1, devices: 2, servers: 1 });
+  eq(limitsFor({ plan: "free" }), { streams: 1, devices: 2, servers: 1 });
 });
 
 Deno.test("abonnement: lifetime-standaard en eigen limieten", () => {
   eq(limitsFor({ plan: "lifetime" }), { streams: 3, devices: 15, servers: null });
   eq(limitsFor({ plan: "lifetime", max_streams: 10, max_devices: 25 }), { streams: 10, devices: 25, servers: null });
-  eq(limitsFor({ plan: "free", max_streams: 4, max_devices: null }), { streams: 4, devices: 8, servers: 1 }, "gratis met meer streams");
+  eq(limitsFor({ plan: "free", max_streams: 4, max_devices: null }), { streams: 4, devices: 2, servers: 1 }, "gratis met meer streams");
   eq(limitsFor({ plan: "lifetime", max_streams: 0, max_devices: -3 }), { streams: 3, devices: 15, servers: null }, "ongeldig = standaard");
   eq(limitsFor({ plan: "lifetime", max_streams: "8" }), { streams: 8, devices: 15, servers: null }, "getal als tekst");
 });
@@ -40,8 +40,14 @@ Deno.test("eigen limiet: alleen hele getallen binnen de grens", () => {
 });
 
 Deno.test("functies per abonnement", () => {
-  eq(featuresFor("free"), { stats: false, now_watching: false, trakt: false, multi_server: false, themes: false });
-  eq(featuresFor("lifetime"), { stats: true, now_watching: true, trakt: true, multi_server: true, themes: true });
+  eq(featuresFor("free"), {
+    stats: false, now_watching: false, trakt: false, multi_server: false, themes: false,
+    continue_watching: false, kids_profiles: false, opensubtitles: false,
+  });
+  eq(featuresFor("lifetime"), {
+    stats: true, now_watching: true, trakt: true, multi_server: true, themes: true,
+    continue_watching: true, kids_profiles: true, opensubtitles: true,
+  });
 });
 
 Deno.test("platform uit de aanvraag of van het apparaat", () => {
@@ -83,10 +89,13 @@ Deno.test("upgrade-link per platform", () => {
 
 Deno.test("entitlements: volledig antwoord", () => {
   eq(entitlements(null, DEFAULT_UPGRADE_LINK, "web"), {
-    plan: "free", limits: { streams: 1, devices: 8, servers: 1 },
-    features: { stats: false, now_watching: false, trakt: false, multi_server: false, themes: false },
+    plan: "free", limits: { streams: 1, devices: 2, servers: 1 },
+    features: {
+      stats: false, now_watching: false, trakt: false, multi_server: false, themes: false,
+      continue_watching: false, kids_profiles: false, opensubtitles: false,
+    },
     upgrade: { url: "https://bingr.online/upgrade/", link: true, price: "€ 4,99", price_en: "€4.99" },
-    plans: { free: { streams: 1, devices: 8, servers: 1 }, lifetime: { streams: 3, devices: 15, servers: null } },
+    plans: { free: { streams: 1, devices: 2, servers: 1 }, lifetime: { streams: 3, devices: 15, servers: null } },
   });
   const e = entitlements({ plan: "lifetime", max_devices: 20 }, DEFAULT_UPGRADE_LINK, "ios");
   eq(e.plan, "lifetime");
@@ -94,4 +103,32 @@ Deno.test("entitlements: volledig antwoord", () => {
   eq(e.features.trakt, true);
   eq(e.upgrade.link, false, "Apple standaard zonder link");
   eq(e.plans.lifetime, { streams: 3, devices: 15, servers: null }, "build 128: standaard, niet de eigen limiet");
+});
+
+Deno.test("build 157: gratis 2 apparaten, eigen limiet uit het beheer gaat voor", () => {
+  eq(PLAN_DEFAULTS.free.devices, 2);
+  eq(PLAN_DEFAULTS.lifetime.devices, 15);
+  eq(limitsFor({ plan: "free", max_devices: 8 }).devices, 8, "beheer gaf dit Gratis-account 8 apparaten");
+  eq(limitsFor({ plan: "free", max_devices: 0 }).devices, 2, "ongeldige eigen limiet = standaard");
+  eq(entitlements({ plan: "free", max_devices: 5 }, DEFAULT_UPGRADE_LINK, "web").plans.free.devices, 2, "vergelijking = standaard");
+});
+
+Deno.test("build 157: Verder kijken, kinderprofielen en OpenSubtitles alleen bij Lifetime", () => {
+  for (const k of ["continue_watching", "kids_profiles", "opensubtitles"] as const) {
+    eq(entitlements(null, DEFAULT_UPGRADE_LINK, "ios").features[k], false, `geen rij: ${k}`);
+    eq(entitlements({ plan: "free" }, DEFAULT_UPGRADE_LINK, "android").features[k], false, `gratis: ${k}`);
+    eq(entitlements({ plan: "pro" }, DEFAULT_UPGRADE_LINK, "web").features[k], false, `onbekend abonnement: ${k}`);
+    eq(entitlements({ plan: "lifetime" }, DEFAULT_UPGRADE_LINK, "tvos").features[k], true, `lifetime: ${k}`);
+  }
+  // bestaande functies ongewijzigd
+  eq(featuresFor("free").stats, false);
+  eq(featuresFor("lifetime").themes, true);
+});
+
+Deno.test("build 157: oude server zonder de nieuwe vlaggen = Gratis voor die functies", () => {
+  // zo lezen de apps het (sleutel ontbreekt of is niet true = Gratis); het antwoord van een server van vóór build 157:
+  const old = { stats: true, now_watching: true, trakt: true, multi_server: true, themes: true } as Record<string, unknown>;
+  const allowed = (f: Record<string, unknown>, k: string) => f[k] === true;
+  for (const k of ["continue_watching", "kids_profiles", "opensubtitles"]) eq(allowed(old, k), false, `oude server: ${k}`);
+  eq(allowed(featuresFor("lifetime") as unknown as Record<string, unknown>, "kids_profiles"), true);
 });

@@ -584,7 +584,8 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       const name = String(body.name ?? "").slice(0, 80), platform = String(body.platform ?? "").slice(0, 40);
       const sid = sessionIdFrom(req);
       const session_id = sid && /^[0-9a-f-]{36}$/i.test(sid) ? sid : null;
-      // apparatenlimiet van het abonnement (gratis 8, lifetime 15, of eigen limiet uit het beheer)
+      // apparatenlimiet van het abonnement (gratis 2 sinds build 157, lifetime 15, of eigen limiet uit het beheer). Alleen een
+      // nieuw apparaat telt mee: een apparaat dat al ingelogd is, blijft ingelogd, ook als het account nu boven de limiet zit
       const row = await planRow(user.id), limit = limitsFor(row).devices;
       // tellen + toevoegen atomair in de database (slot per account), zodat gelijktijdige logins de limiet niet passeren
       const { data: r, error } = await admin.rpc("bingr_register_device", {
