@@ -1,0 +1,81 @@
+commit: c6cb7d440f163e02bf6d39d62dadcdd7a7bad77f
+build: success  smoke: failure
+Xcode 26.6
+Build version 17F113
+== Runtimes ==
+iOS 26.2 (26.2 - 23C54) - com.apple.CoreSimulator.SimRuntime.iOS-26-2
+iOS 26.4 (26.4.1 - 23E254a) - com.apple.CoreSimulator.SimRuntime.iOS-26-4
+iOS 26.5 (26.5 - 23F77) - com.apple.CoreSimulator.SimRuntime.iOS-26-5
+tvOS 26.2 (26.2 - 23K51) - com.apple.CoreSimulator.SimRuntime.tvOS-26-2
+tvOS 26.4 (26.4 - 23L243a) - com.apple.CoreSimulator.SimRuntime.tvOS-26-4
+tvOS 26.5 (26.5 - 23L470) - com.apple.CoreSimulator.SimRuntime.tvOS-26-5
+watchOS 26.2 (26.2 - 23S303) - com.apple.CoreSimulator.SimRuntime.watchOS-26-2
+watchOS 26.4 (26.4 - 23T240b) - com.apple.CoreSimulator.SimRuntime.watchOS-26-4
+watchOS 26.5 (26.5 - 23T570) - com.apple.CoreSimulator.SimRuntime.watchOS-26-5
+visionOS 26.2 (26.2 - 23N301) - com.apple.CoreSimulator.SimRuntime.xrOS-26-2
+visionOS 26.4 (26.4.1 - 23O249a) - com.apple.CoreSimulator.SimRuntime.xrOS-26-4
+visionOS 26.5 (26.5 - 23O470) - com.apple.CoreSimulator.SimRuntime.xrOS-26-5
+=== build errors ===
+=== start-rooktest ===
+14820 get.php
+131271 get2.php
+128663 get3.php
+Simulator: Apple TV 4K (3rd generation) / com.apple.CoreSimulator.SimRuntime.tvOS-26-5
+tvos/1-nieuw: gestart (pid 15560)
+tvos/1-nieuw: geheugen (MB) per 5 s: 5s:209 10s:210 15s:209
+tvos/1-nieuw: piekgeheugen 210 MB
+tvos/1-nieuw: draait na 15s nog (geen crash)
+tvos/2-terugkerend: gestart (pid 16403)
+tvos/2-terugkerend: geheugen (MB) per 5 s: 5s:193 10s:204 15s:233 20s:250 25s:258 30s:285 35s:286 40s:285
+tvos/2-terugkerend: piekgeheugen 287 MB
+tvos/2-terugkerend: draait na 40s nog (geen crash)
+BINGR_SMOKE: [8s] beveiligd profiel kiezen
+BINGR_SMOKE: [8s] mijlpaal profile_picked (33 MB)
+BINGR_SMOKE: [8s] mijlpaal pin_screen (35 MB)
+BINGR_SMOKE: [8s] pincodescherm na 0.25 s
+BINGR_SMOKE: [18s] na pincode: niet open
+BINGR_SMOKE: [18s] profiel openen (kids=false)
+BINGR_SMOKE: [18s] mijlpaal profile (35 MB)
+BINGR_SMOKE: [18s] mijlpaal servers (35 MB)
+BINGR_SMOKE: [19s] mijlpaal home (39 MB)
+BINGR_SMOKE: [19s] Home na 0.7 s
+BINGR_SMOKE: [19s] bewaarde lijst: nee (ophalen)
+BINGR_SMOKE: [19s] mijlpaal fetch (41 MB)
+BINGR_SMOKE: [19s] HTTP GET /get.php [19s] $s7BingrTV15PlaylistServiceC7refresh_11showSpinnerSbAA0C6SourceV_SbtYaFTQ1_ < $s7BingrTV15PlaylistServiceC6select_12forceRefreshyAA0C6SourceV_SbtYaFTQ3_ < $s7BingrTV8AppStateC4open_8thenShowyAA14PlaylistSourceV_SSSgtFyyYacfU0_TQ1_ < $s7BingrTV8AppStateC4open_8thenShowyAA14PlaylistSourceV_SSSgtFyyYacfU0_TATQ0_ < $sxIeAgHr_xs5Error_pIegHrzo_s8SendableRzs5NeverORs_r0_lTRTQ0_ < $sxIeAgHr_xs5Error_pIegHrzo_s8SendableRzs5NeverORs_r0_lTRTA.58TQ0_
+BINGR_SMOKE: [20s] mijlpaal parse (41 MB)
+BINGR_SMOKE: [20s] mijlpaal catalog (41 MB)
+BINGR_SMOKE: [20s] mijlpaal save (43 MB)
+BINGR_SMOKE: [20s] servers laden bij openen: ask → none
+BINGR_SMOKE: [21s] mijlpaal ready (45 MB)
+BINGR_SMOKE: [40s] vraag servers bijwerken: niet getoond
+BINGR_SMOKE: [50s] categorie uit
+tvos/2b-crash: gestart (pid 18724)
+tvos/2b-crash: gestopt na 20s
+tvos/2b-crash: geheugen (MB) per 5 s: 5s:201 10s:214 15s:213
+tvos/2b-crash: piekgeheugen 242 MB
+tvos/2b-crash: bewust gecrasht (verwacht)
+tvos/2c-na-crash: gestart (pid 21630)
+tvos/2c-na-crash: aanvragen naar de servers in de eerste 30 s: 0
+tvos/2c-na-crash: geheugen (MB) per 5 s: 5s:201 10s:213 15s:213 20s:243 25s:255 30s:266 35s:293 40s:292
+tvos/2c-na-crash: piekgeheugen 293 MB
+tvos/2c-na-crash: draait na 40s nog (geen crash)
+BINGR_SMOKE: [8s] mijlpaal profile_picked (34 MB)
+BINGR_SMOKE: [8s] mijlpaal pin_screen (36 MB)
+BINGR_SMOKE: [8s] pincodescherm na 0.10 s
+BINGR_SMOKE: [19s] na pincode: niet open
+BINGR_SMOKE: [19s] profiel openen (kids=false)
+BINGR_SMOKE: [19s] mijlpaal profile (36 MB)
+BINGR_SMOKE: [19s] mijlpaal servers (36 MB)
+BINGR_SMOKE: [19s] mijlpaal home (40 MB)
+BINGR_SMOKE: [19s] Home na 0.4 s
+BINGR_SMOKE: [19s] bewaarde lijst: ja
+BINGR_SMOKE: [19s] mijlpaal catalog (43 MB)
+BINGR_SMOKE: [19s] servers laden bij openen: ask → ask
+BINGR_SMOKE: [21s] mijlpaal ready (49 MB)
+BINGR_SMOKE: [39s] vraag servers bijwerken: Nu bijwerken
+BINGR_SMOKE: [40s] mijlpaal fetch (68 MB)
+BINGR_SMOKE: [40s] HTTP GET /get.php [39s] $s7BingrTV15PlaylistServiceC7refresh_11showSpinnerSbAA0C6SourceV_SbtYaFTQ1_ < $s7BingrTV15PlaylistServiceC15runServerUpdate33_4CC85F76817FBD425B594A405731C757LL10justLoadedySb_tYaFSbSgyYaYbcfU2_TQ0_ < $s7BingrTV15PlaylistServiceC15runServerUpdate33_4CC85F76817FBD425B594A405731C757LL10justLoadedySb_tYaFSbSgyYaYbcfU2_TATQ0_ < $s7BingrTV11CrossServerC11withTimeoutyxSgSd_AEyYaYbctYas8SendableRzlFZAEScGyAEGzYaXEfU_AEyYacfU_TQ0_ < $s7BingrTV11CrossServerC11withTimeoutyxSgSd_AEyYaYbctYas8SendableRzlFZAEScGyAEGzYaXEfU_AEyYacfU_TATQ0_ < $sxIeAgHr_xs5Error_pIegHrzo_s8SendableRzlTRTQ0_
+BINGR_SMOKE: [40s] mijlpaal parse (69 MB)
+BINGR_SMOKE: [40s] mijlpaal save (69 MB)
+BINGR_SMOKE: [40s] HTTP GET /get2.php [40s] $s7BingrTV15PlaylistServiceC7refresh_11showSpinnerSbAA0C6SourceV_SbtYaFTQ1_ < $s7BingrTV15PlaylistServiceC15runServerUpdate33_4CC85F76817FBD425B594A405731C757LL10justLoadedySb_tYaFSbSgyYaYbcfU2_TQ0_ < $s7BingrTV15PlaylistServiceC15runServerUpdate33_4CC85F76817FBD425B594A405731C757LL10justLoadedySb_tYaFSbSgyYaYbcfU2_TATQ0_ < $s7BingrTV11CrossServerC11withTimeoutyxSgSd_AEyYaYbctYas8SendableRzlFZAEScGyAEGzYaXEfU_AEyYacfU_TQ0_ < $s7BingrTV11CrossServerC11withTimeoutyxSgSd_AEyYaYbctYas8SendableRzlFZAEScGyAEGzYaXEfU_AEyYacfU_TATQ0_ < $sxIeAgHr_xs5Error_pIegHrzo_s8SendableRzlTRTQ0_
+BINGR_SMOKE: [40s] HTTP GET /get3.php [40s] $s7BingrTV15PlaylistServiceC7refresh_11showSpinnerSbAA0C6SourceV_SbtYaFTQ1_ < $s7BingrTV15PlaylistServiceC15runServerUpdate33_4CC85F76817FBD425B594A405731C757LL10justLoadedySb_tYaFSbSgyYaYbcfU2_TQ0_ < $s7BingrTV15PlaylistServiceC15runServerUpdate33_4CC85F76817FBD425B594A405731C757LL10justLoadedySb_tYaFSbSgyYaYbcfU2_TATQ0_ < $s7BingrTV11CrossServerC11withTimeoutyxSgSd_AEyYaYbctYas8SendableRzlFZAEScGyAEGzYaXEfU_AEyYacfU_TQ0_ < $s7BingrTV11CrossServerC11withTimeoutyxSgSd_AEyYaYbctYas8SendableRzlFZAEScGyAEGzYaXEfU_AEyYacfU_TATQ0_ < $sxIeAgHr_xs5Error_pIegHrzo_s8SendableRzlTRTQ0_
