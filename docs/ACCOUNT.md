@@ -1788,3 +1788,49 @@ als rode badge bij de downloadknoppen.
 - **Schrijven:** alleen het beheer (functie `admin`, acties `releases_get` / `releases_set`, in admin_audit).
 - **Lezen (openbaar):** functie `status`, `GET /functions/v1/status?action=releases` (60 s in de cache), zelfde vorm;
   alleen de velden hierboven gaan naar buiten (`status/releases.ts`). `app_settings` blijft dicht voor anon.
+
+## Build 157: Gratis en Lifetime aangepast (versie 1.0.3)
+
+Nieuwe verdeling. Dit vervangt de tabel onder "Abonnementen" waar die verschilt; de rest blijft gelden.
+
+| | **Gratis** | **Lifetime** |
+|---|---|---|
+| Tegelijk kijken (`limits.streams`) | 1 | tot 3 |
+| Ingelogde apparaten (`limits.devices`) | **2** (was 8) | 15 |
+| Servers (`limits.servers`) | 1 | onbeperkt |
+| Statistieken, Nu aan het kijken, Trakt, thema's | – | ✓ (zoals voorheen) |
+| **Verder kijken** (`features.continue_watching`) | – | ✓ |
+| **Kinderprofielen** (`features.kids_profiles`) | – | ✓ |
+| **OpenSubtitles** (`features.opensubtitles`) | – | ✓ |
+| Profielen, Mijn lijst, live tv met gids, films en series, sync via het account, alle apparaten | ✓ | ✓ |
+
+- **Server:**
+  - `plans.ts`: Gratis `devices: 2`.
+  - `entitlements.features` krijgt `continue_watching`, `kids_profiles` en `opensubtitles` (Gratis `false`, Lifetime `true`).
+  - `plans` in `entitlements` geeft Gratis `devices: 2`.
+  - Eigen limieten uit het beheer (`max_devices`) blijven voorgaan.
+- **Apparaten:** `register_device` weigert een nieuw apparaat boven de limiet (403 `device_limit`, zoals nu).
+  - Apparaten die al ingelogd zijn, **blijven ingelogd**. Er wordt niemand uitgelogd.
+  - De app toont bij `device_limit` de lijst om een ander apparaat af te melden, zoals nu.
+- **Oudere apps** kennen de nieuwe `features`-sleutels niet en blijven die functies tonen. Dat is zo; alleen de apparaatlimiet dwingt de server af.
+- **In de apps (feature ontbreekt of is `false` = Gratis):**
+  - **Verder kijken:**
+    - De rij Verder kijken op Home en in Mijn Bingr toont een slotje met de vergelijking (en bij `upgrade.link` de knop Upgrade naar Lifetime).
+    - De voortgang wordt **wel** bewaard en gesynct, zodat hij er na het upgraden meteen is.
+    - "Hervatten vanaf …" in de speler en op de detailpagina blijft werken.
+    - Mijn lijst blijft gratis.
+  - **Kinderprofielen:**
+    - Een nieuw kinderprofiel maken, of een profiel tot kinderprofiel maken, toont het slotje.
+    - **Bestaande kinderprofielen blijven kinderprofielen en blijven gefilterd** (veiligheid: nooit ineens zonder beperkingen).
+    - De instellingen van een bestaand kinderprofiel (leeftijd, toegestane categorieën) zijn bij Gratis alleen te lezen.
+    - Een kinderprofiel verwijderen mag altijd, achter de ouderpoort.
+  - **OpenSubtitles:**
+    - Zoeken en downloaden via OpenSubtitles en de koppeling in Instellingen tonen het slotje.
+    - Ondertitels uit de stream zelf blijven gratis.
+    - Een bestaande koppeling blijft bewaard (`connections.opensubtitles`) maar wordt niet gebruikt tot het account Lifetime is.
+- **Vergelijking in de apps en op de website:**
+  - Gratis 1 scherm, **2 apparaten**, 1 server.
+  - Nieuwe regels onder Lifetime: Verder kijken, Kinderprofielen, OpenSubtitles-ondertitels.
+  - Onder beide: Profielen, Mijn lijst.
+  - Ontbreekt `plans`, gebruik dan Gratis 1/2/1.
+- **Apple-apps:** nooit een prijs, koopknop, link of QR-code, zoals altijd (`upgrade.link.apple`).
