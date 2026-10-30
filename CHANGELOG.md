@@ -4,6 +4,53 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.2 · Build 152
+_30 oktober 2026_
+
+### Alle apps en de website
+
+**Nieuw**
+
+- Nieuwe rij Nu in de bioscoop op Home: de populairste films die nu in de bioscoop draaien, meteen af te spelen als ze op je server staan
+
+### iOS, iPadOS, tvOS en macOS
+
+**Opgelost**
+
+- Verbergen en weer tonen van samengevoegde categorieën geldt nu altijd voor alle bronnen en synct goed naar je andere apparaten
+
+### iOS, iPadOS, tvOS, macOS, Android en Android TV
+
+**Opgelost**
+
+- Een verborgen categorie die je weer aanzet, komt nu altijd terug: ook op je andere servers, na een herstart van de app en als er op dat moment servers werden bijgewerkt
+
+### Windows, Website en Server
+
+**Opgelost**
+
+- Servers laden weer in de webspeler, en lukt het niet, dan zie je een duidelijke melding in plaats van http_502
+
+### Website en Server
+
+**Verbeterd**
+
+- Samsung TV en LG-tv worden niet meer ondersteund en staan niet meer op de website, de supportsite en de statuspagina
+
+### Server
+
+**Nieuw**
+
+- De nieuwsbrief heeft de secties Top 10 deze week en Populair, met IMDb-score; een klik opent de titel in Bingr
+
+**Verbeterd**
+
+- Nieuwsbrief overzichtelijker: per onderwerp maximaal 6 titels in rijen van 3, alle covers even groot met titel, jaar, genre en score eronder, de Top 10 doorlopend genummerd en geen titel meer twee keer in dezelfde mail
+
+**Opgelost**
+
+- De statuspagina meldt geen onterechte storing meer bij Apple
+
 ## Versie 1.0.1 · Build 151
 _25 oktober 2026_
 

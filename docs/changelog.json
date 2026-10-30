@@ -1,5 +1,112 @@
 [
  {
+  "build": 152,
+  "version": "1.0.2",
+  "date": "2026-10-30",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web",
+     "windows"
+    ],
+    "nl": "Nieuwe rij Nu in de bioscoop op Home: de populairste films die nu in de bioscoop draaien, meteen af te spelen als ze op je server staan",
+    "en": "New Now in cinemas row on Home: the most popular films showing in cinemas now, ready to play if they're on your server"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Een verborgen categorie die je weer aanzet, komt nu altijd terug: ook op je andere servers, na een herstart van de app en als er op dat moment servers werden bijgewerkt",
+    "en": "A hidden category you turn back on now always returns: on your other servers too, after restarting the app and while servers were updating"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "Verbergen en weer tonen van samengevoegde categorieën geldt nu altijd voor alle bronnen en synct goed naar je andere apparaten",
+    "en": "Hiding and showing merged categories now always applies to all sources and syncs correctly to your other devices"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "android",
+     "androidtv"
+    ],
+    "nl": "Verborgen categorieën blijven ook in Mijn lijst, Verder kijken en de rij Zenders verborgen, en titels daaruit worden niet meer naar een andere server verhuisd",
+    "en": "Hidden categories now stay hidden in My List, Continue watching and the Channels row, and their titles are no longer moved to another server"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "android",
+     "androidtv"
+    ],
+    "nl": "Nieuw op Bingr loopt niet meer vol met titels uit een categorie die je weer aanzet",
+    "en": "New on Bingr no longer fills up with titles from a category you turn back on"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "web",
+     "windows",
+     "server"
+    ],
+    "nl": "Servers laden weer in de webspeler, en lukt het niet, dan zie je een duidelijke melding in plaats van http_502",
+    "en": "Servers load again in the web player, and if one doesn't, you see a clear message instead of http_502"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "server"
+    ],
+    "nl": "De nieuwsbrief heeft de secties Top 10 deze week en Populair, met IMDb-score; een klik opent de titel in Bingr",
+    "en": "The newsletter has Top 10 this week and Popular sections with IMDb ratings; a click opens the title in Bingr"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Nieuwsbrief overzichtelijker: per onderwerp maximaal 6 titels in rijen van 3, alle covers even groot met titel, jaar, genre en score eronder, de Top 10 doorlopend genummerd en geen titel meer twee keer in dezelfde mail",
+    "en": "Clearer newsletter: up to 6 titles per section in rows of 3, all covers the same size with title, year, genre and rating below, the Top 10 numbered in sequence, and no title appears twice in the same email"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "server"
+    ],
+    "nl": "De statuspagina meldt geen onterechte storing meer bij Apple",
+    "en": "The status page no longer reports a false outage for Apple"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "web",
+     "server"
+    ],
+    "nl": "Samsung TV en LG-tv worden niet meer ondersteund en staan niet meer op de website, de supportsite en de statuspagina",
+    "en": "Samsung TV and LG TV are no longer supported and have been removed from the website, the support site and the status page"
+   }
+  ]
+ },
+ {
   "build": 151,
   "version": "1.0.1",
   "date": "2026-10-25",
