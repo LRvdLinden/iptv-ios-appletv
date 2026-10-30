@@ -48,11 +48,13 @@ enum Watched154 {
 
     // MARK: serie bij een aflevering (uit de geladen catalogus)
 
+    /// De catalogus van de app (gezet door `PlaylistService.publish`)
+    static weak var service: PlaylistService?
     private static var seriesIndex: [String: Series] = [:]
     private static var seriesIndexVersion = -1
 
     static func series(id: String) -> Series? {
-        let ps = PlaylistService.shared
+        guard let ps = service else { return nil }
         if seriesIndexVersion != ps.libraryVersion {
             var idx: [String: Series] = [:]
             idx.reserveCapacity(ps.library.series.count)
@@ -156,7 +158,7 @@ enum Watched154 {
     static func updateSeriesFlag(_ s: Series, imdb: String?, profile: UUID? = nil, episodes: [Episode]? = nil) {
         let forms = showForms(s, imdb: imdb)
         guard !forms.isEmpty else { return }
-        let ps = PlaylistService.shared
+        guard let ps = service else { return }
         var all: [Episode] = episodes ?? s.episodes
         if all.isEmpty, let c = ps.episodeCache[s.id] { all = c }
         if all.isEmpty, let sid = s.sourceID, let c = ps.episodeCache[sid.uuidString + "|" + s.id] { all = c }

@@ -439,6 +439,7 @@ final class PlaylistService: ObservableObject {
         library = lib
         OffMain.release(old)
         // build 154: eenmalig per profiel en server oude "gezien"-id's aanvullen met inhoudssleutels
+        Watched154.service = self
         Watched154.migrate(lib, playlist: source?.id)
     }
 
