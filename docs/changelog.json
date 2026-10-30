@@ -1,5 +1,117 @@
 [
  {
+  "build": 154,
+  "version": "1.0.3",
+  "date": "2026-10-30",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web",
+     "windows"
+    ],
+    "nl": "Gezien geldt nu op al je servers: dezelfde film of aflevering staat overal als gezien, en wat je al gezien had gaat mee",
+    "en": "Watched now works across all your servers: the same film or episode shows as watched everywhere, and what you already watched comes along"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web",
+     "windows"
+    ],
+    "nl": "Een serie waarvan je alle uitgezonden afleveringen hebt gezien, staat als gezien",
+    "en": "A series you've watched every aired episode of now shows as watched"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web",
+     "windows"
+    ],
+    "nl": "Trakt blijft gekoppeld: de koppeling wordt alleen vernieuwd als het nodig is en een mislukte vernieuwing logt je niet meer op al je apparaten uit",
+    "en": "Trakt stays connected: the connection is only renewed when needed and a failed renewal no longer signs you out on all your devices"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web",
+     "windows"
+    ],
+    "nl": "Gezien en niet-gezien gaan via een wachtrij naar Trakt en komen er ook aan na een netwerkstoring of herstart, met dezelfde grens voor gezien als in Bingr",
+    "en": "Watched and unwatched reach Trakt through a queue, even after a network hiccup or restart, using the same watched threshold as Bingr"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web",
+     "windows"
+    ],
+    "nl": "Trakt-vinkjes kloppen beter: koppelen via het TMDB-nummer van je server en IMDb, ook titels zonder IMDb-nummer, en zoeken gebruikt alleen een treffer met de juiste titel en het juiste jaar",
+    "en": "Trakt checkmarks match better: matching via your server's TMDB ID and IMDb, titles without an IMDb ID too, and search only uses a result with the right title and year"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web",
+     "windows"
+    ],
+    "nl": "Wijzigingen in Trakt komen sneller binnen: elke 15 minuten en bij terugkeer naar de app",
+    "en": "Changes on Trakt arrive sooner: every 15 minutes and when you return to the app"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web",
+     "windows"
+    ],
+    "nl": "Titels als NCIS: Hawaii, Blade Runner 2049 en Sub Zero worden niet meer ingekort",
+    "en": "Titles such as NCIS: Hawaii, Blade Runner 2049 and Sub Zero are no longer shortened"
+   }
+  ]
+ },
+ {
   "build": 153,
   "version": "1.0.2",
   "date": "2026-10-30",

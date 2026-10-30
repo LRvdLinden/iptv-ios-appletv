@@ -4,6 +4,27 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.3 · Build 154
+_30 oktober 2026_
+
+### Alle apps en de website
+
+**Nieuw**
+
+- Gezien geldt nu op al je servers: dezelfde film of aflevering staat overal als gezien, en wat je al gezien had gaat mee
+- Een serie waarvan je alle uitgezonden afleveringen hebt gezien, staat als gezien
+
+**Verbeterd**
+
+- Gezien en niet-gezien gaan via een wachtrij naar Trakt en komen er ook aan na een netwerkstoring of herstart, met dezelfde grens voor gezien als in Bingr
+- Trakt-vinkjes kloppen beter: koppelen via het TMDB-nummer van je server en IMDb, ook titels zonder IMDb-nummer, en zoeken gebruikt alleen een treffer met de juiste titel en het juiste jaar
+- Wijzigingen in Trakt komen sneller binnen: elke 15 minuten en bij terugkeer naar de app
+
+**Opgelost**
+
+- Trakt blijft gekoppeld: de koppeling wordt alleen vernieuwd als het nodig is en een mislukte vernieuwing logt je niet meer op al je apparaten uit
+- Titels als NCIS: Hawaii, Blade Runner 2049 en Sub Zero worden niet meer ingekort
+
 ## Versie 1.0.2 · Build 153
 _30 oktober 2026_
 
