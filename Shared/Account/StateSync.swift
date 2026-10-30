@@ -387,6 +387,14 @@ final class StateSync {
 
     // MARK: - Build 154: tijden van "gezien" (nieuwste gebeurtenis over alle sleutels van een item wint)
 
+    /// Build 154: sleutels opnieuw als gezien gemarkeerd (Watched154.touch): het profiel bij de volgende ronde meenemen,
+    /// ook als de set zelf niet veranderde (dan meldt CloudStore niets).
+    func watchedTouched(profile: UUID?) {
+        let store = CloudStore.shared
+        guard let id = profile ?? store.activeProfileID ?? store.mainProfileID else { return }
+        schedule([profileSection(id)], delay: 2)
+    }
+
     /// Laatst bekende `at` van toevoegingen en verwijderingen in `watched` voor een profiel (geen gegevens buiten de app)
     func watchedStamps(profile: UUID) -> (present: [String: Double], removed: [String: Double]) {
         let m = meta.profiles[profile.uuidString]
@@ -1322,6 +1330,15 @@ final class StateSync {
         let d = store.profileData(id)
         Self.diff(&m, "myList", d.myList, now: now)
         Self.diff(&m, "favorites", d.favorites, now: now)
+        // build 154: opnieuw als gezien gemarkeerd → alle sleutels van het item een nieuwe tijd (ook die er al stonden)
+        let touched = Watched154.takeTouched(id)
+        if !touched.isEmpty, now > 0 {
+            var present = m.present["watched"] ?? [:]
+            var removed = m.removed["watched"] ?? [:]
+            for k in touched where d.watched.contains(k) { present[k] = now; removed[k] = nil }
+            m.present["watched"] = present
+            m.removed["watched"] = removed
+        }
         // build 154: inhoudssleutels uit de migratie krijgen de `at` van hun oude id-sleutel (Watched154.migrate)
         let inherit = Watched154.takeInherit(id)
         if !inherit.isEmpty, var present = m.present["watched"] {

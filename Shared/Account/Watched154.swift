@@ -109,11 +109,28 @@ enum Watched154 {
 
     // MARK: schrijven en uitvinken
 
+    /// Opnieuw als gezien gemarkeerd: alle sleutels krijgen een nieuwe tijd (ook als ze er al stonden); StateSync zet
+    /// die bij de volgende ronde (`takeTouched`). Gelijk aan de webspeler.
+    private static var touched: [UUID: Set<String>] = [:]
+
+    private static func touch(_ keys: [String], profile: UUID?) {
+        let store = CloudStore.shared
+        guard !keys.isEmpty, let pid = profile ?? store.activeProfileID ?? store.mainProfileID else { return }
+        touched[pid, default: []].formUnion(keys)
+    }
+
+    static func takeTouched(_ profile: UUID) -> Set<String> {
+        defer { touched[profile] = nil }
+        return touched[profile] ?? []
+    }
+
     static func setMovie(_ m: Movie, imdb: String?, _ watched: Bool, profile: UUID? = nil) {
         let store = CloudStore.shared
         let keys = movieKeys(m, imdb: imdb)
         if watched {
             store.setLocalWatched(keys: [m.id] + keys, true, profile: profile)
+            touch([m.id] + keys, profile: profile)
+            StateSync.shared.watchedTouched(profile: profile)
         } else {
             // de oude id-sleutel en alle inhoudssleutels (ook een titelsleutel met jaar ±1) naar `removed`
             store.setLocalWatched(keys: Array(WatchKeys.removal(store.watchedSet(profile: profile), ownIDs: [m.id], keys: keys)),
@@ -127,6 +144,8 @@ enum Watched154 {
         let keys = episodeKeys(e, series: series, imdb: imdb)
         if watched {
             store.setLocalWatched(keys: own + keys, true, profile: profile)
+            touch(own + keys, profile: profile)
+            StateSync.shared.watchedTouched(profile: profile)
         } else {
             store.setLocalWatched(keys: Array(WatchKeys.removal(store.watchedSet(profile: profile), ownIDs: own, keys: keys)),
                                   false, profile: profile)
@@ -156,6 +175,8 @@ enum Watched154 {
             changed = store.setLocalWatched(keys: Array(WatchKeys.removal(store.watchedSet(profile: profile), ownIDs: own, keys: keys)),
                                             false, profile: profile)
         }
+        // de speler bewaart elke paar seconden: alleen bij een echte wijziging alle sleutels een nieuwe tijd
+        if changed && watched { touch(own + keys, profile: profile); StateSync.shared.watchedTouched(profile: profile) }
         if changed, item.type == .episode, let sid = item.seriesID, let s = self.series(id: sid) {
             updateSeriesFlag(s, imdb: item.imdbID, profile: profile)
         }
@@ -182,7 +203,11 @@ enum Watched154 {
         let complete = WatchKeys.seriesComplete(watched: watchedCount, aired: TraktSync.shared.aired(forms: forms), onServer: eps.count)
         let keys = forms.map { "w:s:" + $0 }
         if complete {
-            if !keys.allSatisfy(set.contains) { store.setLocalWatched(keys: keys, true, profile: profile) }
+            if !keys.allSatisfy(set.contains) {
+                store.setLocalWatched(keys: keys, true, profile: profile)
+                touch(keys, profile: profile)   // ook w:s: met een nieuwe tijd
+                StateSync.shared.watchedTouched(profile: profile)
+            }
         } else if WatchKeys.matches(set, keys: keys) {
             store.setLocalWatched(keys: Array(WatchKeys.removal(set, ownIDs: [], keys: keys)), false, profile: profile)
         }
