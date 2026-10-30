@@ -54,10 +54,11 @@ struct CategoriesView: View {
         }
     }
 
-    /// De bronnen achter een weergavenaam: per server de exacte naam (zo staan ze in het account)
+    /// De bronnen achter een weergavenaam: per server de exacte naam (zo staan ze in het account). Build 152: nooit
+    /// meer de weergavenaam zelf als bron (die is opgeschoond: "Netflix" verborg niets en ging zo de sync in); na het
+    /// opnieuw opbouwen van de lijst (andere spelling, "NETFLIX" → "Netflix") via de samenvoegsleutel.
     private func sources(of g: String) -> [CategoryIndex.Source] {
-        if let list = index.sources[kind]?[g], !list.isEmpty { return list }
-        return pid.map { [CategoryIndex.Source(server: $0, name: g)] } ?? []
+        CategoryHide.sources(of: g, in: index.sources[kind] ?? [:])
     }
 
     private func isOn(_ x: CategoryIndex.Source, hidden: Set<String>) -> Bool {

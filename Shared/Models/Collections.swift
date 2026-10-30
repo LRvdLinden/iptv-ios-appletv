@@ -259,7 +259,8 @@ struct HomeLayout: Codable, Hashable {
     /// Build 111: "upcoming" (Binnenkort) en "streaming" (Nieuw op streamingdiensten), TMDB; standaard aan, na "recent".
     /// Build 141: de rij "recent" (Nieuw toegevoegd) staat niet meer op Home; Nieuw op Bingr ("streaming") staat op zijn
     /// plek. De opgeslagen sleutel "recent" blijft bewaard voor andere apps (zie `effective` en `applying`).
-    static let knownKeys = ["continue", "mylist", "streaming", "upcoming", "foryou", "top10", "live", "browse", "categories", "movies", "series"]
+    /// Build 152: "cinema" (Nu in de bioscoop, TMDB), standaard aan, na "upcoming"; andere apps negeren hem.
+    static let knownKeys = ["continue", "mylist", "streaming", "upcoming", "cinema", "foryou", "top10", "live", "browse", "categories", "movies", "series"]
     /// Oudere sleutels van andere apps → huidige sleutel (plek en aan/uit blijven; dubbele vervallen)
     static let keyAliases = ["genres": "browse", "categorytiles": "browse"]
     /// Build 86: precies 5 getoonde rijen tussen Nu live (de rij "live") en de rij Categorieën (= de 6e rij eronder)
@@ -274,6 +275,7 @@ struct HomeLayout: Codable, Hashable {
         case "recent": return L("Recently added")
         case "upcoming": return L("Coming soon to Bingr")   // build 112: was "Binnenkort"
         case "streaming": return L("New on Bingr")          // build 112: was "Nieuw op streamingdiensten"
+        case "cinema": return L("In cinemas now")           // build 152
         case "foryou": return L("For you")
         case "top10": return L("Top 10")
         case "live": return L("Favorite channels")

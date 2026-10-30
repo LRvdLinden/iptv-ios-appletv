@@ -1108,7 +1108,8 @@
   "This server is very large. Hide categories you don't use and it will load faster.": "هذا الخادم كبير جدًا. أخفِ الفئات التي لا تستخدمها وسيُحمَّل بشكل أسرع.",
   "In hidden categories": "في الفئات المخفية",
   "Movie and series data": "بيانات الأفلام والمسلسلات",
-  "Streaming data": "بيانات البث"
+  "Streaming data": "بيانات البث",
+  "In cinemas now": "يُعرض الآن في السينما"
  },
  "de": {
   "%@ is now signed in.": "%@ ist jetzt angemeldet.",
@@ -2219,7 +2220,8 @@
   "This server is very large. Hide categories you don't use and it will load faster.": "Dieser Server ist sehr groß. Blende Kategorien aus, die du nicht nutzt, dann lädt er schneller.",
   "In hidden categories": "In ausgeblendeten Kategorien",
   "Movie and series data": "Film- und Seriendaten",
-  "Streaming data": "Streamingdaten"
+  "Streaming data": "Streamingdaten",
+  "In cinemas now": "Jetzt im Kino"
  },
  "es": {
   "%@ is now signed in.": "%@ ya ha iniciado sesión.",
@@ -3330,7 +3332,8 @@
   "This server is very large. Hide categories you don't use and it will load faster.": "Este servidor es muy grande. Oculta las categorías que no uses y cargará más rápido.",
   "In hidden categories": "En categorías ocultas",
   "Movie and series data": "Datos de películas y series",
-  "Streaming data": "Datos de streaming"
+  "Streaming data": "Datos de streaming",
+  "In cinemas now": "Ahora en cines"
  },
  "fr": {
   "%@ is now signed in.": "%@ est maintenant connecté.",
@@ -4441,7 +4444,8 @@
   "This server is very large. Hide categories you don't use and it will load faster.": "Ce serveur est très volumineux. Masque les catégories que tu n'utilises pas pour qu'il se charge plus vite.",
   "In hidden categories": "Dans les catégories masquées",
   "Movie and series data": "Données films et séries",
-  "Streaming data": "Données de streaming"
+  "Streaming data": "Données de streaming",
+  "In cinemas now": "Actuellement au cinéma"
  },
  "it": {
   "%@ is now signed in.": "%@ ha effettuato l’accesso.",
@@ -5552,7 +5556,8 @@
   "This server is very large. Hide categories you don't use and it will load faster.": "Questo server è molto grande. Nascondi le categorie che non usi e si caricherà più velocemente.",
   "In hidden categories": "Nelle categorie nascoste",
   "Movie and series data": "Dati di film e serie",
-  "Streaming data": "Dati di streaming"
+  "Streaming data": "Dati di streaming",
+  "In cinemas now": "Ora al cinema"
  },
  "nl": {
   "%@ is now signed in.": "%@ is nu ingelogd.",
@@ -6663,7 +6668,8 @@
   "This server is very large. Hide categories you don't use and it will load faster.": "Deze server is erg groot. Verberg categorieën die je niet gebruikt, dan laadt hij sneller.",
   "In hidden categories": "In verborgen categorieën",
   "Movie and series data": "Film- en seriedata",
-  "Streaming data": "Streamingdata"
+  "Streaming data": "Streamingdata",
+  "In cinemas now": "Nu in de bioscoop"
  },
  "pl": {
   "%@ is now signed in.": "%@ jest teraz zalogowany.",
@@ -7774,7 +7780,8 @@
   "This server is very large. Hide categories you don't use and it will load faster.": "Ten serwer jest bardzo duży. Ukryj kategorie, których nie używasz, a będzie ładować się szybciej.",
   "In hidden categories": "W ukrytych kategoriach",
   "Movie and series data": "Dane filmów i seriali",
-  "Streaming data": "Dane streamingu"
+  "Streaming data": "Dane streamingu",
+  "In cinemas now": "Teraz w kinach"
  },
  "pt": {
   "%@ is now signed in.": "%@ já tem sessão iniciada.",
@@ -8885,7 +8892,8 @@
   "This server is very large. Hide categories you don't use and it will load faster.": "Este servidor é muito grande. Oculta as categorias que não usas e carregará mais depressa.",
   "In hidden categories": "Em categorias ocultas",
   "Movie and series data": "Dados de filmes e séries",
-  "Streaming data": "Dados de streaming"
+  "Streaming data": "Dados de streaming",
+  "In cinemas now": "Agora nos cinemas"
  },
  "tr": {
   "%@ is now signed in.": "%@ artık oturum açtı.",
@@ -9996,7 +10004,8 @@
   "This server is very large. Hide categories you don't use and it will load faster.": "Bu sunucu çok büyük. Kullanmadığın kategorileri gizlersen daha hızlı yüklenir.",
   "In hidden categories": "Gizli kategorilerde",
   "Movie and series data": "Film ve dizi verileri",
-  "Streaming data": "Yayın verileri"
+  "Streaming data": "Yayın verileri",
+  "In cinemas now": "Şimdi sinemalarda"
  },
  "zh-Hans": {
   "%@ is now signed in.": "%@ 现已登录。",
@@ -11107,6 +11116,7 @@
   "This server is very large. Hide categories you don't use and it will load faster.": "此服务器非常大。隐藏你不使用的分类，加载会更快。",
   "In hidden categories": "在隐藏的分类中",
   "Movie and series data": "电影和剧集数据",
-  "Streaming data": "流媒体数据"
+  "Streaming data": "流媒体数据",
+  "In cinemas now": "正在影院热映"
  }
 }

@@ -1296,5 +1296,100 @@ do {
     eq(HomeDedupe.rank(audio: nil, multi: true, preferredAudio: "nl", appLanguage: "en", active: false), 5, "meertalig, andere server")
 }
 
+// MARK: build 152: verborgen categorieën goed verwerken (samengevoegd, sync, overslaan, weer aanzetten)
+do {
+    let sidA = "6F1C2D3E-0000-4000-8000-00000000000A", sidB = "6F1C2D3E-0000-4000-8000-00000000000B"
+    // zoals Instellingen → Categorieën: per samenvoegsleutel één regel met per server de exacte namen
+    let raws: [(sid: String, name: String)] = [(sidA, "| NL | NETFLIX"), (sidA, "| MULTI / LINGO | NETFLIX"), (sidB, "NL: Netflix HD"),
+                                               (sidA, "| NL | VIDEOLAND"), (sidB, "FR | Films")]
+    var map: [String: [(sid: String, name: String)]] = [:]
+    var shownOf: [String: String] = [:]
+    for r in raws {
+        let name = CategoryName.parse(r.name).name, k = CategoryName.mergeKey(name)
+        let shown = shownOf[k] ?? name
+        shownOf[k] = shown
+        map[shown, default: []].append(r)
+    }
+    eq(map.keys.sorted(), ["Films", "Netflix", "Videoland"], "samengevoegd: één regel Netflix")
+    let netflix = CategoryHide.sources(of: "Netflix", in: map)
+    eq(netflix.map { $0.name }, ["| NL | NETFLIX", "| MULTI / LINGO | NETFLIX", "NL: Netflix HD"], "Netflix: alle bronnen, exacte namen")
+    // andere spelling na opnieuw opbouwen: via de samenvoegsleutel, nooit de weergavenaam als bron
+    eq(CategoryHide.sources(of: "NETFLIX", in: map).count, 3, "andere spelling vindt dezelfde bronnen")
+    eq(CategoryHide.sources(of: "Bestaat niet", in: map).count, 0, "onbekend: geen bron (geen opgeschoonde sleutel)")
+
+    // verbergen: sleutels met de exacte ruwe naam, server-id klein
+    let keys = CategoryHide.keys(netflix)
+    eq(keys, [sidA.lowercased() + "|| NL | NETFLIX", sidA.lowercased() + "|| MULTI / LINGO | NETFLIX", sidB.lowercased() + "|NL: Netflix HD"],
+       "sleutels: server-id klein + exacte naam")
+    check(!keys.contains { $0.hasSuffix("|Netflix") }, "geen opgeschoonde naam in een sleutel")
+    var set = Set(keys)
+    let gA = AccountCategories.groups(set, sid: sidA), gB = AccountCategories.groups(set, sid: sidB)
+    check(CategoryHide.hidden("| NL | NETFLIX", merged: [:], groups: gA) && CategoryHide.hidden("| MULTI / LINGO | NETFLIX", merged: [:], groups: gA),
+          "beide bronnen op server A uit")
+    check(CategoryHide.hidden("NL: Netflix HD", merged: [:], groups: gB), "bron op server B uit")
+    check(!CategoryHide.hidden("| NL | VIDEOLAND", merged: [:], groups: gA), "andere categorie blijft aan")
+    // een (fout) opgeschoonde sleutel verbergt niets: daarom mag die er nooit in
+    check(!CategoryHide.hidden("| NL | NETFLIX", merged: [:], groups: AccountCategories.groups([sidA.lowercased() + "|Netflix"], sid: sidA)),
+          "opgeschoonde sleutel verbergt de ruwe naam niet")
+    // samengevoegd in Beheren (Videoland → Netflix): volgt het doel, zoals Android
+    check(CategoryHide.hidden("| NL | VIDEOLAND", merged: ["| NL | VIDEOLAND": "| NL | NETFLIX"], groups: gA), "samengevoegd in Beheren: doel uit = uit")
+    check(!CategoryHide.hidden("x", merged: ["x": "x"], groups: []), "lege set: niets uit")
+
+    // sync: apparaat 1 (Apple) zet uit, apparaat 2 (Android/web) voegt samen: dezelfde sleutels, dezelfde betekenis
+    let local = ListMerge.diff((present: [:], removed: [:]), current: set, now: 1000)
+    let other = ListMerge.merge(local: (present: [:], removed: [:]), server: local)
+    eq(Set(other.present.keys), set, "sync: zelfde sleutels op het andere apparaat")
+    // oude sleutel (build 128, server-id in hoofdletters) betekent hetzelfde
+    eq(AccountCategories.normalize(sidA + "|| NL | NETFLIX"), keys[0], "oude sleutel met hoofdletters = nieuwe sleutel")
+    eq(AccountCategories.groups([sidA + "|| NL | NETFLIX"], sid: sidA), Set(["| NL | NETFLIX"]), "oude sleutel leest als dezelfde categorie")
+
+    // weer tonen: alle bronnen tegelijk aan, als verwijdering gesynct
+    for k in keys { set.remove(k) }
+    let back = ListMerge.diff(local, current: set, now: 2000)
+    check(keys.allSatisfy { back.removed[$0] == 2000 && back.present[$0] == nil }, "weer aan: verwijdering per bron")
+    let other2 = ListMerge.merge(local: other, server: back)
+    check(other2.present.isEmpty, "weer aan op het andere apparaat")
+
+    // overslaan bij het inlezen en terugkomen na weer aanzetten (ook na herstart: de samenvatting is bewaard)
+    let hiddenA = AccountCategories.groups(Set(keys), sid: sidA)
+    let skip = SkipFilter { CategoryHide.hidden($0, merged: [:], groups: hiddenA) }
+    let b = SkippedCatalog.Builder()
+    var loaded: [String] = []
+    for (i, g) in ["| NL | NETFLIX", "| NL | VIDEOLAND", "| MULTI / LINGO | NETFLIX", "| NL | NETFLIX"].enumerated() {
+        if skip.skip(g) { b.add(.movie, id: "xv\(i)", title: "T\(i)", group: g) } else { loaded.append(g) }
+    }
+    let sk = b.finish()!
+    eq(loaded, ["| NL | VIDEOLAND"], "verborgen bronnen niet ingelezen")
+    eq(sk.count(.movie), 3, "overgeslagen geteld")
+    let sum = sk.summary
+    eq(sum.rows.count, 0, "samenvatting zonder zoekindex")
+    eq(sum.count(.movie), 3, "samenvatting houdt de aantallen")
+    let restored = try? JSONDecoder().decode(SkippedCatalog.self, from: JSONEncoder().encode(sum))
+    eq(restored, sum, "samenvatting bewaren en terug inlezen (herstart)")
+    check(!sum.needsRefetch(stillHidden: { CategoryHide.hidden($0, merged: [:], groups: hiddenA) }), "nog uit: niet opnieuw ophalen")
+    check(sum.needsRefetch(stillHidden: { CategoryHide.hidden($0, merged: [:], groups: []) }), "weer aan: opnieuw ophalen (ook andere server)")
+    // kinderprofiel: account-verbergen telt niet, alleen kindercategorieën; een overgeslagen kindercategorie komt terug
+    let kidsSum = { () -> SkippedCatalog in let k = SkippedCatalog.Builder(); k.count(.movie, "NL | Kids"); k.count(.movie, "NL | Horror"); return k.finish()! }()
+    check(kidsSum.needsRefetch(stillHidden: { !KidsCategory.isKids($0) }), "kinderprofiel: verborgen kindercategorie opnieuw ophalen")
+    check(!SkippedCatalog(cats: [.init(k: .movie, g: "NL | Horror", n: 4)]).needsRefetch(stillHidden: { !KidsCategory.isKids($0) }),
+          "kinderprofiel: geen kindercategorie = niet ophalen")
+
+    // opnieuw ophalen: nu, later (er loopt al iets) of niet
+    eq(CategoryHide.refetch(needed: true, busy: false), .now, "weer aan, niets bezig: nu ophalen")
+    eq(CategoryHide.refetch(needed: true, busy: true), .later, "weer aan tijdens bijwerken: daarna alsnog")
+    eq(CategoryHide.refetch(needed: false, busy: true), .none, "niets weer aan: niets doen")
+}
+
+// MARK: build 152: rij Nu in de bioscoop
+do {
+    let rows = [NowPlaying.Row(id: 1, popularity: 10, adult: false), NowPlaying.Row(id: 2, popularity: 50, adult: false),
+                NowPlaying.Row(id: 3, popularity: 99, adult: true), NowPlaying.Row(id: 2, popularity: 50, adult: false),
+                NowPlaying.Row(id: 4, popularity: 10, adult: false), NowPlaying.Row(id: 0, popularity: 80, adult: false)]
+    eq(NowPlaying.pick(rows), [2, 1, 4], "populairste eerst, zonder volwassenen/dubbele, gelijk = TMDB-volgorde")
+    eq(NowPlaying.pick((1...40).map { NowPlaying.Row(id: $0, popularity: Double($0), adult: false) }).count, 20, "hooguit 20")
+    eq(NowPlaying.pick([]), [], "leeg: geen rij")
+    eq(NowPlaying.region, "NL", "regio NL")
+}
+
 print("\(checks) controles, \(failures) fout")
 exit(failures == 0 ? 0 : 1)

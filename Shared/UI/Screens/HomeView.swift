@@ -441,6 +441,7 @@ struct HomeView: View {
         case "mylist": return !(myListMovies.isEmpty && myListSeries.isEmpty)
         case "recent": return !index.recentTitles.isEmpty   // build 111: Home = films én series, laatste 30 dagen
         case "upcoming": return !(discover[.upcoming] ?? []).isEmpty
+        case "cinema": return !(discover[.cinema] ?? []).isEmpty   // build 152: Nu in de bioscoop
         case "streaming": return !newOnBingrItems.isEmpty   // build 140: Nieuw op Bingr uit je bibliotheek
         case "foryou": return !forYou.isEmpty
         case "movies": return !index.popularMovies.isEmpty
@@ -475,6 +476,7 @@ struct HomeView: View {
         case "mylist": myListRows
         case "recent": recentRow
         case "upcoming": discoverRow(.upcoming)
+        case "cinema": discoverRow(.cinema)   // build 152
         case "streaming": newOnBingrRow
         case "foryou": forYouRow
         case "live": favoriteChannelsRow

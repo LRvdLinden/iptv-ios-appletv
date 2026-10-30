@@ -12,12 +12,19 @@ import Foundation
 // Zelfde sleutels en regels op Android, Samsung TV en de webspeler.
 
 enum DiscoverKind: String, CaseIterable, Codable, Hashable, Sendable {
-    case upcoming, streaming
+    /// Build 152: `cinema` = "Nu in de bioscoop" (TMDB `/movie/now_playing`; IMDb heeft geen openbare API)
+    case upcoming, streaming, cinema
 
     /// Sleutel in de Home-indeling (HomeLayout), gelijk op alle platforms
     var homeKey: String { rawValue }
     /// Getoonde naam (build 112: "Binnenkort op Bingr" / "Nieuw op Bingr"); de sleutels blijven upcoming/streaming
-    var title: String { self == .upcoming ? L("Coming soon to Bingr") : L("New on Bingr") }
+    var title: String {
+        switch self {
+        case .upcoming: return L("Coming soon to Bingr")
+        case .streaming: return L("New on Bingr")
+        case .cinema: return L("In cinemas now")
+        }
+    }
     /// Build 112: "Nieuw op Bingr" alleen met titels uit de eigen bibliotheek (meteen afspeelbaar)
     var onlyLibrary: Bool { self == .streaming }
     /// Build 112: bronvermelding van TMDB en JustWatch, één keer in Instellingen → Over (niet meer onder de rijen)
@@ -174,7 +181,10 @@ actor DiscoverStore {
 
     /// Direct uit de cache (ook als die verlopen is), zonder netwerk; Binnenkort zonder wat intussen uit is.
     nonisolated static func cached(_ kind: DiscoverKind, kids: Bool) -> [DiscoverItem] {
-        let items = saved(kind, kids: kids)?.items ?? []
+        let s = saved(kind, kids: kids)
+        // build 152: wat er in de bioscoop draait, verandert per week: een oude lijst (geen netwerk) niet meer tonen
+        if kind == .cinema, let s, Date().timeIntervalSince(s.date) > NowPlaying.maxStale { return [] }
+        let items = s?.items ?? []
         guard kind == .upcoming else { return items }
         let today = DiscoverItem.day(Date())
         return items.filter { ($0.date ?? "") > today }
@@ -203,6 +213,7 @@ actor DiscoverStore {
             let release_date: String?, first_air_date: String?
             let poster_path: String?, backdrop_path: String?, overview: String?
             let adult: Bool?
+            let popularity: Double?
         }
         let results: [R]?
     }
@@ -224,6 +235,7 @@ actor DiscoverStore {
     /// (films t/m PG), zoals de Top 10 voor kids.
     private static func fetch(_ kind: DiscoverKind, kids: Bool) async -> [DiscoverItem] {
         guard Secrets.isSet(Secrets.tmdbAPIKey) else { return [] }
+        if kind == .cinema { return await nowPlaying(kids: kids) }
         let lang = TMDB.language, region = Self.region
         let now = Date()
         func d(_ days: Double) -> String { DiscoverItem.day(now.addingTimeInterval(days * 86400)) }
@@ -245,6 +257,8 @@ actor DiscoverStore {
                 moviePath = "/movie/upcoming"
             }
             tq["first_air_date.gte"] = d(1); tq["first_air_date.lte"] = d(120)
+        case .cinema:
+            return []   // `nowPlaying`
         case .streaming:
             moviePath = "/discover/movie"
             mq["watch_region"] = region; mq["with_watch_monetization_types"] = "flatrate"
@@ -276,6 +290,47 @@ actor DiscoverStore {
         // Binnenkort: de 40 populairste, op datum (eerst wat het eerst uitkomt)
         if kind == .upcoming { out.sort { ($0.date ?? "", $0.title) < ($1.date ?? "", $1.title) } }
         return out
+    }
+
+    /// Build 152: "Nu in de bioscoop": TMDB `/movie/now_playing` (regio NL, app-taal), twee pagina's, populairste
+    /// eerst, hooguit 20 (`NowPlaying.pick`). Kinderprofiel: animatie/familie t/m PG die de laatste 60 dagen in de
+    /// bioscoop uitkwam (`/discover/movie`, zoals de andere TMDB-rijen voor kids).
+    private static func nowPlaying(kids: Bool) async -> [DiscoverItem] {
+        let lang = TMDB.language, region = NowPlaying.region
+        var pages: [Page] = []
+        if kids {
+            let now = Date()
+            for page in ["1", "2"] {
+                guard let p: Page = await TMDB.get("/discover/movie", [
+                    "language": lang, "region": region, "include_adult": "false", "sort_by": "popularity.desc", "page": page,
+                    "with_genres": "16|10751", "certification_country": "US", "certification.lte": "PG",
+                    "with_release_type": "2|3",
+                    "release_date.gte": DiscoverItem.day(now.addingTimeInterval(-60 * 86400)),
+                    "release_date.lte": DiscoverItem.day(now),
+                ]) else { break }
+                pages.append(p)
+            }
+        } else {
+            for page in ["1", "2"] {
+                guard let p: Page = await TMDB.get("/movie/now_playing", ["language": lang, "region": region, "page": page]) else { break }
+                pages.append(p)
+            }
+        }
+        let all = pages.flatMap { $0.results ?? [] }
+        var byID: [Int: Page.R] = [:]
+        var rows: [NowPlaying.Row] = []
+        for r in all where byID[r.id] == nil {
+            guard let t = r.title ?? r.name, !t.isEmpty, let poster = r.poster_path, !poster.isEmpty else { continue }
+            byID[r.id] = r
+            rows.append(NowPlaying.Row(id: r.id, popularity: r.popularity ?? 0, adult: r.adult ?? false))
+        }
+        return NowPlaying.pick(rows).compactMap { id -> DiscoverItem? in
+            guard let r = byID[id], let t = r.title ?? r.name else { return nil }
+            let o = r.original_title
+            return DiscoverItem(tmdbID: r.id, isShow: false, title: t, originalTitle: o == t ? nil : o,
+                                date: r.release_date.flatMap { $0.isEmpty ? nil : $0 }, posterPath: r.poster_path,
+                                backdropPath: r.backdrop_path, overview: r.overview.flatMap { $0.isEmpty ? nil : $0 }, kind: .cinema)
+        }
     }
 
     /// Koppelen aan je bibliotheek (op de achtergrond): eerst het TMDB-id van de bron, dan titel + jaar.

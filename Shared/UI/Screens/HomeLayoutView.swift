@@ -67,6 +67,7 @@ struct HomeLayoutView: View {
         case "mylist": return "plus"   // Mijn lijst = plus (was een hartje), zoals de knop op de detailpagina
         case "recent": return "sparkles"
         case "upcoming": return "calendar"
+        case "cinema": return "film"   // build 152
         case "streaming": return "play.tv"
         case "foryou": return "hand.thumbsup"
         case "top10": return "chart.bar"

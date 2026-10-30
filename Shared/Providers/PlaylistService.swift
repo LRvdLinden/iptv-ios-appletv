@@ -58,7 +58,10 @@ final class PlaylistService: ObservableObject {
             .removeDuplicates()
             .dropFirst()
             .receive(on: RunLoop.main)
-            .sink { [weak self] _ in _ = self?.applyCustomizations() }
+            .sink { [weak self] _ in
+                _ = self?.applyCustomizations()
+                self?.refetchOtherServersIfUnhidden()   // build 152: bijv. naar een kinderprofiel
+            }
             .store(in: &bag)
         // build 140: categorieën aan/uit voor het account gewijzigd (ook via de sync) → opnieuw filteren. Build 140:
         // even wachten, zodat een reeks tikken in Instellingen → Categorieën één keer filtert (niet per tik)
@@ -66,7 +69,10 @@ final class PlaylistService: ObservableObject {
             .removeDuplicates()
             .dropFirst()
             .debounce(for: .milliseconds(600), scheduler: RunLoop.main)
-            .sink { [weak self] _ in _ = self?.applyCustomizations() }
+            .sink { [weak self] _ in
+                _ = self?.applyCustomizations()
+                self?.refetchOtherServersIfUnhidden()   // build 152
+            }
             .store(in: &bag)
         // nieuwe IMDb-classificaties binnen → leeftijdsfilter opnieuw toepassen
         MetadataService.shared.$cache
@@ -301,6 +307,7 @@ final class PlaylistService: ObservableObject {
             guard let self, self.updateRound == round else { return }
             self.updateTask = nil
             self.updatingServers = false
+            self.retryPendingRefetch()   // build 152
         }
     }
 
@@ -351,7 +358,7 @@ final class PlaylistService: ObservableObject {
         cancelServerUpdate()   // build 145: handmatig gaat voor (één server tegelijk)
         refreshingAll = true
         refreshFailed = []
-        defer { refreshingAll = false; refreshProgress = nil }
+        defer { refreshingAll = false; refreshProgress = nil; retryPendingRefetch() }
         let all = CloudStore.shared.playlists
         let activeID = source?.id
         let ordered = all.filter { $0.id == activeID } + all.filter { $0.id != activeID }
@@ -500,22 +507,95 @@ final class PlaylistService: ObservableObject {
     /// Build 151: categorie uit (zelfde regel als in `apply` en de diagnose; kinderslot telt hier niet, dat kan open)
     nonisolated static func categoryHidden(_ g: String, _ ctx: FilterContext) -> Bool {
         let c = ctx.custom
-        return !ctx.kids && (ctx.hiddenGroups.contains(g) || c.hidden.contains(Customization.groupKey(g))
+        return !ctx.kids && (CategoryHide.hidden(g, merged: c.merged, groups: ctx.hiddenGroups) || c.hidden.contains(Customization.groupKey(g))
                              || c.hidden.contains(Customization.groupKey(c.merged[g] ?? g)))
     }
 
     /// Build 151: niet ingelezen categorie die nu wél zichtbaar is (aangezet, ander profiel)? Dan deze server op de
     /// achtergrond opnieuw ophalen (één keer per lijst). Andere servers krijgen hem bij hun volgende keer bijwerken.
     private var refetchedRaw = -1
+    /// Build 152: weer aangezet terwijl er al iets liep (bijwerken, alles verversen, laden): daarna alsnog ophalen
+    private var refetchPending = false
     private func refetchIfUnhidden(_ s: PlaylistSource, _ ctx: FilterContext) {
-        guard let sk = rawLibrary.skipped, refetchedRaw != rawVersion, !Screenshots.isActive,
-              !refreshingAll, updateTask == nil, !isLoading else { return }
-        let still: (String) -> Bool = { g in ctx.kids ? !KidsCategory.isKids(g) : Self.categoryHidden(g, ctx) }
-        guard sk.needsRefetch(stillHidden: still) else { return }
-        refetchedRaw = rawVersion
-        Task { @MainActor [weak self] in
-            guard let self, self.source?.id == s.id else { return }
-            _ = await self.refresh(s, showSpinner: false)
+        guard let sk = rawLibrary.skipped, refetchedRaw != rawVersion, !Screenshots.isActive else { refetchPending = false; return }
+        let still: (String) -> Bool = { g in Self.stillHidden(g, ctx) }
+        switch CategoryHide.refetch(needed: sk.needsRefetch(stillHidden: still), busy: refreshingAll || updateTask != nil || isLoading) {
+        case .none: refetchPending = false
+        case .later: refetchPending = true
+        case .now:
+            refetchPending = false
+            refetchedRaw = rawVersion
+            Task { @MainActor [weak self] in
+                guard let self, self.source?.id == s.id else { return }
+                _ = await self.refresh(s, showSpinner: false)
+            }
+        }
+    }
+
+    /// Build 152: nog steeds niet zichtbaar (kinderprofiel: alleen kindercategorieën; anders: categorie uit)
+    nonisolated static func stillHidden(_ g: String, _ ctx: FilterContext) -> Bool {
+        ctx.kids ? !KidsCategory.isKids(g) : categoryHidden(g, ctx)
+    }
+
+    /// Build 152: na bijwerken / alles verversen: een weer aangezette categorie van de open server alsnog ophalen
+    private func retryPendingRefetch() {
+        guard refetchPending, let s = source else { return }
+        refetchIfUnhidden(s, context(for: s))
+    }
+
+    // MARK: build 152: andere servers na weer aanzetten
+
+    nonisolated static func skippedURL(_ s: PlaylistSource) -> URL {
+        AppDirs.caches.appendingPathComponent("skipped-\(s.id.uuidString).json")
+    }
+
+    /// Wat er bij het laatste ophalen van een server niet is ingelezen (alleen categorieën en aantallen). Zonder
+    /// bestand (lijst van build 151): één keer uit de bewaarde lijst en dan apart bewaard.
+    nonisolated static func readSkippedSummary(_ s: PlaylistSource) -> SkippedCatalog? {
+        let url = skippedURL(s)
+        if let d = try? Data(contentsOf: url) { return try? JSONDecoder().decode(SkippedCatalog.self, from: d) }
+        guard FileManager.default.fileExists(atPath: cacheURL(s).path), let lib = readCache(s) else { return nil }
+        let sum = lib.skipped?.summary ?? SkippedCatalog()
+        if let d = try? JSONEncoder().encode(sum) { try? d.write(to: url, options: .atomic) }
+        return sum.isEmpty ? nil : sum
+    }
+
+    private var othersRefetchTask: Task<Void, Never>?
+    private var othersRefetchAgain = false
+    /// Build 152: een categorie weer aan (ook via de sync of een ander profiel): andere Xtream-servers waarvan die
+    /// categorie bij het laatste ophalen is overgeslagen, op de achtergrond opnieuw ophalen (één voor één, niet tijdens
+    /// het afspelen), zodat hij ook in de rijen over alle servers (Nieuw op Bingr, Voor jou, zoeken) terugkomt.
+    func refetchOtherServersIfUnhidden() {
+        guard !Screenshots.isActive else { return }
+        if othersRefetchTask != nil { othersRefetchAgain = true; return }
+        guard CloudStore.shared.playlists.contains(where: { $0.id != source?.id && $0.kind == .xtream }) else { return }
+        othersRefetchTask = Task { @MainActor [weak self] in
+            var done: [UUID] = []
+            repeat {
+                guard let self else { return }
+                self.othersRefetchAgain = false
+                let activeID = self.source?.id
+                for p in CloudStore.shared.playlists where p.id != activeID && p.kind == .xtream {
+                    guard !Task.isCancelled else { break }
+                    // er loopt al een ronde bijwerken of alles verversen: eerst die afwachten (die haalt ook deze server)
+                    while self.refreshingAll || self.updateTask != nil { try? await Task.sleep(nanoseconds: 2_000_000_000) }
+                    // per server pas nu bepalen (na het wachten kan hij al opnieuw opgehaald zijn)
+                    let ctx = self.context(for: p)
+                    let due = await Task.detached(priority: .utility) { () -> Bool in
+                        guard let sk = Self.readSkippedSummary(p) else { return false }
+                        return sk.needsRefetch(stillHidden: { Self.stillHidden($0, ctx) })
+                    }.value
+                    guard due else { continue }
+                    await CrossServer.shared.waitUntilNotPlaying()
+                    // intussen verwijderd of de open server geworden (die regelt `refetchIfUnhidden`)
+                    guard CloudStore.shared.playlists.contains(where: { $0.id == p.id }), self.source?.id != p.id else { continue }
+                    if await CrossServer.withTimeout(120, { await self.refresh(p, showSpinner: false) }) == true, !done.contains(p.id) {
+                        done.append(p.id)
+                    }
+                }
+            } while self?.othersRefetchAgain == true && !Task.isCancelled
+            self?.othersRefetchTask = nil
+            if !done.isEmpty { CrossServer.shared.serversRefreshed(done) }
         }
     }
 
@@ -594,7 +674,7 @@ final class PlaylistService: ObservableObject {
         var cat: [String: Bool] = [:], kid: [String: Bool] = [:]
         func catHidden(_ g: String) -> Bool {
             if let v = cat[g] { return v }
-            let v = !ctx.kids && (ctx.hiddenGroups.contains(g) || c.hidden.contains(Customization.groupKey(g))
+            let v = !ctx.kids && (CategoryHide.hidden(g, merged: c.merged, groups: ctx.hiddenGroups) || c.hidden.contains(Customization.groupKey(g))
                                   || c.hidden.contains(Customization.groupKey(c.merged[g] ?? g)))
             cat[g] = v
             return v
@@ -702,7 +782,7 @@ final class PlaylistService: ObservableObject {
             let ok = (!ctx.kids || KidsCategory.isKids(g))
                 && !c.hidden.contains(Customization.groupKey(g))
                 && !c.hidden.contains(Customization.groupKey(c.merged[g] ?? g))
-                && !ctx.hiddenGroups.contains(g)
+                && !CategoryHide.hidden(g, merged: c.merged, groups: ctx.hiddenGroups)   // build 152: ook het doel van samenvoegen
                 && !isLocked(g)
                 && !isLocked(c.merged[g] ?? g)
             groupOK[g] = ok
@@ -1191,6 +1271,10 @@ final class PlaylistService: ObservableObject {
         await Task.detached(priority: .utility) {
             // build 149: in stukken naar het bestand (geen volledige kopie van de hele lijst als JSON in het geheugen)
             try? Self.writeLibrary(lib, to: url)
+            // build 152: wat niet is ingelezen apart (klein), voor het opnieuw ophalen na weer aanzetten
+            let side = Self.skippedURL(s)
+            if let sk = lib.skipped, let d = try? JSONEncoder().encode(sk.summary) { try? d.write(to: side, options: .atomic) }
+            else { try? FileManager.default.removeItem(at: side) }
         }.value
     }
 
@@ -1209,7 +1293,10 @@ final class PlaylistService: ObservableObject {
             throw error
         }
     }
-    func clearCache(_ s: PlaylistSource) { try? FileManager.default.removeItem(at: Self.cacheURL(s)) }
+    func clearCache(_ s: PlaylistSource) {
+        try? FileManager.default.removeItem(at: Self.cacheURL(s))
+        try? FileManager.default.removeItem(at: Self.skippedURL(s))   // build 152
+    }
 }
 
 // MARK: - Build 128: catalogi en afleveringen van andere servers (zonder te wisselen)

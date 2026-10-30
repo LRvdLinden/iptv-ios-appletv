@@ -273,3 +273,76 @@ enum HomeDedupe {
         return lang * 2 + (active ? 0 : 1)
     }
 }
+
+// MARK: - Build 152: verborgen categorieën goed verwerken
+
+/// Build 152: één regel voor "categorie uit" (account-set, `account.hiddenCategories`), zoals Android en web.
+///
+/// Gevonden bij het nalopen van build 150/151:
+/// - Een categorie die in Beheren is samengevoegd met een andere (`Customization.merged`), bleef zichtbaar als de
+///   categorie waarin hij is samengevoegd uit stond: Apple keek alleen naar de eigen naam, Android ook naar het doel.
+/// - In Instellingen → Categorieën viel een weergavenaam die na het opnieuw opbouwen van de lijst anders gespeld was
+///   ("NETFLIX" → "Netflix") terug op de **opgeschoonde** naam als bron: dan kwam die in de sleutel (en de sync), en
+///   verborg hij niets (de sleutel moet de exacte naam van de server hebben).
+/// - Weer aanzetten haalde alleen de open server opnieuw op, en alleen als er op dat moment niets anders liep
+///   (bijwerken van de servers, alles verversen): anders bleef de categorie leeg tot de volgende keer bijwerken, ook na
+///   een herstart. Andere servers kregen hem pas bij hun volgende keer bijwerken terug.
+enum CategoryHide {
+    /// Uit voor het account: de exacte naam van de server, of de categorie waarin hij in Beheren is samengevoegd
+    static func hidden(_ g: String, merged: [String: String], groups: Set<String>) -> Bool {
+        guard !groups.isEmpty else { return false }
+        if groups.contains(g) { return true }
+        if let m = merged[g], m != g, groups.contains(m) { return true }
+        return false
+    }
+
+    /// De bronnen achter een weergavenaam. Staat de naam er (na het opnieuw opbouwen) anders gespeld in, dan via de
+    /// samenvoegsleutel. Nooit de weergavenaam zelf als bron: die is opgeschoond en hoort niet in een sleutel.
+    static func sources<S>(of display: String, in map: [String: [S]]) -> [S] {
+        if let l = map[display], !l.isEmpty { return l }
+        let k = CategoryName.mergeKey(display)
+        var out: [S] = []
+        for (name, l) in map where CategoryName.mergeKey(name) == k { out += l }
+        return out
+    }
+
+    /// Sleutels voor het account: per bron server-id (kleine letters) + `|` + exacte naam
+    static func keys(_ sources: [(sid: String, name: String)]) -> [String] {
+        sources.map { AccountCategories.key(sid: $0.sid, group: $0.name) }
+    }
+
+    /// Wat moet er gebeuren als een niet ingelezen categorie weer zichtbaar is: nu opnieuw ophalen, later (er loopt
+    /// al iets: bijwerken, alles verversen, laden) of niets
+    enum Refetch: Equatable { case none, now, later }
+    static func refetch(needed: Bool, busy: Bool) -> Refetch { !needed ? .none : (busy ? .later : .now) }
+}
+
+extension SkippedCatalog {
+    /// Build 152: alleen de categorieën met aantallen (zonder zoekindex), klein genoeg om naast de lijst te bewaren
+    /// (`skipped-<server>.json`): zo weet de app zonder de hele lijst in te lezen of een andere server opnieuw
+    /// opgehaald moet worden nadat een categorie weer aan is gezet.
+    var summary: SkippedCatalog { SkippedCatalog(cats: cats, groups: [], rows: []) }
+}
+
+// MARK: - Build 152: rij "Nu in de bioscoop" op Home
+
+/// Build 152: welke films de rij "Nu in de bioscoop" toont (TMDB `/movie/now_playing`; IMDb heeft geen openbare API
+/// en scrapen mag niet). Zonder volwassenentitels en dubbele, populairste eerst (bij gelijke populariteit de volgorde
+/// van TMDB), hooguit `limit`.
+enum NowPlaying {
+    /// Regio van de bioscooplijst
+    static let region = "NL"
+    /// Een bewaarde lijst ouder dan dit wordt niet meer getoond (geen netwerk: de rij verdwijnt)
+    static let maxStale: TimeInterval = 3 * 86400
+    static let limit = 20
+
+    struct Row: Equatable { var id: Int; var popularity: Double; var adult: Bool }
+
+    static func pick(_ rows: [Row], limit: Int = NowPlaying.limit) -> [Int] {
+        var seen = Set<Int>()
+        let ok = rows.enumerated().filter { !$0.element.adult && $0.element.id > 0 && seen.insert($0.element.id).inserted }
+        return ok.sorted { a, b in
+            a.element.popularity != b.element.popularity ? a.element.popularity > b.element.popularity : a.offset < b.offset
+        }.prefix(limit).map(\.element.id)
+    }
+}
