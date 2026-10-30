@@ -1,0 +1,60 @@
+{
+  "_doc": "Build 154: gedeelde testgevallen voor de inhoudssleutels van 'gezien' en de titelopschoning. Zie docs/ACCOUNT.md, Build 154.",
+  "norm": [
+    ["Amélie", "amelie"],
+    ["Fast & Furious 7", "fastandfurious7"],
+    ["Disney+", "disneyplus"],
+    ["Blade Runner 2049", "bladerunner2049"],
+    ["The Matrix", "thematrix"],
+    ["Spider-Man: No Way Home", "spidermannowayhome"],
+    ["La Casa de Papel", "lacasadepapel"],
+    ["Pokémon: De Film", "pokemondefilm"],
+    ["進撃の巨人", "進撃の巨人"],
+    ["WALL·E", "walle"]
+  ],
+  "clean": [
+    ["NCIS: Hawaii", "NCIS: Hawaii", null],
+    ["FBI: Most Wanted", "FBI: Most Wanted", null],
+    ["CSI: Vegas", "CSI: Vegas", null],
+    ["BBC - Planet Earth", "BBC - Planet Earth", null],
+    ["NL: Bioscoop", "Bioscoop", null],
+    ["Blade Runner 2049", "Blade Runner 2049", null],
+    ["Sub Zero", "Sub Zero", null],
+    ["Dune (2021)", "Dune", 2021],
+    ["Dune [2021]", "Dune", 2021],
+    ["Dune - 2021", "Dune", 2021],
+    ["┃NL┃ Dune (2021)", "Dune", 2021],
+    ["1917", "1917", null],
+    ["2012 (2009)", "2012", 2009]
+  ],
+  "movieKeys": [
+    {"title": "Dune (2021)", "year": null, "tmdb": "438631", "imdb": "tt1160419",
+     "keys": ["w:m:tmdb:438631", "w:m:imdb:tt1160419", "w:m:t:dune|2021"]},
+    {"title": "┃NL┃ Vaiana", "year": 2016, "tmdb": null, "imdb": null,
+     "keys": ["w:m:t:vaiana|2016"]},
+    {"title": "Onbekend", "year": null, "tmdb": null, "imdb": null,
+     "keys": ["w:m:t:onbekend|0"]},
+    {"title": "Amélie", "year": 2001, "tmdb": "194", "imdb": null,
+     "keys": ["w:m:tmdb:194", "w:m:t:amelie|2001"]}
+  ],
+  "episodeKeys": [
+    {"show": "Game of Thrones", "year": 2011, "tmdb": "1399", "imdb": "tt0944947", "season": 1, "episode": 2,
+     "keys": ["w:e:tmdb:1399|1-2", "w:e:imdb:tt0944947|1-2", "w:e:t:gameofthrones|2011|1-2"]},
+    {"show": "|NL| Flikken Maastricht", "year": null, "tmdb": null, "imdb": null, "season": 18, "episode": 7,
+     "keys": ["w:e:t:flikkenmaastricht|0|18-7"]},
+    {"show": "Zonder nummer", "year": 2020, "tmdb": "1", "imdb": null, "season": null, "episode": 3,
+     "keys": []}
+  ],
+  "showKeys": [
+    {"show": "Game of Thrones", "year": 2011, "tmdb": "1399", "imdb": null,
+     "keys": ["w:s:tmdb:1399", "w:s:t:gameofthrones|2011"]}
+  ],
+  "lookup": [
+    {"stored": ["w:m:t:dune|2021"], "title": "Dune", "year": 2022, "tmdb": null, "imdb": null, "watched": true},
+    {"stored": ["w:m:t:dune|2021"], "title": "Dune", "year": 2023, "tmdb": null, "imdb": null, "watched": false},
+    {"stored": ["w:m:t:dune|0"], "title": "Dune", "year": 2021, "tmdb": null, "imdb": null, "watched": false},
+    {"stored": ["w:m:t:dune|0"], "title": "Dune", "year": null, "tmdb": null, "imdb": null, "watched": true},
+    {"stored": ["w:m:tmdb:438631"], "title": "Duin", "year": 2021, "tmdb": "438631", "imdb": null, "watched": true},
+    {"stored": ["w:m:imdb:tt1160419"], "title": "x", "year": null, "tmdb": "438631", "imdb": "tt1160419", "watched": true}
+  ]
+}

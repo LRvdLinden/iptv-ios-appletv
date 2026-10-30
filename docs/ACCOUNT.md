@@ -1688,3 +1688,83 @@ apps/pagina's schreven de laatste 30 dagen niet meer rechtstreeks. Een leesbare 
 alleen nog bij accounts met een apparaat ouder dan build 146; de stap "bestaande gegevens versleutelen" maakt de andere
 kopieën leeg. Het merkteken `profiles_legacy_auto_148` voorkomt dat een latere deploy een handmatige terugzetting naar
 `"mirror"` ongedaan maakt. Naar `"off"` pas als `profiles_status` geen accounts met oude apparaten meer telt.
+
+## Build 154: gezien over alle servers en betrouwbare Trakt-sync (versie 1.0.3)
+
+Geldt voor Apple, Android/Android TV en de webspeler (en dus ook Windows). De server verandert niet:
+`put_state` bewaart `profile.<id>` al zoals hij is. De testgevallen staan in `docs/watched_keys_cases.json`;
+elk platform draait ze in zijn eigen tests.
+
+### Inhoudssleutels voor "gezien"
+Naast de bestaande id-sleutels (`xv123`, `ep:<serieID>|s-e`, …) komen er **extra** sleutels in dezelfde set
+`profile.<id>.watched` (`[{id, at}]` met `removed.watched`). Oudere apps bewaren onbekende id's gewoon en
+blijven werken.
+
+| Soort | Sleutels (alle bekende schrijven) |
+|---|---|
+| Film | `w:m:tmdb:<id>`, `w:m:imdb:<tt…>`, `w:m:t:<norm>\|<jaar>` |
+| Serie (alle uitgezonden afleveringen gezien) | `w:s:<show>` |
+| Aflevering | `w:e:<show>\|<seizoen>-<aflevering>` |
+
+- `<show>` = `tmdb:<id>`, anders `imdb:<tt…>`, anders `t:<norm>|<jaar>`. Bij een aflevering wordt **één** show-vorm
+  per bekende id geschreven (dus met tmdb én titel: twee sleutels).
+- `<jaar>`: vier cijfers, of `0` als het onbekend is. Seizoen en aflevering zijn gehele getallen zonder voorloopnullen.
+  Een aflevering zonder seizoen- of afleveringsnummer krijgt geen `w:e:`-sleutel.
+- `<norm>` (titel-normalisatie, op alle platforms gelijk, los van de weergave-opschoning):
+  1. Begin bij de **opgeschoonde weergavetitel** (zonder taal-, land- en pipe-aanduidingen, build 150/153),
+     zonder een eigen hernoeming van de gebruiker; een jaartal tussen haakjes achteraan gaat eraf.
+  2. Unicode NFKD, diakritische tekens weg, kleine letters.
+  3. `&` wordt `and`, `+` wordt `plus`.
+  4. Alles wat geen letter of cijfer is (elk schrift) gaat weg, ook spaties.
+  - Voorbeelden: `Amélie` → `amelie`, `Fast & Furious 7` → `fastandfurious7`, `Disney+` → `disneyplus`,
+    `Blade Runner 2049` → `bladerunner2049`.
+- **Lezen:** een item is gezien als zijn eigen id-sleutel **of één** van zijn inhoudssleutels in de set staat.
+  - Bij de titelsleutel met een jaar zoek je ook jaar −1 en +1 op.
+  - Een sleutel met jaar `0` matcht alleen op jaar `0`.
+  - tmdb en imdb gaan altijd voor; de titel is de laatste terugval.
+- **Uitvinken:** de oude id-sleutel en **alle** inhoudssleutels van het item komen in `removed.watched` met dezelfde tijd.
+- **Serie gezien:** zijn alle uitgezonden afleveringen gezien, dan schrijf je `w:s:<show>`.
+  - Uitgezonden afleveringen: het aantal van Trakt (`aired_episodes`), anders het aantal afleveringen op de server.
+  - Is er daarna een aflevering niet meer gezien, dan gaat `w:s:` naar `removed`.
+  - Een seriekaart toont "gezien" als `w:s:` erin staat. Anders toont hij het label "N bekeken" zoals nu.
+- **Migratie (eenmalig per profiel en apparaat):** bestaande id-sleutels die in de catalogus van een van je servers
+  (of in `catalogmeta`) bij een item horen, krijgen hun inhoudssleutels erbij, met dezelfde `at`.
+  Wat niet te vinden is, blijft zoals het is. Niets raden.
+- **Grootte:** de section `profile.<id>` mag hooguit 1 MB zijn. Kom je erboven, dan vallen eerst de titelsleutels
+  van films weg die ook een tmdb- of imdb-sleutel hebben, de oudste eerst.
+
+### Trakt (alleen het hoofdprofiel, zoals nu)
+- **Token:**
+  - Verversen pas als het token minder dan 1 uur geldig is, of na een 401 (dan één keer verversen en het verzoek opnieuw doen).
+  - Eén verversing tegelijk per apparaat (single-flight).
+  - Mislukt het verversen, lees dan eerst `connections` opnieuw uit het account en neem een nieuwer token over.
+  - Een mislukte verversing zet **nooit** `trakt: null` in het account. Alleen een bewuste uitlog doet dat.
+- **Wachtrij:**
+  - Gezien en niet-gezien gaan via een blijvende wachtrij op het apparaat (`/sync/history` en `/sync/history/remove`, met `watched_at`).
+  - Opnieuw proberen bij de start, bij terugkeer naar de voorgrond, na een verversing en elke 15 minuten.
+  - Met backoff, en met `Retry-After` bij een 429.
+  - Lees het antwoord: wat Trakt bij `not_found` teruggeeft, komt in de diagnose en niet als "gelukt".
+- **Gezien-grens:**
+  - Markeert Bingr iets lokaal als gezien (85%, of meer dan 70% met minder dan 3 minuten over, of in de aftiteling), dan gaat het ook naar Trakt via de wachtrij.
+  - Wordt de speler gesloten of gaat de app naar de achtergrond, dan gaat er een scrobble-stop met de huidige positie.
+- **Ophalen:**
+  - Bij de start, bij terugkeer naar de voorgrond, 3 seconden na een stop, en elke 15 minuten zolang de app open is en er niets afspeelt.
+  - Altijd eerst `/sync/last_activities`.
+- **Koppelen:**
+  - Trakt-gezien wordt in het geheugen bewaard als dezelfde inhoudssleutels (tmdb, imdb en titel + jaar uit het Trakt-antwoord). Items zonder IMDb-id vallen niet meer weg.
+  - Een item is "gezien op Trakt" als een van zijn inhoudssleutels erin staat.
+  - Trakt-gezien wordt **niet** in het account geschreven.
+- **Naar Trakt:**
+  - Stuur `ids` met `tmdb` en/of `imdb`, wat bekend is.
+  - Zoeken op titel alleen als er geen id is, en een treffer alleen gebruiken als de titel (norm) en het jaar (±1) kloppen.
+- **TMDB-id uit de server:** lees bij Xtream `tmdb`/`tmdb_id` uit `get_vod_streams` en `get_series` (ook als tekst). Voor de sleutels gaat die vóór titel en jaar.
+
+### Titelopschoning (weergave)
+- Een voorvoegsel met `:` of `-` gaat alleen weg als het een taal- of landcode, een kwaliteitswoord of een bekend
+  IPTV-woord is (de lijsten van build 150).
+  - `NCIS: Hawaii`, `FBI: Most Wanted`, `CSI: Vegas` en `BBC - Planet Earth` blijven heel.
+  - `NL: Bioscoop` wordt `Bioscoop`.
+- Een los jaartal achteraan gaat alleen weg als het tussen haakjes of blokhaken staat, of achter een scheidingsteken
+  (`-`, `|`), en tussen 1900 en volgend jaar ligt.
+  - `Blade Runner 2049` en `Sub Zero` blijven heel.
+  - `Dune (2021)` en `Dune - 2021` worden `Dune` met jaar 2021.
