@@ -1109,7 +1109,11 @@
   "In hidden categories": "في الفئات المخفية",
   "Movie and series data": "بيانات الأفلام والمسلسلات",
   "Streaming data": "بيانات البث",
-  "In cinemas now": "يُعرض الآن في السينما"
+  "In cinemas now": "يُعرض الآن في السينما",
+  "Kids profiles": "ملفات الأطفال",
+  "OpenSubtitles subtitles": "ترجمات OpenSubtitles",
+  "Your progress is saved. Continue watching is part of Lifetime.": "يتم حفظ تقدّمك. متابعة المشاهدة جزء من Lifetime.",
+  "On the Free plan the settings of a kids profile can only be viewed. It stays a kids profile.": "في الخطة المجانية يمكن فقط عرض إعدادات ملف الأطفال. ويبقى ملفًا للأطفال."
  },
  "de": {
   "%@ is now signed in.": "%@ ist jetzt angemeldet.",
@@ -2221,7 +2225,11 @@
   "In hidden categories": "In ausgeblendeten Kategorien",
   "Movie and series data": "Film- und Seriendaten",
   "Streaming data": "Streamingdaten",
-  "In cinemas now": "Jetzt im Kino"
+  "In cinemas now": "Jetzt im Kino",
+  "Kids profiles": "Kinderprofile",
+  "OpenSubtitles subtitles": "Untertitel von OpenSubtitles",
+  "Your progress is saved. Continue watching is part of Lifetime.": "Dein Fortschritt wird gespeichert. Weiterschauen gehört zu Lifetime.",
+  "On the Free plan the settings of a kids profile can only be viewed. It stays a kids profile.": "Mit Gratis kannst du die Einstellungen eines Kinderprofils nur ansehen. Es bleibt ein Kinderprofil."
  },
  "es": {
   "%@ is now signed in.": "%@ ya ha iniciado sesión.",
@@ -3333,7 +3341,11 @@
   "In hidden categories": "En categorías ocultas",
   "Movie and series data": "Datos de películas y series",
   "Streaming data": "Datos de streaming",
-  "In cinemas now": "Ahora en cines"
+  "In cinemas now": "Ahora en cines",
+  "Kids profiles": "Perfiles infantiles",
+  "OpenSubtitles subtitles": "Subtítulos de OpenSubtitles",
+  "Your progress is saved. Continue watching is part of Lifetime.": "Tu progreso se guarda. Seguir viendo forma parte de Lifetime.",
+  "On the Free plan the settings of a kids profile can only be viewed. It stays a kids profile.": "Con el plan Gratis, los ajustes de un perfil infantil solo se pueden ver. Sigue siendo un perfil infantil."
  },
  "fr": {
   "%@ is now signed in.": "%@ est maintenant connecté.",
@@ -4445,7 +4457,11 @@
   "In hidden categories": "Dans les catégories masquées",
   "Movie and series data": "Données films et séries",
   "Streaming data": "Données de streaming",
-  "In cinemas now": "Actuellement au cinéma"
+  "In cinemas now": "Actuellement au cinéma",
+  "Kids profiles": "Profils enfant",
+  "OpenSubtitles subtitles": "Sous-titres OpenSubtitles",
+  "Your progress is saved. Continue watching is part of Lifetime.": "Ta progression est enregistrée. Reprendre fait partie de Lifetime.",
+  "On the Free plan the settings of a kids profile can only be viewed. It stays a kids profile.": "Avec le forfait Gratuit, les réglages d'un profil enfant sont uniquement consultables. Il reste un profil enfant."
  },
  "it": {
   "%@ is now signed in.": "%@ ha effettuato l’accesso.",
@@ -5557,7 +5573,11 @@
   "In hidden categories": "Nelle categorie nascoste",
   "Movie and series data": "Dati di film e serie",
   "Streaming data": "Dati di streaming",
-  "In cinemas now": "Ora al cinema"
+  "In cinemas now": "Ora al cinema",
+  "Kids profiles": "Profili bambini",
+  "OpenSubtitles subtitles": "Sottotitoli da OpenSubtitles",
+  "Your progress is saved. Continue watching is part of Lifetime.": "I tuoi progressi vengono salvati. Continua a guardare fa parte di Lifetime.",
+  "On the Free plan the settings of a kids profile can only be viewed. It stays a kids profile.": "Con il piano Gratis le impostazioni di un profilo bambini sono solo visibili. Resta un profilo bambini."
  },
  "nl": {
   "%@ is now signed in.": "%@ is nu ingelogd.",
@@ -6669,7 +6689,11 @@
   "In hidden categories": "In verborgen categorieën",
   "Movie and series data": "Film- en seriedata",
   "Streaming data": "Streamingdata",
-  "In cinemas now": "Nu in de bioscoop"
+  "In cinemas now": "Nu in de bioscoop",
+  "Kids profiles": "Kinderprofielen",
+  "OpenSubtitles subtitles": "Ondertitels van OpenSubtitles",
+  "Your progress is saved. Continue watching is part of Lifetime.": "Je voortgang wordt bewaard. Verder kijken hoort bij Lifetime.",
+  "On the Free plan the settings of a kids profile can only be viewed. It stays a kids profile.": "Met Gratis kun je de instellingen van een kinderprofiel alleen bekijken. Het blijft een kinderprofiel."
  },
  "pl": {
   "%@ is now signed in.": "%@ jest teraz zalogowany.",
@@ -7781,7 +7805,11 @@
   "In hidden categories": "W ukrytych kategoriach",
   "Movie and series data": "Dane filmów i seriali",
   "Streaming data": "Dane streamingu",
-  "In cinemas now": "Teraz w kinach"
+  "In cinemas now": "Teraz w kinach",
+  "Kids profiles": "Profile dziecięce",
+  "OpenSubtitles subtitles": "Napisy z OpenSubtitles",
+  "Your progress is saved. Continue watching is part of Lifetime.": "Twój postęp jest zapisywany. Oglądaj dalej jest częścią Lifetime.",
+  "On the Free plan the settings of a kids profile can only be viewed. It stays a kids profile.": "W planie Darmowym ustawienia profilu dziecięcego można tylko przeglądać. Pozostaje on profilem dziecięcym."
  },
  "pt": {
   "%@ is now signed in.": "%@ já tem sessão iniciada.",
@@ -8893,7 +8921,11 @@
   "In hidden categories": "Em categorias ocultas",
   "Movie and series data": "Dados de filmes e séries",
   "Streaming data": "Dados de streaming",
-  "In cinemas now": "Agora nos cinemas"
+  "In cinemas now": "Agora nos cinemas",
+  "Kids profiles": "Perfis infantis",
+  "OpenSubtitles subtitles": "Legendas do OpenSubtitles",
+  "Your progress is saved. Continue watching is part of Lifetime.": "O teu progresso é guardado. Continuar a ver faz parte do Lifetime.",
+  "On the Free plan the settings of a kids profile can only be viewed. It stays a kids profile.": "No plano Grátis, as definições de um perfil infantil só podem ser vistas. Continua a ser um perfil infantil."
  },
  "tr": {
   "%@ is now signed in.": "%@ artık oturum açtı.",
@@ -10005,7 +10037,11 @@
   "In hidden categories": "Gizli kategorilerde",
   "Movie and series data": "Film ve dizi verileri",
   "Streaming data": "Yayın verileri",
-  "In cinemas now": "Şimdi sinemalarda"
+  "In cinemas now": "Şimdi sinemalarda",
+  "Kids profiles": "Çocuk profilleri",
+  "OpenSubtitles subtitles": "OpenSubtitles altyazıları",
+  "Your progress is saved. Continue watching is part of Lifetime.": "İlerlemen kaydedilir. İzlemeye devam et, Lifetime'ın bir parçasıdır.",
+  "On the Free plan the settings of a kids profile can only be viewed. It stays a kids profile.": "Ücretsiz planda bir çocuk profilinin ayarları yalnızca görüntülenebilir. Çocuk profili olarak kalır."
  },
  "zh-Hans": {
   "%@ is now signed in.": "%@ 现已登录。",
@@ -11117,6 +11153,10 @@
   "In hidden categories": "在隐藏的分类中",
   "Movie and series data": "电影和剧集数据",
   "Streaming data": "流媒体数据",
-  "In cinemas now": "正在影院热映"
+  "In cinemas now": "正在影院热映",
+  "Kids profiles": "儿童个人资料",
+  "OpenSubtitles subtitles": "OpenSubtitles 字幕",
+  "Your progress is saved. Continue watching is part of Lifetime.": "你的观看进度会被保存。继续观看是 Lifetime 的功能。",
+  "On the Free plan the settings of a kids profile can only be viewed. It stays a kids profile.": "在免费方案中，儿童个人资料的设置只能查看。它仍然是儿童个人资料。"
  }
 }

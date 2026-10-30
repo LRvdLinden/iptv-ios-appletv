@@ -15,6 +15,8 @@ final class EntitlementsService: ObservableObject {
 
     enum Feature: String, CaseIterable, Identifiable {
         case stats, nowWatching = "now_watching", trakt, multiServer = "multi_server", themes
+        /// build 157
+        case continueWatching = "continue_watching", kidsProfiles = "kids_profiles", opensubtitles
         var id: String { rawValue }
 
         var title: String {
@@ -24,6 +26,9 @@ final class EntitlementsService: ObservableObject {
             case .trakt: return "Trakt"
             case .multiServer: return L("More than one server")
             case .themes: return L("Accent colors")
+            case .continueWatching: return L("Continue watching")
+            case .kidsProfiles: return L("Kids profiles")
+            case .opensubtitles: return L("OpenSubtitles subtitles")
             }
         }
 
@@ -34,6 +39,9 @@ final class EntitlementsService: ObservableObject {
             case .trakt: return "checkmark.rectangle.stack.fill"
             case .multiServer: return "server.rack"
             case .themes: return "paintpalette"
+            case .continueWatching: return "play.circle"
+            case .kidsProfiles: return "figure.and.child.holdhands"
+            case .opensubtitles: return "captions.bubble"
             }
         }
     }
@@ -51,6 +59,35 @@ final class EntitlementsService: ObservableObject {
         var trakt = true
         var multiServer = true
         var themes = true
+        /// build 157
+        var continueWatching = true
+        var kidsProfiles = true
+        var openSubtitles = true
+
+        init() {}
+
+        init(_ f: FeatureFlags157) {
+            stats = f.stats; nowWatching = f.nowWatching; trakt = f.trakt; multiServer = f.multiServer; themes = f.themes
+            continueWatching = f.continueWatching; kidsProfiles = f.kidsProfiles; openSubtitles = f.openSubtitles
+        }
+
+        var flags: FeatureFlags157 {
+            var f = FeatureFlags157(all: true)
+            f.stats = stats; f.nowWatching = nowWatching; f.trakt = trakt; f.multiServer = multiServer; f.themes = themes
+            f.continueWatching = continueWatching; f.kidsProfiles = kidsProfiles; f.openSubtitles = openSubtitles
+            return f
+        }
+
+        init(from decoder: Decoder) throws { try self.init(from: decoder, lifetime: true) }
+
+        /// build 157: een bewaarde stand van een oudere build mist de nieuwe vlaggen; die volgen dan het abonnement.
+        init(from decoder: Decoder, lifetime: Bool) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            func f(_ k: CodingKeys) throws -> Bool { try c.decodeIfPresent(Bool.self, forKey: k) ?? lifetime }
+            stats = try f(.stats); nowWatching = try f(.nowWatching); trakt = try f(.trakt)
+            multiServer = try f(.multiServer); themes = try f(.themes)
+            continueWatching = try f(.continueWatching); kidsProfiles = try f(.kidsProfiles); openSubtitles = try f(.openSubtitles)
+        }
     }
 
     struct Upgrade: Codable, Equatable {
@@ -69,11 +106,25 @@ final class EntitlementsService: ObservableObject {
         var upgrade: Upgrade
         /// build 128: standaardlimieten van beide abonnementen van de server (`plans`), voor de vergelijking
         var plans: [String: Limits]? = nil
+
+        init(plan: Plan, limits: Limits, features: Features, upgrade: Upgrade, plans: [String: Limits]? = nil) {
+            self.plan = plan; self.limits = limits; self.features = features; self.upgrade = upgrade; self.plans = plans
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            plan = try c.decode(Plan.self, forKey: .plan)
+            limits = try c.decode(Limits.self, forKey: .limits)
+            features = try Features(from: c.superDecoder(forKey: .features), lifetime: plan == .lifetime)
+            upgrade = try c.decode(Upgrade.self, forKey: .upgrade)
+            plans = try c.decodeIfPresent([String: Limits].self, forKey: .plans)
+        }
     }
 
     /// Standaardlimieten per abonnement (als de server een veld niet meestuurt; de vergelijking toont deze).
-    static let freeLimits = Limits(streams: 1, devices: 8, servers: 1)
-    static let lifetimeLimits = Limits(streams: 3, devices: 15, servers: nil)
+    /// build 157: Gratis 2 apparaten (was 8), zie `PlanDefaults157`.
+    static let freeLimits = Limits(PlanDefaults157.free)
+    static let lifetimeLimits = Limits(PlanDefaults157.lifetime)
 
     /// nil = (nog) onbekend: alles toegestaan.
     @Published private(set) var current: Entitlements?
@@ -113,6 +164,9 @@ final class EntitlementsService: ObservableObject {
         case .trakt: return c.features.trakt
         case .multiServer: return c.features.multiServer
         case .themes: return c.features.themes
+        case .continueWatching: return c.features.continueWatching
+        case .kidsProfiles: return c.features.kidsProfiles
+        case .opensubtitles: return c.features.openSubtitles
         }
     }
 
@@ -186,14 +240,9 @@ final class EntitlementsService: ObservableObject {
     /// geslaagd `entitlements`-antwoord (`apply`) mag het abonnement veranderen.
     func serverLocked(_ feature: String?) {
         if var e = current {
-            switch feature {
-            case "stats": e.features.stats = false
-            case "now_watching", "watch_log", "list_streams": e.features.nowWatching = false
-            case "trakt": e.features.trakt = false
-            case "multi_server", "servers": e.features.multiServer = false
-            case "themes": e.features.themes = false
-            default: break
-            }
+            var f = e.features.flags
+            f.lock(feature)
+            e.features = Features(f)
             set(e, store: false)
         }
         Task { await refresh(force: true) }
@@ -221,8 +270,9 @@ final class EntitlementsService: ObservableObject {
 
     // MARK: JSON
 
-    /// Contract: `{plan, limits:{streams, devices, servers}, features:{stats, now_watching, trakt, multi_server, themes},
-    /// upgrade:{url, link, price, price_en}}`, eventueel genest onder `entitlements`. Ontbrekende features volgen het plan.
+    /// Contract: `{plan, limits:{streams, devices, servers}, features:{stats, now_watching, trakt, multi_server, themes,
+    /// continue_watching, kids_profiles, opensubtitles}, upgrade:{url, link, price, price_en}}`, eventueel genest onder
+    /// `entitlements`. Ontbrekende features volgen het plan (build 157: oudere server zonder vlag + Gratis = op slot).
     static func parse(_ raw: [String: Any]) -> Entitlements? {
         let j = (raw["entitlements"] as? [String: Any]) ?? raw
         guard let p = (j["plan"] as? String)?.lowercased() else { return nil }
@@ -238,29 +288,21 @@ final class EntitlementsService: ObservableObject {
         if let v = int(l["streams"]) { limits.streams = v }
         if let v = int(l["devices"]) { limits.devices = v }
         if l.keys.contains("servers") { limits.servers = int(l["servers"]) }   // null = onbeperkt
-        let f = j["features"] as? [String: Any] ?? [:]
-        let dflt = plan == .lifetime
-        func flag(_ k: String) -> Bool { (f[k] as? Bool) ?? (f[k] as? NSNumber)?.boolValue ?? dflt }
-        let features = Features(stats: flag("stats"), nowWatching: flag("now_watching"), trakt: flag("trakt"),
-                                multiServer: flag("multi_server"), themes: flag("themes"))
+        let features = Features(FeatureFlags157(json: j["features"], lifetime: plan == .lifetime))
         let u = j["upgrade"] as? [String: Any] ?? [:]
         let upgrade = Upgrade(url: u["url"] as? String, link: (u["link"] as? Bool) ?? false,
                               price: u["price"] as? String, priceEN: u["price_en"] as? String)
+        // build 157: ontbrekende abonnementen in `plans` krijgen de standaard (Gratis 1/2/1)
         var plans: [String: Limits]?
-        if let pj = j["plans"] as? [String: Any] {
-            var out: [String: Limits] = [:]
-            for (k, v) in pj {
-                guard let d = v as? [String: Any] else { continue }
-                var lim = k == "free" ? freeLimits : lifetimeLimits
-                if let x = int(d["streams"]) { lim.streams = x }
-                if let x = int(d["devices"]) { lim.devices = x }
-                if d.keys.contains("servers") { lim.servers = int(d["servers"]) }
-                out[k] = lim
-            }
-            plans = out.isEmpty ? nil : out
+        if j["plans"] is [String: Any] {
+            plans = PlanDefaults157.plans(j["plans"]).mapValues { Limits($0) }
         }
         return Entitlements(plan: plan, limits: limits, features: features, upgrade: upgrade, plans: plans)
     }
+}
+
+extension EntitlementsService.Limits {
+    init(_ l: PlanDefaults157.Limits) { self.init(streams: l.streams, devices: l.devices, servers: l.servers) }
 }
 
 /// 403 `feature_locked` van de server (bijv. statistieken of "Nu aan het kijken" op een Gratis-account).

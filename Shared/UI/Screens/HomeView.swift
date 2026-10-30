@@ -44,6 +44,8 @@ struct HomeView: View {
     @ObservedObject private var cross = CrossServer.shared
     /// Build 143: echte posters voor Verder kijken (TMDB)
     @ObservedObject private var covers = ContinueCovers.shared
+    /// build 157: Verder kijken is Lifetime
+    @ObservedObject private var ent = EntitlementsService.shared
     @State private var prompt: CrossServer.Prompt?
     /// P0-fix: `.task` start bij elke terugkeer naar het tabblad opnieuw. Onthouden wat al klaar is, zodat Home,
     /// Films en Series dan niet opnieuw door de hele bibliotheek lopen (dat bevroor de app).
@@ -980,7 +982,15 @@ struct HomeView: View {
 
     @ViewBuilder private var continueRow: some View {
         let items = continueWatching
-        if !items.isEmpty {
+        switch ContinueWatching157.row(allowed: ent.allows(.continueWatching), hasItems: !items.isEmpty) {
+        case .hidden:
+            EmptyView()
+        case .locked:
+            // build 157: Gratis: slotje met de vergelijking; de voortgang blijft bewaard en gesynct
+            MediaRow(title: L("Continue watching")) {
+                LifetimeLockCard(feature: .continueWatching, text: L("Your progress is saved. Continue watching is part of Lifetime."))
+            }
+        case .items:
             MediaRow(title: L("Continue watching")) {
                 ForEach(items) { c in
                     Button { tapContinue(c) } label: {

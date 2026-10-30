@@ -228,7 +228,10 @@ struct PlayerScreen: View {
                     panel = nil
                     Task { await switchLanguage(to: v) }
                 }
-            case .opensubs: OpenSubtitlesPanel(player: player)
+            case .opensubs:
+                // build 157: OpenSubtitles is Lifetime (ondertitels uit de stream blijven gratis)
+                if EntitlementsService.shared.allows(.opensubtitles) { OpenSubtitlesPanel(player: player) }
+                else { LifetimeInfoView(topic: .feature(.opensubtitles)) }
             case .options: OptionsPanel(player: player)
             case .rate:
                 RatingPanel(item: player.item) { close() }
@@ -593,6 +596,8 @@ struct PlayerScreen: View {
     /// en de hash van het bestand als dat kan), en meteen aanzetten met een korte melding.
     private func fetchSubtitles(_ it: PlayableItem, language lang: String) async {
         guard player.item.id == it.id, !player.hasExternalSubtitle, !player.userPickedSubtitle else { return }
+        // build 157: OpenSubtitles is Lifetime: bij Gratis stil overslaan (de koppeling blijft bewaard)
+        guard EntitlementsService.shared.allows(.opensubtitles) else { return }
         // build 91: niet meer stil overslaan: zonder inlog één keer per spelersessie een melding
         guard subs.isLoggedIn else {
             if !osSignInHinted {

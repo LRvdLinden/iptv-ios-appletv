@@ -179,6 +179,40 @@ struct LifetimeLockRow: View {
     }
 }
 
+/// build 157: een rij (Verder kijken op Home en in Mijn Bingr) op slot: één tegel met het slotje; tikken opent de
+/// vergelijking. Zonder link, knop of prijs (Apple).
+struct LifetimeLockCard: View {
+    let feature: EntitlementsService.Feature
+    let text: String
+    @State private var topic: LifetimeTopic?
+
+    var body: some View {
+        Button { topic = .feature(feature) } label: {
+            HStack(alignment: .center, spacing: tvScaled(12)) {
+                Image(systemName: "lock.fill")
+                    .font(.system(size: tvScaled(20), weight: .semibold))
+                    .foregroundStyle(Color(hex: 0xF5C451))
+                VStack(alignment: .leading, spacing: tvScaled(6)) {
+                    LifetimePill()
+                    Text(text).font(.system(size: tvScaled(13))).foregroundStyle(Theme.secondary)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(L("Compare plans")).font(.system(size: tvScaled(13), weight: .semibold)).underline()
+                        .foregroundStyle(.white)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(tvScaled(14))
+            .frame(width: tvScaled(320), alignment: .leading)
+            .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: tvScaled(12)))
+            .contentShape(Rectangle())
+        }
+        .cardButton()
+        .accessibilityLabel(feature.title + ", " + L("This is a Lifetime feature"))
+        .lifetimeSheet($topic)
+    }
+}
+
 extension View {
     /// Toont de uitleg over Lifetime zodra `topic` gezet wordt.
     func lifetimeSheet(_ topic: Binding<LifetimeTopic?>) -> some View {
@@ -307,6 +341,12 @@ struct PlanComparison: View {
             check(L("Watching now and watch history"))
             check("Trakt")
             check(L("Accent colors"))
+            // build 157: Verder kijken, kinderprofielen en OpenSubtitles bij Lifetime; Profielen en Mijn lijst bij allebei
+            check(L("Continue watching"))
+            check(L("Kids profiles"))
+            check(L("OpenSubtitles subtitles"))
+            check(L("Profiles"), free: true)
+            check(L("My List"), free: true)
             Text(L("How many you can watch at once also depends on your IPTV provider."))
                 .font(.system(size: tvScaled(12))).foregroundStyle(Theme.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -336,11 +376,17 @@ struct PlanComparison: View {
         }
     }
 
-    private func check(_ title: String) -> some View {
+    /// `free`: ook bij Gratis inbegrepen (build 157: Profielen, Mijn lijst)
+    private func check(_ title: String, free: Bool = false) -> some View {
         GridRow {
             Text(title).foregroundStyle(.white).fixedSize(horizontal: false, vertical: true)
-            Image(systemName: "minus").foregroundStyle(Theme.secondary)
-                .accessibilityLabel(L("Not included"))
+            if free {
+                Image(systemName: "checkmark").foregroundStyle(Theme.green).bold()
+                    .accessibilityLabel(L("Included"))
+            } else {
+                Image(systemName: "minus").foregroundStyle(Theme.secondary)
+                    .accessibilityLabel(L("Not included"))
+            }
             Image(systemName: "checkmark").foregroundStyle(Theme.green).bold()
                 .accessibilityLabel(L("Included"))
         }

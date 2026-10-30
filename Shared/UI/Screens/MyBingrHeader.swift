@@ -10,6 +10,8 @@ struct MyBingrHeader: View {
     @State private var resumeChoice: ResumeChoice?
     /// Build 128: items van andere servers
     @ObservedObject private var cross = CrossServer.shared
+    /// build 157: Verder kijken is Lifetime
+    @ObservedObject private var ent = EntitlementsService.shared
     @State private var prompt: CrossServer.Prompt?
     /// Build 147: de gedeelde index (op de achtergrond gebouwd) i.p.v. per schermverversing door de hele bibliotheek
     @State private var index = HomeIndex()
@@ -119,7 +121,11 @@ struct MyBingrHeader: View {
             .frame(maxWidth: .infinity)
 
             let cont = continueItems
-            if !cont.isEmpty { continueRow(cont) }
+            switch ContinueWatching157.row(allowed: ent.allows(.continueWatching), hasItems: !cont.isEmpty) {
+            case .hidden: EmptyView()
+            case .locked: lockedContinueRow   // build 157: Gratis, de voortgang blijft bewaard
+            case .items: continueRow(cont)
+            }
             row(L("My List"), myListItems.map { ($0, nil) }, empty: L("Add titles with + My List and they'll appear here."))
             let favs = favoriteChannels
             if !favs.isEmpty { channelRow(favs) }
@@ -157,6 +163,17 @@ struct MyBingrHeader: View {
         }
         .plainTVButton()
         .disabled(trakt.isSyncing)
+    }
+
+    /// build 157: Verder kijken op slot (Gratis): het slotje met de vergelijking
+    private var lockedContinueRow: some View {
+        VStack(alignment: .leading, spacing: tvScaled(8)) {
+            Text(L("Continue watching")).font(Theme.titleFont).foregroundStyle(.white)
+            LifetimeLockCard(feature: .continueWatching, text: L("Your progress is saved. Continue watching is part of Lifetime."))
+                #if os(tvOS)
+                .padding(.vertical, 20)
+                #endif
+        }
     }
 
     private func continueRow(_ items: [ContinueEntry]) -> some View {

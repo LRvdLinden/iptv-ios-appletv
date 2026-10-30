@@ -1625,5 +1625,93 @@ do {
     check(!WatchedThreshold.reached(position: 0.8, duration: 6000, currentTime: 4800), "80% met 20 min over: niet gezien")
 }
 
+// MARK: build 157: Gratis en Lifetime aangepast (2 apparaten; Verder kijken, kinderprofielen, OpenSubtitles Lifetime)
+do {
+    // Gratis van de nieuwe server: alle nieuwe vlaggen uit
+    let freeNew: [String: Any] = ["plan": "free",
+        "limits": ["streams": 1, "devices": 2, "servers": 1],
+        "features": ["stats": false, "now_watching": false, "trakt": false, "multi_server": false, "themes": false,
+                     "continue_watching": false, "kids_profiles": false, "opensubtitles": false],
+        "plans": ["free": ["streams": 1, "devices": 2, "servers": 1], "lifetime": ["streams": 3, "devices": 15, "servers": NSNull()] as [String: Any]] as [String: Any]]
+    let f1 = FeatureFlags157.parse(freeNew)
+    check(f1 != nil, "157: Gratis gelezen")
+    eq(f1, FeatureFlags157(all: false), "157: Gratis = alles uit")
+    // Lifetime van de nieuwe server: alles aan
+    let lifeNew: [String: Any] = ["entitlements": ["plan": "lifetime",
+        "features": ["stats": true, "now_watching": true, "trakt": true, "multi_server": true, "themes": true,
+                     "continue_watching": true, "kids_profiles": true, "opensubtitles": true]] as [String: Any]]
+    eq(FeatureFlags157.parse(lifeNew), FeatureFlags157(all: true), "157: Lifetime (genest onder entitlements) = alles aan")
+    // oude server zonder de nieuwe vlaggen: Gratis = op slot, Lifetime = open
+    let freeOld: [String: Any] = ["plan": "free", "features": ["stats": false, "now_watching": false, "trakt": false,
+                                                              "multi_server": false, "themes": false]]
+    let f2 = FeatureFlags157.parse(freeOld)
+    eq(f2?.continueWatching, false, "157: oude server, Gratis: Verder kijken op slot")
+    eq(f2?.kidsProfiles, false, "157: oude server, Gratis: kinderprofielen op slot")
+    eq(f2?.openSubtitles, false, "157: oude server, Gratis: OpenSubtitles op slot")
+    let lifeOld: [String: Any] = ["plan": "lifetime", "features": ["stats": true]]
+    eq(FeatureFlags157.parse(lifeOld), FeatureFlags157(all: true), "157: oude server, Lifetime: alles open")
+    // vlag die afwijkt van het abonnement (bijv. eigen instelling op de server) wint
+    let mixed: [String: Any] = ["plan": "free", "features": ["opensubtitles": true]]
+    eq(FeatureFlags157.parse(mixed)?.openSubtitles, true, "157: expliciete vlag wint")
+    eq(FeatureFlags157.parse(mixed)?.continueWatching, false, "157: ontbrekende vlag volgt Gratis")
+    // NSNumber als vlag
+    eq(FeatureFlags157(json: ["kids_profiles": NSNumber(value: 1)], lifetime: false).kidsProfiles, true, "157: NSNumber 1 = aan")
+    // geen abonnement in het antwoord: niets
+    check(FeatureFlags157.parse(["features": [String: Any]()]) == nil, "157: zonder plan geen vlaggen")
+    // onbekend abonnement telt als Lifetime (zoals voorheen: nooit iets op slot door een onbekende waarde)
+    eq(FeatureFlags157.isLifetime(["plan": "pro"]), true, "157: onbekend abonnement = Lifetime")
+    // 403 feature_locked zet alleen die vlag uit
+    var f3 = FeatureFlags157(all: true)
+    f3.lock("continue_watching"); f3.lock("kids_profiles"); f3.lock("opensubtitles"); f3.lock("onbekend")
+    check(!f3.continueWatching && !f3.kidsProfiles && !f3.openSubtitles && f3.stats && f3.trakt && f3.themes,
+          "157: feature_locked zet alleen die vlaggen uit")
+
+    // standaardlimieten: Gratis 1/2/1, Lifetime 3/15/onbeperkt
+    eq(PlanDefaults157.free, PlanDefaults157.Limits(streams: 1, devices: 2, servers: 1), "157: Gratis 1 scherm, 2 apparaten, 1 server")
+    eq(PlanDefaults157.lifetime, PlanDefaults157.Limits(streams: 3, devices: 15, servers: nil), "157: Lifetime 3/15/onbeperkt")
+    let pl = PlanDefaults157.plans(freeNew["plans"])
+    eq(pl["free"]?.devices, 2, "157: plans Gratis 2 apparaten")
+    check(pl["lifetime"]?.servers == nil && pl["lifetime"]?.devices == 15, "157: plans Lifetime null = onbeperkt")
+    eq(PlanDefaults157.plans(nil)["free"]?.devices, 2, "157: zonder plans: Gratis 2 apparaten")
+    eq(PlanDefaults157.plans(["lifetime": ["streams": 3]] as [String: Any])["free"]?.devices, 2, "157: plans zonder free: standaard 2")
+    eq(PlanDefaults157.plans(["free": ["devices": "4"]] as [String: Any])["free"]?.devices, 4, "157: getal als tekst")
+
+    // Verder kijken
+    eq(ContinueWatching157.row(allowed: false, hasItems: true), .locked, "157: Gratis met voortgang: rij met slotje")
+    eq(ContinueWatching157.row(allowed: false, hasItems: false), .hidden, "157: Gratis zonder voortgang: geen rij")
+    eq(ContinueWatching157.row(allowed: true, hasItems: true), .items, "157: Lifetime: gewone rij")
+    eq(ContinueWatching157.row(allowed: true, hasItems: false), .hidden, "157: Lifetime zonder voortgang: geen rij")
+    check(ContinueWatching157.saveProgress(allowed: false), "157: Gratis: voortgang wel bewaard en gesynct")
+    check(ContinueWatching157.resume(allowed: false), "157: Gratis: hervatten blijft werken")
+
+    // Kinderprofielen
+    eq(KidsProfiles157.edit(allowed: false, isKids: false), .lockedToCreate, "157: Gratis: nieuw kinderprofiel = slotje")
+    eq(KidsProfiles157.edit(allowed: false, isKids: true), .readOnly, "157: Gratis: bestaand kinderprofiel alleen te lezen")
+    eq(KidsProfiles157.edit(allowed: true, isKids: true), .editable, "157: Lifetime: kinderprofiel aan te passen")
+    eq(KidsProfiles157.edit(allowed: true, isKids: false), .editable, "157: Lifetime: kinderprofiel te maken")
+    check(!KidsProfiles157.savedKids(requested: true, allowed: false, wasKids: false), "157: Gratis: geen nieuw kinderprofiel bewaard")
+    check(KidsProfiles157.savedKids(requested: false, allowed: false, wasKids: true), "157: Gratis: bestaand kinderprofiel blijft kinderprofiel")
+    check(KidsProfiles157.savedKids(requested: true, allowed: true, wasKids: false), "157: Lifetime: kinderprofiel maken")
+    check(!KidsProfiles157.savedKids(requested: false, allowed: true, wasKids: true), "157: Lifetime: kinderprofiel uitzetten")
+    eq(KidsProfiles157.savedAgeLimit(requested: 16, allowed: false, wasKids: true, previous: 9), 9, "157: Gratis: leeftijd kinderprofiel ongewijzigd")
+    eq(KidsProfiles157.savedAgeLimit(requested: 16, allowed: false, wasKids: false, previous: nil), 16, "157: Gratis: leeftijd gewoon profiel aan te passen")
+    eq(KidsProfiles157.savedAgeLimit(requested: 6, allowed: true, wasKids: true, previous: 9), 6, "157: Lifetime: leeftijd kinderprofiel aan te passen")
+    check(KidsProfiles157.filtered(isKids: true, allowed: false), "157: bestaand kinderprofiel blijft gefilterd bij Gratis")
+    check(KidsProfiles157.filtered(isKids: true, allowed: true), "157: kinderprofiel gefilterd bij Lifetime")
+    check(!KidsProfiles157.filtered(isKids: false, allowed: false), "157: gewoon profiel niet als kinderprofiel gefilterd")
+    check(KidsProfiles157.canDelete(allowed: false), "157: kinderprofiel verwijderen mag altijd")
+    // een bestaand kinderprofiel blijft na het lezen van een Gratis-antwoord gefilterd (de vlag raakt het profiel niet)
+    let flagsFree = FeatureFlags157.parse(freeNew)!
+    let kidsAfter = KidsProfiles157.savedKids(requested: false, allowed: flagsFree.kidsProfiles, wasKids: true)
+    check(KidsProfiles157.filtered(isKids: kidsAfter, allowed: flagsFree.kidsProfiles), "157: kinderprofiel na Gratis-antwoord nog gefilterd")
+
+    // OpenSubtitles
+    check(!OpenSubtitles157.usable(allowed: false, signedIn: true), "157: Gratis: OpenSubtitles niet gebruikt")
+    check(OpenSubtitles157.usable(allowed: true, signedIn: true), "157: Lifetime: OpenSubtitles met koppeling")
+    check(!OpenSubtitles157.usable(allowed: true, signedIn: false), "157: Lifetime zonder koppeling: niet")
+    check(OpenSubtitles157.keepConnection(allowed: false), "157: Gratis: koppeling blijft bewaard")
+    check(OpenSubtitles157.streamSubtitles(allowed: false), "157: Gratis: ondertitels uit de stream blijven")
+}
+
 print("\(checks) controles, \(failures) fout")
 exit(failures == 0 ? 0 : 1)

@@ -205,7 +205,18 @@ struct AppSettingsView: View {
             NavigationLink { TraktSettingsView() } label: {
                 Label { Text(verbatim: "Trakt") } icon: { Image(systemName: "checkmark.rectangle.stack.fill") }
             }
-            if subs.isLoggedIn {
+            if !ent.allows(.opensubtitles) {
+                // build 157: OpenSubtitles is Lifetime; een bestaande koppeling blijft bewaard maar wordt niet gebruikt
+                LifetimeLockRow(title: "OpenSubtitles", icon: "captions.bubble", feature: .opensubtitles)
+                if subs.isLoggedIn {
+                    LabeledContent(L("OpenSubtitles"), value: subs.username ?? L("Signed in"))
+                    if isMain {
+                        Button(role: .destructive) { Task { await subs.logout() } } label: {
+                            Label(L("Sign out of OpenSubtitles"), systemImage: "rectangle.portrait.and.arrow.right")
+                        }
+                    }
+                }
+            } else if subs.isLoggedIn {
                 LabeledContent(L("OpenSubtitles"), value: subs.username ?? L("Signed in"))
                 if isMain {
                     Button(role: .destructive) { Task { await subs.logout() } } label: {
@@ -374,26 +385,32 @@ struct AppSettingsView: View {
 
     private var openSubtitlesSection: some View {
         Section {
-            if subs.isLoggedIn {
-                LabeledContent(L("Signed in as"), value: subs.username ?? "")
-                if let r = subs.remainingDownloads { LabeledContent(L("Downloads left today"), value: "\(r)") }
-                if isMain {
-                    Button(role: .destructive) { Task { await subs.logout() } } label: { Label(L("Sign out"), systemImage: "rectangle.portrait.and.arrow.right") }
+            if !ent.allows(.opensubtitles) {
+                // build 157: zoeken en downloaden via OpenSubtitles is Lifetime; ondertitels uit de stream blijven gratis
+                LifetimeLockRow(title: L("OpenSubtitles subtitles"), icon: "captions.bubble", feature: .opensubtitles)
+                if subs.isLoggedIn { LabeledContent(L("Signed in as"), value: subs.username ?? "") }
+            } else {
+                if subs.isLoggedIn {
+                    LabeledContent(L("Signed in as"), value: subs.username ?? "")
+                    if let r = subs.remainingDownloads { LabeledContent(L("Downloads left today"), value: "\(r)") }
+                    if isMain {
+                        Button(role: .destructive) { Task { await subs.logout() } } label: { Label(L("Sign out"), systemImage: "rectangle.portrait.and.arrow.right") }
+                    }
+                } else if isMain {
+                    Button { signInToOpenSubtitles() } label: {
+                        Label(L("Sign in to OpenSubtitles"), systemImage: "captions.bubble")
+                    }
                 }
-            } else if isMain {
-                Button { signInToOpenSubtitles() } label: {
-                    Label(L("Sign in to OpenSubtitles"), systemImage: "captions.bubble")
+                Picker(L("Default language"), selection: $subs.defaultLanguage) {
+                    Text(L("All languages")).tag("")
+                    ForEach(TrackPreferences.sortedCodes, id: \.self) { Text(TrackPreferences.label($0)).tag($0) }
                 }
+                .pickerStyle(.menu)
             }
-            Picker(L("Default language"), selection: $subs.defaultLanguage) {
-                Text(L("All languages")).tag("")
-                ForEach(TrackPreferences.sortedCodes, id: \.self) { Text(TrackPreferences.label($0)).tag($0) }
-            }
-            .pickerStyle(.menu)
         } header: { Text("OpenSubtitles") } footer: {
             Text(L("While playing, choose OpenSubtitles to pick another subtitle or language. Automatically uses a subtitle track in the stream first; otherwise the best match from OpenSubtitles is loaded (requires sign-in).") + " " + L("These choices apply to this profile only."))
         }
-        .task { await subs.refreshUser() }
+        .task { if ent.allows(.opensubtitles) { await subs.refreshUser() } }
     }
 
     /// Build 130: voortgang van alle servers verversen ("Server 1 van 3") en welke servers niet lukten

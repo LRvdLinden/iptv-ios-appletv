@@ -135,6 +135,8 @@ struct ProfileEditView: View {
     @EnvironmentObject var store: CloudStore
     @EnvironmentObject var parental: ParentalControl
     @Environment(\.dismiss) private var dismiss
+    /// build 157: kinderprofielen zijn Lifetime
+    @ObservedObject private var ent = EntitlementsService.shared
     @State private var name = ""
     @State private var avatar = PlaylistAvatar.random()
     @State private var photo: Data?
@@ -149,6 +151,12 @@ struct ProfileEditView: View {
     private var locked: Bool { store.parental.enabled && !parental.isUnlocked }
     /// Leeftijdsgrens en verwijderen: alleen vanuit het hoofdaccount
     private var canAdmin: Bool { store.isMainActive || store.activeProfileID == nil }
+    /// build 157: Gratis = geen nieuw kinderprofiel; een bestaand kinderprofiel blijft er een (alleen te lezen)
+    private var wasKids: Bool { existing?.kids ?? false }
+    private var kidsEdit: KidsProfiles157.Edit { KidsProfiles157.edit(allowed: ent.allows(.kidsProfiles), isKids: wasKids) }
+    private var readOnlyNote: String {
+        kidsEdit == .readOnly ? L("On the Free plan the settings of a kids profile can only be viewed. It stays a kids profile.") + " " : ""
+    }
 
     var body: some View {
         NavigationStack {
@@ -212,22 +220,31 @@ struct ProfileEditView: View {
                 }
                 #endif
                 if canAdmin { Section {
-                    Toggle(L("Kids profile"), isOn: $isKids)
-                        .disabled(locked)
-                        .onChange(of: isKids) { _, v in
-                            if v && (ageLimit == 0 || ageLimit > 12) { ageLimit = 12 }
-                            // kinderprofiel zonder eigen foto: meteen een vrolijk figuurtje
-                            if v && photo == nil && !avatar.isIllustration { avatar.symbol = PlaylistAvatar.illustrations.randomElement()! }
+                    switch kidsEdit {
+                    case .lockedToCreate:
+                        LifetimeLockRow(title: L("Kids profile"), icon: "figure.and.child.holdhands", feature: .kidsProfiles)
+                    case .readOnly:
+                        LabeledContent(L("Kids profile")) {
+                            HStack(spacing: 8) { Text(L("On")); LifetimePill() }
                         }
+                    case .editable:
+                        Toggle(L("Kids profile"), isOn: $isKids)
+                            .disabled(locked)
+                            .onChange(of: isKids) { _, v in
+                                if v && (ageLimit == 0 || ageLimit > 12) { ageLimit = 12 }
+                                // kinderprofiel zonder eigen foto: meteen een vrolijk figuurtje
+                                if v && photo == nil && !avatar.isIllustration { avatar.symbol = PlaylistAvatar.illustrations.randomElement()! }
+                            }
+                    }
                     Picker(L("Age limit for this profile"), selection: $ageLimit) {
                         Text(L("None")).tag(0)
                         ForEach(ParentalControl.ageChoices, id: \.self) { Text(L("Up to %d years", $0)).tag($0) }
                     }
                     .pickerStyle(.menu)
-                    .disabled(locked)
+                    .disabled(locked || kidsEdit == .readOnly)
                     if locked { Button(L("Unlock with PIN")) { askPIN = true } }
                 } footer: {
-                    Text(isKids ? L("Kids profile: only kids channels, cartoons/family titles and titles with a known age rating within the limit, plus its own Top 10 for kids.") + " " :
+                    Text(readOnlyNote) + Text(isKids ? L("Kids profile: only kids channels, cartoons/family titles and titles with a known age rating within the limit, plus its own Top 10 for kids.") + " " :
                          "") + Text(store.parental.enabled
                          ? L("Titles above this age (IMDb rating) and adult groups are hidden on this profile. With the PIN you can still watch them.")
                          : L("Set a PIN on the main account and turn on “Lock adult content with this PIN” (My Bingr → PIN code) to protect the age limit."))
@@ -259,8 +276,11 @@ struct ProfileEditView: View {
         var p = existing ?? ViewerProfile(name: name, avatar: avatar)
         p.name = name.trimmingCharacters(in: .whitespaces)
         p.avatar = avatar
-        p.ageLimit = ageLimit == 0 ? nil : ageLimit
-        p.isKids = isKids ? true : nil
+        // build 157: bij Gratis geen nieuw kinderprofiel, en een bestaand kinderprofiel blijft ongewijzigd (gefilterd)
+        let allowed = ent.allows(.kidsProfiles)
+        p.ageLimit = KidsProfiles157.savedAgeLimit(requested: ageLimit == 0 ? nil : ageLimit, allowed: allowed,
+                                                   wasKids: wasKids, previous: existing?.ageLimit)
+        p.isKids = KidsProfiles157.savedKids(requested: isKids, allowed: allowed, wasKids: wasKids) ? true : nil
         store.upsertProfile(p)
         if photo != store.photos[p.id] { store.setPhoto(photo, for: p.id) }
         dismiss()

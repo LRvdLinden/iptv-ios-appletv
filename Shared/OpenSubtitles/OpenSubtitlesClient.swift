@@ -155,6 +155,8 @@ final class OpenSubtitles: ObservableObject {
     /// `movieHash`: OpenSubtitles-hash van het bestand; treffers die precies passen komen bovenaan.
     func search(imdbID: String?, tmdbID: Int? = nil, title: String? = nil, year: Int? = nil, season: Int? = nil, episode: Int? = nil,
                 languages: [String], movieHash: String? = nil) async throws -> [Subtitle] {
+        // build 157: alleen met Lifetime (een bestaande koppeling blijft bewaard, maar wordt bij Gratis niet gebruikt)
+        guard EntitlementsService.shared.allows(.opensubtitles) else { throw FeatureLockedError(feature: "opensubtitles") }
         var q: [String: String] = [:]
         let langs = Array(Set(languages.flatMap(Self.apiCodes))).sorted()
         if !langs.isEmpty { q["languages"] = langs.joined(separator: ",") }
@@ -273,6 +275,7 @@ final class OpenSubtitles: ObservableObject {
     /// Download → lokaal .srt-bestand dat de player kan inladen.
     func download(_ sub: Subtitle) async throws -> URL {
         guard isLoggedIn else { throw OSError.notLoggedIn }
+        guard EntitlementsService.shared.allows(.opensubtitles) else { throw FeatureLockedError(feature: "opensubtitles") }
         struct R: Decodable { let link: String; let file_name: String?; let remaining: Int? }
         let d = try await request("/download", method: "POST", body: ["file_id": sub.id, "sub_format": "srt"])
         let r = try JSONDecoder().decode(R.self, from: d)
