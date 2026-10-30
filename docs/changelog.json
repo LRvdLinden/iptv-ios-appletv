@@ -13,8 +13,6 @@
      "macos",
      "android",
      "androidtv",
-     "tizen",
-     "webos",
      "web",
      "windows"
     ],
@@ -30,8 +28,6 @@
      "macos",
      "android",
      "androidtv",
-     "tizen",
-     "webos",
      "web",
      "windows"
     ],
@@ -96,8 +92,6 @@
      "macos",
      "android",
      "androidtv",
-     "tizen",
-     "webos",
      "web",
      "windows"
     ],
@@ -113,8 +107,6 @@
      "macos",
      "android",
      "androidtv",
-     "tizen",
-     "webos",
      "web",
      "windows"
     ],
@@ -130,22 +122,11 @@
      "macos",
      "android",
      "androidtv",
-     "tizen",
-     "webos",
      "web",
      "windows"
     ],
     "nl": "Ontdek categorieën toont Netflix niet meer twee keer en toont de logo's van streamingdiensten weer",
     "en": "Discover categories no longer shows Netflix twice and shows the streaming service logos again"
-   },
-   {
-    "type": "new",
-    "platforms": [
-     "tizen",
-     "webos"
-    ],
-    "nl": "Zoeken vindt ook titels in verborgen categorieën en via de zoekcatalogi van Stremio-add-ons",
-    "en": "Search also finds titles in hidden categories and through the search catalogs of Stremio add-ons"
    },
    {
     "type": "improved",
@@ -155,9 +136,7 @@
      "tvos",
      "macos",
      "android",
-     "androidtv",
-     "tizen",
-     "webos"
+     "androidtv"
     ],
     "nl": "Bij Over staat nu ook de bronvermelding Streamingdata: JustWatch",
     "en": "About now also credits Streaming data: JustWatch"
@@ -178,8 +157,6 @@
      "macos",
      "android",
      "androidtv",
-     "tizen",
-     "webos",
      "web",
      "windows"
     ],
@@ -191,8 +168,6 @@
     "platforms": [
      "android",
      "androidtv",
-     "tizen",
-     "webos",
      "web",
      "windows"
     ],
@@ -217,9 +192,7 @@
      "ipados",
      "tvos",
      "android",
-     "androidtv",
-     "tizen",
-     "webos"
+     "androidtv"
     ],
     "nl": "Een heel grote server stopt netjes met een melding in plaats van de app te laten wegvallen",
     "en": "A very large server now stops cleanly with a message instead of the app closing"
@@ -233,8 +206,6 @@
      "macos",
      "android",
      "androidtv",
-     "tizen",
-     "webos",
      "web",
      "windows"
     ],
@@ -250,8 +221,6 @@
      "macos",
      "android",
      "androidtv",
-     "tizen",
-     "webos",
      "web",
      "windows"
     ],
@@ -294,9 +263,7 @@
      "tvos",
      "macos",
      "android",
-     "androidtv",
-     "tizen",
-     "webos"
+     "androidtv"
     ],
     "nl": "Diagnose: de bereikbaarheid van je eigen server en de fase toepassen worden goed gemeten",
     "en": "Diagnostics: your own server's reachability and the apply step are measured correctly"
@@ -316,9 +283,7 @@
      "tvos",
      "macos",
      "android",
-     "androidtv",
-     "tizen",
-     "webos"
+     "androidtv"
     ],
     "nl": "Live tv hapert niet meer kort na een paar seconden afspelen: het audio- of ondertitelspoor wordt niet meer opnieuw gekozen als dat niet nodig is",
     "en": "Live TV no longer stutters a few seconds into playback: the audio or subtitle track is no longer re-selected when it isn't needed"
@@ -343,8 +308,6 @@
      "macos",
      "android",
      "androidtv",
-     "tizen",
-     "webos",
      "web",
      "windows"
     ],
@@ -360,8 +323,6 @@
      "macos",
      "android",
      "androidtv",
-     "tizen",
-     "webos",
      "web",
      "windows"
     ],
@@ -392,30 +353,6 @@
   "date": "2026-10-24",
   "items": [
    {
-    "type": "new",
-    "platforms": [
-     "webos"
-    ],
-    "nl": "Bingr voor LG-tv's met webOS: dezelfde app als op Samsung TV, met de gewone afstandsbediening of de Magic Remote (wijzen, klikken en scrollen)",
-    "en": "Bingr for LG TVs with webOS: the same app as on Samsung TV, with the regular remote or the Magic Remote (point, click and scroll)"
-   },
-   {
-    "type": "new",
-    "platforms": [
-     "webos"
-    ],
-    "nl": "Speler met de eigen video van de tv voor HLS en MP4; TS-streams die de tv niet zelf speelt gaan via een extra speler",
-    "en": "Player uses the TV's own video for HLS and MP4; TS streams the TV can't play itself go through an extra player"
-   },
-   {
-    "type": "new",
-    "platforms": [
-     "webos"
-    ],
-    "nl": "Support en diagnose met het model, de webOS-versie en het netwerk van de tv",
-    "en": "Support and diagnostics with the TV's model, webOS version and network"
-   },
-   {
     "type": "fixed",
     "platforms": [
      "ios",
@@ -424,7 +361,6 @@
      "macos",
      "android",
      "androidtv",
-     "tizen",
      "web",
      "windows"
     ],
@@ -453,10 +389,8 @@
      "macos",
      "android",
      "androidtv",
-     "tizen",
      "web",
-     "windows",
-     "webos"
+     "windows"
     ],
     "nl": "De startdiagnose toont bovenaan of de start goed, traag of vastgelopen was, met app-tijd los van wachten op jou en de vorige start",
     "en": "Start diagnostics show at the top whether the start was good, slow or stuck, with app time separate from waiting for you and the previous start"
@@ -470,7 +404,6 @@
      "macos",
      "android",
      "androidtv",
-     "tizen",
      "web",
      "windows"
     ],
@@ -486,7 +419,6 @@
      "macos",
      "android",
      "androidtv",
-     "tizen",
      "web",
      "windows"
     ],
@@ -502,29 +434,11 @@
      "macos",
      "android",
      "androidtv",
-     "tizen",
-     "web",
-     "windows",
-     "webos"
-    ],
-    "nl": "Een diagnose naar support bevat altijd de startdiagnose van deze en de vorige start",
-    "en": "Diagnostics sent to support always include the start diagnostics of this and the previous start"
-   },
-   {
-    "type": "new",
-    "platforms": [
-     "ios",
-     "ipados",
-     "tvos",
-     "macos",
-     "android",
-     "androidtv",
-     "tizen",
      "web",
      "windows"
     ],
-    "nl": "Een LG-tv staat in je apparatenlijst en bij Wie kijkt er nu als LG TV",
-    "en": "An LG TV shows as LG TV in your device list and in Watching now"
+    "nl": "Een diagnose naar support bevat altijd de startdiagnose van deze en de vorige start",
+    "en": "Diagnostics sent to support always include the start diagnostics of this and the previous start"
    },
    {
     "type": "improved",
@@ -542,14 +456,6 @@
     ],
     "nl": "Support: de diagnose uit de app is uitgebreider en adressen en servernamen worden er beter uit gehaald",
     "en": "Support: diagnostics from the app are more detailed and addresses and server names are removed more thoroughly"
-   },
-   {
-    "type": "new",
-    "platforms": [
-     "server"
-    ],
-    "nl": "De server kent de LG TV-app (webOS)",
-    "en": "The server supports the LG TV app (webOS)"
    }
   ]
  },
@@ -567,7 +473,6 @@
      "macos",
      "android",
      "androidtv",
-     "tizen",
      "web",
      "windows"
     ],
@@ -596,7 +501,6 @@
      "macos",
      "android",
      "androidtv",
-     "tizen",
      "web",
      "windows"
     ],
@@ -612,7 +516,6 @@
      "macos",
      "android",
      "androidtv",
-     "tizen",
      "web",
      "windows"
     ],
@@ -628,7 +531,6 @@
      "macos",
      "android",
      "androidtv",
-     "tizen",
      "web",
      "windows",
      "server"
@@ -654,7 +556,6 @@
      "macos",
      "android",
      "androidtv",
-     "tizen",
      "web",
      "windows",
      "server"
@@ -671,7 +572,6 @@
      "macos",
      "android",
      "androidtv",
-     "tizen",
      "web",
      "windows"
     ],
@@ -687,7 +587,6 @@
      "macos",
      "android",
      "androidtv",
-     "tizen",
      "web",
      "windows"
     ],
@@ -703,7 +602,6 @@
      "macos",
      "android",
      "androidtv",
-     "tizen",
      "web",
      "windows"
     ],
@@ -766,7 +664,6 @@
      "macos",
      "android",
      "androidtv",
-     "tizen",
      "web",
      "windows"
     ],
@@ -782,7 +679,6 @@
      "macos",
      "android",
      "androidtv",
-     "tizen",
      "web",
      "windows"
     ],
@@ -798,7 +694,6 @@
      "macos",
      "android",
      "androidtv",
-     "tizen",
      "web",
      "windows"
     ],
@@ -814,7 +709,6 @@
      "macos",
      "android",
      "androidtv",
-     "tizen",
      "web",
      "windows"
     ],
@@ -825,8 +719,7 @@
     "type": "improved",
     "platforms": [
      "tvos",
-     "androidtv",
-     "tizen"
+     "androidtv"
     ],
     "nl": "Op de tv staat de focus bij de vraag standaard op Later",
     "en": "On TV, the question focuses on Later by default"
@@ -870,8 +763,7 @@
     "type": "fixed",
     "platforms": [
      "android",
-     "androidtv",
-     "tizen"
+     "androidtv"
     ],
     "nl": "Verder kijken toont de echte poster van de film of serie, ook bij eerder bekeken titels en titels van je andere apparaten",
     "en": "Continue Watching shows the real movie or series poster, also for titles you watched earlier and titles from your other devices"
@@ -880,8 +772,7 @@
     "type": "improved",
     "platforms": [
      "android",
-     "androidtv",
-     "tizen"
+     "androidtv"
     ],
     "nl": "Openen gaat sneller: met een bewaarde lijst wordt bij het openen niets opgehaald, verversen gebeurt pas later en één server tegelijk",
     "en": "Opening is faster: with a saved list nothing is downloaded at startup, refreshing happens later and one server at a time"
@@ -899,8 +790,7 @@
     "type": "improved",
     "platforms": [
      "android",
-     "androidtv",
-     "tizen"
+     "androidtv"
     ],
     "nl": "Verversen gebeurt nooit tijdens het kijken, in de profielkeuze of op het pincodescherm",
     "en": "Refreshing never happens while watching, on the profile picker or on the PIN screen"
@@ -1010,7 +900,6 @@
      "macos",
      "android",
      "androidtv",
-     "tizen",
      "web",
      "windows"
     ],
@@ -1026,7 +915,6 @@
      "macos",
      "android",
      "androidtv",
-     "tizen",
      "web",
      "windows"
     ],
@@ -1042,7 +930,6 @@
      "macos",
      "android",
      "androidtv",
-     "tizen",
      "web",
      "windows"
     ],
@@ -1073,8 +960,7 @@
      "tvos",
      "macos",
      "android",
-     "androidtv",
-     "tizen"
+     "androidtv"
     ],
     "nl": "Kinderslot uitzetten, de pincode wijzigen en een vergrendelde groep ontgrendelen vragen nu de huidige pincode",
     "en": "Turning off parental controls, changing the PIN and unlocking a locked group now ask for the current PIN"
@@ -1087,8 +973,7 @@
      "tvos",
      "macos",
      "android",
-     "androidtv",
-     "tizen"
+     "androidtv"
     ],
     "nl": "Na 5 foute pincodes geldt een oplopende wachttijd",
     "en": "After 5 wrong PINs there's an increasing waiting time"
@@ -1145,8 +1030,7 @@
      "tvos",
      "macos",
      "android",
-     "androidtv",
-     "tizen"
+     "androidtv"
     ],
     "nl": "Inloggegevens van je servers en je accountsessie worden versleuteld bewaard (sleutelhanger op Apple)",
     "en": "Your server login details and account session are stored encrypted (Keychain on Apple)"
@@ -1159,8 +1043,7 @@
      "tvos",
      "macos",
      "android",
-     "androidtv",
-     "tizen"
+     "androidtv"
     ],
     "nl": "Verbindingen met Bingr en de eigen diensten gaan altijd via HTTPS",
     "en": "Connections to Bingr and its own services always use HTTPS"
@@ -1174,7 +1057,6 @@
      "macos",
      "android",
      "androidtv",
-     "tizen",
      "web",
      "windows",
      "server"
@@ -1191,7 +1073,6 @@
      "macos",
      "android",
      "androidtv",
-     "tizen",
      "web",
      "windows",
      "server"
@@ -1249,7 +1130,6 @@
      "macos",
      "android",
      "androidtv",
-     "tizen",
      "web"
     ],
     "nl": "Kinderprofielen tonen alleen kinderinhoud, afgestemd op de leeftijdsgrens; een kinderprofiel verlaten kan pas na een rekensom (Vraag een volwassene)",
@@ -1264,7 +1144,6 @@
      "macos",
      "android",
      "androidtv",
-     "tizen",
      "web"
     ],
     "nl": "Categorieën staat in het menu naast Series; Mijn Bingr open je via je profiel",
@@ -1279,7 +1158,6 @@
      "macos",
      "android",
      "androidtv",
-     "tizen",
      "web"
     ],
     "nl": "Verborgen categorieën gelden nu voor je hele account (alle profielen behalve kinderprofielen)",
@@ -1294,7 +1172,6 @@
      "macos",
      "android",
      "androidtv",
-     "tizen",
      "web"
     ],
     "nl": "Categorieën aan- en uitzetten in Instellingen gaat veel sneller",
@@ -1309,7 +1186,6 @@
      "macos",
      "android",
      "androidtv",
-     "tizen",
      "web"
     ],
     "nl": "Voor jou is gebaseerd op wat dit profiel kijkt; zonder kijkgeschiedenis heet de rij Populair",
@@ -1324,7 +1200,6 @@
      "macos",
      "android",
      "androidtv",
-     "tizen",
      "web"
     ],
     "nl": "Nieuw op Bingr toont wat het laatst aan je bibliotheek is toegevoegd, over al je servers",
@@ -1339,7 +1214,6 @@
      "macos",
      "android",
      "androidtv",
-     "tizen",
      "web"
     ],
     "nl": "Uitgelicht op Home toont een vaste selectie die vanzelf om de 8 seconden wisselt",
@@ -1354,7 +1228,6 @@
      "macos",
      "android",
      "androidtv",
-     "tizen",
      "web"
     ],
     "nl": "Servers automatisch vernieuwen volgt weer je instelling en werkt al je servers bij, ook als de app lang openstaat",
@@ -1369,7 +1242,6 @@
      "macos",
      "android",
      "androidtv",
-     "tizen",
      "web"
     ],
     "nl": "Wat je aan Mijn lijst toevoegt, blijft er nu altijd in staan, ook op je andere apparaten",
@@ -1441,7 +1313,6 @@
      "macos",
      "android",
      "androidtv",
-     "tizen",
      "web"
     ],
     "nl": "Voorbereiding op de eerste release (versie 1.0.0)",

@@ -121,7 +121,7 @@ export function shortError(e: unknown): string {
   return s.replace(/\s+/g, " ").trim().slice(0, 160) || "error";
 }
 
-// ---- build 147: GitHub-build-monitors (Apple, Android, Windows, webOS) ----
+// ---- build 147: GitHub-build-monitors (Apple, Android, Windows) ----
 // Alleen de echte build- en aanleverjob(s) tellen (doel "repo|workflow|branch|job1,job2"), niet test- of rooktest-jobs
 // en niet de conclusie van de hele run. Geannuleerde, overgeslagen en lopende runs tellen niet: dan geldt de laatste
 // afgeronde run. Eén mislukte run = verminderd; een storing pas na 2 mislukte runs op rij, of als een mislukte build al
@@ -138,7 +138,7 @@ const FAILED = ["failure", "timed_out", "startup_failure", "action_required"];
 // jobs die nooit tellen als er geen vaste jobnamen zijn opgegeven (of die niet in de run voorkomen)
 export const TEST_JOB = /(test|smoke|rook|lint|screenshot|sdk\d+|e2e|check)/i;
 
-/** Jobnamen uit het doel ("build" of "apk,tizen"); leeg = alle jobs behalve test-jobs. */
+/** Jobnamen uit het doel ("build" of "aanleveren,compileren"); leeg = alle jobs behalve test-jobs. */
 export function ghJobNames(target: string): string[] {
   return (target.split("|")[3] || "").split(",").map((s) => s.trim()).filter(Boolean);
 }

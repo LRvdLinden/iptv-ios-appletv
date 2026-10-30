@@ -3,20 +3,18 @@
 Formaat docs/changelog.json: lijst van builds (nieuwste eerst):
   {"build": 51, "version": "1.0.0", "date": "2026-10-12",
    "items": [{"type": "new"|"improved"|"fixed",
-              "platforms": ["ios","ipados","tvos","macos","android","androidtv","tizen","windows","webos","web","server"],
+              "platforms": ["ios","ipados","tvos","macos","android","androidtv","windows","web","server"],
               "nl": "…", "en": "…"}]}
-"androidtv" staat voor Android TV, Google TV en Fire TV; "tizen" voor Samsung TV (vanaf build 55);
-"windows" voor Bingr voor Windows (repo bingr-windows, vanaf build 140); "webos" voor LG-tv (repo bingr-webOS, vanaf build 147).
+"androidtv" staat voor Android TV, Google TV en Fire TV; "windows" voor Bingr voor Windows
+(repo bingr-windows, vanaf build 140). Samsung TV (Tizen) en LG-tv (webOS) worden niet meer
+ondersteund: die platforms staan niet meer in de changelog.
 
-"Alle apps" = alle apps in APPS die bij die build al bestonden (SINCE): vanaf build 140 dus ook
-windows. Builds van voor TIZEN_FROM hadden nog geen Samsung TV-app: daar telt een punt met de zes
-oudere apps (APPS zonder tizen en windows) ook als "Alle apps" (en geldt het ook voor tizen).
-Voor windows gebeurt dat niet: oudere builds komen niet in de Windows-changelog.
+"Alle apps" = alle apps in APPS die bij die build al bestonden (SINCE): vóór build 140 de zes
+Apple- en Android-apps, vanaf build 140 ook windows. Oudere builds komen niet in de Windows-changelog.
 
 Gebruik: python3 tools/make_changelog.py                   → CHANGELOG.md (Apple + web)
          python3 tools/make_changelog.py --android <pad>   → <pad>/CHANGELOG.md (Android)
          python3 tools/make_changelog.py --windows <pad>   → <pad>/CHANGELOG.md (Windows, repo bingr-windows)
-         python3 tools/make_changelog.py --webos <pad>     → <pad>/CHANGELOG.md (LG webOS, repo bingr-webOS)
          python3 tools/make_changelog.py --site <map>      → <map>/assets/changelog.json"""
 import json, sys, pathlib, shutil
 root = pathlib.Path(__file__).resolve().parent.parent
@@ -25,23 +23,20 @@ args = sys.argv[1:]
 def arg(n): return args[args.index(n) + 1] if n in args else None
 
 LABEL = {"ios": "iOS", "ipados": "iPadOS", "tvos": "tvOS", "macos": "macOS", "android": "Android", "androidtv": "Android TV",
-         "tizen": "Samsung TV (Tizen)", "windows": "Windows", "webos": "LG TV (webOS)", "web": "Website", "server": "Server"}
-ORDER = ["ios", "ipados", "tvos", "macos", "android", "androidtv", "tizen", "windows", "webos", "web", "server"]
-APPS = {"ios", "ipados", "tvos", "macos", "android", "androidtv", "tizen", "windows", "webos"}
-TIZEN_FROM = 55  # eerste build met de Samsung TV-app
+         "windows": "Windows", "web": "Website", "server": "Server"}
+ORDER = ["ios", "ipados", "tvos", "macos", "android", "androidtv", "windows", "web", "server"]
+APPS = {"ios", "ipados", "tvos", "macos", "android", "androidtv", "windows"}
 WINDOWS_FROM = 140  # eerste build met de Windows-app
-WEBOS_FROM = 147  # eerste build met de LG webOS-app
-SINCE = {"tizen": TIZEN_FROM, "windows": WINDOWS_FROM, "webos": WEBOS_FROM}
+SINCE = {"windows": WINDOWS_FROM}
+DROPPED = {"tizen", "webos"}  # vervallen platforms (Samsung TV, LG-tv): worden genegeerd als ze nog ergens staan
 
 def apps_at(build):
     """De apps die bij deze build al bestonden ("Alle apps" van toen)."""
     return {p for p in APPS if build >= SINCE.get(p, 0)}
 
 def platforms(i, build):
-    """Platforms van een punt; vóór TIZEN_FROM is tizen inbegrepen als alle zes andere apps genoemd zijn."""
-    s = set(i["platforms"])
-    if build < TIZEN_FROM and APPS - {"tizen", "windows", "webos"} <= s: s.add("tizen")
-    return s
+    """Platforms van een punt, zonder de vervallen platforms."""
+    return set(i["platforms"]) - DROPPED
 TYPES = [("new", "Nieuw"), ("improved", "Verbeterd"), ("fixed", "Opgelost")]
 MONTHS = ["januari", "februari", "maart", "april", "mei", "juni", "juli", "augustus", "september", "oktober", "november", "december"]
 def nl_date(iso):
@@ -81,18 +76,13 @@ def md(keep, title, intro, core=None):
 
 if arg("--android"):
     p = pathlib.Path(arg("--android")) / "CHANGELOG.md"
-    p.write_text(md({"android", "androidtv", "tizen", "server"}, "Android en Samsung TV",
-        "Alle versies van Bingr voor Android-telefoon en -tablet, Android TV, Google TV, Fire TV en Samsung TV (Tizen). iPhone, iPad, Apple TV en Mac: [iptv-ios-appletv](https://github.com/LRvdLinden/iptv-ios-appletv/blob/main/CHANGELOG.md) · alles: [bingr.online/changelog](https://bingr.online/changelog/).", core={"android", "androidtv", "tizen"}))
+    p.write_text(md({"android", "androidtv", "server"}, "Android en Android TV",
+        "Alle versies van Bingr voor Android-telefoon en -tablet, Android TV, Google TV en Fire TV. iPhone, iPad, Apple TV en Mac: [iptv-ios-appletv](https://github.com/LRvdLinden/iptv-ios-appletv/blob/main/CHANGELOG.md) · alles: [bingr.online/changelog](https://bingr.online/changelog/).", core={"android", "androidtv"}))
     print(p)
 elif arg("--windows"):
     p = pathlib.Path(arg("--windows")) / "CHANGELOG.md"
     p.write_text(md({"windows", "server"}, "Windows",
-        "Alle versies van Bingr voor Windows (installer voor Windows 10 en 11). De app toont de webspeler van bingr.online: verbeteringen daaraan staan bij de website op [bingr.online/changelog](https://bingr.online/changelog/). iPhone, iPad, Apple TV en Mac: [iptv-ios-appletv](https://github.com/LRvdLinden/iptv-ios-appletv/blob/main/CHANGELOG.md) · Android en Samsung TV: [bingr-android](https://github.com/LRvdLinden/bingr-android/blob/main/CHANGELOG.md).", core={"windows"}))
-    print(p)
-elif arg("--webos"):
-    p = pathlib.Path(arg("--webos")) / "CHANGELOG.md"
-    p.write_text(md({"webos", "server"}, "LG TV (webOS)",
-        "Alle versies van Bingr voor LG-tv's met webOS. iPhone, iPad, Apple TV en Mac: [iptv-ios-appletv](https://github.com/LRvdLinden/iptv-ios-appletv/blob/main/CHANGELOG.md) · Android en Samsung TV: [bingr-android](https://github.com/LRvdLinden/bingr-android/blob/main/CHANGELOG.md) · alles: [bingr.online/changelog](https://bingr.online/changelog/).", core={"webos"}))
+        "Alle versies van Bingr voor Windows (installer voor Windows 10 en 11). De app toont de webspeler van bingr.online: verbeteringen daaraan staan bij de website op [bingr.online/changelog](https://bingr.online/changelog/). iPhone, iPad, Apple TV en Mac: [iptv-ios-appletv](https://github.com/LRvdLinden/iptv-ios-appletv/blob/main/CHANGELOG.md) · Android en Android TV: [bingr-android](https://github.com/LRvdLinden/bingr-android/blob/main/CHANGELOG.md).", core={"windows"}))
     print(p)
 elif arg("--site"):
     d = pathlib.Path(arg("--site")) / "assets"; d.mkdir(exist_ok=True)

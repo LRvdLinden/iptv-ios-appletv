@@ -850,7 +850,6 @@ insert into public.status_monitors (id, name_nl, name_en, grp, kind, target, key
   ('site-acc',   'Mijn Bingr',                   'My Bingr',                     'website', 'http',        'https://bingr.online/account/',          null,         5,  true,  true, 50),
   ('tls',        'TLS-certificaat',              'TLS certificate',              'website', 'tls',         'bingr.online',                           null,         60, true,  true, 60),
   ('apk',        'Android',                      'Android',                      'apps',    'build',       'android',                                null,         15, true,  true, 10),
-  ('wgt',        'Samsung TV',                   'Samsung TV',                   'apps',    'build',       'tizen',                                  null,         15, true,  true, 20),
   ('apple',      'Apple (iOS, iPadOS, tvOS, macOS)', 'Apple (iOS, iPadOS, tvOS, macOS)', 'apps',    'gh_workflow', 'LRvdLinden/iptv-ios-appletv|build.yml|main', null,     15, true,  true, 30),
   ('devices',    'Actieve apparaten',            'Active devices',               'apps',    'devices',     '',                                       null,         5,  false, true, 90)
 on conflict (id) do nothing;
@@ -4209,9 +4208,7 @@ update public.status_monitors set target = 'LRvdLinden/iptv-ios-appletv|build.ym
 update public.status_monitors set target = 'LRvdLinden/bingr-windows|build.yml|main|windows'
  where id = 'windows' and kind = 'gh_workflow' and target = 'LRvdLinden/bingr-windows|build.yml|main';
 insert into public.status_monitors (id, name_nl, name_en, grp, kind, target, keyword, interval_min, public, enabled, builtin, sort) values
-  ('android-ci', 'Android-build (GitHub)', 'Android build (GitHub)', 'apps', 'gh_workflow', 'LRvdLinden/bingr-android|build.yml|main|apk,tizen', null, 15, false, true, true, 15),
-  ('webos',      'LG TV',                  'LG TV',                  'apps', 'gh_workflow', 'LRvdLinden/bingr-webos|build.yml|main|build',       null, 15, true,  true, true, 50),
-  ('ipk',        'LG TV-build (opslag)',   'LG TV build (storage)',  'apps', 'build',       'webos',                                             null, 15, false, true, true, 55)
+  ('android-ci', 'Android-build (GitHub)', 'Android build (GitHub)', 'apps', 'gh_workflow', 'LRvdLinden/bingr-android|build.yml|main|apk', null, 15, false, true, true, 15)
 on conflict (id) do nothing;
 -- upgrade-link: webos erbij (standaard aan, zoals de andere tv's)
 update public.app_settings set value = value || '{"webos": true}'::jsonb
@@ -4225,3 +4222,16 @@ update public.app_settings set value = value || '{"webos": true}'::jsonb
 -- apple telt die twee jobs; oude runs met de job `build` tellen via de terugval (alle jobs behalve test-jobs) nog mee.
 update public.status_monitors set target = 'LRvdLinden/iptv-ios-appletv|build.yml|main|aanleveren,compileren'
  where id = 'apple' and kind = 'gh_workflow' and target = 'LRvdLinden/iptv-ios-appletv|build.yml|main|build';
+
+-- ============================================================================================================
+-- Samsung TV (Tizen) en LG-tv (webOS) worden niet meer ondersteund (server). De monitors daarvan staan
+-- niet meer in de standaardlijst hierboven en gaan uit en uit de statuspagina. Ze worden NIET verwijderd: de rijen,
+-- controles en storingen (geschiedenis) blijven in de database staan. Ook apparaten, tickets en instellingen met
+-- platform tizen/webos blijven bewaard; de Android-build telt alleen nog de job apk.
+update public.status_monitors set enabled = false, public = false
+ where (id in ('wgt', 'webos', 'ipk')
+        or (kind = 'build' and lower(target) in ('tizen', 'webos'))
+        or (kind = 'gh_workflow' and lower(target) like 'lrvdlinden/bingr-webos|%'))
+   and (enabled or public);
+update public.status_monitors set target = 'LRvdLinden/bingr-android|build.yml|main|apk'
+ where id = 'android-ci' and kind = 'gh_workflow' and target = 'LRvdLinden/bingr-android|build.yml|main|apk,tizen';

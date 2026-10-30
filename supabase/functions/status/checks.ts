@@ -19,7 +19,7 @@ export interface Ctx {
   db: SupabaseClient;
   env: (k: string) => string;
   fetch?: typeof fetch;
-  /** per run gedeeld: versions/latest.json maar één keer ophalen voor APK en .wgt */
+  /** per run gedeeld: versions/latest.json maar één keer ophalen */
   cache: Map<string, Promise<unknown>>;
 }
 
@@ -332,9 +332,9 @@ const limited = (res: Response) => res.status === 429 || (res.status === 403 && 
 // zelfde formaat als de functie admin in bingr-beheer). De controle haalt het manifest op en vraagt daarna met HEAD het
 // nieuwste bestand van het platform op (zonder het te downloaden). Links en sleutel komen nooit in een resultaat.
 export { BUILD_PLATFORMS, BUILDS_DL, signBuildToken };
-const ASSET_PLATFORM: Record<string, string> = { ".apk": "android", ".wgt": "tizen", ".zip": "apple" };
+const ASSET_PLATFORM: Record<string, string> = { ".apk": "android", ".zip": "apple" };
 
-/** target: "android" | "tizen" | "apple" | "beheer" | "windows" | "webos" — staat de nieuwste build van dat platform in de opslag en is hij op te halen? */
+/** target: "android" | "apple" | "beheer" | "windows" — staat de nieuwste build van dat platform in de opslag en is hij op te halen? */
 export async function checkBuild(target: string, ctx: Ctx): Promise<CheckResult> {
   const plat = (target || "").trim().toLowerCase();
   if (!(BUILD_PLATFORMS as readonly string[]).includes(plat)) return { ok: false, error: `onbekend platform "${plat}"` };
@@ -351,8 +351,7 @@ export async function checkBuild(target: string, ctx: Ctx): Promise<CheckResult>
     try { m = await (ctx.cache.get(cacheKey) as Promise<{ platforms?: Record<string, BuildEntry> }>); }
     catch (e) { return { ok: false, ms: since(t), error: shortError(e) }; }
     const v = m?.platforms?.[plat];
-    // build 147: een nieuw platform (webos) zonder eerste build telt nog niet mee
-    if (!v?.path || !v.file) return plat === "webos" ? { ok: true, skip: true, ms: since(t), error: "nog geen build in de opslag" } : { ok: false, ms: since(t), error: "geen build in de opslag" };
+    if (!v?.path || !v.file) return { ok: false, ms: since(t), error: "geen build in de opslag" };
     const res = await f(`${BUILDS_DL}?t=${await signBuildToken(key, v.path, 60)}`,
       { method: "HEAD", signal, headers: { "User-Agent": UA }, redirect: "error" });
     await res.body?.cancel();
@@ -367,10 +366,10 @@ export async function checkBuild(target: string, ctx: Ctx): Promise<CheckResult>
 
 /**
  * build 147: GitHub-build (doel "repo|workflow|branch|job1,job2"). Alleen de echte build- en aanleverjob(s) tellen
- * (Apple: build; Android: apk,tizen; Windows: windows; webOS: build), niet test-/rooktest-jobs en niet de conclusie van de
+ * (Apple: aanleveren,compileren; Android: apk; Windows: windows), niet test-/rooktest-jobs en niet de conclusie van de
  * hele run. Geannuleerde en lopende runs tellen niet. Eén mislukte run = verminderd; storing pas na 2 mislukte runs op
  * rij of als een mislukte build langer dan 2 uur de laatste is (logic.ts, ghVerdict). Bestaat de workflow (nog) niet,
- * dan telt de monitor niet mee (bv. webOS zolang bingr-webos geen build.yml heeft).
+ * dan telt de monitor niet mee.
  */
 export async function checkGhWorkflow(target: string, ctx: Ctx): Promise<CheckResult> {
   const [repo, file, branch = "main"] = target.split("|");

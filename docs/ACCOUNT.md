@@ -1,4 +1,8 @@
-# Bingr-account: contract (iOS, iPadOS, tvOS, macOS, Android, Android TV, Samsung TV/Tizen, website)
+# Bingr-account: contract (iOS, iPadOS, tvOS, macOS, Android, Android TV, Windows, website)
+
+> **Samsung TV (Tizen) en LG-tv (webOS) worden niet meer ondersteund.** Wat hieronder over `tizen` en `webos` staat, is
+> geschiedenis: de server herkent die platforms nog (bestaande apparaten, tickets en instellingen blijven bewaard), maar er
+> komen geen builds, changelogpunten, statusmonitors of downloads meer voor.
 
 Inloggen is **verplicht**. Flow: **splash → (geen geldige sessie) inlogscherm → "Wie kijkt er?" → app**. Met een geldige sessie gaat de app na de splash direct naar "Wie kijkt er?". Uitloggen brengt je terug naar het inlogscherm.
 

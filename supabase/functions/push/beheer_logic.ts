@@ -101,7 +101,7 @@ export function mailingNotices(rows: MailingRow[]): BeheerNotice[] {
 }
 
 // ---------- builds ----------
-export const BUILD_NAMES: Record<string, string> = { android: "Android", tizen: "Samsung TV", apple: "Apple", beheer: "Beheer-app" };
+export const BUILD_NAMES: Record<string, string> = { android: "Android", apple: "Apple", beheer: "Beheer-app" };
 export type Builds = Record<string, number>;
 /** Builds uit manifest.json ({platforms:{android:{build}, …}}): alleen geldige nummers. */
 export function manifestBuilds(m: unknown): Builds {

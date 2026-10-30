@@ -48,10 +48,10 @@ Deno.test("beheer: klantantwoord; eerste bericht van een ticket telt niet als an
 
 Deno.test("beheer: builds uit het manifest, nieuw boven het watermerk, nieuw platform stil", () => {
   const cur = manifestBuilds({ platforms: { android: { build: 116 }, tizen: { build: 116 }, apple: { build: 115 }, beheer: { build: "x" }, other: { build: 3 } } });
-  eq(cur, { android: 116, tizen: 116, apple: 115 });
-  const r = buildNotices(cur, { android: 115, tizen: 116 });
+  eq(cur, { android: 116, apple: 115 }); // tizen (Samsung TV) vervallen: telt niet meer
+  const r = buildNotices(cur, { android: 115 });
   eq(r.notices, [{ kind: "build", title: "Android-build 116 staat klaar", body: "In Downloads op beheer.bingr.online", url: "bingrbeheer://downloads" }]);
-  eq(r.mark, { android: 116, tizen: 116, apple: 115 }); // apple had geen watermerk: vastgelegd zonder melding
+  eq(r.mark, { android: 116, apple: 115 }); // apple had geen watermerk: vastgelegd zonder melding
   eq(buildNotices({ android: 114 }, { android: 115 }).notices, []); // lager (teruggezet) = niets
   const all = buildNotices({ android: 2, tizen: 2, apple: 2, beheer: 2 }, { android: 1, tizen: 1, apple: 1, beheer: 1 });
   eq(all.notices.map((n) => n.title), ["4 nieuwe builds staan klaar"]);

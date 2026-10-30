@@ -111,11 +111,11 @@ Deno.test("Downloads: builds in de afgesloten opslag (dl.php)", async () => {
     if (p.f === "manifest.json") {
       return Response.json({ platforms: {
         android: { build: 106, date: "2026-10-16", file: "B.apk", path: "android/B.apk", size: 10 },
-        tizen: { build: 106, file: "B.wgt", path: "tizen/B.wgt", size: 10 },
+        windows: { build: 106, file: "B.exe", path: "windows/B.exe", size: 10 },
         apple: { build: 106, file: "B.zip", path: "apple/B.zip", size: 10 },
       } });
     }
-    if (p.f === "tizen/B.wgt") return new Response(null, { status: 404 });
+    if (p.f === "windows/B.exe") return new Response(null, { status: 404 });
     if (p.f === "apple/B.zip") return new Response(null, { status: 200, headers: { "content-length": "3" } });
     return new Response(null, { status: 200, headers: { "content-length": "10" } });
   };
@@ -123,8 +123,11 @@ Deno.test("Downloads: builds in de afgesloten opslag (dl.php)", async () => {
   const apk = await checkBuild("android", ctx);
   eq([apk.ok, apk.detail], [true, "build 106 (2026-10-16)"]);
   eq(calls[1], { path: "android/B.apk", method: "HEAD" });
-  const wgt = await checkBuild("tizen", ctx);
-  eq([wgt.ok, wgt.code], [false, 404]);
+  const win = await checkBuild("windows", ctx);
+  eq([win.ok, win.code], [false, 404]);
+  // Samsung TV en LG-tv vervallen: geen platform meer
+  eq((await checkBuild("tizen", ctx)).ok, false);
+  eq((await checkBuild("webos", ctx)).ok, false);
   eq((await checkBuild("apple", ctx)).error, "bestand is onvolledig");
   eq((await checkBuild("beheer", ctx)).error, "geen build in de opslag");
   eq(calls.filter((c) => c.path === "manifest.json").length, 1); // manifest maar één keer per run
@@ -186,9 +189,9 @@ Deno.test("GitHub-build: alleen de echte build telt (24 okt: sdk27 rood, build g
   const r = await checkGhWorkflow(APPLE, ctx);
   eq([r.ok, r.degraded ?? false, r.skip ?? false], [true, false, false]);
   eq(r.detail, "run 9 (abc9def)");
-  // Android: build- en aanleverjobs apk en tizen; de rooktest telt niet
-  const a = ghCtx([{ id: 5, conclusion: "failure", jobs: [["apk", "success"], ["tizen", "success"], ["emulator", "failure"]] }]);
-  eq((await checkGhWorkflow("o/a|build.yml|main|apk,tizen", a.ctx)).ok, true);
+  // Android: build- en aanleverjob apk; de rooktest telt niet
+  const a = ghCtx([{ id: 5, conclusion: "failure", jobs: [["apk", "success"], ["emulator", "failure"]] }]);
+  eq((await checkGhWorkflow("o/a|build.yml|main|apk", a.ctx)).ok, true);
   // matrix-job "build (ios)" telt bij "build"
   const mx = ghCtx([{ id: 3, conclusion: "failure", jobs: [["build (ios)", "success"], ["build (tvos)", "failure"]] }]);
   eq((await checkGhWorkflow(APPLE, mx.ctx)).degraded, true);
@@ -229,11 +232,11 @@ Deno.test("GitHub-build: geannuleerde runs en overgeslagen jobs tellen niet; de 
 Deno.test("GitHub-build: zonder jobnamen tellen alle jobs behalve tests; geen workflow = telt niet; limiet", async () => {
   const { ctx } = ghCtx([{ id: 7, conclusion: "failure", jobs: [["build", "success"], ["unit tests", "failure"], ["smoke", "failure"]] }]);
   eq((await checkGhWorkflow("o/r|build.yml|main", ctx)).ok, true);
-  // webOS: onbekende jobnaam opgegeven -> terugval op alle niet-test-jobs
+  // onbekende jobnaam opgegeven -> terugval op alle niet-test-jobs
   const w = ghCtx([{ id: 2, conclusion: "success", jobs: [["ipk", "success"]] }]);
   eq((await checkGhWorkflow("o/w|build.yml|main|build", w.ctx)).ok, true);
   const missing = ctxWith(() => new Response("{}", { status: 404 }));
-  const m = await checkGhWorkflow("LRvdLinden/bingr-webos|build.yml|main|build", missing);
+  const m = await checkGhWorkflow("o/nieuw|build.yml|main|build", missing);
   eq([m.ok, m.skip, m.error], [true, true, "workflow nog niet aanwezig"]);
   const lim = ghCtx([{ id: 4, conclusion: "failure", jobs: [] }], { limitJobs: true });
   eq((await checkGhWorkflow(APPLE, lim.ctx)).skip, true, "limiet bij de jobs: overslaan");
