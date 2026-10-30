@@ -1,5 +1,27 @@
 [
  {
+  "build": 153,
+  "version": "1.0.2",
+  "date": "2026-10-30",
+  "items": [
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web",
+     "windows"
+    ],
+    "nl": "Landaanduidingen tussen streepjes zoals ┃NL┃, ｜DE｜, |4K| en | MULTI / LINGO | staan nergens meer: niet in zendernamen, categorieën, titels, afleveringen, de tv-gids, de speler, zoeken of meldingen",
+    "en": "Country tags between bars such as ┃NL┃, ｜DE｜, |4K| and | MULTI / LINGO | no longer appear anywhere: not in channel names, categories, titles, episodes, the TV guide, the player, search or notifications"
+   }
+  ]
+ },
+ {
   "build": 152,
   "version": "1.0.2",
   "date": "2026-10-30",

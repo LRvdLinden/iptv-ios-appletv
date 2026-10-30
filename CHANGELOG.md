@@ -4,6 +4,15 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.2 · Build 153
+_30 oktober 2026_
+
+### Alle apps en de website
+
+**Opgelost**
+
+- Landaanduidingen tussen streepjes zoals ┃NL┃, ｜DE｜, |4K| en | MULTI / LINGO | staan nergens meer: niet in zendernamen, categorieën, titels, afleveringen, de tv-gids, de speler, zoeken of meldingen
+
 ## Versie 1.0.2 · Build 152
 _30 oktober 2026_
 
