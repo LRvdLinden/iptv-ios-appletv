@@ -9,7 +9,7 @@ import {
   reminderBody, reminderDue, reminderKey, reminderProfile, renderNotice, ttlFor, webPayload, webpushHostAllowed, webpushOutcome,
   supportKey, supportLinks, supportText,
 } from "./logic.ts";
-import { Channels } from "./channels.ts";
+import { Apns, apnsIat, apnsTokenUsable, Channels, type TokenStore } from "./channels.ts";
 import { openJsonField, seal, sealJsonField, unseal } from "../_shared/sealed.ts";
 
 function eq(a: unknown, b: unknown, msg = "") {
@@ -339,6 +339,60 @@ Deno.test("kanalen: APNs, FCM en Web Push met nagebootste diensten", async () =>
   // netwerkfout -> later opnieuw
   const broken = new Channels((k) => secrets[k], (() => Promise.reject(new TypeError("boom"))) as typeof fetch);
   eq((await broken.send({ id: 1, channel: "apns", token: "ab".repeat(32), sandbox: false, platform: "ios" }, n)).state, "retry");
+});
+Deno.test("APNs-providertoken: één per instantie tegelijk, gedeeld tussen instanties, iat per blok van 30 min", async () => {
+  // oorzaak van de mislukte Apple-meldingen: elke instantie (en elke worker) maakte een eigen token -> 429 TooManyProviderTokenUpdates
+  eq(apnsIat(3600 * 10 + 1799), 3600 * 10);
+  eq(apnsIat(3600 * 10 + 1800), 3600 * 10 + 1800);
+  eq(apnsIat(3600 * 10 + 5, true), 3600 * 10 + 5, "nieuw na Expired/InvalidProviderToken");
+  ok(apnsTokenUsable(1000, 1000 + 49 * 60) && !apnsTokenUsable(1000, 1000 + 50 * 60), "max. 50 minuten");
+  ok(!apnsTokenUsable(1000 + 120, 1000), "niet uit de toekomst");
+  const ec = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign"]) as CryptoKeyPair;
+  const secrets: Record<string, string> = { APNS_KEY_P8: await pkcs8Pem(ec.privateKey), APNS_KEY_ID: "KID", APNS_TEAM_ID: "EU3UY476T6" };
+  const db = new Map<string, { token: string; iat: number }>();
+  let saves = 0, loads = 0;
+  const store: TokenStore = {
+    load: (name) => { loads++; return Promise.resolve(db.get(name) ?? null); },
+    save: (name, token, iat) => {
+      saves++;
+      const cur = db.get(name);
+      if (!cur || cur.iat < iat) db.set(name, { token, iat });
+      return Promise.resolve(db.get(name)!);
+    },
+  };
+  const auths: string[] = [];
+  const fake = ((_u: string, init?: RequestInit) => {
+    auths.push(new Headers(init?.headers).get("authorization") ?? "");
+    return Promise.resolve(new Response(null, { status: 200 }));
+  }) as typeof fetch;
+  const env = (k: string) => secrets[k];
+  const a = new Apns(env, fake, store), b = new Apns(env, fake, store);
+  const n = renderNotice({ id: 7, kind: "admin", title_nl: "T", body_nl: "B" }, { platform: "ios", lang: "nl" });
+  const dev = (i: number) => ({ id: i, channel: "apns", token: "ab".repeat(32), sandbox: false, platform: "ios" });
+  // 20 workers tegelijk in instantie a, daarna instantie b (andere isolate): overal hetzelfde token
+  await Promise.all(Array.from({ length: 20 }, (_, i) => a.send(dev(i), n)));
+  await Promise.all(Array.from({ length: 5 }, (_, i) => b.send(dev(i), n)));
+  eq(new Set(auths).size, 1, "één token voor alle meldingen");
+  eq(saves, 1, "één keer opgeslagen");
+  ok(loads <= 2, "hoogstens één keer laden per instantie");
+  const claims = decodeJwt(auths[0].replace(/^bearer /, "")).claims;
+  eq(claims.iat % 1800, 0, "iat op een blok van 30 minuten");
+  // na 50 minuten een nieuw token (en weer gedeeld)
+  const later = (claims.iat + 50 * 60) * 1000;
+  const t2 = await a.token(later), t3 = await b.token(later);
+  ok(t2 !== auths[0].replace(/^bearer /, "") && t2 === t3, "na 50 min vernieuwd en gedeeld");
+  // Expired/InvalidProviderToken: één keer per 20 minuten een nieuw token met iat = nu
+  a.reset(later);
+  const t4 = await a.token(later + 1000);
+  ok(t4 !== t2, "na reset nieuw");
+  a.reset(later + 60_000);
+  eq(await a.token(later + 61_000), t4, "tweede reset binnen 20 min doet niets");
+  // TooManyProviderTokenUpdates is tijdelijk en maakt GEEN nieuw token (anders wordt het erger)
+  eq(apnsOutcome(429, "TooManyProviderTokenUpdates"), { state: "retry", error: "apns_TooManyProviderTokenUpdates" });
+  // zonder store werkt het ook (zelfde iat-blok)
+  const c = new Apns(env, fake);
+  const tc = await c.token(claims.iat * 1000 + 5000);
+  eq(decodeJwt(tc).claims.iat, claims.iat, "zonder store hetzelfde iat-blok");
 });
 Deno.test("kanaal zonder geheimen: overgeslagen met een duidelijke fout", async () => {
   const ch = new Channels(() => undefined, (() => { throw new Error("mag niet"); }) as typeof fetch);

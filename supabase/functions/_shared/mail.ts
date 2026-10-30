@@ -8,13 +8,29 @@ const env = (k: string) => Deno.env.get(k) ?? "";
 export const smtpConfigured = () =>
   !!(env("BINGR_SMTP_HOST") && env("BINGR_SMTP_USER") && env("BINGR_SMTP_PASSWORD") && env("BINGR_SMTP_FROM"));
 
-export function transport() {
-  const port = Number(env("BINGR_SMTP_PORT") || 465);
-  return nodemailer.createTransport({
-    host: env("BINGR_SMTP_HOST"), port, secure: port !== 587 && port !== 25, // 465 = TLS (Supabase blokkeert 25 en 587)
-    auth: { user: env("BINGR_SMTP_USER"), pass: env("BINGR_SMTP_PASSWORD") },
+/** Instellingen van de SMTP-verbinding (puur, getest in mail_test.ts). Eén verbinding per ronde die hergebruikt wordt
+ *  (pool, max. 1 verbinding, max. 100 mails per verbinding) in plaats van een nieuwe verbinding + login per mail: mailhosts
+ *  begrenzen het aantal verbindingen en logins per minuut (421/454 "too many connections/login attempts"). Tempo hoogstens
+ *  BINGR_SMTP_RATE mails per seconde (standaard 5). */
+export function transportOptions(get: (k: string) => string = env) {
+  const port = Number(get("BINGR_SMTP_PORT") || 465);
+  const rate = Math.max(1, Math.min(50, Number(get("BINGR_SMTP_RATE") || 5) || 5));
+  return {
+    host: get("BINGR_SMTP_HOST"), port, secure: port !== 587 && port !== 25, // 465 = TLS (Supabase blokkeert 25 en 587)
+    auth: { user: get("BINGR_SMTP_USER"), pass: get("BINGR_SMTP_PASSWORD") },
+    pool: true, maxConnections: 1, maxMessages: 100, rateDelta: 1000, rateLimit: rate,
     connectionTimeout: 15000, greetingTimeout: 15000, socketTimeout: 30000,
-  });
+  };
+}
+export function transport() {
+  return nodemailer.createTransport(transportOptions());
+}
+/** Korte foutcode voor logs en tellers, nooit het adres of de servertekst: `smtp_550`, `eauth`, `etimedout` of `error`. */
+export function mailErrorCode(e: unknown): string {
+  const c = Number((e as { responseCode?: number })?.responseCode ?? 0);
+  if (c >= 200 && c < 600) return `smtp_${c}`;
+  const code = String((e as { code?: string })?.code ?? "");
+  return /^[A-Z]{2,20}$/.test(code) ? code.toLowerCase() : "error";
 }
 
 /** Afzender met weergavenaam: een kaal adres in BINGR_SMTP_FROM wordt "Bingr <adres>" (zonder naam toont een mailapp

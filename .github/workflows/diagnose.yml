@@ -218,8 +218,8 @@ jobs:
           q "select id, audience, status, recipients, sent, failed, skipped, created_at::date as dag from public.mailings order by id desc limit 5" | note mailings
           q "select coalesce(error,'') as code, (sent_at is not null) as verstuurd, count(*) as n from public.account_welcome where claimed_at > now() - interval '30 days' group by 1,2" | note 'welkomstmails (30 dagen)'
           q "select count(*) as rondes, sum(sent) as sent, sum(failed) as failed from public.status_mail_queue where created_at > now() - interval '60 days'" | note 'statusmails (60 dagen)'
-          q "select email_sent, ${CODE//x/email_error} as code, count(*) as n from public.support_messages
-             where created_at > now() - interval '30 days' and author in ('support','event') group by 1,2" | note 'supportmails (30 dagen)'
+          q "select author, email_sent, ${CODE//x/email_error} as code, count(*) as n from public.support_messages
+             where created_at > now() - interval '30 days' and (email_sent or email_error is not null) group by 1,2,3" | note 'supportmails (30 dagen)'
           q "select status_code, timed_out, count(*) as n from net._http_response where created > now() - interval '6 hours' group by 1,2 order by 3 desc" | note 'pg_net antwoorden (6 uur)'
           q "select j.jobname, d.status, count(*) as n from cron.job_run_details d join cron.job j on j.jobid = d.jobid
              where d.start_time > now() - interval '24 hours' group by 1,2 order by 1" | note 'cron 24 uur'

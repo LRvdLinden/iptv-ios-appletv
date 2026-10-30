@@ -337,4 +337,4 @@ export function webpushOutcome(status: number): Outcome {
   if (status === 429 || status >= 500) return { state: "retry", error: `webpush_${status}` };
   return { state: "failed", error: `webpush_${status}` };
 }
-export const MAX_ATTEMPTS = 3;
+export const MAX_ATTEMPTS = 5; // wachttijd ertussen: bingr_push_finish in schema.sql (1, 5, 15, 60 min)

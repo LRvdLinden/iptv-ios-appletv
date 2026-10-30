@@ -30,7 +30,7 @@
 //                  BINGR_ALERT_EMAIL. Ook met header x-bingr-mailtest (workflow Diagnose, _shared/mail.ts), dan alleen
 //                  naar een testadres support+ci-…@bingr.online.
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { isMailtestAddress, MAILTEST_HEADER, mailtestOk, smtpConfigured, smtpFrom, transport } from "../_shared/mail.ts";
+import { isMailtestAddress, MAILTEST_HEADER, mailErrorCode, mailtestOk, smtpConfigured, smtpFrom, transport } from "../_shared/mail.ts";
 import { button, esc, eyebrow, footerHtml, layout, personName, redBar, title } from "../_shared/layout.ts";
 import { clientIp } from "../_shared/ip.ts"; // build 95: laatste X-Forwarded-For-waarde, niet de eerste
 import { type Monitor, runCheck } from "./checks.ts";
@@ -519,7 +519,7 @@ async function processQueue(budgetMs: number, max: number) {
             await db.from("status_subscribers").update({ last_sent_at: new Date().toISOString() }).eq("id", sub.id);
           } catch (e) {
             f++; failed++;
-            console.error("status mail", e instanceof Error ? e.message : e);
+            console.error("status mail", mailErrorCode(e)); // alleen de code: de servertekst kan het adres bevatten
           }
           cursor = sub.id;
         }
@@ -572,7 +572,7 @@ async function alert(events: Event[]): Promise<boolean | string> {
     await tx.sendMail({ from: smtpFrom(), to, subject, text, html, headers: { "Auto-Submitted": "auto-generated", "X-Bingr-Mail": "status-alert" } });
     return true;
   } catch (e) {
-    console.error("status alert", e instanceof Error ? e.message : e);
+    console.error("status alert", mailErrorCode(e));
     return "failed";
   } finally { tx.close(); }
 }

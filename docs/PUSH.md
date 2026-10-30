@@ -98,7 +98,10 @@ via de cron). Tekst: nl voor apparaten in het Nederlands, anders en (zonder en: 
 (verstuurt meteen ook een volgende batch).
 `{action:"admin_history", page?}` → `{items:[{id, kind, title_nl, body_nl, title_en, body_en, url, target, platform_group, build,
 version, devices, queued, sent, failed, invalid, errors, created_at, created_by, finished_at}], page, has_more, missing_channels}`
-(20 per pagina, nieuwste eerst; alleen `admin` en `release`). `invalid` = token verlopen, apparaat opgeruimd. Een kanaal zonder
+(20 per pagina, nieuwste eerst; alleen `admin` en `release`).
+`{action:"admin_retry", message_id}` → `{ok, retried, …zelfde velden als admin_progress}`: mislukte bezorgingen (`failed`) van dat
+bericht met een apparaat dat nog bestaat weer in de wachtrij (pogingen op 0; niet `too_late`/`device_removed`, niet voor
+herinneringen) en meteen een batch (beheer: knop "Mislukte opnieuw proberen"). `invalid` = token verlopen, apparaat opgeruimd. Een kanaal zonder
 geheimen staat in `missing_channels` en geeft per apparaat de fout `apns_not_configured` / `fcm_not_configured` /
 `webpush_not_configured` in `errors`. Alle beheeracties: header `x-push-secret` = `PUSH_ADMIN_SECRET`, anders 403.
 APNs/FCM/Web Push melden alleen "geaccepteerd" of een fout; "afgeleverd op het toestel" bestaat niet bij deze kanalen.
@@ -121,7 +124,12 @@ zendernaam. Na de start wordt een herinnering niet meer verstuurd.
   (één rij per (bericht, apparaat), status queued/sent/failed/invalid). RLS aan, geen rechten voor anon/authenticated.
 - Verwijderen: account → cascade; apparaat uit `account_devices` (device-auth `remove_device`, beheer) → trigger
   `bingr_push_device_removed` op (user_id, device_id). Ongeldige token (APNs 410/BadDeviceToken, FCM UNREGISTERED, Web Push
-  404/410) → apparaat weg, bezorging `invalid`. Tijdelijke fout (429/5xx/netwerk) → over een minuut opnieuw, max. 3 keer.
+  404/410) → apparaat weg, bezorging `invalid`. Tijdelijke fout (429/5xx/netwerk) → opnieuw met oplopende wachttijd (1, 5, 15
+  minuten, daarna elk uur), max. 5 pogingen; daarna `failed` (opnieuw te proberen vanuit het beheer).
+- APNs-providertoken: Apple wil hem hoogstens één keer per 20 minuten vernieuwd zien (anders 429 `TooManyProviderTokenUpdates`).
+  Eén token voor alle instanties van `push`: tabel `push_provider_tokens` (versleuteld met BINGR_SOURCES_KEY, alleen service
+  role), hergebruikt tot 50 minuten oud; `iat` op een blok van 30 minuten; binnen een instantie één aanmaak tegelijk. Na 403
+  `ExpiredProviderToken`/`InvalidProviderToken` hoogstens één keer per 20 minuten een nieuw token. FCM: één OAuth-aanvraag tegelijk.
 - APNs gaat over HTTP/2: Deno-`fetch` onderhandelt h2 via ALPN (getest tegen een server die alleen h2 spreekt).
 - Opruimen (pg_cron `bingr-push-cleanup`, dagelijks): herinneringsberichten na 3 dagen, details per apparaat na 30 dagen,
   berichten na 400 dagen, apparaten die 270 dagen niet opnieuw registreerden.

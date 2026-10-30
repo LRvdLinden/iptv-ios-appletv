@@ -1,5 +1,5 @@
 // deno test --allow-env supabase/functions/_shared/mail_test.ts (mailtest-sleutel in mail.ts; workflow Backend)
-import { isMailtestAddress, mailtestOk, withName } from "./mail.ts";
+import { isMailtestAddress, mailErrorCode, mailtestOk, transportOptions, withName } from "./mail.ts";
 function assertEquals(a: unknown, b: unknown) {
   const x = JSON.stringify(a), y = JSON.stringify(b);
   if (x !== y) throw new Error(`verwacht ${y}, kreeg ${x}`);
@@ -34,4 +34,14 @@ Deno.test("afzender: kaal adres krijgt de naam Bingr", () => {
   assertEquals(withName("Bingr <noreply@bingr.online>"), "Bingr <noreply@bingr.online>");
   assertEquals(withName(" noreply@bingr.online ", "Bingr Support"), "Bingr Support <noreply@bingr.online>");
   assertEquals(withName(""), "");
+});
+
+Deno.test("SMTP: één hergebruikte verbinding met begrensd tempo, foutcodes zonder adressen", () => {
+  const o = transportOptions((k) => ({ BINGR_SMTP_HOST: "smtp.example.org", BINGR_SMTP_PORT: "465" } as Record<string, string>)[k] ?? "");
+  assertEquals([o.pool, o.maxConnections, o.maxMessages, o.rateLimit, o.rateDelta, o.secure], [true, 1, 100, 5, 1000, true]);
+  assertEquals(transportOptions((k) => k === "BINGR_SMTP_RATE" ? "999" : "").rateLimit, 50);
+  assertEquals(transportOptions((k) => k === "BINGR_SMTP_PORT" ? "587" : "").secure, false);
+  assertEquals(mailErrorCode({ responseCode: 550, response: "550 a@b.nl unknown" }), "smtp_550");
+  assertEquals(mailErrorCode({ code: "EAUTH" }), "eauth");
+  assertEquals(mailErrorCode(new Error("Recipient a@b.nl rejected")), "error");
 });

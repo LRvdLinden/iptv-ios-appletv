@@ -10,19 +10,68 @@ type Fetch = typeof fetch;
 
 export type DeviceRow = { id: number; channel: string; token: string; sandbox: boolean; platform: string };
 
-// APNs: HTTP/2 (Deno-fetch onderhandelt h2 via ALPN). Provider token 50 minuten in het geheugen (Apple: max. 60).
+// APNs: HTTP/2 (Deno-fetch onderhandelt h2 via ALPN). Providertoken (JWT): Apple wil hem hoogstens één keer per 20 minuten
+// vernieuwd zien en uiterlijk na 60 minuten (anders 429 TooManyProviderTokenUpdates, resp. 403 ExpiredProviderToken).
+// Elke instantie van de functie (elke minuut de cron, het beheer, support) maakte vroeger een eigen token en 20 workers
+// tegelijk elk nog een: Apple weigerde dan het grootste deel met TooManyProviderTokenUpdates. Nu:
+//  - één token per instantie tegelijk (gedeelde promise);
+//  - gedeeld tussen instanties via `store` (tabel push_provider_tokens, versleuteld), hergebruikt tot 50 minuten oud;
+//  - iat op een vast blok van 30 minuten (apnsIat), zodat ook instanties zonder store hetzelfde tijdstip gebruiken.
+export type TokenStore = {
+  load(name: string): Promise<{ token: string; iat: number } | null>;
+  /** Bewaart het token, tenzij er al een even nieuw of nieuwer staat; geeft het token dat nu geldt (de winnaar). */
+  save(name: string, token: string, iat: number): Promise<{ token: string; iat: number } | null>;
+};
+export const APNS_TOKEN_MAX_AGE_S = 50 * 60;
+export const APNS_TOKEN_BLOCK_S = 30 * 60;
+/** iat voor een nieuw providertoken: begin van het blok van 30 minuten (alle instanties hetzelfde), of nu bij `fresh`. */
+export function apnsIat(nowS: number, fresh = false): number {
+  return fresh ? nowS : Math.floor(nowS / APNS_TOKEN_BLOCK_S) * APNS_TOKEN_BLOCK_S;
+}
+/** Bruikbaar providertoken: niet uit de toekomst (1 minuut speling) en jonger dan 50 minuten. */
+export const apnsTokenUsable = (iat: number, nowS: number) => iat <= nowS + 60 && nowS - iat < APNS_TOKEN_MAX_AGE_S;
+
 export class Apns {
-  private jwt: { token: string; at: number } | null = null;
+  private jwt: { token: string; iat: number } | null = null;
+  private pending: Promise<string> | null = null;
   private key: Promise<CryptoKey> | null = null;
-  constructor(private env: Env, private f: Fetch = fetch) {}
+  private resetAt = 0;
+  private fresh = false;
+  constructor(private env: Env, private f: Fetch = fetch, private store?: TokenStore) {}
   configured() { return !!(this.env("APNS_KEY_P8") && this.env("APNS_KEY_ID") && this.env("APNS_TEAM_ID")); }
-  reset() { this.jwt = null; }
+  /** Na 403 Expired/InvalidProviderToken: één keer per 20 minuten een nieuw token (met iat = nu). */
+  reset(nowMs = Date.now()) {
+    if (nowMs - this.resetAt < 20 * 60_000) return;
+    this.resetAt = nowMs; this.jwt = null; this.fresh = true;
+  }
   async token(nowMs = Date.now()): Promise<string> {
-    if (this.jwt && nowMs - this.jwt.at < 50 * 60_000) return this.jwt.token;
+    const nowS = Math.floor(nowMs / 1000);
+    if (this.jwt && apnsTokenUsable(this.jwt.iat, nowS)) return this.jwt.token;
+    if (!this.pending) {
+      this.pending = this.obtain(nowS).finally(() => { this.pending = null; });
+    }
+    return await this.pending;
+  }
+  private async obtain(nowS: number): Promise<string> {
+    const name = `apns:${this.env("APNS_KEY_ID") ?? ""}`;
+    if (this.store && !this.fresh) {
+      try {
+        const s = await this.store.load(name);
+        if (s && apnsTokenUsable(s.iat, nowS)) { this.jwt = s; return s.token; }
+      } catch { /* zonder gedeeld token verder */ }
+    }
     if (!this.key) { this.key = importEs256Pkcs8(this.env("APNS_KEY_P8")!); this.key.catch(() => { this.key = null; }); }
-    const token = await apnsJwt(await this.key, this.env("APNS_KEY_ID")!, this.env("APNS_TEAM_ID")!, Math.floor(nowMs / 1000));
-    this.jwt = { token, at: nowMs };
-    return token;
+    const iat = apnsIat(nowS, this.fresh);
+    const token = await apnsJwt(await this.key, this.env("APNS_KEY_ID")!, this.env("APNS_TEAM_ID")!, iat);
+    this.fresh = false;
+    this.jwt = { token, iat };
+    if (this.store) {
+      try {
+        const w = await this.store.save(name, token, iat);
+        if (w && apnsTokenUsable(w.iat, nowS)) this.jwt = w; // een andere instantie was net eerder: dat token gebruiken
+      } catch { /* volgende keer opnieuw */ }
+    }
+    return this.jwt.token;
   }
   async send(dev: DeviceRow, n: Notice, ttlS = 86400): Promise<Outcome> {
     return await this.post(dev.token, dev.sandbox, apnsPayload(n), { collapseId: String(n.data.msg_id), ttlS });
@@ -64,9 +113,15 @@ export class Fcm {
   }
   project() { return this.env("FCM_PROJECT_ID") || this.sa()?.project_id || ""; }
   configured() { return !!(this.sa() && this.project()); }
+  private pending: Promise<string> | null = null;
   reset() { this.access = null; }
+  // één OAuth-aanvraag tegelijk (anders vroegen 20 workers er elk een aan)
   async token(nowMs = Date.now()): Promise<string> {
     if (this.access && nowMs < this.access.until) return this.access.token;
+    if (!this.pending) this.pending = this.fetchToken(nowMs).finally(() => { this.pending = null; });
+    return await this.pending;
+  }
+  private async fetchToken(nowMs: number): Promise<string> {
     const sa = this.sa()!;
     const assertion = await googleAssertion(await importRs256Pkcs8(sa.private_key), sa.client_email, sa.private_key_id, Math.floor(nowMs / 1000));
     const res = await this.f("https://oauth2.googleapis.com/token", {
@@ -136,7 +191,7 @@ export class WebPush {
 
 export class Channels {
   apns: Apns; fcm: Fcm; web: WebPush;
-  constructor(env: Env, f: Fetch = fetch) { this.apns = new Apns(env, f); this.fcm = new Fcm(env, f); this.web = new WebPush(env, f); }
+  constructor(env: Env, f: Fetch = fetch, store?: TokenStore) { this.apns = new Apns(env, f, store); this.fcm = new Fcm(env, f); this.web = new WebPush(env, f); }
   async send(dev: DeviceRow, n: Notice, ttlS?: number): Promise<Outcome> {
     try {
       if (dev.channel === "apns") return await this.apns.send(dev, n, ttlS);

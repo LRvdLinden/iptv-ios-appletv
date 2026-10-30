@@ -11,6 +11,7 @@
 //   release        {platform_group:"apple"|"android", version, build} -> {ok, message_id, devices} | {ok, duplicate:true, message_id}
 //   admin_send     {title_nl, body_nl, title_en?, body_en?, url?, target} -> {ok, message_id, devices, missing_channels}
 //   admin_progress {message_id} -> {message_id, kind, devices, queued, sent, failed, invalid, errors, done}  (verstuurt ook een batch)
+//   admin_retry    {message_id} -> {ok, retried, …progress}  (mislukte bezorgingen opnieuw in de wachtrij en meteen een batch)
 //   admin_history  {page?} -> {items:[{id, kind, title, …, queued, sent, failed, invalid, errors}], page, has_more}
 // Planning (header x-push-secret = PUSH_CRON_SECRET, pg_cron elke minuut):
 //   cron        {} -> {ok, reminders, sent, failed, invalid, queued_left, beheer:{notices, sent, invalid, failed, skipped?}}
@@ -24,7 +25,7 @@ import { BANNED_BODY, bannedUntilActive, isBanError } from "../_shared/ban.ts";
 import { openJsonField, sealJsonField, unseal } from "../_shared/sealed.ts";
 import { profilesOrEmpty } from "../_shared/profiles_store.ts";
 import { sameSecret } from "./crypto.ts";
-import { Channels, type DeviceRow } from "./channels.ts";
+import { Channels, type DeviceRow, type TokenStore } from "./channels.ts";
 import { adminNotify, type BeheerResult } from "./beheer.ts";
 import {
   checkRegister, checkTarget, GROUPS, MAX_ATTEMPTS, type MessageRow, parseReminders, releaseKey, reminderDue, reminderKey,
@@ -35,7 +36,22 @@ const env = (k: string) => Deno.env.get(k);
 const admin = createClient(env("SUPABASE_URL")!, env("SUPABASE_SERVICE_ROLE_KEY")!, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
-const channels = new Channels(env);
+// APNs-providertoken gedeeld tussen alle instanties (tabel push_provider_tokens, versleuteld; zie channels.ts)
+const tokenStore: TokenStore = {
+  async load(name) {
+    const { data, error } = await admin.from("push_provider_tokens").select("iat,sealed").eq("name", name).maybeSingle();
+    if (error || !data) return null;
+    const v = await openJsonField(data.sealed);
+    return typeof v?.token === "string" ? { token: v.token, iat: Number(data.iat) } : null;
+  },
+  async save(name, token, iat) {
+    const { data, error } = await admin.rpc("bingr_push_token_put", { p_name: name, p_iat: iat, p_sealed: await sealJsonField({ token }) });
+    if (error || !data) return null;
+    const v = await openJsonField((data as { sealed: string }).sealed);
+    return typeof v?.token === "string" ? { token: v.token, iat: Number((data as { iat: number }).iat) } : null;
+  },
+};
+const channels = new Channels(env, fetch, tokenStore);
 const BATCH = Math.max(10, Math.min(500, Number(env("PUSH_BATCH") ?? 200) || 200));
 const CONCURRENCY = 20;
 
@@ -294,6 +310,16 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       await drain(id, 15_000);
       const p = await progress(id);
       return p ? json(p) : json({ error: "not_found" }, 404);
+    }
+    case "admin_retry": {
+      if (!secretOk(req, "PUSH_ADMIN_SECRET")) return json({ error: "forbidden" }, 403);
+      const id = Number(body.message_id);
+      if (!Number.isInteger(id) || id <= 0) return json({ error: "bad_message_id" }, 400);
+      const { data: n, error } = await admin.rpc("bingr_push_retry", { p_message: id });
+      if (error) throw new Error(`retry: ${error.message}`);
+      if (Number(n ?? 0) > 0) await drain(id, 15_000);
+      const p = await progress(id);
+      return p ? json({ ok: true, retried: Number(n ?? 0), ...p }) : json({ error: "not_found" }, 404);
     }
     case "admin_history": {
       if (!secretOk(req, "PUSH_ADMIN_SECRET")) return json({ error: "forbidden" }, 403);

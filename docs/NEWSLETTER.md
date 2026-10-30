@@ -116,7 +116,10 @@ nieuwsbrief); de website-repo bevat alleen de publieke Supabase-URL.
 - Versturen in batches (`NEWSLETTER_BATCH`, standaard 150 mails per ronde, `NEWSLETTER_PAUSE_MS` = 300 ms tussen mails,
   max. ~110 s per ronde) via `_shared/mail.ts` (SMTP). Is de batch vol, dan verder bij de volgende ronde (elk uur).
   Per (editie, account) één rij in `newsletter_deliveries`: nooit twee mails van dezelfde editie naar hetzelfde account.
-  Tijdelijke SMTP-fout (4xx, time-out): batch stopt, die ontvanger later opnieuw (max. 3 pogingen). Een verzending die
+  Tijdelijke SMTP-fout (4xx, time-out, verbinding, inloggen `EAUTH`, of een limiet/quotum van de provider, ook als 5xx): batch
+  stopt, die ontvanger later opnieuw (max. 3 pogingen); alleen een weigering van de ontvanger zelf (5xx, bv. 550 onbekend adres) is
+  blijvend. Eén SMTP-verbinding per ronde die hergebruikt wordt (`_shared/mail.ts`: pool, max. 100 mails per verbinding,
+  hoogstens `BINGR_SMTP_RATE` = 5 mails per seconde). Een verzending die
   30 minuten op `sending` blijft hangen wordt `failed` (niet opnieuw: liever één mail te weinig dan dubbel).
   Een editie die na 36 uur nog niet klaar is, wordt afgesloten. De wachtrij van edities ouder dan 90 dagen wordt opgeruimd.
 - Afzender `From: Bingr <noreply@bingr.online>` (function-secret `BINGR_NEWSLETTER_FROM`, optioneel als GitHub-secret),

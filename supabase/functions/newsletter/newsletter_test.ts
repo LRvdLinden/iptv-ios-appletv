@@ -193,5 +193,10 @@ Deno.test("overig: taal, e-mailadres, geheimen, SMTP-fouten", () => {
   ok(sameSecret("0123456789abcdef0", "0123456789abcdef0") && !sameSecret("0123456789abcdef1", "0123456789abcdef0"), "geheim");
   ok(!sameSecret("", "") && !sameSecret("kort", "kort") && !sameSecret(null, "0123456789abcdef0"), "leeg/kort telt niet");
   ok(smtpTemporary({ responseCode: 421 }) && smtpTemporary({ code: "ETIMEDOUT" }) && !smtpTemporary({ responseCode: 550 }), "tijdelijk");
+  // inloggen, verbinding en limieten van de provider zijn nooit de schuld van de ontvanger: later opnieuw
+  ok(smtpTemporary({ code: "EAUTH", responseCode: 535 }) && smtpTemporary({ code: "ETLS" }) && smtpTemporary({ code: "ECONNREFUSED" }), "verbinding/inloggen");
+  ok(smtpTemporary({ code: "EMESSAGE", responseCode: 550, response: "550 5.7.1 Sending rate limit exceeded" }), "limiet als 5xx");
+  ok(smtpTemporary({ code: "EENVELOPE", responseCode: 554, response: "554 5.7.0 Daily quota exceeded" }), "quotum");
+  ok(!smtpTemporary({ code: "EENVELOPE", responseCode: 550, command: "RCPT TO", response: "550 5.1.1 user unknown" }), "onbekende ontvanger blijvend");
   eq([smtpCode({ responseCode: 550, response: "550 a@b.nl unknown" }), smtpCode({ code: "EAUTH" }), smtpCode(new Error("a@b.nl"))], ["smtp_550", "eauth", "error"], "codes zonder adressen");
 });

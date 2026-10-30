@@ -2406,7 +2406,10 @@ begin
     state = case when r.state in ('sent', 'failed', 'invalid', 'queued') then r.state else 'failed' end,
     error = left(r.error, 120),
     sent_at = case when r.state = 'sent' then now() else d.sent_at end,
-    next_at = case when r.state = 'queued' then now() + interval '1 minute' else null end,  -- tijdelijke fout: over een minuut opnieuw
+    -- tijdelijke fout: opnieuw met oplopende wachttijd (na poging 1: 1 min, 2: 5 min, 3: 15 min, daarna 1 uur; max. 5 pogingen,
+    -- MAX_ATTEMPTS in functions/push/logic.ts)
+    next_at = case when r.state = 'queued' then now() + case when d.attempts <= 1 then interval '1 minute' when d.attempts = 2 then interval '5 minutes'
+                                                             when d.attempts = 3 then interval '15 minutes' else interval '1 hour' end else null end,
     claimed_at = null
   from r where d.id = r.id;
   update public.push_devices p set last_error = left(x.error, 120)
@@ -4255,3 +4258,48 @@ update public.status_monitors set enabled = false, public = false
 insert into public.app_settings (key, value) values
   ('release_channels', '{"apple": {"live": null, "beta": null}, "android": {"live": null, "beta": null}, "updatedAt": null}'::jsonb)
 on conflict (key) do nothing;
+
+-- ============================================================================================================
+-- Betrouwbaar versturen van pushmeldingen (server). Oorzaak van de mislukte Apple-meldingen: elke instantie van de functie
+-- push maakte een eigen APNs-providertoken (en 20 workers tegelijk elk nog een), waarna Apple de meeste meldingen weigerde
+-- met 429 TooManyProviderTokenUpdates (Apple: hoogstens één nieuw token per 20 minuten).
+-- 1. push_provider_tokens: één gedeeld providertoken per sleutel (name = 'apns:<key-id>'), versleuteld (BINGR_SOURCES_KEY),
+--    hergebruikt tot 50 minuten oud. Alleen de functie push (service role) leest en schrijft.
+create table if not exists public.push_provider_tokens (
+  name       text primary key,
+  iat        bigint not null,
+  sealed     text not null,
+  updated_at timestamptz not null default now()
+);
+alter table public.push_provider_tokens enable row level security;
+revoke all on public.push_provider_tokens from anon, authenticated;
+-- Bewaren, tenzij er al een even nieuw of nieuwer token staat; geeft het token dat nu geldt {iat, sealed}.
+create or replace function public.bingr_push_token_put(p_name text, p_iat bigint, p_sealed text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare r jsonb;
+begin
+  insert into public.push_provider_tokens as t (name, iat, sealed) values (p_name, p_iat, p_sealed)
+  on conflict (name) do update set iat = excluded.iat, sealed = excluded.sealed, updated_at = now() where t.iat < excluded.iat;
+  select jsonb_build_object('iat', iat, 'sealed', sealed) into r from public.push_provider_tokens where name = p_name;
+  return r;
+end $$;
+-- 2. Mislukte bezorgingen van een bericht opnieuw proberen (beheer, knop "Mislukte opnieuw proberen"; functie push actie
+--    admin_retry): alleen 'failed' met een apparaat dat nog bestaat, niet te laat/apparaat weg, niet voor herinneringen.
+--    Pogingen weer op 0. -> aantal opnieuw in de wachtrij.
+create or replace function public.bingr_push_retry(p_message bigint) returns int
+language plpgsql security definer set search_path = public as $$
+declare n int;
+begin
+  update public.push_deliveries d set state = 'queued', attempts = 0, next_at = null, error = null, claimed_at = null
+  from public.push_messages m
+  where m.id = d.message_id and d.message_id = p_message and m.kind <> 'reminder'
+    and d.state = 'failed' and d.device_ref is not null
+    and coalesce(d.error, '') not in ('too_late', 'device_removed', 'unknown_channel');
+  get diagnostics n = row_count;
+  if n > 0 then perform public.bingr_push_refresh(array[p_message]); end if;
+  return n;
+end $$;
+revoke all on function public.bingr_push_token_put(text, bigint, text) from public, anon, authenticated;
+revoke all on function public.bingr_push_retry(bigint) from public, anon, authenticated;
+grant execute on function public.bingr_push_token_put(text, bigint, text) to service_role;
+grant execute on function public.bingr_push_retry(bigint) to service_role;

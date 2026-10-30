@@ -384,9 +384,17 @@ export function tmdbAuth(key: string): { header?: string; param?: string } {
 }
 /** Tijdelijke SMTP-fout (later opnieuw proberen, batch stoppen)? */
 export function smtpTemporary(e: unknown): boolean {
-  const c = Number((e as { responseCode?: number })?.responseCode ?? 0);
-  const code = String((e as { code?: string })?.code ?? "");
-  return (c >= 400 && c < 500) || ["ETIMEDOUT", "ECONNECTION", "ESOCKET", "ECONNRESET", "EDNS"].includes(code);
+  // Tijdelijk = later opnieuw (de batch stopt). Alleen een weigering van deze ontvanger (5xx bij RCPT TO / EENVELOPE, bv. 550
+  // "user unknown") is blijvend. Fouten van de verbinding, het inloggen (EAUTH, ook 535) of een limiet van de provider
+  // (ook als 5xx, bv. "550 rate limit exceeded" / "554 quota") gelden niet voor de ontvanger: vroeger werden die als
+  // blijvend geteld en kreeg de rest van de batch nooit een mail.
+  const x = e as { responseCode?: number; code?: string; command?: string; response?: string };
+  const c = Number(x?.responseCode ?? 0);
+  const code = String(x?.code ?? "");
+  if (c >= 400 && c < 500) return true;
+  if (["ETIMEDOUT", "ECONNECTION", "ESOCKET", "ECONNRESET", "EDNS", "EAUTH", "ETLS", "ECONNREFUSED", "EPROTOCOL", "EMAXLIMIT"].includes(code)) return true;
+  if (c >= 500 && /rate|limit|quota|too many|exceeded|try again|throttl/i.test(String(x?.response ?? ""))) return true;
+  return false;
 }
 /** Korte foutcode voor logs/tellers (nooit adressen of serverteksten). */
 export function smtpCode(e: unknown): string {

@@ -68,7 +68,7 @@
 // meldingen naar BINGR_SUPPORT_EMAIL (standaard support@bingr.online). Weigert de SMTP-server die afzender, dan gaat de
 // mail met BINGR_SMTP_FROM als afzender en het supportadres als Reply-To. Mislukt mailen: het ticket blijft bestaan.
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { isMailtestAddress, MAILTEST_HEADER, mailtestOk, smtpConfigured, smtpFrom, transport, withName } from "../_shared/mail.ts";
+import { isMailtestAddress, MAILTEST_HEADER, mailtestOk, mailErrorCode, smtpConfigured, smtpFrom, transport, withName } from "../_shared/mail.ts";
 import {
   addressOf, beheerUrl, type DeviceRow, deviceKind, emailProven, isStatus, ownsTicket, type KnownVersion, knownVersions, myDevices, parseNumber, PRIORITIES, randomToken, safeSearch, sameText, type Status, statusAfter,
   ticketUrl, validateCreate, validateMessage, validToken,
@@ -238,19 +238,19 @@ async function send(to: string, mail: { subject: string; html: string; text: str
       await tx.sendMail({ ...base, from: SUPPORT_FROM(), replyTo: opts.replyTo ?? addressOf(SUPPORT_FROM()) });
       return { ok: true, messageId };
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
       // afzender geweigerd (het SMTP-account mag niet als support@ versturen): opnieuw met de standaardafzender
       if (smtpFrom() && addressOf(smtpFrom()).toLowerCase() !== addressOf(SUPPORT_FROM()).toLowerCase()) {
-        console.error("support mail (support-afzender)", msg);
+        console.error("support mail (support-afzender)", mailErrorCode(e));
         await tx.sendMail({ ...base, from: withName(addressOf(smtpFrom()), "Bingr Support"), replyTo: opts.replyTo ?? addressOf(SUPPORT_FROM()) });
         return { ok: true, messageId };
       }
       throw e;
     }
   } catch (e) {
-    const msg = (e instanceof Error ? e.message : String(e)).slice(0, 300);
-    console.error("support mail", msg);
-    return { ok: false, error: msg };
+    // alleen de code (smtp_550, eauth, …): de servertekst kan het adres van de klant bevatten
+    const code = mailErrorCode(e);
+    console.error("support mail", code);
+    return { ok: false, error: code };
   } finally { tx.close(); }
 }
 function mailData(t: Ticket, kind: MailData["kind"], extra: Partial<MailData> = {}): MailData {
