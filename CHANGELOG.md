@@ -4,6 +4,28 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.3 · Build 157
+_30 oktober 2026_
+
+### Alle apps, de website en de server
+
+**Verbeterd**
+
+- Met Gratis kun je op 2 apparaten ingelogd zijn; zijn het er meer, dan blijven de 2 apparaten ingelogd die je het laatst gebruikte
+- Verder kijken, kinderprofielen en ondertitels via OpenSubtitles horen nu bij Lifetime; Mijn lijst en profielen blijven gratis
+
+### Alle apps en de website
+
+**Verbeterd**
+
+- Met Gratis wordt je voortgang wel bewaard en blijft hervatten werken, zodat Verder kijken er na het upgraden meteen is; bestaande kinderprofielen blijven beschermd en ondertitels uit de stream blijven gratis
+
+### Website
+
+**Verbeterd**
+
+- De vergelijking van Gratis en Lifetime op bingr.online en de hulp op support.bingr.online zijn bijgewerkt
+
 ## Versie 1.0.3 · Build 156
 _30 oktober 2026_
 

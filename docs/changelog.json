@@ -1,5 +1,67 @@
 [
  {
+  "build": 157,
+  "version": "1.0.3",
+  "date": "2026-10-30",
+  "items": [
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web",
+     "windows",
+     "server"
+    ],
+    "nl": "Met Gratis kun je op 2 apparaten ingelogd zijn; zijn het er meer, dan blijven de 2 apparaten ingelogd die je het laatst gebruikte",
+    "en": "With Free you can be signed in on 2 devices; if there are more, the 2 devices you used most recently stay signed in"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web",
+     "windows",
+     "server"
+    ],
+    "nl": "Verder kijken, kinderprofielen en ondertitels via OpenSubtitles horen nu bij Lifetime; Mijn lijst en profielen blijven gratis",
+    "en": "Continue watching, kids profiles and OpenSubtitles subtitles are now part of Lifetime; My List and profiles stay free"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web",
+     "windows"
+    ],
+    "nl": "Met Gratis wordt je voortgang wel bewaard en blijft hervatten werken, zodat Verder kijken er na het upgraden meteen is; bestaande kinderprofielen blijven beschermd en ondertitels uit de stream blijven gratis",
+    "en": "With Free your progress is still saved and resuming keeps working, so Continue watching is there right after upgrading; existing kids profiles stay protected and subtitles in the stream stay free"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "web"
+    ],
+    "nl": "De vergelijking van Gratis en Lifetime op bingr.online en de hulp op support.bingr.online zijn bijgewerkt",
+    "en": "The Free and Lifetime comparison on bingr.online and the help on support.bingr.online have been updated"
+   }
+  ]
+ },
+ {
   "build": 156,
   "version": "1.0.3",
   "date": "2026-10-30",
