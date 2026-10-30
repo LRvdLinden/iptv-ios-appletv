@@ -199,6 +199,11 @@ jobs:
           q "select kind, state, left(coalesce(error,''),60) as fout, count(*) as n, max(attempts) as max_pogingen
              from public.push_deliveries d join public.push_messages m on m.id = d.message_id
              where d.created_at > now() - interval '30 days' group by 1,2,3 order by 1,2" | note 'bezorgingen per soort (30 dagen)'
+          # gedeeld APNs-providertoken (alleen naam en leeftijd, nooit het token): hoort hoogstens 50 minuten oud te zijn
+          q "select left(name, 4) as soort, round((extract(epoch from now()) - iat) / 60) as leeftijd_min, round(extract(epoch from now() - updated_at) / 60) as bijgewerkt_min
+             from public.push_provider_tokens" | note 'APNs-providertoken'
+          q "select date_trunc('hour', coalesce(sent_at, created_at))::timestamp(0) as uur, state, left(coalesce(error,''),40) as fout, count(*) as n from public.push_deliveries
+             where created_at > now() - interval '24 hours' group by 1,2,3 order by 1 desc limit 30" | note 'bezorgingen per uur (24 uur)'
       - name: Mail (alleen tellingen en foutcodes)
         shell: bash
         run: |
