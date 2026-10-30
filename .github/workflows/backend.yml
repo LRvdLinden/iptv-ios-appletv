@@ -169,6 +169,12 @@ jobs:
           deno test --allow-env --allow-read supabase/functions/_shared/pin_test.ts supabase/functions/_shared/profiles_test.ts supabase/functions/_shared/diagnostics_test.ts supabase/functions/device-auth/watch_test.ts
           for i in $(seq 1 20); do pg_isready -q && break; sleep 1; done
           sudo -u postgres bash supabase/tests/profiles_test.sh
+      - name: Unittests (build 157, apparatenlimiet Gratis)
+        # blokkeert de deploy: bingr_enforce_free_devices houdt bij Gratis zonder eigen limiet de 2 laatst actieve apparaten,
+        # trekt de sessies van de rest in, laat Lifetime en eigen limieten staan en is herhaalbaar (supabase/tests/devices_test.sh)
+        run: |
+          for i in $(seq 1 20); do pg_isready -q && break; sleep 1; done
+          sudo -u postgres bash supabase/tests/devices_test.sh
       - name: Unittests (bewaarplicht aankopen)
         # blokkeert de deploy: account verwijderen -> aankopen en terugbetalingen blijven zonder account (user_id null,
         # user_deleted_at), omzet en tellingen gelijk, RLS, migratie van on delete cascade en de bewaartermijn van 7 jaar na
@@ -504,6 +510,27 @@ jobs:
       - name: Edge Function device-auth
         if: steps.check.outputs.skip != '1'
         run: supabase functions deploy device-auth --project-ref "$REF" --no-verify-jwt --use-api
+      - name: Build 157 - apparatenlimiet Gratis afdwingen
+        # na de deploy van device-auth (dat vanaf nu ook bij register_device en heartbeat afdwingt): Gratis-accounts zonder eigen
+        # max_devices met meer dan 2 apparaten houden de 2 laatst actieve; de rest gaat weg (heartbeat -> revoked, uitloggen).
+        # Lifetime en eigen limieten blijven staan. Herhaalbaar (elke deploy; daarna normaal 0). Alleen aantallen in het log.
+        # De 2 = PLAN_DEFAULTS.free.devices in supabase/functions/_shared/plans.ts.
+        if: steps.check.outputs.skip != '1'
+        run: |
+          python3 - <<'PY'
+          import json, os, sys, urllib.request, urllib.error
+          q = "select public.bingr_enforce_free_devices(2) as r"
+          r = urllib.request.Request(f"https://api.supabase.com/v1/projects/{os.environ['REF']}/database/query",
+              data=json.dumps({"query": q}).encode(), method="POST",
+              headers={"Authorization": f"Bearer {os.environ['SUPABASE_ACCESS_TOKEN']}", "Content-Type": "application/json"})
+          try:
+              with urllib.request.urlopen(r, timeout=120) as resp: rows = json.loads(resp.read() or b"[]")
+          except urllib.error.HTTPError as e:
+              print(f"::error::apparatenlimiet afdwingen mislukt (HTTP {e.code})"); sys.exit(1)
+          v = rows[0]["r"] if rows else {}
+          if isinstance(v, str): v = json.loads(v)
+          print(f"::notice::build 157 apparatenlimiet Gratis: {int(v.get('accounts', 0))} accounts, {int(v.get('devices', 0))} apparaten afgemeld")
+          PY
       - name: Edge Function login
         # build 141: inloggen met e-mail en wachtwoord met blokkade per account (docs/ACCOUNT.md "Inloggen via de functie login")
         if: steps.check.outputs.skip != '1'
@@ -825,6 +852,9 @@ jobs:
               print(f"::add-mask::{tok}")
               user = {"apikey": PUB, "Authorization": f"Bearer {tok}"}
               DA, SU = f"{BASE}/functions/v1/device-auth", f"{BASE}/functions/v1/support"
+              # build 157: een nieuw kinderprofiel hoort bij Lifetime (Gratis = 403, zie "Abonnementen end-to-end"): testaccount Lifetime
+              c0, r0 = sql(f"insert into public.account_plans (user_id, plan, source, granted_by) values ('{uid}', 'lifetime', 'admin', 'ci') on conflict (user_id) do update set plan = 'lifetime'")
+              if c0 >= 300: fail.append(f"account_plans lifetime: HTTP {c0} {str(r0)[:200]}")
               # 1. profielen via device-auth
               P = [{"id": "CI-MAIN", "name": "CI hoofd", "isMain": True, "order": 0, "updatedAt": "2026-10-24T10:00:00Z"},
                    {"id": "CI-KIDS", "name": "CI kids", "kids": True, "ageLimit": 12, "order": 1, "updatedAt": "2026-10-24T10:00:00Z"}]
@@ -1534,7 +1564,7 @@ jobs:
         run: |
           if [ -z "$SUPABASE_ACCESS_TOKEN" ] || [ -z "$REF" ]; then exit 0; fi
           python3 - <<'PY'
-          import json, os, secrets, sys, urllib.request, urllib.error
+          import json, os, secrets, sys, time, urllib.request, urllib.error
           REF = os.environ["REF"]; MGMT = os.environ["SUPABASE_ACCESS_TOKEN"]
           BASE = f"https://{REF}.supabase.co"; PUB = "sb_publishable_lpIup6Omq5kW2k3oICGZ4g_HPGac5A3"
           def req(method, url, body=None, headers=None):
@@ -1569,15 +1599,45 @@ jobs:
               DA = f"{BASE}/functions/v1/device-auth"
               # gratis
               code, e = req("POST", DA, {"action": "entitlements", "platform": "web"}, user)
-              if code != 200 or e.get("plan") != "free" or e.get("limits") != {"streams": 1, "devices": 8, "servers": 1} or e.get("features", {}).get("stats") is not False or e.get("upgrade", {}).get("link") is not True:
+              F157 = ("continue_watching", "kids_profiles", "opensubtitles")
+              if code != 200 or e.get("plan") != "free" or e.get("limits") != {"streams": 1, "devices": 2, "servers": 1} or e.get("features", {}).get("stats") is not False or e.get("upgrade", {}).get("link") is not True \
+                 or any(e.get("features", {}).get(k) is not False for k in F157) or (e.get("plans") or {}).get("free") != {"streams": 1, "devices": 2, "servers": 1}:
                   fail.append(f"entitlements gratis/web: HTTP {code} {e}")
               code, e = req("POST", DA, {"action": "entitlements", "platform": "tvos"}, user)
               if e.get("upgrade", {}).get("link") is not False: fail.append(f"entitlements tvos: link {e.get('upgrade')}")
               for a, f in (("watch_stats", "stats"), ("list_streams", "now_watching"), ("watch_log", "now_watching")):
                   code, r = req("POST", DA, {"action": a}, user)
                   if code != 403 or r != {"error": "feature_locked", "feature": f, "plan": "free"}: fail.append(f"{a} gratis: HTTP {code} {r}")
-              for i in range(5):
-                  req("POST", DA, {"action": "register_device", "device_id": f"ci-p{i}", "name": "CI", "platform": "browser"}, user)
+              # build 157: gratis 2 apparaten; het derde nieuwe apparaat krijgt 403 device_limit
+              res = [req("POST", DA, {"action": "register_device", "device_id": f"ci-p{i}", "name": "CI", "platform": "browser"}, user) for i in range(3)]
+              if res[0][0] != 200 or res[1][0] != 200 or res[2][0] != 403 or res[2][1].get("error") != "device_limit" or res[2][1].get("limit") != 2:
+                  fail.append(f"apparatenlimiet gratis (2): {[(c, {k: v for k, v in r.items() if k != 'devices'}) for c, r in res]}")
+              # build 157: een account dat nog boven de limiet zit (van vóór build 157): bij de heartbeat gaan de minst recent
+              # actieve weg; het apparaat dat de heartbeat stuurt en het op één na recentste blijven
+              code, r = sql(f"insert into public.account_devices (user_id, device_id, name, platform, last_seen_at) values ('{uid}', 'ci-old', 'CI', 'browser', now() - interval '9 days') on conflict do nothing")
+              if code >= 300: fail.append(f"oud apparaat toevoegen: HTTP {code} {str(r)[:200]}")
+              code, r = req("POST", DA, {"action": "heartbeat", "device_id": "ci-old"}, user)
+              # ci-old stuurt zelf de heartbeat en is dan het recentst: ci-p0 (het oudste van de twee andere) gaat weg
+              code2, d = req("POST", DA, {"action": "list_devices"}, user)
+              ids = sorted(x.get("device_id") for x in (d.get("devices") or []))
+              if r.get("revoked") or ids != ["ci-old", "ci-p1"]: fail.append(f"afdwingen bij heartbeat: {r.get('revoked')} {ids}")
+              code, r = req("POST", DA, {"action": "heartbeat", "device_id": "ci-p0"}, user)
+              if r.get("revoked") is not True: fail.append(f"heartbeat van afgemeld apparaat: {r}")
+              code, r = req("POST", DA, {"action": "register_device", "device_id": "ci-p0", "name": "CI", "platform": "browser"}, user)
+              if code != 403 or r.get("error") != "device_limit": fail.append(f"opnieuw aanmelden boven de limiet: HTTP {code}")
+              req("POST", DA, {"action": "remove_device", "device_id": "ci-old"}, user)
+              req("POST", DA, {"action": "register_device", "device_id": "ci-p0", "name": "CI", "platform": "browser"}, user)
+              # build 157: OpenSubtitles-sleutel alleen bij Lifetime (Gratis: lege string)
+              code, r = req("POST", DA, {"action": "config", "platform": "web"}, user)
+              if code != 200 or r.get("openSubtitlesAPIKey") != "": fail.append(f"config gratis: openSubtitlesAPIKey niet leeg (HTTP {code})")
+              # build 157: nieuw kinderprofiel bij Gratis = 403 feature_locked kids_profiles; gewoon profiel mag
+              now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+              code, r = req("POST", DA, {"action": "put_profiles", "profiles": [{"id": "ci-main", "name": "CI", "isMain": True, "order": 0, "updatedAt": now}]}, user)
+              if code != 200: fail.append(f"put_profiles gratis gewoon profiel: HTTP {code} {str(r)[:200]}")
+              code, r = req("POST", DA, {"action": "put_profiles", "profiles": [{"id": "ci-kid", "name": "K", "kids": True, "order": 1, "updatedAt": now}]}, user)
+              if code != 403 or r != {"error": "feature_locked", "feature": "kids_profiles", "plan": "free"}: fail.append(f"put_profiles gratis kinderprofiel: HTTP {code} {r}")
+              if not any(("apparat" in f or "config" in f or "put_profiles" in f or "heartbeat" in f) for f in fail):
+                  print("::notice::gratis (build 157): 2 apparaten, afdwingen bij heartbeat, geen OpenSubtitles-sleutel, geen nieuw kinderprofiel")
               code, r = req("POST", DA, {"action": "heartbeat", "device_id": "ci-p0"}, user)
               if (r.get("entitlements") or {}).get("plan") != "free" or (r.get("entitlements") or {}).get("upgrade", {}).get("link") is not True: fail.append(f"heartbeat zonder entitlements: {r}")
               # gratis: 1 gelijktijdige kijker (Bingr-telling, los van de IPTV-provider)
@@ -1589,8 +1649,14 @@ jobs:
               code, r = sql(f"insert into public.account_plans (user_id, plan, max_streams, source, granted_by) values ('{uid}', 'lifetime', null, 'admin', 'ci') on conflict (user_id) do update set plan = 'lifetime', max_streams = null")
               if code >= 300: fail.append(f"account_plans schrijven: HTTP {code} {str(r)[:200]}")
               code, e = req("POST", DA, {"action": "entitlements", "platform": "android"}, user)
-              if e.get("plan") != "lifetime" or e.get("limits") != {"streams": 3, "devices": 15, "servers": None} or e.get("features", {}).get("trakt") is not True:
+              if e.get("plan") != "lifetime" or e.get("limits") != {"streams": 3, "devices": 15, "servers": None} or e.get("features", {}).get("trakt") is not True \
+                 or any(e.get("features", {}).get(k) is not True for k in F157):
                   fail.append(f"entitlements lifetime: HTTP {code} {e}")
+              for i in (2, 3):
+                  code, r = req("POST", DA, {"action": "register_device", "device_id": f"ci-p{i}", "name": "CI", "platform": "browser"}, user)
+                  if code != 200: fail.append(f"register_device lifetime ci-p{i}: HTTP {code}")
+              code, r = req("POST", DA, {"action": "put_profiles", "profiles": [{"id": "ci-kid", "name": "K", "kids": True, "order": 1, "updatedAt": now}]}, user)
+              if code != 200: fail.append(f"put_profiles lifetime kinderprofiel: HTTP {code} {str(r)[:200]}")
               res = [req("POST", DA, {"action": "stream_start", "device_id": f"ci-p{i}", "title": "CI", "kind": "live"}, user) for i in (1, 2, 3)]
               if res[0][0] != 200 or res[1][0] != 200 or res[2][0] != 403 or res[2][1].get("error") != "stream_limit" or res[2][1].get("limit") != 3 or res[2][1].get("plan") != "lifetime":
                   fail.append(f"streamlimiet lifetime (3): {[(c, {k: v for k, v in r.items() if k != 'streams'}) for c, r in res]}")

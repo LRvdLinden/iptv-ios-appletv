@@ -1810,9 +1810,16 @@ Nieuwe verdeling. Dit vervangt de tabel onder "Abonnementen" waar die verschilt;
   - `plans` in `entitlements` geeft Gratis `devices: 2`.
   - Eigen limieten uit het beheer (`max_devices`) blijven voorgaan.
 - **Apparaten:** `register_device` weigert een nieuw apparaat boven de limiet (403 `device_limit`, zoals nu).
-  - Apparaten die al ingelogd zijn, **blijven ingelogd**. Er wordt niemand uitgelogd.
   - De app toont bij `device_limit` de lijst om een ander apparaat af te melden, zoals nu.
-- **Oudere apps** kennen de nieuwe `features`-sleutels niet en blijven die functies tonen. Dat is zo; alleen de apparaatlimiet dwingt de server af.
+- **Server dwingt direct af (geldt meteen voor alle Gratis-accounts, ook met oude apps; gaat voor de rest van deze sectie):**
+  - **Apparaten:** een Gratis-account zonder eigen `max_devices` met meer dan 2 apparaten houdt de 2 die het laatst actief waren (`last_seen_at`, dan `created_at`). De rest wordt verwijderd, met hun sessie en lopende stream; hun `heartbeat` geeft dan `{revoked:true}` en ze loggen uit. Functie `bingr_enforce_free_devices(limit, user?)` in `supabase/schema.sql`:
+    - één keer voor alle accounts bij de deploy, en daarna bij elke deploy opnieuw (herhaalbaar; workflow *Backend*, stap "Build 157 - apparatenlimiet Gratis afdwingen", logt alleen aantallen);
+    - per account bij elke `register_device` en `heartbeat` (is het apparaat van de heartbeat zelf weg: `{revoked:true}`).
+    - Lifetime-accounts en eigen limieten uit het beheer worden nooit aangeraakt.
+  - **OpenSubtitles:** `config` geeft `openSubtitlesAPIKey` alleen bij `features.opensubtitles`; bij Gratis een **lege string** (de apps wissen dan hun opgeslagen serversleutel). Kon de server het abonnement niet bepalen, dan ontbreekt het veld (de app houdt zijn laatst bekende waarde). Een sleutel die iemand zelf heeft ingevuld (Koppelingen instellen) of die in een app is ingebouwd, kan de server niet tegenhouden.
+  - **Kinderprofielen:** `put_profiles` weigert bij Gratis een **nieuw** kinderprofiel met 403 `{error:"feature_locked", feature:"kids_profiles", plan:"free"}`: na het samenvoegen een levend profiel met `kids: true` dat op de server nog niet bestond, een tombstone was of geen kinderprofiel was. Bestaande kinderprofielen blijven ongewijzigd en altijd kinderprofiel; wijzigen of verwijderen ervan wordt niet geweigerd. (`kids` komt onversleuteld binnen; de server versleutelt pas bij het opslaan.) Apps van vóór build 146 die `account_data.profiles` rechtstreeks schrijven, controleert de server niet.
+  - **Verder kijken:** niet op de server af te dwingen zonder het hervatten te breken (de voortgang moet blijven syncen); alleen in de apps.
+- **Oudere apps** kennen de nieuwe `features`-sleutels niet en blijven Verder kijken tonen; apparaten, OpenSubtitles (sleutel van de server) en nieuwe kinderprofielen dwingt de server af.
 - **In de apps (feature ontbreekt of is `false` = Gratis):**
   - **Verder kijken:**
     - De rij Verder kijken op Home en in Mijn Bingr toont een slotje met de vergelijking (en bij `upgrade.link` de knop Upgrade naar Lifetime).

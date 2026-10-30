@@ -22,8 +22,10 @@
 //                   account). Geen of fout wachtwoord -> 403 {error:"wrong_password"}; max. 5 per account en 20 per IP per
 //                   10 minuten -> 429 {error:"rate_limited"}; auth-server onbereikbaar -> 503 {error:"unavailable"}.
 //   register_device {device_id, name, platform, app_version?, os_version?} (ingelogd) -> {ok, limit} | 403 {error:"device_limit", limit, plan, devices}
-//                   limit = apparatenlimiet van het abonnement (gratis 8, lifetime 15, of eigen limiet uit het beheer)
+//                   limit = apparatenlimiet van het abonnement (gratis 2 sinds build 157, lifetime 15, of eigen limiet uit het beheer)
+//                   build 157: daarna bingr_enforce_free_devices: Gratis houdt alleen de 2 laatst actieve apparaten
 //   heartbeat       {device_id, app_version?, os_version?, platform?} (ingelogd) -> {ok, entitlements} | {revoked:true}  (werkt ook "laatst gebruikt" bij)
+//                   build 157: Gratis boven de limiet -> de minst recent actieve apparaten gaan weg (dit apparaat dan {revoked:true})
 //                   Ongeldig/verlopen token -> 401 {error:"not_signed_in"} (app ververst en probeert opnieuw); auth-server onbereikbaar -> 503.
 //   list_devices    {device_id?} (ingelogd) -> {limit, devices:[{device_id,name,platform,created_at,last_seen_at,current}]}
 //   rename_device   {device_id, name} (ingelogd) -> {ok}   (eigen naam; register_device overschrijft die niet meer)
@@ -57,7 +59,8 @@
 //   delete_watch_stats {profile_id?} (ingelogd) -> {ok}   (zonder profile_id: alle profielen)
 //   announcements   {lang?} (ingelogd) -> {items:[]}  (build 62; sinds build 117 altijd leeg: berichten alleen als pushmelding)
 //   ping            {}                  -> {ok:true}  (statuscontrole, zonder inloggen)
-//   config          {platform?, device_id?} (ingelogd) -> {traktClientID?, traktClientSecret?, openSubtitlesAPIKey, omdbAPIKey, tmdbAPIKey, entitlements}
+//   config          {platform?, device_id?} (ingelogd) -> {traktClientID?, traktClientSecret?, openSubtitlesAPIKey?, omdbAPIKey, tmdbAPIKey, entitlements}
+//                   build 157: openSubtitlesAPIKey alleen bij Lifetime, bij Gratis "" (abonnement onbekend: veld weg)
 //                   security L5: Trakt-sleutels alleen voor Lifetime (functie trakt); max. 60 per uur per account (429 rate_limited).
 //                   App-sleutels staan alleen als function-secrets op de server (BINGR_*), nooit in de openbare repo.
 //   entitlements    {platform?, device_id?} (ingelogd) -> {plan:"free"|"lifetime", limits:{streams, devices, servers|null},
@@ -80,9 +83,10 @@ import { buildOf, cleanProfiles, PROFILES_BUILD } from "../_shared/profiles.ts";
 import { currentMode, profileNames, readProfiles, syncProfiles } from "../_shared/profiles_store.ts";
 import { openRows, privateKey, sealedStream } from "./watch.ts";
 import {
-  entitlements, featureLocked, limitsFor, normalizePlan, normalizePlatform, normalizeUpgradeLink, platformFromDevice,
+  entitlements, featureLocked, limitsFor, normalizePlan, normalizePlatform, normalizeUpgradeLink, PLAN_DEFAULTS, platformFromDevice,
   type PlanRow, type UpgradeLink,
 } from "../_shared/plans.ts";
+import { addsKidsProfile } from "../_shared/profiles.ts";
 
 const SITE = Deno.env.get("BINGR_SITE") ?? "https://bingr.online";
 const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {
@@ -205,6 +209,14 @@ async function pendingName(userId: string, deviceId: string, platform: string) {
     if (!claimed?.length) return; // al door een gelijktijdige aanmelding gebruikt
     await admin.from("account_devices").update({ name: p.name, custom_name: true }).eq("user_id", userId).eq("device_id", deviceId);
   } catch (e) { console.error("pending_name", e instanceof Error ? e.message : e); }
+}
+// Build 157: apparatenlimiet Gratis direct afdwingen (Gratis zonder eigen max_devices houdt de 2 laatst actieve apparaten;
+// Lifetime en eigen limieten blijven onaangeroerd). Geeft het aantal verwijderde apparaten; bij een fout 0 (alleen loggen,
+// zonder id's), zodat inloggen en heartbeat nooit op deze stap vastlopen.
+async function enforceFreeDevices(userId: string): Promise<number> {
+  const { data, error } = await admin.rpc("bingr_enforce_free_devices", { p_limit: PLAN_DEFAULTS.free.devices, p_user: userId });
+  if (error) { console.error("enforce_free_devices", error.message); return 0; }
+  return Number((data as { devices?: unknown } | null)?.devices ?? 0) || 0;
 }
 async function removeDevice(userId: string, deviceId: string) {
   const { data: row } = await admin.from("account_devices").select("session_id").eq("user_id", userId).eq("device_id", deviceId).maybeSingle();
@@ -584,8 +596,8 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       const name = String(body.name ?? "").slice(0, 80), platform = String(body.platform ?? "").slice(0, 40);
       const sid = sessionIdFrom(req);
       const session_id = sid && /^[0-9a-f-]{36}$/i.test(sid) ? sid : null;
-      // apparatenlimiet van het abonnement (gratis 2 sinds build 157, lifetime 15, of eigen limiet uit het beheer). Alleen een
-      // nieuw apparaat telt mee: een apparaat dat al ingelogd is, blijft ingelogd, ook als het account nu boven de limiet zit
+      // apparatenlimiet van het abonnement (gratis 2 sinds build 157, lifetime 15, of eigen limiet uit het beheer). Een nieuw
+      // apparaat boven de limiet wordt geweigerd; zat het account er al boven, dan houdt enforceFreeDevices de 2 laatst actieve
       const row = await planRow(user.id), limit = limitsFor(row).devices;
       // tellen + toevoegen atomair in de database (slot per account), zodat gelijktijdige logins de limiet niet passeren
       const { data: r, error } = await admin.rpc("bingr_register_device", {
@@ -596,6 +608,8 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       if (r?.error === "device_limit") {
         return json({ error: "device_limit", limit, plan: normalizePlan(row?.plan), devices: await listDevices(user.id) }, 403);
       }
+      // build 157: een Gratis-account dat nog boven de limiet zat, houdt de 2 laatst actieve (dit apparaat is net actief)
+      await enforceFreeDevices(user.id);
       await pendingName(user.id, device_id, platform);
       inBackground(saveCountry(req, user.id, device_id));
       await legacyMirror(user.id, body.app_version);
@@ -614,6 +628,11 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       if (av) patch.app_version = av;
       if (ov) patch.os_version = ov;
       await admin.from("account_devices").update(patch).eq("user_id", user.id).eq("device_id", device_id);
+      // build 157: Gratis boven de limiet (ook met een oude app): de minst recent actieve apparaten gaan weg; is dit er één, uitloggen
+      if (await enforceFreeDevices(user.id) > 0) {
+        const { data: still } = await admin.from("account_devices").select("device_id").eq("user_id", user.id).eq("device_id", device_id).maybeSingle();
+        if (!still) return json({ revoked: true });
+      }
       inBackground(saveCountry(req, user.id, device_id));
       await legacyMirror(user.id, av ?? null);
       // actief vandaag (statistieken); één rij per account per dag
@@ -752,6 +771,15 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       if (!incoming) return json({ error: "bad_profiles" }, 400);
       if (JSON.stringify(incoming).length > 512 * 1024) return json({ error: "too_large" }, 413);
       if (await rateLimited(`da-prof:u:${user.id}`, 60, 60)) return json({ error: "rate_limited" }, 429);
+      // build 157: een NIEUW kinderprofiel (of een profiel dat kinderprofiel wordt) hoort bij Lifetime. Bestaande
+      // kinderprofielen blijven altijd staan en blijven kinderprofiel; alleen controleren als er een kids:true meekomt.
+      if (incoming.some((p) => p.kids === true)) {
+        const row = await planRow(user.id, true);
+        if (normalizePlan(row?.plan) !== "lifetime") {
+          const { list: stored } = await readProfiles(admin, user.id);
+          if (addsKidsProfile(stored, incoming)) return json(featureLocked("kids_profiles", "free"), 403);
+        }
+      }
       const r = await syncProfiles(admin, user.id, incoming);
       if ("error" in r) return r.error === "busy" ? json({ error: "try_again" }, 503) : json({ error: r.error }, 413);
       return json({ ok: true, profiles: r.list, updatedAt: r.updatedAt });
@@ -916,9 +944,13 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       let ent: Awaited<ReturnType<typeof entitlementsFor>> | undefined = undefined;
       try { ent = await entitlementsFor(user.id, body); } catch (e) { console.error("config entitlements", e instanceof Error ? e.message : e); }
       const trakt = ent?.features?.trakt === true;
+      // build 157: OpenSubtitles alleen bij Lifetime. Bij Gratis een lege string (niet weglaten): de apps wissen dan hun
+      // opgeslagen serversleutel ("" = geen sleutel), zodat OpenSubtitles ook in oude apps stopt. Kon de server het
+      // abonnement niet bepalen (ent ontbreekt), dan het veld weglaten: de apps houden dan hun laatst bekende waarde.
+      const os = ent === undefined ? {} : { openSubtitlesAPIKey: ent.features.opensubtitles === true ? env("BINGR_OPENSUBTITLES_API_KEY") : "" };
       return json({
         ...(trakt ? { traktClientID: env("BINGR_TRAKT_CLIENT_ID"), traktClientSecret: env("BINGR_TRAKT_CLIENT_SECRET") } : {}),
-        openSubtitlesAPIKey: env("BINGR_OPENSUBTITLES_API_KEY"),
+        ...os,
         omdbAPIKey: env("BINGR_OMDB_API_KEY"),
         tmdbAPIKey: env("BINGR_TMDB_API_KEY"),
         entitlements: ent,

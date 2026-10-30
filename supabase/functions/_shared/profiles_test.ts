@@ -1,6 +1,6 @@
 // Tests voor de versleutelde profielen (build 146): samenvoegen, opschonen, overgangsstand en de opslag (met een nep-database).
 //   deno test --allow-env supabase/functions/_shared/profiles_test.ts
-import { buildOf, cleanProfiles, legacyMode, liveCount, mergeProfiles, needsMirror, TOMBSTONE_MS } from "./profiles.ts";
+import { addsKidsProfile, buildOf, cleanProfiles, legacyMode, liveCount, mergeProfiles, needsMirror, TOMBSTONE_MS } from "./profiles.ts";
 import { readProfiles, resetModeCache, syncProfiles } from "./profiles_store.ts";
 import { openField, sealField, unseal } from "./sealed.ts";
 
@@ -183,4 +183,28 @@ Deno.test("velden: enc1-voorvoegsel, oude waarden leesbaar, nooit een fout", asy
   eq(await openField("enc1:kapot"), "enc1:kapot");
   eq(await sealField(""), null); eq(await sealField(null), null); eq(await openField(null), null);
   ok((await sealField("x")) !== (await sealField("x")), "eigen nonce per keer");
+});
+
+Deno.test("build 157: nieuw kinderprofiel herkennen (Gratis = 403), bestaande blijven gewoon werken", () => {
+  const stored = [
+    { id: "A", name: "Léon", isMain: true, order: 0, updatedAt: t("01") },
+    { id: "K", name: "Kids", kids: true, ageLimit: 6, order: 1, updatedAt: t("02") },
+    { id: "G", name: "Gast", order: 2, updatedAt: t("03") },
+    { id: "X", name: "Weg", kids: true, deleted: true, deletedAt: t("04"), updatedAt: t("04") },
+  ];
+  // bestaand kinderprofiel opnieuw meegestuurd of gewijzigd: geen nieuw kinderprofiel
+  eq(addsKidsProfile(stored, stored, NOW), false, "zelfde lijst");
+  eq(addsKidsProfile(stored, [{ id: "k", name: "Kinderen", kids: true, ageLimit: 9, updatedAt: t("20") }], NOW), false, "bestaand gewijzigd");
+  eq(addsKidsProfile(stored, [{ id: "N", name: "Nieuw", updatedAt: t("20") }], NOW), false, "nieuw gewoon profiel");
+  eq(addsKidsProfile(stored, [{ id: "G", name: "Gast", updatedAt: t("20") }], NOW), false, "veld kids ontbreekt");
+  eq(addsKidsProfile(stored, [{ id: "K", deleted: true, deletedAt: t("20"), updatedAt: t("20") }], NOW), false, "kinderprofiel verwijderen mag");
+  // nieuw kinderprofiel, gewoon profiel wordt kinderprofiel, of een verwijderd kinderprofiel terugzetten
+  eq(addsKidsProfile(stored, [{ id: "N", name: "Nieuw", kids: true, updatedAt: t("20") }], NOW), true, "nieuw kinderprofiel");
+  eq(addsKidsProfile(stored, [{ id: "G", name: "Gast", kids: true, updatedAt: t("20") }], NOW), true, "wordt kinderprofiel");
+  eq(addsKidsProfile(stored, [{ id: "X", name: "Weg", kids: true, updatedAt: t("21") }], NOW), true, "verwijderd kinderprofiel terug");
+  // een oudere versie die verliest: telt alleen als het veld daardoor toch in de samengevoegde lijst komt
+  eq(addsKidsProfile(stored, [{ id: "G", name: "Gast", kids: true, updatedAt: t("02") }], NOW), true, "veld van de verliezer blijft");
+  const storedNo = stored.map((p) => p.id === "G" ? { ...p, kids: false } : p);
+  eq(addsKidsProfile(storedNo, [{ id: "G", name: "Gast", kids: true, updatedAt: t("02") }], NOW), false, "oudere versie verliest");
+  eq(addsKidsProfile([], [{ id: "N", kids: true, updatedAt: t("20") }], NOW), true, "lege server");
 });

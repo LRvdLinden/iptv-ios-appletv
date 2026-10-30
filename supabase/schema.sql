@@ -4314,3 +4314,45 @@ revoke all on function public.bingr_push_token_put(text, bigint, text) from publ
 revoke all on function public.bingr_push_retry(bigint) from public, anon, authenticated;
 grant execute on function public.bingr_push_token_put(text, bigint, text) to service_role;
 grant execute on function public.bingr_push_retry(bigint) to service_role;
+
+-- ============================================================================================================
+-- Build 157: apparatenlimiet Gratis direct afdwingen (docs/ACCOUNT.md, "Build 157" → "Server"). Een Gratis-account zonder
+-- eigen max_devices met meer apparaten dan p_limit houdt de p_limit apparaten die het laatst actief waren (last_seen_at,
+-- dan created_at); de rest gaat weg met hun sessie en lopende stream, zodat hun heartbeat {revoked:true} geeft en ze
+-- uitloggen. Lifetime en eigen limieten uit het beheer blijven onaangeroerd. p_user null = alle accounts (workflow Backend,
+-- bij elke deploy; herhaalbaar), anders één account (device-auth register_device en heartbeat). Geeft alleen aantallen.
+-- De limiet komt van de aanroeper (supabase/functions/_shared/plans.ts, PLAN_DEFAULTS.free.devices).
+-- >>> unittest devices157
+create or replace function public.bingr_enforce_free_devices(p_limit int, p_user uuid default null)
+returns jsonb language plpgsql security definer set search_path = public, auth as $$
+declare r record; n int; acc int := 0; dev int := 0;
+begin
+  if p_limit is null or p_limit < 1 then return jsonb_build_object('accounts', 0, 'devices', 0); end if;
+  for r in
+    select d.user_id from public.account_devices d
+    left join public.account_plans p on p.user_id = d.user_id
+    where (p_user is null or d.user_id = p_user)
+      and coalesce(p.plan, 'free') = 'free' and p.max_devices is null
+    group by d.user_id having count(*) > p_limit
+  loop
+    -- zelfde slot als bingr_register_device, zodat een gelijktijdige login niet tussendoor telt
+    perform pg_advisory_xact_lock(hashtextextended('bingr.devices:' || r.user_id::text, 0));
+    with keep as (
+      select device_id from public.account_devices where user_id = r.user_id
+      order by last_seen_at desc, created_at desc, device_id limit p_limit
+    ), gone as (
+      delete from public.account_devices d where d.user_id = r.user_id and d.device_id not in (select device_id from keep)
+      returning d.device_id, d.session_id
+    ), s as (
+      delete from auth.sessions where id in (select session_id from gone where session_id is not null) returning 1
+    ), st as (
+      delete from public.account_streams a where a.user_id = r.user_id and a.device_id in (select device_id from gone) returning 1
+    )
+    select count(*) into n from gone;
+    if n > 0 then acc := acc + 1; dev := dev + n; end if;
+  end loop;
+  return jsonb_build_object('accounts', acc, 'devices', dev);
+end $$;
+revoke all on function public.bingr_enforce_free_devices(int, uuid) from public, anon, authenticated;
+grant execute on function public.bingr_enforce_free_devices(int, uuid) to service_role;
+-- <<< unittest devices157

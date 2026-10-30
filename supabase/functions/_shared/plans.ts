@@ -4,8 +4,9 @@
 //               Trakt / meerdere servers / thema's / Verder kijken / kinderprofielen / OpenSubtitles
 //   lifetime -> 3 streams, 15 apparaten, onbeperkt servers, alles aan
 // Build 157: continue_watching, kids_profiles en opensubtitles erbij. Oudere apps kennen die sleutels niet en negeren ze; een app
-// die een sleutel mist (oudere server) behandelt hem als false (= Gratis). Alleen de apparatenlimiet dwingt de server af
-// (register_device); apparaten die al ingelogd zijn, blijven ingelogd.
+// die een sleutel mist (oudere server) behandelt hem als false (= Gratis). De server dwingt af: de apparatenlimiet (ook voor
+// accounts die er al boven zaten: bingr_enforce_free_devices houdt de 2 laatst actieve), de OpenSubtitles-sleutel in config
+// en nieuwe kinderprofielen in put_profiles (docs/ACCOUNT.md, "Build 157").
 // De streamlimiet is Bingr's eigen telling (account_streams), los van de limiet van de IPTV-provider
 // (Xtream max_connections); die controleren de apps apart bij het afspelen.
 // Per account kan het beheer max_streams / max_devices verhogen (null = standaard van het abonnement).
@@ -132,4 +133,4 @@ export function entitlements(row: PlanRow, settings: UpgradeLink, platform: Plat
 }
 
 // 403-antwoord voor een functie die alleen bij Lifetime hoort
-export const featureLocked = (feature: "stats" | "now_watching", plan: Plan) => ({ error: "feature_locked", feature, plan });
+export const featureLocked = (feature: "stats" | "now_watching" | "kids_profiles", plan: Plan) => ({ error: "feature_locked", feature, plan });

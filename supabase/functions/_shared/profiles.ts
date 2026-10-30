@@ -77,6 +77,22 @@ export function mergeProfiles(stored: Obj[], incoming: Obj[], nowMs = Date.now()
     });
 }
 
+/**
+ * Build 157: komt er met deze binnenkomende lijst een kinderprofiel BIJ? Dat is zo als na het samenvoegen een levend
+ * profiel `kids: true` heeft dat op de server nog niet bestond, een tombstone was, of geen kinderprofiel was. Een
+ * bestaand kinderprofiel (ook gewijzigd, of opnieuw meegestuurd) telt niet; een veld dat ontbreekt, ook niet.
+ */
+export function addsKidsProfile(stored: Obj[], incoming: Obj[], nowMs = Date.now()): boolean {
+  const before = new Map<string, Obj>();
+  for (const p of stored) { const k = key(p); if (k) before.set(k, p); }
+  for (const p of mergeProfiles(stored, incoming, nowMs)) {
+    if (isTomb(p) || p.kids !== true) continue;
+    const old = before.get(key(p));
+    if (!old || isTomb(old) || old.kids !== true) return true;
+  }
+  return false;
+}
+
 /** Aantal profielen zonder tombstones (voor het beheer: account_data.profile_count). */
 export const liveCount = (list: Obj[]) => list.filter((p) => isObj(p) && !isTomb(p)).length;
 
