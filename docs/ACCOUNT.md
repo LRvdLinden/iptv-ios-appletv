@@ -1716,6 +1716,8 @@ blijven werken.
   2. Unicode NFKD, diakritische tekens weg, kleine letters.
   3. `&` wordt `and`, `+` wordt `plus`.
   4. Alles wat geen letter of cijfer is (elk schrift) gaat weg, ook spaties.
+  - Precies: NFKD, daarna alle tekens met Unicode-categorie `Mn` weg (ook Japanse dakuten: `が` → `か`), daarna lowercase
+    (Unicode, niet locale-gevoelig), daarna alleen tekens van categorie `L*` en `N*` houden.
   - Voorbeelden: `Amélie` → `amelie`, `Fast & Furious 7` → `fastandfurious7`, `Disney+` → `disneyplus`,
     `Blade Runner 2049` → `bladerunner2049`.
 - **Lezen:** een item is gezien als zijn eigen id-sleutel **of één** van zijn inhoudssleutels in de set staat.
@@ -1723,6 +1725,10 @@ blijven werken.
   - Een sleutel met jaar `0` matcht alleen op jaar `0`.
   - tmdb en imdb gaan altijd voor; de titel is de laatste terugval.
 - **Uitvinken:** de oude id-sleutel en **alle** inhoudssleutels van het item komen in `removed.watched` met dezelfde tijd.
+- **Nieuwste gebeurtenis wint, over alle sleutels van het item:** kijk naar alle kandidaatsleutels van het item (id-sleutel en
+  inhoudssleutels, titel met jaar ±1). Het item is gezien als de nieuwste tijd daarvan een **toevoeging** is (in `watched`), en
+  niet gezien als het een **verwijdering** is (in `removed.watched`). Zo wordt een kopie zonder tmdb-id (alleen titelsleutel) die
+  je uitvinkt ook uitgevinkt op een server waar dezelfde film met een tmdb-sleutel staat.
 - **Serie gezien:** zijn alle uitgezonden afleveringen gezien, dan schrijf je `w:s:<show>`.
   - Uitgezonden afleveringen: het aantal van Trakt (`aired_episodes`), anders het aantal afleveringen op de server.
   - Is er daarna een aflevering niet meer gezien, dan gaat `w:s:` naar `removed`.
