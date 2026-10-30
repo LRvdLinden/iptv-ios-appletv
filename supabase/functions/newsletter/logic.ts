@@ -84,6 +84,8 @@ export type Item = {
   /** TMDB-score (vote_average, alleen met genoeg stemmen) en IMDb-score (via OMDb, als de sleutel er is) */
   score?: number | null;
   imdb?: number | null;
+  /** Alleen in shownEdition (Top 10): plaats in de ranglijst van deze week (1 = eerste) */
+  rank?: number;
 };
 /** Top 10 van deze week, films en series apart (zoals de rijen "Top 10" in de apps). */
 export type Top10 = { movies: Item[]; tv: Item[] };
@@ -162,7 +164,10 @@ export function tmdbQueries(lang: Lang, ms: number) {
   } as const satisfies Record<string, readonly [string, Record<string, string>]>;
 }
 
-export const LIMITS = { fresh: 6, soon: 4, popular: 6, top10: 10 };
+/** Kandidaten per sectie in de editie (meer dan getoond, zodat er na het ontdubbelen en met een sectie uit genoeg overblijven). */
+export const LIMITS = { fresh: 12, soon: 12, popular: 12, top10: 10 };
+/** Getoond in de mail: per sectie (en per rij van de Top 10) max. 6 titels, 3 naast elkaar in 2 rijen. */
+export const SHOW = { perSection: 6, cols: 3 };
 
 export type Lists = {
   freshMovies: Item[]; freshTv: Item[]; soonMovies: Item[]; soonTv: Item[];
@@ -212,19 +217,53 @@ export function buildEdition(
   const ok = (x: Item) => !!x.backdrop && !recentFeatured.has(ref(x));
   const featured = pool.find((x) => ok(x) && x.overview) ?? pool.find(ok) ?? null;
   const used = new Set<string>(featured ? [ref(featured)] : []);
+  // titels uit de Top 10 tellen niet mee voor het aantal kandidaten: in de mail vallen ze weg (shownEdition), maar staat de
+  // Top 10 uit, dan blijven ze op hun plek
+  const inTop = new Set([...top10.movies, ...top10.tv].map(ref));
+  const upTo = (list: Item[], n: number) => {
+    const out: Item[] = [];
+    let own = 0;
+    for (const x of list) {
+      if (own >= n) break;
+      out.push(x);
+      if (!inTop.has(ref(x))) own++;
+    }
+    return out;
+  };
   const pick = (list: Item[], n: number) => {
     const free = list.filter((x) => !used.has(ref(x)));
-    const out = [...free.filter((x) => !recentShown.has(ref(x))), ...free.filter((x) => recentShown.has(ref(x)))].slice(0, n);
+    const out = upTo([...free.filter((x) => !recentShown.has(ref(x))), ...free.filter((x) => recentShown.has(ref(x)))], n);
     out.forEach((x) => used.add(ref(x)));
     return out;
   };
   const freshOut = pick(fresh, LIMITS.fresh);
   const soonAll = interleave(lists.soonMovies, lists.soonTv).filter((x) => x.date && x.date > today);
   const soon = pick(soonAll.slice(0, 20), LIMITS.soon).sort((a, b) => (a.date ?? "").localeCompare(b.date ?? "") || a.title.localeCompare(b.title));
-  // populair: de volgorde van TMDB houden, maar niets wat al in deze mail staat (ook niet in de Top 10)
-  const inTop = new Set([...top10.movies, ...top10.tv].map(ref));
-  const pop = popular.filter((x) => !used.has(ref(x)) && !inTop.has(ref(x))).slice(0, LIMITS.popular);
+  // populair: de volgorde van TMDB houden; dubbele met de Top 10 vallen weg in shownEdition (de Top 10 kan uit staan)
+  const pop = upTo(popular.filter((x) => !used.has(ref(x))), LIMITS.popular);
   return { featured, fresh: freshOut, soon, popular: pop, top10, credits: trakt ? { trakt: true } : {} };
+}
+
+/**
+ * Wat de mail echt toont (HTML, platte tekst, voorbeeld in het beheer en testmail gebruiken allemaal dit): in de volgorde
+ * van de mail (Uitgelicht, Top 10 films, Top 10 series, Nieuw, Binnenkort, Populair) per sectie max. SHOW.perSection
+ * titels, en een titel die al eerder in de mail staat valt weg (geen titel twee keer). De Top 10 houdt het rangnummer
+ * uit de ranglijst (ook als er een titel wegvalt omdat hij al uitgelicht is). Werkt ook op oudere opgeslagen edities.
+ */
+export function shownEdition(e: Edition): Edition {
+  const used = new Set<string>(e.featured ? [ref(e.featured)] : []);
+  const take = (list: Item[] | undefined, ranked = false) => {
+    const out: Item[] = [];
+    (list ?? []).forEach((x, n) => {
+      if (out.length >= SHOW.perSection || used.has(ref(x))) return;
+      used.add(ref(x));
+      out.push(ranked ? { ...x, rank: n + 1 } : x);
+    });
+    return out;
+  };
+  const movies = take(e.top10?.movies, true), tv = take(e.top10?.tv, true);
+  const fresh = take(e.fresh), soon = take(e.soon), popular = take(e.popular);
+  return { ...e, fresh, soon, popular, ...(e.top10 ? { top10: { movies, tv } } : {}) };
 }
 
 /** Secties die in het beheer uit staan weghalen (Top 10 en/of Populair). */
@@ -274,6 +313,7 @@ export function omdbRating(j: unknown): number | null {
 /** Alle refs in een editie (voor het ontdubbelen van de volgende). */
 export function editionRefs(e: Partial<Edition> | null | undefined): { featured: string[]; shown: string[] } {
   if (!e) return { featured: [], shown: [] };
+  e = shownEdition({ featured: null, fresh: [], soon: [], popular: [], ...e } as Edition);
   // de Top 10 telt niet mee: een ranglijst mag terugkomen, en hij mag het raster "Nieuw" niet verdringen
   const all = [e.featured, ...(e.fresh ?? []), ...(e.soon ?? []), ...(e.popular ?? [])].filter(Boolean) as Item[];
   return { featured: e.featured ? [ref(e.featured)] : [], shown: all.map(ref) };

@@ -157,9 +157,9 @@ Deno.test("HTML: huisstijl, escapen van TMDB-tekst, knoppen, voettekst", () => {
   const nl = renderNewsletter({ lang: "nl", edition: ed, unsubscribeUrl: "https://u", year: 2026 });
   ok(nl.html.includes("Bingr levert zelf geen films of series. Of een titel bij jou te zien is, hangt af van je eigen bron."), "eerlijke zin");
   ok(nl.html.includes("Bekijk in Bingr") && nl.html.includes("Meer info") && nl.html.includes("Binnenkort") && nl.html.includes(">Populair<"), "secties nl");
-  ok(nl.html.includes(">5 nov<"), "datum bij binnenkort");
+  ok(nl.html.includes(">5 nov · Film<"), "datum bij binnenkort");
   const en = renderNewsletter({ lang: "en", edition: ed, unsubscribeUrl: "https://u", year: 2026 });
-  ok(en.html.includes("Watch in Bingr") && en.html.includes("Coming soon") && en.html.includes(">Nov 5<") && en.html.includes('lang="en"'), "secties en");
+  ok(en.html.includes("Watch in Bingr") && en.html.includes("Coming soon") && en.html.includes(">Nov 5 · Movie<") && en.html.includes('lang="en"'), "secties en");
   eq(shortDate("nl", "2026-03-01"), "1 mrt");
   eq(shortDate("en", null), "");
   eq(subjectOf("nl", ed, true).startsWith("[Voorbeeld] Nieuw om te kijken: <script>"), true, "onderwerp (platte tekst, geen HTML)");

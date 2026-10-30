@@ -1,10 +1,11 @@
 // Bingr nieuwsbrief: de mail in de huisstijl (supabase/functions/_shared/layout.ts): zwart, BINGR met rode streep (geen
 // app-icoon), kaart #141414 met rode rand. Alle tekst uit TMDB gaat door esc(); afbeeldingen alleen van image.tmdb.org
 // met een gecontroleerd pad (logic.ts imgPath). Tabellen met inline stijlen (Gmail, Outlook, Apple Mail) + platte tekst.
-// Posters met vaste breedte en alt-tekst; elke poster en titel linkt naar de universele link bingr.online/titel/ (opent
+// Posters: overal staand (2:3), één TMDB-maat, vaste width/height en alt-tekst; per sectie max. 6 (3 × 2), geen titel
+// twee keer in de mail (logic.ts shownEdition; HTML, platte tekst, beheer-voorbeeld en testmail gelijk). Elke poster en titel linkt naar de universele link bingr.online/titel/ (opent
 // de app als die er is, anders de deelpagina met "Open in Bingr"). Geen trackers of persoonsgegevens in links.
 import { esc, FONT, footerHtml, footerText, greeting, greetingText, layout, RED } from "../_shared/layout.ts";
-import { type Edition, img, type Item, type Lang, titleUrl } from "./logic.ts";
+import { type Edition, img, type Item, type Lang, SHOW, shownEdition, titleUrl } from "./logic.ts";
 
 const IMDB_YELLOW = "#F5C518";
 
@@ -52,10 +53,10 @@ export function shortDate(lang: Lang, d: string | null): string {
   return lang === "nl" ? `${n} ${m}` : `${m} ${n}`;
 }
 const kindYear = (lang: Lang, i: Item) => [TEXT[lang][i.type === "tv" ? "tv" : "movie"], i.year ? String(i.year) : ""].filter(Boolean).join(" · ");
-/** "2025 · Drama" (soort staat al in de kop van de Top 10). */
-const yearGenre = (i: Item) => [i.year ? String(i.year) : "", i.genre ?? ""].filter(Boolean).join(" · ");
-/** "Serie · 2025 · Drama". */
-const kindYearGenre = (lang: Lang, i: Item) => [kindYear(lang, i), i.genre ?? ""].filter(Boolean).join(" · ");
+/** "2025 · Drama" (zonder genre: "2025 · Serie"). */
+const yearGenre = (lang: Lang, i: Item) => [i.year ? String(i.year) : "", i.genre ?? TEXT[lang][i.type === "tv" ? "tv" : "movie"]].filter(Boolean).join(" · ");
+/** "17 nov · Drama" (Binnenkort). */
+const dateGenre = (lang: Lang, i: Item) => [shortDate(lang, i.date), i.genre ?? TEXT[lang][i.type === "tv" ? "tv" : "movie"]].filter(Boolean).join(" · ");
 /** Score: IMDb (via OMDb) als die er is, anders TMDB; nl met komma. "" zonder score. */
 export function scoreText(lang: Lang, i: Item): string {
   const v = typeof i.imdb === "number" ? i.imdb : typeof i.score === "number" ? i.score : null;
@@ -63,13 +64,6 @@ export function scoreText(lang: Lang, i: Item): string {
   const n = v.toFixed(1);
   return `${typeof i.imdb === "number" ? "IMDb" : "TMDB"} ${lang === "nl" ? n.replace(".", ",") : n}`;
 }
-const scoreHtml = (lang: Lang, i: Item) => {
-  const t = scoreText(lang, i);
-  if (!t) return "";
-  const imdb = t.startsWith("IMDb");
-  return `<div style="margin:3px 0 0;font-size:11px;line-height:15px;font-weight:700;color:${imdb ? IMDB_YELLOW : "#b3b3b3"}">&#9733;&nbsp;${esc(t)}</div>`;
-};
-
 const sectionTitle = (s: string) =>
   `<tr><td style="padding:30px 0 12px"><div style="font-size:18px;line-height:24px;font-weight:800;color:#ffffff">${esc(s)}</div><div style="height:3px;width:36px;background:${RED};border-radius:2px;margin-top:6px;font-size:0;line-height:0">&nbsp;</div></td></tr>`;
 
@@ -85,7 +79,7 @@ function buttons(lang: Lang, url: string) {
 function featuredHtml(lang: Lang, i: Item) {
   const url = titleUrl(i), bg = img(i.backdrop, "w780");
   return `<tr><td style="padding:22px 0 0">
-${bg ? `<a href="${esc(url)}" style="text-decoration:none"><img src="${esc(bg)}" width="500" alt="${esc(i.title)}" style="display:block;width:100%;max-width:500px;height:auto;border:0;border-radius:8px;background:#1f1f1f"></a>` : ""}
+${bg ? `<a href="${esc(url)}" style="text-decoration:none"><img src="${esc(bg)}" width="500" height="281" alt="${esc(i.title)}" style="display:block;width:100%;max-width:500px;height:auto;aspect-ratio:16/9;object-fit:cover;border:0;border-radius:8px;background:#1f1f1f"></a>` : ""}
 <div style="margin:16px 0 0;font-size:12px;line-height:16px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:${RED}">${esc(TEXT[lang].featured)} · ${esc(kindYear(lang, i))}</div>
 <div style="margin:6px 0 0;font-size:22px;line-height:28px;font-weight:800;color:#ffffff"><a href="${esc(url)}" style="color:#ffffff;text-decoration:none">${esc(i.title)}</a></div>
 ${i.overview ? `<p style="margin:8px 0 0;font-size:15px;line-height:23px;color:#d6d6d6">${esc(i.overview)}</p>` : ""}
@@ -93,41 +87,66 @@ ${buttons(lang, url)}
 </td></tr>`;
 }
 
-type CardOpts = { rank?: number; score?: boolean };
-/** Posterkaart (rasters): poster (vaste breedte, alt = titel), eventueel rangnummer, titel, eronder een regel (soort · jaar,
- *  of de datum met "!" ervoor in rood) en eventueel de score. Poster en titel linken naar de titel in Bingr. */
-function card(lang: Lang, i: Item, label: string, width: number, o: CardOpts = {}) {
-  const url = titleUrl(i), p = img(i.poster, width <= 100 ? "w185" : "w342");
-  const small = width <= 100;
-  const rank = o.rank ? `<span style="color:${RED};font-weight:900">${o.rank}</span>&nbsp; ` : "";
-  return `<a href="${esc(url)}" style="text-decoration:none;color:#ffffff">${p ? `<img src="${esc(p)}" width="${width}" alt="${esc(i.title)}" style="display:block;width:100%;max-width:${width}px;height:auto;border:0;border-radius:6px;background:#1f1f1f">` : ""}
-<div style="margin:8px 0 0;font-size:${small ? 12 : 13}px;line-height:${small ? 16 : 17}px;font-weight:700;color:#ffffff;word-break:break-word">${rank}${esc(i.title)}</div></a>
-${label.replace(/^!/, "") ? `<div style="margin:2px 0 0;font-size:${small ? 11 : 12}px;line-height:${small ? 15 : 16}px;color:${label.startsWith("!") ? RED : "#8c8c8c"};font-weight:${label.startsWith("!") ? 700 : 400}">${esc(label.replace(/^!/, ""))}</div>` : ""}${o.score ? scoreHtml(lang, i) : ""}`;
+// ---------- posterraster ----------
+// Elke sectie: max. 6 titels, 3 naast elkaar in 2 rijen (SHOW). Alle covers zijn staande TMDB-posters (2:3) in één maat
+// (w342), met vaste width/height (156 × 234: 3 kolommen + 2 tussenruimtes van 16 = 500 px, de binnenbreedte van de kaart).
+// Kolommen in procenten, zodat ze op een telefoon 3 kolommen blijven maar smaller worden; de afbeelding schaalt dan mee
+// (width:100%, height:auto, en de bron heeft al de verhouding 2:3). Onder elke poster een tekstblok met vaste hoogtes:
+// titel (max. 2 regels), jaar · genre (of datum · genre) en de score (of een lege regel), zodat alles in een rij even hoog is.
+
+export const POSTER = { w: 156, h: 234, gap: 16, size: "w342" as const };
+const COL_PCT = ((POSTER.w / (POSTER.w * SHOW.cols + POSTER.gap * (SHOW.cols - 1))) * 100).toFixed(1) + "%";
+const GAP_PCT = ((POSTER.gap / (POSTER.w * SHOW.cols + POSTER.gap * (SHOW.cols - 1))) * 100).toFixed(1) + "%";
+/** Max. tekens van de titel onder een poster (2 regels); langer wordt afgekapt met "…". */
+export const TITLE_MAX = 34;
+export function shortTitle(s: string, max = TITLE_MAX): string {
+  const a = Array.from(s);
+  if (a.length <= max) return s;
+  const cut = a.slice(0, max - 1).join(""), sp = cut.lastIndexOf(" ");
+  return (sp > max * 0.6 ? cut.slice(0, sp) : cut).replace(/[\s,.;:–-]+$/, "") + "…";
 }
-function grid(lang: Lang, items: Item[], cols: number, label: (i: Item) => string, o: { ranked?: boolean; score?: boolean } = {}) {
-  const gap = cols >= 5 ? 8 : 12;
-  const w = Math.floor((500 - (cols - 1) * gap) / cols);
-  const rows: string[] = [];
-  for (let r = 0; r < items.length; r += cols) {
-    const cells = items.slice(r, r + cols).map((i, n) =>
-      `<td width="${w}" valign="top" style="width:${w}px;vertical-align:top;padding:0 0 18px">${card(lang, i, label(i), w, { rank: o.ranked ? r + n + 1 : undefined, score: o.score })}</td>`);
-    while (cells.length < cols) cells.push(`<td width="${w}" style="width:${w}px">&nbsp;</td>`);
-    rows.push(`<tr>${cells.join(`<td width="${gap}" style="width:${gap}px;font-size:0;line-height:0">&nbsp;</td>`)}</tr>`);
+
+type CardOpts = { red?: boolean };
+/** Posterkaart: poster (alt = titel), titel met eventueel rangnummer, één regel eronder en de score. Poster en titel linken
+ *  naar de titel in Bingr. */
+function card(lang: Lang, i: Item, label: string, o: CardOpts = {}) {
+  const url = titleUrl(i), p = img(i.poster, POSTER.size);
+  const rank = i.rank ? `<span style="color:${RED};font-weight:900">${i.rank}</span>&nbsp; ` : "";
+  const poster = p
+    ? `<img src="${esc(p)}" width="${POSTER.w}" height="${POSTER.h}" alt="${esc(i.title)}" style="display:block;width:100%;max-width:${POSTER.w}px;height:auto;aspect-ratio:2/3;object-fit:cover;border:0;outline:none;text-decoration:none;border-radius:6px;background:#1f1f1f">`
+    : `<div style="width:100%;max-width:${POSTER.w}px;height:${POSTER.h}px;border-radius:6px;background:#1f1f1f">&nbsp;</div>`;
+  const score = scoreText(lang, i), imdb = score.startsWith("IMDb");
+  return `<a href="${esc(url)}" style="display:block;text-decoration:none;color:#ffffff">${poster}</a>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td height="40" valign="top" style="height:40px;padding:8px 0 0;vertical-align:top"><div style="max-height:32px;overflow:hidden;font-size:12px;line-height:16px;font-weight:700;color:#ffffff;word-break:break-word"><a href="${esc(url)}" style="color:#ffffff;text-decoration:none">${rank}${esc(shortTitle(i.title))}</a></div></td></tr>
+<tr><td height="16" valign="top" style="height:16px;vertical-align:top"><div style="max-height:16px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:11px;line-height:16px;color:${o.red ? RED : "#8c8c8c"};font-weight:${o.red ? 700 : 400}">${label ? esc(label) : "&nbsp;"}</div></td></tr>
+<tr><td height="16" valign="top" style="height:16px;vertical-align:top"><div style="max-height:16px;overflow:hidden;white-space:nowrap;font-size:11px;line-height:16px;font-weight:700;color:${imdb ? IMDB_YELLOW : "#b3b3b3"}">${score ? `&#9733;&nbsp;${esc(score)}` : "&nbsp;"}</div></td></tr></table>`;
+}
+/** Raster van max. 6 posters: 3 per rij, lege cellen aangevuld zodat een halve rij links blijft staan. */
+function grid(lang: Lang, items: Item[], label: (i: Item) => string, o: CardOpts = {}) {
+  const cols = SHOW.cols, rows: string[] = [];
+  const list = items.slice(0, SHOW.perSection);
+  const gap = `<td width="${GAP_PCT}" style="width:${GAP_PCT};font-size:0;line-height:0">&nbsp;</td>`;
+  for (let r = 0; r < list.length; r += cols) {
+    const cells = list.slice(r, r + cols).map((i) =>
+      `<td width="${COL_PCT}" valign="top" style="width:${COL_PCT};vertical-align:top;padding:0 0 18px">${card(lang, i, label(i), o)}</td>`);
+    while (cells.length < cols) cells.push(`<td width="${COL_PCT}" style="width:${COL_PCT};font-size:0;line-height:0">&nbsp;</td>`);
+    rows.push(`<tr>${cells.join(gap)}</tr>`);
   }
-  return `<tr><td><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${rows.join("")}</table></td></tr>`;
+  return `<tr><td><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;table-layout:fixed">${rows.join("")}</table></td></tr>`;
 }
 const subTitle = (s: string) =>
   `<tr><td style="padding:4px 0 10px;font-size:12px;line-height:16px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#8c8c8c">${esc(s)}</td></tr>`;
 const sectionIntro = (s: string) =>
   `<tr><td style="padding:0 0 14px;font-size:14px;line-height:21px;color:#b3b3b3">${esc(s)}</td></tr>`;
 
-/** Top 10: films en series apart, elk twee rijen van 5 posters met rangnummer, jaar · genre en score. */
+/** Top 10: films en series apart, elk max. 6 posters (2 rijen van 3) met rangnummer, jaar · genre en score. */
 function top10Html(lang: Lang, e: Edition): string[] {
   const t = TEXT[lang], m = e.top10?.movies ?? [], s = e.top10?.tv ?? [];
   if (!m.length && !s.length) return [];
+  const yg = (i: Item) => yearGenre(lang, i);
   const out = [sectionTitle(t.top10), sectionIntro(t.top10Intro)];
-  if (m.length) out.push(subTitle(t.movies), grid(lang, m, 5, yearGenre, { ranked: true, score: true }));
-  if (s.length) out.push(subTitle(t.series), grid(lang, s, 5, yearGenre, { ranked: true, score: true }));
+  if (m.length) out.push(subTitle(t.movies), grid(lang, m, yg));
+  if (s.length) out.push(subTitle(t.series), grid(lang, s, yg));
   return out;
 }
 
@@ -140,13 +159,14 @@ export function subjectOf(lang: Lang, e: Edition, preview = false) {
 
 /** De hele mail: {subject, html, text}. */
 export function renderNewsletter(o: RenderOpts): { subject: string; html: string; text: string } {
-  const t = TEXT[o.lang], e = o.edition;
+  const t = TEXT[o.lang], e = shownEdition(o.edition);
   const parts: string[] = [];
+  const yg = (i: Item) => yearGenre(o.lang, i);
   if (e.featured) parts.push(featuredHtml(o.lang, e.featured));
   parts.push(...top10Html(o.lang, e));
-  if (e.fresh.length) parts.push(sectionTitle(t.fresh), grid(o.lang, e.fresh, 3, (i) => kindYear(o.lang, i)));
-  if (e.soon.length) parts.push(sectionTitle(t.soon), grid(o.lang, e.soon, 4, (i) => "!" + shortDate(o.lang, i.date)));
-  if (e.popular.length) parts.push(sectionTitle(t.popular), grid(o.lang, e.popular, 3, (i) => kindYearGenre(o.lang, i), { score: true }));
+  if (e.fresh.length) parts.push(sectionTitle(t.fresh), grid(o.lang, e.fresh, yg));
+  if (e.soon.length) parts.push(sectionTitle(t.soon), grid(o.lang, e.soon, (i) => dateGenre(o.lang, i), { red: true }));
+  if (e.popular.length) parts.push(sectionTitle(t.popular), grid(o.lang, e.popular, yg));
   if (!parts.length) parts.push(`<tr><td style="padding:18px 0 0;font-size:15px;line-height:23px;color:#d6d6d6">${esc(t.empty)}</td></tr>`);
   const content = `${greeting(o.lang, o.firstName)}<div style="font-size:12px;line-height:16px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#8c8c8c">${esc(t.eyebrow)}</div>
 <h1 style="margin:8px 0 10px;font-size:24px;line-height:30px;font-weight:800;color:#ffffff">${esc(t.title)}</h1>
@@ -169,6 +189,7 @@ export function renderNewsletter(o: RenderOpts): { subject: string; html: string
 /** Bronvermelding: altijd TMDB; Trakt, OMDb (IMDb-scores) en JustWatch (streaming in "Nieuw") alleen als ze gebruikt zijn. */
 export function credits(lang: Lang, e: Edition): string[] {
   const t = TEXT[lang], out = [t.tmdb];
+  e = shownEdition(e);
   const top = [...(e.top10?.movies ?? []), ...(e.top10?.tv ?? [])];
   if (e.fresh.length) out.push(t.justwatch);
   if (e.credits?.trakt && top.length) out.push(t.trakt);
@@ -178,15 +199,15 @@ export function credits(lang: Lang, e: Edition): string[] {
 
 /** Platte-tekstversie. */
 export function textOf(o: RenderOpts): string {
-  const t = TEXT[o.lang], e = o.edition, out: string[] = [];
+  const t = TEXT[o.lang], e = shownEdition(o.edition), out: string[] = [];
   const g = greetingText(o.lang, o.firstName);
   if (g) out.push(g, "");
   out.push(t.title, "", t.intro, "");
   const line = (i: Item, extra = "") => `- ${i.title}${extra ? ` (${extra})` : ""}: ${titleUrl(i)}`;
   if (e.featured) out.push(`${t.featured}: ${e.featured.title} (${kindYear(o.lang, e.featured)})`, e.featured.overview, `${t.watch}: ${titleUrl(e.featured)}`, "");
   const ranked = (i: Item, n: number) => {
-    const extra = [yearGenre(i), scoreText(o.lang, i)].filter(Boolean).join(", ");
-    return `${n + 1}. ${i.title}${extra ? ` (${extra})` : ""}: ${titleUrl(i)}`;
+    const extra = [yearGenre(o.lang, i), scoreText(o.lang, i)].filter(Boolean).join(", ");
+    return `${i.rank ?? n + 1}. ${i.title}${extra ? ` (${extra})` : ""}: ${titleUrl(i)}`;
   };
   const tm = e.top10?.movies ?? [], ts = e.top10?.tv ?? [];
   if (tm.length || ts.length) {
@@ -195,9 +216,10 @@ export function textOf(o: RenderOpts): string {
     if (ts.length) out.push(`${t.series}:`, ...ts.map(ranked));
     out.push("");
   }
-  if (e.fresh.length) out.push(t.fresh, ...e.fresh.map((i) => line(i, kindYear(o.lang, i))), "");
-  if (e.soon.length) out.push(t.soon, ...e.soon.map((i) => line(i, shortDate(o.lang, i.date))), "");
-  if (e.popular.length) out.push(t.popular, ...e.popular.map((i) => line(i, [kindYearGenre(o.lang, i), scoreText(o.lang, i)].filter(Boolean).join(", "))), "");
+  const meta = (i: Item, first: string) => [first, scoreText(o.lang, i)].filter(Boolean).join(", ");
+  if (e.fresh.length) out.push(t.fresh, ...e.fresh.map((i) => line(i, meta(i, yearGenre(o.lang, i)))), "");
+  if (e.soon.length) out.push(t.soon, ...e.soon.map((i) => line(i, meta(i, dateGenre(o.lang, i)))), "");
+  if (e.popular.length) out.push(t.popular, ...e.popular.map((i) => line(i, meta(i, yearGenre(o.lang, i)))), "");
   out.push(t.honest, "", footerText({ lang: o.lang, reason: t.reason, year: o.year }), `${t.unsub}: ${o.unsubscribeUrl}`, ...credits(o.lang, e));
   return out.filter((x, n, a) => !(x === "" && a[n - 1] === "")).join("\n");
 }

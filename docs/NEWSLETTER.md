@@ -25,10 +25,21 @@ Per editie, eenmalig bij het aanmaken vastgelegd in `newsletter_editions.content
 | blok | bron | aantal |
 |---|---|---|
 | Uitgelicht (achtergrond, titel, omschrijving, knoppen) | eerste titel uit "Nieuw om te kijken" (anders Populair) met achtergrond, die de **vorige 2 edities niet uitgelicht** was | 1 |
-| Nieuw om te kijken | `/discover/movie` + `/discover/tv`, `watch_region=NL`, `with_watch_monetization_types=flatrate`, laatste 90 (films) / 120 (series) dagen, om en om, populairste eerst (zoals "Nieuw op Bingr" in `Shared/Metadata/Discover.swift`); titels die de vorige 2 edities niet toonden gaan voor | 6 |
-| Binnenkort (met datum) | `/movie/upcoming` (regio NL) + `/discover/tv` met eerste uitzending in de komende 60 dagen; alleen toekomst, op datum | 4 |
-| Top 10 deze week (films en series apart, elk 2 rijen van 5 posters met rangnummer, jaar · genre en score) | zoals de rijen "Top 10" in de apps (`TrendingStore` in `Shared/UI/Components/TitleMatcher.swift`): TMDB `/trending/movie/week` en `/trending/tv/week`, aangevuld met Trakt trending (`/movies/trending`, `/shows/trending`, function-secret `BINGR_TRAKT_CLIENT_ID`, poster en titel via TMDB-details) en als terugval TMDB populair (de eigen top uit de bibliotheek van de apps bestaat aan de serverkant niet). Volgorde van de bron, geen dubbele, niets uit de toekomst. Schakelaar `show_top10` | 10 + 10 |
-| Populair (3 kolommen, soort · jaar · genre en score) | TMDB `/movie/popular` (regio NL) + `/tv/popular`, om en om, zonder titels die al in deze mail staan (ook niet in de Top 10). Schakelaar `show_popular` | 6 |
+| Nieuw om te kijken | `/discover/movie` + `/discover/tv`, `watch_region=NL`, `with_watch_monetization_types=flatrate`, laatste 90 (films) / 120 (series) dagen, om en om, populairste eerst (zoals "Nieuw op Bingr" in `Shared/Metadata/Discover.swift`); titels die de vorige 2 edities niet toonden gaan voor | 6 (12 kandidaten) |
+| Binnenkort (met datum) | `/movie/upcoming` (regio NL) + `/discover/tv` met eerste uitzending in de komende 60 dagen; alleen toekomst, op datum | 6 (12 kandidaten) |
+| Top 10 deze week (films en series apart, elk max. 6 posters met rangnummer uit de ranglijst, jaar · genre en score) | zoals de rijen "Top 10" in de apps (`TrendingStore` in `Shared/UI/Components/TitleMatcher.swift`): TMDB `/trending/movie/week` en `/trending/tv/week`, aangevuld met Trakt trending (`/movies/trending`, `/shows/trending`, function-secret `BINGR_TRAKT_CLIENT_ID`, poster en titel via TMDB-details) en als terugval TMDB populair (de eigen top uit de bibliotheek van de apps bestaat aan de serverkant niet). Volgorde van de bron, geen dubbele, niets uit de toekomst. Schakelaar `show_top10` | 6 + 6 (10 + 10 opgeslagen) |
+| Populair (jaar · genre en score) | TMDB `/movie/popular` (regio NL) + `/tv/popular`, om en om, zonder titels die al in deze mail staan (ook niet in de Top 10). Schakelaar `show_popular` | 6 (12 kandidaten) |
+
+**Opmaak** (`render.ts`, `shownEdition` in `logic.ts`): volgorde Uitgelicht, Top 10 (films, series), Nieuw om te kijken,
+Binnenkort, Populair. Elke sectie toont max. 6 titels, 3 naast elkaar in 2 rijen; een titel die al eerder in de mail staat
+valt weg en de sectie vult aan uit de opgeslagen kandidaten (zo blijft er ook genoeg over als de Top 10 uit staat). De Top 10
+houdt het rangnummer uit de ranglijst (is nr. 1 uitgelicht, dan begint de rij bij 2). Alle covers zijn staande TMDB-posters
+`w342` (2:3) met `width="156" height="234"` (3 × 156 + 2 × 16 = 500 px, de binnenbreedte van de kaart); kolommen in procenten
+en de poster met `width:100%;height:auto`, zodat het op een telefoon 3 kolommen blijft, alleen kleiner (Outlook gebruikt de
+vaste afmetingen). Alleen Uitgelicht heeft een liggende afbeelding (backdrop `w780`, 500 × 281), los van de posterrasters.
+Onder elke poster een blok met vaste hoogtes: titel (max. 2 regels, langer afgekapt met "…"), jaar · genre (Binnenkort:
+datum · genre, in rood) en de score (of een lege regel), zodat de kaarten in een rij even hoog zijn. HTML, platte tekst,
+het voorbeeld in het beheer (`render`) en de testmail (`preview`) gebruiken dezelfde `shownEdition`, dus zien er hetzelfde uit.
 
 **IMDb:** IMDb heeft geen openbare API en scrapen mag niet volgens hun voorwaarden; dat gebeurt dus nergens. De score bij
 de Top 10 en Populair is de **IMDb-score via OMDb** (function-secret `BINGR_OMDB_API_KEY`, dezelfde bron als de IMDb-scores

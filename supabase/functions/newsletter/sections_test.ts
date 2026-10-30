@@ -1,10 +1,10 @@
 // Unittests voor de secties Top 10 deze week en Populair: deno test supabase/functions/newsletter/sections_test.ts
 // Zonder netwerk: nep-TMDB, nep-Trakt en nep-OMDb. Controleert opbouw, bronnen, links en de HTML (tags, alt-teksten).
 import {
-  applySections, buildEdition, type Edition, genreMap, imdbId, type Item, type Lists, omdbRating, sectionsOf, titleUrl, toItem,
-  top10Of, withGenre,
+  applySections, buildEdition, type Edition, editionRefs, genreMap, imdbId, type Item, type Lists, omdbRating, sectionsOf, SHOW,
+  shownEdition, titleUrl, toItem, top10Of, withGenre,
 } from "./logic.ts";
-import { credits, renderNewsletter, scoreText } from "./render.ts";
+import { credits, POSTER, renderNewsletter, scoreText, shortTitle, TITLE_MAX } from "./render.ts";
 import { buildContent } from "./tmdb.ts";
 
 function eq(a: unknown, b: unknown, msg = "") {
@@ -42,7 +42,9 @@ Deno.test("editie: Top 10 films en series apart, Populair zonder titels die al i
   eq(e.top10!.tv.map((x) => x.id), [1, 2, 3, 4, 5, 6, 7, 8, 40, 41], "series aangevuld met Trakt");
   ok(e.top10!.movies.every((x) => x.type === "movie") && e.top10!.tv.every((x) => x.type === "tv"), "soort per rij");
   eq(e.credits, { trakt: true }, "Trakt gebruikt");
-  eq(e.popular.map((x) => `${x.type}:${x.id}`), ["tv:70", "movie:60", "tv:71", "movie:61"], "populair: om en om, zonder Top 10 en uitgelicht");
+  const shown = shownEdition(e);
+  eq(shown.popular.map((x) => `${x.type}:${x.id}`), ["tv:70", "movie:60", "tv:71", "movie:61"], "populair: om en om, zonder getoonde Top 10 en uitgelicht");
+  eq(shown.top10!.movies.map((x) => x.id), [1, 2, 3, 4, 5, 6], "Top 10 films: max. 6 getoond");
   // zonder Trakt-aanvulling geen Trakt in de bronvermelding
   const e2 = buildEdition({ ...L0, trendMovies: range("movie", 1, 10), trendTv: range("tv", 1, 10), traktTv: [it("tv", 1)] }, NOW, new Set());
   eq(e2.credits, {}, "Trakt niet nodig");
@@ -125,7 +127,8 @@ Deno.test("ophalen: Top 10 en Populair uit TMDB, Trakt alleen ter aanvulling, IM
   eq(c.nl.top10!.movies.map((x) => x.id), [1, 2, 3, 4, 5, 6, 7, 500, 501, 502], "films aangevuld met Trakt");
   eq(c.nl.top10!.tv.length, 10, "series");
   eq(c.nl.credits, { trakt: true, omdb: true }, "bronnen");
-  ok(c.nl.popular.length > 0 && c.nl.popular.every((x) => ![...c.nl.top10!.movies, ...c.nl.top10!.tv].some((t) => t.type === x.type && t.id === x.id)), "populair zonder Top 10");
+  const sh = shownEdition(c.nl);
+  ok(sh.popular.length > 0 && sh.popular.every((x) => ![...sh.top10!.movies, ...sh.top10!.tv].some((t) => t.type === x.type && t.id === x.id)), "populair zonder Top 10");
   // IMDb-scores (OMDb) op Top 10 en Populair; Trakt gaf het IMDb-id al mee (geen external_ids nodig)
   eq(c.nl.top10!.movies.find((x) => x.id === 500)?.imdb, 6.1, "score via Trakt-IMDb-id");
   ok([...c.nl.top10!.tv, ...c.nl.popular].every((x) => x.imdb === 8.4), "scores");
@@ -189,7 +192,8 @@ Deno.test("links: elke poster en titel opent de titel in Bingr, zonder trackers 
   const m = renderNewsletter({ lang: "nl", edition: full(), firstName: "Léon", unsubscribeUrl: "https://bingr.online/unsubscribe/?k=news&t=a.b", year: 2026 });
   const hrefs = [...m.html.matchAll(/href="([^"]*)"/g)].map((x) => x[1].replace(/&amp;/g, "&"));
   const titles = hrefs.filter((h) => h.startsWith("https://bingr.online/titel/"));
-  for (const i of [...full().top10!.movies, ...full().top10!.tv, ...full().popular]) ok(titles.includes(titleUrl(i)), `link ${i.type}:${i.id}`);
+  const sh = shownEdition(full());
+  for (const i of [...sh.top10!.movies, ...sh.top10!.tv, ...sh.popular]) ok(titles.includes(titleUrl(i)), `link ${i.type}:${i.id}`);
   for (const h of titles) {
     const u = new URL(h);
     eq([...u.searchParams.keys()].filter((k) => !["type", "id", "q", "y"].includes(k)), [], `alleen type/id/q/y: ${h}`);
@@ -204,7 +208,7 @@ Deno.test("HTML: Top 10 en Populair in NL en EN, geen kapotte tags, alt-teksten,
     const m = renderNewsletter({ lang, edition: full(), unsubscribeUrl: "https://bingr.online/unsubscribe/?k=news&t=a.b", year: 2026 });
     eq(tagProblem(m.html), "", `${lang}: tags`);
     const imgs = [...m.html.matchAll(/<img\b[^>]*>/g)].map((x) => x[0]);
-    ok(imgs.length >= 1 + 1 + 1 + 2 + 17, `${lang}: posters (${imgs.length})`);
+    eq(imgs.length, 1 + 6 + 6 + 1 + 1 + 2, `${lang}: uitgelicht + 2 × 6 Top 10 + nieuw + binnenkort + populair`);
     for (const i of imgs) {
       ok(/\salt="[^"]+"/.test(i), `${lang}: alt-tekst ontbreekt: ${i.slice(0, 80)}`);
       ok(/\swidth="\d+"/.test(i), `${lang}: vaste breedte: ${i.slice(0, 80)}`);
@@ -216,8 +220,7 @@ Deno.test("HTML: Top 10 en Populair in NL en EN, geen kapotte tags, alt-teksten,
     ok(m.html.includes(lang === "nl" ? ">Populair<" : ">Popular<") && !/Populair op IMDb|Popular on IMDb/.test(m.html), `${lang}: Populair (niet "op IMDb")`);
     ok(m.html.includes(lang === "nl" ? "IMDb 8,2" : "IMDb 8.2") && m.html.includes(lang === "nl" ? "TMDB 7,0" : "TMDB 7.0"), `${lang}: scores`);
     ok(m.html.includes("2026 · Drama") && m.html.includes("2026 · Sci-Fi &amp; Fantasy"), `${lang}: jaar en genre`);
-    ok(/>10<\/span>/.test(m.html) && />1<\/span>/.test(m.html), `${lang}: rangnummers`);
-    ok(m.html.includes("w185/p10.jpg") && m.html.includes('width="93"'), `${lang}: posterrij van 5`);
+    ok(/>6<\/span>/.test(m.html) && />1<\/span>/.test(m.html) && !/>7<\/span>/.test(m.html), `${lang}: rangnummers 1-6`);
     const pos = (x: string) => m.html.indexOf(`${x}</div><div style="height:3px`);
     const [top, fresh] = lang === "nl" ? [pos("Top 10 deze week"), pos("Nieuw om te kijken")] : [pos("Top 10 this week"), pos("New to watch")];
     ok(top > m.html.indexOf("w780/b1.jpg") && top < fresh, `${lang}: Top 10 na Uitgelicht, voor Nieuw`);
@@ -236,4 +239,90 @@ Deno.test("HTML: Top 10 en Populair in NL en EN, geen kapotte tags, alt-teksten,
   const old = renderNewsletter({ lang: "nl", edition: { featured: null, fresh: [], soon: [], popular: [it("movie", 4)] }, unsubscribeUrl: "https://u" });
   eq(tagProblem(old.html), "", "oude editie");
   ok(old.html.includes(">Populair<") && !old.html.includes("Top 10"), "oude editie zonder Top 10");
+});
+
+// ---------- opmaak: max. 6 per sectie, 3 per rij, één posterformaat, geen dubbele titels ----------
+
+/** Een volle editie met overlap tussen alle secties (zoals in het echt: trending titels staan ook in Nieuw en Populair). */
+const crowded = (): Edition => ({
+  featured: it("movie", 1, { genre: "Actie" }),
+  top10: {
+    movies: [it("movie", 1), ...range("movie", 2, 11)].map((x) => ({ ...x, genre: "Drama", imdb: 7.5 })), // 1 = uitgelicht
+    tv: range("tv", 1, 10).map((x) => ({ ...x, genre: "Drama" })),
+  },
+  fresh: [it("movie", 2), it("tv", 3), ...range("movie", 100, 10), it("movie", 1)],
+  soon: [it("tv", 2, { date: "2026-11-01" }), ...range("tv", 200, 9).map((x, n) => ({ ...x, date: `2026-11-${String(10 + n)}` }))],
+  popular: [it("movie", 1), it("tv", 1), it("movie", 100), ...range("movie", 300, 10), ...range("tv", 400, 4)],
+  credits: {},
+});
+Deno.test("opmaak: per sectie max. 6 titels in rijen van 3; Top 10 films en series elk max. 6 met rangnummer", () => {
+  const s = shownEdition(crowded());
+  for (const [k, l] of [["fresh", s.fresh], ["soon", s.soon], ["popular", s.popular], ["top10 films", s.top10!.movies], ["top10 series", s.top10!.tv]] as const) {
+    ok(l.length <= SHOW.perSection, `${k}: max. 6 (${l.length})`);
+  }
+  eq(SHOW, { perSection: 6, cols: 3 });
+  // uitgelicht (movie 1) valt uit de Top 10; de rest houdt zijn plaats in de ranglijst
+  eq(s.top10!.movies.map((x) => [x.id, x.rank]), [[2, 2], [3, 3], [4, 4], [5, 5], [6, 6], [7, 7]], "rang blijft");
+  eq(s.top10!.tv.map((x) => x.rank), [1, 2, 3, 4, 5, 6]);
+  // Nieuw: movie 2 en tv 3 staan al in de Top 10, movie 1 is uitgelicht -> aangevuld uit de kandidaten
+  eq(s.fresh.map((x) => `${x.type}:${x.id}`), range("movie", 100, 6).map((x) => `movie:${x.id}`), "nieuw zonder dubbele");
+  eq(s.soon[0].id, 200, "binnenkort zonder tv 2 (Top 10)");
+  eq(s.popular.map((x) => x.id), [300, 301, 302, 303, 304, 305], "populair zonder dubbele");
+
+  for (const lang of ["nl", "en"] as const) {
+    const m = renderNewsletter({ lang, edition: crowded(), unsubscribeUrl: "https://bingr.online/unsubscribe/?k=news&t=a.b", year: 2026 });
+    // 3 per rij, 2 rijen: elk raster heeft tabelcellen van 31,2 % (3 × 156 + 2 × 16 = 500)
+    // (elk stuk loopt van het begin van een rij tot de volgende; daartussen staan alleen koppen, geen cellen of afbeeldingen)
+    const rows = m.html.split(/(?=<tr><td width="31\.2%" valign="top")/).slice(1);
+    ok(rows.length === 10, `${lang}: 5 rasters × 2 rijen (${rows.length})`);
+    for (const row of rows) {
+      eq((row.match(/<td width="31\.2%"/g) ?? []).length, 3, `${lang}: 3 kolommen per rij`);
+      eq((row.match(/<img\b/g) ?? []).length, 3, `${lang}: 3 posters per rij`);
+      eq((row.match(/<td width="3\.2%"/g) ?? []).length, 2, `${lang}: 2 tussenruimtes`);
+    }
+    // één posterformaat: staand 2:3, w342, vaste width/height, schaalt mee op een telefoon; uitgelicht 16:9 (geen poster)
+    const imgs = [...m.html.matchAll(/<img\b[^>]*>/g)].map((x) => x[0]);
+    const posters = imgs.filter((i) => !i.includes("/w780/"));
+    eq(imgs.length - posters.length, 1, `${lang}: alleen de uitgelichte titel is liggend`);
+    eq(posters.length, 30, `${lang}: 5 secties × 6 posters`);
+    for (const i of imgs) ok(/\salt="[^"]+"/.test(i), `${lang}: alt-tekst: ${i.slice(0, 90)}`);
+    for (const i of posters) {
+      ok(/src="https:\/\/image\.tmdb\.org\/t\/p\/w342\/p\d+\.jpg"/.test(i), `${lang}: alleen w342-posters`);
+      ok(i.includes(`width="${POSTER.w}" height="${POSTER.h}"`), `${lang}: vaste afmetingen`);
+      ok(i.includes(`max-width:${POSTER.w}px;height:auto;aspect-ratio:2/3;object-fit:cover`), `${lang}: schaalt in verhouding`);
+    }
+    eq([POSTER.w, POSTER.h, POSTER.w * 3 + POSTER.gap * 2, POSTER.h / POSTER.w], [156, 234, 500, 1.5], "2:3 en 500 px");
+    ok(!/w185|w92/.test(m.html), `${lang}: geen andere maten`);
+    // tekst onder de poster: vaste hoogtes (titel 2 regels, regel, score), zodat de kaarten even hoog zijn
+    eq((m.html.match(/<td height="40" valign="top" style="height:40px;/g) ?? []).length, 30, `${lang}: titelvak`);
+    eq((m.html.match(/<td height="16" valign="top" style="height:16px;/g) ?? []).length, 60, `${lang}: regel en score`);
+    ok(m.html.includes("max-height:32px;overflow:hidden"), `${lang}: titel max. 2 regels`);
+    // geen enkele titel twee keer in de mail (poster en uitgelicht)
+    const ids = [...m.html.matchAll(/<img\b[^>]*src="https:\/\/image\.tmdb\.org\/t\/p\/w\d+\/[pb](\d+)\.jpg"[^>]*alt="([^"]+)"/g)].map((x) => x[2]);
+    eq(ids.length, new Set(ids).size, `${lang}: geen dubbele titels (${ids.length})`);
+    const links = new Set([...m.html.matchAll(/href="(https:\/\/bingr\.online\/titel\/[^"]+)"/g)].map((x) => x[1]));
+    eq(links.size, 31, `${lang}: 31 verschillende titels`);
+    // platte tekst: dezelfde titels
+    const textLinks = [...m.text.matchAll(/https:\/\/bingr\.online\/titel\/\S+/g)].map((x) => x[0]);
+    eq(new Set(textLinks).size, 31, `${lang}: platte tekst dezelfde 31 titels`);
+    ok(m.text.includes("2. movie 2 ("), `${lang}: rang in de platte tekst`);
+  }
+});
+
+Deno.test("opmaak: titels afkappen, lege rij, oude opgeslagen editie en editionRefs volgen wat getoond is", () => {
+  eq(shortTitle("Kort"), "Kort");
+  const long = "De ongelooflijk lange titel van een film die nooit ophoudt";
+  ok(Array.from(shortTitle(long)).length <= TITLE_MAX && shortTitle(long).endsWith("…"), "afgekapt");
+  // een halve rij (4 titels): 3 + 1 met lege cellen, posters links
+  const h = renderNewsletter({ lang: "nl", edition: { featured: null, fresh: range("movie", 1, 4), soon: [], popular: [] }, unsubscribeUrl: "https://u" }).html;
+  eq((h.match(/<img\b/g) ?? []).length, 4, "4 posters");
+  ok(/<td width="31\.2%" style="width:31\.2%;font-size:0;line-height:0">&nbsp;<\/td><td width="3\.2%"[^>]*>&nbsp;<\/td><td width="31\.2%" style="width:31\.2%;font-size:0;line-height:0">&nbsp;<\/td><\/tr>/.test(h), "lege cellen");
+  // oude editie met 10 in de Top 10 en dubbele: ook die toont max. 6 en niets dubbel
+  const old = renderNewsletter({ lang: "nl", edition: { featured: null, fresh: [it("movie", 1)], soon: [], popular: [it("movie", 1), it("movie", 2)], top10: { movies: range("movie", 1, 10), tv: [] } }, unsubscribeUrl: "https://u" }).html;
+  eq((old.match(/<img\b/g) ?? []).length, 6, "oude editie: 6 posters, rest dubbel");
+  // editionRefs: alleen wat echt in de mail stond telt als "getoond"
+  const r = editionRefs(crowded());
+  eq(r.featured, ["movie:1"]);
+  ok(!r.shown.includes("movie:106") && r.shown.includes("movie:105"), "kandidaat 7 van Nieuw telt niet als getoond");
+  eq(editionRefs({ fresh: [it("tv", 9)] }).shown, ["tv:9"], "gedeeltelijke editie");
 });
