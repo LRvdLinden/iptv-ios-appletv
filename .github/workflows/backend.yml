@@ -1625,7 +1625,8 @@ jobs:
               if r.get("revoked") is not True: fail.append(f"heartbeat van afgemeld apparaat: {r}")
               code, r = req("POST", DA, {"action": "register_device", "device_id": "ci-p0", "name": "CI", "platform": "browser"}, user)
               if code != 403 or r.get("error") != "device_limit": fail.append(f"opnieuw aanmelden boven de limiet: HTTP {code}")
-              req("POST", DA, {"action": "remove_device", "device_id": "ci-old"}, user)
+              # opruimen via SQL: remove_device zou de sessie intrekken, en in deze test delen alle apparaten de sessie van het testaccount
+              sql(f"delete from public.account_devices where user_id = '{uid}' and device_id = 'ci-old'")
               req("POST", DA, {"action": "register_device", "device_id": "ci-p0", "name": "CI", "platform": "browser"}, user)
               # build 157: OpenSubtitles-sleutel alleen bij Lifetime (Gratis: lege string)
               code, r = req("POST", DA, {"action": "config", "platform": "web"}, user)
