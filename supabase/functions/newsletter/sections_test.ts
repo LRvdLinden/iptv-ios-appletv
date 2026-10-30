@@ -261,8 +261,8 @@ Deno.test("opmaak: per sectie max. 6 titels in rijen van 3; Top 10 films en seri
     ok(l.length <= SHOW.perSection, `${k}: max. 6 (${l.length})`);
   }
   eq(SHOW, { perSection: 6, cols: 3 });
-  // uitgelicht (movie 1) valt uit de Top 10; de rest houdt zijn plaats in de ranglijst
-  eq(s.top10!.movies.map((x) => [x.id, x.rank]), [[2, 2], [3, 3], [4, 4], [5, 5], [6, 6], [7, 7]], "rang blijft");
+  // uitgelicht (movie 1) valt uit de Top 10; de getoonde titels zijn doorlopend 1-6 genummerd
+  eq(s.top10!.movies.map((x) => [x.id, x.rank]), [[2, 1], [3, 2], [4, 3], [5, 4], [6, 5], [7, 6]], "doorlopend 1-6");
   eq(s.top10!.tv.map((x) => x.rank), [1, 2, 3, 4, 5, 6]);
   // Nieuw: movie 2 en tv 3 staan al in de Top 10, movie 1 is uitgelicht -> aangevuld uit de kandidaten
   eq(s.fresh.map((x) => `${x.type}:${x.id}`), range("movie", 100, 6).map((x) => `movie:${x.id}`), "nieuw zonder dubbele");
@@ -305,7 +305,9 @@ Deno.test("opmaak: per sectie max. 6 titels in rijen van 3; Top 10 films en seri
     // platte tekst: dezelfde titels
     const textLinks = [...m.text.matchAll(/https:\/\/bingr\.online\/titel\/\S+/g)].map((x) => x[0]);
     eq(new Set(textLinks).size, 31, `${lang}: platte tekst dezelfde 31 titels`);
-    ok(m.text.includes("2. movie 2 ("), `${lang}: rang in de platte tekst`);
+    ok(m.text.includes("1. movie 2 (") && m.text.includes("6. movie 7 (") && !/^7\. /m.test(m.text), `${lang}: doorlopend 1-6 in de platte tekst`);
+    const ranks = [...m.html.matchAll(/<span style="color:#E50914;font-weight:900">(\d+)<\/span>/g)].map((x) => Number(x[1]));
+    eq(ranks, [1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6], `${lang}: rangnummers in de HTML`);
   }
 });
 

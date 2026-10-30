@@ -84,7 +84,7 @@ export type Item = {
   /** TMDB-score (vote_average, alleen met genoeg stemmen) en IMDb-score (via OMDb, als de sleutel er is) */
   score?: number | null;
   imdb?: number | null;
-  /** Alleen in shownEdition (Top 10): plaats in de ranglijst van deze week (1 = eerste) */
+  /** Alleen in shownEdition (Top 10): doorlopend nummer 1-6 in de getoonde volgorde */
   rank?: number;
 };
 /** Top 10 van deze week, films en series apart (zoals de rijen "Top 10" in de apps). */
@@ -247,17 +247,17 @@ export function buildEdition(
 /**
  * Wat de mail echt toont (HTML, platte tekst, voorbeeld in het beheer en testmail gebruiken allemaal dit): in de volgorde
  * van de mail (Uitgelicht, Top 10 films, Top 10 series, Nieuw, Binnenkort, Populair) per sectie max. SHOW.perSection
- * titels, en een titel die al eerder in de mail staat valt weg (geen titel twee keer). De Top 10 houdt het rangnummer
- * uit de ranglijst (ook als er een titel wegvalt omdat hij al uitgelicht is). Werkt ook op oudere opgeslagen edities.
+ * titels, en een titel die al eerder in de mail staat valt weg (geen titel twee keer). De Top 10 krijgt een doorlopend
+ * nummer 1-6 in de getoonde volgorde (ook als er een titel wegvalt omdat hij al uitgelicht is). Werkt ook op oudere opgeslagen edities.
  */
 export function shownEdition(e: Edition): Edition {
   const used = new Set<string>(e.featured ? [ref(e.featured)] : []);
   const take = (list: Item[] | undefined, ranked = false) => {
     const out: Item[] = [];
-    (list ?? []).forEach((x, n) => {
+    (list ?? []).forEach((x) => {
       if (out.length >= SHOW.perSection || used.has(ref(x))) return;
       used.add(ref(x));
-      out.push(ranked ? { ...x, rank: n + 1 } : x);
+      out.push(ranked ? { ...x, rank: out.length + 1 } : x);
     });
     return out;
   };
