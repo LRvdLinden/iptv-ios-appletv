@@ -240,9 +240,9 @@ struct ChannelsManageView: View {
                 // tikken (of op Apple TV: selecteren) opent de acties; vasthouden geeft hetzelfde menu
                 Button { menuFor = ch } label: {
                     HStack(spacing: 12) {
-                        RemoteImage(url: ch.logo, contentMode: .fit, placeholder: String(ch.name.prefix(3)))
+                        RemoteImage(url: ch.logo, contentMode: .fit, placeholder: String(CategoryName.channel(ch.name).prefix(3)))
                             .frame(width: tvScaled(44), height: tvScaled(28))
-                        Text(c.renamed[ch.id] ?? ch.name).strikethrough(hidden).foregroundStyle(hidden ? Theme.secondary : .white)
+                        Text(c.renamed[ch.id] ?? CategoryName.channel(ch.name)).strikethrough(hidden).foregroundStyle(hidden ? Theme.secondary : .white)
                         Spacer()
                         if hidden { Image(systemName: "eye.slash").foregroundStyle(Theme.secondary) }
                     }

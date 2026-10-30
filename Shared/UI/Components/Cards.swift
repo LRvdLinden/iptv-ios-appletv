@@ -29,7 +29,7 @@ struct PosterCard: View {
         let l = lang
         let topBadge = badge != nil && badgeAlignment == .topLeading
         ZStack(alignment: .topTrailing) {
-            RemoteImage(url: poster, placeholder: ContentLanguage.displayTitle(title))
+            RemoteImage(url: poster, placeholder: ContentLanguage.shown(title))
                 .frame(width: width, height: width * 1.5)
                 .clipped()
             if watched { WatchedBadge().padding(6) }
@@ -142,7 +142,7 @@ struct ChannelCard: View {
             .clipped()
             VStack(alignment: .leading, spacing: 3) {
                 Text(channel.name).font(.system(size: tvScaled(13), weight: .semibold)).lineLimit(1)
-                Text(now?.title ?? L("No guide information")).font(.system(size: tvScaled(11)))
+                Text(now.map { CategoryName.display($0.title) } ?? L("No guide information")).font(.system(size: tvScaled(11)))
                     .foregroundStyle(Theme.secondary).lineLimit(1)
                 if let now { ProgressBar(value: now.progress).frame(height: 2).padding(.top, 2) }
             }
@@ -234,7 +234,7 @@ struct MediaRow<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: tvScaled(8)) {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
-                Text(title).font(Theme.titleFont).foregroundStyle(.white).lineLimit(1)
+                Text(CategoryName.display(title)).font(Theme.titleFont).foregroundStyle(.white).lineLimit(1)   // build 153: rijkop
                 Spacer(minLength: 8)
                 if let onSeeAll {
                     Button(action: onSeeAll) {

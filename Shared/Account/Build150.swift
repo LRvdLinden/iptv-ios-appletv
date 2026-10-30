@@ -27,8 +27,9 @@ enum CategoryName {
 
     // MARK: woordenlijsten
 
-    /// Pipes en andere tekens die als "|" tellen
-    private static let pipes: Set<Character> = ["¦", "│", "┃", "｜", "‖", "∣", "丨", "┆", "┊", "︱"]
+    /// Pipes en andere tekens die als "|" tellen (build 153: één lijst voor categorieën, titels en zenders)
+    static let pipes: Set<Character> = ["¦", "│", "┃", "｜", "‖", "∣", "丨", "┆", "┇", "┊", "┋", "╎", "╏", "︱", "︳", "⏐", "⎮",
+                                        "▏", "▕", "ǀ", "׀", "⼁", "∥", "❘", "❙", "❚", "￨"]
     static let separators: Set<Character> = ["|", ":", "：", "-", "–", "—", "/", "•", "·", "★", "☆", "»", "«", "›", "‹", "*", "#",
                                               "_", "▶", "►", "~", ",", ";", "=", "◆", "●", "♦"]
     private static let closer: [Character: Character] = ["[": "]", "(": ")", "{": "}", "【": "】", "「": "」", "〔": "〕"]
@@ -137,7 +138,10 @@ enum CategoryName {
 
     /// Opgeschoonde naam van een categorie (`title: true`: voorzichtig, voor titels; zie build 149)
     static func clean(_ raw: String, title: Bool = false) -> String {
-        title ? legacyClean(normalizeSeparators(raw), title: true) : parse(raw).name
+        guard title else { return parse(raw).name }
+        // build 153: ook bij titels eerst de stukken tussen pipes aan het begin of eind weg ("┃NL┃The Batman")
+        let n = normalizeSeparators(raw)
+        return legacyClean(pipeBlocks(n)?.rest ?? n, title: true)
     }
 
     /// Sleutel om categorieën samen te voegen: hoofdletterongevoelig, zonder leestekens ("Netflix" = "NETFLIX" = "netflix")
@@ -173,6 +177,43 @@ enum CategoryName {
     // MARK: intern
 
     private static func hasContent(_ s: Substring) -> Bool { s.contains { $0.isLetter || $0.isNumber } }
+    private static func onlyWords(_ tags: [Tag]) -> Bool { tags.allSatisfy { if case .word = $0 { return true }; return false } }
+
+    /// Build 153: haalt aan het begin en eind herhaald een kort stuk (≤ 25 tekens) tussen twee pipes weg, wat er ook
+    /// tussen staat, ook zonder spaties: "|NL|NPO 1", "| MULTI / LINGO | Netflix", "|NL| |HD| RTL 4", "RTL 4 |NL|".
+    /// Verwacht een tekst waarin de pipes al "|" zijn (`normalizeSeparators`). Geeft nil als er niets weg is of als er
+    /// daarna niets overblijft (dan geldt de oude opschoning). `blocks`: de weggehaalde stukken, `leading`: hoeveel vooraan.
+    static func pipeBlocks(_ text: String) -> (rest: String, blocks: [String], leading: Int)? {
+        guard text.contains("|") else { return nil }
+        var s = Substring(text)
+        func trim() {
+            s = s.drop(while: { $0.isWhitespace })
+            while let l = s.last, l.isWhitespace { s = s.dropLast() }
+        }
+        trim()
+        var blocks: [String] = []
+        for _ in 0..<12 {
+            guard s.first == "|", let end = s.dropFirst().firstIndex(of: "|") else { break }
+            let inner = s[s.index(after: s.startIndex)..<end]
+            guard inner.count <= 25 else { break }
+            blocks.append(String(inner))
+            s = s[s.index(after: end)...]
+            trim()
+        }
+        let leading = blocks.count
+        for _ in 0..<12 {
+            guard s.count >= 2, s.last == "|" else { break }
+            let body = s.dropLast()
+            guard let start = body.lastIndex(of: "|") else { break }
+            let inner = body[body.index(after: start)...]
+            guard inner.count <= 25 else { break }
+            blocks.append(String(inner))
+            s = s[..<start]
+            trim()
+        }
+        guard !blocks.isEmpty, hasContent(s) else { return nil }
+        return (String(s), blocks, leading)
+    }
 
     private static func classify(_ raw: Substring, mode: Mode, prefix: Bool) -> Tag? {
         let w = String(raw).trimmingCharacters(in: CharacterSet(charactersIn: ".!?'\"").union(.whitespaces))
@@ -221,6 +262,15 @@ enum CategoryName {
             }
         }
 
+        // 0. build 153: stukken tussen pipes aan het begin of eind ("┃NL┃", "| MULTI / LINGO |", "|NL| |HD|") weg,
+        //    wat er ook tussen staat; herkende talen worden labels. Blijft er niets over, dan de oude opschoning.
+        if let p = pipeBlocks(String(s)) {
+            for (i, b) in p.blocks.enumerated() {
+                if let tags = phrase(Substring(b), mode: .bracket, prefix: i < p.leading) { take(tags, prefix: i < p.leading) }
+            }
+            s = Substring(p.rest)
+        }
+
         // 1. vooraan, zo vaak als nodig: "| NL | ", "| MULTI / LINGO | ", "[EN] ", "4K | UHD | ", "TR - ", "NL "
         for _ in 0..<10 {
             s = s.drop { $0.isWhitespace || separators.contains($0) }
@@ -237,7 +287,8 @@ enum CategoryName {
             if let sep = s.firstIndex(where: { separators.contains($0) }) {
                 let head = s[..<sep]
                 let rest = s[s.index(after: sep)...]
-                if hasContent(head), hasContent(rest), let tags = phrase(head, mode: .separated, prefix: true) {
+                if hasContent(head), hasContent(rest), let tags = phrase(head, mode: .separated, prefix: true),
+                   !onlyWords(tags) || rest.contains(where: \.isLetter) {   // build 153: "Film | 2024" blijft
                     take(tags, prefix: true); s = rest; continue
                 }
             }
@@ -329,6 +380,73 @@ enum CategoryName {
         // Nederlands: "IJSLAND" → "IJsland"
         if out.hasPrefix("Ij") { out = "IJ" + out.dropFirst(2) }
         return out
+    }
+}
+
+// MARK: - Build 153: zendernamen
+
+/// Build 153 (melding Léon: "overal zie ik nog ┃NL┃"): zendernamen werden nergens opgeschoond, alleen categorieën en
+/// titels. `PlaylistService.apply` zet nu voor elke zender de opgeschoonde naam (Live TV, de rij Zenders, de tv-gids,
+/// nu afspelen, favorieten, zoeken); id's, streams en EPG-koppeling blijven ongewijzigd.
+/// Regels: stukken tussen pipes aan het begin of eind weg (wat er ook tussen staat), een voorvoegsel tot de eerste pipe
+/// of een achtervoegsel na de laatste pipe weg als het een taal-/landcode, kwaliteit of bekend woord is, en nette
+/// hoofdletters. Bewust niet: kwaliteit zonder pipe ("NPO 1 HD" en "NPO 1 SD" blijven twee verschillende zenders).
+extension CategoryName {
+    private static let channelLock = NSLock()
+    nonisolated(unsafe) private static var channelCache: [String: String] = [:]
+
+    /// Build 153: elke andere naam van de server voor in beeld (EPG-programma's, geschiedenis, speler, meldingen,
+    /// downloads): dezelfde regels als bij zenders. Alleen voor weergave; sleutels en id's blijven de ruwe naam.
+    static func display(_ raw: String) -> String { channel(raw) }
+
+    static func channel(_ raw: String) -> String {
+        channelLock.lock()
+        if let hit = channelCache[raw] { channelLock.unlock(); return hit }
+        channelLock.unlock()
+        let r = computeChannel(raw)
+        channelLock.lock()
+        if channelCache.count > 50_000 { channelCache.removeAll(keepingCapacity: true) }
+        channelCache[raw] = r
+        channelLock.unlock()
+        return r
+    }
+
+    private static func computeChannel(_ raw: String) -> String {
+        let original = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let norm = normalizeSeparators(original)
+        guard norm.contains("|") else { return original.isEmpty ? raw : original }
+        var s = Substring(pipeBlocks(norm)?.rest ?? norm)
+        func trim() {
+            s = s.drop(while: { $0.isWhitespace || $0 == "|" })
+            while let l = s.last, l.isWhitespace || l == "|" { s = s.dropLast() }
+        }
+        trim()
+        // voorvoegsel tot de eerste pipe: "NL| Netflix", "NL ┃ NPO 1", "4K | RTL 4"
+        for _ in 0..<6 {
+            guard let sep = s.firstIndex(of: "|") else { break }
+            let head = s[..<sep], rest = s[s.index(after: sep)...]
+            guard hasContent(head), hasContent(rest), let tags = phrase(head, mode: .separated, prefix: true),
+                  !onlyWords(tags) || rest.contains(where: \.isLetter) else { break }
+            s = rest; trim()
+        }
+        // achtervoegsel na de laatste pipe: "Kids | NL", "RTL 4 | HD"
+        for _ in 0..<6 {
+            guard let sep = s.lastIndex(of: "|") else { break }
+            let head = s[..<sep], tail = s[s.index(after: sep)...]
+            guard hasContent(head), hasContent(tail), let tags = phrase(tail, mode: .separated, prefix: false),
+                  !onlyWords(tags) else { break }
+            s = head; trim()
+        }
+        var name = s.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+        if !hasContent(Substring(name)) {
+            // alleen pipes en labels ("|NL|"): de naam zelf zonder losse pipes, nooit leeg
+            var t = Substring(norm)
+            t = t.drop(while: { $0.isWhitespace || $0 == "|" })
+            while let l = t.last, l.isWhitespace || l == "|" { t = t.dropLast() }
+            name = t.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+            if name.isEmpty { return original.isEmpty ? raw : original }
+        }
+        return pretty(name)
     }
 }
 

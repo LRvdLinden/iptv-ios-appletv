@@ -808,6 +808,12 @@ final class PlaylistService: ObservableObject {
             let ids = Set(lib.channels.map { $0.epgID ?? $0.id })
             lib.epg = lib.epg.filter { ids.contains($0.key) }
         }
+        // build 153: zendernamen opgeschoond ("┃NL┃ NPO 1" → "NPO 1"), pas na het kinderslot (dat kijkt naar de ruwe naam);
+        // een eigen naam (hernoemen) blijft zoals hij is. Id, stream en EPG-koppeling veranderen niet.
+        lib.channels = lib.channels.map { ch in
+            guard c.renamed[ch.id] == nil else { return ch }
+            var x = ch; x.name = CategoryName.channel(ch.name); return x
+        }
         let keptMovies = raw.movies.filter { visible($0.id, $0.group) && (!ageFilter || movieOK($0)) }
         lib.movies = keptMovies.map { m in
             var x = m; x.group = group(m.group); x.title = c.renamed[m.id] ?? m.title; return x

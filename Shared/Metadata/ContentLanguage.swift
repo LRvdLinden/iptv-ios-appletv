@@ -80,6 +80,10 @@ struct ContentLanguage: Hashable, Sendable {
     /// Titel zonder taallabel ("Animal (IT)" → "Animal", "NL | Animal (2021)" → "Animal (2021)").
     static func displayTitle(_ raw: String) -> String { parseTitle(raw).title }
 
+    /// Build 153: titel of naam van de server voor in beeld (film, serie, aflevering, geschiedenis, speler, meldingen):
+    /// zonder taallabel en zonder stukken tussen pipes. Alleen weergave; nooit als sleutel gebruiken.
+    static func shown(_ raw: String) -> String { CategoryName.display(displayTitle(raw)) }
+
     /// Titel voor zoeken en koppelen: zonder taallabel en zonder IPTV-rommel.
     static func searchTitle(_ raw: String) -> String { TitleCleaner.parse(displayTitle(raw)).title }
 
@@ -195,6 +199,13 @@ struct ContentLanguage: Hashable, Sendable {
     private static func computeTitle(_ raw: String) -> ParsedTitle {
         var s = raw
         var lang = ContentLanguage()
+
+        // 0. build 153: stukken tussen pipes aan het begin of eind weg, wat er ook tussen staat ("┃NL┃The Batman",
+        //    "| MULTI / LINGO | The Witcher", "|NL| |4K| Dune"); een taal daarin telt als taal van de titel.
+        if let p = CategoryName.pipeBlocks(s) {
+            for b in p.blocks { if let tag = bracketTag(b) { merge(tag, into: &lang) } }
+            s = p.rest
+        }
 
         // 1. labels vooraan: "NL | ", "NL: ", "|NL| ", "[NL] ", "NL - ", "EN-"
         for _ in 0..<2 {

@@ -223,7 +223,7 @@ struct SearchView: View {
                                     } else if h.p.end < Date() {
                                         Image(systemName: "clock.arrow.circlepath").font(.system(size: tvScaled(10))).foregroundStyle(Theme.secondary)
                                     }
-                                    Text(h.p.title).font(.system(size: tvScaled(14), weight: .semibold)).lineLimit(1)
+                                    Text(CategoryName.display(h.p.title)).font(.system(size: tvScaled(14), weight: .semibold)).lineLimit(1)
                                 }
                                 Text("\(h.channel.name) · \(h.p.start.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated).hour().minute()))")
                                     .font(.system(size: tvScaled(11))).foregroundStyle(Theme.secondary).lineLimit(1)
@@ -289,7 +289,7 @@ struct SearchView: View {
                             RemoteImage(url: h.artwork, contentMode: .fill, placeholder: String(h.title.prefix(2)))
                                 .frame(width: tvScaled(44), height: tvScaled(62)).clipShape(RoundedRectangle(cornerRadius: 4))
                             VStack(alignment: .leading, spacing: 3) {
-                                Text(h.title).font(.system(size: tvScaled(14), weight: .semibold)).lineLimit(1)
+                                Text(ContentLanguage.shown(h.title)).font(.system(size: tvScaled(14), weight: .semibold)).lineLimit(1)
                                 Text(h.subtitle).font(.system(size: tvScaled(11))).foregroundStyle(Theme.secondary)
                             }
                             Spacer()

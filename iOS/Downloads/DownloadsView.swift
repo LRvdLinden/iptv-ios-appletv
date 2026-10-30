@@ -56,7 +56,7 @@ struct DownloadsView: View {
                 .frame(width: 54, height: 80)
                 .clipShape(RoundedRectangle(cornerRadius: 6))
             VStack(alignment: .leading, spacing: 4) {
-                Text(d.title).font(.headline).lineLimit(1)
+                Text(ContentLanguage.shown(d.title)).font(.headline).lineLimit(1)
                 if let s = d.subtitle { Text(s).font(.subheadline).foregroundStyle(Theme.secondary).lineLimit(1) }
                 status(d)
             }

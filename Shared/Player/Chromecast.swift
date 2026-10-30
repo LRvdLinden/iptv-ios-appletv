@@ -60,7 +60,7 @@ final class CastManager: ObservableObject {
         let s2 = url.absoluteString.lowercased()
         let contentType = url.pathExtension.lowercased() == "m3u8" || s2.contains(".m3u8") ? "application/x-mpegurl"
             : url.pathExtension.lowercased() == "mp4" ? "video/mp4" : "video/mp2t"
-        s.start(media: url, contentType: contentType, title: item.title, subtitle: item.subtitle ?? "",
+        s.start(media: url, contentType: contentType, title: ContentLanguage.shown(item.title), subtitle: item.subtitle.map(ContentLanguage.shown) ?? "",
                 image: item.artwork, live: item.type == .live, startAt: seconds,
                 subtitles: Self.spec(subtitles, delay: delay), style: Self.textStyle())
         noteUnavailableSubtitle(subtitles)

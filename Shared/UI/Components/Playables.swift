@@ -69,7 +69,7 @@ enum Playables {
     static func cleanEpisodeTitle(_ e: Episode) -> String {
         let parts = e.title.components(separatedBy: " - ")
         if parts.count >= 3, let last = parts.last, TitleCleaner.parse(last).season == nil {
-            return last.trimmingCharacters(in: .whitespaces)
+            return CategoryName.display(last.trimmingCharacters(in: .whitespaces))   // build 153
         }
         let p = TitleCleaner.parse(e.title)
         return (p.season != nil || p.title.isEmpty) ? L("Episode %d", e.number) : p.title

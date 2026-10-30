@@ -476,7 +476,7 @@ private struct LivePreviewPane: View {
             if let c = preview.channel {
                 Text(c.name).font(.system(size: 30, weight: .bold)).lineLimit(1)
                 if let now = playlists.library.nowPlaying(c) {
-                    Text("\(TimeText.short(now.start))–\(TimeText.short(now.end))  \(now.title)")
+                    Text("\(TimeText.short(now.start))–\(TimeText.short(now.end))  \(CategoryName.display(now.title))")
                         .font(.system(size: 24)).foregroundStyle(.white.opacity(0.85)).lineLimit(2)
                     ProgressBar(value: now.progress).frame(height: 4).clipShape(Capsule())
                     if let d = now.description {
@@ -542,7 +542,7 @@ private struct ContextChannelPreview: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(channel.name).font(.headline).lineLimit(1)
                 if let now = playlists.library.nowPlaying(channel) {
-                    Text(now.title).font(.subheadline).foregroundStyle(Theme.secondary).lineLimit(1)
+                    Text(CategoryName.display(now.title)).font(.subheadline).foregroundStyle(Theme.secondary).lineLimit(1)
                 }
             }
             .padding(.horizontal, 12).padding(.bottom, 10)
@@ -567,7 +567,7 @@ private struct EventRow: View {
                 .frame(width: tvScaled(64), height: tvScaled(40))
                 .background(Theme.elevated, in: RoundedRectangle(cornerRadius: 4))
             VStack(alignment: .leading, spacing: 4) {
-                Text(info.title).font(.system(size: tvScaled(15), weight: .bold)).lineLimit(2)
+                Text(CategoryName.display(info.title)).font(.system(size: tvScaled(15), weight: .bold)).lineLimit(2)
                 HStack(spacing: 8) {
                     if live {
                         Text(L("LIVE")).font(.system(size: tvScaled(10), weight: .heavy))
@@ -669,7 +669,7 @@ private struct ChannelRow: View {
                     if channel.catchupDays > 0 { Image(systemName: "clock.arrow.circlepath").font(.system(size: tvScaled(10))).foregroundStyle(Theme.secondary) }
                 }
                 if let now {
-                    Text("\(TimeText.short(now.start))  \(now.title)")
+                    Text("\(TimeText.short(now.start))  \(CategoryName.display(now.title))")
                         .font(.system(size: tvScaled(12))).foregroundStyle(.white.opacity(0.8)).lineLimit(1)
                     ProgressBar(value: now.progress).frame(height: 2).frame(maxWidth: tvScaled(220))
                 }
@@ -709,7 +709,7 @@ struct GuideSheet: View {
                                     Image(systemName: "bell.fill").font(.caption).foregroundStyle(Theme.imdb)
                                 }
                             }
-                            Text(p.title).font(.headline)
+                            Text(CategoryName.display(p.title)).font(.headline)
                             if let d = p.description { Text(d).font(.caption).foregroundStyle(Theme.secondary).lineLimit(3) }
                         }
                     }

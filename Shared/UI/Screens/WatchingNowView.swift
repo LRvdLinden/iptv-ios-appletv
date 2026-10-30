@@ -122,7 +122,7 @@ struct ActiveStreamRow: View {
                     }
                 }
                 if !stream.title.isEmpty {
-                    Text(stream.title).font(.system(size: tvScaled(14))).foregroundStyle(.white.opacity(0.9)).lineLimit(2)
+                    Text(ContentLanguage.shown(stream.title)).font(.system(size: tvScaled(14))).foregroundStyle(.white.opacity(0.9)).lineLimit(2)
                 }
                 if details {
                     if let w = StreamText.watchingFor(stream.startedAt) {
@@ -313,7 +313,7 @@ struct WatchLogView: View {
                 .font(.system(size: tvScaled(13)).monospacedDigit()).foregroundStyle(Theme.secondary)
                 .frame(width: tvScaled(52), alignment: .leading)
             VStack(alignment: .leading, spacing: tvScaled(3)) {
-                Text(e.title.isEmpty ? "—" : e.title)
+                Text(e.title.isEmpty ? "—" : ContentLanguage.shown(e.title))
                     .font(.system(size: tvScaled(15), weight: .semibold)).foregroundStyle(.white).lineLimit(2)
                 HStack(spacing: tvScaled(6)) {
                     Image(systemName: StreamText.icon(platform: e.platform, name: e.deviceName))

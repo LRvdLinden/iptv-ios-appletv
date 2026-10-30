@@ -627,7 +627,7 @@ struct RootView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     // herinnering van een ander profiel: met de naam van dat profiel ("Voor Emma: …")
                     Text(reminders.displayTitle(r)).font(.system(size: tvScaled(15), weight: .bold)).lineLimit(1)
-                    Text(L("Starts now on %@", r.channelName)).font(.system(size: tvScaled(12))).foregroundStyle(Theme.secondary)
+                    Text(L("Starts now on %@", CategoryName.channel(r.channelName))).font(.system(size: tvScaled(12))).foregroundStyle(Theme.secondary)
                 }
                 Spacer()
                 // niet via de banner langs het leeftijdsfilter: een herinnering van een ander profiel opent

@@ -382,16 +382,16 @@ struct CollectionEditor: View {
         if contentReady {
             switch item.type {
             case .channel: if let x = content.channels.first(where: { $0.id == item.id }) { return x.name }
-            case .movie: if let x = content.movies.first(where: { $0.id == item.id }) { return x.title }
-            case .series: if let x = content.series.first(where: { $0.id == item.id }) { return x.title }
+            case .movie: if let x = content.movies.first(where: { $0.id == item.id }) { return ContentLanguage.shown(x.title) }
+            case .series: if let x = content.series.first(where: { $0.id == item.id }) { return ContentLanguage.shown(x.title) }
             }
         }
         let lib = playlists.library
         switch item.type {
         // build 128: items van een andere server: de naam uit de catalogus van die server
-        case .channel: return lib.channels.first { $0.id == item.id }?.name ?? CrossServer.shared.title(of: item, in: existing) ?? item.id
-        case .movie: return lib.movies.first { $0.id == item.id }?.title ?? CrossServer.shared.title(of: item, in: existing) ?? item.id
-        case .series: return lib.series.first { $0.id == item.id }?.title ?? CrossServer.shared.title(of: item, in: existing) ?? item.id
+        case .channel: return lib.channels.first { $0.id == item.id }?.name ?? CrossServer.shared.title(of: item, in: existing).map(CategoryName.channel) ?? item.id
+        case .movie: return (lib.movies.first { $0.id == item.id }?.title ?? CrossServer.shared.title(of: item, in: existing)).map(ContentLanguage.shown) ?? item.id
+        case .series: return (lib.series.first { $0.id == item.id }?.title ?? CrossServer.shared.title(of: item, in: existing)).map(ContentLanguage.shown) ?? item.id
         }
     }
 
@@ -445,7 +445,7 @@ struct AddToCollectionSheet: View {
                         }
                     }
                     Button { creating = true } label: { Label(L("New collection"), systemImage: "plus") }
-                } header: { Text(target.title) }
+                } header: { Text(ContentLanguage.shown(target.title)) }
             }
             .navigationTitle(L("Add to collection"))
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button(L("Done")) { dismiss() } } }

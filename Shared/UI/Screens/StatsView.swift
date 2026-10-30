@@ -669,7 +669,7 @@ private struct StatsTopRow: View {
                 .frame(width: tvScaled(22))
             artwork
             VStack(alignment: .leading, spacing: tvScaled(3)) {
-                Text(item.title.isEmpty ? "—" : item.title)
+                Text(item.title.isEmpty ? "—" : ContentLanguage.shown(item.title))
                     .font(.system(size: tvScaled(15), weight: .semibold)).foregroundStyle(.white).lineLimit(2)
                 Text(detail).font(.system(size: tvScaled(12))).foregroundStyle(Theme.secondary).lineLimit(1)
             }

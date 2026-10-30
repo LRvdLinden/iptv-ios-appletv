@@ -132,7 +132,7 @@ struct GuideGridView: View {
                 if x1 > x0 + 2 {
                     Button { onProgram(c, p) } label: {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(p.title).font(.system(size: tvScaled(12), weight: .semibold)).lineLimit(1)
+                            Text(CategoryName.display(p.title)).font(.system(size: tvScaled(12), weight: .semibold)).lineLimit(1)
                             Text("\(TimeText.short(p.start)) – \(TimeText.short(p.end))")
                                 .font(.system(size: tvScaled(10))).foregroundStyle(Theme.secondary).lineLimit(1)
                         }
@@ -204,7 +204,7 @@ struct ProgramSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: tvScaled(14)) {
             Text(channel.name).font(.system(size: tvScaled(13), weight: .semibold)).foregroundStyle(Theme.secondary)
-            Text(program.title).font(.system(size: tvScaled(24), weight: .bold))
+            Text(CategoryName.display(program.title)).font(.system(size: tvScaled(24), weight: .bold))
             HStack(spacing: tvScaled(10)) {
                 Text("\(program.start.formatted(date: .abbreviated, time: .shortened)) – \(program.end.formatted(date: .omitted, time: .shortened))")
                     .foregroundStyle(Theme.secondary)

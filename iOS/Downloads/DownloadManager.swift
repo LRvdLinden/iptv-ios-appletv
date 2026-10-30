@@ -159,7 +159,7 @@ final class DownloadManager: ObservableObject {
             return
         }
         guard let url = await playlists.resolve(item), ["http", "https"].contains(url.scheme?.lowercased() ?? "") else {
-            notifyFailure(item.subtitle.map { "\(item.title) · \($0)" } ?? item.title, L("This title can't be downloaded."))
+            notifyFailure(item.subtitle.map { "\(ContentLanguage.shown(item.title)) · \($0)" } ?? ContentLanguage.shown(item.title), L("This title can't be downloaded."))
             return
         }
         let hls = url.pathExtension.lowercased() == "m3u8" || url.absoluteString.lowercased().contains(".m3u8")
@@ -443,7 +443,9 @@ final class DownloadManager: ObservableObject {
     }
 
     static func displayTitle(_ d: DownloadItem) -> String {
-        d.subtitle.map { d.type == .episode ? "\(d.title) · \($0)" : d.title } ?? d.title
+        // build 153: zonder taallabels en stukken tussen pipes (Live Activity, meldingen)
+        let t = ContentLanguage.shown(d.title)
+        return d.subtitle.map { d.type == .episode ? "\(t) · \(ContentLanguage.shown($0))" : t } ?? t
     }
 
     // MARK: Live Activity en meldingen

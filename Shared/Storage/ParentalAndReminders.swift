@@ -521,8 +521,9 @@ final class ReminderCenter: ObservableObject {
 
     /// Titel van de melding/banner: met de profielnaam als het account meer profielen heeft ("Voor Emma: Journaal").
     func displayTitle(_ r: ProgramReminder) -> String {
-        guard let name = CloudStore.shared.reminderProfileName(r) else { return r.title }
-        return L("For %@: %@", name, r.title)
+        let t = CategoryName.display(r.title)   // build 153
+        guard let name = CloudStore.shared.reminderProfileName(r) else { return t }
+        return L("For %@: %@", name, t)
     }
 
     /// Mag de "Kijk"-knop van de banner deze zender openen? Eigen herinnering altijd (de bibliotheek is al gefilterd);
@@ -553,7 +554,7 @@ final class ReminderCenter: ObservableObject {
         let content = UNMutableNotificationContent()
         // ook voor herinneringen van een ander profiel dan het actieve: dan met de naam van dat profiel
         content.title = displayTitle(r)
-        content.body = L("Starts in 2 minutes on %@", r.channelName)
+        content.body = L("Starts in 2 minutes on %@", CategoryName.channel(r.channelName))
         content.sound = .default
         var info: [String: String] = ["channelID": r.channelID, "playlistID": r.playlistID.uuidString]
         if let p = r.owner { info["profileID"] = p.uuidString }

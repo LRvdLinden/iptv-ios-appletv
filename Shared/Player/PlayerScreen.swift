@@ -317,7 +317,7 @@ struct PlayerScreen: View {
                     Button(action: close) { Image(systemName: "xmark").font(.system(size: 20, weight: .bold)).padding(10) }
                     #endif
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(ContentLanguage.displayTitle(player.item.title)).font(.system(size: tvScaled(17), weight: .bold))
+                        Text(ContentLanguage.shown(player.item.title)).font(.system(size: tvScaled(17), weight: .bold))
                         if let s = player.item.subtitle { Text(s).font(.system(size: tvScaled(13))).foregroundStyle(Theme.secondary) }
                     }
                     Spacer()
@@ -974,7 +974,7 @@ private struct ZapBanner: View {
                     if pending { ProgressView().tint(.white).scaleEffect(0.7) }
                 }
                 if let now {
-                    Text("\(now.start.formatted(date: .omitted, time: .shortened))–\(now.end.formatted(date: .omitted, time: .shortened))  \(now.title)")
+                    Text("\(now.start.formatted(date: .omitted, time: .shortened))–\(now.end.formatted(date: .omitted, time: .shortened))  \(CategoryName.display(now.title))")
                         .font(.system(size: tvScaled(12))).foregroundStyle(.white.opacity(0.85)).lineLimit(1)
                     ProgressBar(value: now.progress).frame(width: tvScaled(220), height: 3).clipShape(Capsule())
                 } else {
@@ -1020,7 +1020,7 @@ struct RatingPanel: View {
     var body: some View {
         VStack(spacing: tvScaled(18)) {
             Text(L("What did you think?")).font(.system(size: tvScaled(22), weight: .bold))
-            Text(item.title + (item.subtitle.map { " · \($0)" } ?? "")).foregroundStyle(Theme.secondary).lineLimit(2)
+            Text(ContentLanguage.shown(item.title) + (item.subtitle.map { " · \(ContentLanguage.shown($0))" } ?? "")).foregroundStyle(Theme.secondary).lineLimit(2)
                 .multilineTextAlignment(.center)
             HStack(spacing: tvScaled(6)) {
                 ForEach(1...10, id: \.self) { n in

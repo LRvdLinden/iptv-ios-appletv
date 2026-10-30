@@ -1391,5 +1391,60 @@ do {
     eq(NowPlaying.region, "NL", "regio NL")
 }
 
+// MARK: build 153: landaanduidingen tussen pipes overal weg (┃NL┃, ｜DE｜, | MULTI / LINGO |), ook bij zendernamen
+do {
+    func cn(_ s: String) -> String { CategoryName.clean(s) }
+    func ch(_ s: String) -> String { CategoryName.channel(s) }
+    // dezelfde gevallen voor categorieën en zendernamen (gelijk aan Android en web)
+    let cases153: [(String, String)] = [
+        ("┃NL┃ NPO 1", "NPO 1"), ("┃NL┃NPO 1", "NPO 1"), ("|NL| Netflix", "Netflix"),
+        ("| MULTI / LINGO | NETFLIX", "Netflix"), ("┃NL┃ ┃HD┃ RTL 4", "RTL 4"), ("NL┃ Videoland", "Videoland"),
+        ("RTL 4 ┃NL┃", "RTL 4"), ("｜DE｜ Sky Cinema", "Sky Cinema"), ("Kids | NL", "Kids"), ("Film | 2024", "Film | 2024"),
+        ("NL ┃ NPO 1", "NPO 1"), ("NL┃NPO 1", "NPO 1"), ("|NL||HD|NPO 2", "NPO 2"), ("┇NL┇ NPO 3", "NPO 3"),
+        ("❘NL❘ NPO 1", "NPO 1"), ("︳NL︳ NPO 1", "NPO 1"), ("ǀNLǀ NPO 1", "NPO 1"), ("⏐NL⏐ NPO 1", "NPO 1"),
+        ("|4K| Netflix", "Netflix"), ("|NL| |HD| Videoland", "Videoland"), ("|Iets Willekeurigs| Netflix", "Netflix"),
+    ]
+    for (raw, want) in cases153 {
+        eq(cn(raw), want, "categorie \(raw)")
+        eq(ch(raw), want, "zender \(raw)")
+    }
+    // alleen een stuk tussen pipes: nooit leeg
+    check(!cn("|ABC 123|").isEmpty && cn("|ABC 123|").contains("ABC"), "categorie |ABC 123| niet leeg")
+    check(!ch("|ABC 123|").isEmpty && ch("|ABC 123|").contains("ABC"), "zender |ABC 123| niet leeg")
+    eq(cn("|NL|"), "NL", "categorie alleen |NL|")
+    eq(ch("|NL|"), "NL", "zender alleen |NL|")
+    check(cn("Film | 2024").contains("Film"), "Film blijft")
+    // labels (chips) blijven werken
+    eq(CategoryName.parse("┃NL┃ NETFLIX").labels, ["NL"], "label NL uit ┃NL┃")
+    eq(CategoryName.parse("┃NL┃ NETFLIX").prefixLabels, ["NL"], "snelknop NL uit ┃NL┃")
+    eq(CategoryName.parse("RTL 4 ┃NL┃").prefixLabels, [], "achteraan is geen snelknop")
+    // een lang stuk tussen pipes (> 25 tekens) blijft
+    let long = "|Dit is een hele lange categorienaam| Netflix"
+    check(cn(long).contains("lange"), "lang stuk tussen pipes blijft")
+    // zenders zonder pipe blijven zoals ze zijn (kwaliteit zonder pipe blijft: HD en SD zijn verschillende zenders)
+    eq(ch("NPO 1 HD"), "NPO 1 HD", "zender NPO 1 HD blijft")
+    eq(ch("NPO 1 SD"), "NPO 1 SD", "zender NPO 1 SD blijft")
+    eq(ch("Ziggo Sport 2"), "Ziggo Sport 2", "gewone zender blijft")
+    eq(ch("NL | NPO 1 HD"), "NPO 1 HD", "zender: alleen NL weg")
+    eq(ch("NL: NPO 1"), "NL: NPO 1", "zender zonder pipe ongewijzigd")
+    // titels en zoeken
+    eq(SearchMatch.normalize("┃NL┃The Batman (2022)").text, "the batman", "zoeken ┃NL┃ zonder spatie")
+    eq(SearchMatch.normalize("| MULTI / LINGO | The Witcher").text, "the witcher", "zoeken MULTI / LINGO")
+    eq(SearchMatch.normalize("｜DE｜ Dune").text, "dune", "zoeken ｜DE｜")
+    eq(CategoryName.clean("┃NL┃ ┃4K┃ Dune", title: true), "Dune", "titel met twee pipe-stukken")
+    eq(CategoryName.clean("Dune", title: true), "Dune", "gewone titel blijft")
+    // pipeBlocks zelf
+    check(CategoryName.pipeBlocks("Netflix") == nil, "zonder pipes: niets")
+    check(CategoryName.pipeBlocks("|NL|") == nil, "alleen een stuk: niets (oude opschoning)")
+    eq(CategoryName.pipeBlocks("|NL| |HD| RTL 4 |EN|")?.blocks ?? [], ["NL", "HD", "EN"], "stukken voor- en achteraan")
+    eq(CategoryName.pipeBlocks("|NL| |HD| RTL 4 |EN|")?.leading ?? -1, 2, "twee vooraan")
+    // snelheid: 20.000 zendernamen
+    let t0 = Date()
+    for i in 0..<20_000 { _ = CategoryName.channel("┃NL┃ ┃HD┃ ZENDER \(i)") }
+    let ms = Date().timeIntervalSince(t0) * 1000
+    print("build 153: 20000 zendernamen opschonen \(Int(ms)) ms")
+    check(ms < 4000, "20000 zendernamen binnen 4 s")
+}
+
 print("\(checks) controles, \(failures) fout")
 exit(failures == 0 ? 0 : 1)

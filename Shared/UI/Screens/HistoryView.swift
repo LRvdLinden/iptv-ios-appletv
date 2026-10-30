@@ -71,7 +71,7 @@ struct HistoryView: View {
                 .background(Theme.card)
                 .clipShape(RoundedRectangle(cornerRadius: 4))
             VStack(alignment: .leading, spacing: 3) {
-                Text(e.title).font(.system(size: tvScaled(15), weight: .semibold)).lineLimit(1)
+                Text(ContentLanguage.shown(e.title)).font(.system(size: tvScaled(15), weight: .semibold)).lineLimit(1)
                 if let s = e.subtitle { Text(s).font(.system(size: tvScaled(12))).foregroundStyle(Theme.secondary).lineLimit(1) }
             }
             Spacer()
