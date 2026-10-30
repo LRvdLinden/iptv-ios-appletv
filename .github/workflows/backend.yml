@@ -101,7 +101,9 @@ jobs:
         # en de welkomstmail (opbouw, escapen, aanhef, links, selectie, eerste uitrol)
         # en de eigen mailing uit het beheer (invoer, opmaak/escapen, NL/EN, doelgroep, verzendronde, limiet per uur)
         # en de secties Top 10 / Populair (nep-TMDB/Trakt/OMDb, schakelaars, links naar bingr.online/titel/, tags en alt-teksten)
-        run: deno test supabase/functions/newsletter/newsletter_test.ts supabase/functions/newsletter/welcome_test.ts supabase/functions/newsletter/mailing_test.ts supabase/functions/newsletter/sections_test.ts
+        # en het maandoverzicht (laatste dag van de maand 18:00, zomer-/wintertijd, februari, schrikkeljaar, één keer per maand,
+        # datumbereik, max. 6, geen dubbele, 3 × 2, alt-teksten, NL/EN)
+        run: deno test supabase/functions/newsletter/newsletter_test.ts supabase/functions/newsletter/welcome_test.ts supabase/functions/newsletter/mailing_test.ts supabase/functions/newsletter/sections_test.ts supabase/functions/newsletter/monthly_test.ts
       - name: Unittests (deelpreview)
         # blokkeert de deploy: validatie (type/id/q/y), TMDB-antwoord -> metadata (nl met terugval en, afbeeldingen), limiet
         run: deno test supabase/functions/title-meta/title_meta_test.ts
@@ -901,7 +903,8 @@ jobs:
       - name: Nieuwsbrief - planning (pg_cron + pg_net)
         if: steps.check.outputs.skip != '1'
         run: |
-          # elk uur op minuut 0 newsletter/cron; de functie rekent zelf naar Europe/Amsterdam (zo 09:00, wo 18:00)
+          # elk uur op minuut 0 newsletter/cron; de functie rekent zelf naar Europe/Amsterdam (zo 09:00, wo 18:00, en het
+          # maandoverzicht op de laatste dag van de maand 18:00: 16:00 UTC in de zomer, 17:00 UTC in de winter)
           python3 - <<'PY' > /tmp/cron.json
           import json, os
           ref = os.environ["REF"]; sec = open(os.path.join(os.environ["RUNNER_TEMP"], "newsletter_cron_secret")).read()
@@ -928,7 +931,7 @@ jobs:
           except Exception: rows = []
           jobs = {r.get("jobname") for r in rows if isinstance(r, dict) and r.get("active")} if isinstance(rows, list) else set()
           ok = int(sys.argv[1] or 0) < 300 and {"bingr-newsletter", "bingr-welcome", "bingr-mailing"} <= jobs
-          print("::notice::Nieuwsbrief-planning: elk uur op minuut 0 (verstuurt zo 09:00 en wo 18:00 Amsterdam); welkomstmail en eigen mailing elke 5 minuten" if ok
+          print("::notice::Nieuwsbrief-planning: elk uur op minuut 0 (verstuurt zo 09:00 en wo 18:00 Amsterdam, maandoverzicht laatste dag van de maand 18:00); welkomstmail en eigen mailing elke 5 minuten" if ok
                 else f"::warning::Nieuwsbrief-/welkomstplanning niet gelukt (HTTP {sys.argv[1]})")
           PY
           rm -f /tmp/r.txt
@@ -939,13 +942,13 @@ jobs:
           F="https://$REF.supabase.co/functions/v1/newsletter"
           J=(-H "Content-Type: application/json")
           # 1. beheeracties en cron zonder (of met fout) geheim -> 403
-          for a in status set_enabled set_sections preview render cron welcome_preview welcome_render welcome_cron mailing_status mailing_render mailing_test mailing_send mailing_cancel mailing_cron; do
+          for a in status set_enabled set_sections preview render cron welcome_preview welcome_render welcome_cron mailing_status mailing_render mailing_test mailing_send mailing_cancel mailing_cron monthly_render monthly_preview monthly_check; do
             code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$F" "${J[@]}" -H "x-newsletter-secret: fout-geheim-0000000000000000" -d "{\"action\":\"$a\"}")
             [ "$code" = 403 ] || { echo "::error::newsletter $a met fout geheim gaf HTTP $code"; exit 1; }
             code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$F" "${J[@]}" -d "{\"action\":\"$a\"}")
             [ "$code" = 403 ] || { echo "::error::newsletter $a zonder geheim gaf HTTP $code"; exit 1; }
           done
-          echo "::notice::newsletter status/set_enabled/preview/render/cron/welcome_*/mailing_* zonder geheim geweigerd (403)"
+          echo "::notice::newsletter status/set_enabled/preview/render/cron/welcome_*/mailing_*/monthly_* zonder geheim geweigerd (403)"
           # mailing_test naar een testadres zonder geldige mailtest-sleutel: ook 403 (alleen de Diagnose-mailtest mag dat)
           code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$F" "${J[@]}" -H "x-bingr-mailtest: $(openssl rand -hex 24)" -d '{"action":"mailing_test","to":"support+ci-backend00@bingr.online"}')
           [ "$code" = 403 ] || { echo "::error::newsletter mailing_test met ongeldige mailtest-sleutel gaf HTTP $code"; exit 1; }
@@ -962,6 +965,9 @@ jobs:
           # 3. één cron-ronde met het geheim (alleen tellingen in het antwoord; staat de nieuwsbrief uit, dan gebeurt er niets)
           curl -s --max-time 170 -X POST "$F" "${J[@]}" -H "x-newsletter-secret: $(cat "$RUNNER_TEMP/newsletter_cron_secret")" -d '{"action":"cron"}' > /tmp/c.json
           grep -Eq '"ok": ?true' /tmp/c.json && echo "::notice::newsletter cron: $(cat /tmp/c.json)" || { echo "::error::newsletter cron: $(head -c 300 /tmp/c.json)"; exit 1; }
+          # 3b. maandoverzicht van de volgende maand opbouwen zonder te versturen (alleen aantallen per sectie)
+          curl -s --max-time 170 -X POST "$F" "${J[@]}" -H "x-newsletter-secret: $(cat "$RUNNER_TEMP/newsletter_cron_secret")" -d '{"action":"monthly_check"}' > /tmp/mo.json
+          grep -Eq '"ok": ?true' /tmp/mo.json && echo "::notice::maandoverzicht: $(cat /tmp/mo.json)" || { echo "::error::maandoverzicht: $(head -c 300 /tmp/mo.json)"; exit 1; }
           # 4. één ronde welkomstmail (alleen tellingen in het antwoord)
           curl -s --max-time 170 -X POST "$F" "${J[@]}" -H "x-newsletter-secret: $(cat "$RUNNER_TEMP/newsletter_cron_secret")" -d '{"action":"welcome_cron"}' > /tmp/w.json
           grep -Eq '"ok": ?true' /tmp/w.json && echo "::notice::welkomstmail: $(cat /tmp/w.json)" || { echo "::error::welkomstmail: $(head -c 300 /tmp/w.json)"; exit 1; }

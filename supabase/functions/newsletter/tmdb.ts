@@ -80,7 +80,7 @@ export async function traktTrending(kind: Kind, clientId: string, f: Fetch = fet
 }
 
 /** Kleine pool: hoogstens `n` verzoeken tegelijk. */
-async function pool<T, R>(xs: T[], n: number, fn: (x: T) => Promise<R>): Promise<R[]> {
+export async function pool<T, R>(xs: T[], n: number, fn: (x: T) => Promise<R>): Promise<R[]> {
   const out: R[] = new Array(xs.length);
   let i = 0;
   await Promise.all(Array.from({ length: Math.min(n, xs.length) }, async () => {

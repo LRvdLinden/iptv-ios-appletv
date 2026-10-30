@@ -64,7 +64,7 @@ export function scoreText(lang: Lang, i: Item): string {
   const n = v.toFixed(1);
   return `${typeof i.imdb === "number" ? "IMDb" : "TMDB"} ${lang === "nl" ? n.replace(".", ",") : n}`;
 }
-const sectionTitle = (s: string) =>
+export const sectionTitle = (s: string) =>
   `<tr><td style="padding:30px 0 12px"><div style="font-size:18px;line-height:24px;font-weight:800;color:#ffffff">${esc(s)}</div><div style="height:3px;width:36px;background:${RED};border-radius:2px;margin-top:6px;font-size:0;line-height:0">&nbsp;</div></td></tr>`;
 
 function buttons(lang: Lang, url: string) {
@@ -76,11 +76,12 @@ function buttons(lang: Lang, url: string) {
 </tr></table>`;
 }
 
-function featuredHtml(lang: Lang, i: Item) {
+/** Uitgelicht (liggende backdrop, titel, omschrijving, knoppen). `meta` = de regel na "Uitgelicht · " (standaard soort · jaar). */
+export function featuredHtml(lang: Lang, i: Item, meta?: string) {
   const url = titleUrl(i), bg = img(i.backdrop, "w780");
   return `<tr><td style="padding:22px 0 0">
 ${bg ? `<a href="${esc(url)}" style="text-decoration:none"><img src="${esc(bg)}" width="500" height="281" alt="${esc(i.title)}" style="display:block;width:100%;max-width:500px;height:auto;aspect-ratio:16/9;object-fit:cover;border:0;border-radius:8px;background:#1f1f1f"></a>` : ""}
-<div style="margin:16px 0 0;font-size:12px;line-height:16px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:${RED}">${esc(TEXT[lang].featured)} · ${esc(kindYear(lang, i))}</div>
+<div style="margin:16px 0 0;font-size:12px;line-height:16px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:${RED}">${esc(TEXT[lang].featured)} · ${esc(meta ?? kindYear(lang, i))}</div>
 <div style="margin:6px 0 0;font-size:22px;line-height:28px;font-weight:800;color:#ffffff"><a href="${esc(url)}" style="color:#ffffff;text-decoration:none">${esc(i.title)}</a></div>
 ${i.overview ? `<p style="margin:8px 0 0;font-size:15px;line-height:23px;color:#d6d6d6">${esc(i.overview)}</p>` : ""}
 ${buttons(lang, url)}
@@ -106,7 +107,8 @@ export function shortTitle(s: string, max = TITLE_MAX): string {
   return (sp > max * 0.6 ? cut.slice(0, sp) : cut).replace(/[\s,.;:–-]+$/, "") + "…";
 }
 
-type CardOpts = { red?: boolean };
+/** red = tweede regel in rood (datums); titleOf = getoonde titel (bv. met "seizoen 3"); de alt-tekst en link houden de echte titel. */
+export type CardOpts = { red?: boolean; titleOf?: (i: Item) => string };
 /** Posterkaart: poster (alt = titel), titel met eventueel rangnummer, één regel eronder en de score. Poster en titel linken
  *  naar de titel in Bingr. */
 function card(lang: Lang, i: Item, label: string, o: CardOpts = {}) {
@@ -117,12 +119,12 @@ function card(lang: Lang, i: Item, label: string, o: CardOpts = {}) {
     : `<div style="width:100%;max-width:${POSTER.w}px;height:${POSTER.h}px;border-radius:6px;background:#1f1f1f">&nbsp;</div>`;
   const score = scoreText(lang, i), imdb = score.startsWith("IMDb");
   return `<a href="${esc(url)}" style="display:block;text-decoration:none;color:#ffffff">${poster}</a>
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td height="40" valign="top" style="height:40px;padding:8px 0 0;vertical-align:top"><div style="max-height:32px;overflow:hidden;font-size:12px;line-height:16px;font-weight:700;color:#ffffff;word-break:break-word"><a href="${esc(url)}" style="color:#ffffff;text-decoration:none">${rank}${esc(shortTitle(i.title))}</a></div></td></tr>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td height="40" valign="top" style="height:40px;padding:8px 0 0;vertical-align:top"><div style="max-height:32px;overflow:hidden;font-size:12px;line-height:16px;font-weight:700;color:#ffffff;word-break:break-word"><a href="${esc(url)}" style="color:#ffffff;text-decoration:none">${rank}${esc(o.titleOf ? o.titleOf(i) : shortTitle(i.title))}</a></div></td></tr>
 <tr><td height="16" valign="top" style="height:16px;vertical-align:top"><div style="max-height:16px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:11px;line-height:16px;color:${o.red ? RED : "#8c8c8c"};font-weight:${o.red ? 700 : 400}">${label ? esc(label) : "&nbsp;"}</div></td></tr>
 <tr><td height="16" valign="top" style="height:16px;vertical-align:top"><div style="max-height:16px;overflow:hidden;white-space:nowrap;font-size:11px;line-height:16px;font-weight:700;color:${imdb ? IMDB_YELLOW : "#b3b3b3"}">${score ? `&#9733;&nbsp;${esc(score)}` : "&nbsp;"}</div></td></tr></table>`;
 }
 /** Raster van max. 6 posters: 3 per rij, lege cellen aangevuld zodat een halve rij links blijft staan. */
-function grid(lang: Lang, items: Item[], label: (i: Item) => string, o: CardOpts = {}) {
+export function grid(lang: Lang, items: Item[], label: (i: Item) => string, o: CardOpts = {}) {
   const cols = SHOW.cols, rows: string[] = [];
   const list = items.slice(0, SHOW.perSection);
   const gap = `<td width="${GAP_PCT}" style="width:${GAP_PCT};font-size:0;line-height:0">&nbsp;</td>`;
@@ -136,7 +138,7 @@ function grid(lang: Lang, items: Item[], label: (i: Item) => string, o: CardOpts
 }
 const subTitle = (s: string) =>
   `<tr><td style="padding:4px 0 10px;font-size:12px;line-height:16px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#8c8c8c">${esc(s)}</td></tr>`;
-const sectionIntro = (s: string) =>
+export const sectionIntro = (s: string) =>
   `<tr><td style="padding:0 0 14px;font-size:14px;line-height:21px;color:#b3b3b3">${esc(s)}</td></tr>`;
 
 /** Top 10: films en series apart, elk max. 6 posters (2 rijen van 3) met rangnummer, jaar · genre en score. */

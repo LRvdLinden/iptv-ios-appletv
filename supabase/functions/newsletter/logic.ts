@@ -86,15 +86,17 @@ export type Item = {
   imdb?: number | null;
   /** Alleen in shownEdition (Top 10): doorlopend nummer 1-6 in de getoonde volgorde */
   rank?: number;
+  /** Maandoverzicht: nummer van het nieuwe seizoen (date = begin van dat seizoen) */
+  season?: number;
 };
 /** Top 10 van deze week, films en series apart (zoals de rijen "Top 10" in de apps). */
 export type Top10 = { movies: Item[]; tv: Item[] };
 /** Welke bronnen deze editie gebruikt (voor de bronvermelding onderaan). */
 export type Credits = { trakt?: boolean; omdb?: boolean };
 export type Edition = { featured: Item | null; fresh: Item[]; soon: Item[]; popular: Item[]; top10?: Top10; credits?: Credits };
-/** Schakelaars per sectie (newsletter_settings.show_top10 / show_popular); standaard aan. */
-export type Sections = { top10: boolean; popular: boolean };
-export const ALL_SECTIONS: Sections = { top10: true, popular: true };
+/** Schakelaars per sectie (newsletter_settings.show_top10 / show_popular) en het maandoverzicht (show_monthly); standaard aan. */
+export type Sections = { top10: boolean; popular: boolean; monthly: boolean };
+export const ALL_SECTIONS: Sections = { top10: true, popular: true, monthly: true };
 export type Content = Record<Lang, Edition>;
 
 const IMG_PATH = /^\/[A-Za-z0-9_-]{1,80}\.(jpg|jpeg|png|webp)$/;
@@ -267,12 +269,12 @@ export function shownEdition(e: Edition): Edition {
 }
 
 /** Secties die in het beheer uit staan weghalen (Top 10 en/of Populair). */
-export function applySections(e: Edition, s: Sections): Edition {
+export function applySections(e: Edition, s: Pick<Sections, "top10" | "popular">): Edition {
   return { ...e, popular: s.popular ? e.popular : [], top10: s.top10 ? e.top10 : { movies: [], tv: [] } };
 }
 /** Schakelaars uit een rij van newsletter_settings (ontbrekende kolom = aan). */
 export const sectionsOf = (row: Record<string, unknown> | null | undefined): Sections =>
-  ({ top10: row?.show_top10 !== false, popular: row?.show_popular !== false });
+  ({ top10: row?.show_top10 !== false, popular: row?.show_popular !== false, monthly: row?.show_monthly !== false });
 
 /** Genre-namen (TMDB /genre/…/list) per soort: id -> naam. */
 export type GenreMap = { movie: Map<number, string>; tv: Map<number, string> };

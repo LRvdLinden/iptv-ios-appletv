@@ -2522,6 +2522,9 @@ insert into public.newsletter_settings (id) values (1) on conflict (id) do nothi
 -- Secties aan/uit (beheer, actie set_sections): Top 10 deze week en Populair. Standaard aan.
 alter table public.newsletter_settings add column if not exists show_top10 boolean not null default true;
 alter table public.newsletter_settings add column if not exists show_popular boolean not null default true;
+-- Maandoverzicht "Volgende maand op Bingr" (laatste dag van de maand 18:00 Amsterdam) aan/uit (beheer, set_sections monthly).
+-- Standaard aan; verstuurt alleen als de nieuwsbrief zelf ook aan staat (enabled).
+alter table public.newsletter_settings add column if not exists show_monthly boolean not null default true;
 alter table public.newsletter_settings enable row level security;
 revoke all on public.newsletter_settings from anon, authenticated;
 
@@ -2540,6 +2543,14 @@ create table if not exists public.newsletter_editions (
   finished_at timestamptz
 );
 create index if not exists newsletter_editions_created_idx on public.newsletter_editions (created_at desc);
+-- Soort editie: 'weekly' (nieuwsbrief, sleutel 2026-10-18-sun) of 'monthly' (maandoverzicht, sleutel = de maand waar hij over
+-- gaat, bv. 2026-11; edition_key uniek = één maandeditie per maand). Zelfde ontvangers en wachtrij (newsletter_deliveries).
+alter table public.newsletter_editions add column if not exists kind text not null default 'weekly';
+do $$ begin
+  if not exists (select 1 from pg_constraint where conname = 'newsletter_editions_kind_check') then
+    alter table public.newsletter_editions add constraint newsletter_editions_kind_check check (kind in ('weekly', 'monthly'));
+  end if;
+end $$;
 alter table public.newsletter_editions enable row level security;
 revoke all on public.newsletter_editions from anon, authenticated;
 

@@ -52,9 +52,10 @@ Deno.test("editie: Top 10 films en series apart, Populair zonder titels die al i
 
 Deno.test("schakelaars: Top 10 en Populair uit, ontbrekende kolom = aan", () => {
   const e: Edition = { featured: null, fresh: [], soon: [], popular: [it("movie", 1)], top10: { movies: [it("movie", 2)], tv: [it("tv", 3)] } };
-  eq(sectionsOf(null), { top10: true, popular: true }, "standaard aan");
-  eq(sectionsOf({ enabled: true }), { top10: true, popular: true }, "oude rij");
-  eq(sectionsOf({ show_top10: false, show_popular: true }), { top10: false, popular: true });
+  eq(sectionsOf(null), { top10: true, popular: true, monthly: true }, "standaard aan");
+  eq(sectionsOf({ enabled: true }), { top10: true, popular: true, monthly: true }, "oude rij");
+  eq(sectionsOf({ show_top10: false, show_popular: true }), { top10: false, popular: true, monthly: true });
+  eq(sectionsOf({ show_monthly: false }), { top10: true, popular: true, monthly: false }, "maandoverzicht uit");
   const off = applySections(e, { top10: false, popular: false });
   eq([off.popular.length, off.top10!.movies.length, off.top10!.tv.length], [0, 0, 0], "uit");
   eq(applySections(e, { top10: true, popular: true }), e, "aan = ongewijzigd");

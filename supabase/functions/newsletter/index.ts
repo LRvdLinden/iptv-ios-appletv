@@ -7,8 +7,15 @@
 // Beheer (header x-newsletter-secret = NEWSLETTER_ADMIN_SECRET; functie admin in bingr-beheer):
 //   status      {} -> {enabled, next:{key, at}, recipients:{nl, en, total}, editions:[{key, created_at, recipients, sent, failed, done}]}
 //   set_enabled {enabled} -> {ok, enabled}
-//   set_sections {top10?, popular?} -> {ok, sections:{top10, popular}}   (secties Top 10 / Populair aan of uit; status geeft
-//               ze ook terug als sections; geldt voor nieuwe edities en het voorbeeld, niet voor een editie die al loopt)
+//   set_sections {top10?, popular?, monthly?} -> {ok, sections:{top10, popular, monthly}}   (secties Top 10 / Populair aan of
+//               uit en het maandoverzicht aan of uit; status geeft ze ook terug als sections; geldt voor nieuwe edities en het
+//               voorbeeld, niet voor een editie die al loopt)
+//   Maandoverzicht "Volgende maand op Bingr" (monthly.ts; laatste dag van de maand 18:00 Amsterdam, via dezelfde cron):
+//   monthly_render  {lang} -> {subject, html, key}   (de lopende maandeditie, anders een concept van de volgende)
+//   monthly_preview {to, lang?} -> {ok, key}   (testmail naar één adres, "[Voorbeeld]"; limiet gedeeld met preview)
+//   status geeft ook monthly: {enabled, next:{key, at}, editions:[{key, created_at, recipients, sent, failed, done}]}
+//   monthly_check {} -> {ok, key, next, enabled, monthly, shown:{featured, cinema, streaming, series}}   (x-newsletter-secret =
+//                 NEWSLETTER_CRON_SECRET; controle in de workflow Backend, verstuurt niets, alleen aantallen)
 //   preview     {to, lang?} -> {ok}   (huidige editie naar één adres, onderwerp met "[Voorbeeld]", max. 10 per uur)
 //   render      {lang} -> {subject, html}
 //   welcome_preview {to, lang?} -> {ok}   (welkomstmail naar één adres, "[Voorbeeld]", aanhef met een voorbeeldnaam;
@@ -38,6 +45,7 @@ import {
 import { renderNewsletter } from "./render.ts";
 import { renderWelcome, SAMPLE_NAME, showNewsletter, WELCOME_BATCH } from "./welcome.ts";
 import { buildContent } from "./tmdb.ts";
+import { buildMonthlyContent, type MonthlyContent, monthlyDue, monthlyFor, nextMonthly, renderMonthly, shownMonthly } from "./monthly.ts";
 import {
   type Audience, budgetOf, cleanContent, isAudience, type MailingContent, type MailingRow, mailingView, type Recipient, renderMailing,
   runMailing,
@@ -78,10 +86,11 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // ---------- inhoud ----------
 
-type EditionRow = { id: number; edition_key: string; created_at: string; content: Content; recipients: number; sent: number; failed: number; finished_at: string | null };
+// kind: 'weekly' (nieuwsbrief, zo en wo) of 'monthly' (maandoverzicht; content = MonthlyContent, edition_key = "2026-11")
+type EditionRow = { id: number; edition_key: string; kind?: string; created_at: string; content: Content; recipients: number; sent: number; failed: number; finished_at: string | null };
 
 async function recent(excludeKey?: string) {
-  let q = admin.from("newsletter_editions").select("edition_key,content").order("created_at", { ascending: false }).limit(3);
+  let q = admin.from("newsletter_editions").select("edition_key,content").eq("kind", "weekly").order("created_at", { ascending: false }).limit(3);
   if (excludeKey) q = q.neq("edition_key", excludeKey);
   const { data } = await q;
   const featured = new Set<string>(), shown = new Set<string>();
@@ -110,13 +119,26 @@ const withSections = (c: Content, s: Sections): Content => ({ nl: applySections(
 let draft: { at: number; content: Content } | null = null;
 // (een lopende editie heeft de secties van toen al toegepast; een concept krijgt de huidige schakelaars)
 async function currentContent(): Promise<Content> {
-  const { data } = await admin.from("newsletter_editions").select("content").is("finished_at", null).order("created_at", { ascending: false }).limit(1);
+  const { data } = await admin.from("newsletter_editions").select("content").eq("kind", "weekly").is("finished_at", null).order("created_at", { ascending: false }).limit(1);
   if (data?.length) return (data[0] as { content: Content }).content;
   const { sections } = await settings();
   if (draft && Date.now() - draft.at < 600_000) return withSections(draft.content, sections);
   const content = await makeContent(Date.now(), nextEdition(Date.now()).key);
   draft = { at: Date.now(), content };
   return withSections(content, sections);
+}
+// maandoverzicht: de lopende maandeditie, anders een concept van de volgende maand (10 minuten in het geheugen)
+let monthlyDraft: { at: number; key: string; content: MonthlyContent } | null = null;
+async function currentMonthly(): Promise<{ key: string; content: MonthlyContent }> {
+  const { data } = await admin.from("newsletter_editions").select("edition_key,content").eq("kind", "monthly").is("finished_at", null)
+    .order("created_at", { ascending: false }).limit(1);
+  if (data?.length) { const r = data[0] as { edition_key: string; content: MonthlyContent }; return { key: r.edition_key, content: r.content }; }
+  const key = nextMonthly(Date.now()).key;
+  if (monthlyDraft && monthlyDraft.key === key && Date.now() - monthlyDraft.at < 600_000) return monthlyDraft;
+  const tmdb = env("BINGR_TMDB_API_KEY");
+  if (!tmdb) throw new Error("tmdb_not_configured");
+  monthlyDraft = { at: Date.now(), key, content: await buildMonthlyContent(key, tmdb) };
+  return monthlyDraft;
 }
 const editionFor = (c: Content, lang: Lang): Edition => c?.[lang] ?? c?.nl ?? { featured: null, fresh: [], soon: [], popular: [] };
 
@@ -125,7 +147,7 @@ const editionFor = (c: Content, lang: Lang): Edition => c?.[lang] ?? c?.nl ?? { 
 type Totals = { sent: number; failed: number; retry: number; errors: Record<string, number> };
 async function sendEdition(e: EditionRow, until: number, t: Totals): Promise<boolean> {
   const mailer = transport();
-  const year = new Date(e.created_at).getFullYear();
+  const year = new Date(e.created_at).getFullYear(), monthly = e.kind === "monthly";
   try {
     while (Date.now() < until) {
       const { data, error } = await admin.rpc("bingr_news_take", { p_edition: e.id, p_batch: Math.min(50, BATCH) });
@@ -141,10 +163,13 @@ async function sendEdition(e: EditionRow, until: number, t: Totals): Promise<boo
         const lang = langOf(u.lang);
         try {
           const token = await unsubToken(u.id, unsubSecret());
-          const m = renderNewsletter({ lang, edition: editionFor(e.content, lang), firstName: u.first_name ?? undefined, unsubscribeUrl: unsubPageUrl(token), year });
+          const firstName = u.first_name ?? undefined, unsubscribeUrl = unsubPageUrl(token);
+          const m = monthly
+            ? renderMonthly({ lang, edition: monthlyFor(e.content as unknown as MonthlyContent, lang, e.edition_key), firstName, unsubscribeUrl, year })
+            : renderNewsletter({ lang, edition: editionFor(e.content, lang), firstName, unsubscribeUrl, year });
           await mailer.sendMail({
             from: FROM(), to: u.email, subject: m.subject, html: m.html, text: m.text,
-            headers: { "List-Unsubscribe": `<${oneClickUrl(FN_URL, token)}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click", "X-Bingr-Edition": e.edition_key, "X-Bingr-Mail": "newsletter" },
+            headers: { "List-Unsubscribe": `<${oneClickUrl(FN_URL, token)}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click", "X-Bingr-Edition": e.edition_key, "X-Bingr-Mail": monthly ? "newsletter-monthly" : "newsletter" },
           });
           sent.push(u.id); t.sent++;
         } catch (err) {
@@ -185,11 +210,34 @@ async function cron() {
       created = !!ins?.length;
     }
   }
+  // maandoverzicht: laatste dag van de maand 18:00 Amsterdam (monthlyDue), één editie per maand (sleutel "2026-11" uniek)
+  const mdue = st.sections.monthly ? monthlyDue(started) : null;
+  let monthlyCreated = false;
+  if (mdue) {
+    const { data: have } = await admin.from("newsletter_editions").select("id").eq("edition_key", mdue.key).maybeSingle();
+    // mislukt het aanmaken (TMDB), dan gewoon verder met de nieuwsbrief; de volgende ronde (binnen de speling) opnieuw
+    if (!have) {
+      try {
+        const tmdb = env("BINGR_TMDB_API_KEY");
+        if (!tmdb) throw new Error("tmdb_not_configured");
+        const content = await buildMonthlyContent(mdue.key, tmdb);
+        const { data: rc } = await admin.rpc("bingr_news_recipients");
+        const { data: ins, error } = await admin.from("newsletter_editions")
+          .upsert({ edition_key: mdue.key, kind: "monthly", content, recipients: Number((rc as { total?: number })?.total ?? 0) }, { onConflict: "edition_key", ignoreDuplicates: true })
+          .select("id");
+        if (error) throw new Error(`monthly: ${error.code ?? "fout"}`);
+        monthlyCreated = !!ins?.length;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "fout";
+        console.error("newsletter monthly", /^[a-z0-9_]+(: [A-Za-z0-9_]+)?$/.test(msg) ? msg : "server_error");
+      }
+    }
+  }
   // oude, onafgemaakte edities (> 36 uur) niet meer versturen: afsluiten
   await admin.from("newsletter_editions").update({ finished_at: new Date().toISOString() }).is("finished_at", null).lt("created_at", new Date(started - 36 * 3600_000).toISOString());
   const t: Totals = { sent: 0, failed: 0, retry: 0, errors: {} };
-  const { data: open } = await admin.from("newsletter_editions").select("id,edition_key,created_at,content,recipients,sent,failed,finished_at")
-    .is("finished_at", null).order("created_at", { ascending: true }).limit(2);
+  const { data: open } = await admin.from("newsletter_editions").select("id,edition_key,kind,created_at,content,recipients,sent,failed,finished_at")
+    .is("finished_at", null).order("created_at", { ascending: true }).limit(3);
   let last: string | null = null;
   if (open?.length && !smtpConfigured()) {
     console.error("newsletter cron: smtp_not_configured");
@@ -201,8 +249,11 @@ async function cron() {
     }
   }
   const { count } = await admin.from("newsletter_deliveries").select("user_id", { count: "exact", head: true }).in("state", ["queued", "sending"]);
-  console.log("newsletter cron", JSON.stringify({ due: due?.key ?? null, created, sent: t.sent, failed: t.failed, retry: t.retry, errors: t.errors }));
-  return { ok: true, enabled: true, due: due?.key ?? null, created, edition: last, sent: t.sent, failed: t.failed, retry: t.retry, errors: t.errors, left: count ?? 0 };
+  console.log("newsletter cron", JSON.stringify({ due: due?.key ?? null, created, monthly: mdue?.key ?? null, monthly_created: monthlyCreated, sent: t.sent, failed: t.failed, retry: t.retry, errors: t.errors }));
+  return {
+    ok: true, enabled: true, due: due?.key ?? null, created, monthly: mdue?.key ?? null, monthly_created: monthlyCreated, edition: last,
+    sent: t.sent, failed: t.failed, retry: t.retry, errors: t.errors, left: count ?? 0,
+  };
 }
 
 // ---------- welkomstmail ----------
@@ -262,6 +313,10 @@ async function welcomeCounts(): Promise<{ sent_7d: number; pending: number } | n
   const r = (data ?? {}) as Record<string, number>;
   return { sent_7d: Number(r.sent_7d ?? 0), pending: Number(r.pending ?? 0) };
 }
+
+const editionView = (e: EditionRow) => ({
+  key: e.edition_key, created_at: e.created_at, recipients: e.recipients, sent: e.sent, failed: e.failed, done: !!e.finished_at,
+});
 
 async function unsubscribe(t: unknown): Promise<boolean> {
   const id = await unsubUser(t, unsubSecret());
@@ -448,6 +503,16 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
     if (!secretOk(req, "NEWSLETTER_CRON_SECRET")) return json({ error: "forbidden" }, 403);
     return json(await cron());
   }
+  if (action === "monthly_check") {
+    // controle van de workflow Backend: bouwt (zonder te versturen) het maandoverzicht van de volgende maand; alleen aantallen
+    if (!secretOk(req, "NEWSLETTER_CRON_SECRET")) return json({ error: "forbidden" }, 403);
+    const next = nextMonthly(Date.now()), cur = await currentMonthly(), e = shownMonthly(monthlyFor(cur.content, "nl", cur.key));
+    const st = await settings();
+    return json({
+      ok: true, key: cur.key, next, enabled: st.enabled, monthly: st.sections.monthly,
+      shown: { featured: e.featured ? 1 : 0, cinema: e.cinema.length, streaming: e.streaming.length, series: e.series.length },
+    });
+  }
   if (action === "welcome_cron") {
     if (!secretOk(req, "NEWSLETTER_CRON_SECRET")) return json({ error: "forbidden" }, 403);
     return json(await welcomeCron());
@@ -457,17 +522,19 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
     return json(await mailingCron());
   }
   const MAILING = ["mailing_status", "mailing_render", "mailing_test", "mailing_send", "mailing_cancel"];
-  if (![...MAILING, "status", "set_enabled", "set_sections", "preview", "render", "welcome_preview", "welcome_render"].includes(action)) return json({ error: "unknown_action" }, 400);
+  if (![...MAILING, "status", "set_enabled", "set_sections", "preview", "render", "welcome_preview", "welcome_render", "monthly_render", "monthly_preview"].includes(action)) return json({ error: "unknown_action" }, 400);
   const mailtest = (action === "preview" || action === "welcome_preview" || action === "mailing_test") && isMailtestAddress(body.to) &&
     await mailtestOk(req.headers.get(MAILTEST_HEADER), async () => (await admin.from("app_settings").select("value").eq("key", "mailtest").maybeSingle()).data?.value);
   if (!mailtest && !secretOk(req, "NEWSLETTER_ADMIN_SECRET")) return json({ error: "forbidden" }, 403);
   if (MAILING.includes(action)) return await mailingAction(action, body);
   switch (action) {
     case "status": {
-      const [st, rc, ed, welcome] = await Promise.all([
+      const cols = "edition_key,created_at,recipients,sent,failed,finished_at";
+      const [st, rc, ed, md, welcome] = await Promise.all([
         settings(),
         admin.rpc("bingr_news_recipients"),
-        admin.from("newsletter_editions").select("edition_key,created_at,recipients,sent,failed,finished_at").order("created_at", { ascending: false }).limit(10),
+        admin.from("newsletter_editions").select(cols).eq("kind", "weekly").order("created_at", { ascending: false }).limit(10),
+        admin.from("newsletter_editions").select(cols).eq("kind", "monthly").order("created_at", { ascending: false }).limit(12),
         welcomeCounts(),
       ]);
       if (rc.error) throw new Error(`recipients: ${rc.error.code ?? "fout"}`);
@@ -475,9 +542,8 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       return json({
         enabled: st.enabled, sections: st.sections, next: nextEdition(Date.now()),
         recipients: { nl: Number(r.nl ?? 0), en: Number(r.en ?? 0), total: Number(r.total ?? 0) },
-        editions: ((ed.data ?? []) as EditionRow[]).map((e) => ({
-          key: e.edition_key, created_at: e.created_at, recipients: e.recipients, sent: e.sent, failed: e.failed, done: !!e.finished_at,
-        })),
+        editions: ((ed.data ?? []) as EditionRow[]).map(editionView),
+        monthly: { enabled: st.sections.monthly, next: nextMonthly(Date.now()), editions: ((md.data ?? []) as EditionRow[]).map(editionView) },
         welcome,
       });
     }
@@ -489,7 +555,7 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
     }
     case "set_sections": {
       const patch: Record<string, unknown> = {};
-      for (const [k, col] of [["top10", "show_top10"], ["popular", "show_popular"]] as const) {
+      for (const [k, col] of [["top10", "show_top10"], ["popular", "show_popular"], ["monthly", "show_monthly"]] as const) {
         if (body[k] === undefined) continue;
         if (typeof body[k] !== "boolean") return json({ error: "bad_sections" }, 400);
         patch[col] = body[k];
@@ -524,6 +590,35 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
         return json({ error: "send_failed", code: smtpCode(e) }, 502);
       } finally { try { mailer.close(); } catch { /* stil */ } }
       return json({ ok: true });
+    }
+    case "monthly_render": {
+      const lang: Lang = body.lang === "en" ? "en" : "nl";
+      const cur = await currentMonthly();
+      const m = renderMonthly({ lang, edition: monthlyFor(cur.content, lang, cur.key), unsubscribeUrl: `${SITE}/unsubscribe/?k=news` });
+      return json({ subject: m.subject, html: m.html, key: cur.key });
+    }
+    case "monthly_preview": {
+      const to = typeof body.to === "string" ? body.to.trim() : "";
+      if (!validEmail(to)) return json({ error: "bad_email" }, 400);
+      if (!smtpConfigured()) return json({ error: "smtp_not_configured" }, 503);
+      // zelfde limiet als het voorbeeld van de nieuwsbrief (samen max. 10 per uur)
+      if (!(await rateOk("news-preview", 10, 3600))) return json({ error: "rate_limited", retry_after: 3600 }, 429);
+      const lang: Lang = body.lang === "en" ? "en" : "nl";
+      const cur = await currentMonthly();
+      const m = renderMonthly({ lang, edition: monthlyFor(cur.content, lang, cur.key), unsubscribeUrl: `${SITE}/unsubscribe/?k=news`, preview: true });
+      const mailer = transport();
+      try {
+        // zelfde kopregels als de echte verzending; het token hoort bij een niet-bestaand account, dus afmelden doet niets
+        const token = await unsubToken(NIL_USER, unsubSecret());
+        await mailer.sendMail({
+          from: FROM(), to, subject: m.subject, html: m.html, text: m.text,
+          headers: { "List-Unsubscribe": `<${oneClickUrl(FN_URL, token)}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click", "X-Bingr-Mail": "newsletter-monthly-preview" },
+        });
+      } catch (e) {
+        console.error("newsletter monthly_preview", smtpCode(e));
+        return json({ error: "send_failed", code: smtpCode(e) }, 502);
+      } finally { try { mailer.close(); } catch { /* stil */ } }
+      return json({ ok: true, key: cur.key });
     }
     case "welcome_render": {
       const lang: Lang = body.lang === "en" ? "en" : "nl";

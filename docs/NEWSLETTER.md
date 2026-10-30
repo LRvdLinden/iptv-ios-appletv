@@ -147,16 +147,54 @@ aangemaakt door *Backend*; zonder of fout geheim → 403 `{error:"forbidden"}`).
 
 | actie | invoer | antwoord |
 |---|---|---|
-| `status` | `{}` | `{enabled, sections:{top10, popular}, next:{key, at}, recipients:{nl, en, total}, editions:[{key, created_at, recipients, sent, failed, done}], welcome:{sent_7d, pending} \| null}` (laatste 10 edities, nieuwste eerst; `at` = ISO-tijd in UTC; `welcome` = welkomstmails, alleen aantallen) |
+| `status` | `{}` | `{enabled, sections:{top10, popular, monthly}, next:{key, at}, recipients:{nl, en, total}, editions:[{key, created_at, recipients, sent, failed, done}], monthly:{enabled, next:{key, at}, editions:[…]}, welcome:{sent_7d, pending} \| null}` (laatste 10 edities van de nieuwsbrief en 12 maandedities, nieuwste eerst; `at` = ISO-tijd in UTC; `welcome` = welkomstmails, alleen aantallen) |
 | `set_enabled` | `{enabled: true\|false}` | `{ok, enabled}`; 400 `bad_enabled` |
-| `set_sections` | `{top10?: true\|false, popular?: true\|false}` | `{ok, sections:{top10, popular}}`; 400 `bad_sections` (geen of geen boolean). `status` geeft ook `sections:{top10, popular}` |
+| `set_sections` | `{top10?: true\|false, popular?: true\|false, monthly?: true\|false}` | `{ok, sections:{top10, popular, monthly}}`; 400 `bad_sections` (geen of geen boolean). `status` geeft ook `sections:{top10, popular, monthly}` (`monthly` = maandoverzicht aan/uit) |
 | `preview` | `{to, lang?: "nl"\|"en"}` | `{ok}`: de huidige editie (die nu verstuurd wordt, anders een concept van de volgende) alleen naar dat adres, onderwerp begint met `[Voorbeeld]`. 400 `bad_email`, 429 `rate_limited` (10 per uur), 503 `smtp_not_configured` / `tmdb_not_configured`, 502 `{error:"send_failed", code}` |
 | `render` | `{lang: "nl"\|"en"}` | `{subject, html}` van de huidige editie (zonder aanhef, afmeldlink zonder token) |
 | `welcome_preview` | `{to, lang?: "nl"\|"en"}` | `{ok}`: de welkomstmail alleen naar dat adres, onderwerp `[Voorbeeld] …`, aanhef met de voorbeeldnaam *Alex*. Zelfde limiet als `preview` (samen 10 per uur), zelfde fouten |
 | `welcome_render` | `{lang: "nl"\|"en"}` | `{subject, html}` van de welkomstmail (voorbeeldnaam, afmeldlink zonder token) |
+| `monthly_render` | `{lang: "nl"\|"en"}` | `{subject, html, key}` van het maandoverzicht: de maandeditie die nu verstuurd wordt, anders een concept van de volgende maand (`key` = bv. `2026-11`) |
+| `monthly_preview` | `{to, lang?: "nl"\|"en"}` | `{ok, key}`: dat maandoverzicht alleen naar dat adres, onderwerp `[Voorbeeld] …`. Zelfde limiet als `preview` (samen 10 per uur), zelfde fouten |
+| `monthly_check` | `{}` (header `NEWSLETTER_CRON_SECRET`) | `{ok, key, next, enabled, monthly, shown:{featured, cinema, streaming, series}}`: bouwt het maandoverzicht zonder te versturen, alleen aantallen (controle in de workflow *Backend*) |
 
 Fouten: 400 `unknown_action` / `bad_json`, 500 `server_error`. Logs bevatten nooit e-mailadressen, tokens of geheimen,
 alleen tellingen en foutcodes (`smtp_550`, `etimedout`, …).
+
+## Maandoverzicht "Volgende maand op Bingr"
+
+Op de **laatste dag van elke maand om 18:00** Nederlandse tijd (`Europe/Amsterdam`, ook bij zomer- en wintertijd) een mail
+"wat komt er volgende maand" (EN "Coming next month"). Los van de wekelijkse nieuwsbrief, maar met dezelfde functie,
+opmaak (`render.ts`: Uitgelicht liggend, rasters 3 × 2 met staande posters), ontvangers, afmeldlink, wachtrij en verzending.
+Code: `supabase/functions/newsletter/monthly.ts` (planning, selectie, opmaak), tests `monthly_test.ts` (blokkeren de deploy).
+
+- **Planning:** dezelfde pg_cron-taak `bingr-newsletter` (elk uur, minuut 0, UTC). De functie controleert (`monthlyDue`)
+  dat het in Amsterdam 18:00 is én dat morgen de 1e is; in de zomer is dat 16:00 UTC, in de winter 17:00 UTC. Mislukt die
+  ronde, dan nog om 19:00 en 20:00 (zelfde speling als de nieuwsbrief). Eén editie per maand: `newsletter_editions` met
+  `kind = 'monthly'` en `edition_key` = de maand waar hij over gaat (`2026-11`, uniek), dus nooit twee keer. Mislukt het
+  aanmaken (TMDB), dan gaat de nieuwsbrief gewoon door en probeert de volgende ronde het opnieuw. De eerste editie is
+  zaterdag 31 oktober 2026 om 18:00 (november 2026).
+- **Aan/uit:** `newsletter_settings.show_monthly` (standaard aan; beheer: schakelaar *Maandoverzicht*, actie
+  `set_sections {monthly}`). Het maandoverzicht gaat alleen als de nieuwsbrief zelf ook aan staat (`enabled`).
+- **Ontvangers en afmelden:** dezelfde als de nieuwsbrief (`bingr_news_subscribed`, `bingr_news_take`), met
+  `List-Unsubscribe` en dezelfde afmeldlink. Afmelden kan niet per soort: de afmelding van de nieuwsbrief
+  (`newsletter_opt_out`) geldt ook voor het maandoverzicht (voettekst: "Geen nieuwsbrief en maandoverzicht meer? Afmelden").
+  Taal per ontvanger uit `user_metadata.lang`, datums in die taal ("vanaf 14 nov" / "from Nov 14").
+- **Inhoud** (TMDB, eenmalig bij het aanmaken vastgelegd in `content` `{nl, en}`, keuze op de Nederlandse lijsten; per sectie
+  12 kandidaten, de mail toont er max. 6 in 3 × 2, op datum, geen titel twee keer, ook niet de uitgelichte):
+
+  | sectie | bron |
+  |---|---|
+  | Uitgelicht | de populairste titel met achtergrond (en omschrijving), om en om uit de drie secties |
+  | Films in de bioscoop | `/discover/movie`, `region=NL`, `with_release_type=2\|3`, `release_date` in de maand, populairste eerst; datum = de vroegste Nederlandse bioscoopdatum uit `/movie/{id}/release_dates` (discover geeft de wereldwijde datum) |
+  | Nieuw op streaming en digitaal | idem met `with_release_type=4\|5` (digitaal, fysiek); titels die al bij de bioscoop staan vallen weg |
+  | Nieuwe series en nieuwe seizoenen | `/discover/tv` met `first_air_date` in de maand (nieuwe series) om en om met series met `air_date` in de maand waarvan volgens `/tv/{id}` een seizoen 2+ in de maand begint ("· seizoen 3"); zonder nieuws, reality, soaps en talkshows (`without_genres`) |
+
+  Per titel: datum ("vanaf 14 nov"), genre en de TMDB-score (alleen met minstens 20 stemmen). Hoogstens ~16 detailverzoeken
+  per lijst. Links, escapen, afbeeldingen, de vaste zin en de TMDB-bronvermelding zoals bij de nieuwsbrief.
+- **Beheer:** `status.monthly` (`enabled`, `next`, geschiedenis met aantallen), `monthly_render` (voorbeeld) en
+  `monthly_preview` (testmail), zie de tabel hierboven; in bingr-beheer (web en Beheer-app) het blok *Maandoverzicht* in de tab
+  Nieuwsbrief.
 
 ## Welkomstmail
 
@@ -294,6 +332,8 @@ RLS aan, alles ingetrokken voor anon en authenticated.
 - `newsletter_settings` (`id = 1`, `enabled` standaard `false`)
 - `newsletter_editions` (`id`, `edition_key` uniek, `created_at`, `content` jsonb, `recipients`, `sent`, `failed`, `cursor`, `finished_at`)
 - `newsletter_deliveries` (`edition_id`, `user_id`, `state` queued/sending/sent/failed/skipped, `attempts`, …), primaire sleutel (editie, account)
+- `newsletter_editions.kind` `'weekly'` (nieuwsbrief) of `'monthly'` (maandoverzicht, sleutel `2026-11`); `newsletter_settings.show_monthly`
+  (standaard `true`)
 - functies `bingr_news_subscribed`, `bingr_news_recipients`, `bingr_news_take`, `bingr_news_mark`, `bingr_news_cleanup`
   (alleen service role). RLS aan, alles ingetrokken voor anon en authenticated.
 - `account_welcome` (`user_id` pk → `auth.users` on delete cascade, `claimed_at`, `sent_at`, `error`) en de functies
