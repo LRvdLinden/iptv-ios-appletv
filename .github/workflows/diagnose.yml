@@ -196,6 +196,33 @@ jobs:
           q "select status, left(coalesce(return_message,''),80) as uitkomst, count(*) as n from cron.job_run_details d
              join cron.job j on j.jobid = d.jobid where j.jobname = 'bingr-push' and d.start_time > now() - interval '30 minutes'
              group by 1,2" | note 'cron laatste 30 min'
+          q "select kind, state, left(coalesce(error,''),60) as fout, count(*) as n, max(attempts) as max_pogingen
+             from public.push_deliveries d join public.push_messages m on m.id = d.message_id
+             where d.created_at > now() - interval '30 days' group by 1,2,3 order by 1,2" | note 'bezorgingen per soort (30 dagen)'
+      - name: Mail (alleen tellingen en foutcodes)
+        shell: bash
+        run: |
+          set -uo pipefail
+          note() { printf '::notice title=%s::%s\n' "$1" "$(tr '\n' ' ' | head -c 3500)"; }
+          q() {
+            python3 -c 'import json,sys; print(json.dumps({"query": sys.argv[1]}))' "$1" > /tmp/q.json
+            curl -s -X POST "https://api.supabase.com/v1/projects/$REF/database/query" \
+              -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" --data @/tmp/q.json
+          }
+          # foutteksten nooit letterlijk (kunnen adressen bevatten): alleen de SMTP-code of een soort
+          CODE="coalesce(substring(x from '\\m([45][0-9][0-9])\\M'), case when x ~* 'time.?out|timed out' then 'timeout' when x ~* 'auth|login|535' then 'auth'
+                when x ~* 'conn|socket|reset|refused' then 'verbinding' when x is null or x = '' then '' else 'anders' end)"
+          q "select edition_key, recipients, sent, failed, (finished_at is not null) as klaar from public.newsletter_editions order by id desc limit 6" | note 'nieuwsbrief edities'
+          q "select e.edition_key, d.state, d.attempts, count(*) as n from public.newsletter_deliveries d join public.newsletter_editions e on e.id = d.edition_id
+             where e.created_at > now() - interval '30 days' group by 1,2,3 order by 1 desc,2" | note 'nieuwsbrief per ontvanger'
+          q "select id, audience, status, recipients, sent, failed, skipped, created_at::date as dag from public.mailings order by id desc limit 5" | note mailings
+          q "select coalesce(error,'') as code, (sent_at is not null) as verstuurd, count(*) as n from public.account_welcome where claimed_at > now() - interval '30 days' group by 1,2" | note 'welkomstmails (30 dagen)'
+          q "select count(*) as rondes, sum(sent) as sent, sum(failed) as failed from public.status_mail_queue where created_at > now() - interval '60 days'" | note 'statusmails (60 dagen)'
+          q "select email_sent, ${CODE//x/email_error} as code, count(*) as n from public.support_messages
+             where created_at > now() - interval '30 days' and author in ('support','event') group by 1,2" | note 'supportmails (30 dagen)'
+          q "select status_code, timed_out, count(*) as n from net._http_response where created > now() - interval '6 hours' group by 1,2 order by 3 desc" | note 'pg_net antwoorden (6 uur)'
+          q "select j.jobname, d.status, count(*) as n from cron.job_run_details d join cron.job j on j.jobid = d.jobid
+             where d.start_time > now() - interval '24 hours' group by 1,2 order by 1" | note 'cron 24 uur'
 
   # build 135: bevestigingsmail van Supabase Auth — alleen ja/nee, getallen en foutsoorten (geen adressen of serverwaarden)
   mail:
