@@ -1,5 +1,20 @@
 [
  {
+  "build": 156,
+  "version": "1.0.3",
+  "date": "2026-10-30",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Maandoverzicht per e-mail: op de laatste dag van de maand om 18:00 wat er de volgende maand nieuw komt in de bioscoop, op streaming en digitaal en aan nieuwe series en seizoenen",
+    "en": "Monthly overview by email: on the last day of the month at 18:00, what's new next month in cinemas, on streaming and digital, and in new series and seasons"
+   }
+  ]
+ },
+ {
   "build": 155,
   "version": "1.0.3",
   "date": "2026-10-30",

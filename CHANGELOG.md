@@ -4,6 +4,15 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.3 · Build 156
+_30 oktober 2026_
+
+### Server
+
+**Nieuw**
+
+- Maandoverzicht per e-mail: op de laatste dag van de maand om 18:00 wat er de volgende maand nieuw komt in de bioscoop, op streaming en digitaal en aan nieuwe series en seizoenen
+
 ## Versie 1.0.3 · Build 155
 _30 oktober 2026_
 
