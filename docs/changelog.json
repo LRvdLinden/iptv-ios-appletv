@@ -1,5 +1,45 @@
 [
  {
+  "build": 155,
+  "version": "1.0.3",
+  "date": "2026-10-30",
+  "items": [
+   {
+    "type": "fixed",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Pushmeldingen naar iPhone, iPad en Mac komen weer allemaal aan; Apple weigerde er veel omdat de server te vaak opnieuw inlogde",
+    "en": "Push notifications to iPhone, iPad and Mac are delivered reliably again; Apple rejected many because the server signed in too often"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Een pushmelding die even niet lukt, wordt later automatisch opnieuw verstuurd",
+    "en": "A push notification that fails temporarily is automatically retried later"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "server"
+    ],
+    "nl": "E-mails worden betrouwbaarder verstuurd; een tijdelijke storing bij de mailserver laat geen mails meer wegvallen",
+    "en": "Emails are sent more reliably; a temporary mail server problem no longer causes emails to be dropped"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "web",
+     "server"
+    ],
+    "nl": "Bij de downloadknoppen zie je nu in een rode badge welke versie live staat en welke bèta het nieuwst is",
+    "en": "The download buttons now show a red badge with the live version and the latest beta"
+   }
+  ]
+ },
+ {
   "build": 154,
   "version": "1.0.3",
   "date": "2026-10-30",
