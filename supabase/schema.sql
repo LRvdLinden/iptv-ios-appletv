@@ -4218,3 +4218,10 @@ update public.app_settings set value = value || '{"webos": true}'::jsonb
  where key = 'upgrade_link' and not (value ? 'webos');
 -- Storingen die door de oude logica (elke controle van dezelfde rode run telde als fout) openstaan, sluiten vanzelf:
 -- dezelfde run geeft nu "verminderd" (ok), en na 2 goede controles gaat de storing en de automatische melding dicht.
+
+-- ============================================================================================================
+-- Apple-build (server, geen changelog): build.yml heeft geen simulator-rooktests meer en is gesplitst in de jobs
+-- `aanleveren` (Xcode-project versleuteld naar bingr-inbox) en `compileren` (iOS, tvOS, macOS en de zelftest). De monitor
+-- apple telt die twee jobs; oude runs met de job `build` tellen via de terugval (alle jobs behalve test-jobs) nog mee.
+update public.status_monitors set target = 'LRvdLinden/iptv-ios-appletv|build.yml|main|aanleveren,compileren'
+ where id = 'apple' and kind = 'gh_workflow' and target = 'LRvdLinden/iptv-ios-appletv|build.yml|main|build';

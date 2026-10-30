@@ -1,22 +1,19 @@
 name: Build
 
+# Twee jobs naast elkaar, allebei direct bij een push naar main:
+#   aanleveren  XcodeGen, Xcode-project zippen en versleuteld aanleveren bij de privé repo bingr-inbox (± 1-2 min);
+#               wacht niet op het compileren: Léon test de Apple-apps zelf in Xcode.
+#   compileren  compileercontrole iOS, tvOS en macOS (generic, zonder simulator en zonder signing) plus de zelftest;
+#               logboek op de branch ci-logs (latest.txt).
+# De statusmonitor `apple` (bingr.online/status) telt alleen deze twee jobs (doel ...|build.yml|main|aanleveren,compileren).
+# Sinds 30-10-2026: geen simulator-rooktests meer in CI (geen start-rooktest, geen zware nachtelijke rooktest, geen sdk27-job,
+# geen testaccount). tools/smoke_launch.sh en SmokeMode blijven in de code voor handmatig gebruik.
+
 on:
   push:
     branches: [main]
     paths-ignore: ['docs/**', '**/*.md', '.github/workflows/covers.yml', 'tools/fetch_covers.py', 'tools/make_screenshots.py', 'tools/sync_website.py', '.github/workflows/mac-archive.yml']
   workflow_dispatch:
-    inputs:
-      zware_rooktest:
-        description: "Zware start-rooktest: grote servers, Bingr-testaccount, Apple TV als Release en de Mac (±45 min)"
-        type: boolean
-        default: false
-      rooktest:
-        description: "Korte start-rooktest draaien (staat sinds build 144 standaard uit bij een push)"
-        type: boolean
-        default: false
-  # build 142: de zware start-rooktest elke nacht (bij een push alleen de korte)
-  schedule:
-    - cron: '23 2 * * *'
 
 permissions:
   contents: write
@@ -25,19 +22,87 @@ concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  HOMEBREW_NO_AUTO_UPDATE: "1"
+  HOMEBREW_NO_INSTALL_CLEANUP: "1"
+
 jobs:
-  build:
+  aanleveren:
     runs-on: macos-15
-    timeout-minutes: 90
-    env:
-      # build 142: korte rooktest bij elke push (iOS en tvOS, kleine nepdata); de zware alleen 's nachts of op verzoek
-      HEAVY: ${{ github.event_name == 'schedule' || inputs.zware_rooktest == true }}
-      # build 144: rooktest bij een push overgeslagen (op verzoek); wel 's nachts of via Run workflow
-      SMOKE: ${{ github.event_name == 'schedule' || inputs.zware_rooktest == true || inputs.rooktest == true }}
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 (v5.1.0)
 
-      # build 142: Swift-packages (VLCKit) bewaren tussen runs
+      # Swift-packages (VLCKit) bewaren tussen runs
+      - name: Packages uit de cache
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        with:
+          path: build/SourcePackages
+          key: spm-${{ runner.os }}-${{ hashFiles('project.yml') }}
+          restore-keys: spm-${{ runner.os }}-
+
+      - name: Xcode-versie kiezen
+        run: |
+          sudo xcode-select -s "$(ls -d /Applications/Xcode_16*.app | sort -V | tail -1)"
+          xcodebuild -version
+
+      - name: App-sleutels inbouwen (alleen bij een privé-repo)
+        if: github.event.repository.private == true
+        env:
+          TRAKT_CLIENT_ID: ${{ secrets.TRAKT_CLIENT_ID }}
+          TRAKT_CLIENT_SECRET: ${{ secrets.TRAKT_CLIENT_SECRET }}
+          OPENSUBTITLES_API_KEY: ${{ secrets.OPENSUBTITLES_API_KEY }}
+          OMDB_API_KEY: ${{ secrets.OMDB_API_KEY }}
+          # TMDB: v3-sleutel (TMDB_API_KEY), anders de v4-token (TMDB_ACCESS_TOKEN)
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY || secrets.TMDB_ACCESS_TOKEN }}
+          # Bingr-accounts (Supabase): project-URL en publieke anon/publishable key
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: python3 tools/inject_keys.py
+
+      - name: Project genereren
+        run: |
+          command -v xcodegen >/dev/null || brew install xcodegen
+          xcodegen generate
+
+      # legt de package-versies vast (Package.resolved in het .xcodeproj), zodat de zip in Xcode meteen opent
+      - name: Packages ophalen
+        run: xcodebuild -resolvePackageDependencies -project Bingr.xcodeproj -scheme Bingr -derivedDataPath build > resolve.log 2>&1 || { tail -n 40 resolve.log; exit 1; }
+
+      # Xcode-project versleuteld naar de PRIVÉ repo LRvdLinden/bingr-inbox (tools/seal_build.sh van bingr-beheer, branch
+      # inbox-apple); de workflow Builds van bingr-beheer haalt het daar op en zet het in de afgesloten map builds/ op de
+      # server van beheer.bingr.online. Nooit onversleuteld op GitHub: geen artefact, geen release, niet op ci-logs.
+      # Nodig: secret BINGR_INBOX_TOKEN (fine-grained token met alleen Contents: Read and write op LRvdLinden/bingr-inbox).
+      # H3: géén token voor bingr-beheer (daarmee kon je het beheer-dashboard vervangen); die openbare repo (script en
+      # publieke sleutel) wordt anoniem gekloond, en het token gaat nooit in een URL (seal_build.sh geeft het als kopregel mee).
+      - name: Xcode-project versleuteld aanleveren voor beheer.bingr.online
+        env:
+          TOKEN: ${{ secrets.BINGR_INBOX_TOKEN }}
+          BINGR_INBOX_REPO: LRvdLinden/bingr-inbox
+        run: |
+          set -euo pipefail
+          TOKEN=$(printf '%s' "$TOKEN" | tr -d '[:space:]')   # spaties/regeleinde van het plakken weghalen
+          # bewust geen terugval op een ander token: zonder BINGR_INBOX_TOKEN wordt er niets aangeleverd
+          if [ -z "$TOKEN" ]; then echo "::warning::Secret BINGR_INBOX_TOKEN ontbreekt: Xcode-project niet aangeleverd (zie README.md van bingr-beheer, H3)."; exit 0; fi
+          B=$(grep -m1 'CURRENT_PROJECT_VERSION' project.yml | grep -o '[0-9]\+'); V=$(grep -m1 'MARKETING_VERSION' project.yml | grep -o '[0-9.]\+' || echo 1.0.0)
+          P="$RUNNER_TEMP/pkg"; rm -rf "$P"; mkdir -p "$P"
+          # kant-en-klaar Xcode-project (met gegenereerd .xcodeproj en vastgelegde package-versies),
+          # zonder git, build-map, logs, docs/screenshots en docs/covers (die horen niet in het pakket)
+          zip -qr "$P/Bingr-$V-build$B-Xcode.zip" . -x '.git/*' 'build/*' '*.log' 'docs/screenshots/*' 'docs/covers/*'
+          awk -v b="Build $B" '/^## /{f=($0 ~ (b "$"))?1:0; next} f && !/^_.*_$/' CHANGELOG.md > "$P/notes.md" || true
+          # anoniem (openbare repo): seal_build.sh en builds.pub.pem
+          GIT_TERMINAL_PROMPT=0 git clone -q --depth 1 https://github.com/LRvdLinden/bingr-beheer.git "$P/beheer" 2>/dev/null \
+            || { echo "::error::bingr-beheer niet op te halen."; exit 1; }
+          TOKEN="$TOKEN" "$P/beheer/tools/seal_build.sh" apple "$P/Bingr-$V-build$B-Xcode.zip" "$V" "$B" "$P/notes.md"
+          rm -rf "$P"
+          echo "::notice title=aangeleverd::Xcode-project build $B aangeleverd"
+
+  compileren:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 (v5.1.0)
+
       - name: Packages uit de cache
         uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
         with:
@@ -57,145 +122,71 @@ jobs:
       - name: Geen sleutelhanger of iCloud bij de start
         run: python3 tools/check_no_keychain.py
 
-      - name: Zelftest pure logica (build 128, CatalogMeta; build 146 pincode-hash, support, diagnose)
-        id: selftest
-        continue-on-error: true
-        run: |
-          set -o pipefail
-          swiftc -O Shared/Account/CatalogMeta.swift Shared/Account/Build140.swift Shared/Account/Build141.swift Shared/Account/Build145.swift Shared/Account/Build146.swift Shared/Account/Build147.swift Shared/Account/Build148.swift Shared/Account/Build149.swift Shared/Account/Build150.swift Shared/Account/Build151.swift tools/selftest/main.swift -o "$RUNNER_TEMP/selftest" 2>&1 | tee selftest.log
-          "$RUNNER_TEMP/selftest" 2>&1 | tee -a selftest.log
-
-      - name: App-sleutels inbouwen (alleen bij een privé-repo)
-        if: github.event.repository.private == true
-        env:
-          TRAKT_CLIENT_ID: ${{ secrets.TRAKT_CLIENT_ID }}
-          TRAKT_CLIENT_SECRET: ${{ secrets.TRAKT_CLIENT_SECRET }}
-          OPENSUBTITLES_API_KEY: ${{ secrets.OPENSUBTITLES_API_KEY }}
-          OMDB_API_KEY: ${{ secrets.OMDB_API_KEY }}
-          # TMDB: v3-sleutel (TMDB_API_KEY), anders de v4-token (TMDB_ACCESS_TOKEN)
-          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY || secrets.TMDB_ACCESS_TOKEN }}
-          # Bingr-accounts (Supabase): project-URL en publieke anon/publishable key
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-        run: python3 tools/inject_keys.py
-
       - name: Project genereren
         run: |
-          brew install xcodegen
+          command -v xcodegen >/dev/null || brew install xcodegen
           xcodegen generate
 
       - name: Packages ophalen
-        run: xcodebuild -resolvePackageDependencies -project Bingr.xcodeproj -scheme Bingr -derivedDataPath build
+        run: xcodebuild -resolvePackageDependencies -project Bingr.xcodeproj -scheme Bingr -derivedDataPath build > resolve.log 2>&1 || { tail -n 40 resolve.log; exit 1; }
 
-      - name: Build iOS (simulator, zonder signing)
+      # De zelftest (swiftc -O, ± 1,5 min) loopt op de achtergrond mee met de builds.
+      - name: Zelftest starten (pure logica, op de achtergrond)
+        run: |
+          ( set -o pipefail
+            swiftc -O Shared/Account/CatalogMeta.swift Shared/Account/Build140.swift Shared/Account/Build141.swift Shared/Account/Build145.swift Shared/Account/Build146.swift Shared/Account/Build147.swift Shared/Account/Build148.swift Shared/Account/Build149.swift Shared/Account/Build150.swift Shared/Account/Build151.swift tools/selftest/main.swift -o "$RUNNER_TEMP/selftest" > selftest.log 2>&1 \
+              && "$RUNNER_TEMP/selftest" >> selftest.log 2>&1
+            echo $? > "$RUNNER_TEMP/selftest.rc" ) &
+
+      # Alleen compileren: generic device-builds (alleen arm64, geen simulator), zonder signing en zonder indexering.
+      - name: Build iOS (generic, zonder signing)
         id: ios
         continue-on-error: true
         run: |
           set -o pipefail
           xcodebuild build -project Bingr.xcodeproj -scheme Bingr -derivedDataPath build \
-            -destination 'generic/platform=iOS Simulator' \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO 2>&1 | tee ios.log
+            -destination 'generic/platform=iOS' COMPILER_INDEX_STORE_ENABLE=NO \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO > ios.log 2>&1 || { grep -E "error:" ios.log | sort -u | head -40; exit 1; }
 
-      - name: Build tvOS (simulator, zonder signing)
+      - name: Build tvOS (generic, zonder signing)
         id: tvos
         continue-on-error: true
         run: |
           set -o pipefail
           xcodebuild build -project Bingr.xcodeproj -scheme BingrTV -derivedDataPath build \
-            -destination 'generic/platform=tvOS Simulator' \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO 2>&1 | tee tvos.log
+            -destination 'generic/platform=tvOS' COMPILER_INDEX_STORE_ENABLE=NO \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO > tvos.log 2>&1 || { grep -E "error:" tvos.log | sort -u | head -40; exit 1; }
 
-      - name: Build macOS (zonder signing)
+      - name: Build macOS (arm64, zonder signing)
         id: macos
         continue-on-error: true
         run: |
           set -o pipefail
           xcodebuild build -project Bingr.xcodeproj -scheme BingrMac -derivedDataPath build \
-            -destination 'generic/platform=macOS' \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO 2>&1 | tee macos.log
+            -destination 'generic/platform=macOS' ARCHS=arm64 ONLY_ACTIVE_ARCH=YES COMPILER_INDEX_STORE_ENABLE=NO \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO > macos.log 2>&1 || { grep -E "error:" macos.log | sort -u | head -40; exit 1; }
 
-      # build 141: tijdelijk testaccount (Lifetime) voor de rooktest met een Bingr-account; wordt aan het eind altijd
-      # weer verwijderd. Adres en wachtwoord zijn willekeurig en gemaskeerd (tools/smoke_account.py).
-      - name: Testaccount voor de start-rooktest
-        if: env.HEAVY == 'true' && (steps.ios.outcome == 'success' || steps.tvos.outcome == 'success' || steps.macos.outcome == 'success')
-        continue-on-error: true
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          REF: ${{ secrets.SUPABASE_PROJECT_REF }}
-        run: python3 -I tools/smoke_account.py create
-
-      # build 141: de apps echt starten (simulator en Mac) en ±30 s laten draaien, ook als terugkerende gebruiker en
-      # met een kinderprofiel (tools/smoke_launch.sh, Shared/App/SmokeMode.swift); een crash laat de workflow falen,
-      # met de crash-stack als ::error:: (zonder persoonsgegevens)
-      - name: Start-rooktest iOS (simulator)
-        id: smoke_ios
-        if: env.SMOKE == 'true' && steps.ios.outcome == 'success'
-        continue-on-error: true
-        timeout-minutes: 20
-        env:
-          SMOKE_LIGHT: ${{ env.HEAVY != 'true' && '1' || '' }}
-        run: tools/smoke_launch.sh ios build/Build/Products "$RUNNER_TEMP/smoke/ios" 2>&1 | tee smoke-ios.log; exit ${PIPESTATUS[0]}
-
-      # build 141/144: de Apple TV-app voor de rooktest als Release (geoptimaliseerd, zoals de App Store-build), bij elke
-      # push, ad hoc ondertekend MET de echte entitlements (sleutelhanger-groep, user-management, iCloud KV), zodat de
-      # simulator ze ook toepast. Alleen het vlag BINGR_SMOKE erbij voor de testmodus.
-      - name: Build tvOS Release (ondertekend met entitlements) voor de start-rooktest
-        id: tvos_release
-        if: env.SMOKE == 'true' && steps.tvos.outcome == 'success'
+      - name: Zelftest afwachten
+        id: selftest
         continue-on-error: true
         run: |
-          set -o pipefail
-          xcodebuild build -project Bingr.xcodeproj -scheme BingrTV -configuration Release -derivedDataPath build \
-            -destination 'generic/platform=tvOS Simulator' SWIFT_ACTIVE_COMPILATION_CONDITIONS=BINGR_SMOKE \
-            CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER= \
-            CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=YES 2>&1 | tail -n 40
-          echo "--- entitlements van de gebouwde app:"
-          codesign -d --entitlements - build/Build/Products/Release-appletvsimulator/BingrTV.app 2>&1 | tail -n 30 || true
-
-      - name: Start-rooktest tvOS (simulator)
-        id: smoke_tvos
-        if: env.SMOKE == 'true' && steps.tvos.outcome == 'success' && steps.tvos_release.outcome != 'failure'
-        continue-on-error: true
-        timeout-minutes: 25
-        # Apple TV heeft veel minder geheugen dan een iPhone of Mac: daarboven stopt tvOS de app (lijkt een crash)
-        env:
-          SMOKE_MAX_MB: "700"
-          SMOKE_CONFIG: Release
-          SMOKE_LIGHT: ${{ env.HEAVY != 'true' && '1' || '' }}
-        run: tools/smoke_launch.sh tvos build/Build/Products "$RUNNER_TEMP/smoke/tvos" 2>&1 | tee smoke-tvos.log; exit ${PIPESTATUS[0]}
-
-      - name: Start-rooktest macOS
-        id: smoke_macos
-        if: env.HEAVY == 'true' && steps.macos.outcome == 'success'
-        continue-on-error: true
-        timeout-minutes: 15
-        run: tools/smoke_launch.sh macos build/Build/Products "$RUNNER_TEMP/smoke/macos" 2>&1 | tee smoke-macos.log; exit ${PIPESTATUS[0]}
-
-      - name: Testaccount van de start-rooktest verwijderen
-        if: always()
-        continue-on-error: true
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          REF: ${{ secrets.SUPABASE_PROJECT_REF }}
-        run: python3 -I tools/smoke_account.py delete
+          for i in $(seq 1 300); do [ -f "$RUNNER_TEMP/selftest.rc" ] && break; sleep 2; done
+          tail -n 60 selftest.log || true
+          exit "$(cat "$RUNNER_TEMP/selftest.rc" 2>/dev/null || echo 1)"
 
       - name: Build-rapport publiceren (branch ci-logs)
         if: always()
         run: |
-          mkdir -p report
+          mkdir -p "$RUNNER_TEMP/report"; R="$RUNNER_TEMP/report"
           {
             echo "commit: $GITHUB_SHA"
             echo "ios: ${{ steps.ios.outcome }}"
             echo "tvos: ${{ steps.tvos.outcome }}"
             echo "macos: ${{ steps.macos.outcome }}"
             echo "selftest: ${{ steps.selftest.outcome }}"
-            echo "smoke: ios=${{ steps.smoke_ios.outcome }} tvos=${{ steps.smoke_tvos.outcome }} macos=${{ steps.smoke_macos.outcome }}"
             echo
             echo "=== selftest ==="
             tail -n 60 selftest.log || true
-            echo
-            echo "=== start-rooktest ==="
-            for p in ios tvos macos; do grep -aE "^(Simulator|$p/|[0-9]+ .*get|Start-rooktest|== |app:|exception:|termination:|reason:|asi |thread |  [ 0-9][0-9] |-- |BINGR_SMOKE)" smoke-$p.log 2>/dev/null | grep -v '^::' | grep -v tabblad | head -n 300; done
             echo
             echo "=== iOS errors ==="
             grep -E "error:|warning: .*(unavailable|deprecated in)" ios.log | sort -u | head -300 || true
@@ -205,131 +196,20 @@ jobs:
             echo
             echo "=== macOS errors ==="
             grep -E "error:" macos.log | sort -u | head -300 || true
-          } > report/latest.txt
-          # kant-en-klaar Xcode-project (met gegenereerd .xcodeproj en vastgelegde package-versies)
-          zip -qr report/Bingr-xcode.zip . -x '.git/*' 'report/*' '*.log' 'build/*'
-          tail -n 200 ios.log > report/ios-tail.txt || true
-          tail -n 200 tvos.log > report/tvos-tail.txt || true
-          tail -n 200 macos.log > report/macos-tail.txt || true
-          mkdir -p report/smoke
-          for p in ios tvos macos; do for f in "$RUNNER_TEMP/smoke/$p/"*.png; do
-            [ -f "$f" ] && cp "$f" "report/smoke/$p-$(basename "$f")"; done; done
+          } > "$R/latest.txt"
+          tail -n 200 ios.log > "$R/ios-tail.txt" || true
+          tail -n 200 tvos.log > "$R/tvos-tail.txt" || true
+          tail -n 200 macos.log > "$R/macos-tail.txt" || true
           git config user.name "github-actions"
           git config user.email "actions@github.com"
-          git fetch origin ci-logs || true
-          # ingebouwde sleutels zitten al in de zip; werkmap weer schoon maken voor de branch-wissel
           git reset --hard -q
           git switch --orphan ci-logs-tmp
           git rm -rf --quiet . || true
-          cp report/*.txt .
-          mkdir -p smoke && cp report/smoke/*.png smoke/ 2>/dev/null || true
+          cp "$R"/*.txt .
           git add latest.txt ios-tail.txt tvos-tail.txt macos-tail.txt
-          git add smoke 2>/dev/null || true
-          # build 105: het Xcode-project staat niet meer op ci-logs (de branch is openbaar); alleen de logs
-          git commit -m "build $GITHUB_SHA ios=${{ steps.ios.outcome }} tvos=${{ steps.tvos.outcome }} macos=${{ steps.macos.outcome }} smoke=${{ steps.smoke_ios.outcome }}/${{ steps.smoke_tvos.outcome }}/${{ steps.smoke_macos.outcome }}"
+          git commit -q -m "build $GITHUB_SHA ios=${{ steps.ios.outcome }} tvos=${{ steps.tvos.outcome }} macos=${{ steps.macos.outcome }} selftest=${{ steps.selftest.outcome }}"
           git push -f origin HEAD:ci-logs
 
-      # Xcode-project versleuteld naar de PRIVÉ repo LRvdLinden/bingr-inbox (tools/seal_build.sh van bingr-beheer, branch
-      # inbox-apple); de workflow Builds van bingr-beheer haalt het daar op en zet het in de afgesloten map builds/ op de
-      # server van beheer.bingr.online (alleen als iOS, tvOS en macOS slagen).
-      # Nooit onversleuteld op GitHub: geen artefact, geen release, niet op ci-logs.
-      # Nodig: secret BINGR_INBOX_TOKEN (fine-grained token met alleen Contents: Read and write op LRvdLinden/bingr-inbox).
-      # H3: géén token voor bingr-beheer meer (daarmee kon je het beheer-dashboard vervangen); die openbare repo (script en
-      # publieke sleutel) wordt anoniem gekloond, en het token gaat nooit in een URL (seal_build.sh geeft het als kopregel mee).
-      - name: Xcode-project versleuteld aanleveren voor beheer.bingr.online
-        # build 141: alleen als de apps ook echt starten (start-rooktest)
-        if: github.event_name != 'schedule' && steps.ios.outcome == 'success' && steps.tvos.outcome == 'success' && steps.macos.outcome == 'success' && steps.tvos_release.outcome != 'failure' && steps.smoke_ios.outcome != 'failure' && steps.smoke_tvos.outcome != 'failure' && steps.smoke_macos.outcome != 'failure'
-        env:
-          TOKEN: ${{ secrets.BINGR_INBOX_TOKEN }}
-          BINGR_INBOX_REPO: LRvdLinden/bingr-inbox
-        run: |
-          set -euo pipefail
-          TOKEN=$(printf '%s' "$TOKEN" | tr -d '[:space:]')   # spaties/regeleinde van het plakken weghalen
-          # bewust geen terugval op een ander token: zonder BINGR_INBOX_TOKEN wordt er niets aangeleverd
-          if [ -z "$TOKEN" ]; then echo "::warning::Secret BINGR_INBOX_TOKEN ontbreekt: Xcode-project niet aangeleverd (zie README.md van bingr-beheer, H3)."; exit 0; fi
-          # (de werkmap is na de ci-logs-stap leeg; versie en build komen uit het project in de zip)
-          mkdir -p /tmp/pkg && cd /tmp/pkg && rm -rf x && mkdir x && cd x && unzip -q "$GITHUB_WORKSPACE/report/Bingr-xcode.zip"
-          B=$(grep -m1 'CURRENT_PROJECT_VERSION' project.yml | grep -o '[0-9]\+'); V=$(grep -m1 'MARKETING_VERSION' project.yml | grep -o '[0-9.]\+' || echo 1.0.0)
-          # zonder docs/screenshots en docs/covers (die horen niet in het pakket)
-          rm -rf docs/screenshots docs/covers
-          zip -qr "/tmp/pkg/Bingr-$V-build$B-Xcode.zip" .
-          cd /tmp/pkg
-          awk -v b="Build $B" '/^## /{f=($0 ~ (b "$"))?1:0; next} f && !/^_.*_$/' x/CHANGELOG.md > notes.md || true
-          # anoniem (openbare repo): seal_build.sh en builds.pub.pem
-          GIT_TERMINAL_PROMPT=0 git clone -q --depth 1 https://github.com/LRvdLinden/bingr-beheer.git beheer 2>/dev/null \
-            || { echo "::error::bingr-beheer niet op te halen."; exit 1; }
-          TOKEN="$TOKEN" beheer/tools/seal_build.sh apple "/tmp/pkg/Bingr-$V-build$B-Xcode.zip" "$V" "$B" notes.md
-          rm -rf /tmp/pkg
-
       - name: Status
-        if: steps.ios.outcome != 'success' || steps.tvos.outcome != 'success' || steps.macos.outcome != 'success' || steps.selftest.outcome != 'success' || steps.tvos_release.outcome == 'failure' || steps.smoke_ios.outcome == 'failure' || steps.smoke_tvos.outcome == 'failure' || steps.smoke_macos.outcome == 'failure'
-        run: exit 1
-
-  # build 143: dezelfde korte start-rooktest met de nieuwste Xcode (SDK 27) en de nieuwste iOS/tvOS-simulator, zoals
-  # Léon de app nu bouwt en draait (tvOS 27). Uitkomst op de branch ci-logs-sdk27 (latest.txt); faalt bij een crash.
-  sdk27:
-    runs-on: macos-26
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 (v5.1.0)
-
-      - name: Nieuwste Xcode kiezen
-        run: |
-          ls -d /Applications/Xcode*.app || true
-          sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
-          xcodebuild -version | tee versions.txt
-          xcrun simctl list runtimes | tee -a versions.txt
-
-      - name: Project genereren
-        run: |
-          brew install xcodegen
-          xcodegen generate
-
-      - name: Build iOS en tvOS (simulator, nieuwste SDK)
-        id: build27
-        continue-on-error: true
-        run: |
-          set -o pipefail
-          xcodebuild build -project Bingr.xcodeproj -scheme Bingr -derivedDataPath build \
-            -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO 2>&1 | tee ios27.log | tail -n 5
-          xcodebuild build -project Bingr.xcodeproj -scheme BingrTV -derivedDataPath build \
-            -destination 'generic/platform=tvOS Simulator' CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO 2>&1 | tee tvos27.log | tail -n 5
-
-      # build 146: geen simulator-rooktest bij een push of een gewone Run workflow (Léon test de Apple-apps zelf);
-      # alleen 's nachts of via Run workflow met zware_rooktest of rooktest aan
-      - name: Start-rooktest tvOS en iOS (nieuwste simulator)
-        id: smoke27
-        if: steps.build27.outcome == 'success' && (github.event_name == 'schedule' || inputs.zware_rooktest == true || inputs.rooktest == true)
-        continue-on-error: true
-        env:
-          SMOKE_LIGHT: "1"
-        run: |
-          set -o pipefail
-          tools/smoke_launch.sh tvos build/Build/Products "$RUNNER_TEMP/smoke/tvos" 2>&1 | tee smoke27-tvos.log; a=${PIPESTATUS[0]}
-          tools/smoke_launch.sh ios build/Build/Products "$RUNNER_TEMP/smoke/ios" 2>&1 | tee smoke27-ios.log; b=${PIPESTATUS[0]}
-          exit $(( a || b ))
-
-      - name: Rapport (branch ci-logs-sdk27)
-        if: always()
-        run: |
-          {
-            echo "commit: $GITHUB_SHA"
-            echo "build: ${{ steps.build27.outcome }}  smoke: ${{ steps.smoke27.outcome }}"
-            cat versions.txt 2>/dev/null | head -n 30
-            echo "=== build errors ==="
-            grep -hE "error:" ios27.log tvos27.log 2>/dev/null | sort -u | head -n 100
-            echo "=== start-rooktest ==="
-            cat smoke27-tvos.log smoke27-ios.log 2>/dev/null | grep -v '^::' | grep -v tabblad | head -n 400
-          } > "$RUNNER_TEMP/latest.txt"
-          git config user.name "github-actions"; git config user.email "actions@github.com"
-          git reset --hard -q
-          git switch --orphan ci-logs-sdk27-tmp
-          git rm -rf --quiet . || true
-          cp "$RUNNER_TEMP/latest.txt" latest.txt
-          git add latest.txt
-          git commit -q -m "sdk27 $GITHUB_SHA build=${{ steps.build27.outcome }} smoke=${{ steps.smoke27.outcome }}"
-          git push -f origin HEAD:ci-logs-sdk27
-
-      - name: Status
-        if: steps.build27.outcome != 'success' || steps.smoke27.outcome == 'failure'
+        if: steps.ios.outcome != 'success' || steps.tvos.outcome != 'success' || steps.macos.outcome != 'success' || steps.selftest.outcome != 'success'
         run: exit 1
