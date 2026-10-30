@@ -45,6 +45,15 @@ begin
   if (select count(*) from public.account_devices where user_id = '00000000-0000-0000-0000-00000000000c') <> 5 then raise exception 'lifetime aangeraakt'; end if;
   if (select count(*) from public.account_devices where user_id = '00000000-0000-0000-0000-00000000000d') <> 5 then raise exception 'eigen limiet aangeraakt'; end if;
 
+  -- gedeelde sessie: een verwijderd apparaat met dezelfde sessie als een gebleven apparaat trekt die sessie niet in
+  insert into auth.sessions (id, user_id) values ('20000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-00000000000e');
+  update public.account_devices set session_id = '20000000-0000-0000-0000-000000000001' where user_id = '00000000-0000-0000-0000-00000000000e';
+  insert into public.account_devices (user_id, device_id, session_id, last_seen_at)
+    values ('00000000-0000-0000-0000-00000000000e', 'e9', '20000000-0000-0000-0000-000000000001', now() - interval '30 days');
+  r := public.bingr_enforce_free_devices(2, '00000000-0000-0000-0000-00000000000e');
+  if r <> '{"accounts": 1, "devices": 1}'::jsonb then raise exception 'gedeelde sessie: %', r; end if;
+  if not exists (select 1 from auth.sessions where id = '20000000-0000-0000-0000-000000000001') then raise exception 'gedeelde sessie ingetrokken'; end if;
+
   -- herhaalbaar: tweede keer niets
   r := public.bingr_enforce_free_devices(2);
   if r <> '{"accounts": 0, "devices": 0}'::jsonb then raise exception 'herhaald: %', r; end if;

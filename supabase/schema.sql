@@ -4344,7 +4344,11 @@ begin
       delete from public.account_devices d where d.user_id = r.user_id and d.device_id not in (select device_id from keep)
       returning d.device_id, d.session_id
     ), s as (
-      delete from auth.sessions where id in (select session_id from gone where session_id is not null) returning 1
+      -- alleen sessies die geen gebleven apparaat meer gebruikt (twee rijen met dezelfde sessie: de gebleven blijft ingelogd)
+      delete from auth.sessions where id in (select session_id from gone where session_id is not null)
+        and id not in (select k.session_id from public.account_devices k where k.user_id = r.user_id
+                       and k.device_id in (select device_id from keep) and k.session_id is not null)
+      returning 1
     ), st as (
       delete from public.account_streams a where a.user_id = r.user_id and a.device_id in (select device_id from gone) returning 1
     )
