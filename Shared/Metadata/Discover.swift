@@ -12,8 +12,9 @@ import Foundation
 // Zelfde sleutels en regels op Android, Samsung TV en de webspeler.
 
 enum DiscoverKind: String, CaseIterable, Codable, Hashable, Sendable {
-    /// Build 152: `cinema` = "Nu in de bioscoop" (TMDB `/movie/now_playing`; IMDb heeft geen openbare API)
-    case upcoming, streaming, cinema
+    /// Build 152: `cinema` (sleutel "nowplaying", zoals de webspeler) = "Nu in de bioscoop" (TMDB `/movie/now_playing`; IMDb heeft geen openbare API)
+    case upcoming, streaming
+    case cinema = "nowplaying"
 
     /// Sleutel in de Home-indeling (HomeLayout), gelijk op alle platforms
     var homeKey: String { rawValue }
