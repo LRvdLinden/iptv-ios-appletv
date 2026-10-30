@@ -3930,10 +3930,10 @@ do $$ begin
 end $$;
 
 -- 5. Windows op de statuspagina (groep Apps): de GitHub-build van bingr-windows (zoals Apple) en de openbare download
---    (bingr.online/windows -> dl.php?app=windows; soort head: alleen HEAD, telt niet als download).
+--    (bingr.online/windows -> dl.php?app=windows). De monitor Windows-download (id exe, soort head) staat niet meer in de
+--    standaardlijst en is uit (zie onderaan); de download zelf werkt gewoon.
 insert into public.status_monitors (id, name_nl, name_en, grp, kind, target, keyword, interval_min, public, enabled, builtin, sort) values
-  ('windows',  'Windows',            'Windows',          'apps', 'gh_workflow', 'LRvdLinden/bingr-windows|build.yml|main',        null, 15, true, true, true, 40),
-  ('exe',      'Windows-download',   'Windows download', 'apps', 'head',        'https://beheer.bingr.online/dl.php?app=windows', null, 15, true, true, true, 45)
+  ('windows',  'Windows',            'Windows',          'apps', 'gh_workflow', 'LRvdLinden/bingr-windows|build.yml|main',        null, 15, true, true, true, 40)
 on conflict (id) do nothing;
 
 -- Opruimen (zoals hierboven), plus de tellers van de inlogbescherming per account.
@@ -4235,3 +4235,13 @@ update public.status_monitors set enabled = false, public = false
    and (enabled or public);
 update public.status_monitors set target = 'LRvdLinden/bingr-android|build.yml|main|apk'
  where id = 'android-ci' and kind = 'gh_workflow' and target = 'LRvdLinden/bingr-android|build.yml|main|apk,tizen';
+
+-- ============================================================================================================
+-- Windows-download van de statuspagina (server): de monitor exe (soort head, dl.php?app=windows) en een eventuele
+-- opslagmonitor (soort build, doel windows) gaan uit en uit de statuspagina. NIET verwijderd: rijen en geschiedenis
+-- blijven staan. De monitor windows (GitHub-build), de downloadknop en dl.php blijven gewoon werken.
+update public.status_monitors set enabled = false, public = false
+ where (id = 'exe'
+        or (kind = 'head' and lower(target) like '%dl.php?app=windows%')
+        or (kind = 'build' and lower(target) = 'windows'))
+   and (enabled or public);
