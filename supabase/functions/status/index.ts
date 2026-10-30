@@ -8,6 +8,8 @@
 //   feed     {format?: atom|rss, lang?: nl|en}  -> XML (storingen en onderhoud)
 //   subscribe {email, lang?, website?}  -> {ok}  bevestigingsmail (dubbele opt-in); website = lokveld
 //   confirm  {token} -> {ok, lang}   unsubscribe {token} -> {ok}
+//   releases                      -> {apple:{live, beta}, android:{live, beta}, updatedAt}  versies voor de downloadknoppen op
+//                                     bingr.online (app_settings.release_channels, in te stellen in het beheer; releases.ts)
 //   Alleen openbare monitors; geen gebruikers- of apparaataantallen.
 // Met header `x-status-secret: <STATUS_CRON_SECRET>` (pg_cron en de admin-functie; het geheim staat alleen op de server):
 //   run            {force?, monitor_id?}  -> controleert wat aan de beurt is, slaat op, opent/sluit storingen en meldingen,
@@ -39,6 +41,7 @@ import {
   publicNotice, type PublicNotice, rssFeed, span, validEmail, validToken,
 } from "./notices.ts";
 import { renderConfirm, renderNotice, unsubscribeUrl } from "./templates.ts";
+import { releasesView } from "./releases.ts";
 
 const env = (k: string) => Deno.env.get(k) ?? "";
 const db = createClient(env("SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"), {
@@ -862,11 +865,22 @@ async function saveMonitor(b: Record<string, unknown>) {
 const xml = (body: string, type: string) =>
   new Response(body, { status: 200, headers: { ...cors, "Content-Type": `${type}; charset=utf-8`, "Cache-Control": "public, max-age=300" } });
 
+// Versies voor de downloadknoppen (app_settings.release_channels), 60 s in het geheugen; bij een fout geen versies.
+let relCache: { at: number; body: ReturnType<typeof releasesView> } | null = null;
+async function releases() {
+  if (relCache && Date.now() - relCache.at < 60_000) return relCache.body;
+  const { data, error } = await db.from("app_settings").select("value").eq("key", "release_channels").maybeSingle();
+  if (error) throw new Error(error.message);
+  relCache = { at: Date.now(), body: releasesView(data?.value) };
+  return relCache.body;
+}
+
 /** Openbare acties (GET met ?action= of POST met {action}). null = geen openbare actie. */
 async function publicAction(action: string, p: Record<string, unknown>, req: Request): Promise<Response | null> {
   switch (action) {
     case "public": return json(await publicSummary(), 200, "public, max-age=60");
     case "ping": return json({ ok: true });
+    case "releases": return json(await releases(), 200, "public, max-age=60");
     case "history": return json(await history(Number(p.page ?? 1)), 200, "public, max-age=60");
     case "notice": {
       const id = Number(p.id);

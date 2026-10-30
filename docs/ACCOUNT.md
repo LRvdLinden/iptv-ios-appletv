@@ -1774,3 +1774,17 @@ blijven werken.
   (`-`, `|`), en tussen 1900 en volgend jaar ligt.
   - `Blade Runner 2049` en `Sub Zero` blijven heel.
   - `Dune (2021)` en `Dune - 2021` worden `Dune` met jaar 2021.
+
+## Versies bij de downloadknoppen (alleen server en website)
+
+Geen app-wijziging. Het beheer zet per platform welke versie live staat en welke bèta het nieuwst is; bingr.online toont dat
+als rode badge bij de downloadknoppen.
+
+- **Opslag:** `app_settings.release_channels` (jsonb), sleutels `apple` (iOS, iPadOS, tvOS, macOS) en `android` (ook
+  Android TV, Google TV en Fire TV): `{live: {version, build, date?} | null, beta: {version, build, date?, label} | null}`,
+  plus `updatedAt` (ISO). `version` = `1.0.3` (2 tot 4 getallen), `build` = geheel getal ≥ 1, `date` = `YYYY-MM-DD`,
+  `label` = `"TestFlight"` of `"Beta"` (standaard Apple `TestFlight`, Android `Beta`). Een kanaal zonder geldige versie
+  én build is `null`.
+- **Schrijven:** alleen het beheer (functie `admin`, acties `releases_get` / `releases_set`, in admin_audit).
+- **Lezen (openbaar):** functie `status`, `GET /functions/v1/status?action=releases` (60 s in de cache), zelfde vorm;
+  alleen de velden hierboven gaan naar buiten (`status/releases.ts`). `app_settings` blijft dicht voor anon.

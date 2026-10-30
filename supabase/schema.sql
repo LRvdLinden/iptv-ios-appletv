@@ -4245,3 +4245,13 @@ update public.status_monitors set enabled = false, public = false
         or (kind = 'head' and lower(target) like '%dl.php?app=windows%')
         or (kind = 'build' and lower(target) = 'windows'))
    and (enabled or public);
+
+-- ============================================================================================================
+-- Versies bij de downloadknoppen op bingr.online (server): app_settings.release_channels, per platform apple en android
+-- (android = ook Android TV, Google TV en Fire TV) {live: {version, build, date?} | null, beta: {version, build, date?,
+-- label: "TestFlight"|"Beta"} | null}, plus updatedAt. Schrijven alleen via het beheer (functie admin, releases_set);
+-- openbaar lezen alleen via de functie status (?action=releases, releases.ts), die alleen deze velden doorgeeft.
+-- app_settings blijft dicht voor anon en authenticated. Een bestaande waarde blijft staan.
+insert into public.app_settings (key, value) values
+  ('release_channels', '{"apple": {"live": null, "beta": null}, "android": {"live": null, "beta": null}, "updatedAt": null}'::jsonb)
+on conflict (key) do nothing;
