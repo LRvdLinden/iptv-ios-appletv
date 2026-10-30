@@ -385,6 +385,14 @@ final class StateSync {
         "profile." + ProfileSync.shared.serverID(for: id)
     }
 
+    // MARK: - Build 154: tijden van "gezien" (nieuwste gebeurtenis over alle sleutels van een item wint)
+
+    /// Laatst bekende `at` van toevoegingen en verwijderingen in `watched` voor een profiel (geen gegevens buiten de app)
+    func watchedStamps(profile: UUID) -> (present: [String: Double], removed: [String: Double]) {
+        let m = meta.profiles[profile.uuidString]
+        return (m?.present["watched"] ?? [:], m?.removed["watched"] ?? [:])
+    }
+
     // MARK: - Trakt: tokens zijn eenmalig bij verversen
 
     /// Vóór het verversen van Trakt-tokens: `connections` lezen; nieuwere tokens van de server worden dan gebruikt.

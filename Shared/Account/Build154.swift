@@ -221,6 +221,26 @@ enum WatchKeys {
         return out
     }
 
+    /// Nieuwste gebeurtenis wint, over alle kandidaatsleutels van het item (id-sleutel en inhoudssleutels, titel met
+    /// jaar ±1): gezien als de nieuwste tijd een toevoeging is (`present`), niet als het een verwijdering is (`removed`).
+    /// Bij gelijke tijd blijft het item staan (zoals `ListMerge`). `inSet`: de lokale set; een sleutel die daarin staat maar
+    /// (nog) geen `at` heeft, is net lokaal toegevoegd en dus het nieuwst; sleutels buiten de set tellen dan niet als toevoeging.
+    static func latestWins(present: [String: Double], removed: [String: Double], ownIDs: [String], keys: [String],
+                           inSet: Set<String>? = nil) -> Bool {
+        var maxP: Double?, maxR: Double?
+        for k in candidates(ownIDs + keys) {
+            if let set = inSet {
+                if set.contains(k) { maxP = max(maxP ?? -.infinity, present[k] ?? .infinity) }
+            } else if let at = present[k] {
+                maxP = max(maxP ?? -.infinity, at)
+            }
+            if let r = removed[k] { maxR = max(maxR ?? -.infinity, r) }
+        }
+        guard let p = maxP else { return false }
+        guard let r = maxR else { return true }
+        return p >= r
+    }
+
     static func isContentKey(_ k: String) -> Bool { k.hasPrefix("w:") }
 
     /// Migratie: voor elke oude id-sleutel die bij een item hoort (`resolve` geeft zijn inhoudssleutels, nil = onbekend)

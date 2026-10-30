@@ -67,27 +67,35 @@ enum Watched154 {
 
     // MARK: lezen
 
+    /// Lokaal gezien volgens de set én de regel "nieuwste gebeurtenis wint" over alle kandidaatsleutels (contract
+    /// Build 154): een verwijdering van bijv. alleen de titelsleutel (andere server, zonder tmdb) wint van een oudere
+    /// tmdb-sleutel.
+    static func locallyWatched(_ set: Set<String>, own: [String], keys: [String], profile: UUID? = nil) -> Bool {
+        let cands = WatchKeys.candidates(own + keys)
+        guard cands.contains(where: { set.contains($0) }) else { return false }
+        let store = CloudStore.shared
+        guard let pid = profile ?? store.activeProfileID ?? store.mainProfileID else { return true }
+        let st = StateSync.shared.watchedStamps(profile: pid)
+        guard !st.removed.isEmpty else { return true }
+        return WatchKeys.latestWins(present: st.present, removed: st.removed, ownIDs: own, keys: keys, inSet: set)
+    }
+
     static func isWatched(movie m: Movie, imdb: String?) -> Bool {
-        let local = CloudStore.shared.localWatched
-        if local.contains(m.id) { return true }
         let keys = movieKeys(m, imdb: imdb)
-        return WatchKeys.matches(local, keys: keys) || TraktSync.shared.isWatched(keys: keys)
+        return locallyWatched(CloudStore.shared.localWatched, own: [m.id], keys: keys) || TraktSync.shared.isWatched(keys: keys)
     }
 
     static func isWatched(_ e: Episode, series: Series?, imdb: String?) -> Bool {
-        let local = CloudStore.shared.localWatched
-        if local.contains(e.id) || local.contains(CloudStore.episodeKey(series: e.seriesID, season: e.season, episode: e.number)) {
-            return true
-        }
+        let own = [e.id, CloudStore.episodeKey(series: e.seriesID, season: e.season, episode: e.number)]
         let keys = episodeKeys(e, series: series, imdb: imdb)
-        return WatchKeys.matches(local, keys: keys) || TraktSync.shared.isWatched(keys: keys)
+        return locallyWatched(CloudStore.shared.localWatched, own: own, keys: keys) || TraktSync.shared.isWatched(keys: keys)
     }
 
     /// Seriekaart "gezien": `w:s:` staat erin (lokaal of op Trakt)
     static func isSeriesWatched(_ s: Series, imdb: String?) -> Bool {
         let keys = showKeys(s, imdb: imdb)
         guard !keys.isEmpty else { return false }
-        return WatchKeys.matches(CloudStore.shared.localWatched, keys: keys) || TraktSync.shared.isWatched(keys: keys)
+        return locallyWatched(CloudStore.shared.localWatched, own: [], keys: keys) || TraktSync.shared.isWatched(keys: keys)
     }
 
     /// "seizoen-aflevering" die als inhoudssleutel gezien zijn (lokaal en op Trakt), voor het label "N bekeken"
@@ -167,9 +175,9 @@ enum Watched154 {
         let store = CloudStore.shared
         let set = store.watchedSet(profile: profile)
         let watchedCount = eps.filter { e in
-            set.contains(e.id) || set.contains(CloudStore.episodeKey(series: e.seriesID, season: e.season, episode: e.number))
-                || WatchKeys.matches(set, keys: WatchKeys.episode(forms: forms, season: e.season, episode: e.number))
-                || TraktSync.shared.isWatched(keys: WatchKeys.episode(forms: forms, season: e.season, episode: e.number))
+            let keys = WatchKeys.episode(forms: forms, season: e.season, episode: e.number)
+            let own = [e.id, CloudStore.episodeKey(series: e.seriesID, season: e.season, episode: e.number)]
+            return locallyWatched(set, own: own, keys: keys, profile: profile) || TraktSync.shared.isWatched(keys: keys)
         }.count
         let complete = WatchKeys.seriesComplete(watched: watchedCount, aired: TraktSync.shared.aired(forms: forms), onServer: eps.count)
         let keys = forms.map { "w:s:" + $0 }

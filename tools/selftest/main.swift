@@ -1503,6 +1503,27 @@ do {
         eq(WatchKeys.matches(Set(strs(c["stored"])), keys: keys), (c["watched"] as? Bool) ?? false, "lookup geval \(i + 1)")
     }
 
+    // nieuwste gebeurtenis over alle kandidaatsleutels wint (contract-aanvulling f93f008)
+    let lt = (cases["latest"] as? [[String: Any]]) ?? []
+    check(lt.count >= 3, "build 154: latest-gevallen geladen")
+    func stamps(_ v: Any?) -> [String: Double] {
+        var out: [String: Double] = [:]
+        for (k, x) in (v as? [String: Any]) ?? [:] { if let n = x as? NSNumber { out[k] = n.doubleValue } }
+        return out
+    }
+    for (i, c) in lt.enumerated() {
+        let keys = WatchKeys.movie(title: str(c["title"]) ?? "", year: int(c["year"]), tmdb: str(c["tmdb"]), imdb: str(c["imdb"]))
+        eq(WatchKeys.latestWins(present: stamps(c["watched"]), removed: stamps(c["removed"]), ownIDs: [], keys: keys),
+           (c["result"] as? Bool) ?? false, "latest geval \(i + 1)")
+    }
+    // lokaal net toegevoegd (nog zonder at) wint van een oudere verwijdering
+    check(WatchKeys.latestWins(present: [:], removed: ["w:m:tmdb:1": 500], ownIDs: [], keys: ["w:m:tmdb:1"], inSet: ["w:m:tmdb:1"]),
+          "latest: lokaal toegevoegd wint")
+    check(!WatchKeys.latestWins(present: ["w:m:tmdb:1": 100], removed: ["w:m:t:x|2020": 200], ownIDs: [],
+                                keys: ["w:m:tmdb:1", "w:m:t:x|2021"], inSet: ["w:m:tmdb:1"]),
+          "latest: verwijdering van de titelsleutel (jaar ±1) wint van een oudere tmdb-sleutel")
+    check(WatchKeys.norm("がっこう") == "かっこう", "norm: dakuten weg")
+
     // uitvinken haalt alle sleutels weg (ook de oude id-sleutel en een titelsleutel met jaar ±1)
     let dune = WatchKeys.movie(title: "Dune", year: 2022, tmdb: "438631", imdb: "tt1160419")
     let stored: Set<String> = ["xv123", "w:m:tmdb:438631", "w:m:imdb:tt1160419", "w:m:t:dune|2021", "w:m:t:anders|2021"]
