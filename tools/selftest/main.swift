@@ -1775,5 +1775,79 @@ do {
     try? FileManager.default.removeItem(at: dir)
 }
 
+// MARK: build 158: UserDefaults klein (tvOS: hooguit 1 MB samen, anders stopt de app bij het openen), grote gegevens in bestanden
+do {
+    for k in ["account.stateMeta.v1", "photos.v1", "categories.account.v140", "watched.v1.6F1C2B9E-0000-4000-8000-000000000001",
+              "discover.known", "discover.upcoming.nl.NL", "account.sourceExtras.v1", "custom.v1",
+              "categories.v1.6F1C2B9E-0000-4000-8000-000000000001", "history.v1.6F1C2B9E-0000-4000-8000-000000000001", "progress.v1"] {
+        check(DefaultsPolicy158.isFileKey(k), "158: \(k) in een bestand")
+    }
+    for k in ["lastPlaylistID", "categories.migrated.v140", "watched", "photos", "discoverX", "entitlements.themes", "player.engine"] {
+        check(!DefaultsPolicy158.isFileKey(k), "158: \(k) blijft in UserDefaults")
+    }
+    check(DefaultsPolicy158.fitsInDefaults(size: 100 * 1024, others: 0), "158: 100 KB per sleutel mag")
+    check(!DefaultsPolicy158.fitsInDefaults(size: 100 * 1024 + 1, others: 0), "158: meer dan 100 KB per sleutel niet")
+    check(!DefaultsPolicy158.fitsInDefaults(size: 10, others: 900 * 1024), "158: samen niet boven 900 KB")
+    check(DefaultsPolicy158.maxTotal < 1_048_576, "158: grens onder de 1 MB van tvOS")
+    for k in ["a/b", "../x", ".", "", "watched.v1.ÄÖ|x", "discover.upcoming.nl.NL"] {
+        eq(DefaultsPolicy158.key(fromFileName: DefaultsPolicy158.fileName(k)), k, "158: bestandsnaam heen en terug (\(k))")
+        check(!DefaultsPolicy158.fileName(k).contains("/"), "158: geen / in de bestandsnaam (\(k))")
+    }
+
+    // de stand uit de log van Léon (tvOS 27): samen boven 1 MB
+    let suite = "nl.lrvdlinden.bingr.selftest158.\(getpid())"
+    let ud = UserDefaults(suiteName: suite)!
+    ud.removePersistentDomain(forName: suite)
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("bingr-selftest-defaults-\(getpid())")
+    try? FileManager.default.removeItem(at: dir)
+    func blob(_ n: Int, _ seed: UInt8) -> Data { Data((0..<n).map { UInt8(truncatingIfNeeded: $0) &+ seed }) }
+    let log: [(String, Int)] = [("account.stateMeta.v1", 667_861), ("photos.v1", 234_785), ("categories.account.v140", 82_170),
+                                ("watched.v1.6F1C2B9E-0000-4000-8000-000000000001", 69_142), ("discover.known", 21_542),
+                                ("discover.upcoming.nl.NL", 19_607), ("account.sourceExtras.v1", 12_842), ("custom.v1", 12_155),
+                                ("andere.grote.data", 150_000)]
+    for (i, x) in log.enumerated() { ud.set(blob(x.1, UInt8(i)), forKey: x.0) }
+    ud.set("ABC", forKey: "lastPlaylistID")
+    ud.set(true, forKey: "entitlements.themes")
+    let big = BigDefaults(defaults: ud, dir: dir, domain: suite)
+    let moved = big.migrate()
+    check(moved.contains("account.stateMeta.v1") && moved.contains("photos.v1") && moved.contains("andere.grote.data"), "158: grote sleutels verplaatst")
+    check(big.defaultsBytes() <= DefaultsPolicy158.maxTotal, "158: na de migratie onder 900 KB (\(big.defaultsBytes()))")
+    let dom = ud.persistentDomain(forName: suite) ?? [:]
+    check(dom.allSatisfy { DefaultsPolicy158.size(of: $0.value) <= DefaultsPolicy158.maxPerKey }, "158: geen sleutel boven 100 KB in UserDefaults")
+    check(dom.keys.allSatisfy { !DefaultsPolicy158.isFileKey($0) }, "158: bestandssleutels uit UserDefaults")
+    for (i, x) in log.enumerated() { eq(big.data(forKey: x.0), blob(x.1, UInt8(i)), "158: \(x.0) na de migratie gelijk") }
+    eq(ud.string(forKey: "lastPlaylistID"), "ABC", "158: kleine instelling blijft in UserDefaults")
+    check(big.bool(forKey: "entitlements.themes") && ud.bool(forKey: "entitlements.themes"), "158: bool blijft leesbaar")
+    eq(big.migrate(), [], "158: migratie één keer per start")
+
+    // schrijven: een bestandssleutel nooit in UserDefaults, en elke andere grote waarde ook niet (de grens)
+    big.set(blob(700_000, 9), forKey: "account.stateMeta.v1")
+    check(ud.object(forKey: "account.stateMeta.v1") == nil, "158: stateMeta nooit in UserDefaults")
+    big.set(blob(2_000_000, 7), forKey: "nog.groter")
+    check(ud.object(forKey: "nog.groter") == nil && big.data(forKey: "nog.groter") == blob(2_000_000, 7), "158: 2 MB naar een bestand")
+    for i in 0..<12 { big.set(blob(95_000, UInt8(i)), forKey: "veel.\(i)") }
+    check(big.defaultsBytes() <= DefaultsPolicy158.maxTotal, "158: veel kleine sleutels samen onder 900 KB")
+    for i in 0..<12 { eq(big.data(forKey: "veel.\(i)"), blob(95_000, UInt8(i)), "158: veel.\(i) leesbaar") }
+    big.set("klein", forKey: "nog.groter")
+    eq(big.string(forKey: "nog.groter"), "klein", "158: klein overschrijft het bestand")
+    check(!FileManager.default.fileExists(atPath: dir.appendingPathComponent(DefaultsPolicy158.fileName("nog.groter")).path), "158: oud bestand weg")
+    // een sleutel die (nog) in UserDefaults staat, gaat bij het lezen naar een bestand
+    ud.set(blob(500, 1), forKey: "history.v1.x")
+    eq(big.data(forKey: "history.v1.x"), blob(500, 1), "158: history uit UserDefaults gelezen")
+    check(ud.object(forKey: "history.v1.x") == nil, "158: history daarna uit UserDefaults")
+    big.removeObject(forKey: "photos.v1")
+    check(big.data(forKey: "photos.v1") == nil, "158: verwijderen")
+    // na een herstart (nieuwe instantie) staat alles er nog; een gewist cachemap = gewoon leeg (opnieuw uit het account)
+    let again = BigDefaults(defaults: ud, dir: dir, domain: suite)
+    eq(again.data(forKey: "account.stateMeta.v1"), blob(700_000, 9), "158: na herstart uit het bestand")
+    try? FileManager.default.removeItem(at: dir)
+    let wiped = BigDefaults(defaults: ud, dir: dir, domain: suite)
+    check(wiped.data(forKey: "account.stateMeta.v1") == nil, "158: cache gewist: leeg, geen crash")
+    wiped.set(blob(10, 1), forKey: "account.stateMeta.v1")
+    eq(wiped.data(forKey: "account.stateMeta.v1"), blob(10, 1), "158: na wissen weer te schrijven")
+    ud.removePersistentDomain(forName: suite)
+    try? FileManager.default.removeItem(at: dir)
+}
+
 print("\(checks) controles, \(failures) fout")
 exit(failures == 0 ? 0 : 1)

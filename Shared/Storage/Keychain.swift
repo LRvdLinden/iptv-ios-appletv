@@ -209,11 +209,8 @@ private enum LegacySecrets {
         if let legacy = all(service, sync: kCFBooleanFalse as Any) { shared.merge(legacy) { a, _ in a } } else { readOK = false }
         if let synced = all(service, sync: kCFBooleanTrue as Any) { for (k, v) in synced { shared[k] = v } } else { readOK = false }
         if let d = all(deviceService, sync: kSecAttrSynchronizableAny) { device = d } else { readOK = false }
-        // oude iCloud KV-spiegel (build ≤ 96)
-        if Date().timeIntervalSince(started) < 8,
-           let mirror = NSUbiquitousKeyValueStore.default.dictionary(forKey: "secrets.v1") as? [String: String] {
-            for (k, v) in mirror where shared[k] == nil && !v.isEmpty { shared[k] = v }
-        }
+        // build 158: de oude iCloud KV-spiegel (build ≤ 96) niet meer lezen: geen iCloud sinds build 144
+        _ = started
         let changed = Keychain.importValues(shared: shared, device: device)
         // pas als alles gelezen is: de oude items opruimen (geen nieuwe start vindt ze dan nog)
         if readOK {

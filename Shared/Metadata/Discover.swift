@@ -112,7 +112,7 @@ final class DiscoverKnown: @unchecked Sendable {
 
     private func loaded() -> [String: Saved] {
         if let items { return items }
-        let d = UserDefaults.standard.data(forKey: key).flatMap { try? JSONDecoder().decode([String: Saved].self, from: $0) } ?? [:]
+        let d = BigDefaults.shared.data(forKey: key).flatMap { try? JSONDecoder().decode([String: Saved].self, from: $0) } ?? [:]
         items = d
         return d
     }
@@ -135,7 +135,7 @@ final class DiscoverKnown: @unchecked Sendable {
             all = Dictionary(uniqueKeysWithValues: keep.map { ($0.key, $0.value) })
         }
         items = all
-        if let d = try? JSONEncoder().encode(all) { UserDefaults.standard.set(d, forKey: key) }
+        if let d = try? JSONEncoder().encode(all) { BigDefaults.shared.set(d, forKey: key) }
     }
 
     /// Sleutel uit Mijn lijst ("<bron>|tmdb-movie-123") → de TMDB-titel, als die bekend is. Build 141: ongeacht de
@@ -176,7 +176,7 @@ actor DiscoverStore {
         "discover.\(kind.rawValue).\(kids ? "kids." : "")\(Localizer.shared.language).\(region)"
     }
     private nonisolated static func saved(_ kind: DiscoverKind, kids: Bool) -> Saved? {
-        guard let d = UserDefaults.standard.data(forKey: key(kind, kids: kids)) else { return nil }
+        guard let d = BigDefaults.shared.data(forKey: key(kind, kids: kids)) else { return nil }
         return try? JSONDecoder().decode(Saved.self, from: d)
     }
 
@@ -202,7 +202,7 @@ actor DiscoverStore {
         let items = await t.value
         inFlight[k] = nil
         guard !items.isEmpty else { return Self.cached(kind, kids: kids) }
-        if let d = try? JSONEncoder().encode(Saved(date: Date(), items: items)) { UserDefaults.standard.set(d, forKey: k) }
+        if let d = try? JSONEncoder().encode(Saved(date: Date(), items: items)) { BigDefaults.shared.set(d, forKey: k) }
         DiscoverKnown.shared.remember(items)
         return items
     }

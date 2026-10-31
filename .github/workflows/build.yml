@@ -134,7 +134,7 @@ jobs:
       - name: Zelftest starten (pure logica, op de achtergrond)
         run: |
           ( set -o pipefail
-            swiftc -O Shared/Account/CatalogMeta.swift Shared/Account/Build140.swift Shared/Account/Build141.swift Shared/Account/Build145.swift Shared/Account/Build146.swift Shared/Account/Build147.swift Shared/Account/Build148.swift Shared/Account/Build149.swift Shared/Account/Build150.swift Shared/Account/Build151.swift Shared/Account/Build154.swift Shared/Account/Build157.swift tools/selftest/main.swift -o "$RUNNER_TEMP/selftest" > selftest.log 2>&1 \
+            swiftc -O Shared/Account/CatalogMeta.swift Shared/Account/Build140.swift Shared/Account/Build141.swift Shared/Account/Build145.swift Shared/Account/Build146.swift Shared/Account/Build147.swift Shared/Account/Build148.swift Shared/Account/Build149.swift Shared/Account/Build150.swift Shared/Account/Build151.swift Shared/Account/Build154.swift Shared/Account/Build157.swift Shared/Account/Build158.swift tools/selftest/main.swift -o "$RUNNER_TEMP/selftest" > selftest.log 2>&1 \
               && "$RUNNER_TEMP/selftest" >> selftest.log 2>&1
             echo $? > "$RUNNER_TEMP/selftest.rc" ) &
 

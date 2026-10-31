@@ -107,7 +107,7 @@ final class SourceSync {
         dirty = false
         unsupported = []
         for k in [extrasKey, updatedKey, fingerprintKey, tombstonesKey, lastMainKey] {
-            UserDefaults.standard.removeObject(forKey: k)
+            BigDefaults.shared.removeObject(forKey: k)
         }
     }
 
@@ -661,13 +661,13 @@ final class SourceSync {
     }
 
     private func loadExtras() -> [String: [String: Any]] {
-        guard let d = UserDefaults.standard.data(forKey: extrasKey),
+        guard let d = BigDefaults.shared.data(forKey: extrasKey),
               let j = (try? JSONSerialization.jsonObject(with: d)) as? [String: [String: Any]] else { return [:] }
         return j
     }
 
     private func saveExtras(_ e: [String: [String: Any]]) {
         guard let d = try? JSONSerialization.data(withJSONObject: e) else { return }
-        UserDefaults.standard.set(d, forKey: extrasKey)
+        BigDefaults.shared.set(d, forKey: extrasKey)
     }
 }

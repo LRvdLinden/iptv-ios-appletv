@@ -48,7 +48,7 @@ final class StateSync {
     private static let setLists = ["myList", "favorites", "watched", "hiddenCategories"]
 
     private init() {
-        if let d = UserDefaults.standard.data(forKey: metaKey), let m = try? JSONDecoder().decode(Meta.self, from: d) {
+        if let d = BigDefaults.shared.data(forKey: metaKey), let m = try? JSONDecoder().decode(Meta.self, from: d) {
             meta = m
         } else {
             meta = Meta()
@@ -102,7 +102,21 @@ final class StateSync {
     }
 
     private func saveMeta() {
-        if let d = try? JSONEncoder().encode(meta) { UserDefaults.standard.set(d, forKey: metaKey) }
+        // build 158: compact (verwijderingen ouder dan 90 dagen weg, hooguit 2000 per lijst) en in een bestand
+        compactMeta()
+        if let d = try? JSONEncoder().encode(meta) { BigDefaults.shared.set(d, forKey: metaKey) }
+    }
+
+    /// build 158: alle `removed`-lijsten in de meta volgens het contract opschonen (zie `pruned`)
+    private func compactMeta() {
+        func compact(_ m: inout ListMeta) {
+            for (k, v) in m.removed { m.removed[k] = Self.pruned(v) }
+            for (k, v) in m.present where v.isEmpty { _ = v; m.present[k] = nil }
+            for (k, v) in m.removed where v.isEmpty { _ = v; m.removed[k] = nil }
+        }
+        compact(&meta.reminders)
+        for id in Array(meta.profiles.keys) { if var m = meta.profiles[id] { compact(&m); meta.profiles[id] = m } }
+        if var a = meta.account { compact(&a); meta.account = a }
     }
 
     // MARK: - Starten en volgen
@@ -187,7 +201,7 @@ final class StateSync {
         requested = []
         ready = false
         meta = Meta()
-        UserDefaults.standard.removeObject(forKey: metaKey)
+        BigDefaults.shared.removeObject(forKey: metaKey)
     }
 
     /// Een **ander** account op dit apparaat (na `CloudStore.wipeAccountData`): Trakt en OpenSubtitles van het

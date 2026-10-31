@@ -10,6 +10,8 @@ struct BingrApp: App {
     // build 141: start-rooktest in CI (alleen Debug, launch-argument `-BingrSmoke YES`): eerst de testgegevens, dan pas
     // CloudStore (die leest ze bij het aanmaken)
     private let store: CloudStore = {
+        // build 158: grote sleutels uit UserDefaults naar bestanden, vóór er iets geschreven wordt (tvOS: max. 1 MB samen)
+        BigDefaults.shared.migrate()
         StartDiagnostics.shared.start()   // build 143: startdiagnose (mijlpalen, vangnet), zo vroeg mogelijk
         // build 144: de geheimen staan in een eigen bestand (geen sleutelhanger meer); alvast inlezen. Build 147: geen
         // mijlpaal "sleutelhanger" meer (dat klopte niet: het is het lezen van één klein bestand)

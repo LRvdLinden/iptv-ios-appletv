@@ -272,7 +272,8 @@ final class CloudStore: ObservableObject {
     /// stand-in, zodat de bestaande code niets meer naar iCloud schrijft of eruit leest; de eenmalige overname van wat er
     /// alleen in iCloud stond, doet `importFromICloudOnce` (op de achtergrond, na het eerste beeld).
     private let kv = NoCloudKV()
-    private let local = UserDefaults.standard
+    /// build 158: grote gegevens in bestanden, kleine in UserDefaults (op tvOS mag UserDefaults samen hooguit 1 MB)
+    private let local = BigDefaults.shared
     private var observer: NSObjectProtocol?
 
     private enum K {
@@ -447,27 +448,10 @@ final class CloudStore: ObservableObject {
 
     /// Build 144: eenmalig wat alleen in iCloud KV stond (bijv. door een ander apparaat zonder account) naar dit apparaat,
     /// op de achtergrond na het eerste beeld; daarna wordt iCloud KV niet meer gebruikt. Fouten: overslaan.
+    /// build 158: geen iCloud KV meer, ook niet eenmalig (gaf bij de start "SyncedDefaults … No account"). Blijft als lege
+    /// functie bestaan; de vlag van build 144 wordt gezet.
     nonisolated static func importFromICloudOnce() {
-        let flag = "icloud.imported.v144"
-        guard !UserDefaults.standard.bool(forKey: flag) else { return }
-        DispatchQueue.global(qos: .utility).async {
-            let kv = NSUbiquitousKeyValueStore.default
-            kv.synchronize()
-            let all = kv.dictionaryRepresentation
-            let local = UserDefaults.standard
-            var imported = 0
-            let bases = ["playlists.v1", "favorites.v1", "mylist.v1", "progress.v1", "watched.v1", "recent.v1", "custom.v1",
-                         "parental.v1", "reminders.v1", "photos.v1", "history.v1", "profiles.v1", "mainsource.v1",
-                         "mainprofile.v1", "collections.v1", "homelayout.v1", "categories.v1"]
-            for (k, v) in all where bases.contains(where: { k == $0 || k.hasPrefix($0 + ".") }) {
-                guard local.object(forKey: k) == nil, let d = v as? Data else { continue }
-                local.set(d, forKey: k)
-                imported += 1
-            }
-            local.set(true, forKey: flag)
-            guard imported > 0 else { return }
-            Task { @MainActor in CloudStore.shared.load(mergeProgress: true) }
-        }
+        UserDefaults.standard.set(true, forKey: "icloud.imported.v144")
     }
 
     // MARK: grootte van iCloud KV (build 97)
