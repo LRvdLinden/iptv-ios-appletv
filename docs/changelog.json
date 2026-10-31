@@ -1,5 +1,58 @@
 [
  {
+  "build": 158,
+  "version": "1.0.3",
+  "date": "2026-10-31",
+  "items": [
+   {
+    "type": "fixed",
+    "platforms": [
+     "tvos"
+    ],
+    "nl": "Bingr op de Apple TV sloot direct na het openen weer af",
+    "en": "Bingr on Apple TV closed again right after opening"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "Sneller starten en minder geheugen: grote gegevens staan niet meer in de app-instellingen maar in eigen bestanden",
+    "en": "Faster start and less memory use: large data is no longer kept in the app settings but in separate files"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "android",
+     "androidtv"
+    ],
+    "nl": "Snellere start en minder haperingen op tv's met weinig geheugen: grote caches staan nu in aparte bestanden",
+    "en": "Faster start-up and fewer stutters on TVs with little memory: large caches are now stored in separate files"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "android",
+     "androidtv"
+    ],
+    "nl": "Films werden soms uitgevinkt als de lijst met gezien heel groot werd",
+    "en": "Movies were sometimes unmarked as watched when the watched list got very large"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "web",
+     "windows"
+    ],
+    "nl": "Profielen met veel bekeken titels vullen de opslag van de browser niet meer, zodat je ingelogd blijft en je apparaat niet opnieuw meetelt",
+    "en": "Profiles with lots of watched titles no longer fill up the browser's storage, so you stay signed in and your device isn't counted again"
+   }
+  ]
+ },
+ {
   "build": 157,
   "version": "1.0.3",
   "date": "2026-10-30",

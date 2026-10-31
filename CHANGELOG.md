@@ -4,6 +4,27 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.3 · Build 158
+_31 oktober 2026_
+
+### iOS, iPadOS, tvOS en macOS
+
+**Verbeterd**
+
+- Sneller starten en minder geheugen: grote gegevens staan niet meer in de app-instellingen maar in eigen bestanden
+
+### tvOS
+
+**Opgelost**
+
+- Bingr op de Apple TV sloot direct na het openen weer af
+
+### Windows en Website
+
+**Opgelost**
+
+- Profielen met veel bekeken titels vullen de opslag van de browser niet meer, zodat je ingelogd blijft en je apparaat niet opnieuw meetelt
+
 ## Versie 1.0.3 · Build 157
 _30 oktober 2026_
 
