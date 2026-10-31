@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Build 144: geen sleutelhanger of iCloud meer als opslag. SecItem*- en NSUbiquitousKeyValueStore-aanroepen mogen alleen
-nog in de eenmalige overzetting (Shared/Storage/Keychain.swift → LegacySecrets, CloudStore.importFromICloudOnce)."""
+"""Build 144: geen sleutelhanger of iCloud meer als opslag. SecItem*-aanroepen mogen alleen nog in de eenmalige overzetting
+(Shared/Storage/Keychain.swift → LegacySecrets). Build 158: NSUbiquitousKeyValueStore nergens meer (ook niet eenmalig)."""
 import pathlib, re, sys
 root = pathlib.Path(__file__).resolve().parent.parent
 bad = []
@@ -10,12 +10,8 @@ for f in sorted((root / "Shared").rglob("*.swift")):
         code = line.split("//", 1)[0]
         if re.search(r"\bSecItem(Add|Update|Delete|CopyMatching)\b", code) and f.name != "Keychain.swift":
             bad.append(f"{f.relative_to(root)}:{i}: {line.strip()}")
-        if "NSUbiquitousKeyValueStore" in code and f.name not in ("Keychain.swift", "CloudStore.swift"):
-            bad.append(f"{f.relative_to(root)}:{i}: {line.strip()}")
-cs = (root / "Shared/Storage/CloudStore.swift").read_text()
-uses = [l for l in cs.splitlines() if "NSUbiquitousKeyValueStore" in l.split("//", 1)[0]]
-if len(uses) != 1 or ".default" not in uses[0]:
-    bad.append("CloudStore.swift: iCloud KV alleen in importFromICloudOnce (precies één keer NSUbiquitousKeyValueStore.default)")
+        if "NSUbiquitousKeyValueStore" in code:
+            bad.append(f"{f.relative_to(root)}:{i}: {line.strip()} (build 158: geen iCloud KV meer)")
 kc = (root / "Shared/Storage/Keychain.swift").read_text()
 legacy = kc.split("private enum LegacySecrets", 1)[0]
 if re.search(r"\bSecItem\w+\(", legacy.replace("SecItemDelete(q", "")) or "NSUbiquitousKeyValueStore.default" in legacy:
