@@ -1,0 +1,30 @@
+commit: 5213a4005d045a94ac8e1f7366ebc63e9f1939c7
+ios: success
+tvos: success
+macos: success
+selftest: success
+
+=== selftest ===
+build 148: testlijsten [13, 4, 3] MB
+build 148: movie 37000: 204 ms in 25 stappen, langste stap 9 ms
+build 148: live 12000: 81 ms in 8 stappen, langste stap 17 ms
+build 148: series 9000: 58 ms in 6 stappen, langste stap 10 ms
+build 148: geheugen tijdens inlezen: in één keer +28 MB, in stukken +14 MB; totaal in stukken 344 ms
+build 149: 100k tijdstempels lezen 4 ms (oud, opmaker per item, geschat 36862 ms); 100k schrijven 39 ms
+build 149: bewaren 123k/30k/12k (20 MB): in één keer +70 MB in 935 ms, in stukken +0 MB in 1210 ms
+build 149: 120k titels vouwen+filteren: overbrugd 1153 ms, native 1126 ms; CatalogNorm.title 120k (geschat) 4356 ms
+build 149: zoeken in 123k titels (vooraf berekende sleutels): 517 ms, 59264 treffers
+build 150: 2000 categorienamen opschonen 156 ms
+build 151: 123k/30k/12k, 80% verborgen: vóór piek +79 MB, vast +77 MB (2958 ms); na piek +69 MB, vast +25 MB (3293 ms), index 15.3 MB als JSON
+build 153: 20000 zendernamen opschonen 1490 ms
+1942 controles, 0 fout
+
+=== iOS errors ===
+/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/Storage/Keychain.swift:161:14: warning: instance method 'lock' is unavailable from asynchronous contexts; Use async-safe scoped locking instead; this is an error in the Swift 6 language mode
+/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/Storage/Keychain.swift:161:57: warning: instance method 'unlock' is unavailable from asynchronous contexts; Use async-safe scoped locking instead; this is an error in the Swift 6 language mode
+/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/Storage/Keychain.swift:176:131: warning: instance method 'unlock' is unavailable from asynchronous contexts; Use async-safe scoped locking instead; this is an error in the Swift 6 language mode
+/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/Storage/Keychain.swift:176:14: warning: instance method 'lock' is unavailable from asynchronous contexts; Use async-safe scoped locking instead; this is an error in the Swift 6 language mode
+
+=== tvOS errors ===
+
+=== macOS errors ===

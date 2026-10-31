@@ -1,0 +1,200 @@
+    export RECURSIVE_SEARCH_PATHS_FOLLOW_SYMLINKS\=YES
+    export REMOVE_CVS_FROM_RESOURCES\=YES
+    export REMOVE_GIT_FROM_RESOURCES\=YES
+    export REMOVE_HEADERS_FROM_EMBEDDED_BUNDLES\=YES
+    export REMOVE_HG_FROM_RESOURCES\=YES
+    export REMOVE_STATIC_EXECUTABLES_FROM_EMBEDDED_BUNDLES\=YES
+    export REMOVE_SVN_FROM_RESOURCES\=YES
+    export RESCHEDULE_INDEPENDENT_HEADERS_PHASES\=YES
+    export REZ_COLLECTOR_DIR\=/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug/BingrMac.build/ResourceManagerResources
+    export REZ_OBJECTS_DIR\=/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug/BingrMac.build/ResourceManagerResources/Objects
+    export REZ_SEARCH_PATHS\=/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug\ 
+    export SCAN_ALL_SOURCE_FILES_FOR_INCLUDES\=NO
+    export SCRIPTS_FOLDER_PATH\=Bingr.app/Contents/Resources/Scripts
+    export SCRIPT_INPUT_FILE_COUNT\=0
+    export SCRIPT_INPUT_FILE_LIST_COUNT\=0
+    export SCRIPT_OUTPUT_FILE_COUNT\=0
+    export SCRIPT_OUTPUT_FILE_LIST_COUNT\=0
+    export SDKROOT\=/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk
+    export SDK_DIR\=/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk
+    export SDK_DIR_macosx\=/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk
+    export SDK_DIR_macosx15_5\=/Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk
+    export SDK_NAME\=macosx15.5
+    export SDK_NAMES\=macosx15.5
+    export SDK_PRODUCT_BUILD_VERSION\=24F74
+    export SDK_STAT_CACHE_DIR\=/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build
+    export SDK_STAT_CACHE_ENABLE\=YES
+    export SDK_STAT_CACHE_PATH\=/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/SDKStatCaches.noindex/macosx15.5-24F74-a403186ba963133a54a0e0cacd566b0b.sdkstatcache
+    export SDK_VERSION\=15.5
+    export SDK_VERSION_ACTUAL\=150500
+    export SDK_VERSION_MAJOR\=150000
+    export SDK_VERSION_MINOR\=150500
+    export SED\=/usr/bin/sed
+    export SEPARATE_STRIP\=NO
+    export SEPARATE_SYMBOL_EDIT\=NO
+    export SET_DIR_MODE_OWNER_GROUP\=YES
+    export SET_FILE_MODE_OWNER_GROUP\=NO
+    export SHALLOW_BUNDLE\=NO
+    export SHALLOW_BUNDLE_PLATFORM\=NO
+    export SHALLOW_BUNDLE_TRIPLE\=macos
+    export SHALLOW_BUNDLE_ios_macabi\=NO
+    export SHALLOW_BUNDLE_macos\=NO
+    export SHARED_DERIVED_FILE_DIR\=/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug/DerivedSources
+    export SHARED_FRAMEWORKS_FOLDER_PATH\=Bingr.app/Contents/SharedFrameworks
+    export SHARED_PRECOMPS_DIR\=/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/PrecompiledHeaders
+    export SHARED_SUPPORT_FOLDER_PATH\=Bingr.app/Contents/SharedSupport
+    export SKIP_INSTALL\=NO
+    export SOURCE_ROOT\=/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    export SRCROOT\=/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    export STRINGSDATA_DIR\=/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug/BingrMac.build/Objects-normal/undefined_arch
+    export STRINGSDATA_ROOT\=/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug/BingrMac.build
+    export STRINGS_FILE_INFOPLIST_RENAME\=YES
+    export STRINGS_FILE_OUTPUT_ENCODING\=UTF-16
+    export STRIP_BITCODE_FROM_COPIED_FILES\=NO
+    export STRIP_INSTALLED_PRODUCT\=NO
+    export STRIP_PNG_TEXT\=NO
+    export STRIP_STYLE\=all
+    export STRIP_SWIFT_SYMBOLS\=YES
+    export SUPPORTED_PLATFORMS\=macosx
+    export SUPPORTS_MACCATALYST\=NO
+    export SUPPORTS_ON_DEMAND_RESOURCES\=NO
+    export SUPPORTS_TEXT_BASED_API\=NO
+    export SUPPRESS_WARNINGS\=NO
+    export SWIFT_ACTIVE_COMPILATION_CONDITIONS\=DEBUG
+    export SWIFT_EMIT_LOC_STRINGS\=NO
+    export SWIFT_OPTIMIZATION_LEVEL\=-Onone
+    export SWIFT_PLATFORM_TARGET_PREFIX\=macos
+    export SWIFT_RESPONSE_FILE_PATH_normal_arm64\=/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug/BingrMac.build/Objects-normal/arm64/Bingr.SwiftFileList
+    export SWIFT_VERSION\=5.9
+    export SYMROOT\=/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products
+    export SYSTEM_ADMIN_APPS_DIR\=/Applications/Utilities
+    export SYSTEM_APPS_DIR\=/Applications
+    export SYSTEM_CORE_SERVICES_DIR\=/System/Library/CoreServices
+    export SYSTEM_DEMOS_DIR\=/Applications/Extras
+    export SYSTEM_DEVELOPER_APPS_DIR\=/Applications/Xcode_16.4.app/Contents/Developer/Applications
+    export SYSTEM_DEVELOPER_BIN_DIR\=/Applications/Xcode_16.4.app/Contents/Developer/usr/bin
+    export SYSTEM_DEVELOPER_DEMOS_DIR\=/Applications/Xcode_16.4.app/Contents/Developer/Applications/Utilities/Built\ Examples
+    export SYSTEM_DEVELOPER_DIR\=/Applications/Xcode_16.4.app/Contents/Developer
+    export SYSTEM_DEVELOPER_DOC_DIR\=/Applications/Xcode_16.4.app/Contents/Developer/ADC\ Reference\ Library
+    export SYSTEM_DEVELOPER_GRAPHICS_TOOLS_DIR\=/Applications/Xcode_16.4.app/Contents/Developer/Applications/Graphics\ Tools
+    export SYSTEM_DEVELOPER_JAVA_TOOLS_DIR\=/Applications/Xcode_16.4.app/Contents/Developer/Applications/Java\ Tools
+    export SYSTEM_DEVELOPER_PERFORMANCE_TOOLS_DIR\=/Applications/Xcode_16.4.app/Contents/Developer/Applications/Performance\ Tools
+    export SYSTEM_DEVELOPER_RELEASENOTES_DIR\=/Applications/Xcode_16.4.app/Contents/Developer/ADC\ Reference\ Library/releasenotes
+    export SYSTEM_DEVELOPER_TOOLS\=/Applications/Xcode_16.4.app/Contents/Developer/Tools
+    export SYSTEM_DEVELOPER_TOOLS_DOC_DIR\=/Applications/Xcode_16.4.app/Contents/Developer/ADC\ Reference\ Library/documentation/DeveloperTools
+    export SYSTEM_DEVELOPER_TOOLS_RELEASENOTES_DIR\=/Applications/Xcode_16.4.app/Contents/Developer/ADC\ Reference\ Library/releasenotes/DeveloperTools
+    export SYSTEM_DEVELOPER_USR_DIR\=/Applications/Xcode_16.4.app/Contents/Developer/usr
+    export SYSTEM_DEVELOPER_UTILITIES_DIR\=/Applications/Xcode_16.4.app/Contents/Developer/Applications/Utilities
+    export SYSTEM_DEXT_INSTALL_PATH\=/System/Library/DriverExtensions
+    export SYSTEM_DOCUMENTATION_DIR\=/Library/Documentation
+    export SYSTEM_EXTENSIONS_FOLDER_PATH\=Bingr.app/Contents/Library/SystemExtensions
+    export SYSTEM_EXTENSIONS_FOLDER_PATH_SHALLOW_BUNDLE_NO\=Bingr.app/Contents/Library/SystemExtensions
+    export SYSTEM_EXTENSIONS_FOLDER_PATH_SHALLOW_BUNDLE_YES\=Bingr.app/Contents/SystemExtensions
+    export SYSTEM_KEXT_INSTALL_PATH\=/System/Library/Extensions
+    export SYSTEM_LIBRARY_DIR\=/System/Library
+    export TAPI_DEMANGLE\=YES
+    export TAPI_ENABLE_PROJECT_HEADERS\=NO
+    export TAPI_LANGUAGE\=objective-c
+    export TAPI_LANGUAGE_STANDARD\=compiler-default
+    export TAPI_USE_SRCROOT\=YES
+    export TAPI_VERIFY_MODE\=Pedantic
+    export TARGETNAME\=BingrMac
+    export TARGET_BUILD_DIR\=/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug
+    export TARGET_NAME\=BingrMac
+    export TARGET_TEMP_DIR\=/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug/BingrMac.build
+    export TEMP_DIR\=/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug/BingrMac.build
+    export TEMP_FILES_DIR\=/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug/BingrMac.build
+    export TEMP_FILE_DIR\=/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug/BingrMac.build
+    export TEMP_ROOT\=/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex
+    export TEMP_SANDBOX_DIR\=/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/TemporaryTaskSandboxes
+    export TEST_FRAMEWORK_SEARCH_PATHS\=\ /Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks
+    export TEST_LIBRARY_SEARCH_PATHS\=\ /Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib
+    export TOOLCHAINS\=com.apple.dt.toolchain.XcodeDefault
+    export TOOLCHAIN_DIR\=/Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain
+    export TREAT_MISSING_BASELINES_AS_TEST_FAILURES\=NO
+    export TREAT_MISSING_SCRIPT_PHASE_OUTPUTS_AS_ERRORS\=NO
+    export UID\=501
+    export UNINSTALLED_PRODUCTS_DIR\=/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/UninstalledProducts
+    export UNLOCALIZED_RESOURCES_FOLDER_PATH\=Bingr.app/Contents/Resources
+    export UNLOCALIZED_RESOURCES_FOLDER_PATH_SHALLOW_BUNDLE_NO\=Bingr.app/Contents/Resources
+    export UNLOCALIZED_RESOURCES_FOLDER_PATH_SHALLOW_BUNDLE_YES\=Bingr.app/Contents
+    export UNSTRIPPED_PRODUCT\=NO
+    export USER\=runner
+    export USER_APPS_DIR\=/Users/runner/Applications
+    export USER_LIBRARY_DIR\=/Users/runner/Library
+    export USE_DYNAMIC_NO_PIC\=YES
+    export USE_HEADERMAP\=YES
+    export USE_HEADER_SYMLINKS\=NO
+    export VALIDATE_DEVELOPMENT_ASSET_PATHS\=YES_ERROR
+    export VALIDATE_PRODUCT\=NO
+    export VALID_ARCHS\=arm64\ arm64e\ i386\ x86_64
+    export VERBOSE_PBXCP\=NO
+    export VERSIONPLIST_PATH\=Bingr.app/Contents/version.plist
+    export VERSION_INFO_BUILDER\=runner
+    export VERSION_INFO_FILE\=Bingr_vers.c
+    export VERSION_INFO_STRING\=\"@\(\#\)PROGRAM:Bingr\ \ PROJECT:Bingr-158\"
+    export WORKSPACE_DIR\=/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Bingr.xcodeproj
+    export WRAPPER_EXTENSION\=app
+    export WRAPPER_NAME\=Bingr.app
+    export WRAPPER_SUFFIX\=.app
+    export WRAP_ASSET_PACKS_IN_SEPARATE_DIRECTORIES\=NO
+    export XCODE_APP_SUPPORT_DIR\=/Applications/Xcode_16.4.app/Contents/Developer/Library/Xcode
+    export XCODE_PRODUCT_BUILD_VERSION\=16F6
+    export XCODE_VERSION_ACTUAL\=1640
+    export XCODE_VERSION_MAJOR\=1600
+    export XCODE_VERSION_MINOR\=1640
+    export XPCSERVICES_FOLDER_PATH\=Bingr.app/Contents/XPCServices
+    export YACC\=yacc
+    export _BOOL_\=NO
+    export _BOOL_NO\=NO
+    export _BOOL_YES\=YES
+    export _DEVELOPMENT_TEAM_IS_EMPTY\=NO
+    export _DISCOVER_COMMAND_LINE_LINKER_INPUTS\=YES
+    export _DISCOVER_COMMAND_LINE_LINKER_INPUTS_INCLUDE_WL\=YES
+    export _IS_EMPTY_\=YES
+    export _MACOSX_DEPLOYMENT_TARGET_IS_EMPTY\=NO
+    export _WRAPPER_CONTENTS_DIR\=/Contents
+    export _WRAPPER_CONTENTS_DIR_SHALLOW_BUNDLE_NO\=/Contents
+    export _WRAPPER_PARENT_PATH\=/..
+    export _WRAPPER_PARENT_PATH_SHALLOW_BUNDLE_NO\=/..
+    export _WRAPPER_RESOURCES_DIR\=/Resources
+    export _WRAPPER_RESOURCES_DIR_SHALLOW_BUNDLE_NO\=/Resources
+    export __DIAGNOSE_DEPRECATED_ARCHS\=YES
+    export __IS_NOT_MACOS\=NO
+    export __IS_NOT_MACOS_macosx\=NO
+    export __IS_NOT_SIMULATOR\=YES
+    export __IS_NOT_SIMULATOR_simulator\=NO
+    export arch\=undefined_arch
+    export variant\=normal
+    /bin/sh -c /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug/BingrMac.build/Script-F2AD7F6E6B20CFE594E64735.sh
+
+ExtractAppIntentsMetadata (in target 'BingrMac' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/appintentsmetadataprocessor --toolchain-dir /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --module-name Bingr --sdk-root /Applications/Xcode_16.4.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk --xcode-version 16F6 --platform-family macOS --deployment-target 14.0 --bundle-identifier nl.lrvdlinden.bingr --output /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug/Bingr.app/Contents/Resources --target-triple arm64-apple-macos14.0 --binary-file /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug/Bingr.app/Contents/MacOS/Bingr --dependency-file /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug/BingrMac.build/Objects-normal/arm64/Bingr_dependency_info.dat --stringsdata-file /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug/BingrMac.build/Objects-normal/arm64/ExtractedAppShortcutsMetadata.stringsdata --source-file-list /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug/BingrMac.build/Objects-normal/arm64/Bingr.SwiftFileList --metadata-file-list /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug/BingrMac.build/Bingr.DependencyMetadataFileList --static-metadata-file-list /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug/BingrMac.build/Bingr.DependencyStaticMetadataFileList --swift-const-vals-list /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug/BingrMac.build/Objects-normal/arm64/Bingr.SwiftConstValuesFileList --compile-time-extraction --deployment-aware-processing --validate-assistant-intents --no-app-shortcuts-localization
+2026-10-31 07:42:48.879 appintentsmetadataprocessor[12427:39593] Starting appintentsmetadataprocessor export
+2026-10-31 07:42:48.886 appintentsmetadataprocessor[12427:39593] warning: Metadata extraction skipped. No AppIntents.framework dependency found.
+
+CopySwiftLibs /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug/Bingr.app (in target 'BingrMac' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    builtin-swiftStdLibTool --copy --verbose --scan-executable /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug/Bingr.app/Contents/MacOS/Bingr.debug.dylib --scan-folder /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug/Bingr.app/Contents/Frameworks --scan-folder /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug/Bingr.app/Contents/PlugIns --scan-folder /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug/Bingr.app/Contents/Library/SystemExtensions --scan-folder /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug/Bingr.app/Contents/Extensions --platform macosx --toolchain /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --destination /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug/Bingr.app/Contents/Frameworks --strip-bitcode --strip-bitcode-tool /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/bitcode_strip --emit-dependency-info /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug/BingrMac.build/SwiftStdLibToolInputDependencies.dep --filter-for-swift-os
+Ignoring --strip-bitcode because --sign was not passed
+
+RegisterExecutionPolicyException /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug/Bingr.app (in target 'BingrMac' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    builtin-RegisterExecutionPolicyException /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug/Bingr.app
+
+Validate /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug/Bingr.app (in target 'BingrMac' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    builtin-validationUtility /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug/Bingr.app -no-validate-extension -infoplist-subpath Contents/Info.plist
+
+Touch /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug/Bingr.app (in target 'BingrMac' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    /usr/bin/touch -c /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug/Bingr.app
+
+RegisterWithLaunchServices /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug/Bingr.app (in target 'BingrMac' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    /System/Library/Frameworks/CoreServices.framework/Versions/Current/Frameworks/LaunchServices.framework/Versions/Current/Support/lsregister -f -R -trusted /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug/Bingr.app
+
+note: Run script build phase 'Quarantaine-kenmerken verwijderen' will be run during every build because the option to run the script phase "Based on dependency analysis" is unchecked. (in target 'BingrMac' from project 'Bingr')
+** BUILD SUCCEEDED **
+

@@ -1,0 +1,200 @@
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    
+
+SwiftCompile normal arm64 /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/Config/Secrets.swift (in target 'BingrTV' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    
+
+SwiftCompile normal arm64 /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/UI/Screens/SettingsView.swift (in target 'BingrTV' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    
+
+SwiftCompile normal arm64 /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/App/SmokeMode.swift (in target 'BingrTV' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    
+
+SwiftDriverJobDiscovery normal arm64 Compiling SourceCheckView.swift, SourceSync.swift, SplashView.swift, StalkerClient.swift, StartDiagnostics.swift, StateSync.swift, StatsView.swift, StreamSession.swift, Support.swift, SupportCenter.swift, SupportViews.swift, Theme.swift, TitleCleaner.swift, TitleLink.swift, TitleMatcher.swift, TrackPreferences.swift, TrailerPlayer.swift, TraktClient.swift, TraktSync.swift, Watched154.swift, WatchingNowView.swift, XMLTVParser.swift, XtreamClient.swift, GeneratedAssetSymbols.swift (in target 'BingrTV' from project 'Bingr')
+
+SwiftCompile normal arm64 Compiling\ CatalogMeta.swift,\ CategoriesView.swift,\ CategoryView.swift,\ ChannelPreview.swift,\ Chromecast.swift,\ CloudStore.swift,\ Collections.swift,\ CollectionsView.swift,\ ConnectionsSetupView.swift,\ ContentLanguage.swift,\ ContinueCovers.swift,\ ContinueWatching.swift,\ CrossServer.swift,\ CrossServerUI.swift,\ DetailView.swift,\ DetailsService.swift,\ DevicesView.swift,\ Diagnostics147.swift,\ Diagnostics148.swift,\ DiagnosticsView.swift,\ Discover.swift,\ DiscoverCategories.swift,\ Engines.swift,\ Entitlements.swift,\ ExternalDisplay.swift /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/Account/CatalogMeta.swift /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/UI/Screens/CategoriesView.swift /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/UI/Screens/CategoryView.swift /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/Player/ChannelPreview.swift /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/Player/Chromecast.swift /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/Storage/CloudStore.swift /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/Models/Collections.swift /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/UI/Screens/CollectionsView.swift /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/UI/Screens/ConnectionsSetupView.swift /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/Metadata/ContentLanguage.swift /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/Metadata/ContinueCovers.swift /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/UI/Components/ContinueWatching.swift /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/Account/CrossServer.swift /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/UI/Components/CrossServerUI.swift /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/UI/Screens/DetailView.swift /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/Metadata/DetailsService.swift /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/UI/Screens/DevicesView.swift /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/App/Diagnostics147.swift /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/App/Diagnostics148.swift /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/UI/Screens/DiagnosticsView.swift /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/Metadata/Discover.swift /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/UI/Components/DiscoverCategories.swift /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/Player/Engines.swift /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/Account/Entitlements.swift /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/Player/ExternalDisplay.swift (in target 'BingrTV' from project 'Bingr')
+
+SwiftCompile normal arm64 /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/Account/CatalogMeta.swift (in target 'BingrTV' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    
+
+SwiftCompile normal arm64 /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/UI/Screens/CategoriesView.swift (in target 'BingrTV' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    
+
+SwiftCompile normal arm64 /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/UI/Screens/CategoryView.swift (in target 'BingrTV' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    
+
+SwiftCompile normal arm64 /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/Player/ChannelPreview.swift (in target 'BingrTV' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    
+
+SwiftCompile normal arm64 /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/Player/Chromecast.swift (in target 'BingrTV' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    
+
+SwiftCompile normal arm64 /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/Storage/CloudStore.swift (in target 'BingrTV' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    
+
+SwiftCompile normal arm64 /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/Models/Collections.swift (in target 'BingrTV' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    
+
+SwiftCompile normal arm64 /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/UI/Screens/CollectionsView.swift (in target 'BingrTV' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    
+
+SwiftCompile normal arm64 /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/UI/Screens/ConnectionsSetupView.swift (in target 'BingrTV' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    
+
+SwiftCompile normal arm64 /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/Metadata/ContentLanguage.swift (in target 'BingrTV' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    
+
+SwiftCompile normal arm64 /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/Metadata/ContinueCovers.swift (in target 'BingrTV' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    
+
+SwiftCompile normal arm64 /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/UI/Components/ContinueWatching.swift (in target 'BingrTV' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    
+
+SwiftCompile normal arm64 /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/Account/CrossServer.swift (in target 'BingrTV' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    
+
+SwiftCompile normal arm64 /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/UI/Components/CrossServerUI.swift (in target 'BingrTV' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    
+
+SwiftCompile normal arm64 /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/UI/Screens/DetailView.swift (in target 'BingrTV' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    
+
+SwiftCompile normal arm64 /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/Metadata/DetailsService.swift (in target 'BingrTV' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    
+
+SwiftCompile normal arm64 /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/UI/Screens/DevicesView.swift (in target 'BingrTV' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    
+
+SwiftCompile normal arm64 /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/App/Diagnostics147.swift (in target 'BingrTV' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    
+
+SwiftCompile normal arm64 /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/App/Diagnostics148.swift (in target 'BingrTV' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    
+
+SwiftCompile normal arm64 /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/UI/Screens/DiagnosticsView.swift (in target 'BingrTV' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    
+
+SwiftCompile normal arm64 /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/Metadata/Discover.swift (in target 'BingrTV' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    
+
+SwiftCompile normal arm64 /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/UI/Components/DiscoverCategories.swift (in target 'BingrTV' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    
+
+SwiftCompile normal arm64 /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/Player/Engines.swift (in target 'BingrTV' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    
+/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/Player/Engines.swift:191:17: warning: capture of 'p' with non-sendable type 'VLCMediaPlayer' in a '@Sendable' closure
+                p.media = media
+                ^
+/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/TVVLCKit.framework/Headers/VLCMediaPlayer.h:184:12: note: class 'VLCMediaPlayer' does not conform to the 'Sendable' protocol
+@interface VLCMediaPlayer : NSObject
+           ^
+/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/Player/Engines.swift:6:1: warning: add '@preconcurrency' to suppress 'Sendable'-related warnings from module 'TVVLCKit'
+import TVVLCKit
+^
+@preconcurrency 
+/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/Player/Engines.swift:191:27: warning: capture of 'media' with non-sendable type 'VLCMedia' in a '@Sendable' closure
+                p.media = media
+                          ^
+/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/TVVLCKit.framework/Headers/VLCMedia.h:112:12: note: class 'VLCMedia' does not conform to the 'Sendable' protocol
+@interface VLCMedia : NSObject
+           ^
+/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/Player/Engines.swift:215:39: warning: capture of 'p' with non-sendable type 'VLCMediaPlayer' in a '@Sendable' closure
+            Self.previewQueue.async { p.stop() }
+                                      ^
+/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/TVVLCKit.framework/Headers/VLCMediaPlayer.h:184:12: note: class 'VLCMediaPlayer' does not conform to the 'Sendable' protocol
+@interface VLCMediaPlayer : NSObject
+           ^
+/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/Player/Engines.swift:480:81: warning: 'nominalFrameRate' was deprecated in tvOS 16.0: Use load(.nominalFrameRate) instead
+            let fps = t.currentVideoFrameRate > 0 ? t.currentVideoFrameRate : a.nominalFrameRate
+                                                                                ^
+/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/Player/Engines.swift:481:41: warning: 'formatDescriptions' was deprecated in tvOS 16.0: Use load(.formatDescriptions) instead
+            guard fps > 10, let raw = a.formatDescriptions.first else { continue }
+                                        ^
+/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/Player/Engines.swift:485:27: warning: 'preferredDisplayCriteria' was deprecated in tvOS 16.0: Use load(.preferredDisplayCriteria) instead
+        return item.asset.preferredDisplayCriteria
+                          ^
+
+SwiftCompile normal arm64 /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/Account/Entitlements.swift (in target 'BingrTV' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    
+
+SwiftCompile normal arm64 /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/Player/ExternalDisplay.swift (in target 'BingrTV' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    
+
+SwiftDriverJobDiscovery normal arm64 Compiling AccountLibrary.swift, AccountService.swift, AccountSettingsSection.swift, AddPlaylistView.swift, AgeRatings.swift, AlternativeSources.swift, AppDirs.swift, Appearance.swift, AuthView.swift, BingrApp.swift, BrowseCategories.swift, BrowseCategoriesView.swift, Build140.swift, Build141.swift, Build145.swift, Build146.swift, Build147.swift, Build148.swift, Build149.swift, Build150.swift, Build151.swift, Build154.swift, Build157.swift, Build158.swift, Cards.swift (in target 'BingrTV' from project 'Bingr')
+
+SwiftDriverJobDiscovery normal arm64 Compiling GuideView.swift, HTTP.swift, HeroBanner.swift, HistoryView.swift, HomeLayoutView.swift, HomeView.swift, IntroMarkers.swift, KenBurnsBackdrop.swift, Keychain.swift, KidsGateView.swift, LanguageVersions.swift, Lifetime.swift, LiveTVView.swift, LocalMediaServer.swift, Localization.swift, M3UParser.swift, MacSupport.swift, MainTabView.swift, MainThreadSampler.swift, ManageView.swift, MediaServerClients.swift, MetadataService.swift, Models.swift, MultiviewScreen.swift (in target 'BingrTV' from project 'Bingr')
+
+SwiftDriverJobDiscovery normal arm64 Compiling CatalogMeta.swift, CategoriesView.swift, CategoryView.swift, ChannelPreview.swift, Chromecast.swift, CloudStore.swift, Collections.swift, CollectionsView.swift, ConnectionsSetupView.swift, ContentLanguage.swift, ContinueCovers.swift, ContinueWatching.swift, CrossServer.swift, CrossServerUI.swift, DetailView.swift, DetailsService.swift, DevicesView.swift, Diagnostics147.swift, Diagnostics148.swift, DiagnosticsView.swift, Discover.swift, DiscoverCategories.swift, Engines.swift, Entitlements.swift, ExternalDisplay.swift (in target 'BingrTV' from project 'Bingr')
+
+SwiftDriverJobDiscovery normal arm64 Compiling MyBingrHeader.swift, MyBingrView.swift, NetworkBrowserView.swift, OpenSubtitlesClient.swift, ParentalAndReminders.swift, PersonService.swift, PersonView.swift, Playables.swift, PlaybackTiming.swift, PlayerController.swift, PlayerPanels.swift, PlayerScreen.swift, PlaylistPickerView.swift, PlaylistService.swift, PlusCheckGlyph.swift, ProfileMenu.swift, ProfileSync.swift, PushService.swift, RichSources.swift, ScreenshotMode.swift, SearchView.swift, Secrets.swift, SettingsView.swift, SmokeMode.swift (in target 'BingrTV' from project 'Bingr')
+
+SwiftDriver\ Compilation BingrTV normal arm64 com.apple.xcode.tools.swift.compiler (in target 'BingrTV' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    builtin-Swift-Compilation -- /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name BingrTV -Onone -enforce-exclusivity\=checked @/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/Objects-normal/arm64/BingrTV.SwiftFileList -DDEBUG -enable-bare-slash-regex -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode_16.4.app/Contents/Developer/Platforms/AppleTVOS.platform/Developer/SDKs/AppleTVOS18.5.sdk -target arm64-apple-tvos17.0 -g -module-cache-path /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/ModuleCache.noindex -Xfrontend -serialize-debugging-options -enable-testing -swift-version 5 -I /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos -F /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/PackageFrameworks -F /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos -c -j3 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/SDKStatCaches.noindex/appletvos18.5-22L572-ad3d6c69466c977a8acd494204ad2e24.sdkstatcache -output-file-map /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/Objects-normal/arm64/BingrTV-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/Objects-normal/arm64/BingrTV.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/ModuleCache.noindex/Session.modulevalidation -Xcc -I/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/Objects-normal/arm64/BingrTV_const_extract_protocols.json -Xcc -iquote -Xcc /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/BingrTV-generated-files.hmap -Xcc -I/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/BingrTV-own-target-headers.hmap -Xcc -I/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/BingrTV-all-non-framework-target-headers.hmap -Xcc -ivfsoverlay -Xcc /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/Bingr-e9aa12de2840a7ff066ec418bf627a38-VFS-appletvos/all-product-headers.yaml -Xcc -iquote -Xcc /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/BingrTV-project-headers.hmap -Xcc -I/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/include -Xcc -I/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/DerivedSources-normal/arm64 -Xcc -I/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/DerivedSources/arm64 -Xcc -I/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/DerivedSources -Xcc -DDEBUG\=1 -emit-objc-header -emit-objc-header-path /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/Objects-normal/arm64/BingrTV-Swift.h -working-directory /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv -experimental-emit-module-separately -disable-cmo
+
+Ld /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/BingrTV.app/BingrTV.debug.dylib normal (in target 'BingrTV' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -Xlinker -reproducible -target arm64-apple-tvos17.0 -dynamiclib -isysroot /Applications/Xcode_16.4.app/Contents/Developer/Platforms/AppleTVOS.platform/Developer/SDKs/AppleTVOS18.5.sdk -O0 -L/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/EagerLinkingTBDs/Debug-appletvos -L/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos -F/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/EagerLinkingTBDs/Debug-appletvos -F/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/PackageFrameworks -F/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos -filelist /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/Objects-normal/arm64/BingrTV.LinkFileList -install_name @rpath/BingrTV.debug.dylib -Xlinker -rpath -Xlinker /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/PackageFrameworks -Xlinker -rpath -Xlinker @executable_path/Frameworks -dead_strip -Xlinker -object_path_lto -Xlinker /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/Objects-normal/arm64/BingrTV_lto.o -rdynamic -Xlinker -no_deduplicate -Xlinker -dependency_info -Xlinker /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/Objects-normal/arm64/BingrTV_dependency_info.dat -fobjc-link-runtime -L/Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/appletvos -L/usr/lib/swift -Xlinker -add_ast_path -Xlinker /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/Objects-normal/arm64/BingrTV.swiftmodule -Wl,-no_warn_duplicate_libraries -liconv -framework CoreText -framework AVFoundation -framework AudioToolbox -framework OpenGLES -framework VideoToolbox -framework CoreMedia -lc++ -lxml2 -lz -lbz2 -Xlinker -alias -Xlinker _main -Xlinker ___debug_main_executable_dylib_entry_point -framework TVVLCKit -o /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/BingrTV.app/BingrTV.debug.dylib -Xlinker -add_ast_path -Xlinker /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/vlckit-spm.build/Debug-appletvos/VLCKitSPM.build/Objects-normal/arm64/VLCKitSPM.swiftmodule
+
+ConstructStubExecutorLinkFileList /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/BingrTV-ExecutorLinkFileList-normal-arm64.txt (in target 'BingrTV' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    construct-stub-executor-link-file-list /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/BingrTV.app/BingrTV.debug.dylib /Applications/Xcode_16.4.app/Contents/Developer/Platforms/AppleTVOS.platform/Developer/usr/lib/libPreviewsJITStubExecutor_no_swift_entry_point.a /Applications/Xcode_16.4.app/Contents/Developer/Platforms/AppleTVOS.platform/Developer/usr/lib/libPreviewsJITStubExecutor.a --output /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/BingrTV-ExecutorLinkFileList-normal-arm64.txt
+note: Using stub executor library with Swift entry point. (in target 'BingrTV' from project 'Bingr')
+
+Ld /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/BingrTV.app/BingrTV normal (in target 'BingrTV' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -Xlinker -reproducible -target arm64-apple-tvos17.0 -isysroot /Applications/Xcode_16.4.app/Contents/Developer/Platforms/AppleTVOS.platform/Developer/SDKs/AppleTVOS18.5.sdk -O0 -L/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos -F/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/PackageFrameworks -F/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos -Xlinker -rpath -Xlinker @executable_path -Xlinker -rpath -Xlinker /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/PackageFrameworks -Xlinker -rpath -Xlinker @executable_path/Frameworks -rdynamic -Xlinker -no_deduplicate -e ___debug_blank_executor_main -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __debug_dylib -Xlinker /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/BingrTV-DebugDylibPath-normal-arm64.txt -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __debug_instlnm -Xlinker /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/BingrTV-DebugDylibInstallName-normal-arm64.txt -Xlinker -filelist -Xlinker /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/BingrTV-ExecutorLinkFileList-normal-arm64.txt /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/BingrTV.app/BingrTV.debug.dylib -o /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/BingrTV.app/BingrTV
+
+ExtractAppIntentsMetadata (in target 'BingrTV' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/appintentsmetadataprocessor --toolchain-dir /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --module-name BingrTV --sdk-root /Applications/Xcode_16.4.app/Contents/Developer/Platforms/AppleTVOS.platform/Developer/SDKs/AppleTVOS18.5.sdk --xcode-version 16F6 --platform-family tvOS --deployment-target 17.0 --bundle-identifier nl.lrvdlinden.bingr --output /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/BingrTV.app --target-triple arm64-apple-tvos17.0 --binary-file /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/BingrTV.app/BingrTV --dependency-file /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/Objects-normal/arm64/BingrTV_dependency_info.dat --stringsdata-file /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/Objects-normal/arm64/ExtractedAppShortcutsMetadata.stringsdata --source-file-list /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/Objects-normal/arm64/BingrTV.SwiftFileList --metadata-file-list /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/BingrTV.DependencyMetadataFileList --static-metadata-file-list /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/BingrTV.DependencyStaticMetadataFileList --swift-const-vals-list /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/Objects-normal/arm64/BingrTV.SwiftConstValuesFileList --compile-time-extraction --deployment-aware-processing --validate-assistant-intents --no-app-shortcuts-localization
+2026-10-31 07:41:00.071 appintentsmetadataprocessor[8693:29225] Starting appintentsmetadataprocessor export
+2026-10-31 07:41:00.074 appintentsmetadataprocessor[8693:29225] warning: Metadata extraction skipped. No AppIntents.framework dependency found.
+
+CopySwiftLibs /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/BingrTV.app (in target 'BingrTV' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    builtin-swiftStdLibTool --copy --verbose --scan-executable /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/BingrTV.app/BingrTV.debug.dylib --scan-folder /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/BingrTV.app/Frameworks --scan-folder /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/BingrTV.app/PlugIns --scan-folder /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/BingrTV.app/SystemExtensions --scan-folder /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/BingrTV.app/Extensions --platform appletvos --toolchain /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --destination /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/BingrTV.app/Frameworks --strip-bitcode --strip-bitcode-tool /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/bitcode_strip --emit-dependency-info /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/SwiftStdLibToolInputDependencies.dep --filter-for-swift-os
+Ignoring --strip-bitcode because --sign was not passed
+
+RegisterExecutionPolicyException /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/BingrTV.app (in target 'BingrTV' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    builtin-RegisterExecutionPolicyException /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/BingrTV.app
+
+Validate /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/BingrTV.app (in target 'BingrTV' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    builtin-validationUtility /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/BingrTV.app -infoplist-subpath Info.plist
+
+Touch /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/BingrTV.app (in target 'BingrTV' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    /usr/bin/touch -c /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/BingrTV.app
+
+** BUILD SUCCEEDED **
+
