@@ -263,8 +263,12 @@ final class EntitlementsService: ObservableObject {
 
     private func loadCache() {
         guard AccountService.shared.isSignedIn else { set(nil, store: false); return }
-        guard let key = cacheKey, let data = UserDefaults.standard.data(forKey: key),
-              let e = try? JSONDecoder().decode(Entitlements.self, from: data) else { return }
+        guard let key = cacheKey, let data = UserDefaults.standard.data(forKey: key) else { return }
+        // build 158: een bewaarde stand die niet (meer) te lezen is: weg, en zonder slotjes verder tot de server antwoordt
+        guard let e = try? JSONDecoder().decode(Entitlements.self, from: data) else {
+            UserDefaults.standard.removeObject(forKey: key)
+            return
+        }
         set(e, store: false)
     }
 

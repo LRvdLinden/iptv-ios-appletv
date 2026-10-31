@@ -1713,5 +1713,67 @@ do {
     check(OpenSubtitles157.streamSubtitles(allowed: false), "157: Gratis: ondertitels uit de stream blijven")
 }
 
+// MARK: build 158: start op Apple TV robuust bij onverwachte gegevens (geen crash, wel een terugval)
+do {
+    // sleutels uit de account-sync kunnen alles bevatten: een "jaar" dat bij ±1 zou overlopen gaf een crash
+    let huge = "w:m:t:dune|\(Int.max)"
+    let c1 = WatchKeys.candidates([huge, "w:s:t:x|\(Int.min)", "w:e:t:x|-5|1-2", "w:m:t:|", "w:m:t:", "w:e:t:a|b|c|d"])
+    check(c1.contains(huge) && c1.count == 6, "158: kandidaten met een onmogelijk jaar: alleen de sleutel zelf")
+    eq(WatchKeys.candidates(["w:m:t:dune|2021"]), ["w:m:t:dune|2021", "w:m:t:dune|2020", "w:m:t:dune|2022"], "158: gewoon jaar ±1 blijft")
+    check(WatchKeys.matches(["w:m:t:dune|\(Int.max)"], keys: ["w:m:t:dune|\(Int.max)"]), "158: onmogelijk jaar: gewoon zoeken")
+    check(WatchKeys.latestWins(present: [huge: 1], removed: [:], ownIDs: [], keys: [huge]), "158: latestWins met onmogelijk jaar")
+
+    // titels van echte servers: lege, alleen tekens, haakjes zonder inhoud, alleen een jaartal
+    let odd = ["", " ", "(", ")", "()", "[]", "[", "]", "(2021)", "[2021]", "|", "||", "|||NL|||", "- 2021", ":", "NL:", "NL: ",
+               "┃NL┃", "x)", "(x", "((2021))", "Dune (", "Dune (20211)", "Dune (2021", "🎬", "👨‍👩‍👧 (2020)", "\u{0301}", "  -  ",
+               "NL - ", "[4K] ", "| 2021", "Movie | ", "A|B|C|D|E|F|G|H", String(repeating: "|", count: 40)]
+    for t in odd {
+        let c = TitleRules154.clean(t)
+        _ = WatchKeys.norm(t); _ = WatchKeys.norm(c.title)
+        let keys = WatchKeys.movie(title: t, year: nil, tmdb: nil, imdb: nil)
+        _ = WatchKeys.candidates(keys)
+        _ = WatchKeys.showForms(title: t, year: Int.max, tmdb: "", imdb: "tt")
+        _ = TitleRules154.extractYear(t)
+        _ = TitleRules154.stripPrefixes(t)
+    }
+    check(true, "158: vreemde titels geven geen crash")
+    eq(WatchKeys.yearPart(Int.max), 0, "158: onmogelijk jaar telt als 0")
+
+    // abonnement: onverwachte waarden volgen het abonnement, geen crash
+    let weird: [String: Any] = ["plan": "free", "limits": ["streams": "x", "devices": NSNull(), "servers": [1]],
+                                "features": ["stats": "true", "trakt": NSNull(), "themes": [true], "opensubtitles": 1],
+                                "plans": ["free": "x", "lifetime": ["devices": "15", "servers": NSNull()], "": [:]]]
+    let fw = FeatureFlags157.parse(weird)
+    check(fw != nil && fw?.stats == false && fw?.trakt == false && fw?.openSubtitles == true, "158: vreemde vlaggen volgen Gratis")
+    let pw = PlanDefaults157.plans(weird["plans"])
+    eq(pw["free"], PlanDefaults157.free, "158: onleesbaar plan Gratis = standaard")
+    eq(pw["lifetime"]?.devices, 15, "158: apparaten als tekst gelezen")
+    check(pw["lifetime"]?.servers == nil, "158: servers null = onbeperkt")
+    check(FeatureFlags157.parse([:]) == nil && FeatureFlags157.parse(["plan": 3]) == nil, "158: geen abonnement in het antwoord")
+    check(PlanDefaults157.plans(nil)["free"] == PlanDefaults157.free && PlanDefaults157.plans("x").count == 2, "158: plans ontbreekt")
+
+    // Trakt-wachtrij: leeg, half geschreven of oud bestand → lege wachtrij en het bestand weg
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("bingr-selftest-158-\(getpid())")
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    for (i, raw) in ["", "{", "null", "[]", "{\"entries\":5}", "{\"entries\":[{\"op\":\"x\"}]}"].enumerated() {
+        let u = dir.appendingPathComponent("q\(i).json")
+        try? Data(raw.utf8).write(to: u)
+        let q = TraktQueue.load(u)
+        check(q.entries.isEmpty, "158: wachtrij uit onleesbaar bestand \(i) is leeg")
+        check(!FileManager.default.fileExists(atPath: u.path), "158: onleesbaar wachtrijbestand \(i) weggehaald")
+    }
+    check(TraktQueue.load(dir.appendingPathComponent("bestaat-niet.json")).entries.isEmpty, "158: geen wachtrijbestand")
+    var good = TraktQueue()
+    good.enqueue(TraktQueueEntry(op: .add, kind: .movie, tmdb: 1, imdb: nil, title: "A", year: 2020, season: nil, episode: nil, watchedAt: 1))
+    let gu = dir.appendingPathComponent("goed.json")
+    good.save(gu)
+    eq(TraktQueue.load(gu), good, "158: geldige wachtrij blijft")
+    // aflevering zonder seizoen/nummer of zonder id's: niet in de body, geen crash
+    let bad = [TraktQueueEntry(op: .add, kind: .episode, tmdb: 5, imdb: nil, title: nil, year: nil, season: nil, episode: 1, watchedAt: 0),
+               TraktQueueEntry(op: .remove, kind: .episode, tmdb: nil, imdb: nil, title: "x", year: nil, season: 1, episode: 1, watchedAt: 0)]
+    check(TraktQueue.body(bad).isEmpty, "158: onvolledige afleveringen niet naar Trakt")
+    try? FileManager.default.removeItem(at: dir)
+}
+
 print("\(checks) controles, \(failures) fout")
 exit(failures == 0 ? 0 : 1)

@@ -440,7 +440,10 @@ final class PlaylistService: ObservableObject {
         OffMain.release(old)
         // build 154: eenmalig per profiel en server oude "gezien"-id's aanvullen met inhoudssleutels
         Watched154.service = self
-        Watched154.migrate(lib, playlist: source?.id)
+        // build 158: niet meer midden in het publiceren (en dus niet binnen het opbouwen van Home bij de start), maar
+        // in een volgende ronde van de hoofdthread; alleen met een catalogus die er echt is
+        guard !lib.isEmptyLibrary, let pid = source?.id else { return }
+        Task { @MainActor in Watched154.migrate(lib, playlist: pid) }
     }
 
     /// Build 148: duur van het filteren op de achtergrond (`index`) en van het publiceren op de hoofdthread (`apply`)

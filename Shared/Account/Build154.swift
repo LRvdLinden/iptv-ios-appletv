@@ -198,7 +198,8 @@ enum WatchKeys {
             out.append(k)
             guard k.hasPrefix("w:m:t:") || k.hasPrefix("w:s:t:") || k.hasPrefix("w:e:t:") else { continue }
             var parts = k.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
-            guard parts.count >= 2, let y = Int(parts[1]), y > 0 else { continue }
+            // build 158: alleen een echt jaartal (een sleutel uit de account-sync kan alles bevatten; y + 1 mag nooit overlopen)
+            guard parts.count >= 2, let y = Int(parts[1]), y > 0, y < 10_000 else { continue }
             for d in [-1, 1] {
                 parts[1] = String(y + d)
                 out.append(parts.joined(separator: "|"))
@@ -421,7 +422,12 @@ struct TraktQueue: Codable, Equatable {
     // MARK: bewaren (overleeft een herstart)
 
     static func load(_ url: URL) -> TraktQueue {
-        guard let d = try? Data(contentsOf: url), let q = try? JSONDecoder().decode(TraktQueue.self, from: d) else { return TraktQueue() }
+        guard let d = try? Data(contentsOf: url) else { return TraktQueue() }
+        // build 158: leeg of onleesbaar (afgebroken schrijven, oud formaat): lege wachtrij en het bestand weg, nooit een crash
+        guard !d.isEmpty, let q = try? JSONDecoder().decode(TraktQueue.self, from: d) else {
+            try? FileManager.default.removeItem(at: url)
+            return TraktQueue()
+        }
         return q
     }
     func save(_ url: URL) {
