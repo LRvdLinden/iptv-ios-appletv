@@ -83,7 +83,13 @@ def main():
         print(f"::warning::Rooktest zonder account: aanmaken mislukt (HTTP {code})")
         return
     json.dump({"uid": uid}, open(STATE, "w"))
-    # Lifetime, zodat de apparaatlimiet van Gratis de test niet stopt (iPhone, Apple TV en Mac)
+    # Lifetime, zodat de apparaatlimiet van Gratis de test niet stopt (iPhone, Apple TV en Mac).
+    # SMOKE_PLAN=free (handmatige diagnose): het standaardabonnement Gratis laten staan.
+    if os.environ.get("SMOKE_PLAN", "").strip().lower() == "free":
+        print("Testaccount blijft Gratis (SMOKE_PLAN=free)")
+        with open(os.environ["GITHUB_ENV"], "a") as f:
+            f.write(f"SMOKE_EMAIL={email}\nSMOKE_PASSWORD={pw}\n")
+        return
     code, _ = sql("insert into public.account_plans (user_id, plan, source, note) values "
                   f"('{uid}', 'lifetime', 'admin', 'ci-rooktest') on conflict (user_id) do update set plan = 'lifetime'")
     if code not in (200, 201):

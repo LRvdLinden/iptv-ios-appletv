@@ -201,7 +201,8 @@ simulator() { # platform-runtime-naam app types...
     # haalt alles van het account, zoals een gebruiker die op een tweede apparaat inlogt; daarna opnieuw starten met
     # de sessie (de account-sync bij het starten)
     xcrun simctl uninstall "$udid" "$BUNDLE"; xcrun simctl install "$udid" "$app"
-    if [ "$PLATFORM" = ios ]; then
+    # SMOKE_SEED_ACCOUNT=1 (handmatige diagnose): ook de Apple TV zet eigen testgegevens in het account
+    if [ "$PLATFORM" = ios ] || [ -n "${SMOKE_SEED_ACCOUNT:-}" ]; then
       sim_run "$udid" "$app" 5-account -BingrSmoke YES -BingrSmokeKeychainMs "${SMOKE_KEYCHAIN_MS:-150}" -BingrSmokeM3U "$M3U" -BingrSmokeEmail "$SMOKE_EMAIL" -BingrSmokePassword "$SMOKE_PASSWORD" "${fresh[@]}"
     else
       sim_run "$udid" "$app" 5-account -BingrSmoke YES -BingrSmokeKeychainMs "${SMOKE_KEYCHAIN_MS:-150}" -BingrSmokeNoSeed YES -BingrSmokeEmail "$SMOKE_EMAIL" -BingrSmokePassword "$SMOKE_PASSWORD" "${fresh[@]}"
