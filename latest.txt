@@ -1,0 +1,376 @@
+commit: 00a57cab49a6b452a356f7d7a30f28bd1d63ac84
+build: success  start: failure
+Xcode 26.6
+Build version 17F113
+tvOS 26.2 (26.2 - 23K51) - com.apple.CoreSimulator.SimRuntime.tvOS-26-2
+tvOS 26.4 (26.4 - 23L243a) - com.apple.CoreSimulator.SimRuntime.tvOS-26-4
+tvOS 26.5 (26.5 - 23L470) - com.apple.CoreSimulator.SimRuntime.tvOS-26-5
+=== build errors ===
+=== start-diagnose ===
+14820 get.php
+470850 get2.php
+461602 get3.php
+Simulator: Apple TV 4K (3rd generation) / com.apple.CoreSimulator.SimRuntime.tvOS-26-5
+tvos/1-nieuw: gestart (pid 9587)
+tvos/1-nieuw: geheugen (MB) per 5 s: 5s:208 10s:207 15s:203
+tvos/1-nieuw: piekgeheugen 208 MB
+tvos/1-nieuw: draait na 15s nog (geen crash)
+tvos/2-terugkerend: gestart (pid 10579)
+tvos/2-terugkerend: geheugen (MB) per 5 s: 5s:193 10s:204 15s:204 20s:242 25s:280 30s:261 35s:289
+tvos/2-terugkerend: piekgeheugen 290 MB
+tvos/2-terugkerend: draait na 35s nog (geen crash)
+BINGR_SMOKE: [6s] account: geen · servers 3 · profielen 2
+BINGR_SMOKE: [8s] beveiligd profiel kiezen
+BINGR_SMOKE: [8s] mijlpaal profile_picked (33 MB)
+BINGR_SMOKE: [9s] mijlpaal pin_screen (35 MB)
+BINGR_SMOKE: [9s] pincodescherm na 0.18 s
+BINGR_SMOKE: [19s] na pincode: niet open
+BINGR_SMOKE: [19s] profiel openen (kids=false)
+BINGR_SMOKE: [19s] mijlpaal profile (35 MB)
+BINGR_SMOKE: [19s] mijlpaal servers (35 MB)
+BINGR_SMOKE: [19s] mijlpaal home (39 MB)
+BINGR_SMOKE: [19s] Home na 0.7 s
+BINGR_SMOKE: [20s] bewaarde lijst: nee (ophalen)
+BINGR_SMOKE: [20s] mijlpaal fetch (42 MB)
+BINGR_SMOKE: [20s] HTTP GET /get.php [19s] $s7BingrTV15PlaylistServiceC7refresh_11showSpinnerSbAA0C6SourceV_SbtYaFTQ1_ < $s7BingrTV15PlaylistServiceC6select_12forceRefreshyAA0C6SourceV_SbtYaFTQ3_ < $s7BingrTV8AppStateC4open_8thenShowyAA14PlaylistSourceV_SSSgtFyyYacfU0_TQ1_ < $s7BingrTV8AppStateC4open_8thenShowyAA14PlaylistSourceV_SSSgtFyyYacfU0_TATQ0_ < $sxIeAgHr_xs5Error_pIegHrzo_s8SendableRzs5NeverORs_r0_lTRTQ0_ < $sxIeAgHr_xs5Error_pIegHrzo_s8SendableRzs5NeverORs_r0_lTRTA.58TQ0_
+BINGR_SMOKE: [20s] mijlpaal parse (43 MB)
+BINGR_SMOKE: [20s] mijlpaal catalog (43 MB)
+BINGR_SMOKE: [20s] mijlpaal save (43 MB)
+BINGR_SMOKE: [20s] servers laden bij openen: ask → none
+BINGR_SMOKE: [21s] mijlpaal ready (44 MB)
+BINGR_SMOKE: [40s] vraag servers bijwerken: niet getoond
+tvos/2b-crash: gestart (pid 12862)
+tvos/2b-crash: gestopt na 20s
+tvos/2b-crash: geheugen (MB) per 5 s: 5s:202 10s:213 15s:207
+tvos/2b-crash: piekgeheugen 236 MB
+tvos/2b-crash: bewust gecrasht (verwacht)
+tvos/2c-na-crash: gestart (pid 15626)
+tvos/2c-na-crash: aanvragen naar de servers in de eerste 30 s: 0
+tvos/2c-na-crash: geheugen (MB) per 5 s: 5s:201 10s:213 15s:212 20s:242 25s:279 30s:267 35s:298
+tvos/2c-na-crash: piekgeheugen 298 MB
+tvos/2c-na-crash: draait na 35s nog (geen crash)
+BINGR_SMOKE: [8s] mijlpaal profile_picked (34 MB)
+BINGR_SMOKE: [8s] mijlpaal pin_screen (36 MB)
+BINGR_SMOKE: [8s] pincodescherm na 0.11 s
+BINGR_SMOKE: [18s] na pincode: niet open
+BINGR_SMOKE: [18s] profiel openen (kids=false)
+BINGR_SMOKE: [18s] mijlpaal profile (36 MB)
+BINGR_SMOKE: [18s] mijlpaal servers (36 MB)
+BINGR_SMOKE: [19s] mijlpaal home (39 MB)
+BINGR_SMOKE: [19s] Home na 0.5 s
+BINGR_SMOKE: [19s] bewaarde lijst: ja
+BINGR_SMOKE: [19s] mijlpaal catalog (43 MB)
+BINGR_SMOKE: [19s] servers laden bij openen: ask → ask
+BINGR_SMOKE: [20s] mijlpaal ready (48 MB)
+BINGR_SMOKE: [39s] vraag servers bijwerken: Nu bijwerken
+BINGR_SMOKE: [39s] mijlpaal fetch (68 MB)
+BINGR_SMOKE: [39s] HTTP GET /get.php [39s] $s7BingrTV15PlaylistServiceC7refresh_11showSpinnerSbAA0C6SourceV_SbtYaFTQ1_ < $s7BingrTV15PlaylistServiceC15runServerUpdate33_4CC85F76817FBD425B594A405731C757LL10justLoadedySb_tYaFSbSgyYaYbcfU2_TQ0_ < $s7BingrTV15PlaylistServiceC15runServerUpdate33_4CC85F76817FBD425B594A405731C757LL10justLoadedySb_tYaFSbSgyYaYbcfU2_TATQ0_ < $s7BingrTV11CrossServerC11withTimeoutyxSgSd_AEyYaYbctYas8SendableRzlFZAEScGyAEGzYaXEfU_AEyYacfU_TQ0_ < $s7BingrTV11CrossServerC11withTimeoutyxSgSd_AEyYaYbctYas8SendableRzlFZAEScGyAEGzYaXEfU_AEyYacfU_TATQ0_ < $sxIeAgHr_xs5Error_pIegHrzo_s8SendableRzlTRTQ0_
+BINGR_SMOKE: [40s] mijlpaal parse (69 MB)
+BINGR_SMOKE: [40s] mijlpaal save (69 MB)
+BINGR_SMOKE: [40s] HTTP GET /get2.php [39s] $s7BingrTV15PlaylistServiceC7refresh_11showSpinnerSbAA0C6SourceV_SbtYaFTQ1_ < $s7BingrTV15PlaylistServiceC15runServerUpdate33_4CC85F76817FBD425B594A405731C757LL10justLoadedySb_tYaFSbSgyYaYbcfU2_TQ0_ < $s7BingrTV15PlaylistServiceC15runServerUpdate33_4CC85F76817FBD425B594A405731C757LL10justLoadedySb_tYaFSbSgyYaYbcfU2_TATQ0_ < $s7BingrTV11CrossServerC11withTimeoutyxSgSd_AEyYaYbctYas8SendableRzlFZAEScGyAEGzYaXEfU_AEyYacfU_TQ0_ < $s7BingrTV11CrossServerC11withTimeoutyxSgSd_AEyYaYbctYas8SendableRzlFZAEScGyAEGzYaXEfU_AEyYacfU_TATQ0_ < $sxIeAgHr_xs5Error_pIegHrzo_s8SendableRzlTRTQ0_
+BINGR_SMOKE: [40s] HTTP GET /get3.php [39s] $s7BingrTV15PlaylistServiceC7refresh_11showSpinnerSbAA0C6SourceV_SbtYaFTQ1_ < $s7BingrTV15PlaylistServiceC15runServerUpdate33_4CC85F76817FBD425B594A405731C757LL10justLoadedySb_tYaFSbSgyYaYbcfU2_TQ0_ < $s7BingrTV15PlaylistServiceC15runServerUpdate33_4CC85F76817FBD425B594A405731C757LL10justLoadedySb_tYaFSbSgyYaYbcfU2_TATQ0_ < $s7BingrTV11CrossServerC11withTimeoutyxSgSd_AEyYaYbctYas8SendableRzlFZAEScGyAEGzYaXEfU_AEyYacfU_TQ0_ < $s7BingrTV11CrossServerC11withTimeoutyxSgSd_AEyYaYbctYas8SendableRzlFZAEScGyAEGzYaXEfU_AEyYacfU_TATQ0_ < $sxIeAgHr_xs5Error_pIegHrzo_s8SendableRzlTRTQ0_
+tvos/3-herstart: gestart (pid 17731)
+tvos/3-herstart: aanvragen naar de servers in de eerste 30 s: 0
+tvos/3-herstart: geheugen (MB) per 5 s: 5s:202 10s:219 15s:220 20s:251 25s:286 30s:273 35s:305
+tvos/3-herstart: piekgeheugen 305 MB
+tvos/3-herstart: draait na 35s nog (geen crash)
+BINGR_SMOKE: [8s] mijlpaal profile_picked (34 MB)
+BINGR_SMOKE: [8s] mijlpaal pin_screen (36 MB)
+BINGR_SMOKE: [8s] pincodescherm na 0.06 s
+BINGR_SMOKE: [18s] na pincode: niet open
+BINGR_SMOKE: [18s] profiel openen (kids=false)
+BINGR_SMOKE: [18s] mijlpaal profile (36 MB)
+BINGR_SMOKE: [18s] mijlpaal servers (36 MB)
+BINGR_SMOKE: [18s] mijlpaal home (39 MB)
+BINGR_SMOKE: [18s] Home na 0.3 s
+BINGR_SMOKE: [18s] bewaarde lijst: ja
+BINGR_SMOKE: [18s] mijlpaal catalog (42 MB)
+BINGR_SMOKE: [18s] servers laden bij openen: ask → ask
+BINGR_SMOKE: [20s] mijlpaal ready (51 MB)
+BINGR_SMOKE: [39s] vraag servers bijwerken: Nu bijwerken
+BINGR_SMOKE: [39s] mijlpaal fetch (68 MB)
+BINGR_SMOKE: [39s] HTTP GET /get.php [39s] $s7BingrTV15PlaylistServiceC7refresh_11showSpinnerSbAA0C6SourceV_SbtYaFTQ1_ < $s7BingrTV15PlaylistServiceC15runServerUpdate33_4CC85F76817FBD425B594A405731C757LL10justLoadedySb_tYaFSbSgyYaYbcfU2_TQ0_ < $s7BingrTV15PlaylistServiceC15runServerUpdate33_4CC85F76817FBD425B594A405731C757LL10justLoadedySb_tYaFSbSgyYaYbcfU2_TATQ0_ < $s7BingrTV11CrossServerC11withTimeoutyxSgSd_AEyYaYbctYas8SendableRzlFZAEScGyAEGzYaXEfU_AEyYacfU_TQ0_ < $s7BingrTV11CrossServerC11withTimeoutyxSgSd_AEyYaYbctYas8SendableRzlFZAEScGyAEGzYaXEfU_AEyYacfU_TATQ0_ < $sxIeAgHr_xs5Error_pIegHrzo_s8SendableRzlTRTQ0_
+BINGR_SMOKE: [39s] mijlpaal parse (69 MB)
+BINGR_SMOKE: [40s] mijlpaal save (69 MB)
+BINGR_SMOKE: [40s] HTTP GET /get2.php [39s] $s7BingrTV15PlaylistServiceC7refresh_11showSpinnerSbAA0C6SourceV_SbtYaFTQ1_ < $s7BingrTV15PlaylistServiceC15runServerUpdate33_4CC85F76817FBD425B594A405731C757LL10justLoadedySb_tYaFSbSgyYaYbcfU2_TQ0_ < $s7BingrTV15PlaylistServiceC15runServerUpdate33_4CC85F76817FBD425B594A405731C757LL10justLoadedySb_tYaFSbSgyYaYbcfU2_TATQ0_ < $s7BingrTV11CrossServerC11withTimeoutyxSgSd_AEyYaYbctYas8SendableRzlFZAEScGyAEGzYaXEfU_AEyYacfU_TQ0_ < $s7BingrTV11CrossServerC11withTimeoutyxSgSd_AEyYaYbctYas8SendableRzlFZAEScGyAEGzYaXEfU_AEyYacfU_TATQ0_ < $sxIeAgHr_xs5Error_pIegHrzo_s8SendableRzlTRTQ0_
+BINGR_SMOKE: [40s] HTTP GET /get3.php [40s] $s7BingrTV15PlaylistServiceC7refresh_11showSpinnerSbAA0C6SourceV_SbtYaFTQ1_ < $s7BingrTV15PlaylistServiceC15runServerUpdate33_4CC85F76817FBD425B594A405731C757LL10justLoadedySb_tYaFSbSgyYaYbcfU2_TQ0_ < $s7BingrTV15PlaylistServiceC15runServerUpdate33_4CC85F76817FBD425B594A405731C757LL10justLoadedySb_tYaFSbSgyYaYbcfU2_TATQ0_ < $s7BingrTV11CrossServerC11withTimeoutyxSgSd_AEyYaYbctYas8SendableRzlFZAEScGyAEGzYaXEfU_AEyYacfU_TQ0_ < $s7BingrTV11CrossServerC11withTimeoutyxSgSd_AEyYaYbctYas8SendableRzlFZAEScGyAEGzYaXEfU_AEyYacfU_TATQ0_ < $sxIeAgHr_xs5Error_pIegHrzo_s8SendableRzlTRTQ0_
+tvos/4-kinderprofiel: gestart (pid 20018)
+tvos/4-kinderprofiel: geheugen (MB) per 5 s: 5s:244 10s:259 15s:295 20s:318 25s:314 30s:313 35s:313
+tvos/4-kinderprofiel: piekgeheugen 319 MB
+tvos/4-kinderprofiel: draait na 35s nog (geen crash)
+BINGR_SMOKE: [4s] mijlpaal intro_done (32 MB)
+BINGR_SMOKE: [4s] mijlpaal profile_picker (34 MB)
+BINGR_SMOKE: [5s] diagnose vorige start: geen probleem
+BINGR_SMOKE: [5s] account: geen · servers 3 · profielen 2
+BINGR_SMOKE: [5s] profiel openen (kids=true)
+BINGR_SMOKE: [5s] mijlpaal profile (33 MB)
+BINGR_SMOKE: [5s] mijlpaal servers (33 MB)
+BINGR_SMOKE: [6s] mijlpaal home (36 MB)
+BINGR_SMOKE: [6s] Home na 0.2 s
+BINGR_SMOKE: [6s] bewaarde lijst: nee (ophalen)
+BINGR_SMOKE: [6s] mijlpaal fetch (39 MB)
+BINGR_SMOKE: [6s] HTTP GET /get.php [5s] $s7BingrTV15PlaylistServiceC7refresh_11showSpinnerSbAA0C6SourceV_SbtYaFTQ1_ < $s7BingrTV15PlaylistServiceC6select_12forceRefreshyAA0C6SourceV_SbtYaFTQ3_ < $s7BingrTV8AppStateC4open_8thenShowyAA14PlaylistSourceV_SSSgtFyyYacfU0_TQ1_ < $s7BingrTV8AppStateC4open_8thenShowyAA14PlaylistSourceV_SSSgtFyyYacfU0_TATQ0_ < $sxIeAgHr_xs5Error_pIegHrzo_s8SendableRzs5NeverORs_r0_lTRTQ0_ < $sxIeAgHr_xs5Error_pIegHrzo_s8SendableRzs5NeverORs_r0_lTRTA.58TQ0_
+BINGR_SMOKE: [6s] mijlpaal parse (40 MB)
+BINGR_SMOKE: [6s] mijlpaal catalog (40 MB)
+BINGR_SMOKE: [6s] mijlpaal save (43 MB)
+BINGR_SMOKE: [6s] servers laden bij openen: ask → none
+BINGR_SMOKE: [7s] mijlpaal ready (60 MB)
+BINGR_SMOKE: [26s] vraag servers bijwerken: niet getoond
+BINGR_SMOKE: [36s] categorie uit
+BINGR_SMOKE: [41s] categorie aan
+tvos/5-account: gestart (pid 22016)
+tvos/5-account: geheugen (MB) per 5 s: 5s:213 10s:214 15s:219 20s:228 25s:227 30s:249 35s:265
+tvos/5-account: piekgeheugen 265 MB
+tvos/5-account: draait na 35s nog (geen crash)
+BINGR_SMOKE: [18s] na inloggen: kies profiel
+BINGR_SMOKE: [18s] account: ingelogd · servers 3 · profielen 2
+BINGR_SMOKE: [20s] beveiligd profiel kiezen
+BINGR_SMOKE: [20s] mijlpaal profile_picked (38 MB)
+BINGR_SMOKE: [21s] mijlpaal pin_screen (40 MB)
+BINGR_SMOKE: [21s] pincodescherm na 0.07 s
+BINGR_SMOKE: [31s] na pincode: niet open
+BINGR_SMOKE: [31s] profiel openen (kids=false)
+BINGR_SMOKE: [31s] mijlpaal profile (41 MB)
+BINGR_SMOKE: [31s] mijlpaal servers (41 MB)
+BINGR_SMOKE: [31s] mijlpaal home (45 MB)
+BINGR_SMOKE: [31s] Home na 0.3 s
+BINGR_SMOKE: [31s] bewaarde lijst: nee (ophalen)
+BINGR_SMOKE: [31s] mijlpaal fetch (47 MB)
+BINGR_SMOKE: [31s] HTTP GET /get.php [31s] $s7BingrTV15PlaylistServiceC7refresh_11showSpinnerSbAA0C6SourceV_SbtYaFTQ1_ < $s7BingrTV15PlaylistServiceC6select_12forceRefreshyAA0C6SourceV_SbtYaFTQ3_ < $s7BingrTV8AppStateC4open_8thenShowyAA14PlaylistSourceV_SSSgtFyyYacfU0_TQ1_ < $s7BingrTV8AppStateC4open_8thenShowyAA14PlaylistSourceV_SSSgtFyyYacfU0_TATQ0_ < $sxIeAgHr_xs5Error_pIegHrzo_s8SendableRzs5NeverORs_r0_lTRTQ0_ < $sxIeAgHr_xs5Error_pIegHrzo_s8SendableRzs5NeverORs_r0_lTRTA.58TQ0_
+BINGR_SMOKE: [31s] mijlpaal parse (47 MB)
+BINGR_SMOKE: [31s] mijlpaal catalog (47 MB)
+BINGR_SMOKE: [32s] mijlpaal save (47 MB)
+BINGR_SMOKE: [32s] servers laden bij openen: ask → none
+BINGR_SMOKE: [33s] mijlpaal ready (49 MB)
+tvos/6-account-herstart: gestart (pid 24361)
+tvos/6-account-herstart: geheugen (MB) per 5 s: 5s:206 10s:219 15s:218 20s:244 25s:256 30s:267 35s:285
+tvos/6-account-herstart: piekgeheugen 285 MB
+tvos/6-account-herstart: draait na 35s nog (geen crash)
+BINGR_SMOKE: [8s] mijlpaal profile_picked (34 MB)
+BINGR_SMOKE: [8s] mijlpaal pin_screen (36 MB)
+BINGR_SMOKE: [8s] pincodescherm na 0.07 s
+BINGR_SMOKE: [18s] na pincode: niet open
+BINGR_SMOKE: [18s] profiel openen (kids=false)
+BINGR_SMOKE: [18s] mijlpaal profile (36 MB)
+BINGR_SMOKE: [18s] mijlpaal servers (36 MB)
+BINGR_SMOKE: [18s] mijlpaal home (40 MB)
+BINGR_SMOKE: [18s] Home na 0.3 s
+BINGR_SMOKE: [18s] bewaarde lijst: ja
+BINGR_SMOKE: [18s] mijlpaal catalog (42 MB)
+BINGR_SMOKE: [18s] servers laden bij openen: ask → ask
+BINGR_SMOKE: [19s] mijlpaal ready (48 MB)
+BINGR_SMOKE: [39s] vraag servers bijwerken: Nu bijwerken
+BINGR_SMOKE: [39s] mijlpaal fetch (67 MB)
+BINGR_SMOKE: [39s] HTTP GET /get.php [39s] $s7BingrTV15PlaylistServiceC7refresh_11showSpinnerSbAA0C6SourceV_SbtYaFTQ1_ < $s7BingrTV15PlaylistServiceC15runServerUpdate33_4CC85F76817FBD425B594A405731C757LL10justLoadedySb_tYaFSbSgyYaYbcfU2_TQ0_ < $s7BingrTV15PlaylistServiceC15runServerUpdate33_4CC85F76817FBD425B594A405731C757LL10justLoadedySb_tYaFSbSgyYaYbcfU2_TATQ0_ < $s7BingrTV11CrossServerC11withTimeoutyxSgSd_AEyYaYbctYas8SendableRzlFZAEScGyAEGzYaXEfU_AEyYacfU_TQ0_ < $s7BingrTV11CrossServerC11withTimeoutyxSgSd_AEyYaYbctYas8SendableRzlFZAEScGyAEGzYaXEfU_AEyYacfU_TATQ0_ < $sxIeAgHr_xs5Error_pIegHrzo_s8SendableRzlTRTQ0_
+BINGR_SMOKE: [39s] mijlpaal parse (69 MB)
+BINGR_SMOKE: [39s] mijlpaal save (69 MB)
+BINGR_SMOKE: [39s] HTTP GET /get2.php [39s] $s7BingrTV15PlaylistServiceC7refresh_11showSpinnerSbAA0C6SourceV_SbtYaFTQ1_ < $s7BingrTV15PlaylistServiceC15runServerUpdate33_4CC85F76817FBD425B594A405731C757LL10justLoadedySb_tYaFSbSgyYaYbcfU2_TQ0_ < $s7BingrTV15PlaylistServiceC15runServerUpdate33_4CC85F76817FBD425B594A405731C757LL10justLoadedySb_tYaFSbSgyYaYbcfU2_TATQ0_ < $s7BingrTV11CrossServerC11withTimeoutyxSgSd_AEyYaYbctYas8SendableRzlFZAEScGyAEGzYaXEfU_AEyYacfU_TQ0_ < $s7BingrTV11CrossServerC11withTimeoutyxSgSd_AEyYaYbctYas8SendableRzlFZAEScGyAEGzYaXEfU_AEyYacfU_TATQ0_ < $sxIeAgHr_xs5Error_pIegHrzo_s8SendableRzlTRTQ0_
+BINGR_SMOKE: [40s] HTTP GET /get3.php [39s] $s7BingrTV15PlaylistServiceC7refresh_11showSpinnerSbAA0C6SourceV_SbtYaFTQ1_ < $s7BingrTV15PlaylistServiceC15runServerUpdate33_4CC85F76817FBD425B594A405731C757LL10justLoadedySb_tYaFSbSgyYaYbcfU2_TQ0_ < $s7BingrTV15PlaylistServiceC15runServerUpdate33_4CC85F76817FBD425B594A405731C757LL10justLoadedySb_tYaFSbSgyYaYbcfU2_TATQ0_ < $s7BingrTV11CrossServerC11withTimeoutyxSgSd_AEyYaYbctYas8SendableRzlFZAEScGyAEGzYaXEfU_AEyYacfU_TQ0_ < $s7BingrTV11CrossServerC11withTimeoutyxSgSd_AEyYaYbctYas8SendableRzlFZAEScGyAEGzYaXEfU_AEyYacfU_TATQ0_ < $sxIeAgHr_xs5Error_pIegHrzo_s8SendableRzlTRTQ0_
+=== crash-samenvattingen ===
+=== fatale regels uit de app-logs ===
+--- 1-nieuw.log
+--- 2-terugkerend.log
+BINGR_SMOKE: [-0s] mijlpaal started (12 MB)
+BINGR_SMOKE: [0s] start (seeded=false)
+BINGR_SMOKE: [0s] mijlpaal storage (13 MB)
+BINGR_SMOKE: [0s] mijlpaal account (12 MB)
+BINGR_SMOKE: [1s] mijlpaal first_frame (22 MB)
+BINGR_SMOKE: [5s] mijlpaal intro_done (32 MB)
+BINGR_SMOKE: [5s] mijlpaal profile_picker (34 MB)
+BINGR_SMOKE: [6s] diagnose vorige start: geen probleem
+BINGR_SMOKE: [6s] account: geen · servers 3 · profielen 2
+BINGR_SMOKE: [8s] beveiligd profiel kiezen
+BINGR_SMOKE: [8s] mijlpaal profile_picked (33 MB)
+BINGR_SMOKE: [9s] mijlpaal pin_screen (35 MB)
+BINGR_SMOKE: [9s] pincodescherm na 0.18 s
+BINGR_SMOKE: [19s] na pincode: niet open
+BINGR_SMOKE: [19s] profiel openen (kids=false)
+BINGR_SMOKE: [19s] mijlpaal profile (35 MB)
+BINGR_SMOKE: [19s] mijlpaal servers (35 MB)
+BINGR_SMOKE: [19s] mijlpaal home (39 MB)
+BINGR_SMOKE: [19s] Home na 0.7 s
+BINGR_SMOKE: [20s] bewaarde lijst: nee (ophalen)
+BINGR_SMOKE: [20s] mijlpaal fetch (42 MB)
+BINGR_SMOKE: [20s] HTTP GET /get.php [19s] $s7BingrTV15PlaylistServiceC7refresh_11showSpinnerSbAA0C6SourceV_SbtYaFTQ1_ < $s7BingrTV15PlaylistServiceC6select_12forceRefreshyAA0C6SourceV_SbtYaFTQ3_ < $s7BingrTV8AppStateC4open_8thenShowyAA14PlaylistSourceV_SSSgtFyyYacfU0_TQ1_ < $s7BingrTV8AppStateC4open_8thenShowyAA14PlaylistSourceV_SSSgtFyyYacfU0_TATQ0_ < $sxIeAgHr_xs5Error_pIegHrzo_s8SendableRzs5NeverORs_r0_lTRTQ0_ < $sxIeAgHr_xs5Error_pIegHrzo_s8SendableRzs5NeverORs_r0_lTRTA.58TQ0_
+BINGR_SMOKE: [20s] mijlpaal parse (43 MB)
+BINGR_SMOKE: [20s] mijlpaal catalog (43 MB)
+BINGR_SMOKE: [20s] mijlpaal save (43 MB)
+BINGR_SMOKE: [20s] servers laden bij openen: ask → none
+BINGR_SMOKE: [21s] mijlpaal ready (44 MB)
+BINGR_SMOKE: [40s] vraag servers bijwerken: niet getoond
+--- 2b-crash.log
+BINGR_SMOKE: [-0s] mijlpaal started (12 MB)
+BINGR_SMOKE: [0s] start (seeded=true)
+BINGR_SMOKE: [0s] mijlpaal storage (13 MB)
+BINGR_SMOKE: [0s] mijlpaal account (12 MB)
+BINGR_SMOKE: [0s] mijlpaal first_frame (22 MB)
+BINGR_SMOKE: [4s] mijlpaal intro_done (33 MB)
+BINGR_SMOKE: [4s] mijlpaal profile_picker (34 MB)
+BINGR_SMOKE: [6s] diagnose vorige start: geen probleem
+BINGR_SMOKE: [6s] account: geen · servers 3 · profielen 2
+BINGR_SMOKE: [8s] beveiligd profiel kiezen
+BINGR_SMOKE: [8s] mijlpaal profile_picked (34 MB)
+BINGR_SMOKE: [8s] mijlpaal pin_screen (36 MB)
+BINGR_SMOKE: [8s] pincodescherm na 0.07 s
+BINGR_SMOKE: [18s] na pincode: niet open
+BINGR_SMOKE: [18s] profiel openen (kids=false)
+BINGR_SMOKE: [18s] mijlpaal profile (36 MB)
+BINGR_SMOKE: [18s] mijlpaal servers (36 MB)
+BINGR_SMOKE: [18s] mijlpaal home (40 MB)
+BINGR_SMOKE: [18s] Home na 0.4 s
+BINGR_SMOKE: [19s] bewaarde lijst: ja
+BINGR_SMOKE: [19s] mijlpaal catalog (43 MB)
+BINGR_SMOKE: [19s] servers laden bij openen: ask → ask
+BINGR_SMOKE: [20s] mijlpaal ready (49 MB)
+BINGR_SMOKE: [23s] bewust crashen (test van de startdiagnose)
+Swift/ContiguousArrayBuffer.swift:692: Fatal error: Index out of range
+--- 2c-na-crash.log
+BINGR_SMOKE: [-0s] mijlpaal started (12 MB)
+BINGR_SMOKE: [0s] start (seeded=true)
+BINGR_SMOKE: [0s] mijlpaal storage (13 MB)
+BINGR_SMOKE: [0s] mijlpaal account (12 MB)
+BINGR_SMOKE: [0s] mijlpaal first_frame (22 MB)
+BINGR_SMOKE: [4s] mijlpaal intro_done (33 MB)
+BINGR_SMOKE: [4s] mijlpaal profile_picker (34 MB)
+BINGR_SMOKE: [6s] diagnose vorige start: geen probleem
+BINGR_SMOKE: [6s] geen crashrapport van de vorige start BINGR_SMOKE_FAIL
+BINGR_SMOKE: [6s] account: geen · servers 3 · profielen 2
+BINGR_SMOKE: [8s] beveiligd profiel kiezen
+BINGR_SMOKE: [8s] mijlpaal profile_picked (34 MB)
+BINGR_SMOKE: [8s] mijlpaal pin_screen (36 MB)
+BINGR_SMOKE: [8s] pincodescherm na 0.11 s
+BINGR_SMOKE: [18s] na pincode: niet open
+BINGR_SMOKE: [18s] profiel openen (kids=false)
+BINGR_SMOKE: [18s] mijlpaal profile (36 MB)
+BINGR_SMOKE: [18s] mijlpaal servers (36 MB)
+BINGR_SMOKE: [19s] mijlpaal home (39 MB)
+BINGR_SMOKE: [19s] Home na 0.5 s
+BINGR_SMOKE: [19s] bewaarde lijst: ja
+BINGR_SMOKE: [19s] mijlpaal catalog (43 MB)
+BINGR_SMOKE: [19s] servers laden bij openen: ask → ask
+BINGR_SMOKE: [20s] mijlpaal ready (48 MB)
+BINGR_SMOKE: [39s] vraag servers bijwerken: Nu bijwerken
+BINGR_SMOKE: [39s] mijlpaal fetch (68 MB)
+BINGR_SMOKE: [39s] HTTP GET /get.php [39s] $s7BingrTV15PlaylistServiceC7refresh_11showSpinnerSbAA0C6SourceV_SbtYaFTQ1_ < $s7BingrTV15PlaylistServiceC15runServerUpdate33_4CC85F76817FBD425B594A405731C757LL10justLoadedySb_tYaFSbSgyYaYbcfU2_TQ0_ < $s7BingrTV15PlaylistServiceC15runServerUpdate33_4CC85F76817FBD425B594A405731C757LL10justLoadedySb_tYaFSbSgyYaYbcfU2_TATQ0_ < $s7BingrTV11CrossServerC11withTimeoutyxSgSd_AEyYaYbctYas8SendableRzlFZAEScGyAEGzYaXEfU_AEyYacfU_TQ0_ < $s7BingrTV11CrossServerC11withTimeoutyxSgSd_AEyYaYbctYas8SendableRzlFZAEScGyAEGzYaXEfU_AEyYacfU_TATQ0_ < $sxIeAgHr_xs5Error_pIegHrzo_s8SendableRzlTRTQ0_
+BINGR_SMOKE: [40s] mijlpaal parse (69 MB)
+BINGR_SMOKE: [40s] mijlpaal save (69 MB)
+BINGR_SMOKE: [40s] HTTP GET /get2.php [39s] $s7BingrTV15PlaylistServiceC7refresh_11showSpinnerSbAA0C6SourceV_SbtYaFTQ1_ < $s7BingrTV15PlaylistServiceC15runServerUpdate33_4CC85F76817FBD425B594A405731C757LL10justLoadedySb_tYaFSbSgyYaYbcfU2_TQ0_ < $s7BingrTV15PlaylistServiceC15runServerUpdate33_4CC85F76817FBD425B594A405731C757LL10justLoadedySb_tYaFSbSgyYaYbcfU2_TATQ0_ < $s7BingrTV11CrossServerC11withTimeoutyxSgSd_AEyYaYbctYas8SendableRzlFZAEScGyAEGzYaXEfU_AEyYacfU_TQ0_ < $s7BingrTV11CrossServerC11withTimeoutyxSgSd_AEyYaYbctYas8SendableRzlFZAEScGyAEGzYaXEfU_AEyYacfU_TATQ0_ < $sxIeAgHr_xs5Error_pIegHrzo_s8SendableRzlTRTQ0_
+BINGR_SMOKE: [40s] HTTP GET /get3.php [39s] $s7BingrTV15PlaylistServiceC7refresh_11showSpinnerSbAA0C6SourceV_SbtYaFTQ1_ < $s7BingrTV15PlaylistServiceC15runServerUpdate33_4CC85F76817FBD425B594A405731C757LL10justLoadedySb_tYaFSbSgyYaYbcfU2_TQ0_ < $s7BingrTV15PlaylistServiceC15runServerUpdate33_4CC85F76817FBD425B594A405731C757LL10justLoadedySb_tYaFSbSgyYaYbcfU2_TATQ0_ < $s7BingrTV11CrossServerC11withTimeoutyxSgSd_AEyYaYbctYas8SendableRzlFZAEScGyAEGzYaXEfU_AEyYacfU_TQ0_ < $s7BingrTV11CrossServerC11withTimeoutyxSgSd_AEyYaYbctYas8SendableRzlFZAEScGyAEGzYaXEfU_AEyYacfU_TATQ0_ < $sxIeAgHr_xs5Error_pIegHrzo_s8SendableRzlTRTQ0_
+--- 3-herstart.log
+BINGR_SMOKE: [-0s] mijlpaal started (12 MB)
+BINGR_SMOKE: [0s] start (seeded=true)
+BINGR_SMOKE: [0s] mijlpaal storage (13 MB)
+BINGR_SMOKE: [0s] mijlpaal account (12 MB)
+BINGR_SMOKE: [0s] mijlpaal first_frame (22 MB)
+BINGR_SMOKE: [4s] mijlpaal intro_done (33 MB)
+BINGR_SMOKE: [4s] mijlpaal profile_picker (35 MB)
+BINGR_SMOKE: [6s] diagnose vorige start: geen probleem
+BINGR_SMOKE: [6s] account: geen · servers 3 · profielen 2
+BINGR_SMOKE: [8s] beveiligd profiel kiezen
+BINGR_SMOKE: [8s] mijlpaal profile_picked (34 MB)
+BINGR_SMOKE: [8s] mijlpaal pin_screen (36 MB)
+BINGR_SMOKE: [8s] pincodescherm na 0.06 s
+BINGR_SMOKE: [18s] na pincode: niet open
+BINGR_SMOKE: [18s] profiel openen (kids=false)
+BINGR_SMOKE: [18s] mijlpaal profile (36 MB)
+BINGR_SMOKE: [18s] mijlpaal servers (36 MB)
+BINGR_SMOKE: [18s] mijlpaal home (39 MB)
+BINGR_SMOKE: [18s] Home na 0.3 s
+BINGR_SMOKE: [18s] bewaarde lijst: ja
+BINGR_SMOKE: [18s] mijlpaal catalog (42 MB)
+BINGR_SMOKE: [18s] servers laden bij openen: ask → ask
+BINGR_SMOKE: [20s] mijlpaal ready (51 MB)
+BINGR_SMOKE: [39s] vraag servers bijwerken: Nu bijwerken
+BINGR_SMOKE: [39s] mijlpaal fetch (68 MB)
+BINGR_SMOKE: [39s] HTTP GET /get.php [39s] $s7BingrTV15PlaylistServiceC7refresh_11showSpinnerSbAA0C6SourceV_SbtYaFTQ1_ < $s7BingrTV15PlaylistServiceC15runServerUpdate33_4CC85F76817FBD425B594A405731C757LL10justLoadedySb_tYaFSbSgyYaYbcfU2_TQ0_ < $s7BingrTV15PlaylistServiceC15runServerUpdate33_4CC85F76817FBD425B594A405731C757LL10justLoadedySb_tYaFSbSgyYaYbcfU2_TATQ0_ < $s7BingrTV11CrossServerC11withTimeoutyxSgSd_AEyYaYbctYas8SendableRzlFZAEScGyAEGzYaXEfU_AEyYacfU_TQ0_ < $s7BingrTV11CrossServerC11withTimeoutyxSgSd_AEyYaYbctYas8SendableRzlFZAEScGyAEGzYaXEfU_AEyYacfU_TATQ0_ < $sxIeAgHr_xs5Error_pIegHrzo_s8SendableRzlTRTQ0_
+BINGR_SMOKE: [39s] mijlpaal parse (69 MB)
+BINGR_SMOKE: [40s] mijlpaal save (69 MB)
+BINGR_SMOKE: [40s] HTTP GET /get2.php [39s] $s7BingrTV15PlaylistServiceC7refresh_11showSpinnerSbAA0C6SourceV_SbtYaFTQ1_ < $s7BingrTV15PlaylistServiceC15runServerUpdate33_4CC85F76817FBD425B594A405731C757LL10justLoadedySb_tYaFSbSgyYaYbcfU2_TQ0_ < $s7BingrTV15PlaylistServiceC15runServerUpdate33_4CC85F76817FBD425B594A405731C757LL10justLoadedySb_tYaFSbSgyYaYbcfU2_TATQ0_ < $s7BingrTV11CrossServerC11withTimeoutyxSgSd_AEyYaYbctYas8SendableRzlFZAEScGyAEGzYaXEfU_AEyYacfU_TQ0_ < $s7BingrTV11CrossServerC11withTimeoutyxSgSd_AEyYaYbctYas8SendableRzlFZAEScGyAEGzYaXEfU_AEyYacfU_TATQ0_ < $sxIeAgHr_xs5Error_pIegHrzo_s8SendableRzlTRTQ0_
+BINGR_SMOKE: [40s] HTTP GET /get3.php [40s] $s7BingrTV15PlaylistServiceC7refresh_11showSpinnerSbAA0C6SourceV_SbtYaFTQ1_ < $s7BingrTV15PlaylistServiceC15runServerUpdate33_4CC85F76817FBD425B594A405731C757LL10justLoadedySb_tYaFSbSgyYaYbcfU2_TQ0_ < $s7BingrTV15PlaylistServiceC15runServerUpdate33_4CC85F76817FBD425B594A405731C757LL10justLoadedySb_tYaFSbSgyYaYbcfU2_TATQ0_ < $s7BingrTV11CrossServerC11withTimeoutyxSgSd_AEyYaYbctYas8SendableRzlFZAEScGyAEGzYaXEfU_AEyYacfU_TQ0_ < $s7BingrTV11CrossServerC11withTimeoutyxSgSd_AEyYaYbctYas8SendableRzlFZAEScGyAEGzYaXEfU_AEyYacfU_TATQ0_ < $sxIeAgHr_xs5Error_pIegHrzo_s8SendableRzlTRTQ0_
+--- 4-kinderprofiel.log
+BINGR_SMOKE: [-0s] mijlpaal started (12 MB)
+BINGR_SMOKE: [0s] start (seeded=false)
+BINGR_SMOKE: [0s] mijlpaal storage (13 MB)
+BINGR_SMOKE: [0s] mijlpaal account (12 MB)
+BINGR_SMOKE: [0s] mijlpaal first_frame (22 MB)
+BINGR_SMOKE: [4s] mijlpaal intro_done (32 MB)
+BINGR_SMOKE: [4s] mijlpaal profile_picker (34 MB)
+BINGR_SMOKE: [5s] diagnose vorige start: geen probleem
+BINGR_SMOKE: [5s] account: geen · servers 3 · profielen 2
+BINGR_SMOKE: [5s] profiel openen (kids=true)
+BINGR_SMOKE: [5s] mijlpaal profile (33 MB)
+BINGR_SMOKE: [5s] mijlpaal servers (33 MB)
+BINGR_SMOKE: [6s] mijlpaal home (36 MB)
+BINGR_SMOKE: [6s] Home na 0.2 s
+BINGR_SMOKE: [6s] bewaarde lijst: nee (ophalen)
+BINGR_SMOKE: [6s] mijlpaal fetch (39 MB)
+BINGR_SMOKE: [6s] HTTP GET /get.php [5s] $s7BingrTV15PlaylistServiceC7refresh_11showSpinnerSbAA0C6SourceV_SbtYaFTQ1_ < $s7BingrTV15PlaylistServiceC6select_12forceRefreshyAA0C6SourceV_SbtYaFTQ3_ < $s7BingrTV8AppStateC4open_8thenShowyAA14PlaylistSourceV_SSSgtFyyYacfU0_TQ1_ < $s7BingrTV8AppStateC4open_8thenShowyAA14PlaylistSourceV_SSSgtFyyYacfU0_TATQ0_ < $sxIeAgHr_xs5Error_pIegHrzo_s8SendableRzs5NeverORs_r0_lTRTQ0_ < $sxIeAgHr_xs5Error_pIegHrzo_s8SendableRzs5NeverORs_r0_lTRTA.58TQ0_
+BINGR_SMOKE: [6s] mijlpaal parse (40 MB)
+BINGR_SMOKE: [6s] mijlpaal catalog (40 MB)
+BINGR_SMOKE: [6s] mijlpaal save (43 MB)
+BINGR_SMOKE: [6s] servers laden bij openen: ask → none
+BINGR_SMOKE: [7s] mijlpaal ready (60 MB)
+BINGR_SMOKE: [26s] vraag servers bijwerken: niet getoond
+BINGR_SMOKE: [36s] categorie uit
+BINGR_SMOKE: [41s] categorie aan
+--- 5-account.log
+BINGR_SMOKE: [-0s] mijlpaal started (12 MB)
+BINGR_SMOKE: [0s] start (seeded=false)
+BINGR_SMOKE: [0s] mijlpaal storage (13 MB)
+BINGR_SMOKE: [0s] mijlpaal account (11 MB)
+BINGR_SMOKE: [0s] mijlpaal first_frame (22 MB)
+BINGR_SMOKE: [4s] mijlpaal intro_done (32 MB)
+BINGR_SMOKE: [6s] diagnose vorige start: geen probleem
+BINGR_SMOKE: [8s] ingelogd
+BINGR_SMOKE: [18s] mijlpaal profile_picker (38 MB)
+BINGR_SMOKE: [18s] na inloggen: kies profiel
+BINGR_SMOKE: [18s] account: ingelogd · servers 3 · profielen 2
+BINGR_SMOKE: [20s] beveiligd profiel kiezen
+BINGR_SMOKE: [20s] mijlpaal profile_picked (38 MB)
+BINGR_SMOKE: [21s] mijlpaal pin_screen (40 MB)
+BINGR_SMOKE: [21s] pincodescherm na 0.07 s
+BINGR_SMOKE: [31s] na pincode: niet open
+BINGR_SMOKE: [31s] profiel openen (kids=false)
+BINGR_SMOKE: [31s] mijlpaal profile (41 MB)
+BINGR_SMOKE: [31s] mijlpaal servers (41 MB)
+BINGR_SMOKE: [31s] mijlpaal home (45 MB)
+BINGR_SMOKE: [31s] Home na 0.3 s
+BINGR_SMOKE: [31s] bewaarde lijst: nee (ophalen)
+BINGR_SMOKE: [31s] mijlpaal fetch (47 MB)
+BINGR_SMOKE: [31s] HTTP GET /get.php [31s] $s7BingrTV15PlaylistServiceC7refresh_11showSpinnerSbAA0C6SourceV_SbtYaFTQ1_ < $s7BingrTV15PlaylistServiceC6select_12forceRefreshyAA0C6SourceV_SbtYaFTQ3_ < $s7BingrTV8AppStateC4open_8thenShowyAA14PlaylistSourceV_SSSgtFyyYacfU0_TQ1_ < $s7BingrTV8AppStateC4open_8thenShowyAA14PlaylistSourceV_SSSgtFyyYacfU0_TATQ0_ < $sxIeAgHr_xs5Error_pIegHrzo_s8SendableRzs5NeverORs_r0_lTRTQ0_ < $sxIeAgHr_xs5Error_pIegHrzo_s8SendableRzs5NeverORs_r0_lTRTA.58TQ0_
+BINGR_SMOKE: [31s] mijlpaal parse (47 MB)
+BINGR_SMOKE: [31s] mijlpaal catalog (47 MB)
+BINGR_SMOKE: [32s] mijlpaal save (47 MB)
+BINGR_SMOKE: [32s] servers laden bij openen: ask → none
+BINGR_SMOKE: [33s] mijlpaal ready (49 MB)
+--- 6-account-herstart.log
+BINGR_SMOKE: [-0s] mijlpaal started (12 MB)
+BINGR_SMOKE: [0s] start (seeded=true)
+BINGR_SMOKE: [0s] mijlpaal storage (13 MB)
+BINGR_SMOKE: [0s] mijlpaal account (12 MB)
+BINGR_SMOKE: [0s] mijlpaal first_frame (22 MB)
+BINGR_SMOKE: [4s] mijlpaal intro_done (33 MB)
+BINGR_SMOKE: [4s] mijlpaal profile_picker (35 MB)
+BINGR_SMOKE: [6s] diagnose vorige start: geen probleem
+BINGR_SMOKE: [6s] account: ingelogd · servers 3 · profielen 2
+BINGR_SMOKE: [8s] beveiligd profiel kiezen
+BINGR_SMOKE: [8s] mijlpaal profile_picked (34 MB)
+BINGR_SMOKE: [8s] mijlpaal pin_screen (36 MB)
+BINGR_SMOKE: [8s] pincodescherm na 0.07 s
+BINGR_SMOKE: [18s] na pincode: niet open
+BINGR_SMOKE: [18s] profiel openen (kids=false)
+BINGR_SMOKE: [18s] mijlpaal profile (36 MB)
+BINGR_SMOKE: [18s] mijlpaal servers (36 MB)
+BINGR_SMOKE: [18s] mijlpaal home (40 MB)
+BINGR_SMOKE: [18s] Home na 0.3 s
+BINGR_SMOKE: [18s] bewaarde lijst: ja
+BINGR_SMOKE: [18s] mijlpaal catalog (42 MB)
+BINGR_SMOKE: [18s] servers laden bij openen: ask → ask
+BINGR_SMOKE: [19s] mijlpaal ready (48 MB)
+BINGR_SMOKE: [39s] vraag servers bijwerken: Nu bijwerken
+BINGR_SMOKE: [39s] mijlpaal fetch (67 MB)
+BINGR_SMOKE: [39s] HTTP GET /get.php [39s] $s7BingrTV15PlaylistServiceC7refresh_11showSpinnerSbAA0C6SourceV_SbtYaFTQ1_ < $s7BingrTV15PlaylistServiceC15runServerUpdate33_4CC85F76817FBD425B594A405731C757LL10justLoadedySb_tYaFSbSgyYaYbcfU2_TQ0_ < $s7BingrTV15PlaylistServiceC15runServerUpdate33_4CC85F76817FBD425B594A405731C757LL10justLoadedySb_tYaFSbSgyYaYbcfU2_TATQ0_ < $s7BingrTV11CrossServerC11withTimeoutyxSgSd_AEyYaYbctYas8SendableRzlFZAEScGyAEGzYaXEfU_AEyYacfU_TQ0_ < $s7BingrTV11CrossServerC11withTimeoutyxSgSd_AEyYaYbctYas8SendableRzlFZAEScGyAEGzYaXEfU_AEyYacfU_TATQ0_ < $sxIeAgHr_xs5Error_pIegHrzo_s8SendableRzlTRTQ0_
+BINGR_SMOKE: [39s] mijlpaal parse (69 MB)
+BINGR_SMOKE: [39s] mijlpaal save (69 MB)
+BINGR_SMOKE: [39s] HTTP GET /get2.php [39s] $s7BingrTV15PlaylistServiceC7refresh_11showSpinnerSbAA0C6SourceV_SbtYaFTQ1_ < $s7BingrTV15PlaylistServiceC15runServerUpdate33_4CC85F76817FBD425B594A405731C757LL10justLoadedySb_tYaFSbSgyYaYbcfU2_TQ0_ < $s7BingrTV15PlaylistServiceC15runServerUpdate33_4CC85F76817FBD425B594A405731C757LL10justLoadedySb_tYaFSbSgyYaYbcfU2_TATQ0_ < $s7BingrTV11CrossServerC11withTimeoutyxSgSd_AEyYaYbctYas8SendableRzlFZAEScGyAEGzYaXEfU_AEyYacfU_TQ0_ < $s7BingrTV11CrossServerC11withTimeoutyxSgSd_AEyYaYbctYas8SendableRzlFZAEScGyAEGzYaXEfU_AEyYacfU_TATQ0_ < $sxIeAgHr_xs5Error_pIegHrzo_s8SendableRzlTRTQ0_
+BINGR_SMOKE: [40s] HTTP GET /get3.php [39s] $s7BingrTV15PlaylistServiceC7refresh_11showSpinnerSbAA0C6SourceV_SbtYaFTQ1_ < $s7BingrTV15PlaylistServiceC15runServerUpdate33_4CC85F76817FBD425B594A405731C757LL10justLoadedySb_tYaFSbSgyYaYbcfU2_TQ0_ < $s7BingrTV15PlaylistServiceC15runServerUpdate33_4CC85F76817FBD425B594A405731C757LL10justLoadedySb_tYaFSbSgyYaYbcfU2_TATQ0_ < $s7BingrTV11CrossServerC11withTimeoutyxSgSd_AEyYaYbctYas8SendableRzlFZAEScGyAEGzYaXEfU_AEyYacfU_TQ0_ < $s7BingrTV11CrossServerC11withTimeoutyxSgSd_AEyYaYbctYas8SendableRzlFZAEScGyAEGzYaXEfU_AEyYacfU_TATQ0_ < $sxIeAgHr_xs5Error_pIegHrzo_s8SendableRzlTRTQ0_
