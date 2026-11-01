@@ -1236,6 +1236,115 @@ do $$ begin
   end if;
 end $$;
 
+-- ============================================================================================================
+-- Maandaggregatie voor de maandrecap "Jouw maand op Bingr" (docs/NEWSLETTER.md, sectie Maandrecap; docs/ACCOUNT.md,
+-- "watch_month"). Per account, profiel, lokale maand (tijdzone van de app), soort (movie | episode | live) en titel
+-- (item_key, zelfde sleutel als account_watch_stats): aantal keer, minuten, unieke afleveringen, eerste en laatste keer en
+-- de streamtitel van die eerste en laatste keer (first_label / last_label, versleuteld zoals account_streams.title, bv.
+-- "Serie · S1:E2 · Naam"; alleen de functie newsletter ontsleutelt ze). Bijgewerkt door een trigger op account_watch_stats,
+-- dus direct bij stream_start / stream_ping / stream_stop (niet pas bij het opruimen). account_watch_log (8 dagen) is niet
+-- nodig. tmdb_id / poster / backdrop vult de functie newsletter (TMDB) in. Bewaard: 13 maanden (bingr_cleanup).
+-- Alleen voor Lifetime-accounts (de recap hoort bij de statistieken): voor Gratis schrijft de trigger niets. Wordt een account
+-- Lifetime, dan begint de aggregatie op dat moment, aangevuld met de laatste 8 dagen (trigger op account_plans, zie het blok
+-- van de maandrecap). Gaat een account terug naar Gratis, dan blijft wat er is staan tot de 13 maanden voorbij zijn.
+-- Alleen de service role; RLS zonder policies.
+-- >>> unittest watch-month
+create table if not exists public.watch_month (
+  user_id     uuid not null references auth.users(id) on delete cascade,
+  profile_id  text not null default '',
+  month       text not null check (month ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'),
+  kind        text not null check (kind in ('movie', 'episode', 'live')),
+  item_key    text not null,
+  title       text,                                  -- versleuteld (enc1:), zoals account_watch_stats.title
+  plays       int not null default 0,
+  minutes     numeric not null default 0,
+  episodes    text[] not null default '{}',          -- unieke afleverings-id's (max. 1000)
+  first_at    timestamptz not null default now(),
+  last_at     timestamptz not null default now(),
+  first_label text,                                  -- versleuteld: streamtitel bij de eerste keer
+  last_label  text,                                  -- versleuteld: streamtitel bij de laatste keer
+  tz          text,                                  -- IANA-tijdzone van de app (laatst gezien)
+  tmdb_id     int,
+  poster      text,
+  backdrop    text,
+  approx      boolean not null default false,        -- gevuld uit account_watch_stats (alleen de dag): tijden bij benadering
+  updated_at  timestamptz not null default now(),
+  primary key (user_id, profile_id, month, kind, item_key)
+);
+create index if not exists watch_month_month_idx on public.watch_month (month, user_id);
+alter table public.watch_month enable row level security;
+revoke all on public.watch_month from anon, authenticated;
+
+-- Trigger: elke wijziging van account_watch_stats (insert, update met meer minuten/weergaven/afleveringen) telt het verschil
+-- bij de maandrij op; een verwijderde dagrij (statistieken wissen, opruimen na 400 dagen, sleutel versleutelen) wist de
+-- maandrij van die titel. Een fout hier stopt het afspelen nooit (alleen een waarschuwing).
+create or replace function public.bingr_watch_month_sync() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare v_month text; d_min numeric; d_plays int; v_eps text[]; v_label text; v_tz text;
+begin
+  if tg_op = 'DELETE' then
+    delete from public.watch_month where user_id = old.user_id and profile_id = old.profile_id
+      and month = to_char(old.day, 'YYYY-MM') and kind = old.kind and item_key = old.item_key;
+    return old;
+  end if;
+  v_month := to_char(new.day, 'YYYY-MM');
+  -- alleen Lifetime (de recap hoort bij de statistieken); Gratis: niets in watch_month
+  if not exists (select 1 from public.account_plans p where p.user_id = new.user_id and p.plan = 'lifetime') then return new; end if;
+  if tg_op = 'INSERT' then
+    d_min := coalesce(new.minutes, 0); d_plays := coalesce(new.plays, 0); v_eps := coalesce(new.episodes, '{}');
+  else
+    d_min := coalesce(new.minutes, 0) - coalesce(old.minutes, 0); d_plays := coalesce(new.plays, 0) - coalesce(old.plays, 0);
+    v_eps := coalesce(array(select unnest(new.episodes) except select unnest(old.episodes)), '{}');
+    if new.day <> old.day or new.item_key <> old.item_key then return new; end if;
+  end if;
+  if d_min <= 0 and d_plays <= 0 and cardinality(v_eps) = 0 then
+    -- alleen de titel veranderd (bv. versleuteld door het onderhoud): meenemen, verder niets
+    if tg_op = 'UPDATE' and new.title is distinct from old.title and new.title is not null then
+      update public.watch_month set title = new.title where user_id = new.user_id and profile_id = new.profile_id
+        and month = v_month and kind = new.kind and item_key = new.item_key;
+    end if;
+    return new;
+  end if;
+  -- streamtitel (versleuteld) en tijdzone van de stream die nu voor deze titel loopt
+  select s.title, s.tz into v_label, v_tz from public.account_streams s
+  where s.user_id = new.user_id and s.stat_key = new.item_key and s.stat_kind = new.kind
+  order by s.last_ping desc limit 1;
+  if new.kind = 'live' then v_label := null; end if;
+  insert into public.watch_month as w (user_id, profile_id, month, kind, item_key, title, plays, minutes, episodes,
+    first_at, last_at, first_label, last_label, tz)
+  values (new.user_id, new.profile_id, v_month, new.kind, new.item_key, new.title, greatest(d_plays, 0), greatest(d_min, 0),
+    v_eps[1:1000], now(), now(), v_label, v_label, nullif(v_tz, ''))
+  on conflict (user_id, profile_id, month, kind, item_key) do update set
+    title = coalesce(excluded.title, w.title),
+    plays = w.plays + excluded.plays,
+    minutes = w.minutes + excluded.minutes,
+    episodes = case when cardinality(excluded.episodes) = 0 or cardinality(w.episodes) >= 1000 then w.episodes
+                    else (select coalesce((array_agg(distinct e))[1:1000], '{}'::text[]) from unnest(w.episodes || excluded.episodes) e) end,
+    first_label = coalesce(w.first_label, excluded.first_label),
+    last_at = greatest(w.last_at, excluded.last_at),
+    last_label = case when excluded.plays > 0 or w.last_label is null then coalesce(excluded.last_label, w.last_label) else w.last_label end,
+    tz = coalesce(excluded.tz, w.tz),
+    updated_at = now();
+  return new;
+exception when others then
+  raise warning 'watch_month: %', sqlstate;
+  return coalesce(new, old);
+end $$;
+revoke all on function public.bingr_watch_month_sync() from public, anon, authenticated;
+
+drop trigger if exists watch_month_sync on public.account_watch_stats;
+create trigger watch_month_sync after insert or update or delete on public.account_watch_stats
+  for each row execute function public.bingr_watch_month_sync();
+
+-- Bewaren: 13 maanden (de lopende maand en de 12 maanden ervoor); ouder wordt gewist in bingr_cleanup.
+create or replace function public.bingr_watch_month_cutoff(p_at timestamptz default now()) returns text
+language sql immutable set search_path = public as $$
+  select to_char(date_trunc('month', p_at at time zone 'utc') - interval '12 months', 'YYYY-MM');
+$$;
+revoke all on function public.bingr_watch_month_cutoff(timestamptz) from public, anon, authenticated;
+grant execute on function public.bingr_watch_month_cutoff(timestamptz) to service_role;
+-- <<< unittest watch-month
+
 -- Opruimen: zoals hierboven, plus kijkstatistieken ouder dan 400 dagen.
 create or replace function public.bingr_cleanup() returns void
 language sql security definer set search_path = public as $$
@@ -2680,6 +2789,228 @@ grant execute on function public.bingr_news_take(bigint, int) to service_role;
 grant execute on function public.bingr_news_mark(bigint, uuid[], uuid[], uuid[], uuid[]) to service_role;
 grant execute on function public.bingr_news_cleanup() to service_role;
 
+-- ---- Maandrecap "Jouw maand op Bingr" (functie newsletter, docs/NEWSLETTER.md, sectie Maandrecap) ----
+-- Persoonlijke mail op de 1e van de maand om 20:00 lokale tijd van het account, over de vorige maand (uit watch_month).
+-- ALLEEN voor Lifetime (account_plans.plan = 'lifetime', ook legacy of gegeven door het beheer), met dezelfde opt-in en
+-- afmelding als de nieuwsbrief (bingr_news_subscribed) en een eigen schakelaar show_recap (standaard aan). Per account en maand hooguit één rij
+-- in recap_deliveries (primaire sleutel), dus nooit twee mails. 'queued' = tijdelijke SMTP-fout, later opnieuw (max. 3
+-- pogingen); 'sending' langer dan 30 minuten = failed (niet opnieuw). Het beheer ziet alleen aantallen per maand.
+-- >>> unittest recap
+alter table public.newsletter_settings add column if not exists show_recap boolean not null default true;
+create table if not exists public.recap_deliveries (
+  user_id    uuid not null references auth.users(id) on delete cascade,
+  month      text not null check (month ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'),
+  state      text not null default 'sending' check (state in ('queued', 'sending', 'sent', 'failed', 'skipped')),
+  reason     text check (reason is null or reason ~ '^[a-z0-9_]{1,40}$'),  -- korte code (smtp_550, stuck, empty, unsubscribed)
+  attempts   int not null default 1,
+  claimed_at timestamptz not null default now(),
+  done_at    timestamptz,
+  primary key (user_id, month)
+);
+create index if not exists recap_deliveries_month_idx on public.recap_deliveries (month, state);
+-- Eenmalig: vullen uit account_watch_stats (per dag, sinds de start van de statistieken in oktober 2026), alleen Lifetime. Tijden zijn bij
+-- benadering (eerste keer = laatste update van de vroegste dag min de kijktijd; laatste keer = laatste update), approx = true.
+do $$ begin
+  if not exists (select 1 from public.bingr_migrations where name = 'watch_month_seed_158') then
+    with ep as (
+      select s.user_id, s.profile_id, to_char(s.day, 'YYYY-MM') m, s.kind, s.item_key, array_agg(distinct e) eps
+      from public.account_watch_stats s cross join lateral unnest(s.episodes) e
+      where exists (select 1 from public.account_plans p where p.user_id = s.user_id and p.plan = 'lifetime') group by 1, 2, 3, 4, 5
+    ), agg as (
+      select user_id, profile_id, to_char(day, 'YYYY-MM') m, kind, item_key,
+        (array_agg(title order by updated_at desc) filter (where title is not null))[1] t, sum(plays)::int p, sum(minutes) mi,
+        min(updated_at - make_interval(secs => (least(minutes, 600) * 60)::double precision)) f, max(updated_at) l
+      from public.account_watch_stats s where kind in ('movie', 'episode', 'live')
+        and exists (select 1 from public.account_plans p where p.user_id = s.user_id and p.plan = 'lifetime') group by 1, 2, 3, 4, 5
+    )
+    insert into public.watch_month (user_id, profile_id, month, kind, item_key, title, plays, minutes, episodes, first_at, last_at, approx)
+    select a.user_id, a.profile_id, a.m, a.kind, a.item_key, a.t, a.p, a.mi, coalesce(ep.eps[1:1000], '{}'::text[]), a.f, a.l, true
+    from agg a left join ep on ep.user_id = a.user_id and ep.profile_id = a.profile_id and ep.m = a.m and ep.kind = a.kind and ep.item_key = a.item_key
+    on conflict do nothing;
+    insert into public.bingr_migrations (name) values ('watch_month_seed_158');
+  end if;
+end $$;
+-- Upgrade naar Lifetime: de aggregatie begint nu, aangevuld met de laatste 8 dagen uit account_watch_stats (zoveel als het
+-- kijklog bewaart; niets ouder terugrekenen). Bestaande maandrijen blijven (on conflict do nothing), approx = true.
+create or replace function public.bingr_watch_month_upgrade() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if new.plan is distinct from 'lifetime' or (tg_op = 'UPDATE' and old.plan = 'lifetime') then return new; end if;
+  with r as (
+    select * from public.account_watch_stats
+    where user_id = new.user_id and day >= current_date - 8 and kind in ('movie', 'episode', 'live')
+  ), ep as (
+    select r.profile_id, to_char(r.day, 'YYYY-MM') m, r.kind, r.item_key, array_agg(distinct e) eps
+    from r cross join lateral unnest(r.episodes) e group by 1, 2, 3, 4
+  ), agg as (
+    select profile_id, to_char(day, 'YYYY-MM') m, kind, item_key,
+      (array_agg(title order by updated_at desc) filter (where title is not null))[1] t, sum(plays)::int p, sum(minutes) mi,
+      min(updated_at - make_interval(secs => (least(minutes, 600) * 60)::double precision)) f, max(updated_at) l
+    from r group by 1, 2, 3, 4
+  )
+  insert into public.watch_month (user_id, profile_id, month, kind, item_key, title, plays, minutes, episodes, first_at, last_at, approx)
+  select new.user_id, a.profile_id, a.m, a.kind, a.item_key, a.t, a.p, a.mi, coalesce(ep.eps[1:1000], '{}'::text[]), a.f, a.l, true
+  from agg a left join ep on ep.profile_id = a.profile_id and ep.m = a.m and ep.kind = a.kind and ep.item_key = a.item_key
+  on conflict do nothing;
+  return new;
+exception when others then
+  raise warning 'watch_month upgrade: %', sqlstate;
+  return new;
+end $$;
+revoke all on function public.bingr_watch_month_upgrade() from public, anon, authenticated;
+drop trigger if exists watch_month_upgrade on public.account_plans;
+create trigger watch_month_upgrade after insert or update of plan on public.account_plans
+  for each row execute function public.bingr_watch_month_upgrade();
+
+alter table public.recap_deliveries enable row level security;
+revoke all on public.recap_deliveries from anon, authenticated;
+
+-- Kandidaten voor de maanden p_months: ingeschreven, minstens 1 minuut gekeken in die maand, nog geen (afgeronde) rij in
+-- recap_deliveries, en alleen Lifetime (een account dat terug is naar Gratis krijgt geen recap meer). Met tijdzone (laatst gezien in watch_month) en land
+-- (account_country) voor de planning; de functie newsletter kiest wie het nu 20:00 is. In porties na p_after.
+drop function if exists public.bingr_recap_candidates(text[], boolean, uuid, int);
+create or replace function public.bingr_recap_candidates(p_months text[], p_after uuid, p_limit int)
+returns jsonb language sql stable security definer set search_path = public, auth as $$
+  select coalesce(jsonb_agg(jsonb_build_object('id', x.user_id, 'month', x.month, 'tz', x.tz, 'country', x.country) order by x.user_id, x.month), '[]'::jsonb)
+  from (
+    select w.user_id, w.month,
+      (select w2.tz from public.watch_month w2 where w2.user_id = w.user_id and w2.tz is not null order by w2.last_at desc limit 1) tz,
+      (select c.country from public.account_country c where c.user_id = w.user_id) country
+    from public.watch_month w
+    where w.month = any(coalesce(p_months, '{}')) and (p_after is null or w.user_id > p_after)
+      and not exists (select 1 from public.recap_deliveries d where d.user_id = w.user_id and d.month = w.month
+                      and not (d.state = 'queued' and d.attempts < 3))
+      and exists (select 1 from public.account_plans p where p.user_id = w.user_id and p.plan = 'lifetime')
+      and public.bingr_news_subscribed(w.user_id)
+    group by w.user_id, w.month
+    having sum(w.minutes) >= 1
+    order by w.user_id, w.month
+    limit greatest(least(coalesce(p_limit, 500), 2000), 1)
+  ) x;
+$$;
+
+-- Claimen (vóór het versturen): een nieuwe rij 'sending', of een 'queued' rij (opnieuw proberen) weer op 'sending'. Een
+-- afgeronde rij (sent/failed/skipped) wordt nooit opnieuw geclaimd. Intussen afgemeld: skipped. -> [{id, email, lang,
+-- first_name, display_name}] van wat nu verstuurd mag worden.
+create or replace function public.bingr_recap_claim(p_month text, p_users uuid[]) returns jsonb
+language plpgsql security definer set search_path = public, auth as $$
+declare ids uuid[]; out_rows jsonb;
+begin
+  update public.recap_deliveries set state = 'failed', reason = 'stuck', done_at = now()
+  where state = 'sending' and claimed_at < now() - interval '30 minutes';
+  with c as (
+    insert into public.recap_deliveries as d (user_id, month)
+    select u, p_month from unnest(coalesce(p_users, '{}')) u
+    on conflict (user_id, month) do update set state = 'sending', attempts = d.attempts + 1, claimed_at = now(), reason = null
+      where d.state = 'queued' and d.attempts < 3
+    returning d.user_id)
+  select coalesce(array_agg(user_id), '{}') into ids from c;
+  update public.recap_deliveries d set state = 'skipped', reason = 'unsubscribed', done_at = now()
+  where d.month = p_month and d.user_id = any(ids) and d.state = 'sending' and not public.bingr_news_subscribed(d.user_id);
+  select coalesce(jsonb_agg(jsonb_build_object('id', u.id, 'email', u.email, 'lang', u.raw_user_meta_data->>'lang',
+      'first_name', nullif(btrim(u.raw_user_meta_data->>'first_name'), ''),
+      'display_name', nullif(btrim(coalesce(u.raw_user_meta_data->>'display_name', u.raw_user_meta_data->>'full_name', u.raw_user_meta_data->>'name')), ''))
+      order by u.id), '[]'::jsonb) into out_rows
+  from auth.users u join public.recap_deliveries d on d.user_id = u.id and d.month = p_month and d.state = 'sending'
+  where u.id = any(ids);
+  return out_rows;
+end $$;
+
+-- Resultaat: sent / failed (p_codes = korte foutcode per mislukte) / retry (tijdelijke fout: 'queued', na 3 pogingen failed) /
+-- skipped (niets te tonen) / release (niet aan toegekomen: 'queued' zonder dat het als poging telt).
+create or replace function public.bingr_recap_mark(p_month text, p_sent uuid[], p_failed uuid[], p_codes text[], p_retry uuid[],
+  p_skipped uuid[], p_release uuid[]) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare ns int; nf int; nr int; nk int;
+begin
+  update public.recap_deliveries set state = 'queued', attempts = greatest(attempts - 1, 0)
+  where month = p_month and state = 'sending' and user_id = any(coalesce(p_release, '{}'));
+  update public.recap_deliveries set state = 'sent', reason = null, done_at = now()
+  where month = p_month and state = 'sending' and user_id = any(coalesce(p_sent, '{}'));
+  get diagnostics ns = row_count;
+  update public.recap_deliveries d set state = 'failed', done_at = now(),
+    reason = coalesce((select c from unnest(coalesce(p_failed, '{}'), coalesce(p_codes, '{}')) x(u, c) where x.u = d.user_id and c ~ '^[a-z0-9_]{1,40}$' limit 1), 'smtp')
+  where d.month = p_month and d.state = 'sending' and d.user_id = any(coalesce(p_failed, '{}'));
+  get diagnostics nf = row_count;
+  update public.recap_deliveries set state = 'failed', reason = 'retries', done_at = now()
+  where month = p_month and state = 'sending' and user_id = any(coalesce(p_retry, '{}')) and attempts >= 3;
+  update public.recap_deliveries set state = 'queued'
+  where month = p_month and state = 'sending' and user_id = any(coalesce(p_retry, '{}'));
+  get diagnostics nr = row_count;
+  update public.recap_deliveries set state = 'skipped', reason = 'empty', done_at = now()
+  where month = p_month and state = 'sending' and user_id = any(coalesce(p_skipped, '{}'));
+  get diagnostics nk = row_count;
+  return jsonb_build_object('sent', ns, 'failed', nf, 'retry', nr, 'skipped', nk);
+end $$;
+
+-- Kijkgegevens van één account in één maand, opgeteld over de profielen (titels en labels versleuteld; alleen de functie
+-- newsletter ontsleutelt ze). [{kind, item_key, title, plays, minutes, episodes, first_at, last_at, first_label, last_label,
+-- tmdb_id, poster, backdrop, approx}]
+create or replace function public.bingr_recap_rows(p_user uuid, p_month text) returns jsonb
+language sql stable security definer set search_path = public as $$
+  with r as (select * from public.watch_month where user_id = p_user and month = p_month),
+  ep as (select r.kind, r.item_key, count(distinct e) n from r, unnest(r.episodes) e group by 1, 2)
+  select coalesce(jsonb_agg(to_jsonb(x)), '[]'::jsonb) from (
+    select r.kind, r.item_key, (array_agg(r.title order by r.last_at desc) filter (where r.title is not null))[1] title,
+      sum(r.plays)::int plays, round(sum(r.minutes), 1) minutes, coalesce(max(ep.n), 0)::int episodes,
+      min(r.first_at) first_at, max(r.last_at) last_at,
+      (array_agg(r.first_label order by r.first_at) filter (where r.first_label is not null))[1] first_label,
+      (array_agg(r.last_label order by r.last_at desc) filter (where r.last_label is not null))[1] last_label,
+      max(r.tmdb_id) tmdb_id, max(r.poster) poster, max(r.backdrop) backdrop, bool_or(r.approx) approx
+    from r left join ep on ep.kind = r.kind and ep.item_key = r.item_key
+    group by r.kind, r.item_key
+    order by sum(r.minutes) desc
+    limit 200
+  ) x;
+$$;
+
+-- Testmail in het beheer: het account bij een adres (alleen id, taal en namen), of niets.
+create or replace function public.bingr_recap_account(p_email text) returns jsonb
+language sql stable security definer set search_path = public, auth as $$
+  select jsonb_build_object('id', u.id, 'lang', u.raw_user_meta_data->>'lang',
+    'first_name', nullif(btrim(u.raw_user_meta_data->>'first_name'), ''),
+    'display_name', nullif(btrim(coalesce(u.raw_user_meta_data->>'display_name', u.raw_user_meta_data->>'full_name', u.raw_user_meta_data->>'name')), ''))
+  from auth.users u where lower(u.email) = lower(btrim(p_email)) and u.deleted_at is null limit 1;
+$$;
+
+-- Geschiedenis voor het beheer: per maand alleen aantallen.
+create or replace function public.bingr_recap_history(p_limit int default 13) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(to_jsonb(x) order by x.month desc), '[]'::jsonb) from (
+    select month, count(*) filter (where state = 'sent')::int sent, count(*) filter (where state = 'failed')::int failed,
+      count(*) filter (where state = 'skipped')::int skipped, count(*) filter (where state in ('queued', 'sending'))::int open,
+      min(claimed_at) first_at, max(done_at) last_at
+    from public.recap_deliveries group by month order by month desc limit greatest(least(coalesce(p_limit, 13), 24), 1)
+  ) x;
+$$;
+
+-- Opruimen (ook vanuit de cron van newsletter): wachtrij en aggregatie ouder dan 13 maanden.
+create or replace function public.bingr_recap_cleanup() returns int
+language plpgsql security definer set search_path = public as $$
+declare n int; m int;
+begin
+  delete from public.recap_deliveries where month < public.bingr_watch_month_cutoff(now());
+  get diagnostics n = row_count;
+  delete from public.watch_month where month < public.bingr_watch_month_cutoff(now());
+  get diagnostics m = row_count;
+  return n + m;
+end $$;
+revoke all on function public.bingr_recap_candidates(text[], uuid, int) from public, anon, authenticated;
+revoke all on function public.bingr_recap_claim(text, uuid[]) from public, anon, authenticated;
+revoke all on function public.bingr_recap_mark(text, uuid[], uuid[], text[], uuid[], uuid[], uuid[]) from public, anon, authenticated;
+revoke all on function public.bingr_recap_rows(uuid, text) from public, anon, authenticated;
+revoke all on function public.bingr_recap_account(text) from public, anon, authenticated;
+revoke all on function public.bingr_recap_history(int) from public, anon, authenticated;
+revoke all on function public.bingr_recap_cleanup() from public, anon, authenticated;
+grant execute on function public.bingr_recap_candidates(text[], uuid, int) to service_role;
+grant execute on function public.bingr_recap_claim(text, uuid[]) to service_role;
+grant execute on function public.bingr_recap_mark(text, uuid[], uuid[], text[], uuid[], uuid[], uuid[]) to service_role;
+grant execute on function public.bingr_recap_rows(uuid, text) to service_role;
+grant execute on function public.bingr_recap_account(text) to service_role;
+grant execute on function public.bingr_recap_history(int) to service_role;
+grant execute on function public.bingr_recap_cleanup() to service_role;
+-- <<< unittest recap
+
 -- ---- Welkomstmail (functie newsletter, actie welcome_cron; docs/NEWSLETTER.md, sectie Welkomstmail) ----
 -- Eén rij per account dat een welkomstmail kreeg (of krijgt): sent_at = verstuurd; error = korte foutcode (smtp_550, stuck)
 -- of 'existing' (bij de eerste uitrol al bestaand lid: nooit een welkomstmail); een rij zonder sent_at en error = bezig.
@@ -3950,7 +4281,7 @@ insert into public.status_monitors (id, name_nl, name_en, grp, kind, target, key
   ('windows',  'Windows',            'Windows',          'apps', 'gh_workflow', 'LRvdLinden/bingr-windows|build.yml|main',        null, 15, true, true, true, 40)
 on conflict (id) do nothing;
 
--- Opruimen (zoals hierboven), plus de tellers van de inlogbescherming per account.
+-- Opruimen (zoals hierboven), plus de tellers van de inlogbescherming per account en de maandaggregatie (watch_month, 13 maanden).
 create or replace function public.bingr_cleanup() returns void
 language sql security definer set search_path = public as $$
   delete from public.device_codes where expires_at < now();
@@ -3961,6 +4292,8 @@ language sql security definer set search_path = public as $$
   delete from public.account_logins where day < (now() at time zone 'utc')::date - 400;
   delete from public.admin_audit where created_at < now() - interval '1 year';
   delete from public.account_watch_stats where day < (now() at time zone 'utc')::date - 400;
+  delete from public.watch_month where month < public.bingr_watch_month_cutoff(now());
+  delete from public.recap_deliveries where month < public.bingr_watch_month_cutoff(now());
   delete from public.auth_password_failures where updated_at < now() - interval '1 day' and (locked_until is null or locked_until < now());
 $$;
 revoke all on function public.bingr_cleanup() from public, anon, authenticated;

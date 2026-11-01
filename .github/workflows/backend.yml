@@ -103,7 +103,9 @@ jobs:
         # en de secties Top 10 / Populair (nep-TMDB/Trakt/OMDb, schakelaars, links naar bingr.online/titel/, tags en alt-teksten)
         # en het maandoverzicht (laatste dag van de maand 18:00, zomer-/wintertijd, februari, schrikkeljaar, één keer per maand,
         # datumbereik, max. 6, geen dubbele, 3 × 2, alt-teksten, NL/EN)
-        run: deno test supabase/functions/newsletter/newsletter_test.ts supabase/functions/newsletter/welcome_test.ts supabase/functions/newsletter/mailing_test.ts supabase/functions/newsletter/sections_test.ts supabase/functions/newsletter/monthly_test.ts
+        # en de maandrecap (1e van de maand 20:00 lokaal, zomer-/wintertijd, onbekende tijdzone = Amsterdam, één keer per maand,
+        # alleen Lifetime, aggregatie serie/films/live, geen mail bij nul, NL/EN, alt-teksten, 13 maanden bewaren)
+        run: deno test supabase/functions/newsletter/newsletter_test.ts supabase/functions/newsletter/welcome_test.ts supabase/functions/newsletter/mailing_test.ts supabase/functions/newsletter/sections_test.ts supabase/functions/newsletter/monthly_test.ts supabase/functions/newsletter/recap_test.ts
       - name: Unittests (deelpreview)
         # blokkeert de deploy: validatie (type/id/q/y), TMDB-antwoord -> metadata (nl met terugval en, afbeeldingen), limiet
         run: deno test supabase/functions/title-meta/title_meta_test.ts
@@ -169,6 +171,13 @@ jobs:
           deno test --allow-env --allow-read supabase/functions/_shared/pin_test.ts supabase/functions/_shared/profiles_test.ts supabase/functions/_shared/diagnostics_test.ts supabase/functions/device-auth/watch_test.ts
           for i in $(seq 1 20); do pg_isready -q && break; sleep 1; done
           sudo -u postgres bash supabase/tests/profiles_test.sh
+      - name: Unittests (maandrecap, watch_month)
+        # blokkeert de deploy: de trigger op account_watch_stats (serie met afleveringen, films, live, labels, wissen), alleen
+        # Lifetime (Gratis = geen aggregatie en geen mail, upgrade vult 8 dagen aan), 13 maanden bewaren, en de wachtrij (één keer
+        # per account en maand, opnieuw proberen, afmelden) in een tijdelijke database (supabase/tests/recap_test.sh)
+        run: |
+          for i in $(seq 1 20); do pg_isready -q && break; sleep 1; done
+          sudo -u postgres bash supabase/tests/recap_test.sh
       - name: Unittests (build 157, apparatenlimiet Gratis)
         # blokkeert de deploy: bingr_enforce_free_devices houdt bij Gratis zonder eigen limiet de 2 laatst actieve apparaten,
         # trekt de sessies van de rest in, laat Lifetime en eigen limieten staan en is herhaalbaar (supabase/tests/devices_test.sh)
@@ -972,7 +981,7 @@ jobs:
           F="https://$REF.supabase.co/functions/v1/newsletter"
           J=(-H "Content-Type: application/json")
           # 1. beheeracties en cron zonder (of met fout) geheim -> 403
-          for a in status set_enabled set_sections preview render cron welcome_preview welcome_render welcome_cron mailing_status mailing_render mailing_test mailing_send mailing_cancel mailing_cron monthly_render monthly_preview monthly_check; do
+          for a in status set_enabled set_sections preview render cron welcome_preview welcome_render welcome_cron mailing_status mailing_render mailing_test mailing_send mailing_cancel mailing_cron monthly_render monthly_preview monthly_check recap_render recap_preview recap_check; do
             code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$F" "${J[@]}" -H "x-newsletter-secret: fout-geheim-0000000000000000" -d "{\"action\":\"$a\"}")
             [ "$code" = 403 ] || { echo "::error::newsletter $a met fout geheim gaf HTTP $code"; exit 1; }
             code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$F" "${J[@]}" -d "{\"action\":\"$a\"}")
@@ -998,6 +1007,9 @@ jobs:
           # 3b. maandoverzicht van de volgende maand opbouwen zonder te versturen (alleen aantallen per sectie)
           curl -s --max-time 170 -X POST "$F" "${J[@]}" -H "x-newsletter-secret: $(cat "$RUNNER_TEMP/newsletter_cron_secret")" -d '{"action":"monthly_check"}' > /tmp/mo.json
           grep -Eq '"ok": ?true' /tmp/mo.json && echo "::notice::maandoverzicht: $(cat /tmp/mo.json)" || { echo "::error::maandoverzicht: $(head -c 300 /tmp/mo.json)"; exit 1; }
+          # 3c. maandrecap: alleen aantallen (kandidaten van de vorige maand, voorbeeld opbouwen); verstuurt niets
+          curl -s --max-time 170 -X POST "$F" "${J[@]}" -H "x-newsletter-secret: $(cat "$RUNNER_TEMP/newsletter_cron_secret")" -d '{"action":"recap_check"}' > /tmp/rc.json
+          grep -Eq '"ok": ?true' /tmp/rc.json && echo "::notice::maandrecap: $(cat /tmp/rc.json)" || { echo "::error::maandrecap: $(head -c 300 /tmp/rc.json)"; exit 1; }
           # 4. één ronde welkomstmail (alleen tellingen in het antwoord)
           curl -s --max-time 170 -X POST "$F" "${J[@]}" -H "x-newsletter-secret: $(cat "$RUNNER_TEMP/newsletter_cron_secret")" -d '{"action":"welcome_cron"}' > /tmp/w.json
           grep -Eq '"ok": ?true' /tmp/w.json && echo "::notice::welkomstmail: $(cat /tmp/w.json)" || { echo "::error::welkomstmail: $(head -c 300 /tmp/w.json)"; exit 1; }

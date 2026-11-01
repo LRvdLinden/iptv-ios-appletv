@@ -149,13 +149,16 @@ aangemaakt door *Backend*; zonder of fout geheim → 403 `{error:"forbidden"}`).
 |---|---|---|
 | `status` | `{}` | `{enabled, sections:{top10, popular, monthly}, next:{key, at}, recipients:{nl, en, total}, editions:[{key, created_at, recipients, sent, failed, done}], monthly:{enabled, next:{key, at}, editions:[…]}, welcome:{sent_7d, pending} \| null}` (laatste 10 edities van de nieuwsbrief en 12 maandedities, nieuwste eerst; `at` = ISO-tijd in UTC; `welcome` = welkomstmails, alleen aantallen) |
 | `set_enabled` | `{enabled: true\|false}` | `{ok, enabled}`; 400 `bad_enabled` |
-| `set_sections` | `{top10?: true\|false, popular?: true\|false, monthly?: true\|false}` | `{ok, sections:{top10, popular, monthly}}`; 400 `bad_sections` (geen of geen boolean). `status` geeft ook `sections:{top10, popular, monthly}` (`monthly` = maandoverzicht aan/uit) |
+| `set_sections` | `{top10?: true\|false, popular?: true\|false, monthly?: true\|false, recap?: true\|false}` | `{ok, sections:{top10, popular, monthly}}`; 400 `bad_sections` (geen of geen boolean). `status` geeft ook `sections:{top10, popular, monthly}` (`monthly` = maandoverzicht aan/uit) |
 | `preview` | `{to, lang?: "nl"\|"en"}` | `{ok}`: de huidige editie (die nu verstuurd wordt, anders een concept van de volgende) alleen naar dat adres, onderwerp begint met `[Voorbeeld]`. 400 `bad_email`, 429 `rate_limited` (10 per uur), 503 `smtp_not_configured` / `tmdb_not_configured`, 502 `{error:"send_failed", code}` |
 | `render` | `{lang: "nl"\|"en"}` | `{subject, html}` van de huidige editie (zonder aanhef, afmeldlink zonder token) |
 | `welcome_preview` | `{to, lang?: "nl"\|"en"}` | `{ok}`: de welkomstmail alleen naar dat adres, onderwerp `[Voorbeeld] …`, aanhef met de voorbeeldnaam *Alex*. Zelfde limiet als `preview` (samen 10 per uur), zelfde fouten |
 | `welcome_render` | `{lang: "nl"\|"en"}` | `{subject, html}` van de welkomstmail (voorbeeldnaam, afmeldlink zonder token) |
 | `monthly_render` | `{lang: "nl"\|"en"}` | `{subject, html, key}` van het maandoverzicht: de maandeditie die nu verstuurd wordt, anders een concept van de volgende maand (`key` = bv. `2026-11`) |
 | `monthly_preview` | `{to, lang?: "nl"\|"en"}` | `{ok, key}`: dat maandoverzicht alleen naar dat adres, onderwerp `[Voorbeeld] …`. Zelfde limiet als `preview` (samen 10 per uur), zelfde fouten |
+| `recap_render` | `{lang: "nl"\|"en"}` | `{subject, html, key}` van de maandrecap met **voorbeeldgegevens** (nooit van een echte gebruiker; `key` = de vorige maand) |
+| `recap_preview` | `{to, lang?: "nl"\|"en"}` | `{ok, key, own}`: de maandrecap alleen naar dat adres, onderwerp `[Voorbeeld] …`. Heeft dat adres een Lifetime-account met kijkgegevens in de vorige maand, dan met die eigen gegevens (`own: true`), anders voorbeeldgegevens. Zelfde limiet als `preview` (samen 10 per uur), zelfde fouten |
+| `recap_check` | `{}` (header `NEWSLETTER_CRON_SECRET`) | `{ok, enabled, recap, audience, month, months_now, next, candidates, sample_ok}`: alleen aantallen, verstuurt niets (controle in de workflow *Backend*) |
 | `monthly_check` | `{}` (header `NEWSLETTER_CRON_SECRET`) | `{ok, key, next, enabled, monthly, shown:{featured, cinema, streaming, series}}`: bouwt het maandoverzicht zonder te versturen, alleen aantallen (controle in de workflow *Backend*) |
 
 Fouten: 400 `unknown_action` / `bad_json`, 500 `server_error`. Logs bevatten nooit e-mailadressen, tokens of geheimen,
@@ -195,6 +198,51 @@ Code: `supabase/functions/newsletter/monthly.ts` (planning, selectie, opmaak), t
 - **Beheer:** `status.monthly` (`enabled`, `next`, geschiedenis met aantallen), `monthly_render` (voorbeeld) en
   `monthly_preview` (testmail), zie de tabel hierboven; in bingr-beheer (web en Beheer-app) het blok *Maandoverzicht* in de tab
   Nieuwsbrief.
+
+## Maandrecap "Jouw maand op Bingr"
+
+Een **persoonlijke** mail (EN "Your month on Bingr") zoals de "month in review" van Trakt: op de **1e van elke maand om 20:00
+lokale tijd van het account** wat dat account de vorige maand op Bingr keek. **Alleen voor Lifetime** (de statistieken horen bij
+Lifetime): `account_plans.plan = 'lifetime'`, ook legacy of gegeven door het beheer. Code: `supabase/functions/newsletter/recap.ts`
+(planning, aggregatie, opmaak), `recap_tmdb.ts` (TMDB), tests `recap_test.ts` en `supabase/tests/recap_test.sh` (blokkeren de deploy).
+
+- **Gegevens:** `public.watch_month` (zie docs/ACCOUNT.md), opgeteld over de profielen. Live tv telt mee in de uren, maar
+  zenders staan niet in de toplijsten; alleen een regel "Meest gekeken zender". Wie die maand minder dan 1 minuut keek, krijgt
+  geen mail (`skipped`, reden `empty`).
+- **Eerste recap:** over **november 2026**, op **dinsdag 1 december 2026 om 20:00** (`RECAP_FIRST_MONTH`). Oktober 2026 gaat
+  niet: de statistieken lopen pas sinds 6/13 oktober en de verzending zou meteen na de deploy gaan. Lifetime-accounts van
+  oktober zijn wel al gevuld uit `account_watch_stats` (bij benadering, `approx`).
+- **Inhoud** (nl/en volgens `user_metadata.lang`): kop met de backdrop (TMDB `w780`) van de meest bekeken serie of film,
+  "Jouw oktober 2026", *Hoi <voornaam>,* (anders de weergavenaam, anders zonder aanhef), tegels afleveringen / films / uur
+  gekeken ("Uren inclusief live tv."), de eerste titel van de maand (poster, titel, `S1 · A2 · naam`, dag en tijd in de
+  tijdzone van het account; bij benaderde gegevens alleen de dag), de meest bekeken series (top 3, met aantal afleveringen,
+  aantal keer en kijktijd), de meest bekeken films (top 3, aantal keer en kijktijd), de laatste titel van de maand, de volgende
+  aflevering (van de laatst gekeken serie: S/E+1 via TMDB `/tv/{id}/season/{s}/episode/{e}`, anders aflevering 1 van het
+  volgende seizoen; alleen als die al is uitgezonden) en de meest gekeken zender. Covers overal één formaat (`w342`,
+  `width="156" height="234"`, alt = titel), klikbaar naar `bingr.online/titel/` (met TMDB-id, anders `?type=&q=&y=`).
+- **TMDB:** titels uit de bron worden opgeschoond (`NL - The Bear (2022) [4K]` → *The Bear*, 2022) en opgezocht
+  (`/search/movie|tv`, eerste resultaat; met bekend id `/movie|tv/{id}`); het gevonden id, poster en backdrop gaan in
+  `watch_month` (alleen id's en paden). Mislukt TMDB, dan zonder poster (grijs vlak met alt-tekst).
+- **Tijdzone:** `watch_month.tz` (laatst gezien, de `tz` die de app bij `stream_start` meestuurt), anders afgeleid uit het
+  land (`account_country`, tabel `COUNTRY_TZ`), anders `Europe/Amsterdam`.
+- **Planning:** dezelfde pg_cron-taak `bingr-newsletter` (elk uur, minuut 0 UTC). Per ronde: `recapMonthsNow` (kan het ergens
+  op aarde nu 20:xx op de 1e zijn?), dan `bingr_recap_candidates` (Lifetime, ingeschreven, minstens 1 minuut, nog geen
+  afgeronde rij) en alleen wie het nu 20:xx–22:xx lokaal is op de 1e (`recapDue`, 2 uur speling). In Amsterdam 19:00 UTC in de
+  winter, 18:00 UTC in de zomer. Max. `RECAP_BATCH` (100) per ronde, de rest het volgende uur.
+- **Eén mail per account en maand:** `recap_deliveries` (primaire sleutel account + maand). Tijdelijke SMTP-fout: `queued`,
+  later opnieuw (max. 3 pogingen); blijvend: `failed`; 30 minuten op `sending` = `failed` (niet opnieuw). Bij de claim opnieuw
+  gecontroleerd op afmelden (`skipped`, `unsubscribed`).
+- **Aan/uit en ontvangers:** `newsletter_settings.show_recap` (standaard aan; beheer: schakelaar *Maandrecap*, actie
+  `set_sections {recap}`); alleen als de nieuwsbrief zelf aan staat (`enabled`). Zelfde opt-in, `List-Unsubscribe` en afmeldlink
+  als de nieuwsbrief ("Geen nieuwsbrief en maandrecap meer? Afmelden"). Gaat een account terug naar Gratis, dan geen recap meer.
+- **Privacy:** titels en streamtitels staan versleuteld in `watch_month` en worden alleen in de functie in het geheugen
+  ontsleuteld. Logs, workflowlogs en het beheer bevatten alleen aantallen (`recap: {months, due, sent, failed, retry, skipped,
+  errors}`), nooit titels, tijden of adressen.
+- **Beheer:** `status.recap = {enabled, audience: "lifetime", next, history:[{month, sent, failed, skipped, open}]}`,
+  `recap_render` (voorbeeld met voorbeeldgegevens) en `recap_preview` (testmail); in bingr-beheer (web en Beheer-app) het blok
+  *Maandrecap* in de tab Nieuwsbrief.
+- **Bewaren:** `watch_month` en `recap_deliveries` 13 maanden (de lopende maand en de 12 ervoor; `bingr_watch_month_cutoff`,
+  in `bingr_cleanup` en `bingr_recap_cleanup`).
 
 ## Welkomstmail
 
@@ -336,6 +384,10 @@ RLS aan, alles ingetrokken voor anon en authenticated.
   (standaard `true`)
 - functies `bingr_news_subscribed`, `bingr_news_recipients`, `bingr_news_take`, `bingr_news_mark`, `bingr_news_cleanup`
   (alleen service role). RLS aan, alles ingetrokken voor anon en authenticated.
+- Maandrecap: `newsletter_settings.show_recap` (standaard `true`), `recap_deliveries` (`user_id`, `month`, `state`
+  queued/sending/sent/failed/skipped, `reason`, `attempts`, `claimed_at`, `done_at`; primaire sleutel (account, maand)) en de
+  functies `bingr_recap_candidates`, `bingr_recap_claim`, `bingr_recap_mark`, `bingr_recap_rows`, `bingr_recap_account`,
+  `bingr_recap_history`, `bingr_recap_cleanup` (alleen service role). RLS aan, ingetrokken voor anon en authenticated.
 - `account_welcome` (`user_id` pk → `auth.users` on delete cascade, `claimed_at`, `sent_at`, `error`) en de functies
   `bingr_welcome_take`, `bingr_welcome_mark`, `bingr_welcome_counts` (alleen service role). RLS aan, ingetrokken voor anon en
   authenticated.

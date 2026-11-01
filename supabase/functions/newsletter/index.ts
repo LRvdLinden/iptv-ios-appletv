@@ -16,6 +16,13 @@
 //   status geeft ook monthly: {enabled, next:{key, at}, editions:[{key, created_at, recipients, sent, failed, done}]}
 //   monthly_check {} -> {ok, key, next, enabled, monthly, shown:{featured, cinema, streaming, series}}   (x-newsletter-secret =
 //                 NEWSLETTER_CRON_SECRET; controle in de workflow Backend, verstuurt niets, alleen aantallen)
+//   Maandrecap "Jouw maand op Bingr" (recap.ts; 1e van de maand 20:00 lokale tijd van het account, via dezelfde cron):
+//   recap_render  {lang} -> {subject, html, key}   (voorbeeld met voorbeeldgegevens, nooit van een echte gebruiker)
+//   recap_preview {to, lang?} -> {ok, key, own}   (testmail naar één adres: met de eigen kijkgegevens van het account met dat
+//                 adres als die er zijn, anders voorbeeldgegevens; limiet gedeeld met preview)
+//   set_sections {recap?: bool}; status geeft recap: {enabled, audience: "lifetime", next, history}   (alleen Lifetime)
+//   recap_check {} -> {ok, enabled, recap, audience, months, next, candidates}   (x-newsletter-secret = NEWSLETTER_CRON_SECRET;
+//               controle in de workflow Backend, verstuurt niets, alleen aantallen)
 //   preview     {to, lang?} -> {ok}   (huidige editie naar één adres, onderwerp met "[Voorbeeld]", max. 10 per uur)
 //   render      {lang} -> {subject, html}
 //   welcome_preview {to, lang?} -> {ok}   (welkomstmail naar één adres, "[Voorbeeld]", aanhef met een voorbeeldnaam;
@@ -46,6 +53,12 @@ import { renderNewsletter } from "./render.ts";
 import { renderWelcome, SAMPLE_NAME, showNewsletter, WELCOME_BATCH } from "./welcome.ts";
 import { buildContent } from "./tmdb.ts";
 import { buildMonthlyContent, type MonthlyContent, monthlyDue, monthlyFor, nextMonthly, renderMonthly, shownMonthly } from "./monthly.ts";
+import { openField } from "../_shared/sealed.ts";
+import {
+  buildRecap, nextRecap, type Recap, recapAllowed, recapDue, recapMonthsNow, recapName, type RecapRow, type RecapSettings, recapSettingsOf, recapTz,
+  renderRecap, sampleRows, validMonthKey,
+} from "./recap.ts";
+import { enrichRecap, type MetaCache } from "./recap_tmdb.ts";
 import {
   type Audience, budgetOf, cleanContent, isAudience, type MailingContent, type MailingRow, mailingView, type Recipient, renderMailing,
   runMailing,
@@ -109,10 +122,10 @@ async function makeContent(ms: number, excludeKey?: string): Promise<Content> {
   return await buildContent(ms, { tmdb: key, trakt: env("BINGR_TRAKT_CLIENT_ID"), omdb: env("BINGR_OMDB_API_KEY") }, r.featured, r.shown);
 }
 /** Instellingen (één rij): aan/uit en de schakelaars per sectie. select("*"): werkt ook vóór de nieuwe kolommen bestaan. */
-async function settings(): Promise<{ enabled: boolean; sections: Sections }> {
+async function settings(): Promise<{ enabled: boolean; sections: Sections; recap: RecapSettings }> {
   const { data } = await admin.from("newsletter_settings").select("*").eq("id", 1).maybeSingle();
   const row = (data ?? null) as Record<string, unknown> | null;
-  return { enabled: row?.enabled === true, sections: sectionsOf(row) };
+  return { enabled: row?.enabled === true, sections: sectionsOf(row), recap: recapSettingsOf(row) };
 }
 const withSections = (c: Content, s: Sections): Content => ({ nl: applySections(c.nl, s), en: applySections(c.en ?? c.nl, s) });
 // voorbeeld/render: de editie die nu verstuurd wordt, anders een concept (10 minuten in het geheugen)
@@ -192,6 +205,8 @@ async function sendEdition(e: EditionRow, until: number, t: Totals): Promise<boo
 
 async function cron() {
   const started = Date.now();
+  // maandrecap: wachtrij en maandaggregatie ouder dan 13 maanden weg (ook als de nieuwsbrief uit staat)
+  { const { error } = await admin.rpc("bingr_recap_cleanup"); if (error) console.error("newsletter recap_cleanup", error.code ?? "fout"); }
   const st = await settings();
   if (!st.enabled) return { ok: true, enabled: false, due: null, sent: 0, failed: 0, retry: 0, left: 0 };
   await admin.rpc("bingr_news_cleanup");
@@ -248,12 +263,124 @@ async function cron() {
       if (!done) break;
     }
   }
+  // maandrecap: wie het nu 20:xx is op de 1e (lokale tijd), met de tijd die over is (min. 20 s)
+  let recap: RecapTotals | null = null;
+  if (st.recap.enabled && smtpConfigured()) {
+    try { recap = await recapRound(started, Math.max(started + BUDGET_MS, Date.now() + 20_000), st.recap); } catch (e) {
+      const msg = e instanceof Error ? e.message : "fout";
+      console.error("newsletter recap", /^[a-z0-9_]+(: [A-Za-z0-9_]+)?$/.test(msg) ? msg : "server_error");
+    }
+  }
   const { count } = await admin.from("newsletter_deliveries").select("user_id", { count: "exact", head: true }).in("state", ["queued", "sending"]);
-  console.log("newsletter cron", JSON.stringify({ due: due?.key ?? null, created, monthly: mdue?.key ?? null, monthly_created: monthlyCreated, sent: t.sent, failed: t.failed, retry: t.retry, errors: t.errors }));
+  console.log("newsletter cron", JSON.stringify({ due: due?.key ?? null, created, monthly: mdue?.key ?? null, monthly_created: monthlyCreated, sent: t.sent, failed: t.failed, retry: t.retry, errors: t.errors, recap }));
   return {
     ok: true, enabled: true, due: due?.key ?? null, created, monthly: mdue?.key ?? null, monthly_created: monthlyCreated, edition: last,
-    sent: t.sent, failed: t.failed, retry: t.retry, errors: t.errors, left: count ?? 0,
+    sent: t.sent, failed: t.failed, retry: t.retry, errors: t.errors, left: count ?? 0, recap,
   };
+}
+
+// ---------- maandrecap ----------
+// Persoonlijk: kijkgegevens (titels, tijden) komen nooit in een log of antwoord, alleen aantallen en foutcodes.
+
+type RecapTotals = { months: string[]; due: number; sent: number; failed: number; retry: number; skipped: number; errors: Record<string, number> };
+const RECAP_BATCH = Math.max(10, Math.min(300, Number(env("RECAP_BATCH") || 100) || 100));
+type Candidate = { id: string; month: string; tz: string | null; country: string | null };
+type Claimed = { id: string; email: string; lang: string | null; first_name: string | null; display_name: string | null };
+
+/** Kijkgegevens van één account in een maand, ontsleuteld (alleen in het geheugen). */
+async function recapRowsOf(userId: string, month: string): Promise<RecapRow[]> {
+  const { data, error } = await admin.rpc("bingr_recap_rows", { p_user: userId, p_month: month });
+  if (error) throw new Error(`recap_rows: ${error.code ?? "fout"}`);
+  const rows = (Array.isArray(data) ? data : []) as RecapRow[];
+  return await Promise.all(rows.map(async (r) => ({
+    ...r, title: await openField(r.title), first_label: await openField(r.first_label), last_label: await openField(r.last_label),
+  })));
+}
+/** Recap opbouwen (null = niets gekeken) en met TMDB aanvullen; gevonden TMDB-id's worden bewaard in watch_month. */
+async function recapFor(userId: string, month: string, tz: string, lang: Lang, cache: MetaCache): Promise<Recap | null> {
+  const r = buildRecap(await recapRowsOf(userId, month), month, tz);
+  if (!r) return null;
+  const learned: { kind: string; key: string; tmdb: number; poster: string | null; backdrop: string | null }[] = [];
+  const out = await enrichRecap(r, lang, env("BINGR_TMDB_API_KEY"), {
+    cache, learn: (t, m) => { if (m.tmdbId) learned.push({ kind: t.key.split(":")[0], key: t.key.slice(t.key.indexOf(":") + 1), tmdb: m.tmdbId, poster: m.poster ?? null, backdrop: m.backdrop ?? null }); },
+  });
+  for (const x of learned) {
+    await admin.from("watch_month").update({ tmdb_id: x.tmdb, poster: x.poster, backdrop: x.backdrop })
+      .eq("user_id", userId).eq("month", month).eq("kind", x.kind).eq("item_key", x.key);
+  }
+  return out;
+}
+
+/** Eén ronde: kandidaten van de maanden die nu kunnen, alleen wie het nu 20:xx is op de 1e; claimen, versturen, markeren. */
+async function recapRound(ms: number, until: number, _rs: RecapSettings): Promise<RecapTotals> {
+  const months = recapMonthsNow(ms);
+  const t: RecapTotals = { months, due: 0, sent: 0, failed: 0, retry: 0, skipped: 0, errors: {} };
+  if (!months.length) return t;
+  const due: Candidate[] = [];
+  let after: string | null = null;
+  for (let page = 0; page < 40 && due.length < RECAP_BATCH; page++) {
+    const { data, error } = await admin.rpc("bingr_recap_candidates", { p_months: months, p_after: after, p_limit: 500 });
+    if (error) throw new Error(`recap_candidates: ${error.code ?? "fout"}`);
+    const list = (Array.isArray(data) ? data : []) as Candidate[];
+    for (const c of list) if (recapDue(ms, recapTz(c.tz, c.country)) === c.month && due.length < RECAP_BATCH) due.push(c);
+    if (list.length < 500) break;
+    after = list[list.length - 1].id;
+  }
+  t.due = due.length;
+  if (!due.length) return t;
+  const mailer = transport(), cache: MetaCache = new Map(), year = new Date(ms).getFullYear();
+  const tzOf = new Map(due.map((c) => [`${c.id}|${c.month}`, recapTz(c.tz, c.country)]));
+  try {
+    for (const month of [...new Set(due.map((c) => c.month))]) {
+      const ids = due.filter((c) => c.month === month).map((c) => c.id);
+      const { data, error } = await admin.rpc("bingr_recap_claim", { p_month: month, p_users: ids });
+      if (error) throw new Error(`recap_claim: ${error.code ?? "fout"}`);
+      const items = (Array.isArray(data) ? data : []) as Claimed[];
+      const sent: string[] = [], failed: string[] = [], codes: string[] = [], retry: string[] = [], skipped: string[] = [], release: string[] = [];
+      let stop = false;
+      for (const u of items) {
+        if (stop || Date.now() >= until) { release.push(u.id); stop = true; continue; }
+        const lang = langOf(u.lang);
+        try {
+          const recap = await recapFor(u.id, month, tzOf.get(`${u.id}|${month}`) ?? "Europe/Amsterdam", lang, cache);
+          if (!recap) { skipped.push(u.id); t.skipped++; continue; }
+          const token = await unsubToken(u.id, unsubSecret());
+          const m = renderRecap({ lang, recap, name: recapName(u.first_name, u.display_name), unsubscribeUrl: unsubPageUrl(token), year });
+          await mailer.sendMail({
+            from: FROM(), to: u.email, subject: m.subject, html: m.html, text: m.text,
+            headers: { "List-Unsubscribe": `<${oneClickUrl(FN_URL, token)}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click", "X-Bingr-Mail": "recap", "X-Bingr-Edition": `recap-${month}` },
+            messageId: `<bingr-recap-${month}.${randomId()}@bingr.online>`, date: new Date(),
+          });
+          sent.push(u.id); t.sent++;
+        } catch (err) {
+          const code = smtpCode(err);
+          t.errors[code] = (t.errors[code] ?? 0) + 1;
+          if (smtpTemporary(err)) { retry.push(u.id); t.retry++; stop = true; }
+          else { failed.push(u.id); codes.push(code); t.failed++; }
+        }
+        if (PAUSE_MS) await sleep(PAUSE_MS);
+      }
+      const { error: me } = await admin.rpc("bingr_recap_mark", { p_month: month, p_sent: sent, p_failed: failed, p_codes: codes, p_retry: retry, p_skipped: skipped, p_release: release });
+      if (me) throw new Error(`recap_mark: ${me.code ?? "fout"}`);
+      if (stop) break;
+    }
+  } finally {
+    try { mailer.close(); } catch { /* stil */ }
+  }
+  return t;
+}
+
+/** Maand van een voorbeeld: de vorige maand (Amsterdam). */
+const previewMonth = () => {
+  const d = new Date(Date.now()).toLocaleDateString("en-CA", { timeZone: "Europe/Amsterdam" });
+  const y = Number(d.slice(0, 4)), m = Number(d.slice(5, 7));
+  return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, "0")}`;
+};
+/** Voorbeeld met voorbeeldgegevens (nooit van een echte gebruiker), aangevuld met TMDB. */
+async function sampleRecap(lang: Lang): Promise<Recap> {
+  const month = previewMonth();
+  const r = buildRecap(sampleRows(month), month, "Europe/Amsterdam")!;
+  return await enrichRecap(r, lang, env("BINGR_TMDB_API_KEY"));
 }
 
 // ---------- welkomstmail ----------
@@ -513,6 +640,18 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       shown: { featured: e.featured ? 1 : 0, cinema: e.cinema.length, streaming: e.streaming.length, series: e.series.length },
     });
   }
+  if (action === "recap_check") {
+    // controle van de workflow Backend: alleen aantallen (kandidaten van de vorige maand), verstuurt niets
+    if (!secretOk(req, "NEWSLETTER_CRON_SECRET")) return json({ error: "forbidden" }, 403);
+    const st = await settings(), month = previewMonth();
+    const { data, error } = await admin.rpc("bingr_recap_candidates", { p_months: [month], p_after: null, p_limit: 2000 });
+    if (error) throw new Error(`recap_candidates: ${error.code ?? "fout"}`);
+    const s = buildRecap(sampleRows(month), month, "Europe/Amsterdam");
+    return json({
+      ok: true, enabled: st.enabled, recap: st.recap.enabled, audience: st.recap.audience, month, months_now: recapMonthsNow(Date.now()),
+      next: nextRecap(Date.now()), candidates: Array.isArray(data) ? data.length : 0, sample_ok: !!s && renderRecap({ lang: "nl", recap: s, unsubscribeUrl: `${SITE}/unsubscribe/?k=news` }).html.length > 0,
+    });
+  }
   if (action === "welcome_cron") {
     if (!secretOk(req, "NEWSLETTER_CRON_SECRET")) return json({ error: "forbidden" }, 403);
     return json(await welcomeCron());
@@ -522,7 +661,7 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
     return json(await mailingCron());
   }
   const MAILING = ["mailing_status", "mailing_render", "mailing_test", "mailing_send", "mailing_cancel"];
-  if (![...MAILING, "status", "set_enabled", "set_sections", "preview", "render", "welcome_preview", "welcome_render", "monthly_render", "monthly_preview"].includes(action)) return json({ error: "unknown_action" }, 400);
+  if (![...MAILING, "status", "set_enabled", "set_sections", "preview", "render", "welcome_preview", "welcome_render", "monthly_render", "monthly_preview", "recap_render", "recap_preview"].includes(action)) return json({ error: "unknown_action" }, 400);
   const mailtest = (action === "preview" || action === "welcome_preview" || action === "mailing_test") && isMailtestAddress(body.to) &&
     await mailtestOk(req.headers.get(MAILTEST_HEADER), async () => (await admin.from("app_settings").select("value").eq("key", "mailtest").maybeSingle()).data?.value);
   if (!mailtest && !secretOk(req, "NEWSLETTER_ADMIN_SECRET")) return json({ error: "forbidden" }, 403);
@@ -530,13 +669,15 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
   switch (action) {
     case "status": {
       const cols = "edition_key,created_at,recipients,sent,failed,finished_at";
-      const [st, rc, ed, md, welcome] = await Promise.all([
+      const [st, rc, ed, md, welcome, rh] = await Promise.all([
         settings(),
         admin.rpc("bingr_news_recipients"),
         admin.from("newsletter_editions").select(cols).eq("kind", "weekly").order("created_at", { ascending: false }).limit(10),
         admin.from("newsletter_editions").select(cols).eq("kind", "monthly").order("created_at", { ascending: false }).limit(12),
         welcomeCounts(),
+        admin.rpc("bingr_recap_history", { p_limit: 13 }),
       ]);
+      if (rh.error) console.error("newsletter recap_history", rh.error.code ?? "fout");
       if (rc.error) throw new Error(`recipients: ${rc.error.code ?? "fout"}`);
       const r = (rc.data ?? {}) as Record<string, number>;
       return json({
@@ -544,6 +685,14 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
         recipients: { nl: Number(r.nl ?? 0), en: Number(r.en ?? 0), total: Number(r.total ?? 0) },
         editions: ((ed.data ?? []) as EditionRow[]).map(editionView),
         monthly: { enabled: st.sections.monthly, next: nextMonthly(Date.now()), editions: ((md.data ?? []) as EditionRow[]).map(editionView) },
+        // maandrecap: alleen aantallen per maand; next = 1e van de maand 20:00 in Amsterdam (elk account in zijn eigen tijd)
+        recap: {
+          enabled: st.recap.enabled, audience: st.recap.audience, next: nextRecap(Date.now()),
+          history: (Array.isArray(rh.data) ? rh.data : []).map((h: Record<string, unknown>) => ({
+            month: validMonthKey(h.month) ? h.month : null, sent: Number(h.sent ?? 0), failed: Number(h.failed ?? 0),
+            skipped: Number(h.skipped ?? 0), open: Number(h.open ?? 0), first_at: h.first_at ?? null, last_at: h.last_at ?? null,
+          })),
+        },
         welcome,
       });
     }
@@ -555,7 +704,7 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
     }
     case "set_sections": {
       const patch: Record<string, unknown> = {};
-      for (const [k, col] of [["top10", "show_top10"], ["popular", "show_popular"], ["monthly", "show_monthly"]] as const) {
+      for (const [k, col] of [["top10", "show_top10"], ["popular", "show_popular"], ["monthly", "show_monthly"], ["recap", "show_recap"]] as const) {
         if (body[k] === undefined) continue;
         if (typeof body[k] !== "boolean") return json({ error: "bad_sections" }, 400);
         patch[col] = body[k];
@@ -563,7 +712,52 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       if (!Object.keys(patch).length) return json({ error: "bad_sections" }, 400);
       const { error } = await admin.from("newsletter_settings").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", 1);
       if (error) throw new Error(`settings: ${error.code ?? "fout"}`);
-      return json({ ok: true, sections: (await settings()).sections });
+      const now = await settings();
+      return json({ ok: true, sections: { ...now.sections, recap: now.recap.enabled }, recap: now.recap });
+    }
+    case "recap_render": {
+      // voorbeeld in het beheer: altijd voorbeeldgegevens, nooit van een echte gebruiker
+      const lang: Lang = body.lang === "en" ? "en" : "nl";
+      const r = await sampleRecap(lang);
+      const m = renderRecap({ lang, recap: r, name: SAMPLE_NAME, unsubscribeUrl: `${SITE}/unsubscribe/?k=news`, sample: true });
+      return json({ subject: m.subject, html: m.html, key: r.month });
+    }
+    case "recap_preview": {
+      // testmail naar het eigen adres: met de eigen kijkgegevens van het account met dat adres (vorige maand) als die er
+      // zijn, anders voorbeeldgegevens. Het adres en de inhoud worden nooit gelogd.
+      const to = typeof body.to === "string" ? body.to.trim() : "";
+      if (!validEmail(to)) return json({ error: "bad_email" }, 400);
+      if (!smtpConfigured()) return json({ error: "smtp_not_configured" }, 503);
+      if (!(await rateOk("news-preview", 10, 3600))) return json({ error: "rate_limited", retry_after: 3600 }, 429);
+      const lang: Lang = body.lang === "en" ? "en" : "nl";
+      const month = previewMonth();
+      const { data: acc } = await admin.rpc("bingr_recap_account", { p_email: to });
+      const a = (acc ?? null) as { id?: string; first_name?: string | null; display_name?: string | null } | null;
+      let recap: Recap | null = null, name = SAMPLE_NAME;
+      // alleen met eigen gegevens als dat account Lifetime is (zoals de echte recap), anders voorbeeldgegevens
+      const { data: plan } = a?.id ? await admin.from("account_plans").select("plan").eq("user_id", a.id).maybeSingle() : { data: null };
+      if (a?.id && recapAllowed((plan as { plan?: string } | null)?.plan)) {
+        const { data: tzRow } = await admin.from("watch_month").select("tz").eq("user_id", a.id).not("tz", "is", null).order("last_at", { ascending: false }).limit(1);
+        const { data: cc } = await admin.from("account_country").select("country").eq("user_id", a.id).maybeSingle();
+        const tz = recapTz((tzRow?.[0] as { tz?: string } | undefined)?.tz ?? null, (cc as { country?: string } | null)?.country ?? null);
+        recap = await recapFor(a.id, month, tz, lang, new Map());
+        name = recapName(a.first_name, a.display_name) ?? "";
+      }
+      const own = !!recap;
+      if (!recap) { recap = await sampleRecap(lang); name = SAMPLE_NAME; }
+      const m = renderRecap({ lang, recap, name, unsubscribeUrl: `${SITE}/unsubscribe/?k=news`, preview: true, sample: !own });
+      const mailer = transport();
+      try {
+        const token = await unsubToken(NIL_USER, unsubSecret());
+        await mailer.sendMail({
+          from: FROM(), to, subject: m.subject, html: m.html, text: m.text,
+          headers: { "List-Unsubscribe": `<${oneClickUrl(FN_URL, token)}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click", "X-Bingr-Mail": "recap-preview" },
+        });
+      } catch (e) {
+        console.error("newsletter recap_preview", smtpCode(e));
+        return json({ error: "send_failed", code: smtpCode(e) }, 502);
+      } finally { try { mailer.close(); } catch { /* stil */ } }
+      return json({ ok: true, key: recap.month, own });
     }
     case "render": {
       const lang: Lang = body.lang === "en" ? "en" : "nl";

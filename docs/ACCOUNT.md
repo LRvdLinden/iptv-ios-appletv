@@ -785,6 +785,24 @@ De server houdt per profiel bij hoeveel er gekeken is: per lokale dag, per soort
 - **Bewaren:** 400 dagen (opruimen in `bingr_cleanup`). `delete_account` wist alles (on delete cascade).
 - **Start:** eenmalig gevuld uit de bestaande kijkgeschiedenis (max. 8 dagen terug, Nederlandse tijd). Echte telling vanaf 13 oktober 2026.
 
+### `watch_month` (maandaggregatie, alleen server, build 158)
+
+- **Tabel** `public.watch_month` (alleen service role, RLS zonder policies): `user_id` (→ `auth.users` on delete cascade),
+  `profile_id`, `month` (`YYYY-MM`, lokale maand), `kind` (movie|episode|live), `item_key` (zelfde sleutel als
+  `account_watch_stats`), `title` (versleuteld), `plays`, `minutes`, `episodes` (unieke afleverings-id's, max. 1000),
+  `first_at`, `last_at`, `first_label` / `last_label` (versleuteld: de streamtitel van de eerste en laatste keer, bv.
+  "Serie · S1:E2 · Naam"), `tz`, `tmdb_id`, `poster`, `backdrop` (door de maandrecap opgezocht), `approx`, `updated_at`.
+  Sleutel `(user_id, profile_id, month, kind, item_key)`.
+- **Bijgewerkt** door de trigger `watch_month_sync` op `account_watch_stats`: elke `stream_start` / `stream_ping` /
+  `stream_stop` telt het verschil (weergaven, minuten, nieuwe afleveringen) direct op; een gewiste dagrij
+  (`delete_watch_stats`, opruimen) wist de maandrij van die titel. Een fout stopt het afspelen nooit.
+- **Alleen Lifetime:** voor Gratis-accounts schrijft de trigger niets. Wordt een account Lifetime (`account_plans`, trigger
+  `watch_month_upgrade`), dan begint de aggregatie op dat moment, aangevuld met de laatste 8 dagen uit `account_watch_stats`.
+  Terug naar Gratis: niet meer bijgewerkt, wat er is blijft tot de bewaartermijn voorbij is.
+- **Start:** eenmalig gevuld voor Lifetime-accounts uit `account_watch_stats` (sinds oktober 2026; tijden bij benadering, `approx`).
+- **Bewaren:** 13 maanden (de lopende maand en de 12 ervoor), in `bingr_cleanup`. Gebruikt door de maandrecap
+  (docs/NEWSLETTER.md); de apps lezen deze tabel niet.
+
 ### `watch_stats` (ingelogd)
 
 Body: `{period: "week"|"month"|"year" (standaard "month"), offset: 0 (0 = huidig, -1 = vorige …, min. -600; positief = 0), profile_id?: string (ontbreekt/null/"" = alle profielen), tz?: IANA (standaard Europe/Amsterdam)}`. Een week loopt van maandag t/m zondag; "vandaag" is de datum in `tz`.
