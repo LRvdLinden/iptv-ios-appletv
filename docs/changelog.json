@@ -1,5 +1,22 @@
 [
  {
+  "build": 160,
+  "version": "1.0.4",
+  "date": "2026-11-01",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "macos"
+    ],
+    "nl": "Bingr vraagt af en toe om een beoordeling in de App Store, alleen op een rustig moment op Home en hooguit één keer per week",
+    "en": "Bingr occasionally asks you to rate it on the App Store, only at a quiet moment on Home and at most once a week"
+   }
+  ]
+ },
+ {
   "build": 159,
   "version": "1.0.3",
   "date": "2026-11-01",

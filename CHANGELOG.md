@@ -4,6 +4,15 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.4 · Build 160
+_1 november 2026_
+
+### iOS, iPadOS en macOS
+
+**Nieuw**
+
+- Bingr vraagt af en toe om een beoordeling in de App Store, alleen op een rustig moment op Home en hooguit één keer per week
+
 ## Versie 1.0.3 · Build 159
 _1 november 2026_
 
