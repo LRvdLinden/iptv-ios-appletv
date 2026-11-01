@@ -1,5 +1,20 @@
 [
  {
+  "build": 159,
+  "version": "1.0.3",
+  "date": "2026-11-01",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Maandrecap \"Jouw maand op Bingr\" voor Lifetime: op de 1e van de maand om 20:00 je kijkmaand per mail, met je toptitels, je eerste en laatste titel en de volgende aflevering",
+    "en": "Monthly recap \"Your month on Bingr\" for Lifetime: on the 1st of each month at 8 pm your month of watching by email, with your top titles, your first and last title and what's up next"
+   }
+  ]
+ },
+ {
   "build": 158,
   "version": "1.0.3",
   "date": "2026-10-31",

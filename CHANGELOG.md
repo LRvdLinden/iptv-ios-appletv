@@ -4,6 +4,15 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.3 · Build 159
+_1 november 2026_
+
+### Server
+
+**Nieuw**
+
+- Maandrecap "Jouw maand op Bingr" voor Lifetime: op de 1e van de maand om 20:00 je kijkmaand per mail, met je toptitels, je eerste en laatste titel en de volgende aflevering
+
 ## Versie 1.0.3 · Build 158
 _31 oktober 2026_
 
