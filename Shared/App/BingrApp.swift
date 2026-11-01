@@ -220,6 +220,8 @@ final class AppState: ObservableObject {
         CloudStore.shared.$profiles.map { $0.map(\.id) }.removeDuplicates().dropFirst()
             .sink { _ in ParentalControl.shared.prefetchPINs() }
             .store(in: &bag)
+        // build 160: eerste gebruik op dit apparaat (beoordelingsprompt na 4 uur; lokaal, niet via het account)
+        ReviewPrompt.recordFirstUse()
         StartDiagnostics.shared.mark("account")
         ProfileSync.shared.start()
         SourceSync.shared.start()

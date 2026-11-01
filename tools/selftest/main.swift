@@ -1849,5 +1849,86 @@ do {
     try? FileManager.default.removeItem(at: dir)
 }
 
+// MARK: build 160: beoordelingsprompt (eerste keer na 4 uur, daarna hooguit eens per week, alleen op een rustig moment)
+do {
+    let t0 = Date(timeIntervalSince1970: 1_800_000_000)
+    let hour: TimeInterval = 3600, day: TimeInterval = 24 * 3600
+    var calm = ReviewConditions160()
+    calm.serverCount = 1
+    check(calm.blockers.isEmpty, "160: rustig moment met één server: geen blokkade (\(calm.blockers))")
+    func ask(_ now: Date, _ first: Date?, _ last: Date?, _ c: ReviewConditions160 = calm) -> Bool {
+        ReviewPolicy160.shouldAsk(now: now, firstUse: first, lastAsked: last, conditions: c)
+    }
+    // eerste keer: pas na 4 uur
+    check(!ask(t0, t0, nil), "160: meteen na het eerste gebruik nee")
+    check(!ask(t0 + 4 * hour - 1, t0, nil), "160: net onder 4 uur nee")
+    check(!ask(t0 + 3 * hour, t0, nil), "160: na 3 uur nee")
+    check(ask(t0 + 4 * hour, t0, nil), "160: precies 4 uur ja")
+    check(ask(t0 + 30 * day, t0, nil), "160: lang na het eerste gebruik ja")
+    check(!ask(t0 + 30 * day, nil, nil), "160: eerste gebruik onbekend nee")
+    // daarna hooguit eens per 7 dagen
+    let asked = t0 + 5 * hour
+    check(!ask(asked + 1, t0, asked), "160: vlak na de vorige keer nee")
+    check(!ask(asked + 6 * day, t0, asked), "160: na 6 dagen nee")
+    check(!ask(asked + 7 * day - 1, t0, asked), "160: net onder 7 dagen nee")
+    check(ask(asked + 7 * day, t0, asked), "160: na 7 dagen ja")
+    check(ask(asked + 40 * day, t0, asked), "160: na 40 dagen ja")
+    // elke blokkerende toestand: nee (ook als de tijd wel goed is)
+    let later = t0 + 10 * day
+    let blocking: [(String, (inout ReviewConditions160) -> Void)] = [
+        ("SmokeMode/ScreenshotMode", { $0.specialMode = true }),
+        ("app op de achtergrond", { $0.appActive = false }),
+        ("intro, inloggen of Wie kijkt er?", { $0.inMain = false }),
+        ("ander tabblad dan Home", { $0.onHome = false }),
+        ("vergrendeld (pincode)", { $0.locked = true }),
+        ("speler open", { $0.playing = true }),
+        ("beeld-in-beeld", { $0.pip = true }),
+        ("kinderprofiel", { $0.kidsProfile = true }),
+        ("blad of foutmelding open", { $0.presenting = true }),
+        ("nul servers", { $0.serverCount = 0 }),
+    ]
+    for (name, apply) in blocking {
+        var c = calm
+        apply(&c)
+        check(!c.blockers.isEmpty, "160: \(name) blokkeert")
+        check(!ask(later, t0, nil, c), "160: \(name) nee")
+        check(!ask(later, t0, t0 + 1 * day, c), "160: \(name) nee (ook na 7 dagen)")
+    }
+    var none = calm; none.serverCount = 0
+    eq(none.blockers, ["noServer"], "160: nul servers is de enige blokkade")
+    var many = calm; many.serverCount = 3
+    check(ask(later, t0, nil, many), "160: meerdere servers ja")
+    var all = ReviewConditions160(specialMode: true, appActive: false, inMain: false, onHome: false, locked: true,
+                                  playing: true, pip: true, kidsProfile: true, serverCount: 0, presenting: true)
+    eq(all.blockers.count, 10, "160: alle tien blokkades")
+    all = calm
+    check(ask(later, t0, nil, all), "160: na terugzetten weer rustig")
+    // klok teruggezet: tijdstippen in de toekomst gelden als nu (niet voor altijd weg)
+    let n = ReviewPolicy160.normalize(now: t0, firstUse: t0 + 2 * day, lastAsked: t0 + 300 * day)
+    check(n.changed && n.firstUse == t0 && n.lastAsked == t0, "160: toekomst wordt nu")
+    let same = ReviewPolicy160.normalize(now: t0, firstUse: t0 - day, lastAsked: nil)
+    check(!same.changed && same.firstUse == t0 - day && same.lastAsked == nil, "160: verleden blijft")
+    // opslag: per apparaat in UserDefaults, eerste gebruik één keer
+    let suite = "selftest.review160.\(UUID().uuidString)"
+    let ud = UserDefaults(suiteName: suite)!
+    let rs = ReviewStore160(defaults: ud)
+    check(rs.firstUse == nil && rs.lastAsked == nil, "160: leeg begin")
+    check(!rs.shouldAsk(now: later, conditions: calm), "160: zonder eerste gebruik nee")
+    eq(rs.recordFirstUseIfNeeded(now: t0), t0, "160: eerste gebruik bewaard")
+    eq(rs.recordFirstUseIfNeeded(now: later), t0, "160: eerste gebruik niet overschreven")
+    check(!rs.shouldAsk(now: t0 + 2 * hour, conditions: calm), "160: opslag: na 2 uur nee")
+    check(rs.shouldAsk(now: t0 + 4 * hour, conditions: calm), "160: opslag: na 4 uur ja")
+    rs.markAsked(now: t0 + 4 * hour)
+    check(!rs.shouldAsk(now: t0 + 4 * hour + 3 * day, conditions: calm), "160: opslag: binnen een week nee")
+    check(rs.shouldAsk(now: t0 + 4 * hour + 7 * day, conditions: calm), "160: opslag: na een week ja")
+    rs.markAsked(now: t0 + 900 * day)
+    rs.normalize(now: t0 + 10 * day)
+    eq(rs.lastAsked, t0 + 10 * day, "160: opslag: toekomst teruggezet")
+    let dom = ud.persistentDomain(forName: suite) ?? [:]
+    check(dom.allSatisfy { DefaultsPolicy158.size(of: $0.value) <= 16 }, "160: alleen kleine waarden")
+    eq(Set(dom.keys), [ReviewStore160.firstUseKey, ReviewStore160.lastAskedKey], "160: alleen de twee sleutels")
+    ud.removePersistentDomain(forName: suite)
+}
+
 print("\(checks) controles, \(failures) fout")
 exit(failures == 0 ? 0 : 1)

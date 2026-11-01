@@ -177,6 +177,8 @@ struct MainTabView: View {
             openTitleLink()
         }
         .onChange(of: app.pendingTitleLink) { _, _ in openTitleLink() }
+        // build 160: beoordelingsprompt niet met een detail of zoekscherm uit een link open
+        .onChange(of: pendingDetail != nil || linkSearch != nil || resolvingLink) { _, b in ReviewPrompt.shared.mainBusy = b }
         // build 143: verdwijnt het gekozen tabblad (bijv. Live TV), dan naar Home
         .onChange(of: availableTabs) { _, tabs in
             if let t = app.selectedTab, !tabs.contains(t) { app.selectedTab = 0 }

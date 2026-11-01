@@ -181,6 +181,10 @@ struct HomeView: View {
         #else
         .fullScreenCover(item: $detail) { DetailView(target: $0) }
         #endif
+        // build 160: beoordelingsprompt alleen op Home, en niet met een eigen blad of volledig scherm open
+        .reviewPromptHost(enabled: filter == .all,
+                          busy: detail != nil || category != nil || showSearch || showCategories || browseOpen != nil
+                              || collecting != nil || resumeChoice != nil || prompt != nil)
     }
 
     // MARK: rijen
