@@ -1,5 +1,22 @@
 [
  {
+  "build": 162,
+  "version": "1.0.4",
+  "date": "2026-11-02",
+  "items": [
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "macos"
+    ],
+    "nl": "De kaart Meer apps van de ontwikkelaar heeft nu het logo en de kleuren van lrvdlinden.app",
+    "en": "The More apps from the developer card now has the lrvdlinden.app logo and colours"
+   }
+  ]
+ },
+ {
   "build": 161,
   "version": "1.0.4",
   "date": "2026-11-02",
