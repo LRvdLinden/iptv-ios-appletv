@@ -1,5 +1,20 @@
 [
  {
+  "build": 163,
+  "version": "1.0.4",
+  "date": "2026-11-02",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "tvos"
+    ],
+    "nl": "De kaart Meer apps van de ontwikkelaar staat nu ook op de Apple TV; een klik toont een QR-code naar lrvdlinden.app",
+    "en": "The More apps from the developer card is now on Apple TV too; selecting it shows a QR code to lrvdlinden.app"
+   }
+  ]
+ },
+ {
   "build": 162,
   "version": "1.0.4",
   "date": "2026-11-02",
