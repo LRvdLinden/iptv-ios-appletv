@@ -1,13 +1,13 @@
 import SwiftUI
 
-#if !os(tvOS)
 #if canImport(UIKit)
 import UIKit
 #elseif canImport(AppKit)
 import AppKit
 #endif
 
-/// Build 161/162: kaart "Meer apps van de ontwikkelaar" onderaan in Instellingen (iPhone, iPad en Mac; niet op Apple TV).
+/// Build 161/162: kaart "Meer apps van de ontwikkelaar" onderaan in Instellingen.
+/// Build 163: ook op de Apple TV; daar opent een klik een QR-code naar lrvdlinden.app (een tv heeft geen browser).
 /// Build 162: in de huisstijl van lrvdlinden.app (blauw, het LR-logo), gelijk aan de kaart in Homey Store.
 /// De teksten komen uit Translations.json (alle talen van Bingr). De hele kaart is één link naar https://lrvdlinden.app.
 struct MoreAppsSection: View {
@@ -67,10 +67,35 @@ struct LRLogo: View {
 }
 
 struct MoreAppsCard: View {
+    #if os(tvOS)
+    private let logoSize: CGFloat = 100
+    #else
     @ScaledMetric(relativeTo: .body) private var logoSize: CGFloat = 60
+    #endif
+
+    #if os(tvOS)
+    @State private var showQR = false
+    #endif
 
     var body: some View {
-        Link(destination: LRBrand.url) {
+        #if os(tvOS)
+        Button { showQR = true } label: { content }
+            .buttonStyle(.card)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(L("More apps from the developer") + ". " + L("Apps for iPhone, iPad, Apple TV and Homey"))
+            .accessibilityHint(Text(verbatim: "lrvdlinden.app"))
+            .fullScreenCover(isPresented: $showQR) { MoreAppsQRView() }
+        #else
+        Link(destination: LRBrand.url) { content }
+            .buttonStyle(.plain)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(L("More apps from the developer") + ". " + L("Apps for iPhone, iPad, Apple TV and Homey"))
+            .accessibilityHint(Text(verbatim: "lrvdlinden.app"))
+            .accessibilityAddTraits(.isLink)
+        #endif
+    }
+
+    private var content: some View {
             HStack(spacing: 14) {
                 LRLogo(size: logoSize)
                     .overlay(RoundedRectangle(cornerRadius: logoSize * 116 / 512, style: .continuous)
@@ -104,14 +129,53 @@ struct MoreAppsCard: View {
             .background(LRBrand.surface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(LRBrand.line, lineWidth: 1))
             .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-        }
-        .buttonStyle(.plain)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(L("More apps from the developer") + ". " + L("Apps for iPhone, iPad, Apple TV and Homey"))
-        .accessibilityHint(Text(verbatim: "lrvdlinden.app"))
-        .accessibilityAddTraits(.isLink)
     }
 }
+
+#if os(tvOS)
+/// Apple TV: dezelfde kaart, een klik toont een QR-code naar lrvdlinden.app om met de telefoon te scannen.
+struct MoreAppsQRView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.92).ignoresSafeArea()
+            HStack(spacing: 80) {
+                VStack(alignment: .leading, spacing: 24) {
+                    LRLogo(size: 140)
+                    Text(L("More apps from the developer"))
+                        .font(.title2.weight(.bold))
+                        .foregroundStyle(.white)
+                    Text(L("Apps for iPhone, iPad, Apple TV and Homey"))
+                        .font(.headline)
+                        .foregroundStyle(Color(white: 0.75))
+                    Text(L("Scan the QR code with your phone's camera"))
+                        .font(.body)
+                        .foregroundStyle(Color(white: 0.75))
+                    Text(verbatim: "lrvdlinden.app")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(Color(red: 0x8A / 255, green: 0x9D / 255, blue: 0xFF / 255))
+                    Button(L("Close")) { dismiss() }
+                        .padding(.top, 12)
+                }
+                .frame(maxWidth: 760, alignment: .leading)
+                if let qr = QRCode.image(LRBrand.url.absoluteString) {
+                    Image(uiImage: qr)
+                        .interpolation(.none)
+                        .resizable()
+                        .scaledToFit()
+                        .padding(28)
+                        .frame(width: 520, height: 520)
+                        .background(Color.white, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+                        .accessibilityLabel(Text(verbatim: "QR: lrvdlinden.app"))
+                }
+            }
+            .padding(80)
+        }
+        .onExitCommand { dismiss() }
+    }
+}
+#endif
 
 private extension Color {
     /// Kleur met een lichte en een donkere variant (hex 0xRRGGBB).
@@ -136,4 +200,3 @@ private extension Color {
         #endif
     }
 }
-#endif
