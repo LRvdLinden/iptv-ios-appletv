@@ -4,6 +4,15 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.4 · Build 161
+_2 november 2026_
+
+### iOS, iPadOS, macOS, Android, Windows en Website
+
+**Nieuw**
+
+- Onderaan in Instellingen staat nu de kaart Meer apps van de ontwikkelaar, die lrvdlinden.app opent
+
 ## Versie 1.0.4 · Build 160
 _1 november 2026_
 

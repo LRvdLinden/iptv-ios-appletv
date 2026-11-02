@@ -1,5 +1,25 @@
 [
  {
+  "build": 161,
+  "version": "1.0.4",
+  "date": "2026-11-02",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "macos",
+     "android",
+     "web",
+     "windows"
+    ],
+    "nl": "Onderaan in Instellingen staat nu de kaart Meer apps van de ontwikkelaar, die lrvdlinden.app opent",
+    "en": "Settings now ends with a More apps from the developer card that opens lrvdlinden.app"
+   }
+  ]
+ },
+ {
   "build": 160,
   "version": "1.0.4",
   "date": "2026-11-01",
