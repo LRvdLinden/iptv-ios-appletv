@@ -58,6 +58,10 @@ struct AppSettingsView: View {
             switch tab {
             case nil:
                 tabList
+                #if !os(tvOS)
+                // build 161: onderaan het overzicht een kaart naar lrvdlinden.app (niet op Apple TV)
+                MoreAppsSection()
+                #endif
             case .general?:
                 languageSection
                 interfaceSection
