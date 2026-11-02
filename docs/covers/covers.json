@@ -1,21 +1,7 @@
 [
  {
-  "slug": "movie-clayface",
-  "title": "Clayface",
-  "year": "2026",
-  "kind": "movie",
-  "source": "TMDB"
- },
- {
-  "slug": "tv-the-apothecary-diaries",
-  "title": "The Apothecary Diaries",
-  "year": "2023",
-  "kind": "tv",
-  "source": "TMDB"
- },
- {
-  "slug": "movie-spider-man-brand-new-day",
-  "title": "Spider-Man: Brand New Day",
+  "slug": "movie-verity",
+  "title": "Verity",
   "year": "2026",
   "kind": "movie",
   "source": "TMDB"
@@ -28,92 +14,8 @@
   "source": "TMDB"
  },
  {
-  "slug": "movie-hope",
-  "title": "Hope",
-  "year": "2026",
-  "kind": "movie",
-  "source": "TMDB"
- },
- {
-  "slug": "tv-link-click",
-  "title": "LINK CLICK",
-  "year": "2021",
-  "kind": "tv",
-  "source": "TMDB"
- },
- {
-  "slug": "movie-wildwood",
-  "title": "Wildwood",
-  "year": "2026",
-  "kind": "movie",
-  "source": "TMDB"
- },
- {
-  "slug": "tv-cyberpunk-edgerunners",
-  "title": "Cyberpunk: Edgerunners",
-  "year": "2022",
-  "kind": "tv",
-  "source": "TMDB"
- },
- {
-  "slug": "movie-avengers-doomsday",
-  "title": "Avengers: Doomsday",
-  "year": "2026",
-  "kind": "movie",
-  "source": "TMDB"
- },
- {
-  "slug": "tv-the-terminal-list",
-  "title": "The Terminal List",
-  "year": "2022",
-  "kind": "tv",
-  "source": "TMDB"
- },
- {
-  "slug": "movie-obsession",
-  "title": "Obsession",
-  "year": "2026",
-  "kind": "movie",
-  "source": "TMDB"
- },
- {
-  "slug": "tv-visionquest",
-  "title": "VisionQuest",
-  "year": "2026",
-  "kind": "tv",
-  "source": "TMDB"
- },
- {
-  "slug": "movie-the-cycle",
-  "title": "The Cycle",
-  "year": "2026",
-  "kind": "movie",
-  "source": "TMDB"
- },
- {
-  "slug": "tv-carrie",
-  "title": "Carrie",
-  "year": "2026",
-  "kind": "tv",
-  "source": "TMDB"
- },
- {
-  "slug": "movie-resident-evil",
-  "title": "Resident Evil",
-  "year": "2026",
-  "kind": "movie",
-  "source": "TMDB"
- },
- {
-  "slug": "tv-crystal-lake",
-  "title": "Crystal Lake",
-  "year": "2026",
-  "kind": "tv",
-  "source": "TMDB"
- },
- {
-  "slug": "movie-moana",
-  "title": "Moana",
+  "slug": "movie-the-dog-stars",
+  "title": "The Dog Stars",
   "year": "2026",
   "kind": "movie",
   "source": "TMDB"
@@ -126,99 +28,43 @@
   "source": "TMDB"
  },
  {
-  "slug": "movie-surviving-hurricane-otis",
-  "title": "Surviving Hurricane Otis",
+  "slug": "movie-obsession",
+  "title": "Obsession",
   "year": "2026",
   "kind": "movie",
   "source": "TMDB"
  },
  {
-  "slug": "tv-slow-horses",
-  "title": "Slow Horses",
+  "slug": "tv-dead-end-job",
+  "title": "Dead-End Job",
+  "year": "2026",
+  "kind": "tv",
+  "source": "TMDB"
+ },
+ {
+  "slug": "movie-clayface",
+  "title": "Clayface",
+  "year": "2026",
+  "kind": "movie",
+  "source": "TMDB"
+ },
+ {
+  "slug": "tv-the-terminal-list",
+  "title": "The Terminal List",
   "year": "2022",
   "kind": "tv",
   "source": "TMDB"
  },
  {
-  "slug": "movie-bad-apples",
-  "title": "Bad Apples",
+  "slug": "movie-apocalypse-z-new-world",
+  "title": "Apocalypse Z: New World",
   "year": "2026",
   "kind": "movie",
   "source": "TMDB"
  },
  {
-  "slug": "tv-where-the-mask-ends",
-  "title": "Where the Mask Ends",
-  "year": "2026",
-  "kind": "tv",
-  "source": "TMDB"
- },
- {
-  "slug": "movie-the-weight",
-  "title": "The Weight",
-  "year": "2026",
-  "kind": "movie",
-  "source": "TMDB"
- },
- {
-  "slug": "tv-tulsa-king",
-  "title": "Tulsa King",
-  "year": "2022",
-  "kind": "tv",
-  "source": "TMDB"
- },
- {
-  "slug": "movie-la-bola-negra",
-  "title": "LA BOLA NEGRA",
-  "year": "2026",
-  "kind": "movie",
-  "source": "TMDB"
- },
- {
-  "slug": "tv-bleach",
-  "title": "Bleach",
-  "year": "2004",
-  "kind": "tv",
-  "source": "TMDB"
- },
- {
-  "slug": "movie-masterplan",
-  "title": "Masterplan",
-  "year": "2026",
-  "kind": "movie",
-  "source": "TMDB"
- },
- {
-  "slug": "tv-doctor-x-mafia-in-white",
-  "title": "Doctor X: Mafia in White",
-  "year": "2026",
-  "kind": "tv",
-  "source": "TMDB"
- },
- {
-  "slug": "movie-tenzing",
-  "title": "Tenzing",
-  "year": "2026",
-  "kind": "movie",
-  "source": "TMDB"
- },
- {
-  "slug": "tv-one-piece",
-  "title": "One Piece",
-  "year": "1999",
-  "kind": "tv",
-  "source": "TMDB"
- },
- {
-  "slug": "movie-street-fighter",
-  "title": "Street Fighter",
-  "year": "2026",
-  "kind": "movie",
-  "source": "TMDB"
- },
- {
-  "slug": "tv-tigers-sniff-the-rose",
-  "title": "Tigers Sniff the Rose",
+  "slug": "tv-visionquest",
+  "title": "VisionQuest",
   "year": "2026",
   "kind": "tv",
   "source": "TMDB"
@@ -231,15 +77,155 @@
   "source": "TMDB"
  },
  {
-  "slug": "tv-dragon-ball-super-beerus",
-  "title": "Dragon Ball Super: Beerus",
+  "slug": "tv-nocturne",
+  "title": "Nocturne",
   "year": "2026",
   "kind": "tv",
   "source": "TMDB"
  },
  {
-  "slug": "movie-by-any-means",
-  "title": "By Any Means",
+  "slug": "movie-forgotten-island",
+  "title": "Forgotten Island",
+  "year": "2026",
+  "kind": "movie",
+  "source": "TMDB"
+ },
+ {
+  "slug": "tv-dexter-resurrection",
+  "title": "Dexter: Resurrection",
+  "year": "2025",
+  "kind": "tv",
+  "source": "TMDB"
+ },
+ {
+  "slug": "movie-drive-the-pretenders",
+  "title": "Drive - The Pretenders",
+  "year": "2026",
+  "kind": "movie",
+  "source": "TMDB"
+ },
+ {
+  "slug": "tv-dark-matter",
+  "title": "Dark Matter",
+  "year": "2024",
+  "kind": "tv",
+  "source": "TMDB"
+ },
+ {
+  "slug": "movie-wildwood",
+  "title": "Wildwood",
+  "year": "2026",
+  "kind": "movie",
+  "source": "TMDB"
+ },
+ {
+  "slug": "tv-ghosts",
+  "title": "Ghosts",
+  "year": "2021",
+  "kind": "tv",
+  "source": "TMDB"
+ },
+ {
+  "slug": "movie-spider-man-brand-new-day",
+  "title": "Spider-Man: Brand New Day",
+  "year": "2026",
+  "kind": "movie",
+  "source": "TMDB"
+ },
+ {
+  "slug": "tv-tulsa-king",
+  "title": "Tulsa King",
+  "year": "2022",
+  "kind": "tv",
+  "source": "TMDB"
+ },
+ {
+  "slug": "movie-sense-and-sensibility",
+  "title": "Sense and Sensibility",
+  "year": "2026",
+  "kind": "movie",
+  "source": "TMDB"
+ },
+ {
+  "slug": "tv-crystal-lake",
+  "title": "Crystal Lake",
+  "year": "2026",
+  "kind": "tv",
+  "source": "TMDB"
+ },
+ {
+  "slug": "movie-ali-g-who-iz-i",
+  "title": "Ali G: Who Iz I?",
+  "year": "2026",
+  "kind": "movie",
+  "source": "TMDB"
+ },
+ {
+  "slug": "tv-bleach",
+  "title": "Bleach",
+  "year": "2004",
+  "kind": "tv",
+  "source": "TMDB"
+ },
+ {
+  "slug": "movie-resident-evil",
+  "title": "Resident Evil",
+  "year": "2026",
+  "kind": "movie",
+  "source": "TMDB"
+ },
+ {
+  "slug": "tv-the-simpsons",
+  "title": "The Simpsons",
+  "year": "1989",
+  "kind": "tv",
+  "source": "TMDB"
+ },
+ {
+  "slug": "movie-avengers-doomsday",
+  "title": "Avengers: Doomsday",
+  "year": "2026",
+  "kind": "movie",
+  "source": "TMDB"
+ },
+ {
+  "slug": "tv-one-piece",
+  "title": "One Piece",
+  "year": "1999",
+  "kind": "tv",
+  "source": "TMDB"
+ },
+ {
+  "slug": "movie-dune-part-three",
+  "title": "Dune: Part Three",
+  "year": "2026",
+  "kind": "movie",
+  "source": "TMDB"
+ },
+ {
+  "slug": "tv-doctor-x-mafia-in-white",
+  "title": "Doctor X: Mafia in White",
+  "year": "2026",
+  "kind": "tv",
+  "source": "TMDB"
+ },
+ {
+  "slug": "movie-the-hunger-games-sunrise-on-the-reaping",
+  "title": "The Hunger Games: Sunrise on the Reaping",
+  "year": "2026",
+  "kind": "movie",
+  "source": "TMDB"
+ },
+ {
+  "slug": "tv-lanterns",
+  "title": "Lanterns",
+  "year": "2026",
+  "kind": "tv",
+  "source": "TMDB"
+ },
+ {
+  "slug": "movie-hope",
+  "title": "Hope",
   "year": "2026",
   "kind": "movie",
   "source": "TMDB"
@@ -252,15 +238,85 @@
   "source": "TMDB"
  },
  {
-  "slug": "movie-you-can-see-everything",
-  "title": "You Can See Everything",
+  "slug": "movie-collision-course",
+  "title": "Collision Course",
   "year": "2026",
   "kind": "movie",
   "source": "TMDB"
  },
  {
-  "slug": "tv-yaga",
-  "title": "YAGA",
+  "slug": "tv-cyberpunk-edgerunners",
+  "title": "Cyberpunk: Edgerunners",
+  "year": "2022",
+  "kind": "tv",
+  "source": "TMDB"
+ },
+ {
+  "slug": "movie-street-fighter",
+  "title": "Street Fighter",
+  "year": "2026",
+  "kind": "movie",
+  "source": "TMDB"
+ },
+ {
+  "slug": "tv-carrie",
+  "title": "Carrie",
+  "year": "2026",
+  "kind": "tv",
+  "source": "TMDB"
+ },
+ {
+  "slug": "movie-backrooms",
+  "title": "Backrooms",
+  "year": "2026",
+  "kind": "movie",
+  "source": "TMDB"
+ },
+ {
+  "slug": "tv-dragon-ball-super-beerus",
+  "title": "Dragon Ball Super: Beerus",
+  "year": "2026",
+  "kind": "tv",
+  "source": "TMDB"
+ },
+ {
+  "slug": "movie-moana",
+  "title": "Moana",
+  "year": "2026",
+  "kind": "movie",
+  "source": "TMDB"
+ },
+ {
+  "slug": "tv-avatar-seven-havens",
+  "title": "Avatar: Seven Havens",
+  "year": "2026",
+  "kind": "tv",
+  "source": "TMDB"
+ },
+ {
+  "slug": "movie-ebenezer",
+  "title": "Ebenezer",
+  "year": "2026",
+  "kind": "movie",
+  "source": "TMDB"
+ },
+ {
+  "slug": "tv-a-love-other-than-yours",
+  "title": "A Love Other Than Yours",
+  "year": "2026",
+  "kind": "tv",
+  "source": "TMDB"
+ },
+ {
+  "slug": "movie-runner",
+  "title": "Runner",
+  "year": "2026",
+  "kind": "movie",
+  "source": "TMDB"
+ },
+ {
+  "slug": "tv-100-days-of-deception",
+  "title": "100 Days of Deception",
   "year": "2026",
   "kind": "tv",
   "source": "TMDB"
@@ -273,64 +329,8 @@
   "source": "TMDB"
  },
  {
-  "slug": "tv-south-park",
-  "title": "South Park",
-  "year": "1997",
-  "kind": "tv",
-  "source": "TMDB"
- },
- {
-  "slug": "movie-dune-part-three",
-  "title": "Dune: Part Three",
-  "year": "2026",
-  "kind": "movie",
-  "source": "TMDB"
- },
- {
-  "slug": "tv-phony",
-  "title": "Phony",
-  "year": "2026",
-  "kind": "tv",
-  "source": "TMDB"
- },
- {
-  "slug": "movie-whalefall",
-  "title": "Whalefall",
-  "year": "2026",
-  "kind": "movie",
-  "source": "TMDB"
- },
- {
-  "slug": "tv-black-clover",
-  "title": "Black Clover",
-  "year": "2017",
-  "kind": "tv",
-  "source": "TMDB"
- },
- {
-  "slug": "movie-digger",
-  "title": "Digger",
-  "year": "2026",
-  "kind": "movie",
-  "source": "TMDB"
- },
- {
-  "slug": "tv-natural-high",
-  "title": "Natural High",
-  "year": "2023",
-  "kind": "tv",
-  "source": "TMDB"
- },
- {
-  "slug": "movie-animals",
-  "title": "Animals",
-  "year": "2026",
-  "kind": "movie",
-  "source": "TMDB"
- },
- {
-  "slug": "tv-lanterns",
-  "title": "Lanterns",
+  "slug": "tv-yaga",
+  "title": "YAGA",
   "year": "2026",
   "kind": "tv",
   "source": "TMDB"
