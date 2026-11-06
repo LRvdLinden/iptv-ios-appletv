@@ -1143,11 +1143,15 @@
   "Thank you! Your account now has Lifetime.": "شكرًا! حسابك لديه الآن Lifetime.",
   "The purchase could not be completed. Try again later.": "تعذّر إتمام عملية الشراء. حاول مرة أخرى لاحقًا.",
   "Then you need Lifetime to keep watching. Your servers, lists and profiles stay saved.": "بعد ذلك ستحتاج إلى Lifetime لمواصلة المشاهدة. تبقى خوادمك وقوائمك وملفاتك الشخصية محفوظة.",
-  "This purchase belongs to another Bingr account. Sign in with that account to use it.": "عملية الشراء هذه تخص حساب Bingr آخر. سجّل الدخول بذلك الحساب لاستخدامها.",
   "Your account has not been activated yet.": "لم يتم تفعيل حسابك بعد.",
   "Your purchase has been restored.": "تمت استعادة عملية الشراء.",
   "Your purchase is waiting for approval.": "عملية الشراء بانتظار الموافقة.",
-  "Your trial runs until %@": "تستمر فترتك التجريبية حتى %@"
+  "Your trial runs until %@": "تستمر فترتك التجريبية حتى %@",
+  "Sign in with the account you used to buy Bingr.": "سجّل الدخول بالحساب الذي اشتريت به Bingr.",
+  "Your purchase was successful. Now create your Bingr account, or sign in.": "تمت عملية الشراء بنجاح. أنشئ الآن حسابك في Bingr أو سجّل الدخول.",
+  "Bingr is Lifetime only": "Bingr متاح بنظام Lifetime فقط",
+  "Buy Lifetime once, then create your Bingr account. Already have an account? Sign in.": "اشترِ Lifetime مرة واحدة، ثم أنشئ حسابك في Bingr. لديك حساب بالفعل؟ سجّل الدخول.",
+  "I already have an account": "لدي حساب بالفعل"
  },
  "de": {
   "%@ is now signed in.": "%@ ist jetzt angemeldet.",
@@ -2293,11 +2297,15 @@
   "Thank you! Your account now has Lifetime.": "Danke! Dein Konto hat jetzt Lifetime.",
   "The purchase could not be completed. Try again later.": "Der Kauf konnte nicht abgeschlossen werden. Versuche es später erneut.",
   "Then you need Lifetime to keep watching. Your servers, lists and profiles stay saved.": "Danach brauchst du Lifetime, um weiterzuschauen. Deine Server, Listen und Profile bleiben gespeichert.",
-  "This purchase belongs to another Bingr account. Sign in with that account to use it.": "Dieser Kauf gehört zu einem anderen Bingr-Konto. Melde dich mit diesem Konto an, um ihn zu nutzen.",
   "Your account has not been activated yet.": "Dein Konto ist noch nicht aktiviert.",
   "Your purchase has been restored.": "Dein Kauf wurde wiederhergestellt.",
   "Your purchase is waiting for approval.": "Dein Kauf wartet auf Genehmigung.",
-  "Your trial runs until %@": "Dein Testzeitraum läuft bis %@"
+  "Your trial runs until %@": "Dein Testzeitraum läuft bis %@",
+  "Sign in with the account you used to buy Bingr.": "Melde dich mit dem Konto an, mit dem du Bingr gekauft hast.",
+  "Your purchase was successful. Now create your Bingr account, or sign in.": "Dein Kauf war erfolgreich. Erstelle jetzt dein Bingr-Konto oder melde dich an.",
+  "Bingr is Lifetime only": "Bingr gibt es nur als Lifetime",
+  "Buy Lifetime once, then create your Bingr account. Already have an account? Sign in.": "Kaufe Lifetime einmal und erstelle danach dein Bingr-Konto. Du hast schon ein Konto? Melde dich an.",
+  "I already have an account": "Ich habe schon ein Konto"
  },
  "es": {
   "%@ is now signed in.": "%@ ya ha iniciado sesión.",
@@ -3443,11 +3451,15 @@
   "Thank you! Your account now has Lifetime.": "¡Gracias! Tu cuenta ya tiene Lifetime.",
   "The purchase could not be completed. Try again later.": "No se pudo completar la compra. Inténtalo más tarde.",
   "Then you need Lifetime to keep watching. Your servers, lists and profiles stay saved.": "Después necesitarás Lifetime para seguir viendo. Tus servidores, listas y perfiles se conservan.",
-  "This purchase belongs to another Bingr account. Sign in with that account to use it.": "Esta compra pertenece a otra cuenta de Bingr. Inicia sesión con esa cuenta para usarla.",
   "Your account has not been activated yet.": "Tu cuenta aún no está activada.",
   "Your purchase has been restored.": "Se ha restaurado tu compra.",
   "Your purchase is waiting for approval.": "Tu compra está pendiente de aprobación.",
-  "Your trial runs until %@": "Tu periodo de prueba dura hasta el %@"
+  "Your trial runs until %@": "Tu periodo de prueba dura hasta el %@",
+  "Sign in with the account you used to buy Bingr.": "Inicia sesión con la cuenta con la que compraste Bingr.",
+  "Your purchase was successful. Now create your Bingr account, or sign in.": "Tu compra se ha realizado. Ahora crea tu cuenta de Bingr o inicia sesión.",
+  "Bingr is Lifetime only": "Bingr es solo Lifetime",
+  "Buy Lifetime once, then create your Bingr account. Already have an account? Sign in.": "Compra Lifetime una sola vez y después crea tu cuenta de Bingr. ¿Ya tienes una cuenta? Inicia sesión.",
+  "I already have an account": "Ya tengo una cuenta"
  },
  "fr": {
   "%@ is now signed in.": "%@ est maintenant connecté.",
@@ -4593,11 +4605,15 @@
   "Thank you! Your account now has Lifetime.": "Merci ! Ton compte a maintenant Lifetime.",
   "The purchase could not be completed. Try again later.": "L’achat n’a pas pu être finalisé. Réessaie plus tard.",
   "Then you need Lifetime to keep watching. Your servers, lists and profiles stay saved.": "Ensuite, il te faudra Lifetime pour continuer à regarder. Tes serveurs, listes et profils restent enregistrés.",
-  "This purchase belongs to another Bingr account. Sign in with that account to use it.": "Cet achat appartient à un autre compte Bingr. Connecte-toi avec ce compte pour l’utiliser.",
   "Your account has not been activated yet.": "Ton compte n’est pas encore activé.",
   "Your purchase has been restored.": "Ton achat a été restauré.",
   "Your purchase is waiting for approval.": "Ton achat est en attente d’approbation.",
-  "Your trial runs until %@": "Ta période d’essai dure jusqu’au %@"
+  "Your trial runs until %@": "Ta période d’essai dure jusqu’au %@",
+  "Sign in with the account you used to buy Bingr.": "Connecte-toi avec le compte avec lequel tu as acheté Bingr.",
+  "Your purchase was successful. Now create your Bingr account, or sign in.": "Ton achat a réussi. Crée maintenant ton compte Bingr, ou connecte-toi.",
+  "Bingr is Lifetime only": "Bingr est uniquement Lifetime",
+  "Buy Lifetime once, then create your Bingr account. Already have an account? Sign in.": "Achète Lifetime une seule fois, puis crée ton compte Bingr. Tu as déjà un compte ? Connecte-toi.",
+  "I already have an account": "J’ai déjà un compte"
  },
  "it": {
   "%@ is now signed in.": "%@ ha effettuato l’accesso.",
@@ -5743,11 +5759,15 @@
   "Thank you! Your account now has Lifetime.": "Grazie! Il tuo account ora ha Lifetime.",
   "The purchase could not be completed. Try again later.": "Non è stato possibile completare l’acquisto. Riprova più tardi.",
   "Then you need Lifetime to keep watching. Your servers, lists and profiles stay saved.": "Dopo ti servirà Lifetime per continuare a guardare. I tuoi server, elenchi e profili restano salvati.",
-  "This purchase belongs to another Bingr account. Sign in with that account to use it.": "Questo acquisto appartiene a un altro account Bingr. Accedi con quell’account per usarlo.",
   "Your account has not been activated yet.": "Il tuo account non è ancora attivato.",
   "Your purchase has been restored.": "Il tuo acquisto è stato ripristinato.",
   "Your purchase is waiting for approval.": "Il tuo acquisto è in attesa di approvazione.",
-  "Your trial runs until %@": "La tua prova dura fino al %@"
+  "Your trial runs until %@": "La tua prova dura fino al %@",
+  "Sign in with the account you used to buy Bingr.": "Accedi con l’account con cui hai acquistato Bingr.",
+  "Your purchase was successful. Now create your Bingr account, or sign in.": "Acquisto riuscito. Ora crea il tuo account Bingr oppure accedi.",
+  "Bingr is Lifetime only": "Bingr è solo Lifetime",
+  "Buy Lifetime once, then create your Bingr account. Already have an account? Sign in.": "Acquista Lifetime una volta, poi crea il tuo account Bingr. Hai già un account? Accedi.",
+  "I already have an account": "Ho già un account"
  },
  "nl": {
   "%@ is now signed in.": "%@ is nu ingelogd.",
@@ -6893,11 +6913,15 @@
   "Thank you! Your account now has Lifetime.": "Bedankt! Je account heeft nu Lifetime.",
   "The purchase could not be completed. Try again later.": "De aankoop kon niet worden afgerond. Probeer het later opnieuw.",
   "Then you need Lifetime to keep watching. Your servers, lists and profiles stay saved.": "Daarna heb je Lifetime nodig om te blijven kijken. Je servers, lijsten en profielen blijven bewaard.",
-  "This purchase belongs to another Bingr account. Sign in with that account to use it.": "Deze aankoop hoort bij een ander Bingr-account. Log in met dat account om hem te gebruiken.",
   "Your account has not been activated yet.": "Je account is nog niet geactiveerd.",
   "Your purchase has been restored.": "Je aankoop is hersteld.",
   "Your purchase is waiting for approval.": "Je aankoop wacht op goedkeuring.",
-  "Your trial runs until %@": "Je proefperiode loopt tot %@"
+  "Your trial runs until %@": "Je proefperiode loopt tot %@",
+  "Sign in with the account you used to buy Bingr.": "Log in met het account waarmee je Bingr hebt gekocht.",
+  "Your purchase was successful. Now create your Bingr account, or sign in.": "Je aankoop is gelukt. Maak nu je Bingr-account, of log in.",
+  "Bingr is Lifetime only": "Bingr is alleen Lifetime",
+  "Buy Lifetime once, then create your Bingr account. Already have an account? Sign in.": "Koop Lifetime één keer en maak daarna je Bingr-account. Heb je al een account? Log in.",
+  "I already have an account": "Ik heb al een account"
  },
  "pl": {
   "%@ is now signed in.": "%@ jest teraz zalogowany.",
@@ -8043,11 +8067,15 @@
   "Thank you! Your account now has Lifetime.": "Dziękujemy! Twoje konto ma teraz Lifetime.",
   "The purchase could not be completed. Try again later.": "Nie udało się dokończyć zakupu. Spróbuj ponownie później.",
   "Then you need Lifetime to keep watching. Your servers, lists and profiles stay saved.": "Potem do dalszego oglądania potrzebujesz Lifetime. Twoje serwery, listy i profile zostaną zachowane.",
-  "This purchase belongs to another Bingr account. Sign in with that account to use it.": "Ten zakup należy do innego konta Bingr. Zaloguj się na to konto, aby z niego korzystać.",
   "Your account has not been activated yet.": "Twoje konto nie zostało jeszcze aktywowane.",
   "Your purchase has been restored.": "Twój zakup został przywrócony.",
   "Your purchase is waiting for approval.": "Twój zakup czeka na zatwierdzenie.",
-  "Your trial runs until %@": "Okres próbny trwa do %@"
+  "Your trial runs until %@": "Okres próbny trwa do %@",
+  "Sign in with the account you used to buy Bingr.": "Zaloguj się na konto, którym kupiłeś Bingr.",
+  "Your purchase was successful. Now create your Bingr account, or sign in.": "Zakup się udał. Teraz utwórz konto Bingr lub zaloguj się.",
+  "Bingr is Lifetime only": "Bingr tylko jako Lifetime",
+  "Buy Lifetime once, then create your Bingr account. Already have an account? Sign in.": "Kup Lifetime raz, a potem utwórz konto Bingr. Masz już konto? Zaloguj się.",
+  "I already have an account": "Mam już konto"
  },
  "pt": {
   "%@ is now signed in.": "%@ já tem sessão iniciada.",
@@ -9193,11 +9221,15 @@
   "Thank you! Your account now has Lifetime.": "Obrigado! A tua conta tem agora Lifetime.",
   "The purchase could not be completed. Try again later.": "Não foi possível concluir a compra. Tenta mais tarde.",
   "Then you need Lifetime to keep watching. Your servers, lists and profiles stay saved.": "Depois disso, vais precisar de Lifetime para continuar a ver. Os teus servidores, listas e perfis ficam guardados.",
-  "This purchase belongs to another Bingr account. Sign in with that account to use it.": "Esta compra pertence a outra conta Bingr. Inicia sessão com essa conta para a usar.",
   "Your account has not been activated yet.": "A tua conta ainda não está ativada.",
   "Your purchase has been restored.": "A tua compra foi restaurada.",
   "Your purchase is waiting for approval.": "A tua compra aguarda aprovação.",
-  "Your trial runs until %@": "O teu período de teste vai até %@"
+  "Your trial runs until %@": "O teu período de teste vai até %@",
+  "Sign in with the account you used to buy Bingr.": "Inicia sessão com a conta com que compraste o Bingr.",
+  "Your purchase was successful. Now create your Bingr account, or sign in.": "A tua compra foi concluída. Cria agora a tua conta Bingr ou inicia sessão.",
+  "Bingr is Lifetime only": "O Bingr é só Lifetime",
+  "Buy Lifetime once, then create your Bingr account. Already have an account? Sign in.": "Compra o Lifetime uma vez e depois cria a tua conta Bingr. Já tens conta? Inicia sessão.",
+  "I already have an account": "Já tenho conta"
  },
  "tr": {
   "%@ is now signed in.": "%@ artık oturum açtı.",
@@ -10343,11 +10375,15 @@
   "Thank you! Your account now has Lifetime.": "Teşekkürler! Hesabında artık Lifetime var.",
   "The purchase could not be completed. Try again later.": "Satın alma tamamlanamadı. Daha sonra tekrar dene.",
   "Then you need Lifetime to keep watching. Your servers, lists and profiles stay saved.": "Bundan sonra izlemeye devam etmek için Lifetime gerekir. Sunucuların, listelerin ve profillerin kayıtlı kalır.",
-  "This purchase belongs to another Bingr account. Sign in with that account to use it.": "Bu satın alma başka bir Bingr hesabına ait. Kullanmak için o hesapla giriş yap.",
   "Your account has not been activated yet.": "Hesabın henüz etkinleştirilmedi.",
   "Your purchase has been restored.": "Satın alman geri yüklendi.",
   "Your purchase is waiting for approval.": "Satın alman onay bekliyor.",
-  "Your trial runs until %@": "Deneme süren %@ tarihine kadar"
+  "Your trial runs until %@": "Deneme süren %@ tarihine kadar",
+  "Sign in with the account you used to buy Bingr.": "Bingr’ı satın aldığın hesapla giriş yap.",
+  "Your purchase was successful. Now create your Bingr account, or sign in.": "Satın alma başarılı. Şimdi Bingr hesabını oluştur veya giriş yap.",
+  "Bingr is Lifetime only": "Bingr yalnızca Lifetime",
+  "Buy Lifetime once, then create your Bingr account. Already have an account? Sign in.": "Lifetime’ı bir kez satın al, ardından Bingr hesabını oluştur. Zaten hesabın var mı? Giriş yap.",
+  "I already have an account": "Zaten hesabım var"
  },
  "zh-Hans": {
   "%@ is now signed in.": "%@ 现已登录。",
@@ -11493,10 +11529,14 @@
   "Thank you! Your account now has Lifetime.": "谢谢！你的账户现已拥有 Lifetime。",
   "The purchase could not be completed. Try again later.": "无法完成购买，请稍后再试。",
   "Then you need Lifetime to keep watching. Your servers, lists and profiles stay saved.": "之后需要 Lifetime 才能继续观看。你的服务器、列表和个人资料会保留。",
-  "This purchase belongs to another Bingr account. Sign in with that account to use it.": "此购买属于另一个 Bingr 账户。请使用该账户登录后使用。",
   "Your account has not been activated yet.": "你的账户尚未激活。",
   "Your purchase has been restored.": "你的购买已恢复。",
   "Your purchase is waiting for approval.": "你的购买正在等待批准。",
-  "Your trial runs until %@": "你的试用期至 %@"
+  "Your trial runs until %@": "你的试用期至 %@",
+  "Sign in with the account you used to buy Bingr.": "请使用购买 Bingr 时的账户登录。",
+  "Your purchase was successful. Now create your Bingr account, or sign in.": "购买成功。现在创建你的 Bingr 账户，或登录。",
+  "Bingr is Lifetime only": "Bingr 仅提供 Lifetime",
+  "Buy Lifetime once, then create your Bingr account. Already have an account? Sign in.": "只需购买一次 Lifetime，然后创建你的 Bingr 账户。已有账户？请登录。",
+  "I already have an account": "我已有账户"
  }
 }

@@ -2133,9 +2133,10 @@ do {
     eq(Access167.parse(nil), .full, "167: oudere server = full")
     eq(Access167.parse("iets"), .full, "167: onbekend = full")
 
-    let lo = LifetimeOnly167.parse(["enabled": true, "announced": true, "cutover_at": "2026-12-07T00:00:00+01:00",
+    let loRaw: [String: Any] = ["enabled": true, "announced": true, "cutover_at": "2026-12-07T00:00:00+01:00",
                                     "code": "BINGR-7K2Q-9FXM", "code_valid_until": "2026-12-07T00:00:00+01:00",
-                                    "discount_pct": 30, "trial_until": NSNull()])
+                                    "discount_pct": 30, "trial_until": NSNull()]
+    let lo = LifetimeOnly167.parse(loRaw)
     check(lo != nil, "167: lifetime_only gelezen")
     eq(lo?.cutoverAt, cut, "167: cutover_at")
     eq(lo?.trialUntil, nil as Date?, "167: geen proefperiode")
@@ -2147,9 +2148,11 @@ do {
     check(!enc.contains("BINGR-") && !enc.lowercased().contains("code") && !enc.contains("discount"), "167: geen code of korting in de cache (\(enc))")
     eq(try! JSONDecoder().decode(LifetimeOnly167.self, from: enc.data(using: .utf8)!), lo!, "167: cache heen en terug")
 
-    eq(IAP167.parse(["apple": true, "product_id": "nl.lrvdlinden.bingr.lifetime"]).apple, true, "167: iap aan")
+    let iapOn: [String: Any] = ["apple": true, "product_id": "nl.lrvdlinden.bingr.lifetime"]
+    let iapOther: [String: Any] = ["apple": true, "product_id": "iets.anders"]
+    eq(IAP167.parse(iapOn).apple, true, "167: iap aan")
     eq(IAP167.parse(["apple": true]).apple, true, "167: iap aan zonder product-id")
-    eq(IAP167.parse(["apple": true, "product_id": "iets.anders"]).apple, false, "167: ander product = uit")
+    eq(IAP167.parse(iapOther).apple, false, "167: ander product = uit")
     eq(IAP167.parse(["apple": false]).apple, false, "167: iap uit")
     eq(IAP167.parse(nil).apple, false, "167: oudere server = uit")
 
@@ -2228,6 +2231,49 @@ do {
     check(AppleVerify167.relevant(productID: "nl.lrvdlinden.bingr.lifetime", revoked: false), "167: ons product")
     check(!AppleVerify167.relevant(productID: "nl.lrvdlinden.bingr.lifetime", revoked: true), "167: ingetrokken")
     check(!AppleVerify167.relevant(productID: "iets.anders", revoked: false), "167: ander product")
+}
+
+// MARK: build 167, aanvulling 1: eerst betalen, dan het account
+do {
+    let cut = ISODate167.parse("2026-12-07T00:00:00+01:00")!
+    let loPub: [String: Any] = ["enabled": true, "cutover_at": "2026-12-07T00:00:00+01:00", "after_cutover": false, "trial_days": 0]
+    let iapPub: [String: Any] = ["apple": true, "product_id": "nl.lrvdlinden.bingr.lifetime"]
+    let raw: [String: Any] = ["price": "€ 4,99", "lifetime_only": loPub, "iap": iapPub]
+    let c = PublicConfig167.parse(raw)
+    eq(c, PublicConfig167(enabled: true, cutoverAt: cut, afterCutover: false, trialDays: 0, iapApple: true), "167+: publieke config")
+    eq(PublicConfig167.parse(["price": "x"]), nil as PublicConfig167?, "167+: oudere server zonder lifetime_only")
+    let off = PublicConfig167.parse(["lifetime_only": ["enabled": false]])
+    eq(off?.enabled, false, "167+: uit")
+    eq(off?.iapApple, false, "167+: zonder iap")
+    let d = try! JSONEncoder().encode(c!)
+    eq(try! JSONDecoder().decode(PublicConfig167.self, from: d), c!, "167+: cache heen en terug")
+
+    check(!Welcome167.buyFirst(c, now: cut.addingTimeInterval(-60)), "167+: vóór de overgang het gewone welkomstscherm")
+    check(Welcome167.buyFirst(c, now: cut), "167+: vanaf de overgang eerst kopen")
+    var after = c!; after.afterCutover = true
+    check(Welcome167.buyFirst(after, now: cut.addingTimeInterval(-3600)), "167+: server zegt after_cutover (klok)")
+    check(!Welcome167.buyFirst(off, now: cut.addingTimeInterval(86400)), "167+: uit = gewoon welkom")
+    check(!Welcome167.buyFirst(nil, now: cut.addingTimeInterval(86400)), "167+: geen config (offline) = gewoon welkom")
+    check(Welcome167.showBuy(c, productLoaded: true), "167+: koopknop op het welkomstscherm")
+    check(!Welcome167.showBuy(c, productLoaded: false), "167+: zonder product geen koopknop")
+    check(!Welcome167.showBuy(off, productLoaded: true), "167+: zonder iap geen koopknop")
+
+    let uid = "3f1c2a9e-8b7d-4e6f-9a10-5b4c3d2e1f00"
+    let fresh = UUID()
+    let a1 = Welcome167.purchaseToken(userID: uid, pending: nil, make: { fresh })
+    check(a1?.token == UUID(uuidString: uid) && a1?.store == false, "167+: ingelogd = account-id")
+    check(Welcome167.purchaseToken(userID: "", pending: nil, make: { fresh }) == nil, "167+: ingelogd zonder geldige id = niet kopen")
+    let a2 = Welcome167.purchaseToken(userID: nil, pending: nil, make: { fresh })
+    check(a2?.token == fresh && a2?.store == true, "167+: zonder account een nieuwe token, bewaren")
+    let kept = UUID()
+    let a3 = Welcome167.purchaseToken(userID: nil, pending: kept.uuidString, make: { fresh })
+    check(a3?.token == kept && a3?.store == false, "167+: bewaarde token opnieuw gebruiken")
+    let a4 = Welcome167.purchaseToken(userID: nil, pending: "kapot", make: { fresh })
+    check(a4?.token == fresh && a4?.store == true, "167+: onleesbare token vervangen")
+
+    eq(Welcome167.restoreSignedOut(found: true, unfinished: true), .createAccount, "167+: herstel: nog van niemand = account maken")
+    eq(Welcome167.restoreSignedOut(found: true, unfinished: false), .signIn, "167+: herstel: al gekoppeld = inloggen")
+    eq(Welcome167.restoreSignedOut(found: false, unfinished: false), .nothing, "167+: herstel: niets")
 }
 
 print("\(checks) controles, \(failures) fout")

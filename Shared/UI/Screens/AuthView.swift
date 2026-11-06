@@ -9,6 +9,9 @@ struct AuthView: View {
     @State private var welcome: String?
     @State private var showEmail = false
     @State private var registering = false
+    /// build 167 (aanvulling 1): na de overgang eerst Koop Lifetime; "Ik heb al een account" toont het gewone inloggen
+    @ObservedObject private var lifetime = LifetimeStore.shared
+    @State private var haveAccount = false
 
     var body: some View {
         ZStack {
@@ -36,6 +39,10 @@ struct AuthView: View {
         .onAppear {
             if Secrets.accountsConfigured && account.isSignedIn { finish() }
         }
+        .task {
+            // build 167 (aanvulling 1): publieke config (na de overgang eerst kopen)
+            if Secrets.accountsConfigured && !account.isSignedIn { await lifetime.refreshPublicConfig() }
+        }
         // build 82: account geblokkeerd door de beheerder (bij inloggen via de tv-code of een vervallen sessie)
         .alert(L("Account blocked"), isPresented: $account.blockedNotice) {
             Button(L("OK"), role: .cancel) {}
@@ -44,7 +51,67 @@ struct AuthView: View {
         }
     }
 
+    /// build 167 (aanvulling 1): eerst betalen, dan het account.
     @ViewBuilder private var content: some View {
+        if lifetime.unclaimedPurchase {
+            purchasedContent
+        } else if lifetime.buyFirst && !haveAccount {
+            BuyFirstWelcomeView { withAnimation(.easeInOut(duration: 0.3)) { haveAccount = true } }
+                .transition(.opacity)
+        } else {
+            standardContent
+        }
+    }
+
+    /// Gekocht zonder account: "Je aankoop is gelukt, maak nu je account" (of log in).
+    @ViewBuilder private var purchasedContent: some View {
+        #if os(tvOS)
+        VStack(spacing: 20) {
+            purchasedBanner.padding(.top, 30)
+            AuthPrimaryButton(title: L("Create account"), busy: false) { showEmail = true }
+                .frame(width: 520)
+            tvLayout
+        }
+        .fullScreenCover(isPresented: $showEmail) {
+            ZStack {
+                AuthBackdrop()
+                ScrollView {
+                    AuthForm(startMode: .signUp)
+                        .padding(.vertical, 40)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            .environmentObject(account)
+        }
+        #else
+        ScrollView {
+            VStack(spacing: 24) {
+                BingrLogo(size: 38).padding(.top, 24)
+                purchasedBanner
+                AuthForm(startMode: .signUp)
+            }
+            .padding(.horizontal, Theme.edge)
+            .padding(.bottom, 32)
+            .frame(maxWidth: .infinity)
+        }
+        .scrollDismissesKeyboard(.interactively)
+        #endif
+    }
+
+    private var purchasedBanner: some View {
+        HStack(spacing: tvScaled(10)) {
+            LifetimeBadge(size: tvScaled(26))
+            Text(L("Your purchase was successful. Now create your Bingr account, or sign in."))
+                .font(.system(size: tvScaled(15), weight: .semibold))
+                .foregroundStyle(.white)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(tvScaled(14))
+        .frame(maxWidth: tvScaled(440), alignment: .leading)
+        .background(Color.white.opacity(0.1), in: RoundedRectangle(cornerRadius: tvScaled(12)))
+    }
+
+    @ViewBuilder private var standardContent: some View {
         #if os(tvOS)
         tvLayout
             .fullScreenCover(isPresented: $showEmail) {
@@ -252,6 +319,11 @@ struct AuthForm: View {
     @FocusState private var focus: Field?
 
     static let errorColor = Color(hex: 0xE87C03)
+
+    /// build 167 (aanvulling 1): na een aankoop zonder account meteen "Account maken"
+    init(startMode: Mode = .signIn) {
+        _mode = State(initialValue: startMode)
+    }
 
     private var title: String {
         switch mode {

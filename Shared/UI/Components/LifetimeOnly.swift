@@ -299,3 +299,60 @@ struct LifetimePurchaseRows: View {
         }
     }
 }
+
+// MARK: - Welkomstscherm na de overgang (aanvulling 1: eerst betalen, dan het account)
+
+/// Nog niet ingelogd en de overgang is voorbij: Koop Lifetime (StoreKit, als de publieke config `iap.apple` meldt),
+/// Ik heb al een account en Herstel aankopen. Na een aankoop komt meteen Account maken (zie `AuthView`).
+struct BuyFirstWelcomeView: View {
+    let onHaveAccount: () -> Void
+    @ObservedObject private var store = LifetimeStore.shared
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: tvScaled(24)) {
+                BingrLogo(size: tvScaled(38)).padding(.top, tvScaled(24))
+                VStack(alignment: .leading, spacing: tvScaled(16)) {
+                    HStack(spacing: tvScaled(12)) {
+                        LifetimeBadge(size: tvScaled(34))
+                        Text(L("Bingr is Lifetime only"))
+                            .font(.system(size: tvScaled(28), weight: .bold))
+                            .foregroundStyle(.white)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Text(L("Buy Lifetime once, then create your Bingr account. Already have an account? Sign in."))
+                        .font(.system(size: tvScaled(15)))
+                        .foregroundStyle(Theme.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    VStack(spacing: tvScaled(10)) {
+                        if Welcome167.showBuy(store.publicConfig, productLoaded: store.productLoaded) {
+                            WideButton(title: buyTitle(store), icon: "cart", prominent: true) {
+                                Task { await store.purchase(origin: "welcome") }
+                            }
+                        }
+                        WideButton(title: L("I already have an account"), icon: "person.crop.circle") { onHaveAccount() }
+                        WideButton(title: L("Restore purchases"), icon: "arrow.clockwise") {
+                            Task { await store.restore(origin: "welcome") }
+                        }
+                    }
+                    .disabled(store.busy)
+                    .padding(.top, tvScaled(6))
+                    if store.busy {
+                        HStack { Spacer(); ProgressView(); Spacer() }
+                    }
+                }
+                .padding(tvScaled(30))
+                .frame(maxWidth: tvScaled(560))
+                .background(.black.opacity(0.78), in: RoundedRectangle(cornerRadius: tvScaled(12)))
+                .overlay(RoundedRectangle(cornerRadius: tvScaled(12)).stroke(Color.white.opacity(0.08), lineWidth: 1))
+            }
+            .padding(.horizontal, Theme.edge)
+            .padding(.bottom, tvScaled(32))
+            .frame(maxWidth: .infinity)
+        }
+        .task { await store.prepare() }
+        .alert(item: store.binding(for: "welcome")) { m in
+            Alert(title: Text(m.text), dismissButton: .default(Text(L("OK"))))
+        }
+    }
+}

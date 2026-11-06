@@ -225,3 +225,69 @@ enum AppleVerify167 {
         productID == IAP167.productID && !revoked
     }
 }
+
+// MARK: - Aanvulling 1: eerst betalen, dan het account (nieuwe gebruikers na `cutover_at`)
+
+/// Publieke `billing config` (zonder inloggen): `lifetime_only: {enabled, cutover_at, after_cutover, trial_days}` en
+/// `iap: {apple, product_id}`. Bewaard in de cache; zonder (cache en netwerk) het welkomstscherm zoals nu.
+struct PublicConfig167: Codable, Equatable {
+    var enabled: Bool
+    var cutoverAt: Date?
+    var afterCutover: Bool
+    var trialDays: Int
+    var iapApple: Bool
+
+    init(enabled: Bool, cutoverAt: Date?, afterCutover: Bool, trialDays: Int = 0, iapApple: Bool) {
+        self.enabled = enabled; self.cutoverAt = cutoverAt; self.afterCutover = afterCutover
+        self.trialDays = trialDays; self.iapApple = iapApple
+    }
+
+    /// nil = geen `lifetime_only` in het antwoord (oudere server).
+    static func parse(_ raw: [String: Any]) -> PublicConfig167? {
+        guard let lo = raw["lifetime_only"] as? [String: Any] else { return nil }
+        let trial = (lo["trial_days"] as? NSNumber)?.intValue ?? 0
+        return PublicConfig167(enabled: (lo["enabled"] as? Bool) ?? false, cutoverAt: ISODate167.parse(lo["cutover_at"]),
+                               afterCutover: (lo["after_cutover"] as? Bool) ?? false, trialDays: max(0, trial),
+                               iapApple: IAP167.parse(raw["iap"]).apple)
+    }
+}
+
+enum Welcome167 {
+    /// Welkomstscherm met eerst Koop Lifetime (na de overgang, alleen als die aan staat).
+    static func buyFirst(_ c: PublicConfig167?, now: Date) -> Bool {
+        guard let c, c.enabled else { return false }
+        if c.afterCutover { return true }
+        if let d = c.cutoverAt { return now >= d }
+        return false
+    }
+
+    /// De koopknop op het welkomstscherm: alleen als de server `iap.apple` meldt en StoreKit het product heeft.
+    static func showBuy(_ c: PublicConfig167?, productLoaded: Bool) -> Bool {
+        (c?.iapApple ?? false) && productLoaded
+    }
+
+    /// `appAccountToken` voor een aankoop: ingelogd de account-id, anders de bewaarde (of een nieuwe)
+    /// `pendingAccountToken`. `store` = de nieuwe token moet bewaard worden.
+    static func purchaseToken(userID: String?, pending: String?, make: () -> UUID) -> (token: UUID, store: Bool)? {
+        if let u = userID {
+            guard let t = AppleVerify167.appAccountToken(u) else { return nil }
+            return (t, false)
+        }
+        if let p = pending, let t = UUID(uuidString: p) { return (t, false) }
+        return (make(), true)
+    }
+
+    enum RestoreSignedOut: Equatable {
+        /// Gekocht maar nog door geen account geclaimd (niet afgerond): nu het account maken (of inloggen)
+        case createAccount
+        /// Al aan een account gekoppeld: "Log in met het account waarmee je Bingr hebt gekocht"
+        case signIn
+        case nothing
+    }
+
+    /// Herstel aankopen zonder in te loggen (bijv. op een nieuw toestel).
+    static func restoreSignedOut(found: Bool, unfinished: Bool) -> RestoreSignedOut {
+        guard found else { return .nothing }
+        return unfinished ? .createAccount : .signIn
+    }
+}

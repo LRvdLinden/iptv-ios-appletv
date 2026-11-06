@@ -19,6 +19,21 @@ Apple-apps zit en wat Léon zelf nog moet doen.
 - De Apple-apps tonen nooit de kortingscode, een prijs van het web, een link of een QR-code naar de betaalpagina.
   De enige uitzondering is de EU-link hieronder, achter de flag.
 
+## Eerst betalen, dan het account (na `cutover_at`)
+
+- Niet ingelogd leest de app de publieke `billing config` (`lifetime_only`, `iap`; bewaard in de cache). Na de
+  overgang toont het welkomstscherm Koop Lifetime, Ik heb al een account en Herstel aankopen. Zonder config (offline,
+  oudere server) blijft het welkomstscherm zoals nu.
+- Kopen zonder account gebruikt een willekeurige `appAccountToken` (`lifetime.pendingAccountToken`, in de eigen
+  sleutelopslag van de app op dit toestel). De transactie wordt dan **niet** afgerond.
+- Meteen daarna komt Account maken (of inloggen). Na het inloggen stuurt de app de transactie stil naar
+  `apple_verify`, en pas als dat gelukt is volgt `finish()`.
+- Bij elke start: een onafgeronde Lifetime-aankoop zonder ingelogd account geeft "Je aankoop is gelukt, maak nu je
+  account". Is er iemand ingelogd, dan claimt de app hem stil, net als de huidige aankopen als het account nog geen
+  Lifetime heeft.
+- Herstel aankopen zonder account: onafgerond = account maken, al gekoppeld = "Log in met het account waarmee je Bingr
+  hebt gekocht". Dezelfde melding volgt op 409 `owned_by_other_account`.
+
 ## Wat Léon moet doen
 
 1. **App Store Connect**

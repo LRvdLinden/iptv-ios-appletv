@@ -989,6 +989,13 @@ final class AccountService: ObservableObject {
         }
     }
 
+    /// build 167 (aanvulling 1): publieke `billing config` (zonder inloggen), voor het welkomstscherm na de overgang.
+    func billingConfig() async -> [String: Any]? {
+        guard Secrets.accountsConfigured else { return nil }
+        guard let r = try? await post("/functions/v1/billing", ["action": "config"]), r.status == 200 else { return nil }
+        return r.json
+    }
+
     /// 403 `feature_locked` (Gratis-account): abonnement bijwerken en `FeatureLockedError` gooien.
     private func checkFeatureLocked(_ r: Response) throws {
         guard r.string("error") == "feature_locked" else { return }
