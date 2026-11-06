@@ -225,6 +225,7 @@ final class ChannelPreview: ObservableObject {
         let gen = generation
         let item = Playables.channel(c, now: playlists.library.nowPlaying(c))
         let silent = !handoffCapable
+        if !silent { applyAudio() }
         var reuse = controller ?? spare
         if let r = reuse, r.silent != silent {
             // stil ↔ met geluid wisselen kan niet met dezelfde engine
@@ -307,6 +308,7 @@ final class ChannelPreview: ObservableObject {
         soundOn = on
         guard let c = channel else { return }
         if let ctrl = controller, !ctrl.silent {
+            applyAudio()
             ctrl.muted = !on
             return
         }
@@ -332,9 +334,20 @@ final class ChannelPreview: ObservableObject {
         controller = nil
         channel = nil
         soundOn = false
+        applyAudio(fullscreen: true)
         ctrl.isPreview = false
         ctrl.muted = false
         return ctrl
+    }
+
+    /// Build 164 (iPhone/iPad): gedempt voorbeeld = audiosessie `.ambient` (muziek van andere apps speelt door);
+    /// geluid aan of volledig scherm = `.playback` (`GuideAudio164`).
+    private func applyAudio(fullscreen: Bool = false) {
+        #if os(iOS)
+        let c = GuideAudio164.category(preview: true, soundOn: soundOn, fullscreen: fullscreen)
+        PreviewAudio.holdAmbient = c == .ambient
+        PreviewAudio.apply(c)
+        #endif
     }
 
     /// Weg uit Live TV of de gids, of er gaat echt iets spelen: stoppen. `release`: ook de bewaarde speler loslaten
@@ -347,6 +360,7 @@ final class ChannelPreview: ObservableObject {
         suspended = false
         if blocked { blocked = false }
         StreamSession.shared.stop(owner: self)
+        PreviewAudio.holdAmbient = false
         if let ctrl = controller {
             if release { ctrl.stop() } else { ctrl.halt(); spare = ctrl }
             controller = nil

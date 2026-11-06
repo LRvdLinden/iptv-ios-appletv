@@ -188,3 +188,12 @@ enum GuideStillPolicy164 {
         return String(repeating: "0", count: max(0, 16 - hex.count)) + hex + ".jpg"
     }
 }
+
+/// Audiosessie van het live voorbeeld (iPhone/iPad): gedempt = `.ambient` (mengt met muziek van andere apps), pas met
+/// geluid aan of op volledig scherm `.playback`. Gewoon afspelen (geen voorbeeld) is altijd `.playback`.
+enum GuideAudio164 {
+    enum Category: Equatable { case ambient, playback }
+    static func category(preview: Bool, soundOn: Bool, fullscreen: Bool) -> Category {
+        preview && !soundOn && !fullscreen ? .ambient : .playback
+    }
+}

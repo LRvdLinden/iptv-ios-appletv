@@ -98,7 +98,7 @@ final class VLCEngine: PlaybackEngine {
         #if !os(macOS)
         // na de intro-tune (ambient) weer echte afspeel-audio, ook met de stil-schakelaar aan
         // (niet voor het stille voorbeeld: dat heeft geen geluid, en dit kost tijd op de hoofdthread)
-        if !silent {
+        if !silent && !PreviewAudio.holdAmbient {
             try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
             try? AVAudioSession.sharedInstance().setActive(true)
         }
@@ -304,6 +304,34 @@ final class PlayerLayerView: UIView {
 }
 #endif
 
+/// Build 164: audiosessie van het live voorbeeld in de tv-gids (iPhone/iPad). Zolang het voorbeeld gedempt speelt
+/// `.ambient` met mengen, zodat muziek van andere apps doorspeelt; pas bij geluid aan of volledig scherm `.playback`.
+/// De beslisregel staat in `GuideAudio164` (Build164.swift, zelftest).
+@MainActor
+enum PreviewAudio {
+    /// Gezet door `ChannelPreview` zolang er een gedempt voorbeeld (met een gewone speler) loopt: nieuwe engines zetten
+    /// dan niet zelf `.playback`
+    static var holdAmbient = false
+
+    static func apply(_ c: GuideAudio164.Category) {
+        #if os(iOS)
+        switch c {
+        case .ambient:
+            try? AVAudioSession.sharedInstance().setCategory(.ambient, mode: .default, options: [.mixWithOthers])
+        case .playback:
+            setPlayback()
+        }
+        #endif
+    }
+
+    static func setPlayback() {
+        #if os(iOS)
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback, policy: .longFormVideo, options: [])
+        try? AVAudioSession.sharedInstance().setActive(true)
+        #endif
+    }
+}
+
 @MainActor
 final class AVEngine: PlaybackEngine {
     let player = AVPlayer()
@@ -344,8 +372,8 @@ final class AVEngine: PlaybackEngine {
         }
         #if os(iOS)
         player.usesExternalPlaybackWhileExternalScreenIsActive = true
-        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback, policy: .longFormVideo, options: [])
-        try? AVAudioSession.sharedInstance().setActive(true)
+        // build 164: gedempt live voorbeeld in de gids: de audiosessie blijft .ambient (muziek van andere apps speelt door)
+        if !PreviewAudio.holdAmbient { PreviewAudio.setPlayback() }
         #elseif os(tvOS)
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
         #endif

@@ -2042,6 +2042,11 @@ do {
     check(f1 != GuideStillPolicy164.fileName(for: "abc|npo2"), "164: andere zender, andere naam")
     check(f1.count == 20 && f1.hasSuffix(".jpg"), "164: korte vaste naam (\(f1))")
     check(!GuideStillPolicy164.fileName(for: "../../x|/etc").contains("/"), "164: geen pad in de naam")
+    // audiosessie van het voorbeeld
+    eq(GuideAudio164.category(preview: true, soundOn: false, fullscreen: false), .ambient, "164: gedempt voorbeeld = ambient")
+    eq(GuideAudio164.category(preview: true, soundOn: true, fullscreen: false), .playback, "164: geluid aan = playback")
+    eq(GuideAudio164.category(preview: true, soundOn: false, fullscreen: true), .playback, "164: volledig scherm = playback")
+    eq(GuideAudio164.category(preview: false, soundOn: false, fullscreen: false), .playback, "164: gewoon afspelen = playback")
 }
 
 print("\(checks) controles, \(failures) fout")
