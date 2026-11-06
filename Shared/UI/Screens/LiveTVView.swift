@@ -5,8 +5,9 @@ struct LiveTVView: View {
     @EnvironmentObject var playlists: PlaylistService
     @EnvironmentObject var store: CloudStore
     @State private var group: String = Self.allKey
-    /// App Store-screenshots: scherm "guide" opent direct de tv-gids
-    @State private var mode: Mode = Screenshots.isActive && Screenshots.screen == "guide" ? .grid : .list
+    /// Build 165: Live TV opent altijd in de tv-gids (ook na een herstart). De knop wisselt naar de lijst, alleen zolang
+    /// je in Live TV bent; er is geen bewaarde voorkeur. App Store-screenshots: scherm "live" toont de lijst.
+    @State private var mode: Mode = Self.startMode
     @State private var guideFor: Channel?
     @State private var program: ProgramTarget?
     @State private var filterText = ""
@@ -32,6 +33,8 @@ struct LiveTVView: View {
     @State private var guideNoticeClosed = false
 
     enum Mode: String { case list, grid }
+    /// Build 165: altijd de gids als start (behalve het screenshot "live", dat de lijst laat zien)
+    @MainActor static var startMode: Mode { Screenshots.isActive && Screenshots.screen == "live" ? .list : .grid }
     struct ProgramTarget: Identifiable { var id: String { channel.id + p.id }; let channel: Channel; let p: EPGProgram }
 
     static let favKey = "★", recentKey = "◷", allKey = "*", eventsKey = "⚡", collectionPrefix = "▤"
@@ -251,6 +254,11 @@ struct LiveTVView: View {
         }
         .task(id: listKey) { await rebuildList(listKey) }
         .onChange(of: group) { _, _ in preview.stop() }
+        // build 165: Live TV verlaten (ander tabblad) = de volgende keer weer de gids. Niet bij onDisappear: dat komt
+        // ook bij het afspelen (volledig scherm) en dan hoort de gekozen lijst te blijven.
+        .onChange(of: app.selectedTab) { _, t in
+            if t != 1, mode != Self.startMode { mode = Self.startMode }
+        }
         // Live TV verlaten: ook de bewaarde voorbeeldspeler loslaten
         .onDisappear { preview.stop(release: true) }
     }
@@ -365,7 +373,12 @@ struct LiveTVView: View {
     }
 
     @ViewBuilder private var channelAreaContent: some View {
-        if mode == .grid {
+        if mode == .grid && visibleChannels.isEmpty {
+            // build 165: de gids is nu het startscherm; geen lege gids tijdens het samenstellen, en bij zoeken,
+            // Favorieten of een lege groep dezelfde melding als in de lijst
+            emptyMessage
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        } else if mode == .grid {
             // build 164: nieuwe gids met het live voorbeeld in de gids zelf (geen zwevend venster meer)
             GuideGridView(channels: visibleChannels,
                           onPlay: { c in play(c) },
@@ -392,6 +405,16 @@ struct LiveTVView: View {
         }, onPrompt: { prompt = $0 })
     }
 
+    /// Lege lijst of gids: pas een melding als de lijst klaar is (niet tijdens het samenstellen)
+    @ViewBuilder private var emptyMessage: some View {
+        if visibleChannels.isEmpty && (shownKey == listKey || (!searching && group == Self.eventsKey)) {
+            Text(searching ? L("No channels found.") :
+                 group == Self.favKey ? L("No favorites yet. Hold a channel to add it.") : L("No channels."))
+                .foregroundStyle(Theme.secondary).padding(.top, 40)
+                .frame(maxWidth: .infinity)
+        }
+    }
+
     private var channelList: some View {
         let list = visibleChannels
         return ScrollView {
@@ -401,12 +424,7 @@ struct LiveTVView: View {
                         .font(.system(size: tvScaled(13), weight: .semibold)).foregroundStyle(Theme.secondary)
                         .padding(.horizontal, tvScaled(8)).padding(.top, tvScaled(6))
                 }
-                if list.isEmpty && (shownKey == listKey || (!searching && group == Self.eventsKey)) {
-                    Text(searching ? L("No channels found.") :
-                         group == Self.favKey ? L("No favorites yet. Hold a channel to add it.") : L("No channels."))
-                        .foregroundStyle(Theme.secondary).padding(.top, 40)
-                        .frame(maxWidth: .infinity)
-                }
+                if list.isEmpty { emptyMessage }
                 let eventInfo: [String: EventInfo] = group == Self.eventsKey && !searching
                     ? Dictionary(events.map { ($0.channel.id, $0.info) }, uniquingKeysWith: { a, _ in a }) : [:]
                 ForEach(list) { c in
