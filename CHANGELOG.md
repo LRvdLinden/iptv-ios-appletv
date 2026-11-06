@@ -4,6 +4,36 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.5 · Build 167
+_7 november 2026_
+
+### iOS, iPadOS, tvOS en macOS
+
+**Nieuw**
+
+- Lifetime kopen in de app, met Herstel aankopen
+
+### iOS, iPadOS, tvOS, macOS, Android, Android TV en Website
+
+**Verbeterd**
+
+- Vergelijking van de abonnementen toont tot wanneer Gratis loopt
+
+### iOS, iPadOS, tvOS, macOS, Android, Android TV, Website en Server
+
+**Nieuw**
+
+- Bingr wordt per 1 december 2026 alleen Lifetime: een melding met de datum, en wie nog Gratis heeft krijgt een persoonlijke kortingscode van 30% (in de mail, op de website en in de Android-apps)
+- Nieuw bij Bingr: eerst Lifetime kopen, daarna je account maken
+- Scherm Activeer Lifetime na de overgang; je servers, lijsten, profielen en instellingen blijven bewaard
+
+### Website
+
+**Verbeterd**
+
+- Upgradepagina met veld voor de kortingscode en de prijs na korting
+- Nieuwe versie van de voorwaarden en de privacyverklaring
+
 ## Versie 1.0.5 · Build 166
 _6 november 2026_
 

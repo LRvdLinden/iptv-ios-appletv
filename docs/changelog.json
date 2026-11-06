@@ -1,5 +1,98 @@
 [
  {
+  "build": 167,
+  "version": "1.0.5",
+  "date": "2026-11-07",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web",
+     "server"
+    ],
+    "nl": "Bingr wordt per 1 december 2026 alleen Lifetime: een melding met de datum, en wie nog Gratis heeft krijgt een persoonlijke kortingscode van 30% (in de mail, op de website en in de Android-apps)",
+    "en": "Bingr goes Lifetime only from 1 December 2026: a notice with the date, and anyone still on Free gets a personal 30% discount code (by email, on the website and in the Android apps)"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "Lifetime kopen in de app, met Herstel aankopen",
+    "en": "Buy Lifetime in the app, with Restore purchases"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web",
+     "server"
+    ],
+    "nl": "Nieuw bij Bingr: eerst Lifetime kopen, daarna je account maken",
+    "en": "New to Bingr: buy Lifetime first, then create your account"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web",
+     "server"
+    ],
+    "nl": "Scherm Activeer Lifetime na de overgang; je servers, lijsten, profielen en instellingen blijven bewaard",
+    "en": "Activate Lifetime screen after the switch; your servers, lists, profiles and settings stay saved"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Upgradepagina met veld voor de kortingscode en de prijs na korting",
+    "en": "Upgrade page with a discount code field and the price after discount"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web"
+    ],
+    "nl": "Vergelijking van de abonnementen toont tot wanneer Gratis loopt",
+    "en": "Plan comparison shows until when Free runs"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Nieuwe versie van de voorwaarden en de privacyverklaring",
+    "en": "New version of the terms and the privacy policy"
+   }
+  ]
+ },
+ {
   "build": 166,
   "version": "1.0.5",
   "date": "2026-11-06",
