@@ -1,0 +1,21 @@
+Privacy bij Bingr (samenvatting; de volledige verklaring staat op https://bingr.online/privacy.html)
+
+Wie: Bingr is een product van PixelForges, Apeldoorn (Nederland), KvK 70031576. Contact: support@bingr.online.
+
+Wat Bingr is: een speler voor je eigen IPTV-abonnement of mediaserver. Bingr levert zelf geen zenders, films of series.
+
+Je Bingr-account: voor Bingr heb je een account nodig. Daarvoor bewaren we je voor- en achternaam, je e-mailadres en een versleutelde vorm van je wachtwoord. Bij je account bewaren we wat nodig is om Bingr op al je apparaten hetzelfde te laten werken: je profielen, instellingen, servers en afspeellijsten (versleuteld), lijsten, collecties en kijkvoortgang. Pincodes en wachtwoorden van servers en koppelingen worden alleen versleuteld bewaard. Je gegevens staan bij Bingr in een datacenter in de EU.
+
+Apparaten: per gekoppeld apparaat bewaren we een apparaat-id, de naam en het type, de app- en systeemversie en wanneer het is gekoppeld en voor het laatst gebruikt. Zo beheer je je apparaten in de app.
+
+Kijken: terwijl je kijkt, bewaren we welk profiel op welk apparaat wat kijkt, om het aantal schermen tegelijk te bewaken. Deze kijkgeschiedenis wordt na 8 dagen gewist. Voor de statistieken bewaren we per profiel dagtotalen en bekeken titels, maximaal 400 dagen; je wist ze zelf in Mijn Bingr.
+
+Land: we bewaren alleen de landcode (zoals NL) van de verbinding, niet je IP-adres, voor overzichten in ons beheer.
+
+Support: maak je een ticket, dan bewaren we je e-mailadres, je naam (als je die invult), je berichten, het soort apparaat, de app-versie en, als je dat zelf meestuurt, een diagnose van de app.
+
+Diensten die je zelf gebruikt: Bingr maakt verbinding met je eigen server of afspeellijst, met TMDB voor posters en informatie (alleen titel en jaar), en alleen als je ze koppelt met Trakt en OpenSubtitles. Trailers spelen via YouTube. Daarvoor geldt het privacybeleid van die diensten.
+
+Geen advertenties, geen analytics, geen tracking. Bingr verkoopt geen gegevens.
+
+Je rechten: je kunt je gegevens inzien, laten aanpassen of verwijderen. Je account verwijder je zelf in de app (Mijn Bingr > Account en apparaten > Account verwijderen) of op bingr.online/account. Vragen: support@bingr.online.

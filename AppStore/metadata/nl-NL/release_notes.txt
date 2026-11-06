@@ -1,0 +1,8 @@
+Nieuw in 1.0.5
+• Nieuwe tv-gids: op de iPhone de gekozen zender live bovenaan, zenders links en programma's rechts, met NU, terugkijken en herinneringen
+• Op de iPad en Mac een groot live voorbeeld met Live kijken en Vanaf het begin, en zenderkolommen
+• Op de Apple TV een tv-gids over de hele breedte: de NU-kaart speelt de zender live als je erop staat, OK opent volledig scherm
+• Live tv opent nu altijd in de tv-gids; met de knop Lijst wissel je naar de lijst
+• Het live voorbeeld speelt zonder geluid en laat je muziek doorspelen tot je het geluid aanzet
+• Nieuwe instelling Live voorbeeld in de gids: Altijd, Alleen wifi of Nooit
+• De tv-gids toont alleen nog dagen waarvoor er gids-info is

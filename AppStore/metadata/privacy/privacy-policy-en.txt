@@ -1,0 +1,21 @@
+Privacy at Bingr (summary; the full policy is at https://bingr.online/privacy.html)
+
+Who: Bingr is a product of PixelForges, Apeldoorn (the Netherlands), Chamber of Commerce no. 70031576. Contact: support@bingr.online.
+
+What Bingr is: a player for your own IPTV subscription or media server. Bingr itself does not provide any channels, movies or series.
+
+Your Bingr account: Bingr requires an account. For it we store your first and last name, your email address and an encrypted form of your password. With your account we store what is needed to make Bingr work the same on all your devices: your profiles, settings, servers and playlists (encrypted), lists, collections and watch progress. PINs and passwords of servers and connected services are only stored encrypted. Your data is stored by Bingr in a data center in the EU.
+
+Devices: for each linked device we store a device ID, its name and type, the app and system version, and when it was linked and last used, so you can manage your devices in the app.
+
+Watching: while you watch, we store which profile on which device is watching what, to enforce the number of screens at once. This watch history is deleted after 8 days. For statistics we store daily totals and watched titles per profile for up to 400 days; you can delete them yourself in My Bingr.
+
+Country: we only store the country code (such as NL) of the connection, not your IP address, for overviews in our admin.
+
+Support: if you create a ticket, we store your email address, your name (if you enter it), your messages, the type of device, the app version and, if you choose to include it, an app diagnostic report.
+
+Services you use yourself: Bingr connects to your own server or playlist, to TMDB for artwork and details (only title and year are sent), and only if you connect them to Trakt and OpenSubtitles. Trailers play via YouTube. Their own privacy policies apply.
+
+No ads, no analytics, no tracking. Bingr does not sell any data.
+
+Your rights: you can access, correct or delete your data. You can delete your account yourself in the app (My Bingr > Account and devices > Delete account) or at bingr.online/account. Questions: support@bingr.online.

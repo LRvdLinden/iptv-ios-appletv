@@ -1,0 +1,37 @@
+(Nederlandse referentie voor Léon; NIET uploaden. In App Store Connect gaat notes.txt, in het Engels.)
+
+WAT DE APP DOET
+Bingr is een mediaspeler voor het eigen IPTV-abonnement of de eigen mediaserver van de gebruiker (iPhone, iPad, Mac en Apple TV). Bingr levert, verkoopt of verwijst niet naar zenders, films, series of IPTV-abonnementen (richtlijn 5.2.3). De app bevat geen content; hij speelt alleen bronnen af die de gebruiker zelf toevoegt en mag gebruiken: M3U/M3U8-afspeellijsten, Xtream Codes-logins, MAC-portals, Stremio-add-on-URL's die de gebruiker invoert, en eigen mediaservers (Plex, Jellyfin, Emby). Gemaakt door PixelForges.
+
+ACCOUNT
+Een gratis Bingr-account (voornaam, achternaam, e-mail, wachtwoord) is verplicht; het synchroniseert profielen, servers, lijsten en voortgang tussen apparaten. De demo-gegevens staan in de velden Sign-In Information van App Store Connect. Het demo-account bevat al een testserver, zodat je kunt afspelen zonder eigen abonnement.
+
+ZO TEST JE (iPhone / iPad / Mac)
+1. Starten: korte splash met intromuziek, dan het inlogscherm. Log in met het demo-account.
+2. "Wie kijkt er?": kies een profiel. Komt de vraag "Servers bijwerken?", tik dan op "Nu bijwerken".
+3. Tabblad Live TV: de tv-gids opent standaard (nieuw in 1.0.5). De gekozen zender speelt zonder geluid bovenaan (iPhone) of in een groot voorbeeld (iPad/Mac). Tik links op een zender om te wisselen, op het voorbeeld voor volledig scherm, op een programma voor terugkijken of een herinnering. De knop Lijst wisselt naar de zenderlijst; de rasterknop opent Multiview.
+4. Home, Films en Series: titels van de testserver, een titel openen voor seizoenen, afleveringen en trailers.
+5. Mijn Bingr (laatste tabblad op iPhone, avatar op iPad/Mac): Instellingen, Account en apparaten (ook Account verwijderen), Support (tickets, optioneel diagnose). In Instellingen staat "Live voorbeeld in de gids" (Altijd / Alleen wifi / Nooit) en onderaan de kaart "Meer apps van de ontwikkelaar" (opent https://lrvdlinden.app).
+6. Server toevoegen: Instellingen > Server > Server toevoegen (M3U-URL, Xtream Codes-login, enz.).
+
+APPLE TV
+Kies op het inlogscherm "Inloggen met e-mail" voor de demo-gegevens, of scan de QR-code met een telefoon die bij Bingr is ingelogd. De tv-gids staat in Live TV: ga met de focus op een NU-kaart voor een live voorbeeld zonder geluid, OK = volledig scherm. Categorie, Zoeken, Multiview en Lijst staan in de regel met de dagpillen.
+
+ABONNEMENTEN / BETALEN
+Geen in-app-aankopen, prijzen, koopknoppen of links om te kopen, en geen advertenties. Een Bingr-account is Gratis of Lifetime. Sommige functies tonen een slotje met een vergelijking van de twee abonnementen (o.a. Verder kijken, kinderprofielen, statistieken, Trakt, meerdere servers); de app toont nooit een prijs of een manier om te kopen. Het demo-account heeft Lifetime, zodat alles te beoordelen is.
+
+GEGEVENS VAN DERDEN
+Titels, beschrijvingen en afbeeldingen in de app komen van de eigen server van de gebruiker en van de TMDB-API (bronvermelding bij Instellingen > Over; Bingr is niet door TMDB goedgekeurd). Trakt en OpenSubtitles zijn optionele koppelingen. Trailers openen via YouTube.
+
+TOESTEMMINGEN
+- Meldingen: na het inloggen legt Bingr meldingen uit en vraagt één keer ("Meldingen aanzetten" / "Niet nu"); ook voor herinneringen en de voortgang van downloads. De app werkt volledig zonder.
+- Lokaal netwerk: alleen bij een server of Chromecast op het lokale netwerk. Weigeren raakt alleen lokale servers en casten.
+Geen locatie, camera, microfoon of contacten; geen tracking (geen ATT).
+
+OVERIG
+- Beoordelingsvraag (requestReview) op iPhone/iPad/Mac: op zijn vroegst 4 uur na het eerste gebruik, hooguit één keer per week, alleen op Home na een paar rustige seconden.
+- Kinderprofielen tonen alleen titels binnen hun leeftijdsgrens; een kinderprofiel verlaten vraagt een eenvoudige rekensom.
+- De achtergrondmodus audio wordt alleen gebruikt om het geluid van het afspelen door te laten lopen.
+
+NIEUW IN 1.0.5
+Nieuwe tv-gids op alle Apple-apparaten met een live voorbeeld zonder geluid (zie stap 3), Live TV opent standaard in de gids, en een nieuwe instelling "Live voorbeeld in de gids".

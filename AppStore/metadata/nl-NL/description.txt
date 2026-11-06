@@ -1,0 +1,29 @@
+Bingr is een overzichtelijke speler voor je eigen IPTV-abonnement. Voeg je M3U-afspeellijst, Xtream Codes-login of eigen mediaserver toe en kijk live tv, films en series op je iPhone, iPad, Mac en Apple TV, met één account en profielen voor het hele huis.
+
+Belangrijk: Bingr levert zelf geen zenders, films, series of abonnementen. Je hebt een eigen IPTV-abonnement of mediaserver nodig die je legaal mag gebruiken. Bingr speelt alleen af wat jij zelf toevoegt.
+
+WAT BINGR DOET
+• Live tv met tv-gids (EPG): zenders links, programma's rechts, met NU, terugkijken en herinneringen
+• Nieuw: live beeld in de tv-gids, zonder geluid tot je het aanzet; met één tik naar volledig scherm
+• Films en series overzichtelijk op een thuisscherm, met seizoenen, afleveringen, trailers en info
+• Profielen voor iedereen in huis, elk met een eigen Mijn lijst en eigen voortgang
+• Categorieën van je server, samengevoegd en zonder rommelige landcodes in de namen
+• Zoeken door zenders, films en series
+• Multiview: tot vier live zenders naast elkaar
+• AirPlay en Chromecast binnen je eigen netwerk
+• Werkt met M3U/M3U8, Xtream Codes, MAC-portals en mediaservers zoals Plex, Jellyfin en Emby
+
+OP AL JE APPARATEN
+• iPhone, iPad, Mac en Apple TV met hetzelfde Bingr-account
+• Op de Apple TV log je in door een code te scannen met je telefoon
+• Je servers, profielen, lijsten en voortgang synchroniseren via je Bingr-account
+
+GRATIS EN LIFETIME
+Bingr is gratis te gebruiken met je eigen IPTV. Extra functies met Lifetime via je Bingr-account: Verder kijken, kinderprofielen met leeftijdsgrens, kijkstatistieken, Trakt-koppeling, ondertitels via OpenSubtitles, meerdere servers, thema's en tot 3 schermen tegelijk (hoeveel je tegelijk kunt kijken, hangt ook af van je IPTV-aanbieder).
+
+PRIVACY
+Voor Bingr heb je een account nodig (naam en e-mailadres). Bingr toont geen advertenties en gebruikt geen tracking of analytics. Meer op bingr.online/privacy.html.
+
+Hulp nodig? Kijk op support.bingr.online.
+
+Bingr is een app van PixelForges. Meer apps van de ontwikkelaar vind je op lrvdlinden.app.

@@ -1,0 +1,1 @@
+New in 1.0.5: a redesigned TV guide with a live preview of the channel you pick. Bingr plays your own IPTV subscription and does not provide any content.

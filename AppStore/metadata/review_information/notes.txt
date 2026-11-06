@@ -1,0 +1,35 @@
+WHAT THE APP DOES
+Bingr is a media player for the user's own IPTV subscription or personal media server (iPhone, iPad, Mac and Apple TV). Bingr does not provide, sell or link to any channels, movies, series or IPTV subscriptions (Guideline 5.2.3). The app contains no content; it only plays sources the user adds and is entitled to use: M3U/M3U8 playlists, Xtream Codes logins, MAC portals, Stremio add-on URLs the user enters, and personal media servers (Plex, Jellyfin, Emby). Made by PixelForges (the Netherlands).
+
+ACCOUNT
+A free Bingr account (first name, last name, email, password) is required; it syncs profiles, servers, lists and progress between devices. Demo credentials are in the Sign-In Information fields of App Store Connect. The demo account already contains a test server, so you can test playback without your own subscription.
+
+HOW TO TEST (iPhone / iPad / Mac)
+1. Launch: a short splash with intro music plays, then the sign-in screen. Sign in with the demo account.
+2. "Who's watching?": pick a profile. If asked "Update servers?", tap "Update now".
+3. Live TV tab: the TV guide opens by default (new in 1.0.5). The selected channel plays muted at the top (iPhone) or in a large preview (iPad/Mac). Tap a channel on the left to switch, tap the preview for full screen, tap a program for catch-up or a reminder. The List button switches to the channel list; the grid button opens Multiview.
+4. Home, Movies and Series: browse titles from the test server, open a title for seasons, episodes and trailers.
+5. My Bingr (last tab on iPhone, avatar on iPad/Mac): Settings, Account and devices (incl. Delete account), Support (tickets, optional diagnostics). Settings has "Live preview in the guide" (Always / Wi-Fi only / Never) and, at the bottom, the "More apps by the developer" card (opens https://lrvdlinden.app).
+6. Add a server: Settings > Server > Add server (M3U URL, Xtream Codes login, etc.).
+
+APPLE TV
+On the sign-in screen choose "Sign in with email" to use the demo credentials, or scan the QR code with a phone that is signed in to Bingr. The TV guide is in Live TV: move focus onto a NOW card to start a muted live preview, press OK for full screen. Category, Search, Multiview and List are in the row with the day pills.
+
+PLANS / PAYMENTS
+The app contains no in-app purchases, prices, purchase buttons or links to buy, and no ads. A Bingr account is on the Free plan or the Lifetime plan. Some features show a lock with a comparison of the two plans (e.g. Continue Watching, kids profiles, statistics, Trakt, multiple servers); the app never shows a price or a way to purchase. The demo account has Lifetime so you can review all features.
+
+THIRD-PARTY DATA
+Titles, descriptions and artwork shown inside the app come from the user's own server and from the TMDB API (attribution under Settings > About; Bingr is not endorsed by TMDB). Trakt and OpenSubtitles are optional sign-ins by the user. Trailers open via YouTube.
+
+PERMISSIONS
+- Notifications: after sign-in Bingr explains notifications and asks once ("Turn on notifications" / "Not now"); also used for program reminders and download progress. The app works fully without them.
+- Local network: requested only when a server or Chromecast on the local network is used (NSLocalNetworkUsageDescription). Declining only affects local servers and casting.
+No location, camera, microphone or contacts access; no tracking (no ATT).
+
+OTHER
+- App Store review prompt (requestReview) on iPhone/iPad/Mac: at the earliest 4 hours after first use, at most once a week, only on Home after a few calm seconds.
+- Kids profiles only show titles within their age limit; leaving a kids profile requires a simple math question.
+- Background audio mode is used only to keep playback audio running.
+
+WHAT'S NEW IN 1.0.5
+New TV guide on all Apple devices with a muted live preview (see step 3), Live TV opens in the guide by default, and a new setting "Live preview in the guide".

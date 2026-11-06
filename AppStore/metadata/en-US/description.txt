@@ -1,0 +1,29 @@
+Bingr is a clean, easy player for your own IPTV subscription. Add your M3U playlist, Xtream Codes login or your own media server and watch live TV, movies and series on iPhone, iPad, Mac and Apple TV, with one account and profiles for the whole household.
+
+Important: Bingr does not provide any channels, movies, series or subscriptions. You need your own IPTV subscription or media server that you are legally allowed to use. Bingr only plays what you add yourself.
+
+WHAT BINGR DOES
+• Live TV with a TV guide (EPG): channels on the left, programs on the right, with NOW, catch-up and reminders
+• New: a live preview in the TV guide, muted until you turn the sound on; one tap for full screen
+• Movies and series on a clear home screen, with seasons, episodes, trailers and details
+• Profiles for everyone at home, each with its own My List and progress
+• Your server's categories, merged and without messy country tags in the names
+• Search across channels, movies and series
+• Multiview: up to four live channels side by side
+• AirPlay and Chromecast on your own network
+• Works with M3U/M3U8, Xtream Codes, MAC portals and media servers such as Plex, Jellyfin and Emby
+
+ON ALL YOUR DEVICES
+• iPhone, iPad, Mac and Apple TV with the same Bingr account
+• On Apple TV you sign in by scanning a code with your phone
+• Your servers, profiles, lists and progress sync through your Bingr account
+
+FREE AND LIFETIME
+Bingr is free to use with your own IPTV. Extra features with Lifetime via your Bingr account: Continue Watching, kids profiles with age limits, viewing statistics, Trakt, subtitles via OpenSubtitles, multiple servers, themes and up to 3 screens at once (how many you can watch at once also depends on your IPTV provider).
+
+PRIVACY
+Bingr requires an account (name and email address). Bingr shows no ads and uses no tracking or analytics. More at bingr.online/privacy.html.
+
+Need help? Visit support.bingr.online.
+
+Bingr is an app by PixelForges. More apps by the developer at lrvdlinden.app.
