@@ -49,6 +49,9 @@ name: Backend
 # Inloggen (build 141, functie login): e-mail + wachtwoord via /functions/v1/login met blokkade per account (5 fouten in 15 min
 # = 15 min dicht, oplopend 30/60) zonder Team-plan; Custom Access Token hook bingr_access_token_hook (job beveiliging,
 # supabase/tests/login_function.py) eist een login-ticket als app_settings.login_via_function_required aan staat.
+# Build 167 (alleen Lifetime, docs/ACCOUNT.md): functies lifetime-notice (mail, job deploy) en apple-notify (App Store Server
+# Notifications V2, job billing), beide zonder JWT; het geheim LIFETIME_ADMIN_SECRET (beheer -> lifetime-notice en billing
+# admin_*) maakt deze workflow één keer zelf aan. Alles staat standaard uit (app_settings.lifetime_only.enabled false).
 on:
   push:
     branches: [main]
@@ -113,6 +116,12 @@ jobs:
         # build 133, blokkeert de deploy: Stripe-handtekening (HMAC-SHA256, 5 min), Checkout-opbouw, events -> Lifetime /
         # terugbetaling / chargeback, idempotentie (nep-database)
         run: deno test supabase/functions/_shared/billing_test.ts
+      - name: Unittests (build 167, alleen Lifetime)
+        # blokkeert de deploy: JWS van Apple (x5c-keten tot de vertrouwde root met een zelfgemaakte test-CA, ES256, vervalsingen,
+        # tijden), StoreKit-transacties en notificaties, Apple-aankopen in de nep-database (wie het eerst claimt), toegang en
+        # proefperiode, kortingscodes, entitlements met enabled false precies zoals nu, Stripe-coupon/promotion codes, de webhook
+        # voor een gebruikte code, gastaankoop en claimen, en de mails (NL/EN, geen Apple)
+        run: deno test supabase/functions/_shared/apple_test.ts supabase/functions/_shared/lifetime_test.ts
       - name: Unittests (statuspagina)
         continue-on-error: true
         run: |
@@ -191,6 +200,14 @@ jobs:
         run: |
           for i in $(seq 1 20); do pg_isready -q && break; sleep 1; done
           sudo -u postgres bash supabase/tests/billing_test.sh
+      - name: Unittests (build 167, alleen Lifetime - database)
+        # blokkeert de deploy: standaardwaarden (uit, 1 december 2026), instellingen controleren, kortingscodes (vorm, uniek),
+        # wie de mail en de herinnering krijgt (Gratis, bevestigd, niet geblokkeerd; geen dubbele ronde), Apple-aankopen
+        # (provider, uniek op originalTransactionId, omzet per modus en per route), gastaankopen claimen (token één keer en 30
+        # dagen, e-mail alleen bevestigd, trigger bij bevestigen), handmatig koppelen en de rechten; tijdelijke database
+        run: |
+          for i in $(seq 1 20); do pg_isready -q && break; sleep 1; done
+          sudo -u postgres bash supabase/tests/lifetime_test.sh
       - name: Unittests (eigen mailing)
         # blokkeert de deploy: doelgroep (nieuwsbrief-opt-out, alle mail uit, geblokkeerd, onbevestigd, verwijderd, taal),
         # idempotent aanmaken (request_id, één mailing tegelijk), wachtrij (nooit twee keer dezelfde ontvanger), annuleren;
@@ -939,6 +956,28 @@ jobs:
       - name: Edge Function newsletter
         if: steps.check.outputs.skip != '1'
         run: supabase functions deploy newsletter --project-ref "$REF" --no-verify-jwt --use-api
+      - name: Lifetime - geheim
+        # build 167: geheim tussen admin (bingr-beheer) en lifetime-notice / billing (acties admin_*): alleen aanmaken als het
+        # nog niet bestaat; de waarde komt nooit in de repo of het log (function-secrets gelden voor het hele project)
+        if: steps.check.outputs.skip != '1'
+        run: |
+          list=$(supabase secrets list --project-ref "$REF" 2>/dev/null || true)
+          if ! grep -qw LIFETIME_ADMIN_SECRET <<<"$list"; then
+            supabase secrets set --project-ref "$REF" LIFETIME_ADMIN_SECRET="$(openssl rand -hex 32)" >/dev/null
+            echo "::notice::LIFETIME_ADMIN_SECRET aangemaakt (beheer van Lifetime-only)"
+          fi
+      - name: Edge Function lifetime-notice
+        # build 167: mail "Bingr wordt Lifetime" en de herinnering, alleen vanuit het beheer (geen planning)
+        if: steps.check.outputs.skip != '1'
+        run: |
+          supabase functions deploy lifetime-notice --project-ref "$REF" --no-verify-jwt --use-api
+          sleep 3
+          F="https://$REF.supabase.co/functions/v1/lifetime-notice"
+          for a in admin_send admin_preview admin_stats; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$F" -H "Content-Type: application/json" -H "x-lifetime-secret: fout-geheim-0000000000000000" -d "{\"action\":\"$a\",\"mode\":\"dry_run\"}")
+            [ "$code" = 403 ] || { echo "::error::lifetime-notice $a met fout geheim gaf HTTP $code"; exit 1; }
+          done
+          echo "::notice::lifetime-notice zonder geldig geheim geweigerd (403)"
       - name: Nieuwsbrief - planning (pg_cron + pg_net)
         if: steps.check.outputs.skip != '1'
         run: |
@@ -1835,6 +1874,15 @@ jobs:
         run: |
           supabase functions deploy billing --project-ref "$REF" --no-verify-jwt --use-api
           supabase functions deploy stripe-webhook --project-ref "$REF" --no-verify-jwt --use-api
+          # build 167: App Store Server Notifications V2 (geen JWT van Apple; de functie controleert de JWS zelf)
+          supabase functions deploy apple-notify --project-ref "$REF" --no-verify-jwt --use-api
+          sleep 3
+          F="https://$REF.supabase.co/functions/v1"
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$F/apple-notify" -H "Content-Type: application/json" -d '{"signedPayload":"a.b.c"}')
+          [ "$code" = 400 ] || { echo "::error::apple-notify met een ongeldige JWS gaf HTTP $code (verwacht 400)"; exit 1; }
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$F/billing" -H "Content-Type: application/json" -H "x-lifetime-secret: fout-geheim-0000000000000000" -d '{"action":"admin_codes_stats"}')
+          [ "$code" = 403 ] || { echo "::error::billing admin_codes_stats met fout geheim gaf HTTP $code (verwacht 403)"; exit 1; }
+          echo "::notice::apple-notify (ongeldige JWS 400) en billing admin_* (fout geheim 403) werken"
       - name: Betalen testen
         # rooktest (zonder inloggen 401, foute handtekening 400, juiste handtekening 200) en end-to-end met een tijdelijk
         # account: zonder sleutel 503 billing_unavailable; in testmodus een echte Checkout Session (daarna verlopen), status

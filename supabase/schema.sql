@@ -636,6 +636,12 @@ begin
     'purchases_refunded', (select count(*) from public.billing_purchases where status in ('refunded', 'disputed')),
     'purchases_7d', (select count(*) from public.billing_purchases where status = 'paid' and paid_at > now() - interval '7 days'),
     'revenue_cents', (select coalesce(sum(amount), 0) from public.billing_purchases where status = 'paid' and currency = 'eur'),
+    -- build 167: per betaalroute (stripe = website, apple = in-app aankoop); betaald, aantal en omzet in eurocent
+    'revenue_by_provider', (select coalesce(jsonb_object_agg(k, jsonb_build_object('count', c, 'cents', g)), '{}'::jsonb) from (
+       select coalesce(provider, 'stripe') k, count(*) c, coalesce(sum(amount) filter (where currency = 'eur'), 0) g
+         from public.billing_purchases where status = 'paid' group by 1) x),
+    'purchases_apple', (select count(*) from public.billing_purchases where status = 'paid' and provider = 'apple'),
+    'purchases_unclaimed', (select count(*) from public.billing_purchases where status = 'paid' and user_id is null and user_deleted_at is null and claimed_at is null),
     'signins_source', case when audit_total > 0 then 'audit' else 'activity' end,
     'days', coalesce(days, '[]'::jsonb),
     'platforms', coalesce((select jsonb_agg(jsonb_build_object('platform', platform, 'devices', n) order by n desc)
@@ -737,9 +743,11 @@ begin
       || coalesce(public.bingr_admin_purchase(u.id), '{}'::jsonb),
     -- build 133: aankopen van dit account (Stripe), nieuwste eerst; zonder Stripe-id's of betaalgegevens
     'purchases', coalesce((select jsonb_agg(jsonb_build_object('created_at', b.created_at, 'paid_at', b.paid_at, 'amount', b.amount,
-        'currency', b.currency, 'status', b.status, 'refunded_at', b.refunded_at) order by b.created_at desc)
+        'currency', b.currency, 'status', b.status, 'refunded_at', b.refunded_at, 'provider', b.provider, 'claimed_at', b.claimed_at) order by b.created_at desc)
       from (select * from public.billing_purchases where user_id = u.id order by created_at desc limit 10) b), '[]'::jsonb),
     'watching_now', (select count(*) from public.account_streams s where s.user_id = u.id and s.last_ping > now() - interval '90 seconds'),
+    -- build 167: kortingscode en status (bingr_lifetime_code_of, onderaan dit bestand), null = geen code
+    'lifetime_code', public.bingr_lifetime_code_of(u.id),
     'active_days_30d', (select count(*) from public.account_logins l where l.user_id = u.id and l.day > (now() at time zone 'utc')::date - 30),
     'devices', coalesce((select jsonb_agg(jsonb_build_object('name', d.name, 'platform', d.platform, 'app_version', d.app_version,
         'os_version', d.os_version, 'created_at', d.created_at, 'last_seen_at', d.last_seen_at) order by d.last_seen_at desc)
@@ -1927,10 +1935,16 @@ create table if not exists public.billing_events (
 );
 alter table public.billing_events enable row level security;
 revoke all on public.billing_events from anon, authenticated;
+-- build 167: ook de verwerkte notificaties van Apple (billing_apple_events, hieronder); plpgsql zodat de tabel er bij het
+-- aanmaken van de functie nog niet hoeft te zijn
 create or replace function public.bingr_billing_cleanup() returns void
-language sql security definer set search_path = public as $$
+language plpgsql security definer set search_path = public as $$
+begin
   delete from public.billing_events where created_at < now() - interval '90 days';
-$$;
+  if to_regclass('public.billing_apple_events') is not null then
+    delete from public.billing_apple_events where created_at < now() - interval '90 days';
+  end if;
+end $$;
 revoke all on function public.bingr_billing_cleanup() from public, anon, authenticated;
 grant execute on function public.bingr_billing_cleanup() to service_role;
 -- Beheer: aankopen in de gebruikerslijst en het overzicht (laatste aankoop per account: datum, bedrag, status)
@@ -2042,7 +2056,7 @@ grant execute on function public.bingr_billing_retention(timestamptz) to service
 insert into public.app_settings (key, value) values ('revenue_vat', '{"rate": 21}'::jsonb) on conflict (key) do nothing;
 
 -- Btw-tarief (0–50, standaard 21) en het filter op modus (live = cs_live_…, test = cs_test_…, all) als SQL-stukken voor
--- de omzetfuncties hieronder. Intern (geen execute voor de API-rollen).
+-- de omzetfuncties hieronder (build 167: Apple op environment). Intern (geen execute voor de API-rollen).
 create or replace function public.bingr_revenue_rate() returns numeric
 language sql stable security definer set search_path = public as $$
   select coalesce((select case when (value->>'rate') ~ '^\d{1,2}(\.\d{1,2})?$' and (value->>'rate')::numeric <= 50
@@ -2051,7 +2065,10 @@ $$;
 revoke all on function public.bingr_revenue_rate() from public, anon, authenticated, service_role;
 create or replace function public.bingr_revenue_filter(p_mode text) returns text
 language sql immutable set search_path = '' as $$
-  select case p_mode when 'live' then ' and b.stripe_session_id like ''cs\_live\_%''' when 'test' then ' and b.stripe_session_id like ''cs\_test\_%''' else '' end
+  select case p_mode
+    when 'live' then ' and (b.stripe_session_id like ''cs\_live\_%'' or (b.provider = ''apple'' and b.environment = ''live''))'
+    when 'test' then ' and (b.stripe_session_id like ''cs\_test\_%'' or (b.provider = ''apple'' and b.environment = ''test''))'
+    else '' end
 $$;
 revoke all on function public.bingr_revenue_filter(text) from public, anon, authenticated, service_role;
 
@@ -2064,7 +2081,7 @@ declare res jsonb; rate numeric := public.bingr_revenue_rate(); f text := public
 begin
   vat := format('coalesce(b.tax_amount, round(b.amount * %s / (100 + %s)))', rate, rate);
   execute format($q$
-    with p as (select b.amount, b.fee, b.tax_amount, b.payment_method, b.country, (%2$s)::bigint vat from public.billing_purchases b
+    with p as (select b.amount, b.fee, b.tax_amount, b.payment_method, b.country, b.provider, (%2$s)::bigint vat from public.billing_purchases b
                 where b.status in ('paid', 'refunded', 'disputed') and b.currency = 'eur' and b.paid_at >= $1 and b.paid_at < $2 %1$s),
          r as (select r.amount, r.fee, r.kind, round(r.amount::numeric * (%2$s) / nullif(b.amount, 0))::bigint vat
                  from public.billing_refunds r join public.billing_purchases b on b.id = r.purchase_id
@@ -2078,7 +2095,10 @@ begin
       'by_method', (select coalesce(jsonb_agg(jsonb_build_object('key', k, 'count', c, 'gross', g) order by g desc, k), '[]'::jsonb)
                       from (select coalesce(payment_method, '?') k, count(*) c, sum(amount) g from p group by 1) x),
       'by_country', (select coalesce(jsonb_agg(jsonb_build_object('key', k, 'count', c, 'gross', g) order by g desc, k), '[]'::jsonb)
-                       from (select coalesce(country, '?') k, count(*) c, sum(amount) g from p group by 1) x))
+                       from (select coalesce(country, '?') k, count(*) c, sum(amount) g from p group by 1) x),
+      -- build 167: per betaalroute (stripe / apple)
+      'by_provider', (select coalesce(jsonb_agg(jsonb_build_object('key', k, 'count', c, 'gross', g) order by g desc, k), '[]'::jsonb)
+                        from (select coalesce(provider, 'stripe') k, count(*) c, sum(amount) g from p group by 1) x))
   $q$, f, vat) into res using p_from, p_to;
   return res;
 end $$;
@@ -2109,8 +2129,10 @@ begin
   end loop;
   return jsonb_build_object(
     'rate', rate,
-    'live_count', (select count(*) from public.billing_purchases b where b.status in ('paid', 'refunded', 'disputed') and b.stripe_session_id like 'cs\_live\_%'),
-    'test_count', (select count(*) from public.billing_purchases b where b.status in ('paid', 'refunded', 'disputed') and b.stripe_session_id like 'cs\_test\_%'),
+    'live_count', (select count(*) from public.billing_purchases b where b.status in ('paid', 'refunded', 'disputed')
+                     and (b.stripe_session_id like 'cs\_live\_%' or (b.provider = 'apple' and b.environment = 'live'))),
+    'test_count', (select count(*) from public.billing_purchases b where b.status in ('paid', 'refunded', 'disputed')
+                     and (b.stripe_session_id like 'cs\_test\_%' or (b.provider = 'apple' and b.environment = 'test'))),
     'series', jsonb_build_object(
       'count', public.bingr_insights_bin(p_edges, 'select b.paid_at, 1 ' || paid),
       'gross', public.bingr_insights_bin(p_edges, 'select b.paid_at, b.amount ' || paid),
@@ -2152,6 +2174,53 @@ begin
 end $$;
 revoke all on function public.bingr_admin_revenue_rows(timestamptz, timestamptz, text) from public, anon, authenticated;
 grant execute on function public.bingr_admin_revenue_rows(timestamptz, timestamptz, text) to service_role;
+
+-- ---- build 167: Apple-aankopen en gastaankopen (docs/ACCOUNT.md, "Build 167: alleen Lifetime") ----
+-- provider: 'stripe' (standaard) of 'apple'. Apple: apple_original_transaction_id (uniek; wie het eerst claimt, krijgt hem),
+-- apple_transaction_id, environment live|test (Production / Sandbox). stripe_session_id is dan leeg.
+-- Gastaankoop (Stripe zonder account, aanvulling 1): user_id null, claim_token_hash (SHA-256 van het claimtoken, 30 dagen,
+-- claim_expires_at), claim_email_hash (SHA-256 van het kleine-letter-e-mailadres uit Stripe; het adres zelf staat alleen
+-- bij Stripe), claim_notified_at (mail "Maak je Bingr-account"), claimed_at (gekoppeld aan een account). Herhaalbaar.
+alter table public.billing_purchases
+  add column if not exists provider                      text not null default 'stripe',
+  add column if not exists apple_original_transaction_id text,
+  add column if not exists apple_transaction_id          text,
+  add column if not exists environment                   text,
+  add column if not exists claim_token_hash              text,
+  add column if not exists claim_expires_at              timestamptz,
+  add column if not exists claim_email_hash              text,
+  add column if not exists claim_notified_at               timestamptz,
+  add column if not exists claimed_at                    timestamptz;
+alter table public.billing_purchases alter column stripe_session_id drop not null;
+alter table public.billing_purchases drop constraint if exists billing_purchases_provider_check;
+alter table public.billing_purchases add constraint billing_purchases_provider_check check (
+  (provider = 'stripe' and stripe_session_id is not null and apple_original_transaction_id is null)
+  or (provider = 'apple' and apple_original_transaction_id is not null and stripe_session_id is null));
+alter table public.billing_purchases drop constraint if exists billing_purchases_apple_check;
+alter table public.billing_purchases add constraint billing_purchases_apple_check check (
+  (apple_original_transaction_id is null or apple_original_transaction_id ~ '^[0-9]{1,32}$')
+  and (apple_transaction_id is null or apple_transaction_id ~ '^[0-9]{1,32}$')
+  and (environment is null or environment in ('live', 'test')));
+alter table public.billing_purchases drop constraint if exists billing_purchases_claim_check;
+alter table public.billing_purchases add constraint billing_purchases_claim_check check (
+  (claim_token_hash is null or claim_token_hash ~ '^[0-9a-f]{64}$') and (claim_email_hash is null or claim_email_hash ~ '^[0-9a-f]{64}$'));
+create unique index if not exists billing_purchases_apple_orig_key on public.billing_purchases (apple_original_transaction_id);
+create unique index if not exists billing_purchases_claim_token_key on public.billing_purchases (claim_token_hash);
+create index if not exists billing_purchases_claim_email_idx on public.billing_purchases (claim_email_hash) where user_id is null and claim_email_hash is not null;
+create index if not exists billing_purchases_provider_idx on public.billing_purchases (provider, paid_at);
+-- terugbetaling door Apple (REFUND/REVOKE): één rij per transactie, id apl_<transactie-id>
+alter table public.billing_refunds drop constraint if exists billing_refunds_id_check;
+alter table public.billing_refunds add constraint billing_refunds_id_check
+  check (id ~ '^(re|pyr|dp|du|ch|py|apl)_[A-Za-z0-9_]+$' and char_length(id) <= 255);
+-- verwerkte App Store Server Notifications (notificationUUID), alleen type en resultaat; na 90 dagen weg (bingr_billing_cleanup)
+create table if not exists public.billing_apple_events (
+  id         uuid primary key,
+  type       text not null,
+  result     text,
+  created_at timestamptz not null default now()
+);
+alter table public.billing_apple_events enable row level security;
+revoke all on public.billing_apple_events from anon, authenticated;
 -- <<< unittest billing
 
 -- build 97: beheer (functie admin in LRvdLinden/bingr-beheer). Tokenversie: elk beheer-token draagt de versie v; de functie
@@ -4693,3 +4762,339 @@ end $$;
 revoke all on function public.bingr_enforce_free_devices(int, uuid) from public, anon, authenticated;
 grant execute on function public.bingr_enforce_free_devices(int, uuid) to service_role;
 -- <<< unittest devices157
+
+-- ============================================================================================================
+-- Build 167: Bingr wordt alleen Lifetime (docs/ACCOUNT.md, "Build 167: alleen Lifetime"). Herhaalbaar.
+-- Instellingen (app_settings, alleen service role; het beheer zet ze met bingr_admin_lifetime_settings):
+--   lifetime_only = {enabled, announce_at, cutover_at, discount_pct, code_valid_until, trial_days}; standaard uit = alles zoals nu
+--   iap           = {apple}: koopknop (StoreKit) in de Apple-apps; standaard false
+--   upgrade_link.apple_eu: EU External Purchase Link in de Apple-apps; standaard false
+-- >>> unittest lifetime
+insert into public.app_settings (key, value) values
+  -- aanvulling 2: vaste overgang op 1 december 2026 00:00 (Amsterdam); de code werkt t/m 30 november 23:59
+  ('lifetime_only', '{"enabled": false, "announce_at": null, "cutover_at": "2026-12-01T00:00:00+01:00", "discount_pct": 30, "code_valid_until": "2026-12-01T00:00:00+01:00", "trial_days": 0}'::jsonb),
+  ('iap', '{"apple": false}'::jsonb)
+on conflict (key) do nothing;
+update public.app_settings set value = value || '{"apple_eu": false}'::jsonb, updated_at = now()
+ where key = 'upgrade_link' and not (value ? 'apple_eu');
+
+-- Kortingscodes: één per Gratis-account, BINGR-XXXX-XXXX, één keer en alleen door dat account, tot en met expires_at.
+-- De Stripe-coupon en promotion code maakt de functie billing (actie admin_codes_generate); stripe_mode = test|live van de
+-- sleutel waarmee de promotion code is gemaakt. Mail: mailed_at / mail_error, herinnering: reminded_at / remind_error
+-- (de *_claimed_at houden een lopende verzendronde vast). Gebruikt: redeemed_at + purchase_id (stripe-webhook).
+-- Alleen service role; geen e-mailadressen in deze tabel.
+create table if not exists public.lifetime_codes (
+  user_id                  uuid primary key references auth.users(id) on delete cascade,
+  code                     text not null unique check (code ~ '^BINGR-[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{4}-[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{4}$'),
+  stripe_coupon_id         text check (stripe_coupon_id is null or (stripe_coupon_id ~ '^[A-Za-z0-9_-]+$' and char_length(stripe_coupon_id) <= 255)),
+  stripe_promotion_code_id text unique check (stripe_promotion_code_id is null or (stripe_promotion_code_id ~ '^promo_[A-Za-z0-9]+$' and char_length(stripe_promotion_code_id) <= 255)),
+  stripe_mode              text check (stripe_mode is null or stripe_mode in ('test', 'live')),
+  created_at               timestamptz not null default now(),
+  expires_at               timestamptz not null,
+  mailed_at                timestamptz,
+  mail_error               text check (mail_error is null or mail_error ~ '^[a-z0-9_]{1,40}$'),
+  mail_claimed_at          timestamptz,
+  reminded_at              timestamptz,
+  remind_error             text check (remind_error is null or remind_error ~ '^[a-z0-9_]{1,40}$'),
+  remind_claimed_at        timestamptz,
+  redeemed_at              timestamptz,
+  purchase_id              bigint references public.billing_purchases(id) on delete set null
+);
+alter table public.lifetime_codes enable row level security;
+revoke all on public.lifetime_codes from anon, authenticated;
+create index if not exists lifetime_codes_open_idx on public.lifetime_codes (created_at) where stripe_promotion_code_id is null;
+
+-- Gratis-account voor de codes en de mail: bevestigd e-mailadres, niet verwijderd, niet geblokkeerd, geen Lifetime.
+create or replace function public.bingr_lifetime_eligible(p_user uuid) returns boolean
+language sql stable security definer set search_path = public, auth as $$
+  select exists (select 1 from auth.users u where u.id = p_user and u.email is not null and u.email_confirmed_at is not null
+                   and u.deleted_at is null and (u.banned_until is null or u.banned_until <= now()))
+     and not exists (select 1 from public.account_blocks b where b.user_id = p_user and b.lifted_at is null and (b.until is null or b.until > now()))
+     and not exists (select 1 from public.account_plans p where p.user_id = p_user and p.plan = 'lifetime')
+$$;
+revoke all on function public.bingr_lifetime_eligible(uuid) from public, anon, authenticated;
+grant execute on function public.bingr_lifetime_eligible(uuid) to service_role;
+
+-- Accounts die nog een code moeten krijgen (oudste eerst), max. p_limit.
+create or replace function public.bingr_lifetime_candidates(p_limit int) returns jsonb
+language sql stable security definer set search_path = public, auth as $$
+  select coalesce(jsonb_agg(x.id order by x.created_at), '[]'::jsonb) from (
+    select u.id, u.created_at from auth.users u
+     where not exists (select 1 from public.lifetime_codes c where c.user_id = u.id) and public.bingr_lifetime_eligible(u.id)
+     order by u.created_at limit greatest(least(coalesce(p_limit, 100), 200), 1)) x
+$$;
+revoke all on function public.bingr_lifetime_candidates(int) from public, anon, authenticated;
+grant execute on function public.bingr_lifetime_candidates(int) to service_role;
+
+-- Wie de mail (p_kind 'notice') of de herinnering ('remind') nu mag krijgen: Gratis-account (zie hierboven) met een
+-- bruikbare code (promotion code klaar, niet gebruikt, niet verlopen), nog niet verstuurd en zonder blijvende fout.
+create or replace function public.bingr_lifetime_mail_due(p_kind text, c public.lifetime_codes) returns boolean
+language sql stable security definer set search_path = public as $$
+  select c.stripe_promotion_code_id is not null and c.redeemed_at is null and c.expires_at > now()
+     and case p_kind
+           when 'notice' then c.mailed_at is null and c.mail_error is null
+           when 'remind' then c.reminded_at is null and c.remind_error is null
+           else false end
+     and public.bingr_lifetime_eligible(c.user_id)
+$$;
+revoke all on function public.bingr_lifetime_mail_due(text, public.lifetime_codes) from public, anon, authenticated;
+-- Volgende ontvangers claimen (een ronde die vastliep, telt na 30 minuten niet meer); twee tabbladen versturen nooit dubbel.
+create or replace function public.bingr_lifetime_mail_take(p_kind text, p_batch int) returns jsonb
+language plpgsql security definer set search_path = public, auth as $$
+declare n int := greatest(least(coalesce(p_batch, 50), 200), 1); ids uuid[]; rows jsonb;
+begin
+  if p_kind not in ('notice', 'remind') then return '[]'::jsonb; end if;
+  if p_kind = 'notice' then
+    select array_agg(user_id) into ids from (
+      select c.user_id from public.lifetime_codes c
+       where public.bingr_lifetime_mail_due('notice', c) and (c.mail_claimed_at is null or c.mail_claimed_at < now() - interval '30 minutes')
+       order by c.created_at limit n for update skip locked) x;
+    update public.lifetime_codes set mail_claimed_at = now() where user_id = any(coalesce(ids, '{}'));
+  else
+    select array_agg(user_id) into ids from (
+      select c.user_id from public.lifetime_codes c
+       where public.bingr_lifetime_mail_due('remind', c) and (c.remind_claimed_at is null or c.remind_claimed_at < now() - interval '30 minutes')
+       order by c.created_at limit n for update skip locked) x;
+    update public.lifetime_codes set remind_claimed_at = now() where user_id = any(coalesce(ids, '{}'));
+  end if;
+  select jsonb_agg(jsonb_build_object('id', u.id, 'email', u.email, 'lang', u.raw_user_meta_data->>'lang',
+           'first_name', nullif(btrim(u.raw_user_meta_data->>'first_name'), ''), 'code', c.code, 'expires_at', c.expires_at) order by c.created_at)
+    into rows from public.lifetime_codes c join auth.users u on u.id = c.user_id where c.user_id = any(coalesce(ids, '{}'));
+  return coalesce(rows, '[]'::jsonb);
+end $$;
+-- Resultaat: sent -> mailed_at/reminded_at; failed -> fout (code, niet opnieuw); retry -> claim weg (volgende ronde opnieuw).
+create or replace function public.bingr_lifetime_mail_mark(p_kind text, p_sent uuid[], p_failed uuid[], p_codes text[], p_retry uuid[])
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare ns int; nf int; nr int;
+begin
+  if p_kind = 'notice' then
+    update public.lifetime_codes set mailed_at = now(), mail_error = null, mail_claimed_at = null where mailed_at is null and user_id = any(coalesce(p_sent, '{}'));
+    get diagnostics ns = row_count;
+    update public.lifetime_codes c set mail_error = case when f.code ~ '^[a-z0-9_]{1,40}$' then f.code else 'error' end, mail_claimed_at = null
+      from unnest(coalesce(p_failed, '{}'), coalesce(p_codes, '{}')) as f(id, code) where c.user_id = f.id and c.mailed_at is null;
+    get diagnostics nf = row_count;
+    update public.lifetime_codes set mail_claimed_at = null where mailed_at is null and user_id = any(coalesce(p_retry, '{}'));
+    get diagnostics nr = row_count;
+  elsif p_kind = 'remind' then
+    update public.lifetime_codes set reminded_at = now(), remind_error = null, remind_claimed_at = null where reminded_at is null and user_id = any(coalesce(p_sent, '{}'));
+    get diagnostics ns = row_count;
+    update public.lifetime_codes c set remind_error = case when f.code ~ '^[a-z0-9_]{1,40}$' then f.code else 'error' end, remind_claimed_at = null
+      from unnest(coalesce(p_failed, '{}'), coalesce(p_codes, '{}')) as f(id, code) where c.user_id = f.id and c.reminded_at is null;
+    get diagnostics nf = row_count;
+    update public.lifetime_codes set remind_claimed_at = null where reminded_at is null and user_id = any(coalesce(p_retry, '{}'));
+    get diagnostics nr = row_count;
+  else
+    return null;
+  end if;
+  return jsonb_build_object('sent', ns, 'failed', nf, 'retry', nr);
+end $$;
+revoke all on function public.bingr_lifetime_mail_take(text, int) from public, anon, authenticated;
+revoke all on function public.bingr_lifetime_mail_mark(text, uuid[], uuid[], text[], uuid[]) from public, anon, authenticated;
+grant execute on function public.bingr_lifetime_mail_take(text, int) to service_role;
+grant execute on function public.bingr_lifetime_mail_mark(text, uuid[], uuid[], text[], uuid[]) to service_role;
+
+-- Beheer: alleen totalen (geen adressen of codes). candidates = Gratis-accounts zonder code; pending_stripe = code zonder
+-- promotion code; mail_pending / remind_pending = zou nu de mail / herinnering krijgen; expired = verlopen en niet gebruikt.
+-- Plus de gastaankopen die nog niet aan een account hangen (unclaimed).
+create or replace function public.bingr_admin_lifetime_stats() returns jsonb
+language sql stable security definer set search_path = public, auth as $$
+  select jsonb_build_object(
+    'created', (select count(*) from public.lifetime_codes),
+    'ready', (select count(*) from public.lifetime_codes where stripe_promotion_code_id is not null),
+    'pending_stripe', (select count(*) from public.lifetime_codes where stripe_promotion_code_id is null and redeemed_at is null),
+    'mailed', (select count(*) from public.lifetime_codes where mailed_at is not null),
+    'mail_error', (select count(*) from public.lifetime_codes where mail_error is not null),
+    'reminded', (select count(*) from public.lifetime_codes where reminded_at is not null),
+    'remind_error', (select count(*) from public.lifetime_codes where remind_error is not null),
+    'redeemed', (select count(*) from public.lifetime_codes where redeemed_at is not null),
+    'expired', (select count(*) from public.lifetime_codes where redeemed_at is null and expires_at <= now()),
+    'candidates', (select count(*) from auth.users u where not exists (select 1 from public.lifetime_codes c where c.user_id = u.id)
+                     and public.bingr_lifetime_eligible(u.id)),
+    'mail_pending', (select count(*) from public.lifetime_codes c where public.bingr_lifetime_mail_due('notice', c)),
+    'remind_pending', (select count(*) from public.lifetime_codes c where public.bingr_lifetime_mail_due('remind', c)),
+    'unclaimed', (select count(*) from public.billing_purchases b where b.user_id is null and b.user_deleted_at is null
+                    and b.claimed_at is null and b.status = 'paid'));
+$$;
+revoke all on function public.bingr_admin_lifetime_stats() from public, anon, authenticated;
+grant execute on function public.bingr_admin_lifetime_stats() to service_role;
+
+-- Code en status van één account (beheer, accountdetails; ook in bingr_admin_user als lifetime_code).
+-- status: redeemed | expired | mail_error | mailed | ready | pending_stripe
+create or replace function public.bingr_lifetime_code_of(p_user uuid) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object('code', c.code, 'created_at', c.created_at, 'expires_at', c.expires_at, 'mailed_at', c.mailed_at,
+           'mail_error', c.mail_error, 'reminded_at', c.reminded_at, 'redeemed_at', c.redeemed_at,
+           'status', case when c.redeemed_at is not null then 'redeemed' when c.expires_at <= now() then 'expired'
+                          when c.mail_error is not null then 'mail_error' when c.mailed_at is not null then 'mailed'
+                          when c.stripe_promotion_code_id is not null then 'ready' else 'pending_stripe' end)
+    from public.lifetime_codes c where c.user_id = p_user
+$$;
+revoke all on function public.bingr_lifetime_code_of(uuid) from public, anon, authenticated;
+grant execute on function public.bingr_lifetime_code_of(uuid) to service_role;
+
+-- Instellingen lezen (alle argumenten null) en schrijven (beheer, actie lifetime_settings). p_lifetime wordt samengevoegd
+-- met de huidige waarde en gecontroleerd: enabled boolean, announce_at / cutover_at / code_valid_until null of een tijd,
+-- discount_pct 1-90, trial_days 0-90, aanzetten kan alleen met cutover_at. Fout = exception 22023 'bad_lifetime_settings'.
+create or replace function public.bingr_admin_lifetime_settings(p_lifetime jsonb default null, p_iap jsonb default null, p_apple_eu boolean default null)
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare cur jsonb; v jsonb; k text;
+begin
+  if p_lifetime is not null then
+    if jsonb_typeof(p_lifetime) <> 'object' then raise exception 'bad_lifetime_settings' using errcode = '22023'; end if;
+    select value into cur from public.app_settings where key = 'lifetime_only';
+    v := coalesce(cur, '{}'::jsonb) || p_lifetime;
+    for k in select jsonb_object_keys(v) loop
+      if k not in ('enabled', 'announce_at', 'cutover_at', 'discount_pct', 'code_valid_until', 'trial_days') then
+        raise exception 'bad_lifetime_settings' using errcode = '22023'; end if;
+    end loop;
+    if jsonb_typeof(v->'enabled') is distinct from 'boolean'
+       or coalesce(jsonb_typeof(v->'discount_pct'), '') <> 'number' or (v->>'discount_pct') !~ '^\d{1,2}$' or (v->>'discount_pct')::int not between 1 and 90
+       or coalesce(jsonb_typeof(v->'trial_days'), '') <> 'number' or (v->>'trial_days') !~ '^\d{1,2}$' or (v->>'trial_days')::int not between 0 and 90 then
+      raise exception 'bad_lifetime_settings' using errcode = '22023';
+    end if;
+    foreach k in array array['announce_at', 'cutover_at', 'code_valid_until'] loop
+      if jsonb_typeof(v->k) not in ('null', 'string') and v ? k then raise exception 'bad_lifetime_settings' using errcode = '22023'; end if;
+      if jsonb_typeof(v->k) = 'string' then
+        begin perform (v->>k)::timestamptz; exception when others then raise exception 'bad_lifetime_settings' using errcode = '22023'; end;
+      end if;
+    end loop;
+    if (v->>'enabled')::boolean and coalesce(v->>'cutover_at', '') = '' then raise exception 'bad_lifetime_settings' using errcode = '22023'; end if;
+    insert into public.app_settings (key, value, updated_at) values ('lifetime_only', v, now())
+      on conflict (key) do update set value = excluded.value, updated_at = now();
+  end if;
+  if p_iap is not null then
+    if jsonb_typeof(p_iap) <> 'object' or jsonb_typeof(p_iap->'apple') is distinct from 'boolean' then
+      raise exception 'bad_lifetime_settings' using errcode = '22023'; end if;
+    insert into public.app_settings (key, value, updated_at) values ('iap', jsonb_build_object('apple', (p_iap->>'apple')::boolean), now())
+      on conflict (key) do update set value = excluded.value, updated_at = now();
+  end if;
+  if p_apple_eu is not null then
+    insert into public.app_settings (key, value, updated_at) values ('upgrade_link', jsonb_build_object('apple_eu', p_apple_eu), now())
+      on conflict (key) do update set value = public.app_settings.value || jsonb_build_object('apple_eu', p_apple_eu), updated_at = now();
+  end if;
+  return jsonb_build_object(
+    'lifetime_only', (select value from public.app_settings where key = 'lifetime_only'),
+    'iap', (select value from public.app_settings where key = 'iap'),
+    'upgrade_link', (select value from public.app_settings where key = 'upgrade_link'));
+end $$;
+revoke all on function public.bingr_admin_lifetime_settings(jsonb, jsonb, boolean) from public, anon, authenticated;
+grant execute on function public.bingr_admin_lifetime_settings(jsonb, jsonb, boolean) to service_role;
+
+-- ---- gastaankopen koppelen (aanvulling 1: eerst betalen, dan het account) ----
+-- SHA-256 (hex) van het getrimde kleine-letter-e-mailadres; gelijk aan emailHash in _shared/billing.ts.
+create or replace function public.bingr_email_hash(p_email text) returns text
+language sql immutable set search_path = '' as $$
+  select case when p_email is null then null else encode(sha256(convert_to(lower(btrim(p_email)), 'UTF8')), 'hex') end
+$$;
+-- Intern: een betaalde, nog niet gekoppelde aankoop aan een account hangen en Lifetime geven (source purchase). Lifetime
+-- uit het beheer of cadeau (admin/legacy) blijft zoals hij is; eigen limieten blijven. Terug: true als gekoppeld.
+create or replace function public.bingr_billing_attach(p_purchase bigint, p_user uuid, p_by text) returns boolean
+language plpgsql security definer set search_path = public as $$
+declare b record;
+begin
+  update public.billing_purchases set user_id = p_user, claimed_at = now(), updated_at = now()
+   where id = p_purchase and user_id is null and user_deleted_at is null and status = 'paid'
+  returning id, provider, stripe_session_id into b;
+  if not found then return false; end if;
+  insert into public.account_plans (user_id, plan, source, granted_by, note, updated_at)
+  values (p_user, 'lifetime', 'purchase', p_by, left('Gekoppelde aankoop ' || coalesce(b.stripe_session_id, b.id::text), 500), now())
+  on conflict (user_id) do update set plan = 'lifetime', source = 'purchase', granted_by = excluded.granted_by, note = excluded.note, updated_at = now()
+   where public.account_plans.plan <> 'lifetime' or public.account_plans.source = 'purchase';
+  return true;
+end $$;
+revoke all on function public.bingr_billing_attach(bigint, uuid, text) from public, anon, authenticated, service_role;
+-- Claimtoken inwisselen (billing claim): {result: claimed | already_yours | owned_by_other_account | expired | revoked | invalid}.
+-- Het token werkt één keer (daarna alleen nog already_yours voor hetzelfde account) en 30 dagen (claim_expires_at).
+create or replace function public.bingr_billing_claim(p_user uuid, p_token_hash text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare b record;
+begin
+  if p_user is null or coalesce(p_token_hash, '') !~ '^[0-9a-f]{64}$' then return jsonb_build_object('result', 'invalid'); end if;
+  select * into b from public.billing_purchases where claim_token_hash = p_token_hash for update;
+  if not found then return jsonb_build_object('result', 'invalid'); end if;
+  if b.user_id = p_user then return jsonb_build_object('result', 'already_yours'); end if;
+  if b.user_id is not null or b.user_deleted_at is not null then return jsonb_build_object('result', 'owned_by_other_account'); end if;
+  if b.status in ('refunded', 'disputed') then return jsonb_build_object('result', 'revoked'); end if;
+  if b.status <> 'paid' then return jsonb_build_object('result', 'invalid'); end if;
+  if b.claim_expires_at is null or b.claim_expires_at < now() then return jsonb_build_object('result', 'expired'); end if;
+  return jsonb_build_object('result', case when public.bingr_billing_attach(b.id, p_user, 'stripe') then 'claimed' else 'invalid' end);
+end $$;
+-- Alle ongeclaimde aankopen met het e-mailadres van dit account koppelen, alleen als dat adres bevestigd is (geen
+-- verloopdatum). Terug {claimed: n}.
+create or replace function public.bingr_billing_claim_email(p_user uuid) returns jsonb
+language plpgsql security definer set search_path = public, auth as $$
+declare h text; r record; n int := 0;
+begin
+  select public.bingr_email_hash(u.email) into h from auth.users u
+   where u.id = p_user and u.email is not null and u.email_confirmed_at is not null and u.deleted_at is null;
+  if h is null then return jsonb_build_object('claimed', 0); end if;
+  for r in select id from public.billing_purchases where user_id is null and user_deleted_at is null and status = 'paid'
+             and claim_email_hash = h order by id for update loop
+    if public.bingr_billing_attach(r.id, p_user, 'stripe') then n := n + 1; end if;
+  end loop;
+  return jsonb_build_object('claimed', n);
+end $$;
+-- Vanuit de webhook: is er al precies één bevestigd account met dit e-mailadres? Dan meteen koppelen. Terug {claimed: n}.
+create or replace function public.bingr_billing_claim_hash(p_email_hash text) returns jsonb
+language plpgsql security definer set search_path = public, auth as $$
+declare ids uuid[];
+begin
+  if coalesce(p_email_hash, '') !~ '^[0-9a-f]{64}$' then return jsonb_build_object('claimed', 0); end if;
+  select array_agg(u.id) into ids from auth.users u
+   where u.email is not null and u.email_confirmed_at is not null and u.deleted_at is null and public.bingr_email_hash(u.email) = p_email_hash;
+  if coalesce(array_length(ids, 1), 0) <> 1 then return jsonb_build_object('claimed', 0); end if;
+  return public.bingr_billing_claim_email(ids[1]);
+end $$;
+revoke all on function public.bingr_billing_claim(uuid, text) from public, anon, authenticated;
+revoke all on function public.bingr_billing_claim_email(uuid) from public, anon, authenticated;
+revoke all on function public.bingr_billing_claim_hash(text) from public, anon, authenticated;
+grant execute on function public.bingr_billing_claim(uuid, text) to service_role;
+grant execute on function public.bingr_billing_claim_email(uuid) to service_role;
+grant execute on function public.bingr_billing_claim_hash(text) to service_role;
+-- E-mailadres bevestigd (of gewijzigd en bevestigd): ongeclaimde aankopen met dat adres koppelen. Een fout hier mag het
+-- bevestigen nooit breken.
+create or replace function public.bingr_billing_claim_on_confirm() returns trigger
+language plpgsql security definer set search_path = public, auth as $$
+begin
+  if new.email_confirmed_at is not null and (tg_op = 'INSERT' or old.email_confirmed_at is null or old.email is distinct from new.email) then
+    begin perform public.bingr_billing_claim_email(new.id); exception when others then null; end;
+  end if;
+  return new;
+end $$;
+revoke all on function public.bingr_billing_claim_on_confirm() from public, anon, authenticated;
+drop trigger if exists bingr_billing_claim_on_confirm on auth.users;
+create trigger bingr_billing_claim_on_confirm after insert or update of email_confirmed_at, email on auth.users
+  for each row execute function public.bingr_billing_claim_on_confirm();
+
+-- Beheer: ongeclaimde aankopen (zonder e-mailadres, hash of token) en handmatig koppelen.
+create or replace function public.bingr_admin_unclaimed(p_limit int default 50) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object(
+    'total', (select count(*) from public.billing_purchases b where b.user_id is null and b.user_deleted_at is null and b.claimed_at is null and b.status = 'paid'),
+    'items', coalesce((select jsonb_agg(jsonb_build_object('id', x.id, 'provider', x.provider, 'created_at', x.created_at, 'paid_at', x.paid_at,
+        'amount', x.amount, 'currency', x.currency, 'status', x.status, 'mode', case when x.stripe_session_id like 'cs\_live\_%' then 'live' else 'test' end,
+        'claim_mailed', x.claim_notified_at is not null, 'token_valid', x.claim_expires_at > now(), 'has_email_hash', x.claim_email_hash is not null)
+        order by x.paid_at desc) from (
+      select * from public.billing_purchases b where b.user_id is null and b.user_deleted_at is null and b.claimed_at is null and b.status = 'paid'
+       order by b.paid_at desc limit greatest(least(coalesce(p_limit, 50), 200), 1)) x), '[]'::jsonb))
+$$;
+-- Koppelt aankoop p_purchase_id aan account p_user_id (alleen een betaalde aankoop zonder account; geen verwijderd account).
+-- Terug {ok, result: assigned | not_assignable | no_user}.
+create or replace function public.bingr_admin_purchase_assign(p_purchase_id bigint, p_user_id uuid) returns jsonb
+language plpgsql security definer set search_path = public, auth as $$
+declare v_by text;
+begin
+  if not exists (select 1 from auth.users where id = p_user_id) then return jsonb_build_object('ok', false, 'result', 'no_user'); end if;
+  select case when provider = 'apple' then 'apple' else 'stripe' end into v_by from public.billing_purchases where id = p_purchase_id;
+  if public.bingr_billing_attach(p_purchase_id, p_user_id, coalesce(v_by, 'stripe')) then
+    return jsonb_build_object('ok', true, 'result', 'assigned');
+  end if;
+  return jsonb_build_object('ok', false, 'result', 'not_assignable');
+end $$;
+revoke all on function public.bingr_admin_unclaimed(int) from public, anon, authenticated;
+revoke all on function public.bingr_admin_purchase_assign(bigint, uuid) from public, anon, authenticated;
+grant execute on function public.bingr_admin_unclaimed(int) to service_role;
+grant execute on function public.bingr_admin_purchase_assign(bigint, uuid) to service_role;
+-- <<< unittest lifetime

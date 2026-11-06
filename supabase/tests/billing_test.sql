@@ -13,7 +13,11 @@ select pg_temp.ok((select count(*) from public.billing_purchases) = 1, 'bestaand
 -- geen persoonsgegevens in de kolommen
 select pg_temp.ok(not exists (select 1 from information_schema.columns where table_schema = 'public'
                    and table_name in ('billing_purchases', 'billing_refunds', 'billing_events')
-                   and column_name ~ '(mail|name|naam|address|adres|phone|telefoon|receipt|invoice|ip_|card|iban)'), 'geen e-mail, naam, adres, kaart of kwitantie-URL');
+                   and column_name ~ '(mail|name|naam|address|adres|phone|telefoon|receipt|invoice|ip_|card|iban)'
+                   -- build 167: alleen de SHA-256 van het e-mailadres (gastaankoop koppelen), nooit het adres zelf
+                   and column_name <> 'claim_email_hash'), 'geen e-mail, naam, adres, kaart of kwitantie-URL');
+select pg_temp.ok((select data_type from information_schema.columns where table_schema = 'public' and table_name = 'billing_purchases'
+                   and column_name = 'claim_email_hash') = 'text', 'build 167: claim_email_hash (alleen hash)');
 
 -- twee accounts met aankopen, A ook met een terugbetaling
 insert into auth.users (id, email) values ('00000000-0000-4000-8000-00000000000b', 'b@example.invalid');

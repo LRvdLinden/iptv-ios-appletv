@@ -917,7 +917,7 @@ Body `{platform?, device_id?}`; `platform` is één van `ios`, `ipados`, `tvos`,
 
 Lifetime (€ 4,99 eenmalig, incl. btw) is te koop op **bingr.online/upgrade/**, alleen op de website. Verkoper is **PixelForges** (Apeldoorn, KvK 70031576, btw NL001876986B40, support@bingr.online); Bingr is een product van PixelForges. Betalen gaat via **Stripe Checkout** (doorsturen naar checkout.stripe.com, geen Stripe.js op de site). De betaalmethoden (iDEAL, kaart, Apple Pay, Bancontact, …) kiest het Stripe-dashboard. Bingr ziet en bewaart nooit betaalgegevens.
 
-- **Apple-apps:** nooit een prijs, koopknop, link of QR-code naar de betaalpagina (`upgrade.link.apple` blijft `false`). Een gekochte Lifetime werkt daar wel meteen (via `entitlements`).
+- **Apple-apps:** nooit een prijs, koopknop, link of QR-code naar de betaalpagina (`upgrade.link.apple` blijft `false`), met twee uitzonderingen sinds build 167: de **in-app aankoop via StoreKit** (`iap.apple`, prijs uit StoreKit) en de **EU External Purchase Link** (achter de flag `upgrade.link_eu_apple`, alleen in de EU, met het informatieblad van Apple). Verder niets: geen vaste prijs, geen kortingscode, geen QR-code. Een gekochte Lifetime werkt daar wel meteen (via `entitlements`). Zie "Build 167: alleen Lifetime".
 - **Andere apps** (Android, Android TV, Samsung TV): met `upgrade.link` openen ze `upgrade.url`; betalen gebeurt daar in de browser.
 
 ### Functie `billing` (`/functions/v1/billing/<actie>`, header `apikey`)
@@ -1858,4 +1858,198 @@ Nieuwe verdeling. Dit vervangt de tabel onder "Abonnementen" waar die verschilt;
   - Nieuwe regels onder Lifetime: Verder kijken, Kinderprofielen, OpenSubtitles-ondertitels.
   - Onder beide: Profielen, Mijn lijst.
   - Ontbreekt `plans`, gebruik dan Gratis 1/2/1.
-- **Apple-apps:** nooit een prijs, koopknop, link of QR-code, zoals altijd (`upgrade.link.apple`).
+- **Apple-apps:** nooit een prijs, koopknop, link of QR-code, zoals altijd (`upgrade.link.apple`); sinds build 167 alleen StoreKit-IAP en de EU-link achter de flag (zie "Build 167: alleen Lifetime").
+
+## Build 167: alleen Lifetime
+
+Bingr gaat van Gratis + Lifetime naar **alleen Lifetime**. De overgang is **1 december 2026 00:00 (Europe/Amsterdam)**: `cutover_at` = `2026-12-01T00:00:00+01:00`. Tot dan krijgen gratis accounts een aankondiging en een persoonlijke kortingscode van 30 % (geldig t/m 30 november 2026 23:59). Lifetime-accounts (`source` legacy, admin of purchase) merken niets.
+
+**Alles staat standaard uit** (`app_settings.lifetime_only.enabled = false`). Zolang dat zo is, werkt alles precies zoals vóór build 167. Daarom kunnen de apps en de server veilig met deze code uitkomen; Léon zet het aan in het beheer op dag D, als alles live staat.
+
+### Instellingen (`app_settings`, alleen service role)
+
+| Sleutel | Standaard | Betekenis |
+|---|---|---|
+| `lifetime_only` | `{"enabled": false, "announce_at": null, "cutover_at": "2026-12-01T00:00:00+01:00", "discount_pct": 30, "code_valid_until": "2026-12-01T00:00:00+01:00", "trial_days": 0}` | Lifetime-only. `announce_at` = vanaf wanneer de aankondiging zichtbaar is. `code_valid_until` = tot wanneer de codes werken (leeg = `cutover_at`). `trial_days` = proefperiode voor nieuwe accounts na `cutover_at` (0 = geen). |
+| `iap` | `{"apple": false}` | Koopknop (StoreKit) in de Apple-apps. Pas aanzetten als het product in App Store Connect klaar staat. |
+| `upgrade_link.apple_eu` | `false` | EU External Purchase Link in de Apple-apps. Pas aanzetten als Apple de entitlement heeft toegekend. |
+
+- Het beheer leest en schrijft ze met `bingr_admin_lifetime_settings(p_lifetime jsonb, p_iap jsonb, p_apple_eu boolean)` (alle drie null = alleen lezen). `p_lifetime` wordt samengevoegd met de huidige waarde. De functie controleert de waarden: `enabled` boolean, tijden null of ISO, `discount_pct` 1–90, `trial_days` 0–90, en aanzetten kan alleen met `cutover_at`. Bij een fout: exception `bad_lifetime_settings` (SQLSTATE 22023) en er verandert niets.
+- `device-auth` houdt de instellingen 60 seconden in het geheugen. Bij een databasefout gelden de standaardwaarden (uit).
+
+### `entitlements` (device-auth `entitlements`, `heartbeat` en `config`, de webspeler, en `billing` `claim` / `apple_verify`)
+
+De bestaande velden veranderen niet. Er komen altijd drie velden bij, en een vierde als Lifetime-only aan staat:
+
+```json
+{
+  "plan": "free", "limits": {}, "features": {}, "plans": {},
+  "upgrade": { "url": "https://bingr.online/upgrade/", "link": true, "price": "€ 4,99", "price_en": "€4.99", "link_eu_apple": false },
+  "access": "full",
+  "iap": { "apple": false, "product_id": "nl.lrvdlinden.bingr.lifetime" },
+  "lifetime_only": { "enabled": true, "announced": true, "cutover_at": "2026-12-01T00:00:00+01:00", "code": "BINGR-7K2Q-9FXM",
+                     "code_valid_until": "2026-12-01T00:00:00+01:00", "discount_pct": 30, "trial_until": null }
+}
+```
+
+- **`access`**: `"full"` (normaal) of `"activate"` (alleen het scherm Activeer Lifetime). `"activate"` geldt als Lifetime-only aan staat, `cutover_at` voorbij is, het account niet Lifetime is en er geen proefperiode loopt. Ontbreekt het veld (oudere server), dan is het `"full"`.
+- **`lifetime_only`**: alleen aanwezig als `enabled` true is.
+  - `announced` = nu ≥ `announce_at`.
+  - `code` en `code_valid_until` alleen voor een gratis account met een ongebruikte, geldige code (promotion code klaar), en **nooit op een Apple-platform** (`ios`, `ipados`, `tvos`, `macos`): de server laat ze daar weg, want het is korting buiten Apple om. De andere apps en de web-app tonen hem wel.
+  - `trial_until`: einde van de proefperiode (alleen voor accounts die op of na `cutover_at` zijn aangemaakt en alleen met `trial_days` > 0), anders null.
+- **`iap.apple`**: uit `app_settings.iap.apple`. Pas dan tonen de Apple-apps de koopknop (StoreKit). `product_id` is altijd `nl.lrvdlinden.bingr.lifetime`.
+- **`upgrade.link_eu_apple`**: uit `app_settings.upgrade_link.apple_eu` (standaard false). De Apple-apps tonen de EU-link alleen als dit true is, `ExternalPurchaseLink.canOpen` true is en de storefront in de EU ligt.
+- De logica staat in `supabase/functions/_shared/lifetime.ts` (`withLifetime`, `accessFor`, `trialUntil`) en `lifetime_store.ts` (`buildEntitlements`), met unittests in `lifetime_test.ts`. Daar staat ook een test dat met `enabled` false alle bestaande velden precies gelijk blijven.
+
+### Afdwingen bij `access` = `"activate"`
+
+| Wat | Gedrag |
+|---|---|
+| `stream_start` | **403** `{error:"activation_required", plan:"free"}`. Ook oudere apps kunnen dan niet meer afspelen. Bij een databasefout mag het afspelen door (een storing blokkeert nooit een Lifetime-account; de streamlimiet blijft gelden). |
+| Inloggen, `config`, `entitlements`, `heartbeat`, lezen en schrijven van sync, `delete_account`, export, support | Blijven werken. Alle gegevens blijven bewaard: servers, lijsten, profielen en instellingen. |
+| `register_device` | Blijft werken, met de bestaande limieten. |
+
+### Kortingscodes (tabel `lifetime_codes`)
+
+- **Kolommen:** `user_id` (pk → auth.users, on delete cascade), `code` (uniek, `BINGR-XXXX-XXXX` met tekens uit `ABCDEFGHJKMNPQRSTUVWXYZ23456789`, dus zonder 0/O/1/I/L), `stripe_coupon_id`, `stripe_promotion_code_id` (uniek), `stripe_mode` (`test`/`live`), `created_at`, `expires_at`, `mailed_at`, `mail_error`, `reminded_at`, `remind_error`, `redeemed_at`, `purchase_id` (→ billing_purchases), en `mail_claimed_at` / `remind_claimed_at` voor een lopende verzendronde. Alleen service role; geen e-mailadressen.
+- **Wie krijgt er een:** elk gratis account met een bevestigd e-mailadres, niet verwijderd en niet geblokkeerd (`bingr_lifetime_eligible`).
+- **Aanmaken** gaat alleen server-side, via `billing` actie **`admin_codes_generate`** `{dry_run?, batch?}` (header `x-lifetime-secret`, zie "Beheer").
+  - Eén Stripe-coupon met een vaste id `bingr_lifetime_<pct>_<jjjjmmdd>`: `percent_off` 30, `duration` once, `redeem_by` = `code_valid_until`.
+  - Per account eerst een rij met de code (`bingr_lifetime_candidates`), daarna een promotion code (`code`, `max_redemptions` 1, `expires_at`, `metadata.user_id`), met een Idempotency-Key per account en code. Een rij zonder promotion code wordt in een volgende ronde opnieuw geprobeerd; bestaat de promotion code al in Stripe, dan neemt de functie hem over.
+  - Antwoord: `dry_run` → `{ok, dry_run, candidates, pending_stripe, coupon, valid_until, discount_pct, mode}`; anders één batch → `{ok, created, stripe_created, stripe_errors, remaining, coupon}`. Herhaal tot `remaining` 0 is.
+  - Fouten: 409 `settings_incomplete`, 409 `valid_until_past`, 409 `coupon_mismatch` (coupon met die id heeft andere waarden), 409 `stripe_mode_mismatch` (er bestaan al codes uit de andere Stripe-modus), 503 `billing_unavailable`, 502 `stripe_error`.
+  - Gebruik een code alleen in dezelfde Stripe-modus waarin hij gemaakt is. Codes uit de testmodus werken dus niet meer na de overstap naar live.
+- **`billing` `checkout`** neemt `code?` aan (vrij ingetypt, bv. `bingr abcd efgh`, wordt genormaliseerd):
+  - de code moet bij dít account horen, ongebruikt en niet verlopen zijn, en uit dezelfde Stripe-modus komen. Anders **400** `{error:"code_invalid", reason}` met `reason` `not_found`, `other_account`, `redeemed`, `expired`, `not_ready` of `other_mode`;
+  - zonder `code` gebruikt de functie automatisch de eigen geldige code van het account;
+  - de sessie krijgt `discounts[0][promotion_code]` en `metadata.promotion_code`. Zelf een code intypen op de Stripe-pagina kan niet (`allow_promotion_codes` staat uit).
+- **Gebruikt:** `stripe-webhook` (en het vangnet `billing status`) zet bij een betaalde sessie met een promotion code `redeemed_at` en `purchase_id`, alleen op de code van dat account met die promotion code (idempotent).
+- **Beheer:** `bingr_admin_lifetime_stats()` geeft alleen totalen: `created`, `ready`, `pending_stripe`, `mailed`, `mail_error`, `reminded`, `remind_error`, `redeemed`, `expired`, `candidates`, `mail_pending`, `remind_pending` en `unclaimed` (gastaankopen zonder account). `bingr_admin_user` geeft `lifetime_code` (`bingr_lifetime_code_of`: `code`, `created_at`, `expires_at`, `mailed_at`, `mail_error`, `reminded_at`, `redeemed_at`, `status` = `redeemed|expired|mail_error|mailed|ready|pending_stripe`, of null).
+
+### `billing` `config` (publiek)
+
+Bestaande velden blijven. Erbij komen altijd `lifetime_only` en `iap`, ook zonder inloggen:
+
+```json
+{ "lifetime_only": { "enabled": true, "cutover_at": "2026-12-01T00:00:00+01:00", "after_cutover": false, "trial_days": 0,
+                     "announce_at": "2026-11-07T00:00:00+01:00", "announced": true },
+  "iap": { "apple": false, "product_id": "nl.lrvdlinden.bingr.lifetime" } }
+```
+
+- Met `enabled` false: `{enabled: false, cutover_at: null, after_cutover: false, trial_days: 0, announce_at: null, announced: false}`.
+- Ingelogd (`Authorization: Bearer …`) en aan: in `lifetime_only` ook `code`, `code_valid_until`, `discount_pct` en `discounted_price_cents` (bv. 349). Zonder bruikbare code zijn `code`, `code_valid_until` en `discounted_price_cents` null.
+- De apps gebruiken dit voor het welkomstscherm als er nog niemand is ingelogd (zie "Eerst betalen, dan het account"). Ze cachen het; zonder netwerk tonen ze het welkomstscherm zoals nu.
+
+### Eerst betalen, dan het account (nieuwe gebruikers na `cutover_at`)
+
+De app blijft gratis te downloaden. Na `cutover_at` is de volgorde **kopen → account maken** (zo wil Apple het ook: geen account verplicht vóór een aankoop).
+
+**Web en Android (Stripe, zonder account):**
+- `billing` `checkout` met `{lang, waiver: true, guest: true}` **zonder** `Authorization`:
+  - Stripe vraagt het e-mailadres (`customer_creation` always);
+  - de functie maakt een `claim_token` (32 willekeurige bytes, base64url). Het token staat in de sessie-metadata (zodat de webhook de claimmail kan sturen) en in de success-URL **`https://bingr.online/upgrade/klaar/?claim=<token>&session_id={CHECKOUT_SESSION_ID}`**. In de database staat alleen de SHA-256;
+  - max. 30 per IP per 10 minuten.
+- `billing` `status` zonder inloggen met `{session_id, claim_token}` → `{paid, status, payment_status, email}`. `email` komt van Stripe en alleen als het token bij die sessie hoort (anders 404 `not_found`). Is de sessie betaald, dan legt `status` de aankoop ook meteen vast (vangnet als de webhook nog niet binnen is).
+- **Webhook bij betaald zonder account:** `billing_purchases` met `user_id` null, `claim_token_hash`, `claim_expires_at` (30 dagen) en `claim_email_hash` (SHA-256 van het getrimde kleine-letter-e-mailadres; het adres zelf staat alleen bij Stripe). Bestaat er al precies één bevestigd account met dat adres, dan wordt de aankoop meteen gekoppeld. Anders gaat er een mail "Maak je Bingr-account" (NL/EN, naar de taal van de sessie) met de claimlink `https://bingr.online/upgrade/klaar/?claim=<token>`, één keer (`claim_notified_at`). Een mailfout laat de webhook gewoon slagen.
+- **Claimen:**
+  - `billing` `claim` `{claim_token?, platform?}` (ingelogd) koppelt de aankoop aan dit account. Antwoord 200 `{claimed, result, plan, entitlements}` met `result` `claimed`, `already_yours`, `claimed_by_email` of `none`;
+  - 400 `claim_invalid` (onbekend of terugbetaald) of `claim_expired` (na 30 dagen), 409 `owned_by_other_account` (al door een ander account geclaimd), 409 `already_lifetime` (dit account is al Lifetime; de aankoop blijft dan ongeclaimd, voor een ander account, terugbetalen of koppelen in het beheer);
+  - het token werkt één keer; daarna geeft hetzelfde account `already_yours`;
+  - **automatisch via het e-mailadres**, alleen als dat adres bevestigd is: bij het bevestigen (trigger `bingr_billing_claim_on_confirm` op `auth.users`), bij elke `register_device` (inloggen), bij `billing claim` en bij `billing purchases`. Dit werkt altijd, zonder verloopdatum.
+- Database: `bingr_billing_claim(p_user, p_token_hash)`, `bingr_billing_claim_email(p_user)`, `bingr_billing_claim_hash(p_email_hash)`, `bingr_email_hash(email)` (gelijk aan `emailHash` in `_shared/billing.ts`), allemaal alleen service role.
+- **Android en de webspeler:** op het welkomstscherm na `cutover_at` opent Koop Lifetime `https://bingr.online/upgrade/?guest=1`; Android TV toont daarvoor een QR-code.
+
+**Apple (StoreKit 2):**
+- Koop vóór het account met `appAccountToken` = een willekeurige UUID (`pendingAccountToken` in de Keychain). Roep `finish()` pas aan nadat `apple_verify` gelukt is.
+- Na registreren of inloggen gaat de transactie naar `apple_verify`. De server koppelt de `originalTransactionId` aan het eerste account dat hem claimt.
+- `appAccountToken` hoeft **niet** de account-id te zijn. De echte controle is de unieke koppeling op `apple_original_transaction_id`.
+
+### Apple-aankoop verwerken
+
+- **`billing` `apple_verify`** (POST, ingelogd), body `{signed_transaction, platform?}` = `Transaction.jwsRepresentation` van StoreKit 2.
+  - **JWS-controle** (`_shared/apple_jws.ts`, pure WebCrypto):
+    - header `alg` ES256 en `x5c` met precies drie certificaten;
+    - de root moet byte voor byte **Apple Root CA - G3** zijn (`_shared/apple_root.ts`, openbaar, SHA-256 `63:34:3A:BF:…:91:79`);
+    - het tussencertificaat is door de root ondertekend en de leaf door het tussencertificaat (ECDSA SHA-256/384, P-256/P-384), met uitgever = onderwerp;
+    - alle drie geldig op `signedDate` (niet meer dan 5 minuten in de toekomst);
+    - het tussencertificaat is een CA met OID `1.2.840.113635.100.6.2.1`; de leaf is geen CA, heeft OID `1.2.840.113635.100.6.11.1` en een P-256-sleutel;
+    - geen onbekende kritieke extensies;
+    - daarna de handtekening ES256 over `header.payload`.
+  - **Transactie** (`_shared/apple.ts`): `bundleId` = `nl.lrvdlinden.bingr`, `productId` = `nl.lrvdlinden.bingr.lifetime`, geen `revocationDate`; `environment` Production = `live`, Sandbox (en alles anders) = `test`.
+  - **Koppelen** (`_shared/apple_store.ts`): `billing_purchases` met `provider='apple'`, `apple_original_transaction_id` (uniek), `apple_transaction_id`, `environment`, bedrag en valuta uit `price` (milli-eenheden → centen) en `currency`. Daarna `account_plans` lifetime met `source='purchase'` en `granted_by='apple'`; eigen limieten blijven, en Lifetime uit het beheer of cadeau blijft zoals hij is. Idempotent.
+  - **Antwoord:** `{plan:"lifetime", entitlements}`.
+  - **Fouten:** 400 `{error:"bad_transaction", reason}` (JWS of transactie ongeldig), 409 `owned_by_other_account` (de transactie hangt al aan een ander of verwijderd account), 409 `transaction_revoked` (ingetrokken of terugbetaald), 429 `rate_limited` (30 per account per 10 min).
+- **`apple-notify`** (nieuwe functie, verify_jwt uit): App Store Server Notifications **V2**.
+  - **URL voor App Store Connect** (Productie én Sandbox): **`https://vjewsncmsxmhmhnoxwqx.supabase.co/functions/v1/apple-notify`**.
+  - `signedPayload` wordt op dezelfde manier gecontroleerd, daarna de `signedTransactionInfo` erin.
+  - `REFUND` en `REVOKE` (onze bundle en ons product): aankoop `refunded`, een rij `apl_<transactie-id>` in `billing_refunds` voor de omzet, en een gekochte Lifetime terug naar Gratis, net als bij een terugbetaling via Stripe.
+  - `TEST` en andere types: 200 zonder actie. Ongeldige handtekening: 400.
+  - Elke notificatie één keer (`notificationUUID` in `billing_apple_events`, 90 dagen bewaard).
+  - Logs alleen met het type en het resultaat.
+- **Omzet:** `bingr_admin_stats` geeft `revenue_by_provider` `{stripe: {count, cents}, apple: {count, cents}}`, `purchases_apple` en `purchases_unclaimed`. `bingr_admin_revenue` en `bingr_revenue_sum` geven per bereik `by_provider` (`[{key, count, gross}]`). De modi live/test tellen Apple mee op `environment`. `user_detail.purchases` krijgt `provider` en `claimed_at`, en `billing purchases` geeft bij een Apple-aankoop `provider: "apple"` (zonder Stripe-links).
+
+### Mail "Bingr wordt Lifetime" (functie `lifetime-notice`)
+
+- Functie **`lifetime-notice`** (verify_jwt uit), alleen met de header `x-lifetime-secret`. Actie **`admin_send`** `{mode, batch?, kind?, to?, lang?}`:
+  - `dry_run` → `{ok, notice_pending, remind_pending, remind_window, enabled, smtp}` (alleen aantallen);
+  - `test` → naar `to` (het beheeradres), onderwerp "[Test] …", met de voorbeeldcode `BINGR-ABCD-EFGH`; NL en EN, tenzij `lang`; `kind` `notice` of `remind`;
+  - `send` → één batch van "Bingr wordt Lifetime" (`{ok, sent, failed, retry, errors, remaining}`), idempotent via `mailed_at`. Herhaal tot `remaining` 0 is;
+  - `remind` → hetzelfde voor de herinnering (`reminded_at`), alleen in de 7 dagen vóór `cutover_at` (anders 409 `not_remind_window`);
+  - `send` en `remind`: 409 `not_enabled` (Lifetime-only staat uit) of `after_cutover`, en 503 `smtp_not_configured`.
+  - Ook: `admin_preview` `{kind?, lang?}` → `{subject, html}`, en `admin_stats` → zoals `bingr_admin_lifetime_stats`.
+- **Wie krijgt de mail:** alleen gratis accounts met een bevestigd e-mailadres, niet geblokkeerd, met een ongebruikte, geldige code (`bingr_lifetime_mail_take` / `bingr_lifetime_mail_mark`; een ronde die vastloopt, telt na 30 minuten niet meer). Lifetime-gebruikers krijgen hem niet. Het is een dienstmelding (wijziging van de voorwaarden), dus ook zonder nieuwsbrief-opt-in en zonder afmeldlink. Afzender `BINGR_SMTP_FROM`, Reply-To support@bingr.online.
+- **Templates** (`supabase/functions/lifetime-notice/mail.ts`, huisstijl van `_shared/layout.ts`):
+  - onderwerp NL "Bingr wordt Lifetime – met 30% korting voor jou", EN "Bingr is going Lifetime – 30% off for you";
+  - herinnering NL "Nog 7 dagen: Bingr wordt Lifetime op 1 december 2026", EN "7 days left: Bingr goes Lifetime on 1 December 2026";
+  - inhoud: waarom (één ontwikkelaar, server- en ontwikkelkosten, geen reclame), wat er verandert per **1 december 2026**, en dat je gegevens bewaard blijven (account verwijderen kan altijd);
+  - de code groot in beeld met "Geldig t/m 30 november 2026", en de prijs (€ 4,99, met de code € 3,49);
+  - de knop naar `https://bingr.online/upgrade/?code=<code>`, en vragen via support.bingr.online;
+  - nooit Apple of de App Store.
+- **In-app melding:** zet in het beheer een `announcements`-item (pushbericht) klaar, niet automatisch:
+  - NL titel "Bingr wordt Lifetime op 1 december 2026", tekst "Vanaf 1 december 2026 is Bingr alleen nog te gebruiken met Lifetime. Je gegevens blijven bewaard. Bekijk je persoonlijke korting in Instellingen > Abonnement of op bingr.online/upgrade.";
+  - EN titel "Bingr goes Lifetime on 1 December 2026", tekst "From 1 December 2026 Bingr can only be used with Lifetime. Your data is kept. See your personal discount in Settings > Subscription or at bingr.online/upgrade.";
+  - voor de Apple-apps zonder korting en zonder link: alleen de eerste twee zinnen.
+
+### Beheer (functie `admin` in bingr-beheer)
+
+- Geheim **`LIFETIME_ADMIN_SECRET`** in de header **`x-lifetime-secret`**. De workflow Backend maakt het één keer zelf aan (function-secrets gelden voor het hele project, dus ook voor `admin`). Zonder of met een fout geheim: 403 `forbidden`.
+- **Aanroepen:**
+  - `billing` acties `admin_codes_generate` (`dry_run`) en `admin_codes_stats`;
+  - `lifetime-notice` actie `admin_send` (`mode` `dry_run`/`test`/`send`/`remind`);
+  - de RPC's `bingr_admin_lifetime_settings`, `bingr_admin_lifetime_stats`, `bingr_lifetime_code_of`, `bingr_admin_unclaimed(p_limit)` en `bingr_admin_purchase_assign(p_purchase_id, p_user_id)`.
+- **`bingr_admin_unclaimed(p_limit)`** geeft `{total, items:[{id, provider, created_at, paid_at, amount, currency, status, mode, claim_mailed, token_valid, has_email_hash}]}`, zonder e-mailadres, hash of token.
+- **`bingr_admin_purchase_assign(p_purchase_id, p_user_id)`** koppelt een betaalde aankoop zonder account. Antwoord `{ok, result: assigned | not_assignable | no_user}`.
+- Wijzigingen aan het beheer komen nooit in de changelog.
+
+### Tabellen en kolommen (`supabase/schema.sql`)
+
+- `billing_purchases` krijgt de kolommen:
+  - `provider` (`stripe` standaard, of `apple`);
+  - `apple_original_transaction_id` (uniek), `apple_transaction_id` en `environment` (`live`/`test`);
+  - `claim_token_hash` (uniek), `claim_expires_at`, `claim_email_hash`, `claim_notified_at` en `claimed_at`.
+- `stripe_session_id` mag leeg bij Apple. Een controle eist bij `stripe` een sessie en bij `apple` een transactie-id.
+- In `billing_refunds` mag de id ook `apl_…` zijn.
+- Nieuwe tabellen: `billing_apple_events` en `lifetime_codes`.
+- De privacycontrole in `supabase/tests/billing_test.sql` staat alleen `claim_email_hash` toe: alleen de hash, nooit het adres.
+
+### Tests
+
+- Deno (blokkeert de deploy):
+  - `supabase/functions/_shared/apple_test.ts`: de JWS-keten met een zelfgemaakte test-CA in `apple_testdata.ts`, vervalsingen, tijden, de echte (openbare) Apple-keten alleen als certificaten, transacties, notificaties en Apple-aankopen in de nep-database (`testdb.ts`). Nooit echte transacties.
+  - `supabase/functions/_shared/lifetime_test.ts`: toegang, proefperiode, codes, entitlements (enabled false = zoals nu), Stripe-parameters, de webhook voor een gebruikte code, gastaankoop en claimen, en de mails.
+- SQL (blokkeert de deploy): `supabase/tests/lifetime_test.sh`, in een tijdelijke Postgres. Dekt de standaardwaarden, de controle van de instellingen, de codes, wie de mail krijgt, Apple-aankopen en omzet, het claimen (token, e-mail, trigger), handmatig koppelen en de rechten.
+
+### Wat Léon zelf doet (pas op dag D, alles tegelijk)
+
+- **Stripe:** niets vooraf aanmaken. `admin_codes_generate` maakt de coupon en de promotion codes zelf aan in de modus van `STRIPE_SECRET_KEY`. Maak de codes pas aan met de **live**-sleutel; codes uit de testmodus werken niet in live. De webhook-events blijven gelijk (`checkout.session.completed` bevat de korting).
+- **App Store Connect:**
+  - maak de non-consumable `nl.lrvdlinden.bingr.lifetime` aan, met prijs, beschrijving en een screenshot voor de review;
+  - sluit je aan bij het Small Business Program;
+  - vul bij App Store Server Notifications (Productie en Sandbox, **versie 2**) de URL `https://vjewsncmsxmhmhnoxwqx.supabase.co/functions/v1/apple-notify` in;
+  - vraag de StoreKit External Purchase Link-entitlement (EU) aan. Zet `upgrade_link.apple_eu` pas aan als die er is.
+- **Beheer:**
+  - zet `iap.apple` aan zodra het product goedgekeurd is;
+  - zet `lifetime_only.enabled` aan met `announce_at` = nu (de andere waarden staan al op 1 december 2026);
+  - maak de codes aan (eerst droog), stuur de testmail en daarna de mail;
+  - zet het `announcements`-item klaar;
+  - stuur vanaf 24 november de herinnering.

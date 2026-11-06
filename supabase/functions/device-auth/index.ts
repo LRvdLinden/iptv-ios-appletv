@@ -69,6 +69,12 @@
 //                   upgrade.link per platform uit app_settings.upgrade_link (platform uit de aanvraag, anders van het apparaat).
 //                   heartbeat geeft hetzelfde object als `entitlements`. Gratis: list_streams, watch_log -> 403
 //                   {error:"feature_locked", feature:"now_watching", plan:"free"}; watch_stats -> 403 {…, feature:"stats"}.
+//   Build 167 (alleen Lifetime, docs/ACCOUNT.md): entitlements/heartbeat/config krijgen access ("full"|"activate"), iap
+//                   {apple, product_id}, upgrade.link_eu_apple en, als app_settings.lifetime_only aan staat, lifetime_only
+//                   {enabled, announced, cutover_at, code, code_valid_until, discount_pct, trial_until} (code nooit op een
+//                   Apple-platform). stream_start na cutover_at zonder Lifetime (en zonder lopende proefperiode) -> 403
+//                   {error:"activation_required", plan:"free"}. register_device koppelt ongeclaimde gastaankopen met het
+//                   bevestigde e-mailadres van het account.
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { buildStats, DEFAULT_TZ, periodRange, todayIn, validTz } from "./stats.ts";
 import { cleanDeviceName, deviceKind, deviceTypeLabel } from "./naming.ts";
@@ -83,9 +89,11 @@ import { buildOf, cleanProfiles, PROFILES_BUILD } from "../_shared/profiles.ts";
 import { currentMode, profileNames, readProfiles, syncProfiles } from "../_shared/profiles_store.ts";
 import { openRows, privateKey, sealedStream } from "./watch.ts";
 import {
-  entitlements, featureLocked, limitsFor, normalizePlan, normalizePlatform, normalizeUpgradeLink, PLAN_DEFAULTS, platformFromDevice,
-  type PlanRow, type UpgradeLink,
+  featureLocked, limitsFor, normalizePlan, normalizePlatform, PLAN_DEFAULTS, platformFromDevice, type PlanRow,
 } from "../_shared/plans.ts";
+import { accessFor, ACTIVATION_REQUIRED, normalizeIap, normalizeLifetime } from "../_shared/lifetime.ts";
+import { type AllSettings, buildEntitlements, loadSettings } from "../_shared/lifetime_store.ts";
+import { claimByEmail } from "../_shared/guest_store.ts";
 import { addsKidsProfile } from "../_shared/profiles.ts";
 
 const SITE = Deno.env.get("BINGR_SITE") ?? "https://bingr.online";
@@ -138,15 +146,28 @@ async function planRow(userId: string, strict = false): Promise<PlanRow> {
   }
   return data ?? null;
 }
-// Upgrade-link per platform (app_settings.upgrade_link), 60 s in het geheugen; bij een fout de standaard.
-let linkCache: { at: number; value: UpgradeLink } | null = null;
-async function upgradeLinks(): Promise<UpgradeLink> {
-  if (linkCache && Date.now() - linkCache.at < 60_000) return linkCache.value;
-  const { data, error } = await admin.from("app_settings").select("value").eq("key", "upgrade_link").maybeSingle();
-  if (error) console.error("app_settings", error.message);
-  const value = normalizeUpgradeLink(data?.value);
-  if (!error) linkCache = { at: Date.now(), value };
-  return value;
+// Instellingen (app_settings upgrade_link, lifetime_only en iap; build 167), 60 s in het geheugen. Bij een fout de
+// standaard (alles zoals vóór build 167: Lifetime-only uit, geen koopknop, geen EU-link) en niet in het geheugen.
+let settingsCache: { at: number; value: AllSettings } | null = null;
+async function appSettings(): Promise<AllSettings> {
+  if (settingsCache && Date.now() - settingsCache.at < 60_000) return settingsCache.value;
+  try {
+    const value = await loadSettings(admin);
+    settingsCache = { at: Date.now(), value };
+    return value;
+  } catch (e) {
+    console.error("app_settings", e instanceof Error ? e.message : e);
+    return { lifetime: normalizeLifetime(null), iap: normalizeIap(null), euApple: false, upgradeLink: null };
+  }
+}
+// Build 167: mag dit account afspelen? Bij een databasefout: ja (een storing blokkeert nooit Lifetime-accounts; de
+// streamlimiet blijft gelden). Alleen "activate" na cutover_at voor een account dat niet Lifetime is.
+async function activationRequired(user: Authed): Promise<boolean> {
+  const s = await appSettings();
+  if (!s.lifetime.enabled) return false;
+  const { data, error } = await admin.from("account_plans").select("plan").eq("user_id", user.id).maybeSingle();
+  if (error) { console.error("account_plans", error.message); return false; }
+  return accessFor(s.lifetime, data?.plan, user.created_at).access === "activate";
 }
 // Platform van de aanvraag (body.platform), anders van het geregistreerde apparaat (body.device_id of het opgegeven platform).
 async function callerPlatform(userId: string, body: Record<string, unknown>, devicePlatform?: string | null) {
@@ -158,12 +179,13 @@ async function callerPlatform(userId: string, body: Record<string, unknown>, dev
     .eq("device_id", String(body.device_id).slice(0, 80)).maybeSingle();
   return platformFromDevice(data?.platform);
 }
-async function entitlementsFor(userId: string, body: Record<string, unknown>, devicePlatform?: string | null, strict = false) {
+async function entitlementsFor(user: Authed, body: Record<string, unknown>, devicePlatform?: string | null, strict = false) {
   // security L3: altijd strict, zodat een databasefout nooit "Gratis" als entitlements naar de apps stuurt (strict blijft
   // als parameter voor de aanroepers; zonder strict vangen die de fout af en laten ze de entitlements weg)
   void strict;
-  const [row, links, platform] = await Promise.all([planRow(userId, true), upgradeLinks(), callerPlatform(userId, body, devicePlatform)]);
-  return entitlements(row, links, platform);
+  // build 167: met access, iap, upgrade.link_eu_apple en (als Lifetime-only aan staat) lifetime_only (_shared/lifetime.ts)
+  const [settings, platform] = await Promise.all([appSettings(), callerPlatform(user.id, body, devicePlatform)]);
+  return await buildEntitlements(admin, user.id, user.created_at, platform, settings);
 }
 async function listDevices(userId: string, current?: string) {
   const { data } = await admin.from("account_devices").select("device_id,name,platform,created_at,last_seen_at,signed_in_at")
@@ -254,7 +276,7 @@ async function activeStreams(userId: string) {
 }
 // Ingelogde gebruiker, of een kant-en-klaar foutantwoord: 401 bij een ongeldig/verlopen token (de apps verversen dan
 // en proberen het opnieuw), 503 als de auth-server tijdelijk niet antwoordt (nooit uitloggen door een storing).
-type Authed = { id: string; email?: string };
+type Authed = { id: string; email?: string; created_at?: string };
 async function authed(req: Request): Promise<Authed | Response> {
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
   if (!token || token.split(".").length !== 3) return json({ error: "not_signed_in" }, 401);
@@ -610,6 +632,8 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       }
       // build 157: een Gratis-account dat nog boven de limiet zat, houdt de 2 laatst actieve (dit apparaat is net actief)
       await enforceFreeDevices(user.id);
+      // build 167: inloggen = ongeclaimde gastaankopen met het bevestigde e-mailadres van dit account koppelen (best effort)
+      try { await claimByEmail(admin, user.id); } catch (e) { console.error("claim_email", e instanceof Error ? e.message : e); }
       await pendingName(user.id, device_id, platform);
       inBackground(saveCountry(req, user.id, device_id));
       await legacyMirror(user.id, body.app_version);
@@ -640,7 +664,7 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
         { onConflict: "user_id,day", ignoreDuplicates: true });
       // abonnement mee (limieten, functies, upgrade-link): de apps passen het zonder extra aanvraag toe
       let ent: unknown = undefined;
-      try { ent = await entitlementsFor(user.id, body, row.platform ?? null); } catch (e) { console.error("heartbeat entitlements", e instanceof Error ? e.message : e); }
+      try { ent = await entitlementsFor(user, body, row.platform ?? null); } catch (e) { console.error("heartbeat entitlements", e instanceof Error ? e.message : e); }
       return json({ ok: true, entitlements: ent });
     }
     case "list_devices": {
@@ -806,6 +830,8 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       if (user instanceof Response) return user;
       const device_id = String(body.device_id ?? "").slice(0, 80);
       if (!device_id) return json({ error: "device_id_missing" }, 400);
+      // build 167: na cutover_at kan een account dat niet Lifetime is niet meer afspelen (ook met een oudere app)
+      if (await activationRequired(user)) return json(ACTIVATION_REQUIRED, 403);
       // streamlimiet van het abonnement (gratis 1, lifetime 3, of eigen limiet uit het beheer); Bingr-telling,
       // los van de limiet van de IPTV-provider (die controleren de apps zelf bij het afspelen)
       const row = await planRow(user.id), limit = limitsFor(row).streams;
@@ -942,7 +968,7 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       if (rateErr) console.error("config rate", rateErr.message);
       else if (okRate !== true) return json({ error: "rate_limited" }, 429);
       let ent: Awaited<ReturnType<typeof entitlementsFor>> | undefined = undefined;
-      try { ent = await entitlementsFor(user.id, body); } catch (e) { console.error("config entitlements", e instanceof Error ? e.message : e); }
+      try { ent = await entitlementsFor(user, body); } catch (e) { console.error("config entitlements", e instanceof Error ? e.message : e); }
       const trakt = ent?.features?.trakt === true;
       // build 157: OpenSubtitles alleen bij Lifetime. Bij Gratis een lege string (niet weglaten): de apps wissen dan hun
       // opgeslagen serversleutel ("" = geen sleutel), zodat OpenSubtitles ook in oude apps stopt. Kon de server het
@@ -959,7 +985,7 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
     case "entitlements": {
       const user = await authed(req);
       if (user instanceof Response) return user;
-      return json(await entitlementsFor(user.id, body, undefined, true));
+      return json(await entitlementsFor(user, body, undefined, true));
     }
     default:
       return json({ error: "unknown_action" }, 400);

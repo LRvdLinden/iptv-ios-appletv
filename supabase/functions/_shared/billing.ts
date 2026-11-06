@@ -45,7 +45,11 @@ export function billingConfig(env: (k: string) => string | undefined): BillingCo
 }
 
 // ---------------- Checkout Session ----------------
-export type CheckoutInput = { userId: string; email?: string | null; lang: "nl" | "en"; automaticTax: boolean; waiverAt: string };
+export type CheckoutInput = {
+  userId: string; email?: string | null; lang: "nl" | "en"; automaticTax: boolean; waiverAt: string;
+  /** build 167: promotion code (promo_…) van de eigen kortingscode van dit account */
+  promotionCode?: string | null;
+};
 export const normalizeLang = (v: unknown): "nl" | "en" => (String(v ?? "").toLowerCase().startsWith("en") ? "en" : "nl");
 
 /** Velden van POST /v1/checkout/sessions (form-encoded, volgorde vast voor de tests). */
@@ -82,6 +86,10 @@ export function checkoutParams(i: CheckoutInput): [string, string][] {
       : `Lifetime is active right after payment. You agreed to immediate delivery and thereby waive your right of withdrawal. Seller: ${SELLER.name} (Chamber of Commerce ${SELLER.kvk}).`],
   ];
   if (i.email) p.push(["customer_email", i.email]);
+  if (i.promotionCode) {
+    p.push(["discounts[0][promotion_code]", i.promotionCode]);
+    p.push(["metadata[promotion_code]", i.promotionCode]);
+  }
   if (i.automaticTax) {
     p.push(["automatic_tax[enabled]", "true"]);
     p.push(["line_items[0][price_data][tax_behavior]", "inclusive"]);
@@ -96,9 +104,57 @@ export function sellerLine(lang: "nl" | "en"): string {
 }
 export const formEncode = (p: [string, string][]) => p.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join("&");
 
-/** Idempotency-Key per account, taal en minuut: twee keer klikken geeft dezelfde sessie, geen dubbele. */
-export function idempotencyKey(userId: string, lang: string, automaticTax: boolean, nowMs: number): string {
-  return `bingr-lifetime-${userId.toLowerCase()}-${lang}-${automaticTax ? "t" : "n"}-${Math.floor(nowMs / 60_000)}`;
+/** Idempotency-Key per account, taal en minuut: twee keer klikken geeft dezelfde sessie, geen dubbele. Build 167: met een
+ *  kortingscode een andere sleutel (andere parameters). */
+export function idempotencyKey(userId: string, lang: string, automaticTax: boolean, nowMs: number, promotionCode?: string | null): string {
+  return `bingr-lifetime-${userId.toLowerCase()}-${lang}-${automaticTax ? "t" : "n"}-${Math.floor(nowMs / 60_000)}${promotionCode ? `-${promotionCode.slice(0, 40)}` : ""}`;
+}
+
+// ---------------- build 167: gastaankoop (eerst betalen, dan het account) ----------------
+export const GUEST_SUCCESS_URL = (claimToken: string) => `${SITE}/upgrade/klaar/?claim=${encodeURIComponent(claimToken)}&session_id={CHECKOUT_SESSION_ID}`;
+export const CLAIM_DAYS = 30;
+/** Claimtoken: 32 willekeurige bytes, base64url (43 tekens). Alleen de SHA-256 komt in de database. */
+export function newClaimToken(rand: (n: number) => Uint8Array = (n) => crypto.getRandomValues(new Uint8Array(n))): string {
+  let s = "";
+  for (const b of rand(32)) s += String.fromCharCode(b);
+  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+export const isClaimToken = (v: unknown): v is string => typeof v === "string" && /^[A-Za-z0-9_-]{43}$/.test(v);
+export async function sha256Hex(s: string): Promise<string> {
+  const d = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)));
+  return Array.from(d, (x) => x.toString(16).padStart(2, "0")).join("");
+}
+/** Hash van een e-mailadres om een gastaankoop aan een account te koppelen: sha256 van het getrimde kleine-letteradres
+ *  (gelijk aan bingr_email_hash in supabase/schema.sql). */
+export const emailHash = (email: string) => sha256Hex(email.trim().toLowerCase());
+export type GuestCheckoutInput = { lang: "nl" | "en"; automaticTax: boolean; waiverAt: string; claimToken: string };
+/** Checkout Session zonder account: Stripe vraagt het e-mailadres en maakt een klant aan; het claimtoken gaat mee in de
+ *  metadata (de webhook mailt er de claimlink mee) en in de success-URL. */
+export function guestCheckoutParams(i: GuestCheckoutInput): [string, string][] {
+  const base = checkoutParams({ userId: "guest", lang: i.lang, automaticTax: i.automaticTax, waiverAt: i.waiverAt })
+    .filter(([k]) => !["client_reference_id", "metadata[user_id]", "payment_intent_data[metadata][user_id]", "invoice_creation[invoice_data][metadata][user_id]", "success_url"].includes(k));
+  return [
+    ...base,
+    ["metadata[guest]", "1"], ["metadata[claim_token]", i.claimToken], ["payment_intent_data[metadata][guest]", "1"],
+    ["customer_creation", "always"], ["success_url", GUEST_SUCCESS_URL(i.claimToken)],
+  ];
+}
+export const guestIdempotencyKey = (claimToken: string) => `bingr-lifetime-guest-${claimToken}`;
+export type GuestPurchase = Omit<Purchase, "userId"> & { claimToken: string; email: string | null };
+/** Gastaankoop uit een Checkout Session (metadata.guest = "1", geldig claimtoken). */
+export function guestFromSession(s: Obj | null | undefined): GuestPurchase | null {
+  if (!s || typeof s !== "object" || s.object !== "checkout.session" || s.mode !== "payment") return null;
+  if (s.metadata?.guest !== "1" || (s.metadata?.plan && s.metadata.plan !== "lifetime") || !isClaimToken(s.metadata?.claim_token)) return null;
+  if (!isStripeId(s.id, "cs_")) return null;
+  const pi = typeof s.payment_intent === "string" ? s.payment_intent : s.payment_intent?.id;
+  const email = typeof s.customer_details?.email === "string" && s.customer_details.email.includes("@") ? s.customer_details.email : null;
+  return {
+    sessionId: s.id, paymentIntent: isStripeId(pi, "pi_") ? pi : null,
+    amount: Number.isInteger(s.amount_total) ? s.amount_total : PRICE_CENTS, currency: String(s.currency || PRICE_CURRENCY).toLowerCase(),
+    taxAmount: s.automatic_tax?.enabled === true && Number.isInteger(s.total_details?.amount_tax) && s.total_details.amount_tax >= 0
+      ? s.total_details.amount_tax : null,
+    claimToken: s.metadata.claim_token, email,
+  };
 }
 
 // ---------------- Stripe-handtekening (Stripe-Signature: t=…,v1=…) ----------------
@@ -150,6 +206,8 @@ export type RefundRow = { id: string; kind: "refund" | "dispute"; amount: number
 export type Decision =
   | { kind: "grant"; purchase: Purchase }
   | { kind: "pending"; purchase: Purchase }
+  // build 167: betaald zonder account (gastaankoop)
+  | { kind: "guest"; purchase: GuestPurchase }
   | { kind: "failed"; sessionId: string }
   // charge.refunded: ook gedeeltelijk (voor de omzet); alleen volledig zet een gekochte Lifetime terug naar Gratis
   | { kind: "refund"; paymentIntent: string; chargeId: string | null; amountRefunded: number; full: boolean }
@@ -178,7 +236,12 @@ export function decide(event: Obj | null | undefined): Decision {
     case "checkout.session.completed":
     case "checkout.session.async_payment_succeeded": {
       const p = purchaseFromSession(o);
-      if (!p) return { kind: "ignore", reason: "not_ours" };
+      if (!p) {
+        const g = guestFromSession(o);
+        if (g && o.payment_status === "paid") return { kind: "guest", purchase: g };
+        // gast met een vertraagde betaalmethode: pas bij async_payment_succeeded
+        return { kind: "ignore", reason: g ? "not_paid" : "not_ours" };
+      }
       if (o.payment_status === "paid") return { kind: "grant", purchase: p };
       // bv. een vertraagde betaalmethode: Lifetime pas bij async_payment_succeeded
       if (event.type === "checkout.session.completed" && o.payment_status === "unpaid") return { kind: "pending", purchase: p };

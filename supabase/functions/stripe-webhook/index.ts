@@ -16,6 +16,28 @@ import {
 } from "../_shared/billing.ts";
 import { eventDone, eventSeen, failed, grant, needsDetails, pending, recordRefunds, revoke, saveDetails } from "../_shared/billing_store.ts";
 import { stripe, stripeError } from "../_shared/stripe.ts";
+import { promotionCodeOf } from "../_shared/lifetime.ts";
+import { markRedeemed } from "../_shared/lifetime_store.ts";
+import { claimMailed, grantGuest } from "../_shared/guest_store.ts";
+import { renderClaimMail } from "../_shared/claim_mail.ts";
+import { mailErrorCode, smtpConfigured, smtpFrom, transport } from "../_shared/mail.ts";
+
+// Claimmail na een gastaankoop (best effort: een fout laat de webhook slagen; het claimen kan ook via /upgrade/klaar/
+// of automatisch via het e-mailadres). Nooit het adres of het token loggen.
+async function sendClaimMail(to: string, lang: "nl" | "en", token: string, sessionId: string): Promise<string> {
+  if (!smtpConfigured()) return "no_smtp";
+  const mailer = transport();
+  try {
+    const m = renderClaimMail(lang, token);
+    await mailer.sendMail({ from: smtpFrom(), replyTo: "Bingr Support <support@bingr.online>", to, subject: m.subject, html: m.html, text: m.text,
+      headers: { "X-Bingr-Mail": "lifetime-claim" } });
+    await claimMailed(admin, sessionId);
+    return "mailed";
+  } catch (e) {
+    console.error("stripe-webhook claimmail", mailErrorCode(e));
+    return "mail_error";
+  } finally { try { mailer.close(); } catch { /* stil */ } }
+}
 
 const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {
   auth: { autoRefreshToken: false, persistSession: false },
@@ -74,6 +96,19 @@ Deno.serve(async (req) => {
     switch (d.kind) {
       case "grant": {
         const g = await grant(admin, d.purchase); result = g.granted ? "granted" : g.already ? "already" : g.deleted ? "account_deleted" : "skipped";
+        if (d.purchase.paymentIntent) result += `+${await fetchDetails(cfg.secretKey, d.purchase.paymentIntent)}`;
+        // build 167: kortingscode gebruikt
+        const promo = promotionCodeOf(event.data?.object);
+        if (promo) result += `+code_${await markRedeemed(admin, d.purchase.userId, promo, d.purchase.sessionId)}`;
+        break;
+      }
+      case "guest": {
+        const g = await grantGuest(admin, d.purchase);
+        result = g.revoked ? "guest_revoked" : g.claimed ? "guest_claimed" : "guest_unclaimed";
+        if (!g.revoked && !g.claimed && !g.mailed && d.purchase.email) {
+          const o = event.data?.object ?? {};
+          result += `+${await sendClaimMail(d.purchase.email, String(o.locale ?? "").startsWith("en") ? "en" : "nl", d.purchase.claimToken, d.purchase.sessionId)}`;
+        }
         if (d.purchase.paymentIntent) result += `+${await fetchDetails(cfg.secretKey, d.purchase.paymentIntent)}`;
         break;
       }

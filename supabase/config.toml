@@ -35,3 +35,11 @@ verify_jwt = false
 # build 141: inloggen met e-mail en wachtwoord (blokkade per account); geen JWT, de bezoeker is nog niet ingelogd
 [functions.login]
 verify_jwt = false
+
+# build 167: mail "Bingr wordt Lifetime" (alleen beheer, header x-lifetime-secret) en App Store Server Notifications V2 (Apple
+# stuurt geen JWT; de functie controleert de JWS-keten tot Apple Root CA - G3)
+[functions.lifetime-notice]
+verify_jwt = false
+
+[functions.apple-notify]
+verify_jwt = false
