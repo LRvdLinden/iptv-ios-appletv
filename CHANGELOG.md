@@ -4,6 +4,21 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.5 · Build 166
+_6 november 2026_
+
+### iOS, iPadOS, tvOS, macOS, Android en Android TV
+
+**Verbeterd**
+
+- De tv-gids toont alleen nog dagen waarvoor er gids-info is; eerdere dagen alleen bij zenders met terugkijken
+
+### tvOS en Android TV
+
+**Verbeterd**
+
+- Tv-gids op de tv vernieuwd: over de hele breedte met ±6 zenders in beeld, één regel met Categorie, Zoeken, de dagen en Lijst, en een strakkere NU-kaart met het beeld van rand tot rand
+
 ## Versie 1.0.5 · Build 165
 _6 november 2026_
 

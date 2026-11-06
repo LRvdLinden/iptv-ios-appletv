@@ -1,5 +1,34 @@
 [
  {
+  "build": 166,
+  "version": "1.0.5",
+  "date": "2026-11-06",
+  "items": [
+   {
+    "type": "improved",
+    "platforms": [
+     "tvos",
+     "androidtv"
+    ],
+    "nl": "Tv-gids op de tv vernieuwd: over de hele breedte met ±6 zenders in beeld, één regel met Categorie, Zoeken, de dagen en Lijst, en een strakkere NU-kaart met het beeld van rand tot rand",
+    "en": "Redesigned TV guide on TV: full width with about 6 channels on screen, one row with Category, Search, the days and List, and a cleaner NOW card with the picture edge to edge"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "De tv-gids toont alleen nog dagen waarvoor er gids-info is; eerdere dagen alleen bij zenders met terugkijken",
+    "en": "The TV guide now only shows days that have guide information; earlier days only for channels with catch-up"
+   }
+  ]
+ },
+ {
   "build": 165,
   "version": "1.0.5",
   "date": "2026-11-06",
