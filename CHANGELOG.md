@@ -4,6 +4,15 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.5 · Build 165
+_6 november 2026_
+
+### iOS, iPadOS, tvOS, macOS, Android en Android TV
+
+**Verbeterd**
+
+- Live tv opent nu altijd in de tv-gids; met de bestaande knop wissel je naar de lijst, zolang je in Live tv bent
+
 ## Versie 1.0.5 · Build 164
 _6 november 2026_
 

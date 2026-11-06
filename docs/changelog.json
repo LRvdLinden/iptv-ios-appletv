@@ -1,5 +1,34 @@
 [
  {
+  "build": 165,
+  "version": "1.0.5",
+  "date": "2026-11-06",
+  "items": [
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Live tv opent nu altijd in de tv-gids; met de bestaande knop wissel je naar de lijst, zolang je in Live tv bent",
+    "en": "Live TV now always opens in the TV guide; use the existing button to switch to the list while you're in Live TV"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "android",
+     "androidtv"
+    ],
+    "nl": "In de tv-gids kun je nu ook een categorie kiezen en zoeken",
+    "en": "You can now pick a category and search in the TV guide too"
+   }
+  ]
+ },
+ {
   "build": 164,
   "version": "1.0.5",
   "date": "2026-11-06",
