@@ -261,7 +261,12 @@ struct PlayerScreen: View {
             }
         }
         .task {
-            if reused { bind(player.item); attachStream(); poke() } else { await start(item) }
+            if reused {
+                bind(player.item)
+                // build 164: uit het live voorbeeld van de gids: nu pas als gewone stream aanmelden
+                if PiPCenter.shared.takeHandoff(player) { adoptPreview() } else { attachStream() }
+                poke()
+            } else { await start(item) }
         }
         // aftiteling gemarkeerd: na het aftellen automatisch de volgende aflevering
         .onChange(of: nextCountdown) { _, v in
@@ -744,6 +749,23 @@ struct PlayerScreen: View {
             let r = await StreamSession.shared.start(item: it, owner: p)
             guard case .limit(let l) = r, !p.dismissed, p.item.id == it.id else { return }
             hitLimit(l)
+        }
+    }
+
+    /// Build 164: de speler van het live voorbeeld overnemen (dezelfde stream, niet opnieuw laden): aanmelden als
+    /// gewone stream, terugkijken en andere bronnen zoals bij een gewone start.
+    private func adoptPreview() {
+        let it = player.item
+        registerStream(it)
+        if let u = player.url { player.liveURL = u }
+        CrossServer.shared.notePlayed(it)
+        if it.type == .live, let cid = it.channelID {
+            let pl = playlists
+            let sid = it.sourceID
+            player.catchupProvider = { from, to in pl.catchupURL(channelID: cid, start: from, end: to, sourceID: sid) }
+            altFor = cid
+            alternatives = []; triedAlternatives = []
+            Task { await loadAlternatives(for: it) }
         }
     }
 

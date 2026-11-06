@@ -207,6 +207,11 @@ final class VLCEngine: PlaybackEngine {
             }
         }
     }
+    /// Build 164: stilstaand beeld voor de tv-gids (VLC schrijft het zelf weg, kort daarna staat het bestand er).
+    func snapshot(to path: String, width: Int) {
+        let p = player
+        Self.previewQueue.async { p.saveVideoSnapshot(at: path, withWidth: Int32(width), andHeight: 0) }
+    }
     func play() { player.play() }
     func pause() { player.pause() }
     func stop() {
@@ -319,6 +324,8 @@ final class AVEngine: PlaybackEngine {
     private var groupsTask: Task<Void, Never>?
     /// De geladen stream: bij stoppen of een nieuwe stream het laden afbreken (open HTTP-verzoeken naar de provider dicht)
     private var asset: AVURLAsset?
+    /// Build 164: live: beeld uitlezen voor het stilstaande beeld in de tv-gids
+    private var stillOutput: AVPlayerItemVideoOutput?
 
     init(silent: Bool = false) {
         self.silent = silent
@@ -414,6 +421,13 @@ final class AVEngine: PlaybackEngine {
                 Task { @MainActor in self?.ended = true }
             }
         ]
+        if live {
+            let out = AVPlayerItemVideoOutput(pixelBufferAttributes: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA])
+            item.add(out)
+            stillOutput = out
+        } else {
+            stillOutput = nil
+        }
         player.replaceCurrentItem(with: item)
         loadGroups(asset, for: item)
         // build 148: live met `play` (wacht tot er genoeg gebufferd is), niet `playImmediately`: dat start ook met een
@@ -441,6 +455,11 @@ final class AVEngine: PlaybackEngine {
             guard let self, self.player.currentItem === item else { return }
             self.player.playImmediately(atRate: self.rate)
         }
+    }
+    /// Build 164: het huidige beeld (alleen live), voor het stilstaande beeld in de tv-gids
+    func stillPixelBuffer() -> CVPixelBuffer? {
+        guard let out = stillOutput, let item = player.currentItem else { return nil }
+        return out.copyPixelBuffer(forItemTime: item.currentTime(), itemTimeForDisplay: nil)
     }
     func play() { if live { player.rate = rate } else { player.playImmediately(atRate: rate) } }
     func pause() { player.pause() }

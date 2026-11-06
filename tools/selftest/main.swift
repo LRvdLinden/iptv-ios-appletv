@@ -1930,5 +1930,119 @@ do {
     ud.removePersistentDomain(forName: suite)
 }
 
+// MARK: build 164: tv-gids (dagbalk, NU, instelling live voorbeeld, stilstaande beelden)
+do {
+    var cal = Calendar(identifier: .gregorian)
+    cal.timeZone = TimeZone(identifier: "Europe/Amsterdam")!
+    let today = cal.date(from: DateComponents(year: 2026, month: 11, day: 6, hour: 12, minute: 41))!
+    let start = cal.startOfDay(for: today)
+    // dagbalk
+    eq(GuideDays164.daysBack(catchupDays: []), 1, "164: zonder terugkijken alleen gisteren")
+    eq(GuideDays164.daysBack(catchupDays: [0, 0]), 1, "164: terugkijken 0 = gisteren")
+    eq(GuideDays164.daysBack(catchupDays: [3, 7, 0]), 7, "164: grootste aantal terugkijkdagen")
+    eq(GuideDays164.daysBack(catchupDays: [400]), GuideDays164.maxBack, "164: begrensd")
+    let d1 = GuideDays164.days(today: today, catchupDays: [], calendar: cal)
+    eq(d1.count, 9, "164: gisteren t/m 7 dagen vooruit = 9 pillen")
+    eq(d1[1], start, "164: vandaag op index 1")
+    eq(d1.first, cal.date(byAdding: .day, value: -1, to: start), "164: eerste = gisteren")
+    eq(d1.last, cal.date(byAdding: .day, value: 7, to: start), "164: laatste = +7")
+    let d3 = GuideDays164.days(today: today, catchupDays: [3], calendar: cal)
+    eq(d3.count, 11, "164: met 3 terugkijkdagen 11 pillen")
+    eq(d3[3], start, "164: vandaag op index 3")
+    eq(GuideDays164.label(d1[0], today: today, calendar: cal), .yesterday, "164: label gisteren")
+    eq(GuideDays164.label(d1[1].addingTimeInterval(3600 * 23), today: today, calendar: cal), .today, "164: label vandaag")
+    eq(GuideDays164.label(d1[2], today: today, calendar: cal), .tomorrow, "164: label morgen")
+    eq(GuideDays164.label(d1[5], today: today, calendar: cal), .other, "164: label andere dag")
+    // zomertijd: de dag van de wintertijd (25-10-2026) is 25 uur, toch één pil per dag
+    let dst = cal.date(from: DateComponents(year: 2026, month: 10, day: 26, hour: 9))!
+    let dd = GuideDays164.days(today: dst, catchupDays: [], calendar: cal)
+    eq(cal.component(.day, from: dd[0]), 25, "164: zomertijd: gisteren = 25")
+    check(dd.allSatisfy { cal.component(.hour, from: $0) == 0 }, "164: zomertijd: elke dag om 0:00")
+    let w = GuideDays164.window(dd[0], calendar: cal)
+    eq(w.to.timeIntervalSince(w.from), 25 * 3600, "164: dag van de wintertijd is 25 uur")
+
+    // programmastatus
+    let n = today
+    eq(GuideState164.of(start: n.addingTimeInterval(-600), end: n.addingTimeInterval(600), now: n, catchupDays: 0), .now, "164: nu")
+    eq(GuideState164.of(start: n.addingTimeInterval(-600), end: n, now: n, catchupDays: 0), .past(replay: false), "164: net afgelopen, geen terugkijken")
+    eq(GuideState164.of(start: n.addingTimeInterval(-3600), end: n.addingTimeInterval(-60), now: n, catchupDays: 2), .past(replay: true), "164: voorbij met terugkijken")
+    eq(GuideState164.of(start: n.addingTimeInterval(-3 * 86400), end: n.addingTimeInterval(-3 * 86400 + 60), now: n, catchupDays: 2), .past(replay: false), "164: te lang geleden")
+    eq(GuideState164.of(start: n, end: n.addingTimeInterval(60), now: n, catchupDays: 0), .now, "164: begint precies nu")
+    eq(GuideState164.of(start: n.addingTimeInterval(60), end: n.addingTimeInterval(600), now: n, catchupDays: 5), .future, "164: later")
+
+    // NU-index (binair zoeken), ook met gaten en overlap
+    let s0 = (0..<10).map { n.addingTimeInterval(Double($0 - 5) * 1800) }
+    let e0 = s0.map { $0.addingTimeInterval(1800) }
+    eq(GuideNow164.index(starts: s0, ends: e0, now: n), 5, "164: NU-index")
+    eq(GuideNow164.index(starts: s0, ends: e0, now: n.addingTimeInterval(1799)), 5, "164: NU-index vlak voor het einde")
+    eq(GuideNow164.index(starts: s0, ends: e0, now: n.addingTimeInterval(1800)), 6, "164: NU-index volgende")
+    eq(GuideNow164.index(starts: [], ends: [], now: n), nil, "164: lege gids")
+    eq(GuideNow164.index(starts: s0, ends: e0, now: n.addingTimeInterval(86400)), nil, "164: na het einde van de gids")
+    var gapE = e0; gapE[5] = s0[5].addingTimeInterval(60)
+    eq(GuideNow164.index(starts: s0, ends: gapE, now: n.addingTimeInterval(120)), nil, "164: gat in de gids: geen NU")
+    eq(GuideNow164.scrollTarget(starts: s0, ends: gapE, now: n.addingTimeInterval(120)), 6, "164: gat: scrollen naar het volgende")
+    eq(GuideNow164.scrollTarget(starts: s0, ends: e0, now: n.addingTimeInterval(86400)), 9, "164: na het einde: het laatste")
+    eq(GuideNow164.scrollTarget(starts: s0, ends: e0, now: n), 5, "164: scrollen naar NU")
+    var ovE = e0; ovE[4] = s0[4].addingTimeInterval(3 * 1800)   // lang programma dat over NU heen loopt
+    eq(GuideNow164.index(starts: s0, ends: ovE, now: n), 4, "164: overlap: het eerste dat nu loopt")
+    eq(GuideNow164.index(starts: [n], ends: [n], now: n), nil, "164: programma zonder duur")
+    eq(GuideNow164.index(starts: [n], ends: [], now: n), nil, "164: ongelijke lijsten")
+
+    // kolom op de Apple TV: 2 eerder, NU, 4 later
+    let sl = GuideNow164.columnSlice(count: 10, nowIndex: 5, firstFuture: 6)
+    eq(sl.before, 3..<5, "164: kolom: 2 eerder"); eq(sl.now, 5, "164: kolom: NU"); eq(sl.after, 6..<10, "164: kolom: 4 later")
+    let sl0 = GuideNow164.columnSlice(count: 3, nowIndex: 0, firstFuture: 1)
+    eq(sl0.before, 0..<0, "164: kolom: NU als eerste"); eq(sl0.after, 1..<3, "164: kolom: minder dan 4 later")
+    let slN = GuideNow164.columnSlice(count: 8, nowIndex: nil, firstFuture: 3)
+    eq(slN.now, nil, "164: kolom zonder NU"); eq(slN.before, 1..<3, "164: kolom zonder NU: eerder"); eq(slN.after, 3..<7, "164: kolom zonder NU: later")
+    let slE = GuideNow164.columnSlice(count: 0, nowIndex: nil, firstFuture: nil)
+    check(slE.before.isEmpty && slE.after.isEmpty && slE.now == nil, "164: lege kolom")
+    let slP = GuideNow164.columnSlice(count: 4, nowIndex: nil, firstFuture: nil)
+    eq(slP.before, 2..<4, "164: kolom: alles voorbij"); check(slP.after.isEmpty, "164: kolom: alles voorbij, niets later")
+
+    eq(GuideNow164.progress(start: n.addingTimeInterval(-600), end: n.addingTimeInterval(600), now: n), 0.5, "164: voortgang")
+    eq(GuideNow164.progress(start: n, end: n, now: n), 0, "164: voortgang zonder duur")
+    eq(GuideNow164.progress(start: n.addingTimeInterval(-60), end: n.addingTimeInterval(-30), now: n), 1, "164: voortgang voorbij")
+    eq(GuideNow164.minutesLeft(end: n.addingTimeInterval(14 * 60 - 10), now: n), 14, "164: nog 14 min")
+    eq(GuideNow164.minutesLeft(end: n.addingTimeInterval(5), now: n), 1, "164: nog 1 min")
+    eq(GuideNow164.minutesLeft(end: n.addingTimeInterval(-5), now: n), 0, "164: afgelopen")
+
+    // instelling
+    eq(GuidePreviewMode164.resolve(stored: nil, legacyPreview: nil), .wifi, "164: standaard alleen wifi")
+    eq(GuidePreviewMode164.resolve(stored: nil, legacyPreview: true), .wifi, "164: oude schakelaar aan = alleen wifi")
+    eq(GuidePreviewMode164.resolve(stored: nil, legacyPreview: false), .never, "164: oude schakelaar uit = nooit")
+    eq(GuidePreviewMode164.resolve(stored: "always", legacyPreview: false), .always, "164: eigen keuze wint")
+    eq(GuidePreviewMode164.resolve(stored: "onzin", legacyPreview: nil), .wifi, "164: onbekende waarde = standaard")
+    check(GuidePreviewMode164.wifi.autoStart(isTV: false, cellular: false), "164: wifi: op wifi vanzelf")
+    check(!GuidePreviewMode164.wifi.autoStart(isTV: false, cellular: true), "164: wifi: op mobiel niet vanzelf")
+    check(GuidePreviewMode164.wifi.autoStart(isTV: true, cellular: true), "164: wifi: tv altijd aan")
+    check(GuidePreviewMode164.always.autoStart(isTV: false, cellular: true), "164: altijd: ook op mobiel")
+    check(!GuidePreviewMode164.never.autoStart(isTV: true, cellular: false), "164: nooit: ook niet op tv")
+    check(GuidePreviewMode164.wifi.allowsTap && !GuidePreviewMode164.never.allowsTap, "164: tik op mobiel mag, behalve bij nooit")
+
+    // stilstaande beelden
+    check(GuideStillPolicy164.isFresh(savedAt: n.addingTimeInterval(-29 * 60), now: n), "164: beeld van 29 min vers")
+    check(GuideStillPolicy164.isFresh(savedAt: n.addingTimeInterval(-30 * 60), now: n), "164: precies 30 min vers")
+    check(!GuideStillPolicy164.isFresh(savedAt: n.addingTimeInterval(-31 * 60), now: n), "164: 31 min te oud")
+    check(!GuideStillPolicy164.isFresh(savedAt: n.addingTimeInterval(3600), now: n), "164: ver in de toekomst telt niet")
+    eq(GuideStillPolicy164.pick(isLive: true, stillSavedAt: nil, now: n), .live, "164: live wint")
+    eq(GuideStillPolicy164.pick(isLive: false, stillSavedAt: n.addingTimeInterval(-60), now: n), .still, "164: vers beeld")
+    eq(GuideStillPolicy164.pick(isLive: false, stillSavedAt: n.addingTimeInterval(-3600), now: n), .logo, "164: oud beeld = logo")
+    eq(GuideStillPolicy164.pick(isLive: false, stillSavedAt: nil, now: n), .logo, "164: geen beeld = logo")
+    check(GuideStillPolicy164.shouldSave(lastSavedAt: nil, now: n), "164: eerste beeld bewaren")
+    check(!GuideStillPolicy164.shouldSave(lastSavedAt: n.addingTimeInterval(-10), now: n), "164: niet elke paar seconden")
+    check(GuideStillPolicy164.shouldSave(lastSavedAt: n.addingTimeInterval(-61), now: n), "164: na een minuut weer")
+    let many = (0..<205).map { (key: "k\($0)", savedAt: n.addingTimeInterval(Double($0))) }
+    let gone = GuideStillPolicy164.evict(many.shuffled())
+    eq(gone.count, 5, "164: 205 beelden: 5 weg")
+    eq(Set(gone), Set((0..<5).map { "k\($0)" }), "164: de oudste eerst weg")
+    eq(GuideStillPolicy164.evict(Array(many.prefix(200))).count, 0, "164: 200 beelden blijven")
+    let f1 = GuideStillPolicy164.fileName(for: "ABC|npo1")
+    eq(f1, GuideStillPolicy164.fileName(for: "abc|NPO1"), "164: bestandsnaam hoofdletterongevoelig")
+    check(f1 != GuideStillPolicy164.fileName(for: "abc|npo2"), "164: andere zender, andere naam")
+    check(f1.count == 20 && f1.hasSuffix(".jpg"), "164: korte vaste naam (\(f1))")
+    check(!GuideStillPolicy164.fileName(for: "../../x|/etc").contains("/"), "164: geen pad in de naam")
+}
+
 print("\(checks) controles, \(failures) fout")
 exit(failures == 0 ? 0 : 1)

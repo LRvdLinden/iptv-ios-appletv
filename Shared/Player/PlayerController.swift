@@ -84,6 +84,8 @@ final class PlayerController: ObservableObject {
     private var airPlayServing = false
     private var tracksApplied = false
     private var watchedSeconds: Double = 0
+    /// Build 164: tellen voor het stilstaande beeld van de tv-gids
+    private var stillTicks = 0
     private var playingTicks = 0
     /// Foutherstel (build 52): de andere engine al geprobeerd, en of er een herlaadpoging loopt
     private var triedOtherEngine = false
@@ -384,6 +386,13 @@ final class PlayerController: ObservableObject {
             if !engine.audioTracks.isEmpty || playingTicks > 12 { applyTrackPreferences() }
         }
         if let s = sleepAt, Date() >= s { sleepAt = nil; pause() }
+        // build 164: live: af en toe een stilstaand beeld voor de tv-gids (na ±4 s, daarna elke 5 minuten)
+        if isLive && !isPreview && st == .playing, let cid = item.channelID {
+            stillTicks += 1
+            if stillTicks == 8 || stillTicks % 600 == 0 {
+                GuideStills.shared.capture(self, key: GuideStills.key(channelID: cid, sourceID: item.sourceID))
+            }
+        }
         if Date().timeIntervalSince(lastSaved) > 15 { saveProgress() }
         if !isLive && st == .ended { finish() }
     }
@@ -985,6 +994,16 @@ final class PiPCenter {
     func takeReuse(for item: PlayableItem) -> PlayerController? {
         defer { reuse = nil }
         return reuse?.item.id == item.id ? reuse : nil
+    }
+    /// Build 164: de speler komt uit het live voorbeeld van de tv-gids (nog niet aangemeld als gewone stream)
+    private var handedOff: ObjectIdentifier?
+    func handOff(_ c: PlayerController) {
+        reuse = c
+        handedOff = ObjectIdentifier(c)
+    }
+    func takeHandoff(_ c: PlayerController) -> Bool {
+        defer { handedOff = nil }
+        return handedOff == ObjectIdentifier(c)
     }
     /// Iets anders gaat spelen: beeld-in-beeld stoppen.
     func stopActive() {

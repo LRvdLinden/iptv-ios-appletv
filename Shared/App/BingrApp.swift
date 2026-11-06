@@ -517,6 +517,16 @@ final class AppState: ObservableObject {
         playing = item
     }
 
+    /// Build 164: volledig scherm vanuit het live voorbeeld van de tv-gids, met dezelfde speler (zonder opnieuw te laden).
+    func playHandoff(_ ctrl: PlayerController, zap: [Channel] = []) {
+        PlaybackTiming.begin(ctrl.item.title, step: "app.playHandoff", keepRecent: true)
+        PiPCenter.shared.stopActive()
+        ChannelPreview.shared.stop(release: true)
+        PiPCenter.shared.handOff(ctrl)
+        liveZapList = zap
+        playing = ctrl.item
+    }
+
     func openMultiview(start: [Channel], candidates: [Channel]) {
         PiPCenter.shared.stopActive()
         ChannelPreview.shared.stop(release: true)

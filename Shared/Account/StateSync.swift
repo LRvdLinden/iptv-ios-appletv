@@ -726,6 +726,7 @@ final class StateSync {
         if let h = d.string(forKey: "trakt.oauthHost") { apple["traktOAuthHost"] = h }
         apple["zapDelay"] = PlayerSettings.zapDelay
         apple["channelPreview"] = PlayerSettings.previewEnabled
+        apple["guidePreview"] = PlayerSettings.guidePreviewMode.rawValue
         apple["matchFrameRate"] = PlayerSettings.matchFrameRate
         apple["nasServers"] = NASServer.load().map { s -> [String: Any] in
             ["id": s.id.uuidString, "name": s.name, "host": s.host, "share": s.share, "username": s.username,
@@ -866,6 +867,10 @@ final class StateSync {
         if let v = (apple["zapDelay"] as? NSNumber)?.doubleValue, PlayerSettings.zapDelays.contains(v),
            v != PlayerSettings.zapDelay { d.set(v, forKey: PlayerSettings.zapDelayKey) }
         if let v = apple["channelPreview"] as? Bool { setIfChanged(v, PlayerSettings.previewKey) }
+        // build 164: Altijd / Alleen wifi / Nooit (oudere apps sturen alleen channelPreview)
+        if let raw = apple["guidePreview"] as? String, let m = GuidePreviewMode164(rawValue: raw) {
+            setIfChanged(m.rawValue, GuidePreviewMode164.key)
+        }
         if let v = apple["matchFrameRate"] as? Bool { setIfChanged(v, PlayerSettings.matchKey) }
         if let list = apple["nasServers"] as? [[String: Any]] {
             var servers: [NASServer] = []

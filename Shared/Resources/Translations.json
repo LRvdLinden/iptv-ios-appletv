@@ -1116,7 +1116,19 @@
   "On the Free plan the settings of a kids profile can only be viewed. It stays a kids profile.": "في الخطة المجانية يمكن فقط عرض إعدادات ملف الأطفال. ويبقى ملفًا للأطفال.",
   "Discover": "اكتشف",
   "More apps from the developer": "المزيد من تطبيقات المطوّر",
-  "Apps for iPhone, iPad, Apple TV and Homey": "تطبيقات لـ iPhone وiPad وApple TV وHomey"
+  "Apps for iPhone, iPad, Apple TV and Homey": "تطبيقات لـ iPhone وiPad وApple TV وHomey",
+  "Tomorrow": "غدًا",
+  "Never": "أبدًا",
+  "Wi-Fi only": "Wi‑Fi فقط",
+  "Choose a day": "اختر يومًا",
+  "Next: %@": "التالي: %@",
+  "Catch-up": "إعادة المشاهدة",
+  "Playing without sound": "يعمل بدون صوت",
+  "Image from %@": "صورة من %@",
+  "Play live preview": "تشغيل المعاينة المباشرة",
+  "%@ · now": "%@ · الآن",
+  "Live preview in the guide": "المعاينة المباشرة في الدليل",
+  "Plays muted and counts as a stream. On mobile data it starts when you tap it.": "يعمل بدون صوت ويُحتسب كبث. على بيانات الجوال يبدأ عند النقر عليه."
  },
  "de": {
   "%@ is now signed in.": "%@ ist jetzt angemeldet.",
@@ -2235,7 +2247,19 @@
   "On the Free plan the settings of a kids profile can only be viewed. It stays a kids profile.": "Mit Gratis kannst du die Einstellungen eines Kinderprofils nur ansehen. Es bleibt ein Kinderprofil.",
   "Discover": "Entdecken",
   "More apps from the developer": "Weitere Apps des Entwicklers",
-  "Apps for iPhone, iPad, Apple TV and Homey": "Apps für iPhone, iPad, Apple TV und Homey"
+  "Apps for iPhone, iPad, Apple TV and Homey": "Apps für iPhone, iPad, Apple TV und Homey",
+  "Tomorrow": "Morgen",
+  "Never": "Nie",
+  "Wi-Fi only": "Nur WLAN",
+  "Choose a day": "Tag wählen",
+  "Next: %@": "Danach: %@",
+  "Catch-up": "Nachträglich ansehen",
+  "Playing without sound": "Läuft ohne Ton",
+  "Image from %@": "Bild von %@",
+  "Play live preview": "Live-Vorschau abspielen",
+  "%@ · now": "%@ · jetzt",
+  "Live preview in the guide": "Live-Vorschau im TV-Guide",
+  "Plays muted and counts as a stream. On mobile data it starts when you tap it.": "Läuft ohne Ton und zählt als Stream. Über Mobilfunk startet sie erst, wenn du darauf tippst."
  },
  "es": {
   "%@ is now signed in.": "%@ ya ha iniciado sesión.",
@@ -3354,7 +3378,19 @@
   "On the Free plan the settings of a kids profile can only be viewed. It stays a kids profile.": "Con el plan Gratis, los ajustes de un perfil infantil solo se pueden ver. Sigue siendo un perfil infantil.",
   "Discover": "Descubrir",
   "More apps from the developer": "Más apps del desarrollador",
-  "Apps for iPhone, iPad, Apple TV and Homey": "Apps para iPhone, iPad, Apple TV y Homey"
+  "Apps for iPhone, iPad, Apple TV and Homey": "Apps para iPhone, iPad, Apple TV y Homey",
+  "Tomorrow": "Mañana",
+  "Never": "Nunca",
+  "Wi-Fi only": "Solo wifi",
+  "Choose a day": "Elegir un día",
+  "Next: %@": "Después: %@",
+  "Catch-up": "Ver de nuevo",
+  "Playing without sound": "Reproduciendo sin sonido",
+  "Image from %@": "Imagen de las %@",
+  "Play live preview": "Reproducir vista previa en directo",
+  "%@ · now": "%@ · ahora",
+  "Live preview in the guide": "Vista previa en directo en la guía",
+  "Plays muted and counts as a stream. On mobile data it starts when you tap it.": "Se reproduce sin sonido y cuenta como una emisión. Con datos móviles empieza cuando lo tocas."
  },
  "fr": {
   "%@ is now signed in.": "%@ est maintenant connecté.",
@@ -4473,7 +4509,19 @@
   "On the Free plan the settings of a kids profile can only be viewed. It stays a kids profile.": "Avec le forfait Gratuit, les réglages d'un profil enfant sont uniquement consultables. Il reste un profil enfant.",
   "Discover": "Découvrir",
   "More apps from the developer": "Plus d’apps du développeur",
-  "Apps for iPhone, iPad, Apple TV and Homey": "Apps pour iPhone, iPad, Apple TV et Homey"
+  "Apps for iPhone, iPad, Apple TV and Homey": "Apps pour iPhone, iPad, Apple TV et Homey",
+  "Tomorrow": "Demain",
+  "Never": "Jamais",
+  "Wi-Fi only": "Wi‑Fi uniquement",
+  "Choose a day": "Choisir un jour",
+  "Next: %@": "Ensuite : %@",
+  "Catch-up": "Replay",
+  "Playing without sound": "Lecture sans son",
+  "Image from %@": "Image de %@",
+  "Play live preview": "Lire l’aperçu en direct",
+  "%@ · now": "%@ · maintenant",
+  "Live preview in the guide": "Aperçu en direct dans le guide",
+  "Plays muted and counts as a stream. On mobile data it starts when you tap it.": "Lecture sans son, compte comme un flux. En données mobiles, il démarre quand vous touchez l’aperçu."
  },
  "it": {
   "%@ is now signed in.": "%@ ha effettuato l’accesso.",
@@ -5592,7 +5640,19 @@
   "On the Free plan the settings of a kids profile can only be viewed. It stays a kids profile.": "Con il piano Gratis le impostazioni di un profilo bambini sono solo visibili. Resta un profilo bambini.",
   "Discover": "Scopri",
   "More apps from the developer": "Altre app dello sviluppatore",
-  "Apps for iPhone, iPad, Apple TV and Homey": "App per iPhone, iPad, Apple TV e Homey"
+  "Apps for iPhone, iPad, Apple TV and Homey": "App per iPhone, iPad, Apple TV e Homey",
+  "Tomorrow": "Domani",
+  "Never": "Mai",
+  "Wi-Fi only": "Solo Wi‑Fi",
+  "Choose a day": "Scegli un giorno",
+  "Next: %@": "Dopo: %@",
+  "Catch-up": "Rivedi",
+  "Playing without sound": "In riproduzione senza audio",
+  "Image from %@": "Immagine delle %@",
+  "Play live preview": "Riproduci anteprima dal vivo",
+  "%@ · now": "%@ · ora",
+  "Live preview in the guide": "Anteprima dal vivo nella guida",
+  "Plays muted and counts as a stream. On mobile data it starts when you tap it.": "Si riproduce senza audio e conta come uno stream. Con i dati mobili parte quando lo tocchi."
  },
  "nl": {
   "%@ is now signed in.": "%@ is nu ingelogd.",
@@ -6711,7 +6771,19 @@
   "On the Free plan the settings of a kids profile can only be viewed. It stays a kids profile.": "Met Gratis kun je de instellingen van een kinderprofiel alleen bekijken. Het blijft een kinderprofiel.",
   "Discover": "Ontdekken",
   "More apps from the developer": "Meer apps van de ontwikkelaar",
-  "Apps for iPhone, iPad, Apple TV and Homey": "Apps voor iPhone, iPad, Apple TV en Homey"
+  "Apps for iPhone, iPad, Apple TV and Homey": "Apps voor iPhone, iPad, Apple TV en Homey",
+  "Tomorrow": "Morgen",
+  "Never": "Nooit",
+  "Wi-Fi only": "Alleen wifi",
+  "Choose a day": "Kies een dag",
+  "Next: %@": "Daarna: %@",
+  "Catch-up": "Terugkijken",
+  "Playing without sound": "Speelt zonder geluid",
+  "Image from %@": "Beeld van %@",
+  "Play live preview": "Live voorbeeld afspelen",
+  "%@ · now": "%@ · nu",
+  "Live preview in the guide": "Live voorbeeld in de gids",
+  "Plays muted and counts as a stream. On mobile data it starts when you tap it.": "Speelt zonder geluid en telt mee als stream. Op mobiel netwerk start het pas als je erop tikt."
  },
  "pl": {
   "%@ is now signed in.": "%@ jest teraz zalogowany.",
@@ -7830,7 +7902,19 @@
   "On the Free plan the settings of a kids profile can only be viewed. It stays a kids profile.": "W planie Darmowym ustawienia profilu dziecięcego można tylko przeglądać. Pozostaje on profilem dziecięcym.",
   "Discover": "Odkrywaj",
   "More apps from the developer": "Więcej aplikacji od dewelopera",
-  "Apps for iPhone, iPad, Apple TV and Homey": "Aplikacje na iPhone’a, iPada, Apple TV i Homey"
+  "Apps for iPhone, iPad, Apple TV and Homey": "Aplikacje na iPhone’a, iPada, Apple TV i Homey",
+  "Tomorrow": "Jutro",
+  "Never": "Nigdy",
+  "Wi-Fi only": "Tylko Wi‑Fi",
+  "Choose a day": "Wybierz dzień",
+  "Next: %@": "Następnie: %@",
+  "Catch-up": "Oglądaj ponownie",
+  "Playing without sound": "Odtwarzanie bez dźwięku",
+  "Image from %@": "Obraz z %@",
+  "Play live preview": "Odtwórz podgląd na żywo",
+  "%@ · now": "%@ · teraz",
+  "Live preview in the guide": "Podgląd na żywo w przewodniku",
+  "Plays muted and counts as a stream. On mobile data it starts when you tap it.": "Odtwarza bez dźwięku i liczy się jako strumień. Na danych komórkowych startuje po dotknięciu."
  },
  "pt": {
   "%@ is now signed in.": "%@ já tem sessão iniciada.",
@@ -8949,7 +9033,19 @@
   "On the Free plan the settings of a kids profile can only be viewed. It stays a kids profile.": "No plano Grátis, as definições de um perfil infantil só podem ser vistas. Continua a ser um perfil infantil.",
   "Discover": "Descobrir",
   "More apps from the developer": "Mais apps do programador",
-  "Apps for iPhone, iPad, Apple TV and Homey": "Apps para iPhone, iPad, Apple TV e Homey"
+  "Apps for iPhone, iPad, Apple TV and Homey": "Apps para iPhone, iPad, Apple TV e Homey",
+  "Tomorrow": "Amanhã",
+  "Never": "Nunca",
+  "Wi-Fi only": "Só Wi‑Fi",
+  "Choose a day": "Escolher um dia",
+  "Next: %@": "A seguir: %@",
+  "Catch-up": "Rever",
+  "Playing without sound": "A reproduzir sem som",
+  "Image from %@": "Imagem das %@",
+  "Play live preview": "Reproduzir pré-visualização em direto",
+  "%@ · now": "%@ · agora",
+  "Live preview in the guide": "Pré-visualização em direto no guia",
+  "Plays muted and counts as a stream. On mobile data it starts when you tap it.": "Reproduz sem som e conta como uma stream. Com dados móveis começa quando lhe tocar."
  },
  "tr": {
   "%@ is now signed in.": "%@ artık oturum açtı.",
@@ -10068,7 +10164,19 @@
   "On the Free plan the settings of a kids profile can only be viewed. It stays a kids profile.": "Ücretsiz planda bir çocuk profilinin ayarları yalnızca görüntülenebilir. Çocuk profili olarak kalır.",
   "Discover": "Keşfet",
   "More apps from the developer": "Geliştiricinin diğer uygulamaları",
-  "Apps for iPhone, iPad, Apple TV and Homey": "iPhone, iPad, Apple TV ve Homey için uygulamalar"
+  "Apps for iPhone, iPad, Apple TV and Homey": "iPhone, iPad, Apple TV ve Homey için uygulamalar",
+  "Tomorrow": "Yarın",
+  "Never": "Asla",
+  "Wi-Fi only": "Yalnızca Wi‑Fi",
+  "Choose a day": "Bir gün seç",
+  "Next: %@": "Sonra: %@",
+  "Catch-up": "Tekrar izle",
+  "Playing without sound": "Sessiz oynatılıyor",
+  "Image from %@": "%@ görüntüsü",
+  "Play live preview": "Canlı önizlemeyi oynat",
+  "%@ · now": "%@ · şimdi",
+  "Live preview in the guide": "Rehberde canlı önizleme",
+  "Plays muted and counts as a stream. On mobile data it starts when you tap it.": "Sessiz oynatılır ve bir yayın olarak sayılır. Mobil veride dokunduğunda başlar."
  },
  "zh-Hans": {
   "%@ is now signed in.": "%@ 现已登录。",
@@ -11187,6 +11295,18 @@
   "On the Free plan the settings of a kids profile can only be viewed. It stays a kids profile.": "在免费方案中，儿童个人资料的设置只能查看。它仍然是儿童个人资料。",
   "Discover": "发现",
   "More apps from the developer": "开发者的更多 App",
-  "Apps for iPhone, iPad, Apple TV and Homey": "适用于 iPhone、iPad、Apple TV 和 Homey 的 App"
+  "Apps for iPhone, iPad, Apple TV and Homey": "适用于 iPhone、iPad、Apple TV 和 Homey 的 App",
+  "Tomorrow": "明天",
+  "Never": "从不",
+  "Wi-Fi only": "仅限无线局域网",
+  "Choose a day": "选择日期",
+  "Next: %@": "接下来：%@",
+  "Catch-up": "回看",
+  "Playing without sound": "静音播放中",
+  "Image from %@": "%@ 的画面",
+  "Play live preview": "播放直播预览",
+  "%@ · now": "%@ · 正在播放",
+  "Live preview in the guide": "节目指南中的直播预览",
+  "Plays muted and counts as a stream. On mobile data it starts when you tap it.": "静音播放，并计为一路串流。使用蜂窝数据时，轻点后才开始播放。"
  }
 }

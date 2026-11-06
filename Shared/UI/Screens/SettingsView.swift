@@ -28,6 +28,7 @@ struct AppSettingsView: View {
     @AppStorage("ui.showSeries") private var showSeries = true
     @AppStorage(PlayerSettings.zapDelayKey) private var zapDelay = 0.0
     @AppStorage(PlayerSettings.previewKey) private var channelPreview = true
+    @AppStorage(GuidePreviewMode164.key) private var guidePreview = PlayerSettings.guidePreviewMode.rawValue
     @AppStorage(PlayerSettings.matchKey) private var matchFrameRate = true
     @AppStorage(PlayerSettings.externalKey) private var externalDisplay = true
     @AppStorage(DeinterlaceMode.key) private var deinterlace = DeinterlaceMode.auto.rawValue
@@ -462,12 +463,17 @@ struct AppSettingsView: View {
             }
             .pickerStyle(.menu)
             Toggle(L("Start with last channel"), isOn: $resumeLastChannel)
-            Toggle(L("Channel preview"), isOn: $channelPreview)
-            #if os(iOS)
-            if PlayerSettings.isPhone && channelPreview {
-                Text(L("Not over mobile data, to save your data.")).font(.caption).foregroundStyle(Theme.secondary)
+            // build 164: "Live voorbeeld in de gids" (Altijd, Alleen wifi, Nooit); geldt ook voor het zendervoorbeeld
+            Picker(L("Live preview in the guide"), selection: $guidePreview) {
+                ForEach(GuidePreviewMode164.allCases, id: \.rawValue) { Text(PlayerSettings.guidePreviewTitle($0)).tag($0.rawValue) }
             }
-            #endif
+            .pickerStyle(.menu)
+            .onChange(of: guidePreview) { _, v in
+                PlayerSettings.setGuidePreviewMode(GuidePreviewMode164(rawValue: v) ?? .default)
+                channelPreview = (GuidePreviewMode164(rawValue: v) ?? .default) != .never
+            }
+            Text(L("Plays muted and counts as a stream. On mobile data it starts when you tap it."))
+                .font(.caption).foregroundStyle(Theme.secondary)
             #if os(iOS)
             Toggle(L("Show on external display"), isOn: $externalDisplay)
             #endif

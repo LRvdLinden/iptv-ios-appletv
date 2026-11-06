@@ -366,11 +366,10 @@ struct LiveTVView: View {
 
     @ViewBuilder private var channelAreaContent: some View {
         if mode == .grid {
+            // build 164: nieuwe gids met het live voorbeeld in de gids zelf (geen zwevend venster meer)
             GuideGridView(channels: visibleChannels,
                           onPlay: { c in play(c) },
-                          onProgram: { c, p in program = ProgramTarget(channel: c, p: p) },
-                          onSelect: { c in preview.select(c, playlists: playlists) })
-                .overlay(alignment: .bottomTrailing) { FloatingChannelPreview(onPlay: { play($0) }) }
+                          onProgram: { c, p in program = ProgramTarget(channel: c, p: p) })
         } else {
             #if os(tvOS)
             HStack(alignment: .top, spacing: 40) {
