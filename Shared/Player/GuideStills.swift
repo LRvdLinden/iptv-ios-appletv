@@ -123,6 +123,9 @@ final class GuideStills: ObservableObject {
 /// Het beeld van een zender in de gids: een vers stilstaand beeld, anders het zenderlogo groot op een donker vlak.
 struct GuideStillView: View {
     let channel: Channel
+    /// Build 166 (NU-kaart op de Apple TV): zonder beeld het logo los gecentreerd op het donkere vlak, zonder eigen
+    /// vlak en rand (geen kader in een kader)
+    var plainLogo = false
     @ObservedObject private var stills = GuideStills.shared
     @State private var image: CGImage?
 
@@ -133,12 +136,44 @@ struct GuideStillView: View {
             .overlay {
                 if let image {
                     Image(decorative: image, scale: 1).resizable().aspectRatio(contentMode: .fill)
+                } else if plainLogo {
+                    GuideLogoMark(channel: channel)
                 } else {
                     GuideLogo(channel: channel, large: true).padding(tvScaled(18))
                 }
             }
             .clipped()
         .task(id: "\(key)#\(stills.version)") { image = await stills.image(key) }
+    }
+}
+
+/// Build 166: alleen het zenderlogo (of de opgeschoonde naam), gecentreerd, zonder eigen vlak of rand.
+struct GuideLogoMark: View {
+    let channel: Channel
+    @State private var image: CGImage?
+
+    var body: some View {
+        GeometryReader { g in
+            Group {
+                if let image {
+                    Image(decorative: image, scale: 1).resizable().aspectRatio(contentMode: .fit)
+                        .frame(width: g.size.width * 0.5, height: g.size.height * 0.5)
+                } else {
+                    // zonder logo (of tijdens het laden) de opgeschoonde naam, ook zonder vlak
+                    Text(CategoryName.channel(channel.name)).font(.system(size: tvScaled(16), weight: .heavy))
+                        .multilineTextAlignment(.center).lineLimit(2).minimumScaleFactor(0.6)
+                        .foregroundStyle(.white.opacity(0.9)).padding(tvScaled(8))
+                }
+            }
+            .frame(width: g.size.width, height: g.size.height)
+        }
+        .task(id: channel.logo) {
+            guard let url = channel.logo else { image = nil; return }
+            if let hit = ImagePipeline.shared.cached(url, maxPixel: 480) { image = hit; return }
+            let loaded = await ImagePipeline.shared.load(url, maxPixel: 480)
+            guard !Task.isCancelled else { return }
+            image = loaded
+        }
     }
 }
 

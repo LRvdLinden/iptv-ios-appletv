@@ -31,6 +31,8 @@ struct LiveTVView: View {
     /// Build 146: einde van het laatste programma in de gids (nil = geen gids) en of de melding weggeklikt is
     @State private var guideEnd: Date?
     @State private var guideNoticeClosed = false
+    /// Build 166 (Apple TV): de categoriekeuze van de gids open
+    @State private var pickingGroup = false
 
     enum Mode: String { case list, grid }
     /// Build 165: altijd de gids als start (behalve het screenshot "live", dat de lijst laat zien)
@@ -213,6 +215,8 @@ struct LiveTVView: View {
                 .background(Color.black)
                 .navigationTitle(L("Live TV"))
                 .crossServerPrompt($prompt)
+                // build 166: op de Apple TV staan Lijst/Tv-gids en Multiview als knoppen met tekst in het scherm zelf
+                #if !os(tvOS)
                 .toolbar {
                     ToolbarItemGroup(placement: .primaryAction) {
                         Button { withAnimation { mode = mode == .list ? .grid : .list } } label: {
@@ -224,18 +228,24 @@ struct LiveTVView: View {
                         }
                         .disabled(lib.channels.isEmpty)
                     }
-                    #if !os(tvOS)
                     // build 72: ook hier het profielmenu achter de avatar
                     ToolbarItem(placement: .primaryAction) {
                         ProfileMenuButton { ProfileAvatar(size: 28) }
                     }
-                    #endif
                 }
+                #endif
         }
         .sheet(item: $guideFor) { c in GuideSheet(channel: c) }
         .sheet(item: $program) { t in ProgramSheet(channel: t.channel, program: t.p) }
         .sheet(item: $collecting) { AddToCollectionSheet(target: $0) }
         .sheet(item: $offsetFor) { CatchupOffsetSheet(channel: $0) }
+        #if os(tvOS)
+        .sheet(isPresented: $pickingGroup) {
+            TVCategoryPicker(groups: groups, selected: searching ? nil : group, title: { pickerTitle($0) }) { g in
+                group = g; filterText = ""; pickingGroup = false
+            }
+        }
+        #endif
         .task(id: playlists.libraryVersion) {
             let v = playlists.libraryVersion
             guard groupsVersion != v else { return }   // al klaar: niet bij elke terugkeer naar Live TV
@@ -265,9 +275,47 @@ struct LiveTVView: View {
 
     @ViewBuilder private var content: some View {
         #if os(tvOS)
+        if mode == .grid {
+            // build 166: de gids over de hele breedte; categorie, zoeken en Lijst in de regel met de dagpillen
+            channelArea
+        } else {
+            tvListLayout
+        }
+        #else
+        VStack(spacing: 0) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(groups, id: \.self) { g in
+                        Button { withAnimation { group = g; filterText = "" } } label: {
+                            Text(title(g)).font(.system(size: 13, weight: .semibold))
+                                .padding(.horizontal, 14).padding(.vertical, 7)
+                                .foregroundStyle(group == g && !searching ? .black : .white)
+                                .background(group == g && !searching ? Color.white : Theme.elevated, in: Capsule())
+                        }
+                    }
+                }.padding(.horizontal, 16).padding(.vertical, 10)
+            }
+            channelArea
+        }
+        #if os(macOS)
+        .searchable(text: $filterText, placement: .toolbar, prompt: L("Search channel or program"))
+        #else
+        .searchable(text: $filterText, placement: .navigationBarDrawer(displayMode: .always), prompt: L("Search channel or program"))
+        #endif
+        #endif
+    }
+
+    #if os(tvOS)
+    /// Apple TV, lijstweergave: de zijkolom met zoeken en categorieën zoals voorheen, met bovenaan Tv-gids en Multiview
+    private var tvListLayout: some View {
         HStack(alignment: .top, spacing: 40) {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        modeButton
+                        multiviewButton
+                    }
+                    .padding(.bottom, 10)
                     HStack(spacing: 12) {
                         Image(systemName: "magnifyingglass").font(.system(size: 24, weight: .semibold))
                             .foregroundStyle(Theme.secondary)
@@ -302,29 +350,77 @@ struct LiveTVView: View {
             channelArea
         }
         .padding(.horizontal, 60)
-        #else
-        VStack(spacing: 0) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(groups, id: \.self) { g in
-                        Button { withAnimation { group = g; filterText = "" } } label: {
-                            Text(title(g)).font(.system(size: 13, weight: .semibold))
-                                .padding(.horizontal, 14).padding(.vertical, 7)
-                                .foregroundStyle(group == g && !searching ? .black : .white)
-                                .background(group == g && !searching ? Color.white : Theme.elevated, in: Capsule())
-                        }
-                    }
-                }.padding(.horizontal, 16).padding(.vertical, 10)
-            }
-            channelArea
-        }
-        #if os(macOS)
-        .searchable(text: $filterText, placement: .toolbar, prompt: L("Search channel or program"))
-        #else
-        .searchable(text: $filterText, placement: .navigationBarDrawer(displayMode: .always), prompt: L("Search channel or program"))
-        #endif
-        #endif
     }
+
+    /// Naam in de categoriekeuze: vaste lijsten zoals in de zijkolom, categorieën van de server opgeschoond
+    private func pickerTitle(_ g: String) -> String {
+        switch g {
+        case Self.favKey, Self.recentKey, Self.allKey, Self.eventsKey: return title(g)
+        default:
+            if collection(for: g) != nil { return title(g) }
+            let c = CategoryName.clean(g)
+            return c.isEmpty ? g : c
+        }
+    }
+
+    /// Een knop in de regel boven de gids: icoon en tekst op een donkere pil (tv-lift bij focus)
+    private func tvPill(_ icon: String, _ text: String, chevron: Bool = false, on: Bool = false) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon).font(.system(size: 24, weight: .semibold))
+            Text(text).font(.system(size: 26, weight: .semibold)).lineLimit(1)
+            if chevron { Image(systemName: "chevron.down").font(.system(size: 18, weight: .bold)).foregroundStyle(Theme.secondary) }
+        }
+        .foregroundStyle(on ? Color.black : .white)
+        .padding(.horizontal, 26).frame(height: tvScaled(40))
+        .background(on ? Color.white : Color(hex: 0x1C1C1C), in: Capsule())
+    }
+
+    /// Links in de regel: Categorie (met de gekozen naam) en Zoeken (het zenderzoekveld)
+    private var tvGuideLeading: some View {
+        HStack(spacing: 18) {
+            Button { pickingGroup = true } label: {
+                tvPill("line.3.horizontal.decrease", searching ? L("Category") : pickerTitle(group), chevron: true)
+                    .frame(maxWidth: 380)
+            }
+            .plainTVButton()
+            .accessibilityLabel(L("Category") + ": " + pickerTitle(group))
+            // het bestaande zenderzoekveld: OK opent het tv-toetsenbord, zoeken gaat door alle zenders
+            HStack(spacing: 10) {
+                Image(systemName: "magnifyingglass").font(.system(size: 24, weight: .semibold)).foregroundStyle(Theme.secondary)
+                TextField(L("Search"), text: $filterText)
+                    .font(.system(size: 24))
+                    .frame(width: searching ? 300 : 190)
+            }
+            if searching {
+                Button { filterText = "" } label: { tvPill("xmark", L("Clear search")) }
+                    .plainTVButton()
+            }
+        }
+    }
+
+    /// Rechts in de regel: Lijst (de wisselknop) en Multiview, met duidelijk icoon en tekst
+    private var tvGuideTrailing: some View {
+        HStack(spacing: 18) {
+            multiviewButton
+            modeButton
+        }
+    }
+
+    private var modeButton: some View {
+        Button { withAnimation { mode = mode == .list ? .grid : .list } } label: {
+            tvPill(mode == .list ? "calendar.day.timeline.left" : "list.bullet", mode == .list ? L("TV guide") : L("List"))
+        }
+        .plainTVButton()
+    }
+
+    private var multiviewButton: some View {
+        Button { app.openMultiview(start: Array(visibleChannels.prefix(1)), candidates: visibleChannels) } label: {
+            tvPill("square.grid.2x2", "Multiview")
+        }
+        .plainTVButton()
+        .disabled(lib.channels.isEmpty)
+    }
+    #endif
 
     /// Build 146: de gids volgt "Servers laden bij openen" en ververst niet meer zelf op tijd. Loopt hij leeg, dan een
     /// kleine, niet-blokkerende melding met Bijwerken (alle servers, zoals Servers vernieuwen).
@@ -376,13 +472,31 @@ struct LiveTVView: View {
         if mode == .grid && visibleChannels.isEmpty {
             // build 165: de gids is nu het startscherm; geen lege gids tijdens het samenstellen, en bij zoeken,
             // Favorieten of een lege groep dezelfde melding als in de lijst
-            emptyMessage
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            VStack(alignment: .leading, spacing: 0) {
+                #if os(tvOS)
+                // build 166: ook zonder zenders de regel met Categorie, Zoeken en Lijst (anders kom je er niet meer uit)
+                HStack(spacing: 18) {
+                    tvGuideLeading
+                    Spacer(minLength: 0)
+                    tvGuideTrailing
+                }
+                .focusSection()
+                #endif
+                emptyMessage
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         } else if mode == .grid {
             // build 164: nieuwe gids met het live voorbeeld in de gids zelf (geen zwevend venster meer)
+            #if os(tvOS)
+            GuideGridView(channels: visibleChannels,
+                          onPlay: { c in play(c) },
+                          onProgram: { c, p in program = ProgramTarget(channel: c, p: p) },
+                          tvLeading: AnyView(tvGuideLeading), tvTrailing: AnyView(tvGuideTrailing))
+            #else
             GuideGridView(channels: visibleChannels,
                           onPlay: { c in play(c) },
                           onProgram: { c, p in program = ProgramTarget(channel: c, p: p) })
+            #endif
         } else {
             #if os(tvOS)
             HStack(alignment: .top, spacing: 40) {
@@ -744,3 +858,48 @@ struct GuideSheet: View {
         }
     }
 }
+
+#if os(tvOS)
+/// Build 166: de categoriekeuze van de tv-gids op de Apple TV: Alle zenders, Favorieten, Recent, Evenementen,
+/// collecties en de categorieën van de server (opgeschoond; verborgen categorieën staan al niet in de lijst).
+private struct TVCategoryPicker: View {
+    let groups: [String]
+    let selected: String?
+    let title: (String) -> String
+    let pick: (String) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            Text(L("Category")).font(.system(size: 40, weight: .heavy))
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 6) {
+                        ForEach(groups, id: \.self) { g in
+                            Button { pick(g) } label: {
+                                HStack(spacing: 16) {
+                                    Text(title(g)).font(.system(size: 28, weight: g == selected ? .bold : .medium)).lineLimit(1)
+                                    Spacer(minLength: 0)
+                                    if g == selected { Image(systemName: "checkmark").font(.system(size: 24, weight: .bold)) }
+                                }
+                                .foregroundStyle(g == selected ? .white : Theme.secondary)
+                                .padding(.horizontal, 24).padding(.vertical, 14)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(g == selected ? Color(hex: 0x262626) : .clear, in: RoundedRectangle(cornerRadius: 12))
+                                .contentShape(Rectangle())
+                            }
+                            .plainTVButton()
+                            .id(g)
+                        }
+                    }
+                    .padding(.vertical, 10).padding(.horizontal, 12)
+                }
+                .onAppear { if let s = selected { proxy.scrollTo(s, anchor: .center) } }
+            }
+        }
+        .frame(maxWidth: 900)
+        .padding(.vertical, 40)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(hex: 0x0D0D0D).ignoresSafeArea())
+    }
+}
+#endif

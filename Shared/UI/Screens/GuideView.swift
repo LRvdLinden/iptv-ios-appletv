@@ -14,6 +14,9 @@ struct GuideGridView: View {
     var onProgram: (Channel, EPGProgram) -> Void
     /// Niet meer gebruikt (het voorbeeld zit nu in de gids zelf); blijft voor de aanroep in Live TV
     var onSelect: ((Channel) -> Void)? = nil
+    /// Build 166 (Apple TV): knoppen van Live TV links (Categorie, Zoeken) en rechts (Lijst) in de regel met de dagpillen
+    var tvLeading: AnyView? = nil
+    var tvTrailing: AnyView? = nil
 
     @EnvironmentObject var app: AppState
     @EnvironmentObject var playlists: PlaylistService
@@ -22,6 +25,8 @@ struct GuideGridView: View {
     @State private var selectedID: String?
     /// Build 129: programma's van zenders van een andere server ("<server-id>|<zender-id>" → programma's)
     @State private var foreignPrograms: [String: [EPGProgram]] = [:]
+    /// Build 166: de dagen waarvoor er gids-info is (nil = nog niet bepaald: alleen vandaag)
+    @State private var availableDays: [Date]?
 
     private var preview: ChannelPreview { ChannelPreview.shared }
     private var selected: Channel? {
@@ -36,9 +41,18 @@ struct GuideGridView: View {
         Array(channels.filter(isForeign).prefix(60)).sorted { ($0.sourceID?.uuidString ?? "") < ($1.sourceID?.uuidString ?? "") }
     }
 
-    /// Dagbalk: gisteren t/m 7 dagen vooruit, verder terug alleen met terugkijken (zenders in beeld: de eerste 200)
-    private var days: [Date] {
+    /// Dagbalk (build 164): gisteren t/m 7 dagen vooruit, verder terug alleen met terugkijken (de eerste 200 zenders)
+    private var candidateDays: [Date] {
         GuideDays164.days(today: now, catchupDays: channels.prefix(200).map(\.catchupDays))
+    }
+    /// Build 166: daarvan alleen de dagen met gids-info (`GuideAvailableDays166`); vandaag staat er altijd
+    private var days: [Date] {
+        availableDays ?? [Calendar.current.startOfDay(for: now)]
+    }
+    /// Wanneer de beschikbare dagen opnieuw bepaald worden: andere lijst, andere zenders, nieuwe dag of gids
+    private var daysKey: String {
+        "\(playlists.libraryVersion)|\(playlists.library.epg.count)|\(foreignPrograms.count)|\(channels.count)|\(Int(Calendar.current.startOfDay(for: now).timeIntervalSince1970))|"
+            + channels.prefix(GuideAvailableDays166.sampleSize).map(foreignKey).joined(separator: ",")
     }
     private var isToday: Bool { GuideDays164.label(day, today: now) == .today }
 
@@ -55,6 +69,7 @@ struct GuideGridView: View {
         layout
             .background(Color.black)
             .task(id: foreignShown.map(foreignKey)) { await loadForeign() }
+            .task(id: daysKey) { await loadDays() }
             .task {
                 while !Task.isCancelled {
                     try? await Task.sleep(nanoseconds: 30_000_000_000)
@@ -127,6 +142,33 @@ struct GuideGridView: View {
         }
     }
 
+    /// Build 166: welke dagen gids-info hebben, buiten de hoofdthread. Steekproef: de eerste 50 zenders van de lijst
+    /// mét gids (gezocht in de eerste 400, zodat een info- of radiozender zonder gids bovenaan niet alles leeg maakt;
+    /// zenders van andere servers uit hun eigen gids).
+    private func loadDays() async {
+        let today = now
+        let cands = candidateDays
+        let sample = Array(channels.prefix(GuideAvailableDays166.scanLimit))
+        let epg = playlists.library.epg
+        let foreign = foreignPrograms
+        let own = playlists.source?.id
+        let result = await Task.detached(priority: .utility) { () -> [Date] in
+            var samples: [GuideSample166] = []
+            for c in sample where samples.count < GuideAvailableDays166.sampleSize {
+                let other = c.sourceID != nil && c.sourceID != own
+                var list = other ? (foreign[(c.sourceID?.uuidString ?? "") + "|" + c.id] ?? []) : (epg[c.epgID ?? c.id] ?? [])
+                guard !list.isEmpty else { continue }
+                if other { list.sort { $0.start < $1.start } }
+                samples.append(GuideSample166(starts: list.map(\.start), ends: list.map(\.end), catchupDays: c.catchupDays))
+            }
+            return GuideAvailableDays166.days(candidates: cands, today: today, samples: samples)
+        }.value
+        guard !Task.isCancelled else { return }
+        if result != availableDays { availableDays = result }
+        let keep = GuideAvailableDays166.keep(day, in: result, today: today)
+        if keep != day { day = keep }
+    }
+
     /// Build 129: de gids van zenders van een andere server (zoals in het gidsblad, `PlaylistService.foreignEPG`);
     /// alleen het stuk van de dagbalk bewaren, zodat het geheugen klein blijft.
     private func loadForeign() async {
@@ -164,6 +206,8 @@ private func nowIndex(_ progs: [EPGProgram], _ now: Date) -> Int? {
 /// Het live vak: het voorbeeld van deze zender als dat speelt, anders het stilstaande beeld of het logo.
 private struct GuideLiveImage: View {
     let channel: Channel
+    /// Build 166 (Apple TV): zonder beeld het logo los op het donkere vlak (geen kader in een kader)
+    var plainLogo = false
     @ObservedObject private var preview = ChannelPreview.shared
 
     private var live: PlayerController? {
@@ -173,7 +217,7 @@ private struct GuideLiveImage: View {
 
     var body: some View {
         ZStack {
-            GuideStillView(channel: channel)
+            GuideStillView(channel: channel, plainLogo: plainLogo)
             if let ctrl = live {
                 EngineView(controller: ctrl)
                 PreviewStatus(controller: ctrl)
@@ -254,8 +298,13 @@ private struct DayBar: View {
                     }
                 }
                 .padding(.vertical, tvScaled(6))
+                #if os(tvOS)
+                .padding(.horizontal, 10)   // ruimte voor de tv-lift van de eerste en laatste pil
+                #endif
             }
             .onAppear { proxy.scrollTo(day, anchor: .center) }
+            // build 166: de dagen komen pas na het bepalen van de gids-info
+            .onChange(of: days) { _, _ in proxy.scrollTo(day, anchor: .center) }
         }
     }
 }
@@ -599,6 +648,8 @@ private struct WideGuide: View {
 #if os(tvOS)
 // MARK: - Apple TV
 
+/// Build 166: de gids over de hele breedte (binnen de veilige marge), zonder zijkolom. Bovenaan één regel met
+/// Categorie en Zoeken (van Live TV), de dagpillen en rechts Lijst. Kolommen van 270 pt: ±6 zenders op 1920 breed.
 private struct TVGuide: View {
     let guide: GuideGridView
     let channels: [Channel]
@@ -606,21 +657,33 @@ private struct TVGuide: View {
     let days: [Date]
     let now: Date
 
+    static let columnWidth: CGFloat = 270
+    static let columnSpacing: CGFloat = 22
+
     var body: some View {
         ScrollView(.vertical) {
-            VStack(alignment: .leading, spacing: 28) {
-                DayBar(day: $day, days: days, now: now).padding(.horizontal, 48)
+            VStack(alignment: .leading, spacing: 18) {
+                HStack(spacing: 18) {
+                    if let l = guide.tvLeading { l }
+                    DayBar(day: $day, days: days, now: now).frame(maxWidth: .infinity, alignment: .leading)
+                    if let t = guide.tvTrailing { t }
+                }
+                .focusSection()
                 ScrollView(.horizontal, showsIndicators: false) {
                     // lazy: op de Apple TV niet honderden kolommen tegelijk opbouwen
-                    LazyHStack(alignment: .top, spacing: 30) {
+                    LazyHStack(alignment: .top, spacing: Self.columnSpacing) {
                         ForEach(channels) { ch in
                             TVColumn(guide: guide, channel: ch, today: GuideDays164.label(day, today: now) == .today,
                                      programs: guide.programs(ch), now: now)
                         }
                     }
-                    .padding(.horizontal, 48).padding(.vertical, 30)
+                    .padding(.vertical, 24)
                 }
+                // de tv-lift en schaduw van de kaarten niet afknippen
+                .scrollClipDisabled()
+                .focusSection()
             }
+            .padding(.bottom, 40)
         }
     }
 }
@@ -632,76 +695,90 @@ private struct TVColumn: View {
     let programs: [EPGProgram]
     let now: Date
 
+    private var width: CGFloat { TVGuide.columnWidth }
+
     var body: some View {
         let idx = nowIndex(programs, now)
         let first = programs.firstIndex(where: { $0.start > now })
         let slice = GuideNow164.columnSlice(count: programs.count, nowIndex: idx, firstFuture: first)
-        VStack(alignment: .leading, spacing: 10) {
-            GuideLogo(channel: channel).frame(height: 80)
+        VStack(alignment: .leading, spacing: 8) {
+            header
             if today {
                 ForEach(Array(programs[slice.before]), id: \.id) { p in line(p, dim: true) }
                 nowCard(idx.map { programs[$0] })
                 ForEach(Array(programs[slice.after]), id: \.id) { p in line(p, dim: false) }
             } else {
                 if programs.isEmpty {
-                    Text(L("No guide information")).font(.system(size: 20)).foregroundStyle(Theme.secondary)
+                    Text(L("No guide information")).font(.system(size: 19)).foregroundStyle(Theme.secondary)
+                        .padding(.horizontal, 8)
                 }
-                LazyVStack(alignment: .leading, spacing: 6) {
+                LazyVStack(alignment: .leading, spacing: 4) {
                     ForEach(programs) { p in line(p, dim: isPast(guideState(p, channel, now))) }
                 }
             }
         }
-        .frame(width: 330)
+        .frame(width: width, alignment: .top)
+    }
+
+    /// Kolomkop: compact (56 pt), het logo op een donker vlak met een dunne rand, of de opgeschoonde naam
+    private var header: some View {
+        GuideLogo(channel: channel)
+            .frame(width: width, height: 56)
+            .accessibilityLabel(CategoryName.channel(channel.name))
     }
 
     private func line(_ p: EPGProgram, dim: Bool) -> some View {
         let st = guideState(p, channel, now)
         return Button { guide.openProgram(channel, p) } label: {
-            HStack(spacing: 14) {
-                Text(TimeText.short(p.start)).font(.system(size: 20, weight: .semibold).monospacedDigit())
-                    .foregroundStyle(dim ? Color(hex: 0x8A8A8A) : Theme.secondary).frame(width: 70, alignment: .leading)
-                Text(CategoryName.display(p.title)).font(.system(size: 20)).lineLimit(1)
+            HStack(spacing: 12) {
+                Text(TimeText.short(p.start)).font(.system(size: 19, weight: .semibold).monospacedDigit())
+                    .foregroundStyle(dim ? Color(hex: 0x8A8A8A) : Theme.secondary).frame(width: 64, alignment: .leading)
+                Text(CategoryName.display(p.title)).font(.system(size: 19)).lineLimit(1)
                     .foregroundStyle(dim ? Color(hex: 0x8A8A8A) : Color(hex: 0xE6E6E6))
                 Spacer(minLength: 0)
-                if st == .past(replay: true) { Image(systemName: "clock.arrow.circlepath").font(.system(size: 16)).foregroundStyle(Theme.secondary) }
+                if st == .past(replay: true) { Image(systemName: "clock.arrow.circlepath").font(.system(size: 15)).foregroundStyle(Theme.secondary) }
                 if st == .future && CloudStore.shared.hasReminder(channelID: channel.id, start: p.start) {
-                    Image(systemName: "bell").font(.system(size: 16)).foregroundStyle(Theme.secondary)
+                    Image(systemName: "bell").font(.system(size: 15)).foregroundStyle(Theme.secondary)
                 }
             }
             .padding(.horizontal, 8).padding(.vertical, 6)
+            .frame(width: width, alignment: .leading)
             .contentShape(Rectangle())
         }
         .buttonStyle(TVLiftStyle(scale: 1.04, dimWhenIdle: false))
     }
 
-    /// De NU-kaart: focus = groter (tv-focusstijl) en na ±1 s live beeld zonder geluid; OK = volledig scherm.
+    /// De NU-kaart: het beeld (live, stilstaand of logo) van rand tot rand bovenaan (16:9), LIVE linksboven, daaronder
+    /// de tijd in de accentkleur, de titel en de voortgang. Focus = tv-lift en schaduw; na ±1 s live zonder geluid;
+    /// OK = volledig scherm.
     private func nowCard(_ p: EPGProgram?) -> some View {
         Button { guide.fullscreen(channel) } label: {
             VStack(alignment: .leading, spacing: 0) {
-                GuideLiveImage(channel: channel)
-                    .frame(width: 330, height: 186)
+                GuideLiveImage(channel: channel, plainLogo: true)
+                    .frame(width: width, height: (width * 9 / 16).rounded())
                     .overlay(alignment: .topLeading) { LiveBadge().padding(10) }
-                    .overlay(alignment: .bottomTrailing) { LiveFlag(channel: channel).padding(10) }
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(alignment: .firstTextBaseline, spacing: 10) {
-                        if let p {
-                            Text(TimeText.short(p.start)).font(.system(size: 19, weight: .heavy).monospacedDigit()).foregroundStyle(Theme.red)
-                        }
-                        Text(p.map { CategoryName.display($0.title) } ?? CategoryName.channel(channel.name))
-                            .font(.system(size: 21, weight: .bold)).lineLimit(1)
+                    .overlay(alignment: .bottomTrailing) { LiveFlag(channel: channel).padding(8) }
+                VStack(alignment: .leading, spacing: 6) {
+                    if let p {
+                        Text("\(TimeText.short(p.start)) – \(TimeText.short(p.end))")
+                            .font(.system(size: 18, weight: .heavy).monospacedDigit()).foregroundStyle(Theme.red)
                     }
-                    if let p { ProgressLine(value: GuideNow164.progress(start: p.start, end: p.end, now: now), height: 4) }
+                    Text(p.map { CategoryName.display($0.title) } ?? CategoryName.channel(channel.name))
+                        .font(.system(size: 21, weight: .bold)).lineLimit(1).foregroundStyle(.white)
+                    if let p { ProgressLine(value: GuideNow164.progress(start: p.start, end: p.end, now: now), height: 4).padding(.top, 2) }
                 }
-                .padding(.horizontal, 14).padding(.vertical, 14)
+                .padding(.horizontal, 14).padding(.top, 12).padding(.bottom, 14)
+                .frame(width: width, alignment: .leading)
             }
-            .frame(width: 330)
-            .background(Color(hex: 0x1C1C1C))
-            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .frame(width: width)
+            .background(Color(hex: 0x1A1A1A))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
             .background(FocusProbe { f in
                 if f { guide.startPreview(channel, delay: 1.0) } else { ChannelPreview.shared.release(channel) }
             })
         }
         .buttonStyle(TVLiftStyle(scale: 1.06, dimWhenIdle: false))
+        .padding(.vertical, 4)
     }
 }
 #endif

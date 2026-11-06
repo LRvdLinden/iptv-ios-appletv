@@ -2049,5 +2049,72 @@ do {
     eq(GuideAudio164.category(preview: false, soundOn: false, fullscreen: false), .playback, "164: gewoon afspelen = playback")
 }
 
+// MARK: build 166: dagbalk alleen met dagen waarvoor er gids-info is
+do {
+    var cal = Calendar(identifier: .gregorian)
+    cal.timeZone = TimeZone(identifier: "Europe/Amsterdam")!
+    let today = cal.date(from: DateComponents(year: 2026, month: 11, day: 6, hour: 12, minute: 41))!
+    let start = cal.startOfDay(for: today)
+    func day(_ n: Int) -> Date { cal.date(byAdding: .day, value: n, to: start)! }
+    func at(_ n: Int, _ h: Int) -> Date { day(n).addingTimeInterval(Double(h) * 3600) }
+    /// programma's van een uur op de gegeven (dag, uur)-paren
+    func sample(_ slots: [(Int, Int)], catchup: Int = 0) -> GuideSample166 {
+        let s = slots.map { at($0.0, $0.1) }.sorted()
+        return GuideSample166(starts: s, ends: s.map { $0.addingTimeInterval(3600) }, catchupDays: catchup)
+    }
+    let cands = GuideDays164.days(today: today, catchupDays: [7], calendar: cal)   // -7 … +7
+
+    // hasProgram
+    let a = sample([(0, 10), (0, 11), (1, 9)])
+    check(a.hasProgram(from: day(0), to: day(1)), "166: programma vandaag")
+    check(a.hasProgram(from: day(1), to: day(2)), "166: programma morgen")
+    check(!a.hasProgram(from: day(2), to: day(3)), "166: overmorgen niets")
+    check(!a.hasProgram(from: day(-1), to: day(0)), "166: gisteren niets")
+    let long = GuideSample166(starts: [at(-1, 20)], ends: [at(0, 6)], catchupDays: 0)
+    check(long.hasProgram(from: day(0), to: day(1)), "166: nachtprogramma loopt door in vandaag")
+    check(!GuideSample166(starts: [], ends: [], catchupDays: 0).hasProgram(from: day(0), to: day(1)), "166: lege gids")
+    check(!GuideSample166(starts: [at(0, 1)], ends: [], catchupDays: 0).hasProgram(from: day(0), to: day(1)), "166: ongelijke lijsten")
+    let edge = sample([(1, 0)])
+    check(!edge.hasProgram(from: day(0), to: day(1)), "166: begint precies om middernacht = volgende dag")
+    let dense = sample((0..<24).map { (0, $0) } + [(1, 0)])
+    check(dense.hasProgram(from: day(0), to: day(1)), "166: volle dag")
+
+    // dagen
+    eq(GuideAvailableDays166.days(candidates: cands, today: today, samples: [], calendar: cal), [start],
+       "166: zonder gids alleen vandaag")
+    eq(GuideAvailableDays166.days(candidates: cands, today: today, samples: [a], calendar: cal), [start, day(1)],
+       "166: vandaag en morgen")
+    eq(GuideAvailableDays166.days(candidates: cands, today: today, samples: [sample([(3, 10)])], calendar: cal), [start, day(3)],
+       "166: vandaag staat er altijd, ook zonder programma")
+    // verleden zonder terugkijken weg, met terugkijken erbij
+    let past = sample([(-1, 10), (-3, 10), (0, 10)])
+    eq(GuideAvailableDays166.days(candidates: cands, today: today, samples: [past], calendar: cal), [start],
+       "166: gisteren zonder terugkijken weg")
+    var pastCU = past; pastCU.catchupDays = 2
+    eq(GuideAvailableDays166.days(candidates: cands, today: today, samples: [pastCU], calendar: cal), [day(-1), start],
+       "166: gisteren met terugkijken, 3 dagen terug buiten het terugkijken")
+    pastCU.catchupDays = 7
+    eq(GuideAvailableDays166.days(candidates: cands, today: today, samples: [pastCU], calendar: cal), [day(-3), day(-1), start],
+       "166: verder terug met genoeg terugkijkdagen")
+    // terugkijken van de ene zender, gids van de andere: telt niet
+    eq(GuideAvailableDays166.days(candidates: cands, today: today,
+                                  samples: [sample([(-1, 10)]), sample([(0, 9)], catchup: 7)], calendar: cal), [start],
+       "166: gids en terugkijken bij dezelfde zender")
+    // steekproef: alleen de eerste 50
+    let many = Array(repeating: sample([(0, 9)]), count: GuideAvailableDays166.sampleSize) + [sample([(2, 9)])]
+    eq(GuideAvailableDays166.days(candidates: cands, today: today, samples: many, calendar: cal), [start],
+       "166: zender 51 telt niet mee")
+    // vandaag niet in de kandidaten: toch op zijn plek
+    eq(GuideAvailableDays166.days(candidates: [day(1)], today: today, samples: [a], calendar: cal), [start, day(1)],
+       "166: vandaag toegevoegd")
+    // volgorde blijft oud → nieuw
+    let all = GuideAvailableDays166.days(candidates: cands, today: today, samples: [sample((-7...7).map { ($0, 12) }, catchup: 7)], calendar: cal)
+    eq(all, cands, "166: alle dagen met gids blijven, op volgorde")
+    // gekozen dag houden
+    eq(GuideAvailableDays166.keep(day(1), in: [start, day(1)], today: today, calendar: cal), day(1), "166: dag blijft")
+    eq(GuideAvailableDays166.keep(day(4), in: [start, day(1)], today: today, calendar: cal), start, "166: dag weg = vandaag")
+    eq(GuideAvailableDays166.keep(at(1, 15), in: [start, day(1)], today: today, calendar: cal), day(1), "166: tijd binnen de dag")
+}
+
 print("\(checks) controles, \(failures) fout")
 exit(failures == 0 ? 0 : 1)
