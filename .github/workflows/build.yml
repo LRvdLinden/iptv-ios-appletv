@@ -95,7 +95,7 @@ jobs:
           P="$RUNNER_TEMP/pkg"; rm -rf "$P"; mkdir -p "$P"
           # kant-en-klaar Xcode-project (met gegenereerd .xcodeproj en vastgelegde package-versies),
           # zonder git, build-map, logs, docs/screenshots en docs/covers (die horen niet in het pakket)
-          zip -qr "$P/Bingr-$V-build$B-Xcode.zip" . -x '.git/*' 'build/*' '*.log' 'docs/screenshots/*' 'docs/covers/*'
+          zip -qr "$P/Bingr-$V-build$B-Xcode.zip" . -x '.git/*' 'build/*' '*.log' 'docs/screenshots/*' 'docs/covers/*' 'docs/appstore/*' 'AppStore/*'
           awk -v b="Build $B" '/^## /{f=($0 ~ (b "$"))?1:0; next} f && !/^_.*_$/' CHANGELOG.md > "$P/notes.md" || true
           # anoniem (openbare repo): seal_build.sh en builds.pub.pem
           GIT_TERMINAL_PROMPT=0 git clone -q --depth 1 https://github.com/LRvdLinden/bingr-beheer.git "$P/beheer" 2>/dev/null \
