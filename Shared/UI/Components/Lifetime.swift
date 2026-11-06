@@ -360,7 +360,12 @@ struct PlanComparison: View {
 
     private func header(_ p: EntitlementsService.Plan) -> some View {
         let isCurrent = ent.plan == p
-        return Text(PlanText.name(p))
+        // build 167: "Gratis (tot <datum>)" zolang de overgang naar alleen Lifetime aan staat
+        var name = PlanText.name(p)
+        if p == .free, let d = LifetimeUI167.freeUntil(ent.lifetimeState) { name = L("Free (until %@)", LifetimeDate.text(d)) }
+        return Text(name)
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
             .font(.system(size: tvScaled(14), weight: .bold))
             .foregroundStyle(isCurrent ? .black : .white)
             .padding(.horizontal, tvScaled(8)).padding(.vertical, tvScaled(3))

@@ -162,6 +162,8 @@ struct MultiviewScreen: View {
         session.titleProvider = nil
         Task { @MainActor in
             let r = await session.start(StreamSession.Info(title: "Multiview", kind: "live", contentID: "multiview"), owner: owner)
+            // build 167: 403 `activation_required`: Multiview sluiten; de app toont Activeer Lifetime
+            if case .activation = r { closeAll(); return }
             guard case .limit(let l) = r, app.showMultiview else { return }
             hitLimit(l)
         }

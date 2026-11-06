@@ -191,7 +191,12 @@ struct AppSettingsView: View {
     /// Account: abonnement, apparaten, wie kijkt er nu, uitloggen
     @ViewBuilder private var accountTab: some View {
         if Secrets.accountsConfigured && account.isSignedIn {
-            Section { PlanRow() } header: { Text(L("Subscription")) }
+            Section {
+                PlanRow()
+                // build 167: aankondiging "Bingr wordt Lifetime op <datum>", Koop Lifetime en Herstel aankopen (StoreKit)
+                LifetimeAnnouncementCard(buyButton: false)
+                LifetimePurchaseRows()
+            } header: { Text(L("Subscription")) }
             AccountSettingsSection()
         } else {
             Section {

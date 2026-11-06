@@ -14,6 +14,11 @@ on:
     branches: [main]
     paths-ignore: ['docs/**', '**/*.md', '.github/workflows/covers.yml', 'tools/fetch_covers.py', 'tools/make_screenshots.py', 'tools/sync_website.py', '.github/workflows/mac-archive.yml']
   workflow_dispatch:
+    inputs:
+      aanleveren:
+        description: 'Xcode-project versleuteld aanleveren bij bingr-inbox (uit = alleen compileren)'
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -28,6 +33,8 @@ env:
 
 jobs:
   aanleveren:
+    # bij workflow_dispatch met aanleveren=false niets aanleveren (alleen compileren)
+    if: github.event_name != 'workflow_dispatch' || inputs.aanleveren
     runs-on: macos-15
     timeout-minutes: 20
     steps:
@@ -134,7 +141,7 @@ jobs:
       - name: Zelftest starten (pure logica, op de achtergrond)
         run: |
           ( set -o pipefail
-            swiftc -O Shared/Account/CatalogMeta.swift Shared/Account/Build140.swift Shared/Account/Build141.swift Shared/Account/Build145.swift Shared/Account/Build146.swift Shared/Account/Build147.swift Shared/Account/Build148.swift Shared/Account/Build149.swift Shared/Account/Build150.swift Shared/Account/Build151.swift Shared/Account/Build154.swift Shared/Account/Build157.swift Shared/Account/Build158.swift Shared/Account/Build160.swift Shared/Account/Build164.swift Shared/Account/Build166.swift tools/selftest/main.swift -o "$RUNNER_TEMP/selftest" > selftest.log 2>&1 \
+            swiftc -O Shared/Account/CatalogMeta.swift Shared/Account/Build140.swift Shared/Account/Build141.swift Shared/Account/Build145.swift Shared/Account/Build146.swift Shared/Account/Build147.swift Shared/Account/Build148.swift Shared/Account/Build149.swift Shared/Account/Build150.swift Shared/Account/Build151.swift Shared/Account/Build154.swift Shared/Account/Build157.swift Shared/Account/Build158.swift Shared/Account/Build160.swift Shared/Account/Build164.swift Shared/Account/Build166.swift Shared/Account/Build167.swift tools/selftest/main.swift -o "$RUNNER_TEMP/selftest" > selftest.log 2>&1 \
               && "$RUNNER_TEMP/selftest" >> selftest.log 2>&1
             echo $? > "$RUNNER_TEMP/selftest.rc" ) &
 

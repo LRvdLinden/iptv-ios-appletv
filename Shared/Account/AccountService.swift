@@ -622,7 +622,9 @@ final class AccountService: ObservableObject {
         let minutes: Int
     }
 
-    enum StreamStartResult { case ok, limit(StreamLimit), offline }
+    /// build 167: `activation` = 403 `activation_required` (account niet Lifetime na de overgang): niet afspelen,
+    /// het scherm Activeer Lifetime komt (zie `EntitlementsService.activationRequired`).
+    enum StreamStartResult { case ok, limit(StreamLimit), activation, offline }
 
     /// `stream_start`. Netwerkfouten en onverwachte antwoorden → `.offline` (afspelen gaat gewoon door).
     /// Build 68: bij een aflevering ook `series_id` en `series_title` (voor de statistieken), en altijd `tz`.
@@ -637,12 +639,17 @@ final class AccountService: ObservableObject {
         if let seriesTitle, !seriesTitle.isEmpty { body["series_title"] = String(seriesTitle.prefix(200)) }
         do {
             let r = try await authorized { token in try await self.post("/functions/v1/device-auth", body, bearer: token) }
-            if r.status == 403 || r.string("error") == "stream_limit" {
+            switch StreamStart167.outcome(status: r.status, error: r.string("error")) {
+            case .activation:
+                EntitlementsService.shared.activationRequired()
+                return .activation
+            case .limit:
                 let streams = (r.json["streams"] as? [[String: Any]] ?? []).compactMap(Self.stream)
                 return .limit(StreamLimit(limit: Int(r.number("limit") ?? Double(streams.count)), streams: streams,
                                           plan: r.string("plan")))
+            case .ok: return .ok
+            case .offline: return .offline
             }
-            return r.status == 200 ? .ok : .offline
         } catch {
             return .offline
         }
@@ -956,6 +963,29 @@ final class AccountService: ObservableObject {
             return r.json
         } catch {
             return nil
+        }
+    }
+
+    /// build 167: een StoreKit 2-transactie (`Transaction.jwsRepresentation`) laten controleren en op dit account
+    /// zetten (`billing` `apple_verify`). Bij succes het nieuwe abonnement meteen overnemen.
+    func appleVerify(signedTransaction: String) async -> AppleVerify167.Outcome {
+        guard Secrets.accountsConfigured, isSignedIn else { return .failed }
+        do {
+            let r = try await authorized { token in
+                try await self.post("/functions/v1/billing", ["action": "apple_verify", "signed_transaction": signedTransaction],
+                                    bearer: token)
+            }
+            let o = AppleVerify167.outcome(status: r.status, error: r.string("error"), plan: r.string("plan"))
+            if o == .lifetime {
+                if let e = r.json["entitlements"] as? [String: Any] {
+                    EntitlementsService.shared.apply(e)
+                } else {
+                    await EntitlementsService.shared.refresh(force: true)
+                }
+            }
+            return o
+        } catch {
+            return .failed
         }
     }
 

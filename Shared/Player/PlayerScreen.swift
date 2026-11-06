@@ -747,6 +747,8 @@ struct PlayerScreen: View {
         let p = player
         Task { @MainActor in
             let r = await StreamSession.shared.start(item: it, owner: p)
+            // build 167: 403 `activation_required`: stoppen; de app toont Activeer Lifetime
+            if case .activation = r, !p.dismissed { close(); return }
             guard case .limit(let l) = r, !p.dismissed, p.item.id == it.id else { return }
             hitLimit(l)
         }

@@ -24,7 +24,8 @@ final class StreamSession {
         var seriesTitle: String? = nil
     }
 
-    enum Result { case ok, limit(AccountService.StreamLimit) }
+    /// build 167: `activation` = 403 `activation_required`; de stream is niet aangemeld en de app toont Activeer Lifetime
+    enum Result { case ok, limit(AccountService.StreamLimit), activation }
 
     /// Wat er nu op dit apparaat speelt (nil = niets).
     private(set) var current: Info?
@@ -119,6 +120,11 @@ final class StreamSession {
             pingTask?.cancel(); pingTask = nil
             return .limit(l)
         }
+        if case .activation = r {
+            current = nil
+            pingTask?.cancel(); pingTask = nil
+            return .activation
+        }
         return .ok
     }
 
@@ -167,7 +173,9 @@ final class StreamSession {
                                                         title: titleProvider?() ?? cur.title, kind: cur.kind,
                                                         contentID: cur.contentID, seriesID: cur.seriesID,
                                                         seriesTitle: cur.seriesTitle)
-        guard gen == generation, case .limit(let l) = r else { return }
+        guard gen == generation else { return }
+        if case .activation = r { current = nil; pingTask?.cancel(); pingTask = nil; return }
+        guard case .limit(let l) = r else { return }
         reportLimit(l)
     }
 
@@ -224,7 +232,9 @@ final class StreamSession {
                                                                                title: self.titleProvider?() ?? info.title,
                                                                                kind: info.kind, contentID: info.contentID,
                                                                                seriesID: info.seriesID, seriesTitle: info.seriesTitle) }
-            guard gen == self.generation, case .limit(let l) = r else { return }
+            guard gen == self.generation else { return }
+            if case .activation = r { self.current = nil; self.pingTask?.cancel(); self.pingTask = nil; return }
+            guard case .limit(let l) = r else { return }
             self.reportLimit(l)
         }
     }

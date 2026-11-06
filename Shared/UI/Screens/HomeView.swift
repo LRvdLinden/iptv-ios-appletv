@@ -82,6 +82,11 @@ struct HomeView: View {
                     } else {
                         Color.clear.frame(height: tvScaled(90))
                     }
+                    // build 167: "Bingr wordt Lifetime op <datum>" (alleen gratis accounts, vóór de overgang)
+                    if !Screenshots.isActive {
+                        LifetimeAnnouncementCard(dismissible: true)
+                            .padding(.horizontal, Theme.edge)
+                    }
                     rows
                 }
                 .padding(.bottom, 40)

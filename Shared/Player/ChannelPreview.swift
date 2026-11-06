@@ -256,6 +256,10 @@ final class ChannelPreview: ObservableObject {
             showBlocked(c)
             return
         }
+        if case .activation = r {   // build 167: niet Lifetime na de overgang
+            showBlocked(c)
+            return
+        }
         session.keepAliveInBackground = nil
         session.titleProvider = nil
         session.onLimit = { [weak self] _ in

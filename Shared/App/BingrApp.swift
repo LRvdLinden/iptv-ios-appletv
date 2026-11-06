@@ -227,6 +227,8 @@ final class AppState: ObservableObject {
         SourceSync.shared.start()
         // abonnement (build 88): ophalen na het inloggen, bij de heartbeat en op de voorgrond
         EntitlementsService.shared.start()
+        // build 167: StoreKit 2 (Transaction.updates vanaf de start, onafgeronde aankopen na het inloggen)
+        LifetimeStore.shared.start()
         StateSync.shared.start()
         // build 128: één lijst over alle servers (opzoeken op andere servers, remap, catalogmeta); wacht tijdens afspelen
         CrossServer.shared.start(playlists: playlists, isPlaying: { [weak self] in self?.playing != nil })
@@ -292,7 +294,20 @@ final class AppState: ObservableObject {
                 await AccountService.shared.fetchConfig(force: false)
             }
         }
-        // "Too many devices" bij het starten: spelers sluiten zodat het scherm zichtbaar is
+        // build 167: Activeer Lifetime (na de overgang, of 403 `activation_required`): spelers sluiten, zodat het
+        // scherm zichtbaar is
+        EntitlementsService.shared.$current
+            .map { e in e.map { $0.access == .activate && $0.plan != .lifetime } ?? false }   // de nieuwe waarde (willSet)
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] need in
+                guard let self, need else { return }
+                self.playing = nil
+                self.showMultiview = false
+                PiPCenter.shared.stopActive()
+            }
+            .store(in: &bag)
+                // "Too many devices" bij het starten: spelers sluiten zodat het scherm zichtbaar is
         AccountService.shared.$deviceLimit
             .map { $0 != nil }
             .removeDuplicates()
@@ -544,11 +559,14 @@ struct RootView: View {
     /// Pushmeldingen (docs/PUSH.md): uitleg na het inloggen en tikken op een melding. Beheerberichten komen als push;
     /// de in-app mededelingen (build 62) zijn vervallen.
     @ObservedObject private var push = PushService.shared
+    /// build 167: Activeer Lifetime
+    @ObservedObject private var ent = EntitlementsService.shared
 
     /// Uitleg over pushmeldingen alleen in de app zelf, niet tijdens het kijken of op andere schermen.
     private var showPushPrompt: Binding<Bool> {
         Binding(get: {
-            guard app.stage == .main, app.playing == nil, !app.showMultiview, account.deviceLimit == nil else { return false }
+            guard app.stage == .main, app.playing == nil, !app.showMultiview, account.deviceLimit == nil,
+                  !ent.needsActivation else { return false }
             return push.showPrompt
         }, set: { _ in
             // alleen de knoppen sluiten het venster (answerPrompt); verdwijnt het omdat er iets gaat spelen,
@@ -565,6 +583,9 @@ struct RootView: View {
                 if account.isSignedIn && account.deviceLimit != nil && (app.stage == .picker || app.stage == .main) {
                     // limiet bereikt (sessie van vóór build 39): eerst een apparaat verwijderen, of Cancel = uitloggen
                     TooManyDevicesView().transition(.opacity)
+                } else if account.isSignedIn && ent.needsActivation && (app.stage == .picker || app.stage == .main) {
+                    // build 167: Bingr is alleen Lifetime; dit account is (nog) niet geactiveerd. Gegevens blijven bewaard.
+                    ActivateLifetimeView().transition(.opacity)
                 } else {
                 switch app.stage {
                 case .splash:

@@ -1,0 +1,43 @@
+{
+  "identifier": "B1670000-0000-4000-8000-000000000167",
+  "nonRenewingSubscriptions": [],
+  "products": [
+    {
+      "displayPrice": "4.99",
+      "familyShareable": false,
+      "internalID": "B1670001-0000-4000-8000-000000000167",
+      "localizations": [
+        {
+          "description": "Unlock every Bingr feature for your account, forever.",
+          "displayName": "Bingr Lifetime",
+          "locale": "en_US"
+        },
+        {
+          "description": "Alle functies van Bingr voor je account, voor altijd.",
+          "displayName": "Bingr Lifetime",
+          "locale": "nl"
+        }
+      ],
+      "productID": "nl.lrvdlinden.bingr.lifetime",
+      "referenceName": "Bingr Lifetime",
+      "type": "NonConsumable"
+    }
+  ],
+  "settings": {
+    "_askToBuyEnabled": false,
+    "_billingGracePeriodEnabled": false,
+    "_billingIssuesEnabled": false,
+    "_disableDialogs": false,
+    "_failTransactionsEnabled": false,
+    "_locale": "nl_NL",
+    "_renewalBillingIssuesEnabled": false,
+    "_storefront": "NLD",
+    "_storeKitErrors": [],
+    "_timeRate": 0
+  },
+  "subscriptionGroups": [],
+  "version": {
+    "major": 4,
+    "minor": 0
+  }
+}

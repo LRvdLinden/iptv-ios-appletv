@@ -97,6 +97,8 @@ final class EntitlementsService: ObservableObject {
         var link = false
         var price: String?
         var priceEN: String?
+        /// build 167: EU External Purchase Link (alleen samen met `ExternalPurchaseLink.canOpen` en een EU-storefront)
+        var linkEUApple: Bool? = nil
     }
 
     struct Entitlements: Codable, Equatable {
@@ -106,9 +108,17 @@ final class EntitlementsService: ObservableObject {
         var upgrade: Upgrade
         /// build 128: standaardlimieten van beide abonnementen van de server (`plans`), voor de vergelijking
         var plans: [String: Limits]? = nil
+        /// build 167: `full` of `activate` (alleen het scherm Activeer Lifetime); oudere server = `full`
+        var access: Access167 = .full
+        /// build 167: de overgang naar alleen Lifetime (zonder code: die toont Apple nooit)
+        var lifetimeOnly: LifetimeOnly167? = nil
+        /// build 167: koopknop (StoreKit) aan?
+        var iap = IAP167(apple: false)
 
-        init(plan: Plan, limits: Limits, features: Features, upgrade: Upgrade, plans: [String: Limits]? = nil) {
+        init(plan: Plan, limits: Limits, features: Features, upgrade: Upgrade, plans: [String: Limits]? = nil,
+             access: Access167 = .full, lifetimeOnly: LifetimeOnly167? = nil, iap: IAP167 = IAP167(apple: false)) {
             self.plan = plan; self.limits = limits; self.features = features; self.upgrade = upgrade; self.plans = plans
+            self.access = access; self.lifetimeOnly = lifetimeOnly; self.iap = iap
         }
 
         init(from decoder: Decoder) throws {
@@ -118,6 +128,10 @@ final class EntitlementsService: ObservableObject {
             features = try Features(from: c.superDecoder(forKey: .features), lifetime: plan == .lifetime)
             upgrade = try c.decode(Upgrade.self, forKey: .upgrade)
             plans = try c.decodeIfPresent([String: Limits].self, forKey: .plans)
+            // build 167: een bewaarde stand van een oudere build heeft deze velden niet
+            access = (try? c.decodeIfPresent(Access167.self, forKey: .access)) ?? .full
+            lifetimeOnly = try? c.decodeIfPresent(LifetimeOnly167.self, forKey: .lifetimeOnly)
+            iap = (try? c.decodeIfPresent(IAP167.self, forKey: .iap)) ?? IAP167(apple: false)
         }
     }
 
@@ -148,6 +162,16 @@ final class EntitlementsService: ObservableObject {
     var isFree: Bool { current?.plan == .free }
     var limits: Limits { current?.limits ?? Self.lifetimeLimits }
     var upgrade: Upgrade { current?.upgrade ?? Upgrade() }
+
+    /// build 167: de overgang naar alleen Lifetime. Nog onbekend = gewoon gebruik (`full`, geen kaart, geen koopknop).
+    var lifetimeState: LifetimeState167 {
+        guard let c = current else { return LifetimeState167(isLifetime: true) }
+        return LifetimeState167(isLifetime: c.plan == .lifetime, access: c.access, lifetimeOnly: c.lifetimeOnly,
+                                iap: c.iap, linkEUApple: c.upgrade.linkEUApple ?? false)
+    }
+
+    /// build 167: alleen het scherm Activeer Lifetime
+    var needsActivation: Bool { LifetimeUI167.showActivate(lifetimeState) }
 
     /// build 128: standaardlimieten van een abonnement (van de server, anders de bekende standaard) — voor de
     /// vergelijking Gratis/Lifetime; nooit de eigen limieten van dit account
@@ -248,6 +272,16 @@ final class EntitlementsService: ObservableObject {
         Task { await refresh(force: true) }
     }
 
+    /// build 167: 403 `activation_required` van `stream_start`: meteen het scherm Activeer Lifetime (alleen in het
+    /// geheugen; het volgende `entitlements`-antwoord is leidend) en opnieuw ophalen.
+    func activationRequired() {
+        if var e = current, e.plan != .lifetime, e.access != .activate {
+            e.access = .activate
+            set(e, store: false)
+        }
+        Task { await refresh(force: true) }
+    }
+
     private func set(_ e: Entitlements?, store: Bool) {
         if current != e { current = e }
         let themes = e?.features.themes ?? true
@@ -295,13 +329,17 @@ final class EntitlementsService: ObservableObject {
         let features = Features(FeatureFlags157(json: j["features"], lifetime: plan == .lifetime))
         let u = j["upgrade"] as? [String: Any] ?? [:]
         let upgrade = Upgrade(url: u["url"] as? String, link: (u["link"] as? Bool) ?? false,
-                              price: u["price"] as? String, priceEN: u["price_en"] as? String)
+                              price: u["price"] as? String, priceEN: u["price_en"] as? String,
+                              linkEUApple: (u["link_eu_apple"] as? Bool) ?? false)
         // build 157: ontbrekende abonnementen in `plans` krijgen de standaard (Gratis 1/2/1)
         var plans: [String: Limits]?
         if j["plans"] is [String: Any] {
             plans = PlanDefaults157.plans(j["plans"]).mapValues { Limits($0) }
         }
-        return Entitlements(plan: plan, limits: limits, features: features, upgrade: upgrade, plans: plans)
+        // build 167: access, lifetime_only (zonder code) en iap
+        return Entitlements(plan: plan, limits: limits, features: features, upgrade: upgrade, plans: plans,
+                            access: Access167.parse(j["access"]), lifetimeOnly: LifetimeOnly167.parse(j["lifetime_only"]),
+                            iap: IAP167.parse(j["iap"]))
     }
 }
 

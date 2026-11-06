@@ -2116,5 +2116,119 @@ do {
     eq(GuideAvailableDays166.keep(at(1, 15), in: [start, day(1)], today: today, calendar: cal), day(1), "166: tijd binnen de dag")
 }
 
+// MARK: build 167: alleen Lifetime (access, aankondiging, knoppen, stream_start, apple_verify)
+do {
+    let cut = ISODate167.parse("2026-12-07T00:00:00+01:00")!
+    eq(cut.timeIntervalSince1970, 1796598000, "167: ISO-tijd met offset")
+    eq(ISODate167.parse("2026-12-06T23:00:00Z"), cut, "167: ISO-tijd in UTC")
+    eq(ISODate167.parse("2026-12-06T23:00:00.000Z"), cut, "167: ISO-tijd met fracties")
+    eq(ISODate167.parse("2026-12-07 00:00:00+01"), cut, "167: Postgres-tijd")
+    eq(ISODate167.parse(nil), nil as Date?, "167: geen tijd")
+    eq(ISODate167.parse(""), nil as Date?, "167: lege tijd")
+    eq(ISODate167.parse("morgen"), nil as Date?, "167: onzin")
+
+    eq(Access167.parse("activate"), .activate, "167: access activate")
+    eq(Access167.parse("ACTIVATE"), .activate, "167: hoofdletters")
+    eq(Access167.parse("full"), .full, "167: access full")
+    eq(Access167.parse(nil), .full, "167: oudere server = full")
+    eq(Access167.parse("iets"), .full, "167: onbekend = full")
+
+    let lo = LifetimeOnly167.parse(["enabled": true, "announced": true, "cutover_at": "2026-12-07T00:00:00+01:00",
+                                    "code": "BINGR-7K2Q-9FXM", "code_valid_until": "2026-12-07T00:00:00+01:00",
+                                    "discount_pct": 30, "trial_until": NSNull()])
+    check(lo != nil, "167: lifetime_only gelezen")
+    eq(lo?.cutoverAt, cut, "167: cutover_at")
+    eq(lo?.trialUntil, nil as Date?, "167: geen proefperiode")
+    eq(lo?.announced, true, "167: announced")
+    check(LifetimeOnly167.parse(["enabled": false]) == nil, "167: uit = geen blok")
+    check(LifetimeOnly167.parse(nil) == nil, "167: zonder blok")
+    // de code wordt nooit bewaard: ook niet in de opgeslagen stand
+    let enc = String(data: try! JSONEncoder().encode(lo!), encoding: .utf8)!
+    check(!enc.contains("BINGR-") && !enc.lowercased().contains("code") && !enc.contains("discount"), "167: geen code of korting in de cache (\(enc))")
+    eq(try! JSONDecoder().decode(LifetimeOnly167.self, from: enc.data(using: .utf8)!), lo!, "167: cache heen en terug")
+
+    eq(IAP167.parse(["apple": true, "product_id": "nl.lrvdlinden.bingr.lifetime"]).apple, true, "167: iap aan")
+    eq(IAP167.parse(["apple": true]).apple, true, "167: iap aan zonder product-id")
+    eq(IAP167.parse(["apple": true, "product_id": "iets.anders"]).apple, false, "167: ander product = uit")
+    eq(IAP167.parse(["apple": false]).apple, false, "167: iap uit")
+    eq(IAP167.parse(nil).apple, false, "167: oudere server = uit")
+
+    check(EUStorefront167.contains("NLD") && EUStorefront167.contains("deu") && EUStorefront167.contains("FR"), "167: EU-storefronts")
+    check(!EUStorefront167.contains("USA") && !EUStorefront167.contains("GBR") && !EUStorefront167.contains("CHE")
+          && !EUStorefront167.contains("NOR") && !EUStorefront167.contains(nil) && !EUStorefront167.contains(""), "167: buiten de EU")
+    eq(EUStorefront167.alpha3.count, 27, "167: 27 EU-landen (alpha-3)")
+    eq(EUStorefront167.alpha2.count, 27, "167: 27 EU-landen (alpha-2)")
+    check(EUStorefront167.linkAvailable(serverFlag: true, canOpen: true, storefront: "NLD"), "167: EU-link: alles in orde")
+    check(!EUStorefront167.linkAvailable(serverFlag: false, canOpen: true, storefront: "NLD"), "167: EU-link: flag uit")
+    check(!EUStorefront167.linkAvailable(serverFlag: true, canOpen: false, storefront: "NLD"), "167: EU-link: geen entitlement")
+    check(!EUStorefront167.linkAvailable(serverFlag: true, canOpen: true, storefront: "USA"), "167: EU-link: buiten de EU")
+
+    let before = cut.addingTimeInterval(-86400), after = cut.addingTimeInterval(3600)
+    let free = LifetimeState167(isLifetime: false, access: .full, lifetimeOnly: lo, iap: IAP167(apple: true))
+    eq(LifetimeUI167.announcement(free, now: before), .cutover(cut), "167: kaart vóór de overgang")
+    eq(LifetimeUI167.announcement(free, now: after), nil, "167: geen kaart na de overgang")
+    var notYet = free; notYet.lifetimeOnly?.announced = false
+    eq(LifetimeUI167.announcement(notYet, now: before), nil, "167: nog niet aangekondigd")
+    var life = free; life.isLifetime = true
+    eq(LifetimeUI167.announcement(life, now: before), nil, "167: Lifetime ziet geen kaart")
+    var off = free; off.lifetimeOnly = nil
+    eq(LifetimeUI167.announcement(off, now: before), nil, "167: overgang uit = geen kaart")
+    var trial = free; trial.lifetimeOnly?.trialUntil = cut.addingTimeInterval(7 * 86400)
+    eq(LifetimeUI167.announcement(trial, now: after), .trial(cut.addingTimeInterval(7 * 86400)), "167: proefperiode na de overgang")
+    eq(LifetimeUI167.announcement(trial, now: cut.addingTimeInterval(8 * 86400)), nil, "167: proefperiode voorbij")
+    var act = free; act.access = .activate
+    eq(LifetimeUI167.announcement(act, now: after), nil, "167: geen kaart op het activatiescherm")
+
+    check(LifetimeUI167.showActivate(act), "167: activate = scherm")
+    check(!LifetimeUI167.showActivate(free), "167: full = geen scherm")
+    var actLife = act; actLife.isLifetime = true
+    check(!LifetimeUI167.showActivate(actLife), "167: Lifetime nooit op het activatiescherm")
+    check(!LifetimeUI167.showActivate(LifetimeState167(isLifetime: true)), "167: onbekend = geen scherm")
+
+    eq(LifetimeUI167.activateButtons(act, productLoaded: true, euLinkAvailable: false),
+       .init(buy: true, restore: true, euLink: false, notActivatedOnly: false), "167: koopknop met iap en product")
+    eq(LifetimeUI167.activateButtons(act, productLoaded: false, euLinkAvailable: false),
+       .init(buy: false, restore: true, euLink: false, notActivatedOnly: true), "167: product niet geladen")
+    var noIAP = act; noIAP.iap = IAP167(apple: false)
+    eq(LifetimeUI167.activateButtons(noIAP, productLoaded: true, euLinkAvailable: true),
+       .init(buy: false, restore: true, euLink: false, notActivatedOnly: true), "167: zonder iap en flag: alleen niet geactiveerd")
+    var eu = noIAP; eu.linkEUApple = true
+    eq(LifetimeUI167.activateButtons(eu, productLoaded: false, euLinkAvailable: true),
+       .init(buy: false, restore: true, euLink: true, notActivatedOnly: false), "167: alleen de EU-link")
+    eq(LifetimeUI167.activateButtons(eu, productLoaded: false, euLinkAvailable: false),
+       .init(buy: false, restore: true, euLink: false, notActivatedOnly: true), "167: flag aan maar canOpen niet")
+
+    check(LifetimeUI167.showBuy(free, productLoaded: true), "167: Instellingen: koopknop")
+    check(!LifetimeUI167.showBuy(free, productLoaded: false), "167: Instellingen: zonder product geen koopknop")
+    check(!LifetimeUI167.showBuy(life, productLoaded: true), "167: Lifetime: geen koopknop")
+    check(!LifetimeUI167.showBuy(noIAP, productLoaded: true), "167: zonder iap geen koopknop")
+    check(LifetimeUI167.showRestore(free) && !LifetimeUI167.showRestore(noIAP) && !LifetimeUI167.showRestore(life), "167: Herstel alleen met iap op gratis")
+    eq(LifetimeUI167.freeUntil(free), cut, "167: Gratis tot <datum>")
+    eq(LifetimeUI167.freeUntil(off), nil as Date?, "167: overgang uit = gewoon Gratis")
+
+    eq(StreamStart167.outcome(status: 403, error: "activation_required"), .activation, "167: 403 activation_required")
+    eq(StreamStart167.outcome(status: 403, error: "stream_limit"), .limit, "167: 403 stream_limit")
+    eq(StreamStart167.outcome(status: 403, error: nil), .limit, "167: 403 zonder fout = limiet (zoals voorheen)")
+    eq(StreamStart167.outcome(status: 200, error: nil), .ok, "167: 200")
+    eq(StreamStart167.outcome(status: 500, error: nil), .offline, "167: 500 = doorspelen")
+    eq(StreamStart167.outcome(status: nil, error: nil), .offline, "167: geen antwoord")
+
+    eq(AppleVerify167.outcome(status: 200, error: nil, plan: "lifetime"), .lifetime, "167: apple_verify gelukt")
+    eq(AppleVerify167.outcome(status: 409, error: "owned_by_other_account", plan: nil), .otherAccount, "167: ander account")
+    eq(AppleVerify167.outcome(status: 400, error: "unknown_action", plan: nil), .unavailable, "167: oudere server")
+    eq(AppleVerify167.outcome(status: 400, error: "invalid_transaction", plan: nil), .failed, "167: ongeldig")
+    eq(AppleVerify167.outcome(status: 200, error: nil, plan: "free"), .failed, "167: 200 zonder Lifetime")
+    eq(AppleVerify167.outcome(status: nil, error: nil, plan: nil), .failed, "167: netwerk")
+    check(AppleVerify167.shouldFinish(.lifetime) && AppleVerify167.shouldFinish(.otherAccount), "167: afronden na verwerking")
+    check(!AppleVerify167.shouldFinish(.failed) && !AppleVerify167.shouldFinish(.unavailable), "167: niet afronden bij een fout")
+    let uid = "3f1c2a9e-8b7d-4e6f-9a10-5b4c3d2e1f00"
+    eq(AppleVerify167.appAccountToken(uid), UUID(uuidString: uid), "167: appAccountToken = account-id")
+    eq(AppleVerify167.appAccountToken("geen-uuid"), nil as UUID?, "167: geen uuid = niet kopen")
+    eq(AppleVerify167.appAccountToken(nil), nil as UUID?, "167: niet ingelogd")
+    check(AppleVerify167.relevant(productID: "nl.lrvdlinden.bingr.lifetime", revoked: false), "167: ons product")
+    check(!AppleVerify167.relevant(productID: "nl.lrvdlinden.bingr.lifetime", revoked: true), "167: ingetrokken")
+    check(!AppleVerify167.relevant(productID: "iets.anders", revoked: false), "167: ander product")
+}
+
 print("\(checks) controles, \(failures) fout")
 exit(failures == 0 ? 0 : 1)
