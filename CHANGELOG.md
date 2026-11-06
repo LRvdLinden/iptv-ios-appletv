@@ -4,6 +4,38 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.5 · Build 164
+_6 november 2026_
+
+### iOS, iPadOS, tvOS en macOS
+
+**Verbeterd**
+
+- Van het live voorbeeld naar volledig scherm zonder opnieuw te laden, en het voorbeeld laat je muziek doorspelen tot je het geluid aanzet
+
+### iOS, iPadOS, tvOS, macOS, Android en Android TV
+
+**Nieuw**
+
+- Nieuwe tv-gids: op de telefoon de gekozen zender live bovenaan, zenders links en programma's rechts met NU, terugkijken en herinneringen
+- Instelling Live voorbeeld in de gids: Altijd, Alleen wifi of Nooit
+
+**Verbeterd**
+
+- Het live voorbeeld speelt zonder geluid en telt mee als stream; andere zenders tonen een recent stilstaand beeld of hun logo
+
+### iPadOS en macOS
+
+**Nieuw**
+
+- Tv-gids met een groot live voorbeeld, Kijk live en Vanaf het begin, en zenderkolommen
+
+### tvOS en Android TV
+
+**Nieuw**
+
+- Tv-gids op de tv met een dagbalk en zenderkolommen: de NU-kaart speelt de zender live als je erop staat, OK opent volledig scherm
+
 ## Versie 1.0.4 · Build 163
 _2 november 2026_
 
