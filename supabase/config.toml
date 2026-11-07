@@ -43,3 +43,7 @@ verify_jwt = false
 
 [functions.apple-notify]
 verify_jwt = false
+
+# Omzet Apple (App Store Connect): alleen met x-apple-sales-secret (pg_cron, beheer) of de service role; geen JWT van een gebruiker
+[functions.apple-sales]
+verify_jwt = false

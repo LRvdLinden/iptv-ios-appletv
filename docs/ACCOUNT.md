@@ -1986,7 +1986,7 @@ De app blijft gratis te downloaden. Na `cutover_at` is de volgorde **kopen → a
   - `TEST` en andere types: 200 zonder actie. Ongeldige handtekening: 400.
   - Elke notificatie één keer (`notificationUUID` in `billing_apple_events`, 90 dagen bewaard).
   - Logs alleen met het type en het resultaat.
-- **Omzet:** `bingr_admin_stats` geeft `revenue_by_provider` `{stripe: {count, cents}, apple: {count, cents}}`, `purchases_apple` en `purchases_unclaimed`. `bingr_admin_revenue` en `bingr_revenue_sum` geven per bereik `by_provider` (`[{key, count, gross}]`). De modi live/test tellen Apple mee op `environment`. `user_detail.purchases` krijgt `provider` en `claimed_at`, en `billing purchases` geeft bij een Apple-aankoop `provider: "apple"` (zonder Stripe-links).
+- **Omzet:** sinds "Omzet: Apple (App Store Connect)" (hieronder) komt het geld van Apple uit de dagrapporten van App Store Connect (`apple_sales_daily`), niet meer uit `billing_purchases`; `revenue_by_provider.apple` en `revenue_cents` volgen dat. Daarvoor: `bingr_admin_stats` geeft `revenue_by_provider` `{stripe: {count, cents}, apple: {count, cents}}`, `purchases_apple` en `purchases_unclaimed`. `bingr_admin_revenue` en `bingr_revenue_sum` geven per bereik `by_provider` (`[{key, count, gross}]`). De modi live/test tellen Apple mee op `environment`. `user_detail.purchases` krijgt `provider` en `claimed_at`, en `billing purchases` geeft bij een Apple-aankoop `provider: "apple"` (zonder Stripe-links).
 
 ### Mail "Bingr wordt Lifetime" (functie `lifetime-notice`)
 
@@ -2078,3 +2078,69 @@ Vóór 1 december moeten **nieuwe** accounts al meteen kopen; bestaande gratis a
   - maak de codes aan (eerst droog), stuur de testmail en daarna de mail;
   - zet het `announcements`-item klaar;
   - stuur vanaf 24 november de herinnering.
+
+## Omzet: Apple (App Store Connect)
+
+Alleen server en beheer (geen app, geen changelog-item). De echte Apple-omzet komt uit **Sales and Trends** van App Store Connect, dezelfde API als de DevTools-app gebruikt. `billing_purchases` (provider `apple`, uit `apple_verify`) blijft voor de koppeling aan accounts; voor het geld is `apple_sales_daily` de bron van de waarheid, omdat daar ook aankopen in staan die nooit aan een account zijn gekoppeld, en omdat alleen Apple weet wat er na btw en commissie overblijft.
+
+### Ophalen (functie `apple-sales`, verify_jwt uit)
+
+- `POST /functions/v1/apple-sales`, alleen met de header `x-apple-sales-secret` (function-secret `APPLE_SALES_SECRET`; pg_cron en de functie `admin`) of `Authorization: Bearer <service role>`. Anders **403**.
+  - `{action: "run"}`: de laatste 7 dagen t/m gisteren (UTC). Dagelijks via pg_cron **`bingr-apple-sales`** (14:37 UTC; de rapporten staan er rond 13:00 UTC).
+  - `{action: "backfill", from, to}`: een bereik (`YYYY-MM-DD`, inclusief, niet in de toekomst, max. **365 dagen**; anders 400 `bad_range` / `range_too_long`). Het beheer stuurt stukken van 31 dagen.
+  - `{action: "status"}`: `{configured, through, last_run}`.
+  - Antwoord: `{configured, days, ok, empty, not_ready, failed, rows, through, error?: "asc_unauthorized"}`. Zonder de secrets `ASC_*` **`{configured: false}`** (200). Ongeldige sleutel: 503 `asc_key_invalid`.
+- Per dag `GET https://api.appstoreconnect.apple.com/v1/salesReports?filter[frequency]=DAILY&filter[reportType]=SALES&filter[reportSubType]=SUMMARY&filter[vendorNumber]=<vendor>&filter[reportDate]=YYYY-MM-DD&filter[version]=1_1` (6 tegelijk, 25 s per dag). Antwoord: gzip met een TSV (kopregel, tab-gescheiden).
+  - **404** = geen fout: met "no sales" in het antwoord `empty` (geen verkopen), anders `not_ready` (nog niet klaar, of ouder dan Apple bewaart). **401/403** = `asc_unauthorized` (verkeerde rol of sleutel). Andere fouten `failed`; die dag blijft zoals hij was.
+- **JWT** (ES256): header `{alg: "ES256", kid: <KEY_ID>, typ: "JWT"}`, payload `{iss: <ISSUER_ID>, iat, exp: iat + 15 min, aud: "appstoreconnect-v1"}` (Apple staat max. 20 minuten toe), ondertekend met de private key (.p8, PKCS#8 P-256) via WebCrypto. Eén JWT per ronde.
+- **Welke regels:** in rapportversie 1_1 staat bij een in-app aankoop de Product ID in de kolom **`SKU`** en de SKU van de app in **`Parent Identifier`**. Een regel telt mee als `SKU` = `nl.lrvdlinden.bingr.lifetime`, of als het een in-app aankoop is (`Product Type Identifier` IA1, IA9, IAY, IAC of FI1, ook met `-M` voor de Mac) met `Parent Identifier` = de app (`nl.lrvdlinden.bingr`, of de SKU's in het optionele function-secret `ASC_APP_SKU`, kommagescheiden, als de app-SKU in App Store Connect anders is). Downloads van de app zelf tellen nooit mee.
+- **Per regel:** `Units` (negatief = terugbetaling), `Customer Price` (per stuk, wat de klant betaalt, incl. btw, in `Customer Currency`), `Developer Proceeds` (per stuk, wat Apple uitbetaalt, in `Currency of Proceeds`) en `Country Code`. Samengevoegd per soort (`sale`/`refund`), land, valuta's, product en klantprijs; units positief, opbrengst per stuk gewogen gemiddeld.
+- **Idempotent:** een dag met een rapport wordt helemaal overschreven (`bingr_apple_sales_put(p_date, p_rows)`: eerst alles van die dag weg, dan de nieuwe rijen; alles of niets). Een dag zonder verkopen wordt leeg gemaakt.
+- **"Apple bijgewerkt t/m"** (`app_settings.apple_sales_status` `{through, last_run}`): de laatste dag met een rapport of zonder verkopen; gaat nooit terug. `last_run` = alleen aantallen.
+- **Logs:** alleen datum, aantal regels en status (en de HTTP-code). Nooit de sleutel, de JWT, het vendornummer of de URL (die bevat het vendornummer).
+
+### Opslag (`supabase/schema.sql`, blok `unittest apple-sales`)
+
+- **`apple_sales_daily`**: `id`, `date` (rapportdag van Apple), `kind` (`sale`|`refund`), `product_id`, `country` (2 letters), `customer_currency`, `proceeds_currency` (3 letters), `units` (> 0), `customer_price` en `developer_proceeds` (per stuk, 4 decimalen), `fetched_at`. Unieke sleutel: datum + soort + land + beide valuta's + product + klantprijs. RLS aan, `revoke all` voor anon en authenticated (alleen de service role), zoals de andere billing-tabellen. **Geen persoonsgegevens**: het rapport heeft ze ook niet (geen account, e-mail of transactie).
+- **`app_settings.fx_rates`**: `{"USD": 0.92, …}` = vaste koers in **EUR per 1 eenheid**, in te stellen in het beheer. Geen externe koers-API.
+- **`app_settings.apple_commission`**: `{rate: 15}` = de commissie van Apple in % van de prijs **zonder btw** (15 in het App Store Small Business Program, anders 30), in te stellen in het beheer (0–50).
+- **`app_settings.apple_sales_backfill`**: `{from, to, next_to, done_at}`, de stand van het eenmalige terugvullen (zie Instellen).
+
+### Rekenen (beheer, tab Omzet)
+
+Per tijdvak telt een Apple-regel op **12:00 Nederlandse tijd van de rapportdag** (de rapporten zijn per dag, niet per moment). Omrekenen naar EUR: EUR blijft gelijk, anders met de vaste koers; **zonder koers telt een regel niet mee** en staat hij apart (`unconverted`, per valuta met aantallen). In de modus *test* is er geen Apple-omzet (het salesrapport bevat alleen echte aankopen).
+
+Apple geeft per stuk de klantprijs (incl. btw) en de opbrengst (na btw én commissie), maar niet de btw per land. Daarom, eerlijk en controleerbaar:
+
+| Post | Apple | Website (Stripe) |
+|---|---|---|
+| **Bruto** | units × klantprijs (incl. btw) | bedrag incl. btw |
+| **Prijs zonder btw** | opbrengst ÷ (1 − commissie), nooit meer dan bruto | bruto − btw (Stripe Tax of het vaste tarief) |
+| **Btw** | bruto − prijs zonder btw (afgeleid; Apple draagt hem af) | Stripe Tax of berekend |
+| **Inhouding** | **Apple-commissie = prijs zonder btw − opbrengst** | Stripe-kosten (balance transaction) |
+| **Terugbetaald** | units × klantprijs van de terugbetalingen (incl. btw) | terugbetalingen en chargebacks |
+| **Netto opbrengst** | opbrengst verkopen − opbrengst terugbetalingen (= wat Apple uitbetaalt, op afronding en wisselkoers na) | netto − kosten − terugbetalingen (excl. btw) |
+
+De netto opbrengst van Apple is dus een gemeten getal; alleen de verdeling van het verschil (bruto − opbrengst) over btw en commissie hangt af van het ingestelde commissiepercentage. Staat dat verkeerd (bijv. 15 terwijl Bingr niet in het Small Business Program zit), dan verschuift alleen die verdeling, niet de opbrengst. Het **totaal** is website + Apple.
+
+### Beheer (functie `admin` in bingr-beheer)
+
+- `revenue`: totalen en series = website (`bingr_admin_revenue` met de modus **`web_live` / `web_test` / `web_all`**: alleen Stripe) + Apple (`bingr_admin_revenue_apple(p_edges, p_mode, p_ranges)`: series `units`, `gross`, `proceeds`, `refund_units`, `refunds`, `refund_proceeds` en per bereik `bingr_apple_sales_sum`). Extra: `sources: {web, apple}` per bereik, `apple: {configured, through, last_run, commission, fx_rates, unconverted, linked, linked_all, text}` en de series `web_gross` / `apple_gross` (grafiek: reeksen Website en Apple). `linked` = Apple-aankopen die in die periode via `apple_verify` aan een account zijn gekoppeld (`billing_purchases`), zodat het verschil met de rapporten zichtbaar is. Zonder het nieuwe schema werkt `revenue` zoals voorheen.
+- `revenue_export`: de CSV met de website (aanbieder "Website (Stripe)") en de Apple-regels per dag (`bingr_admin_apple_sales_rows`), met afgeleide btw en commissie; niet omgerekende regels met de bedragen in hun eigen valuta.
+- `apple_sales_refresh {from, to}` (knop **Apple-omzet bijwerken**) en `revenue_apple_set {fx_rates?, commission?}` (commissie en koersen). Allebei in `admin_audit` (alleen bereik en aantallen).
+- `bingr_admin_stats`: `revenue_cents` = website (Stripe, betaald) + Apple (verkopen − terugbetalingen, in EUR); `revenue_by_provider.apple` uit de rapporten; `purchases_apple` blijft het aantal gekoppelde Apple-aankopen; `apple_sales_through`.
+- Web-beheer, Beheer-app (build 49) en LRbeheer (build 13) tonen hetzelfde blok *Website en Apple* in Omzet.
+
+### Instellen (workflow Backend, job `billing`, stap "Apple-omzet")
+
+- GitHub-secrets in **LRvdLinden/iptv-ios-appletv**: `ISSUER_ID_APPSTORE_CONNECT`, `KEY_ID_APPSTORE_CONNECT`, `VENDOR_APPSTORE_CONNECT` en `PRIVATE_KEY_APPSTORE_CONNECT` (de inhoud van het .p8-bestand). De workflow controleert de vorm (zonder waarden te tonen) en zet ze als function-secrets `ASC_ISSUER_ID`, `ASC_KEY_ID`, `ASC_VENDOR` en `ASC_PRIVATE_KEY` (alleen het base64-deel). Optioneel `ASC_APP_SKU` en `APPLE_SALES_SECRET` (anders per deploy een nieuw geheim, zoals `STATUS_CRON_SECRET`). Ontbreken ze: `::notice::`, `apple-sales` geeft `{configured:false}`, de planning staat uit en de deploy blijft groen. Alles gemaskeerd; nooit in een log of URL.
+- De API-sleutel (App Store Connect → Gebruikers en toegang → Integraties → App Store Connect API, **teamsleutel**) heeft de rol **Sales** (of Finance, Admin) nodig; met een andere rol geeft Apple 403 en meldt het beheer "App Store Connect weigert de sleutel". Het vendornummer staat in App Store Connect bij Betalingen en financiële rapporten.
+- Rooktest: zonder en met een fout geheim 403, met het juiste geheim `status` 200 met de verwachte `configured`. Daarna meteen een ronde `run` (alleen aantallen in het log).
+- **Eenmalig terugvullen (365 dagen):** na de eerste deploy met de secrets vult de stap de laatste 365 dagen (t/m gisteren) zelf terug, van nieuw naar oud in stukken van 31 dagen, en zet `app_settings.apple_sales_backfill.done_at`. Mislukt een stuk (of duurt het langer dan 5 minuten), dan onthoudt `next_to` waar hij was en gaat de volgende deploy verder. Opnieuw terugvullen: **Actions → Backend → Run workflow** met **`apple_sales_backfill`** aan, of in het beheer *Apple-omzet bijwerken* met een eigen bereik.
+- **Koersen:** het salesrapport geeft prijs en opbrengst in de valuta van de winkel (eurolanden EUR, de VS USD, het VK GBP, Zwitserland CHF, …). Zet in het beheer (Omzet → Commissie en koersen) een vaste koers voor elke valuta die onder "Niet omgerekend" verschijnt; tot dan tellen die verkopen niet mee in de bedragen (wel zichtbaar met aantallen). De uitbetaling van Apple zelf (in EUR, met de koers van Apple) kan daardoor iets afwijken.
+
+### Tests
+
+- Deno (blokkeert de deploy): `supabase/functions/_shared/asc_test.ts` — JWT (zelfgemaakte testsleutel, controle met de publieke sleutel, max. 20 min), URL van het dagrapport, gzip + TSV, het filter op het product (SKU, Parent Identifier, Mac, downloads en andere apps niet), samenvoegen (verkoop/terugbetaling), omrekenen, 404 = geen fout, nooit de URL in een resultaat. Alleen verzonnen rapportregels.
+- SQL (blokkeert de deploy): `supabase/tests/apple_sales_test.sh` (tijdelijke Postgres): een dag overschrijven (alles of niets), "bijgewerkt t/m", omrekenen met en zonder koers, bereiken en series, website apart (`web_*`), gekoppelde aankopen, het totaal en de rechten (alleen de service role, RLS aan, geen kolommen met persoonsgegevens).
+- bingr-beheer: `apple_revenue_test.ts` (blokkeert de deploy van `admin`) en de dashboard-rooktest (blok Website en Apple, bijwerken in stukken, commissie en koersen).

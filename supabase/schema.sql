@@ -635,12 +635,19 @@ begin
     'purchases_paid', (select count(*) from public.billing_purchases where status = 'paid'),
     'purchases_refunded', (select count(*) from public.billing_purchases where status in ('refunded', 'disputed')),
     'purchases_7d', (select count(*) from public.billing_purchases where status = 'paid' and paid_at > now() - interval '7 days'),
-    'revenue_cents', (select coalesce(sum(amount), 0) from public.billing_purchases where status = 'paid' and currency = 'eur'),
+    -- Omzet Apple (App Store Connect): website uit billing_purchases (Stripe), Apple uit apple_sales_daily (verkopen −
+    -- terugbetalingen, omgerekend naar EUR); purchases_apple = Apple-aankopen die via apple_verify aan een account hangen
+    'revenue_cents', (select coalesce(sum(amount), 0) from public.billing_purchases where status = 'paid' and currency = 'eur' and provider = 'stripe')
+                     + (select (public.bingr_apple_sales_total()->>'cents')::bigint),
     -- build 167: per betaalroute (stripe = website, apple = in-app aankoop); betaald, aantal en omzet in eurocent
     'revenue_by_provider', (select coalesce(jsonb_object_agg(k, jsonb_build_object('count', c, 'cents', g)), '{}'::jsonb) from (
        select coalesce(provider, 'stripe') k, count(*) c, coalesce(sum(amount) filter (where currency = 'eur'), 0) g
-         from public.billing_purchases where status = 'paid' group by 1) x),
+         from public.billing_purchases where status = 'paid' and provider = 'stripe' group by 1
+       union all
+       select 'apple', (t->>'count')::bigint, (t->>'cents')::bigint from (select public.bingr_apple_sales_total() t) a
+        where (t->>'count')::bigint <> 0 or (t->>'cents')::bigint <> 0) x),
     'purchases_apple', (select count(*) from public.billing_purchases where status = 'paid' and provider = 'apple'),
+    'apple_sales_through', (select value->>'through' from public.app_settings where key = 'apple_sales_status'),
     'purchases_unclaimed', (select count(*) from public.billing_purchases where status = 'paid' and user_id is null and user_deleted_at is null and claimed_at is null),
     'signins_source', case when audit_total > 0 then 'audit' else 'activity' end,
     'days', coalesce(days, '[]'::jsonb),
@@ -2063,11 +2070,16 @@ language sql stable security definer set search_path = public as $$
                                then (value->>'rate')::numeric end from public.app_settings where key = 'revenue_vat'), 21)
 $$;
 revoke all on function public.bingr_revenue_rate() from public, anon, authenticated, service_role;
+-- Omzet Apple (App Store Connect): web_live / web_test / web_all = alleen de website (Stripe); de Apple-cijfers komen dan
+-- uit apple_sales_daily (bingr_admin_revenue_apple, onderaan dit bestand).
 create or replace function public.bingr_revenue_filter(p_mode text) returns text
 language sql immutable set search_path = '' as $$
   select case p_mode
     when 'live' then ' and (b.stripe_session_id like ''cs\_live\_%'' or (b.provider = ''apple'' and b.environment = ''live''))'
     when 'test' then ' and (b.stripe_session_id like ''cs\_test\_%'' or (b.provider = ''apple'' and b.environment = ''test''))'
+    when 'web_live' then ' and b.provider = ''stripe'' and b.stripe_session_id like ''cs\_live\_%'''
+    when 'web_test' then ' and b.provider = ''stripe'' and b.stripe_session_id like ''cs\_test\_%'''
+    when 'web_all' then ' and b.provider = ''stripe'''
     else '' end
 $$;
 revoke all on function public.bingr_revenue_filter(text) from public, anon, authenticated, service_role;
@@ -2115,7 +2127,7 @@ declare n int := coalesce(array_length(p_edges, 1), 0) - 1; rate numeric := publ
 begin
   if n < 1 or n > 1000 or array_position(p_edges, null) is not null then return null; end if;
   if exists (select 1 from generate_series(1, n) i where p_edges[i] >= p_edges[i + 1]) then return null; end if;
-  if p_mode is null or p_mode not in ('live', 'test', 'all') then return null; end if;
+  if p_mode is null or p_mode not in ('live', 'test', 'all', 'web_live', 'web_test', 'web_all') then return null; end if;
   if jsonb_typeof(p_ranges) <> 'array' or jsonb_array_length(p_ranges) > 8 then return null; end if;
   f := public.bingr_revenue_filter(p_mode);
   vat := format('coalesce(b.tax_amount, round(b.amount * %s / (100 + %s)))', rate, rate);
@@ -2152,7 +2164,7 @@ create or replace function public.bingr_admin_revenue_rows(p_from timestamptz, p
 language plpgsql stable security definer set search_path = public as $$
 declare res jsonb; rate numeric := public.bingr_revenue_rate(); f text; vat text;
 begin
-  if p_from is null or p_to is null or p_from >= p_to or p_mode is null or p_mode not in ('live', 'test', 'all') then return null; end if;
+  if p_from is null or p_to is null or p_from >= p_to or p_mode is null or p_mode not in ('live', 'test', 'all', 'web_live', 'web_test', 'web_all') then return null; end if;
   f := public.bingr_revenue_filter(p_mode);
   vat := format('coalesce(b.tax_amount, round(b.amount * %s / (100 + %s)))', rate, rate);
   execute format($q$
@@ -5106,3 +5118,185 @@ revoke all on function public.bingr_admin_purchase_assign(bigint, uuid) from pub
 grant execute on function public.bingr_admin_unclaimed(int) to service_role;
 grant execute on function public.bingr_admin_purchase_assign(bigint, uuid) to service_role;
 -- <<< unittest lifetime
+
+-- ============================================================================================================
+-- Omzet: Apple-aankopen uit App Store Connect (Sales and Trends; functie apple-sales, docs/ACCOUNT.md "Omzet: Apple (App
+-- Store Connect)"). Eigen blok: alleen de tabel apple_sales_daily, de instellingen fx_rates / apple_commission en de
+-- functies hieronder. Bron van de waarheid voor het geld van Apple (billing_purchases blijft voor de koppeling aan accounts).
+-- Per dag (rapportdag van Apple), soort (sale / refund = negatieve units), land, valuta's, product en klantprijs: units
+-- (positief), customer_price (per stuk, wat de klant betaalt, incl. btw) en developer_proceeds (opbrengst per stuk, in
+-- proceeds_currency). Geen persoonsgegevens: het rapport heeft die ook niet. Alleen de service role.
+-- >>> unittest apple-sales
+create table if not exists public.apple_sales_daily (
+  id                 bigint generated always as identity primary key,
+  date               date not null,
+  kind               text not null default 'sale' check (kind in ('sale', 'refund')),
+  product_id         text not null check (product_id ~ '^[A-Za-z0-9._-]{1,100}$'),
+  country            text not null check (country ~ '^[A-Z]{2}$'),
+  customer_currency  text not null check (customer_currency ~ '^[A-Z]{3}$'),
+  proceeds_currency  text not null check (proceeds_currency ~ '^[A-Z]{3}$'),
+  units              int not null check (units > 0),
+  customer_price     numeric(14, 4) not null check (customer_price >= 0),
+  developer_proceeds numeric(14, 4) not null check (developer_proceeds >= 0),
+  fetched_at         timestamptz not null default now()
+);
+create unique index if not exists apple_sales_daily_key
+  on public.apple_sales_daily (date, kind, country, customer_currency, proceeds_currency, product_id, customer_price);
+create index if not exists apple_sales_daily_date_idx on public.apple_sales_daily (date);
+alter table public.apple_sales_daily enable row level security;
+revoke all on public.apple_sales_daily from anon, authenticated;
+-- Instellingen (in te stellen in het beheer, actie revenue_apple_set): fx_rates = vaste koersen, EUR per 1 eenheid
+-- ({"USD": 0.92, …}; geen externe koers-API), apple_commission = commissie van Apple in % van de prijs zonder btw (15 =
+-- Small Business Program, anders 30). Een bestaande waarde blijft staan.
+insert into public.app_settings (key, value) values ('fx_rates', '{}'::jsonb), ('apple_commission', '{"rate": 15}'::jsonb)
+on conflict (key) do nothing;
+
+-- Eén dag overschrijven (idempotent): alles van die dag weg, dan de nieuwe rijen (samengevoegd op de unieke sleutel).
+-- Alles of niets: een ongeldige rij laat de oude rijen staan. Terug: aantal rijen.
+create or replace function public.bingr_apple_sales_put(p_date date, p_rows jsonb) returns int
+language plpgsql security definer set search_path = public as $$
+declare n int;
+begin
+  if p_date is null or p_rows is null or jsonb_typeof(p_rows) <> 'array' or jsonb_array_length(p_rows) > 5000 then
+    raise exception 'bad_apple_sales' using errcode = '22023';
+  end if;
+  delete from public.apple_sales_daily where date = p_date;
+  insert into public.apple_sales_daily (date, kind, product_id, country, customer_currency, proceeds_currency, units, customer_price, developer_proceeds)
+  select p_date, k, pid, c, cc, pc, sum(u)::int, price, round(sum(u * dev) / nullif(sum(u), 0), 4)
+    from (select coalesce(r->>'kind', 'sale') k, r->>'product_id' pid, upper(r->>'country') c, upper(r->>'customer_currency') cc,
+                 upper(r->>'proceeds_currency') pc, (r->>'units')::int u, round((r->>'customer_price')::numeric, 4) price,
+                 (r->>'developer_proceeds')::numeric dev
+            from jsonb_array_elements(p_rows) r) x
+   group by k, pid, c, cc, pc, price;
+  get diagnostics n = row_count;
+  return n;
+end $$;
+-- Stand voor "Apple bijgewerkt t/m": through gaat nooit terug; last_run = de laatste ronde (alleen aantallen).
+create or replace function public.bingr_apple_sales_status_set(p_through date, p_run jsonb) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare old date; v jsonb;
+begin
+  select case when (value->>'through') ~ '^\d{4}-\d{2}-\d{2}$' then (value->>'through')::date end into old
+    from public.app_settings where key = 'apple_sales_status';
+  v := jsonb_build_object('through', greatest(old, p_through)::text,
+         'last_run', case when p_run is not null and jsonb_typeof(p_run) = 'object' and length(p_run::text) <= 1000 then p_run end);
+  insert into public.app_settings (key, value, updated_at) values ('apple_sales_status', v, now())
+    on conflict (key) do update set value = excluded.value, updated_at = now();
+  return v;
+end $$;
+
+-- Omrekenen naar EUR: EUR blijft gelijk, anders met de vaste koers uit fx_rates; zonder koers null (apart tonen).
+create or replace function public.bingr_apple_eur(p_amount numeric, p_currency text, p_rates jsonb) returns numeric
+language sql immutable set search_path = '' as $$
+  select case when upper(p_currency) = 'EUR' then p_amount
+              when jsonb_typeof(p_rates -> upper(p_currency)) = 'number' and (p_rates ->> upper(p_currency))::numeric > 0
+                then p_amount * (p_rates ->> upper(p_currency))::numeric
+              end
+$$;
+create or replace function public.bingr_apple_fx() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select coalesce((select value from public.app_settings where key = 'fx_rates' and jsonb_typeof(value) = 'object'), '{}'::jsonb)
+$$;
+create or replace function public.bingr_apple_commission() returns numeric
+language sql stable security definer set search_path = public as $$
+  select coalesce((select case when (value->>'rate') ~ '^\d{1,2}(\.\d{1,2})?$' and (value->>'rate')::numeric <= 50
+                               then (value->>'rate')::numeric end from public.app_settings where key = 'apple_commission'), 15)
+$$;
+-- Alle rijen met hun moment (12:00 Nederlandse tijd van de rapportdag) en bedragen in eurocent (units × prijs per stuk);
+-- ok = beide valuta om te rekenen. Het salesrapport heeft alleen echte (Production) aankopen: in de modus test niets.
+create or replace function public.bingr_apple_sales_rows(p_mode text)
+returns table (at timestamptz, day date, kind text, country text, units int, gross bigint, proceeds bigint, ok boolean,
+               customer_currency text, proceeds_currency text, customer_price numeric, developer_proceeds numeric)
+language sql stable security definer set search_path = public as $$
+  with fx as (select public.bingr_apple_fx() r)
+  select (s.date + time '12:00') at time zone 'Europe/Amsterdam', s.date, s.kind, s.country, s.units,
+         round(s.units * public.bingr_apple_eur(s.customer_price, s.customer_currency, fx.r) * 100)::bigint,
+         round(s.units * public.bingr_apple_eur(s.developer_proceeds, s.proceeds_currency, fx.r) * 100)::bigint,
+         public.bingr_apple_eur(1, s.customer_currency, fx.r) is not null and public.bingr_apple_eur(1, s.proceeds_currency, fx.r) is not null,
+         s.customer_currency, s.proceeds_currency, s.customer_price, s.developer_proceeds
+    from public.apple_sales_daily s cross join fx
+   where coalesce(p_mode, 'all') not in ('test', 'web_test')
+$$;
+-- Totalen van één tijdvak (eurocent): verkopen en terugbetalingen apart, wat niet om te rekenen is per valuta, per land, en
+-- hoeveel Apple-aankopen in die tijd via apple_verify aan een account gekoppeld zijn (billing_purchases, op paid_at).
+create or replace function public.bingr_apple_sales_sum(p_from timestamptz, p_to timestamptz, p_mode text) returns jsonb
+language sql stable security definer set search_path = public as $$
+  with s as (select * from public.bingr_apple_sales_rows(p_mode) r where r.at >= p_from and r.at < p_to), fx as (select public.bingr_apple_fx() r)
+  select jsonb_build_object(
+    'units', coalesce((select sum(units) from s where ok and kind = 'sale'), 0),
+    'gross', coalesce((select sum(gross) from s where ok and kind = 'sale'), 0),
+    'proceeds', coalesce((select sum(proceeds) from s where ok and kind = 'sale'), 0),
+    'refund_units', coalesce((select sum(units) from s where ok and kind = 'refund'), 0),
+    'refunds', coalesce((select sum(gross) from s where ok and kind = 'refund'), 0),
+    'refund_proceeds', coalesce((select sum(proceeds) from s where ok and kind = 'refund'), 0),
+    'unconverted', (select coalesce(jsonb_agg(jsonb_build_object('currency', c, 'units', u, 'refund_units', ru) order by c), '[]'::jsonb)
+                      from (select case when public.bingr_apple_eur(1, s.customer_currency, fx.r) is null then s.customer_currency else s.proceeds_currency end c,
+                                   coalesce(sum(s.units) filter (where s.kind = 'sale'), 0) u, coalesce(sum(s.units) filter (where s.kind = 'refund'), 0) ru
+                              from s cross join fx where not s.ok group by 1) x),
+    'by_country', (select coalesce(jsonb_agg(jsonb_build_object('key', k, 'count', c, 'gross', g) order by g desc, k), '[]'::jsonb)
+                     from (select country k, sum(units) c, sum(gross) g from s where ok and kind = 'sale' group by 1) x),
+    'linked', (select count(*) from public.billing_purchases b where b.provider = 'apple' and b.status in ('paid', 'refunded', 'disputed')
+                 and b.paid_at >= p_from and b.paid_at < p_to and (coalesce(p_mode, 'all') not in ('live', 'test') or b.environment = p_mode)))
+$$;
+-- Beheer, tab Omzet (functie admin, actie revenue): de Apple-kant naast bingr_admin_revenue (website, modus web_*). Zelfde
+-- p_edges en p_ranges. Antwoord {commission, fx_rates, status: {through, last_run}, rows, first_date, last_date,
+-- series: {units, gross, proceeds, refund_units, refunds, refund_proceeds: [per tijdvak]}, ranges: {key: bingr_apple_sales_sum}}.
+create or replace function public.bingr_admin_revenue_apple(p_edges timestamptz[], p_mode text default 'all', p_ranges jsonb default '[]'::jsonb)
+returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare n int := coalesce(array_length(p_edges, 1), 0) - 1; base text; rg jsonb; ranges jsonb := '{}'::jsonb;
+begin
+  if n < 1 or n > 1000 or array_position(p_edges, null) is not null then return null; end if;
+  if exists (select 1 from generate_series(1, n) i where p_edges[i] >= p_edges[i + 1]) then return null; end if;
+  if p_mode is null or p_mode not in ('live', 'test', 'all') then return null; end if;
+  if jsonb_typeof(p_ranges) <> 'array' or jsonb_array_length(p_ranges) > 8 then return null; end if;
+  for rg in select * from jsonb_array_elements(p_ranges) loop
+    if coalesce(rg->>'key', '') !~ '^[a-z_]{1,20}$' or (rg->>'from') is null or (rg->>'to') is null then return null; end if;
+    ranges := ranges || jsonb_build_object(rg->>'key', public.bingr_apple_sales_sum((rg->>'from')::timestamptz, (rg->>'to')::timestamptz, p_mode));
+  end loop;
+  base := format(' from public.bingr_apple_sales_rows(%L) s where s.ok and s.at >= $2 and s.at < $3', p_mode);
+  return jsonb_build_object(
+    'commission', public.bingr_apple_commission(), 'fx_rates', public.bingr_apple_fx(),
+    'status', (select value from public.app_settings where key = 'apple_sales_status'),
+    'rows', (select count(*) from public.apple_sales_daily),
+    'first_date', (select min(date) from public.apple_sales_daily), 'last_date', (select max(date) from public.apple_sales_daily),
+    'series', jsonb_build_object(
+      'units', public.bingr_insights_bin(p_edges, 'select s.at, s.units' || base || ' and s.kind = ''sale'''),
+      'gross', public.bingr_insights_bin(p_edges, 'select s.at, s.gross' || base || ' and s.kind = ''sale'''),
+      'proceeds', public.bingr_insights_bin(p_edges, 'select s.at, s.proceeds' || base || ' and s.kind = ''sale'''),
+      'refund_units', public.bingr_insights_bin(p_edges, 'select s.at, s.units' || base || ' and s.kind = ''refund'''),
+      'refunds', public.bingr_insights_bin(p_edges, 'select s.at, s.gross' || base || ' and s.kind = ''refund'''),
+      'refund_proceeds', public.bingr_insights_bin(p_edges, 'select s.at, s.proceeds' || base || ' and s.kind = ''refund''')),
+    'ranges', ranges);
+end $$;
+-- CSV van de tab Omzet: de Apple-regels per dag (rapportdag, soort, land, aantal, valuta's, prijs, opbrengst en in euro).
+create or replace function public.bingr_admin_apple_sales_rows(p_from timestamptz, p_to timestamptz, p_mode text default 'all') returns jsonb
+language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(jsonb_build_object('day', x.day, 'kind', x.kind, 'country', x.country, 'units', x.units,
+           'customer_currency', x.customer_currency, 'proceeds_currency', x.proceeds_currency, 'customer_price', x.customer_price,
+           'developer_proceeds', x.developer_proceeds, 'gross', case when x.ok then x.gross end, 'proceeds', case when x.ok then x.proceeds end)
+           order by x.day, x.kind, x.country), '[]'::jsonb)
+    from (select * from public.bingr_apple_sales_rows(p_mode) r
+           where p_from is not null and p_to is not null and r.at >= p_from and r.at < p_to order by r.day limit 5000) x
+$$;
+-- Overzicht (bingr_admin_stats): Apple-omzet in eurocent over alles (verkopen − terugbetalingen) en het aantal stuks.
+create or replace function public.bingr_apple_sales_total() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object('count', (s->>'units')::bigint - (s->>'refund_units')::bigint, 'cents', (s->>'gross')::bigint - (s->>'refunds')::bigint)
+    from (select public.bingr_apple_sales_sum('-infinity'::timestamptz, 'infinity'::timestamptz, 'all') s) x
+$$;
+revoke all on function public.bingr_apple_sales_put(date, jsonb) from public, anon, authenticated;
+revoke all on function public.bingr_apple_sales_status_set(date, jsonb) from public, anon, authenticated;
+revoke all on function public.bingr_apple_eur(numeric, text, jsonb) from public, anon, authenticated;
+revoke all on function public.bingr_apple_fx() from public, anon, authenticated, service_role;
+revoke all on function public.bingr_apple_commission() from public, anon, authenticated, service_role;
+revoke all on function public.bingr_apple_sales_rows(text) from public, anon, authenticated, service_role;
+revoke all on function public.bingr_apple_sales_sum(timestamptz, timestamptz, text) from public, anon, authenticated, service_role;
+revoke all on function public.bingr_apple_sales_total() from public, anon, authenticated, service_role;
+revoke all on function public.bingr_admin_revenue_apple(timestamptz[], text, jsonb) from public, anon, authenticated;
+revoke all on function public.bingr_admin_apple_sales_rows(timestamptz, timestamptz, text) from public, anon, authenticated;
+grant execute on function public.bingr_apple_sales_put(date, jsonb) to service_role;
+grant execute on function public.bingr_apple_sales_status_set(date, jsonb) to service_role;
+grant execute on function public.bingr_admin_revenue_apple(timestamptz[], text, jsonb) to service_role;
+grant execute on function public.bingr_admin_apple_sales_rows(timestamptz, timestamptz, text) to service_role;
+-- <<< unittest apple-sales

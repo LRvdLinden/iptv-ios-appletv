@@ -52,6 +52,9 @@ name: Backend
 # Build 167 (alleen Lifetime, docs/ACCOUNT.md): functies lifetime-notice (mail, job deploy) en apple-notify (App Store Server
 # Notifications V2, job billing), beide zonder JWT; het geheim LIFETIME_ADMIN_SECRET (beheer -> lifetime-notice en billing
 # admin_*) maakt deze workflow één keer zelf aan. Alles staat standaard uit (app_settings.lifetime_only.enabled false).
+# Omzet Apple (App Store Connect, docs/ACCOUNT.md): functie apple-sales (job billing) haalt de dagrapporten van Sales and
+# Trends op naar apple_sales_daily; GitHub-secrets ISSUER_ID_APPSTORE_CONNECT, KEY_ID_APPSTORE_CONNECT, VENDOR_APPSTORE_CONNECT
+# en PRIVATE_KEY_APPSTORE_CONNECT (optioneel ASC_APP_SKU en APPLE_SALES_SECRET); pg_cron-taak bingr-apple-sales dagelijks.
 on:
   push:
     branches: [main]
@@ -64,6 +67,10 @@ on:
         default: false
       auth_mail_new_secret:
         description: 'Nieuw geheim voor de Send Email Hook (functie auth-mail) maken'
+        type: boolean
+        default: false
+      apple_sales_backfill:
+        description: 'Apple-omzet: de laatste 365 dagen opnieuw ophalen bij App Store Connect (gebeurt na de eerste deploy vanzelf één keer)'
         type: boolean
         default: false
 
@@ -122,6 +129,10 @@ jobs:
         # proefperiode, kortingscodes, entitlements met enabled false precies zoals nu, Stripe-coupon/promotion codes, de webhook
         # voor een gebruikte code, gastaankoop en claimen, en de mails (NL/EN, geen Apple)
         run: deno test supabase/functions/_shared/apple_test.ts supabase/functions/_shared/lifetime_test.ts
+      - name: Unittests (Apple-omzet, App Store Connect)
+        # blokkeert de deploy: JWT ES256 (zelfgemaakte testsleutel, max. 20 min), URL van het dagrapport, gzip + TSV, het filter
+        # op de in-app aankoop, samenvoegen (verkoop/terugbetaling), omrekenen naar EUR, 404 = geen fout; verzonnen regels
+        run: deno test supabase/functions/_shared/asc_test.ts
       - name: Unittests (statuspagina)
         continue-on-error: true
         run: |
@@ -208,6 +219,13 @@ jobs:
         run: |
           for i in $(seq 1 20); do pg_isready -q && break; sleep 1; done
           sudo -u postgres bash supabase/tests/lifetime_test.sh
+      - name: Unittests (Apple-omzet - database)
+        # blokkeert de deploy: apple_sales_daily (een dag overschrijven, alles of niets), bijgewerkt t/m, omrekenen met vaste
+        # koersen (zonder koers apart), series en bereiken voor de tab Omzet, website apart (web_*), gekoppelde aankopen,
+        # het totaal voor het overzicht en de rechten (alleen de service role); tijdelijke database
+        run: |
+          for i in $(seq 1 20); do pg_isready -q && break; sleep 1; done
+          sudo -u postgres bash supabase/tests/apple_sales_test.sh
       - name: Unittests (eigen mailing)
         # blokkeert de deploy: doelgroep (nieuwsbrief-opt-out, alle mail uit, geblokkeerd, onbevestigd, verwijderd, taal),
         # idempotent aanmaken (request_id, één mailing tegelijk), wachtrij (nooit twee keer dezelfde ontvanger), annuleren;
@@ -1765,7 +1783,8 @@ jobs:
   billing:
     needs: deploy
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    # Apple-omzet: het eenmalige terugvullen (365 dagen) heeft hoogstens 5 minuten
+    timeout-minutes: 15
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       REF: ${{ secrets.SUPABASE_PROJECT_REF }}
@@ -1883,6 +1902,140 @@ jobs:
           code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$F/billing" -H "Content-Type: application/json" -H "x-lifetime-secret: fout-geheim-0000000000000000" -d '{"action":"admin_codes_stats"}')
           [ "$code" = 403 ] || { echo "::error::billing admin_codes_stats met fout geheim gaf HTTP $code (verwacht 403)"; exit 1; }
           echo "::notice::apple-notify (ongeldige JWS 400) en billing admin_* (fout geheim 403) werken"
+      - name: Apple-omzet - App Store Connect, functie apple-sales en planning
+        # Omzet: Apple (App Store Connect), docs/ACCOUNT.md. GitHub-secrets ISSUER_ID_APPSTORE_CONNECT, KEY_ID_APPSTORE_CONNECT,
+        # VENDOR_APPSTORE_CONNECT en PRIVATE_KEY_APPSTORE_CONNECT (inhoud van de .p8) -> function-secrets ASC_ISSUER_ID,
+        # ASC_KEY_ID, ASC_VENDOR en ASC_PRIVATE_KEY (alleen het base64-deel). Optioneel ASC_APP_SKU (SKU van de app in App Store
+        # Connect, als die niet nl.lrvdlinden.bingr is) en APPLE_SALES_SECRET (vast geheim; anders per deploy nieuw, zoals
+        # STATUS_CRON_SECRET). Ontbreken de vier: ::notice::, de functie geeft {configured:false} en de planning staat uit.
+        # Nooit een waarde in het log of in een URL (alles gemaskeerd; de functie logt alleen datum, aantal regels en status).
+        if: steps.check.outputs.skip != '1'
+        env:
+          ASC_I: ${{ secrets.ISSUER_ID_APPSTORE_CONNECT }}
+          ASC_K: ${{ secrets.KEY_ID_APPSTORE_CONNECT }}
+          ASC_V: ${{ secrets.VENDOR_APPSTORE_CONNECT }}
+          ASC_P: ${{ secrets.PRIVATE_KEY_APPSTORE_CONNECT }}
+          ASC_S: ${{ secrets.ASC_APP_SKU }}
+          AS_SECRET: ${{ secrets.APPLE_SALES_SECRET }}
+          AS_BACKFILL: ${{ inputs.apple_sales_backfill && '1' || '' }}
+        run: |
+          [ -n "$ASC_V" ] && echo "::add-mask::$ASC_V"
+          [ -n "$ASC_I" ] && echo "::add-mask::$ASC_I"
+          [ -n "$ASC_K" ] && echo "::add-mask::$ASC_K"
+          umask 077
+          python3 - <<'PY'
+          import json, os, re, secrets, subprocess, sys, time, urllib.request, urllib.error
+          REF = os.environ["REF"]; MGMT = os.environ["SUPABASE_ACCESS_TOKEN"]
+          g = lambda k: (os.environ.get(k) or "").strip()
+          iss, kid, vendor, pem, sku = g("ASC_I"), g("ASC_K"), g("ASC_V"), os.environ.get("ASC_P") or "", g("ASC_S")
+          body = re.sub(r"\s+", "", re.sub(r"-----(BEGIN|END) [A-Z ]+-----", "", pem.replace("\\n", "\n")))
+          if body: print(f"::add-mask::{body}")
+          sec = g("AS_SECRET") or secrets.token_hex(32)
+          print(f"::add-mask::{sec}")
+          if not re.fullmatch(r"[A-Za-z0-9_-]{24,128}", sec): print("::error::APPLE_SALES_SECRET: 24-128 tekens, alleen letters, cijfers, - en _"); sys.exit(1)
+          def sset(**kv):
+              r = subprocess.run(["supabase", "secrets", "set", "--project-ref", REF, *[f"{k}={v}" for k, v in kv.items()]], capture_output=True, text=True)
+              if r.returncode: print(f"::error::function-secrets zetten mislukt ({', '.join(kv)})"); sys.exit(1)
+          def sql(q):
+              r = urllib.request.Request(f"https://api.supabase.com/v1/projects/{REF}/database/query", method="POST",
+                  data=json.dumps({"query": q}).encode(), headers={"Authorization": f"Bearer {MGMT}", "Content-Type": "application/json"})
+              try:
+                  with urllib.request.urlopen(r, timeout=30) as resp: return json.loads(resp.read() or b"[]")
+              except urllib.error.HTTPError as e: print(f"::warning::SQL HTTP {e.code}"); return None
+          have = [bool(iss), bool(kid), bool(vendor), bool(body)]
+          configured = False
+          if not any(have):
+              print("::notice::Apple-omzet staat uit: GitHub-secrets ISSUER_ID_APPSTORE_CONNECT, KEY_ID_APPSTORE_CONNECT, VENDOR_APPSTORE_CONNECT en PRIVATE_KEY_APPSTORE_CONNECT ontbreken (apple-sales geeft configured:false).")
+          elif not all(have):
+              print("::notice::Apple-omzet staat uit: niet alle vier de App Store Connect-secrets zijn gezet.")
+          else:
+              bad = [n for n, ok in [("ISSUER_ID_APPSTORE_CONNECT", re.fullmatch(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}", iss)),
+                     ("KEY_ID_APPSTORE_CONNECT", re.fullmatch(r"[A-Z0-9]{8,16}", kid)), ("VENDOR_APPSTORE_CONNECT", re.fullmatch(r"[0-9]{5,12}", vendor)),
+                     ("PRIVATE_KEY_APPSTORE_CONNECT", re.fullmatch(r"[A-Za-z0-9+/]{64,4096}={0,2}", body))] if not ok]
+              if bad: print(f"::warning::Apple-omzet staat uit: ongeldige vorm van {', '.join(bad)} (waarden worden niet getoond)")
+              else:
+                  kv = dict(ASC_ISSUER_ID=iss, ASC_KEY_ID=kid, ASC_VENDOR=vendor, ASC_PRIVATE_KEY=body)
+                  if sku and re.fullmatch(r"[A-Za-z0-9._,-]{1,200}", sku): kv["ASC_APP_SKU"] = sku
+                  sset(**kv); configured = True
+                  print("::notice::App Store Connect-secrets als function-secrets gezet (ASC_ISSUER_ID, ASC_KEY_ID, ASC_VENDOR, ASC_PRIVATE_KEY)")
+          sset(APPLE_SALES_SECRET=sec)
+          r = subprocess.run(["supabase", "functions", "deploy", "apple-sales", "--project-ref", REF, "--no-verify-jwt", "--use-api"], capture_output=True, text=True)
+          if r.returncode: print("::error::deploy apple-sales mislukt"); sys.exit(1)
+          time.sleep(4)
+          F = f"https://{REF}.supabase.co/functions/v1/apple-sales"
+          def post(headers, body):
+              q = urllib.request.Request(F, method="POST", data=json.dumps(body).encode(), headers={"Content-Type": "application/json", **headers})
+              try:
+                  with urllib.request.urlopen(q, timeout=150) as resp: return resp.status, json.loads(resp.read() or b"{}")
+              except urllib.error.HTTPError as e:
+                  try: return e.code, json.loads(e.read() or b"{}")
+                  except Exception: return e.code, {}
+          code, _ = post({}, {"action": "status"})
+          if code != 403: print(f"::error::apple-sales zonder geheim gaf HTTP {code} (verwacht 403)"); sys.exit(1)
+          code, _ = post({"x-apple-sales-secret": "fout-geheim-000000000000000000"}, {"action": "status"})
+          if code != 403: print(f"::error::apple-sales met fout geheim gaf HTTP {code} (verwacht 403)"); sys.exit(1)
+          code, st = post({"x-apple-sales-secret": sec}, {"action": "status"})
+          if code != 200 or st.get("configured") is not configured: print(f"::error::apple-sales status gaf HTTP {code} (configured {st.get('configured')}, verwacht {configured})"); sys.exit(1)
+          print(f"::notice::apple-sales werkt (zonder of met fout geheim 403; ingesteld: {'ja' if configured else 'nee'}; bijgewerkt t/m {st.get('through') or '-'})")
+          # planning: elke dag 14:37 UTC (de dagrapporten van Apple staan er rond 13:00 UTC), de laatste 7 dagen
+          unsched = "select cron.unschedule(jobid) from cron.job where jobname = 'bingr-apple-sales';\n"
+          if configured:
+              cmd = ("select net.http_post(url := 'https://%s.supabase.co/functions/v1/apple-sales', "
+                     "headers := jsonb_build_object('Content-Type', 'application/json', 'x-apple-sales-secret', '%s'), "
+                     "body := '{\"action\":\"run\"}'::jsonb, timeout_milliseconds := 120000);") % (REF, sec)
+              res = sql(unsched + "select cron.schedule('bingr-apple-sales', '37 14 * * *', $cmd$ " + cmd + " $cmd$);\n"
+                        "select jobname, schedule, active from cron.job where jobname = 'bingr-apple-sales';")
+              if res and any(x.get("active") for x in res if isinstance(x, dict)): print("::notice::Planning bingr-apple-sales actief (dagelijks 14:37 UTC)")
+              else: print("::warning::pg_cron/pg_net niet beschikbaar: Apple-omzet wordt niet dagelijks opgehaald (wel handmatig in het beheer)")
+              # eerste keer (of na een pauze): meteen de laatste 7 dagen ophalen; alleen aantallen in het log
+              code, run = post({"x-apple-sales-secret": sec}, {"action": "run"})
+              if code == 200: print(f"::notice::Apple-omzet opgehaald: {run.get('ok', 0)} dagen met rapport, {run.get('empty', 0)} zonder verkopen, {run.get('not_ready', 0)} nog niet klaar, {run.get('failed', 0)} mislukt{'; App Store Connect weigert de sleutel (rol Sales of Finance nodig)' if run.get('error') == 'asc_unauthorized' else ''}")
+              else: print(f"::warning::Apple-omzet ophalen gaf HTTP {code} ({run.get('error', '')})")
+              # Eenmalig terugvullen: de laatste 365 dagen (t/m gisteren), van nieuw naar oud in stukken van 31 dagen. De
+              # markering app_settings.apple_sales_backfill {from, to, next_to, done_at} onthoudt hoe ver hij is: na een
+              # mislukt stuk of na 5 minuten gaat de volgende deploy verder; met done_at gebeurt het niet meer, behalve met
+              # de invoer apple_sales_backfill (Run workflow), die opnieuw begint. Alleen aantallen in het log.
+              import datetime as dt
+              ymd = lambda d: d.isoformat()
+              rows = sql("select value from public.app_settings where key = 'apple_sales_backfill';")
+              mark = rows[0].get("value") if rows and isinstance(rows[0], dict) else None
+              if isinstance(mark, str):
+                  try: mark = json.loads(mark)
+                  except ValueError: mark = None
+              if not isinstance(mark, dict): mark = None
+              okd = lambda v: isinstance(v, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", v) is not None
+              if rows is None:
+                  print("::warning::Apple-omzet terugvullen overgeslagen: stand niet te lezen (volgende deploy opnieuw)")
+              elif mark and mark.get("done_at") and not os.environ.get("AS_BACKFILL"):
+                  print(f"::notice::Apple-omzet al teruggevuld ({mark.get('from')} t/m {mark.get('to')}); opnieuw kan met de invoer apple_sales_backfill")
+              else:
+                  today = dt.datetime.now(dt.timezone.utc).date()
+                  if os.environ.get("AS_BACKFILL") or not mark or not (okd(mark.get("from")) and okd(mark.get("next_to"))):
+                      mark = {"from": ymd(today - dt.timedelta(days=365)), "to": ymd(today - dt.timedelta(days=1)), "next_to": ymd(today - dt.timedelta(days=1)), "done_at": None}
+                  def save(m):
+                      sql("insert into public.app_settings (key, value, updated_at) values ('apple_sales_backfill', $j$" + json.dumps(m) + "$j$::jsonb, now()) "
+                          "on conflict (key) do update set value = excluded.value, updated_at = now();")
+                  start, frm, tot = time.time(), dt.date.fromisoformat(mark["from"]), {"ok": 0, "empty": 0, "not_ready": 0, "failed": 0}
+                  nxt, stop = dt.date.fromisoformat(mark["next_to"]), None
+                  while nxt >= frm:
+                      if time.time() - start > 300: stop = "tijd op (5 minuten)"; break
+                      a = max(frm, nxt - dt.timedelta(days=30))
+                      code, r = post({"x-apple-sales-secret": sec}, {"action": "backfill", "from": ymd(a), "to": ymd(nxt)})
+                      if code != 200 or r.get("configured") is False: stop = f"HTTP {code} ({r.get('error', '')})"; break
+                      for k in tot: tot[k] += int(r.get(k) or 0)
+                      if r.get("error") == "asc_unauthorized": stop = "App Store Connect weigert de sleutel (rol Sales of Finance nodig)"; break
+                      if int(r.get("failed") or 0): stop = f"{r.get('failed')} dagen mislukt tussen {ymd(a)} en {ymd(nxt)}"; break
+                      nxt = a - dt.timedelta(days=1)
+                      mark["next_to"] = ymd(nxt); save(mark)
+                  if nxt < frm:
+                      mark["done_at"] = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"); save(mark)
+                      print(f"::notice::Apple-omzet teruggevuld {mark['from']} t/m {mark['to']}: {tot['ok']} dagen met verkopen, {tot['empty']} zonder, {tot['not_ready']} niet beschikbaar")
+                  else:
+                      save(mark)
+                      print(f"::warning::Apple-omzet terugvullen gestopt bij {mark['next_to']}: {stop}; de volgende deploy gaat verder (of Run workflow)")
+          else:
+              sql(unsched)
+          PY
       - name: Betalen testen
         # rooktest (zonder inloggen 401, foute handtekening 400, juiste handtekening 200) en end-to-end met een tijdelijk
         # account: zonder sleutel 503 billing_unavailable; in testmodus een echte Checkout Session (daarna verlopen), status
