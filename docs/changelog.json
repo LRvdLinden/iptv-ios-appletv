@@ -1,5 +1,28 @@
 [
  {
+  "build": 168,
+  "version": "1.0.5",
+  "date": "2026-11-07",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Nieuwe accounts kunnen per platform eerst Lifetime moeten kopen; bestaande gratis accounts blijven gratis tot 1 december 2026",
+    "en": "New accounts can be required to buy Lifetime first, per platform; existing free accounts stay free until 1 December 2026"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Nieuwe bezoekers zien alleen Lifetime en kopen op /upgrade/ eerst, daarna maken ze hun account",
+    "en": "New visitors only see Lifetime and buy first on /upgrade/, then create their account"
+   }
+  ]
+ },
+ {
   "build": 167,
   "version": "1.0.5",
   "date": "2026-11-07",

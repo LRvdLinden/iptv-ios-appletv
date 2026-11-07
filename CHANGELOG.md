@@ -4,6 +4,21 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.5 · Build 168
+_7 november 2026_
+
+### Website
+
+**Verbeterd**
+
+- Nieuwe bezoekers zien alleen Lifetime en kopen op /upgrade/ eerst, daarna maken ze hun account
+
+### Server
+
+**Nieuw**
+
+- Nieuwe accounts kunnen per platform eerst Lifetime moeten kopen; bestaande gratis accounts blijven gratis tot 1 december 2026
+
 ## Versie 1.0.5 · Build 167
 _7 november 2026_
 
