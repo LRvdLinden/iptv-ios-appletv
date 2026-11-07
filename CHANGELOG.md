@@ -37,7 +37,7 @@ _7 november 2026_
 ## Versie 1.0.5 · Build 166
 _6 november 2026_
 
-### iOS, iPadOS, tvOS, macOS, Android en Android TV
+### iOS, iPadOS, tvOS, macOS, Android, Android TV en Website
 
 **Verbeterd**
 
@@ -52,7 +52,7 @@ _6 november 2026_
 ## Versie 1.0.5 · Build 165
 _6 november 2026_
 
-### iOS, iPadOS, tvOS, macOS, Android en Android TV
+### iOS, iPadOS, tvOS, macOS, Android, Android TV en Website
 
 **Verbeterd**
 
@@ -72,13 +72,18 @@ _6 november 2026_
 **Nieuw**
 
 - Nieuwe tv-gids: op de telefoon de gekozen zender live bovenaan, zenders links en programma's rechts met NU, terugkijken en herinneringen
+
+### iOS, iPadOS, tvOS, macOS, Android, Android TV en Website
+
+**Nieuw**
+
 - Instelling Live voorbeeld in de gids: Altijd, Alleen wifi of Nooit
 
 **Verbeterd**
 
 - Het live voorbeeld speelt zonder geluid en telt mee als stream; andere zenders tonen een recent stilstaand beeld of hun logo
 
-### iPadOS en macOS
+### iPadOS, macOS en Website
 
 **Nieuw**
 

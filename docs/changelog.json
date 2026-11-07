@@ -114,7 +114,8 @@
      "tvos",
      "macos",
      "android",
-     "androidtv"
+     "androidtv",
+     "web"
     ],
     "nl": "De tv-gids toont alleen nog dagen waarvoor er gids-info is; eerdere dagen alleen bij zenders met terugkijken",
     "en": "The TV guide now only shows days that have guide information; earlier days only for channels with catch-up"
@@ -134,7 +135,8 @@
      "tvos",
      "macos",
      "android",
-     "androidtv"
+     "androidtv",
+     "web"
     ],
     "nl": "Live tv opent nu altijd in de tv-gids; met de bestaande knop wissel je naar de lijst, zolang je in Live tv bent",
     "en": "Live TV now always opens in the TV guide; use the existing button to switch to the list while you're in Live TV"
@@ -181,7 +183,8 @@
     "type": "new",
     "platforms": [
      "ipados",
-     "macos"
+     "macos",
+     "web"
     ],
     "nl": "Tv-gids met een groot live voorbeeld, Kijk live en Vanaf het begin, en zenderkolommen",
     "en": "TV guide with a large live preview, Watch live and From the start, and channel columns"
@@ -194,7 +197,8 @@
      "tvos",
      "macos",
      "android",
-     "androidtv"
+     "androidtv",
+     "web"
     ],
     "nl": "Het live voorbeeld speelt zonder geluid en telt mee als stream; andere zenders tonen een recent stilstaand beeld of hun logo",
     "en": "The live preview plays muted and counts as a stream; other channels show a recent still image or their logo"
@@ -218,7 +222,8 @@
      "tvos",
      "macos",
      "android",
-     "androidtv"
+     "androidtv",
+     "web"
     ],
     "nl": "Instelling Live voorbeeld in de gids: Altijd, Alleen wifi of Nooit",
     "en": "Setting Live preview in the guide: Always, Wi-Fi only or Never"
