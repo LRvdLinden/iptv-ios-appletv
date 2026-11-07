@@ -4766,7 +4766,8 @@ grant execute on function public.bingr_enforce_free_devices(int, uuid) to servic
 -- ============================================================================================================
 -- Build 167: Bingr wordt alleen Lifetime (docs/ACCOUNT.md, "Build 167: alleen Lifetime"). Herhaalbaar.
 -- Instellingen (app_settings, alleen service role; het beheer zet ze met bingr_admin_lifetime_settings):
---   lifetime_only = {enabled, announce_at, cutover_at, discount_pct, code_valid_until, trial_days}; standaard uit = alles zoals nu
+--   lifetime_only = {enabled, announce_at, cutover_at, discount_pct, code_valid_until, trial_days, new_paid_from?, new_paid_from_apple?};
+--                   standaard uit = alles zoals nu (build 168: new_paid_from* ontbreken of null = uit)
 --   iap           = {apple}: koopknop (StoreKit) in de Apple-apps; standaard false
 --   upgrade_link.apple_eu: EU External Purchase Link in de Apple-apps; standaard false
 -- >>> unittest lifetime
@@ -4805,10 +4806,15 @@ revoke all on public.lifetime_codes from anon, authenticated;
 create index if not exists lifetime_codes_open_idx on public.lifetime_codes (created_at) where stripe_promotion_code_id is null;
 
 -- Gratis-account voor de codes en de mail: bevestigd e-mailadres, niet verwijderd, niet geblokkeerd, geen Lifetime.
+-- Build 168: en aangemaakt vóór de vroegste ingestelde new_paid_from / new_paid_from_apple (nieuwe accounts moeten eerst
+-- kopen; de korting en de mail "Bingr wordt Lifetime" zijn voor bestaande accounts). Beide null = zoals build 167.
 create or replace function public.bingr_lifetime_eligible(p_user uuid) returns boolean
 language sql stable security definer set search_path = public, auth as $$
   select exists (select 1 from auth.users u where u.id = p_user and u.email is not null and u.email_confirmed_at is not null
-                   and u.deleted_at is null and (u.banned_until is null or u.banned_until <= now()))
+                   and u.deleted_at is null and (u.banned_until is null or u.banned_until <= now())
+                   and u.created_at < coalesce((select least(nullif(a.value->>'new_paid_from', '')::timestamptz,
+                                                                  nullif(a.value->>'new_paid_from_apple', '')::timestamptz)
+                                                  from public.app_settings a where a.key = 'lifetime_only'), 'infinity'::timestamptz))
      and not exists (select 1 from public.account_blocks b where b.user_id = p_user and b.lifted_at is null and (b.until is null or b.until > now()))
      and not exists (select 1 from public.account_plans p where p.user_id = p_user and p.plan = 'lifetime')
 $$;
@@ -4936,6 +4942,8 @@ grant execute on function public.bingr_lifetime_code_of(uuid) to service_role;
 -- Instellingen lezen (alle argumenten null) en schrijven (beheer, actie lifetime_settings). p_lifetime wordt samengevoegd
 -- met de huidige waarde en gecontroleerd: enabled boolean, announce_at / cutover_at / code_valid_until null of een tijd,
 -- discount_pct 1-90, trial_days 0-90, aanzetten kan alleen met cutover_at. Fout = exception 22023 'bad_lifetime_settings'.
+-- Build 168: ook new_paid_from (Android, Android TV, web) en new_paid_from_apple (Apple-apps), null of een tijd: accounts
+-- die op of na die datum zijn aangemaakt, moeten op dat platform eerst kopen (alleen als enabled true is).
 create or replace function public.bingr_admin_lifetime_settings(p_lifetime jsonb default null, p_iap jsonb default null, p_apple_eu boolean default null)
 returns jsonb
 language plpgsql security definer set search_path = public as $$
@@ -4946,7 +4954,7 @@ begin
     select value into cur from public.app_settings where key = 'lifetime_only';
     v := coalesce(cur, '{}'::jsonb) || p_lifetime;
     for k in select jsonb_object_keys(v) loop
-      if k not in ('enabled', 'announce_at', 'cutover_at', 'discount_pct', 'code_valid_until', 'trial_days') then
+      if k not in ('enabled', 'announce_at', 'cutover_at', 'discount_pct', 'code_valid_until', 'trial_days', 'new_paid_from', 'new_paid_from_apple') then
         raise exception 'bad_lifetime_settings' using errcode = '22023'; end if;
     end loop;
     if jsonb_typeof(v->'enabled') is distinct from 'boolean'
@@ -4954,7 +4962,7 @@ begin
        or coalesce(jsonb_typeof(v->'trial_days'), '') <> 'number' or (v->>'trial_days') !~ '^\d{1,2}$' or (v->>'trial_days')::int not between 0 and 90 then
       raise exception 'bad_lifetime_settings' using errcode = '22023';
     end if;
-    foreach k in array array['announce_at', 'cutover_at', 'code_valid_until'] loop
+    foreach k in array array['announce_at', 'cutover_at', 'code_valid_until', 'new_paid_from', 'new_paid_from_apple'] loop
       if jsonb_typeof(v->k) not in ('null', 'string') and v ? k then raise exception 'bad_lifetime_settings' using errcode = '22023'; end if;
       if jsonb_typeof(v->k) = 'string' then
         begin perform (v->>k)::timestamptz; exception when others then raise exception 'bad_lifetime_settings' using errcode = '22023'; end;

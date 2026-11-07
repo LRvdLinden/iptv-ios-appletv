@@ -162,12 +162,17 @@ async function appSettings(): Promise<AllSettings> {
 }
 // Build 167: mag dit account afspelen? Bij een databasefout: ja (een storing blokkeert nooit Lifetime-accounts; de
 // streamlimiet blijft gelden). Alleen "activate" na cutover_at voor een account dat niet Lifetime is.
-async function activationRequired(user: Authed): Promise<boolean> {
+// Build 168: per platform (body.platform, anders het geregistreerde apparaat van body.device_id), zoals de entitlements;
+// onbekend = groep "other" (Android/web, de strenge kant: de Apple-apps registreren hun apparaat altijd met hun platform).
+async function activationRequired(user: Authed, body: Record<string, unknown>): Promise<boolean> {
   const s = await appSettings();
   if (!s.lifetime.enabled) return false;
-  const { data, error } = await admin.from("account_plans").select("plan").eq("user_id", user.id).maybeSingle();
+  const [{ data, error }, platform] = await Promise.all([
+    admin.from("account_plans").select("plan").eq("user_id", user.id).maybeSingle(),
+    callerPlatform(user.id, body).catch(() => null),
+  ]);
   if (error) { console.error("account_plans", error.message); return false; }
-  return accessFor(s.lifetime, data?.plan, user.created_at).access === "activate";
+  return accessFor(s.lifetime, data?.plan, user.created_at, Date.now(), platform).access === "activate";
 }
 // Platform van de aanvraag (body.platform), anders van het geregistreerde apparaat (body.device_id of het opgegeven platform).
 async function callerPlatform(userId: string, body: Record<string, unknown>, devicePlatform?: string | null) {
@@ -831,7 +836,7 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       const device_id = String(body.device_id ?? "").slice(0, 80);
       if (!device_id) return json({ error: "device_id_missing" }, 400);
       // build 167: na cutover_at kan een account dat niet Lifetime is niet meer afspelen (ook met een oudere app)
-      if (await activationRequired(user)) return json(ACTIVATION_REQUIRED, 403);
+      if (await activationRequired(user, body)) return json(ACTIVATION_REQUIRED, 403);
       // streamlimiet van het abonnement (gratis 1, lifetime 3, of eigen limiet uit het beheer); Bingr-telling,
       // los van de limiet van de IPTV-provider (die controleren de apps zelf bij het afspelen)
       const row = await planRow(user.id), limit = limitsFor(row).streams;

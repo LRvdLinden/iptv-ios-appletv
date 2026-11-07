@@ -1870,7 +1870,7 @@ Bingr gaat van Gratis + Lifetime naar **alleen Lifetime**. De overgang is **1 de
 
 | Sleutel | Standaard | Betekenis |
 |---|---|---|
-| `lifetime_only` | `{"enabled": false, "announce_at": null, "cutover_at": "2026-12-01T00:00:00+01:00", "discount_pct": 30, "code_valid_until": "2026-12-01T00:00:00+01:00", "trial_days": 0}` | Lifetime-only. `announce_at` = vanaf wanneer de aankondiging zichtbaar is. `code_valid_until` = tot wanneer de codes werken (leeg = `cutover_at`). `trial_days` = proefperiode voor nieuwe accounts na `cutover_at` (0 = geen). |
+| `lifetime_only` | `{"enabled": false, "announce_at": null, "cutover_at": "2026-12-01T00:00:00+01:00", "discount_pct": 30, "code_valid_until": "2026-12-01T00:00:00+01:00", "trial_days": 0}` | Lifetime-only. `announce_at` = vanaf wanneer de aankondiging zichtbaar is. `code_valid_until` = tot wanneer de codes werken (leeg = `cutover_at`). `trial_days` = proefperiode voor nieuwe accounts na `cutover_at` (0 = geen). Sinds build 168 ook `new_paid_from` en `new_paid_from_apple` (zie "Build 168: nieuwe accounts eerst kopen"). |
 | `iap` | `{"apple": false}` | Koopknop (StoreKit) in de Apple-apps. Pas aanzetten als het product in App Store Connect klaar staat. |
 | `upgrade_link.apple_eu` | `false` | EU External Purchase Link in de Apple-apps. Pas aanzetten als Apple de entitlement heeft toegekend. |
 
@@ -2038,6 +2038,31 @@ De app blijft gratis te downloaden. Na `cutover_at` is de volgorde **kopen → a
   - `supabase/functions/_shared/apple_test.ts`: de JWS-keten met een zelfgemaakte test-CA in `apple_testdata.ts`, vervalsingen, tijden, de echte (openbare) Apple-keten alleen als certificaten, transacties, notificaties en Apple-aankopen in de nep-database (`testdb.ts`). Nooit echte transacties.
   - `supabase/functions/_shared/lifetime_test.ts`: toegang, proefperiode, codes, entitlements (enabled false = zoals nu), Stripe-parameters, de webhook voor een gebruikte code, gastaankoop en claimen, en de mails.
 - SQL (blokkeert de deploy): `supabase/tests/lifetime_test.sh`, in een tijdelijke Postgres. Dekt de standaardwaarden, de controle van de instellingen, de codes, wie de mail krijgt, Apple-aankopen en omzet, het claimen (token, e-mail, trigger), handmatig koppelen en de rechten.
+
+### Build 168: nieuwe accounts eerst kopen (per platformgroep)
+
+Vóór 1 december moeten **nieuwe** accounts al meteen kopen; bestaande gratis accounts blijven gratis tot `cutover_at`. Dat gaat per platformgroep, met twee extra sleutels in `app_settings.lifetime_only` (beide standaard **null** = uit, dan is alles precies zoals build 167):
+
+| Sleutel | Groep | Platforms |
+|---|---|---|
+| `new_paid_from` | web en Android | `android`, `androidtv`, `web` (ook de Windows-app via de webspeler; de oude `tizen`/`webos` horen hier ook bij) |
+| `new_paid_from_apple` | Apple-apps | `ios`, `ipados`, `tvos`, `macos` (pas na de goedkeuring van Apple) |
+
+- Ze werken alleen als `enabled` true is, en pas vanaf het moment zelf (nu ≥ datum). `bingr_admin_lifetime_settings` accepteert ze als null of een ISO-tijd (anders `bad_lifetime_settings`).
+- **Toegang per account en platform** (`_shared/lifetime.ts`: `paidGroup`, `newPaidSubject`, `effectiveCutover`, `accessFor(…, platform)`): een account dat **op of na** de datum van zijn platformgroep is aangemaakt (`auth.users.created_at`) krijgt op dat platform `access: "activate"`, tenzij het Lifetime is of een proefperiode heeft (`trial_days` geldt ook voor deze accounts: `trial_until` = aanmaken + `trial_days`). Een account van vóór de datum verandert niet en blijft gratis tot `cutover_at`.
+  - Hetzelfde nieuwe account kan dus op Android `activate` hebben en in de Apple-apps nog `full` (tot `new_paid_from_apple` of `cutover_at`).
+  - **Platform:** entitlements, `heartbeat` en `config` gebruiken `body.platform` of het geregistreerde apparaat (`device_id`), zoals al voor de upgrade-link. `stream_start` doet nu hetzelfde (`device_id` is daar verplicht; het platform komt uit `account_devices`). Is het platform niet te bepalen (apparaat niet geregistreerd, onbekende naam), dan geldt de groep web en Android: de strenge kant. De Apple-apps registreren hun apparaat altijd met hun platform (iPhone, iPad, Mac, Apple TV), dus die vallen nooit per ongeluk onder `new_paid_from`.
+  - `stream_start` geeft dan 403 `activation_required` (ook voor oudere apps).
+- **`entitlements.lifetime_only`** voor een account onder de regel: `cutover_at` = de datum van zijn platformgroep (in het verleden: voor dit account is gratis al voorbij), `code` en `code_valid_until` null, en een extra veld `new_paid: true`. Voor alle andere accounts verandert er niets (geen `new_paid`-veld).
+- **Publieke `billing config`** per platformgroep (`publicLifetime`, `configGroup`):
+  - de groep komt uit `body.platform` (of `?platform=`), anders uit de User-Agent: de Apple-apps (URLSession, `Bingr/<build> CFNetwork/… Darwin/…`) = Apple, Android en Android TV (OkHttp, `Bingr v<versie>`) = web en Android, browsers (`Mozilla/…`: website, webspeler, Windows-app) = web en Android. Onbekend = Apple, de voorzichtige kant voor het welkomstscherm. De website en de webspeler sturen sinds build 168 zelf `platform: "web"` mee; Apple 167 en Android 167 sturen geen platform (daarom de User-Agent);
+  - **niet ingelogd** en de regel geldt voor die groep: `after_cutover: true`, plus `new_paid: true` en `new_paid_from`. Het welkomstscherm van Apple 167, Android 167 en de webspeler wisselt daardoor **zonder app-wijziging** naar Koop Lifetime / Ik heb al een account (/ Herstel aankopen op Apple). Ingelogde apps gebruiken hiervoor niet de publieke config maar `entitlements`, dus bestaande gratis gebruikers zien geen "na de overgang"-teksten;
+  - **ingelogd** (`Authorization`, alleen de website gebruikt dat): per account. Een bestaand account krijgt `after_cutover` pas na `cutover_at` en houdt zijn code; een account onder de regel krijgt `after_cutover: true`, `new_paid: true` en geen code.
+  - Met beide datums null is het antwoord precies zoals build 167 (unittest).
+- **Codes en de mail "Bingr wordt Lifetime":** `bingr_lifetime_eligible` laat accounts weg die op of na de **vroegste** ingestelde datum (`least(new_paid_from, new_paid_from_apple)`) zijn aangemaakt: de korting en de mail zijn voor bestaande accounts. Een account dat tussen de twee datums is aangemaakt en alleen de Apple-apps gebruikt, krijgt dus ook geen code (Apple toont de code toch nooit).
+- **Website** (bingr.online): gebruikt alleen `new_paid_from` (groep web en Android). Niet ingelogd en de regel geldt: geen Gratis-kolom en geen "Maak gratis een account", en op /upgrade/ is de gastaankoop de standaard. Ingelogde bestaande gratis accounts zien nog "Gratis (tot 1 december 2026)" en hun code.
+- **Beheer:** twee datumvelden in Lifetime-only, "Nieuwe accounts eerst kopen — web en Android" en "— Apple-apps", elk met een bevestiging; bij de Apple-datum een waarschuwing als `iap.apple` uit staat (dan is er in de Apple-apps geen koopknop en kan een nieuw account niets).
+- **Tests:** `lifetime_test.ts` (alles met beide datums null gelijk aan een kopie van de logica van build 167; per platform; op de grens; proefperiode; publieke config; User-Agent) en `supabase/tests/lifetime_test.sql` (instellingen, codes niet voor nieuwe accounts, null = zoals 167).
 
 ### Wat Léon zelf doet (pas op dag D, alles tegelijk)
 

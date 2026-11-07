@@ -52,6 +52,24 @@ select pg_temp.ok(public.bingr_lifetime_candidates(10) =
 select pg_temp.ok(jsonb_array_length(public.bingr_lifetime_candidates(1)) = 1, 'limiet');
 select pg_temp.ok((public.bingr_admin_lifetime_stats()->>'candidates')::int = 2, 'stats: 2 kandidaten');
 
+-- build 168: nieuwe accounts eerst kopen. Instellingen: null of een tijd; accounts op of na de vroegste datum krijgen geen
+-- code en geen mail (de korting is voor bestaande accounts). Daarna weer null: precies zoals build 167.
+select pg_temp.ok(pg_temp.fails($q$select public.bingr_admin_lifetime_settings('{"new_paid_from": "straks"}'::jsonb)$q$), 'new_paid_from geen tijd = fout');
+select pg_temp.ok(pg_temp.fails($q$select public.bingr_admin_lifetime_settings('{"new_paid_from_apple": 5}'::jsonb)$q$), 'new_paid_from_apple geen tijd = fout');
+select pg_temp.ok((select value ? 'new_paid_from' from public.app_settings where key = 'lifetime_only') = false, 'fout = niets veranderd');
+select public.bingr_admin_lifetime_settings(jsonb_build_object('new_paid_from', (now() - interval '5 days')::text));
+select pg_temp.ok((select value->>'enabled' from public.app_settings where key = 'lifetime_only') = 'true'
+  and (select (value->>'new_paid_from')::timestamptz from public.app_settings where key = 'lifetime_only') < now(), 'new_paid_from gezet, rest blijft');
+select pg_temp.ok(public.bingr_lifetime_candidates(10) = '["00000000-0000-4000-8000-00000000000a"]'::jsonb, 'F (na new_paid_from) krijgt geen code');
+select public.bingr_admin_lifetime_settings('{"new_paid_from": null}'::jsonb);
+select public.bingr_admin_lifetime_settings(jsonb_build_object('new_paid_from_apple', (now() - interval '5 days')::text));
+select pg_temp.ok(public.bingr_lifetime_candidates(10) = '["00000000-0000-4000-8000-00000000000a"]'::jsonb, 'ook met alleen de Apple-datum');
+select public.bingr_admin_lifetime_settings(jsonb_build_object('new_paid_from', (now() - interval '20 days')::text, 'new_paid_from_apple', null));
+select pg_temp.ok(public.bingr_lifetime_candidates(10) = '[]'::jsonb, 'vroegste datum telt');
+select public.bingr_admin_lifetime_settings('{"new_paid_from": null, "new_paid_from_apple": null}'::jsonb);
+select pg_temp.ok(public.bingr_lifetime_candidates(10) =
+  '["00000000-0000-4000-8000-00000000000a", "00000000-0000-4000-8000-00000000000f"]'::jsonb, 'null = zoals build 167');
+
 -- codes: vorm en uniek
 select pg_temp.ok(pg_temp.fails($q$insert into public.lifetime_codes (user_id, code, expires_at) values ('00000000-0000-4000-8000-00000000000a', 'BINGR-0OI1-AAAA', now() + interval '1 day')$q$), 'verwarrende tekens geweigerd');
 insert into public.lifetime_codes (user_id, code, expires_at, stripe_promotion_code_id, stripe_mode) values

@@ -44,7 +44,7 @@ import { normalizePlatform, PRICE_CENTS, PRICE_CURRENCY, PRODUCT_NAME } from "..
 import { APPLE_PRODUCT_ID, checkTransaction } from "../_shared/apple.ts";
 import { verifyAppleJws } from "../_shared/apple_jws.ts";
 import { grantApple } from "../_shared/apple_store.ts";
-import { checkCode, priceAfter, promotionCodeOf } from "../_shared/lifetime.ts";
+import { checkCode, configGroup, normalizeLifetime, priceAfter, promotionCodeOf, publicLifetime } from "../_shared/lifetime.ts";
 import { buildEntitlements, codeByText, codeOf, loadSettings, markRedeemed } from "../_shared/lifetime_store.ts";
 import { claimByEmail, claimToken, grantGuest } from "../_shared/guest_store.ts";
 import { codesGenerate, codesStats } from "../_shared/lifetime_codes.ts";
@@ -114,19 +114,18 @@ Deno.serve(async (req) => {
       // build 167: publiek deel van Lifetime-only en de koopknop in de Apple-apps (bij een fout: zoals nu, alles uit)
       let s: Awaited<ReturnType<typeof loadSettings>> | null = null;
       try { s = await loadSettings(admin); } catch (e) { console.error("billing config settings", e instanceof Error ? e.message.slice(0, 60) : "fout"); }
-      const lo = s?.lifetime;
-      const on = !!lo?.enabled;
-      const cut = on && lo!.cutover_at ? Date.parse(lo!.cutover_at) : NaN;
-      const ann = on && lo!.announce_at ? Date.parse(lo!.announce_at) : NaN;
-      const lifetimeOnly: Record<string, unknown> = {
-        enabled: on, cutover_at: on ? lo!.cutover_at : null, after_cutover: Number.isFinite(cut) && Date.now() >= cut,
-        trial_days: on ? lo!.trial_days : 0, announce_at: on ? lo!.announce_at : null, announced: Number.isFinite(ann) && Date.now() >= ann,
-      };
+      const lo = s?.lifetime ?? normalizeLifetime(null);
+      const on = lo.enabled;
+      // build 168: per platformgroep (body.platform of ?platform=, anders de User-Agent; onbekend = Apple, de voorzichtige kant)
+      const group = configGroup(body.platform ?? url.searchParams.get("platform"), req.headers.get("User-Agent"));
+      let lifetimeOnly: Record<string, unknown> = publicLifetime(lo, group);
       // ingelogd (optioneel): de eigen kortingscode, tot wanneer, het percentage en de prijs na korting (null = geen code)
       if ((req.headers.get("Authorization") ?? "").split(".").length === 3 && on) {
         const u = await authed(req, json);
         if (!(u instanceof Response)) {
-          const c = checkCode(await codeOf(admin, u.id).catch(() => null), u.id);
+          // build 168: after_cutover / new_paid per account (een bestaand account blijft gratis tot cutover_at)
+          lifetimeOnly = publicLifetime(lo, group, Date.now(), { createdAt: u.created_at });
+          const c = lifetimeOnly.new_paid ? { ok: false as const } : checkCode(await codeOf(admin, u.id).catch(() => null), u.id);
           Object.assign(lifetimeOnly, {
             code: c.ok ? c.row.code : null, code_valid_until: c.ok ? c.row.expires_at : null, discount_pct: lo!.discount_pct,
             discounted_price_cents: c.ok ? priceAfter(PRICE_CENTS, lo!.discount_pct) : null,

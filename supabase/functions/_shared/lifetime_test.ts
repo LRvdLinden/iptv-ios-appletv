@@ -5,8 +5,9 @@
 import {
   accessFor, ACTIVATION_REQUIRED, DEFAULT_CUTOVER, checkCode, CODE_ALPHABET, CODE_RE, codeValidUntil, couponId, couponParams, DEFAULT_LIFETIME, euAppleLink,
   normalizeCode, normalizeIap, normalizeLifetime, priceAfter, promotionCodeOf, promotionIdempotencyKey, promotionParams, randomCode, trialUntil,
-  withLifetime,
+  withLifetime, configGroup, effectiveCutover, newPaidActive, newPaidSubject, paidGroup, publicLifetime, type LifetimeSettings,
 } from "./lifetime.ts";
+import { type Platform } from "./plans.ts";
 import { buildEntitlements, loadSettings, markRedeemed } from "./lifetime_store.ts";
 import { DEFAULT_UPGRADE_LINK, entitlements, PRICE_CENTS } from "./plans.ts";
 import {
@@ -293,4 +294,157 @@ Deno.test("verzenden: herinnering alleen in de 7 dagen vóór de overgang; batch
   eq(remindWindow(CUT, cut - 7 * DAY - 1), false); eq(remindWindow(CUT, cut - 7 * DAY), true);
   eq(remindWindow(CUT, cut - 1), true); eq(remindWindow(CUT, cut), false); eq(remindWindow("kapot", cut), false);
   eq(batchSize(25, 50), 25); eq(batchSize(0, 50), 50); eq(batchSize(500, 50), 50); eq(batchSize("10", 50), 50);
+});
+
+// ---------------- build 168: nieuwe accounts eerst kopen (per platformgroep) ----------------
+// Referentie: accessFor en de publieke config precies zoals in build 167 (kopie), om te bewijzen dat met new_paid_from en
+// new_paid_from_apple null niets verandert.
+function access167(s: LifetimeSettings, plan: unknown, createdAt: string | null, now: number) {
+  const trial = (() => {
+    if (!s.enabled || s.trial_days <= 0 || !s.cutover_at || !createdAt) return null;
+    const c = Date.parse(createdAt), cut = Date.parse(s.cutover_at);
+    if (!Number.isFinite(c) || !Number.isFinite(cut) || c < cut) return null;
+    return new Date(c + s.trial_days * DAY).toISOString();
+  })();
+  const life = plan === "lifetime";
+  if (!s.enabled || !s.cutover_at || life) return { access: "full", trial_until: life ? null : trial };
+  const cut = Date.parse(s.cutover_at);
+  if (!Number.isFinite(cut) || now < cut) return { access: "full", trial_until: trial };
+  if (trial && Date.parse(trial) > now) return { access: "full", trial_until: trial };
+  return { access: "activate", trial_until: trial };
+}
+function public167(lo: LifetimeSettings, now: number) {
+  const on = !!lo.enabled;
+  const cut = on && lo.cutover_at ? Date.parse(lo.cutover_at) : NaN;
+  const ann = on && lo.announce_at ? Date.parse(lo.announce_at) : NaN;
+  return {
+    enabled: on, cutover_at: on ? lo.cutover_at : null, after_cutover: Number.isFinite(cut) && now >= cut,
+    trial_days: on ? lo.trial_days : 0, announce_at: on ? lo.announce_at : null, announced: Number.isFinite(ann) && now >= ann,
+  };
+}
+const ALL: (Platform | null)[] = ["ios", "ipados", "tvos", "macos", "android", "androidtv", "web", "tizen", "webos", null];
+const NP = "2026-11-08T12:00:00+01:00"; // web en Android
+const NPA = "2026-11-20T12:00:00+01:00"; // Apple
+const OLD = "2026-01-01T00:00:00Z", NEW = "2026-11-09T09:00:00Z", NEWA = "2026-11-21T09:00:00Z";
+
+Deno.test("168: instellingen lezen, standaard null; groepen", () => {
+  eq([DEFAULT_LIFETIME.new_paid_from, DEFAULT_LIFETIME.new_paid_from_apple], [null, null]);
+  eq(normalizeLifetime({ new_paid_from: "nu", new_paid_from_apple: 5 }).new_paid_from, null);
+  eq(normalizeLifetime({ enabled: true, cutover_at: CUT, new_paid_from: NP, new_paid_from_apple: NPA }).new_paid_from_apple, NPA);
+  for (const p of ["ios", "ipados", "tvos", "macos"] as const) eq(paidGroup(p), "apple", p);
+  for (const p of ["android", "androidtv", "web", "tizen", "webos"] as const) eq(paidGroup(p), "other", p);
+  eq(paidGroup(null), "other", "onbekend platform = de strenge kant bij de toegang");
+});
+
+Deno.test("168: met new_paid_from(_apple) null precies zoals build 167 (toegang, entitlements, publieke config)", () => {
+  const sets = [DEFAULT_LIFETIME, on(), on({ trial_days: 7 }), on({ announce_at: null }), normalizeLifetime({ enabled: true }),
+    normalizeLifetime({ enabled: false, cutover_at: CUT, new_paid_from: null })];
+  const times = [D - DAY, D, D + 2 * DAY, Date.parse(CUT) - 1, Date.parse(CUT), Date.parse(CUT) + 3 * DAY, Date.parse(CUT) + 30 * DAY];
+  const created = [OLD, NEW, new Date(Date.parse(CUT) + DAY).toISOString(), null];
+  for (const s of sets) for (const now of times) {
+    for (const g of ["apple", "other"] as const) eq(publicLifetime(s, g, now), public167(s, now), `config ${g}`);
+    for (const c of created) {
+      eq(publicLifetime(s, "other", now, { createdAt: c }), public167(s, now), "config ingelogd");
+      for (const plan of ["free", "lifetime", undefined]) for (const p of ALL) {
+        eq(accessFor(s, plan, c, now, p), access167(s, plan, c, now), `toegang ${p} ${plan} ${c}`);
+        eq(accessFor(s, plan, c, now), access167(s, plan, c, now), "zonder platform");
+        const code = { user_id: UID, code: "BINGR-ABCD-EFGH", stripe_promotion_code_id: "promo_1", expires_at: CUT, redeemed_at: null };
+        const base = entitlements(plan ? { plan } : null, DEFAULT_UPGRADE_LINK, p);
+        const e = withLifetime(base, { settings: s, iap: { apple: true }, euApple: false, platform: p, createdAt: c, code, now });
+        ok(!(e.lifetime_only && "new_paid" in e.lifetime_only), "geen new_paid");
+        if (e.lifetime_only) eq(e.lifetime_only.cutover_at, s.cutover_at, "cutover_at ongewijzigd");
+      }
+    }
+  }
+});
+
+Deno.test("168: web en Android - nieuw account na new_paid_from = activate, bestaand account gratis tot cutover_at", () => {
+  const s = on({ new_paid_from: NP });
+  const now = Date.parse("2026-11-10T00:00:00Z");
+  for (const p of ["android", "androidtv", "web", null] as const) {
+    eq(accessFor(s, "free", NEW, now, p).access, "activate", `nieuw ${p}`);
+    eq(accessFor(s, "free", OLD, now, p).access, "full", `bestaand ${p}`);
+    eq(accessFor(s, "free", OLD, Date.parse(CUT), p).access, "activate", `bestaand na cutover ${p}`);
+    eq(accessFor(s, "lifetime", NEW, now, p).access, "full", `Lifetime ${p}`);
+    eq(accessFor(s, undefined, NEW, now, p).access, "activate", `geen rij ${p}`);
+  }
+  // Apple pas later: hetzelfde nieuwe account kijkt in de Apple-apps nog gewoon (tot cutover_at)
+  for (const p of ["ios", "ipados", "tvos", "macos"] as const) {
+    eq(accessFor(s, "free", NEW, now, p).access, "full", `Apple nog niet ${p}`);
+    eq(accessFor(s, "free", NEW, Date.parse(CUT), p).access, "activate", `Apple na cutover ${p}`);
+  }
+  // op het moment zelf: aangemaakt precies op new_paid_from telt mee, een milliseconde ervoor niet
+  const t = Date.parse(NP);
+  eq(accessFor(s, "free", new Date(t).toISOString(), t + 1000, "web").access, "activate", "op de datum");
+  eq(accessFor(s, "free", new Date(t - 1).toISOString(), t + 1000, "web").access, "full", "net ervoor");
+  // datum in de toekomst = nog niets
+  eq(accessFor(s, "free", NEW, t - 1, "web").access, "full", "vóór new_paid_from");
+  // Lifetime-only uit = de datum doet niets
+  eq(accessFor({ ...s, enabled: false }, "free", NEW, now, "web").access, "full", "uit");
+  eq(newPaidActive({ ...s, enabled: false }, "other", now), null);
+});
+
+Deno.test("168: Apple - alleen met new_paid_from_apple, los van web en Android", () => {
+  const s = on({ new_paid_from: NP, new_paid_from_apple: NPA });
+  const before = Date.parse("2026-11-15T00:00:00Z"), after = Date.parse("2026-11-22T00:00:00Z");
+  eq(accessFor(s, "free", NEWA, after, "ios").access, "activate", "na de Apple-datum aangemaakt");
+  eq(accessFor(s, "free", NEW, after, "ios").access, "full", "tussen de twee datums aangemaakt: Apple gratis tot cutover_at");
+  eq(accessFor(s, "free", NEW, after, "android").access, "activate", "maar op Android niet");
+  eq(accessFor(s, "free", NEWA, before, "tvos").access, "full", "vóór de Apple-datum");
+  eq(accessFor(on({ new_paid_from_apple: NPA }), "free", NEW, after, "web").access, "full", "alleen Apple gezet: web niet");
+  ok(newPaidSubject(s, "apple", NEWA, after) && !newPaidSubject(s, "apple", OLD, after));
+  eq(effectiveCutover(s, "apple", NEWA, after), NPA); eq(effectiveCutover(s, "apple", OLD, after), CUT);
+});
+
+Deno.test("168: proefperiode geldt ook voor accounts onder de regel", () => {
+  const s = on({ new_paid_from: NP, trial_days: 3 });
+  const c = Date.parse(NEW);
+  eq(accessFor(s, "free", NEW, c + DAY, "web"), { access: "full", trial_until: new Date(c + 3 * DAY).toISOString() });
+  eq(accessFor(s, "free", NEW, c + 4 * DAY, "web").access, "activate");
+  eq(trialUntil(s, NEW, "apple", c + DAY), null, "Apple-datum niet gezet: geen proefperiode, gewoon full");
+  eq(trialUntil(s, OLD, "other", c + DAY), null, "bestaand account");
+  eq(trialUntil(s, NEW), null, "zonder groep zoals build 167");
+});
+
+Deno.test("168: entitlements - per platform, eigen overgang, geen code, new_paid", () => {
+  const s = on({ new_paid_from: NP });
+  const now = Date.parse("2026-11-10T00:00:00Z");
+  const code = { user_id: UID, code: "BINGR-ABCD-EFGH", stripe_promotion_code_id: "promo_1", expires_at: CUT, redeemed_at: null };
+  const ent = (p: Platform, createdAt: string, plan: string | null = null) =>
+    withLifetime(entitlements(plan ? { plan } : null, DEFAULT_UPGRADE_LINK, p), { settings: s, iap: { apple: false }, euApple: false, platform: p, createdAt, code, now });
+  const a = ent("android", NEW);
+  eq([a.access, a.lifetime_only?.cutover_at, a.lifetime_only?.code, a.lifetime_only?.new_paid], ["activate", NP, null, true]);
+  const w = ent("web", OLD);
+  eq([w.access, w.lifetime_only?.cutover_at, w.lifetime_only?.code, "new_paid" in w.lifetime_only!], ["full", CUT, "BINGR-ABCD-EFGH", false], "bestaand account: zoals 167");
+  const i = ent("ios", NEW);
+  eq([i.access, i.lifetime_only?.cutover_at, "new_paid" in i.lifetime_only!], ["full", CUT, false], "Apple nog niet");
+  const l = ent("android", NEW, "lifetime");
+  eq([l.access, "new_paid" in l.lifetime_only!], ["full", false], "Lifetime");
+});
+
+Deno.test("168: publieke config per platformgroep; ingelogd per account", () => {
+  const s = on({ new_paid_from: NP });
+  const now = Date.parse("2026-11-10T00:00:00Z");
+  const web = publicLifetime(s, "other", now);
+  eq([web.after_cutover, web.new_paid, web.new_paid_from, web.cutover_at], [true, true, NP, CUT], "web en Android wisselen nu");
+  eq(publicLifetime(s, "apple", now), public167(s, now), "Apple: zoals 167");
+  eq(publicLifetime(s, "other", now, { createdAt: OLD }), public167(s, now), "ingelogd bestaand account: geen after_cutover vóór 1 december");
+  eq(publicLifetime(s, "other", now, { createdAt: NEW }).after_cutover, true, "ingelogd nieuw account");
+  eq(publicLifetime(s, "other", Date.parse(NP) - 1), public167(s, Date.parse(NP) - 1), "vóór de datum");
+  eq(publicLifetime({ ...s, enabled: false }, "other", now), public167({ ...s, enabled: false }, now), "uit");
+  const both = on({ new_paid_from: NP, new_paid_from_apple: NPA });
+  eq(publicLifetime(both, "apple", Date.parse("2026-11-21T00:00:00Z")).new_paid_from, NPA, "Apple met eigen datum");
+});
+
+Deno.test("168: platformgroep van een aanvraag aan billing config", () => {
+  eq(configGroup("web", "Bingr/167 CFNetwork/1568 Darwin/24.0.0"), "other", "platform gaat voor");
+  eq(configGroup("iPhone", null), "apple");
+  eq(configGroup(undefined, "Bingr/167 CFNetwork/1568.100.1 Darwin/24.0.0"), "apple", "Apple-app (URLSession)");
+  eq(configGroup(undefined, "Bingr%20TV/167 CFNetwork/1568 Darwin/24.0.0"), "apple", "tvOS");
+  eq(configGroup(null, "Bingr v1.0.5"), "other", "Android (OkHttp, eigen UA)");
+  eq(configGroup(null, "okhttp/4.12.0"), "other");
+  eq(configGroup(null, "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Safari/604.1"), "other", "Safari = website");
+  eq(configGroup(null, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Edg/130.0"), "other", "Windows-app/WebView2");
+  eq(configGroup(null, null), "apple", "onbekend = voorzichtig (welkomstscherm)");
+  eq(configGroup("onzin", "curl/8"), "apple");
 });
