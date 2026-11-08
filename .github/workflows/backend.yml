@@ -888,6 +888,9 @@ jobs:
                         "user_metadata": {"first_name": "CI", "last_name": "Test"}}, adm)
           uid = u.get("id")
           if not uid: print(f"::error::testaccount aanmaken mislukt (HTTP {code})"); sys.exit(1)
+          # build 168: met "nieuwe accounts eerst kopen" aan krijgt een vers account activate; deze test gaat over het
+          # bestaande gratis plan, dus het testaccount krijgt een aanmaakdatum van vóór die regel
+          sql(f"update auth.users set created_at = '2026-01-01T00:00:00Z' where id = '{uid}'")
           fail = []
           try:
               code, t = req("POST", f"{BASE}/auth/v1/token?grant_type=password", {"email": email, "password": pw}, {"apikey": PUB})
@@ -1658,6 +1661,9 @@ jobs:
           code, u = req("POST", f"{BASE}/auth/v1/admin/users", {"email": email, "password": pw, "email_confirm": True}, adm)
           uid = u.get("id")
           if not uid: print(f"::error::testaccount aanmaken mislukt (HTTP {code})"); sys.exit(1)
+          # build 168: met "nieuwe accounts eerst kopen" aan krijgt een vers account activate; deze test gaat over het
+          # bestaande gratis plan, dus het testaccount krijgt een aanmaakdatum van vóór die regel
+          sql(f"update auth.users set created_at = '2026-01-01T00:00:00Z' where id = '{uid}'")
           fail = []
           try:
               code, t = req("POST", f"{BASE}/auth/v1/token?grant_type=password", {"email": email, "password": pw}, {"apikey": PUB})
