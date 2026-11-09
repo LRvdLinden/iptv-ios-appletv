@@ -1,8 +1,21 @@
-Nieuw in 1.0.5
-• Nieuwe tv-gids: op de iPhone de gekozen zender live bovenaan, zenders links en programma's rechts, met NU, terugkijken en herinneringen
-• Op de iPad en Mac een groot live voorbeeld met Live kijken en Vanaf het begin, en zenderkolommen
-• Op de Apple TV een tv-gids over de hele breedte: de NU-kaart speelt de zender live als je erop staat, OK opent volledig scherm
-• Live tv opent nu altijd in de tv-gids; met de knop Lijst wissel je naar de lijst
-• Het live voorbeeld speelt zonder geluid en laat je muziek doorspelen tot je het geluid aanzet
-• Nieuwe instelling Live voorbeeld in de gids: Altijd, Alleen wifi of Nooit
-• De tv-gids toont alleen nog dagen waarvoor er gids-info is
+Nieuw in Bingr 1.0.5
+
+• Nieuwe tv-gids
+De tv-gids is helemaal vernieuwd. Op de iPhone speelt de gekozen zender live bovenaan, met de zenders links en het programma van de dag rechts. Op de iPad en de Mac zie je een groot live voorbeeld met Kijk live en Vanaf het begin. Op de Apple TV gebruikt de gids het hele scherm: blader door de zenderkolommen en de zender waar je op staat, speelt na een seconde live mee in de NU-kaart.
+
+• Live TV opent in de gids
+Live TV start nu altijd in de tv-gids. Met de bestaande knop wissel je naar de lijst.
+
+• Alleen dagen met programma's
+De gids toont alleen nog de dagen waarvoor er programma-informatie is. Eerdere dagen zie je bij zenders met terugkijken.
+
+• Live voorbeeld naar wens
+Kies in Instellingen of het live voorbeeld in de gids altijd, alleen op wifi of nooit speelt.
+
+• Bingr Lifetime in de app
+Koop Bingr Lifetime nu direct in de app, met Herstel aankopen voor je andere apparaten. Nieuw bij Bingr? Koop eerst Lifetime en maak daarna je account.
+
+• Bingr wordt Lifetime
+Vanaf 1 december 2026 is Bingr alleen nog beschikbaar met Lifetime. Heb je nu Gratis? Je servers, lijsten, profielen en instellingen blijven bewaard.
+
+En verder kleine verbeteringen en oplossingen.
