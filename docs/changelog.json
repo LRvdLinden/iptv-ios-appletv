@@ -1,5 +1,36 @@
 [
  {
+  "build": 170,
+  "version": "1.0.6",
+  "date": "2026-11-13",
+  "items": [
+   {
+    "type": "improved",
+    "platforms": [
+     "tvos"
+    ],
+    "nl": "Doorspoelen met het touchoppervlak voelt soepeler: fijne controle bij rustig swipen, verder bij snel vegen, uitrollen na loslaten en het beeld loopt mee",
+    "en": "Scrubbing with the touch surface feels smoother: fine control when swiping slowly, further with a fast swipe, coasting after release and the picture follows along"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "tvos"
+    ],
+    "nl": "Links of rechts ingedrukt houden op de tijdbalk spoelt met een vast ritme steeds sneller door en stopt direct bij loslaten",
+    "en": "Holding left or right on the timeline scrubs at a steady pace that speeds up, and stops as soon as you let go"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "tvos"
+    ],
+    "nl": "Na het bevestigen van een nieuwe positie springt de tijdbalk niet meer eerst terug",
+    "en": "After confirming a new position the timeline no longer jumps back first"
+   }
+  ]
+ },
+ {
   "build": 169,
   "version": "1.0.6",
   "date": "2026-11-13",

@@ -4,6 +4,20 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.6 · Build 170
+_13 november 2026_
+
+### tvOS
+
+**Verbeterd**
+
+- Doorspoelen met het touchoppervlak voelt soepeler: fijne controle bij rustig swipen, verder bij snel vegen, uitrollen na loslaten en het beeld loopt mee
+- Links of rechts ingedrukt houden op de tijdbalk spoelt met een vast ritme steeds sneller door en stopt direct bij loslaten
+
+**Opgelost**
+
+- Na het bevestigen van een nieuwe positie springt de tijdbalk niet meer eerst terug
+
 ## Versie 1.0.6 · Build 169
 _13 november 2026_
 
