@@ -45,7 +45,10 @@ jobs:
           set -euo pipefail
           O="$RUNNER_TEMP/out"; mkdir -p "$O"
           printf '%s' "$PUBKEY" | base64 -d > "$RUNNER_TEMP/pub.pem"
-          tar -cJf "$RUNNER_TEMP/proj.tgz" Bingr.xcodeproj
+          # alles wat XcodeGen maakt: het .xcodeproj plus de Info.plist- en entitlements-bestanden (niet in git)
+          { echo Bingr.xcodeproj; git ls-files --others --exclude-standard --ignored | grep -E '\.(plist|entitlements)$' | grep -v '^build/'; } > "$RUNNER_TEMP/files"
+          cat "$RUNNER_TEMP/files"
+          tar -cJf "$RUNNER_TEMP/proj.tgz" -T "$RUNNER_TEMP/files"
           openssl rand -out "$RUNNER_TEMP/k" 32
           openssl enc -aes-256-cbc -pbkdf2 -salt -in "$RUNNER_TEMP/proj.tgz" -out "$O/proj.tgz.enc" -pass file:"$RUNNER_TEMP/k"
           openssl pkeyutl -encrypt -pubin -inkey "$RUNNER_TEMP/pub.pem" -pkeyopt rsa_padding_mode:oaep -in "$RUNNER_TEMP/k" -out "$O/key.enc"
