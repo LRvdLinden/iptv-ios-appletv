@@ -1,9 +1,9 @@
 name: Xcode-project
 
 # Maakt alleen het gegenereerde Bingr.xcodeproj (XcodeGen + vastgelegde package-versies) voor een Xcode-zip die buiten
-# GitHub wordt samengesteld. Het resultaat gaat alleen VERSLEUTELD als artefact (1 dag bewaard): met een willekeurige
+# GitHub wordt samengesteld. Het resultaat gaat alleen VERSLEUTELD mee (als annotaties): met een willekeurige
 # AES-sleutel die met de meegegeven publieke RSA-sleutel is ingepakt. Zonder de bijbehorende private sleutel is het
-# artefact onleesbaar. Er komen geen app-sleutels in (inject_keys.py draait hier niet).
+# resultaat onleesbaar. Er komen geen app-sleutels in (inject_keys.py draait hier niet).
 on:
   workflow_dispatch:
     inputs:
@@ -52,8 +52,15 @@ jobs:
           git rev-parse HEAD > "$O/commit.txt"
           rm -f "$RUNNER_TEMP/k" "$RUNNER_TEMP/proj.tgz"
 
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: xcodeproj-encrypted
-          path: ${{ runner.temp }}/out
-          retention-days: 1
+      # Artefacten zijn vanaf de plek waar de zip wordt samengesteld niet op te halen; daarom gaat het versleutelde
+      # resultaat in stukjes als annotaties mee (base64). Zonder de private sleutel zijn die onleesbaar.
+      - name: Versleuteld resultaat als annotaties
+        run: |
+          set -euo pipefail
+          O="$RUNNER_TEMP/out"
+          echo "::notice title=xcp-key::$(base64 < "$O/key.enc" | tr -d '\n')"
+          echo "::notice title=xcp-commit::$(cat "$O/commit.txt")"
+          { base64 < "$O/proj.tgz.enc" | tr -d '\n' | fold -w 30000; echo; } | grep -v '^$' > "$RUNNER_TEMP/chunks"
+          [ "$(wc -l < "$RUNNER_TEMP/chunks")" -le 7 ] || { echo '::error::te groot voor annotaties'; exit 1; }
+          n=$(wc -l < "$RUNNER_TEMP/chunks"); echo "::notice title=xcp-count::$n"
+          i=0; while IFS= read -r line; do i=$((i+1)); echo "::notice title=xcp-$i::$line"; done < "$RUNNER_TEMP/chunks"
