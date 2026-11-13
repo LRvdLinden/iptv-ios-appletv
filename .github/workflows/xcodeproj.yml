@@ -46,7 +46,7 @@ jobs:
           O="$RUNNER_TEMP/out"; mkdir -p "$O"
           printf '%s' "$PUBKEY" | base64 -d > "$RUNNER_TEMP/pub.pem"
           # alles wat XcodeGen maakt: het .xcodeproj plus de Info.plist- en entitlements-bestanden (niet in git)
-          { echo Bingr.xcodeproj; git ls-files --others --exclude-standard --ignored | grep -E '\.(plist|entitlements)$' | grep -v '^build/'; } > "$RUNNER_TEMP/files"
+          { echo Bingr.xcodeproj; git ls-files --others | grep -E '\.(plist|entitlements)$' | grep -v '^build/'; } > "$RUNNER_TEMP/files"
           cat "$RUNNER_TEMP/files"
           tar -cJf "$RUNNER_TEMP/proj.tgz" -T "$RUNNER_TEMP/files"
           openssl rand -out "$RUNNER_TEMP/k" 32
