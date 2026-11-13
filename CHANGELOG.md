@@ -26,6 +26,12 @@ _13 november 2026_
 - Doorspoelen via de tijdbalk: ga met ↑ naar de balk, swipe of klik ←/→ naar een andere plek en bevestig met Select of Play/Pauze; Terug annuleert
 - Met verborgen bediening opent een swipe over het touchoppervlak meteen de tijdbalk
 
+### Website
+
+**Nieuw**
+
+- De homepage beweegt: covers die schuin omhoog lopen in de kop, blokken die inschuiven bij het scrollen, vinkjes die verschijnen in de prijstabel en een animatie van verder kijken op een ander scherm
+
 ## Versie 1.0.5 · Build 168
 _7 november 2026_
 

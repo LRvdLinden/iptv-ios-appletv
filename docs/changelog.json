@@ -48,6 +48,14 @@
     ],
     "nl": "De bediening verdwijnt niet meer terwijl je over de tijdbalk sleept",
     "en": "The controls no longer disappear while you drag the timeline"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "web"
+    ],
+    "nl": "De homepage beweegt: covers die schuin omhoog lopen in de kop, blokken die inschuiven bij het scrollen, vinkjes die verschijnen in de prijstabel en een animatie van verder kijken op een ander scherm",
+    "en": "The homepage now moves: covers scrolling diagonally upward in the header, sections that slide in as you scroll, checkmarks that pop in on the pricing table and an animation of resuming on another screen"
    }
   ]
  },
