@@ -1,0 +1,59 @@
+name: Xcode-project
+
+# Maakt alleen het gegenereerde Bingr.xcodeproj (XcodeGen + vastgelegde package-versies) voor een Xcode-zip die buiten
+# GitHub wordt samengesteld. Het resultaat gaat alleen VERSLEUTELD als artefact (1 dag bewaard): met een willekeurige
+# AES-sleutel die met de meegegeven publieke RSA-sleutel is ingepakt. Zonder de bijbehorende private sleutel is het
+# artefact onleesbaar. Er komen geen app-sleutels in (inject_keys.py draait hier niet).
+on:
+  workflow_dispatch:
+    inputs:
+      pubkey:
+        description: "Publieke RSA-sleutel (PEM, base64)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  xcodeproj:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 (v5.1.0)
+
+      - name: Packages uit de cache
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        with:
+          path: build/SourcePackages
+          key: spm-${{ runner.os }}-${{ hashFiles('project.yml') }}
+          restore-keys: spm-${{ runner.os }}-
+
+      - name: Xcode-versie kiezen
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode_16*.app | sort -V | tail -1)"
+
+      - name: Project genereren
+        run: |
+          command -v xcodegen >/dev/null || brew install xcodegen
+          xcodegen generate
+          xcodebuild -resolvePackageDependencies -project Bingr.xcodeproj -scheme Bingr -derivedDataPath build > resolve.log 2>&1 || { tail -n 40 resolve.log; exit 1; }
+
+      - name: Versleutelen
+        env:
+          PUBKEY: ${{ inputs.pubkey }}
+        run: |
+          set -euo pipefail
+          O="$RUNNER_TEMP/out"; mkdir -p "$O"
+          printf '%s' "$PUBKEY" | base64 -d > "$RUNNER_TEMP/pub.pem"
+          tar -czf "$RUNNER_TEMP/proj.tgz" Bingr.xcodeproj
+          openssl rand -out "$RUNNER_TEMP/k" 32
+          openssl enc -aes-256-cbc -pbkdf2 -salt -in "$RUNNER_TEMP/proj.tgz" -out "$O/proj.tgz.enc" -pass file:"$RUNNER_TEMP/k"
+          openssl pkeyutl -encrypt -pubin -inkey "$RUNNER_TEMP/pub.pem" -pkeyopt rsa_padding_mode:oaep -in "$RUNNER_TEMP/k" -out "$O/key.enc"
+          git rev-parse HEAD > "$O/commit.txt"
+          rm -f "$RUNNER_TEMP/k" "$RUNNER_TEMP/proj.tgz"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: xcodeproj-encrypted
+          path: ${{ runner.temp }}/out
+          retention-days: 1
