@@ -2326,5 +2326,90 @@ do {
     eq(Scrub169.previewTimeout, 5, "169: voorbeeldpositie vervalt na 5 s")
 }
 
+// MARK: build 170: doorspoelen soepeler (dode zone, curve, uitrollen, klikritme, afknijpen, vasthouden, focus)
+do {
+    func near(_ a: Double, _ b: Double, _ eps: Double = 1e-9) -> Bool { abs(a - b) <= eps }
+
+    eq(Scrub170.afterDeadZone(moved: 0, delta: 0.005), 0, "170: tik in de dode zone verschuift niets")
+    check(near(Scrub170.afterDeadZone(moved: 0.01, delta: 0.005), 0.003), "170: alleen het stuk voorbij de dode zone telt")
+    check(near(Scrub170.afterDeadZone(moved: 0.005, delta: -0.01), -0.003), "170: dode zone ook terug, teken blijft")
+    eq(Scrub170.afterDeadZone(moved: 0.02, delta: -0.01), -0.01, "170: na de dode zone telt alles")
+    eq(Scrub170.afterDeadZone(moved: 0, delta: .nan), 0, "170: onzin = 0")
+
+    eq(Scrub170.gain(velocity: 0.1), 0.5, "170: heel rustig = fijn (0,5×)")
+    eq(Scrub170.gain(velocity: -0.25), 0.5, "170: teken telt niet")
+    eq(Scrub170.gain(velocity: 0.6), 1, "170: gewoon swipen = 1×")
+    eq(Scrub170.gain(velocity: 1.6), 4, "170: snel = niet-lineair verder")
+    eq(Scrub170.gain(velocity: 50), 6, "170: versnelling begrensd")
+    eq(Scrub170.gain(velocity: .nan), 0.5, "170: onzin = fijn")
+    var mono = true, prevGain = 0.0
+    for i in 0...400 { let g = Scrub170.gain(velocity: Double(i) * 0.01); if g < prevGain - 1e-12 { mono = false }; prevGain = g }
+    check(mono, "170: curve loopt nooit terug")
+    let onePoint = Scrub170.panSeconds(fraction: 1.0 / 1920, velocity: 0.6, duration: 7200)
+    check(onePoint > 0.2 && onePoint < 0.5, "170: rustig ±1 s per paar punten")
+    check(near(Scrub170.panSeconds(fraction: 0.01, velocity: 0.1, duration: 7200), 3, 1e-6), "170: fijn: 1% = 3 s")
+    check(Scrub170.panSeconds(fraction: 0.05, velocity: 2, duration: 7200) > 5 * Scrub170.panSeconds(fraction: 0.05, velocity: 0.3, duration: 7200),
+          "170: snelle veeg gaat veel verder dan een rustige")
+    eq(Scrub170.panSeconds(fraction: .infinity, velocity: 1, duration: 7200), 0, "170: onzin = 0")
+
+    eq(Scrub170.maxCoast(duration: 7200), 300, "170: uitrollen hoogstens 5 minuten")
+    check(near(Scrub170.maxCoast(duration: 600), 48), "170: uitrollen 8% van de duur")
+    eq(Scrub170.maxCoast(duration: 100), 30, "170: uitrollen minstens 30 s")
+    eq(Scrub170.maxCoast(duration: 0), 120, "170: duur onbekend")
+    eq(Scrub170.coastVelocity(release: 0.5, duration: 7200), 0, "170: rustig loslaten = niet uitrollen")
+    eq(Scrub170.coastVelocity(release: .nan, duration: 7200), 0, "170: onzin = niet uitrollen")
+    let v0 = Scrub170.coastVelocity(release: 2, duration: 7200)
+    check(v0 > 0 && near(v0, 300 / Scrub170.coastTau, 1e-6), "170: snelle veeg rolt uit, begrensd")
+    check(Scrub170.coastVelocity(release: -2, duration: 7200) < 0, "170: terug rolt terug uit")
+    var cv = v0, dist = 0.0, frames = 0
+    while cv != 0 && frames < 10_000 { let st = Scrub170.coastStep(velocity: cv, dt: 1.0 / 60); dist += st.delta; cv = st.velocity; frames += 1 }
+    check(dist > 250 && dist <= 300, "170: uitrollen komt niet voorbij het maximum (\(dist))")
+    check(frames > 30 && frames < 240, "170: uitrollen duurt kort (\(frames) frames)")
+    let slow = Scrub170.coastStep(velocity: 3, dt: 1.0 / 60)
+    check(slow.delta == 0 && slow.velocity == 0, "170: onder de stopsnelheid = klaar")
+    let one = Scrub170.coastStep(velocity: 100, dt: 1.0 / 60)
+    check(one.delta > 0 && one.delta < 100.0 / 60 && one.velocity < 100 && one.velocity > 90, "170: afremmen per frame")
+    let gap = Scrub170.coastStep(velocity: 100, dt: 5)
+    check(gap.delta <= 10, "170: gemist frame = geen grote sprong")
+
+    eq(Scrub170.holdStep(tick: 0), 10, "170: ingedrukt: eerst 10 s")
+    eq(Scrub170.holdStep(tick: 3), 10, "170: nog 10 s")
+    eq(Scrub170.holdStep(tick: 4), 30, "170: dan 30 s")
+    eq(Scrub170.holdStep(tick: 9), 30, "170: nog 30 s")
+    eq(Scrub170.holdStep(tick: 10), 60, "170: dan 60 s")
+    eq(Scrub170.holdStep(tick: 500), 60, "170: hoogstens 60 s")
+    var held = 0.0
+    for t in 0..<12 { held += Scrub170.holdStep(tick: t) }
+    eq(held, 340.0, "170: 3 s ingedrukt (4 × 10 + 6 × 30 + 2 × 60)")
+    check(Scrub170.holdInterval >= 0.2 && Scrub170.holdInterval <= 0.3, "170: vast ritme")
+
+    check(Scrub170.shouldSeek(now: 1, lastSeekAt: nil, inFlight: false, lastTarget: nil, target: 10), "170: eerste seek mag")
+    check(!Scrub170.shouldSeek(now: 1, lastSeekAt: nil, inFlight: true, lastTarget: nil, target: 10), "170: hooguit één tegelijk")
+    check(!Scrub170.shouldSeek(now: 1, lastSeekAt: 0.9, inFlight: false, lastTarget: 0, target: 10), "170: niet te vaak")
+    check(Scrub170.shouldSeek(now: 1, lastSeekAt: 0.75, inFlight: false, lastTarget: 0, target: 10), "170: na 200 ms weer")
+    check(!Scrub170.shouldSeek(now: 5, lastSeekAt: 0, inFlight: false, lastTarget: 10.2, target: 10), "170: zelfde plek = geen seek")
+    check(!Scrub170.shouldSeek(now: 5, lastSeekAt: nil, inFlight: false, lastTarget: nil, target: .nan), "170: onzin = geen seek")
+    check(near(Scrub170.seekWait(now: 1, lastSeekAt: 0.9), 0.1, 1e-9), "170: wachten tot de volgende seek")
+    eq(Scrub170.seekWait(now: 1, lastSeekAt: 0.5), 0, "170: meteen")
+    eq(Scrub170.seekWait(now: 1, lastSeekAt: nil), 0, "170: nog geen seek")
+
+    check(!Scrub170.releaseHold(elapsed: 0.2, target: 100, reported: 50), "170: na bevestigen: kop blijft staan")
+    check(Scrub170.releaseHold(elapsed: 0.2, target: 100, reported: 99), "170: speler meldt de nieuwe tijd")
+    check(Scrub170.releaseHold(elapsed: 1.6, target: 100, reported: 50), "170: hoogstens 1,5 s vasthouden")
+    check(Scrub170.releaseHold(elapsed: .nan, target: 100, reported: 50), "170: onzin = loslaten")
+
+    check(Scrub170.guardsFocus(panning: true, coasting: false, sinceLastPan: 10), "170: focus vast tijdens swipen")
+    check(Scrub170.guardsFocus(panning: false, coasting: true, sinceLastPan: 10), "170: focus vast tijdens uitrollen")
+    check(Scrub170.guardsFocus(panning: false, coasting: false, sinceLastPan: 0.2), "170: focus vast vlak na een swipe")
+    check(!Scrub170.guardsFocus(panning: false, coasting: false, sinceLastPan: 0.6), "170: daarna focus vrij")
+    check(!Scrub170.guardsFocus(panning: false, coasting: false, sinceLastPan: .infinity), "170: nooit geswiped")
+
+    eq(Scrub170.fraction(1800, duration: 3600), 0.5, "170: plek van de kop")
+    check(Scrub170.fraction(1800.4, duration: 3600) > Scrub170.fraction(1800, duration: 3600), "170: kop niet afgerond op seconden")
+    eq(Scrub170.fraction(-1, duration: 3600), 0, "170: niet voor het begin")
+    eq(Scrub170.fraction(5000, duration: 3600), 1, "170: niet na het eind")
+    eq(Scrub170.fraction(5, duration: 0), 0, "170: duur onbekend")
+}
+
 print("\(checks) controles, \(failures) fout")
 exit(failures == 0 ? 0 : 1)

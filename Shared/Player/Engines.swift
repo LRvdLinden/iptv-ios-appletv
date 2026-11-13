@@ -540,6 +540,17 @@ final class AVEngine: PlaybackEngine {
         let t = CMTime(seconds: max(0, time + seconds), preferredTimescale: 600)
         player.seek(to: t, toleranceBefore: .zero, toleranceAfter: .zero)
     }
+    /// Build 170: seek tijdens het doorspoelen: ruime tolerantie (dichtstbijzijnde keyframe, goedkoop) of precies
+    /// (bevestigen/annuleren). `done(true)` = klaar, `done(false)` = onderbroken door een nieuwere seek.
+    func scrubSeek(toSeconds s: Double, precise: Bool, done: @escaping (Bool) -> Void) {
+        guard player.currentItem != nil, s.isFinite else { done(false); return }
+        let t = CMTime(seconds: max(0, s), preferredTimescale: 600)
+        let tol: CMTime = precise ? .zero : .positiveInfinity
+        player.seek(to: t, toleranceBefore: tol, toleranceAfter: tol) { finished in
+            DispatchQueue.main.async { done(finished) }
+        }
+    }
+    func cancelSeeks() { player.currentItem?.cancelPendingSeeks() }
     func goLive() {
         if let r = player.currentItem?.seekableTimeRanges.last?.timeRangeValue { player.seek(to: r.end) }
         play()
