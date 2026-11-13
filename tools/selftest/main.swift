@@ -2276,5 +2276,55 @@ do {
     eq(Welcome167.restoreSignedOut(found: false, unfinished: false), .nothing, "167+: herstel: niets")
 }
 
+// MARK: build 169: doorspoelen via de tijdbalk (pan → seconden, versnelling, begrenzen, verschil)
+do {
+    eq(Scrub169.fullWidthSeconds(duration: 7200), 600, "169: lange film = 10 minuten per breedte")
+    eq(Scrub169.fullWidthSeconds(duration: 1200), 240, "169: korte aflevering = 20% van de duur")
+    eq(Scrub169.fullWidthSeconds(duration: 0), 600, "169: duur onbekend = 10 minuten")
+    eq(Scrub169.fullWidthSeconds(duration: .nan), 600, "169: duur NaN = 10 minuten")
+    eq(Scrub169.gain(velocity: 0.2), 1, "169: rustig swipen = geen versnelling")
+    eq(Scrub169.gain(velocity: -0.5), 1, "169: teken telt niet")
+    eq(Scrub169.gain(velocity: 1.5), 2.5, "169: snel swipen versnelt")
+    eq(Scrub169.gain(velocity: 50), 5, "169: versnelling begrensd")
+    eq(Scrub169.panSeconds(fraction: 1, velocity: 0.3, duration: 7200), 600, "169: hele breedte rustig = 10 min")
+    eq(Scrub169.panSeconds(fraction: -0.5, velocity: 0.3, duration: 7200), -300, "169: halve breedte terug")
+    eq(Scrub169.panSeconds(fraction: 0.1, velocity: 1.5, duration: 7200), 150, "169: snel = verder")
+    eq(Scrub169.panSeconds(fraction: 0.5, velocity: 0, duration: 1000), 100, "169: korte titel = 20%")
+    eq(Scrub169.panSeconds(fraction: .nan, velocity: 0, duration: 1000), 0, "169: onzin = 0")
+    check(Scrub169.panSeconds(fraction: 0.1, velocity: 3, duration: 7200) > Scrub169.panSeconds(fraction: 0.1, velocity: 1, duration: 7200), "169: sneller = verder")
+
+    eq(Scrub169.nextRepeat(previous: 0, sameDirection: true, interval: 0.2), 1, "169: snel herhalen telt op")
+    eq(Scrub169.nextRepeat(previous: 4, sameDirection: true, interval: 0.59), 5, "169: binnen het venster")
+    eq(Scrub169.nextRepeat(previous: 4, sameDirection: true, interval: 0.8), 0, "169: te langzaam = opnieuw")
+    eq(Scrub169.nextRepeat(previous: 4, sameDirection: false, interval: 0.1), 0, "169: andere richting = opnieuw")
+    eq(Scrub169.nextRepeat(previous: 4, sameDirection: true, interval: -1), 0, "169: klok terug = opnieuw")
+    eq(Scrub169.clickStep(repeatCount: 0), 10, "169: klik = 10 s")
+    eq(Scrub169.clickStep(repeatCount: 2), 10, "169: nog 10 s")
+    eq(Scrub169.clickStep(repeatCount: 3), 30, "169: daarna 30 s")
+    eq(Scrub169.clickStep(repeatCount: 5), 30, "169: nog 30 s")
+    eq(Scrub169.clickStep(repeatCount: 6), 60, "169: daarna 60 s")
+    eq(Scrub169.clickStep(repeatCount: 40), 60, "169: hoogstens 60 s")
+    var r = 0, total = 0.0
+    for _ in 0..<8 { total += Scrub169.clickStep(repeatCount: r); r = Scrub169.nextRepeat(previous: r, sameDirection: true, interval: 0.1) }
+    eq(total, 3 * 10 + 3 * 30 + 2 * 60, "169: ingedrukt houden versnelt")
+
+    eq(Scrub169.clamp(-20, duration: 3600), 0, "169: niet voor het begin")
+    eq(Scrub169.clamp(4000, duration: 3600), 3600, "169: niet na het eind")
+    eq(Scrub169.clamp(1800, duration: 3600), 1800, "169: binnen de duur")
+    eq(Scrub169.clamp(-5, duration: 0), 0, "169: duur onbekend: niet negatief")
+    eq(Scrub169.clamp(.infinity, duration: 3600), 0, "169: onzin = 0")
+
+    eq(Scrub169.deltaText(270), "+4:30", "169: verschil vooruit")
+    eq(Scrub169.deltaText(-70), "\u{2212}1:10", "169: verschil terug (minteken)")
+    eq(Scrub169.deltaText(0.3), "0:00", "169: geen verschil")
+    eq(Scrub169.deltaText(3725), "+1:02:05", "169: verschil met uren")
+    eq(Scrub169.deltaText(-9.6), "\u{2212}0:10", "169: afronden")
+    eq(Scrub169.deltaText(.nan), "0:00", "169: onzin")
+    eq(Scrub169.time(754), "12:34", "169: tijd")
+    eq(Scrub169.time(-1), "0:00", "169: negatieve tijd")
+    eq(Scrub169.label(preview: 1020, current: 750), "17:00  +4:30", "169: tekst boven de kop")
+    eq(Scrub169.previewTimeout, 5, "169: voorbeeldpositie vervalt na 5 s")
+}
+
 print("\(checks) controles, \(failures) fout")
 exit(failures == 0 ? 0 : 1)

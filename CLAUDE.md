@@ -1,6 +1,6 @@
 # Bingr: werkafspraken
 
-- Versie is 1.0.5 (vanaf build 164; 1.0.4 = builds 160–163), tot Léon een nieuwe versie noemt. Elk platform heeft zijn eigen build. Buildnummers zijn één doorlopende reeks: een nieuwe build krijgt het volgende vrije nummer (hoogste build in `docs/changelog.json` + 1), en alleen de platforms die echt veranderen krijgen dat nummer. Wat niet verandert, krijgt geen nieuwe build.
+- Versie is 1.0.6 (vanaf build 169; 1.0.5 = builds 164–168), tot Léon een nieuwe versie noemt. Elk platform heeft zijn eigen build. Buildnummers zijn één doorlopende reeks: een nieuwe build krijgt het volgende vrije nummer (hoogste build in `docs/changelog.json` + 1), en alleen de platforms die echt veranderen krijgen dat nummer. Wat niet verandert, krijgt geen nieuwe build.
   - Apple (iOS, iPadOS, tvOS, macOS): `CURRENT_PROJECT_VERSION` in `project.yml`, alleen verhogen als de Apple-apps veranderen.
   - Android en Android TV: `BINGR_BUILD` in `gradle.properties` van bingr-android, alleen verhogen als die apps veranderen.
   - Windows: `BINGR_BUILD` in `version.properties` van bingr-windows (zie de CLAUDE.md daar).

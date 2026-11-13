@@ -21,6 +21,16 @@ struct PlayerScreen: View {
     /// Apple TV: wat de focus heeft — de onzichtbare "vanger" (bediening verborgen) of een knop in de balk
     enum TVField: Hashable { case catcher, bar(String) }
     @FocusState private var tvFocus: TVField?
+    /// Build 169: voorbeeldpositie op de tijdbalk (seconden; nil = geen). Bevestigen met Select of Play/Pauze,
+    /// annuleren met Terug; vervalt 5 s nadat de focus van de balk is.
+    @State private var tvPreview: Double?
+    @State private var tvPreviewExpire: Task<Void, Never>?
+    /// Klikken ←/→ op de balk: herhalen versnelt (10 s, 30 s, 60 s)
+    @State private var tvClickRepeat = 0
+    @State private var tvLastClick: (at: Date, forward: Bool)?
+    /// Swipen met verborgen bediening: de bediening komt met de focus op de tijdbalk
+    @State private var tvFocusTimelineOnShow = false
+    @State private var tvLastPan = Date.distantPast
     #endif
     #if !os(tvOS)
     @StateObject private var cast = CastManager.shared
@@ -124,6 +134,12 @@ struct PlayerScreen: View {
 
             #if os(tvOS)
             if !showControls && streamLimit == nil && player.errorText == nil { tvCatcher }
+            // build 169: swipen over het touchoppervlak = voorbeeldpositie op de tijdbalk
+            TVScrubPanListener(enabled: tvPanEnabled,
+                               onBegan: { tvPanBegan() },
+                               onChanged: { dx, v in tvPanChanged(dx, velocity: v) },
+                               onEnded: { poke() })
+                .frame(width: 0, height: 0).allowsHitTesting(false).accessibilityHidden(true)
             #endif
             if showControls && streamLimit == nil { controls.transition(.opacity) }
 
@@ -189,11 +205,20 @@ struct PlayerScreen: View {
         .onExitCommand { if panel != nil { panel = nil } else { close() } }
         #endif
         #else
-        .onPlayPauseCommand { player.togglePlay(); poke() }
+        .onPlayPauseCommand {
+            // build 169: met een voorbeeldpositie op de tijdbalk springt Play/Pauze daarheen
+            if tvPreview != nil { tvCommitPreview() } else { player.togglePlay(); poke() }
+        }
         .onChange(of: showControls) { _, shown in
             // bediening tevoorschijn → focus op afspelen/pauze; weg → focus terug naar de vanger, of naar
             // "Intro overslaan" / "Volgende aflevering" als die in beeld staan (build 60)
-            if shown { tvFocus = .bar("play") }
+            if shown && tvFocusTimelineOnShow {
+                // build 169: geswiped met verborgen bediening → focus op de tijdbalk (die staat er pas net)
+                tvFocusTimelineOnShow = false
+                tvFocus = .bar("timeline")
+                DispatchQueue.main.async { if canScrub { tvFocus = .bar("timeline") } }
+            }
+            else if shown { tvFocus = .bar("play") }
             else if showSkipIntro { tvFocus = .bar("skipintro") }
             else if nextCountdown != nil { tvFocus = .bar("nextplay") }
             else { tvFocus = .catcher }
@@ -202,6 +227,9 @@ struct PlayerScreen: View {
         // niet, anders haalt het tonen van de balk de focus er meteen weer af (build 60)
         .onChange(of: tvFocus) { _, f in
             if case .some(.bar(let id)) = f, !Self.overlayFocusIDs.contains(id) { poke() }
+            // build 169: focus van de balk af → de voorbeeldpositie vervalt na 5 s (terug op de balk = blijft)
+            if f == .bar("timeline") { tvPreviewExpire?.cancel(); tvPreviewExpire = nil }
+            else if tvPreview != nil { tvSchedulePreviewExpiry() }
         }
         .onAppear { tvFocus = showControls ? .bar("play") : .catcher }
         // intro overslaan: de knop krijgt de focus zolang de bediening verborgen is (zoals Netflix)
@@ -218,7 +246,10 @@ struct PlayerScreen: View {
         }
         .onExitCommand {
             if streamLimit != nil { close() }
-            else if panel != nil { panel = nil } else if showControls { showControls = false } else { close() }
+            else if panel != nil { panel = nil }
+            // build 169: Terug annuleert eerst de voorbeeldpositie (zonder spoelen); een tweede keer werkt zoals altijd
+            else if tvPreview != nil { tvCancelPreview() }
+            else if showControls { showControls = false } else { close() }
         }
         #endif
         .sheet(item: $panel) { p in
@@ -429,11 +460,26 @@ struct PlayerScreen: View {
             Slider(value: Binding(get: { scrubbing ?? player.position },
                                   set: { scrubbing = $0; poke() }),
                    in: 0...1, onEditingChanged: { editing in
-                if !editing, let s = scrubbing { player.seek(to: s); scrubbing = nil }
+                if !editing, let s = scrubbing { player.seek(to: s); scrubbing = nil; poke() }
             })
             .tint(Theme.red)
+            // build 169: tijd van de voorbeeldpositie en het verschil met nu boven de knop, zolang je sleept
+            .overlay(alignment: .topLeading) {
+                if let s = scrubbing, player.duration > 0 {
+                    GeometryReader { g in
+                        Text(Scrub169.label(preview: s * player.duration, current: player.position * player.duration))
+                            .font(.system(size: 13, weight: .semibold).monospacedDigit())
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 8).padding(.vertical, 4)
+                            .background(.black.opacity(0.75), in: Capsule())
+                            .fixedSize()
+                            .position(x: min(max(g.size.width * s, 64), max(g.size.width - 64, 64)), y: -16)
+                    }
+                    .allowsHitTesting(false)
+                }
+            }
             #else
-            ProgressBar(value: player.position).frame(height: 8).clipShape(Capsule())
+            tvTimelineBar
             #endif
             Text("-" + PlayerController.format(player.duration * (1 - (scrubbing ?? player.position))))
                 .font(.system(size: tvScaled(12)).monospacedDigit()).foregroundStyle(Theme.secondary)
@@ -484,6 +530,8 @@ struct PlayerScreen: View {
             .focused($tvFocus, equals: .catcher)
             .onMoveCommand { dir in
                 let canSeek = !player.isLive || player.canTimeshift
+                // build 169: vlak na een swipe geen losse sprong van 10 s (de swipe opent de tijdbalk)
+                if (dir == .left || dir == .right) && Date().timeIntervalSince(tvLastPan) < 0.4 { return }
                 switch dir {
                 case .left: if canSeek { player.seek(by: -10); flash("−10 s") } else { poke() }
                 case .right: if canSeek { player.seek(by: 10); flash("+10 s") } else { poke() }
@@ -493,6 +541,135 @@ struct PlayerScreen: View {
                 }
             }
             .ignoresSafeArea()
+    }
+
+    /// Build 169: kan er gespoeld worden via de tijdbalk (films, afleveringen, opnames, terugkijken)
+    private var canScrub: Bool { !player.isLive && player.duration > 0 }
+    private var currentSeconds: Double { player.duration * player.position }
+
+    private var tvPanEnabled: Bool {
+        canScrub && streamLimit == nil && panel == nil && player.errorText == nil
+            && (tvFocus == .catcher || tvFocus == .bar("timeline"))
+    }
+
+    /// Focusbare tijdbalk (zoals de standaardspeler van Apple TV): op focus dikker met een kop op de positie;
+    /// boven de kop de tijd van de voorbeeldpositie en het verschil met nu.
+    private var tvTimelineBar: some View {
+        let focused = tvFocus == .bar("timeline")
+        let dur = player.duration
+        let now = min(max(player.position, 0), 1)
+        let preview: Double? = tvPreview.map { dur > 0 ? min(max($0 / dur, 0), 1) : 0 }
+        let head = preview ?? now
+        let h: CGFloat = focused ? 16 : 8
+        return Button { tvTimelineSelect() } label: {
+            GeometryReader { g in
+                let w = g.size.width
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.white.opacity(focused ? 0.4 : 0.3)).frame(height: h)
+                    Capsule().fill(Theme.red).frame(width: max(h, w * now), height: h)
+                    if let p = preview {
+                        Capsule().fill(Color.white.opacity(0.9)).frame(width: 4, height: h + 12).offset(x: w * p - 2)
+                    }
+                    if focused {
+                        Circle().fill(Color.white).frame(width: 30, height: 30)
+                            .shadow(color: .black.opacity(0.5), radius: 4)
+                            .offset(x: w * head - 15)
+                    }
+                }
+                .frame(width: w, height: g.size.height)
+                .overlay(alignment: .topLeading) {
+                    if let t = tvPreview {
+                        Text(Scrub169.label(preview: t, current: currentSeconds))
+                            .font(.system(size: 26, weight: .semibold).monospacedDigit())
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 14).padding(.vertical, 6)
+                            .background(.black.opacity(0.75), in: Capsule())
+                            .fixedSize()
+                            .position(x: min(max(w * head, 120), max(w - 120, 120)), y: -32)
+                    }
+                }
+            }
+            .frame(height: 34)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(InvisibleTVButtonStyle())
+        .focused($tvFocus, equals: .bar("timeline"))
+        .onMoveCommand { dir in
+            switch dir {
+            case .left: tvClick(forward: false)
+            case .right: tvClick(forward: true)
+            default: break
+            }
+        }
+        .accessibilityValue(Scrub169.time(tvPreview ?? currentSeconds))
+        .animation(.easeOut(duration: 0.15), value: focused)
+    }
+
+    /// Select op de tijdbalk: naar de voorbeeldpositie springen, of zonder voorbeeldpositie afspelen/pauzeren.
+    private func tvTimelineSelect() {
+        if tvPreview != nil { tvCommitPreview() } else { player.togglePlay(); poke() }
+    }
+
+    /// ←/→ op de rand: voorbeeldpositie −/+ 10 s; ingedrukt houden of snel herhalen versnelt (30 s, 60 s).
+    private func tvClick(forward: Bool) {
+        guard canScrub else { return }
+        let now = Date()
+        if let last = tvLastClick {
+            tvClickRepeat = Scrub169.nextRepeat(previous: tvClickRepeat, sameDirection: last.forward == forward,
+                                                interval: now.timeIntervalSince(last.at))
+        } else {
+            tvClickRepeat = 0
+        }
+        tvLastClick = (now, forward)
+        let step = Scrub169.clickStep(repeatCount: tvClickRepeat)
+        tvMovePreview(by: forward ? step : -step)
+    }
+
+    private func tvMovePreview(by seconds: Double) {
+        guard canScrub else { return }
+        tvPreview = Scrub169.clamp((tvPreview ?? currentSeconds) + seconds, duration: player.duration)
+        poke()
+    }
+
+    private func tvPanBegan() {
+        guard canScrub else { return }
+        tvLastPan = Date()
+        tvClickRepeat = 0; tvLastClick = nil
+        if tvPreview == nil { tvPreview = currentSeconds }
+        if !showControls { tvFocusTimelineOnShow = true }
+        else if tvFocus != .bar("timeline") { tvFocus = .bar("timeline") }
+        poke()
+    }
+
+    private func tvPanChanged(_ fraction: Double, velocity: Double) {
+        tvLastPan = Date()
+        tvMovePreview(by: Scrub169.panSeconds(fraction: fraction, velocity: velocity, duration: player.duration))
+    }
+
+    private func tvCommitPreview() {
+        guard let t = tvPreview else { return }
+        tvClearPreview()
+        player.seek(toSeconds: t)
+        poke()
+    }
+
+    private func tvCancelPreview() {
+        tvClearPreview()
+        poke()
+    }
+
+    private func tvClearPreview() {
+        tvPreview = nil
+        tvClickRepeat = 0; tvLastClick = nil
+        tvPreviewExpire?.cancel(); tvPreviewExpire = nil
+    }
+
+    private func tvSchedulePreviewExpiry() {
+        tvPreviewExpire?.cancel()
+        tvPreviewExpire = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: UInt64(Scrub169.previewTimeout * 1_000_000_000))
+            if !Task.isCancelled && tvFocus != .bar("timeline") { tvClearPreview() }
+        }
     }
     #endif
 
@@ -973,8 +1150,17 @@ struct PlayerScreen: View {
         hideTask?.cancel()
         hideTask = Task {
             try? await Task.sleep(nanoseconds: 6_000_000_000)
-            if !Task.isCancelled && panel == nil && player.isPlaying { showControls = false }
+            if !Task.isCancelled && panel == nil && player.isPlaying && !holdControls { showControls = false }
         }
+    }
+
+    /// Build 169: de bediening blijft staan zolang je op de tijdbalk spoelt (slepen, of een voorbeeldpositie op tvOS).
+    private var holdControls: Bool {
+        #if os(tvOS)
+        return tvPreview != nil && tvFocus == .bar("timeline")
+        #else
+        return scrubbing != nil
+        #endif
     }
 
     private func flash(_ text: String) {
@@ -1085,5 +1271,98 @@ struct RatingPanel: View {
 /// Knop zonder zichtbaar focus-effect (voor de onzichtbare vanger in de speler).
 struct InvisibleTVButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View { configuration.label }
+}
+#endif
+
+#if os(tvOS)
+/// Build 169: swipen over het touchoppervlak van de Siri Remote (indirecte aanrakingen). De pan-recognizer hangt aan
+/// het venster, zodat hij de aanrakingen krijgt wat er ook de focus heeft (vanger of tijdbalk); `enabled` bepaalt of
+/// hij begint. Alleen horizontale swipes; verticaal blijft voor de focus (↑ naar de balk, ↓ naar de knoppen).
+/// Waarden in breedtes van het venster: `fraction` = stukje sinds de vorige melding, `velocity` = breedtes per seconde.
+struct TVScrubPanListener: UIViewRepresentable {
+    var enabled: Bool
+    var onBegan: () -> Void
+    var onChanged: (_ fraction: Double, _ velocity: Double) -> Void
+    var onEnded: () -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    func makeUIView(context: Context) -> HostView {
+        let v = HostView()
+        v.isUserInteractionEnabled = false
+        v.coordinator = context.coordinator
+        context.coordinator.parent = self
+        return v
+    }
+
+    func updateUIView(_ v: HostView, context: Context) {
+        context.coordinator.parent = self
+    }
+
+    static func dismantleUIView(_ v: HostView, coordinator: Coordinator) {
+        coordinator.detach()
+    }
+
+    final class HostView: UIView {
+        weak var coordinator: Coordinator?
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            coordinator?.attach(to: window)
+        }
+    }
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        var parent: TVScrubPanListener?
+        private var pan: UIPanGestureRecognizer?
+        private var last: CGFloat = 0
+
+        func attach(to window: UIWindow?) {
+            detach()
+            guard let window else { return }
+            let p = UIPanGestureRecognizer(target: self, action: #selector(handle(_:)))
+            p.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.indirect.rawValue)]
+            p.cancelsTouchesInView = false
+            p.delaysTouchesBegan = false
+            p.delaysTouchesEnded = false
+            p.delegate = self
+            window.addGestureRecognizer(p)
+            pan = p
+        }
+
+        func detach() {
+            if let p = pan { p.view?.removeGestureRecognizer(p) }
+            pan = nil
+        }
+
+        func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
+            guard parent?.enabled == true, let p = g as? UIPanGestureRecognizer, let v = p.view else { return false }
+            let vel = p.velocity(in: v)
+            return abs(vel.x) > abs(vel.y)
+        }
+
+        func gestureRecognizer(_ g: UIGestureRecognizer,
+                               shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
+
+        @objc func handle(_ p: UIPanGestureRecognizer) {
+            guard let v = p.view else { return }
+            let w = max(v.bounds.width, 1)
+            switch p.state {
+            case .began:
+                last = 0
+                parent?.onBegan()
+                fallthrough
+            case .changed:
+                let t = p.translation(in: v).x
+                let dx = Double((t - last) / w)
+                last = t
+                parent?.onChanged(dx, Double(p.velocity(in: v).x / w))
+            case .ended, .cancelled, .failed:
+                last = 0
+                parent?.onEnded()
+            default:
+                break
+            }
+        }
+    }
 }
 #endif
