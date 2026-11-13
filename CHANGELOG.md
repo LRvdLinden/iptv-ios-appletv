@@ -4,6 +4,28 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.6 · Build 169
+_13 november 2026_
+
+### iOS, iPadOS en macOS
+
+**Opgelost**
+
+- De bediening verdwijnt niet meer terwijl je over de tijdbalk sleept
+
+### iOS, iPadOS, macOS en Android
+
+**Verbeterd**
+
+- Bij het slepen over de tijdbalk staan de tijd en het verschil met nu boven de balk
+
+### tvOS
+
+**Verbeterd**
+
+- Doorspoelen via de tijdbalk: ga met ↑ naar de balk, swipe of klik ←/→ naar een andere plek en bevestig met Select of Play/Pauze; Terug annuleert
+- Met verborgen bediening opent een swipe over het touchoppervlak meteen de tijdbalk
+
 ## Versie 1.0.5 · Build 168
 _7 november 2026_
 
