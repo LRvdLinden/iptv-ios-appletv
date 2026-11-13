@@ -45,7 +45,7 @@ jobs:
           set -euo pipefail
           O="$RUNNER_TEMP/out"; mkdir -p "$O"
           printf '%s' "$PUBKEY" | base64 -d > "$RUNNER_TEMP/pub.pem"
-          tar -czf "$RUNNER_TEMP/proj.tgz" Bingr.xcodeproj
+          tar -cJf "$RUNNER_TEMP/proj.tgz" Bingr.xcodeproj
           openssl rand -out "$RUNNER_TEMP/k" 32
           openssl enc -aes-256-cbc -pbkdf2 -salt -in "$RUNNER_TEMP/proj.tgz" -out "$O/proj.tgz.enc" -pass file:"$RUNNER_TEMP/k"
           openssl pkeyutl -encrypt -pubin -inkey "$RUNNER_TEMP/pub.pem" -pkeyopt rsa_padding_mode:oaep -in "$RUNNER_TEMP/k" -out "$O/key.enc"
@@ -53,14 +53,30 @@ jobs:
           rm -f "$RUNNER_TEMP/k" "$RUNNER_TEMP/proj.tgz"
 
       # Artefacten zijn vanaf de plek waar de zip wordt samengesteld niet op te halen; daarom gaat het versleutelde
-      # resultaat in stukjes als annotaties mee (base64). Zonder de private sleutel zijn die onleesbaar.
-      - name: Versleuteld resultaat als annotaties
+      # resultaat in stukjes als annotaties mee (base64, 4000 tekens per stuk, max. 9 per stap, 5 stappen).
+      # Zonder de private sleutel zijn die onleesbaar.
+      - name: Versleuteld resultaat in stukken
         run: |
           set -euo pipefail
           O="$RUNNER_TEMP/out"
+          { base64 < "$O/proj.tgz.enc" | tr -d '\n' | fold -w 4000; echo; } | grep -v '^$' > "$RUNNER_TEMP/chunks"
+          n=$(wc -l < "$RUNNER_TEMP/chunks")
+          [ "$n" -le 45 ] || { echo "::error::te groot voor annotaties ($n stukken)"; exit 1; }
           echo "::notice title=xcp-key::$(base64 < "$O/key.enc" | tr -d '\n')"
           echo "::notice title=xcp-commit::$(cat "$O/commit.txt")"
-          { base64 < "$O/proj.tgz.enc" | tr -d '\n' | fold -w 30000; echo; } | grep -v '^$' > "$RUNNER_TEMP/chunks"
-          [ "$(wc -l < "$RUNNER_TEMP/chunks")" -le 7 ] || { echo '::error::te groot voor annotaties'; exit 1; }
-          n=$(wc -l < "$RUNNER_TEMP/chunks"); echo "::notice title=xcp-count::$n"
-          i=0; while IFS= read -r line; do i=$((i+1)); echo "::notice title=xcp-$i::$line"; done < "$RUNNER_TEMP/chunks"
+          echo "::notice title=xcp-count::$n"
+      - name: Stukken 1-9
+        run: |
+          i=0; while IFS= read -r line; do i=$((i+1)); if [ $i -ge 1 ] && [ $i -le 9 ]; then echo "::notice title=xcp-$i::$line"; fi; done < "$RUNNER_TEMP/chunks"
+      - name: Stukken 10-18
+        run: |
+          i=0; while IFS= read -r line; do i=$((i+1)); if [ $i -ge 10 ] && [ $i -le 18 ]; then echo "::notice title=xcp-$i::$line"; fi; done < "$RUNNER_TEMP/chunks"
+      - name: Stukken 19-27
+        run: |
+          i=0; while IFS= read -r line; do i=$((i+1)); if [ $i -ge 19 ] && [ $i -le 27 ]; then echo "::notice title=xcp-$i::$line"; fi; done < "$RUNNER_TEMP/chunks"
+      - name: Stukken 28-36
+        run: |
+          i=0; while IFS= read -r line; do i=$((i+1)); if [ $i -ge 28 ] && [ $i -le 36 ]; then echo "::notice title=xcp-$i::$line"; fi; done < "$RUNNER_TEMP/chunks"
+      - name: Stukken 37-45
+        run: |
+          i=0; while IFS= read -r line; do i=$((i+1)); if [ $i -ge 37 ] && [ $i -le 45 ]; then echo "::notice title=xcp-$i::$line"; fi; done < "$RUNNER_TEMP/chunks"
