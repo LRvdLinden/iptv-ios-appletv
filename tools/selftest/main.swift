@@ -2306,7 +2306,7 @@ do {
     eq(Scrub169.clickStep(repeatCount: 40), 60, "169: hoogstens 60 s")
     var r = 0, total = 0.0
     for _ in 0..<8 { total += Scrub169.clickStep(repeatCount: r); r = Scrub169.nextRepeat(previous: r, sameDirection: true, interval: 0.1) }
-    eq(total, 3 * 10 + 3 * 30 + 2 * 60, "169: ingedrukt houden versnelt")
+    eq(total, 240.0, "169: ingedrukt houden versnelt (3 × 10 + 3 × 30 + 2 × 60)")
 
     eq(Scrub169.clamp(-20, duration: 3600), 0, "169: niet voor het begin")
     eq(Scrub169.clamp(4000, duration: 3600), 3600, "169: niet na het eind")
