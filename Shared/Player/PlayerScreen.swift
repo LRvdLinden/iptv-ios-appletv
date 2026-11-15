@@ -33,6 +33,8 @@ struct PlayerScreen: View {
     /// Build 176: ±10 en ←/→ spoelen direct (snel achter elkaar telt op); ±10-knoppen van de Remote-app via de systeemopdrachten
     @State private var skipChain = Skip176.Chain()
     @State private var remoteSkip = RemoteSkip176()
+    /// Build 178: laatste afspeel/pauze-druk (systeemopdracht en `.onPlayPauseCommand` samen tellen één keer)
+    @State private var tvLastPlayPause = Date.distantPast
     #endif
     #if !os(tvOS)
     @StateObject private var cast = CastManager.shared
@@ -268,14 +270,7 @@ struct PlayerScreen: View {
         .onExitCommand { if panel != nil { panel = nil } else { close() } }
         #endif
         #else
-        .onPlayPauseCommand {
-            // build 171: "Gepauzeerd" → verder; "Kijk je nog?" → verder kijken
-            if still.phase == .paused { still.resume(); return }
-            if still.isActive { still.keepWatching(); return }
-            // build 169: met een voorbeeldpositie op de tijdbalk springt Play/Pauze daarheen
-            if scrub.isScrubbing { tvCommitPreview() }
-            else if !scrub.committing { player.togglePlay(); userPoke() }
-        }
+        .onPlayPauseCommand { tvPlayPause(.toggle) }
         .onChange(of: showControls) { _, shown in
             // bediening tevoorschijn → focus op afspelen/pauze; weg → focus terug naar de vanger, of naar
             // "Intro overslaan" / "Volgende aflevering" als die in beeld staan (build 60)
@@ -308,7 +303,8 @@ struct PlayerScreen: View {
         .onAppear {
             scrub.player = player; tvFocus = showControls ? tvDefaultFocus : .catcher
             // build 176: ±10-knoppen van de Remote-app (iPhone/iPad) en andere afstandsbedieningen
-            remoteSkip.attach { forward in tvSkip(forward: forward) }
+            // build 178: ook afspelen/pauze (anders bereikt de knop van de Siri Remote `.onPlayPauseCommand` niet meer)
+            remoteSkip.attach({ forward in tvSkip(forward: forward) }, playPause: { kind in tvPlayPause(kind) })
         }
         // intro overslaan: de knop krijgt de focus zolang de bediening verborgen is (zoals Netflix)
         .onChange(of: showSkipIntro) { _, v in
@@ -769,6 +765,26 @@ struct PlayerScreen: View {
             }
         }
         .animation(.easeOut(duration: 0.15), value: focused)
+    }
+
+    /// Build 178: de afspeel/pauzeknop van de Siri Remote, als `.onPlayPauseCommand` of als systeemopdracht
+    /// (togglePlayPause/play/pause via `RemoteSkip176`). Zelfde regels als in 175.
+    private func tvPlayPause(_ kind: RemoteSkip176.PlayPause) {
+        let now = Date()
+        guard now.timeIntervalSince(tvLastPlayPause) > 0.35 else { return }
+        tvLastPlayPause = now
+        // build 171: "Gepauzeerd" → verder; "Kijk je nog?" → verder kijken
+        if still.phase == .paused { still.resume(); return }
+        if still.isActive { still.keepWatching(); return }
+        // build 169: met een voorbeeldpositie op de tijdbalk springt Play/Pauze daarheen
+        if scrub.isScrubbing { tvCommitPreview(); return }
+        guard !scrub.committing else { return }
+        switch kind {
+        case .toggle: player.togglePlay()
+        case .play: if !player.isPlaying { player.togglePlay() }
+        case .pause: if player.isPlaying { player.togglePlay() }
+        }
+        userPoke()
     }
 
     /// Build 176: direct 10 s spoelen zonder pauzeren (←/→, ±10 van de Remote-app); snel achter elkaar telt op.

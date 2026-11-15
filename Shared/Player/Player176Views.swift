@@ -16,13 +16,24 @@ import UIKit
 final class RemoteSkip176 {
     private var targets: [(MPRemoteCommand, Any)] = []
 
-    func attach(_ skip: @escaping @MainActor (Bool) -> Void) {
+    /// Build 178: welke afspeel/pauze-opdracht binnenkwam
+    enum PlayPause { case toggle, play, pause }
+
+    /// `playPause` (build 178): zodra hier doelen op het commandocentrum staan, stuurt tvOS de afspeel/pauzeknop van de
+    /// Siri Remote als systeemopdracht (togglePlayPause/play/pause) en niet meer naar `.onPlayPauseCommand`; die
+    /// opdrachten moeten dus ook hier afgehandeld worden.
+    func attach(_ skip: @escaping @MainActor (Bool) -> Void, playPause: @escaping @MainActor (PlayPause) -> Void) {
         detach()
+        // build 178: doelen van de radio (als die nog hangen) mogen de knop niet opvangen
+        RadioPlayer.shared.removeCommands()
         let cc = MPRemoteCommandCenter.shared()
         cc.skipForwardCommand.preferredIntervals = [NSNumber(value: Skip176.step)]
         cc.skipBackwardCommand.preferredIntervals = [NSNumber(value: Skip176.step)]
         cc.skipForwardCommand.isEnabled = true
         cc.skipBackwardCommand.isEnabled = true
+        cc.togglePlayPauseCommand.isEnabled = true
+        cc.playCommand.isEnabled = true
+        cc.pauseCommand.isEnabled = true
         let f = cc.skipForwardCommand.addTarget { _ in
             Task { @MainActor in skip(true) }
             return .success
@@ -31,7 +42,20 @@ final class RemoteSkip176 {
             Task { @MainActor in skip(false) }
             return .success
         }
-        targets = [(cc.skipForwardCommand, f), (cc.skipBackwardCommand, b)]
+        let t = cc.togglePlayPauseCommand.addTarget { _ in
+            Task { @MainActor in playPause(.toggle) }
+            return .success
+        }
+        let pl = cc.playCommand.addTarget { _ in
+            Task { @MainActor in playPause(.play) }
+            return .success
+        }
+        let pa = cc.pauseCommand.addTarget { _ in
+            Task { @MainActor in playPause(.pause) }
+            return .success
+        }
+        targets = [(cc.skipForwardCommand, f), (cc.skipBackwardCommand, b), (cc.togglePlayPauseCommand, t),
+                   (cc.playCommand, pl), (cc.pauseCommand, pa)]
     }
 
     func detach() {

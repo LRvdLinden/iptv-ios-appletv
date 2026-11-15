@@ -26,6 +26,9 @@ final class RadioPlayer: ObservableObject {
     private var statusObservation: NSKeyValueObservation?
     private var timeControlObservation: NSKeyValueObservation?
     private var commandsReady = false
+    /// Build 178: de geregistreerde doelen, zodat ze na het stoppen weer weg zijn (anders vangen ze op de Apple TV de
+    /// afspeel/pauzeknop in de videospeler op)
+    private var commandTargets: [(MPRemoteCommand, Any)] = []
     private final class Owner {}
     private let owner = Owner()
 
@@ -207,6 +210,16 @@ final class RadioPlayer: ObservableObject {
         isBuffering = false
         if release { StreamSession.shared.stop(owner: owner) }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+        removeCommands()   // build 178
+    }
+
+    /// Build 178: de opdrachten (afspelen, pauze, volgende, vorige) van de radio weer loslaten: bij stoppen en als de
+    /// videospeler opent
+    func removeCommands() {
+        guard commandsReady else { return }
+        for (c, t) in commandTargets { c.removeTarget(t) }
+        commandTargets = []
+        commandsReady = false
     }
 
     private func stopPlayer() {
@@ -257,26 +270,28 @@ final class RadioPlayer: ObservableObject {
         guard !commandsReady else { return }
         commandsReady = true
         let cc = MPRemoteCommandCenter.shared()
-        cc.playCommand.addTarget { _ in
+        let play = cc.playCommand.addTarget { _ in
             Task { @MainActor in RadioPlayer.shared.player?.play() }
             return .success
         }
-        cc.pauseCommand.addTarget { _ in
+        let pause = cc.pauseCommand.addTarget { _ in
             Task { @MainActor in RadioPlayer.shared.player?.pause() }
             return .success
         }
-        cc.togglePlayPauseCommand.addTarget { _ in
+        let toggle = cc.togglePlayPauseCommand.addTarget { _ in
             Task { @MainActor in RadioPlayer.shared.togglePlay() }
             return .success
         }
-        cc.nextTrackCommand.addTarget { _ in
+        let next = cc.nextTrackCommand.addTarget { _ in
             Task { @MainActor in RadioPlayer.shared.step(1) }
             return .success
         }
-        cc.previousTrackCommand.addTarget { _ in
+        let prev = cc.previousTrackCommand.addTarget { _ in
             Task { @MainActor in RadioPlayer.shared.step(-1) }
             return .success
         }
+        commandTargets = [(cc.playCommand, play), (cc.pauseCommand, pause), (cc.togglePlayPauseCommand, toggle),
+                          (cc.nextTrackCommand, next), (cc.previousTrackCommand, prev)]
     }
 }
 
