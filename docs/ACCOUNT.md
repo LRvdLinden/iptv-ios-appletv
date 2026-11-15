@@ -2424,25 +2424,18 @@ verwijderingen in `removed.<veld>` of als `{id, removed:true, at}`):
   niet en de EPG-tekst van een vergrendelde zender blijft zichtbaar.
 - **Overzicht**: Instellingen > Profiel > "Vergrendeld" / "Locked" (zoals Verborgen zenders), per item ontgrendelen (pincode).
 
-### 3. Momenten bewaren (`profile.<id>.bookmarks`)
+### 3. Momenten bewaren (`profile.<id>.bookmarks`): vervallen sinds build 178
 
-```json
-{ "bookmarks": [ { "id": "<server-id kleine letters>|<key>@<t>", "playlistID": "<server-id>", "key": "<sleutel>",
-                   "title": "Titel · S1:E2", "t": 1234, "at": "ISO-8601" },
-                 { "id": "…", "removed": true, "at": "ISO-8601" } ] }
-```
+Momenten bewaren is in **build 178** (versie 1.0.8) op alle platforms (Apple, Android, webspeler) weer weggehaald: geen
+knop of menu-item "Moment bewaren" in de speler, geen rij "Momenten" op de detailpagina, in Mijn lijst / Mijn Bingr of op
+Home, en geen toets B meer in de webspeler.
 
-- **`key`** = dezelfde sleutel als in `progress` (Verder kijken) van die film of aflevering; **`playlistID`** = de server
-  (zoals in `progress`). **`t`** = gehele seconden vanaf het begin. **`title`** = wat de lijst toont (titel, bij een
-  aflevering met " · S1:E2"). `id` = `"<server-id kleine letters>|<key>@<t>"`, dus hetzelfde moment twee keer bewaren = één item.
-- **Samenvoegen** (`bookmarks` in de testgevallen): per `id` wint de nieuwste `at` (een verwijdering is een item met
-  `removed:true` en de tijd van verwijderen). Bij gelijke `at` wint `removed`. Verwijderingen ouder dan 90 dagen weg. Max.
-  **200** aanwezige momenten per profiel (de nieuwste `at` blijven). Uitvoer: aanwezige momenten op `at` aflopend, dan
-  verwijderingen, elk op `id` bij gelijke tijd. Geen `removed.bookmarks`: de verwijderingen staan in de lijst zelf.
-- **In de app**: speler: knop/menu "Moment bewaren" / "Save moment" (melding "Moment bewaard" / "Moment saved").
-  Detailpagina: rij "Momenten" / "Moments" (voor die titel, op `t` oplopend); Mijn lijst: rij "Momenten" (alle, nieuwste
-  eerst). Tikken = afspelen vanaf `t`; lange druk/veeg = verwijderen. Een kinderprofiel ziet alleen momenten van titels die
-  het mag. Alleen films en afleveringen (geen live).
+- De sleutel **`bookmarks`** in `profile.<id>` wordt sinds build 178 **genegeerd**: niet meer gelezen en niet meer
+  geschreven, maar ook **niet gewist**. Hij blijft als onbekende sleutel ongewijzigd staan (zoals altijd, zie "Build 171"),
+  zodat apps van build 176 en 177 hun momenten houden.
+- De oude vorm, ter informatie: `{ "bookmarks": [ { "id": "<server-id kleine letters>|<key>@<t>", "playlistID", "key",
+  "title", "t", "at" }, { "id", "removed": true, "at" } ] }` (per `id` de nieuwste `at`, max. 200 per profiel).
+- De testgevallen `bookmarks` en `bookmarkID` zijn uit `docs/build176_cases.json` (en de kopieën) gehaald.
 
 ### 4. Binnenkort / Nieuw en populair: herinnering op de releasedatum (`reminders`)
 

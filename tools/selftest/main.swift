@@ -2917,27 +2917,6 @@ do {
             check(m == nil, "epg geen treffer \(c["q"] ?? "")")
         }
     }
-    func bm(_ j: [String: Any]) -> Build176.Bookmark {
-        Build176.Bookmark(id: j["id"] as? String ?? "", key: j["key"] as? String ?? "", playlistID: j["playlistID"] as? String ?? "",
-                          title: j["title"] as? String ?? "", t: (j["t"] as? NSNumber)?.intValue ?? 0, at: t(j["at"]),
-                          removed: b(j["removed"]))
-    }
-    for case let c as [String: Any] in cases("bookmarks") {
-        let out = Build176.mergeBookmarks((c["local"] as? [[String: Any]] ?? []).map(bm), (c["server"] as? [[String: Any]] ?? []).map(bm),
-                                          now: t(c["now"]))
-        let exp = (c["expect"] as? [[String: Any]] ?? []).map(bm)
-        eq(out.map { "\($0.id) \($0.removed) \($0.at)" }, exp.map { "\($0.id) \($0.removed) \($0.at)" }, "momenten: \(c["name"] ?? "")")
-    }
-    do {
-        let base = t("2026-11-01T00:00:00Z")
-        let many = (0..<205).map { Build176.Bookmark(id: "abc|k\($0)@1", at: base + Double($0) * 60) }
-        let out = Build176.mergeBookmarks(many, [], now: base + 86400)
-        eq(out.count, 200, "momenten: max 200")
-        check(!out.contains { $0.id == "abc|k4@1" } && out.contains { $0.id == "abc|k5@1" }, "momenten: oudste vallen weg")
-    }
-    for case let c as [Any] in cases("bookmarkID") {
-        eq(Build176.bookmarkID(server: c[0] as? String ?? "", key: c[1] as? String ?? "", t: optNum(c[2]) ?? 0), c[3] as? String ?? "", "moment-id")
-    }
     for case let c as [Any] in cases("releaseReminder") {
         let season = optNum(c[2]).map { Int($0) }
         eq(Build176.releaseID(mediaType: c[0] as? String ?? "", tmdb: Int(optNum(c[1]) ?? 0), season: season, profile: c[3] as? String),

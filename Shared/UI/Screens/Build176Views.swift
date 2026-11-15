@@ -1,7 +1,7 @@
 import SwiftUI
 
-// Build 176 (versie 1.0.8): automatisch volgende aflevering per profiel (2), vergrendelen met pincode (5) en momenten
-// bewaren (10). Contract: docs/ACCOUNT.md → "Build 176"; pure logica in `Build176` (Shared/Account/Build176.swift).
+// Build 176 (versie 1.0.8): automatisch volgende aflevering per profiel (2) en vergrendelen met pincode (5)
+// (momenten bewaren is sinds build 178 vervallen). Contract: docs/ACCOUNT.md → "Build 176"; pure logica in `Build176` (Shared/Account/Build176.swift).
 
 // MARK: - Opslag per profiel (gesynct via `profile.<id>`, zie StateSync.merge176)
 
@@ -15,7 +15,6 @@ final class Profile176: ObservableObject {
     @Published private(set) var revision = 0
 
     private let defaults = UserDefaults.standard
-    private func bmKey(_ id: UUID) -> String { "bookmarks.v176.\(id.uuidString)" }
     private func apKey(_ id: UUID) -> String { "autoplayNext.v176.\(id.uuidString)" }
     private static let unlockedKey = "locks.unlocked.v176"
 
@@ -23,56 +22,6 @@ final class Profile176: ObservableObject {
     /// Nu, afgerond op milliseconden (zoals in ISO-8601 bewaard)
     private static var nowMS: Double { (Date().timeIntervalSince1970 * 1000).rounded() / 1000 }
     private var current: UUID? { store.activeProfileID ?? store.mainProfileID }
-
-    // MARK: momenten
-
-    /// Alle momenten van een profiel, met verwijderingen (zoals ze gesynct worden)
-    func allBookmarks(_ id: UUID) -> [Build176.Bookmark] {
-        guard let d = defaults.data(forKey: bmKey(id)),
-              let l = try? JSONDecoder().decode([Build176.Bookmark].self, from: d) else { return [] }
-        return l
-    }
-
-    /// Aanwezige momenten van het actieve profiel (nieuwste eerst)
-    var bookmarks: [Build176.Bookmark] {
-        _ = revision
-        guard let id = current else { return [] }
-        return allBookmarks(id).filter { !$0.removed }
-    }
-
-    /// Momenten van één titel (film of aflevering-sleutels), op tijd in de titel
-    func bookmarks(keys: Set<String>) -> [Build176.Bookmark] {
-        bookmarks.filter { keys.contains($0.key) }.sorted { $0.key != $1.key ? $0.key < $1.key : $0.t < $1.t }
-    }
-
-    /// Uit de sync: zonder melding van een eigen wijziging
-    func setSyncedBookmarks(_ id: UUID, _ list: [Build176.Bookmark]) {
-        guard list != allBookmarks(id) else { return }
-        save(id, list)
-    }
-
-    private func save(_ id: UUID, _ list: [Build176.Bookmark]) {
-        if let d = try? JSONEncoder().encode(list) { defaults.set(d, forKey: bmKey(id)) }
-        revision += 1
-    }
-
-    func addBookmark(server: UUID?, key: String, title: String, seconds: Double) {
-        guard let id = current, let server = server ?? store.activePlaylistID else { return }
-        let b = Build176.Bookmark(id: Build176.bookmarkID(server: server.uuidString, key: key, t: seconds), key: key,
-                                  playlistID: server.uuidString.lowercased(), title: title, t: Int(seconds.rounded(.down)),
-                                  at: Self.nowMS)
-        save(id, Build176.mergeBookmarks(allBookmarks(id), [b], now: b.at))
-        store.stateEdited.send((id, .profile))
-    }
-
-    func removeBookmark(_ b: Build176.Bookmark) {
-        guard let id = current else { return }
-        var gone = b
-        gone.removed = true
-        gone.at = max(Self.nowMS, b.at + 0.001)
-        save(id, Build176.mergeBookmarks(allBookmarks(id), [gone], now: gone.at))
-        store.stateEdited.send((id, .profile))
-    }
 
     // MARK: automatisch volgende aflevering
 
@@ -451,62 +400,6 @@ struct AutoplayNextSettingsSection: View {
                 Text(L("For this profile. When off, the Next episode button stays, but doesn't start by itself."))
             }
         }
-    }
-}
-
-// MARK: - Momenten (detailpagina en Mijn lijst)
-
-/// Rij "Momenten": tikken = afspelen vanaf dat moment; lange druk = verwijderen
-struct MomentsRow: View {
-    let items: [Build176.Bookmark]
-    /// Afspelen vanaf `t` (seconden)
-    let play: (Build176.Bookmark) -> Void
-    var showTitle = false
-
-    var body: some View {
-        if !items.isEmpty {
-            VStack(alignment: .leading, spacing: tvScaled(10)) {
-                Text(L("Moments"))
-                    .font(.system(size: tvScaled(18), weight: .bold))
-                    .padding(.horizontal, Theme.edge)
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: tvScaled(10)) {
-                        ForEach(items, id: \.id) { b in
-                            Button { play(b) } label: {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Label(Self.time(b.t), systemImage: "bookmark.fill")
-                                        .font(.system(size: tvScaled(15), weight: .bold)).monospacedDigit()
-                                    if showTitle || b.title.contains(" · ") {
-                                        Text(b.title).font(.system(size: tvScaled(12))).foregroundStyle(Theme.secondary).lineLimit(1)
-                                    }
-                                }
-                                .padding(.horizontal, tvScaled(14)).padding(.vertical, tvScaled(10))
-                                .frame(minWidth: tvScaled(110), maxWidth: tvScaled(240), alignment: .leading)
-                                .background(Theme.elevated, in: RoundedRectangle(cornerRadius: tvScaled(10)))
-                            }
-                            .plainTVButton()
-                            .contextMenu {
-                                Button(role: .destructive) {
-                                    withAnimation { Profile176.shared.removeBookmark(b) }
-                                } label: { Label(L("Remove"), systemImage: "trash") }
-                            }
-                        }
-                    }
-                    .padding(.horizontal, Theme.edge)
-                    #if os(tvOS)
-                    .padding(.vertical, 12)
-                    #endif
-                }
-                #if os(tvOS)
-                .focusSection()
-                #endif
-            }
-        }
-    }
-
-    static func time(_ t: Int) -> String {
-        let h = t / 3600, m = (t % 3600) / 60, s = t % 60
-        return h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%d:%02d", m, s)
     }
 }
 

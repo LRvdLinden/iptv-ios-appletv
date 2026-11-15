@@ -9,7 +9,7 @@ struct DetailView: View {
     @EnvironmentObject var playlists: PlaylistService
     @EnvironmentObject var store: CloudStore
     @EnvironmentObject var trakt: TraktSync
-    /// Build 176: momenten, ontgrendeld
+    /// Build 176: ontgrendeld
     @ObservedObject private var p176 = Profile176.shared
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
@@ -101,27 +101,6 @@ struct DetailView: View {
             LockNotice176.shared.show()
         }
     }
-    /// Build 176: momenten van deze titel (film, of de afleveringen van de serie)
-    private var moments: [Build176.Bookmark] {
-        _ = p176.revision
-        switch target {
-        case .movie(let m): return p176.bookmarks(keys: [m.id])
-        case .series: return p176.bookmarks(keys: Set(episodes.map(\.id)))
-        }
-    }
-    private func playMoment(_ b: Build176.Bookmark) {
-        var it: PlayableItem
-        switch target {
-        case .movie(let m): it = Playables.movie(m, imdb: imdb)
-        case .series(let s):
-            guard let e = episodes.first(where: { $0.id == b.key }) else { return }
-            it = Playables.episode(e, of: s, imdb: imdb)
-        }
-        it.resumeAt = 0
-        it.resumeSeconds = nil
-        it.bookmarkSeconds = Double(b.t)
-        app.play(it)
-    }
     private var baseTitle: String { switch target { case .movie(let m): return m.title; case .series(let s): return s.title } }
     /// Titel zonder taallabel ("Animal (IT)" → "Animal"), build 59
     private var title: String { d?.title ?? ContentLanguage.displayTitle(baseTitle) }
@@ -195,7 +174,6 @@ struct DetailView: View {
                     .padding(.horizontal, Theme.edge)
 
                     if case .series(let s) = target { episodesSection(s) }
-                    MomentsRow(items: moments, play: playMoment)   // build 176
                     if let r = d?.ratings, !r.isEmpty { ratingsSection(r) }
                     if let c = d?.cast, !c.isEmpty { castSection(c) }
                     if let rec = visibleRecommendations, !rec.isEmpty { recommendationsSection(rec) }

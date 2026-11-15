@@ -13,39 +13,12 @@ struct MyBingrHeader: View {
     /// build 157: Verder kijken is Lifetime
     @ObservedObject private var ent = EntitlementsService.shared
     @State private var prompt: CrossServer.Prompt?
-    /// Build 176: bewaarde momenten
-    @ObservedObject private var p176 = Profile176.shared
     /// Build 147: de gedeelde index (op de achtergrond gebouwd) i.p.v. per schermverversing door de hele bibliotheek
     @State private var index = HomeIndex()
     @State private var indexVersion = -1
 
     private var lib: Library { playlists.library }
 
-    /// Build 176: momenten van titels die dit profiel ziet (de bibliotheek is al gefilterd), nieuwste eerst
-    private var visibleMoments: [Build176.Bookmark] {
-        let movieIDs = Set(lib.movies.map(\.id))
-        let seriesTitles = Set(lib.series.map(\.title))
-        return p176.bookmarks.filter { b in
-            movieIDs.contains(b.key) || seriesTitles.contains(Self.seriesTitle(b.title))
-        }
-    }
-
-    private static func seriesTitle(_ t: String) -> String {
-        t.components(separatedBy: " · ").first ?? t
-    }
-
-    /// Film: meteen afspelen vanaf het moment; aflevering: de serie openen (daar staat de rij Momenten)
-    private func playMoment(_ b: Build176.Bookmark) {
-        if let m = lib.movies.first(where: { $0.id == b.key }) {
-            var it = Playables.movie(m, imdb: trakt.imdb(for: m))
-            it.resumeAt = 0
-            it.resumeSeconds = nil
-            it.bookmarkSeconds = Double(b.t)
-            app.play(it)
-        } else if let s = lib.series.first(where: { $0.title == Self.seriesTitle(b.title) }) {
-            detail = .series(s)
-        }
-    }
     private var pid: UUID? { playlists.source?.id }
 
     /// Verder kijken van dít profiel (films + series met voortgang), nieuwste eerst.
@@ -155,7 +128,6 @@ struct MyBingrHeader: View {
             case .items: continueRow(cont)
             }
             row(L("My List"), myListItems.map { ($0, nil) }, empty: L("Add titles with + My List and they'll appear here."))
-            MomentsRow(items: visibleMoments, play: playMoment, showTitle: true)   // build 176
             let favs = favoriteChannels
             if !favs.isEmpty { channelRow(favs) }
         }

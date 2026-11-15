@@ -339,8 +339,6 @@ struct PlayableItem: Identifiable, Hashable {
     var tmdbID: Int? = nil
     /// Build 154: jaar van de film of serie (inhoudssleutels en zoeken op Trakt)
     var year: Int? = nil
-    /// Build 176: afspelen vanaf een bewaard moment (seconden), los van de voortgang
-    var bookmarkSeconds: Double? = nil
 }
 
 // MARK: - Metadata -----------------------------------------------------------

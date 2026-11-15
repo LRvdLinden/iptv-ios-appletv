@@ -1642,7 +1642,7 @@ final class StateSync {
             progress: progress.mapValues { $0.raw.merging(["updatedAt": Self.iso($0.at)]) { _, b in b } },
             history: historySorted.map { $0.raw.merging(["at": Self.iso($0.at), "date": Self.iso($0.at)]) { _, b in b } },
             prefs: prefsOut, prefsAt: prefsAt, pin: pin, pinAt: pinAt, homeLayout: layoutOut, extras: data)
-        // build 176: momenten en automatisch volgende aflevering
+        // build 176: automatisch volgende aflevering
         let has176 = merge176(id, server: data, into: &mine)
         guard remote != nil else {
             let empty = sets.values.allSatisfy(\.isEmpty) && progress.isEmpty && history.isEmpty && pin == nil
@@ -1682,21 +1682,8 @@ final class StateSync {
         return mine
     }
 
-    // MARK: build 176: momenten (`bookmarks`) en `autoplayNext` in `profile.<id>` (docs/ACCOUNT.md → "Build 176")
-
-    private static func bookmarks176(_ v: Any?) -> [Build176.Bookmark] {
-        (v as? [Any] ?? []).compactMap { e in
-            guard let j = e as? [String: Any], let id = string(j["id"]), let at = time(j["at"]) else { return nil }
-            return Build176.Bookmark(id: id, key: string(j["key"]) ?? "", playlistID: string(j["playlistID"]) ?? "",
-                                     title: j["title"] as? String ?? "", t: (j["t"] as? NSNumber)?.intValue ?? 0,
-                                     at: at, removed: (j["removed"] as? Bool) == true)
-        }
-    }
-
-    private static func bookmarkJSON(_ b: Build176.Bookmark) -> [String: Any] {
-        if b.removed { return ["id": b.id, "removed": true, "at": iso(b.at)] }
-        return ["id": b.id, "key": b.key, "playlistID": b.playlistID, "title": b.title, "t": b.t, "at": iso(b.at)]
-    }
+    // MARK: build 176: `autoplayNext` in `profile.<id>` (docs/ACCOUNT.md → "Build 176"). Momenten (`bookmarks`) vervallen
+    // sinds build 178: de sleutel wordt niet gelezen of geschreven en blijft via `extras` ongewijzigd staan.
 
     private static func autoplay176(_ v: Any?) -> Profile176.Autoplay? {
         guard let j = v as? [String: Any], let value = j["value"] as? Bool, let at = time(j["at"]) else { return nil }
@@ -1706,10 +1693,6 @@ final class StateSync {
     /// Samenvoegen met de server, lokaal toepassen en in `out` zetten. Geeft true als er lokaal iets van build 176 is.
     private func merge176(_ id: UUID, server data: [String: Any], into out: inout [String: Any]) -> Bool {
         let p = Profile176.shared
-        let now = Date().timeIntervalSince1970
-        let merged = Build176.mergeBookmarks(p.allBookmarks(id), Self.bookmarks176(data["bookmarks"]), now: now)
-        p.setSyncedBookmarks(id, merged)
-        if !merged.isEmpty || data["bookmarks"] != nil { out["bookmarks"] = merged.map(Self.bookmarkJSON) }
         let server = Self.autoplay176(data["autoplayNext"])
         let local = p.autoplay(id)
         var win = local
@@ -1718,15 +1701,11 @@ final class StateSync {
             if w != local { p.setSyncedAutoplay(id, w) }
             out["autoplayNext"] = ["value": w.value, "at": Self.iso(w.at)] as [String: Any]
         }
-        return !merged.isEmpty || local != nil
+        return local != nil
     }
 
     /// Wat de server had, in dezelfde vorm (om te zien of er geüpload moet worden)
     private static func theirs176(_ data: [String: Any], into out: inout [String: Any]) {
-        if data["bookmarks"] != nil {
-            out["bookmarks"] = Build176.mergeBookmarks(bookmarks176(data["bookmarks"]), [], now: Date().timeIntervalSince1970)
-                .map(bookmarkJSON)
-        }
         if let a = autoplay176(data["autoplayNext"]) {
             out["autoplayNext"] = ["value": a.value, "at": iso(a.at)] as [String: Any]
         }

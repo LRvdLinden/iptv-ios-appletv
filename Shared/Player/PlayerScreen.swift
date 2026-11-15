@@ -377,13 +377,6 @@ struct PlayerScreen: View {
             } else { await start(item, askStartOver: true) }
         }
         .task { setupStillWatching() }
-        // build 176: afspelen vanaf een bewaard moment zodra de lengte bekend is
-        .onChange(of: player.duration > 0) { _, known in
-            if known, let s = player.item.bookmarkSeconds, s > 0 {
-                player.item.bookmarkSeconds = nil
-                player.seek(toSeconds: s)
-            }
-        }
         .lockGate176()
         // aftiteling gemarkeerd: na het aftellen automatisch de volgende aflevering
         .onChange(of: nextCountdown) { _, v in
@@ -588,10 +581,6 @@ struct PlayerScreen: View {
                                 barButton("rectangle.stack", L("Episodes"), id: "episodes") { openEpisodes() }
                             }
                             if !stremioChoices.isEmpty { barButton("list.bullet", L("Sources")) { panel = .sources } }
-                            // build 176: moment bewaren (films en afleveringen)
-                            if canSaveMoment {
-                                barButton("bookmark", L("Save moment"), id: "moment") { saveMoment() }
-                            }
                             if player.item.type == .episode && markerKey != nil {
                                 barButton("forward.frame", L("Mark intro here")) { panel = .intro }
                             }
@@ -1191,21 +1180,6 @@ struct PlayerScreen: View {
     /// Build 176: volgende aflevering vanzelf starten (instelling van het profiel; "Kijk je nog?" gaat voor)
     private var autoNext176: Bool {
         Build176.autoplay(value: Profile176.shared.autoplayNext, kids: false, stillWatchingDue: still.isActive)
-    }
-
-    /// Build 176: moment bewaren kan bij films en afleveringen (niet live, niet bij een voorbeeld)
-    private var canSaveMoment: Bool {
-        !player.isLive && (player.item.type == .movie || player.item.type == .episode) && player.duration > 0
-            && !player.item.id.contains("-cu-")
-    }
-
-    private func saveMoment() {
-        let it = player.item
-        let t = player.currentTime
-        var title = it.title
-        if it.type == .episode, let s = it.season, let e = it.episode { title += " · S\(s):E\(e)" }
-        Profile176.shared.addBookmark(server: it.sourceID ?? playlists.source?.id, key: it.id, title: title, seconds: t)
-        flash(L("Moment saved"))
     }
 
     private func playNext(_ n: PlayableItem) {

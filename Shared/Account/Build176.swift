@@ -193,43 +193,6 @@ enum Build176 {
         return (start > 0 ? "…" : "") + String(chars[start..<end]) + (end < chars.count ? "…" : "")
     }
 
-    // MARK: 10. Momenten bewaren
-
-    struct Bookmark: Equatable, Hashable, Codable {
-        var id: String
-        var key: String = ""
-        var playlistID: String = ""
-        var title: String = ""
-        var t: Int = 0
-        var at: Double
-        var removed: Bool = false
-    }
-
-    static let bookmarkLimit = 200
-    static let removedLifetime: Double = 90 * 24 * 3600
-
-    static func bookmarkID(server: String, key: String, t: Double) -> String {
-        "\(server.lowercased())|\(key)@\(Int(t.rounded(.down)))"
-    }
-
-    /// Samenvoegen: per id wint de nieuwste `at` (gelijk: verwijderd), oude verwijderingen weg, max. 200 aanwezig.
-    static func mergeBookmarks(_ a: [Bookmark], _ b: [Bookmark], now: Double) -> [Bookmark] {
-        var by: [String: Bookmark] = [:]
-        for x in a + b {
-            guard !x.id.isEmpty else { continue }
-            if let cur = by[x.id] {
-                if x.at > cur.at || (x.at == cur.at && x.removed && !cur.removed) { by[x.id] = x }
-            } else {
-                by[x.id] = x
-            }
-        }
-        func order(_ l: Bookmark, _ r: Bookmark) -> Bool { l.at != r.at ? l.at > r.at : l.id < r.id }
-        var present = by.values.filter { !$0.removed }.sorted(by: order)
-        if present.count > bookmarkLimit { present = Array(present.prefix(bookmarkLimit)) }
-        let gone = by.values.filter { $0.removed && now - $0.at <= removedLifetime }.sorted(by: order)
-        return present + gone
-    }
-
     // MARK: 4. Herinnering op de releasedatum
 
     static func releaseKey(mediaType: String, tmdb: Int, season: Int?) -> String {
