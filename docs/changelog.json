@@ -1,5 +1,46 @@
 [
  {
+  "build": 175,
+  "version": "1.0.7",
+  "date": "2026-11-15",
+  "items": [
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "android"
+    ],
+    "nl": "Downloaden staat altijd onder Meer: bij series dit seizoen, de volgende 3 afleveringen of de hele serie, en bij films zie je waarom een stream niet te downloaden is",
+    "en": "Download is always under More: for series this season, the next 3 episodes or the whole series, and for movies you see why a stream can't be downloaded"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "macos"
+    ],
+    "nl": "Widget Bingr Radio op de Mac met de zender die nu speelt en je favoriete zenders",
+    "en": "Bingr Radio widget on the Mac with the station playing now and your favorite stations"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios"
+    ],
+    "nl": "Bingr Radio heeft een eigen kleine weergave in CarPlay en op de Apple Watch",
+    "en": "Bingr Radio has its own compact view in CarPlay and on Apple Watch"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "android"
+    ],
+    "nl": "De app reageert weer meteen na het laden van een grote bibliotheek",
+    "en": "The app responds right away again after loading a large library"
+   }
+  ]
+ },
+ {
   "build": 174,
   "version": "1.0.7",
   "date": "2026-11-15",

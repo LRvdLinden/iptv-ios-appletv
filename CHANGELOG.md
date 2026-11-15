@@ -4,6 +4,27 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.7 · Build 175
+_15 november 2026_
+
+### iOS
+
+**Nieuw**
+
+- Bingr Radio heeft een eigen kleine weergave in CarPlay en op de Apple Watch
+
+### iOS, iPadOS en Android
+
+**Verbeterd**
+
+- Downloaden staat altijd onder Meer: bij series dit seizoen, de volgende 3 afleveringen of de hele serie, en bij films zie je waarom een stream niet te downloaden is
+
+### macOS
+
+**Nieuw**
+
+- Widget Bingr Radio op de Mac met de zender die nu speelt en je favoriete zenders
+
 ## Versie 1.0.7 · Build 174
 _15 november 2026_
 
