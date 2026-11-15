@@ -92,8 +92,15 @@ final class VLCEngine: PlaybackEngine {
     /// `stop` (ook het vervangen van de media) tot de netwerk- en decodeerthreads klaar zijn; dat liet het scrollen haperen.
     private static let previewQueue = DispatchQueue(label: "bingr.preview.vlc", qos: .userInitiated)
 
+    /// Build 177: stoppen en een nieuwe stream openen op `previewQueue` (niet op de hoofdthread). Altijd bij het stille
+    /// voorbeeld; ook bij het voorbeeld in de tv-gids (een gewone speler, gedempt, die naar volledig scherm kan): daar
+    /// liep `stop` op de hoofdthread en wachtte de Apple TV bij elke focuswissel op VLC ("loopt soms vast").
+    /// Eenmaal aan blijft het aan (`Build177.vlcOffMain`), ook na volledig scherm met dezelfde stream.
+    var offMain: Bool { didSet { offMain = Build177.vlcOffMain(silent: silent, preview: offMain, wasOffMain: oldValue) } }
+
     init(silent: Bool = false) {
         self.silent = silent
+        self.offMain = silent
         player.drawable = view
         #if !os(macOS)
         // na de intro-tune (ambient) weer echte afspeel-audio, ook met de stil-schakelaar aan
@@ -119,7 +126,8 @@ final class VLCEngine: PlaybackEngine {
     }
     var isPlaying: Bool { player.isPlaying }
     /// Het voorbeeld is altijd live (en de media wordt daar op een eigen thread gewisseld): niet uitlezen
-    var duration: Double { silent ? 0 : Double(player.media?.length.intValue ?? 0) / 1000 }
+    /// Build 177: ook niet bij live buiten de hoofdthread (het voorbeeld in de gids)
+    var duration: Double { silent || (offMain && lastLive) ? 0 : Double(player.media?.length.intValue ?? 0) / 1000 }
     var time: Double { Double(player.time.intValue) / 1000 }
     var position: Double { duration > 0 ? Double(player.position) : 0 }
     var rate: Float { get { player.rate } set { player.rate = newValue } }
@@ -198,9 +206,18 @@ final class VLCEngine: PlaybackEngine {
             }
             return
         }
-        player.media = media
         pendingStart = startFraction
-        player.play()
+        if offMain {
+            // build 177: het vervangen van de media wacht in VLCKit op de vorige stream: niet op de hoofdthread
+            let p = player
+            Self.previewQueue.async {
+                p.media = media
+                p.play()
+            }
+        } else {
+            player.media = media
+            player.play()
+        }
         if resumeAt == nil, let s = startFraction, s > 0.01 {
             Task { @MainActor [weak self] in
                 for _ in 0..<40 {   // wachten tot de lengte bekend is
@@ -235,7 +252,7 @@ final class VLCEngine: PlaybackEngine {
     func play() { player.play() }
     func pause() { player.pause() }
     func stop() {
-        if silent {
+        if silent || offMain {
             let p = player
             Self.previewQueue.async { p.stop() }
         } else {

@@ -3030,5 +3030,57 @@ do {
     eq(Skip176.label(10), "+10 s", "label vooruit")
 }
 
+
+// MARK: build 177 (Shared/Account/Build177.swift)
+// De gedeelde gevallen komen uit docs/build177_cases.json (zelfde als web/js/build177.js en Build177Logic.kt).
+do {
+    let here = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+    let paths = [here.appendingPathComponent("docs/build177_cases.json"),
+                 URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+                    .deletingLastPathComponent().appendingPathComponent("docs/build177_cases.json")]
+    let caseData = paths.lazy.compactMap { try? Data(contentsOf: $0) }.first
+    check(caseData != nil, "177: docs/build177_cases.json gevonden")
+    let C = caseData.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
+    func cases(_ k: String) -> [Any] { ((C[k] as? [String: Any])?["cases"] as? [Any]) ?? [] }
+    func optInt(_ v: Any?) -> Int? { v is NSNull || v == nil ? nil : (v as? NSNumber)?.intValue }
+    func optStr(_ v: Any?) -> String? { v as? String }
+    func b(_ v: Any?) -> Bool { (v as? NSNumber)?.boolValue ?? false }
+    let iso = ISO8601DateFormatter()
+    func t(_ v: Any?) -> Double { iso.date(from: v as? String ?? "")?.timeIntervalSince1970 ?? -1 }
+
+    check(cases("clean").count >= 8 && cases("column").count >= 8, "177: gevallen geladen")
+    for case let c as [Any] in cases("clean") {
+        let input = (c[0] as? [[Any]]) ?? [], want = (c[1] as? [[Any]]) ?? []
+        let got = Build177.clean(titles: input.map { $0[0] as? String ?? "" }, starts: input.map { t($0[1]) }, ends: input.map { t($0[2]) })
+        let exp = want.map { Build177.Cleaned(index: optInt($0[0]) ?? -1, start: t($0[1]), end: t($0[2])) }
+        eq(got, exp, "clean \(input.map { $0[0] as? String ?? "" })")
+    }
+    for case let c as [Any] in cases("column") {
+        let a = (c[0] as? [Any]) ?? [], w = (c[1] as? [Any]) ?? []
+        let col = Build177.column(count: optInt(a[0]) ?? 0, nowIndex: optInt(a[1]), firstFuture: optInt(a[2]),
+                                  today: b(a[3]), nowCard: b(a[4]))
+        let rows = col.rows.map { r -> String in
+            switch r {
+            case .program(let i): return "p\(i)"
+            case .now(let i): return "n" + (i.map(String.init) ?? "")
+            }
+        }
+        eq(rows, (w[0] as? [String]) ?? [], "column regels \(a)")
+        eq(col.focus, optInt(w[1]), "column focus \(a)")
+        eq(col.anchor, optInt(w[2]), "column anker \(a)")
+    }
+    for case let c as [Any] in cases("releaseStops") {
+        eq(Build177.releaseStops(releasing: optStr(c[0]) ?? "", pending: optStr(c[1]), playing: optStr(c[2])), b(c[3]), "releaseStops \(c)")
+    }
+    for case let c as [Any] in cases("secondsToNextMinute") {
+        eq(Build177.secondsToNextMinute((c[0] as? NSNumber)?.doubleValue ?? 0), (c[1] as? NSNumber)?.doubleValue ?? 0, "minuut \(c)")
+    }
+    check(Build177.vlcOffMain(silent: true, preview: false, wasOffMain: false), "stil voorbeeld: VLC buiten de hoofdthread")
+    check(Build177.vlcOffMain(silent: false, preview: true, wasOffMain: false), "gidsvoorbeeld: VLC buiten de hoofdthread")
+    check(Build177.vlcOffMain(silent: false, preview: false, wasOffMain: true), "na volledig scherm blijft het zo")
+    check(!Build177.vlcOffMain(silent: false, preview: false, wasOffMain: false), "gewone speler: hoofdthread")
+    eq(Build177.titleKey("  De   Frogers "), "de frogers", "titelsleutel")
+}
+
 print("\(checks) controles, \(failures) fout")
 exit(failures == 0 ? 0 : 1)

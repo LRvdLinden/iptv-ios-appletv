@@ -184,6 +184,8 @@ final class ChannelPreview: ObservableObject {
                 handoff: Bool = false, userInitiated: Bool = false) {
         pending?.cancel()
         pending = nil
+        releaseTask?.cancel()   // build 177: de focus kwam terug of ging naar een andere kaart
+        releaseTask = nil
         ScrollActivity.shared.touch()   // focus gaat door de lijst: ander zwaar werk even laten wachten
         guard let c, allowed(userInitiated: userInitiated) else { return }
         let now = Date()
@@ -213,9 +215,18 @@ final class ChannelPreview: ObservableObject {
     /// Build 164 (Apple TV): de focus gaat weg van de NU-kaart van deze zender: dat beeld stoppen, behalve als de
     /// focus intussen al op een andere kaart staat (die heeft het voorbeeld dan overgenomen).
     private var pendingID: String?
+    /// Build 177: stoppen na het loslaten gebeurt pas na `Build177.releaseGrace`, zodat snel heen en weer gaan (NU-kaart →
+    /// eerder programma → terug, of naar de kaart van de buurzender) niet steeds stopt en opnieuw start
+    private var releaseTask: Task<Void, Never>?
     func release(_ c: Channel) {
-        if let p = pendingID, p != c.id { return }
-        if pendingID == c.id || channel?.id == c.id { stop() }
+        guard Build177.releaseStops(releasing: c.id, pending: pendingID, playing: channel?.id) else { return }
+        releaseTask?.cancel()
+        releaseTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(Build177.releaseGrace * 1_000_000_000))
+            guard let self, !Task.isCancelled else { return }
+            self.releaseTask = nil
+            if Build177.releaseStops(releasing: c.id, pending: self.pendingID, playing: self.channel?.id) { self.stop() }
+        }
     }
 
     /// Beeld stilzetten (speler blijft bewaard); een al zichtbaar voorbeeld volgt de selectie met het logo.
@@ -385,6 +396,8 @@ final class ChannelPreview: ObservableObject {
     func stop(release: Bool = false) {
         pending?.cancel()
         pending = nil
+        releaseTask?.cancel()
+        releaseTask = nil
         pendingID = nil
         generation += 1
         suspended = false

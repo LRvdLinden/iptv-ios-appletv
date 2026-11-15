@@ -246,6 +246,8 @@ final class PlayerController: ObservableObject {
         airPlayWrapped = false; airPlaySelectPending = 0
         // build 59: VLC hervat meteen op de juiste seconde (`:start-time`) in plaats van eerst vanaf het begin te bufferen
         if let v = engine as? VLCEngine {
+            // build 177: voorbeeld (ook in de tv-gids): VLC stopt en opent streams buiten de hoofdthread
+            if isPreview { v.offMain = true }
             var secs: Double?
             if !isLive, item.resumeAt > 0.01 { secs = duration > 0 ? item.resumeAt * duration : item.resumeSeconds }
             v.startSeconds = secs

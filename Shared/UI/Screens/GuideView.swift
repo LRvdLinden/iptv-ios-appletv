@@ -27,6 +27,10 @@ struct GuideGridView: View {
     @State private var foreignPrograms: [String: [EPGProgram]] = [:]
     /// Build 166: de dagen waarvoor er gids-info is (nil = nog niet bepaald: alleen vandaag)
     @State private var availableDays: [Date]?
+    /// Build 177: programma's per zender en dag, één keer berekend (op volgorde, zonder dubbelen)
+    @State private var cache = GuideDayCache177()
+    /// Build 177: telt op bij elke nieuwe gids van andere servers (voor de cache)
+    @State private var foreignVersion = 0
 
     private var preview: ChannelPreview { ChannelPreview.shared }
     private var selected: Channel? {
@@ -56,11 +60,21 @@ struct GuideGridView: View {
     }
     private var isToday: Bool { GuideDays164.label(day, today: now) == .today }
 
-    /// Programma's van een zender op de gekozen dag (binair zoeken; andere servers uit hun eigen gids)
+    /// Programma's van een zender op de gekozen dag (binair zoeken; andere servers uit hun eigen gids). Build 177: op
+    /// volgorde en zonder dubbelen (`Build177.clean`), per zender en dag één keer berekend; opnieuw na een nieuwe gids.
     func programs(_ c: Channel) -> [EPGProgram] {
-        let w = GuideDays164.window(day)
-        if isForeign(c) { return (foreignPrograms[foreignKey(c)] ?? []).filter { $0.end > w.from && $0.start < w.to } }
-        return playlists.library.programs(c, from: w.from, to: w.to)
+        let key = foreignKey(c) + "#" + String(Int(day.timeIntervalSince1970))
+        let version = "\(playlists.epgVersion)|\(foreignVersion)|\(c.epgID ?? "")"
+        return cache.programs(key, version: version) {
+            let w = GuideDays164.window(day)
+            let raw: [EPGProgram]
+            if isForeign(c) {
+                raw = (foreignPrograms[foreignKey(c)] ?? []).filter { $0.end > w.from && $0.start < w.to }
+            } else {
+                raw = playlists.library.programs(c, from: w.from, to: w.to)
+            }
+            return GuideDayCache177.clean(raw)
+        }
     }
 
     var body: some View {
@@ -71,8 +85,11 @@ struct GuideGridView: View {
             .task(id: foreignShown.map(foreignKey)) { await loadForeign() }
             .task(id: daysKey) { await loadDays() }
             .task {
+                // build 177: op elke hele minuut (programma's beginnen op hele minuten), niet om de 30 seconden
                 while !Task.isCancelled {
-                    try? await Task.sleep(nanoseconds: 30_000_000_000)
+                    let wait = Build177.secondsToNextMinute(Date().timeIntervalSince1970)
+                    try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
+                    guard !Task.isCancelled else { return }
                     now = Date()
                 }
             }
@@ -173,7 +190,7 @@ struct GuideGridView: View {
     /// alleen het stuk van de dagbalk bewaren, zodat het geheugen klein blijft.
     private func loadForeign() async {
         let list = foreignShown
-        guard !list.isEmpty else { if !foreignPrograms.isEmpty { foreignPrograms = [:] }; return }
+        guard !list.isEmpty else { if !foreignPrograms.isEmpty { foreignPrograms = [:]; foreignVersion &+= 1 }; return }
         let back = Double(GuideDays164.daysBack(catchupDays: list.map(\.catchupDays)) + 1)
         let from = Date().addingTimeInterval(-back * 86400), to = Date().addingTimeInterval(Double(GuideDays164.ahead + 1) * 86400)
         var out: [String: [EPGProgram]] = [:]
@@ -182,10 +199,47 @@ struct GuideGridView: View {
             if let have = foreignPrograms[k] { out[k] = have; continue }
             let progs = await playlists.foreignEPG(c)
             guard !Task.isCancelled else { return }
-            out[k] = progs.filter { $0.end > from && $0.start < to }
-            if i + 1 < list.count, list[i + 1].sourceID != c.sourceID { foreignPrograms.merge(out) { _, n in n } }
+            // build 177: op begintijd gesorteerd bewaren
+            out[k] = progs.filter { $0.end > from && $0.start < to }.sorted { $0.start < $1.start }
+            if i + 1 < list.count, list[i + 1].sourceID != c.sourceID {
+                foreignPrograms.merge(out) { _, n in n }
+                foreignVersion &+= 1
+            }
         }
-        if out != foreignPrograms { foreignPrograms = out }
+        if out != foreignPrograms { foreignPrograms = out; foreignVersion &+= 1 }
+    }
+}
+
+// MARK: - build 177: programma's per zender en dag
+
+/// De programma's per zender en dag, één keer berekend: de gids rekende ze bij elke weergave opnieuw uit, voor elke
+/// kolom (ook bij elke tik van de klok of een wijziging van het voorbeeld). Een nieuwe gids (andere `version`) of een
+/// volle cache begint opnieuw. Geen ObservableObject: de cache zelf geeft nooit een nieuwe weergave. Alleen vanuit de
+/// weergave (hoofdthread) gebruiken.
+final class GuideDayCache177 {
+    private var store: [String: (version: String, programs: [EPGProgram])] = [:]
+    static let limit = 800
+
+    func programs(_ key: String, version: String, make: () -> [EPGProgram]) -> [EPGProgram] {
+        if let hit = store[key], hit.version == version { return hit.programs }
+        if store.count >= Self.limit { store.removeAll(keepingCapacity: true) }
+        let p = make()
+        store[key] = (version, p)
+        return p
+    }
+
+    /// Op volgorde en zonder dubbelen (`Build177.clean`): samengevoegde programma's krijgen het langste einde, een
+    /// programma dat kort overlapt met het vorige begint pas als dat afloopt.
+    static func clean(_ list: [EPGProgram]) -> [EPGProgram] {
+        guard list.count > 1 else { return list }
+        let c = Build177.clean(titles: list.map(\.title), starts: list.map { $0.start.timeIntervalSince1970 },
+                               ends: list.map { $0.end.timeIntervalSince1970 })
+        return c.map { x in
+            var p = list[x.index]
+            p.start = Date(timeIntervalSince1970: x.start)
+            p.end = Date(timeIntervalSince1970: x.end)
+            return p
+        }
     }
 }
 
@@ -431,9 +485,18 @@ private struct PhoneGuide: View {
         .overlay(Rectangle().fill(Color(hex: 0x1F1F1F)).frame(width: 1), alignment: .trailing)
     }
 
+    /// Build 177: waar de lijst bovenaan staat: vandaag twee programma's vóór NU (eerder op de dag blijft erboven),
+    /// andere dagen bovenaan
+    private func anchor(_ progs: [EPGProgram]) -> Int? {
+        let col = Build177.column(count: progs.count, nowIndex: nowIndex(progs, now),
+                                  firstFuture: progs.firstIndex(where: { $0.start > now }),
+                                  today: GuideDays164.label(day, today: now) == .today, nowCard: false)
+        return col.anchor
+    }
+
     private func programList(_ c: Channel) -> some View {
         let progs = guide.programs(c)
-        let target = GuideNow164.scrollTarget(starts: progs.map(\.start), ends: progs.map(\.end), now: now)
+        let target = anchor(progs)
         return VStack(spacing: 0) {
             Menu {
                 ForEach(days, id: \.self) { d in
@@ -463,9 +526,11 @@ private struct PhoneGuide: View {
                 }
                 .onAppear { if let t = target { proxy.scrollTo(t, anchor: .top) } }
                 .onChange(of: "\(c.id)|\(day.timeIntervalSince1970)") { _, _ in
-                    if let t = GuideNow164.scrollTarget(starts: guide.programs(c).map(\.start), ends: guide.programs(c).map(\.end), now: now) {
-                        proxy.scrollTo(t, anchor: .top)
-                    }
+                    if let t = anchor(guide.programs(c)) { proxy.scrollTo(t, anchor: .top) }
+                }
+                // de gids kwam later binnen: dan alsnog naar NU
+                .onChange(of: progs.isEmpty) { _, empty in
+                    if !empty, let t = anchor(guide.programs(c)) { proxy.scrollTo(t, anchor: .top) }
                 }
             }
         }
@@ -527,23 +592,30 @@ private struct WideGuide: View {
     let select: (Channel) -> Void
     @EnvironmentObject var playlists: PlaylistService
 
+    /// Build 177: kopregel, live voorbeeld en tussenruimte boven de kolommen (voor de hoogte van de kolommen)
+    private static let chrome: CGFloat = 24 * 2 + 44 + 248 + 18 * 2 + 8
+
     var body: some View {
-        ScrollView(.vertical) {
-            VStack(alignment: .leading, spacing: 18) {
-                HStack(spacing: 16) {
-                    Text(L("TV guide")).font(.system(size: 26, weight: .heavy))
-                    Spacer(minLength: 8)
-                    DayBar(day: $day, days: days, now: now).frame(maxWidth: 760)
-                }
-                if let c = selected { hero(c) }
-                ScrollView(.horizontal, showsIndicators: true) {
-                    LazyHStack(alignment: .top, spacing: 16) {
-                        ForEach(channels) { ch in column(ch) }
+        GeometryReader { g in
+            ScrollView(.vertical) {
+                VStack(alignment: .leading, spacing: 18) {
+                    HStack(spacing: 16) {
+                        Text(L("TV guide")).font(.system(size: 26, weight: .heavy))
+                        Spacer(minLength: 8)
+                        DayBar(day: $day, days: days, now: now).frame(maxWidth: 760)
                     }
-                    .padding(.bottom, 8)
+                    if let c = selected { hero(c) }
+                    // build 177: elke kolom scrolt zelf (de hele dag), zo hoog als er plaats is (minstens 320)
+                    ScrollView(.horizontal, showsIndicators: true) {
+                        LazyHStack(alignment: .top, spacing: 16) {
+                            ForEach(channels) { ch in column(ch) }
+                        }
+                        .padding(.bottom, 8)
+                    }
+                    .frame(height: max(320, g.size.height - (selected == nil ? Self.chrome - 248 - 18 : Self.chrome)))
                 }
+                .padding(.horizontal, 32).padding(.vertical, 24)
             }
-            .padding(.horizontal, 32).padding(.vertical, 24)
         }
         .onAppear { if let c = selected { guide.startPreview(c, delay: 0.4) } }
         .onChange(of: selected?.id) { _, _ in if let c = selected { guide.startPreview(c, delay: 0.5) } }
@@ -594,16 +666,18 @@ private struct WideGuide: View {
         .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 
+    /// Build 177: altijd de hele dag; vandaag staat de kolom bij openen op twee programma's vóór NU (eerder op de dag
+    /// blijft erboven), andere dagen bovenaan
+    private func anchor(_ progs: [EPGProgram]) -> Int? {
+        Build177.column(count: progs.count, nowIndex: nowIndex(progs, now),
+                        firstFuture: progs.firstIndex(where: { $0.start > now }),
+                        today: GuideDays164.label(day, today: now) == .today, nowCard: false).anchor
+    }
+
     private func column(_ ch: Channel) -> some View {
         let on = selected.map { $0.id == ch.id && $0.sourceID == ch.sourceID } ?? false
-        let all = guide.programs(ch)
-        // vandaag: vanaf twee programma's vóór NU (zoals het ontwerp), andere dagen de hele dag
-        let from: Int = {
-            guard GuideDays164.label(day, today: now) == .today else { return 0 }
-            let t = GuideNow164.scrollTarget(starts: all.map(\.start), ends: all.map(\.end), now: now) ?? 0
-            return max(0, t - 2)
-        }()
-        let progs = Array(all.dropFirst(from))
+        let progs = guide.programs(ch)
+        let target = anchor(progs)
         return VStack(alignment: .leading, spacing: 4) {
             Button { select(ch) } label: {
                 GuideLogo(channel: ch).frame(width: 90, height: 34)
@@ -617,8 +691,10 @@ private struct WideGuide: View {
             if progs.isEmpty {
                 Text(L("No guide information")).font(.system(size: 13)).foregroundStyle(Theme.secondary).padding(10)
             }
+            ScrollViewReader { proxy in
+            ScrollView(.vertical, showsIndicators: false) {
             LazyVStack(alignment: .leading, spacing: 4) {
-                ForEach(progs) { p in
+                ForEach(Array(progs.enumerated()), id: \.element.id) { i, p in
                     let st = guideState(p, ch, now)
                     Button { guide.openProgram(ch, p) } label: {
                         HStack(spacing: 8) {
@@ -637,7 +713,15 @@ private struct WideGuide: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .id(i)
                 }
+            }
+            }
+            .onAppear { if let t = target { proxy.scrollTo(t, anchor: .top) } }
+            .onChange(of: day) { _, _ in if let t = anchor(guide.programs(ch)) { proxy.scrollTo(t, anchor: .top) } }
+            .onChange(of: progs.isEmpty) { _, empty in
+                if !empty, let t = anchor(guide.programs(ch)) { proxy.scrollTo(t, anchor: .top) }
+            }
             }
         }
         .frame(width: 220)
@@ -650,40 +734,45 @@ private struct WideGuide: View {
 
 /// Build 166: de gids over de hele breedte (binnen de veilige marge), zonder zijkolom. Bovenaan één regel met
 /// Categorie en Zoeken (van Live TV), de dagpillen en rechts Lijst. Kolommen van 270 pt: ±6 zenders op 1920 breed.
+///
+/// Build 177: elke kolom toont de hele dag en scrolt zelf. Vandaag staat elke kolom bij openen (en bij een andere
+/// dag) op twee programma's vóór NU, zodat de NU-kaarten naast elkaar staan; de focus gaat bij het binnenkomen van
+/// een kolom naar de NU-kaart (andere dagen het eerste programma), en omhoog gaat naar eerder op de dag.
 private struct TVGuide: View {
     let guide: GuideGridView
     let channels: [Channel]
     @Binding var day: Date
     let days: [Date]
     let now: Date
+    @FocusState private var focus: String?
 
     static let columnWidth: CGFloat = 270
     static let columnSpacing: CGFloat = 22
+    /// Ruimte rond de regels binnen een kolom voor de tv-lift (een kolom knipt zelf af)
+    static let lift: CGFloat = 10
 
     var body: some View {
-        ScrollView(.vertical) {
-            VStack(alignment: .leading, spacing: 18) {
-                HStack(spacing: 18) {
-                    if let l = guide.tvLeading { l }
-                    DayBar(day: $day, days: days, now: now).frame(maxWidth: .infinity, alignment: .leading)
-                    if let t = guide.tvTrailing { t }
-                }
-                .focusSection()
-                ScrollView(.horizontal, showsIndicators: false) {
-                    // lazy: op de Apple TV niet honderden kolommen tegelijk opbouwen
-                    LazyHStack(alignment: .top, spacing: Self.columnSpacing) {
-                        ForEach(channels) { ch in
-                            TVColumn(guide: guide, channel: ch, today: GuideDays164.label(day, today: now) == .today,
-                                     programs: guide.programs(ch), now: now)
-                        }
-                    }
-                    .padding(.vertical, 24)
-                }
-                // de tv-lift en schaduw van de kaarten niet afknippen
-                .scrollClipDisabled()
-                .focusSection()
+        let today = GuideDays164.label(day, today: now) == .today
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 18) {
+                if let l = guide.tvLeading { l }
+                DayBar(day: $day, days: days, now: now).frame(maxWidth: .infinity, alignment: .leading)
+                if let t = guide.tvTrailing { t }
             }
-            .padding(.bottom, 40)
+            .focusSection()
+            ScrollView(.horizontal, showsIndicators: false) {
+                // lazy: op de Apple TV niet honderden kolommen tegelijk opbouwen
+                LazyHStack(alignment: .top, spacing: Self.columnSpacing - 2 * Self.lift) {
+                    ForEach(channels) { ch in
+                        TVColumn(guide: guide, channel: ch, day: day, today: today,
+                                 programs: guide.programs(ch), now: now, focus: $focus)
+                    }
+                }
+            }
+            // de tv-lift en schaduw van de kaarten aan de zijkant niet afknippen
+            .scrollClipDisabled()
+            .focusSection()
+            .frame(maxHeight: .infinity, alignment: .top)
         }
     }
 }
@@ -691,33 +780,68 @@ private struct TVGuide: View {
 private struct TVColumn: View {
     let guide: GuideGridView
     let channel: Channel
+    let day: Date
     let today: Bool
     let programs: [EPGProgram]
     let now: Date
+    var focus: FocusState<String?>.Binding
 
     private var width: CGFloat { TVGuide.columnWidth }
+    private var lift: CGFloat { TVGuide.lift }
+    private var columnKey: String { (channel.sourceID?.uuidString ?? "") + "|" + channel.id }
+    /// Focussleutel van een regel: vast per programma (en "now" voor de kaart), zodat de focus blijft staan als NU
+    /// verspringt
+    private func key(_ row: Build177.Row) -> String {
+        switch row {
+        case .now: return columnKey + "#now"
+        case .program(let i): return columnKey + "#" + (i < programs.count ? programs[i].id : String(i))
+        }
+    }
+
+    private var layout: Build177.Column {
+        Build177.column(count: programs.count, nowIndex: today ? nowIndex(programs, now) : nil,
+                        firstFuture: programs.firstIndex(where: { $0.start > now }), today: today, nowCard: true)
+    }
 
     var body: some View {
-        let idx = nowIndex(programs, now)
-        let first = programs.firstIndex(where: { $0.start > now })
-        let slice = GuideNow164.columnSlice(count: programs.count, nowIndex: idx, firstFuture: first)
+        let col = layout
         VStack(alignment: .leading, spacing: 8) {
-            header
-            if today {
-                ForEach(Array(programs[slice.before]), id: \.id) { p in line(p, dim: true) }
-                nowCard(idx.map { programs[$0] })
-                ForEach(Array(programs[slice.after]), id: \.id) { p in line(p, dim: false) }
-            } else {
-                if programs.isEmpty {
-                    Text(L("No guide information")).font(.system(size: 19)).foregroundStyle(Theme.secondary)
-                        .padding(.horizontal, 8)
+            header.padding(.horizontal, lift)
+            ScrollViewReader { proxy in
+                ScrollView(.vertical, showsIndicators: false) {
+                    // geen lazy stack: de focus moet het programma erboven kunnen vinden (hooguit een dag per kolom)
+                    VStack(alignment: .leading, spacing: 4) {
+                        if col.rows.isEmpty {
+                            Text(L("No guide information")).font(.system(size: 19)).foregroundStyle(Theme.secondary)
+                                .padding(.horizontal, 8)
+                        }
+                        ForEach(Array(col.rows.enumerated()), id: \.offset) { r, row in
+                            switch row {
+                            case .now(let i):
+                                nowCard(i.map { programs[$0] }, key: key(row)).id(r)
+                            case .program(let i):
+                                line(programs[i], dim: isPast(guideState(programs[i], channel, now)), key: key(row)).id(r)
+                            }
+                        }
+                    }
+                    .padding(lift)
                 }
-                LazyVStack(alignment: .leading, spacing: 4) {
-                    ForEach(programs) { p in line(p, dim: isPast(guideState(p, channel, now))) }
-                }
+                // de focus komt bij het binnenkomen van de kolom op NU (andere dagen op het eerste programma)
+                .defaultFocus(focus, col.focus.map { key(col.rows[$0]) } ?? "", priority: .userInitiated)
+                .focusSection()
+                .onAppear { scroll(proxy, col.anchor) }
+                .onChange(of: day) { _, _ in scroll(proxy, layout.anchor) }
+                .onChange(of: programs.isEmpty) { _, _ in scroll(proxy, layout.anchor) }
             }
         }
-        .frame(width: width, alignment: .top)
+        .frame(width: width + 2 * lift, alignment: .top)
+    }
+
+    /// Naar het anker scrollen, maar niet als de focus al in deze kolom staat (anders vechten scrollen en focus)
+    private func scroll(_ proxy: ScrollViewProxy, _ anchor: Int?) {
+        guard let a = anchor else { return }
+        if let f = focus.wrappedValue, f.hasPrefix(columnKey + "#") { return }
+        proxy.scrollTo(a, anchor: .top)
     }
 
     /// Kolomkop: compact (56 pt), het logo op een donker vlak met een dunne rand, of de opgeschoonde naam
@@ -727,7 +851,7 @@ private struct TVColumn: View {
             .accessibilityLabel(CategoryName.channel(channel.name))
     }
 
-    private func line(_ p: EPGProgram, dim: Bool) -> some View {
+    private func line(_ p: EPGProgram, dim: Bool, key: String) -> some View {
         let st = guideState(p, channel, now)
         return Button { guide.openProgram(channel, p) } label: {
             HStack(spacing: 12) {
@@ -746,12 +870,13 @@ private struct TVColumn: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(TVLiftStyle(scale: 1.04, dimWhenIdle: false))
+        .focused(focus, equals: key)
     }
 
     /// De NU-kaart: het beeld (live, stilstaand of logo) van rand tot rand bovenaan (16:9), LIVE linksboven, daaronder
     /// de tijd in de accentkleur, de titel en de voortgang. Focus = tv-lift en schaduw; na ±1 s live zonder geluid;
     /// OK = volledig scherm.
-    private func nowCard(_ p: EPGProgram?) -> some View {
+    private func nowCard(_ p: EPGProgram?, key: String) -> some View {
         Button { guide.fullscreen(channel) } label: {
             VStack(alignment: .leading, spacing: 0) {
                 GuideLiveImage(channel: channel, plainLogo: true)
@@ -778,6 +903,7 @@ private struct TVColumn: View {
             })
         }
         .buttonStyle(TVLiftStyle(scale: 1.06, dimWhenIdle: false))
+        .focused(focus, equals: key)
         .padding(.vertical, 4)
     }
 }

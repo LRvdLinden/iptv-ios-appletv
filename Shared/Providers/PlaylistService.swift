@@ -7,7 +7,10 @@ import Combine
 @MainActor
 final class PlaylistService: ObservableObject {
     @Published private(set) var source: PlaylistSource? { didSet { CloudStore.shared.activePlaylistID = source?.id } }
-    @Published private(set) var library = Library() { didSet { if !epgOnlyUpdate { libraryVersion &+= 1 } } }
+    @Published private(set) var library = Library() { didSet { epgVersion &+= 1; if !epgOnlyUpdate { libraryVersion &+= 1 } } }
+    /// Build 177: telt op bij elke wijziging van `library`, ook als alleen de gids van één zender is aangevuld
+    /// (de tv-gids bewaart zijn programma's per zender en dag tot dit getal verandert)
+    private(set) var epgVersion = 0
     /// Alleen gidsgegevens van één zender aangevuld (Stalker): de rijen op Home en de collecties blijven gelijk,
     /// dus `libraryVersion` niet ophogen (anders bouwt elk scherm alles opnieuw op)
     private var epgOnlyUpdate = false

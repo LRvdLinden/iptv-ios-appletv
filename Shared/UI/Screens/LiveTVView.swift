@@ -218,6 +218,10 @@ struct LiveTVView: View {
             content
                 .background(Color.black)
                 .navigationTitle(L("Live TV"))
+                #if os(tvOS)
+                // build 177: eigen vaste kop in `content` (zie daar)
+                .toolbar(.hidden, for: .navigationBar)
+                #endif
                 .crossServerPrompt($prompt)
                 .parentGate171()   // build 171: zender verbergen in een kinderprofiel = ouderpincode
                 // build 166: op de Apple TV staan Lijst/Tv-gids en Multiview als knoppen met tekst in het scherm zelf
@@ -289,11 +293,19 @@ struct LiveTVView: View {
 
     @ViewBuilder private var content: some View {
         #if os(tvOS)
-        if mode == .grid {
-            // build 166: de gids over de hele breedte; categorie, zoeken en Lijst in de regel met de dagpillen
-            channelArea
-        } else {
-            tvListLayout
+        // build 177: de titel als vaste kop boven de knoppen (de titel van de navigatiebalk stond over de dagpillen
+        // heen en scrolde mee met de gids)
+        VStack(alignment: .leading, spacing: 18) {
+            Text(L("Live TV"))
+                .font(.system(size: 48, weight: .bold))
+                .frame(maxWidth: .infinity)
+                .accessibilityAddTraits(.isHeader)
+            if mode == .grid {
+                // build 166: de gids over de hele breedte; categorie, zoeken en Lijst in de regel met de dagpillen
+                channelArea
+            } else {
+                tvListLayout
+            }
         }
         #else
         VStack(spacing: 0) {

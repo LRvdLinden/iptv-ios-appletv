@@ -112,18 +112,13 @@ struct MoreAppsCard: View {
                 }
                 .multilineTextAlignment(.leading)
                 Spacer(minLength: 8)
-                VStack(spacing: 4) {
-                    Text(L("View"))
-                        .font(.subheadline.weight(.bold))
-                        .foregroundStyle(LRBrand.onAccent)
-                        .lineLimit(1)
-                        .padding(.horizontal, 14).padding(.vertical, 6)
-                        .background(LRBrand.accent, in: Capsule())
-                    Text(verbatim: "lrvdlinden.app")
-                        .font(.caption2)
-                        .foregroundStyle(LRBrand.muted)
-                        .lineLimit(1)
-                }
+                // build 177: zonder de regel "lrvdlinden.app" eronder (de link en de toegankelijkheidshint blijven)
+                Text(L("View"))
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(LRBrand.onAccent)
+                    .lineLimit(1)
+                    .padding(.horizontal, 14).padding(.vertical, 6)
+                    .background(LRBrand.accent, in: Capsule())
             }
             .padding(16)
             .background(LRBrand.surface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
