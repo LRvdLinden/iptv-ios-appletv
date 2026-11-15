@@ -3188,9 +3188,10 @@ do {
         eq(got, want, "samenvoegen")
     }
     for case let c as [Any] in cases("summary") {
-        let s = Build178.summary(((c[0] as? [Any]) ?? []).map(int))
-        let w = ((c[1] as? [Any]) ?? []).map(int)
-        eq([s.channels, s.days], w, "samenvatting \(c[0])")
+        let sum = Build178.summary(((c[0] as? [Any]) ?? []).map { int($0) })
+        let w: [Int] = ((c[1] as? [Any]) ?? []).map { int($0) }
+        eq(sum.channels, w.first ?? -1, "samenvatting zenders \(c[0])")
+        eq(sum.days, w.last ?? -1, "samenvatting dagen \(c[0])")
     }
     eq(Build178.text("Tk9TIEpvdXJuYWFs"), "NOS Journaal", "base64-titel")
     eq(Build178.text("Test"), "Test", "korte gewone titel blijft")
