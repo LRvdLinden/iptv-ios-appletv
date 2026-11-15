@@ -1,5 +1,115 @@
 [
  {
+  "build": 178,
+  "version": "1.0.8",
+  "date": "2026-11-15",
+  "items": [
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web"
+    ],
+    "nl": "Terugkijken in de tv-gids werkt: zenders met terugkijken worden in alle servervarianten herkend en eerdere programma's spelen met een tik vanaf het begin",
+    "en": "Catch-up in the TV guide works: channels with catch-up are recognised in every server format and earlier programmes play from the start with one tap"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web"
+    ],
+    "nl": "De tv-gids gaat terug tot de terugkijktermijn van je server en tot 7 dagen vooruit",
+    "en": "The TV guide goes back as far as your server's catch-up period and up to 7 days ahead"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web"
+    ],
+    "nl": "Terugkijken start het juiste programma, ook als je server in een andere tijdzone staat",
+    "en": "Catch-up starts the right programme, even when your server is in another time zone"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web"
+    ],
+    "nl": "In Diagnose zie je per server hoeveel zenders terugkijken hebben en tot hoeveel dagen",
+    "en": "Diagnostics now shows per server how many channels have catch-up and for how many days"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web"
+    ],
+    "nl": "Sport: club- en competitielogo's en vlaggen van landenteams bij de wedstrijden en in Mijn teams en competities",
+    "en": "Sport: club and competition logos and national team flags with the matches and in My teams and competitions"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "macos",
+     "android"
+    ],
+    "nl": "Wedstrijdmelding met het logo van de club of competitie",
+    "en": "Match notification shows the club or competition logo"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web"
+    ],
+    "nl": "Moment bewaren is weer weggehaald",
+    "en": "Save moment has been removed again"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "tvos"
+    ],
+    "nl": "De afspeel/pauzeknop van de Siri Remote werkt weer in de speler",
+    "en": "The Siri Remote play/pause button works in the player again"
+   }
+  ]
+ },
+ {
   "build": 177,
   "version": "1.0.8",
   "date": "2026-11-15",

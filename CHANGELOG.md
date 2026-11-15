@@ -4,6 +4,38 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.8 · Build 178
+_15 november 2026_
+
+### iOS, iPadOS, macOS en Android
+
+**Verbeterd**
+
+- Wedstrijdmelding met het logo van de club of competitie
+
+### iOS, iPadOS, tvOS, macOS, Android, Android TV en Website
+
+**Nieuw**
+
+- In Diagnose zie je per server hoeveel zenders terugkijken hebben en tot hoeveel dagen
+- Sport: club- en competitielogo's en vlaggen van landenteams bij de wedstrijden en in Mijn teams en competities
+
+**Verbeterd**
+
+- De tv-gids gaat terug tot de terugkijktermijn van je server en tot 7 dagen vooruit
+- Moment bewaren is weer weggehaald
+
+**Opgelost**
+
+- Terugkijken in de tv-gids werkt: zenders met terugkijken worden in alle servervarianten herkend en eerdere programma's spelen met een tik vanaf het begin
+- Terugkijken start het juiste programma, ook als je server in een andere tijdzone staat
+
+### tvOS
+
+**Opgelost**
+
+- De afspeel/pauzeknop van de Siri Remote werkt weer in de speler
+
 ## Versie 1.0.8 · Build 177
 _15 november 2026_
 
