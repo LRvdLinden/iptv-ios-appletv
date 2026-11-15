@@ -2772,5 +2772,72 @@ do {
     eq(Player173.Sleep.minutes(60).code, "m60", "slaaptimer code")
 }
 
+// MARK: build 174: detailpagina, trailers en Bingr Radio (Shared/Player/Build174.swift)
+do {
+    eq(Detail174.compactActions(hasListID: true, hasTrailer: true, otherSources: 2, languageVersions: 0, isMovie: true),
+       [.myList, .trailer, .sources, .watched, .more], "vijf knoppen")
+    eq(Detail174.compactActions(hasListID: true, hasTrailer: false, otherSources: 0, languageVersions: 0, isMovie: true),
+       [.myList, .watched, .more], "geen trailer en één bron: weg")
+    eq(Detail174.compactActions(hasListID: false, hasTrailer: true, otherSources: 0, languageVersions: 1, isMovie: false),
+       [.trailer, .sources, .more], "serie: geen Gezien; taalversie = Bronnen")
+    check(Detail174.isCompact(width: 390), "iPhone smal"); check(!Detail174.isCompact(width: 820), "iPad breed")
+    eq(Detail174.sourcesTarget(otherSources: 1, languageVersions: 1), .choose, "bronnen: kiezen")
+    eq(Detail174.sourcesTarget(otherSources: 0, languageVersions: 2), .languages, "bronnen: taal")
+    eq(Detail174.sourcesTarget(otherSources: 0, languageVersions: 0), .none, "bronnen: geen")
+    check(Detail174.languageOnOwnLine(parts: [60, 40, 50, 50], language: 190, spacing: 14, available: 358), "taal eigen regel")
+    check(!Detail174.languageOnOwnLine(parts: [60, 40], language: 100, spacing: 14, available: 358), "taal past")
+
+    typealias C = Trailer174.Candidate
+    let cands = [C(key: "aaaaaaaaaaa", source: .server),
+                 C(key: "bbbbbbbbbbb", source: .tmdb, type: "Teaser", language: "nl"),
+                 C(key: "ccccccccccc", source: .tmdb, type: "Trailer", language: "en", official: true),
+                 C(key: "ddddddddddd", source: .tmdb, type: "Trailer", language: "nl", official: true),
+                 C(key: "eeeeeeeeeee", source: .tmdb, type: "Featurette", language: "nl")]
+    eq(Trailer174.best(cands, appLanguage: "nl-NL"), "ddddddddddd", "trailer in app-taal")
+    eq(Trailer174.best(cands, appLanguage: "de"), "ccccccccccc", "trailer Engels als er geen Duitse is")
+    eq(Trailer174.best([cands[0], cands[1]], appLanguage: "nl"), "aaaaaaaaaaa", "server gaat voor teaser")
+    eq(Trailer174.best([cands[1], cands[4]], appLanguage: "nl"), "bbbbbbbbbbb", "teaser als er niets beters is")
+    eq(Trailer174.best([cands[4]], appLanguage: "nl"), nil, "featurette telt niet")
+    eq(Trailer174.best([C(key: "bad<id>", source: .server)], appLanguage: "nl"), nil, "ongeldige id")
+    eq(Trailer174.best([C(key: "fffffffffff", source: .tmdb, type: "Trailer", language: "en", official: false),
+                        C(key: "ggggggggggg", source: .tmdb, type: "Trailer", language: "en", official: true)], appLanguage: "en"),
+       "ggggggggggg", "officieel eerst")
+    eq(Trailer174.best([C(key: "hhhhhhhhhhh", source: .trakt), C(key: "iiiiiiiiiii", source: .server)], appLanguage: "nl"),
+       "iiiiiiiiiii", "server voor Trakt")
+    eq(Trailer174.opening(canEmbed: false, hasYouTubeApp: false, hasBrowser: false), .notInstalled, "tv zonder YouTube")
+    eq(Trailer174.opening(canEmbed: false, hasYouTubeApp: true, hasBrowser: false), .youtubeApp, "tv met YouTube")
+    eq(Trailer174.opening(canEmbed: true, hasYouTubeApp: true, hasBrowser: true), .inApp, "in de app")
+
+    let st = [Radio174.Station(id: "1", name: "Radio 1", group: "NL"), Radio174.Station(id: "2", name: "538", favorite: true, group: "NL"),
+              Radio174.Station(id: "3", name: "BBC", group: "UK")]
+    eq(Radio174.widgetStations(st, max: 2).map(\.id), ["2", "1"], "widget: favorieten eerst")
+    eq(Radio174.featured(Radio174.Snapshot(stations: st)).map(\.id), "2", "widget: eerste favoriet")
+    eq(Radio174.featured(Radio174.Snapshot(stations: st, currentID: "3")).map(\.id), "3", "widget: speelt nu")
+    let snap = Radio174.Snapshot(stations: st, currentID: "1", isPlaying: true, nowPlaying: "X", updated: Date(timeIntervalSince1970: 100))
+    eq(Radio174.Snapshot.decode(snap.encoded()), snap, "snapshot heen en terug")
+    eq(Radio174.step(["1", "2", "3"], current: "3", by: 1), "1", "volgende rondgaand")
+    eq(Radio174.step(["1", "2", "3"], current: "1", by: -1), "3", "vorige rondgaand")
+    eq(Radio174.step(["1", "2"], current: nil, by: -1), "2", "vorige zonder zender")
+    eq(Radio174.step([], current: nil, by: 1), nil, "lege lijst")
+    eq(Radio174.cleanStreamTitle("StreamTitle='Queen - Bohemian Rhapsody';StreamUrl='';"), "Queen - Bohemian Rhapsody", "ICY")
+    eq(Radio174.cleanStreamTitle("StreamTitle='';"), nil, "lege ICY")
+    eq(Radio174.cleanStreamTitle(" - "), nil, "alleen streepje")
+    eq(Radio174.cleanStreamTitle("Radio 538", station: "radio 538"), nil, "zendernaam telt niet")
+    eq(Radio174.cleanStreamTitle("ADBREAK_120"), nil, "reclame telt niet")
+    eq(Radio174.nowPlaying(icy: nil, epg: "Ochtendshow", station: "538"), "Ochtendshow", "EPG als er geen ICY is")
+    eq(Radio174.nowPlaying(icy: "A - B", epg: "Ochtendshow", station: "538"), "A - B", "ICY voor EPG")
+    eq(Radio174.activityStep(enabled: true, allowed: true, playingStation: "1", running: false, changed: true), .start, "LA starten")
+    eq(Radio174.activityStep(enabled: true, allowed: true, playingStation: "1", running: true, changed: true), .update, "LA bijwerken")
+    eq(Radio174.activityStep(enabled: true, allowed: true, playingStation: "1", running: true, changed: false), .none, "LA niets")
+    eq(Radio174.activityStep(enabled: true, allowed: true, playingStation: nil, running: true, changed: true), .end, "LA stoppen")
+    eq(Radio174.activityStep(enabled: false, allowed: true, playingStation: "1", running: true, changed: false), .end, "LA uitgezet")
+    eq(Radio174.activityStep(enabled: false, allowed: true, playingStation: "1", running: false, changed: true), .none, "LA uit")
+    eq(Radio174.logoFileName("https://x/a.png"), Radio174.logoFileName("https://x/a.png"), "logonaam stabiel")
+    check(Radio174.logoFileName("https://x/a.png") != Radio174.logoFileName("https://x/b.png"), "logonaam uniek")
+    check(Radio174.logoFileName("https://x/a.png").hasSuffix(".png") && Radio174.logoFileName("a").count == 25, "logonaam vorm")
+    eq(Radio174.carPlayGroups(st, maxGroups: 5).map { $0.name }, ["NL", "UK"], "CarPlay-categorieën")
+    eq(Radio174.carPlayGroups([st[0], st[1]], maxGroups: 5).count, 0, "één categorie: geen tabblad")
+}
+
 print("\(checks) controles, \(failures) fout")
 exit(failures == 0 ? 0 : 1)

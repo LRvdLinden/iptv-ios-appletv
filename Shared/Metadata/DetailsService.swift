@@ -71,6 +71,9 @@ final class DetailsService: ObservableObject {
             cache[target.id] = d
             return d
         }
+        // build 174: trailers uit alle bronnen verzamelen (server, TMDB, Trakt) en daarna de beste kiezen
+        var trailers: [Trailer174.Candidate] = []
+        if let t = d.trailerYouTubeID { trailers.append(.init(key: t, source: .server)) }
         // zoeken en koppelen met de opgeschoonde titel (zonder taallabel en IPTV-rommel)
         let cleaned = TitleCleaner.parse(d.title)
         let searchTitle = cleaned.title
@@ -93,6 +96,7 @@ final class DetailsService: ObservableObject {
             if d.cast.isEmpty, let a = meta.actors { d.cast = a.components(separatedBy: ", ").map { TitleDetails.CastMember(name: $0) } }
             d.poster = d.poster ?? meta.poster
             d.trailerYouTubeID = d.trailerYouTubeID ?? meta.trailerYouTubeID
+            if let t = meta.trailerYouTubeID { trailers.append(.init(key: t, source: .trakt)) }
             d.traktSlug = meta.traktSlug
             d.seasonCount = meta.totalSeasons
         }
@@ -107,6 +111,7 @@ final class DetailsService: ObservableObject {
             if d.runtime == nil, let rt = t.runtime { d.runtime = L("%d min", rt) }
             d.certification = d.certification ?? t.certification
             d.trailerYouTubeID = d.trailerYouTubeID ?? t.trailer.flatMap(MetadataService.youtubeID)
+            if let k = t.trailer.flatMap(MetadataService.youtubeID) { trailers.append(.init(key: k, source: .trakt)) }
             if !t.cast.isEmpty && d.cast.allSatisfy({ $0.character == nil }) { d.cast = t.cast }
             if d.recommendations.isEmpty { d.recommendations = t.related }
             for (k, v) in t.episodes where d.episodeInfo[k] == nil { d.episodeInfo[k] = v }
@@ -127,12 +132,14 @@ final class DetailsService: ObservableObject {
             if !tm.cast.isEmpty { d.cast = tm.cast }
             if !tm.recommendations.isEmpty { d.recommendations = tm.recommendations }
             d.trailerYouTubeID = d.trailerYouTubeID ?? tm.trailer
+            trailers += tm.videos
             d.imdbID = d.imdbID ?? tm.imdb
             d.tmdbID = tm.id
             d.originalLanguage = tm.originalLanguage
             d.backdrops += tm.backdrops
         }
         d.backdrops = orderedUnique(([d.backdrop].compactMap { $0 } + d.backdrops)).filter { $0 != d.backdrop }
+        if let best = Trailer174.best(trailers, appLanguage: Localizer.shared.language) { d.trailerYouTubeID = best }
         // originele taal en TMDB-id onthouden voor de cover en voor automatische ondertitels (build 59)
         ContentLanguage.Facts.shared.set(id: target.id, original: d.originalLanguage, tmdbID: d.tmdbID)
         tmdbHint = nil

@@ -1265,7 +1265,18 @@
   "Subtitle display": "العرض",
   "Subtitles after rewinding": "ترجمة بعد الرجوع",
   "This programme has already started": "بدأ هذا البرنامج بالفعل",
-  "Zap": "تصفّح القنوات"
+  "Zap": "تصفّح القنوات",
+  "YouTube is not installed": "تطبيق YouTube غير مثبّت",
+  "Open App Store": "فتح App Store",
+  "Trailers on Apple TV play in the YouTube app. Install it from the App Store.": "تُعرض الإعلانات على Apple TV في تطبيق YouTube. ثبّته من App Store.",
+  "Radio on the Lock Screen": "الراديو على شاشة القفل",
+  "Shows the station and what's playing, with pause and next/previous station, on the Lock Screen, in the Dynamic Island and in CarPlay.": "يعرض المحطة وما يُذاع الآن، مع الإيقاف المؤقت والمحطة السابقة/التالية، على شاشة القفل وفي Dynamic Island وفي CarPlay.",
+  "Open Bingr to choose your radio stations.": "افتح Bingr لاختيار محطات الراديو.",
+  "Next station": "المحطة التالية",
+  "Previous station": "المحطة السابقة",
+  "All stations": "كل المحطات",
+  "Loading stations…": "جارٍ تحميل المحطات…",
+  "%d stations": "%d محطة"
  },
  "de": {
   "%@ is now signed in.": "%@ ist jetzt angemeldet.",
@@ -2533,7 +2544,18 @@
   "Subtitle display": "Darstellung",
   "Subtitles after rewinding": "Untertitel nach dem Zurückspulen",
   "This programme has already started": "Diese Sendung läuft bereits",
-  "Zap": "Zappen"
+  "Zap": "Zappen",
+  "YouTube is not installed": "YouTube ist nicht installiert",
+  "Open App Store": "App Store öffnen",
+  "Trailers on Apple TV play in the YouTube app. Install it from the App Store.": "Trailer laufen auf dem Apple TV in der YouTube-App. Installiere sie aus dem App Store.",
+  "Radio on the Lock Screen": "Radio auf dem Sperrbildschirm",
+  "Shows the station and what's playing, with pause and next/previous station, on the Lock Screen, in the Dynamic Island and in CarPlay.": "Zeigt Sender und aktuellen Titel mit Pause und vorherigem/nächstem Sender auf dem Sperrbildschirm, in der Dynamic Island und in CarPlay.",
+  "Open Bingr to choose your radio stations.": "Öffne Bingr, um deine Radiosender zu wählen.",
+  "Next station": "Nächster Sender",
+  "Previous station": "Vorheriger Sender",
+  "All stations": "Alle Sender",
+  "Loading stations…": "Sender werden geladen …",
+  "%d stations": "%d Sender"
  },
  "es": {
   "%@ is now signed in.": "%@ ya ha iniciado sesión.",
@@ -3801,7 +3823,18 @@
   "Subtitle display": "Visualización",
   "Subtitles after rewinding": "Subtítulos al retroceder",
   "This programme has already started": "Este programa ya ha empezado",
-  "Zap": "Zapping"
+  "Zap": "Zapping",
+  "YouTube is not installed": "YouTube no está instalado",
+  "Open App Store": "Abrir App Store",
+  "Trailers on Apple TV play in the YouTube app. Install it from the App Store.": "En el Apple TV, los tráileres se reproducen en la app de YouTube. Instálala desde el App Store.",
+  "Radio on the Lock Screen": "Radio en la pantalla de bloqueo",
+  "Shows the station and what's playing, with pause and next/previous station, on the Lock Screen, in the Dynamic Island and in CarPlay.": "Muestra la emisora y lo que suena, con pausa y emisora anterior/siguiente, en la pantalla de bloqueo, en la Dynamic Island y en CarPlay.",
+  "Open Bingr to choose your radio stations.": "Abre Bingr para elegir tus emisoras de radio.",
+  "Next station": "Emisora siguiente",
+  "Previous station": "Emisora anterior",
+  "All stations": "Todas las emisoras",
+  "Loading stations…": "Cargando emisoras…",
+  "%d stations": "%d emisoras"
  },
  "fr": {
   "%@ is now signed in.": "%@ est maintenant connecté.",
@@ -5069,7 +5102,18 @@
   "Subtitle display": "Affichage",
   "Subtitles after rewinding": "Sous-titres après un retour en arrière",
   "This programme has already started": "Ce programme a déjà commencé",
-  "Zap": "Zapper"
+  "Zap": "Zapper",
+  "YouTube is not installed": "YouTube n’est pas installé",
+  "Open App Store": "Ouvrir l’App Store",
+  "Trailers on Apple TV play in the YouTube app. Install it from the App Store.": "Sur l’Apple TV, les bandes-annonces sont lues dans l’app YouTube. Installez-la depuis l’App Store.",
+  "Radio on the Lock Screen": "Radio sur l’écran verrouillé",
+  "Shows the station and what's playing, with pause and next/previous station, on the Lock Screen, in the Dynamic Island and in CarPlay.": "Affiche la station et ce qui passe, avec pause et station précédente/suivante, sur l’écran verrouillé, dans la Dynamic Island et dans CarPlay.",
+  "Open Bingr to choose your radio stations.": "Ouvrez Bingr pour choisir vos stations de radio.",
+  "Next station": "Station suivante",
+  "Previous station": "Station précédente",
+  "All stations": "Toutes les stations",
+  "Loading stations…": "Chargement des stations…",
+  "%d stations": "%d stations"
  },
  "it": {
   "%@ is now signed in.": "%@ ha effettuato l’accesso.",
@@ -6337,7 +6381,18 @@
   "Subtitle display": "Visualizzazione",
   "Subtitles after rewinding": "Sottotitoli dopo il riavvolgimento",
   "This programme has already started": "Questo programma è già iniziato",
-  "Zap": "Zapping"
+  "Zap": "Zapping",
+  "YouTube is not installed": "YouTube non è installato",
+  "Open App Store": "Apri App Store",
+  "Trailers on Apple TV play in the YouTube app. Install it from the App Store.": "Su Apple TV i trailer vengono riprodotti nell’app YouTube. Installala dall’App Store.",
+  "Radio on the Lock Screen": "Radio nella schermata di blocco",
+  "Shows the station and what's playing, with pause and next/previous station, on the Lock Screen, in the Dynamic Island and in CarPlay.": "Mostra la stazione e cosa va in onda, con pausa e stazione precedente/successiva, nella schermata di blocco, nella Dynamic Island e in CarPlay.",
+  "Open Bingr to choose your radio stations.": "Apri Bingr per scegliere le tue stazioni radio.",
+  "Next station": "Stazione successiva",
+  "Previous station": "Stazione precedente",
+  "All stations": "Tutte le stazioni",
+  "Loading stations…": "Caricamento stazioni…",
+  "%d stations": "%d stazioni"
  },
  "nl": {
   "%@ is now signed in.": "%@ is nu ingelogd.",
@@ -7605,7 +7660,18 @@
   "Subtitle display": "Weergave",
   "Subtitles after rewinding": "Ondertitels na terugspoelen",
   "This programme has already started": "Dit programma is al bezig",
-  "Zap": "Zappen"
+  "Zap": "Zappen",
+  "YouTube is not installed": "YouTube is niet geïnstalleerd",
+  "Open App Store": "Open App Store",
+  "Trailers on Apple TV play in the YouTube app. Install it from the App Store.": "Trailers spelen op de Apple TV in de YouTube-app. Installeer die via de App Store.",
+  "Radio on the Lock Screen": "Radio op het toegangsscherm",
+  "Shows the station and what's playing, with pause and next/previous station, on the Lock Screen, in the Dynamic Island and in CarPlay.": "Toont de zender en wat er nu speelt, met pauze en vorige/volgende zender, op het toegangsscherm, in het Dynamic Island en in CarPlay.",
+  "Open Bingr to choose your radio stations.": "Open Bingr om je radiozenders te kiezen.",
+  "Next station": "Volgende zender",
+  "Previous station": "Vorige zender",
+  "All stations": "Alle zenders",
+  "Loading stations…": "Zenders laden…",
+  "%d stations": "%d zenders"
  },
  "pl": {
   "%@ is now signed in.": "%@ jest teraz zalogowany.",
@@ -8873,7 +8939,18 @@
   "Subtitle display": "Wygląd",
   "Subtitles after rewinding": "Napisy po przewinięciu do tyłu",
   "This programme has already started": "Ten program już się zaczął",
-  "Zap": "Przełączaj"
+  "Zap": "Przełączaj",
+  "YouTube is not installed": "YouTube nie jest zainstalowany",
+  "Open App Store": "Otwórz App Store",
+  "Trailers on Apple TV play in the YouTube app. Install it from the App Store.": "Na Apple TV zwiastuny odtwarzają się w aplikacji YouTube. Zainstaluj ją z App Store.",
+  "Radio on the Lock Screen": "Radio na ekranie blokady",
+  "Shows the station and what's playing, with pause and next/previous station, on the Lock Screen, in the Dynamic Island and in CarPlay.": "Pokazuje stację i to, co gra, z pauzą i poprzednią/następną stacją, na ekranie blokady, w Dynamic Island i w CarPlay.",
+  "Open Bingr to choose your radio stations.": "Otwórz Bingr, aby wybrać stacje radiowe.",
+  "Next station": "Następna stacja",
+  "Previous station": "Poprzednia stacja",
+  "All stations": "Wszystkie stacje",
+  "Loading stations…": "Wczytywanie stacji…",
+  "%d stations": "Stacje: %d"
  },
  "pt": {
   "%@ is now signed in.": "%@ já tem sessão iniciada.",
@@ -10141,7 +10218,18 @@
   "Subtitle display": "Apresentação",
   "Subtitles after rewinding": "Legendas ao recuar",
   "This programme has already started": "Este programa já começou",
-  "Zap": "Zapping"
+  "Zap": "Zapping",
+  "YouTube is not installed": "O YouTube não está instalado",
+  "Open App Store": "Abrir App Store",
+  "Trailers on Apple TV play in the YouTube app. Install it from the App Store.": "Na Apple TV, os trailers são reproduzidos na app YouTube. Instala-a a partir da App Store.",
+  "Radio on the Lock Screen": "Rádio no ecrã bloqueado",
+  "Shows the station and what's playing, with pause and next/previous station, on the Lock Screen, in the Dynamic Island and in CarPlay.": "Mostra a rádio e o que está a tocar, com pausa e rádio anterior/seguinte, no ecrã bloqueado, na Dynamic Island e no CarPlay.",
+  "Open Bingr to choose your radio stations.": "Abre o Bingr para escolher as tuas rádios.",
+  "Next station": "Rádio seguinte",
+  "Previous station": "Rádio anterior",
+  "All stations": "Todas as rádios",
+  "Loading stations…": "A carregar rádios…",
+  "%d stations": "%d rádios"
  },
  "tr": {
   "%@ is now signed in.": "%@ artık oturum açtı.",
@@ -11409,7 +11497,18 @@
   "Subtitle display": "Görünüm",
   "Subtitles after rewinding": "Geri sarınca altyazı",
   "This programme has already started": "Bu program çoktan başladı",
-  "Zap": "Kanal gez"
+  "Zap": "Kanal gez",
+  "YouTube is not installed": "YouTube yüklü değil",
+  "Open App Store": "App Store’u aç",
+  "Trailers on Apple TV play in the YouTube app. Install it from the App Store.": "Apple TV’de fragmanlar YouTube uygulamasında oynatılır. App Store’dan yükleyin.",
+  "Radio on the Lock Screen": "Kilit ekranında radyo",
+  "Shows the station and what's playing, with pause and next/previous station, on the Lock Screen, in the Dynamic Island and in CarPlay.": "İstasyonu ve çalanı; duraklat ve önceki/sonraki istasyon ile kilit ekranında, Dynamic Island’da ve CarPlay’de gösterir.",
+  "Open Bingr to choose your radio stations.": "Radyo istasyonlarını seçmek için Bingr’ı aç.",
+  "Next station": "Sonraki istasyon",
+  "Previous station": "Önceki istasyon",
+  "All stations": "Tüm istasyonlar",
+  "Loading stations…": "İstasyonlar yükleniyor…",
+  "%d stations": "%d istasyon"
  },
  "zh-Hans": {
   "%@ is now signed in.": "%@ 现已登录。",
@@ -12677,6 +12776,17 @@
   "Subtitle display": "显示",
   "Subtitles after rewinding": "后退后显示字幕",
   "This programme has already started": "该节目已开始",
-  "Zap": "换台"
+  "Zap": "换台",
+  "YouTube is not installed": "未安装 YouTube",
+  "Open App Store": "打开 App Store",
+  "Trailers on Apple TV play in the YouTube app. Install it from the App Store.": "在 Apple TV 上，预告片在 YouTube App 中播放。请从 App Store 安装。",
+  "Radio on the Lock Screen": "锁定屏幕上的电台",
+  "Shows the station and what's playing, with pause and next/previous station, on the Lock Screen, in the Dynamic Island and in CarPlay.": "在锁定屏幕、灵动岛和 CarPlay 中显示电台和正在播放的内容，并可暂停及切换上一个/下一个电台。",
+  "Open Bingr to choose your radio stations.": "打开 Bingr 选择你的电台。",
+  "Next station": "下一个电台",
+  "Previous station": "上一个电台",
+  "All stations": "所有电台",
+  "Loading stations…": "正在载入电台…",
+  "%d stations": "%d 个电台"
  }
 }
