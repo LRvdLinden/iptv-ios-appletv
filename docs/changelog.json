@@ -1,5 +1,92 @@
 [
  {
+  "build": 172,
+  "version": "1.0.7",
+  "date": "2026-11-15",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web"
+    ],
+    "nl": "Sport: een eigen tabblad met de wedstrijden uit je tv-gids, Nu live met live voorbeeld, en per dag Vandaag, Morgen en verder",
+    "en": "Sport: a new tab with the matches from your TV guide, Live now with a live preview, and Today, Tomorrow and later by day"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web"
+    ],
+    "nl": "Belletje bij een wedstrijd: een melding bij de start, 5 of 15 minuten eerder, met Tik om live te kijken",
+    "en": "Bell on a match: a notification at kick-off, 5 or 15 minutes before, with Tap to watch live"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Pushmeldingen voor wedstrijden op het gekozen moment, met de naam van de wedstrijd en de competitie",
+    "en": "Push notifications for matches at the chosen moment, with the name of the match and the competition"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web"
+    ],
+    "nl": "Mijn teams en competities: automatisch een belletje bij elke wedstrijd van je club of competitie",
+    "en": "My teams and competitions: an automatic bell for every match of your club or competition"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web"
+    ],
+    "nl": "Categorieën opschonen: Bingr zoekt categorieën die bij elkaar horen (zoals Netflix, Netflix Films en Netflix Documentaires, of Disney+ en Disney Plus) en voegt ze pas samen als jij akkoord geeft, met ongedaan maken",
+    "en": "Clean up categories: Bingr finds categories that belong together (such as Netflix, Netflix Movies and Netflix Documentaries, or Disney+ and Disney Plus) and only merges them once you approve, with undo"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios"
+    ],
+    "nl": "Radio in CarPlay: kies een zender uit je favorieten of de lijst, met Now Playing en vorige/volgende zender",
+    "en": "Radio in CarPlay: pick a station from your favorites or the list, with Now Playing and previous/next station"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Homepage: Radio met CarPlay en Android Auto",
+    "en": "Homepage: Radio with CarPlay and Android Auto"
+   }
+  ]
+ },
+ {
   "build": 171,
   "version": "1.0.7",
   "date": "2026-11-15",

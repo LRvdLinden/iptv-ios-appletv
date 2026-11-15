@@ -4,6 +4,36 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.7 · Build 172
+_15 november 2026_
+
+### iOS
+
+**Nieuw**
+
+- Radio in CarPlay: kies een zender uit je favorieten of de lijst, met Now Playing en vorige/volgende zender
+
+### iOS, iPadOS, tvOS, macOS, Android, Android TV en Website
+
+**Nieuw**
+
+- Sport: een eigen tabblad met de wedstrijden uit je tv-gids, Nu live met live voorbeeld, en per dag Vandaag, Morgen en verder
+- Belletje bij een wedstrijd: een melding bij de start, 5 of 15 minuten eerder, met Tik om live te kijken
+- Mijn teams en competities: automatisch een belletje bij elke wedstrijd van je club of competitie
+- Categorieën opschonen: Bingr zoekt categorieën die bij elkaar horen (zoals Netflix, Netflix Films en Netflix Documentaires, of Disney+ en Disney Plus) en voegt ze pas samen als jij akkoord geeft, met ongedaan maken
+
+### Website
+
+**Nieuw**
+
+- Homepage: Radio met CarPlay en Android Auto
+
+### Server
+
+**Nieuw**
+
+- Pushmeldingen voor wedstrijden op het gekozen moment, met de naam van de wedstrijd en de competitie
+
 ## Versie 1.0.7 · Build 171
 _15 november 2026_
 
