@@ -4,6 +4,58 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.8 · Build 176
+_15 november 2026_
+
+### iOS, iPadOS en Android
+
+**Nieuw**
+
+- Helderheid regelen door in de speler te vegen (Android ook volume)
+
+### iOS, iPadOS, Android en Website
+
+**Nieuw**
+
+- Data besparen op mobiel netwerk
+
+### iOS, iPadOS, macOS, Android, Android TV en Website
+
+**Nieuw**
+
+- Voorvertoning: na 2 seconden op een poster of bovenaan Home speelt de trailer zonder geluid. Uit te zetten in Instellingen
+
+### iOS, iPadOS, tvOS, macOS, Android, Android TV en Website
+
+**Nieuw**
+
+- Automatisch de volgende aflevering afspelen kun je per profiel aan- of uitzetten
+- Zoeken vindt ook programma's in de beschrijvingen van de tv-gids
+- Nieuw en populair: binnenkort, nieuwe seizoenen en populair, met een herinnering op de releasedatum
+- Zenders, films en series vergrendelen met de pincode van het hoofdprofiel
+- Helpcentrum in de app
+- Momenten bewaren in de speler en later verder kijken vanaf dat moment
+
+**Verbeterd**
+
+- Lichtere posters en kleine animaties
+
+### tvOS
+
+**Nieuw**
+
+- Voorvertoning: na 2 seconden op een poster komt die tot leven
+
+**Verbeterd**
+
+- Links en rechts op de afstandsbediening spoelen direct 10 seconden zonder pauzeren, ook bij live terugkijken
+
+### Server
+
+**Nieuw**
+
+- Herinnering op de releasedatum als pushmelding
+
 ## Versie 1.0.7 · Build 175
 _15 november 2026_
 

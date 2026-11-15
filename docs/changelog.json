@@ -1,5 +1,202 @@
 [
  {
+  "build": 176,
+  "version": "1.0.8",
+  "date": "2026-11-15",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web"
+    ],
+    "nl": "Automatisch de volgende aflevering afspelen kun je per profiel aan- of uitzetten",
+    "en": "You can turn playing the next episode automatically on or off per profile"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web"
+    ],
+    "nl": "Zoeken vindt ook programma's in de beschrijvingen van de tv-gids",
+    "en": "Search also finds programmes in the TV guide descriptions"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web"
+    ],
+    "nl": "Nieuw en populair: binnenkort, nieuwe seizoenen en populair, met een herinnering op de releasedatum",
+    "en": "New & Popular: coming soon, new seasons and popular, with a reminder on the release date"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Herinnering op de releasedatum als pushmelding",
+    "en": "Release-date reminder as a push notification"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web"
+    ],
+    "nl": "Zenders, films en series vergrendelen met de pincode van het hoofdprofiel",
+    "en": "Lock channels, movies and series with the PIN of the main profile"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "android",
+     "web"
+    ],
+    "nl": "Data besparen op mobiel netwerk",
+    "en": "Save data on cellular"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web"
+    ],
+    "nl": "Helpcentrum in de app",
+    "en": "Help centre in the app"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web"
+    ],
+    "nl": "Momenten bewaren in de speler en later verder kijken vanaf dat moment",
+    "en": "Save moments in the player and watch from that moment later"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "macos",
+     "android",
+     "androidtv",
+     "web"
+    ],
+    "nl": "Voorvertoning: na 2 seconden op een poster of bovenaan Home speelt de trailer zonder geluid. Uit te zetten in Instellingen",
+    "en": "Previews: after 2 seconds on a poster or at the top of Home the trailer plays muted. Can be turned off in Settings"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "tvos"
+    ],
+    "nl": "Voorvertoning: na 2 seconden op een poster komt die tot leven",
+    "en": "Previews: after 2 seconds on a poster it comes to life"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "android"
+    ],
+    "nl": "Helderheid regelen door in de speler te vegen (Android ook volume)",
+    "en": "Swipe in the player to adjust brightness (volume too on Android)"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "tvos"
+    ],
+    "nl": "Links en rechts op de afstandsbediening spoelen direct 10 seconden zonder pauzeren, ook bij live terugkijken",
+    "en": "Left and right on the remote skip 10 seconds right away without pausing, also when rewinding live TV"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web"
+    ],
+    "nl": "Lichtere posters en kleine animaties",
+    "en": "Lighter posters and small animations"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "androidtv"
+    ],
+    "nl": "Op Android TV en Google TV staat Verder kijken in de Watch Next-rij van het beginscherm, en op Android TV is er een kanaal Bingr met je favoriete zenders",
+    "en": "On Android TV and Google TV, Continue watching appears in the Watch Next row on the home screen, and Android TV gets a Bingr channel with your favorite channels"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "android",
+     "androidtv"
+    ],
+    "nl": "Snellere netwerklaag voor afspelen en posters, met terugval op apparaten zonder Google Play services zoals Fire TV",
+    "en": "Faster networking for playback and posters, with fallback on devices without Google Play services such as Fire TV"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "android",
+     "androidtv"
+    ],
+    "nl": "Servergegevens zoals inloggegevens en afspeellijstlinks worden versleuteld op het apparaat bewaard, zonder opnieuw in te loggen",
+    "en": "Server details such as login details and playlist links are stored encrypted on the device, without signing in again"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "android"
+    ],
+    "nl": "Knop in de speler om de audio-uitvoer te kiezen, zoals een Bluetooth-koptelefoon",
+    "en": "Button in the player to choose the audio output, such as Bluetooth headphones"
+   }
+  ]
+ },
+ {
   "build": 175,
   "version": "1.0.7",
   "date": "2026-11-15",
