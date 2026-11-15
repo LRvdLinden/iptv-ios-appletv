@@ -64,11 +64,13 @@ struct AppSettingsView: View {
             case .general?:
                 languageSection
                 interfaceSection
+                CrashReportsSettingsSection()   // build 171: Privacy
                 #if !os(tvOS)
                 if Secrets.accountsConfigured && account.isSignedIn { notificationsSection }
                 #endif
             case .playback?:
                 playerSection
+                StillWatchingSettingsSection()   // build 171
             case .languages?:
                 languageTracksSection
                 openSubtitlesSection
@@ -79,6 +81,7 @@ struct AppSettingsView: View {
                 refreshSection
             case .profiles?:
                 playlistSection
+                if store.activeProfileID != nil { ProfileFiltersSection() }   // build 171
                 parentalSection
             case .account?:
                 accountTab

@@ -61,6 +61,13 @@ struct DetailView: View {
     private var pid: UUID? { target.sourceID ?? playlists.source?.id }
     /// Build 128: titel van een andere server die nog niet gevonden is: zoeken of de melding
     @State private var crossPrompt: CrossServer.Prompt?
+    /// Build 171: de pincode van het ouderprofiel (kinderprofiel) vóór het blokkeren
+    @State private var blockPIN = false
+    /// Build 171: titel geblokkeerd voor dit profiel → melding in plaats van de pagina
+    private var blockedHere: Bool {
+        guard let pid, !DiscoverItem.isExternal(target.id) else { return false }
+        return store.isTitleBlocked(pid, target.hideKind171, target.id)
+    }
     private var baseTitle: String { switch target { case .movie(let m): return m.title; case .series(let s): return s.title } }
     /// Titel zonder taallabel ("Animal (IT)" → "Animal"), build 59
     private var title: String { d?.title ?? ContentLanguage.displayTitle(baseTitle) }
@@ -164,6 +171,14 @@ struct DetailView: View {
                     .background(.black.opacity(0.8), in: Capsule())
                     .frame(maxHeight: .infinity, alignment: .bottom).padding(.bottom, 40)
                     .transition(.opacity)
+            }
+            if blockedHere { BlockedTitleNotice { dismiss() } }
+        }
+        .sheet(isPresented: $blockPIN) {
+            PINPad(title: L("Enter the PIN of the parent profile")) { pin in
+                guard let main = store.mainProfileID, ParentalControl.shared.verify(pin, profile: main), let pid else { return false }
+                store.setTitleBlocked(pid, target.hideKind171, target.id, true)
+                return true
             }
         }
         .task(id: target.id) { await load() }
@@ -390,6 +405,14 @@ struct DetailView: View {
                 if let t = currentTrailer {
                     circleButton("film") { openTrailer(t) }
                         .accessibilityLabel(hasSeasonTrailer ? L("Trailer season %d", season) : L("Trailer"))
+                }
+                // build 171: verbergen voor dit profiel (kinderprofiel: ouderpincode)
+                if let pid, !DiscoverItem.isExternal(target.id) {
+                    circleButton("hand.raised") {
+                        if store.needsParentPIN() { blockPIN = true }
+                        else { store.setTitleBlocked(pid, target.hideKind171, target.id, true) }
+                    }
+                    .accessibilityLabel(L("Hide for this profile"))
                 }
                 if isMovie {
                     circleButton(isWatchedTitle ? "checkmark.circle.fill" : "checkmark.circle") { toggleWatchedMovie() }

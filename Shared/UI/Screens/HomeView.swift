@@ -110,6 +110,7 @@ struct HomeView: View {
         .fullScreenCover(isPresented: $showSearch) { SearchView(modal: true) }
         .fullScreenCover(isPresented: $showCategories) { BrowseCategoriesView(modal: true) }
         .fullScreenCover(item: $browseOpen) { BrowseCategoryView(category: $0) }
+        .parentGate171()   // build 171
         .background(Color.black)
         .task(id: prepareKey) { await prepare() }
         .task(id: heroItems.map(\.id)) { await rotateHero() }
@@ -905,6 +906,7 @@ struct HomeView: View {
                 Button { collecting = .series(s) } label: {
                     Label(L("Add to collection…"), systemImage: "rectangle.stack.badge.plus")
                 }
+                BlockTitleMenuItem(target: .series(s), server: pid)   // build 171
             }
         }
     }
@@ -1138,6 +1140,7 @@ struct HomeView: View {
         Button { collecting = .movie(m) } label: {
             Label(L("Add to collection…"), systemImage: "rectangle.stack.badge.plus")
         }
+        BlockTitleMenuItem(target: .movie(m), server: pid)   // build 171
     }
 
     // MARK: data

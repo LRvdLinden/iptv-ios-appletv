@@ -95,7 +95,8 @@ enum M3UParser {
                                             streamURL: e.url.urlValue,
                                             epgID: e.attrs["tvg-id"].flatMap { $0.isEmpty ? nil : $0 },
                                             number: Int(e.attrs["tvg-chno"] ?? "") ?? number,
-                                            catchupDays: catchup))
+                                            catchupDays: catchup,
+                                            radio: Radio171.isRadio(m3uAttributes: e.attrs) ? true : nil))
             }
         }
         lib.series = seriesOrder.compactMap { seriesMap[$0] }.map {

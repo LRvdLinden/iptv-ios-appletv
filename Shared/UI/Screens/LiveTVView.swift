@@ -9,6 +9,10 @@ struct LiveTVView: View {
     /// je in Live TV bent; er is geen bewaarde voorkeur. App Store-screenshots: scherm "live" toont de lijst.
     @State private var mode: Mode = Self.startMode
     @State private var guideFor: Channel?
+    /// Build 171: scherm Radio
+    @State private var showRadio = false
+    /// Build 171: zijn er radiozenders (één keer per bibliotheek uitgerekend)
+    @State private var hasRadio = false
     @State private var program: ProgramTarget?
     @State private var filterText = ""
     /// Het voorbeeld niet volgen (build 56): anders tekende heel Live TV (lijst, groepen, gids) opnieuw bij elke
@@ -215,6 +219,7 @@ struct LiveTVView: View {
                 .background(Color.black)
                 .navigationTitle(L("Live TV"))
                 .crossServerPrompt($prompt)
+                .parentGate171()   // build 171: zender verbergen in een kinderprofiel = ouderpincode
                 // build 166: op de Apple TV staan Lijst/Tv-gids en Multiview als knoppen met tekst in het scherm zelf
                 #if !os(tvOS)
                 .toolbar {
@@ -227,6 +232,9 @@ struct LiveTVView: View {
                             Label("Multiview", systemImage: "square.grid.2x2")
                         }
                         .disabled(lib.channels.isEmpty)
+                        if hasRadio {
+                            Button { showRadio = true } label: { Label(L("Radio"), systemImage: "radio") }
+                        }
                     }
                     // build 72: ook hier het profielmenu achter de avatar
                     ToolbarItem(placement: .primaryAction) {
@@ -239,6 +247,12 @@ struct LiveTVView: View {
         .sheet(item: $program) { t in ProgramSheet(channel: t.channel, program: t.p) }
         .sheet(item: $collecting) { AddToCollectionSheet(target: $0) }
         .sheet(item: $offsetFor) { CatchupOffsetSheet(channel: $0) }
+        #if os(tvOS)
+        .fullScreenCover(isPresented: $showRadio) { RadioView() }
+        #else
+        .sheet(isPresented: $showRadio) { RadioView() }
+        #endif
+        .task(id: playlists.libraryVersion) { hasRadio = !lib.radioChannels.isEmpty }
         #if os(tvOS)
         .sheet(isPresented: $pickingGroup) {
             TVCategoryPicker(groups: groups, selected: searching ? nil : group, title: { pickerTitle($0) }) { g in
@@ -314,6 +328,7 @@ struct LiveTVView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         modeButton
                         multiviewButton
+                        if hasRadio { radioButton }
                     }
                     .padding(.bottom, 10)
                     HStack(spacing: 12) {
@@ -401,9 +416,16 @@ struct LiveTVView: View {
     /// Rechts in de regel: Lijst (de wisselknop) en Multiview, met duidelijk icoon en tekst
     private var tvGuideTrailing: some View {
         HStack(spacing: 18) {
+            if hasRadio { radioButton }
             multiviewButton
             modeButton
         }
+    }
+
+    /// Build 171: scherm Radio (alleen geluid)
+    private var radioButton: some View {
+        Button { showRadio = true } label: { tvPill("radio", L("Radio")) }
+            .plainTVButton()
     }
 
     private var modeButton: some View {
@@ -592,6 +614,7 @@ struct LiveTVView: View {
         Button { app.openMultiview(start: [c], candidates: list) } label: {
             Label(L("Open in Multiview"), systemImage: "square.grid.2x2")
         }
+        HideChannelMenuItem(channel: c, server: pid)   // build 171
     }
 }
 

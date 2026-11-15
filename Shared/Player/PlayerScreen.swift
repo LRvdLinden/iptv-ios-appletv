@@ -64,6 +64,12 @@ struct PlayerScreen: View {
     @State private var versionsFor: String?
     /// build 91: de melding "log in bij OpenSubtitles" is in deze spelersessie al getoond (niet bij elke titel opnieuw)
     @State private var osSignInHinted = false
+    /// Build 171: "Kijk je nog?"
+    @StateObject private var still = StillWatchingModel()
+    #if os(iOS)
+    /// Build 171: bediening vergrendeld (alle tikken en vegen genegeerd)
+    @State private var locked = false
+    #endif
 
     enum Panel: String, Identifiable { case audioSubs, opensubs, options, cast, sources, rate, intro, alternatives; var id: String { rawValue } }
 
@@ -132,7 +138,7 @@ struct PlayerScreen: View {
             #endif
 
             #if os(tvOS)
-            if !showControls && streamLimit == nil && player.errorText == nil { tvCatcher }
+            if !showControls && streamLimit == nil && player.errorText == nil && !still.isActive { tvCatcher }
             // build 169: swipen over het touchoppervlak = voorbeeldpositie op de tijdbalk
             // build 170: aanraking stopt het uitrollen; ←/→ ingedrukt houden op de balk herhaalt met een vast ritme
             TVScrubPanListener(enabled: tvPanEnabled,
@@ -140,12 +146,12 @@ struct PlayerScreen: View {
                                onTouchDown: { scrub.touchDown() },
                                onBegan: { tvPanBegan() },
                                onChanged: { dx, v in scrub.panChanged(dx, velocity: v) },
-                               onEnded: { v in scrub.panEnded(velocity: v); poke() },
-                               onHoldBegan: { forward in if canScrub { scrub.holdBegan(forward: forward); poke() } },
-                               onHoldEnded: { scrub.holdEnded(); poke() })
+                               onEnded: { v in scrub.panEnded(velocity: v); userPoke() },
+                               onHoldBegan: { forward in if canScrub { scrub.holdBegan(forward: forward); userPoke() } },
+                               onHoldEnded: { scrub.holdEnded(); userPoke() })
                 .frame(width: 0, height: 0).allowsHitTesting(false).accessibilityHidden(true)
             #endif
-            if showControls && streamLimit == nil { controls.transition(.opacity) }
+            if showControls && streamLimit == nil && !still.isActive && !isLocked { controls.transition(.opacity) }
 
             if showSkipIntro, let end = marker?.introEnd {
                 skipIntroButton(end)
@@ -187,8 +193,17 @@ struct PlayerScreen: View {
                 }, onClose: { close() })
                 .transition(.opacity)
             }
+
+            #if os(iOS)
+            // build 171: bediening vergrendeld: één laag over alles die alle tikken en vegen opvangt
+            if locked { ControlLockOverlay { locked = false; userPoke() } }
+            #endif
+
+            // build 171: "Kijk je nog?" / "Gepauzeerd"
+            StillWatchingOverlay(model: still, onStop: { close() })
         }
         .animation(.easeInOut(duration: 0.25), value: showControls)
+        .animation(.easeInOut(duration: 0.25), value: still.phase)
         .animation(.easeInOut(duration: 0.2), value: banner?.id)
         #if !os(tvOS)
         .statusBarHidden()
@@ -201,18 +216,21 @@ struct PlayerScreen: View {
         .onAppear { macKeys = true }
         .onChange(of: panel) { _, p in if p == nil { macKeys = true } }
         .focusEffectDisabled()
-        .onKeyPress(.space) { player.togglePlay(); poke(); return .handled }
-        .onKeyPress(.leftArrow) { player.seek(by: -10); flash("−10 s"); return .handled }
-        .onKeyPress(.rightArrow) { player.seek(by: 10); flash("+10 s"); return .handled }
+        .onKeyPress(.space) { player.togglePlay(); userPoke(); return .handled }
+        .onKeyPress(.leftArrow) { still.interaction(); player.seek(by: -10); flash("−10 s"); return .handled }
+        .onKeyPress(.rightArrow) { still.interaction(); player.seek(by: 10); flash("+10 s"); return .handled }
         .onKeyPress(.upArrow) { zap(-1); return .handled }
         .onKeyPress(.downArrow) { zap(1); return .handled }
         .onExitCommand { if panel != nil { panel = nil } else { close() } }
         #endif
         #else
         .onPlayPauseCommand {
+            // build 171: "Gepauzeerd" → verder; "Kijk je nog?" → verder kijken
+            if still.phase == .paused { still.resume(); return }
+            if still.isActive { still.keepWatching(); return }
             // build 169: met een voorbeeldpositie op de tijdbalk springt Play/Pauze daarheen
             if scrub.isScrubbing { tvCommitPreview() }
-            else if !scrub.committing { player.togglePlay(); poke() }
+            else if !scrub.committing { player.togglePlay(); userPoke() }
         }
         .onChange(of: showControls) { _, shown in
             // bediening tevoorschijn → focus op afspelen/pauze; weg → focus terug naar de vanger, of naar
@@ -231,6 +249,8 @@ struct PlayerScreen: View {
         // rondkijken in de balk houdt hem zichtbaar; de knoppen boven het beeld (intro overslaan, volgende aflevering)
         // niet, anders haalt het tonen van de balk de focus er meteen weer af (build 60)
         .onChange(of: tvFocus) { old, f in
+            // build 171: focuswissel binnen de bediening = bediening ("Kijk je nog?")
+            if case .some(.bar) = old, case .some(.bar) = f { still.interaction() }
             // build 170: tijdens swipen/uitrollen/ingedrukt houden blijft de focus op de tijdbalk (geen per ongeluk ↑/↓)
             if old == .bar("timeline"), f != .bar("timeline"), scrub.guardsFocus, canScrub {
                 tvFocus = .bar("timeline")
@@ -255,7 +275,7 @@ struct PlayerScreen: View {
             }
         }
         .onExitCommand {
-            if streamLimit != nil { close() }
+            if streamLimit != nil || still.isActive { close() }
             else if panel != nil { panel = nil }
             // build 169: Terug annuleert eerst de voorbeeldpositie (zonder spoelen); een tweede keer werkt zoals altijd
             else if scrub.isScrubbing { tvCancelPreview() }
@@ -309,6 +329,7 @@ struct PlayerScreen: View {
                 poke()
             } else { await start(item) }
         }
+        .task { setupStillWatching() }
         // aftiteling gemarkeerd: na het aftellen automatisch de volgende aflevering
         .onChange(of: nextCountdown) { _, v in
             if v == 0, marker?.creditsStart != nil, let n = nextUp { playNext(n) }
@@ -317,6 +338,7 @@ struct PlayerScreen: View {
             if let n { flash(n); player.notice = nil }
         }
         .onDisappear {
+            still.stop()
             zapTask?.cancel()
             #if os(tvOS)
             scrub.reset()
@@ -336,13 +358,13 @@ struct PlayerScreen: View {
         GeometryReader { geo in
             HStack(spacing: 0) {
                 Color.clear.contentShape(Rectangle())
-                    .onTapGesture(count: 2) { if !player.isLive || player.canTimeshift { player.seek(by: -10); flash("−10 s"); poke() } }
+                    .onTapGesture(count: 2) { if !player.isLive || player.canTimeshift { player.seek(by: -10); flash("−10 s"); userPoke() } }
                     .onTapGesture { toggleControls() }
                     .frame(width: geo.size.width * 0.35)
                 Color.clear.contentShape(Rectangle())
                     .onTapGesture { toggleControls() }
                 Color.clear.contentShape(Rectangle())
-                    .onTapGesture(count: 2) { if !player.isLive || player.canTimeshift { player.seek(by: 10); flash("+10 s"); poke() } }
+                    .onTapGesture(count: 2) { if !player.isLive || player.canTimeshift { player.seek(by: 10); flash("+10 s"); userPoke() } }
                     .onTapGesture { toggleControls() }
                     .frame(width: geo.size.width * 0.35)
             }
@@ -379,10 +401,17 @@ struct PlayerScreen: View {
                             .accessibilityLabel(L("Picture in Picture"))
                     }
                     AirPlayButton { player.switchToApple() }.frame(width: 34, height: 34)
+                    #if os(iOS)
+                    // build 171: bediening vergrendelen (alle tikken en vegen genegeerd tot je het slot vasthoudt)
+                    Button { locked = true; showControls = false; panel = nil } label: {
+                        Image(systemName: "lock.open").font(.system(size: 20))
+                    }
+                    .accessibilityLabel(L("Lock controls"))
+                    #endif
                     Button { panel = .cast } label: { Image(systemName: "tv.and.mediabox").font(.system(size: 20)) }
                     #endif
                     if player.isLive {
-                        Button { player.goLive(); poke() } label: {
+                        Button { player.goLive(); userPoke() } label: {
                             Label(player.behindLive > 5 ? "−\(PlayerController.format(player.behindLive))" : L("LIVE"),
                                   systemImage: "dot.radiowaves.left.and.right")
                                 .font(.system(size: tvScaled(12), weight: .heavy))
@@ -404,14 +433,14 @@ struct PlayerScreen: View {
                     if player.isLive && !player.canTimeshift {
                         roundButton("chevron.up", size: 24) { zap(-1) }.accessibilityLabel(L("Previous channel"))
                     } else {
-                        roundButton("gobackward.10", size: 30) { player.seek(by: -10); poke() }.accessibilityLabel(L("Back 10 seconds"))
+                        roundButton("gobackward.10", size: 30) { player.seek(by: -10); userPoke() }.accessibilityLabel(L("Back 10 seconds"))
                     }
-                    roundButton(player.isPlaying ? "pause.fill" : "play.fill", size: 44) { player.togglePlay(); poke() }
+                    roundButton(player.isPlaying ? "pause.fill" : "play.fill", size: 44) { player.togglePlay(); userPoke() }
                         .accessibilityLabel(player.isPlaying ? L("Pause") : L("Play"))
                     if player.isLive && !player.canTimeshift {
                         roundButton("chevron.down", size: 24) { zap(1) }.accessibilityLabel(L("Next channel"))
                     } else {
-                        roundButton("goforward.10", size: 30) { player.seek(by: 10); poke() }.accessibilityLabel(L("Forward 10 seconds"))
+                        roundButton("goforward.10", size: 30) { player.seek(by: 10); userPoke() }.accessibilityLabel(L("Forward 10 seconds"))
                     }
                 }
                 Spacer()
@@ -471,9 +500,9 @@ struct PlayerScreen: View {
                 .font(.system(size: tvScaled(12)).monospacedDigit()).foregroundStyle(Theme.secondary)
             #if !os(tvOS)
             Slider(value: Binding(get: { scrubbing ?? player.position },
-                                  set: { scrubbing = $0; poke() }),
+                                  set: { scrubbing = $0; userPoke() }),
                    in: 0...1, onEditingChanged: { editing in
-                if !editing, let s = scrubbing { player.seek(to: s); scrubbing = nil; poke() }
+                if !editing, let s = scrubbing { player.seek(to: s); scrubbing = nil; userPoke() }
             })
             .tint(Theme.red)
             // build 169: tijd van de voorbeeldpositie en het verschil met nu boven de knop, zolang je sleept
@@ -506,13 +535,13 @@ struct PlayerScreen: View {
     @ViewBuilder
     private func barButton(_ icon: String, _ label: String, id: String? = nil, _ action: @escaping () -> Void) -> some View {
         #if os(tvOS)
-        Button { action(); poke() } label: {
+        Button { action(); userPoke() } label: {
             Label(label, systemImage: icon).font(.system(size: 24, weight: .semibold))
         }
         .foregroundStyle(.white)
         .focused($tvFocus, equals: .bar(id ?? label))
         #else
-        Button { action(); poke() } label: {
+        Button { action(); userPoke() } label: {
             Label(label, systemImage: icon).labelStyle(.iconOnly).font(.system(size: 20)).padding(6)
         }
         .foregroundStyle(.white)
@@ -538,18 +567,19 @@ struct PlayerScreen: View {
     /// Bediening verborgen: een onzichtbare knop over het hele beeld.
     /// Klik = bediening tonen · ←/→ = 10 s spoelen · ↑/↓ = zappen (live) of bediening tonen.
     private var tvCatcher: some View {
-        Button { poke() } label: { Color.clear.contentShape(Rectangle()) }
+        Button { userPoke() } label: { Color.clear.contentShape(Rectangle()) }
             .buttonStyle(InvisibleTVButtonStyle())
             .focused($tvFocus, equals: .catcher)
             .onMoveCommand { dir in
+                still.interaction()   // build 171
                 let canSeek = !player.isLive || player.canTimeshift
                 // build 169: vlak na een swipe geen losse sprong van 10 s (de swipe opent de tijdbalk)
                 if (dir == .left || dir == .right) && (scrub.recentlyPanned || scrub.isScrubbing) { return }
                 switch dir {
-                case .left: if canSeek { player.seek(by: -10); flash("−10 s") } else { poke() }
-                case .right: if canSeek { player.seek(by: 10); flash("+10 s") } else { poke() }
-                case .up: if player.isLive { zap(-1) } else { poke() }
-                case .down: if player.isLive { zap(1) } else { poke() }
+                case .left: if canSeek { player.seek(by: -10); flash("−10 s") } else { userPoke() }
+                case .right: if canSeek { player.seek(by: 10); flash("+10 s") } else { userPoke() }
+                case .up: if player.isLive { zap(-1) } else { userPoke() }
+                case .down: if player.isLive { zap(1) } else { userPoke() }
                 default: break
                 }
             }
@@ -584,8 +614,8 @@ struct PlayerScreen: View {
         .focused($tvFocus, equals: .bar("timeline"))
         .onMoveCommand { dir in
             switch dir {
-            case .left: if canScrub { scrub.click(forward: false); poke() }
-            case .right: if canScrub { scrub.click(forward: true); poke() }
+            case .left: if canScrub { scrub.click(forward: false); userPoke() }
+            case .right: if canScrub { scrub.click(forward: true); userPoke() }
             default: break
             }
         }
@@ -595,7 +625,7 @@ struct PlayerScreen: View {
     /// Select op de tijdbalk: naar de voorbeeldpositie springen, of zonder voorbeeldpositie afspelen/pauzeren.
     private func tvTimelineSelect() {
         if scrub.isScrubbing { tvCommitPreview() }
-        else if !scrub.committing { player.togglePlay(); poke() }
+        else if !scrub.committing { player.togglePlay(); userPoke() }
     }
 
     private func tvPanBegan() {
@@ -603,19 +633,19 @@ struct PlayerScreen: View {
         scrub.panBegan()
         if !showControls { tvFocusTimelineOnShow = true }
         else if tvFocus != .bar("timeline") { tvFocus = .bar("timeline") }
-        poke()
+        userPoke()
     }
 
     private func tvCommitPreview() {
         tvPreviewExpire?.cancel(); tvPreviewExpire = nil
         scrub.commit()
-        poke()
+        userPoke()
     }
 
     private func tvCancelPreview() {
         tvPreviewExpire?.cancel(); tvPreviewExpire = nil
         scrub.cancel()
-        poke()
+        userPoke()
     }
 
     private func tvSchedulePreviewExpiry() {
@@ -654,6 +684,7 @@ struct PlayerScreen: View {
     }
 
     private func start(_ it: PlayableItem) async {
+        still.programmatic()   // build 171: geen bediening
         PlaybackTiming.mark("player screen")
         player.prepareNew()
         player.item = it
@@ -724,6 +755,7 @@ struct PlayerScreen: View {
     }
 
     private func playNext(_ n: PlayableItem) {
+        still.autoEpisodeStarted()   // build 171: automatisch of met Volgende aflevering
         nextUp = nil
         flash(n.subtitle ?? n.title)
         Task { player.stop(keepDisplay: true); await start(n) }
@@ -821,6 +853,7 @@ struct PlayerScreen: View {
     /// Volgende/vorige zender in de huidige groep. Met een zapvertraging toont snel zappen alleen de zenderbalk;
     /// de stream start pas als je even stopt.
     private func zap(_ step: Int) {
+        still.interaction()   // build 171: zenderwissel
         let list = app.liveZapList
         let current = zapTarget?.id ?? player.item.channelID ?? player.item.id
         guard player.isLive, !list.isEmpty, let i = list.firstIndex(where: { $0.id == current }) else { return }
@@ -1098,7 +1131,42 @@ struct PlayerScreen: View {
         flash(automatic ? L("Switched to %@", label) : label)
     }
 
-    private func toggleControls() { showControls.toggle(); if showControls { poke() } }
+    private func toggleControls() { still.interaction(); showControls.toggle(); if showControls { poke() } }
+
+    /// Build 171: bediening door de kijker (telt voor "Kijk je nog?"), dan de bediening tonen
+    private func userPoke() { still.interaction(); poke() }
+
+    /// Build 171: is de bediening vergrendeld (alleen iPhone en iPad)
+    private var isLocked: Bool {
+        #if os(iOS)
+        return locked
+        #else
+        return false
+        #endif
+    }
+
+    /// Build 171: "Kijk je nog?" voor deze speler
+    private func setupStillWatching() {
+        let p = player
+        still.canAsk = { [weak p] in
+            guard let p else { return false }
+            return p.errorText == nil && !p.inPiP && !p.dismissed && streamLimit == nil
+        }
+        still.onTimeout = {
+            // beeld echt stoppen en `stream_stop` (zoals naar de achtergrond); zonder aangemelde stream alleen pauzeren
+            StreamSession.shared.idleSuspend(owner: p)
+            if !StreamSession.shared.idlePaused { p.pause() }
+        }
+        still.onResume = {
+            if StreamSession.shared.isOwner(p) && StreamSession.shared.idlePaused {
+                StreamSession.shared.idleResume(owner: p)
+            } else {
+                p.resume()
+            }
+            poke()
+        }
+        still.start()
+    }
 
     private func poke() {
         showControls = true

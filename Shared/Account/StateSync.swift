@@ -45,7 +45,9 @@ final class StateSync {
     private static let maxHistory = 500
     private static let maxRecent = 20
     /// build 128: `hiddenCategories` (categorieën uit per profiel, "<server-id>|<categorienaam>") als set erbij
-    private static let setLists = ["myList", "favorites", "watched", "hiddenCategories"]
+    /// build 171: `hiddenChannels`, `pinnedCategories` en `blockedTitles` (per profiel, zelfde vorm)
+    private static let setLists = ["myList", "favorites", "watched", "hiddenCategories",
+                                   "hiddenChannels", "pinnedCategories", "blockedTitles"]
 
     private init() {
         if let d = BigDefaults.shared.data(forKey: metaKey), let m = try? JSONDecoder().decode(Meta.self, from: d) {
@@ -1366,6 +1368,9 @@ final class StateSync {
         }
         Self.diff(&m, "watched", d.watched, now: now)
         Self.diff(&m, "hiddenCategories", d.hiddenCategories, now: now)
+        Self.diff(&m, "hiddenChannels", d.hiddenChannels, now: now)
+        Self.diff(&m, "pinnedCategories", d.pinnedCategories, now: now)
+        Self.diff(&m, "blockedTitles", d.blockedTitles, now: now)
         Self.diffOrdered(&m, "recentChannels", d.recentChannels, now: now)
         // voortgang: alleen bewuste verwijderingen tellen (`progressCleared`), niet een sleutel die hier ontbreekt
         Self.diffTimed(&m, "progress", d.progress.mapValues { $0.updated.timeIntervalSince1970 }, now: now, inferRemovals: false)
@@ -1564,6 +1569,9 @@ final class StateSync {
         newData.favorites = Set((sets["favorites"] ?? [:]).keys)
         newData.watched = Set((sets["watched"] ?? [:]).keys)
         newData.hiddenCategories = Set((sets["hiddenCategories"] ?? [:]).keys)
+        newData.hiddenChannels = Set((sets["hiddenChannels"] ?? [:]).keys)
+        newData.pinnedCategories = Set((sets["pinnedCategories"] ?? [:]).keys)
+        newData.blockedTitles = Set((sets["blockedTitles"] ?? [:]).keys)
         newData.recentChannels = recentOrdered.map(\.key)
         newData.history = historySorted.map(\.entry)
         newData.progress = progress.mapValues(\.entry)

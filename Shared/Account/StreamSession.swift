@@ -31,6 +31,10 @@ final class StreamSession {
     private(set) var current: Info?
     /// Op de achtergrond afgemeld; bij terugkeer naar de voorgrond opnieuw aanmelden.
     private var suspended = false
+    /// Build 171: afgemeld door "Kijk je nog?" zonder antwoord; pas weer aanmelden met `idleResume` (niet bij de voorgrond)
+    private(set) var idlePaused = false
+    /// Build 171: wordt aangeroepen als een andere speler (owner) de stream overneemt (radio stopt dan)
+    var onReplaced: (@MainActor () -> Void)?
     private var generation = 0
     /// Wie de stream heeft aangemeld (speler of Multiview): een late stop van een vorige speler telt niet.
     private var owner: ObjectIdentifier?
@@ -103,9 +107,15 @@ final class StreamSession {
 
     /// Aanmelden. Bij `.limit` is de stream niet aangemeld en moet de speler stoppen.
     func start(_ info: Info, owner: AnyObject) async -> Result {
+        // build 171: een andere speler neemt over (bijv. video na radio): de vorige stopt
+        // (eerst de nieuwe owner zetten: een stop van de vorige telt dan niet meer)
+        let replaced = self.owner != ObjectIdentifier(owner) ? onReplaced : nil
+        if replaced != nil { onReplaced = nil }
+        self.owner = ObjectIdentifier(owner)
+        replaced?()
+        idlePaused = false
         generation += 1
         let gen = generation
-        self.owner = ObjectIdentifier(owner)
         current = info
         suspended = false
         startPinging()
@@ -137,6 +147,8 @@ final class StreamSession {
     func stop(owner o: AnyObject) {
         guard owner == ObjectIdentifier(o) else { return }
         owner = nil
+        idlePaused = false
+        onReplaced = nil
         guard current != nil || suspended else { return }
         generation += 1
         current = nil
@@ -220,8 +232,30 @@ final class StreamSession {
         AccountService.shared.streamStopNow(wait: 1.5)
     }
 
+    // MARK: build 171: "Kijk je nog?"
+
+    /// Geen antwoord op "Kijk je nog?": net als naar de achtergrond het beeld echt stoppen (ook de verbinding met de
+    /// aanbieder) en `stream_stop`. Verder pas met `idleResume`, ook als de app intussen op de achtergrond was.
+    func idleSuspend(owner o: AnyObject) {
+        guard owner == ObjectIdentifier(o), current != nil, !idlePaused else { return }
+        idlePaused = true
+        guard !suspended else { return }   // al afgemeld (achtergrond)
+        suspended = true
+        generation += 1
+        pingTask?.cancel(); pingTask = nil
+        onBackground?()
+        Task { await send { await AccountService.shared.streamStop() } }
+    }
+
+    /// "Gepauzeerd" → Afspelen: op dezelfde plek verder (live: weer live) en opnieuw `stream_start`.
+    func idleResume(owner o: AnyObject) {
+        guard owner == ObjectIdentifier(o), idlePaused else { return }
+        idlePaused = false
+        enteredForeground()
+    }
+
     private func enteredForeground() {
-        guard suspended, let info = current else { return }
+        guard suspended, !idlePaused, let info = current else { return }
         suspended = false
         generation += 1
         let gen = generation

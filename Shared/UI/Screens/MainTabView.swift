@@ -42,6 +42,15 @@ struct MainTabView: View {
         #endif
     }
 
+    /// Build 171: ruimte onder de radiospeler (boven de tabbalk op iPhone/iPad; de Mac heeft de tabs bovenaan)
+    private static var miniPlayerBottom: CGFloat {
+        #if os(iOS)
+        return 58
+        #else
+        return 16
+        #endif
+    }
+
     private static var isPhone: Bool {
         #if os(iOS)
         UIDevice.current.userInterfaceIdiom == .phone
@@ -142,6 +151,14 @@ struct MainTabView: View {
             } message: {
                 Text(L("Your saved list is ready. Do you want to update your servers now?"))
             }
+            #endif
+
+            #if !os(tvOS)
+            // build 171: radio blijft spelen terwijl je bladert (kleine speler boven de tabbalk)
+            RadioMiniPlayer()
+                .frame(maxWidth: 560)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                .padding(.bottom, Self.miniPlayerBottom)
             #endif
 
             if playlists.isLoading {

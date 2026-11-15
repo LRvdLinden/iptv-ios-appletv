@@ -222,6 +222,9 @@ final class AppState: ObservableObject {
             .store(in: &bag)
         // build 160: eerste gebruik op dit apparaat (beoordelingsprompt na 4 uur; lokaal, niet via het account)
         ReviewPrompt.recordFirstUse()
+        // build 171: eigen crashrapporten (MetricKit en NSException), versturen bij de start
+        CrashReporter.shared.start()
+        RadioPlayer.shared.service = playlists   // build 171: radio (ook CarPlay)
         StartDiagnostics.shared.mark("account")
         ProfileSync.shared.start()
         SourceSync.shared.start()

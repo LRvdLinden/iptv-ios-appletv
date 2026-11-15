@@ -36,6 +36,12 @@ final class CloudStore: ObservableObject {
     /// Tot build 139 per profiel (`profile.<id>.hiddenCategories`); die blijven onaangeroerd staan voor oudere apps.
     @Published private(set) var hiddenCategories: Set<String> = [] { didSet { hiddenGroupsCache = [:] } }
     private var hiddenGroupsCache: [UUID: Set<String>] = [:]
+    /// Build 171: per profiel verborgen zenders ("<server-id kleine letters>|<stream-id>"), vastgepinde categorieën
+    /// ("<server-id kleine letters>|<categorienaam>") en geblokkeerde titels ("<server-id>|movie:<id>" / "…|series:<id>"),
+    /// in `profile.<id>` (docs/ACCOUNT.md → Build 171). Van het actieve profiel; andere profielen via `profileData`.
+    @Published private(set) var hiddenChannels: Set<String> = []
+    @Published private(set) var pinnedCategories: Set<String> = []
+    @Published private(set) var blockedTitles: Set<String> = []
     @Published var lastSync: Date?
     /// Per afspeellijst: hernoemd, verborgen, volgorde, samengevoegd
     @Published private(set) var customizations: [UUID: Customization] = [:]
@@ -95,6 +101,55 @@ final class CloudStore: ObservableObject {
         assign(\.localWatched, scoped(Set<String>.self, K.watched) ?? [])
         assign(\.recentChannels, scoped([String].self, K.recent) ?? [])
         assign(\.history, scoped([HistoryEntry].self, K.history) ?? [])
+        // build 171: alleen per profiel (geen gegevens van vóór de profielen)
+        assign(\.hiddenChannels, decode(Set<String>.self, pk(K.hiddenChannels)) ?? [])
+        assign(\.pinnedCategories, decode(Set<String>.self, pk(K.pinnedCategories)) ?? [])
+        assign(\.blockedTitles, decode(Set<String>.self, pk(K.blockedTitles)) ?? [])
+    }
+
+    /// Build 171: de drie sets per profiel
+    enum ProfileSet171: String, CaseIterable {
+        case hiddenChannels, pinnedCategories, blockedTitles
+    }
+
+    private static func key171(_ f: ProfileSet171) -> String {
+        switch f {
+        case .hiddenChannels: return K.hiddenChannels
+        case .pinnedCategories: return K.pinnedCategories
+        case .blockedTitles: return K.blockedTitles
+        }
+    }
+
+    /// Build 171: de set van een profiel (nil = het actieve)
+    func profileSet(_ f: ProfileSet171, profile: UUID? = nil) -> Set<String> {
+        let id = profile ?? activeProfileID
+        if id == nil || id == activeProfileID {
+            switch f {
+            case .hiddenChannels: return hiddenChannels
+            case .pinnedCategories: return pinnedCategories
+            case .blockedTitles: return blockedTitles
+            }
+        }
+        return decode(Set<String>.self, "\(Self.key171(f)).\(id!.uuidString)") ?? []
+    }
+
+    /// Build 171: sleutels toevoegen of (in alle schrijfwijzen) weghalen, voor het actieve profiel of een ander
+    /// (de ouder voor een kinderprofiel). Gaat via StateSync naar `profile.<id>`.
+    func updateProfileSet(_ f: ProfileSet171, profile: UUID? = nil, insert: Set<String> = [], remove: Set<String> = []) {
+        guard let id = profile ?? activeProfileID ?? mainProfileID else { return }
+        var set = profileSet(f, profile: id)
+        set.subtract(remove)
+        set.formUnion(insert)
+        guard set != profileSet(f, profile: id) else { return }
+        write(set, "\(Self.key171(f)).\(id.uuidString)")
+        if id == activeProfileID || activeProfileID == nil {
+            switch f {
+            case .hiddenChannels: hiddenChannels = set
+            case .pinnedCategories: pinnedCategories = set
+            case .blockedTitles: blockedTitles = set
+            }
+        }
+        stateEdited.send((id, .profile))
     }
 
     /// Build 140: verborgen categorieën van het account (alleen lokaal bewaard; de account-sync brengt ze mee).
@@ -283,7 +338,9 @@ final class CloudStore: ObservableObject {
                    photos = "photos.v1", history = "history.v1",
                    profiles = "profiles.v1", mainSource = "mainsource.v1", mainProfile = "mainprofile.v1",
                    collections = "collections.v1", homeLayout = "homelayout.v1",
-                   categories = "categories.v1", accountCategories = "categories.account.v140"
+                   categories = "categories.v1", accountCategories = "categories.account.v140",
+                   hiddenChannels = "hiddenchannels.v171", pinnedCategories = "pinnedcategories.v171",
+                   blockedTitles = "blockedtitles.v171"
     }
 
     private init() {
@@ -468,7 +525,7 @@ final class CloudStore: ObservableObject {
 
     /// Build 140: lijsten per profiel (Mijn lijst, favorieten, bekeken, recente zenders, categorieën van build 128)
     private static func isListKey(_ key: String) -> Bool {
-        [K.myList, K.favorites, K.watched, K.recent, K.categories].contains { key == $0 || key.hasPrefix($0 + ".") }
+        [K.myList, K.favorites, K.watched, K.recent, K.categories, K.hiddenChannels, K.pinnedCategories, K.blockedTitles].contains { key == $0 || key.hasPrefix($0 + ".") }
     }
 
     /// Voortgang, geschiedenis (per profiel) en foto's
@@ -719,6 +776,7 @@ final class CloudStore: ObservableObject {
         local.removeObject(forKey: AccentChoice.legacyKey)
         local.removeObject(forKey: AccentChoice.migratedKey)
         favorites = []; myList = []; localWatched = []; recentChannels = []; history = []; progress = [:]; hiddenCategories = []
+        hiddenChannels = []; pinnedCategories = []; blockedTitles = []
         local.removeObject(forKey: K.accountCategories)
         local.removeObject(forKey: Self.accountCategoriesMigratedKey)
         activeProfileID = nil
@@ -770,6 +828,10 @@ final class CloudStore: ObservableObject {
         var progress: [String: ProgressEntry] = [:]
         /// Build 128: categorieën uit ("<server-id>|<categorienaam>")
         var hiddenCategories: Set<String> = []
+        /// Build 171: verborgen zenders, vastgepinde categorieën en geblokkeerde titels
+        var hiddenChannels: Set<String> = []
+        var pinnedCategories: Set<String> = []
+        var blockedTitles: Set<String> = []
     }
 
     /// Gegevens van een profiel lezen. Het hoofdprofiel neemt (net als `scoped`) de gegevens van vóór de profielen over.
@@ -779,7 +841,8 @@ final class CloudStore: ObservableObject {
             // build 140: `hiddenCategories` is in het geheugen de account-set; de per-profiel-set (van oudere apps) van schijf
             return ProfileData(favorites: favorites, myList: myList, watched: localWatched,
                                recentChannels: recentChannels, history: history, progress: progress,
-                               hiddenCategories: decode(Set<String>.self, "\(K.categories).\(id.uuidString)") ?? [])
+                               hiddenCategories: decode(Set<String>.self, "\(K.categories).\(id.uuidString)") ?? [],
+                               hiddenChannels: hiddenChannels, pinnedCategories: pinnedCategories, blockedTitles: blockedTitles)
         }
         func read<T: Decodable>(_ t: T.Type, _ base: String) -> T? {
             if let v = decode(t, "\(base).\(id.uuidString)") { return v }
@@ -791,7 +854,10 @@ final class CloudStore: ObservableObject {
                            recentChannels: read([String].self, K.recent) ?? [],
                            history: read([HistoryEntry].self, K.history) ?? [],
                            progress: read([String: ProgressEntry].self, K.progress) ?? [:],
-                           hiddenCategories: decode(Set<String>.self, "\(K.categories).\(id.uuidString)") ?? [])
+                           hiddenCategories: decode(Set<String>.self, "\(K.categories).\(id.uuidString)") ?? [],
+                           hiddenChannels: decode(Set<String>.self, "\(K.hiddenChannels).\(id.uuidString)") ?? [],
+                           pinnedCategories: decode(Set<String>.self, "\(K.pinnedCategories).\(id.uuidString)") ?? [],
+                           blockedTitles: decode(Set<String>.self, "\(K.blockedTitles).\(id.uuidString)") ?? [])
     }
 
     /// Gegevens van een profiel uit de Bingr-account zetten (StateSync). Alleen wat veranderd is wordt geschreven;
@@ -807,10 +873,15 @@ final class CloudStore: ObservableObject {
         if old.history != d.history { write(d.history, K.history + suffix) }
         if old.progress != d.progress { write(d.progress, K.progress + suffix) }
         if old.hiddenCategories != d.hiddenCategories { write(d.hiddenCategories, K.categories + suffix) }
+        if old.hiddenChannels != d.hiddenChannels { write(d.hiddenChannels, K.hiddenChannels + suffix) }
+        if old.pinnedCategories != d.pinnedCategories { write(d.pinnedCategories, K.pinnedCategories + suffix) }
+        if old.blockedTitles != d.blockedTitles { write(d.blockedTitles, K.blockedTitles + suffix) }
         if id == activeProfileID {
             // alleen wat veranderd is: anders tekent elk scherm opnieuw bij elke sync-ronde
             assign(\.favorites, d.favorites); assign(\.myList, d.myList); assign(\.localWatched, d.watched)
             assign(\.recentChannels, d.recentChannels); assign(\.history, d.history); assign(\.progress, d.progress)
+            assign(\.hiddenChannels, d.hiddenChannels); assign(\.pinnedCategories, d.pinnedCategories)
+            assign(\.blockedTitles, d.blockedTitles)
         }
     }
 

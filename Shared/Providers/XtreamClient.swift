@@ -68,13 +68,16 @@ struct XtreamClient {
     struct Live: Decodable {
         let stream_id: Flex; let name: String?; let stream_icon: String?; let epg_channel_id: String?
         let category_id: Flex?; let num: Flex?; let tv_archive: Flex?; let tv_archive_duration: Flex?
-        private enum K: String, CodingKey { case stream_id, name, stream_icon, epg_channel_id, category_id, num, tv_archive, tv_archive_duration }
+        /// Build 171: "live" of "radio_streams"
+        let stream_type: String?
+        private enum K: String, CodingKey { case stream_id, name, stream_icon, epg_channel_id, category_id, num, tv_archive, tv_archive_duration, stream_type }
         init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: K.self)
             stream_id = try c.decode(Flex.self, forKey: .stream_id)
             name = c.flexString(.name); stream_icon = c.flexString(.stream_icon); epg_channel_id = c.flexString(.epg_channel_id)
             category_id = try? c.decode(Flex.self, forKey: .category_id); num = try? c.decode(Flex.self, forKey: .num)
             tv_archive = try? c.decode(Flex.self, forKey: .tv_archive); tv_archive_duration = try? c.decode(Flex.self, forKey: .tv_archive_duration)
+            stream_type = c.flexString(.stream_type)
         }
     }
     struct Vod: Decodable {
@@ -450,7 +453,8 @@ struct XtreamClient {
                            streamURL: URL(string: "\(server)/live/\(username)/\(password)/\(sid).\(liveExt)"),
                            epgID: l.epg_channel_id.flatMap { $0.isEmpty ? nil : $0 },
                            number: l.num?.int,
-                           catchupDays: l.tv_archive?.int == 1 ? (l.tv_archive_duration?.int ?? 0) : 0)
+                           catchupDays: l.tv_archive?.int == 1 ? (l.tv_archive_duration?.int ?? 0) : 0,
+                           radio: Radio171.isRadio(streamType: l.stream_type) ? true : nil)
         }
     }
 

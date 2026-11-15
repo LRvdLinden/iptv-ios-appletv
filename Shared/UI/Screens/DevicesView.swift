@@ -87,6 +87,32 @@ enum DeviceText {
         return L("Last used %@", value)
     }
 
+    /// Build 171: "Laatst actief 2 uur geleden" (relatief, in de app-taal); dit apparaat: "Nu"
+    static func lastActive(_ d: AccountService.Device, now: Date = Date()) -> String? {
+        if d.current { return L("Last active %@", L("Now")) }
+        guard let date = d.lastSeenAt else { return nil }
+        if now.timeIntervalSince(date) < 60 { return L("Last active %@", L("just now")) }
+        let f = RelativeDateTimeFormatter()
+        f.locale = Localizer.shared.locale
+        f.unitsStyle = .full
+        return L("Last active %@", f.localizedString(for: date, relativeTo: now))
+    }
+
+    /// Build 171: langst niet gebruikt bovenaan, dit apparaat onderaan (`DeviceList171`)
+    static func sorted(_ list: [AccountService.Device]) -> [AccountService.Device] {
+        let byID = Dictionary(list.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        return DeviceList171.sorted(list.map(entry)).compactMap { byID[$0.id] }
+    }
+
+    static func suggestion(_ list: [AccountService.Device], now: Date = Date()) -> AccountService.Device? {
+        guard let id = DeviceList171.suggestion(list.map(entry), now: now.timeIntervalSince1970) else { return nil }
+        return list.first { $0.id == id }
+    }
+
+    private static func entry(_ d: AccountService.Device) -> DeviceList171.Entry {
+        DeviceList171.Entry(id: d.id, lastUsed: (d.lastSeenAt ?? d.signedInAt ?? d.createdAt)?.timeIntervalSince1970, current: d.current)
+    }
+
     // build 149: gedeeld per taal, niet per regel
     private static var dateFormatter: DateFormatter {
         SharedFormatters.styled(locale: Localizer.shared.locale, date: .medium, time: .none)
@@ -137,7 +163,7 @@ struct DeviceRow: View {
                 if let linked = DeviceText.linked(device) {
                     Text(linked).font(.system(size: tvScaled(12))).foregroundStyle(Theme.secondary)
                 }
-                if let used = DeviceText.lastUsed(device) {
+                if let used = DeviceText.lastActive(device) ?? DeviceText.lastUsed(device) {
                     Text(used).font(.system(size: tvScaled(12))).foregroundStyle(Theme.secondary)
                 }
                 if let since = StreamText.signedInSince(device.signedInAt) {
@@ -424,12 +450,24 @@ struct TooManyDevicesView: View {
             // build 88: op Gratis de limiet van Lifetime en de vergelijking (build 97: nooit een aankooplink op Apple)
             PlanLimitNote(topic: .devices, plan: limit?.plan)
 
+            // build 171: langst niet gebruikt bovenaan, met het voorstel om dat apparaat af te melden
+            let devices = DeviceText.sorted(limit?.devices ?? [])
+            if let s = DeviceText.suggestion(devices), let since = s.lastSeenAt ?? s.signedInAt {
+                Button { pending = s } label: {
+                    Label(L("Sign out %@: not used since %@", s.name, since.formatted(date: .abbreviated, time: .omitted)),
+                          systemImage: "arrow.right.circle")
+                        .font(.system(size: tvScaled(14), weight: .semibold))
+                        .multilineTextAlignment(.leading)
+                }
+                .buttonStyle(.bordered)
+                .disabled(removing != nil)
+            }
             VStack(spacing: 0) {
-                ForEach(limit?.devices ?? []) { d in
+                ForEach(devices) { d in
                     DeviceRow(device: d, busy: removing == d.id) { pending = d }
                         .disabled(removing != nil)
                         .padding(.vertical, tvScaled(6))
-                    if d.id != limit?.devices.last?.id {
+                    if d.id != devices.last?.id {
                         Divider().overlay(Color.white.opacity(0.12))
                     }
                 }

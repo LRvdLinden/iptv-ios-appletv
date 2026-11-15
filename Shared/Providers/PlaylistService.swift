@@ -74,6 +74,14 @@ final class PlaylistService: ObservableObject {
                 self?.refetchOtherServersIfUnhidden()   // build 152
             }
             .store(in: &bag)
+        // build 171: zender verborgen of titel geblokkeerd in dit profiel (ook via de sync, of een ander profiel gekozen)
+        CloudStore.shared.$hiddenChannels.combineLatest(CloudStore.shared.$blockedTitles)
+            .map { a, b in a.union(b) }
+            .removeDuplicates()
+            .dropFirst()
+            .debounce(for: .milliseconds(300), scheduler: RunLoop.main)
+            .sink { [weak self] _ in _ = self?.applyCustomizations() }
+            .store(in: &bag)
         // nieuwe IMDb-classificaties binnen → leeftijdsfilter opnieuw toepassen
         MetadataService.shared.$cache
             .dropFirst()
@@ -471,6 +479,8 @@ final class PlaylistService: ObservableObject {
         /// Build 151: gewenste taallabels ("NL", "BE", "EN" …): bij dubbele titels in samengevoegde categorieën gaat
         /// de bron in de audio- of app-taal voor, dan een meertalige bron, dan de rest
         var want: [String] = []
+        /// Build 171: zenders die dit profiel verborgen heeft en titels die het geblokkeerd heeft (item-id's van deze server)
+        var hiddenItems: Set<String> = []
 
         /// Dezelfde regels (alles behalve de classificaties zelf)? Dan mag de vorige uitkomst blijven staan
         /// tot de nieuwe klaar is, en hoeft een gelijke uitkomst niet opnieuw gepubliceerd te worden.
@@ -478,6 +488,7 @@ final class PlaylistService: ObservableObject {
             playlist == o.playlist && ageLimit == o.ageLimit && strict == o.strict && parentalEnabled == o.parentalEnabled
                 && autoLockAdult == o.autoLockAdult && unlocked == o.unlocked && lockedGroups == o.lockedGroups
                 && custom == o.custom && hiddenGroups == o.hiddenGroups && kids == o.kids && want == o.want
+                && hiddenItems == o.hiddenItems
         }
     }
 
@@ -498,7 +509,15 @@ final class PlaylistService: ObservableObject {
                              meta: (st.activeProfile?.effectiveAgeLimit != nil) ? MetadataService.shared.cache : [:],
                              ratings: (st.activeProfile?.effectiveAgeLimit != nil) ? AgeRatingService.shared.cache : [:],
                              hiddenGroups: kids ? [] : st.hiddenGroups(for: s.id), kids: kids,
-                             want: SourcePreference.want(audio: [TrackPreferences.preferredAudio], app: TrackPreferences.appLanguage))
+                             want: SourcePreference.want(audio: [TrackPreferences.preferredAudio], app: TrackPreferences.appLanguage),
+                             hiddenItems: Self.hiddenItems(for: s.id))
+    }
+
+    /// Build 171: verborgen zenders en geblokkeerde titels van het actieve profiel op deze server (item-id's)
+    static func hiddenItems(for server: UUID) -> Set<String> {
+        let st = CloudStore.shared
+        let sid = server.uuidString
+        return ProfileHide171.channelIDs(st.hiddenChannels, server: sid).union(ProfileHide171.titleIDs(st.blockedTitles, server: sid))
     }
 
     /// Build 151: wat bij het ophalen van deze server niet ingelezen hoeft te worden (categorie uit). Nil = alles
@@ -777,12 +796,13 @@ final class PlaylistService: ObservableObject {
             }
             groupName[g] = v
             CategoryMerge.note(display: v, raw: g)
+            CategoryRaw171.note(display: v, raw: g, server: playlist)   // build 171: vastpinnen/verbergen vanuit het overzicht
             return v
         }
         // per groep één keer uitrekenen (tienduizenden titels delen maar een paar honderd groepen)
         var groupOK: [String: Bool] = [:]
         func visible(_ id: String, _ g: String) -> Bool {
-            if c.hidden.contains(id) { return false }
+            if c.hidden.contains(id) || ctx.hiddenItems.contains(id) { return false }
             if let ok = groupOK[g] { return ok }
             // build 140: kinderprofiel: alleen kindercategorieën (naam zoals de server hem levert)
             let ok = (!ctx.kids || KidsCategory.isKids(g))

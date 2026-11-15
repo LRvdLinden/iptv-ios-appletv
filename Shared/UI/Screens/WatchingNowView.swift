@@ -145,6 +145,9 @@ struct StreamLimitView: View {
     let limit: AccountService.StreamLimit
     let onRetry: () -> Void
     let onClose: () -> Void
+    /// Build 171: "Stoppen op dat apparaat" loopt (device-id)
+    @State private var stopping: String?
+    @State private var stopError: String?
 
     var body: some View {
         ZStack {
@@ -158,11 +161,35 @@ struct StreamLimitView: View {
                          : L("Your account can be used on up to %d screens at the same time.", limit.limit))
                         .font(.system(size: tvScaled(15))).foregroundStyle(Theme.secondary)
                         .fixedSize(horizontal: false, vertical: true)
+                    // build 171: per stream wie kijkt wat op welk apparaat, met "Stoppen op dat apparaat"
                     VStack(spacing: 0) {
                         ForEach(limit.streams) { s in
-                            ActiveStreamRow(stream: s, details: false).padding(.vertical, tvScaled(4))
+                            VStack(alignment: .leading, spacing: tvScaled(6)) {
+                                ActiveStreamRow(stream: s, details: true).padding(.vertical, tvScaled(4))
+                                if s.deviceID == AccountService.shared.deviceID {
+                                    Text(L("This device"))
+                                        .font(.system(size: tvScaled(11), weight: .bold))
+                                        .foregroundStyle(Theme.onAccent)
+                                        .padding(.horizontal, tvScaled(7)).padding(.vertical, tvScaled(2))
+                                        .background(Theme.red, in: Capsule())
+                                } else if stopping == s.deviceID {
+                                    ProgressView()
+                                } else {
+                                    Button { stop(s) } label: {
+                                        Label(L("Stop on that device"), systemImage: "stop.circle")
+                                            .font(.system(size: tvScaled(14), weight: .semibold))
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .tint(Theme.red)
+                                    .disabled(stopping != nil)
+                                }
+                            }
+                            .padding(.vertical, tvScaled(4))
                             if s.id != limit.streams.last?.id { Divider().overlay(Color.white.opacity(0.12)) }
                         }
+                    }
+                    if let stopError {
+                        Text(stopError).font(.system(size: tvScaled(13))).foregroundStyle(AuthForm.errorColor)
                     }
                     // build 88: op Gratis de limiet van Lifetime en de vergelijking (build 97: nooit een aankooplink op Apple)
                     PlanLimitNote(topic: .streams, plan: limit.plan)
@@ -179,6 +206,21 @@ struct StreamLimitView: View {
                 .padding(.horizontal, Theme.edge)
                 .padding(.vertical, tvScaled(30))
                 .frame(maxWidth: .infinity)
+            }
+        }
+    }
+
+    /// Build 171: de stream op dat apparaat stoppen (`stream_stop` met zijn device-id) en meteen opnieuw proberen
+    private func stop(_ s: AccountService.ActiveStream) {
+        stopping = s.deviceID
+        stopError = nil
+        Task { @MainActor in
+            defer { stopping = nil }
+            do {
+                try await AccountService.shared.streamStopRemote(deviceID: s.deviceID)
+                onRetry()
+            } catch {
+                stopError = L("Stopping did not work. Try again.")
             }
         }
     }

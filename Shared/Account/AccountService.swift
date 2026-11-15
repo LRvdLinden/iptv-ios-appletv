@@ -655,6 +655,45 @@ final class AccountService: ObservableObject {
         }
     }
 
+    // MARK: - Build 171
+
+    /// "Stoppen op dat apparaat" (te veel streams): `stream_stop` met de `device_id` van een ander apparaat van
+    /// hetzelfde account. De server verwijdert alleen streams van het eigen account (`user_id` + `device_id`); dat
+    /// apparaat krijgt bij zijn volgende `stream_ping` `{stopped:true}`.
+    func streamStopRemote(deviceID other: String) async throws {
+        guard Secrets.accountsConfigured, isSignedIn else { throw AccountError.generic }
+        let r = try await authorized { token in
+            try await self.post("/functions/v1/device-auth", ["action": "stream_stop", "device_id": other], bearer: token)
+        }
+        guard (200..<300).contains(r.status) else { throw AccountError.generic }
+    }
+
+    enum CrashSendResult { case sent, retryLater, drop }
+
+    /// Build 171: device-auth `crash_report`. Ingelogd met het token, anders alleen met de app-sleutel (`apikey`).
+    /// 404 (server zonder `crash_report`), 429, 5xx en netwerkfouten: later opnieuw; andere 4xx: weggooien.
+    func crashReport(_ body: [String: Any]) async -> CrashSendResult {
+        guard Secrets.accountsConfigured else { return .retryLater }
+        var b = body
+        b["action"] = "crash_report"
+        b["device_id"] = deviceID
+        do {
+            let r: Response
+            if isSignedIn {
+                r = try await authorized { token in try await self.post("/functions/v1/device-auth", b, bearer: token) }
+            } else {
+                r = try await post("/functions/v1/device-auth", b)
+            }
+            switch r.status {
+            case 200..<300: return .sent
+            case 404, 408, 429, 500...599: return .retryLater
+            default: return .drop
+            }
+        } catch {
+            return .retryLater
+        }
+    }
+
     /// `stream_ping`: `false` als de server zegt dat de stream niet meer telt (`stopped`); dan opnieuw `stream_start`.
     func streamPing(title: String?) async -> Bool {
         guard Secrets.accountsConfigured, isSignedIn else { return true }

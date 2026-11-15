@@ -14,6 +14,8 @@ struct MultiviewScreen: View {
     @State private var streamLimit: AccountService.StreamLimit?
     /// Zenders die stopten door de limiet (voor "Try again")
     @State private var stoppedChannels: [Channel] = []
+    /// Build 171: "Kijk je nog?" (alle beelden)
+    @StateObject private var still = StillWatchingModel()
 
     final class StreamOwner {}
 
@@ -64,11 +66,14 @@ struct MultiviewScreen: View {
                     for c in again { add(c) }
                 }, onClose: { closeAll() })
             }
+
+            StillWatchingOverlay(model: still, onStop: { closeAll() })   // build 171
         }
         #if os(tvOS)
         .onExitCommand { closeAll() }
         #endif
         .onDisappear {
+            still.stop()
             StreamSession.shared.stop(owner: streamOwner)
             // build 60: ook gesloten van buitenaf (uitgelogd, profiel verwijderd, apparaatlimiet, Esc op de Mac):
             // alle beelden stoppen, anders bleven ze (met geluid en timers) op de achtergrond doorspelen
@@ -78,6 +83,7 @@ struct MultiviewScreen: View {
             ChannelPicker(channels: playlists.library.channels) { c in add(c) }
         }
         .onAppear {
+            setupStillWatching()
             if tiles.isEmpty {
                 registerStream()
                 for c in app.multiviewStart.prefix(4) { add(c) }
@@ -133,12 +139,14 @@ struct MultiviewScreen: View {
     }
 
     private func focus(_ t: Tile) {
+        still.interaction()   // build 171
         if active == t.id { fullscreen(t); return }
         active = t.id
         for x in tiles { x.controller.muted = x.id != t.id }
     }
 
     private func remove(_ t: Tile) {
+        still.interaction()
         t.controller.stop()
         tiles.removeAll { $0.id == t.id }
         if active == t.id, let f = tiles.first { active = nil; focus(f) }
@@ -171,6 +179,21 @@ struct MultiviewScreen: View {
         // naar de achtergrond: alle beelden echt stoppen (providerverbindingen vrij), terug = weer live
         session.onBackground = { tiles.forEach { $0.controller.suspendForBackground() } }
         session.onForeground = { tiles.forEach { $0.controller.resumeFromBackground() } }
+    }
+
+    /// Build 171: "Kijk je nog?" voor Multiview: zonder antwoord stoppen alle beelden en gaat er `stream_stop` uit
+    private func setupStillWatching() {
+        let owner = streamOwner
+        still.canAsk = { !tiles.isEmpty && streamLimit == nil }
+        still.onTimeout = {
+            StreamSession.shared.idleSuspend(owner: owner)
+            if !StreamSession.shared.idlePaused { tiles.forEach { $0.controller.pause() } }
+        }
+        still.onResume = {
+            if StreamSession.shared.idlePaused { StreamSession.shared.idleResume(owner: owner) }
+            else { tiles.forEach { $0.controller.resume() } }
+        }
+        still.start()
     }
 
     private func hitLimit(_ l: AccountService.StreamLimit) {

@@ -146,6 +146,8 @@ struct Channel: Identifiable, Hashable, Codable {
     var stalkerCmd: String?
     /// Build 128: van een andere server dan de open bron (nil = de open bron)
     var sourceID: UUID? = nil
+    /// Build 171: radiozender volgens de bron (Xtream `radio_streams`, M3U `radio="true"`); nil = onbekend
+    var radio: Bool? = nil
 }
 
 struct Movie: Identifiable, Hashable, Codable {

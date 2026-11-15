@@ -22,8 +22,32 @@ struct BrowseCategoriesView: View {
     /// Build 140: Live TV gekozen (alleen als tabblad)
     @State private var live = false
     @State private var openGroup: ChannelGroupTarget?
+    /// Build 171: filterchip (nil = Alle, "★" = vastgepind, anders een land/regio)
+    @State private var region: String?
+    /// Build 171: vastgepinde categorieën (per profiel)
+    @ObservedObject private var cloud = CloudStore.shared
 
     private var current: BrowseScope { scope ?? initialScope }
+
+    /// Build 171: past deze categorie bij de gekozen chip?
+    private func matches(_ name: String) -> Bool {
+        switch region {
+        case nil: return true
+        case .some(CategoryRegionChips.pinnedTag): return cloud.isPinned171(name)
+        case let r?: return CategoryRaw171.region(name) == r
+        }
+    }
+
+    /// Build 171: vastgepinde eerst, dan op de chip gefilterd
+    private func arranged<T>(_ list: [T], name: (T) -> String) -> [T] {
+        CategoryRegion171.ordered(list.filter { matches(name($0)) }) { cloud.isPinned171(name($0)) }
+    }
+
+    /// Build 171: chips voor wat er nu getoond wordt (Live TV of de categorieën van de server)
+    private func chips(_ names: [String]) -> some View {
+        CategoryRegionChips(regions: CategoryRegion171.chips(names.map { CategoryRaw171.region($0) }),
+                            hasPinned: names.contains { cloud.isPinned171($0) }, selection: $region)
+    }
     private var showsLive: Bool { asTab && !playlists.library.channels.isEmpty }
 
     var body: some View {
@@ -31,16 +55,21 @@ struct BrowseCategoriesView: View {
             VStack(alignment: .leading, spacing: tvScaled(22)) {
                 header
                 if live && showsLive {
+                    chips(channelGroups.map(\.name))
                     liveSection
                 } else {
                     let idx = store.index
-                    let genres = idx.genres.filter { $0.count(current) > 0 }
-                    let server = idx.server.filter { $0.count(current) > 0 }
+                    let genres = region == nil ? idx.genres.filter { $0.count(current) > 0 } : []
+                    let allServer = idx.server.filter { $0.count(current) > 0 }
+                    let server = arranged(allServer) { $0.title }
+                    chips(allServer.map(\.title))
                     if genres.isEmpty && server.isEmpty {
                         emptyState
                     } else {
+                        // build 171: met een chip alleen de categorieën van je server (vastgepinde bovenaan)
+                        if !server.isEmpty && region != nil { section(L("From your server"), server, menu: true) }
                         if !genres.isEmpty { section(L("Genres"), genres) }
-                        if !server.isEmpty { section(L("From your server"), server) }
+                        if !server.isEmpty && region == nil { section(L("From your server"), server, menu: true) }
                     }
                 }
             }
@@ -112,7 +141,7 @@ struct BrowseCategoriesView: View {
 
     /// Build 140: categorieën van Live TV (de zendergroepen zoals Live TV ze toont, al gefilterd voor dit profiel)
     @ViewBuilder private var liveSection: some View {
-        let groups = channelGroups
+        let groups = arranged(channelGroups) { $0.name }
         if groups.isEmpty {
             VStack(spacing: 12) {
                 Image(systemName: "dot.radiowaves.left.and.right").font(.system(size: tvScaled(40))).foregroundStyle(Theme.secondary)
@@ -127,6 +156,8 @@ struct BrowseCategoriesView: View {
                     }
                     .cardButton()
                     .tileHover()
+                    .contextMenu { CategoryTileMenu(display: g.name) }   // build 171: vastpinnen, verbergen
+                    .overlay(alignment: .topLeading) { pinBadge(g.name) }
                     .accessibilityLabel("\(g.name), \(L("%d channels", g.count))")
                 }
             }
@@ -157,7 +188,17 @@ struct BrowseCategoriesView: View {
         #endif
     }
 
-    private func section(_ title: String, _ list: [BrowseCategory]) -> some View {
+    /// Build 171: speldje op een vastgepinde categorie
+    @ViewBuilder private func pinBadge(_ name: String) -> some View {
+        if cloud.isPinned171(name) {
+            Image(systemName: "pin.fill").font(.system(size: tvScaled(11), weight: .bold))
+                .foregroundStyle(.white).padding(tvScaled(6))
+                .background(Theme.red, in: Circle()).padding(tvScaled(6))
+                .allowsHitTesting(false)
+        }
+    }
+
+    private func section(_ title: String, _ list: [BrowseCategory], menu: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: tvScaled(10)) {
             Text(title).font(Theme.titleFont).foregroundStyle(.white).padding(.horizontal, Theme.edge)
             LazyVGrid(columns: columns, spacing: tvScaled(12)) {
@@ -167,6 +208,8 @@ struct BrowseCategoriesView: View {
                     }
                     .cardButton()
                     .tileHover()
+                    .contextMenu { if menu { CategoryTileMenu(display: c.title) } }
+                    .overlay(alignment: .topLeading) { if menu { pinBadge(c.title) } }
                     .accessibilityLabel("\(c.title), \(L("%d titles", c.count(current)))")
                 }
             }
@@ -339,6 +382,7 @@ struct BrowseCategoryView: View {
         .preferredColorScheme(.dark)
         .task(id: "\(category.id)-\(category.entries.count)-\(current.rawValue)-\(sort.rawValue)") { await resort() }
         .sheet(item: $collecting) { AddToCollectionSheet(target: $0) }
+        .parentGate171()   // build 171
         #if !os(tvOS)
         .sheet(item: $detail) { DetailView(target: $0).presentationDragIndicator(.visible) }
         #else
@@ -446,6 +490,7 @@ struct BrowseCategoryView: View {
         Button { collecting = .detail(t) } label: {
             Label(L("Add to collection…"), systemImage: "rectangle.stack.badge.plus")
         }
+        BlockTitleMenuItem(target: t, server: pid)   // build 171
     }
 
     /// Profielen met een leeftijdsgrens gaan via de detailpagina (die controleert de classificatie), zoals op Home.
