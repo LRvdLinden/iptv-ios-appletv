@@ -592,8 +592,10 @@ private struct WideGuide: View {
     let select: (Channel) -> Void
     @EnvironmentObject var playlists: PlaylistService
 
-    /// Build 177: kopregel, live voorbeeld en tussenruimte boven de kolommen (voor de hoogte van de kolommen)
-    private static let chrome: CGFloat = 24 * 2 + 44 + 248 + 18 * 2 + 8
+    /// Build 177: kopregel, live voorbeeld en tussenruimte boven de kolommen (voor de hoogte van de kolommen):
+    /// marge 2 × 24, kop 44, voorbeeld 248, tussenruimte 2 × 18 en 8 voor de schuifbalk
+    private static let chrome: CGFloat = 384
+    private static let heroBlock: CGFloat = 266
 
     var body: some View {
         GeometryReader { g in
@@ -605,20 +607,29 @@ private struct WideGuide: View {
                         DayBar(day: $day, days: days, now: now).frame(maxWidth: 760)
                     }
                     if let c = selected { hero(c) }
-                    // build 177: elke kolom scrolt zelf (de hele dag), zo hoog als er plaats is (minstens 320)
-                    ScrollView(.horizontal, showsIndicators: true) {
-                        LazyHStack(alignment: .top, spacing: 16) {
-                            ForEach(channels) { ch in column(ch) }
-                        }
-                        .padding(.bottom, 8)
-                    }
-                    .frame(height: max(320, g.size.height - (selected == nil ? Self.chrome - 248 - 18 : Self.chrome)))
+                    columns(height: columnsHeight(g.size.height))
                 }
                 .padding(.horizontal, 32).padding(.vertical, 24)
             }
         }
         .onAppear { if let c = selected { guide.startPreview(c, delay: 0.4) } }
         .onChange(of: selected?.id) { _, _ in if let c = selected { guide.startPreview(c, delay: 0.5) } }
+    }
+
+    /// Build 177: elke kolom scrolt zelf (de hele dag), zo hoog als er plaats is (minstens 320)
+    private func columnsHeight(_ total: CGFloat) -> CGFloat {
+        let chrome: CGFloat = selected == nil ? Self.chrome - Self.heroBlock : Self.chrome
+        return max(320, total - chrome)
+    }
+
+    private func columns(height: CGFloat) -> some View {
+        ScrollView(.horizontal, showsIndicators: true) {
+            LazyHStack(alignment: .top, spacing: 16) {
+                ForEach(channels) { ch in column(ch) }
+            }
+            .padding(.bottom, 8)
+        }
+        .frame(height: height)
     }
 
     private func hero(_ c: Channel) -> some View {
