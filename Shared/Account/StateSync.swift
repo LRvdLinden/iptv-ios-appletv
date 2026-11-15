@@ -47,7 +47,9 @@ final class StateSync {
     /// build 128: `hiddenCategories` (categorieën uit per profiel, "<server-id>|<categorienaam>") als set erbij
     /// build 171: `hiddenChannels`, `pinnedCategories` en `blockedTitles` (per profiel, zelfde vorm)
     private static let setLists = ["myList", "favorites", "watched", "hiddenCategories",
-                                   "hiddenChannels", "pinnedCategories", "blockedTitles"]
+                                   "hiddenChannels", "pinnedCategories", "blockedTitles",
+                                   // build 172 (Sport)
+                                   "favoriteTeams", "favoriteCompetitions", "sportMuted"]
 
     private init() {
         if let d = BigDefaults.shared.data(forKey: metaKey), let m = try? JSONDecoder().decode(Meta.self, from: d) {
@@ -987,9 +989,15 @@ final class StateSync {
               let start = time(j["start"]) else { return nil }
         // profiel: het veld `profileID`, anders uit de ID ("p:<profiel>:…"), anders het hoofdprofiel (nil)
         let profile = string(j["profileID"]).flatMap(UUID.init(uuidString:)) ?? ProgramReminder.profile(fromID: id)
-        return ProgramReminder(id: id, playlistID: pl, channelID: channel,
-                               channelName: j["channelName"] as? String ?? "", title: j["title"] as? String ?? "",
-                               start: Date(timeIntervalSince1970: start), profileID: profile)
+        var r = ProgramReminder(id: id, playlistID: pl, channelID: channel,
+                                channelName: j["channelName"] as? String ?? "", title: j["title"] as? String ?? "",
+                                start: Date(timeIntervalSince1970: start), profileID: profile)
+        // build 172 (Sport): optioneel
+        r.leadMin = (j["leadMin"] as? NSNumber)?.intValue
+        r.competition = string(j["competition"])
+        r.matchKey = string(j["matchKey"])
+        r.auto = (j["auto"] as? Bool) == true ? true : nil
+        return r
     }
 
     /// Eén herinnering voor de server (zonder `at`). `profileID` in kleine letters, alleen bij een ander profiel dan het
@@ -999,6 +1007,11 @@ final class StateSync {
                                 "channelName": r.channelName, "title": r.title,
                                 "start": iso(r.start.timeIntervalSince1970)]
         if let p = r.profileID { j["profileID"] = p.uuidString.lowercased() }
+        // build 172 (Sport)
+        if let v = r.leadMin { j["leadMin"] = v }
+        if let v = r.competition, !v.isEmpty { j["competition"] = v }
+        if let v = r.matchKey { j["matchKey"] = v }
+        if r.auto == true { j["auto"] = true }
         return j
     }
 
@@ -1371,6 +1384,9 @@ final class StateSync {
         Self.diff(&m, "hiddenChannels", d.hiddenChannels, now: now)
         Self.diff(&m, "pinnedCategories", d.pinnedCategories, now: now)
         Self.diff(&m, "blockedTitles", d.blockedTitles, now: now)
+        Self.diff(&m, "favoriteTeams", d.favoriteTeams, now: now)
+        Self.diff(&m, "favoriteCompetitions", d.favoriteCompetitions, now: now)
+        Self.diff(&m, "sportMuted", d.sportMuted, now: now)
         Self.diffOrdered(&m, "recentChannels", d.recentChannels, now: now)
         // voortgang: alleen bewuste verwijderingen tellen (`progressCleared`), niet een sleutel die hier ontbreekt
         Self.diffTimed(&m, "progress", d.progress.mapValues { $0.updated.timeIntervalSince1970 }, now: now, inferRemovals: false)
@@ -1572,6 +1588,9 @@ final class StateSync {
         newData.hiddenChannels = Set((sets["hiddenChannels"] ?? [:]).keys)
         newData.pinnedCategories = Set((sets["pinnedCategories"] ?? [:]).keys)
         newData.blockedTitles = Set((sets["blockedTitles"] ?? [:]).keys)
+        newData.favoriteTeams = Set((sets["favoriteTeams"] ?? [:]).keys)
+        newData.favoriteCompetitions = Set((sets["favoriteCompetitions"] ?? [:]).keys)
+        newData.sportMuted = Set((sets["sportMuted"] ?? [:]).keys)
         newData.recentChannels = recentOrdered.map(\.key)
         newData.history = historySorted.map(\.entry)
         newData.progress = progress.mapValues(\.entry)

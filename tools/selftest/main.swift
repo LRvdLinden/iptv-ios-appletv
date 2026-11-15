@@ -2578,5 +2578,94 @@ do {
     print("172: 5.000 groepen in \(Int(ms)) ms")
 }
 
+// MARK: build 172: Sport (Shared/Sport/Build173.swift)
+// De gedeelde gevallen komen uit docs/sport_cases.json (zelfde als web/js/sportlogic.js en Build173Logic.kt).
+do {
+    let here = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+    let paths = [here.appendingPathComponent("docs/sport_cases.json"),
+                 URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+                    .deletingLastPathComponent().appendingPathComponent("docs/sport_cases.json")]
+    let caseData = paths.lazy.compactMap { try? Data(contentsOf: $0) }.first
+    check(caseData != nil, "sport: docs/sport_cases.json gevonden")
+    let C = caseData.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
+    let iso = ISO8601DateFormatter()
+    func date(_ v: Any?) -> Date { iso.date(from: v as? String ?? "") ?? Date(timeIntervalSince1970: 0) }
+    func pairs(_ k: String) -> [[Any]] { (C[k] as? [[Any]]) ?? [] }
+    func objs(_ v: Any?) -> [[String: Any]] { (v as? [[String: Any]]) ?? [] }
+    func strs(_ v: Any?) -> [String] { (v as? [Any])?.compactMap { $0 as? String } ?? [] }
+    func int(_ v: Any?) -> Int { (v as? NSNumber)?.intValue ?? -1 }
+    func bool(_ v: Any?) -> Bool { (v as? NSNumber)?.boolValue ?? false }
+
+    check(pairs("categories").count >= 10, "sport: gevallen geladen")
+    for c in pairs("categories") { eq(Sport173.isSportCategory(c[0] as! String), bool(c[1]), "sport categorie \(c[0])") }
+    for c in pairs("channels") {
+        eq(Sport173.isSportChannel(c[0] as! String, category: c[1] as! String, favorite: bool(c[2])), bool(c[3]), "sport zender \(c[0]) / \(c[1])")
+    }
+    for c in pairs("quality") { eq(Sport173.quality(c[0] as! String), int(c[1]), "sport kwaliteit \(c[0])") }
+    for c in pairs("excluded") { eq(Sport173.isExcluded(c[0] as! String), bool(c[1]), "sport herhaling \(c[0])") }
+    for c in pairs("clean") { eq(Sport173.cleanTeam(c[0] as! String), c[1] as! String, "sport opschonen \(c[0])") }
+    for c in pairs("short") { eq(Sport173.short(c[0] as! String), c[1] as! String, "sport initialen \(c[0])") }
+    for c in pairs("teamKey") { eq(Sport173.teamKey(c[0] as! String), c[1] as! String, "sport teamsleutel \(c[0])") }
+    for c in pairs("color") { eq(Sport173.colorIndex(c[0] as! String), int(c[1]), "sport kleur \(c[0])") }
+
+    let start = date("2026-11-21T19:30:00Z")
+    for c in objs(C["classify"]) {
+        let t = c["title"] as! String
+        let got = Sport173.classify(title: t, description: c["description"] as? String, channel: c["channel"] as? String ?? "",
+                                    category: c["category"] as? String ?? "", start: start,
+                                    end: start.addingTimeInterval(Double(int(c["minutes"])) * 60))
+        if let e = c["expect"] as? [String: Any] {
+            let want = SportMatch173(kind: e["kind"] as! String, title: e["title"] as! String, home: e["home"] as! String,
+                                     away: e["away"] as! String, sport: e["sport"] as! String,
+                                     competition: e["competition"] as! String, competitionID: e["competitionId"] as? String ?? "")
+            check(got == want, "sport wedstrijd \(t): kreeg \(String(describing: got))")
+        } else {
+            check(got == nil, "sport geen wedstrijd \(t): kreeg \(String(describing: got))")
+        }
+    }
+    for c in objs(C["matchKey"]) {
+        let s = date(c["start"])
+        let m = Sport173.classify(title: c["title"] as! String, channel: c["channel"] as? String ?? "Sport", category: "Sport",
+                                  start: s, end: s.addingTimeInterval(7200))
+        eq(m.map { Sport173.matchKey($0, start: s) } ?? "-", c["key"] as! String, "sport sleutel \(c["title"]!)")
+    }
+    func listings(_ v: Any?) -> [SportListing173] {
+        objs(v).compactMap { l in
+            let s = date(l["start"]), e = s.addingTimeInterval(Double(int(l["minutes"])) * 60)
+            guard let m = Sport173.classify(title: l["title"] as! String, channel: l["channel"] as! String, category: "Sport",
+                                            start: s, end: e) else { return nil }
+            return SportListing173(id: l["id"] as! String, channel: l["channel"] as! String, favorite: bool(l["favorite"]),
+                                   start: s, end: e, match: m)
+        }
+    }
+    for (i, c) in objs(C["dedupe"]).enumerated() {
+        let got = Sport173.dedupe(listings(c["listings"])).map { $0.listings.map(\.id) }
+        let want = ((c["expect"] as? [[String]]) ?? [])
+        eq(got, want, "sport ontdubbelen \(i)")
+    }
+    for (i, c) in objs(C["auto"]).enumerated() {
+        let groups = Sport173.dedupe(listings(c["listings"]))
+        eq(Sport173.autoReminders(groups, now: date(c["now"]), teams: strs(c["teams"]), competitions: strs(c["competitions"]),
+                                  muted: Set(strs(c["muted"])), existing: Set(strs(c["existing"]))),
+           strs(c["expect"]), "sport automatisch \(i)")
+    }
+    for (i, c) in objs(C["pruneMuted"]).enumerated() {
+        eq(Sport173.pruneMuted(strs(c["keys"]), now: date(c["now"])), strs(c["expect"]), "sport dempen opruimen \(i)")
+    }
+    eq(Sport173.lead(15), 15, "sport lead 15"); eq(Sport173.lead(7), 5, "sport lead 7"); eq(Sport173.lead(nil), 5, "sport lead nil")
+    eq(Sport173.hash(""), 0x811c9dc5, "fnv leeg"); eq(Sport173.hash("a"), 0xe40c292c, "fnv a")
+    eq(Sport173.fold("Atlético Ølstykke Straße"), "atletico olstykke strasse", "sport fold")
+    // prestaties: 50.000 programma's herkennen
+    let t0 = Date()
+    var found = 0
+    for i in 0..<50000 {
+        let t = i % 3 == 0 ? "Ajax - PSV \(i % 7)" : (i % 3 == 1 ? "Journaal" : "GP Las Vegas: kwalificatie")
+        if Sport173.classify(title: t, channel: "ESPN 1", category: "Sport", start: start, end: start.addingTimeInterval(5400)) != nil { found += 1 }
+    }
+    let ms = Date().timeIntervalSince(t0) * 1000
+    print("sport: 50.000 programma's in \(Int(ms)) ms (\(found) wedstrijden)")
+    check(ms < 20000, "sport: 50.000 programma's binnen 20 s")
+}
+
 print("\(checks) controles, \(failures) fout")
 exit(failures == 0 ? 0 : 1)

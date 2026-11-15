@@ -502,7 +502,10 @@ final class ReminderCenter: ObservableObject {
 
     private func check() {
         let now = Date()
-        if let r = CloudStore.shared.reminders.first(where: { $0.start <= now.addingTimeInterval(60) && $0.start > now.addingTimeInterval(-300) }) {
+        // build 172: een sportherinnering op het gekozen moment (bij de start, 5 of 15 min eerder)
+        if let r = CloudStore.shared.reminders.first(where: { r in
+            (r.isSport ? r.notifyAt <= now : r.start <= now.addingTimeInterval(60)) && r.start > now.addingTimeInterval(-300)
+        }) {
             due = r
             CloudStore.shared.removeReminder(r.id)
         }
@@ -519,9 +522,39 @@ final class ReminderCenter: ObservableObject {
         await scheduleNotification(r)
     }
 
+    /// Build 172: belletje bij een wedstrijd (Sport). Eén herinnering per wedstrijd en profiel (vaste sleutel), op de
+    /// beste zender; `lead` = minuten vóór de start (0, 5 of 15).
+    func addSport(key: String, match: SportMatch173, start: Date, channel: Channel, playlist: UUID, lead: Int,
+                  auto: Bool = false) async {
+        let store = CloudStore.shared
+        let owner = store.activeProfileID ?? store.mainProfileID
+        var r = ProgramReminder(id: ProgramReminder.makeSportID(key: key, profile: owner, main: store.mainProfileID),
+                                playlistID: playlist, channelID: channel.id, channelName: channel.name, title: match.title,
+                                start: start, profileID: owner == store.mainProfileID ? nil : owner)
+        r.leadMin = Sport173.lead(lead)
+        r.competition = match.competition.isEmpty ? nil : match.competition
+        r.matchKey = key
+        r.auto = auto ? true : nil
+        cancelNotification(r.id)
+        store.addReminder(r)
+        await scheduleNotification(r, ask: !auto)
+    }
+
+    /// Build 172: sportherinnering van het actieve profiel voor deze wedstrijd (of nil).
+    func sportReminder(key: String) -> ProgramReminder? {
+        let store = CloudStore.shared
+        let id = ProgramReminder.makeSportID(key: key, profile: store.activeProfileID ?? store.mainProfileID, main: store.mainProfileID)
+        return store.reminders.first { $0.id == id }
+    }
+
     /// Titel van de melding/banner: met de profielnaam als het account meer profielen heeft ("Voor Emma: Journaal").
+    /// Build 172: bij sport "Ajax - PSV begint over 5 minuten" / "… begint nu".
     func displayTitle(_ r: ProgramReminder) -> String {
-        let t = CategoryName.display(r.title)   // build 153
+        var t = CategoryName.display(r.title)   // build 153
+        if r.isSport {
+            let lead = Sport173.lead(r.leadMin)
+            t = lead == 0 ? L("%@ starts now", t) : L("%@ starts in %d minutes", t, lead)
+        }
         guard let name = CloudStore.shared.reminderProfileName(r) else { return t }
         return L("For %@: %@", name, t)
     }
@@ -554,16 +587,27 @@ final class ReminderCenter: ObservableObject {
         let content = UNMutableNotificationContent()
         // ook voor herinneringen van een ander profiel dan het actieve: dan met de naam van dat profiel
         content.title = displayTitle(r)
-        content.body = L("Starts in 2 minutes on %@", CategoryName.channel(r.channelName))
+        content.body = r.isSport ? sportLine(r) : L("Starts in 2 minutes on %@", CategoryName.channel(r.channelName))
         content.sound = .default
         var info: [String: String] = ["channelID": r.channelID, "playlistID": r.playlistID.uuidString]
         if let p = r.owner { info["profileID"] = p.uuidString }
         content.userInfo = info
-        let fire = max(r.start.addingTimeInterval(-120).timeIntervalSinceNow, 1)
+        let fire = max(r.notifyAt.timeIntervalSinceNow, 1)
         let req = UNNotificationRequest(identifier: r.id, content: content,
                                         trigger: UNTimeIntervalNotificationTrigger(timeInterval: fire, repeats: false))
         try? await center.add(req)
         #endif
+    }
+
+    /// Build 172: tweede regel van een sportmelding: "Eredivisie · Sport 1. Tik om live te kijken."
+    func sportLine(_ r: ProgramReminder) -> String {
+        let parts = [r.competition ?? "", CategoryName.channel(r.channelName)].filter { !$0.isEmpty }
+        return parts.joined(separator: " · ") + ". " + L("Tap to watch live.")
+    }
+
+    /// Tweede regel van de banner in de app.
+    func bannerLine(_ r: ProgramReminder) -> String {
+        r.isSport ? sportLine(r) : L("Starts now on %@", CategoryName.channel(r.channelName))
     }
 
     /// Melding van een (elders) verwijderde herinnering intrekken.
@@ -586,7 +630,7 @@ final class ReminderCenter: ObservableObject {
                 if !ids.isEmpty { center.removePendingNotificationRequests(withIdentifiers: ids) }
             }
         } else {
-            let upcoming = CloudStore.shared.reminders.filter { $0.start.addingTimeInterval(-120) > Date() }
+            let upcoming = CloudStore.shared.reminders.filter { $0.notifyAt > Date() }
             Task { @MainActor in
                 for r in upcoming { await self.scheduleNotification(r, ask: false) }
             }

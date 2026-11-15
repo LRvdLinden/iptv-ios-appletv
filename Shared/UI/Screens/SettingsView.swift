@@ -67,10 +67,12 @@ struct AppSettingsView: View {
                 CrashReportsSettingsSection()   // build 171: Privacy
                 #if !os(tvOS)
                 if Secrets.accountsConfigured && account.isSignedIn { notificationsSection }
+                SportNotifySettingsSection()   // build 172: Meldingen > standaard bij een wedstrijd
                 #endif
             case .playback?:
                 playerSection
                 StillWatchingSettingsSection()   // build 171
+                SportSettingsSection()   // build 172: Mijn teams en competities
             case .languages?:
                 languageTracksSection
                 openSubtitlesSection

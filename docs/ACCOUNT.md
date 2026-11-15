@@ -2300,3 +2300,83 @@ de volgende start) en ANR's/native crashes via `ApplicationExitInfo` (API 30+). 
 `supabase/functions/push/beheer_test.ts` (crashmeldingen); in SQL `supabase/tests/crash_test.sh` (groepen, opgelost en
 teruggekomen, filters, details, pushclaim, grenzen in de tabel, opschonen na 90 dagen, rechten). Alle in de workflow Backend
 en blokkerend voor de deploy.
+
+## Build 172: Sport (wedstrijden uit de tv-gids, belletje bij de aftrap)
+
+Tabblad **Sport** in alle apps met live tv (iPhone, iPad, Mac, Apple TV, Android, Android TV en de webspeler). De
+wedstrijden komen uit de EPG van de servers van het account, niet uit een externe dienst. De herkenning is pure logica,
+gelijk op alle platforms (Apple `Shared/Sport/Build173.swift`, Android `Build173Logic.kt`, web `web/js/sportlogic.js`),
+met gedeelde testgevallen in `docs/sport_cases.json`.
+
+### 1. Herkennen (lokaal, geen serverwijziging)
+
+- **Zenders:** categorie die op sport lijkt (woorden `sport`, `sports`, `voetbal`, `football`, `soccer`, `f1`, `motorsport`,
+  `tennis`, `darts`, `golf`, `nba`, `nfl`, `nhl`, `ufc`, `boxing`, `dazn`, `espn`, `eurosport`, `viaplay`, `bein`, `supersport`,
+  ook met cijfers erachter zoals `sport1`; en `ziggo sport`, `sky sports`, `tnt sports`, `canal+ sport`, `arena sport`),
+  of een `EVENTS`/`event`/`PPV`-categorie, of een **favoriete zender** waarvan de naam op sport lijkt. Radiozenders niet.
+  De bibliotheek is al gefilterd: verborgen zenders en categorieën (build 171) en de regels van het kinderprofiel gelden.
+- **Wedstrijd:** de titel is een duel (`A - B`, `A – B`, `A vs B`, `A vs. B`, `A v B`; twee kanten met ≥ 2 letters, hooguit
+  4 woorden, geen woorden als journaal/weer/nieuws/deel/aflevering) of een bekend evenement (Grand Prix/GP, F1, MotoGP,
+  kwalificatie/qualifying; race/sprint/training alleen met F1-context; darts/PDC; ATP/WTA/Grand Slams; Tour de …, Giro,
+  Vuelta, klassiekers; UFC/boksen/MMA). Motorsport en wielrennen zijn nooit een duel.
+- **Uitgesloten:** `(R)`, herh(aling), replay, samenvatting, highlights, studio, voor-/nabeschouwing, magazine; een duel
+  korter dan 20 minuten (evenementen mogen korter).
+- **Competitie en sport:** eerst de tabel met competities in titel en beschrijving, dan het evenement, dan de tabel in
+  zendernaam en categorie, dan trefwoorden; onbekend = `other` (Overig). Sport-id's: `football`, `motorsport`, `tennis`,
+  `darts`, `cycling`, `basketball`, `icehockey`, `americanfootball`, `combat`, `golf`, `other`.
+- **Teams:** opgeschoond (zonder voorvoegsels als `NL:`/`|NL|`, haakjes, LIVE, kwaliteit en tijden); initialen (3 tekens)
+  en een kleur uit 12 kleuren (FNV-1a van de teamsleutel). Teamsleutel = kleine letters zonder accenten, alleen letters en
+  cijfers, zonder clubaffixen (`fc`, `sc`, `sv`, …): `FC Twente` = `Twente`.
+- **Ontdubbelen:** zelfde teams (volgorde maakt niet uit) of zelfde evenementtitel, aftrap hooguit 15 minuten verschil =
+  één wedstrijd met meerdere zenders. Volgorde van de zenders: favoriete zender, dan kwaliteit (4K > FHD > HD/onbekend >
+  SD), dan de gids. Live = nu bezig volgens de gids (voortgang uit start/einde).
+- **Sleutel per wedstrijd** (`matchKey`): duel `sport:<teamsleutel a>~<teamsleutel b>:<jjjjmmdd>` (teams alfabetisch,
+  UTC-datum van de aftrap), evenement `sport:<titel als letters/cijfers>:<jjjjmmdduumm>` (UTC, minuten afgerond op 00/30).
+
+### 2. Het belletje = een gewone herinnering (state-section `reminders`)
+
+Een belletje bij een wedstrijd is een item in `reminders` (zie "Herinneringen per profiel"), met optionele velden:
+
+```json
+{ "id": "sport:ajax~psv:20261121", "playlistID": "…", "channelID": "…", "channelName": "ESPN 1 FHD",
+  "title": "Ajax - PSV", "start": "2026-11-21T19:30:00Z", "at": "…",
+  "leadMin": 5, "competition": "Eredivisie", "matchKey": "sport:ajax~psv:20261121", "auto": true }
+```
+
+- **`id`**: de `matchKey` (hoofdprofiel), bij een ander profiel `p:<profiel-id>:<matchKey>`. Eén herinnering per
+  wedstrijd per profiel, op de beste zender; zo komen er geen dubbele.
+- **`leadMin`**: `0` (bij de start), `5` (standaard) of `15` minuten vóór `start`. Andere waarden = 5. Zonder `leadMin`
+  (gewone herinnering) blijft het 2 minuten.
+- **`competition`** (optioneel): voor de tekst. **`matchKey`**: maakt het een sportherinnering. **`auto`**: automatisch gezet
+  (favoriet team of competitie).
+- Apps die deze velden niet kennen, laten ze bij het herschrijven weg; dan wordt het een gewone herinnering (2 minuten).
+- **Tekst** (melding, banner, push): titel `"<titel> begint over <n> minuten"` / `"<titel> begint nu"` (EN `"<title> starts in
+  <n> minutes"` / `"<title> starts now"`), met de profielnaam ervoor zoals bij gewone herinneringen; tweede regel
+  `"<competitie> · <zender>. Tik om live te kijken."` (EN `"… Tap to watch live."`). Tikken = de zender live (`bingr://live`,
+  zoals bij een gewone herinnering).
+- **Standaardmoment:** Instellingen > Meldingen (alleen op het apparaat, `sport.lead`), per herinnering te wijzigen.
+- **Apple TV, Android TV:** banner in de app op het gekozen moment. **iPhone, iPad, Mac, Android, webspeler:** push van de
+  server, zonder push een lokale melding op het gekozen moment.
+
+### 3. Mijn teams en competities (`profile.<id>`)
+
+Drie sets per profiel, met hetzelfde patroon als `hiddenCategories`/`hiddenChannels` (`[{id, at}]`, verwijderd als
+`{id, removed:true, at}` en in `removed.<veld>`):
+
+| veld | sleutel |
+|---|---|
+| `favoriteTeams` | de teamnaam zoals getoond (`"FC Twente"`); vergelijken op teamsleutel |
+| `favoriteCompetitions` | competitie-id uit de tabel (`eredivisie`, `champions-league`, `premier-league`, `formula-1`, `atp`, …) |
+| `sportMuted` | `matchKey` van een wedstrijd waarvan de gebruiker het belletje uitzette; opgeruimd na 2 dagen (datum in de sleutel) |
+
+- Het apparaat dat de EPG ververst, zet voor het actieve profiel automatisch een belletje (`auto: true`, standaardmoment)
+  bij elke wedstrijd van een favoriet team of een favoriete competitie in de komende 7 dagen, als er voor die `matchKey`
+  nog geen herinnering is en hij niet in `sportMuted` staat.
+- Belletje uitzetten → `matchKey` in `sportMuted` (komt niet terug); weer aanzetten → eruit.
+
+### 4. Server (functie `push`)
+
+De cron van `push` leest `leadMin`, `competition` en `matchKey`: een sportherinnering gaat `leadMin` minuten vóór de start
+(bij `0`: vanaf de start tot 2 minuten erna), met de sporttekst hierboven in de taal van het apparaat (11 talen). Gewone
+herinneringen blijven 2 minuten vooraf. Sleutel `reminder:<account>:<id>` (ongewijzigd). Tests in
+`supabase/functions/push/push_test.ts`.

@@ -60,6 +60,8 @@ struct MainTabView: View {
     }
 
     private var hasLive: Bool { !playlists.library.channels.isEmpty || !(playlists.source?.kind.isMediaServer ?? false) }
+    /// Build 172: tabblad Sport (wedstrijden uit de tv-gids), alleen met live tv
+    private var hasSport: Bool { hasLive && showLive }
 
     /// Build 143: de tabbladen die er nu echt zijn, op dit platform. Met de SDK van iOS/tvOS 27 kan een TabView crashen
     /// als de selectie een tabblad is dat (nu) niet bestaat (release notes iOS/iPadOS 27: "TabView might crash when its
@@ -67,7 +69,11 @@ struct MainTabView: View {
     /// profielwissel even weg is, Mijn Bingr (5) dat alleen op Apple TV een tabblad is, Zoeken (4) en Downloads (6)
     /// die op de iPhone geen tabblad zijn, of een opgeslagen starttabblad. De selectie valt daarom altijd terug op Home.
     private var availableTabs: Set<Int> {
-        var t: Set<Int> = [0, 7]
+        // build 172: Sport (8) naast Series; op de iPhone (max. 5 tabbladen) in plaats van Categorieën, dat via Home
+        // en Live TV bereikbaar blijft
+        var t: Set<Int> = [0]
+        if !Self.isPhone || !hasSport { t.insert(7) }
+        if hasSport { t.insert(8) }
         if hasLive && showLive { t.insert(1) }
         if showMovies { t.insert(2) }
         if showSeries { t.insert(3) }
@@ -114,11 +120,18 @@ struct MainTabView: View {
                     HomeView(filter: .series).tag(3)
                         .tabItem { Label(L("Series"), systemImage: "rectangle.stack.fill") }
                 }
+                // Build 172: Sport naast Films en Series (Apple TV: in de bovenbalk)
+                if hasSport {
+                    SportView().tag(8)
+                        .tabItem { Label(L("Sport"), systemImage: "sportscourt") }
+                }
                 // Build 140: Categorieën (Live TV, Films, Series) naast Series, op de plek van Mijn Bingr. Mijn Bingr
                 // zit nu achter het profiel bovenin (Apple TV: de avatar aan het eind van de menubalk).
                 // Kinderprofiel: alleen kindercategorieën (de bibliotheek is al gefilterd).
-                BrowseCategoriesView(asTab: true).tag(7)
-                    .tabItem { Label(L("Categories"), systemImage: "square.grid.2x2") }
+                if !Self.isPhone || !hasSport {
+                    BrowseCategoriesView(asTab: true).tag(7)
+                        .tabItem { Label(L("Categories"), systemImage: "square.grid.2x2") }
+                }
                 // iPhone toont max. 5 tabbladen (anders "Meer"); zoeken zit daar al als vergrootglas op Home/Films/Series
                 if !Self.isPhone {
                     SearchView().tag(4)

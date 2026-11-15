@@ -42,6 +42,11 @@ final class CloudStore: ObservableObject {
     @Published private(set) var hiddenChannels: Set<String> = []
     @Published private(set) var pinnedCategories: Set<String> = []
     @Published private(set) var blockedTitles: Set<String> = []
+    /// Build 172 (Sport): favoriete teams (naam zoals getoond), competities (id uit `Sport173.competitions`) en gedempte
+    /// wedstrijden (automatisch belletje uitgezet: sleutel van `Sport173.matchKey`), per profiel in `profile.<id>`
+    @Published private(set) var favoriteTeams: Set<String> = []
+    @Published private(set) var favoriteCompetitions: Set<String> = []
+    @Published private(set) var sportMuted: Set<String> = []
     @Published var lastSync: Date?
     /// Per afspeellijst: hernoemd, verborgen, volgorde, samengevoegd
     @Published private(set) var customizations: [UUID: Customization] = [:]
@@ -105,11 +110,16 @@ final class CloudStore: ObservableObject {
         assign(\.hiddenChannels, decode(Set<String>.self, pk(K.hiddenChannels)) ?? [])
         assign(\.pinnedCategories, decode(Set<String>.self, pk(K.pinnedCategories)) ?? [])
         assign(\.blockedTitles, decode(Set<String>.self, pk(K.blockedTitles)) ?? [])
+        assign(\.favoriteTeams, decode(Set<String>.self, pk(K.favoriteTeams)) ?? [])
+        assign(\.favoriteCompetitions, decode(Set<String>.self, pk(K.favoriteCompetitions)) ?? [])
+        assign(\.sportMuted, decode(Set<String>.self, pk(K.sportMuted)) ?? [])
     }
 
     /// Build 171: de drie sets per profiel
     enum ProfileSet171: String, CaseIterable {
         case hiddenChannels, pinnedCategories, blockedTitles
+        /// build 172 (Sport)
+        case favoriteTeams, favoriteCompetitions, sportMuted
     }
 
     private static func key171(_ f: ProfileSet171) -> String {
@@ -117,6 +127,9 @@ final class CloudStore: ObservableObject {
         case .hiddenChannels: return K.hiddenChannels
         case .pinnedCategories: return K.pinnedCategories
         case .blockedTitles: return K.blockedTitles
+        case .favoriteTeams: return K.favoriteTeams
+        case .favoriteCompetitions: return K.favoriteCompetitions
+        case .sportMuted: return K.sportMuted
         }
     }
 
@@ -128,6 +141,9 @@ final class CloudStore: ObservableObject {
             case .hiddenChannels: return hiddenChannels
             case .pinnedCategories: return pinnedCategories
             case .blockedTitles: return blockedTitles
+            case .favoriteTeams: return favoriteTeams
+            case .favoriteCompetitions: return favoriteCompetitions
+            case .sportMuted: return sportMuted
             }
         }
         return decode(Set<String>.self, "\(Self.key171(f)).\(id!.uuidString)") ?? []
@@ -147,6 +163,9 @@ final class CloudStore: ObservableObject {
             case .hiddenChannels: hiddenChannels = set
             case .pinnedCategories: pinnedCategories = set
             case .blockedTitles: blockedTitles = set
+            case .favoriteTeams: favoriteTeams = set
+            case .favoriteCompetitions: favoriteCompetitions = set
+            case .sportMuted: sportMuted = set
             }
         }
         stateEdited.send((id, .profile))
@@ -340,7 +359,9 @@ final class CloudStore: ObservableObject {
                    collections = "collections.v1", homeLayout = "homelayout.v1",
                    categories = "categories.v1", accountCategories = "categories.account.v140",
                    hiddenChannels = "hiddenchannels.v171", pinnedCategories = "pinnedcategories.v171",
-                   blockedTitles = "blockedtitles.v171"
+                   blockedTitles = "blockedtitles.v171",
+                   favoriteTeams = "favoriteteams.v172", favoriteCompetitions = "favoritecompetitions.v172",
+                   sportMuted = "sportmuted.v172"
     }
 
     private init() {
@@ -525,7 +546,8 @@ final class CloudStore: ObservableObject {
 
     /// Build 140: lijsten per profiel (Mijn lijst, favorieten, bekeken, recente zenders, categorieën van build 128)
     private static func isListKey(_ key: String) -> Bool {
-        [K.myList, K.favorites, K.watched, K.recent, K.categories, K.hiddenChannels, K.pinnedCategories, K.blockedTitles].contains { key == $0 || key.hasPrefix($0 + ".") }
+        [K.myList, K.favorites, K.watched, K.recent, K.categories, K.hiddenChannels, K.pinnedCategories, K.blockedTitles,
+         K.favoriteTeams, K.favoriteCompetitions, K.sportMuted].contains { key == $0 || key.hasPrefix($0 + ".") }
     }
 
     /// Voortgang, geschiedenis (per profiel) en foto's
@@ -832,6 +854,10 @@ final class CloudStore: ObservableObject {
         var hiddenChannels: Set<String> = []
         var pinnedCategories: Set<String> = []
         var blockedTitles: Set<String> = []
+        /// Build 172 (Sport): favoriete teams en competities, gedempte wedstrijden
+        var favoriteTeams: Set<String> = []
+        var favoriteCompetitions: Set<String> = []
+        var sportMuted: Set<String> = []
     }
 
     /// Gegevens van een profiel lezen. Het hoofdprofiel neemt (net als `scoped`) de gegevens van vóór de profielen over.
@@ -842,7 +868,8 @@ final class CloudStore: ObservableObject {
             return ProfileData(favorites: favorites, myList: myList, watched: localWatched,
                                recentChannels: recentChannels, history: history, progress: progress,
                                hiddenCategories: decode(Set<String>.self, "\(K.categories).\(id.uuidString)") ?? [],
-                               hiddenChannels: hiddenChannels, pinnedCategories: pinnedCategories, blockedTitles: blockedTitles)
+                               hiddenChannels: hiddenChannels, pinnedCategories: pinnedCategories, blockedTitles: blockedTitles,
+                               favoriteTeams: favoriteTeams, favoriteCompetitions: favoriteCompetitions, sportMuted: sportMuted)
         }
         func read<T: Decodable>(_ t: T.Type, _ base: String) -> T? {
             if let v = decode(t, "\(base).\(id.uuidString)") { return v }
@@ -857,7 +884,10 @@ final class CloudStore: ObservableObject {
                            hiddenCategories: decode(Set<String>.self, "\(K.categories).\(id.uuidString)") ?? [],
                            hiddenChannels: decode(Set<String>.self, "\(K.hiddenChannels).\(id.uuidString)") ?? [],
                            pinnedCategories: decode(Set<String>.self, "\(K.pinnedCategories).\(id.uuidString)") ?? [],
-                           blockedTitles: decode(Set<String>.self, "\(K.blockedTitles).\(id.uuidString)") ?? [])
+                           blockedTitles: decode(Set<String>.self, "\(K.blockedTitles).\(id.uuidString)") ?? [],
+                           favoriteTeams: decode(Set<String>.self, "\(K.favoriteTeams).\(id.uuidString)") ?? [],
+                           favoriteCompetitions: decode(Set<String>.self, "\(K.favoriteCompetitions).\(id.uuidString)") ?? [],
+                           sportMuted: decode(Set<String>.self, "\(K.sportMuted).\(id.uuidString)") ?? [])
     }
 
     /// Gegevens van een profiel uit de Bingr-account zetten (StateSync). Alleen wat veranderd is wordt geschreven;
@@ -876,12 +906,17 @@ final class CloudStore: ObservableObject {
         if old.hiddenChannels != d.hiddenChannels { write(d.hiddenChannels, K.hiddenChannels + suffix) }
         if old.pinnedCategories != d.pinnedCategories { write(d.pinnedCategories, K.pinnedCategories + suffix) }
         if old.blockedTitles != d.blockedTitles { write(d.blockedTitles, K.blockedTitles + suffix) }
+        if old.favoriteTeams != d.favoriteTeams { write(d.favoriteTeams, K.favoriteTeams + suffix) }
+        if old.favoriteCompetitions != d.favoriteCompetitions { write(d.favoriteCompetitions, K.favoriteCompetitions + suffix) }
+        if old.sportMuted != d.sportMuted { write(d.sportMuted, K.sportMuted + suffix) }
         if id == activeProfileID {
             // alleen wat veranderd is: anders tekent elk scherm opnieuw bij elke sync-ronde
             assign(\.favorites, d.favorites); assign(\.myList, d.myList); assign(\.localWatched, d.watched)
             assign(\.recentChannels, d.recentChannels); assign(\.history, d.history); assign(\.progress, d.progress)
             assign(\.hiddenChannels, d.hiddenChannels); assign(\.pinnedCategories, d.pinnedCategories)
             assign(\.blockedTitles, d.blockedTitles)
+            assign(\.favoriteTeams, d.favoriteTeams); assign(\.favoriteCompetitions, d.favoriteCompetitions)
+            assign(\.sportMuted, d.sportMuted)
         }
     }
 
@@ -1550,6 +1585,18 @@ struct ProgramReminder: Codable, Hashable, Identifiable {
     var start: Date
     /// Van welk profiel (nil = hoofdprofiel, of van vóór de herinneringen per profiel)
     var profileID: UUID? = nil
+    /// Build 172 (Sport, docs/ACCOUNT.md → "Build 172: Sport"): minuten vóór de start voor de melding (0, 5 of 15;
+    /// nil = zoals altijd, 2 minuten), de competitie voor de tekst, de vaste sleutel van de wedstrijd en of het belletje
+    /// automatisch gezet is (favoriet team of competitie)
+    var leadMin: Int? = nil
+    var competition: String? = nil
+    var matchKey: String? = nil
+    var auto: Bool? = nil
+
+    /// Sportherinnering (build 172)
+    var isSport: Bool { matchKey != nil }
+    /// Moment van de melding: bij sport `leadMin` minuten vóór de start, anders 2 minuten.
+    var notifyAt: Date { start.addingTimeInterval(-Double(isSport ? Sport173.lead(leadMin) : 2) * 60) }
 }
 
 extension ProgramReminder {
@@ -1573,6 +1620,13 @@ extension ProgramReminder {
 
     /// Het profiel van deze herinnering (nil = hoofdprofiel).
     var owner: UUID? { profileID ?? Self.profile(fromID: id) }
+
+    /// Build 172: ID van een sportherinnering: de vaste sleutel van de wedstrijd ("sport:…"), bij een ander profiel dan
+    /// het hoofdprofiel met "p:<profiel>:" ervoor. Zo krijgt een wedstrijd op meerdere zenders één belletje.
+    static func makeSportID(key: String, profile: UUID?, main: UUID?) -> String {
+        guard let profile, profile != main else { return key }
+        return "p:\(profile.uuidString.lowercased()):\(key)"
+    }
 }
 
 
