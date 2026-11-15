@@ -4,6 +4,49 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.7 · Build 174
+_15 november 2026_
+
+### iOS
+
+**Nieuw**
+
+- Bingr Radio op het toegangsscherm en in het Dynamic Island, met pauze en vorige/volgende zender
+
+**Verbeterd**
+
+- CarPlay-radio met tabbladen Favorieten, Alle zenders en Categorieën, ook als de app niet open was
+
+### iOS, iPadOS en Android
+
+**Nieuw**
+
+- Widget Bingr Radio met je favoriete zenders en wat er nu speelt
+
+### iOS, iPadOS, Android en Website
+
+**Verbeterd**
+
+- Detailpagina op de telefoon past weer op het scherm: de metaregel breekt af en onder Afspelen staan Mijn lijst, Trailer, Bronnen, Gezien en Meer
+
+### iOS, iPadOS, tvOS, macOS, Android, Android TV en Website
+
+**Verbeterd**
+
+- Altijd de beste trailer uit alle bronnen (officiële trailer, eerst in je eigen taal, dan Engels), ook per seizoen
+
+### tvOS
+
+**Verbeterd**
+
+- Melding met een link naar de App Store als de YouTube-app ontbreekt voor trailers
+
+### Website
+
+**Verbeterd**
+
+- Android-downloads via bingr.online/apk in plaats van Google Play, ook op support.bingr.online
+
 ## Versie 1.0.7 · Build 173
 _15 november 2026_
 

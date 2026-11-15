@@ -1,5 +1,88 @@
 [
  {
+  "build": 174,
+  "version": "1.0.7",
+  "date": "2026-11-15",
+  "items": [
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "android",
+     "web"
+    ],
+    "nl": "Detailpagina op de telefoon past weer op het scherm: de metaregel breekt af en onder Afspelen staan Mijn lijst, Trailer, Bronnen, Gezien en Meer",
+    "en": "The detail page fits the phone screen again: the info line wraps and below Play you'll find My List, Trailer, Sources, Watched and More"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "macos",
+     "tvos",
+     "android",
+     "androidtv",
+     "web"
+    ],
+    "nl": "Altijd de beste trailer uit alle bronnen (officiële trailer, eerst in je eigen taal, dan Engels), ook per seizoen",
+    "en": "Always the best trailer from all sources (official trailer, in your language first, then English), also per season"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "android",
+     "androidtv"
+    ],
+    "nl": "Trailers spelen nu in de app",
+    "en": "Trailers now play inside the app"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "tvos"
+    ],
+    "nl": "Melding met een link naar de App Store als de YouTube-app ontbreekt voor trailers",
+    "en": "A notice with an App Store link when the YouTube app is missing for trailers"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios"
+    ],
+    "nl": "Bingr Radio op het toegangsscherm en in het Dynamic Island, met pauze en vorige/volgende zender",
+    "en": "Bingr Radio on the Lock Screen and in the Dynamic Island, with pause and previous/next station"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "android"
+    ],
+    "nl": "Widget Bingr Radio met je favoriete zenders en wat er nu speelt",
+    "en": "Bingr Radio widget with your favorite stations and what's playing now"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios"
+    ],
+    "nl": "CarPlay-radio met tabbladen Favorieten, Alle zenders en Categorieën, ook als de app niet open was",
+    "en": "CarPlay radio with Favorites, All stations and Categories tabs, also when the app wasn't open"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Android-downloads via bingr.online/apk in plaats van Google Play, ook op support.bingr.online",
+    "en": "Android downloads via bingr.online/apk instead of Google Play, also on support.bingr.online"
+   }
+  ]
+ },
+ {
   "build": 173,
   "version": "1.0.7",
   "date": "2026-11-15",
