@@ -6,7 +6,7 @@ import { openField } from "../_shared/sealed.ts";
 import { fetchBuildManifest } from "../_shared/builds.ts";
 import type { Apns } from "./channels.ts";
 import {
-  type BeheerNotice, beheerPayload, buildNotices, type Builds, initState, mailingNotices, type MailingRow, manifestBuilds, manifestDue, type MonitorNow,
+  type BeheerNotice, beheerPayload, buildNotices, type Builds, crashNotices, type CrashNoticeRow, initState, mailingNotices, type MailingRow, manifestBuilds, manifestDue, type MonitorNow,
   purchaseMark, purchaseNotices, type PurchaseRow, replyNotices, type ReplyRow, type State, statusNotices, ticketNotices, type TicketRow, wants,
 } from "./beheer_logic.ts";
 
@@ -160,6 +160,14 @@ export async function adminNotify(db: Db, apns: Apns, env: Env, nowMs = Date.now
         .sort((a, b) => a.id - b.id).map((r) => ({ ...r, subject: r.content?.nl?.subject ?? null }));
       notices.push(...mailingNotices(rows));
     }
+  }
+
+  // build 171: nieuwe of teruggekomen crashgroepen (crash_groups.pending_notice, één keer geclaimd door
+  // bingr_crash_notices_claim). Ontbreekt de functie nog (ouder schema), dan stil overslaan.
+  {
+    const { data, error } = await db.rpc("bingr_crash_notices_claim", { p_limit: 20 });
+    if (error) { if (!["42883", "PGRST202", "42P01"].includes(error.code ?? "")) console.error("push beheer crashes", error.code ?? "fout"); }
+    else notices.push(...crashNotices((data ?? []) as CrashNoticeRow[]));
   }
 
   res.notices = notices.length;

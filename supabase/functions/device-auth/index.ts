@@ -51,7 +51,16 @@
 //                   -> {ok, limit} | 403 {error:"stream_limit", limit, plan, streams:[…]}   (limit: gratis 1, lifetime 3, of eigen limiet;
 //                   build 68: series_id/series_title/tz voor statistieken)
 //   stream_ping     {device_id, title?, kind?, content_id?, series_id?, series_title?} (ingelogd, elke 30 s) -> {ok} | {stopped:true}
-//   stream_stop     {device_id} (ingelogd) -> {ok}
+//   stream_stop     {device_id, by_device_id?} (ingelogd) -> {ok}
+//                   build 171: device_id mag elk apparaat van hetzelfde account zijn ("Stoppen op dat apparaat"). Met by_device_id
+//                   (het apparaat dat stopt) van een ánder apparaat krijgt het gestopte apparaat bij de volgende stream_ping
+//                   {stopped:true, reason:"stopped_remotely", by_device_name} (max. 10 min); oudere apps zien gewoon {stopped:true}.
+//   build 171: 403 device_limit en stream_limit hebben per apparaat/stream ook last_seen, platform, profile_name en title
+//                   (lopende stream), current, en bovenaan suggest_remove (device_limit) / stop_remote:true (stream_limit).
+//   crash_report    {platform, app_version, build, os_version, device_model, kind, signature, message, stack, at, count, device_id?}
+//                   (ingelogd, of zonder inloggen met een geldige apikey = publishable key) -> {ok, group: new|regressed|known}
+//                   400 bad_report {field}, 401 not_signed_in, 413 too_large (64 KB), 429 rate_limited (20/apparaat/uur, 60/account/uur,
+//                   zonder inloggen 30/IP/uur). Opgeschoond (crash.ts) en zonder e-mail of account-id opgeslagen. docs/ACCOUNT.md "Build 171".
 //                   start/ping/stop schrijven de kijktijd bij in account_watch_stats (max. 3 min per keer).
 //   list_streams    {} (ingelogd) -> {limit, streams:[{device_id, device_name, platform, profile_id, profile_name, title, kind, started_at, signed_in_at}]}
 //   watch_log       {days?:7} (ingelogd) -> {entries:[{device_name, platform, profile_id, profile_name, title, kind, started_at, ended_at, minutes}]}
@@ -83,7 +92,7 @@ import { BANNED_BODY, bannedUntilActive, isBanError } from "../_shared/ban.ts";
 import { clientIp } from "../_shared/ip.ts";
 import { countryFor } from "../_shared/country.ts";
 import { gunzip, loadTable } from "../_shared/geoip.ts";
-import { openField, seal, sealField, unseal } from "../_shared/sealed.ts";
+import { keyedHash, openField, seal, sealField, unseal } from "../_shared/sealed.ts";
 import { normalizePinSection, parsePinHash, validPin } from "../_shared/pin.ts";
 import { buildOf, cleanProfiles, PROFILES_BUILD } from "../_shared/profiles.ts";
 import { currentMode, profileNames, readProfiles, syncProfiles } from "../_shared/profiles_store.ts";
@@ -94,6 +103,10 @@ import {
 import { accessFor, ACTIVATION_REQUIRED, normalizeIap, normalizeLifetime } from "../_shared/lifetime.ts";
 import { type AllSettings, buildEntitlements, loadSettings } from "../_shared/lifetime_store.ts";
 import { claimByEmail } from "../_shared/guest_store.ts";
+import {
+  BODY_MAX as CRASH_BODY_MAX, cleanCrash, PER_ACCOUNT_PER_HOUR, PER_DEVICE_PER_HOUR, PER_IP_PER_HOUR, validAppKey,
+} from "./crash.ts";
+import { limitDevices, limitStreams, suggestRemove } from "./limits.ts";
 import { addsKidsProfile } from "../_shared/profiles.ts";
 
 const SITE = Deno.env.get("BINGR_SITE") ?? "https://bingr.online";
@@ -484,6 +497,48 @@ async function maint(what: string, after: string | null): Promise<Record<string,
   return { what, processed, failed, done: false };
 }
 
+// Build 171: "Stoppen op dat apparaat". Markering ophalen en meteen weghalen (één keer melden); max. 10 minuten oud.
+// Terug de naam van het apparaat dat stopte ("" als die onbekend is), of null als er geen markering is.
+async function remoteStop(userId: string, deviceId: string): Promise<string | null> {
+  const { data, error } = await admin.from("account_stream_stops").delete().eq("user_id", userId).eq("device_id", deviceId)
+    .gte("stopped_at", new Date(Date.now() - 10 * 60_000).toISOString()).select("by_device");
+  if (error || !data?.length) return null;
+  const by = data[0].by_device;
+  if (!by) return "";
+  const { data: d } = await admin.from("account_devices").select("name").eq("user_id", userId).eq("device_id", by).maybeSingle();
+  return d?.name ?? "";
+}
+
+// Build 171: crashrapport (docs/ACCOUNT.md "Build 171"). Ingelogd (account als HMAC), of zonder inloggen alleen met een geldige
+// apikey (publishable key van dit project) en een limiet per IP. Nooit inhoud van een rapport in een log.
+async function crashReport(req: Request, body: Record<string, unknown>): Promise<Response> {
+  if (JSON.stringify(body).length > CRASH_BODY_MAX) return json({ error: "too_large" }, 413);
+  let userId: string | null = null;
+  if ((req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").split(".").length === 3) {
+    const user = await authed(req);
+    if (!(user instanceof Response)) userId = user.id;
+    else if (user.status === 503) return user;
+  }
+  if (!userId) {
+    if (!validAppKey(req.headers.get("apikey"), Deno.env.get("SUPABASE_PUBLISHABLE_KEYS"), Deno.env.get("SUPABASE_ANON_KEY"))) {
+      return json({ error: "not_signed_in" }, 401);
+    }
+    if (await rateLimited(`crash:ip:${await keyedHash("crash-ip", clientIp(req))}`, PER_IP_PER_HOUR, 3600)) {
+      return json({ error: "rate_limited", retry_after: 3600 }, 429);
+    }
+  }
+  const r = cleanCrash(body);
+  if (!r.ok) return json({ error: r.error, field: r.field }, 400);
+  const accountHash = userId ? await keyedHash("crash-account", userId) : null;
+  const deviceRaw = body.device_id == null ? "" : String(body.device_id).slice(0, 80);
+  const deviceHash = deviceRaw ? await keyedHash("crash-device", `${userId ?? "-"}|${deviceRaw}`) : null;
+  if (deviceHash && await rateLimited(`crash:d:${deviceHash}`, PER_DEVICE_PER_HOUR, 3600)) return json({ error: "rate_limited", retry_after: 3600 }, 429);
+  if (accountHash && await rateLimited(`crash:a:${accountHash}`, PER_ACCOUNT_PER_HOUR, 3600)) return json({ error: "rate_limited", retry_after: 3600 }, 429);
+  const { data, error } = await admin.rpc("bingr_crash_report", { p_report: r.report, p_account_hash: accountHash, p_device_hash: deviceHash });
+  if (error) { console.error("crash_report", error.code ?? "fout"); return json({ error: "try_again" }, 503); }
+  return json({ ok: true, group: (data as { group?: string } | null)?.group ?? "known" });
+}
+
 const MAX_BODY = 2 * 1024 * 1024;
 
 Deno.serve(async (req) => {
@@ -633,7 +688,9 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       });
       if (error) throw new Error(error.message);
       if (r?.error === "device_limit") {
-        return json({ error: "device_limit", limit, plan: normalizePlan(row?.plan), devices: await listDevices(user.id) }, 403);
+        // build 171: per apparaat ook last_seen, profiel en titel van een lopende stream, en een voorstel om af te melden
+        const devices = limitDevices(await listDevices(user.id, device_id), await activeStreams(user.id));
+        return json({ error: "device_limit", limit, plan: normalizePlan(row?.plan), devices, suggest_remove: suggestRemove(devices) }, 403);
       }
       // build 157: een Gratis-account dat nog boven de limiet zat, houdt de 2 laatst actieve (dit apparaat is net actief)
       await enforceFreeDevices(user.id);
@@ -858,8 +915,13 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       });
       if (error) throw new Error(error.message);
       if (r?.error === "stream_limit") {
-        return json({ error: "stream_limit", limit, plan: normalizePlan(row?.plan), streams: await activeStreams(user.id) }, 403);
+        // build 171: per stream ook last_seen en current; stop_remote = stream_stop mag op een ander apparaat
+        const { data: devs } = await admin.from("account_devices").select("device_id,last_seen_at").eq("user_id", user.id);
+        const streams = limitStreams(await activeStreams(user.id), devs ?? [], device_id);
+        return json({ error: "stream_limit", limit, plan: normalizePlan(row?.plan), streams, stop_remote: true }, 403);
       }
+      // build 171: dit apparaat speelt weer; een oude markering "gestopt op een ander apparaat" vervalt
+      await admin.from("account_stream_stops").delete().eq("user_id", user.id).eq("device_id", device_id);
       // af en toe voor alle accounts opruimen (geschiedenis > 8 dagen, oude streams, verlopen tv-codes)
       if (Math.random() < 0.05) await admin.rpc("bingr_cleanup");
       return json({ ok: true, limit });
@@ -870,8 +932,12 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       const device_id = String(body.device_id ?? "").slice(0, 80);
       const { data: cur } = await admin.from("account_streams").select("log_id,last_ping,title,kind,content_id,series_id,series_title")
         .eq("user_id", user.id).eq("device_id", device_id).maybeSingle();
-      // geen stream, of te lang geen ping (telde al niet meer mee): opnieuw stream_start, zodat de limiet weer geldt
-      if (!cur || Date.now() - isoMs(cur.last_ping) > STREAM_TTL_MS) return json({ stopped: true });
+      // geen stream, of te lang geen ping (telde al niet meer mee): opnieuw stream_start, zodat de limiet weer geldt.
+      // build 171: gestopt vanaf een ander apparaat (stream_stop met by_device_id): reden erbij, de markering is daarmee op
+      if (!cur || Date.now() - isoMs(cur.last_ping) > STREAM_TTL_MS) {
+        const remote = cur ? null : await remoteStop(user.id, device_id);
+        return json(remote ? { stopped: true, reason: "stopped_remotely", by_device_name: remote } : { stopped: true });
+      }
       const now = new Date().toISOString();
       const patch: Record<string, unknown> = { last_ping: now };
       if (body.title || body.kind || body.content_id || body.series_id || body.series_title) {
@@ -897,9 +963,16 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       const user = await authed(req);
       if (user instanceof Response) return user.status === 401 ? json({ ok: true }) : user;
       const device_id = String(body.device_id ?? "").slice(0, 80);
+      // build 171: device_id mag een ander apparaat van hetzelfde account zijn (alles hieronder filtert op user_id)
+      const by = body.by_device_id == null ? "" : String(body.by_device_id).slice(0, 80);
+      const { data: gone } = await admin.from("account_streams").select("device_id").eq("user_id", user.id).eq("device_id", device_id).maybeSingle();
       await closeLog(user.id, device_id);
       await account(user.id, device_id);
       await admin.from("account_streams").delete().eq("user_id", user.id).eq("device_id", device_id);
+      if (gone && by && by !== device_id) {
+        const { error } = await admin.from("account_stream_stops").upsert({ user_id: user.id, device_id, by_device: by, stopped_at: new Date().toISOString() });
+        if (error) console.error("stream_stops", error.code ?? "fout");
+      }
       return json({ ok: true });
     }
     case "list_streams": {
@@ -992,6 +1065,8 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       if (user instanceof Response) return user;
       return json(await entitlementsFor(user, body, undefined, true));
     }
+    case "crash_report":
+      return await crashReport(req, body);
     default:
       return json({ error: "unknown_action" }, 400);
   }

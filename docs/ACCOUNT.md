@@ -2144,3 +2144,159 @@ De netto opbrengst van Apple is dus een gemeten getal; alleen de verdeling van h
 - Deno (blokkeert de deploy): `supabase/functions/_shared/asc_test.ts` — JWT (zelfgemaakte testsleutel, controle met de publieke sleutel, max. 20 min), URL van het dagrapport, gzip + TSV, het filter op het product (SKU, Parent Identifier, Mac, downloads en andere apps niet), samenvoegen (verkoop/terugbetaling), omrekenen, 404 = geen fout, nooit de URL in een resultaat. Alleen verzonnen rapportregels.
 - SQL (blokkeert de deploy): `supabase/tests/apple_sales_test.sh` (tijdelijke Postgres): een dag overschrijven (alles of niets), "bijgewerkt t/m", omrekenen met en zonder koers, bereiken en series, website apart (`web_*`), gekoppelde aankopen, het totaal en de rechten (alleen de service role, RLS aan, geen kolommen met persoonsgegevens).
 - bingr-beheer: `apple_revenue_test.ts` (blokkeert de deploy van `admin`) en de dashboard-rooktest (blok Website en Apple, bijwerken in stukken, commissie en koersen).
+
+## Build 171 (versie 1.0.7): stoppen op een ander apparaat, betere limietschermen en eigen crashrapporten
+
+Server-deel van build 171 (branch `build-171`, pas na akkoord naar `main`). Alles is **compatibel met oudere apps**: er komen
+alleen velden en een actie bij; niets verdwijnt of krijgt een andere betekenis. Apps die de server nog zonder deze build
+spreken, krijgen bij `crash_report` **400 `unknown_action`** (of 404 als de functie niet bereikbaar is): rapport lokaal
+bewaren en later opnieuw proberen, max. 7 dagen.
+
+### 1. Profielsets zonder serverwijziging (#15, #17, #20)
+
+In `profile.<id>` komen drie nieuwe sets, precies zoals `hiddenCategories` hierboven (per item wint de nieuwste `at`,
+verwijderingen in `removed.<set>`). De sync is generiek; de server verandert er niets voor.
+
+```json
+{
+  "hiddenChannels":   [ { "id": "<server-id kleine letters>|<stream-id>", "at": "ISO-8601" } ],
+  "pinnedCategories": [ { "id": "<server-id kleine letters>|<categorienaam exact>", "at": "ISO-8601" } ],
+  "blockedTitles":    [ { "id": "<server-id kleine letters>|movie:<id>", "at": "ISO-8601" },
+                        { "id": "<server-id kleine letters>|series:<id>", "at": "ISO-8601" } ],
+  "removed": { "hiddenChannels": { "<id>": "ISO-8601" }, "pinnedCategories": { "<id>": "ISO-8601" }, "blockedTitles": { "<id>": "ISO-8601" } }
+}
+```
+
+`put_state` vervangt de sectie als geheel: wie schrijft, leest eerst de serverversie en houdt onbekende sleutels en sets
+(ook onder `removed`) onaangeroerd, zoals bij de andere sets in `profile.<id>`. Oudere apps die dat al doen, laten de nieuwe
+sets dus staan.
+
+### 2. "Te veel apparaten" en "te veel streams" (#31)
+
+**`stream_stop` op een ander apparaat:** dat mocht al (`device_id` = elk apparaat van hetzelfde account; alles filtert op het
+account). Nieuw is het optionele veld **`by_device_id`** (het apparaat dat op "Stoppen op dat apparaat" tikt):
+
+| Actie | Body | Antwoord |
+|---|---|---|
+| `stream_stop` | `{device_id, by_device_id?}` | `{ok}` (ook als er geen stream was) |
+| `stream_ping` | `{device_id, …}` | `{ok}`, `{stopped:true}`, of nieuw **`{stopped:true, reason:"stopped_remotely", by_device_name}`** |
+
+- Is `by_device_id` gezet en anders dan `device_id`, en liep er een stream, dan bewaart de server een markering
+  (`account_stream_stops`, max. 10 minuten geldig, na 1 dag opgeruimd). De **eerstvolgende** `stream_ping` van het gestopte
+  apparaat geeft dan `reason:"stopped_remotely"` en `by_device_name` (naam van het apparaat dat stopte, `""` als onbekend);
+  daarna is de markering op.
+- **Nieuwe apps** stoppen bij `reason:"stopped_remotely"` de speler en tonen "Gestopt vanaf %@" / "Stopped from %@" (zonder naam:
+  "Gestopt vanaf een ander apparaat" / "Stopped from another device"), en starten **niet** vanzelf opnieuw. Een nieuwe
+  `stream_start` van dat apparaat (de gebruiker drukt op Afspelen) haalt een eventuele markering weg.
+- **Oudere apps** zien `{stopped:true}` zoals voorheen en doen opnieuw `stream_start`. Omdat het apparaat dat stopte meteen
+  daarna zelf `stream_start` doet (zie onder), krijgt de oude app dan `stream_limit`; dat is het gewenste gedrag.
+- Het apparaat dat stopt, doet direct daarna (zonder extra tik) opnieuw `stream_start` met dezelfde gegevens.
+
+**Verrijkte lijsten** (alleen velden erbij; de volgorde blijft zoals voorheen, de apps sorteren zelf):
+
+`register_device` → **403** `{error:"device_limit", limit, plan, devices:[…], suggest_remove}`, per apparaat:
+
+| veld | |
+|---|---|
+| `device_id`, `name`, `platform`, `created_at`, `last_seen_at`, `signed_in_at` | zoals voorheen |
+| `last_seen` | nieuw: `last_seen_at` (anders `signed_in_at`/`created_at`), ISO-8601; de app toont het relatief ("2 uur geleden") |
+| `current` | nieuw: altijd `false` hier (het apparaat dat zich aanmeldt staat nog niet in de lijst); "Dit apparaat" toont de app zelf |
+| `watching`, `profile_id`, `profile_name`, `title`, `kind` | nieuw: de lopende stream op dat apparaat (anders `false`/`null`) |
+
+`suggest_remove` = `{device_id, last_seen}` van het langst niet gebruikte apparaat dat niet kijkt, of `null`: de app toont
+bovenaan "Afmelden: niet gebruikt sinds …".
+
+`stream_start` → **403** `{error:"stream_limit", limit, plan, streams:[…], stop_remote:true}`, per stream:
+
+| veld | |
+|---|---|
+| `device_id`, `device_name`, `platform`, `profile_id`, `profile_name`, `title`, `kind`, `started_at`, `last_ping`, `signed_in_at` | zoals voorheen |
+| `last_seen` | nieuw: laatste ping van de stream (anders het apparaat) |
+| `device_last_seen` | nieuw: `last_seen_at` van het apparaat |
+| `current` | nieuw: `true` voor de stream van het apparaat dat `stream_start` deed (normaal niet in de lijst) |
+
+`stop_remote:true` betekent dat de knop **"Stoppen op dat apparaat"** (`stream_stop` met `device_id` van die stream en
+`by_device_id` van dit apparaat) werkt. Ontbreekt het veld (oude server), toon de knop dan niet.
+
+Bij Gratis onderaan de uitleg van de limiet, en bij Lifetime-only de knop naar Lifetime volgens de bestaande regels (Apple
+alleen StoreKit, geen weblink). Na `remove_device` of `stream_stop` gaat het meteen verder: opnieuw `register_device`
+respectievelijk `stream_start`, zonder dat de gebruiker opnieuw hoeft te tikken.
+
+### 3. Crashrapporten (#37)
+
+Eigen crashrapporten, zonder derde partij. Instelling **"Crashrapporten delen"** onder Privacy, standaard aan; uit = niets
+verzamelen en niets versturen (ook de wachtrij weg).
+
+**Aanvraag:** `POST {SUPABASE_URL}/functions/v1/device-auth`, header `apikey: <publishable key>` en, als de gebruiker is
+ingelogd, `Authorization: Bearer <access_token>`.
+
+```json
+{ "action": "crash_report", "platform": "ios", "app_version": "1.0.7 (171)", "build": 171, "os_version": "iOS 18.1",
+  "device_model": "iPhone15,3", "kind": "crash", "signature": "EXC_BAD_ACCESS PlayerView.swift:120", "message": "…",
+  "stack": "…", "at": "2026-11-15T10:12:00Z", "count": 1, "device_id": "<eigen device_id>" }
+```
+
+| veld | regels |
+|---|---|
+| `platform` | `ios`, `ipados`, `tvos`, `macos`, `android`, `androidtv`, `web`, `windows` (verplicht) |
+| `kind` | `crash` \| `anr` (hang / Application Not Responding) \| `error` (verplicht) |
+| `signature` | groepeersleutel, max. 200 tekens (verplicht). Apple: soort + eerste eigen frame (`EXC_BAD_ACCESS PlayerView.swift:120`, `NSInvalidArgumentException -[X y]`); Android: exceptionklasse + eerste `nl.lrvdlinden`-frame; web: `TypeError: <tekst zonder getallen> @ <bestand>:<regel>`. Geen geheugenadressen of getallen die per keer verschillen. |
+| `message` | max. **500** tekens (langer = ingekort) |
+| `stack` | tekst (regels gescheiden door `\n`) of een lijst regels, max. **16 KB** (UTF-8; langer = ingekort); elke regel max. 1000 tekens |
+| `at` | ISO-8601 of epoch (s/ms) van het moment van de crash; ouder dan **7 dagen** = 400 (niet meer versturen), in de toekomst = nu |
+| `count` | 1..1000: zo vaak is het (ontdubbeld) gebeurd sinds het vorige rapport met deze signature; standaard 1 |
+| `build`, `app_version`, `os_version`, `device_model` | optioneel; `build` geheel getal |
+| `device_id` | optioneel maar gewenst: voor de limiet per apparaat (wordt alleen als HMAC bewaard) |
+
+**Antwoorden:** `{ok:true, group:"new"|"regressed"|"known"}`; **400** `{error:"bad_report", field}` (niet opnieuw proberen,
+weggooien); **401** `{error:"not_signed_in"}` (geen geldig token en geen geldige apikey); **413** `too_large` (> 64 KB);
+**429** `{error:"rate_limited", retry_after:3600}` (bewaren, na een uur opnieuw); **503** `try_again` / `unavailable` (bewaren);
+**400 `unknown_action`** of **404** (oude server): bewaren, max. 7 dagen.
+
+**Zonder inloggen** (crash vóór het inloggen, of uitgelogd): alleen met de publishable key van dit project als `apikey`, en
+max. **30 per IP per uur**. **Ingelogd** of niet: max. **20 per apparaat per uur** en **60 per account per uur**.
+
+**Privacy (eerst in de app, de server doet het daarna nog een keer):** vóór het versturen gaan uit `message`, `stack` en
+`signature`:
+- alles wat op een URL lijkt → `<url>`: met schema (`http://`, `https://`, `rtmp://`, `udp://`, `file://`, …), `www.…`,
+  `gebruiker:wachtwoord@host…`, Xtream-paden (`/live/<user>/<pass>/…`, `/movie/…`, `/series/…`, `/timeshift/…`) en
+  `get.php?…` / `player_api.php?…` / `xmltv.php?…`. IPTV-URL's bevatten gebruikersnamen en wachtwoorden;
+- query-strings (`?a=b…`) → `<query>`; `username=`, `password=`, `token=`, `key=`, `mac=`, `auth=` e.d. → `<naam>=<redacted>`;
+- e-mailadressen → `<email>`; IPv4 (met poort) en IPv6 → `<ip>`;
+- lange tokens → `<token>`: JWT (`eyJ….….…`), hex van 32+ tekens, base64/base64url van 40+ tekens met cijfers en hoofd- en
+  kleine letters (Swift-symbolen `$s…` blijven staan).
+De servercode (`supabase/functions/device-auth/crash.ts`, tests in `crash_test.ts`) is de referentie; de apps doen hetzelfde
+in `Build171` (Apple `Shared/Build171.swift`, Android `Build171Logic.kt`, web `web/`).
+
+**Opslag** (`supabase/schema.sql`, blok `unittest crash`): `crash_reports` (één rij per rapport) en `crash_groups` (per
+`signature`: eerst/laatst gezien, `resolved_build`, `resolved_at`, `regressed_at`, `pending_notice`). RLS aan, alleen de
+service role. Geen e-mail en geen account-id: `account_hash` en `device_hash` zijn HMAC's (`keyedHash` met
+`BINGR_SOURCES_KEY`); het IP alleen als HMAC in de limietsleutel. **Na 90 dagen weg** (pg_cron `bingr-crash-cleanup`,
+dagelijks 03:23 UTC, `bingr_crash_cleanup()`).
+
+**Opgelost en teruggekomen:** het beheer markeert een groep als "opgelost in build N". Komt daarna een rapport van build
+**≥ N**, dan is de groep **teruggekomen** (`regressed_at`; één keer gemeld tot hij opnieuw wordt opgelost). Rapporten van
+oudere builds (nog niet bijgewerkte apps) tellen niet als terugkomen.
+
+**Beheer** (functie `admin` in bingr-beheer, actie `crashes`; geen wijziging aan de rechten hier): RPC's met de service role:
+
+| RPC | |
+|---|---|
+| `bingr_admin_crashes(p_platform text, p_build int, p_status text 'all'\|'open'\|'resolved'\|'regressed', p_limit int ≤ 500)` | `{groups:[{signature, kind, reports, occurrences, platforms[], builds[], devices, accounts, first_seen, last_seen, message, app_version, status, resolved_build, resolved_at, regressed_at}], platforms[], builds[], totals:{groups, open, regressed, reports_24h}}`; aantallen over de rapporten die aan het filter voldoen, nieuwste eerst |
+| `bingr_admin_crash_detail(p_signature, p_platform, p_build, p_limit ≤ 100)` | `{group:{…}, reports:[{id, created_at, occurred_at, platform, kind, app_version, build, os_version, device_model, message, stack, count, signed_in}]}` of `null` |
+| `bingr_admin_crash_resolve(p_signature, p_build int \| null)` | nieuwe status (`resolved` / `open`), `null` = onbekende groep; build ≤ 0 = fout 22023 |
+
+**Pushmelding voor het beheer:** bij een nieuwe groep of een groep die terugkomt (soort `crash`, pref `crashes`,
+`bingrbeheer://crashes`; zie docs/PUSH.md).
+
+**Wat de apps verzamelen:** Apple: MetricKit (`MXCrashDiagnostic`, `MXHangDiagnostic`) en een eigen handler voor
+`NSException`, versturen bij de volgende start. Android: `Thread.setDefaultUncaughtExceptionHandler` (opslaan, versturen bij
+de volgende start) en ANR's/native crashes via `ApplicationExitInfo` (API 30+). Web (webspeler): `window.onerror` en
+`unhandledrejection`, ontdubbeld op `signature`, max. 10 per sessie.
+
+### 4. Tests
+
+`deno test supabase/functions/device-auth/crash_test.ts supabase/functions/device-auth/limits_test.ts` en
+`supabase/functions/push/beheer_test.ts` (crashmeldingen); in SQL `supabase/tests/crash_test.sh` (groepen, opgelost en
+teruggekomen, filters, details, pushclaim, grenzen in de tabel, opschonen na 90 dagen, rechten). Alle in de workflow Backend
+en blokkerend voor de deploy.

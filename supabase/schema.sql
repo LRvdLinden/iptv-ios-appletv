@@ -5300,3 +5300,233 @@ grant execute on function public.bingr_apple_sales_status_set(date, jsonb) to se
 grant execute on function public.bingr_admin_revenue_apple(timestamptz[], text, jsonb) to service_role;
 grant execute on function public.bingr_admin_apple_sales_rows(timestamptz, timestamptz, text) to service_role;
 -- <<< unittest apple-sales
+
+-- ============================================================================================================
+-- Build 171 (docs/ACCOUNT.md, "Build 171"): crashrapporten (eigen, zonder derde partij) en "Stoppen op dat apparaat".
+-- Crashrapporten: device-auth actie crash_report schrijft via bingr_crash_report (alleen de service role). Geen e-mail, geen
+-- account-id: account_hash en device_hash zijn HMAC's (device-auth, _shared/sealed.ts keyedHash). message (max. 500 tekens)
+-- en stack (max. 16 KB) zijn door de app en de server opgeschoond (geen URL's, IP's, e-mailadressen of tokens). Groepen per
+-- signature met de status uit het beheer (opgelost in build N; daarna een rapport van build >= N = teruggekomen).
+-- Opschonen: na 90 dagen weg (pg_cron bingr-crash-cleanup, dagelijks).
+-- >>> unittest crash
+create table if not exists public.crash_groups (
+  signature      text primary key check (length(signature) between 1 and 200),
+  kind           text not null check (kind in ('crash', 'anr', 'error')),
+  first_seen     timestamptz not null default now(),
+  last_seen      timestamptz not null default now(),
+  resolved_build int check (resolved_build is null or resolved_build > 0),
+  resolved_at    timestamptz,
+  regressed_at   timestamptz,
+  -- voor de pushmelding van het beheer (functie push): 'new' = nieuwe groep, 'regressed' = teruggekomen; push zet hem op null
+  pending_notice text check (pending_notice is null or pending_notice in ('new', 'regressed')),
+  updated_at     timestamptz not null default now()
+);
+alter table public.crash_groups enable row level security;
+revoke all on public.crash_groups from anon, authenticated;
+
+create table if not exists public.crash_reports (
+  id           bigint generated always as identity primary key,
+  created_at   timestamptz not null default now(),
+  signature    text not null check (length(signature) between 1 and 200),
+  platform     text not null check (platform in ('ios', 'ipados', 'tvos', 'macos', 'android', 'androidtv', 'web', 'windows')),
+  kind         text not null check (kind in ('crash', 'anr', 'error')),
+  app_version  text check (app_version is null or length(app_version) <= 40),
+  build        int check (build is null or build > 0),
+  os_version   text check (os_version is null or length(os_version) <= 40),
+  device_model text check (device_model is null or length(device_model) <= 60),
+  message      text check (message is null or length(message) <= 500),
+  stack        text check (stack is null or octet_length(stack) <= 16384),
+  occurred_at  timestamptz not null,
+  count        int not null default 1 check (count between 1 and 1000),
+  account_hash text check (account_hash is null or account_hash ~ '^[0-9a-f]{32}$'),
+  device_hash  text check (device_hash is null or device_hash ~ '^[0-9a-f]{32}$'),
+  signed_in    boolean not null default false
+);
+create index if not exists crash_reports_sig_idx on public.crash_reports (signature, created_at desc);
+create index if not exists crash_reports_created_idx on public.crash_reports (created_at);
+create index if not exists crash_reports_platform_build_idx on public.crash_reports (platform, build);
+alter table public.crash_reports enable row level security;
+revoke all on public.crash_reports from anon, authenticated;
+
+-- Eén rapport opslaan (p_report = het opgeschoonde rapport uit device-auth crash.ts). Terug {ok, id, group: new|regressed|known}.
+create or replace function public.bingr_crash_report(p_report jsonb, p_account_hash text default null, p_device_hash text default null)
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare g public.crash_groups%rowtype; v_sig text; v_build int; v_id bigint; v_state text := 'known'; v_at timestamptz;
+begin
+  if p_report is null or jsonb_typeof(p_report) <> 'object' then raise exception 'bad_report' using errcode = '22023'; end if;
+  v_sig := p_report->>'signature';
+  v_build := nullif(p_report->>'build', '')::int;
+  v_at := coalesce(nullif(p_report->>'at', '')::timestamptz, now());
+  insert into public.crash_reports (signature, platform, kind, app_version, build, os_version, device_model, message, stack,
+                                    occurred_at, count, account_hash, device_hash, signed_in)
+  values (v_sig, p_report->>'platform', p_report->>'kind', p_report->>'app_version', v_build, p_report->>'os_version',
+          p_report->>'device_model', p_report->>'message', p_report->>'stack', v_at, coalesce((p_report->>'count')::int, 1),
+          p_account_hash, p_device_hash, p_account_hash is not null)
+  returning id into v_id;
+  select * into g from public.crash_groups where signature = v_sig for update;
+  if not found then
+    insert into public.crash_groups (signature, kind, first_seen, last_seen, pending_notice)
+    values (v_sig, p_report->>'kind', now(), now(), 'new')
+    on conflict (signature) do update set last_seen = now(), updated_at = now();
+    v_state := 'new';
+  else
+    -- opgelost in build N en nu een rapport van build >= N: teruggekomen (één keer melden tot het opnieuw opgelost is)
+    if g.resolved_build is not null and v_build is not null and v_build >= g.resolved_build and g.regressed_at is null then
+      update public.crash_groups set last_seen = now(), regressed_at = now(), pending_notice = 'regressed', updated_at = now()
+       where signature = v_sig;
+      v_state := 'regressed';
+    else
+      update public.crash_groups set last_seen = now(), updated_at = now() where signature = v_sig;
+    end if;
+  end if;
+  return jsonb_build_object('ok', true, 'id', v_id, 'group', v_state);
+end $$;
+
+-- Status van een groep: open | resolved | regressed
+create or replace function public.bingr_crash_status(g public.crash_groups) returns text
+language sql immutable as $$
+  select case when g.resolved_build is null then 'open' when g.regressed_at is not null then 'regressed' else 'resolved' end
+$$;
+
+-- Beheer (functie admin, actie crashes): groepen met aantallen over de rapporten die aan het filter voldoen (platform, build,
+-- status: open|resolved|regressed|all). Nieuwste eerst; max. p_limit (1..500). Ook de lijsten voor de filters.
+create or replace function public.bingr_admin_crashes(p_platform text default null, p_build int default null,
+                                                     p_status text default 'all', p_limit int default 200)
+returns jsonb
+language sql stable security definer set search_path = public as $$
+  with r as (
+    select * from public.crash_reports
+     where (p_platform is null or platform = p_platform) and (p_build is null or build = p_build)
+  ), agg as (
+    select r.signature, count(*) as reports, sum(r.count) as occurrences, min(r.created_at) as first_seen, max(r.created_at) as last_seen,
+           array_agg(distinct r.platform order by r.platform) as platforms,
+           array_remove(array_agg(distinct r.build order by r.build), null) as builds,
+           count(distinct r.device_hash) as devices, count(distinct r.account_hash) as accounts,
+           (array_agg(r.message order by r.created_at desc))[1] as message,
+           (array_agg(r.app_version order by r.created_at desc))[1] as app_version
+      from r group by r.signature
+  ), rows as (
+    select a.*, g.kind, g.resolved_build, g.resolved_at, g.regressed_at, public.bingr_crash_status(g) as status,
+           g.first_seen as group_first_seen
+      from agg a join public.crash_groups g using (signature)
+     where coalesce(p_status, 'all') = 'all' or public.bingr_crash_status(g) = p_status
+     order by a.last_seen desc
+     limit greatest(1, least(coalesce(p_limit, 200), 500))
+  )
+  select jsonb_build_object(
+    'groups', coalesce((select jsonb_agg(jsonb_build_object(
+        'signature', signature, 'kind', kind, 'reports', reports, 'occurrences', occurrences, 'platforms', to_jsonb(platforms),
+        'builds', to_jsonb(builds), 'devices', devices, 'accounts', accounts, 'first_seen', least(first_seen, group_first_seen),
+        'last_seen', last_seen, 'message', message, 'app_version', app_version, 'status', status, 'resolved_build', resolved_build,
+        'resolved_at', resolved_at, 'regressed_at', regressed_at) order by last_seen desc) from rows), '[]'::jsonb),
+    'platforms', coalesce((select jsonb_agg(distinct platform) from public.crash_reports), '[]'::jsonb),
+    'builds', coalesce((select jsonb_agg(distinct build order by build desc) from public.crash_reports where build is not null), '[]'::jsonb),
+    'totals', jsonb_build_object(
+      'groups', (select count(*) from public.crash_groups),
+      'open', (select count(*) from public.crash_groups g where public.bingr_crash_status(g) = 'open'),
+      'regressed', (select count(*) from public.crash_groups g where public.bingr_crash_status(g) = 'regressed'),
+      'reports_24h', (select count(*) from public.crash_reports where created_at > now() - interval '24 hours'))
+  )
+$$;
+
+-- Details van één groep: de groep en de laatste p_limit (1..100) rapporten met stack (zelfde filters).
+create or replace function public.bingr_admin_crash_detail(p_signature text, p_platform text default null, p_build int default null,
+                                                          p_limit int default 20)
+returns jsonb
+language sql stable security definer set search_path = public as $$
+  select case when g.signature is null then null else jsonb_build_object(
+    'group', jsonb_build_object('signature', g.signature, 'kind', g.kind, 'first_seen', g.first_seen, 'last_seen', g.last_seen,
+                                'status', public.bingr_crash_status(g), 'resolved_build', g.resolved_build, 'resolved_at', g.resolved_at,
+                                'regressed_at', g.regressed_at),
+    'reports', coalesce((select jsonb_agg(jsonb_build_object(
+        'id', r.id, 'created_at', r.created_at, 'occurred_at', r.occurred_at, 'platform', r.platform, 'kind', r.kind,
+        'app_version', r.app_version, 'build', r.build, 'os_version', r.os_version, 'device_model', r.device_model,
+        'message', r.message, 'stack', r.stack, 'count', r.count, 'signed_in', r.signed_in) order by r.created_at desc)
+      from (select * from public.crash_reports r
+             where r.signature = g.signature and (p_platform is null or r.platform = p_platform) and (p_build is null or r.build = p_build)
+             order by r.created_at desc limit greatest(1, least(coalesce(p_limit, 20), 100))) r), '[]'::jsonb)
+  ) end
+  from (select * from public.crash_groups where signature = p_signature) g
+  right join (select 1) one on true
+$$;
+
+-- Markeren als opgelost in build N (p_build null = weer open). Terug de nieuwe status, of null als de groep niet bestaat.
+create or replace function public.bingr_admin_crash_resolve(p_signature text, p_build int) returns text
+language plpgsql security definer set search_path = public as $$
+declare g public.crash_groups%rowtype;
+begin
+  if p_build is not null and p_build <= 0 then raise exception 'bad_build' using errcode = '22023'; end if;
+  update public.crash_groups set resolved_build = p_build, resolved_at = case when p_build is null then null else now() end,
+         regressed_at = null, pending_notice = case when pending_notice = 'regressed' then null else pending_notice end, updated_at = now()
+   where signature = p_signature returning * into g;
+  if not found then return null; end if;
+  return public.bingr_crash_status(g);
+end $$;
+
+-- Pushmelding van het beheer (functie push, adminNotify): openstaande meldingen claimen (één keer). Terug een lijst
+-- [{signature, kind, notice: new|regressed, resolved_build, platforms, reports}].
+create or replace function public.bingr_crash_notices_claim(p_limit int default 20) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare out jsonb;
+begin
+  with pick as (
+    select signature, pending_notice from public.crash_groups where pending_notice is not null
+     order by updated_at limit greatest(1, least(coalesce(p_limit, 20), 100)) for update skip locked
+  ), upd as (
+    update public.crash_groups g set pending_notice = null from pick where g.signature = pick.signature
+    returning g.signature, g.kind, g.resolved_build, pick.pending_notice
+  )
+  select coalesce(jsonb_agg(jsonb_build_object('signature', u.signature, 'kind', u.kind, 'notice', u.pending_notice,
+           'resolved_build', u.resolved_build,
+           'platforms', (select to_jsonb(array_agg(distinct platform order by platform)) from public.crash_reports r where r.signature = u.signature),
+           'reports', (select count(*) from public.crash_reports r where r.signature = u.signature))), '[]'::jsonb)
+    into out from upd u;
+  return out;
+end $$;
+
+-- "Stoppen op dat apparaat" (#31): stream_stop met by_device_id van een ander apparaat van hetzelfde account zet hier een
+-- markering, zodat stream_ping van het gestopte apparaat {stopped:true, reason:"stopped_remotely"} krijgt (nieuwe apps
+-- starten dan niet vanzelf opnieuw). Een stream_start van dat apparaat haalt de markering weg. Max. 10 minuten geldig.
+create table if not exists public.account_stream_stops (
+  user_id    uuid not null references auth.users(id) on delete cascade,
+  device_id  text not null,
+  by_device  text,
+  stopped_at timestamptz not null default now(),
+  primary key (user_id, device_id)
+);
+alter table public.account_stream_stops enable row level security;
+revoke all on public.account_stream_stops from anon, authenticated;
+
+-- Opschonen (dagelijks, pg_cron bingr-crash-cleanup): crashrapporten na 90 dagen, groepen zonder rapporten die 90 dagen niet
+-- gezien zijn, markeringen van "Stoppen op dat apparaat" na 1 dag. Terug het aantal verwijderde rapporten.
+create or replace function public.bingr_crash_cleanup() returns int
+language plpgsql security definer set search_path = public as $$
+declare n int;
+begin
+  delete from public.crash_reports where created_at < now() - interval '90 days';
+  get diagnostics n = row_count;
+  delete from public.crash_groups g where g.last_seen < now() - interval '90 days'
+     and not exists (select 1 from public.crash_reports r where r.signature = g.signature);
+  delete from public.account_stream_stops where stopped_at < now() - interval '1 day';
+  return n;
+end $$;
+
+revoke all on function public.bingr_crash_report(jsonb, text, text) from public, anon, authenticated;
+revoke all on function public.bingr_admin_crashes(text, int, text, int) from public, anon, authenticated;
+revoke all on function public.bingr_admin_crash_detail(text, text, int, int) from public, anon, authenticated;
+revoke all on function public.bingr_admin_crash_resolve(text, int) from public, anon, authenticated;
+revoke all on function public.bingr_crash_notices_claim(int) from public, anon, authenticated;
+revoke all on function public.bingr_crash_cleanup() from public, anon, authenticated;
+grant execute on function public.bingr_crash_report(jsonb, text, text) to service_role;
+grant execute on function public.bingr_admin_crashes(text, int, text, int) to service_role;
+grant execute on function public.bingr_admin_crash_detail(text, text, int, int) to service_role;
+grant execute on function public.bingr_admin_crash_resolve(text, int) to service_role;
+grant execute on function public.bingr_crash_notices_claim(int) to service_role;
+grant execute on function public.bingr_crash_cleanup() to service_role;
+do $$ begin
+  perform cron.schedule('bingr-crash-cleanup', '23 3 * * *', $cmd$ select public.bingr_crash_cleanup(); $cmd$);
+exception when others then
+  raise notice 'pg_cron niet beschikbaar (crashrapporten worden niet automatisch opgeschoond): %', sqlerrm;
+end $$;
+-- <<< unittest crash

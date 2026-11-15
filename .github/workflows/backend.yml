@@ -226,6 +226,14 @@ jobs:
         run: |
           for i in $(seq 1 20); do pg_isready -q && break; sleep 1; done
           sudo -u postgres bash supabase/tests/apple_sales_test.sh
+      - name: Unittests (build 171, crashrapporten en stoppen op een ander apparaat)
+        # blokkeert de deploy: opschonen van message en stack (URL's -> <url>, IP, e-mail, tokens; symbolen blijven), grenzen
+        # (500 tekens, 16 KB, 7 dagen), app-sleutel zonder inloggen, de verrijkte lijsten van device_limit/stream_limit, en in SQL
+        # groepen, opgelost/teruggekomen, filters, pushclaim, opschonen na 90 dagen en de rechten (supabase/tests/crash_test.sh)
+        run: |
+          deno test supabase/functions/device-auth/crash_test.ts supabase/functions/device-auth/limits_test.ts
+          for i in $(seq 1 20); do pg_isready -q && break; sleep 1; done
+          sudo -u postgres bash supabase/tests/crash_test.sh
       - name: Unittests (eigen mailing)
         # blokkeert de deploy: doelgroep (nieuwsbrief-opt-out, alle mail uit, geblokkeerd, onbevestigd, verwijderd, taal),
         # idempotent aanmaken (request_id, één mailing tegelijk), wachtrij (nooit twee keer dezelfde ontvanger), annuleren;

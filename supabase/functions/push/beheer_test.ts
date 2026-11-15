@@ -175,3 +175,17 @@ Deno.test("beheer: mailing verstuurd (eigen mailing uit het beheer)", async () =
   ok(wants({}, "mailing") && !wants({ mailings: false }, "mailing"), "voorkeur mailings");
   ok(!JSON.stringify(mailingNotices([{ id: 1, recipients: 1, sent: 1, failed: 0, subject: "x" }])).includes("@"), "geen adressen");
 });
+
+Deno.test("crashmeldingen (build 171): nieuw, teruggekomen, samenvatten, voorkeur", async () => {
+  const { crashNotices, CRASHES } = await import("./beheer_logic.ts");
+  eq(crashNotices([]), []);
+  eq(crashNotices([{ signature: "EXC_BAD_ACCESS PlayerView.swift:120", kind: "crash", notice: "new", platforms: ["ios", "tvos"] }]), [{
+    kind: "crash", title: "Nieuwe crash (ios, tvos)", body: "EXC_BAD_ACCESS PlayerView.swift:120", url: CRASHES,
+  }]);
+  eq(crashNotices([{ signature: "ANR MainActivity", kind: "anr", notice: "regressed", resolved_build: 171, platforms: ["android"] }])[0].title,
+    "Teruggekomen na build 171 (android)");
+  const many = [1, 2, 3, 4].map((i) => ({ signature: `S${i}`, notice: (i === 4 ? "regressed" : "new") as "new" | "regressed" }));
+  eq(crashNotices(many), [{ kind: "crash", title: "4 crashmeldingen", body: "3 nieuw, 1 teruggekomen", url: CRASHES }]);
+  ok(wants({}, "crash"), "standaard aan");
+  ok(!wants({ crashes: false }, "crash"), "uit te zetten");
+});

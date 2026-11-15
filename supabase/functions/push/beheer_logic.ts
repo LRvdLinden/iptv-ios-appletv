@@ -2,10 +2,10 @@
 // netwerk, zodat alles met `deno test` te controleren is (beheer_test.ts). Teksten in het Nederlands (de beheer-app is NL).
 import { timeIn } from "./logic.ts";
 
-export type Kind = "ticket" | "reply" | "build" | "status" | "purchase" | "mailing";
-export type Pref = "tickets" | "replies" | "builds" | "status" | "purchases" | "mailings";
+export type Kind = "ticket" | "reply" | "build" | "status" | "purchase" | "mailing" | "crash";
+export type Pref = "tickets" | "replies" | "builds" | "status" | "purchases" | "mailings" | "crashes";
 export const PREF_OF: Record<Kind, Pref> = {
-  ticket: "tickets", reply: "replies", build: "builds", status: "status", purchase: "purchases", mailing: "mailings",
+  ticket: "tickets", reply: "replies", build: "builds", status: "status", purchase: "purchases", mailing: "mailings", crash: "crashes",
 };
 export type BeheerNotice = { kind: Kind; title: string; body: string; url: string };
 
@@ -100,6 +100,25 @@ export function mailingNotices(rows: MailingRow[]): BeheerNotice[] {
   });
 }
 
+// ---------- crashrapporten (build 171) ----------
+// Een nieuwe groep (signature) of een groep die terugkomt na "opgelost in build N". Alleen de signature (al opgeschoond, geen
+// URL's of persoonsgegevens) en de platforms; nooit stack of message.
+export const CRASHES = "bingrbeheer://crashes";
+export type CrashNoticeRow = { signature: string; kind?: string | null; notice: "new" | "regressed"; resolved_build?: number | null; platforms?: string[] | null };
+const KIND_NL: Record<string, string> = { crash: "crash", anr: "hang (ANR)", error: "fout" };
+export function crashNotices(rows: CrashNoticeRow[]): BeheerNotice[] {
+  const r = rows.filter((x) => x && (x.notice === "new" || x.notice === "regressed"));
+  if (r.length > MAX_PER_KIND) {
+    const back = r.filter((x) => x.notice === "regressed").length;
+    return [{ kind: "crash", title: `${r.length} crashmeldingen`, body: `${r.length - back} nieuw, ${back} teruggekomen`, url: CRASHES }];
+  }
+  return r.map((x) => {
+    const plats = (x.platforms ?? []).join(", ");
+    const title = x.notice === "new" ? `Nieuwe ${KIND_NL[x.kind ?? "crash"] ?? "crash"}` : `Teruggekomen na build ${x.resolved_build ?? "?"}`;
+    return { kind: "crash" as const, title: plats ? `${title} (${plats})` : title, body: clip(x.signature) || "(geen signature)", url: CRASHES };
+  });
+}
+
 // ---------- builds ----------
 export const BUILD_NAMES: Record<string, string> = { android: "Android", apple: "Apple", beheer: "Beheer-app" };
 export type Builds = Record<string, number>;
@@ -189,7 +208,7 @@ export type Current = {
  * Eerste keer (geen rij, of een veld leeg): op de huidige stand zetten zonder te melden. Geeft per soort terug of er al een
  * watermerk was (alleen dan mag die soort melden).
  */
-export function initState(row: Partial<State> | null, cur: Current, nowMs: number): { state: State; armed: Record<Exclude<Kind, "purchase" | "mailing">, boolean> } {
+export function initState(row: Partial<State> | null, cur: Current, nowMs: number): { state: State; armed: Record<Exclude<Kind, "purchase" | "mailing" | "crash">, boolean> } {
   const r = row ?? {};
   const num = (v: unknown) => (v == null || v === "" || !Number.isFinite(Number(v)) ? null : Number(v));
   const obj = <T>(v: unknown) => (v && typeof v === "object" && !Array.isArray(v) ? v as T : null);

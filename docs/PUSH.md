@@ -167,12 +167,14 @@ wordt niets verstuurd (geen fout); de watermerken lopen wel door.
 | `reply` | `replies` | nieuw klantbericht (`support_messages`, `author = 'customer'`, id > watermerk), niet het eerste bericht van een ticket (dat is het ticket zelf) | `Nieuw antwoord op #<nummer>` | begin van het bericht (max. 120 tekens) | `bingrbeheer://support/<nummer>` |
 | `build` | `builds` | hogere build in `builds/manifest.json` (beheer.bingr.online, via dl.php met HMAC-token uit `BINGR_BUILDS_KEY`, hoogstens elke 5 minuten) voor android, tizen, apple of beheer | `Android-build 116 staat klaar` (Samsung TV-, Apple-, Beheer-app-build) | `In Downloads op beheer.bingr.online` | `bingrbeheer://downloads` |
 | `status` | `status` | een statusmonitor (alle ingeschakelde monitors) krijgt een storing of is er weer vanaf | `Storing: <monitor>` / `Weer online: <monitor>` | `Sinds 14:25` / `Na 12 min weer bereikbaar` | `bingrbeheer://status` |
+| `crash` | `crashes` | build 171: een nieuwe crashgroep (signature) of een groep die terugkomt na "opgelost in build N" (`crash_groups.pending_notice`, één keer geclaimd met `bingr_crash_notices_claim`) | `Nieuwe crash (ios, tvos)` / `Nieuwe hang (ANR) (android)` / `Teruggekomen na build 171 (android)` | de signature (max. 120 tekens; nooit message of stack) | `bingrbeheer://crashes` |
 
 - Status volgt de storingen van de functie `status` (`status_incidents`): die opent pas na 2 mislukte controles op rij en sluit
   na 2 goede, dus flapperen geeft geen meldingen. Onderhoud opent geen storing, dus ook geen melding.
 - Meer dan 3 per soort in één ronde: één samenvatting (`5 nieuwe tickets`, `4 nieuwe antwoorden`, `4 nieuwe builds staan klaar`,
   `5 statuswijzigingen` met `3 storingen, 2 weer online`).
-- Payload: `{aps:{alert:{title, body}, sound:"default", "thread-id":<kind>}, kind, url}`; `kind` = ticket | reply | build | status.
+- Payload: `{aps:{alert:{title, body}, sound:"default", "thread-id":<kind>}, kind, url}`; `kind` = ticket | reply | build | status | purchase | mailing | crash.
+- Meer dan 3 crashmeldingen in één ronde: `5 crashmeldingen` met `4 nieuw, 1 teruggekomen`. Een beheer-app die `crashes` niet kent, krijgt ze (ontbrekende sleutel = aan); zet `prefs.crashes = false` om ze uit te zetten.
 - Ongeldige token (410, BadDeviceToken, Unregistered, DeviceTokenNotForTopic, ExpiredToken) → rij verwijderd; andere fout →
   `last_error` (alleen de code). Na een geslaagde melding wordt `last_error` weer leeg.
 - Antwoord van `cron` bevat `beheer: {notices, sent, invalid, failed, skipped?}` (alleen tellingen; `skipped` = `busy`,
