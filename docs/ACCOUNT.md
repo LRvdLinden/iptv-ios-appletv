@@ -2380,3 +2380,143 @@ De cron van `push` leest `leadMin`, `competition` en `matchKey`: een sportherinn
 (bij `0`: vanaf de start tot 2 minuten erna), met de sporttekst hierboven in de taal van het apparaat (11 talen). Gewone
 herinneringen blijven 2 minuten vooraf. Sleutel `reminder:<account>:<id>` (ongewijzigd). Tests in
 `supabase/functions/push/push_test.ts`.
+
+## Build 176 (versie 1.0.8): autoplay, vergrendelen, momenten, Binnenkort, zoeken in de gids, data besparen
+
+Gedeeld contract voor Apple, Android en de webspeler. Alles is **compatibel met oudere apps**: alleen nieuwe velden in
+`profile.<id>` en optionele velden in `reminders`; oudere apps laten onbekende sleutels staan (zie "Build 171"). Pure logica
+gelijk op alle platforms (Apple `Shared/Build176.swift`, Android `Build176Logic.kt`, web `web/js/build176.js`) met
+gedeelde testgevallen in **`docs/build176_cases.json`** (kopieën in bingr-android en bingr-website, niet los aanpassen).
+
+### 1. Automatisch volgende aflevering (`profile.<id>.autoplayNext`)
+
+```json
+{ "autoplayNext": { "value": false, "at": "ISO-8601" } }
+```
+
+- Eén waarde per profiel; de nieuwste `at` wint (niet per veld samenvoegen). Ontbreekt het veld: **aan**, behalve in een
+  kinderprofiel (`kids: true`): **uit**. Instellen in Instellingen > Afspelen (voor het actieve profiel).
+- **Regel** (`autoplay` in de testgevallen): `start = (value ?? !kids) && !stillWatchingDue`. De aftelknop "Volgende
+  aflevering" blijft altijd zichtbaar (als er een volgende is); bij uit telt hij niet af en start hij niet vanzelf (tikken
+  start wel). Komt "Kijk je nog?" (build 171), dan gaat die voor en start er niets vanzelf.
+
+### 2. Vergrendelen met pincode (`lockedChannels`, `lockedTitles`)
+
+Twee sets per profiel, zelfde vorm en sleutels als `hiddenChannels` en `blockedTitles` (build 171: `[{id, at}]`,
+verwijderingen in `removed.<veld>` of als `{id, removed:true, at}`):
+
+| veld | sleutel |
+|---|---|
+| `lockedChannels` | `"<server-id kleine letters>\|<stream-id>"` |
+| `lockedTitles` | `"<server-id kleine letters>\|movie:<id>"` / `"<server-id kleine letters>\|series:<id>"` |
+
+- **Vergrendelen**: lange druk/Meer-menu op een zender, film of serie: "Vergrendelen met pincode" / "Lock with PIN".
+  Alleen als het **hoofdprofiel een pincode** heeft (anders de melding "Stel eerst een pincode in voor het hoofdprofiel" /
+  "Set a PIN for the main profile first"). In een kinderprofiel mag vergrendelen zonder pincode; **ontgrendelen**
+  ("Ontgrendelen" / "Unlock", en uit de lijst halen) vraagt altijd de pincode van het hoofdprofiel.
+- **Openen** van een vergrendelde zender of titel (afspelen, detailpagina, zappen, Verder kijken, herinnering, deeplink)
+  vraagt de pincode van het hoofdprofiel (bestaande PIN-flow). Na de juiste pincode is **dat item** 4 uur open **op dit
+  apparaat** (lokaal, niet gesynct: `unlocked[<sleutel>] = tijd`). Zappen naar een vergrendelde zender = eerst de pincode;
+  Annuleren = blijven op de huidige zender.
+- **Regel** (`lock` in de testgevallen): `ask = locked && hasMainPin && !(unlockedAt != null && now - unlockedAt < 14400)`.
+  Heeft het hoofdprofiel (niet meer) een pincode, dan opent alles gewoon (vergrendelen kan dan ook niet).
+- Vergrendelde items blijven **zichtbaar** (met een slotje op poster/zender), het voorbeeld (live preview, trailer) speelt
+  niet en de EPG-tekst van een vergrendelde zender blijft zichtbaar.
+- **Overzicht**: Instellingen > Profiel > "Vergrendeld" / "Locked" (zoals Verborgen zenders), per item ontgrendelen (pincode).
+
+### 3. Momenten bewaren (`profile.<id>.bookmarks`)
+
+```json
+{ "bookmarks": [ { "id": "<server-id kleine letters>|<key>@<t>", "playlistID": "<server-id>", "key": "<sleutel>",
+                   "title": "Titel · S1:E2", "t": 1234, "at": "ISO-8601" },
+                 { "id": "…", "removed": true, "at": "ISO-8601" } ] }
+```
+
+- **`key`** = dezelfde sleutel als in `progress` (Verder kijken) van die film of aflevering; **`playlistID`** = de server
+  (zoals in `progress`). **`t`** = gehele seconden vanaf het begin. **`title`** = wat de lijst toont (titel, bij een
+  aflevering met " · S1:E2"). `id` = `"<server-id kleine letters>|<key>@<t>"`, dus hetzelfde moment twee keer bewaren = één item.
+- **Samenvoegen** (`bookmarks` in de testgevallen): per `id` wint de nieuwste `at` (een verwijdering is een item met
+  `removed:true` en de tijd van verwijderen). Bij gelijke `at` wint `removed`. Verwijderingen ouder dan 90 dagen weg. Max.
+  **200** aanwezige momenten per profiel (de nieuwste `at` blijven). Uitvoer: aanwezige momenten op `at` aflopend, dan
+  verwijderingen, elk op `id` bij gelijke tijd. Geen `removed.bookmarks`: de verwijderingen staan in de lijst zelf.
+- **In de app**: speler: knop/menu "Moment bewaren" / "Save moment" (melding "Moment bewaard" / "Moment saved").
+  Detailpagina: rij "Momenten" / "Moments" (voor die titel, op `t` oplopend); Mijn lijst: rij "Momenten" (alle, nieuwste
+  eerst). Tikken = afspelen vanaf `t`; lange druk/veeg = verwijderen. Een kinderprofiel ziet alleen momenten van titels die
+  het mag. Alleen films en afleveringen (geen live).
+
+### 4. Binnenkort / Nieuw en populair: herinnering op de releasedatum (`reminders`)
+
+Het belletje bij een titel is een gewoon item in `reminders` (zie "Herinneringen per profiel" en "Build 172"), met extra
+velden. Oudere apps lezen het als gewone herinnering (daarom zijn `playlistID` en `channelID` gevuld):
+
+```json
+{ "id": "release:movie:550", "kind": "release", "tmdb": 550, "mediaType": "movie", "season": null,
+  "playlistID": "<server-id van het hoofdprofiel, anders 00000000-0000-0000-0000-000000000000>",
+  "channelID": "release:movie:550", "channelName": "Bingr", "title": "Fight Club",
+  "start": "2026-12-04T08:00:00Z", "at": "ISO-8601" }
+```
+
+- **`id`** = `release:<movie|tv>:<tmdb-id>` (serie met nieuw seizoen: `release:tv:<tmdb-id>:s<seizoen>`); bij een ander
+  profiel dan het hoofdprofiel `p:<profiel-id kleine letters>:` ervoor (zoals altijd). `channelID` = dezelfde sleutel zonder
+  profiel. `season` alleen bij een nieuw seizoen.
+- **`start`** = de releasedatum (TMDB, regio van de app) om **09:00 lokale tijd** van het apparaat dat het belletje zet,
+  als UTC ISO-8601. De melding komt **op** `start` (niet 2 minuten ervoor). Na `start` + 1 uur ruimt de gewone regel hem op.
+- **Tekst**: titel "Nu te zien: %@" / "Out now: %@" (met de profielnaam ervoor als er meer profielen zijn, zoals altijd);
+  tweede regel "Vandaag verschenen. Tik om te bekijken." / "Released today. Tap to view." Tikken = de detailpagina
+  (`bingr://title?tmdb=<id>&type=<movie|tv>`): staat de titel op een server van het account (bestaande TMDB-matching),
+  dan die titel, anders de TMDB-detailpagina met Mijn lijst.
+- **Apple TV, Android TV**: banner in de app; **iPhone, iPad, Mac, Android, webspeler**: push van de server (functie `push`,
+  zie "Server" hieronder), zonder push een lokale melding op `start`.
+- **Server**: de functie `push` kent `kind: "release"` vanaf branch `build-176` (PR, pas na akkoord naar `main`): melding op
+  `start`, tekst en link zoals hierboven. Zonder die wijziging stuurt de server 2 minuten vóór `start` een gewone
+  herinnering ("Bingr": "<titel> begint om 09:00"), wat acceptabel is.
+- **"Nu beschikbaar"**: staat een titel uit Binnenkort al op een server van het account (TMDB-id, anders titel + jaar,
+  zoals "Nieuw op Bingr"), dan het label "Nu beschikbaar" / "Available now" en geen belletje maar afspelen.
+- **Pagina "Nieuw en populair"** / "New & Popular" (rij op Home + eigen pagina): drie secties via de bestaande TMDB-route
+  (zonder eigen sleutel in de app): "Binnenkort" (`/movie/upcoming` regio), "Nieuwe seizoenen" (series uit Mijn lijst en
+  Verder kijken met een `next_episode_to_air` of een seizoen dat in de komende 60 dagen begint), "Populair" (`/trending/all/week`).
+  Kinderprofiel: alleen titels met een toegestane leeftijd (bestaande regels), geen Populair zonder leeftijd.
+
+### 5. Zoeken in programmabeschrijvingen (lokaal)
+
+- Zoeken en de zoekfunctie van de tv-gids doorzoeken ook de **beschrijvingen** van de EPG (programma's die nog niet
+  voorbij zijn, tot 7 dagen vooruit), in een aparte sectie "In de tv-gids" / "In the TV guide", na de gewone resultaten.
+- **Regel** (`epgSearch` in de testgevallen): tekst normaliseren = kleine letters, zonder accenten (NFD, combinerende tekens
+  weg), alles wat geen letter of cijfer is wordt een spatie. Zoekterm in woorden (≥ 2 tekens na normaliseren; minder dan
+  3 tekens in totaal = niet zoeken). Een programma past als **elk** woord voorkomt (als deel van een woord) in titel +
+  beschrijving. `field` = `"title"` als alle woorden in de titel staan, anders `"description"`. **Markeren**: het eerste
+  woord van de zoekterm dat in de beschrijving staat, als het originele stuk tekst (`highlight`); bij `field = "title"`
+  de titel markeren. Normaliseer per teken (één genormaliseerd teken per origineel teken), dan is de plek in de
+  genormaliseerde tekst ook de plek in de originele tekst.
+- Volgorde: `title` vóór `description`, dan starttijd; max. 100 resultaten; één resultaat per (zender, start).
+- Op de achtergrond met een index (genormaliseerde tekst per programma, opnieuw bij een nieuwe EPG), zoeken pas na
+  250 ms stilte; de UI blijft vlot bij 50.000 programma's. Kinderprofiel, verborgen en vergrendelde zenders volgen de
+  bestaande regels (verborgen: niet tonen; vergrendeld: wel tonen, pincode bij openen).
+
+### 6. Data besparen op mobiel netwerk (per apparaat, geen sync)
+
+Instellingen > Afspelen: "Op mobiel netwerk" / "On cellular": **Automatisch** (`auto`, standaard) / **Data besparen**
+(`saver`) / **Hoogste kwaliteit** (`max`). Lokale sleutel `dataMode`.
+
+- **Regel** (`dataMode` in de testgevallen): `saver = net == "cellular" && (mode == "saver" || (mode == "auto" && constrained))`,
+  met `constrained` = systeem-databesparing (iOS Modus voor weinig data / `isConstrained`, Android Databesparing,
+  web `navigator.connection.saveData`). `net` = `wifi` / `cellular` / `unknown` (`unknown` = als wifi; web: `navigator.connection.type`
+  of `effectiveType` in `slow-2g`/`2g`/`3g` = `cellular`). Wifi en bekabeld: nooit `saver`.
+- Bij `saver`: max. **1.500.000 bit/s** (`preferredPeakBitRate` / Media3 `setMaxVideoBitrate` / hls.js-niveau),
+  **geen live voorbeeld** (zender-preview), **geen trailer-autoplay** en **geen voorvertoning op posters**.
+- **Variant kiezen** (`variant` in de testgevallen) uit een HLS-master `[{bandwidth, height}]`: bij `saver` de variant
+  met de hoogste `bandwidth` waarvoor `bandwidth ≤ 1500000` en (`height` ontbreekt of `≤ 576`); is er geen, dan die met de
+  laagste `bandwidth`. Zonder `saver`: geen keuze (`null`, de speler kiest zelf).
+
+### 7. Voorvertoning op een titel (per apparaat, geen sync)
+
+Instellingen > Afspelen: "Voorvertoning" / "Previews" (lokaal `posterPreview`, standaard aan). Na **2 s** focus (tv) of
+hover (web/desktop) op een poster, of in de hero op de telefoon/tablet, speelt de trailer (YouTube/TMDB, nooit de
+IPTV-stream) **zonder geluid** in de kaart of de hero. Niet bij `saver` (punt 6), niet bij een vergrendelde titel,
+niet in een kinderprofiel als de titel geen toegestane leeftijd heeft. Telt niet als stream.
+
+### 8. Helpcentrum
+
+Instellingen > Hulp ("Helpcentrum" / "Help centre") opent `https://support.bingr.online/hulp/` (de supportsite heeft geen
+index/JSON; daarom de startpagina, die de artikelen toont): iOS/iPadOS `SFSafariViewController`, Mac de browser,
+Android Custom Tabs, web een nieuw venster; **tvOS en Android TV**: een QR-code met die link.

@@ -1,0 +1,593 @@
+{
+ "_": "Build 176: gedeelde testgevallen voor Apple (Shared/Build176.swift, tools/selftest), Android (Build176Logic.kt, unittest) en de webspeler (web/js/build176.js, tools/test/build176_test.js). Bron: iptv-ios-appletv/docs/build176_cases.json; kopieën niet los aanpassen. Regels: docs/ACCOUNT.md, 'Build 176'.",
+ "autoplay": {
+  "_": "[value (true/false/null = niet ingesteld), kids, stillWatchingDue, verwacht: vanzelf starten]",
+  "cases": [
+   [
+    null,
+    false,
+    false,
+    true
+   ],
+   [
+    null,
+    true,
+    false,
+    false
+   ],
+   [
+    true,
+    true,
+    false,
+    true
+   ],
+   [
+    false,
+    false,
+    false,
+    false
+   ],
+   [
+    true,
+    false,
+    true,
+    false
+   ],
+   [
+    null,
+    false,
+    true,
+    false
+   ],
+   [
+    false,
+    true,
+    false,
+    false
+   ]
+  ]
+ },
+ "lock": {
+  "_": "[locked, hasMainPin, unlockedAt (s, null = nooit), now (s), verwacht: pincode vragen]; 4 uur = 14400 s",
+  "cases": [
+   [
+    false,
+    true,
+    null,
+    1000000,
+    false
+   ],
+   [
+    true,
+    true,
+    null,
+    1000000,
+    true
+   ],
+   [
+    true,
+    false,
+    null,
+    1000000,
+    false
+   ],
+   [
+    true,
+    true,
+    990000,
+    1000000,
+    false
+   ],
+   [
+    true,
+    true,
+    985600,
+    1000000,
+    true
+   ],
+   [
+    true,
+    true,
+    985601,
+    1000000,
+    false
+   ],
+   [
+    true,
+    true,
+    1000100,
+    1000000,
+    false
+   ]
+  ]
+ },
+ "dataMode": {
+  "_": "[mode (auto/saver/max), net (wifi/cellular/unknown), constrained, verwacht: saver]",
+  "cases": [
+   [
+    "auto",
+    "wifi",
+    false,
+    false
+   ],
+   [
+    "auto",
+    "wifi",
+    true,
+    false
+   ],
+   [
+    "auto",
+    "cellular",
+    false,
+    false
+   ],
+   [
+    "auto",
+    "cellular",
+    true,
+    true
+   ],
+   [
+    "saver",
+    "cellular",
+    false,
+    true
+   ],
+   [
+    "saver",
+    "wifi",
+    false,
+    false
+   ],
+   [
+    "saver",
+    "unknown",
+    true,
+    false
+   ],
+   [
+    "max",
+    "cellular",
+    true,
+    false
+   ],
+   [
+    "onzin",
+    "cellular",
+    true,
+    true
+   ]
+  ]
+ },
+ "variant": {
+  "_": "{saver, variants [{bandwidth, height?}], expect: index in variants of null}. Onbekende mode telt als auto.",
+  "cases": [
+   {
+    "saver": false,
+    "variants": [
+     {
+      "bandwidth": 800000,
+      "height": 360
+     },
+     {
+      "bandwidth": 5000000,
+      "height": 1080
+     }
+    ],
+    "expect": null
+   },
+   {
+    "saver": true,
+    "variants": [
+     {
+      "bandwidth": 800000,
+      "height": 360
+     },
+     {
+      "bandwidth": 1400000,
+      "height": 576
+     },
+     {
+      "bandwidth": 5000000,
+      "height": 1080
+     }
+    ],
+    "expect": 1
+   },
+   {
+    "saver": true,
+    "variants": [
+     {
+      "bandwidth": 5000000,
+      "height": 1080
+     },
+     {
+      "bandwidth": 1200000,
+      "height": 720
+     },
+     {
+      "bandwidth": 900000,
+      "height": 480
+     }
+    ],
+    "expect": 2
+   },
+   {
+    "saver": true,
+    "variants": [
+     {
+      "bandwidth": 3000000,
+      "height": 720
+     },
+     {
+      "bandwidth": 2000000,
+      "height": 540
+     }
+    ],
+    "expect": 1
+   },
+   {
+    "saver": true,
+    "variants": [
+     {
+      "bandwidth": 1000000
+     },
+     {
+      "bandwidth": 1500000
+     },
+     {
+      "bandwidth": 1500001
+     }
+    ],
+    "expect": 1
+   },
+   {
+    "saver": true,
+    "variants": [],
+    "expect": null
+   }
+  ]
+ },
+ "epgSearch": {
+  "_": "{q, title, desc, expect: null (geen treffer) of {field: title|description, highlight: origineel stuk tekst of null}}. Bij field=title is highlight het stuk in de titel. Woorden korter dan 2 tekens na normaliseren vallen weg ('x-men' = ['men']).",
+  "cases": [
+   {
+    "q": "ajax",
+    "title": "Ajax - PSV",
+    "desc": "Eredivisie live",
+    "expect": {
+     "field": "title",
+     "highlight": "Ajax"
+    }
+   },
+   {
+    "q": "eredivisie",
+    "title": "Ajax - PSV",
+    "desc": "Live: Eredivisie, speelronde 12",
+    "expect": {
+     "field": "description",
+     "highlight": "Eredivisie"
+    }
+   },
+   {
+    "q": "ajax ronde",
+    "title": "Ajax - PSV",
+    "desc": "Live: Eredivisie, speelronde 12",
+    "expect": {
+     "field": "description",
+     "highlight": "ronde"
+    }
+   },
+   {
+    "q": "cafe",
+    "title": "Het Journaal",
+    "desc": "Reportage uit een Café in Parijs.",
+    "expect": {
+     "field": "description",
+     "highlight": "Café"
+    }
+   },
+   {
+    "q": "CAFÉ",
+    "title": "Het Journaal",
+    "desc": "Reportage uit een cafe in Parijs.",
+    "expect": {
+     "field": "description",
+     "highlight": "cafe"
+    }
+   },
+   {
+    "q": "dino",
+    "title": "Natuur",
+    "desc": "Over dinosaurussen en vogels",
+    "expect": {
+     "field": "description",
+     "highlight": "dino"
+    }
+   },
+   {
+    "q": "dino vis",
+    "title": "Natuur",
+    "desc": "Over dinosaurussen en vogels",
+    "expect": null
+   },
+   {
+    "q": "ab",
+    "title": "Abba",
+    "desc": "Abba live",
+    "expect": null
+   },
+   {
+    "q": "  ",
+    "title": "Abba",
+    "desc": "Abba live",
+    "expect": null
+   },
+   {
+    "q": "f1 gp",
+    "title": "Formule 1: GP van Brazilië",
+    "desc": "F1-race live",
+    "expect": {
+     "field": "description",
+     "highlight": "F1"
+    }
+   },
+   {
+    "q": "brazilie",
+    "title": "Formule 1: GP van Brazilië",
+    "desc": null,
+    "expect": {
+     "field": "title",
+     "highlight": "Brazilië"
+    }
+   },
+   {
+    "q": "x-men",
+    "title": "Film",
+    "desc": "Met de X-Men in de hoofdrol",
+    "expect": {
+     "field": "description",
+     "highlight": "Men"
+    }
+   }
+  ]
+ },
+ "bookmarks": {
+  "_": "{local, server, now (ISO), expect}: per id wint de nieuwste at, bij gelijke at wint removed; verwijderingen ouder dan 90 dagen weg; max 200 aanwezig (nieuwste at); uitvoer: aanwezig op at aflopend, dan verwijderingen op at aflopend, bij gelijke at op id. Vergelijk alleen id, removed (false als het ontbreekt) en at (als tijd).",
+  "cases": [
+   {
+    "name": "samenvoegen",
+    "now": "2026-11-15T12:00:00Z",
+    "local": [
+     {
+      "id": "abc|x1@60",
+      "key": "x1",
+      "playlistID": "ABC",
+      "title": "Film",
+      "t": 60,
+      "at": "2026-11-15T10:00:00Z"
+     }
+    ],
+    "server": [
+     {
+      "id": "abc|x2@120",
+      "key": "x2",
+      "playlistID": "abc",
+      "title": "Film 2",
+      "t": 120,
+      "at": "2026-11-15T11:00:00Z"
+     }
+    ],
+    "expect": [
+     {
+      "id": "abc|x2@120",
+      "at": "2026-11-15T11:00:00Z"
+     },
+     {
+      "id": "abc|x1@60",
+      "at": "2026-11-15T10:00:00Z"
+     }
+    ]
+   },
+   {
+    "name": "verwijdering wint als nieuwer",
+    "now": "2026-11-15T12:00:00Z",
+    "local": [
+     {
+      "id": "abc|x1@60",
+      "key": "x1",
+      "playlistID": "abc",
+      "title": "Film",
+      "t": 60,
+      "at": "2026-11-15T10:00:00Z"
+     }
+    ],
+    "server": [
+     {
+      "id": "abc|x1@60",
+      "removed": true,
+      "at": "2026-11-15T11:00:00Z"
+     }
+    ],
+    "expect": [
+     {
+      "id": "abc|x1@60",
+      "removed": true,
+      "at": "2026-11-15T11:00:00Z"
+     }
+    ]
+   },
+   {
+    "name": "opnieuw bewaard na verwijderen",
+    "now": "2026-11-15T12:00:00Z",
+    "local": [
+     {
+      "id": "abc|x1@60",
+      "key": "x1",
+      "playlistID": "abc",
+      "title": "Film",
+      "t": 60,
+      "at": "2026-11-15T11:30:00Z"
+     }
+    ],
+    "server": [
+     {
+      "id": "abc|x1@60",
+      "removed": true,
+      "at": "2026-11-15T11:00:00Z"
+     }
+    ],
+    "expect": [
+     {
+      "id": "abc|x1@60",
+      "at": "2026-11-15T11:30:00Z"
+     }
+    ]
+   },
+   {
+    "name": "gelijke tijd: removed wint",
+    "now": "2026-11-15T12:00:00Z",
+    "local": [
+     {
+      "id": "abc|x1@60",
+      "key": "x1",
+      "playlistID": "abc",
+      "title": "Film",
+      "t": 60,
+      "at": "2026-11-15T11:00:00Z"
+     }
+    ],
+    "server": [
+     {
+      "id": "abc|x1@60",
+      "removed": true,
+      "at": "2026-11-15T11:00:00Z"
+     }
+    ],
+    "expect": [
+     {
+      "id": "abc|x1@60",
+      "removed": true,
+      "at": "2026-11-15T11:00:00Z"
+     }
+    ]
+   },
+   {
+    "name": "oude verwijdering opgeruimd",
+    "now": "2026-11-15T12:00:00Z",
+    "local": [],
+    "server": [
+     {
+      "id": "abc|x9@5",
+      "removed": true,
+      "at": "2026-08-01T00:00:00Z"
+     },
+     {
+      "id": "abc|x8@5",
+      "removed": true,
+      "at": "2026-09-01T00:00:00Z"
+     }
+    ],
+    "expect": [
+     {
+      "id": "abc|x8@5",
+      "removed": true,
+      "at": "2026-09-01T00:00:00Z"
+     }
+    ]
+   },
+   {
+    "name": "gelijke at: op id",
+    "now": "2026-11-15T12:00:00Z",
+    "local": [
+     {
+      "id": "abc|b@1",
+      "key": "b",
+      "playlistID": "abc",
+      "title": "B",
+      "t": 1,
+      "at": "2026-11-15T10:00:00Z"
+     }
+    ],
+    "server": [
+     {
+      "id": "abc|a@1",
+      "key": "a",
+      "playlistID": "abc",
+      "title": "A",
+      "t": 1,
+      "at": "2026-11-15T10:00:00Z"
+     }
+    ],
+    "expect": [
+     {
+      "id": "abc|a@1",
+      "at": "2026-11-15T10:00:00Z"
+     },
+     {
+      "id": "abc|b@1",
+      "at": "2026-11-15T10:00:00Z"
+     }
+    ]
+   }
+  ],
+  "limit": {
+   "_": "205 aanwezige momenten met at = 2026-11-01T00:00:00Z + i minuten (i = 0..204, id abc|k<i>@1) → 200 over, de oudste vijf (k0..k4) vallen weg",
+   "count": 205,
+   "keep": 200
+  }
+ },
+ "bookmarkID": {
+  "_": "[server-id, key, t (seconden, mag een kommagetal zijn: naar beneden afronden), verwacht id]",
+  "cases": [
+   [
+    "ABC-DEF",
+    "xv456",
+    61.9,
+    "abc-def|xv456@61"
+   ],
+   [
+    "abc",
+    "ep:xs1|1-2",
+    0,
+    "abc|ep:xs1|1-2@0"
+   ]
+  ]
+ },
+ "releaseReminder": {
+  "_": "[mediaType, tmdb, season of null, profiel (null = hoofdprofiel), releasedatum, tijdzone, verwacht id, verwacht start (UTC)]",
+  "cases": [
+   [
+    "movie",
+    550,
+    null,
+    null,
+    "2026-12-04",
+    "Europe/Amsterdam",
+    "release:movie:550",
+    "2026-12-04T08:00:00Z"
+   ],
+   [
+    "tv",
+    1399,
+    9,
+    null,
+    "2027-06-20",
+    "Europe/Amsterdam",
+    "release:tv:1399:s9",
+    "2027-06-20T07:00:00Z"
+   ],
+   [
+    "movie",
+    550,
+    null,
+    "ABCD-1234",
+    "2026-12-04",
+    "America/New_York",
+    "p:abcd-1234:release:movie:550",
+    "2026-12-04T14:00:00Z"
+   ]
+  ]
+ }
+}
