@@ -231,6 +231,12 @@ struct AppSettingsView: View {
                 }
             } else if subs.isLoggedIn {
                 LabeledContent(L("OpenSubtitles"), value: subs.username ?? L("Signed in"))
+                if subs.needsSignIn && isMain {
+                    // build 173: token verlopen zonder bewaard wachtwoord: opnieuw inloggen (je bent niet uitgelogd)
+                    Button { signInToOpenSubtitles() } label: {
+                        Label(L("Sign in to OpenSubtitles again"), systemImage: "exclamationmark.triangle")
+                    }
+                }
                 if isMain {
                     Button(role: .destructive) { Task { await subs.logout() } } label: {
                         Label(L("Sign out of OpenSubtitles"), systemImage: "rectangle.portrait.and.arrow.right")
@@ -240,6 +246,7 @@ struct AppSettingsView: View {
                 Button { signInToOpenSubtitles() } label: {
                     Label(L("Sign in to OpenSubtitles"), systemImage: "captions.bubble")
                 }
+                if let n = subs.notice { Text(n).font(.caption).foregroundStyle(Theme.red) }   // build 173
             } else {
                 LabeledContent(L("OpenSubtitles"), value: L("Not connected"))
             }

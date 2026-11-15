@@ -10,7 +10,7 @@ settings:
   base:
     SWIFT_VERSION: "5.9"
     MARKETING_VERSION: "1.0.7"
-    CURRENT_PROJECT_VERSION: "172"
+    CURRENT_PROJECT_VERSION: "173"
     # Team van Léon van der Linden; automatisch ondertekenen voor iOS, tvOS en macOS
     DEVELOPMENT_TEAM: EU3UY476T6
     CODE_SIGN_STYLE: Automatic
@@ -97,6 +97,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: nl.lrvdlinden.bingr
         TARGETED_DEVICE_FAMILY: "1,2"
+        # build 173: Objective-C-hulpje (NSException van VLCKit opvangen)
+        SWIFT_OBJC_BRIDGING_HEADER: Shared/ObjC/Bingr-Bridging-Header.h
         INFOPLIST_KEY_CFBundleDisplayName: Bingr
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.entertainment
         SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO   # de Mac heeft een eigen app (BingrMac)
@@ -179,6 +181,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: nl.lrvdlinden.bingr
         TARGETED_DEVICE_FAMILY: "3"
+        # build 173: Objective-C-hulpje (NSException van VLCKit opvangen)
+        SWIFT_OBJC_BRIDGING_HEADER: Shared/ObjC/Bingr-Bridging-Header.h
         INFOPLIST_KEY_CFBundleDisplayName: Bingr
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.entertainment
         ASSETCATALOG_COMPILER_APPICON_NAME: "App Icon & Top Shelf Image"
@@ -239,6 +243,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: nl.lrvdlinden.bingr
         PRODUCT_NAME: Bingr
+        # build 173: Objective-C-hulpje (NSException van VLCKit opvangen)
+        SWIFT_OBJC_BRIDGING_HEADER: Shared/ObjC/Bingr-Bridging-Header.h
         INFOPLIST_KEY_CFBundleDisplayName: Bingr
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.entertainment
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon

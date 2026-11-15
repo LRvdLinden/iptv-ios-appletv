@@ -231,6 +231,8 @@ struct SportView: View {
     @State private var filter: SportFilter = .all
     @State private var now = Date()
     @State private var sheet: SportGroup173?
+    /// Build 173: zoeken via het vergrootglas, zoals op Home, Films en Series
+    @State private var showSearch = false
     private let tick = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
 
     private var filters: [SportFilter] {
@@ -283,6 +285,9 @@ struct SportView: View {
             .onChange(of: store.favoriteTeams) { _, _ in center.refresh(playlists, force: true) }
             .onChange(of: store.favoriteCompetitions) { _, _ in center.refresh(playlists, force: true) }
             .onDisappear { ChannelPreview.shared.stop(release: true) }
+            #if !os(tvOS)
+            .fullScreenCover(isPresented: $showSearch) { SearchView(modal: true) }
+            #endif
             #if os(tvOS)
             .fullScreenCover(item: $sheet) { g in SportMatchSheet(group: g).environmentObject(playlists).environmentObject(app) }
             #else
@@ -335,8 +340,27 @@ struct SportView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: tvScaled(12)) {
             #if !os(tvOS)
-            Text(L("Sport")).font(Theme.titleFont)
-                .padding(.horizontal, Theme.edge)
+            // build 173: rechtsboven het vergrootglas en het profielmenu, net als op Home, Films en Series
+            // (Apple TV: Zoeken en het profiel staan al in de menubalk)
+            HStack(spacing: 14) {
+                Text(L("Sport")).font(Theme.titleFont)
+                Spacer()
+                Button { showSearch = true } label: {
+                    Image(systemName: "magnifyingglass").font(.system(size: 21, weight: .semibold)).foregroundStyle(.white)
+                        .frame(width: 34, height: 34)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(L("Search"))
+                ProfileMenuButton {
+                    HStack(spacing: 5) {
+                        ProfileAvatar(size: 30)
+                        Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)).foregroundStyle(.white)
+                    }
+                    .frame(height: 34)
+                    .contentShape(Rectangle())
+                }
+            }
+            .padding(.horizontal, Theme.edge)
             #endif
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: tvScaled(8)) {

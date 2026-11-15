@@ -186,11 +186,14 @@ actor TraktClient {
         if !force, !TraktTokenPolicy.needsRefresh(expiresAt: t.expiresAt) { return t.accessToken }
         // Inloggen gaat met een apparaatcode (geen redirect). Bij verversen eist Trakt wel een
         // geregistreerde redirect-URI; we proberen de veilige https-variant en de oude "oob".
+        // build 173: per poging de status (nil = netwerkfout), om "opnieuw inloggen" van "later opnieuw" te scheiden
+        var statuses: [Int?] = []
         for redirect in Self.redirectURIs {
             let req = try oauthRequest("/oauth/token", oauthBody([
                 "refresh_token": t.refreshToken, "redirect_uri": redirect, "grant_type": "refresh_token"]))
-            guard let res = try? await HTTP.data(req) else { continue }
+            guard let res = try? await HTTP.data(req) else { statuses.append(nil); continue }
             let (d, r) = res
+            statuses.append(r.statusCode)
             if r.statusCode == 200, let n = try? JSONDecoder().decode(TokenResponse.self, from: d) {
                 let user = t.username; t = n.tokens; t.username = user
                 Keychain.setCodable(t, for: tokenKey)
@@ -209,6 +212,8 @@ actor TraktClient {
             return latest.accessToken
         }
         if t.expiresAt > Date() { return t.accessToken }
+        // build 173: weigert Trakt het refresh-token (400/401 invalid_grant), dan helpt alleen opnieuw inloggen
+        if TraktHealth173.refreshFailure(statuses: statuses) == .reauth { throw TraktError.reauthRequired }
         throw TraktError.refreshFailed
     }
 
@@ -234,6 +239,14 @@ actor TraktClient {
         }
         if h.statusCode == 429 {
             throw TraktError.rateLimited(TraktBackoff.retryAfter(h.value(forHTTPHeaderField: "Retry-After")))
+        }
+        // build 173: ook na verversen nog 401 (of 403): de koppeling is niet meer geldig; 423: account vergrendeld
+        if auth {
+            switch h.statusCode {
+            case 401, 403: throw TraktError.reauthRequired
+            case 423: throw TraktError.locked
+            default: break
+            }
         }
         return (d, h)
     }
@@ -276,8 +289,14 @@ enum TraktError: LocalizedError {
     case refreshFailed
     /// Build 154: 429, met `Retry-After` in seconden
     case rateLimited(Double?)
+    /// Build 173: Trakt weigert het token blijvend (opnieuw inloggen nodig)
+    case reauthRequired
+    /// Build 173: 423, het Trakt-account is vergrendeld
+    case locked
     var errorDescription: String? {
         switch self {
+        case .reauthRequired: return L("Sign in to Trakt again")
+        case .locked: return L("Your Trakt account is locked. Check trakt.tv.")
         case .refreshFailed: return L("Trakt: could not connect")
         case .rateLimited: return L("Trakt: could not connect")
         case .notLoggedIn: return L("Not signed in to Trakt.")

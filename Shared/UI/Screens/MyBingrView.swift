@@ -328,7 +328,13 @@ struct TraktSettingsView: View {
                 if let m = trakt.lastScrobble {
                     LabeledContent(L("Last sent"), value: m + (trakt.lastScrobbleDate.map { " · " + $0.formatted(date: .omitted, time: .shortened) } ?? ""))
                 }
-                Button { Task { await trakt.refresh(force: true) } } label: {
+                if trakt.needsReauth {
+                    // build 173: blijvend ongeldig token: opnieuw inloggen (de wachtrij blijft bewaard)
+                    Button { Task { await trakt.resetForReauth() } } label: {
+                        Label(L("Sign in to Trakt again"), systemImage: "person.crop.circle.badge.exclamationmark")
+                    }
+                }
+                Button { Task { await trakt.syncNow() } } label: {
                     HStack {
                         Label(trakt.isSyncing ? L("Syncing…") : trakt.justSynced ? L("Up to date") : L("Sync now"),
                               systemImage: trakt.justSynced ? "checkmark.circle.fill" : "arrow.triangle.2.circlepath")

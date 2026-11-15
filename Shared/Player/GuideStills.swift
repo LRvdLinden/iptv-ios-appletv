@@ -80,8 +80,10 @@ final class GuideStills: ObservableObject {
             guard let cg = Self.ciContext.createCGImage(scaled, from: scaled.extent) else { return }
             store(cg, name: name)
         } else if let vlc = ctrl.engine as? VLCEngine {
+            // build 173: alleen als het voorbeeld echt beeld toont (anders gooide VLC een exceptie: crash in 172)
+            guard vlc.hasPicture else { return }
             let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("still-\(UUID().uuidString).png")
-            vlc.snapshot(to: tmp.path, width: width)
+            guard vlc.snapshot(to: tmp.path, width: width) else { return }
             Task { @MainActor [weak self] in
                 // VLC schrijft het beeld vanaf zijn eigen thread weg: even wachten tot het er staat
                 for _ in 0..<12 {

@@ -207,10 +207,25 @@ final class VLCEngine: PlaybackEngine {
             }
         }
     }
+    /// Build 173: toont VLC nu echt beeld? Alleen dan kan een momentopname: zonder video-uitvoer (voorbeeld net
+    /// gestart of al gestopt, radio) gooit `saveVideoSnapshotAt:` een NSException en stopte de app (SIGABRT, 172).
+    nonisolated static func hasPicture(_ p: VLCMediaPlayer) -> Bool {
+        p.hasVideoOut && p.isPlaying && p.state == .playing && p.videoSize.width > 0 && p.videoSize.height > 0
+    }
+    var hasPicture: Bool { Self.hasPicture(player) }
+
     /// Build 164: stilstaand beeld voor de tv-gids (VLC schrijft het zelf weg, kort daarna staat het bestand er).
-    func snapshot(to path: String, width: Int) {
+    /// Build 173: pas als er beeld is (opnieuw gecontroleerd op `previewQueue`, waar ook `stop` loopt) en altijd binnen
+    /// `BingrCatchException`, zodat een race in VLC de app nooit meer stopt. Geeft false als er geen opname komt.
+    @discardableResult
+    func snapshot(to path: String, width: Int) -> Bool {
+        guard hasPicture else { return false }
         let p = player
-        Self.previewQueue.async { p.saveVideoSnapshot(at: path, withWidth: Int32(width), andHeight: 0) }
+        Self.previewQueue.async {
+            guard VLCEngine.hasPicture(p) else { return }
+            _ = BingrCatchException({ p.saveVideoSnapshot(at: path, withWidth: Int32(width), andHeight: 0) }, nil)
+        }
+        return true
     }
     func play() { player.play() }
     func pause() { player.pause() }

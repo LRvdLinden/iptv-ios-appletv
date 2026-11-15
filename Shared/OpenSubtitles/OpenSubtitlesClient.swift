@@ -17,7 +17,17 @@ final class OpenSubtitles: ObservableObject {
         didSet { UserDefaults.standard.set(defaultLanguage, forKey: "os.language") }
     }
 
-    private struct Session: Codable { var token: String; var baseURL: String; var username: String }
+    /// Build 173: `loggedInAt` (seconden sinds 1970) om het token (± 24 uur geldig) op tijd stil te vernieuwen
+    private struct Session: Codable { var token: String; var baseURL: String; var username: String; var loggedInAt: Double? }
+    /// Build 173: wachtwoord voor stil opnieuw inloggen, alleen op dit apparaat (versleutelde opslag in de sandbox,
+    /// nooit in de account-sync of een log)
+    private static let passwordKey = "opensubtitles.password"
+    private var storedPassword: String? { Keychain.getLocalOnly(Self.passwordKey).flatMap { $0.isEmpty ? nil : $0 } }
+    /// Build 173: het token is verlopen en er is hier geen wachtwoord om stil opnieuw in te loggen (niet uitgelogd)
+    @Published private(set) var needsSignIn = false
+    /// Build 173: melding na een uitlog door foute inloggegevens
+    @Published var notice: String?
+    private var renewTask: Task<Bool, Error>?
     private var session: Session? { didSet { Keychain.setCodable(session, for: "opensubtitles.session"); username = session?.username } }
 
     private init() {
@@ -47,9 +57,15 @@ final class OpenSubtitles: ObservableObject {
     }
 
     private func request(_ path: String, method: String = "GET", query: [String: String] = [:], body: [String: Any]? = nil,
-                         base: String? = nil) async throws -> Data {
+                         base: String? = nil, retried: Bool = false) async throws -> Data {
         // build 91: zonder app-sleutel (nog niet van de server) niet aanroepen: dat geeft een 401/403 die niets met je inlog te maken heeft
         guard Secrets.openSubtitlesReady else { throw OSError.notReady }
+        // build 173: token bijna 24 uur oud: eerst stil vernieuwen (lukt dat niet door het netwerk, dan het oude proberen)
+        if !retried, session != nil, Self.authenticatedPaths.contains(path),
+           OSSession173.shouldRenew(loggedInAt: session?.loggedInAt, now: Date().timeIntervalSince1970,
+                                    hasPassword: storedPassword != nil) {
+            _ = try? await renew()
+        }
         var c = URLComponents(string: "https://\(Self.safeBase(base ?? session?.baseURL))/api/v1\(path)")!
         if !query.isEmpty { c.queryItems = query.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) } }
         var r = URLRequest(url: c.url!)
@@ -61,13 +77,21 @@ final class OpenSubtitles: ObservableObject {
         if let t = session?.token { r.setValue("Bearer \(t)", forHTTPHeaderField: "Authorization") }
         if let body { r.httpBody = try JSONSerialization.data(withJSONObject: body) }
         let (d, h) = try await HTTP.data(r)
-        // build 91: alleen bij aanroepen die echt de inlog gebruiken de sessie wissen (dat logt via de account ook je
-        // andere apparaten uit); een 401 bij zoeken zegt niets over het token. Er wordt geen wachtwoord bewaard,
-        // dus opnieuw inloggen kan hier niet: dan moet de gebruiker zelf opnieuw inloggen.
-        if h.statusCode == 401 && session != nil && Self.authenticatedPaths.contains(path) {
-            session = nil
-            remainingDownloads = nil
-            throw OSError.notLoggedIn   // niet de melding over de afspeellijst (HTTPError 401)
+        // build 91: alleen bij aanroepen die echt de inlog gebruiken telt een 401 (bij zoeken zegt hij niets over het token).
+        // Build 173: dan niet meer uitloggen (dat logde via de account ook je andere apparaten uit), maar stil opnieuw
+        // inloggen met de bewaarde gegevens en het verzoek één keer herhalen. Zonder bewaard wachtwoord: de sessie
+        // blijft, met de vraag om opnieuw in te loggen. Netwerkfouten, 429 en 5xx laten de sessie altijd staan.
+        let authenticated = session != nil && Self.authenticatedPaths.contains(path)
+        switch OSSession173.onResponse(status: h.statusCode, authenticated: authenticated, hasPassword: storedPassword != nil) {
+        case .keep: break
+        case .relogin:
+            if !retried, try await renew() {
+                return try await request(path, method: method, query: query, body: body, base: base, retried: true)
+            }
+            throw OSError.signInAgain
+        case .expired:
+            needsSignIn = true
+            throw OSError.signInAgain
         }
         guard (200..<300).contains(h.statusCode) else {
             struct E: Decodable { let message: String? }
@@ -86,8 +110,50 @@ final class OpenSubtitles: ObservableObject {
         struct R: Decodable { struct U: Decodable { let allowed_downloads: Int?; let remaining_downloads: Int? }; let token: String; let base_url: String?; let user: U? }
         let d = try await request("/login", method: "POST", body: ["username": username, "password": password], base: "api.opensubtitles.com")
         let r = try JSONDecoder().decode(R.self, from: d)
-        session = Session(token: r.token, baseURL: Self.safeBase(r.base_url), username: username)
+        // build 173: wachtwoord alleen op dit apparaat bewaren, voor stil opnieuw inloggen als het token verloopt
+        Keychain.setLocalOnly(password, for: Self.passwordKey)
+        session = Session(token: r.token, baseURL: Self.safeBase(r.base_url), username: username,
+                          loggedInAt: Date().timeIntervalSince1970)
         remainingDownloads = r.user?.remaining_downloads ?? r.user?.allowed_downloads
+        needsSignIn = false
+        notice = nil
+    }
+
+    /// Build 173: stil opnieuw inloggen met de bewaarde gegevens (één tegelijk). true = nieuw token. Foute gegevens
+    /// (400/401): uitloggen met een melding; netwerk, 403, 429 en 5xx: false (de sessie blijft).
+    private func renew() async throws -> Bool {
+        if let t = renewTask { return try await t.value }
+        guard let user = session?.username, !user.isEmpty, let pass = storedPassword else { return false }
+        let t = Task { @MainActor () throws -> Bool in
+            var r = URLRequest(url: URL(string: "https://api.opensubtitles.com/api/v1/login")!)
+            r.httpMethod = "POST"
+            r.setValue(Secrets.openSubtitlesAPIKey, forHTTPHeaderField: "Api-Key")
+            r.setValue(Secrets.userAgent, forHTTPHeaderField: "User-Agent")
+            r.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            r.setValue("application/json", forHTTPHeaderField: "Accept")
+            r.httpBody = try JSONSerialization.data(withJSONObject: ["username": user, "password": pass])
+            let res = try? await HTTP.data(r)
+            switch OSSession173.loginResult(status: res?.1.statusCode) {
+            case .ok:
+                struct R: Decodable { let token: String; let base_url: String? }
+                guard let d = res?.0, let x = try? JSONDecoder().decode(R.self, from: d) else { return false }
+                self.session = Session(token: x.token, baseURL: Self.safeBase(x.base_url), username: user,
+                                       loggedInAt: Date().timeIntervalSince1970)
+                self.needsSignIn = false
+                return true
+            case .badCredentials:
+                Keychain.setLocalOnly(nil, for: Self.passwordKey)
+                self.session = nil
+                self.remainingDownloads = nil
+                self.notice = L("OpenSubtitles: your username or password is no longer correct. Please sign in again.")
+                throw OSError.notLoggedIn
+            case .transient:
+                return false
+            }
+        }
+        renewTask = t
+        defer { renewTask = nil }
+        return try await t.value
     }
 
     /// Wat de app bewaart om ingelogd te blijven (voor de Bingr-account, zie StateSync).
@@ -97,20 +163,27 @@ final class OpenSubtitles: ObservableObject {
 
     /// Sessie uit de Bingr-account zetten of wissen (zonder uitloggen bij OpenSubtitles).
     func applySyncedSession(token: String, baseURL: String?, username: String) {
-        let s = Session(token: token, baseURL: Self.safeBase(baseURL), username: username)   // build 141: vaste lijst
+        // build 173: een nieuw token van een ander apparaat telt als vers (leeftijd onbekend: vanaf nu)
+        let s = Session(token: token, baseURL: Self.safeBase(baseURL), username: username,
+                        loggedInAt: Date().timeIntervalSince1970)   // build 141: vaste lijst
         guard session?.token != s.token || session?.baseURL != s.baseURL || session?.username != s.username else { return }
+        if session?.username != s.username { Keychain.setLocalOnly(nil, for: Self.passwordKey) }
         session = s
+        needsSignIn = false
         Task { await refreshUser() }
     }
 
     func forgetSession() {
         if session != nil { session = nil }
+        Keychain.setLocalOnly(nil, for: Self.passwordKey)   // build 173: elders bewust uitgelogd
         remainingDownloads = nil
     }
 
     func logout() async {
         _ = try? await request("/logout", method: "DELETE")
         session = nil
+        Keychain.setLocalOnly(nil, for: Self.passwordKey)   // build 173
+        needsSignIn = false
     }
 
     // MARK: zoeken
@@ -295,11 +368,14 @@ final class OpenSubtitles: ObservableObject {
 
 enum OSError: LocalizedError {
     case notLoggedIn
+    /// Build 173: token verlopen en stil opnieuw inloggen kon niet (geen bewaard wachtwoord of geen verbinding)
+    case signInAgain
     /// build 91: de app-sleutel voor OpenSubtitles is er (nog) niet
     case notReady
     var errorDescription: String? {
         switch self {
         case .notLoggedIn: return L("Sign in to OpenSubtitles first (My Bingr).")
+        case .signInAgain: return L("Your OpenSubtitles session has expired. Sign in again in Settings.")
         case .notReady: return L("OpenSubtitles isn't available yet. Try again in a moment.")
         }
     }

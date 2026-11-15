@@ -611,16 +611,23 @@ final class StateSync {
             // en een lokale koppeling die de server niet heeft houden (migratie)
             var keptLocal = false
             for k in ["trakt", "opensubtitles"] {
+                if k == "trakt", let v = data[k], !(v is NSNull), !Self.adoptTrakt(local: local[k], remote: v) {   // build 173
+                    keptLocal = true; continue
+                }
                 if let v = data[k], !(v is NSNull), Self.validConnection(k, v) { result[k] = v }
                 else if !(local[k] is NSNull) { keptLocal = true }
             }
             resultAt = keptLocal ? trustedNow() : serverAt
         } else if serverAt > localAt! {
+            var keptTrakt = false
             for k in ["trakt", "opensubtitles"] {
                 let v = data[k] ?? NSNull()
+                // build 173: nooit een ouder Trakt-token over een nieuwer heen (het refresh-token daarvan is al gebruikt)
+                if k == "trakt", !(v is NSNull), !Self.adoptTrakt(local: local[k], remote: v) { keptTrakt = true; continue }
                 result[k] = (v is NSNull || Self.validConnection(k, v)) ? v : local[k]
             }
-            resultAt = serverAt
+            // het nieuwere token terugzetten in het account, zodat andere apparaten het ook krijgen
+            resultAt = keptTrakt ? max(trustedNow(), serverAt + 1) : serverAt
         } else {
             resultAt = localAt!
         }
@@ -628,6 +635,16 @@ final class StateSync {
         meta.connections = Stamp(fp: Self.fingerprint(localConnections()), at: resultAt)
         let payload = connectionsPayload(result, extras: data, at: resultAt)
         return Self.same(Self.withoutUpdatedAt(payload), Self.withoutUpdatedAt(data)) ? nil : payload
+    }
+
+    /// Build 173: Trakt-token uit het account alleen overnemen als het minstens zo lang geldig is als het lokale
+    /// (`TraktHealth173.adoptRemote`). Geen lokaal token, of geen geldig token in het account: zoals voorheen.
+    private static func adoptTrakt(local: Any?, remote: Any) -> Bool {
+        guard let r = remote as? [String: Any], let ra = r["accessToken"] as? String, !ra.isEmpty,
+              let rx = time(r["expiresAt"]) else { return true }
+        guard let l = local as? [String: Any], let la = l["accessToken"] as? String, !la.isEmpty,
+              let lx = time(l["expiresAt"]) else { return true }
+        return TraktHealth173.adoptRemote(local: (la, Date(timeIntervalSince1970: lx)), remote: (ra, Date(timeIntervalSince1970: rx)))
     }
 
     private static func validConnection(_ kind: String, _ v: Any) -> Bool {

@@ -150,12 +150,14 @@ struct MyBingrHeader: View {
 
     /// Trakt-status: draaiende pijltjes tijdens synchroniseren, anders de laatste sync; tik = nu synchroniseren.
     private var traktStatus: some View {
-        Button { Task { await trakt.refresh(force: true) } } label: {
+        // build 173: bij een blijvend ongeldig token naar Trakt (opnieuw inloggen), anders echt synchroniseren
+        Button { if trakt.needsReauth { app.showMyBingr(.trakt) } else { Task { await trakt.syncNow() } } } label: {
             HStack(spacing: 6) {
                 if trakt.isSyncing { ProgressView().scaleEffect(0.6).frame(width: 16, height: 16) }
                 else { Image(systemName: trakt.lastError == nil ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
                         .foregroundStyle(trakt.lastError == nil ? Theme.green : Theme.red) }
                 Text(trakt.isSyncing ? L("Syncing with Trakt…") : trakt.justSynced ? L("Up to date")
+                     : trakt.needsReauth ? L("Sign in to Trakt again")
                      : trakt.lastRefresh.map { L("Trakt synced %@", $0.formatted(date: .omitted, time: .shortened)) } ?? L("Sync now"))
             }
             .font(.system(size: tvScaled(12), weight: .medium))

@@ -27,6 +27,8 @@ enum ProfileMenuAction {
     case switchProfile, manageProfiles, myBingr, settings, account, support, signOut
     /// Build 146: alle servers één voor één vernieuwen (zoals de knop Vernieuwen), met de bijwerk-indicator
     case refreshServers
+    /// Build 173: het categorieënoverzicht (op de iPhone staat Sport in de tabbalk op de plek van Categorieën)
+    case categories
 }
 
 /// Profielmenu achter de avatar: andere profielen (direct wisselen, met pincode als die er is),
@@ -41,6 +43,8 @@ struct ProfileMenuButton<MenuLabel: View>: View {
     @ObservedObject private var support = SupportCenter.shared
     @State private var pinFor: ViewerProfile?
     @State private var confirmSignOut = false
+    /// Build 173: Categorieën (met Live TV) als volledig scherm
+    @State private var showCategories = false
     #if os(tvOS)
     @State private var showMenu = false
     #endif
@@ -73,6 +77,7 @@ struct ProfileMenuButton<MenuLabel: View>: View {
                     return true
                 }
             }
+            .fullScreenCover(isPresented: $showCategories) { BrowseCategoriesView(modal: true, asTab: true) }
             .confirmationDialog(L("Sign out of Bingr on this device?"), isPresented: $confirmSignOut,
                                 titleVisibility: .visible) {
                 Button(L("Sign out"), role: .destructive) { Task { await account.signOut() } }
@@ -109,6 +114,8 @@ struct ProfileMenuButton<MenuLabel: View>: View {
                 }
             }
             Section {
+                // build 173: Categorieën boven "Servers vernieuwen"
+                Button { perform(.categories) } label: { Label(L("Categories"), systemImage: "square.grid.2x2") }
                 if canRefresh {
                     Button { perform(.refreshServers) } label: { Label(L("Refresh servers"), systemImage: "arrow.clockwise") }
                 }
@@ -152,6 +159,7 @@ struct ProfileMenuButton<MenuLabel: View>: View {
         case .account: app.showMyBingr(.account)
         case .support: app.showMyBingr(.support)
         case .signOut: KidsGate.shared.require { confirmSignOut = true }
+        case .categories: showCategories = true
         case .refreshServers:
             // zoals de knop Vernieuwen: alle servers één voor één, op de achtergrond met het "Bijwerken"-pilletje
             guard canRefresh else { return }
@@ -232,6 +240,7 @@ private struct TVProfileMenu: View {
                 .focusSection()
             }
             VStack(spacing: 10) {
+                row(L("Categories"), "square.grid.2x2", .categories)   // build 173
                 if canRefresh { row(L("Refresh servers"), "arrow.clockwise", .refreshServers) }
                 row(L("Switch profile"), "person.2", .switchProfile).focused($focus, equals: .first)
                 if canManage { row(L("Manage profiles"), "pencil", .manageProfiles) }

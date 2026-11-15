@@ -309,12 +309,13 @@ final class TraktSync: ObservableObject {
                     lastScrobbleDate = Date()
                 }
                 queue.remove(batch)
+                noteSuccess()
             } catch TraktError.rateLimited(let after) {
                 queue.failed(batch, now: now, retryAfter: after)
                 break
             } catch {
                 queue.failed(batch, now: now)
-                lastError = error.localizedDescription
+                noteFailure(error)
             }
         }
         queue.save(Self.queueURL)
@@ -392,7 +393,62 @@ final class TraktSync: ObservableObject {
         }
     }
 
+    // MARK: build 173: alleen een blijvende fout als waarschuwing
+
+    /// Soort van de laatste fout sinds de laatste geslaagde aanroep (nil = alles goed)
+    @Published private(set) var failure: TraktHealth173.Failure?
+    /// Opnieuw inloggen bij Trakt nodig (de knop in Mijn Bingr opent dan Trakt in plaats van te synchroniseren)
+    var needsReauth: Bool { failure == .reauth && lastError != nil }
+    private static let failingSinceKey = "trakt.failingSince"
+
+    private func noteFailure(_ error: Error) {
+        if error is CancellationError { return }
+        let kind: TraktHealth173.Failure
+        switch error {
+        case TraktError.reauthRequired, TraktError.notLoggedIn: kind = .reauth
+        case TraktError.locked: kind = .locked
+        case HTTPError.status(let code, _): kind = TraktHealth173.classify(status: code)
+        default: kind = .transient
+        }
+        // een blijvende fout wordt niet overschreven door een tijdelijke
+        if failure == nil || kind != .transient { failure = kind }
+        let d = UserDefaults.standard
+        if d.object(forKey: Self.failingSinceKey) == nil { d.set(Date().timeIntervalSince1970, forKey: Self.failingSinceKey) }
+        updateWarning()
+    }
+
+    private func noteSuccess() {
+        failure = nil
+        UserDefaults.standard.removeObject(forKey: Self.failingSinceKey)
+        lastError = nil
+    }
+
+    private func updateWarning() {
+        let since = (UserDefaults.standard.object(forKey: Self.failingSinceKey) as? Double).map { Date(timeIntervalSince1970: $0) }
+        guard TraktHealth173.showWarning(failure, failingSince: since) else { lastError = nil; return }
+        switch failure {
+        case .reauth?: lastError = L("Sign in to Trakt again")
+        case .locked?: lastError = L("Your Trakt account is locked. Check trakt.tv.")
+        default: lastError = L("Trakt: could not connect")
+        }
+    }
+
+    /// "Nu synchroniseren": eerst de wachtrij, dan alles ophalen (ook als er volgens Trakt niets veranderd is).
+    func syncNow() async {
+        await flushQueue()
+        await refresh(force: true)
+    }
+
+    /// Build 173: het token is blijvend ongeldig: lokaal loskoppelen zodat "Inloggen bij Trakt" weer verschijnt, maar
+    /// de wachtrij bewaren (die gaat na het opnieuw inloggen alsnog naar Trakt).
+    func resetForReauth() async {
+        await client.store(nil)
+        isLoggedIn = false
+        noteSuccess()
+    }
+
     func logout() async {
+        noteSuccess()
         await client.logout()
         isLoggedIn = false; username = nil
         watchedMovies = []; watchedEpisodes = [:]; watchlist = []; playback = []; titleIndex = TitleIndex()
@@ -423,7 +479,7 @@ final class TraktSync: ObservableObject {
 
     func refresh(force: Bool = false) async {
         guard isLoggedIn else {
-            if force { lastError = L("Not signed in to Trakt.") }
+            if force { lastError = L("Not signed in to Trakt.") }   // alleen na een tik op "Nu synchroniseren"
             return
         }
         // build 88: Trakt hoort bij Lifetime; op een Gratis-account staat synchroniseren stil
@@ -447,7 +503,7 @@ final class TraktSync: ObservableObject {
         do {
             let act: LastActivities = try await client.get("/sync/last_activities")
             if !force, let a = act.all, a == lastActivity, !watchedMovies.isEmpty || !watchedEpisodes.isEmpty || !watchedKeys.isEmpty {
-                lastRefresh = Date(); return
+                lastRefresh = Date(); noteSuccess(); return
             }
             async let m: [WatchedMovie] = client.get("/sync/watched/movies")
             // build 154: extended=full voor `aired_episodes` (serie helemaal gezien)
@@ -514,10 +570,10 @@ final class TraktSync: ObservableObject {
             titleIndex = tIndex
             lastActivity = act.all
             lastRefresh = Date()
-            lastError = nil
+            noteSuccess()
             saveCache()
         } catch {
-            lastError = error.localizedDescription
+            noteFailure(error)
             if case TraktError.notLoggedIn = error { isLoggedIn = false }
         }
     }
@@ -576,7 +632,7 @@ final class TraktSync: ObservableObject {
         if add { watchlist.insert(imdb) } else { watchlist.remove(imdb) }
         let body: [String: Any] = [isShow ? "shows" : "movies": [["ids": ["imdb": imdb]]]]
         do { try await client.postRaw(add ? "/sync/watchlist" : "/sync/watchlist/remove", body: body) }
-        catch { lastError = error.localizedDescription }
+        catch { noteFailure(error) }
     }
 
     enum ScrobbleAction: String { case start, pause, stop }
@@ -617,7 +673,7 @@ final class TraktSync: ObservableObject {
             result = .notFound
         } catch {
             result = .failed
-            lastError = error.localizedDescription
+            noteFailure(error)
         }
         if action == .stop && watched && result != .ok {
             // scrobble mislukt: de wachtrij zorgt dat het gezien toch bij Trakt komt

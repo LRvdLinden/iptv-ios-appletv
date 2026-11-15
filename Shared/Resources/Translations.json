@@ -1243,7 +1243,12 @@
   "Sport reminders": "تذكيرات الرياضة",
   "Default notification for a match": "الإشعار الافتراضي للمباراة",
   "Also on": "أيضًا على",
-  "No favorite teams yet. Turn on “All matches of …” at a match.": "لا توجد فرق مفضلة بعد. فعّل «كل مباريات …» في مباراة."
+  "No favorite teams yet. Turn on “All matches of …” at a match.": "لا توجد فرق مفضلة بعد. فعّل «كل مباريات …» في مباراة.",
+  "Sign in to Trakt again": "سجّل الدخول إلى Trakt مرة أخرى",
+  "Your Trakt account is locked. Check trakt.tv.": "حسابك في Trakt مقفل. تحقق من trakt.tv.",
+  "OpenSubtitles: your username or password is no longer correct. Please sign in again.": "OpenSubtitles: اسم المستخدم أو كلمة المرور لم يعد صحيحًا. يرجى تسجيل الدخول مرة أخرى.",
+  "Your OpenSubtitles session has expired. Sign in again in Settings.": "انتهت جلسة OpenSubtitles. سجّل الدخول مرة أخرى من الإعدادات.",
+  "Sign in to OpenSubtitles again": "سجّل الدخول إلى OpenSubtitles مرة أخرى"
  },
  "de": {
   "%@ is now signed in.": "%@ ist jetzt angemeldet.",
@@ -2489,7 +2494,12 @@
   "Sport reminders": "Sport-Erinnerungen",
   "Default notification for a match": "Standardmitteilung für ein Spiel",
   "Also on": "Auch auf",
-  "No favorite teams yet. Turn on “All matches of …” at a match.": "Noch keine Lieblingsteams. Aktiviere bei einem Spiel „Alle Spiele von …“."
+  "No favorite teams yet. Turn on “All matches of …” at a match.": "Noch keine Lieblingsteams. Aktiviere bei einem Spiel „Alle Spiele von …“.",
+  "Sign in to Trakt again": "Erneut bei Trakt anmelden",
+  "Your Trakt account is locked. Check trakt.tv.": "Dein Trakt-Konto ist gesperrt. Sieh auf trakt.tv nach.",
+  "OpenSubtitles: your username or password is no longer correct. Please sign in again.": "OpenSubtitles: Dein Benutzername oder Passwort stimmt nicht mehr. Bitte melde dich erneut an.",
+  "Your OpenSubtitles session has expired. Sign in again in Settings.": "Deine OpenSubtitles-Sitzung ist abgelaufen. Melde dich in den Einstellungen erneut an.",
+  "Sign in to OpenSubtitles again": "Erneut bei OpenSubtitles anmelden"
  },
  "es": {
   "%@ is now signed in.": "%@ ya ha iniciado sesión.",
@@ -3735,7 +3745,12 @@
   "Sport reminders": "Recordatorios de deportes",
   "Default notification for a match": "Aviso predeterminado para un partido",
   "Also on": "También en",
-  "No favorite teams yet. Turn on “All matches of …” at a match.": "Aún no hay equipos favoritos. Activa «Todos los partidos de …» en un partido."
+  "No favorite teams yet. Turn on “All matches of …” at a match.": "Aún no hay equipos favoritos. Activa «Todos los partidos de …» en un partido.",
+  "Sign in to Trakt again": "Volver a iniciar sesión en Trakt",
+  "Your Trakt account is locked. Check trakt.tv.": "Tu cuenta de Trakt está bloqueada. Revisa trakt.tv.",
+  "OpenSubtitles: your username or password is no longer correct. Please sign in again.": "OpenSubtitles: tu usuario o contraseña ya no es correcto. Vuelve a iniciar sesión.",
+  "Your OpenSubtitles session has expired. Sign in again in Settings.": "Tu sesión de OpenSubtitles ha caducado. Vuelve a iniciar sesión en Ajustes.",
+  "Sign in to OpenSubtitles again": "Volver a iniciar sesión en OpenSubtitles"
  },
  "fr": {
   "%@ is now signed in.": "%@ est maintenant connecté.",
@@ -4981,7 +4996,12 @@
   "Sport reminders": "Rappels sport",
   "Default notification for a match": "Notification par défaut pour un match",
   "Also on": "Aussi sur",
-  "No favorite teams yet. Turn on “All matches of …” at a match.": "Pas encore d’équipes favorites. Activez « Tous les matchs de … » sur un match."
+  "No favorite teams yet. Turn on “All matches of …” at a match.": "Pas encore d’équipes favorites. Activez « Tous les matchs de … » sur un match.",
+  "Sign in to Trakt again": "Se reconnecter à Trakt",
+  "Your Trakt account is locked. Check trakt.tv.": "Ton compte Trakt est verrouillé. Vérifie sur trakt.tv.",
+  "OpenSubtitles: your username or password is no longer correct. Please sign in again.": "OpenSubtitles : ton nom d’utilisateur ou ton mot de passe n’est plus correct. Reconnecte-toi.",
+  "Your OpenSubtitles session has expired. Sign in again in Settings.": "Ta session OpenSubtitles a expiré. Reconnecte-toi dans les Réglages.",
+  "Sign in to OpenSubtitles again": "Se reconnecter à OpenSubtitles"
  },
  "it": {
   "%@ is now signed in.": "%@ ha effettuato l’accesso.",
@@ -6227,7 +6247,12 @@
   "Sport reminders": "Promemoria sport",
   "Default notification for a match": "Notifica predefinita per una partita",
   "Also on": "Anche su",
-  "No favorite teams yet. Turn on “All matches of …” at a match.": "Nessuna squadra preferita. Attiva «Tutte le partite di …» in una partita."
+  "No favorite teams yet. Turn on “All matches of …” at a match.": "Nessuna squadra preferita. Attiva «Tutte le partite di …» in una partita.",
+  "Sign in to Trakt again": "Accedi di nuovo a Trakt",
+  "Your Trakt account is locked. Check trakt.tv.": "Il tuo account Trakt è bloccato. Controlla su trakt.tv.",
+  "OpenSubtitles: your username or password is no longer correct. Please sign in again.": "OpenSubtitles: nome utente o password non più corretti. Accedi di nuovo.",
+  "Your OpenSubtitles session has expired. Sign in again in Settings.": "La sessione OpenSubtitles è scaduta. Accedi di nuovo in Impostazioni.",
+  "Sign in to OpenSubtitles again": "Accedi di nuovo a OpenSubtitles"
  },
  "nl": {
   "%@ is now signed in.": "%@ is nu ingelogd.",
@@ -7473,7 +7498,12 @@
   "Sport reminders": "Sportherinneringen",
   "Default notification for a match": "Standaardmelding bij een wedstrijd",
   "Also on": "Ook op",
-  "No favorite teams yet. Turn on “All matches of …” at a match.": "Nog geen favoriete teams. Zet bij een wedstrijd “Alle wedstrijden van …” aan."
+  "No favorite teams yet. Turn on “All matches of …” at a match.": "Nog geen favoriete teams. Zet bij een wedstrijd “Alle wedstrijden van …” aan.",
+  "Sign in to Trakt again": "Opnieuw inloggen bij Trakt",
+  "Your Trakt account is locked. Check trakt.tv.": "Je Trakt-account is vergrendeld. Kijk op trakt.tv.",
+  "OpenSubtitles: your username or password is no longer correct. Please sign in again.": "OpenSubtitles: je gebruikersnaam of wachtwoord klopt niet meer. Log opnieuw in.",
+  "Your OpenSubtitles session has expired. Sign in again in Settings.": "Je OpenSubtitles-sessie is verlopen. Log opnieuw in via Instellingen.",
+  "Sign in to OpenSubtitles again": "Opnieuw inloggen bij OpenSubtitles"
  },
  "pl": {
   "%@ is now signed in.": "%@ jest teraz zalogowany.",
@@ -8719,7 +8749,12 @@
   "Sport reminders": "Przypomnienia o sporcie",
   "Default notification for a match": "Domyślne powiadomienie o meczu",
   "Also on": "Także na",
-  "No favorite teams yet. Turn on “All matches of …” at a match.": "Brak ulubionych drużyn. Włącz „Wszystkie mecze: …” przy meczu."
+  "No favorite teams yet. Turn on “All matches of …” at a match.": "Brak ulubionych drużyn. Włącz „Wszystkie mecze: …” przy meczu.",
+  "Sign in to Trakt again": "Zaloguj się ponownie do Trakt",
+  "Your Trakt account is locked. Check trakt.tv.": "Twoje konto Trakt jest zablokowane. Sprawdź trakt.tv.",
+  "OpenSubtitles: your username or password is no longer correct. Please sign in again.": "OpenSubtitles: nazwa użytkownika lub hasło nie są już poprawne. Zaloguj się ponownie.",
+  "Your OpenSubtitles session has expired. Sign in again in Settings.": "Sesja OpenSubtitles wygasła. Zaloguj się ponownie w Ustawieniach.",
+  "Sign in to OpenSubtitles again": "Zaloguj się ponownie do OpenSubtitles"
  },
  "pt": {
   "%@ is now signed in.": "%@ já tem sessão iniciada.",
@@ -9965,7 +10000,12 @@
   "Sport reminders": "Lembretes de desporto",
   "Default notification for a match": "Notificação predefinida para um jogo",
   "Also on": "Também em",
-  "No favorite teams yet. Turn on “All matches of …” at a match.": "Ainda sem equipas favoritas. Ativa «Todos os jogos de …» num jogo."
+  "No favorite teams yet. Turn on “All matches of …” at a match.": "Ainda sem equipas favoritas. Ativa «Todos os jogos de …» num jogo.",
+  "Sign in to Trakt again": "Iniciar sessão no Trakt novamente",
+  "Your Trakt account is locked. Check trakt.tv.": "A tua conta Trakt está bloqueada. Verifica em trakt.tv.",
+  "OpenSubtitles: your username or password is no longer correct. Please sign in again.": "OpenSubtitles: o teu nome de utilizador ou palavra-passe já não está correto. Inicia sessão novamente.",
+  "Your OpenSubtitles session has expired. Sign in again in Settings.": "A tua sessão OpenSubtitles expirou. Inicia sessão novamente nas Definições.",
+  "Sign in to OpenSubtitles again": "Iniciar sessão no OpenSubtitles novamente"
  },
  "tr": {
   "%@ is now signed in.": "%@ artık oturum açtı.",
@@ -11211,7 +11251,12 @@
   "Sport reminders": "Spor hatırlatıcıları",
   "Default notification for a match": "Maç için varsayılan bildirim",
   "Also on": "Ayrıca",
-  "No favorite teams yet. Turn on “All matches of …” at a match.": "Henüz favori takım yok. Bir maçta “… tüm maçları”nı açın."
+  "No favorite teams yet. Turn on “All matches of …” at a match.": "Henüz favori takım yok. Bir maçta “… tüm maçları”nı açın.",
+  "Sign in to Trakt again": "Trakt'a yeniden giriş yap",
+  "Your Trakt account is locked. Check trakt.tv.": "Trakt hesabın kilitli. trakt.tv'yi kontrol et.",
+  "OpenSubtitles: your username or password is no longer correct. Please sign in again.": "OpenSubtitles: kullanıcı adın veya şifren artık doğru değil. Lütfen yeniden giriş yap.",
+  "Your OpenSubtitles session has expired. Sign in again in Settings.": "OpenSubtitles oturumunun süresi doldu. Ayarlar'dan yeniden giriş yap.",
+  "Sign in to OpenSubtitles again": "OpenSubtitles'a yeniden giriş yap"
  },
  "zh-Hans": {
   "%@ is now signed in.": "%@ 现已登录。",
@@ -12457,6 +12502,11 @@
   "Sport reminders": "体育提醒",
   "Default notification for a match": "比赛的默认通知",
   "Also on": "也在",
-  "No favorite teams yet. Turn on “All matches of …” at a match.": "还没有喜爱的球队。在比赛中开启“…的所有比赛”。"
+  "No favorite teams yet. Turn on “All matches of …” at a match.": "还没有喜爱的球队。在比赛中开启“…的所有比赛”。",
+  "Sign in to Trakt again": "重新登录 Trakt",
+  "Your Trakt account is locked. Check trakt.tv.": "你的 Trakt 账户已被锁定。请访问 trakt.tv 查看。",
+  "OpenSubtitles: your username or password is no longer correct. Please sign in again.": "OpenSubtitles：你的用户名或密码已不正确。请重新登录。",
+  "Your OpenSubtitles session has expired. Sign in again in Settings.": "你的 OpenSubtitles 会话已过期。请在设置中重新登录。",
+  "Sign in to OpenSubtitles again": "重新登录 OpenSubtitles"
  }
 }
