@@ -1,0 +1,3425 @@
+{
+ "_": "Build 179: gedeelde testgevallen voor Apple (Shared/Build179*.swift, tools/selftest), Android (Build179Logic.kt, unittest) en de webspeler (web/js/build179.js, tools/test/build179_test.js). Bron: iptv-ios-appletv/docs/build179_cases.json; kopieën niet los aanpassen. Regels: docs/ACCOUNT.md, 'Build 179'. Tijden in seconden (Unix).",
+ "refresh": {
+  "_": "[catalogus (6h/daily/3d/weekly/manual, onbekend = daily), gids (6h/12h/daily, onbekend = 6h), laatste volledige verversing (s of null), laatste gidsverversing (s of null), nu, saver (176), mobiel toegestaan, verwacht: full/epg/none/blocked]",
+  "cases": [
+   [
+    "daily",
+    "6h",
+    null,
+    null,
+    2000000000,
+    false,
+    false,
+    "full"
+   ],
+   [
+    "daily",
+    "6h",
+    1999996400,
+    1999996400,
+    2000000000,
+    false,
+    false,
+    "none"
+   ],
+   [
+    "daily",
+    "6h",
+    1999913600,
+    1999996400,
+    2000000000,
+    false,
+    false,
+    "full"
+   ],
+   [
+    "daily",
+    "6h",
+    1999913601,
+    1999978400,
+    2000000000,
+    false,
+    false,
+    "epg"
+   ],
+   [
+    "daily",
+    "6h",
+    1999913601,
+    1999978401,
+    2000000000,
+    false,
+    false,
+    "none"
+   ],
+   [
+    "manual",
+    "6h",
+    1999100000,
+    1999999900,
+    2000000000,
+    false,
+    false,
+    "none"
+   ],
+   [
+    "manual",
+    "6h",
+    1999100000,
+    1999970000,
+    2000000000,
+    false,
+    false,
+    "epg"
+   ],
+   [
+    "manual",
+    "daily",
+    null,
+    null,
+    2000000000,
+    false,
+    false,
+    "epg"
+   ],
+   [
+    "6h",
+    "12h",
+    1999978400,
+    null,
+    2000000000,
+    false,
+    false,
+    "full"
+   ],
+   [
+    "3d",
+    "12h",
+    1999800000,
+    null,
+    2000000000,
+    false,
+    false,
+    "epg"
+   ],
+   [
+    "3d",
+    "12h",
+    1999960000,
+    null,
+    2000000000,
+    false,
+    false,
+    "none"
+   ],
+   [
+    "weekly",
+    "daily",
+    1999395200,
+    2000000000,
+    2000000000,
+    false,
+    false,
+    "full"
+   ],
+   [
+    "weekly",
+    "daily",
+    1999500000,
+    1999910000,
+    2000000000,
+    false,
+    false,
+    "epg"
+   ],
+   [
+    "daily",
+    "6h",
+    2000007200,
+    2000007200,
+    2000000000,
+    false,
+    false,
+    "full"
+   ],
+   [
+    "daily",
+    "6h",
+    2000000600,
+    2000000600,
+    2000000000,
+    false,
+    false,
+    "none"
+   ],
+   [
+    "daily",
+    "6h",
+    null,
+    null,
+    2000000000,
+    true,
+    false,
+    "blocked"
+   ],
+   [
+    "daily",
+    "6h",
+    null,
+    null,
+    2000000000,
+    true,
+    true,
+    "full"
+   ],
+   [
+    "daily",
+    "6h",
+    1999996400,
+    1999996400,
+    2000000000,
+    true,
+    false,
+    "none"
+   ],
+   [
+    "onzin",
+    "onzin",
+    1999913600,
+    1999999900,
+    2000000000,
+    false,
+    false,
+    "full"
+   ],
+   [
+    "onzin",
+    "onzin",
+    1999920000,
+    1999978400,
+    2000000000,
+    false,
+    false,
+    "epg"
+   ]
+  ]
+ },
+ "engineFirst": {
+  "_": "[volgorde (instelling), onthouden engine of null, verwacht: eerste engine]",
+  "cases": [
+   [
+    [
+     "apple",
+     "vlc"
+    ],
+    null,
+    "apple"
+   ],
+   [
+    [
+     "apple",
+     "vlc"
+    ],
+    "vlc",
+    "vlc"
+   ],
+   [
+    [
+     "vlc",
+     "apple"
+    ],
+    "apple",
+    "apple"
+   ],
+   [
+    [
+     "apple",
+     "vlc"
+    ],
+    "exo",
+    "apple"
+   ],
+   [
+    [
+     "exo",
+     "vlc"
+    ],
+    "vlc",
+    "vlc"
+   ],
+   [
+    [
+     "hls",
+     "mpegts",
+     "native"
+    ],
+    "native",
+    "native"
+   ],
+   [
+    [
+     "hls",
+     "mpegts",
+     "native"
+    ],
+    null,
+    "hls"
+   ]
+  ]
+ },
+ "engineSwitch": {
+  "_": "[fout, eerste beeld gehad, s sinds start, s aan het bufferen (nu), s echt gespeeld, al gewisseld, verwacht: nu wisselen]",
+  "cases": [
+   [
+    true,
+    false,
+    2,
+    0,
+    0,
+    false,
+    true
+   ],
+   [
+    true,
+    true,
+    40,
+    0,
+    35,
+    false,
+    false
+   ],
+   [
+    true,
+    true,
+    12,
+    0,
+    8,
+    false,
+    true
+   ],
+   [
+    false,
+    false,
+    9.5,
+    0,
+    0,
+    false,
+    false
+   ],
+   [
+    false,
+    false,
+    10,
+    0,
+    0,
+    false,
+    true
+   ],
+   [
+    false,
+    true,
+    25,
+    10,
+    15,
+    false,
+    true
+   ],
+   [
+    false,
+    true,
+    25,
+    9,
+    15,
+    false,
+    false
+   ],
+   [
+    false,
+    true,
+    60,
+    12,
+    31,
+    false,
+    false
+   ],
+   [
+    true,
+    false,
+    2,
+    0,
+    0,
+    true,
+    false
+   ],
+   [
+    false,
+    false,
+    30,
+    0,
+    0,
+    true,
+    false
+   ]
+  ]
+ },
+ "engineNext": {
+  "_": "[volgorde, huidige engine, al gewisseld, verwacht: volgende engine of null]",
+  "cases": [
+   [
+    [
+     "apple",
+     "vlc"
+    ],
+    "apple",
+    false,
+    "vlc"
+   ],
+   [
+    [
+     "apple",
+     "vlc"
+    ],
+    "vlc",
+    false,
+    "apple"
+   ],
+   [
+    [
+     "apple",
+     "vlc"
+    ],
+    "vlc",
+    true,
+    null
+   ],
+   [
+    [
+     "exo",
+     "vlc"
+    ],
+    "exo",
+    false,
+    "vlc"
+   ],
+   [
+    [
+     "hls",
+     "mpegts",
+     "native"
+    ],
+    "hls",
+    false,
+    "mpegts"
+   ],
+   [
+    [
+     "hls",
+     "mpegts",
+     "native"
+    ],
+    "mpegts",
+    false,
+    "hls"
+   ],
+   [
+    [
+     "hls",
+     "mpegts",
+     "native"
+    ],
+    "mpegts",
+    true,
+    null
+   ]
+  ]
+ },
+ "engineMemo": {
+  "_": "[onthouden (of null), gestart met, gewisseld naar (of null), uiteindelijk gelukt, verwacht: nieuw onthouden (null = wissen)]",
+  "cases": [
+   [
+    null,
+    "apple",
+    null,
+    true,
+    "apple"
+   ],
+   [
+    null,
+    "apple",
+    "vlc",
+    true,
+    "vlc"
+   ],
+   [
+    "vlc",
+    "vlc",
+    null,
+    true,
+    "vlc"
+   ],
+   [
+    "vlc",
+    "vlc",
+    "apple",
+    true,
+    "apple"
+   ],
+   [
+    "vlc",
+    "vlc",
+    "apple",
+    false,
+    null
+   ],
+   [
+    null,
+    "apple",
+    "vlc",
+    false,
+    null
+   ],
+   [
+    "apple",
+    "apple",
+    null,
+    false,
+    null
+   ]
+  ]
+ },
+ "zapSearch": {
+  "_": "{q, channels [{name, number?}], expect: indices}. Alleen cijfers = zendernummer (geen zender met dat nummer: cijfers in de naam zonder spaties); anders genormaliseerd als 176 epgSearch en elk woord (>= 2 tekens, of een getal) als deel van de genormaliseerde naam.",
+  "cases": [
+   {
+    "q": "",
+    "channels": [
+     {
+      "name": "NPO 1 HD",
+      "number": 1
+     },
+     {
+      "name": "NPO 2",
+      "number": 2
+     },
+     {
+      "name": "RTL 4 FHD",
+      "number": 4
+     },
+     {
+      "name": "Ziggo Sport",
+      "number": 14
+     },
+     {
+      "name": "ESPN 1",
+      "number": 401
+     },
+     {
+      "name": "Canal+ Sport",
+      "number": null
+     },
+     {
+      "name": "Één",
+      "number": 41
+     }
+    ],
+    "expect": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ]
+   },
+   {
+    "q": "npo",
+    "channels": [
+     {
+      "name": "NPO 1 HD",
+      "number": 1
+     },
+     {
+      "name": "NPO 2",
+      "number": 2
+     },
+     {
+      "name": "RTL 4 FHD",
+      "number": 4
+     },
+     {
+      "name": "Ziggo Sport",
+      "number": 14
+     },
+     {
+      "name": "ESPN 1",
+      "number": 401
+     },
+     {
+      "name": "Canal+ Sport",
+      "number": null
+     },
+     {
+      "name": "Één",
+      "number": 41
+     }
+    ],
+    "expect": [
+     0,
+     1
+    ]
+   },
+   {
+    "q": "npo 1",
+    "channels": [
+     {
+      "name": "NPO 1 HD",
+      "number": 1
+     },
+     {
+      "name": "NPO 2",
+      "number": 2
+     },
+     {
+      "name": "RTL 4 FHD",
+      "number": 4
+     },
+     {
+      "name": "Ziggo Sport",
+      "number": 14
+     },
+     {
+      "name": "ESPN 1",
+      "number": 401
+     },
+     {
+      "name": "Canal+ Sport",
+      "number": null
+     },
+     {
+      "name": "Één",
+      "number": 41
+     }
+    ],
+    "expect": [
+     0
+    ]
+   },
+   {
+    "q": "sport",
+    "channels": [
+     {
+      "name": "NPO 1 HD",
+      "number": 1
+     },
+     {
+      "name": "NPO 2",
+      "number": 2
+     },
+     {
+      "name": "RTL 4 FHD",
+      "number": 4
+     },
+     {
+      "name": "Ziggo Sport",
+      "number": 14
+     },
+     {
+      "name": "ESPN 1",
+      "number": 401
+     },
+     {
+      "name": "Canal+ Sport",
+      "number": null
+     },
+     {
+      "name": "Één",
+      "number": 41
+     }
+    ],
+    "expect": [
+     3,
+     5
+    ]
+   },
+   {
+    "q": "SPORT ziggo",
+    "channels": [
+     {
+      "name": "NPO 1 HD",
+      "number": 1
+     },
+     {
+      "name": "NPO 2",
+      "number": 2
+     },
+     {
+      "name": "RTL 4 FHD",
+      "number": 4
+     },
+     {
+      "name": "Ziggo Sport",
+      "number": 14
+     },
+     {
+      "name": "ESPN 1",
+      "number": 401
+     },
+     {
+      "name": "Canal+ Sport",
+      "number": null
+     },
+     {
+      "name": "Één",
+      "number": 41
+     }
+    ],
+    "expect": [
+     3
+    ]
+   },
+   {
+    "q": "4",
+    "channels": [
+     {
+      "name": "NPO 1 HD",
+      "number": 1
+     },
+     {
+      "name": "NPO 2",
+      "number": 2
+     },
+     {
+      "name": "RTL 4 FHD",
+      "number": 4
+     },
+     {
+      "name": "Ziggo Sport",
+      "number": 14
+     },
+     {
+      "name": "ESPN 1",
+      "number": 401
+     },
+     {
+      "name": "Canal+ Sport",
+      "number": null
+     },
+     {
+      "name": "Één",
+      "number": 41
+     }
+    ],
+    "expect": [
+     2
+    ]
+   },
+   {
+    "q": "14",
+    "channels": [
+     {
+      "name": "NPO 1 HD",
+      "number": 1
+     },
+     {
+      "name": "NPO 2",
+      "number": 2
+     },
+     {
+      "name": "RTL 4 FHD",
+      "number": 4
+     },
+     {
+      "name": "Ziggo Sport",
+      "number": 14
+     },
+     {
+      "name": "ESPN 1",
+      "number": 401
+     },
+     {
+      "name": "Canal+ Sport",
+      "number": null
+     },
+     {
+      "name": "Één",
+      "number": 41
+     }
+    ],
+    "expect": [
+     3
+    ]
+   },
+   {
+    "q": "401",
+    "channels": [
+     {
+      "name": "NPO 1 HD",
+      "number": 1
+     },
+     {
+      "name": "NPO 2",
+      "number": 2
+     },
+     {
+      "name": "RTL 4 FHD",
+      "number": 4
+     },
+     {
+      "name": "Ziggo Sport",
+      "number": 14
+     },
+     {
+      "name": "ESPN 1",
+      "number": 401
+     },
+     {
+      "name": "Canal+ Sport",
+      "number": null
+     },
+     {
+      "name": "Één",
+      "number": 41
+     }
+    ],
+    "expect": [
+     4
+    ]
+   },
+   {
+    "q": "een",
+    "channels": [
+     {
+      "name": "NPO 1 HD",
+      "number": 1
+     },
+     {
+      "name": "NPO 2",
+      "number": 2
+     },
+     {
+      "name": "RTL 4 FHD",
+      "number": 4
+     },
+     {
+      "name": "Ziggo Sport",
+      "number": 14
+     },
+     {
+      "name": "ESPN 1",
+      "number": 401
+     },
+     {
+      "name": "Canal+ Sport",
+      "number": null
+     },
+     {
+      "name": "Één",
+      "number": 41
+     }
+    ],
+    "expect": [
+     6
+    ]
+   },
+   {
+    "q": "canal sport",
+    "channels": [
+     {
+      "name": "NPO 1 HD",
+      "number": 1
+     },
+     {
+      "name": "NPO 2",
+      "number": 2
+     },
+     {
+      "name": "RTL 4 FHD",
+      "number": 4
+     },
+     {
+      "name": "Ziggo Sport",
+      "number": 14
+     },
+     {
+      "name": "ESPN 1",
+      "number": 401
+     },
+     {
+      "name": "Canal+ Sport",
+      "number": null
+     },
+     {
+      "name": "Één",
+      "number": 41
+     }
+    ],
+    "expect": [
+     5
+    ]
+   },
+   {
+    "q": "x",
+    "channels": [
+     {
+      "name": "NPO 1 HD",
+      "number": 1
+     },
+     {
+      "name": "NPO 2",
+      "number": 2
+     },
+     {
+      "name": "RTL 4 FHD",
+      "number": 4
+     },
+     {
+      "name": "Ziggo Sport",
+      "number": 14
+     },
+     {
+      "name": "ESPN 1",
+      "number": 401
+     },
+     {
+      "name": "Canal+ Sport",
+      "number": null
+     },
+     {
+      "name": "Één",
+      "number": 41
+     }
+    ],
+    "expect": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ]
+   },
+   {
+    "q": "zzz",
+    "channels": [
+     {
+      "name": "NPO 1 HD",
+      "number": 1
+     },
+     {
+      "name": "NPO 2",
+      "number": 2
+     },
+     {
+      "name": "RTL 4 FHD",
+      "number": 4
+     },
+     {
+      "name": "Ziggo Sport",
+      "number": 14
+     },
+     {
+      "name": "ESPN 1",
+      "number": 401
+     },
+     {
+      "name": "Canal+ Sport",
+      "number": null
+     },
+     {
+      "name": "Één",
+      "number": 41
+     }
+    ],
+    "expect": []
+   },
+   {
+    "q": "  ",
+    "channels": [
+     {
+      "name": "NPO 1 HD",
+      "number": 1
+     },
+     {
+      "name": "NPO 2",
+      "number": 2
+     },
+     {
+      "name": "RTL 4 FHD",
+      "number": 4
+     },
+     {
+      "name": "Ziggo Sport",
+      "number": 14
+     },
+     {
+      "name": "ESPN 1",
+      "number": 401
+     },
+     {
+      "name": "Canal+ Sport",
+      "number": null
+     },
+     {
+      "name": "Één",
+      "number": 41
+     }
+    ],
+    "expect": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ]
+   }
+  ]
+ },
+ "zapCategories": {
+  "_": "[groepen per zender, favoriet per zender, verwacht: tabs ('*favorites' eerst als er favorieten zijn, dan groepen in volgorde van eerste voorkomen)]. 'Alle' staat er altijd voor en zit niet in de lijst.",
+  "cases": [
+   [
+    [
+     "NL",
+     "NL",
+     "Sport",
+     "NL",
+     "Films"
+    ],
+    [
+     false,
+     false,
+     false,
+     false,
+     false
+    ],
+    [
+     "NL",
+     "Sport",
+     "Films"
+    ]
+   ],
+   [
+    [
+     "NL",
+     "Sport",
+     "Sport",
+     "BE"
+    ],
+    [
+     false,
+     true,
+     false,
+     false
+    ],
+    [
+     "*favorites",
+     "NL",
+     "Sport",
+     "BE"
+    ]
+   ],
+   [
+    [],
+    [],
+    []
+   ]
+  ]
+ },
+ "teamEq": {
+  "_": "[gids-team, ESPN-naam, verwacht: zelfde team] (teamKey van build 172; gelijk, of de kortste (>= 3) is begin van de langste, of de kortste (>= 5) staat in de langste)",
+  "cases": [
+   [
+    "PSV",
+    "PSV Eindhoven",
+    true
+   ],
+   [
+    "Ajax",
+    "AFC Ajax",
+    true
+   ],
+   [
+    "AZ",
+    "AZ Alkmaar",
+    false
+   ],
+   [
+    "Man Utd",
+    "Manchester United",
+    false
+   ],
+   [
+    "Inter",
+    "Internazionale",
+    true
+   ],
+   [
+    "Liverpool FC",
+    "Liverpool",
+    true
+   ],
+   [
+    "Atletico Madrid",
+    "Atlético Madrid",
+    true
+   ],
+   [
+    "Real",
+    "Real Madrid",
+    true
+   ],
+   [
+    "Madrid",
+    "Real Madrid",
+    true
+   ],
+   [
+    "Go Ahead Eagles",
+    "Go Ahead",
+    true
+   ],
+   [
+    "NEC",
+    "NEC Nijmegen",
+    true
+   ],
+   [
+    "",
+    "Ajax",
+    false
+   ]
+  ]
+ },
+ "espnLink": {
+  "_": "{guide {home, away, start}, events [{id, home [namen], away [namen], start}], expect: id of null}. Beide teams (ook omgedraaid), aftrap <= 900 s verschil, dichtstbijzijnde.",
+  "cases": [
+   {
+    "guide": {
+     "home": "PSV",
+     "away": "Ajax",
+     "start": 1800000300
+    },
+    "events": [
+     {
+      "id": "1",
+      "home": [
+       "PSV Eindhoven",
+       "PSV",
+       "PSV"
+      ],
+      "away": [
+       "AFC Ajax",
+       "Ajax",
+       "AJA"
+      ],
+      "start": 1800000000
+     },
+     {
+      "id": "2",
+      "home": [
+       "Feyenoord Rotterdam",
+       "Feyenoord",
+       "FEY"
+      ],
+      "away": [
+       "AZ Alkmaar",
+       "AZ",
+       "AZ"
+      ],
+      "start": 1800007200
+     },
+     {
+      "id": "3",
+      "home": [
+       "Manchester United",
+       "Man United",
+       "MUN"
+      ],
+      "away": [
+       "Liverpool",
+       "Liverpool",
+       "LIV"
+      ],
+      "start": 1800000000
+     },
+     {
+      "id": "4",
+      "home": [
+       "Bayern Munich",
+       "Bayern",
+       "BAY"
+      ],
+      "away": [
+       "Borussia Dortmund",
+       "Dortmund",
+       "BVB"
+      ],
+      "start": 1800001800
+     },
+     {
+      "id": "5",
+      "home": [
+       "Real Madrid",
+       "Real Madrid",
+       "RMA"
+      ],
+      "away": [
+       "Atlético Madrid",
+       "Atlético",
+       "ATM"
+      ],
+      "start": 1800000600
+     }
+    ],
+    "expect": "1"
+   },
+   {
+    "guide": {
+     "home": "Ajax",
+     "away": "PSV",
+     "start": 1799999100
+    },
+    "events": [
+     {
+      "id": "1",
+      "home": [
+       "PSV Eindhoven",
+       "PSV",
+       "PSV"
+      ],
+      "away": [
+       "AFC Ajax",
+       "Ajax",
+       "AJA"
+      ],
+      "start": 1800000000
+     },
+     {
+      "id": "2",
+      "home": [
+       "Feyenoord Rotterdam",
+       "Feyenoord",
+       "FEY"
+      ],
+      "away": [
+       "AZ Alkmaar",
+       "AZ",
+       "AZ"
+      ],
+      "start": 1800007200
+     },
+     {
+      "id": "3",
+      "home": [
+       "Manchester United",
+       "Man United",
+       "MUN"
+      ],
+      "away": [
+       "Liverpool",
+       "Liverpool",
+       "LIV"
+      ],
+      "start": 1800000000
+     },
+     {
+      "id": "4",
+      "home": [
+       "Bayern Munich",
+       "Bayern",
+       "BAY"
+      ],
+      "away": [
+       "Borussia Dortmund",
+       "Dortmund",
+       "BVB"
+      ],
+      "start": 1800001800
+     },
+     {
+      "id": "5",
+      "home": [
+       "Real Madrid",
+       "Real Madrid",
+       "RMA"
+      ],
+      "away": [
+       "Atlético Madrid",
+       "Atlético",
+       "ATM"
+      ],
+      "start": 1800000600
+     }
+    ],
+    "expect": "1"
+   },
+   {
+    "guide": {
+     "home": "PSV",
+     "away": "Ajax",
+     "start": 1800000901
+    },
+    "events": [
+     {
+      "id": "1",
+      "home": [
+       "PSV Eindhoven",
+       "PSV",
+       "PSV"
+      ],
+      "away": [
+       "AFC Ajax",
+       "Ajax",
+       "AJA"
+      ],
+      "start": 1800000000
+     },
+     {
+      "id": "2",
+      "home": [
+       "Feyenoord Rotterdam",
+       "Feyenoord",
+       "FEY"
+      ],
+      "away": [
+       "AZ Alkmaar",
+       "AZ",
+       "AZ"
+      ],
+      "start": 1800007200
+     },
+     {
+      "id": "3",
+      "home": [
+       "Manchester United",
+       "Man United",
+       "MUN"
+      ],
+      "away": [
+       "Liverpool",
+       "Liverpool",
+       "LIV"
+      ],
+      "start": 1800000000
+     },
+     {
+      "id": "4",
+      "home": [
+       "Bayern Munich",
+       "Bayern",
+       "BAY"
+      ],
+      "away": [
+       "Borussia Dortmund",
+       "Dortmund",
+       "BVB"
+      ],
+      "start": 1800001800
+     },
+     {
+      "id": "5",
+      "home": [
+       "Real Madrid",
+       "Real Madrid",
+       "RMA"
+      ],
+      "away": [
+       "Atlético Madrid",
+       "Atlético",
+       "ATM"
+      ],
+      "start": 1800000600
+     }
+    ],
+    "expect": null
+   },
+   {
+    "guide": {
+     "home": "Feyenoord",
+     "away": "AZ",
+     "start": 1800007200
+    },
+    "events": [
+     {
+      "id": "1",
+      "home": [
+       "PSV Eindhoven",
+       "PSV",
+       "PSV"
+      ],
+      "away": [
+       "AFC Ajax",
+       "Ajax",
+       "AJA"
+      ],
+      "start": 1800000000
+     },
+     {
+      "id": "2",
+      "home": [
+       "Feyenoord Rotterdam",
+       "Feyenoord",
+       "FEY"
+      ],
+      "away": [
+       "AZ Alkmaar",
+       "AZ",
+       "AZ"
+      ],
+      "start": 1800007200
+     },
+     {
+      "id": "3",
+      "home": [
+       "Manchester United",
+       "Man United",
+       "MUN"
+      ],
+      "away": [
+       "Liverpool",
+       "Liverpool",
+       "LIV"
+      ],
+      "start": 1800000000
+     },
+     {
+      "id": "4",
+      "home": [
+       "Bayern Munich",
+       "Bayern",
+       "BAY"
+      ],
+      "away": [
+       "Borussia Dortmund",
+       "Dortmund",
+       "BVB"
+      ],
+      "start": 1800001800
+     },
+     {
+      "id": "5",
+      "home": [
+       "Real Madrid",
+       "Real Madrid",
+       "RMA"
+      ],
+      "away": [
+       "Atlético Madrid",
+       "Atlético",
+       "ATM"
+      ],
+      "start": 1800000600
+     }
+    ],
+    "expect": "2"
+   },
+   {
+    "guide": {
+     "home": "Man United",
+     "away": "Liverpool FC",
+     "start": 1800000000
+    },
+    "events": [
+     {
+      "id": "1",
+      "home": [
+       "PSV Eindhoven",
+       "PSV",
+       "PSV"
+      ],
+      "away": [
+       "AFC Ajax",
+       "Ajax",
+       "AJA"
+      ],
+      "start": 1800000000
+     },
+     {
+      "id": "2",
+      "home": [
+       "Feyenoord Rotterdam",
+       "Feyenoord",
+       "FEY"
+      ],
+      "away": [
+       "AZ Alkmaar",
+       "AZ",
+       "AZ"
+      ],
+      "start": 1800007200
+     },
+     {
+      "id": "3",
+      "home": [
+       "Manchester United",
+       "Man United",
+       "MUN"
+      ],
+      "away": [
+       "Liverpool",
+       "Liverpool",
+       "LIV"
+      ],
+      "start": 1800000000
+     },
+     {
+      "id": "4",
+      "home": [
+       "Bayern Munich",
+       "Bayern",
+       "BAY"
+      ],
+      "away": [
+       "Borussia Dortmund",
+       "Dortmund",
+       "BVB"
+      ],
+      "start": 1800001800
+     },
+     {
+      "id": "5",
+      "home": [
+       "Real Madrid",
+       "Real Madrid",
+       "RMA"
+      ],
+      "away": [
+       "Atlético Madrid",
+       "Atlético",
+       "ATM"
+      ],
+      "start": 1800000600
+     }
+    ],
+    "expect": "3"
+   },
+   {
+    "guide": {
+     "home": "Man Utd",
+     "away": "Liverpool",
+     "start": 1800000000
+    },
+    "events": [
+     {
+      "id": "1",
+      "home": [
+       "PSV Eindhoven",
+       "PSV",
+       "PSV"
+      ],
+      "away": [
+       "AFC Ajax",
+       "Ajax",
+       "AJA"
+      ],
+      "start": 1800000000
+     },
+     {
+      "id": "2",
+      "home": [
+       "Feyenoord Rotterdam",
+       "Feyenoord",
+       "FEY"
+      ],
+      "away": [
+       "AZ Alkmaar",
+       "AZ",
+       "AZ"
+      ],
+      "start": 1800007200
+     },
+     {
+      "id": "3",
+      "home": [
+       "Manchester United",
+       "Man United",
+       "MUN"
+      ],
+      "away": [
+       "Liverpool",
+       "Liverpool",
+       "LIV"
+      ],
+      "start": 1800000000
+     },
+     {
+      "id": "4",
+      "home": [
+       "Bayern Munich",
+       "Bayern",
+       "BAY"
+      ],
+      "away": [
+       "Borussia Dortmund",
+       "Dortmund",
+       "BVB"
+      ],
+      "start": 1800001800
+     },
+     {
+      "id": "5",
+      "home": [
+       "Real Madrid",
+       "Real Madrid",
+       "RMA"
+      ],
+      "away": [
+       "Atlético Madrid",
+       "Atlético",
+       "ATM"
+      ],
+      "start": 1800000600
+     }
+    ],
+    "expect": null
+   },
+   {
+    "guide": {
+     "home": "Bayern München",
+     "away": "Dortmund",
+     "start": 1800001800
+    },
+    "events": [
+     {
+      "id": "1",
+      "home": [
+       "PSV Eindhoven",
+       "PSV",
+       "PSV"
+      ],
+      "away": [
+       "AFC Ajax",
+       "Ajax",
+       "AJA"
+      ],
+      "start": 1800000000
+     },
+     {
+      "id": "2",
+      "home": [
+       "Feyenoord Rotterdam",
+       "Feyenoord",
+       "FEY"
+      ],
+      "away": [
+       "AZ Alkmaar",
+       "AZ",
+       "AZ"
+      ],
+      "start": 1800007200
+     },
+     {
+      "id": "3",
+      "home": [
+       "Manchester United",
+       "Man United",
+       "MUN"
+      ],
+      "away": [
+       "Liverpool",
+       "Liverpool",
+       "LIV"
+      ],
+      "start": 1800000000
+     },
+     {
+      "id": "4",
+      "home": [
+       "Bayern Munich",
+       "Bayern",
+       "BAY"
+      ],
+      "away": [
+       "Borussia Dortmund",
+       "Dortmund",
+       "BVB"
+      ],
+      "start": 1800001800
+     },
+     {
+      "id": "5",
+      "home": [
+       "Real Madrid",
+       "Real Madrid",
+       "RMA"
+      ],
+      "away": [
+       "Atlético Madrid",
+       "Atlético",
+       "ATM"
+      ],
+      "start": 1800000600
+     }
+    ],
+    "expect": "4"
+   },
+   {
+    "guide": {
+     "home": "Bayern",
+     "away": "Borussia Dortmund",
+     "start": 1800001800
+    },
+    "events": [
+     {
+      "id": "1",
+      "home": [
+       "PSV Eindhoven",
+       "PSV",
+       "PSV"
+      ],
+      "away": [
+       "AFC Ajax",
+       "Ajax",
+       "AJA"
+      ],
+      "start": 1800000000
+     },
+     {
+      "id": "2",
+      "home": [
+       "Feyenoord Rotterdam",
+       "Feyenoord",
+       "FEY"
+      ],
+      "away": [
+       "AZ Alkmaar",
+       "AZ",
+       "AZ"
+      ],
+      "start": 1800007200
+     },
+     {
+      "id": "3",
+      "home": [
+       "Manchester United",
+       "Man United",
+       "MUN"
+      ],
+      "away": [
+       "Liverpool",
+       "Liverpool",
+       "LIV"
+      ],
+      "start": 1800000000
+     },
+     {
+      "id": "4",
+      "home": [
+       "Bayern Munich",
+       "Bayern",
+       "BAY"
+      ],
+      "away": [
+       "Borussia Dortmund",
+       "Dortmund",
+       "BVB"
+      ],
+      "start": 1800001800
+     },
+     {
+      "id": "5",
+      "home": [
+       "Real Madrid",
+       "Real Madrid",
+       "RMA"
+      ],
+      "away": [
+       "Atlético Madrid",
+       "Atlético",
+       "ATM"
+      ],
+      "start": 1800000600
+     }
+    ],
+    "expect": "4"
+   },
+   {
+    "guide": {
+     "home": "Real Madrid",
+     "away": "Atletico Madrid",
+     "start": 1800000600
+    },
+    "events": [
+     {
+      "id": "1",
+      "home": [
+       "PSV Eindhoven",
+       "PSV",
+       "PSV"
+      ],
+      "away": [
+       "AFC Ajax",
+       "Ajax",
+       "AJA"
+      ],
+      "start": 1800000000
+     },
+     {
+      "id": "2",
+      "home": [
+       "Feyenoord Rotterdam",
+       "Feyenoord",
+       "FEY"
+      ],
+      "away": [
+       "AZ Alkmaar",
+       "AZ",
+       "AZ"
+      ],
+      "start": 1800007200
+     },
+     {
+      "id": "3",
+      "home": [
+       "Manchester United",
+       "Man United",
+       "MUN"
+      ],
+      "away": [
+       "Liverpool",
+       "Liverpool",
+       "LIV"
+      ],
+      "start": 1800000000
+     },
+     {
+      "id": "4",
+      "home": [
+       "Bayern Munich",
+       "Bayern",
+       "BAY"
+      ],
+      "away": [
+       "Borussia Dortmund",
+       "Dortmund",
+       "BVB"
+      ],
+      "start": 1800001800
+     },
+     {
+      "id": "5",
+      "home": [
+       "Real Madrid",
+       "Real Madrid",
+       "RMA"
+      ],
+      "away": [
+       "Atlético Madrid",
+       "Atlético",
+       "ATM"
+      ],
+      "start": 1800000600
+     }
+    ],
+    "expect": "5"
+   },
+   {
+    "guide": {
+     "home": "Real Madrid",
+     "away": "Barcelona",
+     "start": 1800000600
+    },
+    "events": [
+     {
+      "id": "1",
+      "home": [
+       "PSV Eindhoven",
+       "PSV",
+       "PSV"
+      ],
+      "away": [
+       "AFC Ajax",
+       "Ajax",
+       "AJA"
+      ],
+      "start": 1800000000
+     },
+     {
+      "id": "2",
+      "home": [
+       "Feyenoord Rotterdam",
+       "Feyenoord",
+       "FEY"
+      ],
+      "away": [
+       "AZ Alkmaar",
+       "AZ",
+       "AZ"
+      ],
+      "start": 1800007200
+     },
+     {
+      "id": "3",
+      "home": [
+       "Manchester United",
+       "Man United",
+       "MUN"
+      ],
+      "away": [
+       "Liverpool",
+       "Liverpool",
+       "LIV"
+      ],
+      "start": 1800000000
+     },
+     {
+      "id": "4",
+      "home": [
+       "Bayern Munich",
+       "Bayern",
+       "BAY"
+      ],
+      "away": [
+       "Borussia Dortmund",
+       "Dortmund",
+       "BVB"
+      ],
+      "start": 1800001800
+     },
+     {
+      "id": "5",
+      "home": [
+       "Real Madrid",
+       "Real Madrid",
+       "RMA"
+      ],
+      "away": [
+       "Atlético Madrid",
+       "Atlético",
+       "ATM"
+      ],
+      "start": 1800000600
+     }
+    ],
+    "expect": null
+   },
+   {
+    "guide": {
+     "home": "Utrecht",
+     "away": "Twente",
+     "start": 1800000000
+    },
+    "events": [
+     {
+      "id": "1",
+      "home": [
+       "PSV Eindhoven",
+       "PSV",
+       "PSV"
+      ],
+      "away": [
+       "AFC Ajax",
+       "Ajax",
+       "AJA"
+      ],
+      "start": 1800000000
+     },
+     {
+      "id": "2",
+      "home": [
+       "Feyenoord Rotterdam",
+       "Feyenoord",
+       "FEY"
+      ],
+      "away": [
+       "AZ Alkmaar",
+       "AZ",
+       "AZ"
+      ],
+      "start": 1800007200
+     },
+     {
+      "id": "3",
+      "home": [
+       "Manchester United",
+       "Man United",
+       "MUN"
+      ],
+      "away": [
+       "Liverpool",
+       "Liverpool",
+       "LIV"
+      ],
+      "start": 1800000000
+     },
+     {
+      "id": "4",
+      "home": [
+       "Bayern Munich",
+       "Bayern",
+       "BAY"
+      ],
+      "away": [
+       "Borussia Dortmund",
+       "Dortmund",
+       "BVB"
+      ],
+      "start": 1800001800
+     },
+     {
+      "id": "5",
+      "home": [
+       "Real Madrid",
+       "Real Madrid",
+       "RMA"
+      ],
+      "away": [
+       "Atlético Madrid",
+       "Atlético",
+       "ATM"
+      ],
+      "start": 1800000600
+     }
+    ],
+    "expect": null
+   }
+  ]
+ },
+ "scoreText": {
+  "_": "[ESPN status.type.state (pre/in/post), thuis, uit, status.displayClock, verwacht: tekst of null]. Streepje = U+2013, punt = U+00B7.",
+  "cases": [
+   [
+    "pre",
+    null,
+    null,
+    "0'",
+    null
+   ],
+   [
+    "pre",
+    0,
+    0,
+    "0'",
+    null
+   ],
+   [
+    "in",
+    2,
+    1,
+    "67'",
+    "2–1 · 67'"
+   ],
+   [
+    "in",
+    0,
+    0,
+    "",
+    "0–0"
+   ],
+   [
+    "in",
+    1,
+    0,
+    " HT ",
+    "1–0 · HT"
+   ],
+   [
+    "post",
+    3,
+    2,
+    "FT",
+    "3–2"
+   ],
+   [
+    "post",
+    null,
+    1,
+    "FT",
+    null
+   ],
+   [
+    "delayed",
+    1,
+    1,
+    "45'",
+    null
+   ]
+  ]
+ },
+ "teamColor": {
+  "_": "[kandidaten in volgorde (ESPN color, alternateColor, gemiddelde logokleur; hex, ongeldig = overslaan), terugval (hex van Sport173.color), verwacht: hex kleine letters zonder #]. Tekst op de kaart is altijd wit.",
+  "cases": [
+   [
+    [
+     "d2122e",
+     "ffffff"
+    ],
+    "336699",
+    "d2122e"
+   ],
+   [
+    [
+     "ffffff",
+     "d2122e"
+    ],
+    "336699",
+    "d2122e"
+   ],
+   [
+    [
+     "ffffff",
+     "fff200"
+    ],
+    "336699",
+    "666666"
+   ],
+   [
+    [
+     "#00529F",
+     null
+    ],
+    "336699",
+    "00529f"
+   ],
+   [
+    [
+     null,
+     "zzz",
+     ""
+    ],
+    "336699",
+    "336699"
+   ],
+   [
+    [
+     "e30613"
+    ],
+    "336699",
+    "e30613"
+   ],
+   [
+    [
+     "fdb913",
+     "000000"
+    ],
+    "336699",
+    "000000"
+   ],
+   [
+    [
+     "fdb913"
+    ],
+    "336699",
+    "986f0b"
+   ],
+   [
+    [
+     "000000"
+    ],
+    "336699",
+    "000000"
+   ],
+   [
+    [
+     "e2e2e2"
+    ],
+    "336699",
+    "717171"
+   ],
+   [
+    [
+     "0A7"
+    ],
+    "1E5AA8",
+    "1e5aa8"
+   ],
+   [
+    [],
+    "#1E5AA8",
+    "1e5aa8"
+   ]
+  ]
+ },
+ "contrast": {
+  "_": "[hex, verwacht: contrast met wit (WCAG 2.1), 2 decimalen]",
+  "cases": [
+   [
+    "ffffff",
+    1.0
+   ],
+   [
+    "000000",
+    21.0
+   ],
+   [
+    "d2122e",
+    5.43
+   ],
+   [
+    "fdb913",
+    1.73
+   ],
+   [
+    "00529f",
+    7.76
+   ],
+   [
+    "767676",
+    4.54
+   ]
+  ]
+ },
+ "ratingText": {
+  "_": "[bron, waarde, verwacht: tekst of null (niet tonen)]",
+  "cases": [
+   [
+    "imdb",
+    8.8,
+    "8.8"
+   ],
+   [
+    "imdb",
+    7,
+    "7.0"
+   ],
+   [
+    "tmdb",
+    8.43,
+    "8.4"
+   ],
+   [
+    "tomatoes",
+    92,
+    "92%"
+   ],
+   [
+    "tomatoesaudience",
+    85.4,
+    "85%"
+   ],
+   [
+    "metacritic",
+    66,
+    "66"
+   ],
+   [
+    "letterboxd",
+    4.25,
+    "4.2"
+   ],
+   [
+    "trakt",
+    85.5,
+    "86%"
+   ],
+   [
+    "trakt",
+    null,
+    null
+   ],
+   [
+    "onbekend",
+    5,
+    null
+   ]
+  ]
+ },
+ "forYou": {
+  "_": "{titles [{key, title, genres, cast, rating}], liked, disliked, watched, blocked?, recLiked {key: aantal}, recWatched {key: aantal}, expect: keys (max 30)}",
+  "cases": [
+   {
+    "liked": [
+     "tmdb:movie:1"
+    ],
+    "disliked": [],
+    "watched": [],
+    "recLiked": {},
+    "recWatched": {},
+    "titles": [
+     {
+      "key": "tmdb:movie:1",
+      "title": "Heat",
+      "genres": [
+       "crime",
+       "thriller"
+      ],
+      "cast": [
+       "al pacino",
+       "robert de niro"
+      ],
+      "rating": 8.3
+     },
+     {
+      "key": "tmdb:movie:2",
+      "title": "The Irishman",
+      "genres": [
+       "crime",
+       "drama"
+      ],
+      "cast": [
+       "robert de niro",
+       "al pacino"
+      ],
+      "rating": 7.8
+     },
+     {
+      "key": "tmdb:movie:3",
+      "title": "Toy Story",
+      "genres": [
+       "animation",
+       "family"
+      ],
+      "cast": [
+       "tom hanks"
+      ],
+      "rating": 8.0
+     },
+     {
+      "key": "tmdb:movie:4",
+      "title": "Collateral",
+      "genres": [
+       "crime",
+       "thriller"
+      ],
+      "cast": [
+       "tom cruise"
+      ],
+      "rating": 7.5
+     },
+     {
+      "key": "tmdb:movie:5",
+      "title": "Cars",
+      "genres": [
+       "animation",
+       "family"
+      ],
+      "cast": [
+       "owen wilson"
+      ],
+      "rating": 7.1
+     },
+     {
+      "key": "tmdb:tv:6",
+      "title": "Narcos",
+      "genres": [
+       "crime",
+       "drama"
+      ],
+      "cast": [
+       "wagner moura"
+      ],
+      "rating": 8.1
+     },
+     {
+      "key": "tmdb:movie:7",
+      "title": "Notting Hill",
+      "genres": [
+       "romance",
+       "comedy"
+      ],
+      "cast": [
+       "julia roberts"
+      ],
+      "rating": 7.2
+     },
+     {
+      "key": "tmdb:movie:8",
+      "title": "Big",
+      "genres": [
+       "comedy",
+       "family"
+      ],
+      "cast": [
+       "tom hanks"
+      ],
+      "rating": 7.3
+     }
+    ],
+    "expect": [
+     "tmdb:movie:2",
+     "tmdb:movie:4",
+     "tmdb:tv:6"
+    ]
+   },
+   {
+    "liked": [
+     "tmdb:movie:1"
+    ],
+    "disliked": [
+     "tmdb:movie:3"
+    ],
+    "watched": [
+     "tmdb:tv:6"
+    ],
+    "recLiked": {
+     "tmdb:movie:7": 1
+    },
+    "recWatched": {},
+    "titles": [
+     {
+      "key": "tmdb:movie:1",
+      "title": "Heat",
+      "genres": [
+       "crime",
+       "thriller"
+      ],
+      "cast": [
+       "al pacino",
+       "robert de niro"
+      ],
+      "rating": 8.3
+     },
+     {
+      "key": "tmdb:movie:2",
+      "title": "The Irishman",
+      "genres": [
+       "crime",
+       "drama"
+      ],
+      "cast": [
+       "robert de niro",
+       "al pacino"
+      ],
+      "rating": 7.8
+     },
+     {
+      "key": "tmdb:movie:3",
+      "title": "Toy Story",
+      "genres": [
+       "animation",
+       "family"
+      ],
+      "cast": [
+       "tom hanks"
+      ],
+      "rating": 8.0
+     },
+     {
+      "key": "tmdb:movie:4",
+      "title": "Collateral",
+      "genres": [
+       "crime",
+       "thriller"
+      ],
+      "cast": [
+       "tom cruise"
+      ],
+      "rating": 7.5
+     },
+     {
+      "key": "tmdb:movie:5",
+      "title": "Cars",
+      "genres": [
+       "animation",
+       "family"
+      ],
+      "cast": [
+       "owen wilson"
+      ],
+      "rating": 7.1
+     },
+     {
+      "key": "tmdb:tv:6",
+      "title": "Narcos",
+      "genres": [
+       "crime",
+       "drama"
+      ],
+      "cast": [
+       "wagner moura"
+      ],
+      "rating": 8.1
+     },
+     {
+      "key": "tmdb:movie:7",
+      "title": "Notting Hill",
+      "genres": [
+       "romance",
+       "comedy"
+      ],
+      "cast": [
+       "julia roberts"
+      ],
+      "rating": 7.2
+     },
+     {
+      "key": "tmdb:movie:8",
+      "title": "Big",
+      "genres": [
+       "comedy",
+       "family"
+      ],
+      "cast": [
+       "tom hanks"
+      ],
+      "rating": 7.3
+     }
+    ],
+    "expect": [
+     "tmdb:movie:2",
+     "tmdb:movie:4",
+     "tmdb:movie:7"
+    ]
+   },
+   {
+    "liked": [],
+    "disliked": [],
+    "watched": [
+     "tmdb:movie:3"
+    ],
+    "recLiked": {},
+    "recWatched": {
+     "tmdb:movie:8": 2
+    },
+    "titles": [
+     {
+      "key": "tmdb:movie:1",
+      "title": "Heat",
+      "genres": [
+       "crime",
+       "thriller"
+      ],
+      "cast": [
+       "al pacino",
+       "robert de niro"
+      ],
+      "rating": 8.3
+     },
+     {
+      "key": "tmdb:movie:2",
+      "title": "The Irishman",
+      "genres": [
+       "crime",
+       "drama"
+      ],
+      "cast": [
+       "robert de niro",
+       "al pacino"
+      ],
+      "rating": 7.8
+     },
+     {
+      "key": "tmdb:movie:3",
+      "title": "Toy Story",
+      "genres": [
+       "animation",
+       "family"
+      ],
+      "cast": [
+       "tom hanks"
+      ],
+      "rating": 8.0
+     },
+     {
+      "key": "tmdb:movie:4",
+      "title": "Collateral",
+      "genres": [
+       "crime",
+       "thriller"
+      ],
+      "cast": [
+       "tom cruise"
+      ],
+      "rating": 7.5
+     },
+     {
+      "key": "tmdb:movie:5",
+      "title": "Cars",
+      "genres": [
+       "animation",
+       "family"
+      ],
+      "cast": [
+       "owen wilson"
+      ],
+      "rating": 7.1
+     },
+     {
+      "key": "tmdb:tv:6",
+      "title": "Narcos",
+      "genres": [
+       "crime",
+       "drama"
+      ],
+      "cast": [
+       "wagner moura"
+      ],
+      "rating": 8.1
+     },
+     {
+      "key": "tmdb:movie:7",
+      "title": "Notting Hill",
+      "genres": [
+       "romance",
+       "comedy"
+      ],
+      "cast": [
+       "julia roberts"
+      ],
+      "rating": 7.2
+     },
+     {
+      "key": "tmdb:movie:8",
+      "title": "Big",
+      "genres": [
+       "comedy",
+       "family"
+      ],
+      "cast": [
+       "tom hanks"
+      ],
+      "rating": 7.3
+     }
+    ],
+    "expect": [
+     "tmdb:movie:8",
+     "tmdb:movie:5"
+    ]
+   },
+   {
+    "liked": [
+     "tmdb:movie:3"
+    ],
+    "disliked": [
+     "tmdb:movie:5"
+    ],
+    "watched": [],
+    "recLiked": {},
+    "recWatched": {},
+    "blocked": [
+     "tmdb:movie:8"
+    ],
+    "titles": [
+     {
+      "key": "tmdb:movie:1",
+      "title": "Heat",
+      "genres": [
+       "crime",
+       "thriller"
+      ],
+      "cast": [
+       "al pacino",
+       "robert de niro"
+      ],
+      "rating": 8.3
+     },
+     {
+      "key": "tmdb:movie:2",
+      "title": "The Irishman",
+      "genres": [
+       "crime",
+       "drama"
+      ],
+      "cast": [
+       "robert de niro",
+       "al pacino"
+      ],
+      "rating": 7.8
+     },
+     {
+      "key": "tmdb:movie:3",
+      "title": "Toy Story",
+      "genres": [
+       "animation",
+       "family"
+      ],
+      "cast": [
+       "tom hanks"
+      ],
+      "rating": 8.0
+     },
+     {
+      "key": "tmdb:movie:4",
+      "title": "Collateral",
+      "genres": [
+       "crime",
+       "thriller"
+      ],
+      "cast": [
+       "tom cruise"
+      ],
+      "rating": 7.5
+     },
+     {
+      "key": "tmdb:movie:5",
+      "title": "Cars",
+      "genres": [
+       "animation",
+       "family"
+      ],
+      "cast": [
+       "owen wilson"
+      ],
+      "rating": 7.1
+     },
+     {
+      "key": "tmdb:tv:6",
+      "title": "Narcos",
+      "genres": [
+       "crime",
+       "drama"
+      ],
+      "cast": [
+       "wagner moura"
+      ],
+      "rating": 8.1
+     },
+     {
+      "key": "tmdb:movie:7",
+      "title": "Notting Hill",
+      "genres": [
+       "romance",
+       "comedy"
+      ],
+      "cast": [
+       "julia roberts"
+      ],
+      "rating": 7.2
+     },
+     {
+      "key": "tmdb:movie:8",
+      "title": "Big",
+      "genres": [
+       "comedy",
+       "family"
+      ],
+      "cast": [
+       "tom hanks"
+      ],
+      "rating": 7.3
+     }
+    ],
+    "expect": []
+   },
+   {
+    "liked": [],
+    "disliked": [],
+    "watched": [],
+    "recLiked": {},
+    "recWatched": {},
+    "titles": [
+     {
+      "key": "tmdb:movie:1",
+      "title": "Heat",
+      "genres": [
+       "crime",
+       "thriller"
+      ],
+      "cast": [
+       "al pacino",
+       "robert de niro"
+      ],
+      "rating": 8.3
+     },
+     {
+      "key": "tmdb:movie:2",
+      "title": "The Irishman",
+      "genres": [
+       "crime",
+       "drama"
+      ],
+      "cast": [
+       "robert de niro",
+       "al pacino"
+      ],
+      "rating": 7.8
+     },
+     {
+      "key": "tmdb:movie:3",
+      "title": "Toy Story",
+      "genres": [
+       "animation",
+       "family"
+      ],
+      "cast": [
+       "tom hanks"
+      ],
+      "rating": 8.0
+     },
+     {
+      "key": "tmdb:movie:4",
+      "title": "Collateral",
+      "genres": [
+       "crime",
+       "thriller"
+      ],
+      "cast": [
+       "tom cruise"
+      ],
+      "rating": 7.5
+     },
+     {
+      "key": "tmdb:movie:5",
+      "title": "Cars",
+      "genres": [
+       "animation",
+       "family"
+      ],
+      "cast": [
+       "owen wilson"
+      ],
+      "rating": 7.1
+     },
+     {
+      "key": "tmdb:tv:6",
+      "title": "Narcos",
+      "genres": [
+       "crime",
+       "drama"
+      ],
+      "cast": [
+       "wagner moura"
+      ],
+      "rating": 8.1
+     },
+     {
+      "key": "tmdb:movie:7",
+      "title": "Notting Hill",
+      "genres": [
+       "romance",
+       "comedy"
+      ],
+      "cast": [
+       "julia roberts"
+      ],
+      "rating": 7.2
+     },
+     {
+      "key": "tmdb:movie:8",
+      "title": "Big",
+      "genres": [
+       "comedy",
+       "family"
+      ],
+      "cast": [
+       "tom hanks"
+      ],
+      "rating": 7.3
+     }
+    ],
+    "expect": []
+   }
+  ]
+ },
+ "sort": {
+  "_": "{mode (server/name/year/added/rating, onbekend = server), items [{name, year, added, rating}], expect: indices}. Ontbrekend/<= 0 achteraan, gelijk = volgorde van de server.",
+  "cases": [
+   {
+    "mode": "server",
+    "items": [
+     {
+      "name": "The Batman",
+      "year": 2022,
+      "added": 1700000300,
+      "rating": 7.8
+     },
+     {
+      "name": "Avatar",
+      "year": 2009,
+      "added": 1700000100,
+      "rating": 7.6
+     },
+     {
+      "name": "Één tegen allen",
+      "year": null,
+      "added": null,
+      "rating": 0
+     },
+     {
+      "name": "batman begins",
+      "year": 2005,
+      "added": 1700000200,
+      "rating": 8.2
+     },
+     {
+      "name": "De Tweeling",
+      "year": 2002,
+      "added": 1700000300,
+      "rating": null
+     },
+     {
+      "name": "12 Angry Men",
+      "year": 1957,
+      "added": 0,
+      "rating": 9.0
+     },
+     {
+      "name": "Het",
+      "year": 2017,
+      "added": 1700000400,
+      "rating": 7.3
+     }
+    ],
+    "expect": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ]
+   },
+   {
+    "mode": "name",
+    "items": [
+     {
+      "name": "The Batman",
+      "year": 2022,
+      "added": 1700000300,
+      "rating": 7.8
+     },
+     {
+      "name": "Avatar",
+      "year": 2009,
+      "added": 1700000100,
+      "rating": 7.6
+     },
+     {
+      "name": "Één tegen allen",
+      "year": null,
+      "added": null,
+      "rating": 0
+     },
+     {
+      "name": "batman begins",
+      "year": 2005,
+      "added": 1700000200,
+      "rating": 8.2
+     },
+     {
+      "name": "De Tweeling",
+      "year": 2002,
+      "added": 1700000300,
+      "rating": null
+     },
+     {
+      "name": "12 Angry Men",
+      "year": 1957,
+      "added": 0,
+      "rating": 9.0
+     },
+     {
+      "name": "Het",
+      "year": 2017,
+      "added": 1700000400,
+      "rating": 7.3
+     }
+    ],
+    "expect": [
+     5,
+     1,
+     0,
+     3,
+     6,
+     2,
+     4
+    ]
+   },
+   {
+    "mode": "year",
+    "items": [
+     {
+      "name": "The Batman",
+      "year": 2022,
+      "added": 1700000300,
+      "rating": 7.8
+     },
+     {
+      "name": "Avatar",
+      "year": 2009,
+      "added": 1700000100,
+      "rating": 7.6
+     },
+     {
+      "name": "Één tegen allen",
+      "year": null,
+      "added": null,
+      "rating": 0
+     },
+     {
+      "name": "batman begins",
+      "year": 2005,
+      "added": 1700000200,
+      "rating": 8.2
+     },
+     {
+      "name": "De Tweeling",
+      "year": 2002,
+      "added": 1700000300,
+      "rating": null
+     },
+     {
+      "name": "12 Angry Men",
+      "year": 1957,
+      "added": 0,
+      "rating": 9.0
+     },
+     {
+      "name": "Het",
+      "year": 2017,
+      "added": 1700000400,
+      "rating": 7.3
+     }
+    ],
+    "expect": [
+     0,
+     6,
+     1,
+     3,
+     4,
+     5,
+     2
+    ]
+   },
+   {
+    "mode": "added",
+    "items": [
+     {
+      "name": "The Batman",
+      "year": 2022,
+      "added": 1700000300,
+      "rating": 7.8
+     },
+     {
+      "name": "Avatar",
+      "year": 2009,
+      "added": 1700000100,
+      "rating": 7.6
+     },
+     {
+      "name": "Één tegen allen",
+      "year": null,
+      "added": null,
+      "rating": 0
+     },
+     {
+      "name": "batman begins",
+      "year": 2005,
+      "added": 1700000200,
+      "rating": 8.2
+     },
+     {
+      "name": "De Tweeling",
+      "year": 2002,
+      "added": 1700000300,
+      "rating": null
+     },
+     {
+      "name": "12 Angry Men",
+      "year": 1957,
+      "added": 0,
+      "rating": 9.0
+     },
+     {
+      "name": "Het",
+      "year": 2017,
+      "added": 1700000400,
+      "rating": 7.3
+     }
+    ],
+    "expect": [
+     6,
+     0,
+     4,
+     3,
+     1,
+     2,
+     5
+    ]
+   },
+   {
+    "mode": "rating",
+    "items": [
+     {
+      "name": "The Batman",
+      "year": 2022,
+      "added": 1700000300,
+      "rating": 7.8
+     },
+     {
+      "name": "Avatar",
+      "year": 2009,
+      "added": 1700000100,
+      "rating": 7.6
+     },
+     {
+      "name": "Één tegen allen",
+      "year": null,
+      "added": null,
+      "rating": 0
+     },
+     {
+      "name": "batman begins",
+      "year": 2005,
+      "added": 1700000200,
+      "rating": 8.2
+     },
+     {
+      "name": "De Tweeling",
+      "year": 2002,
+      "added": 1700000300,
+      "rating": null
+     },
+     {
+      "name": "12 Angry Men",
+      "year": 1957,
+      "added": 0,
+      "rating": 9.0
+     },
+     {
+      "name": "Het",
+      "year": 2017,
+      "added": 1700000400,
+      "rating": 7.3
+     }
+    ],
+    "expect": [
+     5,
+     3,
+     0,
+     1,
+     6,
+     2,
+     4
+    ]
+   },
+   {
+    "mode": "onzin",
+    "items": [
+     {
+      "name": "The Batman",
+      "year": 2022,
+      "added": 1700000300,
+      "rating": 7.8
+     },
+     {
+      "name": "Avatar",
+      "year": 2009,
+      "added": 1700000100,
+      "rating": 7.6
+     },
+     {
+      "name": "Één tegen allen",
+      "year": null,
+      "added": null,
+      "rating": 0
+     },
+     {
+      "name": "batman begins",
+      "year": 2005,
+      "added": 1700000200,
+      "rating": 8.2
+     },
+     {
+      "name": "De Tweeling",
+      "year": 2002,
+      "added": 1700000300,
+      "rating": null
+     },
+     {
+      "name": "12 Angry Men",
+      "year": 1957,
+      "added": 0,
+      "rating": 9.0
+     },
+     {
+      "name": "Het",
+      "year": 2017,
+      "added": 1700000400,
+      "rating": 7.3
+     }
+    ],
+    "expect": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ]
+   }
+  ]
+ },
+ "sortKey": {
+  "_": "[server-id (of '*' voor de lijst over alle servers), soort (movie/series), categorienaam, verwacht: sleutel]",
+  "cases": [
+   [
+    "0A1B-UUID",
+    "movie",
+    "NL | Actie",
+    "0a1b-uuid|movie|NL | Actie"
+   ],
+   [
+    "*",
+    "series",
+    "Netflix",
+    "*|series|Netflix"
+   ]
+  ]
+ },
+ "sortMerge": {
+  "_": "{a, b, expect}: per sleutel de nieuwste at (gelijk: a blijft)",
+  "cases": [
+   {
+    "a": {
+     "x|movie|A": {
+      "value": "name",
+      "at": "2026-11-15T10:00:00Z"
+     },
+     "x|movie|B": {
+      "value": "year",
+      "at": "2026-11-15T10:00:00Z"
+     }
+    },
+    "b": {
+     "x|movie|A": {
+      "value": "rating",
+      "at": "2026-11-15T11:00:00Z"
+     },
+     "x|movie|B": {
+      "value": "server",
+      "at": "2026-11-15T09:00:00Z"
+     },
+     "x|series|C": {
+      "value": "added",
+      "at": "2026-11-15T08:00:00Z"
+     }
+    },
+    "expect": {
+     "x|movie|A": {
+      "value": "rating",
+      "at": "2026-11-15T11:00:00Z"
+     },
+     "x|movie|B": {
+      "value": "year",
+      "at": "2026-11-15T10:00:00Z"
+     },
+     "x|series|C": {
+      "value": "added",
+      "at": "2026-11-15T08:00:00Z"
+     }
+    }
+   }
+  ]
+ },
+ "cleanupAllowed": {
+  "_": "[titels vóór, titels na, verversing volledig gelukt, verwacht: opruimen mag]",
+  "cases": [
+   [
+    1000,
+    990,
+    true,
+    true
+   ],
+   [
+    1000,
+    500,
+    true,
+    true
+   ],
+   [
+    1000,
+    499,
+    true,
+    false
+   ],
+   [
+    1000,
+    990,
+    false,
+    false
+   ],
+   [
+    50,
+    10,
+    true,
+    true
+   ],
+   [
+    100,
+    49,
+    true,
+    false
+   ],
+   [
+    0,
+    0,
+    true,
+    false
+   ],
+   [
+    10,
+    0,
+    true,
+    false
+   ],
+   [
+    99,
+    1,
+    true,
+    true
+   ]
+  ]
+ },
+ "cleanupAction": {
+  "_": "[staat nog op deze server, gevonden op een andere server, verwacht: keep/remap/remove]",
+  "cases": [
+   [
+    true,
+    false,
+    "keep"
+   ],
+   [
+    true,
+    true,
+    "keep"
+   ],
+   [
+    false,
+    true,
+    "remap"
+   ],
+   [
+    false,
+    false,
+    "remove"
+   ]
+  ]
+ },
+ "webdavParse": {
+  "_": "{path (zoals in PROPFIND href, URL-gecodeerd mag), expect {kind: movie/episode/other, title, year, season, episode}}",
+  "cases": [
+   {
+    "path": "/Films/The.Batman.2022.2160p.WEB-DL.x265.mkv",
+    "expect": {
+     "kind": "movie",
+     "title": "The Batman",
+     "year": 2022
+    }
+   },
+   {
+    "path": "/Films/Blade Runner 2049 (2017)/Blade.Runner.2049.2017.1080p.BluRay.mkv",
+    "expect": {
+     "kind": "movie",
+     "title": "Blade Runner 2049",
+     "year": 2017
+    }
+   },
+   {
+    "path": "/Films/1917 (2019)/1917.mkv",
+    "expect": {
+     "kind": "movie",
+     "title": "1917",
+     "year": 2019
+    }
+   },
+   {
+    "path": "/Films/Heat (1995)/movie.mp4",
+    "expect": {
+     "kind": "movie",
+     "title": "Heat",
+     "year": 1995
+    }
+   },
+   {
+    "path": "/Films/Inception%20(2010).mp4",
+    "expect": {
+     "kind": "movie",
+     "title": "Inception",
+     "year": 2010
+    }
+   },
+   {
+    "path": "/Series/Breaking Bad/Season 01/Breaking.Bad.S01E02.720p.mkv",
+    "expect": {
+     "kind": "episode",
+     "title": "Breaking Bad",
+     "year": null,
+     "season": 1,
+     "episode": 2
+    }
+   },
+   {
+    "path": "/Series/Breaking Bad/Season 1/S01E03.mkv",
+    "expect": {
+     "kind": "episode",
+     "title": "Breaking Bad",
+     "year": null,
+     "season": 1,
+     "episode": 3
+    }
+   },
+   {
+    "path": "/Series/Dark (2017)/Seizoen 2/Dark - 2x05 - Lost and Found.mkv",
+    "expect": {
+     "kind": "episode",
+     "title": "Dark",
+     "year": null,
+     "season": 2,
+     "episode": 5
+    }
+   },
+   {
+    "path": "/Series/The Office (US)/S02/E04 - The Fire.mp4",
+    "expect": {
+     "kind": "episode",
+     "title": "The Office US",
+     "year": null,
+     "season": 2,
+     "episode": 4
+    }
+   },
+   {
+    "path": "/Series/Narcos/Season 3/03 - Free Trade.mkv",
+    "expect": {
+     "kind": "episode",
+     "title": "Narcos",
+     "year": null,
+     "season": 3,
+     "episode": 3
+    }
+   },
+   {
+    "path": "/Series/Fargo/fargo.s03e10.hdtv.x264.avi",
+    "expect": {
+     "kind": "episode",
+     "title": "fargo",
+     "year": null,
+     "season": 3,
+     "episode": 10
+    }
+   },
+   {
+    "path": "/Muziek/song.mp3",
+    "expect": {
+     "kind": "other"
+    }
+   },
+   {
+    "path": "/Films/Readme.txt",
+    "expect": {
+     "kind": "other"
+    }
+   },
+   {
+    "path": "/Films/Avatar.mkv",
+    "expect": {
+     "kind": "movie",
+     "title": "Avatar",
+     "year": null
+    }
+   },
+   {
+    "path": "/Films/[NL] De Tweeling (2002) [1080p].mkv",
+    "expect": {
+     "kind": "movie",
+     "title": "De Tweeling",
+     "year": 2002
+    }
+   },
+   {
+    "path": "/",
+    "expect": {
+     "kind": "other"
+    }
+   }
+  ]
+ }
+}

@@ -2516,3 +2516,231 @@ niet in een kinderprofiel als de titel geen toegestane leeftijd heeft. Telt niet
 Instellingen > Hulp ("Helpcentrum" / "Help centre") opent `https://support.bingr.online/hulp/` (de supportsite heeft geen
 index/JSON; daarom de startpagina, die de artikelen toont): iOS/iPadOS `SFSafariViewController`, Mac de browser,
 Android Custom Tabs, web een nieuw venster; **tvOS en Android TV**: een QR-code met die link.
+
+## Build 179 (versie 1.0.8): vanzelf verversen, Live Activity, andere speler, zappen, Sport-scores, beoordelingen, Voor jou, sorteren, opruimen en WebDAV
+
+Gedeeld contract voor Apple, Android en de webspeler. Alles is **compatibel met oudere apps**: alleen nieuwe sleutels in
+`profile.<id>`, een nieuwe `kind` in de bronnenlijst en nieuwe server-functies; oudere apps laten onbekende sleutels en
+bronnen staan (zie "Build 171" en `SourceSync`: onbekende `kind` onaangeroerd terugsturen). Pure logica gelijk op alle
+platforms (Apple `Shared/**/Build179*.swift`, Android `Build179Logic.kt`, web `web/js/build179.js`) met gedeelde
+testgevallen in **`docs/build179_cases.json`** (kopieën in bingr-android en bingr-website, niet los aanpassen; de sleutel
+per regel staat hieronder tussen haakjes). Ideeën zijn zelf nagebouwd: er is **geen** code, tekst of afbeelding uit Lume
+(AGPL) gebruikt.
+
+Normaliseren (`norm`) betekent overal hieronder: zoals build 176 `epgSearch` (kleine letters, NFD zonder combinerende
+tekens, alles wat geen letter of cijfer is wordt een spatie). `teamKey` is die van build 172 (`Sport173.teamKey`).
+
+### 1. Gids en servers vanzelf verversen (per apparaat, geen sync)
+
+Instellingen > Servers bijwerken (bij "Servers laden bij openen" van build 145, die blijft):
+
+| instelling (lokale sleutel) | waarden | standaard |
+|---|---|---|
+| "Zenders, films en series verversen" / "Refresh channels, movies and series" (`refresh.catalog`) | `6h` Elke 6 uur / `daily` Dagelijks / `3d` Elke 3 dagen / `weekly` Wekelijks / `manual` Alleen handmatig | `daily` |
+| "Tv-gids verversen" / "Refresh TV guide" (`refresh.epg`) | `6h` Elke 6 uur / `12h` Elke 12 uur / `daily` Dagelijks | `6h` |
+| "Ook via mobiel netwerk" / "Also on cellular" (`refresh.cellular`, alleen telefoon/tablet) | aan/uit | uit |
+
+- Per server bewaart het apparaat de tijd van de laatste **geslaagde volledige** verversing (ook handmatig, ook bij de
+  eerste keer laden) en van de laatste geslaagde **gidsverversing**. Een volledige verversing haalt de gids ook op.
+- **Regel** (`refresh`): `full = due(catalog, lastFull)`, `epg = due(epg, max(lastEpg, lastFull))`, met
+  `due(i, last) = i != manual && (last == null || now - last >= i || last - now > 3600)` (klok teruggezet = opnieuw).
+  Uitkomst `full` > `epg` > `none`; is het `full` of `epg` en geldt Data besparen (build 176 `dataMode` = `saver`)
+  zonder `refresh.cellular`, dan `blocked` (niets doen, later opnieuw kijken). Onbekende waarden = de standaard.
+- **Wanneer kijken**: bij openen van de app (na de profielkeuze, op het hoofdscherm), bij terugkeer naar de voorgrond en
+  elke 15 minuten zolang de app open is; per server, de open server eerst. Nooit tijdens het afspelen (wachten), nooit
+  in "Wie kijkt er?" of op een pincodescherm; één verversing tegelijk (gaat niet door een handmatige heen).
+  Een automatische verversing vervangt die keer de vraag "Servers bijwerken?" (build 145).
+- **Op de achtergrond**: iOS/iPadOS `BGAppRefreshTask` (`nl.lrvdlinden.bingr.refresh`, gids) en `BGProcessingTask`
+  (`nl.lrvdlinden.bingr.refresh.full`, met netwerk, volledige verversing), volgende keer ingepland op het eerstvolgende
+  moment dat iets `due` wordt; tvOS/macOS alleen bij openen/voorgrond. Android WorkManager (periodiek, netwerk vereist,
+  onbeperkt netwerk als `refresh.cellular` uit staat). Web: bij openen en `visibilitychange` naar zichtbaar.
+- **Weergave**: in de bestaande vernieuw-weergave (het "Bijwerken"-pilletje en de voortgang "Server x van y"), niet
+  blokkerend; de lijst blijft bruikbaar. Een gids-alleen verversing ververst alleen `epg` (geen catalogus).
+- De oude gesyncte `refreshInterval` (vervallen in build 145) blijft vervallen; dit is een nieuwe lokale instelling.
+
+### 2. Live Activity voor live tv (iOS/iPadOS) en de mediasessie (Android)
+
+- **iOS/iPadOS** (16.2+; Dynamic Island, vergrendelscherm, en CarPlay/Watch compact zoals de radio van build 174/175):
+  zendernaam, logo, het programma van nu met voortgang (begin/einde, het systeem tekent de balk zelf) en wat er daarna
+  komt; knoppen Pauze/Afspelen (App Intent, alleen zolang de app de speler heeft). Lokaal, **zonder push**: bijwerken bij
+  zappen en op de programmawissel (timer op het einde van het programma), stoppen bij sluiten van de speler (ook bij
+  een fout of stoppen op een ander apparaat). Niet bij voorbeelden, Multiview, radio (die heeft zijn eigen activiteit)
+  en niet voor films/series.
+- Instelling "Live Activity bij live tv" / "Live Activity for live TV" (lokaal `liveActivity.tv`, standaard aan) in
+  Instellingen > Afspelen.
+- **Android**: geen Live Activity; de mediasessie-notificatie toont bij live tv de zender als titel, "Nu: …" en
+  "Straks: …" (als die er nog niet was). Web/tvOS/macOS: niets.
+
+### 3. Automatisch een andere speler proberen
+
+Engines: Apple `apple`/`vlc` (AVPlayer, VLCKit), Android `exo`/`vlc`, web `hls`/`mpegts`/`native`. **Nooit** een
+externe app.
+
+- **Volgorde** = de spelerinstelling: gekozen engine eerst, dan de andere; bij Automatisch de engine die het platform
+  voor dit adres kiest eerst. Is er voor deze stream een engine **onthouden**, dan begint die (`engineFirst`).
+- **Wisselen** (`engineSwitch`): `!switched && ((error && played < 10) || (!firstFrame && sinceStart >= 10) ||
+  (firstFrame && stalled >= 10 && played < 30))` (seconden; `played` = echt afgespeeld, `stalled` = nu aan één stuk aan
+  het bufferen). Eén keer per stream (per start, ook na zappen opnieuw één keer); de volgende engine is de eerste in de
+  volgorde die niet de huidige is (`engineNext`). Daarna gaat het bestaande herstel verder (stille nieuwe poging,
+  andere bron, foutmelding met Opnieuw / Andere bron / Andere speler).
+- **Melding**: kort "Andere speler geprobeerd" / "Tried another player" (de bestaande korte melding in de speler).
+- **Onthouden** (`engineMemo`, lokaal per apparaat, niet gesynct; `player.engineMemo`, max. 500, ouder dan 60 dagen weg):
+  speelt de stream uiteindelijk (eerste beeld), dan wordt de engine die speelt onthouden; lukt ook de andere niet, dan
+  wordt het onthouden gewist. Sleutel: live `"<server-id kleine letters>|<stream-id>"`, film
+  `"<server-id kleine letters>|movie:<id>"`, aflevering `"<server-id kleine letters>|episode:<id>"`.
+- Niet bij: gedownloade bestanden, adressen die maar één engine kan openen (bijv. `smb://`, `.movpkg`), Chromecast/
+  AirPlay-overdracht, voorbeelden en Multiview.
+
+### 5. Zappen-lijst uitbreiden
+
+- In de zaplijst van de speler (build 173) boven de zenders: tabs **Alle** + **Favorieten** (als er favorieten zijn) +
+  de categorieën in volgorde van eerste voorkomen (`zapCategories`), en een zoekveld (telefoon/tablet/Mac/web: tekstveld;
+  tvOS en Android TV: knop "Zoeken" met het systeemtoetsenbord). Openen staat op de categorie van de zender die speelt.
+- **Zoeken** (`zapSearch`): alleen cijfers = zendernummer (geen zender met dat nummer: de cijfers in de naam zonder
+  spaties); anders genormaliseerd, elk woord (≥ 2 tekens of een getal) moet als deel in de genormaliseerde naam staan.
+- Verborgen zenders en het kinderprofiel: zoals nu al gefilterd (niet in de lijst); vergrendelde zenders staan erin met
+  een slotje en vragen de pincode bij kiezen (build 176).
+- **tvOS openen**: bediening verborgen, live, **niet achter live** (geen timeshift/pauze): **klik links** op de ring opent
+  de zaplijst. Achter live blijft links −10 s (build 176); vegen blijft voor de tijdbalk (build 169), dus geen veeg.
+  Android TV: links (D-pad) met verborgen bediening bij live, zelfde voorwaarde. Telefoon/tablet/web: de knop Zappen.
+
+### 7. Live scores en standen in Sport (ESPN)
+
+- Bron: `https://site.api.espn.com/apis/site/v2/sports/<sport>/<league>/scoreboard?dates=<YYYYMMDD>` en
+  `https://site.api.espn.com/apis/v2/sports/<sport>/<league>/standings` (geen sleutel). Competitie (id van build 172) →
+  ESPN: `eredivisie` soccer/ned.1, `kkd` soccer/ned.2, `knvb-beker` soccer/ned.cup, `champions-league`
+  soccer/uefa.champions, `europa-league` soccer/uefa.europa, `conference-league` soccer/uefa.europa.conf,
+  `premier-league` soccer/eng.1, `laliga` soccer/esp.1, `serie-a` soccer/ita.1, `bundesliga` soccer/ger.1, `ligue-1`
+  soccer/fra.1, `jupiler-pro-league` soccer/bel.1, `nba` basketball/nba, `nfl` football/nfl, `nhl` hockey/nhl. Andere
+  competities: geen scores.
+- **Koppelen** aan een wedstrijd uit de gids (`espnLink`, `teamEq`): beide teams (ook omgedraaid) en aftrap ≤ 900 s
+  verschil, de dichtstbijzijnde. Team gelijk: `teamKey` gelijk, of de kortste (≥ 3 tekens) is het begin van de langste,
+  of de kortste (≥ 5 tekens) staat in de langste; vergelijk met alle ESPN-namen (`displayName`, `shortDisplayName`,
+  `name`, `location`, `abbreviation`).
+- **Tekst** (`scoreText`): `state` = `status.type.state`; `in`: "2–1 · 67'" (`status.displayClock`), `post`: "2–1" met
+  het label "Afgelopen" / "Full time", `pre`: geen score. Op de kaarten bij Nu live en Afgelopen; in de wedstrijdmelding
+  (build 172) de stand als die er is.
+- Wedstrijden van gevolgde competities/teams die de gids niet heeft: wel tonen, met "Niet in je gids" / "Not in your
+  guide" (zonder afspeelknop).
+- **Standen**: per competitie in het wedstrijdblad / een tab "Stand" / "Standings" (positie, team, gespeeld, punten).
+- **Cache**: scores 60 s, standen 1 uur; bij Data besparen (176 `saver`) scores 300 s en geen verversing op de
+  achtergrond. Fouten stil (dan zonder scores). Web: alleen als ESPN CORS toestaat, anders zonder scores (niet via een
+  eigen proxy).
+
+### 8. Kaarten in de kleuren van het team
+
+- **Regel** (`teamColor`, `contrast`): kandidaten in volgorde: ESPN `team.color`, `team.alternateColor`, de gemiddelde
+  kleur van het logo (alleen niet-transparante pixels); ongeldige hex overslaan. De eerste met contrast ≥ 4.5 met wit
+  (WCAG 2.1: `(1.05)/(L + 0.05)`, `L` = relatieve luminantie met sRGB-linearisatie) wint. Geen enkele: de eerste
+  kandidaat donkerder maken met factor `1 − 0.1·k` (k = 1…9, elk kanaal `round(v·f)`) tot ≥ 4.5; anders `000000`.
+  Geen kandidaten: de bestaande vaste kleur (`Sport173.color`). Tekst op de kaart is altijd wit.
+
+### 9. Meer beoordelingen (MDBList via de server)
+
+Server-functie **`ratings`** (`supabase/functions/ratings`, `verify_jwt` aan, device-auth zoals de andere functies:
+`apikey` + `Authorization: Bearer <access_token>`). De MDBList-sleutel staat alleen als function-secret
+`MDBLIST_API_KEY` (nooit in een repo, app of log).
+
+| Request (POST JSON) | Antwoord 200 |
+|---|---|
+| `{ "type": "movie" \| "show", "tmdb": 550 }` of `{ "imdb": "tt0137523" }` | `{ "ok": true, "ratings": [ { "source": "imdb", "value": 8.8, "votes": 2300000 }, … ], "cached": true\|false }` |
+
+- `source` ∈ `imdb`, `tmdb`, `tomatoes` (critici, %), `tomatoesaudience` (%), `metacritic` (0–100), `letterboxd` (0–5),
+  `trakt` (%). Bronnen zonder waarde ontbreken. Cache op de server 7 dagen (tabel `ratings_cache`, sleutel
+  `movie:<tmdb>`/`show:<tmdb>`/`imdb:<id>`), max. 120 aanvragen per minuut per account (429 `{ "error": "rate_limited" }`).
+- Zonder secret of bij een MDBList-fout: 200 `{ "ok": false, "error": "unavailable" }`; de app toont dan alleen wat er
+  al was (TMDB/IMDb uit de bestaande metadata).
+- **Tekst** (`ratingText`): `imdb`, `tmdb`, `letterboxd` één decimaal; `tomatoes`, `tomatoesaudience`, `trakt` als
+  percentage; `metacritic` als geheel getal; onbekende bron of geen waarde = niet tonen. Op de detailpagina één rij met
+  korte namen + score: "IMDb 8.8 · RT 92% · Publiek 85% (Audience) · MC 66 · Letterboxd 4.3 · Trakt 86% · TMDB 8.4".
+  App-cache 7 dagen per titel.
+
+### 10. Intro en samenvatting overslaan via IntroDB
+
+Server-functie **`introdb`** (zelfde aanroep als `ratings`; een eventuele sleutel alleen als function-secret):
+
+| Request | Antwoord 200 |
+|---|---|
+| `{ "tmdb": 1396, "imdb": "tt0903747", "season": 1, "episode": 2 }` (`imdb` optioneel) | `{ "ok": true, "intro": { "start": 12.5, "end": 75.0 } \| null, "recap": {…} \| null, "credits": { "start": 2580.0 } \| null }` |
+
+- Tijden in seconden vanaf het begin van de aflevering; `ok: false` (`unavailable`/`not_found`) = de bestaande detectie
+  (build 52 intro-markeringen) gebruiken. Cache: server 30 dagen, app per aflevering 30 dagen (`not_found` 1 dag). De
+  bestaande knoppen "Intro overslaan" / "Samenvatting overslaan" gebruiken deze tijden eerst.
+
+### 11. "Voor jou" met duim omhoog/omlaag (`profile.<id>.ratings`)
+
+```json
+{ "ratings": [ { "key": "tmdb:movie:550", "value": 1, "at": "ISO-8601" }, { "key": "tmdb:tv:1396", "value": -1, "at": "…" },
+               { "key": "tmdb:movie:13", "value": 0, "at": "…" } ] }
+```
+
+- `key`: `tmdb:movie:<id>` / `tmdb:tv:<id>`; zonder TMDB-id `"<server-id kleine letters>|movie:<id>"` /
+  `"…|series:<id>"`. `value` 1 = duim omhoog, −1 = omlaag, **0 = weggehaald** (blijft als tombstone, 90 dagen). Per
+  `key` de nieuwste `at` (zoals de sets van build 171). Max. 2000 per profiel (oudste tombstones eerst weg).
+- Op de detailpagina (en in Meer op de telefoon) duim omhoog/omlaag; nog eens tikken = weghalen.
+- **Rij "Voor jou" / "For you"** op Home (uit te zetten: Instellingen > Startscherm, lokaal `home.forYou`, standaard aan),
+  op het apparaat berekend (`forYou`): genregewicht +2 per duim omhoog, +1 per bekeken titel (zonder duim), −2 per duim
+  omlaag; castgewicht +1 per persoon (top 5) van een titel met duim omhoog; score = som genregewichten + som castgewichten
+  (top 5) + 3 × (aantal keer in de TMDB-aanbevelingen van titels met duim omhoog) + 1 × (idem van bekeken titels).
+  Alleen titels die op je servers staan, niet bekeken, zonder duim, niet geblokkeerd of verborgen; alleen score > 0;
+  volgorde score ↓, beoordeling ↓, genormaliseerde titel ↑; max. 30. Kinderprofiel: alleen toegestane titels.
+
+### 12. Sorteren per categorie (`profile.<id>.categorySort`)
+
+```json
+{ "categorySort": { "<sleutel>": { "value": "name", "at": "ISO-8601" } } }
+```
+
+- Sleutel (`sortKey`): `"<server-id kleine letters>|<movie|series>|<categorienaam>"`; voor de lijsten over alle servers
+  (build 128) `"*|<movie|series>|<categorienaam>"`. Per sleutel de nieuwste `at` (`sortMerge`); terug naar Standaard =
+  `value: "server"` (blijft staan).
+- Waarden (`sort`): `server` Standaard (volgorde van de server), `name` Naam A–Z (genormaliseerd, zonder lidwoord
+  vooraan: "the ", "de ", "het ", "een ", "a ", "an "), `year` Jaar (nieuwste), `added` Toegevoegd (nieuwste; Xtream
+  `added`, mediaservers `DateCreated`/`addedAt`), `rating` Beoordeling (hoogste). Ontbrekend of ≤ 0 achteraan; gelijk =
+  volgorde van de server. Onbekende waarde = `server`.
+- Kiezen via een knop "Sorteren" / "Sort" bij de categorie (pagina van een categorie en de rij-menu's).
+
+### 13. Titels opruimen die de aanbieder verwijderd heeft
+
+- Na een **volledige, geslaagde** verversing van een server (automatisch of handmatig), alleen als `cleanupAllowed`:
+  `complete && new > 0 && !(old >= 100 && new < old · 0.5)` (films + series; zo ruimt een halve of mislukte lijst niets op).
+- Per verwijzing naar een film/serie/aflevering van die server in **Verder kijken**, **Mijn lijst** en de
+  **metadata van downloads** (`cleanupAction`): staat nog op de server = `keep`; staat op een andere server van het
+  account (build 128-matching: TMDB-id, anders genormaliseerde titel + jaar + soort) = `remap` (daarheen wijzen);
+  anders `remove`. **Downloads zelf blijven** (alleen de koppeling naar de server vervalt; afspelen van het bestand blijft
+  werken). Kijkgeschiedenis, gezien-markeringen en Trakt worden **niet** aangeraakt.
+- Melding in de vernieuw-samenvatting: "%d titels niet meer beschikbaar" / "%d titles no longer available" (remap +
+  remove), alleen als > 0.
+
+### 16. WebDAV als bron
+
+Nieuwe `kind` in de bronnenlijst: **`"WebDAV"`**. Velden: `serverURL` = basisadres (`https://host/pad/`), `username`,
+`secrets.password` (zoals alle wachtwoorden: lokaal in de privé-opslag onder `playlist.<id>.password`, naar de server
+alleen in `secrets` van `put_sources`, die versleutelt; nooit in klare tekst elders). Overige velden `""`. Apps die
+`WebDAV` niet kennen laten de bron onaangeroerd (`SourceSync`: onbekende `kind`).
+
+- Doorbladeren met `PROPFIND` (`Depth: 1`), Basic of Digest (na 401 `WWW-Authenticate`), recursief tot 6 niveaus en
+  max. 20.000 bestanden; video's afspelen met dezelfde inloggegevens (Apple: AVURLAsset-headers of VLC
+  `http-user`/`http-pwd`).
+- **Herkennen** (`webdavParse`): videobestanden (mkv, mp4, m4v, avi, mov, wmv, ts, m2ts, webm, mpg, mpeg, flv);
+  aflevering bij `SxxEyy`/`1x02` in de bestandsnaam, of in een seizoensmap (`Season 1`, `Seizoen 1`, `Staffel 1`,
+  `Saison 1`, `S01`) met `E04`/`Episode 4`/`Aflevering 4`/een nummer vooraan; serie = de map boven de seizoensmap
+  (of de map zelf); anders film (jaartal = het laatste jaartal 1900–2099 dat niet vooraan staat; algemene namen als
+  "movie"/"film"/"video" of zonder jaartal: de map erboven als die een jaartal heeft). Opschonen: `.`/`_` → spatie,
+  `[...]` weg, haakjes weg, afkappen bij het eerste kwaliteitswoord (1080p, x265, WEB-DL, …). Daarna TMDB-metadata zoals
+  bij mediaservers.
+- Geen live tv, geen downloads. Web: alleen als de server CORS toestaat (anders bij toevoegen de melding "Deze
+  WebDAV-server staat geen browsers toe" / "This WebDAV server doesn't allow browsers" en de bron niet tonen op web).
+
+### Overzicht nieuwe sleutels
+
+| waar | sleutel | punt |
+|---|---|---|
+| lokaal | `refresh.catalog`, `refresh.epg`, `refresh.cellular`, laatste verversing per server | 1 |
+| lokaal | `liveActivity.tv` | 2 |
+| lokaal | `player.engineMemo` | 3 |
+| lokaal | `home.forYou` | 11 |
+| `profile.<id>` | `ratings` | 11 |
+| `profile.<id>` | `categorySort` | 12 |
+| bronnenlijst | `kind: "WebDAV"` | 16 |
+| server | functies `ratings`, `introdb`, tabel `ratings_cache`, secret `MDBLIST_API_KEY` | 9, 10 |
