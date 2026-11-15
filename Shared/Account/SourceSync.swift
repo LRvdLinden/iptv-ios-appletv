@@ -63,8 +63,9 @@ final class SourceSync {
         store.$playlists.map { _ in () }
             .merge(with: store.$customizations.map { _ in () },
                    store.$parental.map { _ in () },
+                   CleanupStore172.shared.$ignored.map { _ in () },
                    store.$mainSourceID.map { _ in () })
-            .dropFirst(4)
+            .dropFirst(5)
             .debounce(for: .seconds(2), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in self?.localChanged() }
             .store(in: &bag)
@@ -442,8 +443,14 @@ final class SourceSync {
         ]
         let prefix = id.uuidString + "|"
         let locked = store.parental.lockedGroups.filter { $0.hasPrefix(prefix) }.map { String($0.dropFirst(prefix.count)) }.sorted()
-        return ["customization": custom, "lockedGroups": locked]
+        var block: [String: Any] = ["customization": custom, "lockedGroups": locked]
+        // build 172: overgeslagen voorstellen van "Categorieën opschonen" (alleen als er iets is, zodat bestaande
+        // servers geen nieuwe vingerafdruk krijgen); oudere apps laten deze sleutel in het blok staan
+        if let ign = CleanupStore172.shared.syncList(id) { block[Self.ignoredKey] = ign }
+        return block
     }
+
+    static let ignoredKey = "ignoredMergeSuggestions"
 
     private func applyApple(_ apple: [String: Any]?, to id: UUID) {
         guard let apple else { return }
@@ -460,6 +467,7 @@ final class SourceSync {
         if let locked = apple["lockedGroups"] as? [String] {
             store.setLockedGroups(id, locked)
         }
+        CleanupStore172.shared.setFromSync(id, apple[Self.ignoredKey] as? [String])
     }
 
     // MARK: - Uploaden
@@ -506,7 +514,9 @@ final class SourceSync {
             d["avatar"] = av
             d["secrets"] = secrets(of: p.id)
             var apple = d["apple"] as? [String: Any] ?? [:]
-            for (k, v) in appleBlock(for: p.id) { apple[k] = v }
+            let block = appleBlock(for: p.id)
+            for (k, v) in block { apple[k] = v }
+            if block[Self.ignoredKey] == nil { apple[Self.ignoredKey] = nil }   // build 172: "Opnieuw zoeken" leegt de lijst
             d["apple"] = apple
             d["updatedAt"] = updated[p.id.uuidString] ?? Self.iso(p.updatedAt)
             out.append(d)

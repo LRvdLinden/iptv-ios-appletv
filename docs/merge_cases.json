@@ -1,0 +1,1197 @@
+{
+ "version": 1,
+ "about": "Build 172: vaste testgevallen voor 'Categorieën opschonen' (Apple Shared/Providers/Build172.swift, Android Build172Logic.kt, web web/js/catmerge.js). Alle drie de platforms gebruiken precies deze gevallen. Kopieën: bingr-android app/src/test/resources/merge_cases.json en bingr-website tools/test/merge_cases.json (niet daar aanpassen). Groepen: naam + aantal (zenders of titels) in de volgorde van de server. Verwachting: precies deze voorstellen in deze volgorde.",
+ "norm": [
+  {
+   "name": "NL | Disney+ Kids",
+   "tokens": [
+    "disney",
+    "plus",
+    "kids"
+   ],
+   "country": "nl"
+  },
+  {
+   "name": "|EN| HULU",
+   "tokens": [
+    "hulu"
+   ],
+   "country": "en"
+  },
+  {
+   "name": "┃NL┃ Videoland 4K",
+   "tokens": [
+    "videoland"
+   ],
+   "country": "nl"
+  },
+  {
+   "name": "[EN] Viaplay",
+   "tokens": [
+    "viaplay"
+   ],
+   "country": "en"
+  },
+  {
+   "name": "DE: Netflix",
+   "tokens": [
+    "netflix"
+   ],
+   "country": "de"
+  },
+  {
+   "name": "Netflix [NL]",
+   "tokens": [
+    "netflix"
+   ],
+   "country": "nl"
+  },
+  {
+   "name": "Netflix | UK",
+   "tokens": [
+    "netflix"
+   ],
+   "country": "uk"
+  },
+  {
+   "name": "4K | Netflix HEVC",
+   "tokens": [
+    "netflix"
+   ],
+   "country": ""
+  },
+  {
+   "name": "Pathé Thuis",
+   "tokens": [
+    "pathe",
+    "thuis"
+   ],
+   "country": ""
+  },
+  {
+   "name": "Netflix NL",
+   "tokens": [
+    "netflix",
+    "nl"
+   ],
+   "country": "nl"
+  },
+  {
+   "name": "Sky: Sports",
+   "tokens": [
+    "sky",
+    "sports"
+   ],
+   "country": ""
+  },
+  {
+   "name": "Disney +  Films",
+   "tokens": [
+    "disney",
+    "plus",
+    "films"
+   ],
+   "country": ""
+  }
+ ],
+ "brand": [
+  {
+   "name": "Netflix",
+   "brand": "netflix"
+  },
+  {
+   "name": "DISNEY PLUS SERIES",
+   "brand": "disneyplus"
+  },
+  {
+   "name": "DisneyPlus",
+   "brand": "disneyplus"
+  },
+  {
+   "name": "Max",
+   "brand": "hbomax"
+  },
+  {
+   "name": "Max Films",
+   "brand": "hbomax"
+  },
+  {
+   "name": "Maxi",
+   "brand": null
+  },
+  {
+   "name": "Max Verstappen",
+   "brand": null
+  },
+  {
+   "name": "Apple TV",
+   "brand": null
+  },
+  {
+   "name": "Apple TV+",
+   "brand": "appletvplus"
+  },
+  {
+   "name": "Sky Cinema",
+   "brand": "sky"
+  },
+  {
+   "name": "Sky Showtime",
+   "brand": "skyshowtime"
+  },
+  {
+   "name": "Amazon",
+   "brand": "primevideo"
+  },
+  {
+   "name": "VOD | Netflix",
+   "brand": "netflix"
+  },
+  {
+   "name": "Movies Netflix",
+   "brand": "netflix"
+  },
+  {
+   "name": "Discovery Channel",
+   "brand": null
+  },
+  {
+   "name": "Discovery+",
+   "brand": "discoveryplus"
+  },
+  {
+   "name": "Canal+ Sport",
+   "brand": "canalplus"
+  },
+  {
+   "name": "NLZIET",
+   "brand": "nlziet"
+  },
+  {
+   "name": "Paramount Network",
+   "brand": null
+  },
+  {
+   "name": "Paramount+ Series",
+   "brand": "paramountplus"
+  },
+  {
+   "name": "HBO",
+   "brand": "hbomax"
+  },
+  {
+   "name": "RTL 4",
+   "brand": null
+  },
+  {
+   "name": "RTL+",
+   "brand": "rtlplus"
+  }
+ ],
+ "suggest": [
+  {
+   "name": "Léon: Netflix, Disney+ en Hulu",
+   "why": "De voorbeelden van Léon: alles van Netflix in Netflix, alles van Disney+ in Disney+ (ook 'DISNEY PLUS' en met NL-voorvoegsel), Hulu met en zonder |EN|. Merkvoorstellen staan standaard aan.",
+   "groups": [
+    {
+     "name": "Netflix",
+     "count": 10
+    },
+    {
+     "name": "Netflix Films",
+     "count": 11
+    },
+    {
+     "name": "Netflix Documentaires",
+     "count": 12
+    },
+    {
+     "name": "Disney+ Films",
+     "count": 13
+    },
+    {
+     "name": "DISNEY PLUS SERIES",
+     "count": 14
+    },
+    {
+     "name": "NL | Disney+ Kids",
+     "count": 15
+    },
+    {
+     "name": "Hulu Originals",
+     "count": 16
+    },
+    {
+     "name": "|EN| HULU",
+     "count": 17
+    }
+   ],
+   "expect": [
+    {
+     "id": "brand:netflix",
+     "kind": "brand",
+     "target": "Netflix",
+     "targetGroup": "Netflix",
+     "groups": [
+      "Netflix",
+      "Netflix Films",
+      "Netflix Documentaires"
+     ],
+     "total": 33,
+     "on": true,
+     "renamed": []
+    },
+    {
+     "id": "brand:disneyplus",
+     "kind": "brand",
+     "target": "Disney+",
+     "targetGroup": "Disney+ Films",
+     "groups": [
+      "Disney+ Films",
+      "DISNEY PLUS SERIES",
+      "NL | Disney+ Kids"
+     ],
+     "total": 42,
+     "on": true,
+     "renamed": []
+    },
+    {
+     "id": "brand:hulu",
+     "kind": "brand",
+     "target": "Hulu",
+     "targetGroup": "Hulu Originals",
+     "groups": [
+      "Hulu Originals",
+      "|EN| HULU"
+     ],
+     "total": 33,
+     "on": true,
+     "renamed": []
+    }
+   ]
+  },
+  {
+   "name": "Valse positieven: te algemeen begin",
+   "why": "'NL Films' + 'NL Series' en 'Movies 2024' + 'Movies 2023' mogen NIET samen: NL, Movies en jaartallen zijn te algemene beginwoorden.",
+   "groups": [
+    {
+     "name": "NL Films",
+     "count": 10
+    },
+    {
+     "name": "NL Series",
+     "count": 11
+    },
+    {
+     "name": "Movies 2024",
+     "count": 12
+    },
+    {
+     "name": "Movies 2023",
+     "count": 13
+    },
+    {
+     "name": "Kids Films",
+     "count": 14
+    },
+    {
+     "name": "Kids Series",
+     "count": 15
+    },
+    {
+     "name": "4K Movies",
+     "count": 16
+    },
+    {
+     "name": "4K Series",
+     "count": 17
+    },
+    {
+     "name": "VOD Films",
+     "count": 18
+    },
+    {
+     "name": "VOD Series",
+     "count": 19
+    }
+   ],
+   "expect": []
+  },
+  {
+   "name": "Sky: merk, maar standaard uit",
+   "why": "Sky is wel een merk, maar Sky Sports, Sky Cinema en Sky News blijven vaak bewust apart; daarom staat dit voorstel standaard UIT (on=false).",
+   "groups": [
+    {
+     "name": "Sky Sports",
+     "count": 10
+    },
+    {
+     "name": "Sky Cinema",
+     "count": 11
+    },
+    {
+     "name": "Sky News",
+     "count": 12
+    }
+   ],
+   "expect": [
+    {
+     "id": "brand:sky",
+     "kind": "brand",
+     "target": "Sky",
+     "targetGroup": "Sky Sports",
+     "groups": [
+      "Sky Sports",
+      "Sky Cinema",
+      "Sky News"
+     ],
+     "total": 33,
+     "on": false,
+     "renamed": []
+    }
+   ]
+  },
+  {
+   "name": "Max alleen als hele naam of met soortwoord",
+   "why": "'Max' en 'Max Films' horen bij HBO Max; 'Maxi' en 'Max Verstappen' niet.",
+   "groups": [
+    {
+     "name": "Max",
+     "count": 10
+    },
+    {
+     "name": "Max Films",
+     "count": 11
+    },
+    {
+     "name": "Maxi",
+     "count": 12
+    },
+    {
+     "name": "Max Verstappen",
+     "count": 13
+    },
+    {
+     "name": "HBO Max Series",
+     "count": 14
+    }
+   ],
+   "expect": [
+    {
+     "id": "brand:hbomax",
+     "kind": "brand",
+     "target": "HBO Max",
+     "targetGroup": "Max",
+     "groups": [
+      "Max",
+      "Max Films",
+      "HBO Max Series"
+     ],
+     "total": 35,
+     "on": true,
+     "renamed": []
+    }
+   ]
+  },
+  {
+   "name": "Apple TV+ is niet de zender Apple TV",
+   "why": "'Apple TV+' en 'Apple TV Plus Originals' samen; de groep 'Apple TV' (zender) hoort er niet bij.",
+   "groups": [
+    {
+     "name": "Apple TV",
+     "count": 10
+    },
+    {
+     "name": "Apple TV+",
+     "count": 11
+    },
+    {
+     "name": "Apple TV Plus Originals",
+     "count": 12
+    }
+   ],
+   "expect": [
+    {
+     "id": "brand:appletvplus",
+     "kind": "brand",
+     "target": "Apple TV+",
+     "targetGroup": "Apple TV+",
+     "groups": [
+      "Apple TV+",
+      "Apple TV Plus Originals"
+     ],
+     "total": 23,
+     "on": true,
+     "renamed": []
+    }
+   ]
+  },
+  {
+   "name": "Landvarianten: apart en standaard uit",
+   "why": "'NL | Netflix' en 'UK | Netflix': wel voorstellen, maar als aparte suggestie die standaard uit staat (talen mengen is niet altijd gewenst).",
+   "groups": [
+    {
+     "name": "NL | Netflix",
+     "count": 10
+    },
+    {
+     "name": "UK | Netflix",
+     "count": 11
+    }
+   ],
+   "expect": [
+    {
+     "id": "country:netflix",
+     "kind": "country",
+     "target": "Netflix",
+     "targetGroup": "NL | Netflix",
+     "groups": [
+      "NL | Netflix",
+      "UK | Netflix"
+     ],
+     "total": 21,
+     "on": false,
+     "renamed": []
+    }
+   ]
+  },
+  {
+   "name": "Landvarianten naast het hoofdvoorstel",
+   "why": "Zonder voorvoegsel + het meest voorkomende land = het hoofdvoorstel (aan); de andere landen een aparte suggestie (uit) naar hetzelfde doel.",
+   "groups": [
+    {
+     "name": "NL | Netflix",
+     "count": 10
+    },
+    {
+     "name": "Netflix Films",
+     "count": 11
+    },
+    {
+     "name": "UK | Netflix",
+     "count": 12
+    },
+    {
+     "name": "DE: Netflix",
+     "count": 13
+    }
+   ],
+   "expect": [
+    {
+     "id": "brand:netflix",
+     "kind": "brand",
+     "target": "Netflix",
+     "targetGroup": "NL | Netflix",
+     "groups": [
+      "NL | Netflix",
+      "Netflix Films"
+     ],
+     "total": 21,
+     "on": true,
+     "renamed": []
+    },
+    {
+     "id": "country:netflix",
+     "kind": "country",
+     "target": "Netflix",
+     "targetGroup": "NL | Netflix",
+     "groups": [
+      "NL | Netflix",
+      "UK | Netflix",
+      "DE: Netflix"
+     ],
+     "total": 35,
+     "on": false,
+     "renamed": []
+    }
+   ]
+  },
+  {
+   "name": "Landcode achteraan",
+   "why": "'Netflix NL' en 'Netflix UK' verschillen alleen in taal: landvariant, standaard uit.",
+   "groups": [
+    {
+     "name": "Netflix NL",
+     "count": 10
+    },
+    {
+     "name": "Netflix UK",
+     "count": 11
+    }
+   ],
+   "expect": [
+    {
+     "id": "country:netflix",
+     "kind": "country",
+     "target": "Netflix",
+     "targetGroup": "Netflix NL",
+     "groups": [
+      "Netflix NL",
+      "Netflix UK"
+     ],
+     "total": 21,
+     "on": false,
+     "renamed": []
+    }
+   ]
+  },
+  {
+   "name": "Pipe-tags, haken en kwaliteit",
+   "why": "┃NL┃ (build 153), [EN], 4K, HD en UHD vallen weg vóór het matchen; accenten tellen niet (Pathé = PATHE).",
+   "groups": [
+    {
+     "name": "┃NL┃ Videoland 4K",
+     "count": 10
+    },
+    {
+     "name": "Videoland HD",
+     "count": 11
+    },
+    {
+     "name": "[EN] Viaplay",
+     "count": 12
+    },
+    {
+     "name": "Viaplay UHD",
+     "count": 13
+    },
+    {
+     "name": "Pathé Thuis",
+     "count": 14
+    },
+    {
+     "name": "PATHE THUIS FILMS",
+     "count": 15
+    }
+   ],
+   "expect": [
+    {
+     "id": "brand:videoland",
+     "kind": "brand",
+     "target": "Videoland",
+     "targetGroup": "┃NL┃ Videoland 4K",
+     "groups": [
+      "┃NL┃ Videoland 4K",
+      "Videoland HD"
+     ],
+     "total": 21,
+     "on": true,
+     "renamed": []
+    },
+    {
+     "id": "brand:viaplay",
+     "kind": "brand",
+     "target": "Viaplay",
+     "targetGroup": "[EN] Viaplay",
+     "groups": [
+      "[EN] Viaplay",
+      "Viaplay UHD"
+     ],
+     "total": 25,
+     "on": true,
+     "renamed": []
+    },
+    {
+     "id": "brand:pathethuis",
+     "kind": "brand",
+     "target": "Pathé Thuis",
+     "targetGroup": "Pathé Thuis",
+     "groups": [
+      "Pathé Thuis",
+      "PATHE THUIS FILMS"
+     ],
+     "total": 29,
+     "on": true,
+     "renamed": []
+    }
+   ]
+  },
+  {
+   "name": "Zelfde begin + soortwoord (standaard uit)",
+   "why": "Marvel, Star Wars en DC met Films/Series/Collection: voorstellen, standaard uit. 'Action Movies' + 'Action Series' niet (Action is zelf een soortwoord).",
+   "groups": [
+    {
+     "name": "Marvel",
+     "count": 10
+    },
+    {
+     "name": "Marvel Films",
+     "count": 11
+    },
+    {
+     "name": "Marvel Series",
+     "count": 12
+    },
+    {
+     "name": "Star Wars Collection",
+     "count": 13
+    },
+    {
+     "name": "Star Wars Films",
+     "count": 14
+    },
+    {
+     "name": "DC Movies",
+     "count": 15
+    },
+    {
+     "name": "DC Series",
+     "count": 16
+    },
+    {
+     "name": "Action Movies",
+     "count": 17
+    },
+    {
+     "name": "Action Series",
+     "count": 18
+    }
+   ],
+   "expect": [
+    {
+     "id": "prefix:marvel",
+     "kind": "prefix",
+     "target": "Marvel",
+     "targetGroup": "Marvel",
+     "groups": [
+      "Marvel",
+      "Marvel Films",
+      "Marvel Series"
+     ],
+     "total": 33,
+     "on": false,
+     "renamed": []
+    },
+    {
+     "id": "prefix:star-wars",
+     "kind": "prefix",
+     "target": "Star Wars",
+     "targetGroup": "Star Wars Collection",
+     "groups": [
+      "Star Wars Collection",
+      "Star Wars Films"
+     ],
+     "total": 27,
+     "on": false,
+     "renamed": []
+    },
+    {
+     "id": "prefix:dc",
+     "kind": "prefix",
+     "target": "DC",
+     "targetGroup": "DC Movies",
+     "groups": [
+      "DC Movies",
+      "DC Series"
+     ],
+     "total": 31,
+     "on": false,
+     "renamed": []
+    }
+   ]
+  },
+  {
+   "name": "Al samengevoegd telt als bestaand",
+   "why": "'Netflix Kids' zit al in 'Netflix': niet opnieuw voorstellen; 'Netflix' is het doel en telt de titels van Netflix Kids mee.",
+   "groups": [
+    {
+     "name": "Netflix",
+     "count": 10
+    },
+    {
+     "name": "Netflix Films",
+     "count": 11
+    },
+    {
+     "name": "Netflix Kids",
+     "count": 12
+    }
+   ],
+   "merged": {
+    "Netflix Kids": "Netflix"
+   },
+   "expect": [
+    {
+     "id": "brand:netflix",
+     "kind": "brand",
+     "target": "Netflix",
+     "targetGroup": "Netflix",
+     "groups": [
+      "Netflix",
+      "Netflix Films"
+     ],
+     "total": 33,
+     "on": true,
+     "renamed": []
+    }
+   ]
+  },
+  {
+   "name": "Al samengevoegd: niets nieuws",
+   "why": "Alles van Netflix zit al in één groep: geen voorstel.",
+   "groups": [
+    {
+     "name": "Netflix",
+     "count": 10
+    },
+    {
+     "name": "Netflix Films",
+     "count": 11
+    }
+   ],
+   "merged": {
+    "Netflix Films": "Netflix"
+   },
+   "expect": []
+  },
+  {
+   "name": "Verborgen telt niet mee",
+   "why": "Een verborgen categorie wordt niet voorgesteld.",
+   "groups": [
+    {
+     "name": "Netflix",
+     "count": 10
+    },
+    {
+     "name": "Netflix Films",
+     "count": 11
+    },
+    {
+     "name": "Netflix Kids",
+     "count": 12
+    }
+   ],
+   "hidden": [
+    "Netflix Films"
+   ],
+   "expect": [
+    {
+     "id": "brand:netflix",
+     "kind": "brand",
+     "target": "Netflix",
+     "targetGroup": "Netflix",
+     "groups": [
+      "Netflix",
+      "Netflix Kids"
+     ],
+     "total": 22,
+     "on": true,
+     "renamed": []
+    }
+   ]
+  },
+  {
+   "name": "Overgeslagen komt niet terug",
+   "why": "Een overgeslagen voorstel (id in ignored) komt niet terug, en de groepen gaan ook niet naar 'zelfde begin'.",
+   "groups": [
+    {
+     "name": "Netflix",
+     "count": 10
+    },
+    {
+     "name": "Netflix Films",
+     "count": 11
+    }
+   ],
+   "ignored": [
+    "brand:netflix"
+   ],
+   "expect": []
+  },
+  {
+   "name": "Aliassen en eigen naam",
+   "why": "Amazon Prime / Prime Video / AMAZON PRIME VIDEO = Prime Video; Disney Plus = DisneyPlus. Een groep met een eigen naam krijgt een waarschuwing (renamed).",
+   "groups": [
+    {
+     "name": "Amazon Prime",
+     "count": 10
+    },
+    {
+     "name": "Prime Video NL",
+     "count": 11
+    },
+    {
+     "name": "AMAZON PRIME VIDEO 4K",
+     "count": 12
+    },
+    {
+     "name": "Disney Plus",
+     "count": 13
+    },
+    {
+     "name": "DisneyPlus Kids",
+     "count": 14
+    }
+   ],
+   "renamed": {
+    "group:Amazon Prime": "Amazon"
+   },
+   "expect": [
+    {
+     "id": "brand:primevideo",
+     "kind": "brand",
+     "target": "Prime Video",
+     "targetGroup": "Amazon Prime",
+     "groups": [
+      "Amazon Prime",
+      "Prime Video NL",
+      "AMAZON PRIME VIDEO 4K"
+     ],
+     "total": 33,
+     "on": true,
+     "renamed": [
+      "Amazon Prime"
+     ]
+    },
+    {
+     "id": "brand:disneyplus",
+     "kind": "brand",
+     "target": "Disney+",
+     "targetGroup": "Disney Plus",
+     "groups": [
+      "Disney Plus",
+      "DisneyPlus Kids"
+     ],
+     "total": 27,
+     "on": true,
+     "renamed": []
+    }
+   ]
+  },
+  {
+   "name": "SkyShowtime is niet Sky",
+   "why": "De langste match wint: 'Sky Showtime Films' hoort bij SkyShowtime, 'Sky Sports' blijft alleen.",
+   "groups": [
+    {
+     "name": "SkyShowtime",
+     "count": 10
+    },
+    {
+     "name": "Sky Showtime Films",
+     "count": 11
+    },
+    {
+     "name": "Sky Sports",
+     "count": 12
+    }
+   ],
+   "expect": [
+    {
+     "id": "brand:skyshowtime",
+     "kind": "brand",
+     "target": "SkyShowtime",
+     "targetGroup": "SkyShowtime",
+     "groups": [
+      "SkyShowtime",
+      "Sky Showtime Films"
+     ],
+     "total": 21,
+     "on": true,
+     "renamed": []
+    }
+   ]
+  },
+  {
+   "name": "VOD en codes zonder scheidingsteken vooraan",
+   "why": "'VOD | Netflix', 'NL Netflix' en 'Movies Netflix' horen bij Netflix.",
+   "groups": [
+    {
+     "name": "VOD | Netflix",
+     "count": 10
+    },
+    {
+     "name": "NL Netflix",
+     "count": 11
+    },
+    {
+     "name": "Movies Netflix",
+     "count": 12
+    }
+   ],
+   "expect": [
+    {
+     "id": "brand:netflix",
+     "kind": "brand",
+     "target": "Netflix",
+     "targetGroup": "VOD | Netflix",
+     "groups": [
+      "VOD | Netflix",
+      "NL Netflix",
+      "Movies Netflix"
+     ],
+     "total": 33,
+     "on": true,
+     "renamed": []
+    }
+   ]
+  }
+ ],
+ "apply": [
+  {
+   "name": "Doel = eerste, eigen naam omdat de schoongemaakte naam anders is",
+   "custom": {
+    "merged": {},
+    "renamed": {},
+    "groupOrder": []
+   },
+   "groups": [
+    "Disney+ Films",
+    "DISNEY PLUS SERIES",
+    "NL | Disney+ Kids"
+   ],
+   "targetGroup": "Disney+ Films",
+   "targetName": "Disney+",
+   "cleanName": "Disney+ Films",
+   "expect": {
+    "merged": {
+     "DISNEY PLUS SERIES": "Disney+ Films",
+     "NL | Disney+ Kids": "Disney+ Films"
+    },
+    "renamed": {
+     "group:Disney+ Films": "Disney+"
+    },
+    "groupOrder": []
+   }
+  },
+  {
+   "name": "Doel heet al zo: geen eigen naam",
+   "custom": {
+    "merged": {},
+    "renamed": {},
+    "groupOrder": []
+   },
+   "groups": [
+    "Netflix",
+    "Netflix Films"
+   ],
+   "targetGroup": "Netflix",
+   "targetName": "Netflix",
+   "cleanName": "Netflix",
+   "expect": {
+    "merged": {
+     "Netflix Films": "Netflix"
+    },
+    "renamed": {},
+    "groupOrder": []
+   }
+  },
+  {
+   "name": "Bestaande bronnen gaan mee naar het nieuwe doel",
+   "custom": {
+    "merged": {
+     "Netflix Kids": "Netflix Films"
+    },
+    "renamed": {},
+    "groupOrder": []
+   },
+   "groups": [
+    "Netflix",
+    "Netflix Films"
+   ],
+   "targetGroup": "Netflix",
+   "targetName": "Netflix",
+   "cleanName": "Netflix",
+   "expect": {
+    "merged": {
+     "Netflix Kids": "Netflix",
+     "Netflix Films": "Netflix"
+    },
+    "renamed": {},
+    "groupOrder": []
+   }
+  },
+  {
+   "name": "Volgorde: de plek van de eerste bron",
+   "custom": {
+    "merged": {},
+    "renamed": {},
+    "groupOrder": [
+     "Sport",
+     "Netflix Films",
+     "Nieuws",
+     "Netflix"
+    ]
+   },
+   "groups": [
+    "Netflix",
+    "Netflix Films"
+   ],
+   "targetGroup": "Netflix",
+   "targetName": "Netflix",
+   "cleanName": "Netflix",
+   "expect": {
+    "merged": {
+     "Netflix Films": "Netflix"
+    },
+    "renamed": {},
+    "groupOrder": [
+     "Sport",
+     "Netflix",
+     "Netflix Films",
+     "Nieuws"
+    ]
+   }
+  },
+  {
+   "name": "Doel niet aangevinkt: de eerste aangevinkte",
+   "custom": {
+    "merged": {},
+    "renamed": {},
+    "groupOrder": []
+   },
+   "groups": [
+    "Hulu Originals",
+    "|EN| HULU"
+   ],
+   "targetGroup": "Hulu",
+   "targetName": "Hulu",
+   "cleanName": "Hulu Originals",
+   "expect": {
+    "merged": {
+     "|EN| HULU": "Hulu Originals"
+    },
+    "renamed": {
+     "group:Hulu Originals": "Hulu"
+    },
+    "groupOrder": []
+   }
+  },
+  {
+   "name": "Naam gelijk aan de schone naam: eigen naam weg",
+   "custom": {
+    "merged": {},
+    "renamed": {
+     "group:Netflix": "Mijn Netflix"
+    },
+    "groupOrder": []
+   },
+   "groups": [
+    "Netflix",
+    "Netflix Films"
+   ],
+   "targetGroup": "Netflix",
+   "targetName": "Netflix",
+   "cleanName": "Netflix",
+   "expect": {
+    "merged": {
+     "Netflix Films": "Netflix"
+    },
+    "renamed": {},
+    "groupOrder": []
+   }
+  }
+ ],
+ "detach": [
+  {
+   "name": "Losmaken (alles), merknaam weg",
+   "custom": {
+    "merged": {
+     "DISNEY PLUS SERIES": "Disney+ Films",
+     "NL | Disney+ Kids": "Disney+ Films",
+     "X": "Y"
+    },
+    "renamed": {
+     "group:Disney+ Films": "Disney+"
+    },
+    "groupOrder": []
+   },
+   "target": "Disney+ Films",
+   "sources": null,
+   "madeName": null,
+   "expect": {
+    "merged": {
+     "X": "Y"
+    },
+    "renamed": {},
+    "groupOrder": []
+   }
+  },
+  {
+   "name": "Haal eruit: één bron, naam blijft",
+   "custom": {
+    "merged": {
+     "DISNEY PLUS SERIES": "Disney+ Films",
+     "NL | Disney+ Kids": "Disney+ Films"
+    },
+    "renamed": {
+     "group:Disney+ Films": "Disney+"
+    },
+    "groupOrder": []
+   },
+   "target": "Disney+ Films",
+   "sources": [
+    "NL | Disney+ Kids"
+   ],
+   "madeName": null,
+   "expect": {
+    "merged": {
+     "DISNEY PLUS SERIES": "Disney+ Films"
+    },
+    "renamed": {
+     "group:Disney+ Films": "Disney+"
+    },
+    "groupOrder": []
+   }
+  },
+  {
+   "name": "Losmaken: een eigen naam van de gebruiker blijft",
+   "custom": {
+    "merged": {
+     "B": "A"
+    },
+    "renamed": {
+     "group:A": "Mijn lijst"
+    },
+    "groupOrder": []
+   },
+   "target": "A",
+   "sources": null,
+   "madeName": null,
+   "expect": {
+    "merged": {},
+    "renamed": {
+     "group:A": "Mijn lijst"
+    },
+    "groupOrder": []
+   }
+  },
+  {
+   "name": "Losmaken: de door het opschonen gezette naam gaat weg",
+   "custom": {
+    "merged": {
+     "Marvel Films": "Marvel Series"
+    },
+    "renamed": {
+     "group:Marvel Series": "Marvel"
+    },
+    "groupOrder": []
+   },
+   "target": "Marvel Series",
+   "sources": null,
+   "madeName": "Marvel",
+   "expect": {
+    "merged": {},
+    "renamed": {},
+    "groupOrder": []
+   }
+  }
+ ],
+ "summary": [
+  {
+   "name": "Léon: 8 categorieën worden 3",
+   "case": "Léon: Netflix, Disney+ en Hulu",
+   "expect": {
+    "from": 8,
+    "to": 3
+   }
+  },
+  {
+   "name": "Hoofdvoorstel + landvariant naar hetzelfde doel: 4 worden 1",
+   "case": "Landvarianten naast het hoofdvoorstel",
+   "expect": {
+    "from": 4,
+    "to": 1
+   }
+  }
+ ]
+}

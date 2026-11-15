@@ -356,6 +356,10 @@ struct AppSettingsView: View {
                         NavigationLink { ManageView() } label: {
                             Label(L("Manage groups and channels"), systemImage: "slider.horizontal.below.rectangle")
                         }
+                        // build 172: categorieën slim samenvoegen, pas na akkoord
+                        NavigationLink { CategoryCleanupView() } label: {
+                            Label(L("Clean up categories"), systemImage: "wand.and.stars")
+                        }
                     }
                     NavigationLink { SourceCheckView() } label: {
                         Label(L("Check source"), systemImage: "stethoscope")

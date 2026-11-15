@@ -2507,5 +2507,76 @@ do {
     check(Crash171.maysend(sent: Array(repeating: 0, count: 20), now: 3700), "171: na een uur weer")
 }
 
+// MARK: build 172: categorieën opschonen (gedeelde gevallen uit docs/merge_cases.json)
+do {
+    typealias CC = CategoryCleanup172
+    let url = URL(fileURLWithPath: "docs/merge_cases.json")
+    guard let data = try? Data(contentsOf: url), let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+        check(false, "172: docs/merge_cases.json niet gelezen"); fatalError()
+    }
+    func strs(_ v: Any?) -> [String] { v as? [String] ?? [] }
+    func dict(_ v: Any?) -> [String: String] { v as? [String: String] ?? [:] }
+    func custom(_ v: Any?) -> CC.Custom {
+        let d = v as? [String: Any] ?? [:]
+        return CC.Custom(merged: dict(d["merged"]), renamed: dict(d["renamed"]), groupOrder: strs(d["groupOrder"]))
+    }
+    func input(_ c: [String: Any]) -> [CC.Suggestion] {
+        let gs = (c["groups"] as? [[String: Any]] ?? []).map { CC.Group(name: $0["name"] as? String ?? "", count: $0["count"] as? Int ?? 0) }
+        return CC.suggest(groups: gs, merged: dict(c["merged"]), renamed: dict(c["renamed"]), hidden: Set(strs(c["hidden"])),
+                          ignored: Set(strs(c["ignored"])))
+    }
+    for c in root["norm"] as? [[String: Any]] ?? [] {
+        let n = c["name"] as! String, r = CC.norm(n)
+        eq(r.tokens, strs(c["tokens"]), "172 norm woorden \(n)")
+        eq(r.country, c["country"] as? String ?? "", "172 norm land \(n)")
+    }
+    for c in root["brand"] as? [[String: Any]] ?? [] {
+        let n = c["name"] as! String
+        eq(CC.brandOf(n), c["brand"] as? String, "172 merk \(n)")
+    }
+    var all: [String: [CC.Suggestion]] = [:]
+    for c in root["suggest"] as? [[String: Any]] ?? [] {
+        let name = c["name"] as! String
+        let got = input(c)
+        all[name] = got
+        let want = c["expect"] as? [[String: Any]] ?? []
+        eq(got.count, want.count, "172 aantal voorstellen: \(name)")
+        for (g, w) in zip(got, want) {
+            eq(g.id, w["id"] as? String ?? "", "172 id: \(name)")
+            eq(g.kind.rawValue, w["kind"] as? String ?? "", "172 soort: \(name) \(g.id)")
+            eq(g.target, w["target"] as? String ?? "", "172 doelnaam: \(name) \(g.id)")
+            eq(g.targetGroup, w["targetGroup"] as? String ?? "", "172 doelgroep: \(name) \(g.id)")
+            eq(g.groups, strs(w["groups"]), "172 groepen: \(name) \(g.id)")
+            eq(g.total, w["total"] as? Int ?? -1, "172 totaal: \(name) \(g.id)")
+            eq(g.on, w["on"] as? Bool ?? false, "172 aan: \(name) \(g.id)")
+            eq(g.renamed, strs(w["renamed"]), "172 eigen naam: \(name) \(g.id)")
+        }
+    }
+    for c in root["apply"] as? [[String: Any]] ?? [] {
+        let got = CC.apply(custom(c["custom"]), groups: strs(c["groups"]), targetGroup: c["targetGroup"] as! String,
+                           name: c["targetName"] as! String, cleanName: c["cleanName"] as! String)
+        eq(got, custom(c["expect"]), "172 apply: \(c["name"] as! String)")
+    }
+    for c in root["detach"] as? [[String: Any]] ?? [] {
+        let got = CC.detach(custom(c["custom"]), target: c["target"] as! String, sources: c["sources"] as? [String],
+                            madeName: c["madeName"] as? String)
+        eq(got, custom(c["expect"]), "172 detach: \(c["name"] as! String)")
+    }
+    for c in root["summary"] as? [[String: Any]] ?? [] {
+        let s = CC.summary(all[c["case"] as! String] ?? [])
+        let w = c["expect"] as? [String: Int] ?? [:]
+        eq(s.from, w["from"] ?? -1, "172 samenvatting van: \(c["name"] as! String)")
+        eq(s.to, w["to"] ?? -1, "172 samenvatting naar: \(c["name"] as! String)")
+    }
+    // prestaties: 5.000 groepen binnen een seconde
+    var big: [CC.Group] = []
+    for i in 0..<5000 { big.append(CC.Group(name: i % 5 != 0 ? "NL | Categorie \(i) Films" : (i % 2 == 1 ? "Netflix \(i)" : "Disney+ \(i)"), count: i)) }
+    let t0 = Date()
+    _ = CC.suggest(groups: big)
+    let ms = Date().timeIntervalSince(t0) * 1000
+    check(ms < 1000, "172: 5.000 groepen in \(Int(ms)) ms")
+    print("172: 5.000 groepen in \(Int(ms)) ms")
+}
+
 print("\(checks) controles, \(failures) fout")
 exit(failures == 0 ? 0 : 1)
