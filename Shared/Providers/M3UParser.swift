@@ -62,6 +62,8 @@ enum M3UParser {
         var seriesMap: [String: Series] = [:]
         var seriesOrder: [String] = []
         var number = 0
+        // build 178: standaard-attributen van #EXTM3U (o.a. catchup, catchup-days, catchup-source) voor alle zenders
+        let header = headerAttributes(text)
 
         for e in entries(from: text) {
             let group = e.attrs["group-title"].flatMap { $0.isEmpty ? nil : $0 } ?? L("Other")
@@ -90,19 +92,39 @@ enum M3UParser {
                                         streamURL: e.url.urlValue))
             } else {
                 number += 1
-                let catchup = Int(e.attrs["catchup-days"] ?? e.attrs["timeshift"] ?? "") ?? 0
+                // build 178: alle varianten (catchup, catchup-days, tvg-rec, timeshift, tv_archive …), ook op #EXTM3U
+                let catchup = Build178.m3u(attrs: e.attrs, header: header)
                 lib.channels.append(Channel(id: id, name: e.name, logo: logo, group: group,
                                             streamURL: e.url.urlValue,
                                             epgID: e.attrs["tvg-id"].flatMap { $0.isEmpty ? nil : $0 },
                                             number: Int(e.attrs["tvg-chno"] ?? "") ?? number,
-                                            catchupDays: catchup,
-                                            radio: Radio171.isRadio(m3uAttributes: e.attrs) ? true : nil))
+                                            catchupDays: catchup.days,
+                                            radio: Radio171.isRadio(m3uAttributes: e.attrs) ? true : nil,
+                                            catchupType: catchup.days > 0 ? catchup.type : nil,
+                                            catchupSource: catchup.days > 0 ? catchup.source : nil))
             }
         }
         lib.series = seriesOrder.compactMap { seriesMap[$0] }.map {
             var s = $0; s.episodes.sort { ($0.season, $0.number) < ($1.season, $1.number) }; return s
         }
         return lib
+    }
+
+    /// Build 178: de attributen op de regel #EXTM3U (sleutels in kleine letters)
+    static func headerAttributes(_ text: String) -> [String: String] {
+        var first = ""
+        text.enumerateLines { line, stop in
+            let t = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if t.isEmpty { return }
+            first = t; stop = true
+        }
+        guard first.hasPrefix("#EXTM3U") else { return [:] }
+        var attrs: [String: String] = [:]
+        let ns = first as NSString
+        for m in attrRegex.matches(in: first, range: NSRange(location: 0, length: ns.length)) {
+            attrs[ns.substring(with: m.range(at: 1)).lowercased()] = ns.substring(with: m.range(at: 2))
+        }
+        return attrs
     }
 
     static func epgURL(fromHeader text: String) -> URL? {

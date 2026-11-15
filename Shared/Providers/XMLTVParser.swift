@@ -6,6 +6,11 @@ final class XMLTVParser: NSObject, XMLParserDelegate {
     private var current: (channel: String, start: Date, end: Date)?
     private var title = "", desc = "", text = "", element = ""
     private let window: ClosedRange<Date>
+    /// Build 178: per gids-id hoeveel dagen terug (zenders met terugkijken tot hun termijn), anders `defaultBack`
+    private var back: [String: Int] = [:]
+    private var defaultBack = 1
+    private var ahead = 7
+    private var now = Date().timeIntervalSince1970
 
     private static let fmt: DateFormatter = {
         let f = DateFormatter()
@@ -23,9 +28,14 @@ final class XMLTVParser: NSObject, XMLParserDelegate {
 
     init(window: ClosedRange<Date>) { self.window = window }
 
-    static func parse(_ data: Data, daysBack: Int = 1, daysAhead: Int = 3) -> [String: [EPGProgram]] {
+    /// Build 178: vooruit tot 7 dagen (was 3), terug 1 dag; zenders met terugkijken (`back`: gids-id → dagen) tot hun
+    /// termijn (hooguit 14 dagen), zodat de dagbalk die dagen kan tonen.
+    static func parse(_ data: Data, back: [String: Int] = [:], daysBack: Int = 1,
+                      daysAhead: Int = Build178.maxAhead) -> [String: [EPGProgram]] {
         let now = Date()
-        let p = XMLTVParser(window: now.addingTimeInterval(Double(-daysBack) * 86400)...now.addingTimeInterval(Double(daysAhead) * 86400))
+        let most = max(daysBack, min(back.values.max() ?? 0, Build178.maxBack))
+        let p = XMLTVParser(window: now.addingTimeInterval(Double(-most) * 86400)...now.addingTimeInterval(Double(daysAhead) * 86400))
+        p.back = back; p.defaultBack = daysBack; p.ahead = daysAhead; p.now = now.timeIntervalSince1970
         let xml = XMLParser(data: gunzipIfNeeded(data))
         xml.delegate = p
         xml.parse()
@@ -54,7 +64,9 @@ final class XMLTVParser: NSObject, XMLParserDelegate {
         case "title": if current != nil && title.isEmpty { title = text.trimmingCharacters(in: .whitespacesAndNewlines) }
         case "desc": if current != nil && desc.isEmpty { desc = text.trimmingCharacters(in: .whitespacesAndNewlines) }
         case "programme":
-            if let c = current, c.end >= window.lowerBound, c.start <= window.upperBound {
+            if let c = current, c.end >= window.lowerBound, c.start <= window.upperBound,
+               Build178.keep(start: c.start.timeIntervalSince1970, end: c.end.timeIntervalSince1970, now: now,
+                             back: max(defaultBack, min(back[c.channel] ?? 0, Build178.maxBack)), ahead: ahead) {
                 programs[c.channel, default: []].append(
                     EPGProgram(channelID: c.channel, title: title, description: desc.isEmpty ? nil : desc, start: c.start, end: c.end))
             }

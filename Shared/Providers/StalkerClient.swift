@@ -21,6 +21,8 @@ actor StalkerClient {
     private struct ChannelDTO: Decodable {
         let id: Flex; let name: String?; let cmd: String?; let logo: String?; let tv_genre_id: Flex?
         let number: Flex?; let xmltv_id: String?; let tv_archive_duration: Flex?
+        /// Build 178: archief aan/uit (portals gebruiken een van deze velden)
+        let tv_archive: Flex?; let archive: Flex?
     }
     private struct Paged<T: Decodable>: Decodable { let data: [T]?; let total_items: Flex?; let max_page_items: Flex? }
     private struct VodDTO: Decodable {
@@ -74,7 +76,9 @@ actor StalkerClient {
                 return Channel(id: "st\(id)", name: ch.name ?? "Channel", logo: ch.logo?.urlValue,
                                group: gMap[ch.tv_genre_id?.string ?? ""] ?? L("Other"),
                                streamURL: directURL(ch.cmd), epgID: ch.xmltv_id, number: ch.number?.int,
-                               catchupDays: (ch.tv_archive_duration?.int ?? 0) / 24, stalkerCmd: ch.cmd)
+                               catchupDays: Build178.stalkerDays(archive: (ch.tv_archive ?? ch.archive)?.string,
+                                                                 duration: ch.tv_archive_duration?.string),
+                               stalkerCmd: ch.cmd)
             }
         }
 

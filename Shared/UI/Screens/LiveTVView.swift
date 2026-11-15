@@ -869,7 +869,7 @@ struct GuideSheet: View {
                             HStack {
                                 Text(p.start.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(Theme.secondary)
                                 if p.isNow { Text(L("NOW")).font(.caption2.bold()).foregroundStyle(Theme.red) }
-                                if p.end < Date() && channel.catchupDays > 0 {
+                                if case .past(replay: true) = GuideArchive178.state(p, channel, Date()) {
                                     Image(systemName: "clock.arrow.circlepath").font(.caption).foregroundStyle(Theme.secondary)
                                 }
                                 if CloudStore.shared.hasReminder(channelID: channel.id, start: p.start) {
@@ -888,7 +888,13 @@ struct GuideSheet: View {
                 let foreign = channel.sourceID != nil && channel.sourceID != playlists.source?.id
                 let all = foreign ? await playlists.foreignEPG(channel) : (playlists.library.epg[channel.epgID ?? channel.id] ?? [])
                 let from = Date().addingTimeInterval(-Double(max(channel.catchupDays, 0)) * 86400)
-                programs = all.isEmpty ? await playlists.shortEPG(channel) : all.filter { $0.end > from }
+                let base = all.isEmpty ? await playlists.shortEPG(channel) : all.filter { $0.end > from }
+                programs = base
+                // build 178: programma's van vroeger uit het archief van de server erbij (met has_archive)
+                if channel.catchupDays > 0 {
+                    let arch = await playlists.archiveEPG(channel).filter { $0.end > from }
+                    if !arch.isEmpty { programs = GuideArchive178.merged(base, arch) }
+                }
             }
             .sheet(item: $selected) { p in ProgramSheet(channel: channel, program: p) }
         }

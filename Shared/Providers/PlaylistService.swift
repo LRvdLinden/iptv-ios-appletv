@@ -189,7 +189,7 @@ final class PlaylistService: ObservableObject {
                 lib = await Task.detached(priority: isActive ? .userInitiated : .utility) { M3UParser.library(from: text, playlistID: pid) }.value
                 rec.end("parse")
                 let epg = s.epgURL.urlValue ?? M3UParser.epgURL(fromHeader: text)
-                if let epg { say(L("Loading TV guide…")); lib.epg = await loadEPG(epg, rec) }
+                if let epg { say(L("Loading TV guide…")); lib.epg = await loadEPG(epg, rec, back: Self.catchupBack(lib.channels)) }
             case .xtream:
                 say(L("Signing in to server…"))
                 let x = XtreamClient(source: s, password: password)
@@ -201,7 +201,7 @@ final class PlaylistService: ObservableObject {
                 lib = xl
                 fetchStatus = st
                 let epg = s.epgURL.urlValue ?? x.xmltvURL
-                if let epg { say(L("Loading TV guide…")); lib.epg = await loadEPG(epg, rec) }
+                if let epg { say(L("Loading TV guide…")); lib.epg = await loadEPG(epg, rec, back: Self.catchupBack(lib.channels)) }
             case .stalker:
                 say(L("Connecting to portal…"))
                 let st = (source?.id == s.id ? stalker : nil) ?? StalkerClient(source: s)
@@ -209,7 +209,7 @@ final class PlaylistService: ObservableObject {
                 say(L("Fetching channels and videos…"))
                 lib = try await st.library()
                 rec.end("fetch")
-                if let epg = s.epgURL.urlValue { lib.epg = await loadEPG(epg, rec) }
+                if let epg = s.epgURL.urlValue { lib.epg = await loadEPG(epg, rec, back: Self.catchupBack(lib.channels)) }
             case .jellyfin, .emby:
                 say(L("Fetching your library…"))
                 let jf = JellyfinClient(source: s, session: Self.session(s))
@@ -239,6 +239,7 @@ final class PlaylistService: ObservableObject {
             // build 145: gestopt (wissel van profiel of server, time-out): niets half bijgewerkts wegschrijven
             try Task.checkCancellation()
             if let fetchStatus { FetchLog.shared.note(s.id, fetchStatus) } else { FetchLog.shared.noteLibrary(s.id, lib) }
+            CatchupLog178.note(s.id, lib.channels)   // build 178
             if source?.id == s.id {
                 // build 148: filteren (indexeren) op de achtergrond, op de hoofdthread alleen het eindresultaat
                 let t0 = Date()
@@ -402,13 +403,24 @@ final class PlaylistService: ObservableObject {
         return await Task.detached(priority: .utility) { XMLTVParser.parse(d) }.value
     }
 
-    /// Build 148: gids ophalen (fase `fetch`) en inlezen (fase `parse`), de ruwe bytes meteen weer weg
-    private func loadEPG(_ url: URL, _ rec: UpdateRecorder) async -> [String: [EPGProgram]] {
+    /// Build 178: per gids-id de terugkijkdagen van de zenders (alleen die met terugkijken)
+    nonisolated static func catchupBack(_ channels: [Channel]) -> [String: Int] {
+        var out: [String: Int] = [:]
+        for c in channels where c.catchupDays > 0 {
+            let k = c.epgID ?? c.id
+            out[k] = max(out[k] ?? 0, c.catchupDays)
+        }
+        return out
+    }
+
+    /// Build 148: gids ophalen (fase `fetch`) en inlezen (fase `parse`), de ruwe bytes meteen weer weg.
+    /// Build 178: `back` = terugkijkdagen per gids-id (`catchupBack`)
+    private func loadEPG(_ url: URL, _ rec: UpdateRecorder, back: [String: Int] = [:]) async -> [String: [EPGProgram]] {
         var data = try? await HTTP.get(url)
         rec.end("fetch")
         guard let d = data else { return [:] }
         data = nil
-        let out = await Task.detached(priority: .utility) { XMLTVParser.parse(d) }.value
+        let out = await Task.detached(priority: .utility) { XMLTVParser.parse(d, back: back) }.value
         rec.end("parse")
         return out
     }
@@ -436,6 +448,7 @@ final class PlaylistService: ObservableObject {
     @discardableResult
     private func setRaw(_ lib: Library) -> Task<ApplyTiming, Never>? {
         if !lib.isEmptyLibrary { StartDiagnostics.shared.mark("catalog") }   // build 143
+        if let id = source?.id, !lib.channels.isEmpty { CatchupLog178.note(id, lib.channels) }   // build 178
         return MainTasks.shared.run("apply") {
             let old = rawLibrary
             rawLibrary = lib
@@ -1001,20 +1014,53 @@ final class PlaylistService: ObservableObject {
     /// server (`sourceID`): met de inloggegevens, de zender en de terugkijk-correctie van die server.
     func catchupURL(channelID: String, start: Date, end: Date, sourceID: UUID? = nil, channel: Channel? = nil) -> URL? {
         if let sid = sourceID, sid != source?.id {
-            guard let other = self.source(for: sid), other.kind == .xtream else { return nil }
+            guard let other = self.source(for: sid), other.kind == .xtream || other.kind == .m3u else { return nil }
             let ch = (channel?.catchupDays ?? 0) > 0 ? channel : CrossServer.shared.channel(forKey: sid.uuidString + "|" + channelID)
             guard let ch, ch.catchupDays > 0 else { return nil }
-            let shift = TimeInterval((other.catchupOffsets?[channelID] ?? 0) * 60)
-            let p = EPGProgram(channelID: channelID, title: "", start: start.addingTimeInterval(shift), end: end.addingTimeInterval(shift))
-            return XtreamClient(source: other, password: Keychain.get(other.passwordKey) ?? "").catchupURL(channel: ch, program: p)
+            return Self.catchupURL(other, ch, start: start, end: end)
         }
-        guard let s = source, s.kind == .xtream,
-              let ch = rawLibrary.channels.first(where: { $0.id == channelID }), ch.catchupDays > 0 else { return nil }
-        // terugkijk-correctie van deze zender (build 51): het begintijdstip verschuiven
-        let shift = TimeInterval((s.catchupOffsets?[channelID] ?? 0) * 60)
-        let p = EPGProgram(channelID: channelID, title: "", start: start.addingTimeInterval(shift), end: end.addingTimeInterval(shift))
-        return XtreamClient(source: s, password: Keychain.get(s.passwordKey) ?? "").catchupURL(channel: ch, program: p)
+        guard let s = source, s.kind == .xtream || s.kind == .m3u else { return nil }
+        let ch: Channel
+        if let c = channel, c.catchupDays > 0, c.sourceID == nil || c.sourceID == s.id { ch = c }
+        else if let c = rawLibrary.channels.first(where: { $0.id == channelID }), c.catchupDays > 0 { ch = c }
+        else { return nil }
+        return Self.catchupURL(s, ch, start: start, end: end)
     }
+
+    /// Build 178: terugkijk-URL voor een zender van deze server: Xtream (tijdzone van de server) of M3U (catchup-type en
+    /// -source, of een Xtream-achtige stream-URL). Met de terugkijk-correctie van de zender (build 51).
+    private static func catchupURL(_ s: PlaylistSource, _ ch: Channel, start: Date, end: Date) -> URL? {
+        let shift = TimeInterval((s.catchupOffsets?[ch.id] ?? 0) * 60)
+        let from = start.addingTimeInterval(shift), to = end.addingTimeInterval(shift)
+        switch s.kind {
+        case .xtream:
+            let p = EPGProgram(channelID: ch.id, title: "", start: from, end: to)
+            return XtreamClient(source: s, password: Keychain.get(s.passwordKey) ?? "").catchupURL(channel: ch, program: p)
+        case .m3u:
+            guard let stream = ch.streamURL?.absoluteString else { return nil }
+            let tz: TimeZone
+            if let x = Build178.xtreamParts(stream) { tz = XtreamTimeZone178.zone(server: x.server, username: x.user) } else { tz = .current }
+            return Build178.m3uURL(stream: stream, type: ch.catchupType, source: ch.catchupSource,
+                                   start: from.timeIntervalSince1970, end: to.timeIntervalSince1970,
+                                   now: Date().timeIntervalSince1970, timeZone: tz).flatMap { URL(string: $0) }
+        default:
+            return nil
+        }
+    }
+
+    /// Build 178: de gids met archief van één zender (Xtream `get_simple_data_table`), 20 minuten bewaard in het geheugen.
+    /// Andere soorten servers: leeg.
+    func archiveEPG(_ c: Channel) async -> [EPGProgram] {
+        let sid = c.sourceID ?? source?.id
+        guard let sid, let s = sid == source?.id ? source : self.source(for: sid), s.kind == .xtream else { return [] }
+        let key = sid.uuidString + "|" + c.id
+        if let hit = archiveCache[key], Date().timeIntervalSince(hit.at) < 1200 { return hit.programs }
+        let list = await XtreamClient(source: s, password: Keychain.get(s.passwordKey) ?? "").archiveEPG(channel: c)
+        if archiveCache.count > 300 { archiveCache.removeAll() }
+        archiveCache[key] = (Date(), list)
+        return list
+    }
+    private var archiveCache: [String: (at: Date, programs: [EPGProgram])] = [:]
 
     /// Build 128: tv-gids van een zender van een andere server: uit de cache van die server, anders de gids van die
     /// server ophalen (XMLTV, één keer per sessie bewaard), bij een MAC-portal via die portal.
@@ -1445,5 +1491,25 @@ extension StartLoad.Mode {
         case .always: return L("Always")
         case .never: return L("Never, manually only")
         }
+    }
+}
+
+
+/// Build 178: diagnose: per server hoeveel zenders terugkijken hebben en tot hoeveel dagen (geen namen of adressen)
+enum CatchupLog178 {
+    private static let key = "diag.catchup.v178"
+
+    static func note(_ server: UUID, _ channels: [Channel]) {
+        let s = Build178.summary(channels.map(\.catchupDays))
+        var all = UserDefaults.standard.dictionary(forKey: key) as? [String: [Int]] ?? [:]
+        let v = [s.channels, s.days]
+        guard all[server.uuidString] != v else { return }
+        all[server.uuidString] = v
+        UserDefaults.standard.set(all, forKey: key)
+    }
+
+    static func get(_ server: UUID) -> (channels: Int, days: Int)? {
+        guard let v = (UserDefaults.standard.dictionary(forKey: key) as? [String: [Int]])?[server.uuidString], v.count == 2 else { return nil }
+        return (v[0], v[1])
     }
 }

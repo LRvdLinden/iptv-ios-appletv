@@ -31,6 +31,9 @@ struct GuideGridView: View {
     @State private var cache = GuideDayCache177()
     /// Build 177: telt op bij elke nieuwe gids van andere servers (voor de cache)
     @State private var foreignVersion = 0
+    /// Build 178: de gids met archief per zender (Xtream `get_simple_data_table`, "<server>|<zender>" → programma's)
+    @State private var archive: [String: [EPGProgram]] = [:]
+    @State private var archiveVersion = 0
 
     private var preview: ChannelPreview { ChannelPreview.shared }
     private var selected: Channel? {
@@ -45,10 +48,8 @@ struct GuideGridView: View {
         Array(channels.filter(isForeign).prefix(60)).sorted { ($0.sourceID?.uuidString ?? "") < ($1.sourceID?.uuidString ?? "") }
     }
 
-    /// Dagbalk (build 164): gisteren t/m 7 dagen vooruit, verder terug alleen met terugkijken (de eerste 200 zenders)
-    private var candidateDays: [Date] {
-        GuideDays164.days(today: now, catchupDays: channels.prefix(200).map(\.catchupDays))
-    }
+    /// Build 178: het grootste aantal terugkijkdagen van de zenders in de lijst (hooguit 14 in de dagbalk)
+    private var maxCatchup: Int { channels.lazy.map(\.catchupDays).max() ?? 0 }
     /// Build 166: daarvan alleen de dagen met gids-info (`GuideAvailableDays166`); vandaag staat er altijd
     private var days: [Date] {
         availableDays ?? [Calendar.current.startOfDay(for: now)]
@@ -64,14 +65,18 @@ struct GuideGridView: View {
     /// volgorde en zonder dubbelen (`Build177.clean`), per zender en dag één keer berekend; opnieuw na een nieuwe gids.
     func programs(_ c: Channel) -> [EPGProgram] {
         let key = foreignKey(c) + "#" + String(Int(day.timeIntervalSince1970))
-        let version = "\(playlists.epgVersion)|\(foreignVersion)|\(c.epgID ?? "")"
+        let version = "\(playlists.epgVersion)|\(foreignVersion)|\(archiveVersion)|\(c.epgID ?? "")"
         return cache.programs(key, version: version) {
             let w = GuideDays164.window(day)
-            let raw: [EPGProgram]
+            var raw: [EPGProgram]
             if isForeign(c) {
                 raw = (foreignPrograms[foreignKey(c)] ?? []).filter { $0.end > w.from && $0.start < w.to }
             } else {
                 raw = playlists.library.programs(c, from: w.from, to: w.to)
+            }
+            // build 178: programma's van vroeger uit het archief van de server erbij (met has_archive)
+            if let a = archive[foreignKey(c)], !a.isEmpty {
+                raw = GuideArchive178.merged(raw, a.filter { $0.end > w.from && $0.start < w.to })
             }
             return GuideDayCache177.clean(raw)
         }
@@ -84,6 +89,7 @@ struct GuideGridView: View {
             .background(Color.black)
             .task(id: foreignShown.map(foreignKey)) { await loadForeign() }
             .task(id: daysKey) { await loadDays() }
+            .task(id: archiveKey) { await loadArchive() }
             .task {
                 // build 177: op elke hele minuut (programma's beginnen op hele minuten), niet om de 30 seconden
                 while !Task.isCancelled {
@@ -139,7 +145,17 @@ struct GuideGridView: View {
         }
     }
 
-    func openProgram(_ c: Channel, _ p: EPGProgram) { onProgram(c, p) }
+    /// Build 178: een voorbij programma dat terug te kijken is speelt meteen af vanaf het begin (zoals NLZIET); de rest
+    /// opent het programmablad
+    func openProgram(_ c: Channel, _ p: EPGProgram) {
+        if case .past(replay: true) = GuideArchive178.state(p, c, Date()), let u = playlists.catchupURL(c, p) {
+            preview.stop()
+            app.play(PlayableItem(id: "\(c.id)-cu-\(Int(p.start.timeIntervalSince1970))", title: p.title,
+                                  subtitle: c.name, url: u, type: .movie, artwork: c.logo))
+            return
+        }
+        onProgram(c, p)
+    }
 
     /// Vanaf het begin (terugkijken van het lopende programma), zoals in het programmablad
     func fromStart(_ c: Channel, _ p: EPGProgram) -> (() -> Void)? {
@@ -159,12 +175,41 @@ struct GuideGridView: View {
         }
     }
 
+    /// Build 178: voor welke zenders het archief geladen wordt: de gekozen zender en de eerste 12 met terugkijken,
+    /// niet voor dagen in de toekomst
+    private var archiveChannels: [Channel] {
+        guard day <= Calendar.current.startOfDay(for: now) else { return [] }
+        var out: [Channel] = []
+        if let s = selected, s.catchupDays > 0 { out.append(s) }
+        for c in channels where c.catchupDays > 0 && out.count < 12 {
+            if !out.contains(where: { $0.id == c.id && $0.sourceID == c.sourceID }) { out.append(c) }
+        }
+        return out
+    }
+    private var archiveKey: String {
+        "\(Int(day.timeIntervalSince1970))|" + archiveChannels.map(foreignKey).joined(separator: ",")
+    }
+
+    /// Build 178: het archief van de server ophalen (Xtream; hooguit 20 minuten oud, zie `PlaylistService.archiveEPG`)
+    private func loadArchive() async {
+        for c in archiveChannels {
+            let k = foreignKey(c)
+            let list = await playlists.archiveEPG(c)
+            guard !Task.isCancelled else { return }
+            if !list.isEmpty, archive[k] != list {
+                archive[k] = list
+                archiveVersion &+= 1
+            }
+        }
+    }
+
     /// Build 166: welke dagen gids-info hebben, buiten de hoofdthread. Steekproef: de eerste 50 zenders van de lijst
     /// mét gids (gezocht in de eerste 400, zodat een info- of radiozender zonder gids bovenaan niet alles leeg maakt;
-    /// zenders van andere servers uit hun eigen gids).
+    /// zenders van andere servers uit hun eigen gids). Build 178: terug tot de terugkijktermijn van de zenders (ook
+    /// zonder gids van die dag: die komt uit het archief), vooruit de dagen met gids (hooguit 7).
     private func loadDays() async {
         let today = now
-        let cands = candidateDays
+        let back = maxCatchup
         let sample = Array(channels.prefix(GuideAvailableDays166.scanLimit))
         let epg = playlists.library.epg
         let foreign = foreignPrograms
@@ -178,7 +223,15 @@ struct GuideGridView: View {
                 if other { list.sort { $0.start < $1.start } }
                 samples.append(GuideSample166(starts: list.map(\.start), ends: list.map(\.end), catchupDays: c.catchupDays))
             }
-            return GuideAvailableDays166.days(candidates: cands, today: today, samples: samples)
+            let cal = Calendar.current
+            let start = cal.startOfDay(for: today)
+            let future = (1...Build178.maxAhead).filter { off in
+                guard let d = cal.date(byAdding: .day, value: off, to: start) else { return false }
+                let w = GuideDays164.window(d)
+                return samples.contains { $0.hasProgram(from: w.from, to: w.to) }
+            }
+            return Build178.dayOffsets(maxCatchupDays: back, futureWithGuide: future)
+                .compactMap { cal.date(byAdding: .day, value: $0, to: start) }
         }.value
         guard !Task.isCancelled else { return }
         if result != availableDays { availableDays = result }
@@ -191,7 +244,7 @@ struct GuideGridView: View {
     private func loadForeign() async {
         let list = foreignShown
         guard !list.isEmpty else { if !foreignPrograms.isEmpty { foreignPrograms = [:]; foreignVersion &+= 1 }; return }
-        let back = Double(GuideDays164.daysBack(catchupDays: list.map(\.catchupDays)) + 1)
+        let back = Double(min(max(1, list.map(\.catchupDays).max() ?? 0), Build178.maxBack) + 1)
         let from = Date().addingTimeInterval(-back * 86400), to = Date().addingTimeInterval(Double(GuideDays164.ahead + 1) * 86400)
         var out: [String: [EPGProgram]] = [:]
         for (i, c) in list.enumerated() {
@@ -245,9 +298,34 @@ final class GuideDayCache177 {
 
 // MARK: - gedeelde onderdelen
 
-/// NU / voorbij / later van een programma, met de terugkijkdagen van de zender
+/// NU / voorbij / later van een programma, met de terugkijkdagen van de zender (build 178: en has_archive)
 private func guideState(_ p: EPGProgram, _ c: Channel, _ now: Date) -> GuideState164 {
-    GuideState164.of(start: p.start, end: p.end, now: now, catchupDays: c.catchupDays)
+    GuideArchive178.state(p, c, now)
+}
+
+/// Build 178: terugkijken in de gids (pure regels in Shared/Account/Build178.swift)
+enum GuideArchive178 {
+    static func state(_ p: EPGProgram, _ c: Channel, _ now: Date) -> GuideState164 {
+        if p.start <= now && now < p.end { return .now }
+        if p.end <= now {
+            return .past(replay: Build178.replayable(start: p.start.timeIntervalSince1970, end: p.end.timeIntervalSince1970,
+                                                     now: now.timeIntervalSince1970, catchupDays: c.catchupDays, archive: p.archive))
+        }
+        return .future
+    }
+
+    /// Gids en archief samen (zelfde begin = zelfde programma, met has_archive uit het archief)
+    static func merged(_ guide: [EPGProgram], _ archive: [EPGProgram]) -> [EPGProgram] {
+        guard !archive.isEmpty else { return guide }
+        let slots = Build178.merge(guide: guide.map { (title: $0.title, start: $0.start.timeIntervalSince1970, end: $0.end.timeIntervalSince1970) },
+                                   archive: archive.map { (title: $0.title, start: $0.start.timeIntervalSince1970,
+                                                           end: $0.end.timeIntervalSince1970, archive: $0.archive) })
+        return slots.map { x in
+            var p = x.source >= 0 ? guide[x.source] : archive[-1 - x.source]
+            if x.source >= 0, let a = x.archive { p.archive = a }
+            return p
+        }
+    }
 }
 
 private func isPast(_ s: GuideState164) -> Bool { if case .past = s { return true }; return false }
@@ -934,8 +1012,8 @@ struct ProgramSheet: View {
     /// Herinnering van het actieve profiel (elk profiel heeft zijn eigen herinneringen)
     private var reminderID: String { store.reminderID(channelID: channel.id, start: program.start) }
     private var canCatchup: Bool {
-        program.end < Date() && channel.catchupDays > 0
-            && program.start > Date().addingTimeInterval(-Double(channel.catchupDays) * 86400)
+        if case .past(replay: true) = GuideArchive178.state(program, channel, Date()) { return true }
+        return false
     }
 
     var body: some View {

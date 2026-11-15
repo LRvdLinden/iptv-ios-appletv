@@ -52,7 +52,16 @@ struct XtreamClient {
             /// Lopende verbindingen volgens de provider (loopt vaak achter)
             let active_cons: Flex?
         }
+        /// Build 178: tijdzone van de server (voor de terugkijk-URL)
+        struct ServerInfo: Decodable { let timezone: String? }
         let user_info: UserInfo?
+        let server_info: ServerInfo?
+        private enum K: String, CodingKey { case user_info, server_info }
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: K.self)
+            user_info = try? c.decode(UserInfo.self, forKey: .user_info)
+            server_info = try? c.decode(ServerInfo.self, forKey: .server_info)
+        }
     }
     // Lijsten en velden worden tolerant gelezen: servers sturen tekst soms als getal (of andersom), lege
     // velden als [] of false, en één afwijkend item mag nooit de hele lijst (alle films/zenders/series) kosten.
@@ -260,6 +269,7 @@ struct XtreamClient {
         let r = try await HTTP.json(AuthResponse.self, u)
         guard r.user_info?.auth?.int == 1 else { throw XtreamError.auth }
         if let c = ProviderConnections(r.user_info) { await ProviderLimit.store(c, server: server, username: username) }
+        XtreamTimeZone178.store(r.server_info?.timezone, server: server, username: username)
     }
 
     /// Verbindingslimiet van de provider (user_info.max_connections / active_cons), of nil als de server die niet
@@ -453,7 +463,7 @@ struct XtreamClient {
                            streamURL: URL(string: "\(server)/live/\(username)/\(password)/\(sid).\(liveExt)"),
                            epgID: l.epg_channel_id.flatMap { $0.isEmpty ? nil : $0 },
                            number: l.num?.int,
-                           catchupDays: l.tv_archive?.int == 1 ? (l.tv_archive_duration?.int ?? 0) : 0,
+                           catchupDays: Build178.xtreamDays(archive: l.tv_archive?.string, duration: l.tv_archive_duration?.string),
                            radio: Radio171.isRadio(streamType: l.stream_type) ? true : nil)
         }
     }
@@ -571,13 +581,49 @@ struct XtreamClient {
         return c?.url
     }
 
-    /// Catch-up / terugkijken (tv_archive).
+    /// Catch-up / terugkijken (tv_archive). Build 178: de tijd in de tijdzone van de server (`server_info.timezone`;
+    /// onbekend = die van het apparaat, zoals voorheen) en de duur naar boven afgerond.
     func catchupURL(channel: Channel, program: EPGProgram) -> URL? {
         guard channel.id.hasPrefix("x") else { return nil }
-        let sid = channel.id.dropFirst()
-        let f = SharedFormatters.posix("yyyy-MM-dd:HH-mm")   // build 149: gedeeld
-        let minutes = Int(program.end.timeIntervalSince(program.start) / 60)
-        return URL(string: "\(server)/timeshift/\(username)/\(password)/\(minutes)/\(f.string(from: program.start))/\(sid).ts")
+        let sid = String(channel.id.dropFirst())
+        return URL(string: Build178.xtreamURL(server: server, user: username, pass: password, streamID: sid,
+                                              start: program.start.timeIntervalSince1970, end: program.end.timeIntervalSince1970,
+                                              timeZone: XtreamTimeZone178.zone(server: server, username: username)))
+    }
+
+    /// Build 178: de gids van één zender met archief (`get_simple_data_table`: ook programma's van vroeger, met
+    /// `has_archive`). Leeg bij een fout.
+    func archiveEPG(channel: Channel) async -> [EPGProgram] {
+        guard channel.id.hasPrefix("x"), let u = api("get_simple_data_table", ["stream_id": String(channel.id.dropFirst())]) else { return [] }
+        var req = URLRequest(url: u); req.timeoutInterval = 20
+        guard let res = try? await HTTP.data(req), (200..<300).contains(res.1.statusCode) else { return [] }
+        let key = channel.epgID ?? channel.id
+        return Build178.simpleTable(res.0).map {
+            EPGProgram(channelID: key, title: $0.title, description: $0.description,
+                       start: Date(timeIntervalSince1970: $0.start), end: Date(timeIntervalSince1970: $0.end), archive: $0.archive)
+        }
+    }
+}
+
+/// Build 178: tijdzone van een Xtream-server (`server_info.timezone` bij het inloggen), bewaard per server en
+/// gebruiker (alleen de naam van de tijdzone, gehasht als sleutel). Onbekend = de tijdzone van het apparaat.
+enum XtreamTimeZone178 {
+    private static let lock = NSLock()
+    private static var memory: [String: String] = [:]
+    private static func key(_ server: String, _ username: String) -> String { "xtream.tz.178." + stableHash(server + "|" + username) }
+
+    static func store(_ name: String?, server: String, username: String) {
+        guard let name = name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty, TimeZone(identifier: name) != nil else { return }
+        let k = key(server, username)
+        lock.lock(); memory[k] = name; lock.unlock()
+        UserDefaults.standard.set(name, forKey: k)
+    }
+
+    static func zone(server: String, username: String) -> TimeZone {
+        let k = key(server, username)
+        lock.lock(); let m = memory[k]; lock.unlock()
+        let name = m ?? UserDefaults.standard.string(forKey: k)
+        return name.flatMap { TimeZone(identifier: $0) } ?? .current
     }
 }
 

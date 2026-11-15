@@ -3105,5 +3105,96 @@ do {
     for c in rows("cacheName") { eq(G.cacheName(s(c[0]) ?? "", s(c[1]) ?? "", ext: s(c[2]) ?? ""), s(c[3]) ?? "", "cachenaam \(c[1])") }
 }
 
+// MARK: build 178 (Shared/Account/Build178.swift)
+// De gedeelde gevallen komen uit docs/build178_cases.json (zelfde als web/js/build178.js en Build178Logic.kt).
+do {
+    let here = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+    let paths = [here.appendingPathComponent("docs/build178_cases.json"),
+                 URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+                    .deletingLastPathComponent().appendingPathComponent("docs/build178_cases.json")]
+    let caseData = paths.lazy.compactMap { try? Data(contentsOf: $0) }.first
+    check(caseData != nil, "178: docs/build178_cases.json gevonden")
+    let C = caseData.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
+    func cases(_ k: String) -> [Any] { ((C[k] as? [String: Any])?["cases"] as? [Any]) ?? [] }
+    func str(_ v: Any?) -> String? {
+        switch v {
+        case let s as String: return s
+        case let n as NSNumber:
+            if CFGetTypeID(n) == CFBooleanGetTypeID() { return n.boolValue ? "1" : "0" }
+            return n.stringValue
+        default: return nil
+        }
+    }
+    func int(_ v: Any?) -> Int { (v as? NSNumber)?.intValue ?? 0 }
+    func optBool(_ v: Any?) -> Bool? { v is NSNull || v == nil ? nil : (v as? NSNumber)?.boolValue }
+    let iso = ISO8601DateFormatter()
+    func t(_ v: Any?) -> Double { iso.date(from: v as? String ?? "")?.timeIntervalSince1970 ?? -1 }
+    func strMap(_ v: Any?) -> [String: String] { (v as? [String: Any] ?? [:]).compactMapValues { str($0) } }
+
+    check(cases("durationDays").count >= 15 && cases("m3uURL").count >= 15 && cases("simpleTable").count >= 3, "178: gevallen geladen")
+    for case let c as [Any] in cases("durationDays") {
+        eq(Build178.days(fromDuration: str(c[0])), int(c[1]), "duur \(c[0])")
+    }
+    for case let c as [Any] in cases("xtreamDays") {
+        eq(Build178.xtreamDays(archive: str(c[0]), duration: str(c[1])), int(c[2]), "xtream \(c[0]) \(c[1])")
+    }
+    for case let c as [Any] in cases("stalkerDays") {
+        eq(Build178.stalkerDays(archive: str(c[0]), duration: str(c[1])), int(c[2]), "stalker \(c[0]) \(c[1])")
+    }
+    for case let c as [Any] in cases("m3u") {
+        let w = (c[2] as? [Any]) ?? []
+        let got = Build178.m3u(attrs: strMap(c[0]), header: strMap(c[1]))
+        eq(got, Build178.M3UCatchup(days: int(w[0]), type: str(w[1]), source: str(w[2])), "m3u \(c[0]) \(c[1])")
+    }
+    for case let c as [Any] in cases("xtreamURL") {
+        let got = Build178.xtreamURL(server: str(c[0]) ?? "", user: str(c[1]) ?? "", pass: str(c[2]) ?? "", streamID: str(c[3]) ?? "",
+                                     start: t(c[4]), end: t(c[5]), timeZone: TimeZone(identifier: str(c[6]) ?? "UTC")!)
+        eq(got, str(c[7]) ?? "", "xtream-url \(c[6])")
+    }
+    for case let c as [Any] in cases("m3uURL") {
+        let got = Build178.m3uURL(stream: str(c[0]) ?? "", type: str(c[1]), source: str(c[2]), start: t(c[3]), end: t(c[4]),
+                                  now: t(c[5]), timeZone: TimeZone(identifier: str(c[6]) ?? "UTC")!)
+        eq(got, str(c[7]), "m3u-url \(c[0])")
+    }
+    for case let c as [Any] in cases("replay") {
+        eq(Build178.replayable(start: t(c[0]), end: t(c[1]), now: t(c[2]), catchupDays: int(c[3]), archive: optBool(c[4])),
+           optBool(c[5]) ?? false, "replay \(c)")
+    }
+    for case let c as [Any] in cases("dayOffsets") {
+        eq(Build178.dayOffsets(maxCatchupDays: int(c[0]), futureWithGuide: ((c[1] as? [Any]) ?? []).map(int)),
+           ((c[2] as? [Any]) ?? []).map(int), "dagen \(c)")
+    }
+    for case let c as [Any] in cases("keep") {
+        eq(Build178.keep(start: t(c[0]), end: t(c[1]), now: t(c[2]), back: int(c[3]), ahead: int(c[4])), optBool(c[5]) ?? false, "venster \(c)")
+    }
+    for case let c as [Any] in cases("simpleTable") {
+        let got = Build178.simpleTable(Data((str(c[0]) ?? "").utf8))
+        let want = ((c[1] as? [Any]) ?? []).compactMap { $0 as? [Any] }
+        eq(got.count, want.count, "tabel aantal")
+        for (g, w) in zip(got, want) {
+            eq(g.title, str(w[0]) ?? "", "tabel titel")
+            eq(g.start, t(w[1]), "tabel begin \(g.title)")
+            eq(g.end, t(w[2]), "tabel einde \(g.title)")
+            eq(g.archive, optBool(w[3]), "tabel archief \(g.title)")
+        }
+    }
+    for case let c as [Any] in cases("merge") {
+        let guide = ((c[0] as? [Any]) ?? []).compactMap { $0 as? [Any] }.map { (title: str($0[0]) ?? "", start: t($0[1]), end: t($0[2])) }
+        let arch = ((c[1] as? [Any]) ?? []).compactMap { $0 as? [Any] }
+            .map { (title: str($0[0]) ?? "", start: t($0[1]), end: t($0[2]), archive: optBool($0[3])) }
+        let got = Build178.merge(guide: guide, archive: arch).map { "\($0.title)|\(Int($0.start))|\(Int($0.end))|\($0.archive.map(String.init) ?? "nil")" }
+        let want = ((c[2] as? [Any]) ?? []).compactMap { $0 as? [Any] }
+            .map { "\(str($0[0]) ?? "")|\(Int(t($0[1])))|\(Int(t($0[2])))|\(optBool($0[3]).map(String.init) ?? "nil")" }
+        eq(got, want, "samenvoegen")
+    }
+    for case let c as [Any] in cases("summary") {
+        let s = Build178.summary(((c[0] as? [Any]) ?? []).map(int))
+        let w = ((c[1] as? [Any]) ?? []).map(int)
+        eq([s.channels, s.days], w, "samenvatting \(c[0])")
+    }
+    eq(Build178.text("Tk9TIEpvdXJuYWFs"), "NOS Journaal", "base64-titel")
+    eq(Build178.text("Test"), "Test", "korte gewone titel blijft")
+}
+
 print("\(checks) controles, \(failures) fout")
 exit(failures == 0 ? 0 : 1)

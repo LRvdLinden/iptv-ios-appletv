@@ -148,6 +148,9 @@ struct Channel: Identifiable, Hashable, Codable {
     var sourceID: UUID? = nil
     /// Build 171: radiozender volgens de bron (Xtream `radio_streams`, M3U `radio="true"`); nil = onbekend
     var radio: Bool? = nil
+    /// Build 178: M3U-terugkijken: catchup-type (kleine letters) en catchup-source (sjabloon); nil = niet opgegeven
+    var catchupType: String? = nil
+    var catchupSource: String? = nil
 }
 
 struct Movie: Identifiable, Hashable, Codable {
@@ -212,6 +215,8 @@ struct EPGProgram: Identifiable, Hashable, Codable {
     var description: String?
     var start: Date
     var end: Date
+    /// Build 178: terug te kijken volgens de server (Xtream `has_archive`); nil = onbekend (dan de termijn van de zender)
+    var archive: Bool? = nil
     var isNow: Bool { let n = Date(); return start <= n && n < end }
     var progress: Double {
         let total = end.timeIntervalSince(start)

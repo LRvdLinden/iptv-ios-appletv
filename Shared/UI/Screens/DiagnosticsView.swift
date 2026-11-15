@@ -254,6 +254,12 @@ final class DiagnosticsModel: ObservableObject {
         r.append(Row(title: L("Servers"), value: "\(store.playlists.count)"))
         for (i, u) in updated.enumerated() {
             r.append(Row(title: L("Server %d", i + 1), value: u.map { L("Updated %@", Self.relative($0)) } ?? L("Not loaded yet")))
+            // build 178: wat Bingr aan terugkijken herkent op deze server
+            if let c = CatchupLog178.get(store.playlists[i].id) {
+                r.append(Row(title: "  " + L("Catch-up"),
+                             value: c.channels == 0 ? L("No channels with catch-up")
+                                 : L("%d channels, up to %d days", c.channels, c.days)))
+            }
         }
         r.append(Row(title: L("Load servers on open"), value: mode.title))
         r.append(Row(title: L("Last account sync"), value: store.lastSync.map { Self.relative($0) } ?? "–"))

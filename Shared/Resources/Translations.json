@@ -1321,7 +1321,9 @@
   "A poster that stays selected for 2 seconds starts to move.": "يبدأ الملصق الذي يبقى محددًا لمدة ثانيتين بالتحرك.",
   "The trailer plays muted after 2 seconds on a poster or at the top of Home. Not when saving data on cellular.": "يُعرض الإعلان دون صوت بعد ثانيتين على ملصق أو في أعلى الصفحة الرئيسية. ليس عند توفير البيانات على شبكة الجوال.",
   "Brightness": "السطوع",
-  "Logos and crests are trademarks of their respective owners and are shown for identification only.": "الشعارات علامات تجارية لمالكيها وتُعرض لأغراض التعريف فقط."
+  "Logos and crests are trademarks of their respective owners and are shown for identification only.": "الشعارات علامات تجارية لمالكيها وتُعرض لأغراض التعريف فقط.",
+  "%d channels, up to %d days": "%d قناة، حتى %d أيام",
+  "No channels with catch-up": "لا توجد قنوات مع المشاهدة لاحقاً"
  },
  "de": {
   "%@ is now signed in.": "%@ ist jetzt angemeldet.",
@@ -2645,7 +2647,9 @@
   "A poster that stays selected for 2 seconds starts to move.": "Ein Poster, das 2 Sekunden ausgewählt bleibt, beginnt sich zu bewegen.",
   "The trailer plays muted after 2 seconds on a poster or at the top of Home. Not when saving data on cellular.": "Der Trailer läuft nach 2 Sekunden auf einem Poster oder oben auf der Startseite ohne Ton. Nicht beim Datensparen im Mobilfunknetz.",
   "Brightness": "Helligkeit",
-  "Logos and crests are trademarks of their respective owners and are shown for identification only.": "Logos und Wappen sind Marken ihrer jeweiligen Inhaber und werden nur zur Identifizierung angezeigt."
+  "Logos and crests are trademarks of their respective owners and are shown for identification only.": "Logos und Wappen sind Marken ihrer jeweiligen Inhaber und werden nur zur Identifizierung angezeigt.",
+  "%d channels, up to %d days": "%d Sender, bis zu %d Tage",
+  "No channels with catch-up": "Keine Sender mit Replay"
  },
  "es": {
   "%@ is now signed in.": "%@ ya ha iniciado sesión.",
@@ -3969,7 +3973,9 @@
   "A poster that stays selected for 2 seconds starts to move.": "Un póster que permanece seleccionado 2 segundos empieza a moverse.",
   "The trailer plays muted after 2 seconds on a poster or at the top of Home. Not when saving data on cellular.": "El tráiler se reproduce sin sonido tras 2 segundos sobre un póster o en la parte superior de Inicio. No al ahorrar datos en la red móvil.",
   "Brightness": "Brillo",
-  "Logos and crests are trademarks of their respective owners and are shown for identification only.": "Los logotipos y escudos son marcas comerciales de sus respectivos propietarios y se muestran solo a efectos de identificación."
+  "Logos and crests are trademarks of their respective owners and are shown for identification only.": "Los logotipos y escudos son marcas comerciales de sus respectivos propietarios y se muestran solo a efectos de identificación.",
+  "%d channels, up to %d days": "%d canales, hasta %d días",
+  "No channels with catch-up": "Ningún canal con reproducción diferida"
  },
  "fr": {
   "%@ is now signed in.": "%@ est maintenant connecté.",
@@ -5293,7 +5299,9 @@
   "A poster that stays selected for 2 seconds starts to move.": "Une affiche qui reste sélectionnée 2 secondes se met à bouger.",
   "The trailer plays muted after 2 seconds on a poster or at the top of Home. Not when saving data on cellular.": "La bande-annonce se lance sans le son après 2 secondes sur une affiche ou en haut de l’accueil. Pas en mode économie de données sur réseau mobile.",
   "Brightness": "Luminosité",
-  "Logos and crests are trademarks of their respective owners and are shown for identification only.": "Les logos et écussons sont des marques de leurs propriétaires respectifs et ne sont affichés qu’à des fins d’identification."
+  "Logos and crests are trademarks of their respective owners and are shown for identification only.": "Les logos et écussons sont des marques de leurs propriétaires respectifs et ne sont affichés qu’à des fins d’identification.",
+  "%d channels, up to %d days": "%d chaînes, jusqu’à %d jours",
+  "No channels with catch-up": "Aucune chaîne avec replay"
  },
  "it": {
   "%@ is now signed in.": "%@ ha effettuato l’accesso.",
@@ -6617,7 +6625,9 @@
   "A poster that stays selected for 2 seconds starts to move.": "Una locandina che resta selezionata per 2 secondi inizia a muoversi.",
   "The trailer plays muted after 2 seconds on a poster or at the top of Home. Not when saving data on cellular.": "Il trailer parte senza audio dopo 2 secondi su una locandina o in cima alla Home. Non con il risparmio dati sulla rete cellulare.",
   "Brightness": "Luminosità",
-  "Logos and crests are trademarks of their respective owners and are shown for identification only.": "Loghi e stemmi sono marchi dei rispettivi proprietari e sono mostrati solo a scopo identificativo."
+  "Logos and crests are trademarks of their respective owners and are shown for identification only.": "Loghi e stemmi sono marchi dei rispettivi proprietari e sono mostrati solo a scopo identificativo.",
+  "%d channels, up to %d days": "%d canali, fino a %d giorni",
+  "No channels with catch-up": "Nessun canale con replay"
  },
  "nl": {
   "%@ is now signed in.": "%@ is nu ingelogd.",
@@ -7941,7 +7951,9 @@
   "A poster that stays selected for 2 seconds starts to move.": "Een poster die 2 seconden geselecteerd blijft, gaat bewegen.",
   "The trailer plays muted after 2 seconds on a poster or at the top of Home. Not when saving data on cellular.": "De trailer speelt zonder geluid na 2 seconden op een poster of bovenaan Home. Niet bij data besparen op mobiel netwerk.",
   "Brightness": "Helderheid",
-  "Logos and crests are trademarks of their respective owners and are shown for identification only.": "Logo's en clubwapens zijn handelsmerken van hun respectieve eigenaren en worden alleen ter herkenning getoond."
+  "Logos and crests are trademarks of their respective owners and are shown for identification only.": "Logo's en clubwapens zijn handelsmerken van hun respectieve eigenaren en worden alleen ter herkenning getoond.",
+  "%d channels, up to %d days": "%d zenders, tot %d dagen",
+  "No channels with catch-up": "Geen zenders met terugkijken"
  },
  "pl": {
   "%@ is now signed in.": "%@ jest teraz zalogowany.",
@@ -9265,7 +9277,9 @@
   "A poster that stays selected for 2 seconds starts to move.": "Plakat zaznaczony przez 2 sekundy zaczyna się poruszać.",
   "The trailer plays muted after 2 seconds on a poster or at the top of Home. Not when saving data on cellular.": "Zwiastun odtwarza się bez dźwięku po 2 sekundach na plakacie lub u góry strony głównej. Nie przy oszczędzaniu danych w sieci komórkowej.",
   "Brightness": "Jasność",
-  "Logos and crests are trademarks of their respective owners and are shown for identification only.": "Logo i herby są znakami towarowymi ich właścicieli i są pokazywane wyłącznie w celach identyfikacyjnych."
+  "Logos and crests are trademarks of their respective owners and are shown for identification only.": "Logo i herby są znakami towarowymi ich właścicieli i są pokazywane wyłącznie w celach identyfikacyjnych.",
+  "%d channels, up to %d days": "%d kanałów, do %d dni",
+  "No channels with catch-up": "Brak kanałów z odtwarzaniem wstecz"
  },
  "pt": {
   "%@ is now signed in.": "%@ já tem sessão iniciada.",
@@ -10589,7 +10603,9 @@
   "A poster that stays selected for 2 seconds starts to move.": "Um cartaz que fica selecionado durante 2 segundos começa a mexer-se.",
   "The trailer plays muted after 2 seconds on a poster or at the top of Home. Not when saving data on cellular.": "O trailer é reproduzido sem som após 2 segundos num cartaz ou no topo do Início. Não ao poupar dados na rede móvel.",
   "Brightness": "Brilho",
-  "Logos and crests are trademarks of their respective owners and are shown for identification only.": "Os logótipos e emblemas são marcas comerciais dos respetivos proprietários e são apresentados apenas para identificação."
+  "Logos and crests are trademarks of their respective owners and are shown for identification only.": "Os logótipos e emblemas são marcas comerciais dos respetivos proprietários e são apresentados apenas para identificação.",
+  "%d channels, up to %d days": "%d canais, até %d dias",
+  "No channels with catch-up": "Nenhum canal com catch-up"
  },
  "tr": {
   "%@ is now signed in.": "%@ artık oturum açtı.",
@@ -11913,7 +11929,9 @@
   "A poster that stays selected for 2 seconds starts to move.": "2 saniye seçili kalan bir afiş hareket etmeye başlar.",
   "The trailer plays muted after 2 seconds on a poster or at the top of Home. Not when saving data on cellular.": "Fragman, bir afişte veya Ana Sayfa'nın üstünde 2 saniye sonra sessiz oynatılır. Mobil ağda veri tasarrufunda oynatılmaz.",
   "Brightness": "Parlaklık",
-  "Logos and crests are trademarks of their respective owners and are shown for identification only.": "Logolar ve armalar ilgili sahiplerinin ticari markalarıdır ve yalnızca tanımlama amacıyla gösterilir."
+  "Logos and crests are trademarks of their respective owners and are shown for identification only.": "Logolar ve armalar ilgili sahiplerinin ticari markalarıdır ve yalnızca tanımlama amacıyla gösterilir.",
+  "%d channels, up to %d days": "%d kanal, %d güne kadar",
+  "No channels with catch-up": "Tekrar izleme olan kanal yok"
  },
  "zh-Hans": {
   "%@ is now signed in.": "%@ 现已登录。",
@@ -13237,6 +13255,8 @@
   "A poster that stays selected for 2 seconds starts to move.": "海报保持选中 2 秒后会开始动起来。",
   "The trailer plays muted after 2 seconds on a poster or at the top of Home. Not when saving data on cellular.": "在海报上或首页顶部停留 2 秒后，预告片会静音播放。在蜂窝网络节省流量时不播放。",
   "Brightness": "亮度",
-  "Logos and crests are trademarks of their respective owners and are shown for identification only.": "标志和队徽是其各自所有者的商标，仅用于识别目的。"
+  "Logos and crests are trademarks of their respective owners and are shown for identification only.": "标志和队徽是其各自所有者的商标，仅用于识别目的。",
+  "%d channels, up to %d days": "%d 个频道，最多 %d 天",
+  "No channels with catch-up": "没有支持回看的频道"
  }
 }
