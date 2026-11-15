@@ -7,7 +7,7 @@ import {
 import {
   apnsOutcome, apnsPayload, checkRegister, checkTarget, fcmMessage, fcmOutcome, normLang, parseReminders, releaseKey, releaseText,
   reminderBody, reminderDue, reminderKey, reminderProfile, renderNotice, ttlFor, webPayload, webpushHostAllowed, webpushOutcome,
-  supportKey, supportLinks, supportText,
+  supportKey, supportLinks, supportText, reminderDeadline, reminderDueFor, sportLead, sportReminderText,
 } from "./logic.ts";
 import { Apns, apnsIat, apnsTokenUsable, Channels, type TokenStore } from "./channels.ts";
 import { openJsonField, seal, sealJsonField, unseal } from "../_shared/sealed.ts";
@@ -432,4 +432,54 @@ Deno.test("build 146: versleutelde payload (herinnering) ontsleutelt naar hetzel
   ok(sealed.startsWith("enc1:"), "voorvoegsel");
   eq(await openJsonField(sealed, k), { title: "Journaal", channel_name: "NPO 1" });
   eq(await openJsonField("geen", k), null);
+});
+
+// ---------- build 172: sportherinneringen ----------
+Deno.test("sport: herinneringen lezen (leadMin, competitie, matchKey)", () => {
+  const start = Date.parse("2026-11-21T19:30:00Z");
+  const r = parseReminders({ items: [
+    { id: "sport:ajax~psv:20261121", channelID: "espn1", channelName: "ESPN 1", title: "Ajax - PSV", start: new Date(start).toISOString(),
+      leadMin: 15, competition: "Eredivisie", matchKey: "sport:ajax~psv:20261121", auto: true },
+    { id: "p:abc:sport:az~twente:20261121", channelID: "z", title: "AZ - FC Twente", start, leadMin: 7, matchKey: "sport:az~twente:20261121" },
+    { id: "z-1", channelID: "z", title: "Journaal", start },
+  ] });
+  eq(r.length, 3);
+  eq([r[0].matchKey, r[0].lead, r[0].competition], ["sport:ajax~psv:20261121", 15, "Eredivisie"]);
+  eq([r[1].profileId, r[1].lead, r[1].competition], ["abc", 5, null], "onbekende leadMin = 5; profiel uit de id");
+  eq(r[2].matchKey, undefined, "gewone herinnering");
+  eq([sportLead(0), sportLead(5), sportLead(15), sportLead(3), sportLead(undefined)], [0, 5, 15, 5, 5]);
+});
+
+Deno.test("sport: moment van de melding (0, 5, 15 min) en daarna niet meer", () => {
+  const s = Date.parse("2026-11-21T19:30:00Z");
+  const r = (lead: number) => ({ startMs: s, matchKey: "k", lead });
+  ok(!reminderDueFor(r(5), s - 6 * 60_000));
+  ok(reminderDueFor(r(5), s - 5 * 60_000 - 4_000), "5 min vooraf (marge 5 s)");
+  ok(reminderDueFor(r(5), s - 60_000));
+  ok(!reminderDueFor(r(5), s), "na de start niet meer");
+  ok(!reminderDueFor(r(15), s - 16 * 60_000));
+  ok(reminderDueFor(r(15), s - 15 * 60_000));
+  ok(!reminderDueFor(r(0), s - 60_000), "bij de start: niet eerder");
+  ok(reminderDueFor(r(0), s));
+  ok(reminderDueFor(r(0), s + 110_000), "bij de start: tot 2 min erna");
+  ok(!reminderDueFor(r(0), s + 120_000));
+  ok(reminderDueFor({ startMs: s }, s - 60_000), "gewone herinnering: 2 min vooraf");
+  ok(!reminderDueFor({ startMs: s }, s - 3 * 60_000));
+  eq(reminderDeadline({ start_ms: s }), s);
+  eq(reminderDeadline({ start_ms: s, deadline_ms: s + 120_000 }), s + 120_000);
+});
+
+Deno.test("sport: tekst van de melding", () => {
+  eq(sportReminderText("nl", { title: "AZ - FC Twente", lead: 5, competition: "Eredivisie", channelName: "Sport 1" }),
+    { title: "AZ - FC Twente begint over 5 minuten", body: "Eredivisie · Sport 1. Tik om live te kijken." });
+  eq(sportReminderText("en", { title: "AZ - FC Twente", lead: 0, competition: null, channelName: "Sport 1" }),
+    { title: "AZ - FC Twente starts now", body: "Sport 1. Tap to watch live." });
+  eq(sportReminderText("nl", { profileName: "Emma", title: "Ajax - PSV", lead: 15, competition: "", channelName: "" }).title,
+    "Voor Emma: Ajax - PSV begint over 15 minuten");
+  eq(sportReminderText("nl", { title: "X", lead: 5 }).body, "Tik om live te kijken.", "zonder competitie en zender");
+  const start = Date.now() + 60_000;
+  const n = renderNotice({ id: 11, kind: "reminder", payload: { title: "Ajax - PSV", channel_id: "espn 1", channel_name: "ESPN 1",
+    profile_id: null, profile_name: null, start_ms: start, sport: true, lead: 5, competition: "Eredivisie" } }, { platform: "ios", lang: "nl" });
+  eq([n.title, n.body, n.data.kind, n.data.deeplink], ["Ajax - PSV begint over 5 minuten", "Eredivisie · ESPN 1. Tik om live te kijken.", "reminder", "bingr://live?channel=espn%201"]);
+  ok(ttlFor({ id: 11, kind: "reminder", payload: { start_ms: start, deadline_ms: start + 120_000 } }, Date.now()) > 150, "bij de start: ttl tot 2 min erna");
 });

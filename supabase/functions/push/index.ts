@@ -28,8 +28,8 @@ import { sameSecret } from "./crypto.ts";
 import { Channels, type DeviceRow, type TokenStore } from "./channels.ts";
 import { adminNotify, type BeheerResult } from "./beheer.ts";
 import {
-  checkRegister, checkTarget, GROUPS, MAX_ATTEMPTS, type MessageRow, parseReminders, releaseKey, reminderDue, reminderKey,
-  reminderProfile, renderNotice, safeUrl, ttlFor,
+  checkRegister, checkTarget, GROUPS, MAX_ATTEMPTS, type MessageRow, parseReminders, releaseKey, reminderDeadline, reminderDueFor, reminderKey,
+  reminderProfile, renderNotice, safeUrl, SPORT_AT_START_MS, sportLead, ttlFor,
 } from "./logic.ts";
 
 const env = (k: string) => Deno.env.get(k);
@@ -130,7 +130,7 @@ async function runBatch(messageId: number | null, t: Totals): Promise<number> {
       const dev = r.device_ref != null ? devs.get(r.device_ref) : undefined;
       const msg = msgs.get(r.message_id);
       if (!dev || !msg) { results.push({ id: r.id, state: "failed", error: "device_removed" }); t.failed++; continue; }
-      if (msg.kind === "reminder" && Number(msg.payload?.start_ms) <= now) {
+      if (msg.kind === "reminder" && reminderDeadline(msg.payload) <= now) {
         results.push({ id: r.id, state: "failed", error: "too_late" }); t.failed++; continue;
       }
       const o = await channels.send(dev, renderNotice(msg, dev), ttlFor(msg, now));
@@ -172,7 +172,7 @@ async function reminders(nowMs: number): Promise<number> {
       const { data: rows } = await admin.from("account_state").select("user_id,data").eq("section", "reminders").in("user_id", chunk);
       for (const row of (rows ?? []) as { user_id: string; data: string }[]) {
         let due;
-        try { due = parseReminders(await unseal(row.data)).filter((r) => reminderDue(r.startMs, nowMs)); } catch { continue; }
+        try { due = parseReminders(await unseal(row.data)).filter((r) => reminderDueFor(r, nowMs)); } catch { continue; }
         if (!due.length) continue;
         // build 146: profielen uit de versleutelde lijst; titel, zender en profielnaam versleuteld in de payload
         const profiles = await profilesOrEmpty(admin, row.user_id);
@@ -183,7 +183,12 @@ async function reminders(nowMs: number): Promise<number> {
             kind: "reminder", dedup_key: key, target: { accounts: [row.user_id] }, created_by: "cron",
             payload: {
               start_ms: r.startMs,
-              sealed: await sealJsonField({ title: r.title, channel_id: r.channelId, channel_name: r.channelName, profile_id: prof.id, profile_name: prof.name }),
+              // build 172: sport met "bij de start" mag tot 2 minuten na de start
+              ...(r.matchKey && sportLead(r.lead) === 0 ? { deadline_ms: r.startMs + SPORT_AT_START_MS } : {}),
+              sealed: await sealJsonField({
+                title: r.title, channel_id: r.channelId, channel_name: r.channelName, profile_id: prof.id, profile_name: prof.name,
+                ...(r.matchKey ? { sport: true, lead: sportLead(r.lead), competition: r.competition ?? null } : {}),
+              }),
             },
           }, { onConflict: "dedup_key", ignoreDuplicates: true });
           const { data: m } = await admin.from("push_messages").select("id").eq("dedup_key", key).maybeSingle();

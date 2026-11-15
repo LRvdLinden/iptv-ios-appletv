@@ -50,6 +50,21 @@ const REMINDER: Record<Lang, { withProfile: string; plain: string }> = {
   ar: { withProfile: "لـ {n}: يبدأ {t} في {time}", plain: "يبدأ {t} في {time}" },
   "zh-Hans": { withProfile: "{n}：{t} 将于 {time} 开始", plain: "{t} 将于 {time} 开始" },
 };
+// Build 172 (Sport): "<titel> begint over <m> minuten" / "<titel> begint nu", tweede regel "<competitie · zender>. Tik om
+// live te kijken." Profielnaam ervoor zoals bij gewone herinneringen (alleen bij meer dan één profiel).
+const SPORT: Record<Lang, { soon: string; now: string; line: string; profile: string }> = {
+  nl: { soon: "{t} begint over {m} minuten", now: "{t} begint nu", line: "{c}. Tik om live te kijken.", profile: "Voor {n}: " },
+  en: { soon: "{t} starts in {m} minutes", now: "{t} starts now", line: "{c}. Tap to watch live.", profile: "For {n}: " },
+  de: { soon: "{t} beginnt in {m} Minuten", now: "{t} beginnt jetzt", line: "{c}. Tippe, um live zu sehen.", profile: "Für {n}: " },
+  fr: { soon: "{t} commence dans {m} minutes", now: "{t} commence maintenant", line: "{c}. Touchez pour regarder en direct.", profile: "Pour {n} : " },
+  es: { soon: "{t} empieza en {m} minutos", now: "{t} empieza ahora", line: "{c}. Toca para verlo en directo.", profile: "Para {n}: " },
+  it: { soon: "{t} inizia tra {m} minuti", now: "{t} inizia ora", line: "{c}. Tocca per guardare in diretta.", profile: "Per {n}: " },
+  pt: { soon: "{t} começa daqui a {m} minutos", now: "{t} começa agora", line: "{c}. Toque para ver em direto.", profile: "Para {n}: " },
+  tr: { soon: "{t} {m} dakika sonra başlıyor", now: "{t} şimdi başlıyor", line: "{c}. Canlı izlemek için dokunun.", profile: "{n} için: " },
+  pl: { soon: "{t} zaczyna się za {m} min", now: "{t} zaczyna się teraz", line: "{c}. Dotknij, aby oglądać na żywo.", profile: "Dla {n}: " },
+  ar: { soon: "يبدأ {t} خلال {m} دقائق", now: "يبدأ {t} الآن", line: "{c}. اضغط للمشاهدة مباشرة.", profile: "لـ {n}: " },
+  "zh-Hans": { soon: "{t} 将在 {m} 分钟后开始", now: "{t} 现在开始", line: "{c}。轻点即可观看直播。", profile: "{n}：" },
+};
 const fill = (s: string, v: Record<string, string>) => s.replace(/\{(\w+)\}/g, (_, k) => v[k] ?? "");
 
 export function releaseText(lang: unknown, version: string, build: number, platform: string): ReleaseT {
@@ -72,6 +87,14 @@ export function reminderBody(lang: unknown, r: { profileName?: string | null; ti
   const t = REMINDER[normLang(lang)];
   const v = { n: r.profileName ?? "", t: r.title, time: timeIn(r.startMs, tz) };
   return fill(r.profileName ? t.withProfile : t.plain, v);
+}
+
+// Build 172: tekst van een sportherinnering (titel en tweede regel).
+export function sportReminderText(lang: unknown, r: { profileName?: string | null; title: string; lead: number; competition?: string | null; channelName?: string | null }) {
+  const t = SPORT[normLang(lang)];
+  const title = (r.profileName ? fill(t.profile, { n: r.profileName }) : "") + fill(r.lead === 0 ? t.now : t.soon, { t: r.title, m: String(r.lead) });
+  const c = [r.competition ?? "", r.channelName ?? ""].map((x) => x.trim()).filter(Boolean).join(" · ");
+  return { title, body: fill(t.line, { c }).replace(/^\. /, "") };
 }
 
 // Teksten van een beheerbericht: nl voor nl-apparaten, anders en (ontbreekt en, dan nl).
@@ -147,6 +170,11 @@ export function renderNotice(m: MessageRow, d: DevInfo): Notice {
   }
   if (m.kind === "reminder") {
     const l = reminderLinks(String(p.channel_id ?? ""), p.profile_id ? String(p.profile_id) : null);
+    if (p.sport === true) {   // build 172
+      const s = sportReminderText(d.lang, { profileName: p.profile_name ? String(p.profile_name) : null, title: String(p.title ?? ""),
+        lead: sportLead(p.lead), competition: p.competition ? String(p.competition) : null, channelName: String(p.channel_name ?? "") });
+      return { ...s, data: noticeData("reminder", m.id, l.url, l.deeplink) };
+    }
     const body = reminderBody(d.lang, { profileName: p.profile_name ? String(p.profile_name) : null, title: String(p.title ?? ""), startMs: Number(p.start_ms) }, d.tz);
     return { title: String(p.channel_name || "Bingr"), body, data: noticeData("reminder", m.id, l.url, l.deeplink) };
   }
@@ -155,7 +183,7 @@ export function renderNotice(m: MessageRow, d: DevInfo): Notice {
 }
 // Hoe lang een pushdienst het bericht mag bewaren (s): herinnering tot de start, overige 1 dag.
 export function ttlFor(m: MessageRow, nowMs: number): number {
-  if (m.kind === "reminder") return Math.max(30, Math.floor((Number(m.payload?.start_ms) - nowMs) / 1000));
+  if (m.kind === "reminder") return Math.max(30, Math.floor((reminderDeadline(m.payload) - nowMs) / 1000));
   if (m.kind === "support_reply") return 3 * 86400;
   return 86400;
 }
@@ -257,7 +285,14 @@ export const releaseKey = (group: string, build: number) => `release:${group}:${
 export const reminderKey = (userId: string, reminderId: string) => `reminder:${userId}:${reminderId}`;
 
 // ---------- herinneringen (state-section `reminders`, docs/ACCOUNT.md "Herinneringen per profiel") ----------
-export type Reminder = { id: string; profileId: string | null; channelId: string; channelName: string; title: string; startMs: number };
+export type Reminder = {
+  id: string; profileId: string | null; channelId: string; channelName: string; title: string; startMs: number;
+  /** build 172 (Sport): vaste sleutel van de wedstrijd, minuten vooraf (0/5/15) en competitie; null = gewone herinnering */
+  matchKey?: string | null; lead?: number | null; competition?: string | null;
+};
+// Build 172: 0, 5 of 15 minuten vooraf (anders 5).
+export const SPORT_LEADS = [0, 5, 15];
+export function sportLead(v: unknown): number { const n = Number(v); return v != null && SPORT_LEADS.includes(n) ? n : 5; }
 function toMs(v: unknown): number {
   if (typeof v === "number" && Number.isFinite(v)) return v > 1e12 ? v : v * 1000; // seconden of milliseconden
   const t = Date.parse(String(v ?? ""));
@@ -287,6 +322,9 @@ export function parseReminders(state: unknown): Reminder[] {
       profileId: profileId ? String(profileId).toLowerCase().slice(0, 80) : null,
       channelName: String(r.channelName ?? r.channel_name ?? "").slice(0, 120),
       title: String(r.title ?? r.programTitle ?? r.program ?? "").slice(0, 200),
+      ...(typeof r.matchKey === "string" && r.matchKey
+        ? { matchKey: r.matchKey.slice(0, 200), lead: sportLead(r.leadMin), competition: String(r.competition ?? "").slice(0, 80) || null }
+        : {}),
     });
   }
   return out;
@@ -295,6 +333,19 @@ export function parseReminders(state: unknown): Reminder[] {
 export const REMIND_BEFORE_MS = 120_000;
 export function reminderDue(startMs: number, nowMs: number): boolean {
   return nowMs >= startMs - REMIND_BEFORE_MS - 5_000 && nowMs < startMs;
+}
+// Build 172: sportherinnering `lead` minuten vooraf; bij 0 vanaf de start tot 2 minuten erna. Gewone herinneringen: zoals hierboven.
+export const SPORT_AT_START_MS = 120_000;
+export function reminderDueFor(r: Pick<Reminder, "startMs" | "matchKey" | "lead">, nowMs: number): boolean {
+  if (!r.matchKey) return reminderDue(r.startMs, nowMs);
+  const lead = sportLead(r.lead);
+  if (lead === 0) return nowMs >= r.startMs - 5_000 && nowMs < r.startMs + SPORT_AT_START_MS;
+  return nowMs >= r.startMs - lead * 60_000 - 5_000 && nowMs < r.startMs;
+}
+// Tot wanneer een herinneringsbericht nog verstuurd mag worden (payload: `deadline_ms`, anders `start_ms`).
+export function reminderDeadline(p: Record<string, unknown> | null | undefined): number {
+  const d = Number(p?.deadline_ms);
+  return Number.isFinite(d) && d > 0 ? d : Number(p?.start_ms);
 }
 // Profielnaam en -id voor een herinnering: zonder profiel = hoofdprofiel (isMain). Naam alleen als er meer dan één profiel is.
 export type ProfileRow = { id?: unknown; name?: unknown; isMain?: unknown; deleted?: unknown };
