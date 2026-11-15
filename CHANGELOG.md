@@ -17,7 +17,7 @@ _15 november 2026_
 
 **Nieuw**
 
-- Radio: luister naar de radiozenders van je server, ook op de achtergrond en vanaf het vergrendelscherm (CarPlay volgt binnenkort)
+- Radio: luister naar de radiozenders van je server, ook op de achtergrond en vanaf het vergrendelscherm
 
 ### iOS, iPadOS, tvOS, macOS, Android, Android TV en Website
 

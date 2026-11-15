@@ -64,8 +64,8 @@
      "tvos",
      "macos"
     ],
-    "nl": "Radio: luister naar de radiozenders van je server, ook op de achtergrond en vanaf het vergrendelscherm (CarPlay volgt binnenkort)",
-    "en": "Radio: listen to the radio stations of your server, also in the background and from the lock screen (CarPlay coming soon)"
+    "nl": "Radio: luister naar de radiozenders van je server, ook op de achtergrond en vanaf het vergrendelscherm",
+    "en": "Radio: listen to the radio stations of your server, also in the background and from the lock screen"
    },
    {
     "type": "new",
