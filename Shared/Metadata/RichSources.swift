@@ -94,6 +94,8 @@ enum TMDB {
         var originalLanguage: String? = nil
         /// Extra achtergronden (zonder tekst eerst) voor de bewegende kop op Apple TV, build 85
         var backdrops: [URL] = []
+        /// Build 174: alle video's (YouTube) voor de keuze van de beste trailer over alle bronnen
+        var videos: [Trailer174.Candidate] = []
     }
 
     /// TMDB-locale voor de app-taal. build 97: geldige codes (vroeger "en-EN" en "ar-AR", die TMDB niet kent;
@@ -194,7 +196,10 @@ enum TMDB {
             let results: [R]?
         }
         struct Images: Decodable { struct I: Decodable { let file_path: String; let iso_639_1: String? }; let logos: [I]?; let backdrops: [I]? }
-        struct Videos: Decodable { struct V: Decodable { let key: String; let site: String; let type: String }; let results: [V]? }
+        struct Videos: Decodable {
+            struct V: Decodable { let key: String; let site: String; let type: String; let iso_639_1: String?; let official: Bool? }
+            let results: [V]?
+        }
         struct Ext: Decodable { let imdb_id: String? }
         let id: Int; let overview: String?; let poster_path: String?; let backdrop_path: String?
         let imdb_id: String?; let credits: Credits?; let aggregate_credits: Credits?; let recommendations: Recs?
@@ -221,20 +226,25 @@ enum TMDB {
             "language": lang,
             "append_to_response": isShow ? "aggregate_credits,recommendations,images,videos,external_ids" : "credits,recommendations,images,videos",
             "include_image_language": "\(base),en,null",
-            "include_video_language": "\(base),en"])
+            "include_video_language": "\(base),en,null"])
         guard let f = full else { return nil }
         let logo = f.images?.logos?.first { $0.iso_639_1 == base } ?? f.images?.logos?.first { $0.iso_639_1 == "en" } ?? f.images?.logos?.first
         let castSrc = (isShow ? f.aggregate_credits : f.credits)?.cast ?? []
+        let videos = (f.videos?.results ?? []).map {
+            Trailer174.Candidate(key: $0.key, source: .tmdb, type: $0.type, language: $0.iso_639_1, official: $0.official, site: $0.site)
+        }
         var result = Result(
             id: f.id, imdb: f.imdb_id ?? f.external_ids?.imdb_id, overview: f.overview,
             poster: img(f.poster_path, "w780"), backdrop: img(f.backdrop_path, "w1280"), logo: img(logo?.file_path, "w500"),
-            trailer: f.videos?.results?.first { $0.site == "YouTube" && $0.type == "Trailer" }?.key,
+            // build 174: de beste (Trailer, anders Teaser; app-taal, dan Engels; officieel eerst), niet zomaar de eerste
+            trailer: Trailer174.best(videos, appLanguage: lang),
             cast: castSrc.prefix(20).map { TitleDetails.CastMember(name: $0.name, character: $0.character ?? $0.roles?.first?.character, photo: img($0.profile_path, "w185"), personID: $0.id) },
             recommendations: (f.recommendations?.results ?? []).prefix(15).map { r in
                 TitleDetails.Recommendation(title: r.title ?? r.name ?? "?", year: (r.release_date ?? r.first_air_date).flatMap { Int($0.prefix(4)) },
                       poster: img(r.poster_path, "w342"), imdbID: nil, isShow: isShow)
             })
         result.originalLanguage = f.original_language
+        result.videos = videos
         // achtergronden zonder tekst (iso_639_1 = null) eerst, dan de rest; max. 4 naast de hoofdafbeelding
         let bds = f.images?.backdrops ?? []
         let ordered = bds.filter { $0.iso_639_1 == nil } + bds.filter { $0.iso_639_1 != nil }
@@ -250,18 +260,17 @@ enum TMDB {
     /// Trailer van één seizoen (build 53): eerst "Trailer", dan "Teaser"; app-taal eerst, dan Engels.
     static func seasonTrailer(tvID: Int, season: Int) async -> String? {
         struct R: Decodable {
-            struct V: Decodable { let key: String; let site: String; let type: String; let iso_639_1: String? }
+            struct V: Decodable { let key: String; let site: String; let type: String; let iso_639_1: String?; let official: Bool? }
             let results: [V]?
         }
         guard tvID > 0 else { return nil }
         let base = String(language.prefix(2))
         let r: R? = await get("/tv/\(tvID)/season/\(season)/videos",
                               ["language": language, "include_video_language": "\(base),en,null"])
-        let vids = (r?.results ?? []).filter { $0.site == "YouTube" && ($0.type == "Trailer" || $0.type == "Teaser") }
-        func rank(_ v: R.V) -> (Int, Int) {
-            (v.type == "Trailer" ? 0 : 1, v.iso_639_1 == base ? 0 : (v.iso_639_1 == "en" ? 1 : 2))
-        }
-        return vids.min { rank($0) < rank($1) }?.key
+        // build 174: dezelfde keuze als bij films en series (Trailer174)
+        return Trailer174.best((r?.results ?? []).map {
+            Trailer174.Candidate(key: $0.key, source: .tmdb, type: $0.type, language: $0.iso_639_1, official: $0.official, site: $0.site)
+        }, appLanguage: base)
     }
 
     static func season(tvID: Int, season: Int) async -> [String: TitleDetails.EpisodeInfo] {

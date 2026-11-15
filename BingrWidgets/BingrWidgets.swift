@@ -3,10 +3,17 @@ import WidgetKit
 import ActivityKit
 
 /// Widget-extensie van Bingr (build 52): de Live Activity met de voortgang van downloads.
+/// Build 174: de widget "Bingr Radio" en de Live Activity van de radio (RadioWidgets.swift).
 @main
 struct BingrWidgets: WidgetBundle {
     var body: some Widget {
         DownloadLiveActivity()
+        RadioWidget()
+        if #available(iOS 18.0, *) {
+            RadioLiveActivity18()
+        } else {
+            RadioLiveActivity()
+        }
     }
 }
 

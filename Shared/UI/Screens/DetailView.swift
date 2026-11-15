@@ -41,6 +41,10 @@ struct DetailView: View {
     /// Build 59: dezelfde titel in andere talen in je bibliotheek
     @State private var languageVersions: [LanguageVersion] = []
     @State private var showLanguages = false
+    /// Build 174: breedte van de pagina (telefoon: vaste knoppenrij met Meer)
+    @State private var pageWidth: CGFloat = 0
+    /// Build 174: Apple TV zonder YouTube-app → melding met de App Store-link
+    @State private var youtubeMissing = false
     #if !os(tvOS)
     /// Build 82: trailer automatisch (zonder geluid) in de kop
     @StateObject private var heroTrailer = HeroTrailerModel()
@@ -146,6 +150,9 @@ struct DetailView: View {
                     if let rec = visibleRecommendations, !rec.isEmpty { recommendationsSection(rec) }
                     Color.clear.frame(height: 40)
                 }
+                // build 174: de pagina is nooit breder dan het scherm (een te brede knoppenrij of metaregel schoof eerst
+                // de hele pagina links buiten beeld)
+                .containerRelativeFrame(.horizontal, alignment: .leading)
                 #if !os(tvOS)
                 .background(GeometryReader { g in
                     Color.clear.preference(key: DetailOffsetKey.self, value: g.frame(in: .named("detail")).minY)
@@ -173,6 +180,19 @@ struct DetailView: View {
                     .transition(.opacity)
             }
             if blockedHere { BlockedTitleNotice { dismiss() } }
+        }
+        .background(GeometryReader { g in
+            Color.clear
+                .onAppear { pageWidth = g.size.width }
+                .onChange(of: g.size.width) { _, w in pageWidth = w }
+        })
+        // build 174: andere bronnen alvast opzoeken (telefoon: de knop Bronnen alleen als er meer dan deze ene is)
+        .task(id: "\(target.id)-\(loading)-\(playlists.libraryVersion)") { await prefetchSources() }
+        .alert(L("YouTube is not installed"), isPresented: $youtubeMissing) {
+            Button(L("Open App Store")) { if let u = URL(string: Trailer174.youtubeAppStoreURL) { openURL(u) } }
+            Button(L("Cancel"), role: .cancel) {}
+        } message: {
+            Text(L("Trailers on Apple TV play in the YouTube app. Install it from the App Store."))
         }
         .sheet(isPresented: $blockPIN) {
             PINPad(title: L("Enter the PIN of the parent profile")) { pin in
@@ -354,7 +374,8 @@ struct DetailView: View {
     }
 
     private var metaRow: some View {
-        HStack(spacing: tvScaled(14)) {
+        // build 174: afbreken in plaats van één te brede regel; "Taal: …" zakt naar een eigen regel als hij niet past
+        WrapLayout174(spacing: tvScaled(14), lineSpacing: tvScaled(8), centered: alignLeadingOnTV == .center) {
             let main = d?.ratings.first { $0.source == "IMDb" } ?? d?.ratings.first
             // screenshotmodus: geen leeg "★ –" (de demo heeft bewust geen scores)
             if main != nil || !Screenshots.isActive {
@@ -372,7 +393,7 @@ struct DetailView: View {
             if isWatchedTitle { Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.green) }
             // build 59: taal van deze versie ("Taal: Italiaans")
             if let lt = language?.detailText {
-                Text(L("Language: %@", lt)).lineLimit(1).minimumScaleFactor(0.7)
+                Text(L("Language: %@", lt)).multilineTextAlignment(alignLeadingOnTV == .center ? .center : .leading)
             }
         }
         .font(.system(size: tvScaled(16)))
@@ -391,6 +412,28 @@ struct DetailView: View {
     // MARK: knoppen
 
     @ViewBuilder private var actions: some View {
+        #if os(tvOS)
+        wideActions
+        #else
+        if compactLayout { compactActions } else { wideActions }
+        #endif
+    }
+
+    /// Build 174: smal scherm (iPhone, iPad in een smal venster, smal Mac-venster): vaste rij onder Afspelen
+    private var compactLayout: Bool {
+        #if os(tvOS)
+        return false
+        #else
+        if pageWidth > 0 { return Detail174.isCompact(width: Double(pageWidth)) }
+        #if os(iOS)
+        return UIDevice.current.userInterfaceIdiom == .phone
+        #else
+        return false
+        #endif
+        #endif
+    }
+
+    @ViewBuilder private var wideActions: some View {
         VStack(spacing: tvScaled(12)) {
             playButton
             HStack(spacing: tvScaled(12)) {
@@ -455,6 +498,124 @@ struct DetailView: View {
         }
         .frame(maxWidth: tvScaled(700))
         .frame(maxWidth: .infinity, alignment: alignLeadingOnTV)
+    }
+
+    #if !os(tvOS)
+    // MARK: build 174: knoppen op de telefoon (Mijn lijst · Trailer · Bronnen · Gezien · Meer)
+
+    private var compactActionList: [Detail174.Action] {
+        Detail174.compactActions(hasListID: listID != nil, hasTrailer: currentTrailer != nil,
+                                 otherSources: sources.count, languageVersions: languageVersions.count, isMovie: isMovie)
+    }
+
+    private var compactActions: some View {
+        VStack(spacing: 16) {
+            playButton
+            HStack(alignment: .top, spacing: 0) {
+                ForEach(compactActionList, id: \.self) { a in
+                    compactAction(a).frame(maxWidth: .infinity)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    @ViewBuilder private func compactAction(_ a: Detail174.Action) -> some View {
+        switch a {
+        case .myList:
+            Button { toggleMyList() } label: {
+                DetailActionLabel174(title: L("My List")) {
+                    PlusCheckGlyph(inList: inMyList, size: 22).foregroundStyle(inMyList ? Theme.red : .white)
+                }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(inMyList ? L("In My List") : L("Add to My List"))
+            .accessibilityAddTraits(inMyList ? .isSelected : [])
+        case .trailer:
+            Button { if let t = currentTrailer { openTrailer(t) } } label: {
+                DetailActionLabel174(title: L("Trailer")) { DetailActionIcon174(name: "film") }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(hasSeasonTrailer ? L("Trailer season %d", season) : L("Trailer"))
+        case .sources:
+            let label = DetailActionLabel174(title: L("Sources")) { DetailActionIcon174(name: Theme.otherSourceIcon) }
+            switch Detail174.sourcesTarget(otherSources: sources.count, languageVersions: languageVersions.count) {
+            case .choose:
+                Menu {
+                    Button { showSources = true } label: { Label(L("Other sources"), systemImage: Theme.otherSourceIcon) }
+                    Button { showLanguages = true } label: {
+                        Label(L("Other language") + " · " + orderedUnique(languageVersions.map(\.label)).prefix(4).joined(separator: ", "),
+                              systemImage: "globe")
+                    }
+                } label: { label }
+                .buttonStyle(.plain)
+            case .languages:
+                Button { showLanguages = true } label: { label }.buttonStyle(.plain)
+            default:
+                Button { showSources = true } label: { label }.buttonStyle(.plain)
+            }
+        case .watched:
+            Button { toggleWatchedMovie() } label: {
+                DetailActionLabel174(title: L("Watched")) {
+                    DetailActionIcon174(name: isWatchedTitle ? "checkmark.circle.fill" : "checkmark.circle",
+                                        tint: isWatchedTitle ? Theme.green : .white)
+                }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(isWatchedTitle ? L("Mark as unwatched") : L("Mark as watched"))
+        case .more:
+            moreMenu
+        }
+    }
+
+    /// Meer: de rest van de vroegere rij (collectie, downloaden, delen, link kopiëren, verbergen voor dit profiel)
+    private var moreMenu: some View {
+        Menu {
+            if !DiscoverItem.isExternal(target.id) {
+                Button { collecting = .detail(target) } label: {
+                    Label(L("Add to collection…"),
+                          systemImage: inAnyCollection ? "rectangle.stack.fill.badge.plus" : "rectangle.stack.badge.plus")
+                }
+            }
+            #if os(iOS)
+            if case .movie(let m) = target, DownloadManager.canDownload(Playables.movie(m, imdb: imdb)) {
+                DownloadMenuItems174(item: Playables.movie(m, imdb: imdb), poster: m.poster)
+            }
+            #endif
+            if let url = shareURL {
+                ShareLink(item: url, subject: Text(shareTitle), message: Text(shareText), preview: SharePreview(shareTitle)) {
+                    Label(L("Share"), systemImage: "square.and.arrow.up")
+                }
+            } else {
+                ShareLink(item: shareText, subject: Text(shareTitle), preview: SharePreview(shareTitle)) {
+                    Label(L("Share"), systemImage: "square.and.arrow.up")
+                }
+            }
+            Button {
+                UIPasteboard.general.string = shareURL?.absoluteString ?? shareText
+                flash(L("Link copied"))
+            } label: { Label(L("Copy link"), systemImage: "doc.on.doc") }
+            if let pid, !DiscoverItem.isExternal(target.id) {
+                Button(role: .destructive) {
+                    if store.needsParentPIN() { blockPIN = true }
+                    else { store.setTitleBlocked(pid, target.hideKind171, target.id, true) }
+                } label: { Label(L("Hide for this profile"), systemImage: "hand.raised") }
+            }
+        } label: {
+            DetailActionLabel174(title: L("More")) { DetailActionIcon174(name: "ellipsis") }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(L("More"))
+    }
+    #endif
+
+    /// Build 174: andere bronnen alvast opzoeken (na het laden), zodat de telefoon weet of Bronnen erbij hoort
+    private func prefetchSources() async {
+        guard !loading, compactLayout, !Task.isCancelled else { return }
+        let year = d?.year.flatMap { Int($0.prefix(4)) }
+        let found = await playlists.otherSources(title: title, year: year, isShow: target.isSeries, excluding: target.id)
+        guard !Task.isCancelled else { return }
+        sources = found
     }
 
     private var playButton: some View {
@@ -631,6 +792,7 @@ struct DetailView: View {
                     Button { openTrailer(t) } label: {
                         Label(L("Trailer season %d", season), systemImage: "play.rectangle")
                             .font(.system(size: tvScaled(14), weight: .semibold))
+                            .lineLimit(1).minimumScaleFactor(0.75)
                             .padding(.horizontal, 14).padding(.vertical, 10)
                             .background(Color.white.opacity(0.12), in: Capsule())
                             .foregroundStyle(.white)
@@ -859,7 +1021,7 @@ struct DetailView: View {
     private func ratingsSection(_ r: [TitleDetails.Rating]) -> some View {
         VStack(alignment: .leading, spacing: tvScaled(12)) {
             sectionTitle(L("Ratings"))
-            HStack(alignment: .top, spacing: tvScaled(40)) {
+            WrapLayout174(spacing: tvScaled(40), lineSpacing: tvScaled(14), centered: false) {   // build 174: afbreken
                 ForEach(r) { x in
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(spacing: 6) {
@@ -1221,7 +1383,9 @@ struct DetailView: View {
         trailerID = t
         showTrailer = true
         #else
-        if let u = Trailer.appURL(t) { openURL(u) { ok in if !ok, let w = Trailer.webURL(t) { openURL(w) } } }
+        // build 174: Apple TV heeft geen WebKit en zelf de stream ophalen mag niet (YouTube-voorwaarden): de YouTube-app;
+        // is die er niet, dan een melding met de App Store-link (tot nu toe gebeurde er niets)
+        if let u = Trailer.appURL(t) { openURL(u) { ok in if !ok { youtubeMissing = true } } }
         #endif
     }
 

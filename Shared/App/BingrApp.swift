@@ -225,6 +225,17 @@ final class AppState: ObservableObject {
         // build 171: eigen crashrapporten (MetricKit en NSException), versturen bij de start
         CrashReporter.shared.start()
         RadioPlayer.shared.service = playlists   // build 171: radio (ook CarPlay)
+        // build 174: CarPlay, de widget of de Live Activity start radio terwijl de app nog niet open was: de server van het
+        // laatst gekozen profiel laden (uit de bewaarde lijst; een kinderprofiel krijgt alleen toegestane zenders)
+        RadioPlayer.shared.ensureLoaded = { [weak self] in
+            guard let self, self.playlists.source == nil, !self.playlists.isLoading, let src = self.preferredSource else { return }
+            let store = CloudStore.shared
+            guard store.profiles.isEmpty || store.activeProfileID != nil else { return }
+            await self.playlists.select(src)
+        }
+        #if os(iOS)
+        RadioBridge174.shared.start()   // build 174: widget "Bingr Radio" en de Live Activity
+        #endif
         StartDiagnostics.shared.mark("account")
         ProfileSync.shared.start()
         SourceSync.shared.start()

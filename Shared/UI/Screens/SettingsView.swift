@@ -36,6 +36,8 @@ struct AppSettingsView: View {
     @AppStorage(DeinterlaceMode.key) private var deinterlace = DeinterlaceMode.auto.rawValue
     @AppStorage(PlayerSettings.resumeLastChannelKey) private var resumeLastChannel = false
     @AppStorage(Trailer.autoplayKey) private var autoplayTrailers = true
+    /// Build 174: Live Activity bij radio (vergrendelscherm, Dynamic Island, CarPlay)
+    @AppStorage(Radio174.liveActivityKey) private var radioLiveActivity = true
     @State private var showOSLogin = false
     @State private var editing: PlaylistSource?
     @State private var editingProfile: ViewerProfile?
@@ -503,6 +505,11 @@ struct AppSettingsView: View {
                 .font(.caption).foregroundStyle(Theme.secondary)
             #if os(iOS)
             Toggle(L("Show on external display"), isOn: $externalDisplay)
+            // build 174: Bingr Radio op het vergrendelscherm en in het Dynamic Island
+            Toggle(L("Radio on the Lock Screen"), isOn: $radioLiveActivity)
+                .onChange(of: radioLiveActivity) { _, _ in RadioBridge174.shared.settingChanged() }
+            Text(L("Shows the station and what's playing, with pause and next/previous station, on the Lock Screen, in the Dynamic Island and in CarPlay."))
+                .font(.caption).foregroundStyle(Theme.secondary)
             #endif
             #if os(tvOS)
             Toggle(L("Match frame rate"), isOn: $matchFrameRate)

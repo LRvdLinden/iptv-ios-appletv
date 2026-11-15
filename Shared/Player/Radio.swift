@@ -29,6 +29,50 @@ final class RadioPlayer: ObservableObject {
     private final class Owner {}
     private let owner = Owner()
 
+    // MARK: build 174: wat er nu speelt (ICY-metadata van de stream, anders de EPG) en starten zonder open app
+
+    /// Titel uit de stream zelf (ICY "StreamTitle"), nil als de stream niets meegeeft
+    @Published private(set) var streamTitle: String?
+    private var metadataOutput: AVPlayerItemMetadataOutput?
+    private var metadataDelegate: RadioMetadataDelegate?
+    /// Bibliotheek laden als de app nog niet open was (CarPlay, widget, Live Activity); gezet door AppState
+    var ensureLoaded: (() async -> Void)?
+
+    /// Wat er nu speelt op deze zender: de stream gaat voor de EPG
+    var nowPlayingText: String? {
+        guard let c = channel else { return nil }
+        return Radio174.nowPlaying(icy: streamTitle, epg: service?.library.nowPlaying(c)?.title, station: CategoryName.channel(c.name))
+    }
+
+    /// Zender op id (in de bibliotheek van het actieve profiel: een kinderprofiel ziet alleen toegestane zenders)
+    func station(id: String) -> Channel? { stations().first { $0.id == id } }
+
+    /// Zender opzoeken; is de bibliotheek er nog niet (app niet open), dan eerst laden en hooguit `timeout` seconden wachten
+    func waitForStation(id: String, timeout: Double = 10) async -> Channel? {
+        if let c = station(id: id) { return c }
+        if let load = ensureLoaded { Task { @MainActor in await load() } }
+        let end = Date().addingTimeInterval(timeout)
+        while Date() < end {
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            if let c = station(id: id) { return c }
+        }
+        return nil
+    }
+
+    /// Volgende/vorige zender, ook als de app nog niet open was
+    func stepLoaded(_ d: Int) async {
+        if stations().isEmpty, let load = ensureLoaded { await load() }
+        for _ in 0..<25 where stations().isEmpty { try? await Task.sleep(nanoseconds: 400_000_000) }
+        step(d)
+    }
+
+    fileprivate func receivedStreamTitle(_ raw: String?) {
+        let t = Radio174.cleanStreamTitle(raw, station: channel.map { CategoryName.channel($0.name) })
+        guard t != streamTitle else { return }
+        streamTitle = t
+        updateNowPlaying()
+    }
+
     // MARK: build 173: slaaptimer (30 / 60 / 90 minuten / uit)
 
     @Published private(set) var sleepAt: Date?
@@ -118,6 +162,15 @@ final class RadioPlayer: ObservableObject {
         let p = AVPlayer(url: url)
         p.automaticallyWaitsToMinimizeStalling = true
         player = p
+        // build 174: ICY-metadata ("StreamTitle") van de stream lezen
+        if let item = p.currentItem {
+            let out = AVPlayerItemMetadataOutput(identifiers: nil)
+            let del = RadioMetadataDelegate { [weak self] title in self?.receivedStreamTitle(title) }
+            out.setDelegate(del, queue: .main)
+            item.add(out)
+            metadataOutput = out
+            metadataDelegate = del
+        }
         timeControlObservation = p.observe(\.timeControlStatus, options: [.new]) { [weak self] pl, _ in
             let status = pl.timeControlStatus
             Task { @MainActor in
@@ -157,6 +210,9 @@ final class RadioPlayer: ObservableObject {
     }
 
     private func stopPlayer() {
+        metadataOutput = nil
+        metadataDelegate = nil
+        streamTitle = nil
         statusObservation = nil
         timeControlObservation = nil
         player?.pause()
@@ -181,8 +237,8 @@ final class RadioPlayer: ObservableObject {
             MPNowPlayingInfoPropertyIsLiveStream: true,
             MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0,
         ]
-        if let now = service?.library.nowPlaying(c) { info[MPMediaItemPropertyArtist] = now.title }
-        else { info[MPMediaItemPropertyArtist] = L("Radio") }
+        // build 174: wat er nu speelt uit de stream (ICY), anders de EPG
+        info[MPMediaItemPropertyArtist] = nowPlayingText ?? L("Radio")
         if let logo = c.logo, let cg = ImagePipeline.shared.cachedAny(logo) {
             #if os(macOS)
             let img = NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
@@ -378,5 +434,21 @@ private struct RadioTile: View {
                 .font(.system(size: tvScaled(13), weight: .semibold)).foregroundStyle(.white)
                 .lineLimit(2).multilineTextAlignment(.center)
         }
+    }
+}
+
+/// Build 174: ontvangt de ICY-metadata (StreamTitle) van een radiostream.
+final class RadioMetadataDelegate: NSObject, AVPlayerItemMetadataOutputPushDelegate {
+    private let onTitle: @MainActor (String?) -> Void
+    init(onTitle: @escaping @MainActor (String?) -> Void) { self.onTitle = onTitle }
+
+    func metadataOutput(_ output: AVPlayerItemMetadataOutput, didOutputTimedMetadataGroups groups: [AVTimedMetadataGroup],
+                        from track: AVPlayerItemTrack?) {
+        let items = groups.flatMap(\.items)
+        let item = items.first { $0.identifier == .icyMetadataStreamTitle }
+            ?? items.first { $0.commonKey == .commonKeyTitle }
+        let title = item?.stringValue
+        let cb = onTitle
+        Task { @MainActor in cb(title) }
     }
 }

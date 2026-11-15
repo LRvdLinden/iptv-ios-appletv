@@ -10,7 +10,7 @@ settings:
   base:
     SWIFT_VERSION: "5.9"
     MARKETING_VERSION: "1.0.7"
-    CURRENT_PROJECT_VERSION: "173"
+    CURRENT_PROJECT_VERSION: "174"
     # Team van Léon van der Linden; automatisch ondertekenen voor iOS, tvOS en macOS
     DEVELOPMENT_TEAM: EU3UY476T6
     CODE_SIGN_STYLE: Automatic
@@ -93,6 +93,8 @@ targets:
         com.apple.developer.associated-domains: [applinks:bingr.online]
         # build 172: CarPlay (audio-app), door Apple toegekend
         com.apple.developer.carplay-audio: true
+        # build 174: gedeelde gegevens met de widget "Bingr Radio" en de Live Activity (zenderlijst, logo's)
+        com.apple.security.application-groups: [group.nl.lrvdlinden.bingr]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: nl.lrvdlinden.bingr
@@ -115,6 +117,10 @@ targets:
     sources:
       - path: BingrWidgets
       - path: iOS/Downloads/DownloadActivityAttributes.swift
+      # build 174: Bingr Radio (widget en Live Activity); de intents voert het systeem uit in de app
+      - path: iOS/Radio/RadioActivityAttributes.swift
+      - path: iOS/Radio/RadioIntents.swift
+      - path: Shared/Player/Build174.swift
     info:
       path: BingrWidgets/Info.plist
       properties:
@@ -123,9 +129,16 @@ targets:
         CFBundleDisplayName: Bingr
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    # build 174: dezelfde App Group als de app (widget "Bingr Radio")
+    entitlements:
+      path: BingrWidgets/BingrWidgets.entitlements
+      properties:
+        com.apple.security.application-groups: [group.nl.lrvdlinden.bingr]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: nl.lrvdlinden.bingr.widgets
+        # build 174: de radio-intents doen in de extensie zelf niets (ze draaien in de app)
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) BINGR_WIDGET_EXT"
         TARGETED_DEVICE_FAMILY: "1,2"
         SKIP_INSTALL: YES
         INFOPLIST_KEY_CFBundleDisplayName: Bingr
