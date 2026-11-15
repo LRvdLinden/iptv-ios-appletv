@@ -65,6 +65,31 @@ const SPORT: Record<Lang, { soon: string; now: string; line: string; profile: st
   ar: { soon: "يبدأ {t} خلال {m} دقائق", now: "يبدأ {t} الآن", line: "{c}. اضغط للمشاهدة مباشرة.", profile: "لـ {n}: " },
   "zh-Hans": { soon: "{t} 将在 {m} 分钟后开始", now: "{t} 现在开始", line: "{c}。轻点即可观看直播。", profile: "{n}：" },
 };
+// Build 176: herinnering op de releasedatum (Binnenkort / Nieuw en populair), docs/ACCOUNT.md "Build 176" (4)
+const RELEASE_REMINDER: Record<Lang, { title: string; body: string; profile: string }> = {
+  nl: { title: "Nu te zien: {t}", body: "Vandaag verschenen. Tik om te bekijken.", profile: "Voor {n}: " },
+  en: { title: "Out now: {t}", body: "Released today. Tap to view.", profile: "For {n}: " },
+  de: { title: "Jetzt da: {t}", body: "Heute erschienen. Zum Ansehen tippen.", profile: "Für {n}: " },
+  fr: { title: "Disponible : {t}", body: "Sorti aujourd'hui. Touchez pour voir.", profile: "Pour {n} : " },
+  es: { title: "Ya disponible: {t}", body: "Estrenado hoy. Toca para verlo.", profile: "Para {n}: " },
+  it: { title: "Ora disponibile: {t}", body: "Uscito oggi. Tocca per vedere.", profile: "Per {n}: " },
+  pt: { title: "Já disponível: {t}", body: "Lançado hoje. Toque para ver.", profile: "Para {n}: " },
+  tr: { title: "Çıktı: {t}", body: "Bugün çıktı. Görmek için dokunun.", profile: "{n} için: " },
+  pl: { title: "Już jest: {t}", body: "Premiera dzisiaj. Dotknij, aby zobaczyć.", profile: "Dla {n}: " },
+  ar: { title: "متاح الآن: {t}", body: "صدر اليوم. اضغط للعرض.", profile: "لـ {n}: " },
+  "zh-Hans": { title: "现已上线：{t}", body: "今天上线。轻点查看。", profile: "{n}：" },
+};
+export function releaseReminderText(lang: unknown, r: { profileName?: string | null; title: string }) {
+  const t = RELEASE_REMINDER[normLang(lang)];
+  return { title: (r.profileName ? fill(t.profile, { n: r.profileName }) : "") + fill(t.title, { t: r.title }), body: t.body };
+}
+// Titel-link (build 120): bibliotheek via het TMDB-id, anders zoeken op de titel
+export function titleLinks(mediaType: string, tmdb: number, title: string) {
+  const q = `type=${mediaType === "tv" ? "tv" : "movie"}&id=${encodeURIComponent(String(tmdb))}` +
+    (title ? `&q=${encodeURIComponent(title.slice(0, 200))}` : "");
+  return { url: `${SITE}/titel/?${q}`, deeplink: `bingr://title?${q}` };
+}
+
 const fill = (s: string, v: Record<string, string>) => s.replace(/\{(\w+)\}/g, (_, k) => v[k] ?? "");
 
 export function releaseText(lang: unknown, version: string, build: number, platform: string): ReleaseT {
@@ -167,6 +192,11 @@ export function renderNotice(m: MessageRow, d: DevInfo): Notice {
     const n = Number(p.number);
     const l = supportLinks(n, d.platform);
     return { ...supportText(d.lang, n, String(p.subject ?? "")), data: { ...noticeData("support_reply", m.id, l.url, l.deeplink), ticket: String(n) } };
+  }
+  if (m.kind === "reminder" && p.release === true) {   // build 176
+    const l = titleLinks(String(p.media_type ?? "movie"), Number(p.tmdb), String(p.title ?? ""));
+    const t = releaseReminderText(d.lang, { profileName: p.profile_name ? String(p.profile_name) : null, title: String(p.title ?? "") });
+    return { ...t, data: noticeData("reminder", m.id, l.url, l.deeplink) };
   }
   if (m.kind === "reminder") {
     const l = reminderLinks(String(p.channel_id ?? ""), p.profile_id ? String(p.profile_id) : null);
@@ -289,6 +319,8 @@ export type Reminder = {
   id: string; profileId: string | null; channelId: string; channelName: string; title: string; startMs: number;
   /** build 172 (Sport): vaste sleutel van de wedstrijd, minuten vooraf (0/5/15) en competitie; null = gewone herinnering */
   matchKey?: string | null; lead?: number | null; competition?: string | null;
+  /** build 176: herinnering op de releasedatum (`kind: "release"`): TMDB-id en movie/tv */
+  release?: { tmdb: number; mediaType: "movie" | "tv" } | null;
 };
 // Build 172: 0, 5 of 15 minuten vooraf (anders 5).
 export const SPORT_LEADS = [0, 5, 15];
@@ -325,6 +357,9 @@ export function parseReminders(state: unknown): Reminder[] {
       ...(typeof r.matchKey === "string" && r.matchKey
         ? { matchKey: r.matchKey.slice(0, 200), lead: sportLead(r.leadMin), competition: String(r.competition ?? "").slice(0, 80) || null }
         : {}),
+      ...(r.kind === "release" && Number.isInteger(Number(r.tmdb)) && Number(r.tmdb) > 0
+        ? { release: { tmdb: Number(r.tmdb), mediaType: r.mediaType === "tv" ? "tv" as const : "movie" as const } }
+        : {}),
     });
   }
   return out;
@@ -336,7 +371,10 @@ export function reminderDue(startMs: number, nowMs: number): boolean {
 }
 // Build 172: sportherinnering `lead` minuten vooraf; bij 0 vanaf de start tot 2 minuten erna. Gewone herinneringen: zoals hierboven.
 export const SPORT_AT_START_MS = 120_000;
-export function reminderDueFor(r: Pick<Reminder, "startMs" | "matchKey" | "lead">, nowMs: number): boolean {
+// Build 176: een releaseherinnering gaat op `start` (09:00 lokaal), tot 30 minuten erna.
+export const RELEASE_WINDOW_MS = 30 * 60_000;
+export function reminderDueFor(r: Pick<Reminder, "startMs" | "matchKey" | "lead" | "release">, nowMs: number): boolean {
+  if (r.release) return nowMs >= r.startMs - 5_000 && nowMs < r.startMs + RELEASE_WINDOW_MS;
   if (!r.matchKey) return reminderDue(r.startMs, nowMs);
   const lead = sportLead(r.lead);
   if (lead === 0) return nowMs >= r.startMs - 5_000 && nowMs < r.startMs + SPORT_AT_START_MS;
