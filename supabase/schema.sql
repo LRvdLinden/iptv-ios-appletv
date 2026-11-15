@@ -5530,3 +5530,30 @@ exception when others then
   raise notice 'pg_cron niet beschikbaar (crashrapporten worden niet automatisch opgeschoond): %', sqlerrm;
 end $$;
 -- <<< unittest crash
+
+-- Build 179 (docs/ACCOUNT.md, punten 9 en 10): cache van de functies ratings (MDBList, sleutel movie:<tmdb>/show:<tmdb>/
+-- imdb:<id>, 7 dagen) en introdb (TheIntroDB, sleutel introdb:<tmdb>:<seizoen>:<aflevering>, 30 dagen, niet gevonden 1 dag).
+-- Alleen de functies (service_role) lezen en schrijven; geen persoonsgegevens. Dagelijks opruimen (ouder dan 30 dagen).
+create table if not exists public.ratings_cache (
+  key        text primary key,
+  body       jsonb not null default '{}'::jsonb,
+  fetched_at timestamptz not null default now()
+);
+alter table public.ratings_cache enable row level security;
+revoke all on public.ratings_cache from anon, authenticated;
+create index if not exists ratings_cache_fetched_idx on public.ratings_cache (fetched_at);
+create or replace function public.bingr_ratings_cache_cleanup() returns int
+language plpgsql security definer set search_path = public as $$
+declare n int;
+begin
+  delete from public.ratings_cache where fetched_at < now() - interval '31 days';
+  get diagnostics n = row_count;
+  return n;
+end $$;
+revoke all on function public.bingr_ratings_cache_cleanup() from public, anon, authenticated;
+grant execute on function public.bingr_ratings_cache_cleanup() to service_role;
+do $$ begin
+  perform cron.schedule('bingr-ratings-cache-cleanup', '41 3 * * *', $cmd$ select public.bingr_ratings_cache_cleanup(); $cmd$);
+exception when others then
+  raise notice 'pg_cron niet beschikbaar (ratings_cache wordt niet automatisch opgeschoond): %', sqlerrm;
+end $$;

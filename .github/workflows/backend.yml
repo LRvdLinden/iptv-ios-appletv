@@ -119,6 +119,9 @@ jobs:
       - name: Unittests (deelpreview)
         # blokkeert de deploy: validatie (type/id/q/y), TMDB-antwoord -> metadata (nl met terugval en, afbeeldingen), limiet
         run: deno test supabase/functions/title-meta/title_meta_test.ts
+      - name: Unittests (beoordelingen en IntroDB)
+        # build 179, blokkeert de deploy: validatie, MDBList-antwoord -> bronnen en schalen, TheIntroDB ms -> s, cacheduur
+        run: deno test supabase/functions/ratings/ratings_test.ts supabase/functions/introdb/introdb_test.ts
       - name: Unittests (betalen)
         # build 133, blokkeert de deploy: Stripe-handtekening (HMAC-SHA256, 5 min), Checkout-opbouw, events -> Lifetime /
         # terugbetaling / chargeback, idempotentie (nep-database)
@@ -445,6 +448,7 @@ jobs:
           K_OS: ${{ secrets.OPENSUBTITLES_API_KEY }}
           K_OMDB: ${{ secrets.OMDB_API_KEY }}
           K_TMDB: ${{ secrets.TMDB_API_KEY || secrets.TMDB_ACCESS_TOKEN }}
+          K_MDBLIST: ${{ secrets.MDBLIST_API_KEY }}
         run: |
           : > /tmp/keys.env
           [ -n "$K_TRAKT_ID" ] && echo "BINGR_TRAKT_CLIENT_ID=$K_TRAKT_ID" >> /tmp/keys.env
@@ -452,6 +456,8 @@ jobs:
           [ -n "$K_OS" ] && echo "BINGR_OPENSUBTITLES_API_KEY=$K_OS" >> /tmp/keys.env
           [ -n "$K_OMDB" ] && echo "BINGR_OMDB_API_KEY=$K_OMDB" >> /tmp/keys.env
           [ -n "$K_TMDB" ] && echo "BINGR_TMDB_API_KEY=$K_TMDB" >> /tmp/keys.env
+          # build 179: MDBList (functie ratings); ook direct als function-secret MDBLIST_API_KEY te zetten
+          [ -n "$K_MDBLIST" ] && echo "MDBLIST_API_KEY=$K_MDBLIST" >> /tmp/keys.env
           if [ -s /tmp/keys.env ]; then supabase secrets set --project-ref "$REF" --env-file /tmp/keys.env; echo "::notice::$(wc -l < /tmp/keys.env) app-sleutel(s) op de server gezet"; fi
           rm -f /tmp/keys.env
           # versleutelsleutel voor servers/afspeellijsten: alleen aanmaken als hij nog niet bestaat (nooit vervangen)
@@ -1157,6 +1163,25 @@ jobs:
       - name: Edge Function title-meta
         if: steps.check.outputs.skip != '1'
         run: supabase functions deploy title-meta --project-ref "$REF" --no-verify-jwt --use-api
+      - name: Edge Functions ratings en introdb
+        if: steps.check.outputs.skip != '1'
+        run: |
+          # build 179 (docs/ACCOUNT.md, punten 9 en 10): beoordelingen via MDBList (secret MDBLIST_API_KEY) en IntroDB
+          supabase functions deploy ratings --project-ref "$REF" --no-verify-jwt --use-api
+          supabase functions deploy introdb --project-ref "$REF" --no-verify-jwt --use-api
+          sleep 3
+          for f in ratings introdb; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "https://$REF.supabase.co/functions/v1/$f" -H "Content-Type: application/json" -d '{}')
+            [ "$code" = 401 ] || { echo "::error::$f zonder token gaf HTTP $code, verwacht 401"; exit 1; }
+            code=$(curl -s -o /dev/null -w '%{http_code}' -X GET "https://$REF.supabase.co/functions/v1/$f")
+            [ "$code" = 405 ] || [ "$code" = 401 ] || { echo "::error::$f GET gaf HTTP $code"; exit 1; }
+            code=$(curl -s -o /dev/null -D /tmp/fh.txt -w '%{http_code}' -X OPTIONS "https://$REF.supabase.co/functions/v1/$f")
+            tr -d '\r' < /tmp/fh.txt | grep -qi '^access-control-allow-origin: \*$' || { echo "::error::$f: geen CORS"; exit 1; }
+          done
+          echo "::notice::ratings en introdb: zonder token 401, CORS in orde"
+          if ! supabase secrets list --project-ref "$REF" 2>/dev/null | grep -q MDBLIST_API_KEY; then
+            echo "::warning::MDBLIST_API_KEY ontbreekt: de functie ratings antwoordt {ok:false, error:unavailable} (apps tonen alleen IMDb/TMDB/Trakt)"
+          fi
       - name: Deelpreview (title-meta) testen
         if: steps.check.outputs.skip != '1'
         run: |
