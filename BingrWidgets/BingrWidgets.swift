@@ -9,11 +9,7 @@ struct BingrWidgets: WidgetBundle {
     var body: some Widget {
         DownloadLiveActivity()
         RadioWidget()
-        if #available(iOS 18.0, *) {
-            RadioLiveActivity18()
-        } else {
-            RadioLiveActivity()
-        }
+        RadioLiveActivity()
     }
 }
 

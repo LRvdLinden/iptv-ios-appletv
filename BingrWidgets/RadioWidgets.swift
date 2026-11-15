@@ -4,7 +4,9 @@ import ActivityKit
 import AppIntents
 
 // Build 174: Bingr Radio in de widget-extensie: de widget "Bingr Radio" (klein en middel; vanaf iOS 26 ook op het
-// CarPlay-dashboard) en de Live Activity tijdens het afspelen. De gegevens zet de app in de App Group
+// CarPlay-dashboard) en de Live Activity tijdens het afspelen (vanaf iOS 26 ook op CarPlay, in de compacte weergave).
+// Een aparte kleine weergave (supplementalActivityFamilies, iOS 18) kan pas als de extensie iOS 18 als minimum heeft:
+// WidgetBundleBuilder kent geen `if #available`. De gegevens zet de app in de App Group
 // (RadioBridge174); de knoppen zijn App Intents die in de app worden uitgevoerd (iOS/Radio/RadioIntents.swift).
 
 private let radioRed = Color(red: 0xE5 / 255, green: 0x09 / 255, blue: 0x14 / 255)
@@ -207,21 +209,6 @@ struct RadioLiveActivity: Widget {
     }
 }
 
-/// iOS 18+: ook de kleine weergave (Apple Watch Smart Stack en vanaf iOS 26 het CarPlay-scherm)
-@available(iOS 18.0, *)
-struct RadioLiveActivity18: Widget {
-    var body: some WidgetConfiguration {
-        ActivityConfiguration(for: RadioActivityAttributes.self) { context in
-            RadioActivityContent18(attrs: context.attributes, state: context.state)
-                .activityBackgroundTint(Color.black.opacity(0.85))
-                .activitySystemActionForegroundColor(.white)
-        } dynamicIsland: { context in
-            radioIsland(context.attributes, context.state)
-        }
-        .supplementalActivityFamilies([.small, .medium])
-    }
-}
-
 private func radioIsland(_ a: RadioActivityAttributes, _ s: RadioActivityAttributes.ContentState) -> DynamicIsland {
     DynamicIsland {
         DynamicIslandExpandedRegion(.leading) {
@@ -270,35 +257,6 @@ private struct RadioControls: View {
         .buttonStyle(.plain)
         .foregroundStyle(.white)
         .frame(maxWidth: .infinity)
-    }
-}
-
-/// iOS 18+: klein (Apple Watch, CarPlay) of de gewone weergave
-@available(iOS 18.0, *)
-private struct RadioActivityContent18: View {
-    let attrs: RadioActivityAttributes
-    let state: RadioActivityAttributes.ContentState
-    @Environment(\.activityFamily) private var activityFamily
-
-    var body: some View {
-        if activityFamily == .small {
-            HStack(spacing: 8) {
-                RadioLogo(file: state.logo, size: 30)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(state.station).font(.caption.weight(.semibold)).lineLimit(1)
-                    if let now = state.nowPlaying { Text(now).font(.caption2).foregroundStyle(.secondary).lineLimit(1) }
-                }
-                Spacer(minLength: 0)
-                Button(intent: ToggleRadioIntent()) {
-                    Image(systemName: state.isPlaying ? "pause.fill" : "play.fill")
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(state.isPlaying ? attrs.pauseLabel : attrs.playLabel)
-            }
-            .padding(8)
-        } else {
-            RadioLockScreenView(attrs: attrs, state: state)
-        }
     }
 }
 
