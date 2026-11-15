@@ -1,5 +1,70 @@
 [
  {
+  "build": 177,
+  "version": "1.0.8",
+  "date": "2026-11-15",
+  "items": [
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "Tv-gids per zender loopt niet meer vast bij het wisselen van zender",
+    "en": "The TV guide per channel no longer freezes when switching channels"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Tv-gids per zender toont de hele dag: je kunt terug naar eerder op de dag",
+    "en": "The TV guide per channel shows the whole day, so you can scroll back to earlier programmes"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web"
+    ],
+    "nl": "Tv-gids per zender staat op volgorde, zonder dubbele programma's",
+    "en": "The TV guide per channel is in order, without duplicate programmes"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "tvos"
+    ],
+    "nl": "Titel Live TV staat vast boven de knoppen",
+    "en": "The Live TV title stays fixed above the buttons"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "macos",
+     "tvos",
+     "android"
+    ],
+    "nl": "Kaart Meer apps zonder de regel lrvdlinden.app",
+    "en": "More apps card without the lrvdlinden.app line"
+   }
+  ]
+ },
+ {
   "build": 176,
   "version": "1.0.8",
   "date": "2026-11-15",
