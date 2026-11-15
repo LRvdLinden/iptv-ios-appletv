@@ -3,9 +3,9 @@ import UIKit
 
 /// Build 171: radio in CarPlay (audio-app). Een lijst met zenders (favorieten bovenaan) en Now Playing.
 ///
-/// Werkt pas als de entitlement `com.apple.developer.carplay-audio` er is (Léon vraagt die bij Apple aan) en de
-/// CarPlay-scene in Info.plist staat; zie docs/CARPLAY.md. Tot die tijd wordt deze klasse nooit gebruikt, maar hij
-/// compileert gewoon mee.
+/// Aan vanaf build 172: entitlement `com.apple.developer.carplay-audio` en de CarPlay-scene staan in project.yml
+/// (docs/CARPLAY.md).
+@objc(CarPlaySceneDelegate)
 final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     private var interfaceController: CPInterfaceController?
 

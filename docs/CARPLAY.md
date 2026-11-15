@@ -1,8 +1,8 @@
 # CarPlay (build 171)
 
 De code voor radio in CarPlay staat klaar (`iOS/CarPlay/CarPlaySceneDelegate.swift`): een lijst met radiozenders
-(favorieten bovenaan) en Now Playing (`CPNowPlayingTemplate`). Zolang Apple de entitlement niet heeft gegeven, staat
-CarPlay **uit**: de klasse compileert mee, maar wordt nooit gestart.
+(favorieten bovenaan) en Now Playing (`CPNowPlayingTemplate`). Apple heeft de entitlement gegeven:
+vanaf build 172 staan de entitlement en de CarPlay-scene in `project.yml` (stap 3 hieronder is gedaan).
 
 ## Wat Léon moet doen
 

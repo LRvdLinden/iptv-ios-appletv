@@ -75,6 +75,10 @@ targets:
             UIWindowSceneSessionRoleExternalDisplayNonInteractive:
               - UISceneConfigurationName: External Display
                 UISceneDelegateClassName: ExternalDisplaySceneDelegate
+            # build 172: radio in CarPlay (entitlement carplay-audio, docs/CARPLAY.md)
+            CPTemplateApplicationSceneSessionRoleApplication:
+              - UISceneConfigurationName: CarPlay
+                UISceneDelegateClassName: CarPlaySceneDelegate
     entitlements:
       path: iOS/Bingr.entitlements
       properties:
@@ -87,6 +91,8 @@ targets:
         # build 120: universele links uit e-mails van Bingr (https://bingr.online/titel/…; apple-app-site-association
         # op bingr.online)
         com.apple.developer.associated-domains: [applinks:bingr.online]
+        # build 172: CarPlay (audio-app), door Apple toegekend
+        com.apple.developer.carplay-audio: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: nl.lrvdlinden.bingr
