@@ -2467,7 +2467,10 @@ velden. Oudere apps lezen het als gewone herinnering (daarom zijn `playlistID` e
   dan die titel, anders de TMDB-detailpagina met Mijn lijst.
 - **Apple TV, Android TV**: banner in de app; **iPhone, iPad, Mac, Android, webspeler**: push van de server (functie `push`,
   zie "Server" hieronder), zonder push een lokale melding op `start`.
-- **Server**: de functie `push` kent `kind: "release"` vanaf branch `build-176` (PR, pas na akkoord naar `main`): melding op
+- **Let op, twee soorten "release"**: `kind: "release"` hier is een veld van het item in `reminders`. De push die eruit
+  komt heeft `data.kind = "reminder"` met `deeplink` `bingr://title?…`, nooit `data.kind = "release"` (dat is de melding
+  van een nieuwe app-versie met een link naar de changelog, zie PUSH.md). Apps beslissen bij het tikken op de deeplink.
+- **Server**: de functie `push` kent `kind: "release"` vanaf branch `build-176-server` (PR #2) (PR, pas na akkoord naar `main`): melding op
   `start`, tekst en link zoals hierboven. Zonder die wijziging stuurt de server 2 minuten vóór `start` een gewone
   herinnering ("Bingr": "<titel> begint om 09:00"), wat acceptabel is.
 - **"Nu beschikbaar"**: staat een titel uit Binnenkort al op een server van het account (TMDB-id, anders titel + jaar,

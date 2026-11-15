@@ -116,6 +116,14 @@ melding/banner zoals nu. Tekst: "Voor <profiel>: <programma> begint om 20:30" in
 alleen als het account meer dan één profiel heeft, zoals bij de lokale melding; tijd in `tz` van het apparaat); titel =
 zendernaam. Na de start wordt een herinnering niet meer verstuurd.
 
+**Build 176: herinnering op de releasedatum** (ACCOUNT.md, "Build 176" (4)): een item in `reminders` met `kind: "release"`
+(veld van het **item** in de state-section, niet het push-`kind`). De push ervan is een gewone herinnering: `data.kind` =
+**`"reminder"`** (nooit `"release"`; dat blijft de releasemelding van een nieuwe app-versie hierboven), altijd met
+`deeplink` = `bingr://title?type=<movie|tv>&id=<tmdb-id>&q=<titel>` en `url` = `https://bingr.online/titel/?…`. Apps
+beslissen op de link: een `bingr://title`-deeplink opent de titel, `bingr://live` de zender. Verstuurd op `start`
+(09:00 lokaal, tot 30 minuten erna), tekst "Nu te zien: <titel>" / "Out now: <titel>", tweede regel "Vandaag verschenen.
+Tik om te bekijken." / "Released today. Tap to view." (11 talen). Lokale meldingen (zonder push) dragen dezelfde `deeplink`.
+
 ## Server (supabase/functions/push, supabase/schema.sql)
 
 - Tabellen `push_devices` (één rij per (account, apparaat), token uniek per kanaal), `push_messages` (één rij per bericht,
