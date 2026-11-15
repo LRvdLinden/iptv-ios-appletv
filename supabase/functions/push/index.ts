@@ -28,7 +28,7 @@ import { sameSecret } from "./crypto.ts";
 import { Channels, type DeviceRow, type TokenStore } from "./channels.ts";
 import { adminNotify, type BeheerResult } from "./beheer.ts";
 import {
-  checkRegister, checkTarget, GROUPS, MAX_ATTEMPTS, type MessageRow, parseReminders, releaseKey, reminderDeadline, reminderDueFor, reminderKey,
+  checkRegister, checkTarget, GROUPS, MAX_ATTEMPTS, type MessageRow, parseReminders, RELEASE_WINDOW_MS, releaseKey, reminderDeadline, reminderDueFor, reminderKey,
   reminderProfile, renderNotice, safeUrl, SPORT_AT_START_MS, sportLead, ttlFor,
 } from "./logic.ts";
 
@@ -185,9 +185,12 @@ async function reminders(nowMs: number): Promise<number> {
               start_ms: r.startMs,
               // build 172: sport met "bij de start" mag tot 2 minuten na de start
               ...(r.matchKey && sportLead(r.lead) === 0 ? { deadline_ms: r.startMs + SPORT_AT_START_MS } : {}),
+              // build 176: release op de dag zelf, tot 30 minuten na 09:00
+              ...(r.release ? { deadline_ms: r.startMs + RELEASE_WINDOW_MS } : {}),
               sealed: await sealJsonField({
                 title: r.title, channel_id: r.channelId, channel_name: r.channelName, profile_id: prof.id, profile_name: prof.name,
                 ...(r.matchKey ? { sport: true, lead: sportLead(r.lead), competition: r.competition ?? null } : {}),
+                ...(r.release ? { release: true, tmdb: r.release.tmdb, media_type: r.release.mediaType } : {}),
               }),
             },
           }, { onConflict: "dedup_key", ignoreDuplicates: true });

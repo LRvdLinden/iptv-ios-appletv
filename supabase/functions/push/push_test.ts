@@ -8,6 +8,7 @@ import {
   apnsOutcome, apnsPayload, checkRegister, checkTarget, fcmMessage, fcmOutcome, normLang, parseReminders, releaseKey, releaseText,
   reminderBody, reminderDue, reminderKey, reminderProfile, renderNotice, ttlFor, webPayload, webpushHostAllowed, webpushOutcome,
   supportKey, supportLinks, supportText, reminderDeadline, reminderDueFor, sportLead, sportReminderText,
+  releaseReminderText, titleLinks, RELEASE_WINDOW_MS,
 } from "./logic.ts";
 import { Apns, apnsIat, apnsTokenUsable, Channels, type TokenStore } from "./channels.ts";
 import { openJsonField, seal, sealJsonField, unseal } from "../_shared/sealed.ts";
@@ -482,4 +483,30 @@ Deno.test("sport: tekst van de melding", () => {
     profile_id: null, profile_name: null, start_ms: start, sport: true, lead: 5, competition: "Eredivisie" } }, { platform: "ios", lang: "nl" });
   eq([n.title, n.body, n.data.kind, n.data.deeplink], ["Ajax - PSV begint over 5 minuten", "Eredivisie · ESPN 1. Tik om live te kijken.", "reminder", "bingr://live?channel=espn%201"]);
   ok(ttlFor({ id: 11, kind: "reminder", payload: { start_ms: start, deadline_ms: start + 120_000 } }, Date.now()) > 150, "bij de start: ttl tot 2 min erna");
+});
+
+Deno.test("build 176: herinnering op de releasedatum (parse, moment, tekst en link)", () => {
+  const start = "2026-12-04T08:00:00Z", s = Date.parse(start);
+  const r = parseReminders({ items: [
+    { id: "release:movie:550", kind: "release", tmdb: 550, mediaType: "movie", playlistID: "00000000-0000-0000-0000-000000000000",
+      channelID: "release:movie:550", channelName: "Bingr", title: "Fight Club", start },
+    { id: "p:abc:release:tv:1399:s9", kind: "release", tmdb: 1399, mediaType: "tv", season: 9, channelID: "release:tv:1399:s9",
+      channelName: "Bingr", title: "Game of Thrones seizoen 9", start },
+    { id: "release:movie:0", kind: "release", tmdb: 0, channelID: "release:movie:0", title: "Fout", start },
+  ] });
+  eq(r.length, 3);
+  eq(r[0].release, { tmdb: 550, mediaType: "movie" });
+  eq([r[1].release, r[1].profileId], [{ tmdb: 1399, mediaType: "tv" }, "abc"]);
+  eq(r[2].release, undefined, "zonder geldig TMDB-id een gewone herinnering");
+  ok(!reminderDueFor(r[0], s - 60_000), "niet 2 minuten vooraf");
+  ok(reminderDueFor(r[0], s - 4_000), "op 09:00 (marge 5 s)");
+  ok(reminderDueFor(r[0], s + RELEASE_WINDOW_MS - 1), "tot 30 minuten erna");
+  ok(!reminderDueFor(r[0], s + RELEASE_WINDOW_MS));
+  eq(releaseReminderText("nl", { title: "Fight Club" }), { title: "Nu te zien: Fight Club", body: "Vandaag verschenen. Tik om te bekijken." });
+  eq(releaseReminderText("en-GB", { title: "Dune", profileName: "Emma" }).title, "For Emma: Out now: Dune");
+  eq(titleLinks("tv", 1399, "Game of Thrones").deeplink, "bingr://title?type=tv&id=1399&q=Game%20of%20Thrones");
+  eq(titleLinks("x", 550, "").url, "https://bingr.online/titel/?type=movie&id=550");
+  const n = renderNotice({ id: 9, kind: "reminder", payload: { release: true, tmdb: 550, media_type: "movie", title: "Fight Club", start_ms: s } },
+    { platform: "ios", lang: "nl" });
+  eq([n.title, n.data.deeplink], ["Nu te zien: Fight Club", "bingr://title?type=movie&id=550&q=Fight%20Club"]);
 });
