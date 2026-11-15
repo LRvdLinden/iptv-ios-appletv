@@ -2411,5 +2411,101 @@ do {
     eq(Scrub170.fraction(5, duration: 0), 0, "170: duur onbekend")
 }
 
+
+// MARK: build 171
+
+do {
+    // 1. Kijk je nog?
+    var w = StillWatching171(now: 0)
+    check(!w.shouldAsk(now: 100, hours: 3, enabled: true), "171: niet meteen vragen")
+    w.autoEpisodeStarted(now: 10); w.interaction(now: 11)
+    eq(w.autoEpisodes, 1, "171: bediening in het stille venster telt niet")
+    w.autoEpisodeStarted(now: 2000); w.autoEpisodeStarted(now: 4000)
+    check(w.shouldAsk(now: 4001, hours: 3, enabled: true), "171: na 3 automatische afleveringen vragen")
+    check(!w.shouldAsk(now: 4001, hours: 3, enabled: false), "171: instelling uit = nooit vragen")
+    w.interaction(now: 4100)
+    eq(w.autoEpisodes, 0, "171: bediening zet de teller op 0")
+    check(!w.shouldAsk(now: 4100 + 3 * 3600 - 1, hours: 3, enabled: true), "171: net geen 3 uur")
+    check(w.shouldAsk(now: 4100 + 3 * 3600, hours: 3, enabled: true), "171: 3 uur zonder bediening")
+    check(w.shouldAsk(now: 4100 + 2 * 3600, hours: 2, enabled: true), "171: keuze 2 uur")
+    eq(StillWatching171.hours(7), 3, "171: onbekende keuze = 3 uur")
+    w.answered(now: 20000)
+    check(!w.shouldAsk(now: 20001, hours: 2, enabled: true), "171: na Verder kijken opnieuw tellen")
+    eq(StillWatching171.secondsLeft(askedAt: 0, now: 0.5), 60, "171: 60 s")
+    eq(StillWatching171.secondsLeft(askedAt: 0, now: 75), 0, "171: niet negatief")
+    check(!StillWatching171.timedOut(askedAt: 0, now: 59.9), "171: nog niet verlopen")
+    check(StillWatching171.timedOut(askedAt: 0, now: 60), "171: na 60 s verlopen")
+
+    // 15/20. verbergen en blokkeren
+    eq(ProfileHide171.channelKey(server: "ABCD-EF", item: "x12"), "abcd-ef|x12", "171: zendersleutel")
+    eq(ProfileHide171.titleKey(server: "ABCD", kind: .movie, item: "xv5"), "abcd|movie:xv5", "171: filmsleutel")
+    eq(ProfileHide171.titleKey(server: "abcd", kind: .series, item: "xs7"), "abcd|series:xs7", "171: seriesleutel")
+    let keys: Set<String> = ["abcd|x12", "ABCD|x13", "abcd|movie:xv5", "abcd|series:xs7", "other|x1", "kapot", "abcd|"]
+    eq(ProfileHide171.channelIDs(keys, server: "ABCD"), ["x12", "x13"], "171: verborgen zenders van één server")
+    eq(ProfileHide171.titleIDs(keys, server: "abcd"), ["xv5", "xs7"], "171: geblokkeerde titels")
+    check(ProfileHide171.contains(keys, server: "ABCD", kind: nil, item: "x13"), "171: hoofdletters gevonden")
+    check(!ProfileHide171.contains(keys, server: "abcd", kind: .movie, item: "xs7"), "171: soort telt")
+    eq(ProfileHide171.variants(["abcd|x1", "ABCD|x1", "abcd|x2"], server: "Abcd", kind: nil, item: "x1").count, 2, "171: alle schrijfwijzen")
+    eq(ProfileHide171.filter(["a", "b", "c"], hidden: ["b"], id: { $0 }), ["a", "c"], "171: filteren")
+    check(ProfileHide171.parse("abcd|movie:") == nil, "171: lege id ongeldig")
+
+    // 17. regio's
+    eq(CategoryRegion171.region(["Multi", "NL"]), "NL", "171: Multi is geen regio")
+    eq(CategoryRegion171.region(["exyu"]), "EXYU", "171: EXYU")
+    check(CategoryRegion171.region(["4K"]) == nil, "171: geen letters = geen regio")
+    eq(CategoryRegion171.chips(["NL", "BE", "NL", nil, "UK", "NL", "BE"]), ["NL", "BE", "UK"], "171: chips op aantal")
+    eq(CategoryRegion171.chips(["NL", "NL"]), [], "171: één regio = geen chips")
+    eq(CategoryRegion171.ordered([1, 2, 3, 4], pinned: { $0 == 3 }), [3, 1, 2, 4], "171: vastgepind bovenaan")
+
+    // 30. radio
+    check(Radio171.isRadio(streamType: "radio_streams"), "171: Xtream radio_streams")
+    check(!Radio171.isRadio(streamType: "live"), "171: Xtream live")
+    check(Radio171.isRadio(m3uAttributes: ["radio": "true"]), "171: M3U radio=true")
+    check(Radio171.isRadio(m3uAttributes: ["group-title": "NL | Radio"]), "171: M3U-groep radio")
+    check(!Radio171.isRadio(m3uAttributes: ["group-title": "NL | Sport"]), "171: M3U-groep sport")
+    check(Radio171.isRadioGroup("RADIOZENDERS NL"), "171: radiozenders")
+    check(Radio171.isRadioGroup("Rádio PT"), "171: accent")
+    check(!Radio171.isRadioGroup("Nadiolo"), "171: niet midden in een woord")
+    check(Radio171.isRadio(flag: true, group: "NL"), "171: vlag van de bron")
+    eq(Radio171.ordered(["a", "b", "c"], favorite: { $0 == "c" }), ["c", "a", "b"], "171: favorieten bovenaan")
+
+    // 31. apparaten
+    let devs = [DeviceList171.Entry(id: "me", lastUsed: 50, current: true),
+                DeviceList171.Entry(id: "new", lastUsed: 100_000, current: false),
+                DeviceList171.Entry(id: "old", lastUsed: 10, current: false),
+                DeviceList171.Entry(id: "never", lastUsed: nil, current: false)]
+    eq(DeviceList171.sorted(devs).map(\.id), ["never", "old", "new", "me"], "171: langst niet gebruikt bovenaan, dit apparaat onderaan")
+    eq(DeviceList171.suggestion(devs, now: 200_000), "never", "171: voorstel onbekend gebruik")
+    eq(DeviceList171.suggestion(Array(devs[1...2]), now: 100_100), "old", "171: voorstel oud apparaat")
+    check(DeviceList171.suggestion([devs[1]], now: 100_100) == nil, "171: net gebruikt = geen voorstel")
+
+    // 37. crashrapporten
+    let dirty = "Fout bij http://user:pass@iptv.example.com:8080/live/u/p/1.ts?token=abc en jan@example.nl via 192.168.1.20:8080 en provider.tv/get.php?username=a&password=b"
+    let clean = Crash171.scrub(dirty)
+    check(!clean.contains("pass") && !clean.contains("example") && !clean.contains("192.168") && !clean.contains("username"), "171: niets gevoeligs over: \(clean)")
+    check(clean.contains("<url>") && clean.contains("<email>") && clean.contains("<ip>"), "171: vervangen door markeringen")
+    let tok = String(repeating: "aB3", count: 15)
+    eq(Crash171.scrub("key " + tok), "key <token>", "171: lang token")
+    eq(Crash171.scrub("3 Bingr PlayerController.stop() + 120"), "3 Bingr PlayerController.stop() + 120", "171: stackregel blijft")
+    eq(Crash171.message(String(repeating: "ab ", count: 300)).count, 500, "171: message hooguit 500")
+    check(Crash171.stack(String(repeating: "é ", count: 20_000)).utf8.count <= 16 * 1024, "171: stack hooguit 16 KB")
+    eq(Crash171.frameKey("3 Bingr 0x1a2b PlayerController.stop() + 120"), "Bingr PlayerController.stop()", "171: regel zonder adres")
+    let s1 = Crash171.signature(kind: "crash", name: "SIGSEGV", frames: ["0 Bingr 0x1 A.b() + 4", "1 Bingr 0x2 C.d() + 8"])
+    let s2 = Crash171.signature(kind: "crash", name: "SIGSEGV", frames: ["0 Bingr 0x9 A.b() + 40", "1 Bingr 0x7 C.d() + 80"])
+    eq(s1, s2, "171: handtekening los van adressen")
+    eq(s1.count, 16, "171: 16 tekens")
+    check(s1 != Crash171.signature(kind: "hang", name: "SIGSEGV", frames: []), "171: soort telt mee")
+    let r = Crash171.Report(kind: "crash", signature: "a", message: "", stack: "", at: 100, count: 1, appVersion: "1.0.7",
+                            build: "171", osVersion: "iOS 18", deviceModel: "iPhone")
+    var q = Crash171.enqueue([], r, now: 100)
+    q = Crash171.enqueue(q, r, now: 200)
+    eq(q.count, 1, "171: zelfde crash één regel")
+    eq(q.first?.count, 2, "171: count opgeteld")
+    eq(Crash171.prune(q, now: 100 + 8 * 24 * 3600).count, 0, "171: na 7 dagen weg")
+    check(Crash171.maysend(sent: Array(repeating: 0, count: 19), now: 10), "171: 19 in het uur mag")
+    check(!Crash171.maysend(sent: Array(repeating: 0, count: 20), now: 10), "171: 20 in het uur is genoeg")
+    check(Crash171.maysend(sent: Array(repeating: 0, count: 20), now: 3700), "171: na een uur weer")
+}
+
 print("\(checks) controles, \(failures) fout")
 exit(failures == 0 ? 0 : 1)
