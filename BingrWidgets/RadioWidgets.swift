@@ -1,13 +1,22 @@
 import SwiftUI
 import WidgetKit
-import ActivityKit
 import AppIntents
+#if os(iOS)
+import ActivityKit
+import UIKit
+private typealias RadioImage = UIImage
+#else
+import AppKit
+private typealias RadioImage = NSImage
+#endif
 
 // Build 174: Bingr Radio in de widget-extensie: de widget "Bingr Radio" (klein en middel; vanaf iOS 26 ook op het
 // CarPlay-dashboard) en de Live Activity tijdens het afspelen (vanaf iOS 26 ook op CarPlay, in de compacte weergave).
-// Een aparte kleine weergave (supplementalActivityFamilies, iOS 18) kan pas als de extensie iOS 18 als minimum heeft:
-// WidgetBundleBuilder kent geen `if #available`. De gegevens zet de app in de App Group
-// (RadioBridge174); de knoppen zijn App Intents die in de app worden uitgevoerd (iOS/Radio/RadioIntents.swift).
+// De gegevens zet de app in de App Group (RadioBridge174); de knoppen zijn App Intents die in de app worden uitgevoerd
+// (iOS/Radio/RadioIntents.swift).
+// Build 175: de widget ook op de Mac (extensie BingrMacWidgets, zonder Live Activity), en een aparte kleine weergave van
+// de Live Activity voor CarPlay en Apple Watch (iOS 18: supplementalActivityFamilies([.small]) en activityFamily, via
+// `if #available` in de configuratie zelf; de extensie houdt iOS 17 als minimum, iOS 17 houdt de gewone weergave).
 
 private let radioRed = Color(red: 0xE5 / 255, green: 0x09 / 255, blue: 0x14 / 255)
 
@@ -20,9 +29,9 @@ private enum RadioFiles {
         guard let dir else { return nil }
         return Radio174.Snapshot.decode(try? Data(contentsOf: dir.appendingPathComponent("stations.json")))
     }
-    static func logo(_ file: String?) -> UIImage? {
+    static func logo(_ file: String?) -> RadioImage? {
         guard let file, let dir else { return nil }
-        return UIImage(contentsOfFile: dir.appendingPathComponent(file).path)
+        return RadioImage(contentsOfFile: dir.appendingPathComponent(file).path)
     }
 }
 
@@ -184,7 +193,7 @@ private struct RadioLogo: View {
     var body: some View {
         Group {
             if let img = RadioFiles.logo(file) {
-                Image(uiImage: img).resizable().scaledToFit().padding(size * 0.08)
+                logoImage(img).resizable().scaledToFit().padding(size * 0.08)
             } else {
                 Image(systemName: "radio").font(.system(size: size * 0.42, weight: .semibold)).foregroundStyle(.white)
             }
@@ -193,19 +202,90 @@ private struct RadioLogo: View {
         .background(Color.white.opacity(0.12), in: RoundedRectangle(cornerRadius: size * 0.22, style: .continuous))
         .clipShape(RoundedRectangle(cornerRadius: size * 0.22, style: .continuous))
     }
+
+    private func logoImage(_ img: RadioImage) -> Image {
+        #if os(iOS)
+        return Image(uiImage: img)
+        #else
+        return Image(nsImage: img)
+        #endif
+    }
 }
 
-// MARK: - Live Activity
+// MARK: - Live Activity (iPhone en iPad)
 
+#if os(iOS)
 struct RadioLiveActivity: Widget {
     var body: some WidgetConfiguration {
-        ActivityConfiguration(for: RadioActivityAttributes.self) { context in
-            RadioLockScreenView(attrs: context.attributes, state: context.state)
-                .activityBackgroundTint(Color.black.opacity(0.85))
-                .activitySystemActionForegroundColor(.white)
-        } dynamicIsland: { context in
-            radioIsland(context.attributes, context.state)
+        Self.withSmallFamily(
+            ActivityConfiguration(for: RadioActivityAttributes.self) { context in
+                RadioActivityContent(attrs: context.attributes, state: context.state)
+                    .activityBackgroundTint(Color.black.opacity(0.85))
+                    .activitySystemActionForegroundColor(.white)
+            } dynamicIsland: { context in
+                radioIsland(context.attributes, context.state)
+            }
+        )
+    }
+
+    /// Build 175: vanaf iOS 18 ook een eigen kleine weergave (CarPlay, Apple Watch). Opaque type met `if #available`
+    /// (SE-0360), zodat iOS 17 de gewone configuratie houdt zonder de extensie naar iOS 18 te tillen.
+    private static func withSmallFamily<C: WidgetConfiguration>(_ c: C) -> some WidgetConfiguration {
+        if #available(iOS 18.0, *) {
+            return c.supplementalActivityFamilies([.small])
+        } else {
+            return c
         }
+    }
+}
+
+/// Vergrendelscherm (medium) of, vanaf iOS 18, de kleine weergave
+private struct RadioActivityContent: View {
+    let attrs: RadioActivityAttributes
+    let state: RadioActivityAttributes.ContentState
+    var body: some View {
+        if #available(iOS 18.0, *) {
+            RadioActivityFamilyView(attrs: attrs, state: state)
+        } else {
+            RadioLockScreenView(attrs: attrs, state: state)
+        }
+    }
+}
+
+@available(iOS 18.0, *)
+private struct RadioActivityFamilyView: View {
+    let attrs: RadioActivityAttributes
+    let state: RadioActivityAttributes.ContentState
+    @Environment(\.activityFamily) private var family
+    var body: some View {
+        switch family {
+        case .small: RadioSmallActivityView(attrs: attrs, state: state)
+        default: RadioLockScreenView(attrs: attrs, state: state)
+        }
+    }
+}
+
+/// Build 175: klein (CarPlay, Apple Watch): logo, zender, nu aan het spelen (één regel) en pauze/afspelen
+private struct RadioSmallActivityView: View {
+    let attrs: RadioActivityAttributes
+    let state: RadioActivityAttributes.ContentState
+    var body: some View {
+        HStack(spacing: 8) {
+            RadioLogo(file: state.logo, size: 30)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(state.station).font(.caption.weight(.semibold)).foregroundStyle(.white).lineLimit(1)
+                Text(state.nowPlaying ?? attrs.heading).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            Button(intent: ToggleRadioIntent()) {
+                Image(systemName: state.isPlaying ? "pause.fill" : "play.fill").font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 30, height: 30).background(radioRed, in: Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(state.isPlaying ? attrs.pauseLabel : attrs.playLabel)
+        }
+        .padding(.horizontal, 10).padding(.vertical, 6)
     }
 }
 
@@ -280,3 +360,4 @@ private struct RadioLockScreenView: View {
         .padding(16)
     }
 }
+#endif

@@ -2839,5 +2839,38 @@ do {
     eq(Radio174.carPlayGroups([st[0], st[1]], maxGroups: 5).count, 0, "één categorie: geen tabblad")
 }
 
+// MARK: build 175: downloaden vanuit Meer, ook bij series (Shared/Player/Build175.swift)
+do {
+    typealias E = Download175.Episode
+    eq(Download175.movieMenu(canDownload: true, state: .none), .download, "film: downloaden")
+    eq(Download175.movieMenu(canDownload: false, state: .none), .unavailable, "film: uitgegrijsd met reden")
+    eq(Download175.movieMenu(canDownload: false, state: .completed), .downloaded, "film: gedownload gaat voor")
+    eq(Download175.movieMenu(canDownload: true, state: .downloading), .active, "film: bezig")
+    eq(Download175.movieMenu(canDownload: true, state: .failed), .resume, "film: mislukt = hervatten")
+    eq(Download175.movieMenu(canDownload: true, state: .paused), .resume, "film: gepauzeerd = hervatten")
+    let eps = [E(id: "s2e1", season: 2, number: 1), E(id: "s1e2", season: 1, number: 2, state: .completed),
+               E(id: "s1e1", season: 1, number: 1, state: .completed), E(id: "s1e3", season: 1, number: 3),
+               E(id: "s1e4", season: 1, number: 4, state: .downloading), E(id: "s1e5", season: 1, number: 5, state: .failed),
+               E(id: "s2e2", season: 2, number: 2, downloadable: false), E(id: "s2e3", season: 2, number: 3)]
+    eq(Download175.ordered(eps).map(\.id), ["s1e1", "s1e2", "s1e3", "s1e4", "s1e5", "s2e1", "s2e2", "s2e3"], "volgorde")
+    eq(Download175.episodes(for: .season, in: eps, season: 1, nextUp: nil), ["s1e3", "s1e5"], "seizoen: zonder binnen/onderweg")
+    eq(Download175.episodes(for: .season, in: eps, season: 2, nextUp: nil), ["s2e1", "s2e3"], "seizoen: zonder stream valt af")
+    eq(Download175.episodes(for: .nextThree, in: eps, season: 1, nextUp: "s1e2"), ["s1e3", "s1e5", "s2e1"], "volgende 3 over seizoenen")
+    eq(Download175.episodes(for: .nextThree, in: eps, season: 1, nextUp: nil), ["s1e3", "s1e5", "s2e1"], "volgende 3 zonder volgende")
+    eq(Download175.episodes(for: .nextThree, in: eps, season: 1, nextUp: "s2e3"), ["s2e3"], "volgende 3 aan het eind")
+    eq(Download175.episodes(for: .nextThree, in: eps, season: 1, nextUp: "onbekend"), ["s1e3", "s1e5", "s2e1"], "onbekende volgende")
+    eq(Download175.episodes(for: .all, in: eps, season: 1, nextUp: nil), ["s1e3", "s1e5", "s2e1", "s2e3"], "hele serie")
+    check(Download175.needsConfirmation(.all, count: 4), "hele serie: bevestigen")
+    check(!Download175.needsConfirmation(.season, count: 4) && !Download175.needsConfirmation(.all, count: 0), "anders niet")
+    let m = Download175.seriesMenu(eps, season: 1, nextUp: "s1e2")
+    eq(m, Download175.SeriesMenu(available: true, season: 2, nextThree: 3, all: 4, downloaded: 4, complete: false), "seriemenu")
+    let done = [E(id: "a", season: 1, number: 1, state: .completed), E(id: "b", season: 1, number: 2, downloadable: false)]
+    let dm = Download175.seriesMenu(done, season: 1, nextUp: nil)
+    check(dm.complete && dm.all == 0 && dm.downloaded == 1, "serie: alles gedownload")
+    let none = Download175.seriesMenu([E(id: "x", season: 1, number: 1, downloadable: false)], season: 1, nextUp: nil)
+    check(!none.available && !none.complete, "serie zonder downloadbare stream: uitgegrijsd")
+    check(!Download175.seriesMenu([], season: 1, nextUp: nil).available, "serie zonder afleveringen")
+}
+
 print("\(checks) controles, \(failures) fout")
 exit(failures == 0 ? 0 : 1)

@@ -1,8 +1,16 @@
 import Foundation
 import Combine
+import ImageIO
+import UniformTypeIdentifiers
+import WidgetKit
+#if os(iOS)
 import UIKit
 import ActivityKit
-import WidgetKit
+#else
+import AppKit
+#endif
+
+// Build 175: ook in de Mac-app (widget "Bingr Radio" op de Mac). De Live Activity en CarPlay blijven iPhone/iPad.
 
 /// Build 174: voert de knoppen van de widget en de Live Activity uit (in de app).
 @MainActor
@@ -35,8 +43,10 @@ final class RadioBridge174 {
 
     private var bag = Set<AnyCancellable>()
     private var started = false
+    #if os(iOS)
     private var activity: Activity<RadioActivityAttributes>?
     private var lastState: RadioActivityAttributes.ContentState?
+    #endif
     private(set) var lastSnapshot: Radio174.Snapshot?
     private var writeTask: Task<Void, Never>?
     private var logoTask: Task<Void, Never>?
@@ -56,8 +66,10 @@ final class RadioBridge174 {
         guard !started else { return }
         started = true
         lastSnapshot = Self.readSnapshot()
+        #if os(iOS)
         // oude Live Activities van een vorige keer (app gestopt tijdens radio) opruimen
         Task { for a in Activity<RadioActivityAttributes>.activities { await a.end(nil, dismissalPolicy: .immediate) } }
+        #endif
         let r = RadioPlayer.shared
         Publishers.Merge4(r.$channel.map { _ in () }.eraseToAnyPublisher(),
                           r.$isPlaying.removeDuplicates().map { _ in () }.eraseToAnyPublisher(),
@@ -73,7 +85,12 @@ final class RadioBridge174 {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.scheduleWrite(stationsChanged: true) }
             .store(in: &bag)
-        NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)
+        #if os(iOS)
+        let becameActive = UIApplication.didBecomeActiveNotification
+        #else
+        let becameActive = NSApplication.didBecomeActiveNotification
+        #endif
+        NotificationCenter.default.publisher(for: becameActive)
             .sink { [weak self] _ in self?.syncActivity(); self?.scheduleWrite(stationsChanged: true) }
             .store(in: &bag)
         // de bibliotheek komt pas later (service wordt door AppState gezet)
@@ -147,7 +164,7 @@ final class RadioBridge174 {
                 let file = dir.appendingPathComponent(Radio174.logoFileName(u.absoluteString))
                 if FileManager.default.fileExists(atPath: file.path) { continue }
                 guard let cg = await ImagePipeline.shared.load(u, maxPixel: 120),
-                      let png = UIImage(cgImage: cg).pngData() else { continue }
+                      let png = RadioBridge174.png(cg) else { continue }
                 try? png.write(to: file, options: .atomic)
                 wrote = true
             }
@@ -161,11 +178,21 @@ final class RadioBridge174 {
         return Radio174.Snapshot.decode(try? Data(contentsOf: dir.appendingPathComponent("stations.json")))
     }
 
+    /// Build 175: PNG zonder UIKit (ook op de Mac)
+    nonisolated static func png(_ cg: CGImage) -> Data? {
+        let data = NSMutableData()
+        guard let dest = CGImageDestinationCreateWithData(data, UTType.png.identifier as CFString, 1, nil) else { return nil }
+        CGImageDestinationAddImage(dest, cg, nil)
+        return CGImageDestinationFinalize(dest) ? data as Data : nil
+    }
+
+    #if os(iOS)
     /// Logo uit de App Group (voor CarPlay als het nog niet in het geheugen staat)
     static func logo(for c: Channel) -> UIImage? {
         guard let u = c.logo, let dir = container else { return nil }
         return UIImage(contentsOfFile: dir.appendingPathComponent(Radio174.logoFileName(u.absoluteString)).path)
     }
+    #endif
 
     /// Teksten voor de widget (in de app-taal; de widget zelf heeft geen vertalingen)
     static var widgetTexts: [String: String] {
@@ -175,6 +202,10 @@ final class RadioBridge174 {
 
     // MARK: Live Activity
 
+    #if os(macOS)
+    /// Geen Live Activity op de Mac
+    private func syncActivity() {}
+    #else
     private func makeState() -> RadioActivityAttributes.ContentState? {
         let r = RadioPlayer.shared
         guard let c = r.channel else { return nil }
@@ -210,4 +241,5 @@ final class RadioBridge174 {
             break
         }
     }
+    #endif
 }

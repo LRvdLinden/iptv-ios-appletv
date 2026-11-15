@@ -4,6 +4,14 @@ import AppIntents
 // Build 174: knoppen van de widget "Bingr Radio" en de Live Activity. Deze intents staan in de app én in de widget-extensie;
 // het systeem voert ze uit in de app (AudioPlaybackIntent / LiveActivityIntent), ook als die nog niet open was. In de
 // extensie (BINGR_WIDGET_EXT) doen ze zelf niets.
+// Build 175: ook in de Mac-app en de widget-extensie van de Mac. Daar bestaat LiveActivityIntent niet: de knoppen zijn er
+// AudioPlaybackIntents (ook die voert het systeem in de app uit).
+
+#if os(iOS)
+typealias RadioControlIntent = LiveActivityIntent
+#else
+typealias RadioControlIntent = AudioPlaybackIntent
+#endif
 
 /// Zender starten (widget)
 struct PlayRadioStationIntent: AudioPlaybackIntent {
@@ -25,7 +33,7 @@ struct PlayRadioStationIntent: AudioPlaybackIntent {
 }
 
 /// Afspelen/pauze (widget en Live Activity)
-struct ToggleRadioIntent: LiveActivityIntent {
+struct ToggleRadioIntent: RadioControlIntent {
     static var title: LocalizedStringResource = "Play or pause radio"
     static var isDiscoverable: Bool = false
 
@@ -40,7 +48,7 @@ struct ToggleRadioIntent: LiveActivityIntent {
 }
 
 /// Vorige (-1) of volgende (1) zender (Live Activity)
-struct StepRadioIntent: LiveActivityIntent {
+struct StepRadioIntent: RadioControlIntent {
     static var title: LocalizedStringResource = "Next or previous radio station"
     static var isDiscoverable: Bool = false
 

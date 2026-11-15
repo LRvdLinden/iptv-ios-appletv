@@ -67,6 +67,10 @@ struct DetailView: View {
     @State private var crossPrompt: CrossServer.Prompt?
     /// Build 171: de pincode van het ouderprofiel (kinderprofiel) vóór het blokkeren
     @State private var blockPIN = false
+    #if os(iOS)
+    /// Build 175: bevestiging bij Hele serie downloaden of downloads van de serie verwijderen
+    @State private var downloadConfirm: DownloadConfirm175?
+    #endif
     /// Build 171: titel geblokkeerd voor dit profiel → melding in plaats van de pagina
     private var blockedHere: Bool {
         guard let pid, !DiscoverItem.isExternal(target.id) else { return false }
@@ -194,6 +198,24 @@ struct DetailView: View {
         } message: {
             Text(L("Trailers on Apple TV play in the YouTube app. Install it from the App Store."))
         }
+        #if os(iOS)
+        .alert(downloadConfirm?.title ?? "", isPresented: Binding(get: { downloadConfirm != nil },
+                                                                 set: { if !$0 { downloadConfirm = nil } }),
+               presenting: downloadConfirm) { c in
+            switch c.kind {
+            case .download:
+                Button(L("Download")) {
+                    DownloadActions175.run(c, playlists: playlists)
+                    flash(L("%d episodes added to Downloads", c.count))
+                }
+            case .delete:
+                Button(L("Delete"), role: .destructive) { DownloadActions175.run(c, playlists: playlists) }
+            }
+            Button(L("Cancel"), role: .cancel) {}
+        } message: { c in
+            Text(c.message)
+        }
+        #endif
         .sheet(isPresented: $blockPIN) {
             PINPad(title: L("Enter the PIN of the parent profile")) { pin in
                 guard let main = store.mainProfileID, ParentalControl.shared.verify(pin, profile: main), let pid else { return false }
@@ -466,6 +488,8 @@ struct DetailView: View {
                 if case .movie(let m) = target, DownloadManager.canDownload(Playables.movie(m, imdb: imdb)) {
                     DownloadButton(item: Playables.movie(m, imdb: imdb), poster: m.poster)
                 }
+                // build 175: serie downloaden (seizoen, volgende 3, hele serie) ook op de iPad
+                if case .series = target, !episodes.isEmpty { seriesOrMovieDownloadMenu(asCircle: true) }
                 #endif
                 #if !os(tvOS)
                 shareButton // geen deelknop (ook geen QR) op tv's, zie docs/ACCOUNT.md
@@ -499,6 +523,20 @@ struct DetailView: View {
         .frame(maxWidth: tvScaled(700))
         .frame(maxWidth: .infinity, alignment: alignLeadingOnTV)
     }
+
+    #if os(iOS)
+    /// Build 175: downloaden in Meer (submenu) of als ronde knop in de brede rij (iPad, alleen series)
+    @ViewBuilder private func seriesOrMovieDownloadMenu(asCircle: Bool) -> some View {
+        switch target {
+        case .movie(let m):
+            MovieDownloadMenu175(item: Playables.movie(m, imdb: imdb), poster: m.poster)
+        case .series(let s):
+            SeriesDownloadMenu175(series: s, episodes: episodes, season: season, nextUp: nextEpisode, imdb: imdb,
+                                  asCircle: asCircle, circleSize: tvScaled(50),
+                                  onConfirm: { downloadConfirm = $0 }, onMessage: { flash($0) })
+        }
+    }
+    #endif
 
     #if !os(tvOS)
     // MARK: build 174: knoppen op de telefoon (Mijn lijst · Trailer · Bronnen · Gezien · Meer)
@@ -578,9 +616,8 @@ struct DetailView: View {
                 }
             }
             #if os(iOS)
-            if case .movie(let m) = target, DownloadManager.canDownload(Playables.movie(m, imdb: imdb)) {
-                DownloadMenuItems174(item: Playables.movie(m, imdb: imdb), poster: m.poster)
-            }
+            // build 175: downloaden staat er altijd (serie: submenu; film: uitgegrijsd met de reden als het niet kan)
+            seriesOrMovieDownloadMenu(asCircle: false)
             #endif
             if let url = shareURL {
                 ShareLink(item: url, subject: Text(shareTitle), message: Text(shareText), preview: SharePreview(shareTitle)) {

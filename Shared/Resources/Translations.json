@@ -1276,7 +1276,17 @@
   "Previous station": "المحطة السابقة",
   "All stations": "كل المحطات",
   "Loading stations…": "جارٍ تحميل المحطات…",
-  "%d stations": "%d محطة"
+  "%d stations": "%d محطة",
+  "Download this season": "تنزيل هذا الموسم",
+  "Next 3 episodes": "الحلقات الثلاث التالية",
+  "Entire series": "المسلسل كاملًا",
+  "This stream can't be downloaded": "لا يمكن تنزيل هذا البث",
+  "Download %d episodes?": "تنزيل %d حلقة؟",
+  "Delete %d downloads?": "حذف %d تنزيلات؟",
+  "Downloads only start over Wi-Fi.": "تتم التنزيلات عبر Wi-Fi فقط.",
+  "Downloads also use mobile data.": "تستخدم التنزيلات بيانات الجوال أيضًا.",
+  "The episodes stay available to stream.": "تبقى الحلقات متاحة للبث.",
+  "%d episodes added to Downloads": "تمت إضافة %d حلقة إلى التنزيلات"
  },
  "de": {
   "%@ is now signed in.": "%@ ist jetzt angemeldet.",
@@ -2555,7 +2565,17 @@
   "Previous station": "Vorheriger Sender",
   "All stations": "Alle Sender",
   "Loading stations…": "Sender werden geladen …",
-  "%d stations": "%d Sender"
+  "%d stations": "%d Sender",
+  "Download this season": "Diese Staffel herunterladen",
+  "Next 3 episodes": "Nächste 3 Folgen",
+  "Entire series": "Ganze Serie",
+  "This stream can't be downloaded": "Dieser Stream kann nicht heruntergeladen werden",
+  "Download %d episodes?": "%d Folgen herunterladen?",
+  "Delete %d downloads?": "%d Downloads löschen?",
+  "Downloads only start over Wi-Fi.": "Downloads laufen nur über WLAN.",
+  "Downloads also use mobile data.": "Downloads nutzen auch mobile Daten.",
+  "The episodes stay available to stream.": "Die Folgen kannst du weiterhin streamen.",
+  "%d episodes added to Downloads": "%d Folgen zu Downloads hinzugefügt"
  },
  "es": {
   "%@ is now signed in.": "%@ ya ha iniciado sesión.",
@@ -3834,7 +3854,17 @@
   "Previous station": "Emisora anterior",
   "All stations": "Todas las emisoras",
   "Loading stations…": "Cargando emisoras…",
-  "%d stations": "%d emisoras"
+  "%d stations": "%d emisoras",
+  "Download this season": "Descargar esta temporada",
+  "Next 3 episodes": "Próximos 3 episodios",
+  "Entire series": "Serie completa",
+  "This stream can't be downloaded": "Esta emisión no se puede descargar",
+  "Download %d episodes?": "¿Descargar %d episodios?",
+  "Delete %d downloads?": "¿Eliminar %d descargas?",
+  "Downloads only start over Wi-Fi.": "Las descargas solo se hacen por wifi.",
+  "Downloads also use mobile data.": "Las descargas también usan datos móviles.",
+  "The episodes stay available to stream.": "Los episodios siguen disponibles en streaming.",
+  "%d episodes added to Downloads": "%d episodios añadidos a Descargas"
  },
  "fr": {
   "%@ is now signed in.": "%@ est maintenant connecté.",
@@ -5113,7 +5143,17 @@
   "Previous station": "Station précédente",
   "All stations": "Toutes les stations",
   "Loading stations…": "Chargement des stations…",
-  "%d stations": "%d stations"
+  "%d stations": "%d stations",
+  "Download this season": "Télécharger cette saison",
+  "Next 3 episodes": "3 prochains épisodes",
+  "Entire series": "Série entière",
+  "This stream can't be downloaded": "Ce flux ne peut pas être téléchargé",
+  "Download %d episodes?": "Télécharger %d épisodes ?",
+  "Delete %d downloads?": "Supprimer %d téléchargements ?",
+  "Downloads only start over Wi-Fi.": "Les téléchargements se font uniquement en Wi-Fi.",
+  "Downloads also use mobile data.": "Les téléchargements utilisent aussi les données mobiles.",
+  "The episodes stay available to stream.": "Les épisodes restent disponibles en streaming.",
+  "%d episodes added to Downloads": "%d épisodes ajoutés aux téléchargements"
  },
  "it": {
   "%@ is now signed in.": "%@ ha effettuato l’accesso.",
@@ -6392,7 +6432,17 @@
   "Previous station": "Stazione precedente",
   "All stations": "Tutte le stazioni",
   "Loading stations…": "Caricamento stazioni…",
-  "%d stations": "%d stazioni"
+  "%d stations": "%d stazioni",
+  "Download this season": "Scarica questa stagione",
+  "Next 3 episodes": "Prossimi 3 episodi",
+  "Entire series": "Serie intera",
+  "This stream can't be downloaded": "Questo stream non può essere scaricato",
+  "Download %d episodes?": "Scaricare %d episodi?",
+  "Delete %d downloads?": "Eliminare %d download?",
+  "Downloads only start over Wi-Fi.": "I download avvengono solo tramite Wi-Fi.",
+  "Downloads also use mobile data.": "I download usano anche i dati cellulare.",
+  "The episodes stay available to stream.": "Gli episodi restano disponibili in streaming.",
+  "%d episodes added to Downloads": "%d episodi aggiunti ai download"
  },
  "nl": {
   "%@ is now signed in.": "%@ is nu ingelogd.",
@@ -7671,7 +7721,17 @@
   "Previous station": "Vorige zender",
   "All stations": "Alle zenders",
   "Loading stations…": "Zenders laden…",
-  "%d stations": "%d zenders"
+  "%d stations": "%d zenders",
+  "Download this season": "Dit seizoen downloaden",
+  "Next 3 episodes": "Volgende 3 afleveringen",
+  "Entire series": "Hele serie",
+  "This stream can't be downloaded": "Deze stream kan niet gedownload worden",
+  "Download %d episodes?": "%d afleveringen downloaden?",
+  "Delete %d downloads?": "%d downloads verwijderen?",
+  "Downloads only start over Wi-Fi.": "Downloads gaan alleen via wifi.",
+  "Downloads also use mobile data.": "Downloads gaan ook via mobiele data.",
+  "The episodes stay available to stream.": "Je kunt de afleveringen nog steeds streamen.",
+  "%d episodes added to Downloads": "%d afleveringen toegevoegd aan Downloads"
  },
  "pl": {
   "%@ is now signed in.": "%@ jest teraz zalogowany.",
@@ -8950,7 +9010,17 @@
   "Previous station": "Poprzednia stacja",
   "All stations": "Wszystkie stacje",
   "Loading stations…": "Wczytywanie stacji…",
-  "%d stations": "Stacje: %d"
+  "%d stations": "Stacje: %d",
+  "Download this season": "Pobierz ten sezon",
+  "Next 3 episodes": "Następne 3 odcinki",
+  "Entire series": "Cały serial",
+  "This stream can't be downloaded": "Tego strumienia nie można pobrać",
+  "Download %d episodes?": "Pobrać %d odcinków?",
+  "Delete %d downloads?": "Usunąć %d pobranych plików?",
+  "Downloads only start over Wi-Fi.": "Pobieranie odbywa się tylko przez Wi-Fi.",
+  "Downloads also use mobile data.": "Pobieranie korzysta też z danych komórkowych.",
+  "The episodes stay available to stream.": "Odcinki nadal można streamować.",
+  "%d episodes added to Downloads": "Dodano %d odcinków do pobranych"
  },
  "pt": {
   "%@ is now signed in.": "%@ já tem sessão iniciada.",
@@ -10229,7 +10299,17 @@
   "Previous station": "Rádio anterior",
   "All stations": "Todas as rádios",
   "Loading stations…": "A carregar rádios…",
-  "%d stations": "%d rádios"
+  "%d stations": "%d rádios",
+  "Download this season": "Baixar esta temporada",
+  "Next 3 episodes": "Próximos 3 episódios",
+  "Entire series": "Série inteira",
+  "This stream can't be downloaded": "Este stream não pode ser baixado",
+  "Download %d episodes?": "Baixar %d episódios?",
+  "Delete %d downloads?": "Apagar %d downloads?",
+  "Downloads only start over Wi-Fi.": "Os downloads só acontecem por Wi-Fi.",
+  "Downloads also use mobile data.": "Os downloads também usam dados móveis.",
+  "The episodes stay available to stream.": "Os episódios continuam disponíveis para streaming.",
+  "%d episodes added to Downloads": "%d episódios adicionados aos downloads"
  },
  "tr": {
   "%@ is now signed in.": "%@ artık oturum açtı.",
@@ -11508,7 +11588,17 @@
   "Previous station": "Önceki istasyon",
   "All stations": "Tüm istasyonlar",
   "Loading stations…": "İstasyonlar yükleniyor…",
-  "%d stations": "%d istasyon"
+  "%d stations": "%d istasyon",
+  "Download this season": "Bu sezonu indir",
+  "Next 3 episodes": "Sonraki 3 bölüm",
+  "Entire series": "Tüm dizi",
+  "This stream can't be downloaded": "Bu yayın indirilemez",
+  "Download %d episodes?": "%d bölüm indirilsin mi?",
+  "Delete %d downloads?": "%d indirme silinsin mi?",
+  "Downloads only start over Wi-Fi.": "İndirmeler yalnızca Wi-Fi üzerinden yapılır.",
+  "Downloads also use mobile data.": "İndirmeler mobil veriyi de kullanır.",
+  "The episodes stay available to stream.": "Bölümler yayın olarak izlenebilir kalır.",
+  "%d episodes added to Downloads": "%d bölüm İndirilenler'e eklendi"
  },
  "zh-Hans": {
   "%@ is now signed in.": "%@ 现已登录。",
@@ -12787,6 +12877,16 @@
   "Previous station": "上一个电台",
   "All stations": "所有电台",
   "Loading stations…": "正在载入电台…",
-  "%d stations": "%d 个电台"
+  "%d stations": "%d 个电台",
+  "Download this season": "下载本季",
+  "Next 3 episodes": "接下来 3 集",
+  "Entire series": "整部剧集",
+  "This stream can't be downloaded": "此流无法下载",
+  "Download %d episodes?": "下载 %d 集？",
+  "Delete %d downloads?": "删除 %d 个下载？",
+  "Downloads only start over Wi-Fi.": "仅通过 Wi-Fi 下载。",
+  "Downloads also use mobile data.": "下载也会使用蜂窝数据。",
+  "The episodes stay available to stream.": "这些剧集仍可在线播放。",
+  "%d episodes added to Downloads": "已将 %d 集添加到下载"
  }
 }

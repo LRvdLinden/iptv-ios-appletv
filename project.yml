@@ -10,7 +10,7 @@ settings:
   base:
     SWIFT_VERSION: "5.9"
     MARKETING_VERSION: "1.0.7"
-    CURRENT_PROJECT_VERSION: "174"
+    CURRENT_PROJECT_VERSION: "175"
     # Team van Léon van der Linden; automatisch ondertekenen voor iOS, tvOS en macOS
     DEVELOPMENT_TEAM: EU3UY476T6
     CODE_SIGN_STYLE: Automatic
@@ -144,6 +144,37 @@ targets:
         INFOPLIST_KEY_CFBundleDisplayName: Bingr
         LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks"
 
+  # Build 175: widget-extensie van de Mac: de widget "Bingr Radio" (klein en middel); geen Live Activity op de Mac
+  BingrMacWidgets:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: BingrMacWidgets
+      - path: BingrWidgets/RadioWidgets.swift
+      - path: iOS/Radio/RadioIntents.swift
+      - path: Shared/Player/Build174.swift
+    info:
+      path: BingrMacWidgets/Info.plist
+      properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleDisplayName: Bingr
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: BingrMacWidgets/BingrMacWidgets.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.application-groups: [group.nl.lrvdlinden.bingr]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: nl.lrvdlinden.bingr.widgets
+        # de radio-intents doen in de extensie zelf niets (ze draaien in de app)
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) BINGR_WIDGET_EXT"
+        SKIP_INSTALL: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Bingr
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../Frameworks @executable_path/../../../../Frameworks"
+
   BingrTV:
     type: application
     platform: tvOS
@@ -206,8 +237,13 @@ targets:
     sources:
       - path: Shared
       - path: macOS
+      # build 175: widget "Bingr Radio" op de Mac (zenderlijst in de App Group, knoppen als App Intents in de app)
+      - path: iOS/Radio/RadioBridge174.swift
+      - path: iOS/Radio/RadioIntents.swift
     dependencies:
       - package: VLCKitSPM
+      # build 175: widget-extensie (Bingr Radio)
+      - target: BingrMacWidgets
     info:
       path: macOS/Info.plist
       properties:
@@ -252,6 +288,8 @@ targets:
         com.apple.developer.aps-environment: development
         # build 120: universele links uit e-mails van Bingr (https://bingr.online/titel/…)
         com.apple.developer.associated-domains: [applinks:bingr.online]
+        # build 175: dezelfde App Group als iPhone/iPad, gedeeld met de widget-extensie van de Mac
+        com.apple.security.application-groups: [group.nl.lrvdlinden.bingr]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: nl.lrvdlinden.bingr

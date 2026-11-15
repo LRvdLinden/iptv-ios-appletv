@@ -233,8 +233,8 @@ final class AppState: ObservableObject {
             guard store.profiles.isEmpty || store.activeProfileID != nil else { return }
             await self.playlists.select(src)
         }
-        #if os(iOS)
-        RadioBridge174.shared.start()   // build 174: widget "Bingr Radio" en de Live Activity
+        #if os(iOS) || os(macOS)
+        RadioBridge174.shared.start()   // build 174: widget "Bingr Radio" en de Live Activity; build 175: ook de Mac
         #endif
         StartDiagnostics.shared.mark("account")
         ProfileSync.shared.start()
