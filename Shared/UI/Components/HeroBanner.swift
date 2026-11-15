@@ -32,7 +32,9 @@ struct HeroBanner: View {
                 RemoteImage(url: poster, placeholder: title, maxPixel: 1100)
                     .frame(width: 330, height: 470).clipped()
                 // build 176: na 2 s de trailer zonder geluid over de poster (Instellingen > Voorvertoning)
+                #if !os(tvOS)
                 HeroPreview176(target: target).frame(width: 330, height: 470).clipped()
+                #endif
                 LinearGradient(colors: [.clear, .black.opacity(0.85)], startPoint: .center, endPoint: .bottom)
                 VStack(spacing: 10) {
                     Text(title.uppercased())
