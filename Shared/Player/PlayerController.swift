@@ -385,7 +385,16 @@ final class PlayerController: ObservableObject {
             // sporen zijn er meestal na een paar tellen; daarna niet meer ingrijpen (jouw eigen keuze blijft staan)
             if !engine.audioTracks.isEmpty || playingTicks > 12 { applyTrackPreferences() }
         }
-        if let s = sleepAt, Date() >= s { sleepAt = nil; pause() }
+        // build 173: slaaptimer (minuten, of na het programma bij live) en ondertitels even aan na terugspoelen
+        if sleep != .off, Player173.sleepDue(sleep, deadline: sleepAt, now: Date(),
+                                              titleEnded: isLive && (sleepProgramEnd.map { Date() >= $0 } ?? false)) {
+            fireSleep()
+        }
+        if tempSubtitles, Player173.rewindSubtitlesDone(position: currentTime, until: tempSubUntil, startedAt: tempSubFrom) {
+            tempSubtitles = false
+            engine.selectSubtitle(nil)
+            objectWillChange.send()
+        }
         // build 164: live: af en toe een stilstaand beeld voor de tv-gids (na ±4 s, daarna elke 5 minuten)
         if isLive && !isPreview && st == .playing, let cid = item.channelID {
             stillTicks += 1
@@ -484,7 +493,12 @@ final class PlayerController: ObservableObject {
 
     /// Spoelen. Bij live: binnen het HLS-venster, of via catch-up (timeshift).
     func seek(by seconds: Double) {
-        if !isLive { engine.jump(seconds); return }
+        if !isLive {
+            let before = currentTime
+            engine.jump(seconds)
+            if seconds < 0 { rewindSubtitles(jump: seconds, from: before) }   // build 173
+            return
+        }
         if let av = engine as? AVEngine, av.liveWindow > 30 { av.jump(seconds); return }
         guard let provider = catchupProvider else { return }
         let currentWall = timeshiftStart.map { $0.addingTimeInterval(currentTime) } ?? Date()
@@ -689,7 +703,72 @@ final class PlayerController: ObservableObject {
         saveProgress()
         if !isPreview { let it = item; Task { await TraktSync.shared.scrobble(.stop, item: it, progress: 1, watched: true) } }
         if !isPreview { StateSync.shared.playbackStopped(profile: playbackProfileID) }
+        // build 173: slaaptimer "Na deze aflevering": stoppen in plaats van door naar de volgende
+        if sleep == .endOfEpisode { fireSleep(); return }
         onFinished?()
+    }
+
+    // MARK: build 173: slaaptimer, vanaf het begin, ondertitels na terugspoelen
+
+    /// Slaaptimer: na deze aflevering / 30 / 60 / 90 minuten / uit (`sleepAt` = moment bij minuten)
+    @Published private(set) var sleep: Player173.Sleep = .off
+    /// Live met "na dit programma": einde van het programma volgens de gids
+    var sleepProgramEnd: Date?
+    /// Gezet door het spelerscherm: einde van het lopende programma (live, volgens de gids)
+    var sleepProgramEndProvider: (@MainActor () -> Date?)?
+    /// Slaaptimer afgegaan: het spelerscherm pauzeert, meldt de stream af en toont "Slaaptimer: gestopt"
+    var onSleep: (@MainActor () -> Void)?
+
+    func setSleep(_ s: Player173.Sleep, programEnd: Date? = nil) {
+        sleep = s
+        sleepAt = Player173.sleepDeadline(s, now: Date())
+        sleepProgramEnd = s == .endOfEpisode ? programEnd : nil
+    }
+
+    private func fireSleep() {
+        sleep = .off; sleepAt = nil; sleepProgramEnd = nil
+        if let f = onSleep { f() } else { pause() }
+    }
+
+    /// Kan deze zender terugkijken (catch-up van de server)?
+    var hasCatchup: Bool {
+        guard isLive, let p = catchupProvider else { return false }
+        return p(Date().addingTimeInterval(-600), Date()) != nil
+    }
+
+    /// Vanaf het begin van het lopende programma (terugkijken van de server), daarna Terug naar live met `goLive`.
+    @discardableResult
+    func startOver(from begin: Date) -> Bool {
+        guard isLive, let provider = catchupProvider, begin < Date(),
+              let u = provider(begin, Date().addingTimeInterval(3 * 3600)) else { return false }
+        timeshiftStart = begin
+        behindLive = Date().timeIntervalSince(begin)
+        pausedAt = nil
+        start(url: u)
+        return true
+    }
+
+    /// Ondertitels tijdelijk aan na kort terugspoelen (instelling Afspelen, standaard aan)
+    static let rewindSubtitlesKey = "player.rewindSubtitles"
+    static var rewindSubtitlesEnabled: Bool { UserDefaults.standard.object(forKey: rewindSubtitlesKey) as? Bool ?? true }
+    @Published private(set) var tempSubtitles = false
+    private var tempSubUntil: Double = 0
+    private var tempSubFrom: Double = 0
+
+    private func rewindSubtitles(jump: Double, from before: Double) {
+        guard !isLive, duration > 0 else { return }
+        if tempSubtitles { tempSubFrom = max(0, before + jump); return }   // al aan: tot hetzelfde punt
+        let on = engine.currentSubtitle != nil || hasExternalSubtitle
+        let tracks = engine.subtitleTracks
+        let wanted = [TrackPreferences.subtitle, Localizer.shared.language].filter { !$0.isEmpty && $0 != "off" }
+        let idx = Player173.subtitleTrack(tracks.map { ($0.lang?.isEmpty == false ? $0.lang! : $0.name) }, wanted: wanted)
+        guard Player173.rewindSubtitles(jump: jump, subtitlesOn: on, hasTrack: idx != nil, enabled: Self.rewindSubtitlesEnabled),
+              let i = idx else { return }
+        tempSubtitles = true
+        tempSubUntil = before
+        tempSubFrom = max(0, before + jump)
+        engine.selectSubtitle(tracks[i])
+        objectWillChange.send()
     }
 
     /// Na minstens een minuut kijken komt het in de kijkgeschiedenis van dit profiel.
@@ -850,6 +929,7 @@ final class PlayerController: ObservableObject {
         }
     }
     func selectSubtitle(_ t: MediaTrack?) {
+        tempSubtitles = false   // build 173: eigen keuze gaat voor
         // build 91: eigen keuze gaat voor: geen automatische ondertitels meer (ook niet als die nog onderweg zijn)
         subtitleCheck?.cancel(); subtitleCheck = nil
         autoSubtitlesFor = item.id

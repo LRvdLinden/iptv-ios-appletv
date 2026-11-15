@@ -194,7 +194,7 @@ struct OpenSubtitlesPanel: View {
     }
 }
 
-/// Snelheid, beeld, engine en slaaptimer.
+/// Snelheid, beeld, engine en slaaptimer (build 173: ondertitelgrootte in Audio en ondertitels).
 struct OptionsPanel: View {
     @ObservedObject var player: PlayerController
     @Environment(\.dismiss) private var dismiss
@@ -206,14 +206,6 @@ struct OptionsPanel: View {
                     Section(L("Speed")) {
                         ForEach([Float(0.75), 1, 1.25, 1.5, 2], id: \.self) { r in
                             check(r == 1 ? L("Normal") : "\(r.formatted())×", player.rate == r) { player.rate = r }
-                        }
-                    }
-                }
-                Section(L("Subtitle size")) {
-                    ForEach(SubtitleSize.allCases, id: \.self) { sz in
-                        check(sz.title, SubtitleSize.current == sz) {
-                            UserDefaults.standard.set(sz.rawValue, forKey: SubtitleSize.key)
-                            player.applySubtitleSize()
                         }
                     }
                 }
@@ -229,13 +221,9 @@ struct OptionsPanel: View {
                         Button(L("Try Apple player (HDR, Dolby Vision, AirPlay)")) { player.switchToApple(); dismiss() }
                     }
                 } header: { Text(L("Player engine")) }
-                Section(L("Sleep timer")) {
-                    ForEach([0, 15, 30, 45, 60, 90], id: \.self) { m in
-                        Button {
-                            player.sleepAt = m == 0 ? nil : Date().addingTimeInterval(Double(m) * 60)
-                        } label: { Text(m == 0 ? L("Off") : L("In %d minutes", m)) }
-                    }
-                }
+                // build 173: na deze aflevering / 30 / 60 / 90 minuten / uit, met aftellen (ondertitelgrootte staat nu
+                // in Audio en ondertitels)
+                SleepTimerSection173(player: player)
             }
             .navigationTitle(L("Options"))
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button(L("Done")) { dismiss() } } }

@@ -19,6 +19,8 @@ struct AppSettingsView: View {
     /// Build 145: "Servers laden bij openen" (per apparaat, niet gesynct)
     @AppStorage(StartLoad.key) private var startLoad = StartLoad.Mode.ask.rawValue
     @AppStorage("player.engine") private var engine = PlayerController.EngineChoice.auto.rawValue
+    /// Build 173: ondertitels even aan na kort terugspoelen (standaard aan)
+    @AppStorage(PlayerController.rewindSubtitlesKey) private var rewindSubtitles = true
     @AppStorage(SubtitleSize.key) private var subtitleSize = SubtitleSize.small.rawValue
     @AppStorage(TrackPreferences.audioKey) private var audioLanguage = ""
     @AppStorage(TrackPreferences.subtitleKey) private var subtitleLanguage = ""
@@ -484,6 +486,10 @@ struct AppSettingsView: View {
             }
             .pickerStyle(.menu)
             Toggle(L("Start with last channel"), isOn: $resumeLastChannel)
+            // build 173: kort terugspoelen (10–30 s) met ondertitels uit: tijdelijk aan tot je weer voorbij dat punt bent
+            Toggle(L("Subtitles after rewinding"), isOn: $rewindSubtitles)
+            Text(L("Rewind briefly and subtitles turn on until you're past that point again (when there's a track in your language)."))
+                .font(.caption).foregroundStyle(Theme.secondary)
             // build 164: "Live voorbeeld in de gids" (Altijd, Alleen wifi, Nooit); geldt ook voor het zendervoorbeeld
             Picker(L("Live preview in the guide"), selection: $guidePreview) {
                 ForEach(GuidePreviewMode164.allCases, id: \.rawValue) { Text(PlayerSettings.guidePreviewTitle($0)).tag($0.rawValue) }

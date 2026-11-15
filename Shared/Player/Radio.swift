@@ -29,6 +29,37 @@ final class RadioPlayer: ObservableObject {
     private final class Owner {}
     private let owner = Owner()
 
+    // MARK: build 173: slaaptimer (30 / 60 / 90 minuten / uit)
+
+    @Published private(set) var sleepAt: Date?
+    /// Slaaptimer afgegaan: de zender om met "Verder luisteren" weer te starten
+    @Published private(set) var sleptChannel: Channel?
+    private var sleepTask: Task<Void, Never>?
+
+    func setSleep(_ s: Player173.Sleep) {
+        sleepTask?.cancel(); sleepTask = nil
+        sleptChannel = nil
+        sleepAt = Player173.sleepDeadline(s, now: Date())
+        guard let at = sleepAt else { return }
+        sleepTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled, Date() < at {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+            }
+            guard !Task.isCancelled, let self else { return }
+            let c = self.channel
+            self.sleepAt = nil
+            // pauzeren en `stream_stop`: de stream komt vrij
+            self.stop()
+            self.sleptChannel = c
+        }
+    }
+
+    func continueAfterSleep() {
+        guard let c = sleptChannel else { return }
+        sleptChannel = nil
+        play(c)
+    }
+
     /// Zenders in de volgorde voor CarPlay en het scherm: favorieten bovenaan
     func stations() -> [Channel] {
         guard let s = service else { return [] }
@@ -116,6 +147,7 @@ final class RadioPlayer: ObservableObject {
 
     /// Stoppen. `release`: ook `stream_stop` (niet als een andere speler de stream net heeft overgenomen).
     func stop(release: Bool = true) {
+        if sleepAt != nil { sleepTask?.cancel(); sleepTask = nil; sleepAt = nil }   // build 173
         stopPlayer()
         channel = nil
         isPlaying = false
@@ -210,6 +242,25 @@ struct RadioMiniPlayer: View {
                         .font(.system(size: tvScaled(12))).foregroundStyle(Theme.secondary).lineLimit(1)
                 }
                 Spacer(minLength: 8)
+                // build 173: slaaptimer met aftellen
+                Menu {
+                    ForEach([Player173.Sleep.minutes(30), .minutes(60), .minutes(90), .off], id: \.code) { s in
+                        Button(SleepTimerSection173.title(s, live: true)) { radio.setSleep(s) }
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: radio.sleepAt == nil ? "moon.zzz" : "moon.zzz.fill")
+                        if let at = radio.sleepAt {
+                            TimelineView(.periodic(from: .now, by: 1)) { ctx in
+                                Text(Player173.countdown(at.timeIntervalSince(ctx.date))).monospacedDigit()
+                            }
+                            .font(.system(size: tvScaled(12)))
+                        }
+                    }
+                    .font(.system(size: tvScaled(16)))
+                    .frame(minWidth: tvScaled(40), minHeight: tvScaled(40))
+                }
+                .accessibilityLabel(L("Sleep timer"))
                 Button { radio.togglePlay() } label: {
                     Image(systemName: radio.isPlaying ? "pause.fill" : "play.fill").font(.system(size: tvScaled(20)))
                         .frame(width: tvScaled(40), height: tvScaled(40))
@@ -285,6 +336,23 @@ struct RadioView: View {
                 }
             }
             RadioMiniPlayer().padding(.bottom, tvScaled(16))
+            // build 173: slaaptimer afgegaan
+            if radio.channel == nil, let c = radio.sleptChannel {
+                HStack(spacing: tvScaled(12)) {
+                    Image(systemName: "moon.zzz.fill").foregroundStyle(Theme.secondary)
+                    Text(L("Sleep timer: stopped")).font(.system(size: tvScaled(15), weight: .semibold))
+                    Spacer(minLength: 8)
+                    Button { radio.continueAfterSleep() } label: {
+                        Label(L("Continue listening"), systemImage: "play.fill").font(.system(size: tvScaled(14), weight: .bold))
+                    }
+                    .plainTVButton()
+                    .accessibilityLabel(CategoryName.channel(c.name))
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, tvScaled(14)).padding(.vertical, tvScaled(10))
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: tvScaled(12)))
+                .padding(.horizontal, tvScaled(12)).padding(.bottom, tvScaled(16))
+            }
         }
         .background(Theme.bg.ignoresSafeArea())
         .preferredColorScheme(.dark)

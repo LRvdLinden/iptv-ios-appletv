@@ -71,7 +71,24 @@ struct PlayerScreen: View {
     @State private var locked = false
     #endif
 
-    enum Panel: String, Identifiable { case audioSubs, opensubs, options, cast, sources, rate, intro, alternatives; var id: String { rawValue } }
+    enum Panel: String, Identifiable {
+        case audioSubs, opensubs, options, cast, sources, rate, intro, alternatives
+        /// Build 173: zaplijst en afleveringen (net als Audio en ondertitels onderin over het beeld)
+        case zap, episodes
+        var id: String { rawValue }
+        /// Build 173: deze panelen openen onderin over het beeld (geen blad) en pauzeren niet
+        var isOverlay: Bool { self == .audioSubs || self == .zap || self == .episodes }
+    }
+    /// Build 173: vorige zender, dubbeltikken, vraag vanaf het begin, slaaptimer, afleveringen
+    @State private var prevChannel = Player173.PreviousChannel()
+    @State private var doubleTap = Player173.DoubleTap()
+    @State private var tapBadge: Double?
+    @State private var tapBadgeHide: Task<Void, Never>?
+    @State private var startOverPrompt: EPGProgram?
+    @State private var sleepStopped = false
+    @State private var catchupOK = false
+    @State private var episodeSeries: Series?
+    @State private var episodeList: [Episode] = []
 
     /// Teruggekomen uit beeld-in-beeld: de bestaande speler overnemen.
     private let reused: Bool
@@ -138,7 +155,8 @@ struct PlayerScreen: View {
             #endif
 
             #if os(tvOS)
-            if !showControls && streamLimit == nil && player.errorText == nil && !still.isActive { tvCatcher }
+            if !showControls && streamLimit == nil && player.errorText == nil && !still.isActive && !sleepStopped
+                && startOverPrompt == nil && !(panel?.isOverlay ?? false) { tvCatcher }
             // build 169: swipen over het touchoppervlak = voorbeeldpositie op de tijdbalk
             // build 170: aanraking stopt het uitrollen; ←/→ ingedrukt houden op de balk herhaalt met een vast ritme
             TVScrubPanListener(enabled: tvPanEnabled,
@@ -151,9 +169,20 @@ struct PlayerScreen: View {
                                onHoldEnded: { scrub.holdEnded(); userPoke() })
                 .frame(width: 0, height: 0).allowsHitTesting(false).accessibilityHidden(true)
             #endif
-            if showControls && streamLimit == nil && !still.isActive && !isLocked { controls.transition(.opacity) }
+            if showControls && streamLimit == nil && !still.isActive && !isLocked && !sleepStopped && !(panel?.isOverlay ?? false) {
+                controls.transition(.opacity)
+            }
 
-            if showSkipIntro, let end = marker?.introEnd {
+            // build 173: panelen onderin over het beeld (pauzeren niet)
+            if let p = panel, p.isOverlay, !isLocked { overlayPanel(p).zIndex(3) }
+            if let prog = startOverPrompt, panel == nil {
+                StartOverPrompt173(program: prog, onStartOver: { startOverPrompt = nil; startOver173() },
+                                   onLive: { startOverPrompt = nil; userPoke() })
+                    .transition(.opacity).zIndex(4)
+            }
+            if let b = tapBadge { doubleTapBadge(b).allowsHitTesting(false) }
+
+            if showSkipIntro, !tvBarHasPrimary, let end = marker?.introEnd {
                 skipIntroButton(end)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                     .padding(.trailing, tvScaled(40))
@@ -201,6 +230,8 @@ struct PlayerScreen: View {
 
             // build 171: "Kijk je nog?" / "Gepauzeerd"
             StillWatchingOverlay(model: still, onStop: { close() })
+            // build 173: slaaptimer afgegaan
+            if sleepStopped { SleepStopped173(onContinue: { continueAfterSleep() }, onClose: { close() }).zIndex(5) }
         }
         .animation(.easeInOut(duration: 0.25), value: showControls)
         .animation(.easeInOut(duration: 0.25), value: still.phase)
@@ -241,7 +272,7 @@ struct PlayerScreen: View {
                 tvFocus = .bar("timeline")
                 DispatchQueue.main.async { if canScrub { tvFocus = .bar("timeline") } }
             }
-            else if shown { tvFocus = .bar("play") }
+            else if shown { tvFocus = tvDefaultFocus }
             else if showSkipIntro { tvFocus = .bar("skipintro") }
             else if nextCountdown != nil { tvFocus = .bar("nextplay") }
             else { tvFocus = .catcher }
@@ -261,34 +292,33 @@ struct PlayerScreen: View {
             if f == .bar("timeline") { tvPreviewExpire?.cancel(); tvPreviewExpire = nil }
             else if scrub.isScrubbing { tvSchedulePreviewExpiry() }
         }
-        .onAppear { scrub.player = player; tvFocus = showControls ? .bar("play") : .catcher }
+        .onAppear { scrub.player = player; tvFocus = showControls ? tvDefaultFocus : .catcher }
         // intro overslaan: de knop krijgt de focus zolang de bediening verborgen is (zoals Netflix)
         .onChange(of: showSkipIntro) { _, v in
             if v && !showControls { tvFocus = .bar("skipintro") }
-            else if !v && tvFocus == .bar("skipintro") { tvFocus = showControls ? .bar("play") : .catcher }
+            else if !v && tvFocus == .bar("skipintro") { tvFocus = showControls ? tvDefaultFocus : .catcher }
         }
         // build 60: kaart "Volgende aflevering" ook bereikbaar met verborgen bediening (de vanger vangt alle pijltjes)
         .onChange(of: nextCountdown != nil) { _, v in
             if v && !showControls && !showSkipIntro { tvFocus = .bar("nextplay") }
             else if !v, case .bar(let id)? = tvFocus, id == "nextplay" || id == "nexthide" {
-                tvFocus = showControls ? .bar("play") : .catcher
+                tvFocus = showControls ? tvDefaultFocus : .catcher
             }
         }
         .onExitCommand {
-            if streamLimit != nil || still.isActive { close() }
+            if sleepStopped { close() }
+            else if startOverPrompt != nil { startOverPrompt = nil }
+            else if streamLimit != nil || still.isActive { close() }
             else if panel != nil { panel = nil }
             // build 169: Terug annuleert eerst de voorbeeldpositie (zonder spoelen); een tweede keer werkt zoals altijd
             else if scrub.isScrubbing { tvCancelPreview() }
             else if showControls { showControls = false } else { close() }
         }
         #endif
-        .sheet(item: $panel) { p in
+        .sheet(item: Binding(get: { panel.flatMap { $0.isOverlay ? nil : $0 } }, set: { panel = $0 })) { p in
             switch p {
-            case .audioSubs:
-                TracksPanel(player: player, versions: languageVersions) { v in
-                    panel = nil
-                    Task { await switchLanguage(to: v) }
-                }
+            case .audioSubs, .zap, .episodes:
+                EmptyView()   // build 173: onderin over het beeld, zie overlayPanel
             case .opensubs:
                 // build 157: OpenSubtitles is Lifetime (ondertitels uit de stream blijven gratis)
                 if EntitlementsService.shared.allows(.opensubtitles) { OpenSubtitlesPanel(player: player) }
@@ -327,12 +357,15 @@ struct PlayerScreen: View {
                 // build 164: uit het live voorbeeld van de gids: nu pas als gewone stream aanmelden
                 if PiPCenter.shared.takeHandoff(player) { adoptPreview() } else { attachStream() }
                 poke()
-            } else { await start(item) }
+            } else { await start(item, askStartOver: true) }
         }
         .task { setupStillWatching() }
         // aftiteling gemarkeerd: na het aftellen automatisch de volgende aflevering
         .onChange(of: nextCountdown) { _, v in
-            if v == 0, marker?.creditsStart != nil, let n = nextUp { playNext(n) }
+            if v == 0, marker?.creditsStart != nil, let n = nextUp {
+                // build 173: slaaptimer "na deze aflevering": niet door naar de volgende
+                if player.sleep == .endOfEpisode { player.setSleep(.off); sleepNow() } else { playNext(n) }
+            }
         }
         .onChange(of: player.notice) { _, n in
             if let n { flash(n); player.notice = nil }
@@ -357,15 +390,16 @@ struct PlayerScreen: View {
     private var tapLayer: some View {
         GeometryReader { geo in
             HStack(spacing: 0) {
+                // build 173: dubbeltik = 10 s; vaker tikken telt op (20, 30 s) met een kleine animatie
                 Color.clear.contentShape(Rectangle())
-                    .onTapGesture(count: 2) { if !player.isLive || player.canTimeshift { player.seek(by: -10); flash("−10 s"); userPoke() } }
-                    .onTapGesture { toggleControls() }
+                    .onTapGesture(count: 2) { doubleTapSeek(forward: false, taps: 2) }
+                    .onTapGesture { if doubleTapActive { doubleTapSeek(forward: false, taps: 1) } else { toggleControls() } }
                     .frame(width: geo.size.width * 0.35)
                 Color.clear.contentShape(Rectangle())
                     .onTapGesture { toggleControls() }
                 Color.clear.contentShape(Rectangle())
-                    .onTapGesture(count: 2) { if !player.isLive || player.canTimeshift { player.seek(by: 10); flash("+10 s"); userPoke() } }
-                    .onTapGesture { toggleControls() }
+                    .onTapGesture(count: 2) { doubleTapSeek(forward: true, taps: 2) }
+                    .onTapGesture { if doubleTapActive { doubleTapSeek(forward: true, taps: 1) } else { toggleControls() } }
                     .frame(width: geo.size.width * 0.35)
             }
         }
@@ -446,23 +480,28 @@ struct PlayerScreen: View {
                 Spacer()
                 #endif
 
-                VStack(spacing: tvScaled(10)) {
-                    if !player.isLive { timeline }
+                // build 173: tv zonder knoppen voor afspelen/pauze en terug (die zitten op de afstandsbediening); de
+                // knoppen bij elkaar linksonder boven een iets grotere tijdbalk, de belangrijkste knop het grootst
+                VStack(alignment: .leading, spacing: tvScaled(10)) {
+                    #if !os(tvOS)
+                    if player.isLive { liveInfo } else { timeline }
+                    #endif
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: tvScaled(26)) {
-                            #if os(tvOS)
-                            barButton(player.isPlaying ? "pause.fill" : "play.fill", player.isPlaying ? L("Pause") : L("Play"), id: "play") { player.togglePlay() }
-                            if !player.isLive || player.canTimeshift {
-                                barButton("gobackward.10", "−10") { player.seek(by: -10) }
-                                barButton("goforward.30", "+30") { player.seek(by: 30) }
-                            }
+                            if let p = primary173, Self.showsPrimaryInBar(p) { primaryButton(p) }
                             if player.isLive {
-                                barButton("chevron.up", L("Previous channel")) { zap(-1) }
-                                barButton("chevron.down", L("Next channel")) { zap(1) }
+                                barButton("list.bullet.rectangle", L("Zap"), id: "zap") { panel = .zap }
+                                if prevChannel.previous != nil {
+                                    barButton("arrow.uturn.backward", L("Previous channel"), id: "prevch") { previousChannel() }
+                                }
+                                if canStartOver173 && primary173 != .startOver {
+                                    barButton("backward.end.fill", L("From the start"), id: "startover") { startOver173() }
+                                }
                             }
-                            #endif
-                            barButton("speaker.wave.2.bubble", L("Audio & subtitles")) { panel = .audioSubs }
-                            if !player.isLive { barButton("captions.bubble", "OpenSubtitles") { panel = .opensubs } }
+                            barButton("speaker.wave.2.bubble", L("Audio & subtitles"), id: "audiosubs") { panel = .audioSubs }
+                            if player.item.type == .episode {
+                                barButton("rectangle.stack", L("Episodes"), id: "episodes") { openEpisodes() }
+                            }
                             if !stremioChoices.isEmpty { barButton("list.bullet", L("Sources")) { panel = .sources } }
                             if player.item.type == .episode && markerKey != nil {
                                 barButton("forward.frame", L("Mark intro here")) { panel = .intro }
@@ -480,14 +519,24 @@ struct PlayerScreen: View {
                             #endif
                             barButton("slider.horizontal.3", L("Options")) { panel = .options }
                             if let s = player.sleepAt {
-                                Label(s.formatted(date: .omitted, time: .shortened), systemImage: "moon.zzz.fill")
-                                    .font(.system(size: tvScaled(12))).foregroundStyle(Theme.secondary)
+                                TimelineView(.periodic(from: .now, by: 1)) { ctx in
+                                    Label(Player173.countdown(s.timeIntervalSince(ctx.date)), systemImage: "moon.zzz.fill")
+                                        .font(.system(size: tvScaled(12)).monospacedDigit()).foregroundStyle(Theme.secondary)
+                                }
+                            } else if player.sleep == .endOfEpisode {
+                                Image(systemName: "moon.zzz.fill").font(.system(size: tvScaled(12))).foregroundStyle(Theme.secondary)
                             }
                         }
                         #if os(tvOS)
                         .padding(.vertical, 20)
                         #endif
                     }
+                    #if os(tvOS)
+                    .focusSection()
+                    #endif
+                    #if os(tvOS)
+                    if player.isLive { liveInfo } else { timeline }
+                    #endif
                 }
                 .padding(.horizontal, Theme.edge).padding(.bottom, tvScaled(18))
             }
@@ -525,6 +574,23 @@ struct PlayerScreen: View {
             #endif
             Text("-" + PlayerController.format(player.duration * (1 - (scrubbing ?? player.position))))
                 .font(.system(size: tvScaled(12)).monospacedDigit()).foregroundStyle(Theme.secondary)
+            // build 173: eindtijd (rekening houdend met de afspeelsnelheid)
+            if let end = Player173.endsAt(now: Date(), remaining: player.duration * (1 - player.position), rate: Double(player.rate)) {
+                Text(L("Ends at %@", end.formatted(date: .omitted, time: .shortened)))
+                    .font(.system(size: tvScaled(12)).monospacedDigit()).foregroundStyle(Theme.secondary).lineLimit(1).fixedSize()
+            }
+        }
+    }
+
+    /// Build 173: live: wat er nu op is, met voortgang en de eindtijd volgens de gids
+    @ViewBuilder private var liveInfo: some View {
+        if let p = currentProgram {
+            HStack(spacing: tvScaled(12)) {
+                Text(CategoryName.display(p.title)).font(.system(size: tvScaled(13), weight: .semibold)).lineLimit(1)
+                ProgressBar(value: p.progress).frame(height: tvScaled(4)).clipShape(Capsule())
+                Text(L("Ends at %@", p.end.formatted(date: .omitted, time: .shortened)))
+                    .font(.system(size: tvScaled(12)).monospacedDigit()).foregroundStyle(Theme.secondary).lineLimit(1).fixedSize()
+            }
         }
     }
 
@@ -607,7 +673,7 @@ struct PlayerScreen: View {
         let focused = tvFocus == .bar("timeline")
         return Button { tvTimelineSelect() } label: {
             TVTimelineBarContent(scrub: scrub, position: player.position, duration: player.duration, focused: focused)
-                .frame(height: 34)
+                .frame(height: 46)   // build 173: iets groter
                 .contentShape(Rectangle())
         }
         .buttonStyle(InvisibleTVButtonStyle())
@@ -658,11 +724,245 @@ struct PlayerScreen: View {
     }
     #endif
 
+    // MARK: build 173: bediening in de speler
+
+    /// De belangrijkste knop van dit moment (Intro overslaan, Volgende aflevering, Terug naar live, Vanaf het begin)
+    private var primary173: Player173.Primary? {
+        Player173.primary(inIntro: showSkipIntro, nextEpisode: nextCountdown != nil, isLive: player.isLive,
+                          canStartOver: canStartOver173, behindLive: player.behindLive)
+    }
+
+    /// Op de tv staat de belangrijkste knop altijd vooraan in de balk; elders alleen Vanaf het begin (Intro overslaan en
+    /// Volgende aflevering hebben daar hun eigen knop boven het beeld, Terug naar live het LIVE-label)
+    private static func showsPrimaryInBar(_ p: Player173.Primary) -> Bool {
+        #if os(tvOS)
+        return true
+        #else
+        return p == .startOver
+        #endif
+    }
+
+    /// Tv: met de bediening in beeld staat Intro overslaan in de balk (niet ook nog los boven het beeld)
+    private var tvBarHasPrimary: Bool {
+        #if os(tvOS)
+        return showControls && primary173 == .skipIntro
+        #else
+        return false
+        #endif
+    }
+
+    private func primaryTitle(_ p: Player173.Primary) -> (String, String) {
+        switch p {
+        case .skipIntro: return (L("Skip intro"), "forward.fill")
+        case .nextEpisode: return (L("Next episode"), "forward.end.fill")
+        case .startOver: return (L("From the start"), "backward.end.fill")
+        case .goLive: return (L("Back to live"), "dot.radiowaves.left.and.right")
+        }
+    }
+
+    private func runPrimary(_ p: Player173.Primary) {
+        switch p {
+        case .skipIntro: if let end = marker?.introEnd { player.seek(toSeconds: end); flash(L("Intro skipped")) }
+        case .nextEpisode: if let n = nextUp { playNext(n) }
+        case .startOver: startOver173()
+        case .goLive: player.goLive(); flash(L("LIVE"))
+        }
+        userPoke()
+    }
+
+    /// Grote knop vooraan (tv: wit, eerste focus)
+    @ViewBuilder
+    private func primaryButton(_ p: Player173.Primary) -> some View {
+        let (title, icon) = primaryTitle(p)
+        #if os(tvOS)
+        Button { runPrimary(p) } label: {
+            Label(title, systemImage: icon).font(.system(size: 28, weight: .bold))
+                .padding(.horizontal, 28).padding(.vertical, 14)
+                .foregroundStyle(.black)
+                .background(.white, in: RoundedRectangle(cornerRadius: 12))
+        }
+        .buttonStyle(TVLiftStyle(scale: 1.08))
+        .focused($tvFocus, equals: .bar("primary"))
+        #else
+        Button { runPrimary(p) } label: {
+            Label(title, systemImage: icon).font(.system(size: 14, weight: .bold))
+                .padding(.horizontal, 14).padding(.vertical, 8)
+                .foregroundStyle(.black)
+                .background(.white, in: Capsule())
+        }
+        .buttonStyle(.plain)
+        #endif
+    }
+
+    #if os(tvOS)
+    /// Eerste focus als de bediening verschijnt: de belangrijkste knop, anders de tijdbalk, anders Zappen
+    private var tvDefaultFocus: TVField {
+        if primary173 != nil { return .bar("primary") }
+        if canScrub { return .bar("timeline") }
+        if player.isLive { return .bar("zap") }
+        return .bar("audiosubs")
+    }
+    #endif
+
+    /// Wat er nu op de zender is (volgens de gids)
+    private var currentProgram: EPGProgram? {
+        guard player.isLive, let cid = player.item.channelID,
+              let c = playlists.library.channels.first(where: { $0.id == cid }) else { return nil }
+        return playlists.library.nowPlaying(c)
+    }
+
+    private var canStartOver173: Bool {
+        Player173.canStartOver(hasCatchup: catchupOK, programStart: currentProgram?.start, now: Date(), behindLive: player.behindLive)
+    }
+
+    /// Vanaf het begin van het lopende programma (terugkijken van de server; daarna Terug naar live)
+    private func startOver173() {
+        guard let p = currentProgram else { return }
+        if player.startOver(from: p.start) { flash(L("From the start")) }
+        userPoke()
+    }
+
+    /// Eén tik terug naar de vorige zender (en weer terug)
+    private func previousChannel() {
+        guard let id = prevChannel.previous, let c = playlists.library.channels.first(where: { $0.id == id }) else { return }
+        still.interaction()
+        zapTask?.cancel()
+        zapTarget = nil
+        showBanner(c, pending: false)
+        Task { await tune(c) }
+    }
+
+    /// Zaplijst: favorieten, dan de huidige categorie, dan de rest (verborgen zenders en kinderprofiel: al gefilterd)
+    private var zapChannels: [Channel] {
+        let all = uniqueByID(playlists.library.channels.filter { !Radio171.isRadio(flag: $0.radio, group: $0.group) })
+        let pid = playlists.source?.id
+        let store = CloudStore.shared
+        let group = all.first { $0.id == player.item.channelID }?.group
+        let fav = all.map { c in (c.sourceID ?? pid).map { store.isFavorite($0, c.id) } ?? false }
+        return Player173.zapOrder(groups: all.map(\.group), favorite: fav, currentGroup: group).map { all[$0] }
+    }
+
+    @ViewBuilder
+    private func overlayPanel(_ p: Panel) -> some View {
+        switch p {
+        case .audioSubs:
+            AudioSubsPanel173(player: player, versions: languageVersions,
+                              onSwitch: { v in panel = nil; Task { await switchLanguage(to: v) } },
+                              onOpenSubtitles: { panel = .opensubs },
+                              onClose: { panel = nil })
+        case .zap:
+            ZapPanel173(channels: zapChannels, currentID: player.item.channelID,
+                        nowPlaying: { playlists.library.nowPlaying($0) },
+                        onPick: { c in
+                            panel = nil
+                            guard c.id != player.item.channelID else { return }
+                            zapTask?.cancel(); zapTarget = nil
+                            showBanner(c, pending: false)
+                            Task { await tune(c) }
+                        },
+                        onClose: { panel = nil })
+        case .episodes:
+            if let s = episodeSeries {
+                EpisodesPanel173(series: s, episodes: episodeList, currentID: player.item.id,
+                                 onPick: { e in
+                                     panel = nil
+                                     guard e.id != player.item.id else { return }
+                                     playNext(Playables.episode(e, of: s, imdb: player.item.imdbID))
+                                 },
+                                 onClose: { panel = nil })
+            } else {
+                BottomPanel173(title: L("Episodes"), onClose: { panel = nil }) { ProgressView().tint(.white) }
+            }
+        default:
+            EmptyView()
+        }
+    }
+
+    /// Afleveringen van deze serie ophalen en het paneel openen (de speler blijft open)
+    private func openEpisodes() {
+        panel = .episodes
+        let it = player.item
+        guard episodeSeries?.id != it.seriesID || episodeList.isEmpty else { return }
+        let lib = playlists.library
+        guard let s = lib.series.first(where: { $0.id == it.seriesID })
+                ?? lib.series.first(where: { $0.episodes.contains { $0.id == it.id } }) else { return }
+        Task {
+            let eps = await playlists.episodes(for: s).sorted { ($0.season, $0.number) < ($1.season, $1.number) }
+            episodeSeries = s
+            episodeList = eps
+        }
+    }
+
+    // MARK: build 173: dubbeltikken
+
+    private var doubleTapActive: Bool { doubleTap.active(at: Date().timeIntervalSinceReferenceDate) }
+
+    private func doubleTapSeek(forward: Bool, taps: Int) {
+        guard !player.isLive || player.canTimeshift else { toggleControls(); return }
+        still.interaction()
+        var step = 0.0
+        for _ in 0..<(taps == 2 && doubleTapActive ? 2 : 1) {
+            step += doubleTap.tap(forward: forward, at: Date().timeIntervalSinceReferenceDate).delta
+        }
+        player.seek(by: step)
+        withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) { tapBadge = doubleTap.total }
+        tapBadgeHide?.cancel()
+        tapBadgeHide = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 900_000_000)
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeOut(duration: 0.25)) { tapBadge = nil }
+        }
+    }
+
+    private func doubleTapBadge(_ total: Double) -> some View {
+        let forward = total > 0
+        return HStack(spacing: 6) {
+            if !forward { Image(systemName: "backward.fill") }
+            Text("\(Int(abs(total))) s").monospacedDigit()
+            if forward { Image(systemName: "forward.fill") }
+        }
+        .font(.system(size: 17, weight: .bold))
+        .foregroundStyle(.white)
+        .padding(.horizontal, 16).padding(.vertical, 10)
+        .background(.black.opacity(0.55), in: Capsule())
+        .scaleEffect(1.0 + min(abs(total) / 10 - 1, 3) * 0.06)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: forward ? .trailing : .leading)
+        .padding(.horizontal, 48)
+        .transition(.scale.combined(with: .opacity))
+        .id(forward)
+    }
+
+    // MARK: build 173: slaaptimer
+
+    /// Slaaptimer afgegaan: pauzeren, de stream afmelden (`stream_stop`, zoals bij "Kijk je nog?") en het scherm
+    /// "Slaaptimer: gestopt" met Verder kijken.
+    private func sleepNow() {
+        panel = nil
+        showControls = false
+        player.pause()
+        StreamSession.shared.idleSuspend(owner: player)
+        sleepStopped = true
+    }
+
+    private func continueAfterSleep() {
+        sleepStopped = false
+        if player.position >= 0.999, let n = nextUp { playNext(n); return }
+        if StreamSession.shared.isOwner(player) && StreamSession.shared.idlePaused {
+            StreamSession.shared.idleResume(owner: player)
+        } else {
+            player.resume()
+        }
+        userPoke()
+    }
+
     // MARK: logica
 
     /// Callbacks die naar dit scherm verwijzen (ook na terugkeer uit beeld-in-beeld opnieuw zetten).
     private func bind(_ it: PlayableItem) {
         player.onEnterPiP = { dismiss() }
+        // build 173: slaaptimer
+        player.onSleep = { sleepNow() }
+        player.sleepProgramEndProvider = { currentProgram?.end }
         // build 59: ondertitels van OpenSubtitles op de achtergrond (het afspelen wacht hier niet op)
         player.onNeedSubtitles = { lang in
             let current = player.item
@@ -683,8 +983,9 @@ struct PlayerScreen: View {
         }
     }
 
-    private func start(_ it: PlayableItem) async {
+    private func start(_ it: PlayableItem, askStartOver: Bool = false) async {
         still.programmatic()   // build 171: geen bediening
+        startOverPrompt = nil
         PlaybackTiming.mark("player screen")
         player.prepareNew()
         player.item = it
@@ -708,6 +1009,10 @@ struct PlayerScreen: View {
         } else {
             player.catchupProvider = nil
         }
+        // build 173: terugkijken mogelijk (knop Vanaf het begin), vorige zender bijhouden
+        catchupOK = player.hasCatchup
+        if it.type == .live, let cid = it.channelID { prevChannel.tuned(cid) }
+        if askStartOver { askStartOverIfRunning() }
         if it.type != .live, versionsFor != it.id {
             versionsFor = it.id
             languageVersions = []
@@ -752,6 +1057,18 @@ struct PlayerScreen: View {
         let eps = await playlists.episodes(for: s).sorted { ($0.season, $0.number) < ($1.season, $1.number) }
         guard player.item.id == it.id, let i = eps.firstIndex(where: { $0.id == it.id }), i + 1 < eps.count else { return }
         nextUp = Playables.episode(eps[i + 1], of: s, imdb: it.imdbID)
+    }
+
+    /// Build 173: programma al bezig en terugkijken kan: vragen "Vanaf het begin" of "Live kijken" (live speelt alvast;
+    /// zonder antwoord na 12 s blijft het live). Zonder terugkijken geen vraag.
+    private func askStartOverIfRunning() {
+        guard player.isLive, catchupOK, let p = currentProgram,
+              Player173.askStartOver(hasCatchup: true, programStart: p.start, programEnd: p.end, now: Date()) else { return }
+        startOverPrompt = p
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 12_000_000_000)
+            if startOverPrompt?.id == p.id { withAnimation { startOverPrompt = nil } }
+        }
     }
 
     private func playNext(_ n: PlayableItem) {
@@ -924,6 +1241,12 @@ struct PlayerScreen: View {
     private func adoptPreview() {
         let it = player.item
         registerStream(it)
+        defer {
+            // build 173: zoals bij een gewone start (uit de gids volledig scherm)
+            catchupOK = player.hasCatchup
+            if let cid = it.channelID { prevChannel.tuned(cid) }
+            askStartOverIfRunning()
+        }
         if let u = player.url { player.liveURL = u }
         CrossServer.shared.notePlayed(it)
         if it.type == .live, let cid = it.channelID {
@@ -1150,7 +1473,7 @@ struct PlayerScreen: View {
         let p = player
         still.canAsk = { [weak p] in
             guard let p else { return false }
-            return p.errorText == nil && !p.inPiP && !p.dismissed && streamLimit == nil
+            return p.errorText == nil && !p.inPiP && !p.dismissed && streamLimit == nil && !sleepStopped
         }
         still.onTimeout = {
             // beeld echt stoppen en `stream_stop` (zoals naar de achtergrond); zonder aangemelde stream alleen pauzeren
