@@ -1,5 +1,144 @@
 [
  {
+  "build": 171,
+  "version": "1.0.7",
+  "date": "2026-11-15",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web"
+    ],
+    "nl": "Kijk je nog?: na 3 afleveringen of een paar uur zonder bediening pauzeert Bingr, zodat je stream vrijkomt (in te stellen bij Afspelen)",
+    "en": "Are you still watching?: after 3 episodes or a few hours without input Bingr pauses, so your stream is released (set it in Playback)"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "android"
+    ],
+    "nl": "Bediening vergrendelen in de speler; houd het slot vast om te ontgrendelen",
+    "en": "Lock the controls in the player; hold the lock to unlock"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web"
+    ],
+    "nl": "Zenders verbergen en films of series blokkeren per profiel, ook voor een kinderprofiel achter de pincode",
+    "en": "Hide channels and block movies or series per profile, also for a kids profile behind the PIN"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web"
+    ],
+    "nl": "Categorieën: filter per land of regio, favoriete categorieën vastpinnen en verbergen",
+    "en": "Categories: filter by country or region, pin and hide favorite categories"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "Radio: luister naar de radiozenders van je server, ook op de achtergrond en vanaf het vergrendelscherm (CarPlay volgt binnenkort)",
+    "en": "Radio: listen to the radio stations of your server, also in the background and from the lock screen (CarPlay coming soon)"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "android",
+     "androidtv"
+    ],
+    "nl": "Radio met mini-speler, op de achtergrond en in Android Auto (buiten de Play Store: zet Onbekende bronnen aan in de ontwikkelaarsopties van Android Auto)",
+    "en": "Radio with a mini player, in the background and in Android Auto (outside the Play Store: turn on Unknown sources in the Android Auto developer settings)"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "android"
+    ],
+    "nl": "Downloaden ook van HLS-streams, met Alleen via wifi; een download afspelen telt niet meer als stream",
+    "en": "Download HLS streams too, with Wi-Fi only; playing a download no longer counts as a stream"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web"
+    ],
+    "nl": "Te veel streams of apparaten: stop de stream op een ander apparaat met één tik, en de langst ongebruikte apparaten staan bovenaan",
+    "en": "Too many streams or devices: stop the stream on another device with one tap, and the longest unused devices come first"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Te veel apparaten of streams: laatst actief, wat er speelt en stoppen op een ander apparaat",
+    "en": "Too many devices or streams: last active, what's playing and stopping on another device"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web"
+    ],
+    "nl": "Eigen crashrapporten zonder persoonsgegevens, uit te zetten bij Privacy",
+    "en": "Own crash reports without personal data, can be turned off under Privacy"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Eigen crashrapporten, zonder derde partij: opgeschoond en na 90 dagen verwijderd",
+    "en": "Own crash reports without a third party: cleaned up and deleted after 90 days"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Homepage: Radio, ook in de auto, en Downloaden en offline kijken",
+    "en": "Homepage: Radio, also in the car, and Download and watch offline"
+   }
+  ]
+ },
+ {
   "build": 170,
   "version": "1.0.6",
   "date": "2026-11-13",

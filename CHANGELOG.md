@@ -4,6 +4,50 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.7 · Build 171
+_15 november 2026_
+
+### iOS, iPadOS en Android
+
+**Nieuw**
+
+- Bediening vergrendelen in de speler; houd het slot vast om te ontgrendelen
+
+### iOS, iPadOS, tvOS en macOS
+
+**Nieuw**
+
+- Radio: luister naar de radiozenders van je server, ook op de achtergrond en vanaf het vergrendelscherm (CarPlay volgt binnenkort)
+
+### iOS, iPadOS, tvOS, macOS, Android, Android TV en Website
+
+**Nieuw**
+
+- Kijk je nog?: na 3 afleveringen of een paar uur zonder bediening pauzeert Bingr, zodat je stream vrijkomt (in te stellen bij Afspelen)
+- Zenders verbergen en films of series blokkeren per profiel, ook voor een kinderprofiel achter de pincode
+- Eigen crashrapporten zonder persoonsgegevens, uit te zetten bij Privacy
+
+**Verbeterd**
+
+- Categorieën: filter per land of regio, favoriete categorieën vastpinnen en verbergen
+- Te veel streams of apparaten: stop de stream op een ander apparaat met één tik, en de langst ongebruikte apparaten staan bovenaan
+
+### Website
+
+**Nieuw**
+
+- Homepage: Radio, ook in de auto, en Downloaden en offline kijken
+
+### Server
+
+**Nieuw**
+
+- Eigen crashrapporten, zonder derde partij: opgeschoond en na 90 dagen verwijderd
+
+**Verbeterd**
+
+- Te veel apparaten of streams: laatst actief, wat er speelt en stoppen op een ander apparaat
+
 ## Versie 1.0.6 · Build 170
 _13 november 2026_
 
