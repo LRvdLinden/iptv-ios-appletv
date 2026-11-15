@@ -633,6 +633,8 @@ final class ReminderCenter: ObservableObject {
         // build 176: release → de detailpagina (titel-link) in plaats van een zender
         if let link = r.releaseLink?.shareURL(scheme: "bingr") { info["deeplink"] = link.absoluteString }
         content.userInfo = info
+        // build 178: logo van de club (of competitie) als bijlage, alleen als het al in de cache staat
+        if r.isSport, let logo = await SportLogoAttachment.make(r) { content.attachments = [logo] }
         let fire = max(r.notifyAt.timeIntervalSinceNow, 1)
         let req = UNNotificationRequest(identifier: r.id, content: content,
                                         trigger: UNTimeIntervalNotificationTrigger(timeInterval: fire, repeats: false))

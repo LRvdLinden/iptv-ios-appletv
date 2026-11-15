@@ -1,0 +1,703 @@
+{
+  "_": "Build 178 (sport-logo's): gedeelde testgevallen voor Apple (Shared/Sport/SportLogos178.swift, tools/selftest), Android (SportLogos178Logic.kt, tools/test) en de webspeler (web/js/sportlogos.js, tools/test/sportlogos_test.js). Bron: iptv-ios-appletv/docs/sportlogos_cases.json; kopieën niet los aanpassen.",
+  "keys": [
+    [
+      "FC Twente",
+      [
+        "fctwente",
+        "twente"
+      ]
+    ],
+    [
+      "AFC Ajax",
+      [
+        "afcajax",
+        "ajax"
+      ]
+    ],
+    [
+      "Ajax",
+      [
+        "ajax"
+      ]
+    ],
+    [
+      "NL: PSV HD",
+      [
+        "psv"
+      ]
+    ],
+    [
+      "Bayern München",
+      [
+        "bayernmunchen"
+      ]
+    ],
+    [
+      "Paris Saint-Germain",
+      [
+        "parissaintgermain"
+      ]
+    ],
+    [
+      "The Strongest",
+      [
+        "thestrongest",
+        "strongest"
+      ]
+    ],
+    [
+      "Go Ahead Eagles",
+      [
+        "goaheadeagles"
+      ]
+    ],
+    [
+      "Fenerbahçe SK",
+      [
+        "fenerbahcesk",
+        "fenerbahce"
+      ]
+    ],
+    [
+      "Heracles Almelo (NL)",
+      [
+        "heraclesalmelo"
+      ]
+    ],
+    [
+      "FC",
+      [
+        "fc"
+      ]
+    ],
+    [
+      "Real Madrid CF",
+      [
+        "realmadridcf",
+        "realmadrid"
+      ]
+    ],
+    [
+      "Borussia Mönchengladbach",
+      [
+        "borussiamonchengladbach"
+      ]
+    ]
+  ],
+  "matchIndex": {
+    "ajax": "https://x/ajax.png",
+    "afcajax": "https://x/ajax.png",
+    "heraclesalmelo": "https://x/her.png",
+    "psveindhoven": "https://x/psv.png",
+    "psv": "https://x/psv.png",
+    "manchesterunited": "https://x/mu.png",
+    "manchestercity": "https://x/mc.png",
+    "twente": "https://x/twente.png",
+    "fctwente": "https://x/twente.png"
+  },
+  "match": [
+    [
+      "Ajax",
+      "https://x/ajax.png"
+    ],
+    [
+      "AFC Ajax",
+      "https://x/ajax.png"
+    ],
+    [
+      "Heracles",
+      "https://x/her.png"
+    ],
+    [
+      "Manchester",
+      null
+    ],
+    [
+      "FC Twente Enschede",
+      "https://x/twente.png"
+    ],
+    [
+      "PSV",
+      "https://x/psv.png"
+    ],
+    [
+      "Feyenoord",
+      null
+    ],
+    [
+      "Tw",
+      null
+    ]
+  ],
+  "buildIndex": {
+    "teams": [
+      {
+        "names": [
+          "AFC Ajax",
+          "Ajax",
+          "Amsterdam"
+        ],
+        "logo": "https://a.espncdn.com/i/teamlogos/soccer/500/139.png"
+      },
+      {
+        "names": [
+          "PSV Eindhoven",
+          "PSV"
+        ],
+        "logo": "http://insecure/psv.png"
+      },
+      {
+        "names": [
+          "Ajax Cape Town",
+          "Ajax"
+        ],
+        "logo": "https://x/act.png"
+      },
+      {
+        "names": [
+          "FC Utrecht",
+          "Utrecht"
+        ],
+        "logo": " https://x/utrecht.png "
+      }
+    ],
+    "expect": {
+      "afcajax": "https://a.espncdn.com/i/teamlogos/soccer/500/139.png",
+      "ajax": "https://a.espncdn.com/i/teamlogos/soccer/500/139.png",
+      "amsterdam": "https://a.espncdn.com/i/teamlogos/soccer/500/139.png",
+      "ajaxcapetown": "https://x/act.png",
+      "fcutrecht": "https://x/utrecht.png",
+      "utrecht": "https://x/utrecht.png"
+    }
+  },
+  "sportsDBThumb": [
+    [
+      "https://r2.thesportsdb.com/images/media/team/badge/abc.png",
+      "https://r2.thesportsdb.com/images/media/team/badge/abc.png/small"
+    ],
+    [
+      "https://x/badge.png/small",
+      "https://x/badge.png/small"
+    ],
+    [
+      "http://x/badge.png",
+      null
+    ],
+    [
+      "",
+      null
+    ]
+  ],
+  "sportsDBSport": [
+    [
+      "football",
+      "Soccer"
+    ],
+    [
+      "basketball",
+      "Basketball"
+    ],
+    [
+      "americanfootball",
+      "American Football"
+    ],
+    [
+      "icehockey",
+      "Ice Hockey"
+    ],
+    [
+      "other",
+      "Soccer"
+    ]
+  ],
+  "leagueSlug": [
+    [
+      "eredivisie",
+      "eredivisie"
+    ],
+    [
+      "kkd",
+      "keuken-kampioen-divisie"
+    ],
+    [
+      "knvb-beker",
+      "beker"
+    ],
+    [
+      "champions-league",
+      "champions-league"
+    ],
+    [
+      "conference-league",
+      "uefa-conference-league"
+    ],
+    [
+      "laliga",
+      "primera-division"
+    ],
+    [
+      "wk",
+      "fifa-world-cup-2026"
+    ],
+    [
+      "ek",
+      null
+    ],
+    [
+      "pdc",
+      null
+    ],
+    [
+      "atp",
+      null
+    ],
+    [
+      "formula-1",
+      "formula-1"
+    ],
+    [
+      "nhl",
+      null
+    ],
+    [
+      "onbekend",
+      null
+    ],
+    [
+      "",
+      null
+    ]
+  ],
+  "site": [
+    [
+      "eredivisie",
+      "eredivisie.nl"
+    ],
+    [
+      "kkd",
+      "keukenkampioendivisie.nl"
+    ],
+    [
+      "knvb-beker",
+      "knvb.nl"
+    ],
+    [
+      "champions-league",
+      "uefa.com"
+    ],
+    [
+      "conference-league",
+      "uefa.com"
+    ],
+    [
+      "laliga",
+      "laliga.com"
+    ],
+    [
+      "wk",
+      "fifa.com"
+    ],
+    [
+      "ek",
+      "uefa.com"
+    ],
+    [
+      "pdc",
+      "pdc.tv"
+    ],
+    [
+      "atp",
+      "atptour.com"
+    ],
+    [
+      "formula-1",
+      "formula1.com"
+    ],
+    [
+      "nhl",
+      "nhl.com"
+    ],
+    [
+      "onbekend",
+      null
+    ],
+    [
+      "",
+      null
+    ]
+  ],
+  "competitionURLs": [
+    [
+      "eredivisie",
+      false,
+      [
+        "https://maak-agenda.nl/images/leagues/eredivisie.png",
+        "https://www.google.com/s2/favicons?domain=eredivisie.nl&sz=128"
+      ]
+    ],
+    [
+      "eredivisie",
+      true,
+      [
+        "https://www.google.com/s2/favicons?domain=eredivisie.nl&sz=128",
+        "https://maak-agenda.nl/images/leagues/eredivisie.png"
+      ]
+    ],
+    [
+      "ek",
+      false,
+      [
+        "https://www.google.com/s2/favicons?domain=uefa.com&sz=128"
+      ]
+    ],
+    [
+      "nhl",
+      true,
+      [
+        "https://www.google.com/s2/favicons?domain=nhl.com&sz=128"
+      ]
+    ],
+    [
+      "onbekend",
+      false,
+      []
+    ]
+  ],
+  "espnLeagues": [
+    [
+      "football",
+      "eredivisie",
+      [
+        "ned.1",
+        "ned.2"
+      ]
+    ],
+    [
+      "football",
+      "premier-league",
+      [
+        "eng.1",
+        "eng.2"
+      ]
+    ],
+    [
+      "football",
+      "",
+      [
+        "ned.1",
+        "eng.1",
+        "esp.1",
+        "ger.1",
+        "ita.1",
+        "fra.1",
+        "por.1",
+        "bel.1",
+        "tur.1",
+        "sco.1",
+        "uefa.champions",
+        "uefa.europa",
+        "uefa.europa.conf",
+        "ned.2"
+      ]
+    ],
+    [
+      "football",
+      "wk",
+      []
+    ],
+    [
+      "football",
+      "ek",
+      []
+    ],
+    [
+      "basketball",
+      "nba",
+      [
+        "basketball/nba"
+      ]
+    ],
+    [
+      "basketball",
+      "",
+      [
+        "basketball/nba"
+      ]
+    ],
+    [
+      "americanfootball",
+      "nfl",
+      [
+        "football/nfl"
+      ]
+    ],
+    [
+      "icehockey",
+      "nhl",
+      [
+        "hockey/nhl"
+      ]
+    ],
+    [
+      "tennis",
+      "atp",
+      []
+    ],
+    [
+      "darts",
+      "pdc",
+      []
+    ],
+    [
+      "motorsport",
+      "formula-1",
+      []
+    ]
+  ],
+  "countryCode": [
+    [
+      "Nederland",
+      "NL"
+    ],
+    [
+      "Oranje",
+      "NL"
+    ],
+    [
+      "Netherlands",
+      "NL"
+    ],
+    [
+      "Nederland Vrouwen",
+      "NL"
+    ],
+    [
+      "Duitsland",
+      "DE"
+    ],
+    [
+      "België",
+      "BE"
+    ],
+    [
+      "Côte d'Ivoire",
+      "CI"
+    ],
+    [
+      "Türkiye",
+      "TR"
+    ],
+    [
+      "Curaçao",
+      "CW"
+    ],
+    [
+      "Ajax",
+      null
+    ],
+    [
+      "Jong Oranje",
+      null
+    ],
+    [
+      "Bosnië-Herzegovina",
+      "BA"
+    ],
+    [
+      "NL: Engeland HD",
+      "GB"
+    ],
+    [
+      "USA",
+      "US"
+    ]
+  ],
+  "teamArt": [
+    [
+      "Nederland",
+      "football",
+      "wk",
+      "flag:NL"
+    ],
+    [
+      "Ajax",
+      "football",
+      "eredivisie",
+      "club"
+    ],
+    [
+      "Ajax",
+      "football",
+      "wk",
+      ""
+    ],
+    [
+      "Ajax",
+      "football",
+      "",
+      "club"
+    ],
+    [
+      "Van Gerwen",
+      "darts",
+      "pdc",
+      ""
+    ],
+    [
+      "Lakers",
+      "basketball",
+      "nba",
+      "club"
+    ],
+    [
+      "Sinner",
+      "tennis",
+      "atp",
+      ""
+    ],
+    [
+      "Duitsland",
+      "icehockey",
+      "",
+      "flag:DE"
+    ],
+    [
+      "Max Verstappen",
+      "motorsport",
+      "formula-1",
+      ""
+    ],
+    [
+      "Frankrijk",
+      "football",
+      "ek",
+      "flag:FR"
+    ]
+  ],
+  "urls": {
+    "league": [
+      [
+        "eredivisie",
+        "https://maak-agenda.nl/images/leagues/eredivisie.png"
+      ],
+      [
+        "tennis/atp-1000",
+        "https://maak-agenda.nl/images/leagues/tennis.png"
+      ]
+    ],
+    "flag": [
+      [
+        "nl",
+        "https://maak-agenda.nl/images/national/NL.png"
+      ]
+    ],
+    "favicon": [
+      [
+        "uefa.com",
+        64,
+        "https://www.google.com/s2/favicons?domain=uefa.com&sz=64"
+      ]
+    ],
+    "espnTeams": [
+      [
+        "ned.1",
+        "https://site.api.espn.com/apis/site/v2/sports/soccer/ned.1/teams"
+      ],
+      [
+        "basketball/nba",
+        "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams"
+      ]
+    ],
+    "sportsDBSearch": [
+      [
+        "Go Ahead Eagles",
+        "https://www.thesportsdb.com/api/v1/json/123/searchteams.php?t=Go%20Ahead%20Eagles"
+      ],
+      [
+        "Fenerbahçe (TR)",
+        "https://www.thesportsdb.com/api/v1/json/123/searchteams.php?t=Fenerbah%C3%A7e"
+      ],
+      [
+        "Brighton & Hove Albion!",
+        "https://www.thesportsdb.com/api/v1/json/123/searchteams.php?t=Brighton%20%26%20Hove%20Albion%21"
+      ]
+    ]
+  },
+  "usable": [
+    [
+      "index",
+      0,
+      false,
+      true
+    ],
+    [
+      "index",
+      518400,
+      false,
+      true
+    ],
+    [
+      "index",
+      604800,
+      false,
+      false
+    ],
+    [
+      "miss",
+      3600,
+      false,
+      true
+    ],
+    [
+      "miss",
+      86400,
+      false,
+      false
+    ],
+    [
+      "image",
+      604799,
+      false,
+      true
+    ],
+    [
+      "image",
+      2592000,
+      true,
+      true
+    ],
+    [
+      "miss",
+      777600,
+      true,
+      true
+    ],
+    [
+      "image",
+      -5,
+      false,
+      false
+    ]
+  ],
+  "cacheName": [
+    [
+      "crests2",
+      "ned.1",
+      "json",
+      "crests2-41a634d9.json"
+    ],
+    [
+      "img",
+      "https://maak-agenda.nl/images/leagues/eredivisie.png",
+      "",
+      "img-fb5caa44"
+    ],
+    [
+      "crest-search",
+      "goaheadeagles",
+      "json",
+      "crest-search-5ae2f7c5.json"
+    ]
+  ]
+}

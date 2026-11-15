@@ -3082,5 +3082,49 @@ do {
     eq(Build177.titleKey("  De   Frogers "), "de frogers", "titelsleutel")
 }
 
+// MARK: build 178: sport-logo's (Shared/Sport/SportLogos178.swift)
+// De gedeelde gevallen komen uit docs/sportlogos_cases.json (zelfde als web/js/sportlogos.js en SportLogos178Logic.kt).
+do {
+    let here = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+    let paths = [here.appendingPathComponent("docs/sportlogos_cases.json"),
+                 URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+                    .deletingLastPathComponent().appendingPathComponent("docs/sportlogos_cases.json")]
+    let caseData = paths.lazy.compactMap { try? Data(contentsOf: $0) }.first
+    check(caseData != nil, "logo's: docs/sportlogos_cases.json gevonden")
+    let C = caseData.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
+    func rows(_ k: String) -> [[Any]] { (C[k] as? [[Any]]) ?? [] }
+    func s(_ v: Any?) -> String? { v as? String }
+    func strs(_ v: Any?) -> [String] { (v as? [String]) ?? [] }
+    func b(_ v: Any?) -> Bool { (v as? NSNumber)?.boolValue ?? false }
+    func d(_ v: Any?) -> Double { (v as? NSNumber)?.doubleValue ?? 0 }
+    typealias G = SportLogos178
+
+    check(rows("keys").count >= 10 && rows("teamArt").count >= 8, "logo's: gevallen geladen")
+    for c in rows("keys") { eq(G.keys(s(c[0]) ?? ""), strs(c[1]), "sleutels \(c[0])") }
+    let index = (C["matchIndex"] as? [String: String]) ?? [:]
+    for c in rows("match") { eq(G.match(G.keys(s(c[0]) ?? ""), in: index), s(c[1]), "zoeken \(c[0])") }
+    if let bi = C["buildIndex"] as? [String: Any] {
+        let teams = ((bi["teams"] as? [[String: Any]]) ?? []).map { (names: strs($0["names"]), logo: s($0["logo"]) ?? "") }
+        eq(G.buildIndex(teams), (bi["expect"] as? [String: String]) ?? ["?": "?"], "index uit een teamlijst")
+    } else { check(false, "buildIndex ontbreekt") }
+    for c in rows("sportsDBThumb") { eq(G.sportsDBThumb(s(c[0]) ?? ""), s(c[1]), "TheSportsDB-badge \(c[0])") }
+    for c in rows("sportsDBSport") { eq(G.sportsDBSport(s(c[0]) ?? ""), s(c[1]) ?? "", "TheSportsDB-sport \(c[0])") }
+    for c in rows("leagueSlug") { eq(G.leagueSlug(s(c[0]) ?? ""), s(c[1]), "slug \(c[0])") }
+    for c in rows("site") { eq(G.site(s(c[0]) ?? ""), s(c[1]), "site \(c[0])") }
+    for c in rows("competitionURLs") { eq(G.competitionURLs(s(c[0]) ?? "", small: b(c[1])), strs(c[2]), "competitie-adressen \(c[0]) \(c[1])") }
+    for c in rows("espnLeagues") { eq(G.espnLeagues(sport: s(c[0]) ?? "", competitionID: s(c[1]) ?? ""), strs(c[2]), "ESPN \(c[0]) \(c[1])") }
+    for c in rows("countryCode") { eq(G.countryCode(s(c[0]) ?? ""), s(c[1]), "land \(c[0])") }
+    for c in rows("teamArt") { eq(G.teamArt(s(c[0]) ?? "", sport: s(c[1]) ?? "", competitionID: s(c[2]) ?? ""), s(c[3]) ?? "", "team \(c[0]) \(c[1])") }
+    let urls = (C["urls"] as? [String: [[Any]]]) ?? [:]
+    for c in urls["league"] ?? [] { eq(G.leagueURL(s(c[0]) ?? ""), s(c[1]) ?? "", "url competitie \(c[0])") }
+    for c in urls["flag"] ?? [] { eq(G.flagURL(s(c[0]) ?? ""), s(c[1]) ?? "", "url vlag \(c[0])") }
+    for c in urls["favicon"] ?? [] { eq(G.faviconURL(s(c[0]) ?? "", size: Int(d(c[1]))), s(c[2]) ?? "", "url favicon \(c[0])") }
+    for c in urls["espnTeams"] ?? [] { eq(G.espnTeamsURL(s(c[0]) ?? ""), s(c[1]) ?? "", "url ESPN \(c[0])") }
+    for c in urls["sportsDBSearch"] ?? [] { eq(G.sportsDBSearchURL(s(c[0]) ?? ""), s(c[1]) ?? "", "url TheSportsDB \(c[0])") }
+    check((urls["sportsDBSearch"] ?? []).count >= 3, "logo's: adressen geladen")
+    for c in rows("usable") { eq(G.usable(kind: s(c[0]) ?? "", age: d(c[1]), saver: b(c[2])), b(c[3]), "cache \(c)") }
+    for c in rows("cacheName") { eq(G.cacheName(s(c[0]) ?? "", s(c[1]) ?? "", ext: s(c[2]) ?? ""), s(c[3]) ?? "", "cachenaam \(c[1])") }
+}
+
 print("\(checks) controles, \(failures) fout")
 exit(failures == 0 ? 0 : 1)

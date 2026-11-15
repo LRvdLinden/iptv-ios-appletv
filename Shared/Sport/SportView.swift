@@ -317,6 +317,8 @@ struct SportView: View {
                 } else {
                     if !live.isEmpty { liveSection }
                     ForEach(days) { day in daySection(day) }
+                    // build 178: club- en competitielogo's alleen ter herkenning
+                    SportLogoNotice()
                 }
             }
             .padding(.bottom, tvScaled(90))
@@ -462,18 +464,14 @@ enum SportPlayback {
 
 // MARK: - Teamcirkel
 
+/// Build 178: het logo van het team (vlag of clublogo, SportLogos.swift); zolang het laadt of ontbreekt de cirkel met
+/// initialen van build 172.
 struct SportTeamBadge: View {
     let name: String
+    var match: SportMatch173? = nil
     var size: CGFloat = tvScaled(30)
     var body: some View {
-        Text(Sport173.short(name))
-            .font(.system(size: size * 0.36, weight: .heavy))
-            .foregroundStyle(.white)
-            .lineLimit(1)
-            .minimumScaleFactor(0.6)
-            .frame(width: size, height: size)
-            .background(Color(hex: Sport173.color(name)), in: Circle())
-            .accessibilityHidden(true)
+        SportTeamLogo(name: name, match: match, size: size)
     }
 }
 
@@ -529,12 +527,15 @@ private struct SportLiveCard: View {
                     }
                 }
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(SportCenter.label(group.match)).font(.system(size: tvScaled(12))).foregroundStyle(Theme.secondary)
+                    HStack(spacing: 6) {
+                        SportCompetitionLogo(match: group.match, size: tvScaled(16))
+                        Text(SportCenter.label(group.match)).font(.system(size: tvScaled(12))).foregroundStyle(Theme.secondary)
+                    }
                     HStack(spacing: 10) {
-                        if group.match.isDuel { SportTeamBadge(name: group.match.home) }
+                        if group.match.isDuel { SportTeamBadge(name: group.match.home, match: group.match, size: tvScaled(34)) }
                         Text(group.match.title).font(.system(size: tvScaled(17), weight: .bold)).lineLimit(2)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                        if group.match.isDuel { SportTeamBadge(name: group.match.away) }
+                        if group.match.isDuel { SportTeamBadge(name: group.match.away, match: group.match, size: tvScaled(34)) }
                     }
                     ProgressView(value: group.progress(now)).tint(Theme.alert)
                 }
@@ -582,8 +583,20 @@ private struct SportRow: View {
                             .font(.system(size: 11)).foregroundStyle(Color(hex: 0x8A8A8A)).lineLimit(1)
                     }
                     .frame(width: 64)
+                    // build 178: logo's van beide teams (of van de competitie bij een evenement)
+                    if group.match.isDuel {
+                        HStack(spacing: 4) {
+                            SportTeamBadge(name: group.match.home, match: group.match, size: 26)
+                            SportTeamBadge(name: group.match.away, match: group.match, size: 26)
+                        }
+                    } else if !group.match.competitionID.isEmpty {
+                        SportCompetitionLogo(match: group.match, size: 30).frame(width: 56)
+                    }
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(SportCenter.label(group.match)).font(.system(size: 12)).foregroundStyle(Theme.secondary).lineLimit(1)
+                        HStack(spacing: 5) {
+                            if group.match.isDuel { SportCompetitionLogo(match: group.match, size: 14) }
+                            Text(SportCenter.label(group.match)).font(.system(size: 12)).foregroundStyle(Theme.secondary).lineLimit(1)
+                        }
                         Text(group.match.title).font(.system(size: 15, weight: .bold)).lineLimit(1)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -633,10 +646,20 @@ private struct SportTVCard: View {
                     Image(systemName: on ? "bell.fill" : "bell").font(.system(size: 26))
                         .foregroundStyle(on ? Theme.alert : Theme.secondary)
                 }
-                Text([SportCenter.label(group.match), center.channel(group).map { CategoryName.channel($0.name) } ?? ""]
-                        .filter { !$0.isEmpty }.joined(separator: " · "))
-                    .font(.system(size: 20)).foregroundStyle(Theme.secondary).lineLimit(1)
-                Text(group.match.title).font(.system(size: 24, weight: .bold)).lineLimit(1)
+                HStack(spacing: 8) {
+                    SportCompetitionLogo(match: group.match, size: 26)
+                    Text([SportCenter.label(group.match), center.channel(group).map { CategoryName.channel($0.name) } ?? ""]
+                            .filter { !$0.isEmpty }.joined(separator: " · "))
+                        .font(.system(size: 20)).foregroundStyle(Theme.secondary).lineLimit(1)
+                }
+                HStack(spacing: 10) {
+                    // build 178: logo's groot genoeg op de tv
+                    if group.match.isDuel {
+                        SportTeamBadge(name: group.match.home, match: group.match, size: 44)
+                        SportTeamBadge(name: group.match.away, match: group.match, size: 44)
+                    }
+                    Text(group.match.title).font(.system(size: 24, weight: .bold)).lineLimit(1)
+                }
             }
             .padding(.horizontal, 20).padding(.vertical, 18)
             .frame(width: 360, alignment: .leading)
@@ -678,9 +701,10 @@ struct SportMatchSheet: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(subtitle).font(.system(size: tvScaled(12))).foregroundStyle(Theme.secondary)
                     HStack(spacing: 10) {
-                        if group.match.isDuel { SportTeamBadge(name: group.match.home, size: tvScaled(36)) }
+                        if group.match.isDuel { SportTeamBadge(name: group.match.home, match: group.match, size: tvScaled(40)) }
+                        else { SportCompetitionLogo(match: group.match, size: tvScaled(36)) }
                         Text(group.match.title).font(.system(size: tvScaled(20), weight: .heavy))
-                        if group.match.isDuel { SportTeamBadge(name: group.match.away, size: tvScaled(36)) }
+                        if group.match.isDuel { SportTeamBadge(name: group.match.away, match: group.match, size: tvScaled(40)) }
                     }
                 }
                 if live {
@@ -833,12 +857,21 @@ struct SportFavoritesView: View {
             } header: { Text(L("Teams")) }
             Section {
                 ForEach(Sport173.competitions, id: \.id) { c in
-                    Toggle(c.name, isOn: Binding(get: { store.favoriteCompetitions.contains(c.id) },
-                                                 set: { center.setFavoriteCompetition(c.id, $0, playlists: playlists) }))
-                        .tint(Theme.red)
+                    Toggle(isOn: Binding(get: { store.favoriteCompetitions.contains(c.id) },
+                                         set: { center.setFavoriteCompetition(c.id, $0, playlists: playlists) })) {
+                        // build 178: klein logo (favicon van de officiële site, zoals Weekdot)
+                        HStack(spacing: 10) {
+                            SportLogoView(art: .competition(c.id, small: true), title: c.name, size: tvScaled(22))
+                            Text(c.name)
+                        }
+                    }
+                    .tint(Theme.red)
                 }
             } header: { Text(L("Competitions")) } footer: {
-                Text(L("Matches of your teams and competitions get a reminder automatically."))
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(L("Matches of your teams and competitions get a reminder automatically."))
+                    Text(L("Logos and crests are trademarks of their respective owners and are shown for identification only."))
+                }
             }
         }
         .navigationTitle(L("My teams and competitions"))
