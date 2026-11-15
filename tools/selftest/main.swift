@@ -2872,5 +2872,85 @@ do {
     check(!Download175.seriesMenu([], season: 1, nextUp: nil).available, "serie zonder afleveringen")
 }
 
+
+// MARK: build 176 (Shared/Account/Build176.swift)
+// De gedeelde gevallen komen uit docs/build176_cases.json (zelfde als web/js/build176.js en Build176Logic.kt).
+do {
+    let here = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+    let paths = [here.appendingPathComponent("docs/build176_cases.json"),
+                 URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+                    .deletingLastPathComponent().appendingPathComponent("docs/build176_cases.json")]
+    let caseData = paths.lazy.compactMap { try? Data(contentsOf: $0) }.first
+    check(caseData != nil, "176: docs/build176_cases.json gevonden")
+    let C = caseData.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
+    func cases(_ k: String) -> [Any] { ((C[k] as? [String: Any])?["cases"] as? [Any]) ?? [] }
+    func optBool(_ v: Any?) -> Bool? { v is NSNull || v == nil ? nil : (v as? NSNumber)?.boolValue }
+    func optNum(_ v: Any?) -> Double? { v is NSNull || v == nil ? nil : (v as? NSNumber)?.doubleValue }
+    func b(_ v: Any?) -> Bool { (v as? NSNumber)?.boolValue ?? false }
+    let iso = ISO8601DateFormatter()
+    func t(_ v: Any?) -> Double { iso.date(from: v as? String ?? "")?.timeIntervalSince1970 ?? 0 }
+
+    check(cases("autoplay").count >= 5 && cases("epgSearch").count >= 10, "176: gevallen geladen")
+    for case let c as [Any] in cases("autoplay") {
+        eq(Build176.autoplay(value: optBool(c[0]), kids: b(c[1]), stillWatchingDue: b(c[2])), b(c[3]), "autoplay \(c)")
+    }
+    for case let c as [Any] in cases("lock") {
+        eq(Build176.lockAsks(locked: b(c[0]), hasMainPin: b(c[1]), unlockedAt: optNum(c[2]), now: optNum(c[3]) ?? 0), b(c[4]), "lock \(c)")
+    }
+    for case let c as [Any] in cases("dataMode") {
+        eq(Build176.saver(mode: c[0] as? String ?? "", net: Build176.Net(rawValue: c[1] as? String ?? "") ?? .unknown,
+                          constrained: b(c[2])), b(c[3]), "dataMode \(c)")
+    }
+    for case let c as [String: Any] in cases("variant") {
+        let vs = (c["variants"] as? [[String: Any]] ?? []).map {
+            Build176.Variant(bandwidth: ($0["bandwidth"] as? NSNumber)?.intValue ?? 0, height: ($0["height"] as? NSNumber)?.intValue)
+        }
+        let exp = optNum(c["expect"]).map { Int($0) }
+        eq(Build176.variant(saver: b(c["saver"]), vs), exp, "variant \(c)")
+    }
+    for case let c as [String: Any] in cases("epgSearch") {
+        let m = Build176.epgMatch(c["q"] as? String ?? "", title: c["title"] as? String ?? "", desc: c["desc"] as? String)
+        if let e = c["expect"] as? [String: Any] {
+            eq(m?.field.rawValue, e["field"] as? String, "epg veld \(c["q"] ?? "")")
+            eq(m?.highlight, e["highlight"] as? String, "epg markering \(c["q"] ?? "")")
+        } else {
+            check(m == nil, "epg geen treffer \(c["q"] ?? "")")
+        }
+    }
+    func bm(_ j: [String: Any]) -> Build176.Bookmark {
+        Build176.Bookmark(id: j["id"] as? String ?? "", key: j["key"] as? String ?? "", playlistID: j["playlistID"] as? String ?? "",
+                          title: j["title"] as? String ?? "", t: (j["t"] as? NSNumber)?.intValue ?? 0, at: t(j["at"]),
+                          removed: b(j["removed"]))
+    }
+    for case let c as [String: Any] in cases("bookmarks") {
+        let out = Build176.mergeBookmarks((c["local"] as? [[String: Any]] ?? []).map(bm), (c["server"] as? [[String: Any]] ?? []).map(bm),
+                                          now: t(c["now"]))
+        let exp = (c["expect"] as? [[String: Any]] ?? []).map(bm)
+        eq(out.map { "\($0.id) \($0.removed) \($0.at)" }, exp.map { "\($0.id) \($0.removed) \($0.at)" }, "momenten: \(c["name"] ?? "")")
+    }
+    do {
+        let base = t("2026-11-01T00:00:00Z")
+        let many = (0..<205).map { Build176.Bookmark(id: "abc|k\($0)@1", at: base + Double($0) * 60) }
+        let out = Build176.mergeBookmarks(many, [], now: base + 86400)
+        eq(out.count, 200, "momenten: max 200")
+        check(!out.contains { $0.id == "abc|k4@1" } && out.contains { $0.id == "abc|k5@1" }, "momenten: oudste vallen weg")
+    }
+    for case let c as [Any] in cases("bookmarkID") {
+        eq(Build176.bookmarkID(server: c[0] as? String ?? "", key: c[1] as? String ?? "", t: optNum(c[2]) ?? 0), c[3] as? String ?? "", "moment-id")
+    }
+    for case let c as [Any] in cases("releaseReminder") {
+        let season = optNum(c[2]).map { Int($0) }
+        eq(Build176.releaseID(mediaType: c[0] as? String ?? "", tmdb: Int(optNum(c[1]) ?? 0), season: season, profile: c[3] as? String),
+           c[6] as? String ?? "", "release-id")
+        let d = Build176.releaseStart(day: c[4] as? String ?? "", timeZone: TimeZone(identifier: c[5] as? String ?? "") ?? .current)
+        eq(d.map { iso.string(from: $0) }, c[7] as? String, "release-start \(c[4])")
+    }
+    let master = "#EXTM3U\n#EXT-X-STREAM-INF:AVERAGE-BANDWIDTH=900000,BANDWIDTH=1000000,RESOLUTION=1280x720\nhd.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=600000,RESOLUTION=640x360\nsd.m3u8\n"
+    let pm = Build176.parseMaster(master)
+    eq(pm.map(\.uri), ["hd.m3u8", "sd.m3u8"], "master: uri's")
+    eq(pm.map(\.variant), [Build176.Variant(bandwidth: 1000000, height: 720), Build176.Variant(bandwidth: 600000, height: 360)], "master: varianten")
+    eq(Build176.snippet(String(repeating: "a", count: 200), around: 100..<104, width: 50).count, 52, "snippet met …")
+}
+
 print("\(checks) controles, \(failures) fout")
 exit(failures == 0 ? 0 : 1)
