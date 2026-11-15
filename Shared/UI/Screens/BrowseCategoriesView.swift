@@ -491,6 +491,7 @@ struct BrowseCategoryView: View {
             Label(L("Add to collection…"), systemImage: "rectangle.stack.badge.plus")
         }
         BlockTitleMenuItem(target: t, server: pid)   // build 171
+        LockTitleMenuItem(target: t, server: pid)   // build 176
     }
 
     /// Profielen met een leeftijdsgrens gaan via de detailpagina (die controleert de classificatie), zoals op Home.

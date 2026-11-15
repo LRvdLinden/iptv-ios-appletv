@@ -47,6 +47,9 @@ final class CloudStore: ObservableObject {
     @Published private(set) var favoriteTeams: Set<String> = []
     @Published private(set) var favoriteCompetitions: Set<String> = []
     @Published private(set) var sportMuted: Set<String> = []
+    /// Build 176: vergrendelde zenders en titels (sleutels als `hiddenChannels` / `blockedTitles`), per profiel
+    @Published private(set) var lockedChannels: Set<String> = []
+    @Published private(set) var lockedTitles: Set<String> = []
     @Published var lastSync: Date?
     /// Per afspeellijst: hernoemd, verborgen, volgorde, samengevoegd
     @Published private(set) var customizations: [UUID: Customization] = [:]
@@ -113,6 +116,8 @@ final class CloudStore: ObservableObject {
         assign(\.favoriteTeams, decode(Set<String>.self, pk(K.favoriteTeams)) ?? [])
         assign(\.favoriteCompetitions, decode(Set<String>.self, pk(K.favoriteCompetitions)) ?? [])
         assign(\.sportMuted, decode(Set<String>.self, pk(K.sportMuted)) ?? [])
+        assign(\.lockedChannels, decode(Set<String>.self, pk(K.lockedChannels)) ?? [])
+        assign(\.lockedTitles, decode(Set<String>.self, pk(K.lockedTitles)) ?? [])
     }
 
     /// Build 171: de drie sets per profiel
@@ -120,6 +125,8 @@ final class CloudStore: ObservableObject {
         case hiddenChannels, pinnedCategories, blockedTitles
         /// build 172 (Sport)
         case favoriteTeams, favoriteCompetitions, sportMuted
+        /// build 176: vergrendelen met pincode
+        case lockedChannels, lockedTitles
     }
 
     private static func key171(_ f: ProfileSet171) -> String {
@@ -130,6 +137,8 @@ final class CloudStore: ObservableObject {
         case .favoriteTeams: return K.favoriteTeams
         case .favoriteCompetitions: return K.favoriteCompetitions
         case .sportMuted: return K.sportMuted
+        case .lockedChannels: return K.lockedChannels
+        case .lockedTitles: return K.lockedTitles
         }
     }
 
@@ -144,6 +153,8 @@ final class CloudStore: ObservableObject {
             case .favoriteTeams: return favoriteTeams
             case .favoriteCompetitions: return favoriteCompetitions
             case .sportMuted: return sportMuted
+            case .lockedChannels: return lockedChannels
+            case .lockedTitles: return lockedTitles
             }
         }
         return decode(Set<String>.self, "\(Self.key171(f)).\(id!.uuidString)") ?? []
@@ -166,6 +177,8 @@ final class CloudStore: ObservableObject {
             case .favoriteTeams: favoriteTeams = set
             case .favoriteCompetitions: favoriteCompetitions = set
             case .sportMuted: sportMuted = set
+            case .lockedChannels: lockedChannels = set
+            case .lockedTitles: lockedTitles = set
             }
         }
         stateEdited.send((id, .profile))
@@ -361,7 +374,8 @@ final class CloudStore: ObservableObject {
                    hiddenChannels = "hiddenchannels.v171", pinnedCategories = "pinnedcategories.v171",
                    blockedTitles = "blockedtitles.v171",
                    favoriteTeams = "favoriteteams.v172", favoriteCompetitions = "favoritecompetitions.v172",
-                   sportMuted = "sportmuted.v172"
+                   sportMuted = "sportmuted.v172",
+                   lockedChannels = "lockedchannels.v176", lockedTitles = "lockedtitles.v176"
     }
 
     private init() {
@@ -547,7 +561,7 @@ final class CloudStore: ObservableObject {
     /// Build 140: lijsten per profiel (Mijn lijst, favorieten, bekeken, recente zenders, categorieën van build 128)
     private static func isListKey(_ key: String) -> Bool {
         [K.myList, K.favorites, K.watched, K.recent, K.categories, K.hiddenChannels, K.pinnedCategories, K.blockedTitles,
-         K.favoriteTeams, K.favoriteCompetitions, K.sportMuted].contains { key == $0 || key.hasPrefix($0 + ".") }
+         K.favoriteTeams, K.favoriteCompetitions, K.sportMuted, K.lockedChannels, K.lockedTitles].contains { key == $0 || key.hasPrefix($0 + ".") }
     }
 
     /// Voortgang, geschiedenis (per profiel) en foto's
@@ -858,6 +872,9 @@ final class CloudStore: ObservableObject {
         var favoriteTeams: Set<String> = []
         var favoriteCompetitions: Set<String> = []
         var sportMuted: Set<String> = []
+        /// Build 176: vergrendeld met pincode
+        var lockedChannels: Set<String> = []
+        var lockedTitles: Set<String> = []
     }
 
     /// Gegevens van een profiel lezen. Het hoofdprofiel neemt (net als `scoped`) de gegevens van vóór de profielen over.
@@ -869,7 +886,8 @@ final class CloudStore: ObservableObject {
                                recentChannels: recentChannels, history: history, progress: progress,
                                hiddenCategories: decode(Set<String>.self, "\(K.categories).\(id.uuidString)") ?? [],
                                hiddenChannels: hiddenChannels, pinnedCategories: pinnedCategories, blockedTitles: blockedTitles,
-                               favoriteTeams: favoriteTeams, favoriteCompetitions: favoriteCompetitions, sportMuted: sportMuted)
+                               favoriteTeams: favoriteTeams, favoriteCompetitions: favoriteCompetitions, sportMuted: sportMuted,
+                               lockedChannels: lockedChannels, lockedTitles: lockedTitles)
         }
         func read<T: Decodable>(_ t: T.Type, _ base: String) -> T? {
             if let v = decode(t, "\(base).\(id.uuidString)") { return v }
@@ -887,7 +905,9 @@ final class CloudStore: ObservableObject {
                            blockedTitles: decode(Set<String>.self, "\(K.blockedTitles).\(id.uuidString)") ?? [],
                            favoriteTeams: decode(Set<String>.self, "\(K.favoriteTeams).\(id.uuidString)") ?? [],
                            favoriteCompetitions: decode(Set<String>.self, "\(K.favoriteCompetitions).\(id.uuidString)") ?? [],
-                           sportMuted: decode(Set<String>.self, "\(K.sportMuted).\(id.uuidString)") ?? [])
+                           sportMuted: decode(Set<String>.self, "\(K.sportMuted).\(id.uuidString)") ?? [],
+                           lockedChannels: decode(Set<String>.self, "\(K.lockedChannels).\(id.uuidString)") ?? [],
+                           lockedTitles: decode(Set<String>.self, "\(K.lockedTitles).\(id.uuidString)") ?? [])
     }
 
     /// Gegevens van een profiel uit de Bingr-account zetten (StateSync). Alleen wat veranderd is wordt geschreven;
@@ -909,6 +929,8 @@ final class CloudStore: ObservableObject {
         if old.favoriteTeams != d.favoriteTeams { write(d.favoriteTeams, K.favoriteTeams + suffix) }
         if old.favoriteCompetitions != d.favoriteCompetitions { write(d.favoriteCompetitions, K.favoriteCompetitions + suffix) }
         if old.sportMuted != d.sportMuted { write(d.sportMuted, K.sportMuted + suffix) }
+        if old.lockedChannels != d.lockedChannels { write(d.lockedChannels, K.lockedChannels + suffix) }
+        if old.lockedTitles != d.lockedTitles { write(d.lockedTitles, K.lockedTitles + suffix) }
         if id == activeProfileID {
             // alleen wat veranderd is: anders tekent elk scherm opnieuw bij elke sync-ronde
             assign(\.favorites, d.favorites); assign(\.myList, d.myList); assign(\.localWatched, d.watched)
@@ -917,6 +939,7 @@ final class CloudStore: ObservableObject {
             assign(\.blockedTitles, d.blockedTitles)
             assign(\.favoriteTeams, d.favoriteTeams); assign(\.favoriteCompetitions, d.favoriteCompetitions)
             assign(\.sportMuted, d.sportMuted)
+            assign(\.lockedChannels, d.lockedChannels); assign(\.lockedTitles, d.lockedTitles)
         }
     }
 
@@ -1592,11 +1615,27 @@ struct ProgramReminder: Codable, Hashable, Identifiable {
     var competition: String? = nil
     var matchKey: String? = nil
     var auto: Bool? = nil
+    /// Build 176 (docs/ACCOUNT.md → "Build 176" (4)): herinnering op de releasedatum (`kind: "release"`), met het
+    /// TMDB-id, `movie`/`tv` en bij een nieuw seizoen het seizoensnummer
+    var kind: String? = nil
+    var tmdb: Int? = nil
+    var mediaType: String? = nil
+    var season: Int? = nil
 
     /// Sportherinnering (build 172)
     var isSport: Bool { matchKey != nil }
-    /// Moment van de melding: bij sport `leadMin` minuten vóór de start, anders 2 minuten.
-    var notifyAt: Date { start.addingTimeInterval(-Double(isSport ? Sport173.lead(leadMin) : 2) * 60) }
+    /// Build 176: releaseherinnering (Binnenkort / Nieuw en populair)
+    var isRelease: Bool { kind == "release" }
+    /// Moment van de melding: bij sport `leadMin` minuten vóór de start, bij een release op `start`, anders 2 minuten.
+    var notifyAt: Date {
+        if isRelease { return start }
+        return start.addingTimeInterval(-Double(isSport ? Sport173.lead(leadMin) : 2) * 60)
+    }
+    /// Build 176: titel-link naar de detailpagina (bibliotheek via TMDB-id, anders zoeken)
+    var releaseLink: TitleLink? {
+        guard isRelease else { return nil }
+        return TitleLink(kind: mediaType == "tv" ? .tv : .movie, tmdbID: tmdb, query: title, year: nil)
+    }
 }
 
 extension ProgramReminder {

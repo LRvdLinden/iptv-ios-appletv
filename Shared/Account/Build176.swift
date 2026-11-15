@@ -139,6 +139,21 @@ enum Build176 {
         return nil
     }
 
+    /// Genormaliseerde tekst als String (voor de index; zelfde lengte in tekens als het origineel)
+    static func foldString(_ s: String) -> String { String(fold(s)) }
+
+    /// Snel filter voor de index: past het programma, en waar (zonder markering)?
+    static func epgField(words: [String], title: String, desc: String) -> Field? {
+        guard !words.isEmpty else { return nil }
+        var inTitle = true
+        for w in words {
+            if title.contains(w) { continue }
+            inTitle = false
+            if !desc.contains(w) { return nil }
+        }
+        return inTitle ? .title : .description
+    }
+
     static func epgMatch(_ q: String, title: String, desc: String?) -> EPGMatch? {
         epgMatch(words: queryWords(q).map(Array.init), Folded(title: title, desc: desc))
     }
@@ -234,6 +249,24 @@ enum Build176 {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = timeZone
         return cal.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2], hour: 9))
+    }
+
+    // MARK: 14. Lichtere afbeeldingen
+
+    /// Kleinere postermaten die TMDB levert (de app vraagt posters op als w780)
+    static let tmdbPosterWidths = [342, 500]
+
+    /// TMDB-poster (w780) in de kleinste passende maat voor `maxPixel` (grootste zijde in pixels, zoals `RemoteImage`;
+    /// posters zijn 2:3, dus de breedte is 2/3 van `maxPixel`). Alleen kleiner, nooit groter. Andere maten
+    /// (achtergronden w1280, stills en logo's w500, w342, `original`) en andere URL's blijven zoals ze zijn.
+    static func tmdbSized(_ url: URL, maxPixel: Int) -> URL {
+        guard url.host == "image.tmdb.org" else { return url }
+        let parts = url.path.split(separator: "/")
+        // /t/p/w780/<bestand>
+        guard parts.count == 4, parts[0] == "t", parts[1] == "p", parts[2] == "w780" else { return url }
+        let need = (maxPixel * 2 + 2) / 3
+        guard let pick = tmdbPosterWidths.first(where: { $0 >= need }) else { return url }
+        return URL(string: "https://image.tmdb.org/t/p/w\(pick)/\(parts[3])") ?? url
     }
 
     // MARK: 8. Helpcentrum

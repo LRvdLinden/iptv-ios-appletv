@@ -2462,8 +2462,8 @@ velden. Oudere apps lezen het als gewone herinnering (daarom zijn `playlistID` e
 - **`start`** = de releasedatum (TMDB, regio van de app) om **09:00 lokale tijd** van het apparaat dat het belletje zet,
   als UTC ISO-8601. De melding komt **op** `start` (niet 2 minuten ervoor). Na `start` + 1 uur ruimt de gewone regel hem op.
 - **Tekst**: titel "Nu te zien: %@" / "Out now: %@" (met de profielnaam ervoor als er meer profielen zijn, zoals altijd);
-  tweede regel "Vandaag verschenen. Tik om te bekijken." / "Released today. Tap to view." Tikken = de detailpagina
-  (`bingr://title?tmdb=<id>&type=<movie|tv>`): staat de titel op een server van het account (bestaande TMDB-matching),
+  tweede regel "Vandaag verschenen. Tik om te bekijken." / "Released today. Tap to view." Tikken = de detailpagina via
+  de bestaande titel-link (`bingr://title?type=<movie|tv>&id=<tmdb-id>&q=<titel>`, zie build 120): staat de titel op een server van het account (bestaande TMDB-matching),
   dan die titel, anders de TMDB-detailpagina met Mijn lijst.
 - **Apple TV, Android TV**: banner in de app; **iPhone, iPad, Mac, Android, webspeler**: push van de server (functie `push`,
   zie "Server" hieronder), zonder push een lokale melding op `start`.

@@ -9,6 +9,8 @@ struct DetailView: View {
     @EnvironmentObject var playlists: PlaylistService
     @EnvironmentObject var store: CloudStore
     @EnvironmentObject var trakt: TraktSync
+    /// Build 176: momenten, ontgrendeld
+    @ObservedObject private var p176 = Profile176.shared
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
 
@@ -75,6 +77,50 @@ struct DetailView: View {
     private var blockedHere: Bool {
         guard let pid, !DiscoverItem.isExternal(target.id) else { return false }
         return store.isTitleBlocked(pid, target.hideKind171, target.id)
+    }
+    /// Build 176: vergrendelde titel en nog niet ontgrendeld op dit apparaat → sleutel (melding met pincode)
+    private var lockedHere: String? {
+        guard let pid, !DiscoverItem.isExternal(target.id) else { return nil }
+        _ = p176.revision
+        let k = store.lockedTitleKey(pid, target.hideKind171, target.id)
+        return p176.asks(k) ? k : nil
+    }
+    private var isLockedTitle: Bool {
+        guard let pid, !DiscoverItem.isExternal(target.id) else { return false }
+        return store.lockedTitleKey(pid, target.hideKind171, target.id) != nil
+    }
+    private func toggleLock() {
+        guard let pid else { return }
+        let kind = target.hideKind171, id = target.id
+        if isLockedTitle {
+            LockGate176.shared.confirm { CloudStore.shared.setTitleLocked(pid, kind, id, false) }
+        } else if p176.mainHasPIN {
+            store.setTitleLocked(pid, kind, id, true)
+            flash(L("Locked with PIN"))
+        } else {
+            LockNotice176.shared.show()
+        }
+    }
+    /// Build 176: momenten van deze titel (film, of de afleveringen van de serie)
+    private var moments: [Build176.Bookmark] {
+        _ = p176.revision
+        switch target {
+        case .movie(let m): return p176.bookmarks(keys: [m.id])
+        case .series: return p176.bookmarks(keys: Set(episodes.map(\.id)))
+        }
+    }
+    private func playMoment(_ b: Build176.Bookmark) {
+        var it: PlayableItem
+        switch target {
+        case .movie(let m): it = Playables.movie(m, imdb: imdb)
+        case .series(let s):
+            guard let e = episodes.first(where: { $0.id == b.key }) else { return }
+            it = Playables.episode(e, of: s, imdb: imdb)
+        }
+        it.resumeAt = 0
+        it.resumeSeconds = nil
+        it.bookmarkSeconds = Double(b.t)
+        app.play(it)
     }
     private var baseTitle: String { switch target { case .movie(let m): return m.title; case .series(let s): return s.title } }
     /// Titel zonder taallabel ("Animal (IT)" → "Animal"), build 59
@@ -149,6 +195,7 @@ struct DetailView: View {
                     .padding(.horizontal, Theme.edge)
 
                     if case .series(let s) = target { episodesSection(s) }
+                    MomentsRow(items: moments, play: playMoment)   // build 176
                     if let r = d?.ratings, !r.isEmpty { ratingsSection(r) }
                     if let c = d?.cast, !c.isEmpty { castSection(c) }
                     if let rec = visibleRecommendations, !rec.isEmpty { recommendationsSection(rec) }
@@ -184,6 +231,7 @@ struct DetailView: View {
                     .transition(.opacity)
             }
             if blockedHere { BlockedTitleNotice { dismiss() } }
+            else if let k = lockedHere { LockedTitleNotice(key: k) { dismiss() } }   // build 176
         }
         .background(GeometryReader { g in
             Color.clear
@@ -223,6 +271,7 @@ struct DetailView: View {
                 return true
             }
         }
+        .lockGate176()   // build 176
         .task(id: target.id) { await load() }
         .task(id: target.id) { await resolveCrossServer() }
         .crossServerPrompt($crossPrompt)
@@ -355,6 +404,7 @@ struct DetailView: View {
     /// de modus voor weinig data, iets wat speelt, een blad erover of de app op de achtergrond.
     private var trailerAllowed: Bool {
         autoplayTrailers && !reduceMotion && !NetworkStatus.shared.isConstrained && !trailerBlocked
+            && !DataSaver176.active   // build 176
     }
 
     private var trailerBlocked: Bool {
@@ -478,6 +528,9 @@ struct DetailView: View {
                         else { store.setTitleBlocked(pid, target.hideKind171, target.id, true) }
                     }
                     .accessibilityLabel(L("Hide for this profile"))
+                    // build 176: vergrendelen met pincode
+                    circleButton(isLockedTitle ? "lock.fill" : "lock") { toggleLock() }
+                        .accessibilityLabel(isLockedTitle ? L("Unlock") : L("Lock with PIN"))
                 }
                 if isMovie {
                     circleButton(isWatchedTitle ? "checkmark.circle.fill" : "checkmark.circle") { toggleWatchedMovie() }
@@ -637,6 +690,10 @@ struct DetailView: View {
                     if store.needsParentPIN() { blockPIN = true }
                     else { store.setTitleBlocked(pid, target.hideKind171, target.id, true) }
                 } label: { Label(L("Hide for this profile"), systemImage: "hand.raised") }
+                // build 176
+                Button { toggleLock() } label: {
+                    Label(isLockedTitle ? L("Unlock") : L("Lock with PIN"), systemImage: isLockedTitle ? "lock.open" : "lock")
+                }
             }
         } label: {
             DetailActionLabel174(title: L("More")) { DetailActionIcon174(name: "ellipsis") }
@@ -767,6 +824,7 @@ struct DetailView: View {
     private func circleButton(_ icon: String, _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: icon).font(.system(size: tvScaled(19), weight: .semibold))
+                .contentTransition(.symbolEffect(.replace))   // build 176: kleine animatie (gezien, slot)
                 .foregroundStyle(.white)
                 .frame(width: tvScaled(50), height: tvScaled(50))
                 .background(Color.white.opacity(0.12), in: Circle())

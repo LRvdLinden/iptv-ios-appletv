@@ -615,6 +615,7 @@ struct LiveTVView: View {
             Label(L("Open in Multiview"), systemImage: "square.grid.2x2")
         }
         HideChannelMenuItem(channel: c, server: pid)   // build 171
+        LockChannelMenuItem(channel: c, server: pid)   // build 176
     }
 }
 

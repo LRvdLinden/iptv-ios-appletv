@@ -335,6 +335,8 @@ struct RemoteImage: View {
     @State private var image: CGImage?
 
     init(url: URL?, contentMode: ContentMode = .fill, placeholder: String = "", maxPixel: Int = 720) {
+        // build 176: TMDB in de kleinste passende maat (minder data en geheugen; daarna nog verkleind)
+        let url = url.map { Build176.tmdbSized($0, maxPixel: maxPixel) }
         self.url = url; self.contentMode = contentMode; self.placeholder = placeholder; self.maxPixel = maxPixel
         _image = State(initialValue: url.flatMap { ImagePipeline.shared.cached($0, maxPixel: maxPixel) })
     }

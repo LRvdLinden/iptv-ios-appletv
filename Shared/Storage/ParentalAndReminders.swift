@@ -504,7 +504,8 @@ final class ReminderCenter: ObservableObject {
         let now = Date()
         // build 172: een sportherinnering op het gekozen moment (bij de start, 5 of 15 min eerder)
         if let r = CloudStore.shared.reminders.first(where: { r in
-            (r.isSport ? r.notifyAt <= now : r.start <= now.addingTimeInterval(60)) && r.start > now.addingTimeInterval(-300)
+            (r.isSport || r.isRelease ? r.notifyAt <= now : r.start <= now.addingTimeInterval(60))
+                && r.start > now.addingTimeInterval(-300)
         }) {
             due = r
             CloudStore.shared.removeReminder(r.id)
@@ -540,6 +541,41 @@ final class ReminderCenter: ObservableObject {
         await scheduleNotification(r, ask: !auto)
     }
 
+    /// Build 176: belletje op de releasedatum (Binnenkort / Nieuw en populair), voor het actieve profiel. `day` =
+    /// "yyyy-MM-dd"; de melding komt om 09:00 lokale tijd.
+    func releaseID(tmdb: Int, isShow: Bool, season: Int?) -> String {
+        let store = CloudStore.shared
+        let owner = store.activeProfileID ?? store.mainProfileID
+        let profile = owner == store.mainProfileID ? nil : owner?.uuidString
+        return Build176.releaseID(mediaType: isShow ? "tv" : "movie", tmdb: tmdb, season: season, profile: profile)
+    }
+
+    func hasRelease(tmdb: Int, isShow: Bool, season: Int?) -> Bool {
+        let id = releaseID(tmdb: tmdb, isShow: isShow, season: season)
+        return CloudStore.shared.reminders.contains { $0.id == id }
+    }
+
+    /// Aan/uit; geeft de nieuwe stand terug (false als de datum onbekend of voorbij is)
+    @discardableResult
+    func toggleRelease(tmdb: Int, isShow: Bool, season: Int?, title: String, day: String) async -> Bool {
+        let store = CloudStore.shared
+        let id = releaseID(tmdb: tmdb, isShow: isShow, season: season)
+        if store.reminders.contains(where: { $0.id == id }) { remove(id); return false }
+        guard let start = Build176.releaseStart(day: day, timeZone: .current), start > Date() else { return false }
+        let owner = store.activeProfileID ?? store.mainProfileID
+        let key = Build176.releaseKey(mediaType: isShow ? "tv" : "movie", tmdb: tmdb, season: season)
+        var r = ProgramReminder(id: id, playlistID: store.mainSourceID ?? UUID(uuidString: "00000000-0000-0000-0000-000000000000")!,
+                                channelID: key, channelName: "Bingr", title: title, start: start,
+                                profileID: owner == store.mainProfileID ? nil : owner)
+        r.kind = "release"
+        r.tmdb = tmdb
+        r.mediaType = isShow ? "tv" : "movie"
+        r.season = season
+        store.addReminder(r)
+        await scheduleNotification(r)
+        return true
+    }
+
     /// Build 172: sportherinnering van het actieve profiel voor deze wedstrijd (of nil).
     func sportReminder(key: String) -> ProgramReminder? {
         let store = CloudStore.shared
@@ -551,7 +587,9 @@ final class ReminderCenter: ObservableObject {
     /// Build 172: bij sport "Ajax - PSV begint over 5 minuten" / "… begint nu".
     func displayTitle(_ r: ProgramReminder) -> String {
         var t = CategoryName.display(r.title)   // build 153
-        if r.isSport {
+        if r.isRelease {
+            t = L("Out now: %@", t)   // build 176
+        } else if r.isSport {
             let lead = Sport173.lead(r.leadMin)
             t = lead == 0 ? L("%@ starts now", t) : L("%@ starts in %d minutes", t, lead)
         }
@@ -587,10 +625,13 @@ final class ReminderCenter: ObservableObject {
         let content = UNMutableNotificationContent()
         // ook voor herinneringen van een ander profiel dan het actieve: dan met de naam van dat profiel
         content.title = displayTitle(r)
-        content.body = r.isSport ? sportLine(r) : L("Starts in 2 minutes on %@", CategoryName.channel(r.channelName))
+        content.body = r.isRelease ? L("Released today. Tap to view.")
+            : r.isSport ? sportLine(r) : L("Starts in 2 minutes on %@", CategoryName.channel(r.channelName))
         content.sound = .default
         var info: [String: String] = ["channelID": r.channelID, "playlistID": r.playlistID.uuidString]
         if let p = r.owner { info["profileID"] = p.uuidString }
+        // build 176: release → de detailpagina (titel-link) in plaats van een zender
+        if let link = r.releaseLink?.shareURL(scheme: "bingr") { info["deeplink"] = link.absoluteString }
         content.userInfo = info
         let fire = max(r.notifyAt.timeIntervalSinceNow, 1)
         let req = UNNotificationRequest(identifier: r.id, content: content,
@@ -607,7 +648,8 @@ final class ReminderCenter: ObservableObject {
 
     /// Tweede regel van de banner in de app.
     func bannerLine(_ r: ProgramReminder) -> String {
-        r.isSport ? sportLine(r) : L("Starts now on %@", CategoryName.channel(r.channelName))
+        r.isRelease ? L("Released today. Tap to view.")
+            : r.isSport ? sportLine(r) : L("Starts now on %@", CategoryName.channel(r.channelName))
     }
 
     /// Melding van een (elders) verwijderde herinnering intrekken.

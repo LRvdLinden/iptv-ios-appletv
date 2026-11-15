@@ -2950,6 +2950,18 @@ do {
     eq(pm.map(\.uri), ["hd.m3u8", "sd.m3u8"], "master: uri's")
     eq(pm.map(\.variant), [Build176.Variant(bandwidth: 1000000, height: 720), Build176.Variant(bandwidth: 600000, height: 360)], "master: varianten")
     eq(Build176.snippet(String(repeating: "a", count: 200), around: 100..<104, width: 50).count, 52, "snippet met …")
+    let poster = URL(string: "https://image.tmdb.org/t/p/w780/abc.jpg")!
+    eq(Build176.tmdbSized(poster, maxPixel: 720).absoluteString, "https://image.tmdb.org/t/p/w500/abc.jpg", "tmdb 720 → w500")
+    eq(Build176.tmdbSized(poster, maxPixel: 300).absoluteString, "https://image.tmdb.org/t/p/w342/abc.jpg", "tmdb 300 → w342")
+    eq(Build176.tmdbSized(poster, maxPixel: 1200).absoluteString, poster.absoluteString, "tmdb groot blijft w780")
+    eq(Build176.tmdbSized(URL(string: "https://image.tmdb.org/t/p/w342/abc.jpg")!, maxPixel: 720).absoluteString,
+       "https://image.tmdb.org/t/p/w342/abc.jpg", "tmdb nooit groter")
+    eq(Build176.tmdbSized(URL(string: "https://image.tmdb.org/t/p/w1280/b.jpg")!, maxPixel: 1000).absoluteString,
+       "https://image.tmdb.org/t/p/w1280/b.jpg", "achtergrond 1000 → blijft w1280")
+    eq(Build176.tmdbSized(URL(string: "https://image.tmdb.org/t/p/w1280/b.jpg")!, maxPixel: 300).absoluteString,
+       "https://image.tmdb.org/t/p/w1280/b.jpg", "achtergrond blijft")
+    eq(Build176.tmdbSized(URL(string: "https://example.com/t/p/w780/a.jpg")!, maxPixel: 100).absoluteString,
+       "https://example.com/t/p/w780/a.jpg", "andere host blijft")
 }
 
 print("\(checks) controles, \(failures) fout")

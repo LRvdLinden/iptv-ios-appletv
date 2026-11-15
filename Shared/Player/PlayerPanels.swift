@@ -388,6 +388,8 @@ struct NextEpisodeCard: View {
     let secondsLeft: Int
     /// Na het aftellen zelf starten (aftiteling gemarkeerd); anders start hij aan het einde van de aflevering
     let autoplay: Bool
+    /// Build 176: aftellen en vanzelf starten (uit per profiel: alleen de knop)
+    var counting = true
     let onPlay: () -> Void
     let onDismiss: () -> Void
     #if os(tvOS)
@@ -405,7 +407,7 @@ struct NextEpisodeCard: View {
                 Text(next.subtitle ?? next.title).font(.system(size: tvScaled(14), weight: .semibold)).lineLimit(1)
                 HStack(spacing: tvScaled(10)) {
                     Button(action: onPlay) {
-                        Label(L("Starts in %d s", secondsLeft), systemImage: "play.fill")
+                        Label(counting ? L("Starts in %d s", secondsLeft) : L("Play"), systemImage: "play.fill")
                             .font(.system(size: tvScaled(13), weight: .bold))
                             .padding(.horizontal, tvScaled(12)).padding(.vertical, tvScaled(7))
                     }

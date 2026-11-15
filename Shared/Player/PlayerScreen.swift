@@ -360,9 +360,18 @@ struct PlayerScreen: View {
             } else { await start(item, askStartOver: true) }
         }
         .task { setupStillWatching() }
+        // build 176: afspelen vanaf een bewaard moment zodra de lengte bekend is
+        .onChange(of: player.duration > 0) { _, known in
+            if known, let s = player.item.bookmarkSeconds, s > 0 {
+                player.item.bookmarkSeconds = nil
+                player.seek(toSeconds: s)
+            }
+        }
+        .lockGate176()
         // aftiteling gemarkeerd: na het aftellen automatisch de volgende aflevering
         .onChange(of: nextCountdown) { _, v in
-            if v == 0, marker?.creditsStart != nil, let n = nextUp {
+            // build 176: automatisch volgende aflevering kan per profiel uit (de knop blijft)
+            if v == 0, marker?.creditsStart != nil, let n = nextUp, autoNext176 {
                 // build 173: slaaptimer "na deze aflevering": niet door naar de volgende
                 if player.sleep == .endOfEpisode { player.setSleep(.off); sleepNow() } else { playNext(n) }
             }
@@ -503,6 +512,10 @@ struct PlayerScreen: View {
                                 barButton("rectangle.stack", L("Episodes"), id: "episodes") { openEpisodes() }
                             }
                             if !stremioChoices.isEmpty { barButton("list.bullet", L("Sources")) { panel = .sources } }
+                            // build 176: moment bewaren (films en afleveringen)
+                            if canSaveMoment {
+                                barButton("bookmark", L("Save moment"), id: "moment") { saveMoment() }
+                            }
                             if player.item.type == .episode && markerKey != nil {
                                 barButton("forward.frame", L("Mark intro here")) { panel = .intro }
                             }
@@ -618,10 +631,10 @@ struct PlayerScreen: View {
     @ViewBuilder
     private func nextEpisodeCard(_ n: PlayableItem, _ left: Int) -> some View {
         #if os(tvOS)
-        NextEpisodeCard(next: n, secondsLeft: left, autoplay: marker?.creditsStart != nil,
+        NextEpisodeCard(next: n, secondsLeft: left, autoplay: marker?.creditsStart != nil, counting: autoNext176,
                         onPlay: { playNext(n) }, onDismiss: { creditsDismissed = true }, focus: $tvFocus)
         #else
-        NextEpisodeCard(next: n, secondsLeft: left, autoplay: marker?.creditsStart != nil,
+        NextEpisodeCard(next: n, secondsLeft: left, autoplay: marker?.creditsStart != nil, counting: autoNext176,
                         onPlay: { playNext(n) }, onDismiss: { creditsDismissed = true })
         #endif
     }
@@ -974,7 +987,11 @@ struct PlayerScreen: View {
         let src = providerSource(it)
         player.providerLimitCheck = { await ProviderLimit.failureMessage(src) }
         player.onFinished = {
-            if let n = nextUp { playNext(n); return }   // zoals Netflix: gewoon door naar de volgende aflevering
+            // zoals Netflix: gewoon door naar de volgende aflevering (build 176: tenzij uit voor dit profiel; dan blijft de kaart)
+            if let n = nextUp {
+                if autoNext176 { playNext(n) } else { creditsDismissed = false }
+                return
+            }
             if TraktSync.askRating, TraktSync.shared.isLoggedIn, it.imdbID != nil, it.type != .live {
                 panel = .rate
             } else {
@@ -1069,6 +1086,26 @@ struct PlayerScreen: View {
             try? await Task.sleep(nanoseconds: 12_000_000_000)
             if startOverPrompt?.id == p.id { withAnimation { startOverPrompt = nil } }
         }
+    }
+
+    /// Build 176: volgende aflevering vanzelf starten (instelling van het profiel; "Kijk je nog?" gaat voor)
+    private var autoNext176: Bool {
+        Build176.autoplay(value: Profile176.shared.autoplayNext, kids: false, stillWatchingDue: still.isActive)
+    }
+
+    /// Build 176: moment bewaren kan bij films en afleveringen (niet live, niet bij een voorbeeld)
+    private var canSaveMoment: Bool {
+        !player.isLive && (player.item.type == .movie || player.item.type == .episode) && player.duration > 0
+            && !player.item.id.contains("-cu-")
+    }
+
+    private func saveMoment() {
+        let it = player.item
+        let t = player.currentTime
+        var title = it.title
+        if it.type == .episode, let s = it.season, let e = it.episode { title += " · S\(s):E\(e)" }
+        Profile176.shared.addBookmark(server: it.sourceID ?? playlists.source?.id, key: it.id, title: title, seconds: t)
+        flash(L("Moment saved"))
     }
 
     private func playNext(_ n: PlayableItem) {
@@ -1183,6 +1220,12 @@ struct PlayerScreen: View {
             if delay > 0 {
                 try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
                 guard !Task.isCancelled else { return }
+            }
+            // build 176: vergrendelde zender → eerst de pincode; Annuleren = op de huidige zender blijven
+            let key = CloudStore.shared.lockedChannelKey(next.sourceID ?? playlists.source?.id, next.id)
+            if Profile176.shared.asks(key) {
+                LockGate176.shared.open(key, cancel: { zapTarget = nil; banner = nil }) { Task { @MainActor in await tune(next) } }
+                return
             }
             await tune(next)
         }

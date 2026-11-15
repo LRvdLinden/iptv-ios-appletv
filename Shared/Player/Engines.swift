@@ -166,6 +166,11 @@ final class VLCEngine: PlaybackEngine {
         let resumeAt = live ? nil : startSeconds.flatMap { $0 > 1 ? $0 : nil }
         startSeconds = nil
         if let r = resumeAt { media.addOption(":start-time=\(Int(r))") }
+        if !silent && DataSaver176.active {
+            // build 176: Data besparen op mobiel netwerk: de laagste/SD-variant van HLS en DASH
+            media.addOption(":adaptive-maxheight=\(Build176.saverMaxHeight)")
+            media.addOption(":adaptive-logic=lowest")
+        }
         if silent {
             media.addOption(":no-audio")
             // voorbeeld in een klein venster: lagere resolutie kiezen (HLS/DASH) en lichter decoderen
@@ -447,6 +452,10 @@ final class AVEngine: PlaybackEngine {
             item.preferredPeakBitRate = 2_500_000
             item.preferredMaximumResolution = CGSize(width: 960, height: 540)
             player.isMuted = true
+        } else if DataSaver176.active {
+            // build 176: Data besparen op mobiel netwerk: max. 1,5 Mbit/s en SD (≤ 576 lijnen)
+            item.preferredPeakBitRate = Double(Build176.saverMaxBitrate)
+            item.preferredMaximumResolution = CGSize(width: 1024, height: Build176.saverMaxHeight)
         }
         item.textStyleRules = Self.textRules(SubtitleSize.current)
         if !silent, let audio = TrackPreferences.autoAudio {

@@ -21,6 +21,8 @@ struct SearchView: View {
     @State private var searching = false
     @State private var programs: [ProgramHit] = []
     @State private var program: ProgramHit?
+    /// Build 176: treffers in de programmabeschrijvingen ("In de tv-gids")
+    @State private var descHits: [EPGSearch176.Hit] = []
     /// Acteurs/actrices bij TMDB (vanaf 3 tekens)
     @State private var people: [PersonRef] = []
     @State private var peopleTask: Task<Void, Never>?
@@ -45,7 +47,7 @@ struct SearchView: View {
                                 .multilineTextAlignment(.center)
                         }
                         .foregroundStyle(Theme.secondary).frame(maxWidth: .infinity).padding(.top, 80)
-                    } else if results.isEmpty && programs.isEmpty && groupHits.isEmpty && people.isEmpty && !searching {
+                    } else if results.isEmpty && programs.isEmpty && descHits.isEmpty && groupHits.isEmpty && people.isEmpty && !searching {
                         Text(L("Nothing found for “%@”.", query)).foregroundStyle(Theme.secondary)
                             .frame(maxWidth: .infinity).padding(.top, 80)
                     }
@@ -61,6 +63,10 @@ struct SearchView: View {
                     // Live TV (zenders en tv-gids) altijd als laatste, na films en series; de tvOS-focus volgt deze volgorde
                     if !results.channels.isEmpty { channelRow }
                     if !programs.isEmpty { programList }
+                    // build 176: zoeken in de beschrijvingen van de tv-gids
+                    if !descHits.isEmpty {
+                        EPGDescriptionHits(hits: descHits) { c, p in program = ProgramHit(channel: c, p: p) }
+                    }
                 }
                 .padding(.vertical)
             }
@@ -80,6 +86,12 @@ struct SearchView: View {
                     guard q == query else { return }
                     results = r
                     programs = p
+                    // build 176: beschrijvingen (index op de achtergrond); alleen als er niet verder getypt is
+                    let lib = playlists.library
+                    Task {
+                        let d = await EPGSearch176.search(q, in: lib)
+                        if q == query { descHits = d }
+                    }
                     groupHits = q.count < 2 ? [] : categoryHits(q)
                     searching = false
                 }

@@ -58,6 +58,8 @@ struct HomeView: View {
     @State private var discover: [DiscoverKind: [DiscoverEntry]] = [:]
     /// Build 111: telt op als TMDB-titels uit Mijn lijst (van een ander apparaat) opgezocht zijn
     @State private var discoverKnownTick = 0
+    /// Build 176: pagina "Nieuw en populair" (via "Alles" bij Binnenkort op Bingr)
+    @State private var newPopular = false
     /// Build 151: rij Zenders (zenderlogo's van de eigen server)
     @State private var logoChannels: [Channel] = []
 
@@ -148,6 +150,12 @@ struct HomeView: View {
         // build 111: TMDB-rijen (12 uur bewaard) zodra de index er is; opnieuw bij ander profiel, taal of indeling
         .task(id: DiscoverKey(version: indexVersion, profile: store.activeProfileID, kinds: discoverKinds,
                               language: Localizer.shared.language)) { await loadDiscover() }
+        // build 176: Nieuw en populair
+        #if os(tvOS)
+        .fullScreenCover(isPresented: $newPopular) { NewPopularView() }
+        #else
+        .sheet(isPresented: $newPopular) { NewPopularView() }
+        #endif
         // build 111: TMDB-titels in Mijn lijst die dit apparaat nog niet kent (op een ander apparaat toegevoegd)
         .task(id: store.myList) { await resolveExternalMyList() }
         // build 151: rij Zenders opnieuw kiezen bij een nieuwe lijst, andere recente/favoriete zenders of ander profiel
@@ -780,7 +788,7 @@ struct HomeView: View {
                                      rank: { (e: DiscoverEntry) -> Int in e.match.map { sourceRank($0) } ?? 9 })
         if !list.isEmpty {
             VStack(alignment: .leading, spacing: tvScaled(4)) {
-                MediaRow(title: kind.title) {
+                MediaRow(title: kind.title, onSeeAll: kind == .upcoming ? { newPopular = true } : nil) {
                     ForEach(list) { e in
                         if let m = e.match {
                             titleButton(m)
@@ -907,6 +915,7 @@ struct HomeView: View {
                     Label(L("Add to collection…"), systemImage: "rectangle.stack.badge.plus")
                 }
                 BlockTitleMenuItem(target: .series(s), server: pid)   // build 171
+                LockTitleMenuItem(target: .series(s), server: pid)   // build 176
             }
         }
     }
@@ -1141,6 +1150,7 @@ struct HomeView: View {
             Label(L("Add to collection…"), systemImage: "rectangle.stack.badge.plus")
         }
         BlockTitleMenuItem(target: .movie(m), server: pid)   // build 171
+        LockTitleMenuItem(target: .movie(m), server: pid)   // build 176
     }
 
     // MARK: data

@@ -75,6 +75,8 @@ struct AppSettingsView: View {
                 #endif
             case .playback?:
                 playerSection
+                AutoplayNextSettingsSection()   // build 176
+                DataSaverSettingsSection()   // build 176
                 StillWatchingSettingsSection()   // build 171
                 SportSettingsSection()   // build 172: Mijn teams en competities
             case .languages?:
@@ -88,6 +90,7 @@ struct AppSettingsView: View {
             case .profiles?:
                 playlistSection
                 if store.activeProfileID != nil { ProfileFiltersSection() }   // build 171
+                if store.activeProfileID != nil { LockedItemsSection() }   // build 176
                 parentalSection
             case .account?:
                 accountTab

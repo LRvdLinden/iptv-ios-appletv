@@ -538,6 +538,11 @@ final class AppState: ObservableObject {
     }
 
     func play(_ item: PlayableItem, zap: [Channel] = []) {
+        // build 176: vergrendelde zender of titel → eerst de pincode van het hoofdprofiel
+        if let key = CloudStore.shared.lockedKey(item), Profile176.shared.asks(key) {
+            LockGate176.shared.open(key) { [weak self] in self?.play(item, zap: zap) }
+            return
+        }
         // build 59: tijdmeting van het startpad (al begonnen op de detailpagina? dan alleen een tussenstap)
         PlaybackTiming.begin(item.title, step: "app.play", keepRecent: true)
         PiPCenter.shared.stopActive()
@@ -616,6 +621,9 @@ struct RootView: View {
                 }
             }
             .fullScreenCover(isPresented: $app.showMultiview) { MultiviewScreen() }
+            // build 176: pincode voor vergrendelde zenders en titels
+            .lockGate176()
+            .lockNotice176()
             #if !os(tvOS)
             .sheet(isPresented: showPushPrompt) { PushPromptView() }
             #endif
@@ -682,7 +690,16 @@ struct RootView: View {
                 Spacer()
                 // niet via de banner langs het leeftijdsfilter: een herinnering van een ander profiel opent
                 // de zender alleen als het actieve profiel geen leeftijdsgrens heeft
-                if reminders.canWatch(r) {
+                if r.isRelease, let link = r.releaseLink {
+                    // build 176: release → de detailpagina
+                    Button {
+                        reminders.due = nil
+                        app.pendingTitleLink = link
+                    } label: {
+                        Text(L("View")).onAccentLabel()
+                    }
+                    .buttonStyle(.borderedProminent)
+                } else if reminders.canWatch(r) {
                     Button {
                         reminders.due = nil
                         if let c = playlists.library.channels.first(where: { $0.id == r.channelID }) {

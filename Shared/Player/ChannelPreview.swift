@@ -62,6 +62,27 @@ enum PlayerSettings {
 }
 
 /// Netwerk: is de verbinding (alleen) mobiel? Voor het zendervoorbeeld op de iPhone.
+/// Build 176: "Op mobiel netwerk": Automatisch / Data besparen / Hoogste kwaliteit (per apparaat, geen sync).
+/// Alleen iPhone en iPad hebben een mobiel netwerk; elders altijd uit. Regels: `Build176.saver`.
+enum DataSaver176 {
+    static let key = "dataMode"
+    static var mode: String { UserDefaults.standard.string(forKey: key) ?? Build176.DataMode.auto.rawValue }
+    static var active: Bool {
+        #if os(iOS)
+        return Build176.saver(mode: mode, net: NetworkStatus.shared.net176, constrained: NetworkStatus.shared.isConstrained)
+        #else
+        return false
+        #endif
+    }
+    static func title(_ m: Build176.DataMode) -> String {
+        switch m {
+        case .auto: return L("Automatic")
+        case .saver: return L("Save data")
+        case .max: return L("Highest quality")
+        }
+    }
+}
+
 final class NetworkStatus: @unchecked Sendable {
     static let shared = NetworkStatus()
     private let monitor = NWPathMonitor()
@@ -85,6 +106,9 @@ final class NetworkStatus: @unchecked Sendable {
         lock.lock(); defer { lock.unlock() }
         return cellular
     }
+
+    /// Build 176: soort netwerk voor "Data besparen" (`unknown` telt als wifi)
+    var net176: Build176.Net { isCellular ? .cellular : .wifi }
 
     /// Modus voor weinig data (build 82: dan geen trailers automatisch)
     var isConstrained: Bool {
@@ -135,6 +159,8 @@ final class ChannelPreview: ObservableObject {
     /// "Alleen wifi" pas na een tik (`userInitiated`). Tv's zijn altijd wifi of kabel.
     var allowed: Bool { allowed(userInitiated: false) }
     func allowed(userInitiated: Bool) -> Bool {
+        // build 176: Data besparen op mobiel netwerk = geen live voorbeeld
+        if DataSaver176.active { return false }
         let mode = PlayerSettings.guidePreviewMode
         if userInitiated { return mode.allowsTap }
         #if os(tvOS)

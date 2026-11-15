@@ -32,6 +32,12 @@ struct SupportView: View {
 
     var body: some View {
         List {
+            // build 176: helpcentrum (artikelen van support.bingr.online)
+            Section {
+                WebLinkRow(title: L("Help centre"), icon: "book", url: Build176.helpURL)
+            } footer: {
+                Text(L("Answers to common questions: installing, signing in, playlists and profiles."))
+            }
             if !signedIn {
                 Section {
                     Label(L("Sign in to your Bingr account to see your support tickets and read replies in the app."),

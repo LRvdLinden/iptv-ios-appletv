@@ -49,7 +49,9 @@ final class StateSync {
     private static let setLists = ["myList", "favorites", "watched", "hiddenCategories",
                                    "hiddenChannels", "pinnedCategories", "blockedTitles",
                                    // build 172 (Sport)
-                                   "favoriteTeams", "favoriteCompetitions", "sportMuted"]
+                                   "favoriteTeams", "favoriteCompetitions", "sportMuted",
+                                   // build 176: vergrendelen met pincode
+                                   "lockedChannels", "lockedTitles"]
 
     private init() {
         if let d = BigDefaults.shared.data(forKey: metaKey), let m = try? JSONDecoder().decode(Meta.self, from: d) {
@@ -1014,6 +1016,11 @@ final class StateSync {
         r.competition = string(j["competition"])
         r.matchKey = string(j["matchKey"])
         r.auto = (j["auto"] as? Bool) == true ? true : nil
+        // build 176: releaseherinnering
+        r.kind = string(j["kind"])
+        r.tmdb = (j["tmdb"] as? NSNumber)?.intValue
+        r.mediaType = string(j["mediaType"])
+        r.season = (j["season"] as? NSNumber)?.intValue
         return r
     }
 
@@ -1029,6 +1036,11 @@ final class StateSync {
         if let v = r.competition, !v.isEmpty { j["competition"] = v }
         if let v = r.matchKey { j["matchKey"] = v }
         if r.auto == true { j["auto"] = true }
+        // build 176: releaseherinnering
+        if let v = r.kind { j["kind"] = v }
+        if let v = r.tmdb { j["tmdb"] = v }
+        if let v = r.mediaType { j["mediaType"] = v }
+        if let v = r.season { j["season"] = v }
         return j
     }
 
@@ -1404,6 +1416,8 @@ final class StateSync {
         Self.diff(&m, "favoriteTeams", d.favoriteTeams, now: now)
         Self.diff(&m, "favoriteCompetitions", d.favoriteCompetitions, now: now)
         Self.diff(&m, "sportMuted", d.sportMuted, now: now)
+        Self.diff(&m, "lockedChannels", d.lockedChannels, now: now)
+        Self.diff(&m, "lockedTitles", d.lockedTitles, now: now)
         Self.diffOrdered(&m, "recentChannels", d.recentChannels, now: now)
         // voortgang: alleen bewuste verwijderingen tellen (`progressCleared`), niet een sleutel die hier ontbreekt
         Self.diffTimed(&m, "progress", d.progress.mapValues { $0.updated.timeIntervalSince1970 }, now: now, inferRemovals: false)
@@ -1608,6 +1622,8 @@ final class StateSync {
         newData.favoriteTeams = Set((sets["favoriteTeams"] ?? [:]).keys)
         newData.favoriteCompetitions = Set((sets["favoriteCompetitions"] ?? [:]).keys)
         newData.sportMuted = Set((sets["sportMuted"] ?? [:]).keys)
+        newData.lockedChannels = Set((sets["lockedChannels"] ?? [:]).keys)
+        newData.lockedTitles = Set((sets["lockedTitles"] ?? [:]).keys)
         newData.recentChannels = recentOrdered.map(\.key)
         newData.history = historySorted.map(\.entry)
         newData.progress = progress.mapValues(\.entry)
@@ -1621,14 +1637,16 @@ final class StateSync {
         meta.profiles[id.uuidString] = m
 
         // payload, en dezelfde vorm voor wat de server had: alleen uploaden als het verschilt
-        let mine: [String: Any] = profilePayload(
+        var mine: [String: Any] = profilePayload(
             sets: sets, removed: removed,
             progress: progress.mapValues { $0.raw.merging(["updatedAt": Self.iso($0.at)]) { _, b in b } },
             history: historySorted.map { $0.raw.merging(["at": Self.iso($0.at), "date": Self.iso($0.at)]) { _, b in b } },
             prefs: prefsOut, prefsAt: prefsAt, pin: pin, pinAt: pinAt, homeLayout: layoutOut, extras: data)
+        // build 176: momenten en automatisch volgende aflevering
+        let has176 = merge176(id, server: data, into: &mine)
         guard remote != nil else {
             let empty = sets.values.allSatisfy(\.isEmpty) && progress.isEmpty && history.isEmpty && pin == nil
-                && removed.values.allSatisfy(\.isEmpty) && prefsAt == nil && layoutOut == nil
+                && removed.values.allSatisfy(\.isEmpty) && prefsAt == nil && layoutOut == nil && !has176
             return empty ? nil : mine
         }
         var theirSets: [String: [String: Double]] = [:]
@@ -1645,7 +1663,7 @@ final class StateSync {
         theirRemoved["progress"] = Self.pruned(serverProgressRemoved)
         theirRemoved["history"] = Self.pruned(serverRemoved("history"))
         let sp = data["prefs"] as? [String: Any]
-        let theirs: [String: Any] = profilePayload(
+        var theirs: [String: Any] = profilePayload(
             sets: theirSets, removed: theirRemoved,
             progress: serverProgress.mapValues { $0.raw.merging(["updatedAt": Self.iso($0.at)]) { _, b in b } },
             history: serverHistory.values.sorted { $0.at != $1.at ? $0.at > $1.at : $0.entry.id < $1.entry.id }
@@ -1654,6 +1672,7 @@ final class StateSync {
             prefsAt: sp.map { Self.time($0["updatedAt"]) ?? sectionAt },
             pin: Self.theirPin(serverPin), pinAt: serverPin.at, serverLegacyPin: Self.legacyPin(serverPin),
             extras: data)
+        Self.theirs176(data, into: &theirs)
         // staan er verwijderingen alleen in de oude velden (iOS vóór build 60), upload dan ook zonder
         // verdere wijziging, zodat Android en Tizen ze in `removed` zien
         let legacyOnly = ["progress", "history"].contains { name in
@@ -1661,6 +1680,56 @@ final class StateSync {
         }
         if !legacyOnly && Self.same(Self.withoutUpdatedAt(mine), Self.withoutUpdatedAt(theirs)) { return nil }
         return mine
+    }
+
+    // MARK: build 176: momenten (`bookmarks`) en `autoplayNext` in `profile.<id>` (docs/ACCOUNT.md → "Build 176")
+
+    private static func bookmarks176(_ v: Any?) -> [Build176.Bookmark] {
+        (v as? [Any] ?? []).compactMap { e in
+            guard let j = e as? [String: Any], let id = string(j["id"]), let at = time(j["at"]) else { return nil }
+            return Build176.Bookmark(id: id, key: string(j["key"]) ?? "", playlistID: string(j["playlistID"]) ?? "",
+                                     title: j["title"] as? String ?? "", t: (j["t"] as? NSNumber)?.intValue ?? 0,
+                                     at: at, removed: (j["removed"] as? Bool) == true)
+        }
+    }
+
+    private static func bookmarkJSON(_ b: Build176.Bookmark) -> [String: Any] {
+        if b.removed { return ["id": b.id, "removed": true, "at": iso(b.at)] }
+        return ["id": b.id, "key": b.key, "playlistID": b.playlistID, "title": b.title, "t": b.t, "at": iso(b.at)]
+    }
+
+    private static func autoplay176(_ v: Any?) -> Profile176.Autoplay? {
+        guard let j = v as? [String: Any], let value = j["value"] as? Bool, let at = time(j["at"]) else { return nil }
+        return Profile176.Autoplay(value: value, at: at)
+    }
+
+    /// Samenvoegen met de server, lokaal toepassen en in `out` zetten. Geeft true als er lokaal iets van build 176 is.
+    private func merge176(_ id: UUID, server data: [String: Any], into out: inout [String: Any]) -> Bool {
+        let p = Profile176.shared
+        let now = Date().timeIntervalSince1970
+        let merged = Build176.mergeBookmarks(p.allBookmarks(id), Self.bookmarks176(data["bookmarks"]), now: now)
+        p.setSyncedBookmarks(id, merged)
+        if !merged.isEmpty || data["bookmarks"] != nil { out["bookmarks"] = merged.map(Self.bookmarkJSON) }
+        let server = Self.autoplay176(data["autoplayNext"])
+        let local = p.autoplay(id)
+        var win = local
+        if let s = server, (local == nil || s.at > local!.at) { win = s }
+        if let w = win {
+            if w != local { p.setSyncedAutoplay(id, w) }
+            out["autoplayNext"] = ["value": w.value, "at": Self.iso(w.at)] as [String: Any]
+        }
+        return !merged.isEmpty || local != nil
+    }
+
+    /// Wat de server had, in dezelfde vorm (om te zien of er geüpload moet worden)
+    private static func theirs176(_ data: [String: Any], into out: inout [String: Any]) {
+        if data["bookmarks"] != nil {
+            out["bookmarks"] = Build176.mergeBookmarks(bookmarks176(data["bookmarks"]), [], now: Date().timeIntervalSince1970)
+                .map(bookmarkJSON)
+        }
+        if let a = autoplay176(data["autoplayNext"]) {
+            out["autoplayNext"] = ["value": a.value, "at": iso(a.at)] as [String: Any]
+        }
     }
 
     private func profilePayload(sets: [String: [String: Double]], removed: [String: [String: Double]],
