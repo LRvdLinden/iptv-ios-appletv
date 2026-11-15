@@ -215,7 +215,7 @@ enum Build178 {
     static func m3uURL(stream: String, type: String?, source: String?, start: Double, end: Double, now: Double,
                        timeZone: TimeZone) -> String? {
         let t = type?.lowercased() ?? ""
-        let src = source?.trimmingCharacters(in: .whitespacesAndNewlines).flatMap { $0.isEmpty ? nil : $0 }
+        let src = (source?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
         func xc() -> String? {
             guard let x = xtreamParts(stream) else { return nil }
             return xtreamURL(server: x.server, user: x.user, pass: x.pass, streamID: x.id, start: start, end: end, timeZone: timeZone)
