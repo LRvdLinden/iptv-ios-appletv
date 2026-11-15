@@ -1,5 +1,191 @@
 [
  {
+  "build": 173,
+  "version": "1.0.7",
+  "date": "2026-11-15",
+  "items": [
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "Crash bij het live voorbeeld in Sport en de tv-gids opgelost",
+    "en": "Fixed a crash in the live preview in Sport and the TV guide"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web"
+    ],
+    "nl": "Trakt synchroniseert weer betrouwbaar",
+    "en": "Trakt syncs reliably again"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web"
+    ],
+    "nl": "OpenSubtitles blijft ingelogd",
+    "en": "OpenSubtitles stays signed in"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web"
+    ],
+    "nl": "Sport heeft zoeken en het profielmenu, en Categorieën staat in het profielmenu",
+    "en": "Sport has search and the profile menu, and Categories is in the profile menu"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web"
+    ],
+    "nl": "Eén menu Audio en ondertitels onderin beeld, zonder te pauzeren",
+    "en": "One Audio and subtitles menu at the bottom of the screen, without pausing"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "tvos",
+     "androidtv"
+    ],
+    "nl": "Rustigere bediening op de tv: knoppen linksonder, de belangrijkste knop het grootst",
+    "en": "Cleaner TV controls: buttons at the bottom left, the most important one biggest"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web"
+    ],
+    "nl": "Vanaf het begin en Terug naar live in de speler, met de vraag bij een programma dat al bezig is",
+    "en": "Start over and Back to live in the player, with a choice when a programme has already started"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web"
+    ],
+    "nl": "Zappen als lijst en Vorige zender",
+    "en": "Zap list and Previous channel"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "android",
+     "web"
+    ],
+    "nl": "Dubbeltikken om 10 seconden terug of vooruit te gaan, vaker tikken spoelt verder",
+    "en": "Double-tap to skip 10 seconds back or forward, tap more to skip further"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web"
+    ],
+    "nl": "Afleveringen kiezen zonder de speler te verlaten",
+    "en": "Choose episodes without leaving the player"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web"
+    ],
+    "nl": "Eindtijd naast de tijdbalk",
+    "en": "End time next to the timeline"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web"
+    ],
+    "nl": "Ondertitels even aan na kort terugspoelen",
+    "en": "Subtitles briefly on after rewinding"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web"
+    ],
+    "nl": "Slaaptimer in de speler en bij radio",
+    "en": "Sleep timer in the player and for radio"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Homepage: Bingr Radio met CarPlay en Android Auto bij de apparaten",
+    "en": "Homepage: Bingr Radio with CarPlay and Android Auto among the devices"
+   }
+  ]
+ },
+ {
   "build": 172,
   "version": "1.0.7",
   "date": "2026-11-15",

@@ -4,6 +4,54 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.7 · Build 173
+_15 november 2026_
+
+### iOS, iPadOS, tvOS en macOS
+
+**Opgelost**
+
+- Crash bij het live voorbeeld in Sport en de tv-gids opgelost
+
+### iOS, iPadOS, Android en Website
+
+**Nieuw**
+
+- Dubbeltikken om 10 seconden terug of vooruit te gaan, vaker tikken spoelt verder
+
+### iOS, iPadOS, tvOS, macOS, Android, Android TV en Website
+
+**Nieuw**
+
+- Eén menu Audio en ondertitels onderin beeld, zonder te pauzeren
+- Vanaf het begin en Terug naar live in de speler, met de vraag bij een programma dat al bezig is
+- Zappen als lijst en Vorige zender
+- Afleveringen kiezen zonder de speler te verlaten
+- Eindtijd naast de tijdbalk
+- Ondertitels even aan na kort terugspoelen
+- Slaaptimer in de speler en bij radio
+
+**Verbeterd**
+
+- Sport heeft zoeken en het profielmenu, en Categorieën staat in het profielmenu
+
+**Opgelost**
+
+- Trakt synchroniseert weer betrouwbaar
+- OpenSubtitles blijft ingelogd
+
+### tvOS en Android TV
+
+**Verbeterd**
+
+- Rustigere bediening op de tv: knoppen linksonder, de belangrijkste knop het grootst
+
+### Website
+
+**Verbeterd**
+
+- Homepage: Bingr Radio met CarPlay en Android Auto bij de apparaten
+
 ## Versie 1.0.7 · Build 172
 _15 november 2026_
 
