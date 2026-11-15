@@ -175,7 +175,7 @@ final class CrashReporter: NSObject {
 #if canImport(MetricKit) && !os(tvOS)
 extension CrashReporter: MXMetricManagerSubscriber {
     nonisolated func didReceive(_ payloads: [MXDiagnosticPayload]) {
-        var items: [(kind: String, name: String, message: String, frames: [String], at: Double, version: String, build: String)] = []
+        var items: [(kind: String, name: String, message: String, frames: [String], at: Double, version: String?, build: String)] = []
         for p in payloads {
             let at = p.timeStampEnd.timeIntervalSince1970
             for c in p.crashDiagnostics ?? [] {
@@ -183,13 +183,13 @@ extension CrashReporter: MXMetricManagerSubscriber {
                 let msg = [c.terminationReason, c.virtualMemoryRegionInfo].compactMap { $0 }.joined(separator: " · ")
                 items.append(("crash", name.isEmpty ? "crash" : name, msg.isEmpty ? name : msg,
                               Self.frames(fromCallStackJSON: c.callStackTree.jsonRepresentation()), at,
-                              c.metaData.applicationVersion, c.metaData.applicationBuildVersion))
+                              nil, c.metaData.applicationBuildVersion))
             }
             for h in p.hangDiagnostics ?? [] {
                 let secs = Int(h.hangDuration.converted(to: .seconds).value)
                 items.append(("anr", "hang", "Hang \(secs) s",
                               Self.frames(fromCallStackJSON: h.callStackTree.jsonRepresentation()), at,
-                              h.metaData.applicationVersion, h.metaData.applicationBuildVersion))
+                              nil, h.metaData.applicationBuildVersion))
             }
         }
         guard !items.isEmpty else { return }
