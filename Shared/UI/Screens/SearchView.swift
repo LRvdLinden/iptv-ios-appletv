@@ -261,10 +261,12 @@ struct SearchView: View {
                         case .movie(let m):
                             PosterCard(title: m.title, poster: m.poster,
                                        watched: Playables.isWatched(movie: m, imdb: trakt.imdb(for: m)), language: ContentLanguage.of(m))
+                                .titlePreview176(.movie(m))
                                 .sourceAccent(currentSource)
                         case .series(let s):
                             PosterCard(title: s.title, poster: s.poster,
                                        watched: Playables.isSeriesWatched(s, imdb: trakt.imdb(for: s)), watchedEpisodes: Playables.watchedEpisodeCount(s, imdb: trakt.imdb(for: s)), language: ContentLanguage.of(s))
+                                .titlePreview176(.series(s))
                                 .sourceAccent(currentSource)
                         }
                     }

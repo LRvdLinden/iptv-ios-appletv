@@ -622,10 +622,12 @@ struct HomeView: View {
                             PosterCard(title: m.title, poster: m.poster, imdbID: trakt.imdb(for: m),
                                        watched: Playables.isWatched(movie: m, imdb: trakt.imdb(for: m)),
                                        progress: store.progress[m.id]?.fraction, language: ContentLanguage.of(m))
+                                .titlePreview176(.movie(m))
                         case .series(let se):
                             let imdb = trakt.imdb(for: se)
                             PosterCard(title: se.title, poster: se.poster, imdbID: imdb,
                                        watched: Playables.isSeriesWatched(se, imdb: imdb), watchedEpisodes: Playables.watchedEpisodeCount(se, imdb: imdb), language: ContentLanguage.of(se))
+                                .titlePreview176(.series(se))
                         }
                     }
                     .cardButton()
@@ -682,10 +684,12 @@ struct HomeView: View {
                             case .movie(let m):
                                 PosterCard(title: m.title, poster: m.poster, imdbID: trakt.imdb(for: m),
                                            watched: Playables.isWatched(movie: m, imdb: trakt.imdb(for: m)), progress: store.progress[m.id]?.fraction, language: ContentLanguage.of(m))
+                                    .titlePreview176(.movie(m))
                             case .series(let se):
                                 let imdb = trakt.imdb(for: se)
                                 PosterCard(title: se.title, poster: se.poster, imdbID: imdb,
                                            watched: Playables.isSeriesWatched(se, imdb: imdb), watchedEpisodes: Playables.watchedEpisodeCount(se, imdb: imdb), language: ContentLanguage.of(se))
+                                    .titlePreview176(.series(se))
                             }
                         }
                         .cardButton()
@@ -890,6 +894,7 @@ struct HomeView: View {
                            watched: Playables.isWatched(movie: m, imdb: imdb),
                            progress: store.progress[m.id]?.fraction,
                            badge: kindBadge ? L("MOVIE") : nil, badgeAlignment: .topLeading, language: ContentLanguage.of(m))
+                    .titlePreview176(.movie(m))
             }
             .cardButton()
             .contextMenu { movieMenu(m, imdb: imdb) }
@@ -900,6 +905,7 @@ struct HomeView: View {
                            watched: Playables.isSeriesWatched(s, imdb: imdb), badge: kindBadge ? L("SERIES") : nil,
                            watchedEpisodes: Playables.watchedEpisodeCount(s, imdb: imdb),
                            badgeAlignment: .topLeading, language: ContentLanguage.of(s))
+                    .titlePreview176(.series(s))
             }
             .cardButton()
             .contextMenu {
@@ -1045,11 +1051,13 @@ struct HomeView: View {
                             PosterCard(title: m.title, poster: m.poster,
                                        watched: Playables.isWatched(movie: m, imdb: trakt.imdb(for: m)),
                                        badge: L("MOVIE"), badgeAlignment: .topLeading, language: ContentLanguage.of(m))
+                                .titlePreview176(.movie(m))
                         case .series(let s):
                             // "N BEKEKEN" komt onder het label SERIE (zoals op bingr.online)
                             PosterCard(title: s.title, poster: s.poster,
                                        watched: Playables.isSeriesWatched(s, imdb: trakt.imdb(for: s)), badge: L("SERIES"), watchedEpisodes: Playables.watchedEpisodeCount(s, imdb: trakt.imdb(for: s)),
                                        badgeAlignment: .topLeading, language: ContentLanguage.of(s))
+                                .titlePreview176(.series(s))
                         }
                     }
                     .cardButton()
@@ -1082,6 +1090,7 @@ struct HomeView: View {
                     PosterCard(title: m.title, poster: m.poster, imdbID: imdb,
                                watched: Playables.isWatched(movie: m, imdb: imdb),
                                progress: store.progress[m.id]?.fraction, language: ContentLanguage.of(m))
+                        .titlePreview176(.movie(m))
                 }
                 .cardButton()
                 .contextMenu { movieMenu(m, imdb: imdb) }
@@ -1096,6 +1105,7 @@ struct HomeView: View {
                 Button { open(.series(s), .myList) } label: {
                     PosterCard(title: s.title, poster: s.poster, imdbID: imdb,
                                watched: Playables.isSeriesWatched(s, imdb: imdb), watchedEpisodes: Playables.watchedEpisodeCount(s, imdb: imdb), language: ContentLanguage.of(s))
+                        .titlePreview176(.series(s))
                 }
                 .cardButton()
                 .contextMenu {

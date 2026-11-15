@@ -291,11 +291,13 @@ struct MyBingrHeader: View {
                                     PosterCard(title: m.title, poster: m.poster, imdbID: imdb,
                                                watched: Playables.isWatched(movie: m, imdb: imdb),
                                                progress: fraction, language: ContentLanguage.of(m))
+                                        .titlePreview176(.movie(m))
                                 case .series(let s):
                                     let imdb = trakt.imdb(for: s)
                                     PosterCard(title: s.title, poster: s.poster, imdbID: imdb, watched: Playables.isSeriesWatched(s, imdb: imdb), progress: fraction,
                                                watchedEpisodes: Playables.watchedEpisodeCount(s, imdb: imdb),
                                                language: ContentLanguage.of(s))
+                                        .titlePreview176(.series(s))
                                 }
                             }
                             .cardButton()

@@ -30,6 +30,9 @@ struct PlayerScreen: View {
     @State private var tvPreviewExpire: Task<Void, Never>?
     /// Swipen met verborgen bediening: de bediening komt met de focus op de tijdbalk
     @State private var tvFocusTimelineOnShow = false
+    /// Build 176: ±10 en ←/→ spoelen direct (snel achter elkaar telt op); ±10-knoppen van de Remote-app via de systeemopdrachten
+    @State private var skipChain = Skip176.Chain()
+    @State private var remoteSkip = RemoteSkip176()
     #endif
     #if !os(tvOS)
     @StateObject private var cast = CastManager.shared
@@ -69,6 +72,13 @@ struct PlayerScreen: View {
     #if os(iOS)
     /// Build 171: bediening vergrendeld (alle tikken en vegen genegeerd)
     @State private var locked = false
+    /// Build 176: helderheid met verticaal vegen links (terug bij sluiten)
+    @State private var brightness = Brightness176.Session()
+    @State private var brightnessStart: Double?
+    @State private var swipeKind: Brightness176.Kind?
+    @State private var brightnessHUD: Double?
+    @State private var brightnessHUDHide: Task<Void, Never>?
+    @Environment(\.scenePhase) private var scenePhase176
     #endif
 
     enum Panel: String, Identifiable {
@@ -181,6 +191,9 @@ struct PlayerScreen: View {
                     .transition(.opacity).zIndex(4)
             }
             if let b = tapBadge { doubleTapBadge(b).allowsHitTesting(false) }
+            #if os(iOS)
+            if let b = brightnessHUD { BrightnessHUD176(value: b).transition(.opacity) }
+            #endif
 
             if showSkipIntro, !tvBarHasPrimary, let end = marker?.introEnd {
                 skipIntroButton(end)
@@ -292,7 +305,11 @@ struct PlayerScreen: View {
             if f == .bar("timeline") { tvPreviewExpire?.cancel(); tvPreviewExpire = nil }
             else if scrub.isScrubbing { tvSchedulePreviewExpiry() }
         }
-        .onAppear { scrub.player = player; tvFocus = showControls ? tvDefaultFocus : .catcher }
+        .onAppear {
+            scrub.player = player; tvFocus = showControls ? tvDefaultFocus : .catcher
+            // build 176: ±10-knoppen van de Remote-app (iPhone/iPad) en andere afstandsbedieningen
+            remoteSkip.attach { forward in tvSkip(forward: forward) }
+        }
         // intro overslaan: de knop krijgt de focus zolang de bediening verborgen is (zoals Netflix)
         .onChange(of: showSkipIntro) { _, v in
             if v && !showControls { tvFocus = .bar("skipintro") }
@@ -384,12 +401,20 @@ struct PlayerScreen: View {
             zapTask?.cancel()
             #if os(tvOS)
             scrub.reset()
+            remoteSkip.detach()
+            #endif
+            #if os(iOS)
+            restoreBrightness()
             #endif
             if !player.inPiP {
                 player.dismissed = true; player.stop()
                 StreamSession.shared.stop(owner: player)
             }
         }
+        #if os(iOS)
+        // build 176: naar de achtergrond = de eigen helderheid terug (iOS houdt hem anders vast)
+        .onChange(of: scenePhase176) { _, p in if p == .background { restoreBrightness() } }
+        #endif
     }
 
     // MARK: bediening
@@ -411,16 +436,67 @@ struct PlayerScreen: View {
                     .onTapGesture { if doubleTapActive { doubleTapSeek(forward: true, taps: 1) } else { toggleControls() } }
                     .frame(width: geo.size.width * 0.35)
             }
+            // live: omhoog/omlaag vegen = volgende/vorige zender in de groep (build 176: niet in de linkerhelft op
+            // iPhone/iPad, daar regelt verticaal vegen de helderheid)
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 30).onEnded { v in
+                    let dy = v.translation.height, dx = v.translation.width
+                    guard player.isLive, abs(dy) > 60, abs(dy) > abs(dx) * 1.5 else { return }
+                    #if os(iOS)
+                    if brightnessSwipeEnabled, Brightness176.inZone(x: v.startLocation.x, width: geo.size.width) { return }
+                    #endif
+                    zap(dy < 0 ? 1 : -1)
+                }
+            )
+            #if os(iOS)
+            .simultaneousGesture(brightnessGesture(geo.size))
+            #endif
         }
         .ignoresSafeArea()
-        // live: omhoog/omlaag vegen = volgende/vorige zender in de groep
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 30).onEnded { v in
-                let dy = v.translation.height, dx = v.translation.width
-                guard player.isLive, abs(dy) > 60, abs(dy) > abs(dx) * 1.5 else { return }
-                zap(dy < 0 ? 1 : -1)
+    }
+    #endif
+
+    #if os(iOS)
+    // MARK: build 176: helderheid met vegen
+
+    private var brightnessSwipeEnabled: Bool {
+        Brightness176.enabled(locked: locked, casting: cast.connected != nil,
+                              external: external.isConnected && PlayerSettings.externalDisplay)
+    }
+
+    private func brightnessGesture(_ size: CGSize) -> some Gesture {
+        DragGesture(minimumDistance: Brightness176.decideDistance)
+            .onChanged { v in
+                guard brightnessSwipeEnabled else { return }
+                if swipeKind == nil {
+                    swipeKind = Brightness176.classify(startX: v.startLocation.x, width: size.width,
+                                                       dx: v.translation.width, dy: v.translation.height)
+                    if swipeKind == .brightness { brightnessStart = brightness.begin(current: ScreenBrightness176.current) }
+                }
+                guard swipeKind == .brightness, let start = brightnessStart else { return }
+                let b = Brightness176.value(start: start, dy: v.translation.height, height: size.height)
+                ScreenBrightness176.set(b)
+                brightnessHUDHide?.cancel()
+                if brightnessHUD == nil { withAnimation(.easeOut(duration: 0.15)) { brightnessHUD = b } } else { brightnessHUD = b }
+                still.interaction()
             }
-        )
+            .onEnded { _ in
+                let was = swipeKind
+                swipeKind = nil; brightnessStart = nil
+                guard was == .brightness else { return }
+                brightnessHUDHide?.cancel()
+                brightnessHUDHide = Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 800_000_000)
+                    guard !Task.isCancelled else { return }
+                    withAnimation(.easeOut(duration: 0.25)) { brightnessHUD = nil }
+                }
+            }
+    }
+
+    /// Sluiten van de speler of naar de achtergrond: de helderheid van vóór het vegen terug.
+    private func restoreBrightness() {
+        if let v = brightness.end() { ScreenBrightness176.set(v) }
+        brightnessHUD = nil
     }
     #endif
 
@@ -655,8 +731,8 @@ struct PlayerScreen: View {
                 // build 169: vlak na een swipe geen losse sprong van 10 s (de swipe opent de tijdbalk)
                 if (dir == .left || dir == .right) && (scrub.recentlyPanned || scrub.isScrubbing) { return }
                 switch dir {
-                case .left: if canSeek { player.seek(by: -10); flash("−10 s") } else { userPoke() }
-                case .right: if canSeek { player.seek(by: 10); flash("+10 s") } else { userPoke() }
+                case .left: if canSeek { tvSkip(forward: false) } else { userPoke() }
+                case .right: if canSeek { tvSkip(forward: true) } else { userPoke() }
                 case .up: if player.isLive { zap(-1) } else { userPoke() }
                 case .down: if player.isLive { zap(1) } else { userPoke() }
                 default: break
@@ -693,12 +769,36 @@ struct PlayerScreen: View {
         .focused($tvFocus, equals: .bar("timeline"))
         .onMoveCommand { dir in
             switch dir {
-            case .left: if canScrub { scrub.click(forward: false); userPoke() }
-            case .right: if canScrub { scrub.click(forward: true); userPoke() }
+            // build 176: zonder voorbeeldpositie direct spoelen (niet pauzeren); met voorbeeldpositie die verschuiven
+            case .left, .right:
+                guard canScrub else { break }
+                let forward = dir == .right
+                if Skip176.click(scrubbing: scrub.isScrubbing || scrub.committing) == .scrubStep { scrub.click(forward: forward) }
+                else if !scrub.recentlyPanned { tvSkip(forward: forward) }
+                userPoke()
             default: break
             }
         }
         .animation(.easeOut(duration: 0.15), value: focused)
+    }
+
+    /// Build 176: direct 10 s spoelen zonder pauzeren (←/→, ±10 van de Remote-app); snel achter elkaar telt op.
+    private func tvSkip(forward: Bool) {
+        still.interaction()
+        guard Skip176.canSkip(isLive: player.isLive, canTimeshift: player.canTimeshift, duration: player.duration),
+              !scrub.isScrubbing else { return }
+        if player.isLive {
+            player.seek(by: forward ? Skip176.step : -Skip176.step)
+            flash(Skip176.label(forward ? Skip176.step : -Skip176.step))
+            return
+        }
+        let t = player.engine.time
+        let current = t.isFinite && t > 0 ? t : player.duration * player.position
+        let r = skipChain.jump(forward: forward, now: Date().timeIntervalSinceReferenceDate, current: current,
+                               duration: player.duration)
+        let delta = r.target - current
+        if abs(delta) >= 0.5 { player.seek(by: delta) }
+        flash(Skip176.label(r.total))
     }
 
     /// Select op de tijdbalk: naar de voorbeeldpositie springen, of zonder voorbeeldpositie afspelen/pauzeren.

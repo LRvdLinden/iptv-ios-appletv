@@ -456,11 +456,13 @@ struct BrowseCategoryView: View {
                            progress: store.progress[m.id]?.fraction,
                            badge: recent ? L("Recently added") : nil,
                            width: width, language: ContentLanguage.of(m))
+                    .titlePreview176(.movie(m))
             case .series(let s):
                 let imdb = trakt.imdb(for: s)
                 PosterCard(title: s.title, poster: s.poster ?? meta.cached(s)?.poster, imdbID: imdb,
                            watched: Playables.isSeriesWatched(s, imdb: imdb), watchedEpisodes: Playables.watchedEpisodeCount(s, imdb: imdb),
                            width: width, language: ContentLanguage.of(s))
+                    .titlePreview176(.series(s))
             }
         }
         .cardButton()

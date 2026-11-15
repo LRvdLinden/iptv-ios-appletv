@@ -36,6 +36,8 @@ struct AppSettingsView: View {
     @AppStorage(DeinterlaceMode.key) private var deinterlace = DeinterlaceMode.auto.rawValue
     @AppStorage(PlayerSettings.resumeLastChannelKey) private var resumeLastChannel = false
     @AppStorage(Trailer.autoplayKey) private var autoplayTrailers = true
+    /// Build 176: voorvertoning op een titel (per apparaat)
+    @AppStorage(Preview176.enabledKey) private var posterPreview = true
     /// Build 174: Live Activity bij radio (vergrendelscherm, Dynamic Island, CarPlay)
     @AppStorage(Radio174.liveActivityKey) private var radioLiveActivity = true
     @State private var showOSLogin = false
@@ -527,6 +529,14 @@ struct AppSettingsView: View {
                     .font(.caption).foregroundStyle(Theme.secondary)
             }
             #endif
+            // build 176: voorvertoning op een titel (focus of aanwijzer op een poster, of de hero)
+            Toggle(L("Previews"), isOn: $posterPreview)
+            if posterPreview {
+                Text(Preview176.style(device: TitlePreview176.device, surface: .card, hasTrailer: true) == .motion
+                     ? L("A poster that stays selected for 2 seconds starts to move.")
+                     : L("The trailer plays muted after 2 seconds on a poster or at the top of Home. Not when saving data on cellular."))
+                    .font(.caption).foregroundStyle(Theme.secondary)
+            }
         } header: { Text(L("Player")) } footer: {
             Text(L("Automatic uses the Apple player for HLS and MP4 (HDR, Dolby Vision, Atmos, AirPlay, Picture in Picture) and VLC for everything else. If a stream fails, Bingr switches over and reconnects automatically. The default languages are chosen automatically when a stream has them.") + " " + L("With a zap delay, quickly zapping only shows the channel banner; the stream starts once you stop.") + " " + L("Deinterlacing applies to the VLC player and removes comb lines from interlaced TV channels. Start with last channel opens the channel you watched last right after choosing your profile."))
         }

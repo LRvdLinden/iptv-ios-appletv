@@ -1319,7 +1319,11 @@
   "The main profile has no PIN: locked items open without a PIN.": "لا يوجد رمز PIN للملف الشخصي الرئيسي: تُفتح العناصر المقفلة بدون رمز.",
   "This title is locked": "هذا العنوان مقفل",
   "We'll remind you on the release date": "سنذكّرك في تاريخ الإصدار",
-  "You can set the PIN in Settings under Profiles.": "يمكنك تعيين رمز PIN من الإعدادات ضمن الملفات الشخصية."
+  "You can set the PIN in Settings under Profiles.": "يمكنك تعيين رمز PIN من الإعدادات ضمن الملفات الشخصية.",
+  "Previews": "المعاينات",
+  "A poster that stays selected for 2 seconds starts to move.": "يبدأ الملصق الذي يبقى محددًا لمدة ثانيتين بالتحرك.",
+  "The trailer plays muted after 2 seconds on a poster or at the top of Home. Not when saving data on cellular.": "يُعرض الإعلان دون صوت بعد ثانيتين على ملصق أو في أعلى الصفحة الرئيسية. ليس عند توفير البيانات على شبكة الجوال.",
+  "Brightness": "السطوع"
  },
  "de": {
   "%@ is now signed in.": "%@ ist jetzt angemeldet.",
@@ -2641,7 +2645,11 @@
   "The main profile has no PIN: locked items open without a PIN.": "Das Hauptprofil hat keine PIN: Gesperrte Inhalte öffnen ohne PIN.",
   "This title is locked": "Dieser Titel ist gesperrt",
   "We'll remind you on the release date": "Wir erinnern dich am Erscheinungstag",
-  "You can set the PIN in Settings under Profiles.": "Die PIN legst du in den Einstellungen unter Profile fest."
+  "You can set the PIN in Settings under Profiles.": "Die PIN legst du in den Einstellungen unter Profile fest.",
+  "Previews": "Vorschau",
+  "A poster that stays selected for 2 seconds starts to move.": "Ein Poster, das 2 Sekunden ausgewählt bleibt, beginnt sich zu bewegen.",
+  "The trailer plays muted after 2 seconds on a poster or at the top of Home. Not when saving data on cellular.": "Der Trailer läuft nach 2 Sekunden auf einem Poster oder oben auf der Startseite ohne Ton. Nicht beim Datensparen im Mobilfunknetz.",
+  "Brightness": "Helligkeit"
  },
  "es": {
   "%@ is now signed in.": "%@ ya ha iniciado sesión.",
@@ -3963,7 +3971,11 @@
   "The main profile has no PIN: locked items open without a PIN.": "El perfil principal no tiene PIN: los elementos bloqueados se abren sin PIN.",
   "This title is locked": "Este título está bloqueado",
   "We'll remind you on the release date": "Te lo recordaremos el día del estreno",
-  "You can set the PIN in Settings under Profiles.": "Puedes configurar el PIN en Ajustes, en Perfiles."
+  "You can set the PIN in Settings under Profiles.": "Puedes configurar el PIN en Ajustes, en Perfiles.",
+  "Previews": "Avances",
+  "A poster that stays selected for 2 seconds starts to move.": "Un póster que permanece seleccionado 2 segundos empieza a moverse.",
+  "The trailer plays muted after 2 seconds on a poster or at the top of Home. Not when saving data on cellular.": "El tráiler se reproduce sin sonido tras 2 segundos sobre un póster o en la parte superior de Inicio. No al ahorrar datos en la red móvil.",
+  "Brightness": "Brillo"
  },
  "fr": {
   "%@ is now signed in.": "%@ est maintenant connecté.",
@@ -5285,7 +5297,11 @@
   "The main profile has no PIN: locked items open without a PIN.": "Le profil principal n'a pas de code : les éléments verrouillés s'ouvrent sans code.",
   "This title is locked": "Ce titre est verrouillé",
   "We'll remind you on the release date": "Nous vous le rappellerons à la date de sortie",
-  "You can set the PIN in Settings under Profiles.": "Vous pouvez définir le code dans Réglages, sous Profils."
+  "You can set the PIN in Settings under Profiles.": "Vous pouvez définir le code dans Réglages, sous Profils.",
+  "Previews": "Aperçus",
+  "A poster that stays selected for 2 seconds starts to move.": "Une affiche qui reste sélectionnée 2 secondes se met à bouger.",
+  "The trailer plays muted after 2 seconds on a poster or at the top of Home. Not when saving data on cellular.": "La bande-annonce se lance sans le son après 2 secondes sur une affiche ou en haut de l’accueil. Pas en mode économie de données sur réseau mobile.",
+  "Brightness": "Luminosité"
  },
  "it": {
   "%@ is now signed in.": "%@ ha effettuato l’accesso.",
@@ -6607,7 +6623,11 @@
   "The main profile has no PIN: locked items open without a PIN.": "Il profilo principale non ha un PIN: gli elementi bloccati si aprono senza PIN.",
   "This title is locked": "Questo titolo è bloccato",
   "We'll remind you on the release date": "Te lo ricorderemo alla data di uscita",
-  "You can set the PIN in Settings under Profiles.": "Puoi impostare il PIN in Impostazioni, sotto Profili."
+  "You can set the PIN in Settings under Profiles.": "Puoi impostare il PIN in Impostazioni, sotto Profili.",
+  "Previews": "Anteprime",
+  "A poster that stays selected for 2 seconds starts to move.": "Una locandina che resta selezionata per 2 secondi inizia a muoversi.",
+  "The trailer plays muted after 2 seconds on a poster or at the top of Home. Not when saving data on cellular.": "Il trailer parte senza audio dopo 2 secondi su una locandina o in cima alla Home. Non con il risparmio dati sulla rete cellulare.",
+  "Brightness": "Luminosità"
  },
  "nl": {
   "%@ is now signed in.": "%@ is nu ingelogd.",
@@ -7929,7 +7949,11 @@
   "The main profile has no PIN: locked items open without a PIN.": "Het hoofdprofiel heeft geen pincode: vergrendelde items openen zonder pincode.",
   "This title is locked": "Deze titel is vergrendeld",
   "We'll remind you on the release date": "We herinneren je op de releasedatum",
-  "You can set the PIN in Settings under Profiles.": "Je stelt de pincode in bij Instellingen onder Profielen."
+  "You can set the PIN in Settings under Profiles.": "Je stelt de pincode in bij Instellingen onder Profielen.",
+  "Previews": "Voorvertoning",
+  "A poster that stays selected for 2 seconds starts to move.": "Een poster die 2 seconden geselecteerd blijft, gaat bewegen.",
+  "The trailer plays muted after 2 seconds on a poster or at the top of Home. Not when saving data on cellular.": "De trailer speelt zonder geluid na 2 seconden op een poster of bovenaan Home. Niet bij data besparen op mobiel netwerk.",
+  "Brightness": "Helderheid"
  },
  "pl": {
   "%@ is now signed in.": "%@ jest teraz zalogowany.",
@@ -9251,7 +9275,11 @@
   "The main profile has no PIN: locked items open without a PIN.": "Profil główny nie ma PIN-u: zablokowane elementy otwierają się bez PIN-u.",
   "This title is locked": "Ten tytuł jest zablokowany",
   "We'll remind you on the release date": "Przypomnimy w dniu premiery",
-  "You can set the PIN in Settings under Profiles.": "PIN ustawisz w Ustawieniach, w sekcji Profile."
+  "You can set the PIN in Settings under Profiles.": "PIN ustawisz w Ustawieniach, w sekcji Profile.",
+  "Previews": "Podglądy",
+  "A poster that stays selected for 2 seconds starts to move.": "Plakat zaznaczony przez 2 sekundy zaczyna się poruszać.",
+  "The trailer plays muted after 2 seconds on a poster or at the top of Home. Not when saving data on cellular.": "Zwiastun odtwarza się bez dźwięku po 2 sekundach na plakacie lub u góry strony głównej. Nie przy oszczędzaniu danych w sieci komórkowej.",
+  "Brightness": "Jasność"
  },
  "pt": {
   "%@ is now signed in.": "%@ já tem sessão iniciada.",
@@ -10573,7 +10601,11 @@
   "The main profile has no PIN: locked items open without a PIN.": "O perfil principal não tem PIN: os itens bloqueados abrem sem PIN.",
   "This title is locked": "Este título está bloqueado",
   "We'll remind you on the release date": "Vamos lembrá-lo na data de lançamento",
-  "You can set the PIN in Settings under Profiles.": "Pode definir o PIN em Definições, em Perfis."
+  "You can set the PIN in Settings under Profiles.": "Pode definir o PIN em Definições, em Perfis.",
+  "Previews": "Pré-visualizações",
+  "A poster that stays selected for 2 seconds starts to move.": "Um cartaz que fica selecionado durante 2 segundos começa a mexer-se.",
+  "The trailer plays muted after 2 seconds on a poster or at the top of Home. Not when saving data on cellular.": "O trailer é reproduzido sem som após 2 segundos num cartaz ou no topo do Início. Não ao poupar dados na rede móvel.",
+  "Brightness": "Brilho"
  },
  "tr": {
   "%@ is now signed in.": "%@ artık oturum açtı.",
@@ -11895,7 +11927,11 @@
   "The main profile has no PIN: locked items open without a PIN.": "Ana profilin PIN kodu yok: kilitli öğeler PIN olmadan açılır.",
   "This title is locked": "Bu içerik kilitli",
   "We'll remind you on the release date": "Çıkış tarihinde size hatırlatacağız",
-  "You can set the PIN in Settings under Profiles.": "PIN kodunu Ayarlar'da Profiller altında belirleyebilirsiniz."
+  "You can set the PIN in Settings under Profiles.": "PIN kodunu Ayarlar'da Profiller altında belirleyebilirsiniz.",
+  "Previews": "Önizlemeler",
+  "A poster that stays selected for 2 seconds starts to move.": "2 saniye seçili kalan bir afiş hareket etmeye başlar.",
+  "The trailer plays muted after 2 seconds on a poster or at the top of Home. Not when saving data on cellular.": "Fragman, bir afişte veya Ana Sayfa'nın üstünde 2 saniye sonra sessiz oynatılır. Mobil ağda veri tasarrufunda oynatılmaz.",
+  "Brightness": "Parlaklık"
  },
  "zh-Hans": {
   "%@ is now signed in.": "%@ 现已登录。",
@@ -13217,6 +13253,10 @@
   "The main profile has no PIN: locked items open without a PIN.": "主个人资料没有 PIN 码：已锁定的内容无需 PIN 码即可打开。",
   "This title is locked": "此影片已锁定",
   "We'll remind you on the release date": "我们会在上线当天提醒你",
-  "You can set the PIN in Settings under Profiles.": "可在“设置”的“个人资料”中设置 PIN 码。"
+  "You can set the PIN in Settings under Profiles.": "可在“设置”的“个人资料”中设置 PIN 码。",
+  "Previews": "预览",
+  "A poster that stays selected for 2 seconds starts to move.": "海报保持选中 2 秒后会开始动起来。",
+  "The trailer plays muted after 2 seconds on a poster or at the top of Home. Not when saving data on cellular.": "在海报上或首页顶部停留 2 秒后，预告片会静音播放。在蜂窝网络节省流量时不播放。",
+  "Brightness": "亮度"
  }
 }
