@@ -3197,5 +3197,83 @@ do {
     eq(Build178.text("Test"), "Test", "korte gewone titel blijft")
 }
 
+// MARK: build 179 (Shared/Account/Build179.swift, Apple-agent A: punten 1, 3, 5, 12, 13)
+// De gedeelde gevallen komen uit docs/build179_cases.json (zelfde als web/js/build179.js en Build179Logic.kt).
+do {
+    let here = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+    let paths = [here.appendingPathComponent("docs/build179_cases.json"),
+                 URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+                    .deletingLastPathComponent().appendingPathComponent("docs/build179_cases.json")]
+    let caseData = paths.lazy.compactMap { try? Data(contentsOf: $0) }.first
+    check(caseData != nil, "179: docs/build179_cases.json gevonden")
+    let C = caseData.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
+    func cases(_ k: String) -> [Any] { ((C[k] as? [String: Any])?["cases"] as? [Any]) ?? [] }
+    func str(_ v: Any?) -> String? { v as? String }
+    func dbl(_ v: Any?) -> Double? { v is NSNull ? nil : (v as? NSNumber)?.doubleValue }
+    func bool(_ v: Any?) -> Bool { (v as? NSNumber)?.boolValue ?? false }
+    func strs(_ v: Any?) -> [String] { (v as? [Any] ?? []).compactMap { $0 as? String } }
+    func ints(_ v: Any?) -> [Int] { (v as? [Any] ?? []).compactMap { ($0 as? NSNumber)?.intValue } }
+
+    check(cases("refresh").count >= 15 && cases("sort").count >= 5 && cases("zapSearch").count >= 10, "179: gevallen geladen")
+    for case let c as [Any] in cases("refresh") {
+        let got = Build179.refreshPlan(catalog: str(c[0]), epg: str(c[1]), lastFull: dbl(c[2]), lastEpg: dbl(c[3]),
+                                       now: dbl(c[4]) ?? 0, saver: bool(c[5]), allowCellular: bool(c[6]))
+        eq(got.rawValue, str(c[7]) ?? "", "179 verversen \(c)")
+    }
+    for case let c as [Any] in cases("engineFirst") {
+        eq(Build179.firstEngine(order: strs(c[0]), remembered: str(c[1])), str(c[2]) ?? "", "179 eerste engine \(c)")
+    }
+    for case let c as [Any] in cases("engineSwitch") {
+        eq(Build179.shouldSwitch(error: bool(c[0]), firstFrame: bool(c[1]), sinceStart: dbl(c[2]) ?? 0, stalled: dbl(c[3]) ?? 0,
+                                 played: dbl(c[4]) ?? 0, switched: bool(c[5])), bool(c[6]), "179 wisselen \(c)")
+    }
+    for case let c as [Any] in cases("engineNext") {
+        eq(Build179.nextEngine(order: strs(c[0]), current: str(c[1]) ?? "", switched: bool(c[2])), str(c[3]), "179 volgende \(c)")
+    }
+    for case let c as [Any] in cases("engineMemo") {
+        eq(Build179.memoAfter(remembered: str(c[0]), started: str(c[1]) ?? "", switchedTo: str(c[2]), ok: bool(c[3])), str(c[4]),
+           "179 onthouden \(c)")
+    }
+    for case let c as [String: Any] in cases("zapSearch") {
+        let ch = (c["channels"] as? [[String: Any]]) ?? []
+        let got = Build179.zapSearch(str(c["q"]) ?? "", names: ch.map { str($0["name"]) ?? "" },
+                                     numbers: ch.map { ($0["number"] as? NSNumber)?.intValue })
+        eq(got, ints(c["expect"]), "179 zappen zoeken '\(str(c["q"]) ?? "")'")
+    }
+    for case let c as [Any] in cases("zapCategories") {
+        let favs = (c[1] as? [Any] ?? []).map(bool)
+        eq(Build179.zapCategories(groups: strs(c[0]), favorites: favs), strs(c[2]), "179 zap-tabs \(c)")
+    }
+    for case let c as [String: Any] in cases("sort") {
+        let items = ((c["items"] as? [[String: Any]]) ?? []).map {
+            Build179.SortItem(name: str($0["name"]) ?? "", year: ($0["year"] as? NSNumber)?.intValue,
+                              added: dbl($0["added"]), rating: dbl($0["rating"]))
+        }
+        eq(Build179.sortOrder(items, mode: .from(str(c["mode"]))), ints(c["expect"]), "179 sorteren \(str(c["mode"]) ?? "")")
+    }
+    for case let c as [Any] in cases("sortKey") {
+        eq(Build179.sortKey(server: str(c[0]) ?? "", kind: str(c[1]) ?? "", category: str(c[2]) ?? ""), str(c[3]) ?? "", "179 sorteersleutel")
+    }
+    for case let c as [String: Any] in cases("sortMerge") {
+        func m(_ v: Any?) -> [String: Build179.SortEntry] {
+            ((v as? [String: Any]) ?? [:]).compactMapValues { e in
+                guard let d = e as? [String: Any] else { return nil }
+                return Build179.SortEntry(value: str(d["value"]) ?? "", at: str(d["at"]) ?? "")
+            }
+        }
+        eq(Build179.sortMerge(m(c["a"]), m(c["b"])), m(c["expect"]), "179 sorteren samenvoegen")
+    }
+    for case let c as [Any] in cases("cleanupAllowed") {
+        eq(Build179.cleanupAllowed(old: Int(dbl(c[0]) ?? 0), new: Int(dbl(c[1]) ?? 0), complete: bool(c[2])), bool(c[3]), "179 opruimen mag \(c)")
+    }
+    for case let c as [Any] in cases("cleanupAction") {
+        eq(Build179.cleanupAction(present: bool(c[0]), elsewhere: bool(c[1])).rawValue, str(c[2]) ?? "", "179 opruimen \(c)")
+    }
+    let memo = Build179.pruneMemo(["a": .init(e: "vlc", at: 0), "b": .init(e: "apple", at: 100 * 86400)], now: 100 * 86400)
+    eq(Array(memo.keys), ["b"], "179 onthouden ouder dan 60 dagen weg")
+    eq(Build179.memoKey(server: "ABC", live: true, kind: "live", id: "12"), "abc|12", "179 sleutel live")
+    eq(Build179.memoKey(server: "ABC", live: false, kind: "movie", id: "7"), "abc|movie:7", "179 sleutel film")
+}
+
 print("\(checks) controles, \(failures) fout")
 exit(failures == 0 ? 0 : 1)

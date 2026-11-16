@@ -320,6 +320,24 @@ final class DownloadManager: ObservableObject {
         if let d = try? JSONEncoder().encode(items) { try? d.write(to: Self.indexURL, options: .atomic) }
     }
 
+    /// Build 179 (opruimen): titels die niet meer op de server staan. De bestanden blijven; de koppeling wijst naar
+    /// de andere server (`to`) of vervalt (`sourceID` = nil, afspelen van het bestand blijft werken).
+    func relink179(server: UUID, gone: Set<String>, to: [String: (UUID, String)]) {
+        var changed = false
+        for i in items.indices where items[i].sourceID == server {
+            let key = gone.contains(items[i].itemID) ? items[i].itemID : (items[i].seriesID.flatMap { gone.contains($0) ? $0 : nil })
+            guard let key else { continue }
+            if let t = to[key] {
+                items[i].sourceID = t.0
+                if key == items[i].itemID { items[i].itemID = t.1 } else { items[i].seriesID = t.1 }
+            } else {
+                items[i].sourceID = nil
+            }
+            changed = true
+        }
+        if changed { save(force: true) }
+    }
+
     func recalcUsage() {
         let list = items
         Task.detached(priority: .utility) {

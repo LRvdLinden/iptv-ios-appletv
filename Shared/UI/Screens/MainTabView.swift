@@ -185,6 +185,18 @@ struct MainTabView: View {
                     .allowsHitTesting(false)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
+            // build 179: na het verversen: titels die de aanbieder verwijderd heeft
+            if let n = playlists.cleanupNotice, !playlists.isLoading, !playlists.isRefreshing {
+                Text(n)
+                    .font(.system(size: tvScaled(14), weight: .semibold)).foregroundStyle(.white)
+                    .padding(.horizontal, tvScaled(16)).padding(.vertical, tvScaled(9))
+                    .background(.black.opacity(0.8), in: Capsule())
+                    .overlay(Capsule().stroke(.white.opacity(0.12)))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                    .padding(.bottom, tvScaled(70))
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
+            }
             #if os(tvOS)
             if showStartPrompt {
                 StartUpdatePromptTV(onUpdate: { app.answerStartPrompt(update: true) },
@@ -197,6 +209,7 @@ struct MainTabView: View {
         .animation(.easeInOut, value: playlists.isLoading)
         .animation(.easeInOut, value: showStartPrompt)
         .animation(.easeInOut, value: playlists.isRefreshing)
+        .animation(.easeInOut, value: playlists.cleanupNotice)
         .alert(L("Couldn't load playlist"), isPresented: Binding(get: { playlists.error != nil },
                                                                  set: { if !$0 { playlists.error = nil } })) {
             Button(L("Try again")) { if let s = playlists.source { Task { await playlists.select(s, forceRefresh: true) } } }

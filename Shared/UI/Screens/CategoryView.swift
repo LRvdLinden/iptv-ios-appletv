@@ -5,6 +5,21 @@ struct CategoryTarget: Identifiable {
     let id = UUID()
     let title: String
     let items: [DetailTarget]
+    /// Build 179: sleutel in `profile.<id>.categorySort` (`Build179.sortKey`) voor een categorie van de server;
+    /// nil = een eigen lijst (Mijn lijst, Recent toegevoegd …): dan de sortering van dit apparaat (`category.sort`)
+    var sortKey: String? = nil
+
+    init(title: String, items: [DetailTarget], sortKey: String? = nil) {
+        self.title = title; self.items = items; self.sortKey = sortKey
+    }
+
+    /// Build 179: sleutel voor een categorie van films of series (server-id van de titels, of "*" bij meerdere servers)
+    @MainActor static func key(_ category: String, kind: String, items: [DetailTarget]) -> String {
+        let ids = Set(items.prefix(200).map { $0.sourceID ?? CloudStore.shared.activePlaylistID })
+        let only: UUID? = ids.count == 1 ? ids.first.flatMap { $0 } : nil
+        let server = only?.uuidString ?? "*"
+        return Build179.sortKey(server: server, kind: kind, category: category)
+    }
 }
 
 /// Categoriepagina zoals in UHF: terugknop, titel in hoofdletters, sorteerknop
@@ -12,33 +27,39 @@ struct CategoryTarget: Identifiable {
 struct CategoryView: View {
     let target: CategoryTarget
 
-    enum Sort: String, CaseIterable, Identifiable {
-        case standard, az, za, newest, rating
-        var id: String { rawValue }
-        var title: String {
-            switch self {
-            case .standard: return L("Default")
-            case .az: return L("Title (A–Z)")
-            case .za: return L("Title (Z–A)")
-            case .newest: return L("Recently added")
-            case .rating: return L("Highest rated")
-            }
-        }
-    }
+    /// Build 179: de vijf sorteringen van het contract (`Build179.SortMode`)
+    typealias Sort = Build179.SortMode
 
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var meta: MetadataService
     @EnvironmentObject var trakt: TraktSync
     /// vinkjes en "N BEKEKEN" ook bijwerken na afvinken in Bingr (build 75)
     @EnvironmentObject var store: CloudStore
-    @AppStorage("category.sort") private var sortRaw = Sort.standard.rawValue
+    @AppStorage("category.sort") private var localSortRaw = Sort.server.rawValue
+    /// Build 179: sortering per categorie per profiel (gesynct)
+    @ObservedObject private var sorts = CategorySort179.shared
     @State private var detail: DetailTarget?
     /// P0-fix: gesorteerde titels één keer per sortering, op de achtergrond. Voorheen sorteerde `body` bij elke
     /// verversing (bijv. elke binnenkomende IMDb-score) duizenden titels op de hoofdthread.
     @State private var sorted: [DetailTarget] = []
     @State private var sortedFor: Sort?
 
-    private var sort: Sort { Sort(rawValue: sortRaw) ?? .standard }
+    private var sortRaw: String {
+        if let k = target.sortKey { return sorts.mode(k).rawValue }
+        // oude waarden (t/m build 178) omzetten
+        switch localSortRaw {
+        case "standard", "za": return Sort.server.rawValue
+        case "az": return Sort.name.rawValue
+        case "newest": return Sort.added.rawValue
+        default: return Sort.from(localSortRaw).rawValue
+        }
+    }
+    private var sortBinding: Binding<String> {
+        Binding(get: { sortRaw }, set: { v in
+            if let k = target.sortKey { sorts.set(k, Sort.from(v)) } else { localSortRaw = v }
+        })
+    }
+    private var sort: Sort { Sort.from(sortRaw) }
 
     #if os(tvOS)
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 40, alignment: .top), count: 6)
@@ -84,7 +105,7 @@ struct CategoryView: View {
                 .lineLimit(1).minimumScaleFactor(0.7)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Menu {
-                Picker(L("Sort"), selection: $sortRaw) {
+                Picker(L("Sort"), selection: sortBinding) {
                     ForEach(Sort.allCases) { s in Text(s.title).tag(s.rawValue) }
                 }
             } label: {
@@ -148,7 +169,7 @@ struct CategoryView: View {
         let items = target.items
         // scores komen uit de metadata (hoofdthread); alleen opzoeken, het sorteren gebeurt op de achtergrond
         var ratings: [String: Double] = [:]
-        if s == .rating { for t in items where ratings[t.id] == nil { ratings[t.id] = rating(t) ?? -1 } }
+        if s == .rating { for t in items where ratings[t.id] == nil { ratings[t.id] = rating(t) ?? 0 } }
         let out = await Task.detached(priority: .userInitiated) { CategorySorter.sort(items, s, ratings: ratings) }.value
         guard !Task.isCancelled else { return }
         sorted = out
@@ -188,33 +209,21 @@ struct CategoryView: View {
 }
 
 /// Sorteren van een categorie buiten de hoofdthread; elke titel één keer (dubbele id's laten het raster vastlopen).
+/// Build 179: volgens `Build179.sortOrder` (zelfde regels als Android en web).
 private enum CategorySorter {
     static func sort(_ items: [DetailTarget], _ s: CategoryView.Sort, ratings: [String: Double]) -> [DetailTarget] {
         let unique = uniqueByID(items)
-        switch s {
-        case .standard: return unique
-        case .az, .za:
-            // titel zonder taallabel één keer per titel, niet per vergelijking
-            let keyed = unique.map { (t: $0, title: title($0)) }
-            let asc = s == .az
-            return keyed.sorted {
-                let r = $0.title.localizedStandardCompare($1.title)
-                return asc ? r == .orderedAscending : r == .orderedDescending
-            }.map { $0.t }
-        case .newest: return unique.sorted { (added($0) ?? .distantPast) > (added($1) ?? .distantPast) }
-        case .rating: return unique.sorted { (ratings[$0.id] ?? -1) > (ratings[$1.id] ?? -1) }
+        guard s != .server else { return unique }
+        let keys = unique.map { t -> Build179.SortItem in
+            switch t {
+            case .movie(let m):
+                return .init(name: ContentLanguage.displayTitle(m.title), year: m.year,
+                             added: m.addedAt?.timeIntervalSince1970, rating: ratings[t.id])
+            case .series(let x):
+                return .init(name: ContentLanguage.displayTitle(x.title), year: x.year,
+                             added: x.addedAt?.timeIntervalSince1970, rating: ratings[t.id])
+            }
         }
-    }
-
-    private static func title(_ t: DetailTarget) -> String {
-        switch t {
-        case .movie(let m): return ContentLanguage.displayTitle(m.title)
-        case .series(let s): return ContentLanguage.displayTitle(s.title)
-        }
-    }
-
-    private static func added(_ t: DetailTarget) -> Date? {
-        if case .movie(let m) = t { return m.addedAt }
-        return nil
+        return Build179.sortOrder(keys, mode: s).map { unique[$0] }
     }
 }

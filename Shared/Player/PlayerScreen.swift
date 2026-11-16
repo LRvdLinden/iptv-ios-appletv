@@ -385,7 +385,16 @@ struct PlayerScreen: View {
         .onChange(of: player.notice) { _, n in
             if let n { flash(n); player.notice = nil }
         }
+        #if os(iOS)
+        // build 179: Live Activity bij live tv (zappen, pauze/afspelen)
+        .onChange(of: player.item.id) { _, _ in liveActivity179() }
+        .onChange(of: player.isPlaying) { _, _ in liveActivity179() }
+        .onAppear { liveActivity179() }
+        #endif
         .onDisappear {
+            #if os(iOS)
+            if !player.inPiP { LiveTVActivity179.shared.stop() }
+            #endif
             still.stop()
             zapTask?.cancel()
             #if os(tvOS)
@@ -716,7 +725,10 @@ struct PlayerScreen: View {
                 // build 169: vlak na een swipe geen losse sprong van 10 s (de swipe opent de tijdbalk)
                 if (dir == .left || dir == .right) && (scrub.recentlyPanned || scrub.isScrubbing) { return }
                 switch dir {
-                case .left: if canSeek { tvSkip(forward: false) } else { userPoke() }
+                // build 179: live op het live-punt (niet achter live): links opent de zaplijst; achter live −10 s (176)
+                case .left:
+                    if player.isLive && player.behindLive == 0 && !player.isTimeshifting179 && panel == nil { panel = .zap }
+                    else if canSeek { tvSkip(forward: false) } else { userPoke() }
                 case .right: if canSeek { tvSkip(forward: true) } else { userPoke() }
                 case .up: if player.isLive { zap(-1) } else { userPoke() }
                 case .down: if player.isLive { zap(1) } else { userPoke() }
@@ -969,12 +981,21 @@ struct PlayerScreen: View {
                               onOpenSubtitles: { panel = .opensubs },
                               onClose: { panel = nil })
         case .zap:
-            ZapPanel173(channels: zapChannels, currentID: player.item.channelID,
+            // build 179: tabs (Alle, Favorieten, categorieën) en zoeken
+            ZapPanel179(channels: zapChannels, currentID: player.item.channelID,
+                        isFavorite: { c in (c.sourceID ?? playlists.source?.id).map { CloudStore.shared.isFavorite($0, c.id) } ?? false },
+                        isLocked: { c in CloudStore.shared.lockedChannelKey(c.sourceID ?? playlists.source?.id, c.id) != nil },
                         nowPlaying: { playlists.library.nowPlaying($0) },
                         onPick: { c in
                             panel = nil
                             guard c.id != player.item.channelID else { return }
                             zapTask?.cancel(); zapTarget = nil
+                            // build 176/179: vergrendelde zender → eerst de pincode
+                            let key = CloudStore.shared.lockedChannelKey(c.sourceID ?? playlists.source?.id, c.id)
+                            if Profile176.shared.asks(key) {
+                                LockGate176.shared.open(key, cancel: {}) { Task { @MainActor in showBanner(c, pending: false); await tune(c) } }
+                                return
+                            }
                             showBanner(c, pending: false)
                             Task { await tune(c) }
                         },
@@ -1351,7 +1372,28 @@ struct PlayerScreen: View {
         }
     }
 
-    private func close() { player.stop(); StreamSession.shared.stop(owner: player); dismiss() }
+    private func close() {
+        #if os(iOS)
+        LiveTVActivity179.shared.stop()   // build 179
+        #endif
+        player.stop(); StreamSession.shared.stop(owner: player); dismiss()
+    }
+
+    #if os(iOS)
+    /// Build 179: de Live Activity van live tv starten of bijwerken (zender, nu en straks)
+    private func liveActivity179() {
+        guard player.isLive, !player.isPreview else { LiveTVActivity179.shared.stop(); return }
+        let pl = playlists
+        let p = player
+        LiveTVActivity179.shared.sync(player: player) {
+            guard let cid = p.item.channelID, let c = pl.library.channels.first(where: { $0.id == cid }) else { return nil }
+            let list = pl.library.upcoming(c, count: 2)
+            let now = pl.library.nowPlaying(c)
+            let next = list.first { $0.start >= (now?.end ?? Date()) }
+            return (c, now, next)
+        }
+    }
+    #endif
 
     // MARK: tegelijk kijken (build 51)
 

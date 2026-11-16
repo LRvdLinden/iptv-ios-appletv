@@ -127,6 +127,8 @@ struct BingrApp: App {
                 // wissel tussen apps weer actief)
                 // build 154: bij terugkeer naar de voorgrond ook de Trakt-wachtrij opnieuw proberen
                 if app.traktRefreshDue() { Task { await trakt.appBecameActive() } }
+                // build 179: wel vanzelf verversen als de termijn verstreken is (op de achtergrond, niet tijdens afspelen)
+                AutoRefresh179.shared.check()
                 // build 145: bij terugkeer naar de app niets ophalen en niet opnieuw vragen (één keer per keer openen)
                 // gekoppelde apparaten: heartbeat (of registreren) bij terugkeer naar de voorgrond
                 if app.accountRefreshDue() {
@@ -249,6 +251,8 @@ final class AppState: ObservableObject {
         // build 145: servers bijwerken alleen als het hoofdscherm open is en er niets speelt
         playlists.isPlaying = { [weak self] in self?.playing != nil || self?.showMultiview == true }
         playlists.mayLoad = { [weak self] in self?.stage == .main }
+        // build 179: gids en servers vanzelf verversen (per apparaat, docs/ACCOUNT.md → "Build 179")
+        AutoRefresh179.shared.start(playlists: playlists)
         // build 145: de oude vernieuwtermijn wordt eenmalig "Vragen"
         StartLoad.migrateIfNeeded()
         // servers uit de Bingr-account geïmporteerd, gewijzigd of verwijderd → bibliotheek laden of verversen
@@ -430,6 +434,13 @@ final class AppState: ObservableObject {
     /// Na het openen van een profiel, met de server open: vragen, meteen bijwerken of niets.
     private func decideStart(hadCache: Bool) {
         guard !Screenshots.isActive, stage == .main else { return }
+        // build 179: is de termijn van het vanzelf verversen verstreken, dan meteen op de achtergrond (geen vraag)
+        if !startDecided, AutoRefresh179.shared.activeFullDue() {
+            startDecided = true
+            if SmokeTest.isActive { SmokeTest.say("servers laden bij openen: vanzelf verversen (179)") }
+            AutoRefresh179.shared.check()
+            return
+        }
         let mode = StartLoad.current
         let kids = CloudStore.shared.activeProfile?.kids ?? false
         let d = StartLoad.decide(mode: mode, hasCache: hadCache, kids: kids, decided: startDecided)

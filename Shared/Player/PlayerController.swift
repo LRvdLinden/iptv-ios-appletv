@@ -87,6 +87,16 @@ final class PlayerController: ObservableObject {
     /// Build 164: tellen voor het stilstaande beeld van de tv-gids
     private var stillTicks = 0
     private var playingTicks = 0
+    /// Build 179: automatisch een andere speler proberen (docs/ACCOUNT.md → "Build 179", punt 3)
+    private var sw179Start = Date()
+    private var sw179FirstFrame = false
+    private var sw179Played: Double = 0
+    private var sw179StallSince: Date?
+    private var sw179Switched = false
+    /// engine waarmee deze stream begon ("apple"/"vlc") en of hij al onthouden is
+    private var sw179Started = "apple"
+    private var sw179Remembered: String?
+    private var sw179Settled = false
     /// Foutherstel (build 52): de andere engine al geprobeerd, en of er een herlaadpoging loopt
     private var triedOtherEngine = false
     private var reloadPending = false
@@ -132,6 +142,8 @@ final class PlayerController: ObservableObject {
     private(set) var userPickedSubtitle = false
 
     var isLive: Bool { item.type == .live }
+    /// Build 179: live, maar achter het live-punt (terugkijken/timeshift of gepauzeerd)
+    var isTimeshifting179: Bool { isLive && (timeshiftStart != nil || pausedAt != nil) }
     var canTimeshift: Bool { isLive && (catchupProvider != nil || ((engine as? AVEngine)?.liveWindow ?? 0) > 30) }
 
     // MARK: engine kiezen
@@ -179,6 +191,7 @@ final class PlayerController: ObservableObject {
         dismissed = false
         backgroundResume = nil; pauseWhenReady = false
         triedOtherEngine = false; reloadPending = false; lastGoodPosition = 0
+        sw179Switched = false; sw179Remembered = nil   // build 179: nieuwe stream
         // ondertitels van de vorige titel niet meenemen
         externalCues = []; subtitleText = nil; externalSubtitleName = nil
         externalSubtitleFile = nil; externalSubtitleLanguage = nil
@@ -202,6 +215,7 @@ final class PlayerController: ObservableObject {
     /// Andere speler (VLC ↔ Apple) op dezelfde positie.
     func switchEngine() {
         guard let url else { return }
+        sw179Switched = true   // build 179: handmatig gewisseld: niet nog eens automatisch
         if !isLive { item.resumeAt = lastGoodPosition > 0.01 ? lastGoodPosition : item.resumeAt }
         resetRecovery()
         triedOtherEngine = true
@@ -235,7 +249,18 @@ final class PlayerController: ObservableObject {
             if !isPreview { CrossServer.shared.notePlayed(item) }
         }
         stopped = false
-        let apple = forceApple ?? Self.prefersApple(url)
+        var apple = forceApple ?? Self.prefersApple(url)
+        // build 179: per stream onthouden speler eerst (als beide engines dit adres kunnen openen)
+        if forceApple == nil, sw179Eligible(url) {
+            let order = apple ? ["apple", "vlc"] : ["vlc", "apple"]
+            let remembered = EngineMemo179.get(sw179Key)
+            sw179Remembered = remembered
+            apple = Build179.firstEngine(order: order, remembered: remembered) == "apple"
+        }
+        // gedwongen engine (automatisch of handmatig gewisseld, AirPlay): niet nog eens automatisch wisselen
+        if forceApple != nil { sw179Switched = true }
+        sw179Start = Date(); sw179FirstFrame = false; sw179Played = 0; sw179StallSince = nil; sw179Settled = false
+        if !sw179Switched { sw179Started = apple ? "apple" : "vlc" }
         let switching = apple != usingApple
         // zendervoorbeeld na `halt()`: dezelfde engine (en weergave) hergebruiken in plaats van een nieuwe te maken;
         // de nog ongebruikte engine uit `init` ook (build 59)
@@ -333,6 +358,9 @@ final class PlayerController: ObservableObject {
             if subtitleText != text { subtitleText = text }
         }
 
+        // build 179: niet gestart of meteen vastgelopen → één keer de andere speler (Apple ↔ VLC)
+        if sw179Check(st) { return }
+
         // automatisch herverbinden: eerst de andere engine (Apple → VLC), dan één stille nieuwe poging,
         // daarna een back-upbron (live) of de foutmelding met keuzes (build 52)
         if errorText == nil && !reloadPending {
@@ -408,6 +436,78 @@ final class PlayerController: ObservableObject {
         if !isLive && st == .ended { finish() }
     }
 
+    // MARK: build 179: andere speler proberen en onthouden
+
+    /// Sleutel van deze stream in `player.engineMemo`
+    private var sw179Key: String? {
+        guard let server = (item.sourceID ?? CloudStore.shared.activePlaylistID)?.uuidString else { return nil }
+        switch item.type {
+        case .live:
+            guard let cid = item.channelID else { return nil }
+            return Build179.memoKey(server: server, live: true, kind: "live", id: cid)
+        case .movie: return Build179.memoKey(server: server, live: false, kind: "movie", id: item.id)
+        case .episode: return Build179.memoKey(server: server, live: false, kind: "episode", id: item.id)
+        case .series: return nil
+        }
+    }
+
+    /// Kunnen beide engines dit adres openen, en is dit een gewone stream (geen voorbeeld, download of AirPlay)?
+    private func sw179Eligible(_ url: URL) -> Bool {
+        guard !isPreview, !silent, !url.isFileURL, timeshiftStart == nil else { return false }
+        guard ["http", "https"].contains(url.scheme?.lowercased() ?? "") else { return false }
+        if url.pathExtension.lowercased() == "movpkg" { return false }
+        return !isExternalPlayback && !airPlayWrapped
+    }
+
+    /// Elke tick: tellen en zo nodig wisselen. true = er is gewisseld (rest van de tick overslaan).
+    private func sw179Check(_ st: EngineState) -> Bool {
+        guard let url, sw179Eligible(url), errorText == nil else { return false }
+        let now = Date()
+        if st == .playing && engine.isPlaying {
+            if !sw179FirstFrame { sw179FirstFrame = true }
+            sw179Played += 0.5
+            sw179StallSince = nil
+            // speelt: onthouden (alleen schrijven als het anders is dan wat er stond)
+            if !sw179Settled && sw179Played >= 2 {
+                sw179Settled = true
+                let cur = usingApple ? "apple" : "vlc"
+                let memo = Build179.memoAfter(remembered: sw179Remembered, started: sw179Started,
+                                              switchedTo: sw179Switched ? cur : nil, ok: true)
+                if memo != sw179Remembered { EngineMemo179.set(sw179Key, memo); sw179Remembered = memo }
+            }
+        } else if sw179FirstFrame && (st == .buffering || st == .opening) {
+            if sw179StallSince == nil { sw179StallSince = now }
+        }
+        let stalled = sw179StallSince.map { now.timeIntervalSince($0) } ?? 0
+        // gepauzeerd of op de achtergrond gezet vóór het eerste beeld telt niet als "start niet"
+        let waiting = st == .opening || st == .buffering || st == .error
+        let go = Build179.shouldSwitch(error: st == .error, firstFrame: sw179FirstFrame,
+                                       sinceStart: waiting && backgroundResume == nil ? now.timeIntervalSince(sw179Start) : 0,
+                                       stalled: stalled,
+                                       played: sw179Played, switched: sw179Switched)
+        guard go else { return false }
+        let cur = usingApple ? "apple" : "vlc"
+        let order = sw179Started == "apple" ? ["apple", "vlc"] : ["vlc", "apple"]
+        guard let next = Build179.nextEngine(order: order, current: cur, switched: sw179Switched) else { return false }
+        sw179Switched = true
+        // Apple → VLC telt als de bestaande "andere engine" (build 52); VLC → Apple niet, zodat een fout van de
+        // Apple-speler daarna nog één keer naar VLC teruggaat (zoals altijd)
+        if next == "vlc" { triedOtherEngine = true }
+        if !isLive { item.resumeAt = lastGoodPosition > 0.01 ? lastGoodPosition : item.resumeAt }
+        notice = L("Tried another player")
+        start(url: url, forceApple: next == "apple")
+        return true
+    }
+
+    /// Lukt ook de andere speler niet: het onthouden voor deze stream wissen
+    private func sw179GaveUp() {
+        guard sw179Switched || sw179Remembered != nil else { return }
+        if Build179.memoAfter(remembered: sw179Remembered, started: sw179Started, switchedTo: nil, ok: false) == nil {
+            EngineMemo179.set(sw179Key, nil)
+            sw179Remembered = nil
+        }
+    }
+
     private func reconnect(reason: String?) {
         guard let url else { return }
         #if !os(tvOS)
@@ -446,6 +546,7 @@ final class PlayerController: ObservableObject {
         }
         reconnecting = false
         stallSince = nil
+        sw179GaveUp()   // build 179
         if onGiveUp?() == true {
             // het spelerscherm schakelt over (start() zet dit terug); intussen niet opnieuw ingrijpen
             reloadPending = true; reconnecting = true

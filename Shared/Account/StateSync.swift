@@ -1644,9 +1644,11 @@ final class StateSync {
             prefs: prefsOut, prefsAt: prefsAt, pin: pin, pinAt: pinAt, homeLayout: layoutOut, extras: data)
         // build 176: automatisch volgende aflevering
         let has176 = merge176(id, server: data, into: &mine)
+        // build 179: sorteren per categorie (`categorySort`)
+        let has179Sort = merge179Sort(id, server: data, into: &mine)
         guard remote != nil else {
             let empty = sets.values.allSatisfy(\.isEmpty) && progress.isEmpty && history.isEmpty && pin == nil
-                && removed.values.allSatisfy(\.isEmpty) && prefsAt == nil && layoutOut == nil && !has176
+                && removed.values.allSatisfy(\.isEmpty) && prefsAt == nil && layoutOut == nil && !has176 && !has179Sort
             return empty ? nil : mine
         }
         var theirSets: [String: [String: Double]] = [:]
@@ -1673,6 +1675,7 @@ final class StateSync {
             pin: Self.theirPin(serverPin), pinAt: serverPin.at, serverLegacyPin: Self.legacyPin(serverPin),
             extras: data)
         Self.theirs176(data, into: &theirs)
+        Self.theirs179Sort(data, into: &theirs)
         // staan er verwijderingen alleen in de oude velden (iOS vóór build 60), upload dan ook zonder
         // verdere wijziging, zodat Android en Tizen ze in `removed` zien
         let legacyOnly = ["progress", "history"].contains { name in
@@ -1709,6 +1712,37 @@ final class StateSync {
         if let a = autoplay176(data["autoplayNext"]) {
             out["autoplayNext"] = ["value": a.value, "at": iso(a.at)] as [String: Any]
         }
+    }
+
+    // MARK: build 179: `categorySort` in `profile.<id>` (docs/ACCOUNT.md → "Build 179", punt 12)
+
+    private static func sort179(_ v: Any?) -> [String: Build179.SortEntry] {
+        guard let j = v as? [String: Any] else { return [:] }
+        var out: [String: Build179.SortEntry] = [:]
+        for (k, e) in j {
+            guard let d = e as? [String: Any], let value = d["value"] as? String, let at = d["at"] as? String else { continue }
+            out[k] = Build179.SortEntry(value: value, at: at)
+        }
+        return out
+    }
+
+    private static func sort179JSON(_ m: [String: Build179.SortEntry]) -> [String: Any] {
+        m.mapValues { ["value": $0.value, "at": $0.at] as [String: Any] }
+    }
+
+    /// Samenvoegen met de server, lokaal toepassen en in `out` zetten. Geeft true als er lokaal iets van build 179 is.
+    private func merge179Sort(_ id: UUID, server data: [String: Any], into out: inout [String: Any]) -> Bool {
+        let store = CategorySort179.shared
+        let local = store.entries(id)
+        let merged = Build179.sortMerge(local, Self.sort179(data["categorySort"]))
+        if merged != local { store.setSynced(id, merged) }
+        if !merged.isEmpty { out["categorySort"] = Self.sort179JSON(merged) }
+        return !local.isEmpty
+    }
+
+    private static func theirs179Sort(_ data: [String: Any], into out: inout [String: Any]) {
+        let m = sort179(data["categorySort"])
+        if !m.isEmpty { out["categorySort"] = sort179JSON(m) }
     }
 
     private func profilePayload(sets: [String: [String: Double]], removed: [String: [String: Double]],

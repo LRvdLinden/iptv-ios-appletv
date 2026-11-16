@@ -1083,7 +1083,10 @@ struct HomeView: View {
     }
 
     private func movieRow(_ title: String, _ items: [Movie], all: [Movie]? = nil) -> some View {
-        MediaRow(title: title, onSeeAll: all.map { list in { category = CategoryTarget(title: title, items: list.map { .movie($0) }) } }) {
+        MediaRow(title: title, onSeeAll: all.map { list in {
+            let items: [DetailTarget] = list.map { .movie($0) }
+            category = CategoryTarget(title: title, items: items, sortKey: CategoryTarget.key(title, kind: "movie", items: items))
+        } }) {
             ForEach(items) { m in
                 let imdb = trakt.imdb(for: m)
                 Button { open(.movie(m), .myList) } label: {
@@ -1099,7 +1102,10 @@ struct HomeView: View {
     }
 
     private func seriesRow(_ title: String, _ items: [Series], all: [Series]? = nil) -> some View {
-        MediaRow(title: title, onSeeAll: all.map { list in { category = CategoryTarget(title: title, items: list.map { .series($0) }) } }) {
+        MediaRow(title: title, onSeeAll: all.map { list in {
+            let items: [DetailTarget] = list.map { .series($0) }
+            category = CategoryTarget(title: title, items: items, sortKey: CategoryTarget.key(title, kind: "series", items: items))
+        } }) {
             ForEach(items) { s in
                 let imdb = trakt.imdb(for: s)
                 Button { open(.series(s), .myList) } label: {

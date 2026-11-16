@@ -10,6 +10,8 @@ struct BingrWidgets: WidgetBundle {
         DownloadLiveActivity()
         RadioWidget()
         RadioLiveActivity()
+        // build 179: live tv
+        LiveTVLiveActivity()
     }
 }
 

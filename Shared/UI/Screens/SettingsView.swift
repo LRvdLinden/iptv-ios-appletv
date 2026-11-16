@@ -40,6 +40,11 @@ struct AppSettingsView: View {
     @AppStorage(Preview176.enabledKey) private var posterPreview = true
     /// Build 174: Live Activity bij radio (vergrendelscherm, Dynamic Island, CarPlay)
     @AppStorage(Radio174.liveActivityKey) private var radioLiveActivity = true
+    /// Build 179: vanzelf verversen (per apparaat) en de Live Activity bij live tv
+    @AppStorage(AutoRefresh179.catalogKey) private var refreshCatalog = Build179.CatalogInterval.daily.rawValue
+    @AppStorage(AutoRefresh179.epgKey) private var refreshEPG = Build179.GuideInterval.sixHours.rawValue
+    @AppStorage(AutoRefresh179.cellularKey) private var refreshCellular = false
+    @AppStorage(LiveTVSettings179.liveActivityKey) private var tvLiveActivity = true
     @State private var showOSLogin = false
     @State private var editing: PlaylistSource?
     @State private var editingProfile: ViewerProfile?
@@ -455,6 +460,11 @@ struct AppSettingsView: View {
             Text(L("Couldn't refresh: %@", playlists.refreshFailed.joined(separator: ", ")))
                 .font(.caption).foregroundStyle(Theme.secondary)
         }
+        // build 179: titels die de aanbieder verwijderd heeft
+        if playlists.lastCleanupCount > 0 {
+            Text(L("%d titles no longer available", playlists.lastCleanupCount))
+                .font(.caption).foregroundStyle(Theme.secondary)
+        }
     }
 
     private var refreshSection: some View {
@@ -463,6 +473,20 @@ struct AppSettingsView: View {
                 ForEach(StartLoad.Mode.allCases) { Text($0.title).tag($0.rawValue) }
             }
             .pickerStyle(.menu)
+            // build 179: vanzelf verversen (per apparaat)
+            Picker(L("Refresh channels, movies and series"), selection: $refreshCatalog) {
+                ForEach(Build179.CatalogInterval.allCases) { Text($0.title).tag($0.rawValue) }
+            }
+            .pickerStyle(.menu)
+            .onChange(of: refreshCatalog) { _, _ in AutoRefresh179.shared.scheduleBackground() }
+            Picker(L("Refresh TV guide"), selection: $refreshEPG) {
+                ForEach(Build179.GuideInterval.allCases) { Text($0.title).tag($0.rawValue) }
+            }
+            .pickerStyle(.menu)
+            .onChange(of: refreshEPG) { _, _ in AutoRefresh179.shared.scheduleBackground() }
+            #if os(iOS)
+            Toggle(L("Also on cellular"), isOn: $refreshCellular)
+            #endif
             Button {
                 Task { await playlists.refreshAll() }
             } label: {
@@ -474,7 +498,7 @@ struct AppSettingsView: View {
             .disabled(playlists.refreshingAll)
             refreshStatus
         } header: { Text(L("Update playlists")) } footer: {
-            Text(L("Applies to this device only. Ask: after you choose a profile, Bingr asks whether to update your servers. You can always update manually.") + " " + L("The TV guide is updated together with your servers."))
+            Text(L("Applies to this device only. Ask: after you choose a profile, Bingr asks whether to update your servers. You can always update manually.") + " " + L("Bingr refreshes in the background when the chosen time has passed, never while you're watching. With Save data on cellular, only when Also on cellular is on."))
         }
     }
 
@@ -514,6 +538,11 @@ struct AppSettingsView: View {
             Toggle(L("Radio on the Lock Screen"), isOn: $radioLiveActivity)
                 .onChange(of: radioLiveActivity) { _, _ in RadioBridge174.shared.settingChanged() }
             Text(L("Shows the station and what's playing, with pause and next/previous station, on the Lock Screen, in the Dynamic Island and in CarPlay."))
+                .font(.caption).foregroundStyle(Theme.secondary)
+            // build 179: live tv op het vergrendelscherm en in het Dynamic Island
+            Toggle(L("Live Activity for live TV"), isOn: $tvLiveActivity)
+                .onChange(of: tvLiveActivity) { _, on in if !on { LiveTVActivity179.shared.stop() } }
+            Text(L("Shows the channel, what's on now with progress and what's next, with pause/play, on the Lock Screen, in the Dynamic Island and in CarPlay."))
                 .font(.caption).foregroundStyle(Theme.secondary)
             #endif
             #if os(tvOS)

@@ -173,6 +173,9 @@ final class PlaylistService: ObservableObject {
         let rec = UpdateRecorder(server: s.id)
         // build 147: uitkomst per soort voor de diagnose (Xtream per lijst, de rest de hele lijst)
         var fetchStatus: [FetchStatus.Entry]?
+        // build 179: wat er vóór deze verversing op de server stond (titels opruimen die de aanbieder verwijderd heeft);
+        // alleen id's en titels bewaren, niet de hele oude lijst (geheugen)
+        let old179 = await Self.snapshot179(isActive ? rawLibrary : nil, s)
         do {
             var lib: Library
             let password = Keychain.get(s.passwordKey) ?? ""
@@ -261,8 +264,17 @@ final class PlaylistService: ObservableObject {
                 rec.add("index", ms: Date().timeIntervalSince(t0) * 1000)
                 FetchLog.shared.noteVisibility(s.id, vis)
             }
+            // build 179: de oude lijst van een andere server staat nog in de cache (vóór het wegschrijven lezen)
             await writeCache(s, lib)
             rec.end("save")
+            // build 179: vanzelf verversen (stempel) en opruimen
+            AutoRefresh179.noteFull(s.id)
+            if !lib.epg.isEmpty { AutoRefresh179.noteEpg(s.id) }
+            if let old179 {
+                let complete = (fetchStatus ?? []).allSatisfy { $0.delivered != nil && $0.error == nil }
+                let n = await Cleanup179.run(server: s, old: old179.ids, oldLib: old179.refs, new: lib, complete: complete)
+                if n > 0 { noteCleanup179(n) }
+            }
             StartDiagnostics.shared.mark("save")
             UpdateLog.shared.save(rec.finish(.ok))
             return true
@@ -396,6 +408,77 @@ final class PlaylistService: ObservableObject {
         }
         refreshFailed = failed
         CrossServer.shared.serversRefreshed(ordered.map(\.id))
+    }
+
+    // MARK: build 179: alleen de tv-gids verversen, en de melding na het opruimen
+
+    /// Build 179: id's en titels van de lijst vóór een verversing (de open lijst, anders de bewaarde)
+    nonisolated static func snapshot179(_ active: Library?, _ s: PlaylistSource) async -> (ids: CatalogIDs179, refs: [String: TitleRef179])? {
+        await Task.detached(priority: .utility) {
+            guard let lib = active ?? Self.readCache(s), !lib.isEmptyLibrary else { return nil }
+            return (CatalogIDs179(lib), Cleanup179.refs(lib))
+        }.value
+    }
+
+    /// "12 titels niet meer beschikbaar" (5 s in beeld, en bij de status van het verversen in Instellingen)
+    @Published private(set) var cleanupNotice: String?
+    @Published private(set) var lastCleanupCount = 0
+    private var cleanupHide: Task<Void, Never>?
+
+    private func noteCleanup179(_ n: Int) {
+        lastCleanupCount = n
+        cleanupNotice = L("%d titles no longer available", n)
+        cleanupHide?.cancel()
+        cleanupHide = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            guard !Task.isCancelled else { return }
+            self?.cleanupNotice = nil
+        }
+    }
+
+    /// Adres van de gids van een server zonder de afspeellijst op te halen; nil = niet bekend (dan volledig verversen)
+    private func guideURL179(_ s: PlaylistSource) -> URL? {
+        if let u = s.epgURL.urlValue { return u }
+        if s.kind == .xtream {
+            let x = XtreamClient(source: s, password: Keychain.get(s.passwordKey) ?? "")
+            return x.xmltvURL
+        }
+        return nil
+    }
+
+    /// Build 179: alleen de tv-gids van een server verversen (bewaarde lijst blijft, alleen `epg` nieuw). Servers zonder
+    /// gids (mediaservers, Stremio) tellen als gelukt; zonder bekend gidsadres volgt een volledige verversing.
+    @discardableResult
+    func refreshGuide(_ s: PlaylistSource) async -> Bool {
+        guard !Screenshots.isActive else { return false }
+        switch s.kind {
+        case .jellyfin, .emby, .plex, .stremio:
+            AutoRefresh179.noteEpg(s.id)
+            return true
+        default: break
+        }
+        guard let url = guideURL179(s) else { return await refresh(s, showSpinner: false) }
+        let isActive = source?.id == s.id
+        if isActive { isRefreshing = true }
+        defer { if isActive { isRefreshing = false } }
+        var base: Library
+        if isActive { base = rawLibrary } else {
+            guard let c = await Task.detached(priority: .utility, operation: { Self.readCache(s) }).value else {
+                return await refresh(s, showSpinner: false)
+            }
+            base = c
+        }
+        let rec = UpdateRecorder(server: s.id)
+        let epg = await loadEPG(url, rec, back: Self.catchupBack(base.channels))
+        guard !epg.isEmpty, !Task.isCancelled else { UpdateLog.shared.save(rec.finish(.failed)); return false }
+        base.epg = epg
+        if isActive, source?.id == s.id {
+            if let task = setRaw(base) { _ = await task.value }
+        }
+        await writeCache(s, base)
+        UpdateLog.shared.save(rec.finish(.ok))
+        AutoRefresh179.noteEpg(s.id)
+        return true
     }
 
     private func loadEPG(_ url: URL) async -> [String: [EPGProgram]] {

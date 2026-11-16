@@ -8,6 +8,8 @@ final class BingrAppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         MainActor.assumeIsolated { PushService.shared.start() }
+        // build 179: gids en servers op de achtergrond verversen (BGAppRefreshTask / BGProcessingTask)
+        AutoRefresh179.registerBackgroundTasks()
         Task { @MainActor in DownloadManager.shared.start() }
         return true
     }
