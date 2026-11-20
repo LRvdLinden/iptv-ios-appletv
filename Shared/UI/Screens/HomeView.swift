@@ -1463,55 +1463,44 @@ struct HomeView: View {
         // plus TMDB-aanbevelingen (3 × bij duim omhoog, 1 × bij bekeken). Wat daarna volgt vult de rij aan.
         do {
             let ages = AgeRatingService.shared.cache
-            var all: [DetailTarget] = (filter == .series ? [] : lib.movies.map { DetailTarget.movie($0) })
-                + (filter == .movies ? [] : lib.series.map { DetailTarget.series($0) })
-            for (sid, l) in others {
-                if filter != .series { all += l.movies.map { var m = $0; m.sourceID = m.sourceID ?? sid; return .movie(m) } }
-                if filter != .movies { all += l.series.map { var x = $0; x.sourceID = x.sourceID ?? sid; return .series(x) } }
-            }
-            var byKey: [String: DetailTarget] = [:]
-            var cands: [Build179.Candidate] = []
-            for t in all {
-                let k = tkey(t)
-                guard byKey[k] == nil else { continue }
-                byKey[k] = t
-                let title: String, year: Int?, rating: Double
-                switch t {
-                case .movie(let m): title = m.title; year = m.year; rating = m.rating ?? 0
-                case .series(let x): title = x.title; year = x.year; rating = x.rating ?? 0
-                }
-                let genres = (ages[AgeRatingService.key(title: title, year: year, isShow: t.isSeries)]?.genres ?? []).map(String.init)
-                cands.append(.init(key: k, title: title, genres: genres, cast: Taste179.shared.cast(k), rating: rating))
-            }
-            var watchedKeys = Set(seedTargets.values.map(tkey))
-            for c in cands {
-                guard let t = byKey[c.key] else { continue }
-                if store.progress[t.id] != nil { watchedKeys.insert(c.key); continue }
-                if case .movie(let m) = t, Playables.isWatched(movie: m, imdb: trakt.imdb(for: m)) { watchedKeys.insert(c.key) }
-                if case .series(let x) = t, Playables.watchedEpisodeCount(x, imdb: trakt.imdb(for: x)) > 0 { watchedKeys.insert(c.key) }
-            }
+            let casts = Taste179.shared.all()
+            var servers: [UUID: String] = [:]
+            for (sid, _) in others { servers[sid] = SourceSync.shared.serverID(for: sid) }
+            let wantMovies = filter != .series, wantSeries = filter != .movies
+            let built = await Task.detached(priority: .utility) {
+                Self.candidates179(lib: lib, others: others, activeServer: activeServer, servers: servers, ages: ages,
+                                   casts: casts, movies: wantMovies, series: wantSeries)
+            }.value
+            let byKey = built.byKey
+            var watchedKeys = Set<String>()
+            for t in seedTargets.values { watchedKeys.insert(tkey(t)) }
             var recLiked: [String: Int] = [:], recWatched: [String: Int] = [:]
             if useNetwork {
                 let otherMatcher = await AccountLibrary.shared.othersMatcher(others)
-                func related(_ seed: DetailTarget, into counts: inout [String: Int]) async {
+                func related(_ seed: DetailTarget) async -> Set<String> {
                     let ext = await relatedTitles(seed)
-                    var hits: [DetailTarget] = matcher.movies(ext, limit: 12).map { .movie($0) } + matcher.series(ext, limit: 12).map { .series($0) }
-                    if let om = otherMatcher { hits += om.movies(ext, limit: 6).map { .movie($0) } + om.series(ext, limit: 6).map { .series($0) } }
-                    for k in Set(hits.map(tkey)) { counts[k, default: 0] += 1 }
+                    var keys = Set<String>()
+                    for m in matcher.movies(ext, limit: 12) { keys.insert(tkey(DetailTarget.movie(m))) }
+                    for x in matcher.series(ext, limit: 12) { keys.insert(tkey(DetailTarget.series(x))) }
+                    if let om = otherMatcher {
+                        for m in om.movies(ext, limit: 6) { keys.insert(tkey(DetailTarget.movie(m))) }
+                        for x in om.series(ext, limit: 6) { keys.insert(tkey(DetailTarget.series(x))) }
+                    }
+                    return keys
                 }
                 for k in liked.sorted().prefix(6) {
                     guard let t = byKey[k] else { continue }
-                    await related(t, into: &recLiked)
+                    for hit in await related(t) { recLiked[hit, default: 0] += 1 }
                     if Task.isCancelled { return (out, false) }
                 }
                 for seed in seeds.prefix(4) where !liked.contains(tkey(seed)) {
-                    await related(seed, into: &recWatched)
+                    for hit in await related(seed) { recWatched[hit, default: 0] += 1 }
                     if Task.isCancelled { return (out, false) }
                 }
             }
-            let c2 = cands, w2 = watchedKeys.subtracting(liked).subtracting(disliked), rl = recLiked, rw = recWatched
+            let cands = built.candidates, w2 = watchedKeys.subtracting(liked).subtracting(disliked), rl = recLiked, rw = recWatched
             let keys = await Task.detached(priority: .utility) {
-                Build179.forYou(c2, liked: liked, disliked: disliked, watched: w2, blocked: [], recLiked: rl, recWatched: rw)
+                Build179.forYou(cands, liked: liked, disliked: disliked, watched: w2, blocked: [], recLiked: rl, recWatched: rw)
             }.value
             for k in keys { if let t = byKey[k] { add(t) } }
         }
@@ -1578,6 +1567,45 @@ struct HomeView: View {
         }
         if out.isEmpty { return (popularTitles(idx).filter { !disliked.contains(tkey($0)) }, true) }
         return (Array(out.prefix(30)), false)
+    }
+
+    /// Build 179: alle titels van de servers als kandidaten voor "Voor jou" (op de achtergrond): sleutel zoals de duimen,
+    /// genres uit de TMDB-cache, cast van bezochte detailpagina's, beoordeling van de server.
+    nonisolated private static func candidates179(lib: Library, others: [(UUID, Library)], activeServer: String,
+                                                  servers: [UUID: String], ages: [String: AgeInfo], casts: [String: [String]],
+                                                  movies: Bool, series: Bool)
+        -> (candidates: [Build179.Candidate], byKey: [String: DetailTarget]) {
+        var byKey: [String: DetailTarget] = [:]
+        var out: [Build179.Candidate] = []
+        func scan(_ l: Library, server: String, mark: UUID?) {
+            if movies {
+                for item in l.movies {
+                    let k = Build179.thumbKey(tmdb: item.tmdbID, isShow: false, server: server, id: item.id)
+                    if byKey[k] != nil { continue }
+                    var m = item
+                    if let mark, m.sourceID == nil { m.sourceID = mark }
+                    byKey[k] = DetailTarget.movie(m)
+                    let g = ages[AgeRatingService.key(title: m.title, year: m.year, isShow: false)]?.genres ?? []
+                    out.append(Build179.Candidate(key: k, title: m.title, genres: g.map { String($0) }, cast: casts[k] ?? [],
+                                                  rating: m.rating ?? 0))
+                }
+            }
+            if series {
+                for item in l.series {
+                    let k = Build179.thumbKey(tmdb: item.tmdbID, isShow: true, server: server, id: item.id)
+                    if byKey[k] != nil { continue }
+                    var x = item
+                    if let mark, x.sourceID == nil { x.sourceID = mark }
+                    byKey[k] = DetailTarget.series(x)
+                    let g = ages[AgeRatingService.key(title: x.title, year: x.year, isShow: true)]?.genres ?? []
+                    out.append(Build179.Candidate(key: k, title: x.title, genres: g.map { String($0) }, cast: casts[k] ?? [],
+                                                  rating: x.rating ?? 0))
+                }
+            }
+        }
+        scan(lib, server: activeServer, mark: nil)
+        for (sid, l) in others { scan(l, server: servers[sid] ?? "", mark: sid) }
+        return (out, byKey)
     }
 
     /// Build 140: zonder kijkgeschiedenis: best beoordeelde/nieuwste titels met poster (rij "Populair")

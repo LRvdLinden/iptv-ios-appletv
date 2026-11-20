@@ -25,6 +25,9 @@ final class Cache179 {
     /// (tijd, inhoud) of nil; inhoud nil = "niet gevonden" bewaard
     func get(_ key: String) -> (at: Double, data: Data?)? { entries[key].map { ($0.at, $0.data) } }
 
+    /// Alle bewaarde inhoud (sleutel → JSON)
+    func allData() -> [String: Data] { entries.compactMapValues { $0.data } }
+
     func set(_ key: String, _ data: Data?) {
         entries[key] = Entry(at: Date().timeIntervalSince1970, data: data)
         if entries.count > limit {
@@ -176,6 +179,13 @@ final class Taste179 {
         guard !top.isEmpty, memo[key] != top else { return }
         memo[key] = top
         cache.set(key, try? JSONEncoder().encode(top))
+    }
+
+    /// Alles (sleutel → cast), voor de berekening op de achtergrond
+    func all() -> [String: [String]] {
+        var out = cache.allData().compactMapValues { try? JSONDecoder().decode([String].self, from: $0) }
+        for (k, v) in memo { out[k] = v }
+        return out
     }
 
     func cast(_ key: String) -> [String] {
