@@ -19,6 +19,10 @@ on:
         description: 'Xcode-project versleuteld aanleveren bij bingr-inbox (uit = alleen compileren)'
         type: boolean
         default: true
+      sdk27:
+        description: 'Ook iOS compileren met Xcode 27 (iOS 27-SDK: iPhone Duo, ReservedRegion/ArrangementView)'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -220,3 +224,44 @@ jobs:
       - name: Status
         if: steps.ios.outcome != 'success' || steps.tvos.outcome != 'success' || steps.macos.outcome != 'success' || steps.selftest.outcome != 'success'
         run: exit 1
+
+  # Build 179 (iPhone Duo): alleen op verzoek (workflow_dispatch met sdk27=true). Compileert iOS met de nieuwste Xcode 27,
+  # zodat de code achter `#if compiler(>=...)` (ReservedRegion, ArrangementView; iOS 27.1-SDK) ook echt gecompileerd is.
+  # Geen simulator, geen signing, niets aanleveren; telt niet mee voor de statusmonitor.
+  sdk27:
+    if: github.event_name == 'workflow_dispatch' && inputs.sdk27
+    runs-on: xcode-27
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 (v5.1.0)
+
+      - name: Xcode-versie kiezen
+        run: |
+          ls -d /Applications/Xcode*.app
+          sudo xcode-select -s "$(ls -d /Applications/Xcode_27*.app | sort -V | tail -1)"
+          xcodebuild -version
+          swift --version
+          xcodebuild -showsdks | grep -i ios || true
+
+      - name: API's voor iPhone Duo in de SDK
+        run: |
+          SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
+          for m in SwiftUI SwiftUICore; do
+            f="$(ls "$SDK/System/Library/Frameworks/$m.framework/Modules/$m.swiftmodule/"arm64e-apple-ios.swiftinterface 2>/dev/null | head -1)"
+            [ -n "$f" ] || continue
+            echo "=== $m ==="
+            grep -n -B3 -A14 -E "struct ReservedRegion|struct ArrangementView|ArrangementViewStyle|func reservedRegions|overlayArrangementZIndex|toolbarVerticalEdge|func onHingeChange|func toolbarVerticalBehavior" "$f" | head -400 || true
+          done
+
+      - name: Project genereren
+        run: |
+          command -v xcodegen >/dev/null || brew install xcodegen
+          xcodegen generate
+
+      - name: Build iOS met Xcode 27 (generic, zonder signing)
+        run: |
+          set -o pipefail
+          xcodebuild build -project Bingr.xcodeproj -scheme Bingr -derivedDataPath build \
+            -destination 'generic/platform=iOS' COMPILER_INDEX_STORE_ENABLE=NO \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO > ios27.log 2>&1 || { grep -E "error:" ios27.log | sort -u | head -60; exit 1; }
+          grep -E "warning: .*(Build179Duo|DuoSupport)" ios27.log | sort -u | head -40 || true
