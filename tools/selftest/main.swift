@@ -3241,7 +3241,8 @@ do {
         eq(got, ints(c["expect"]), "179 zappen zoeken '\(str(c["q"]) ?? "")'")
     }
     for case let c as [Any] in cases("zapCategories") {
-        let favs = (c[1] as? [Any] ?? []).map(bool)
+        let favRaw: [Any] = (c[1] as? [Any]) ?? []
+        let favs: [Bool] = favRaw.map { bool($0) }
         eq(Build179.zapCategories(groups: strs(c[0]), favorites: favs), strs(c[2]), "179 zap-tabs \(c)")
     }
     for case let c as [String: Any] in cases("sort") {
@@ -3269,7 +3270,9 @@ do {
     for case let c as [Any] in cases("cleanupAction") {
         eq(Build179.cleanupAction(present: bool(c[0]), elsewhere: bool(c[1])).rawValue, str(c[2]) ?? "", "179 opruimen \(c)")
     }
-    let memo = Build179.pruneMemo(["a": .init(e: "vlc", at: 0), "b": .init(e: "apple", at: 100 * 86400)], now: 100 * 86400)
+    let day100: Double = 8_640_000
+    let memoIn: [String: Build179.EngineMemo] = ["a": Build179.EngineMemo(e: "vlc", at: 0), "b": Build179.EngineMemo(e: "apple", at: day100)]
+    let memo = Build179.pruneMemo(memoIn, now: day100)
     eq(Array(memo.keys), ["b"], "179 onthouden ouder dan 60 dagen weg")
     eq(Build179.memoKey(server: "ABC", live: true, kind: "live", id: "12"), "abc|12", "179 sleutel live")
     eq(Build179.memoKey(server: "ABC", live: false, kind: "movie", id: "7"), "abc|movie:7", "179 sleutel film")

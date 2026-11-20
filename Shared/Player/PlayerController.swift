@@ -461,7 +461,7 @@ final class PlayerController: ObservableObject {
 
     /// Elke tick: tellen en zo nodig wisselen. true = er is gewisseld (rest van de tick overslaan).
     private func sw179Check(_ st: EngineState) -> Bool {
-        guard let url, sw179Eligible(url), errorText == nil else { return false }
+        guard let url, sw179Eligible(url), errorText == nil, !reloadPending else { return false }
         let now = Date()
         if st == .playing && engine.isPlaying {
             if !sw179FirstFrame { sw179FirstFrame = true }
@@ -495,7 +495,19 @@ final class PlayerController: ObservableObject {
         if next == "vlc" { triedOtherEngine = true }
         if !isLive { item.resumeAt = lastGoodPosition > 0.01 ? lastGoodPosition : item.resumeAt }
         notice = L("Tried another player")
-        start(url: url, forceApple: next == "apple")
+        // Eerst de huidige speler volledig sluiten en even wachten: er mogen nooit twee verbindingen naar de server
+        // tegelijk open staan (aanbieders met één verbinding verbreken dan de stream). Daarna pas de andere speler.
+        engine.stop()
+        reloadPending = true; reconnecting = true; isBuffering = true
+        stallSince = nil
+        let toApple = next == "apple"
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            guard let self else { return }
+            self.reloadPending = false
+            guard !self.stopped, self.url == url, self.errorText == nil else { return }
+            self.start(url: url, forceApple: toApple)
+        }
         return true
     }
 
