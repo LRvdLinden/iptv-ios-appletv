@@ -1,0 +1,2236 @@
+{
+ "version": 1,
+ "about": "Build 181 (Bingr Premium): vaste testgevallen bij docs/ACCOUNT.md, 'Build 181: Bingr Premium'. Server (supabase/functions/_shared/premium_test.ts), Apple (zelftest), Android (unittest) en web (tools/test) gebruiken precies deze gevallen; kopieën niet daar aanpassen. Tijden ISO; vergelijk tijden als moment (niet als tekst). Groep 'access': premiumView + access voor één account (settings = overrides op de standaard van app_settings.premium; plan_row = account_plans of null; subscription = de laatste rij in premium_subscriptions of null; trial_used = rij in premium_trials; had_subscription = ooit een rij in premium_subscriptions; test = in test_users). Groep 'settings': normalisatie/validatie (bingr_admin_premium_settings; ok=false = bad_premium_settings). 'stripe': Stripe-abonnement -> status (stripeSubStatus). 'access_until': accessUntil. 'apple': StoreKit-transactie -> soort (appleProduct). 'apple_notify': notificatie -> status. 'mirror': spiegel in account_plans (Lifetime-bescherming). 'client': wat de apps tonen (premiumScreen).",
+ "defaults": {
+  "enabled": false,
+  "new_from_web": null,
+  "new_from_apple": null,
+  "existing_from": "2026-12-01T00:01:00+01:00",
+  "trial_days": 3,
+  "show_prices_web": false,
+  "grace_days": 3,
+  "prices": {
+   "month": 499,
+   "half": 1999,
+   "year": 2999,
+   "lifetime": 4999
+  },
+  "stripe_prices": {
+   "test": {},
+   "live": {}
+  },
+  "stripe_portal": {
+   "test": null,
+   "live": null
+  },
+  "test_users": []
+ },
+ "products": {
+  "month": "nl.lrvdlinden.bingr.premium.month",
+  "half": "nl.lrvdlinden.bingr.premium.halfyear",
+  "year": "nl.lrvdlinden.bingr.premium.year",
+  "lifetime": "nl.lrvdlinden.bingr.lifetime49",
+  "lifetime_legacy": "nl.lrvdlinden.bingr.lifetime"
+ },
+ "access": [
+  {
+   "name": "uit: gratis account blijft gratis",
+   "settings": {
+    "enabled": false
+   },
+   "now": "2026-12-05T10:00:00Z",
+   "created_at": "2026-11-25T10:00:00Z",
+   "platform": "android",
+   "plan_row": null,
+   "subscription": null,
+   "trial_used": false,
+   "had_subscription": false,
+   "test": false,
+   "expect": {
+    "access": "full",
+    "enabled": false,
+    "active": false,
+    "source": null,
+    "plan": null,
+    "status": null,
+    "required": false,
+    "trial_eligible": false,
+    "legacy_offer": false,
+    "manage": null,
+    "expires_at": null,
+    "trial_until": null,
+    "will_renew": false
+   }
+  },
+  {
+   "name": "uit: zelfs na existing_from niets",
+   "settings": {
+    "enabled": false,
+    "new_from_web": "2026-11-21T12:00:00+01:00",
+    "new_from_apple": null,
+    "existing_from": "2026-12-01T00:01:00+01:00",
+    "trial_days": 3
+   },
+   "now": "2026-12-05T10:00:00Z",
+   "created_at": "2026-01-10T10:00:00Z",
+   "platform": "web",
+   "plan_row": null,
+   "subscription": null,
+   "trial_used": false,
+   "had_subscription": false,
+   "test": false,
+   "expect": {
+    "access": "full",
+    "enabled": false,
+    "active": false,
+    "source": null,
+    "plan": null,
+    "status": null,
+    "required": false,
+    "trial_eligible": false,
+    "legacy_offer": false,
+    "manage": null,
+    "expires_at": null,
+    "trial_until": null,
+    "will_renew": false
+   }
+  },
+  {
+   "name": "uit: legacy Lifetime",
+   "settings": {
+    "enabled": false
+   },
+   "now": "2026-12-05T10:00:00Z",
+   "created_at": "2026-01-10T10:00:00Z",
+   "platform": "ios",
+   "plan_row": {
+    "plan": "lifetime",
+    "source": "legacy"
+   },
+   "subscription": null,
+   "trial_used": false,
+   "had_subscription": false,
+   "test": false,
+   "expect": {
+    "access": "full",
+    "enabled": false,
+    "active": true,
+    "source": "legacy",
+    "plan": "lifetime",
+    "status": "lifetime",
+    "required": false,
+    "trial_eligible": false,
+    "legacy_offer": false,
+    "manage": null,
+    "expires_at": null,
+    "trial_until": null,
+    "will_renew": false
+   }
+  },
+  {
+   "name": "web aan, nog vóór new_from_web",
+   "settings": {
+    "enabled": true,
+    "new_from_web": "2026-11-21T12:00:00+01:00",
+    "new_from_apple": null,
+    "existing_from": "2026-12-01T00:01:00+01:00",
+    "trial_days": 3
+   },
+   "now": "2026-11-21T10:59:59Z",
+   "created_at": "2026-11-25T10:00:00Z",
+   "platform": "android",
+   "plan_row": null,
+   "subscription": null,
+   "trial_used": false,
+   "had_subscription": false,
+   "test": false,
+   "expect": {
+    "access": "full",
+    "enabled": false,
+    "active": false,
+    "source": null,
+    "plan": null,
+    "status": null,
+    "required": false,
+    "trial_eligible": false,
+    "legacy_offer": false,
+    "manage": null,
+    "expires_at": null,
+    "trial_until": null,
+    "will_renew": false
+   }
+  },
+  {
+   "name": "web aan, nieuw account na new_from_web moet kiezen, met proef",
+   "settings": {
+    "enabled": true,
+    "new_from_web": "2026-11-21T12:00:00+01:00",
+    "new_from_apple": null,
+    "existing_from": "2026-12-01T00:01:00+01:00",
+    "trial_days": 3
+   },
+   "now": "2026-11-25T10:05:00Z",
+   "created_at": "2026-11-25T10:00:00Z",
+   "platform": "android",
+   "plan_row": null,
+   "subscription": null,
+   "trial_used": false,
+   "had_subscription": false,
+   "test": false,
+   "expect": {
+    "access": "activate",
+    "enabled": true,
+    "active": false,
+    "source": null,
+    "plan": null,
+    "status": null,
+    "required": true,
+    "trial_eligible": true,
+    "legacy_offer": false,
+    "manage": null,
+    "expires_at": null,
+    "trial_until": null,
+    "will_renew": false
+   }
+  },
+  {
+   "name": "web aan, nieuw account precies op new_from_web",
+   "settings": {
+    "enabled": true,
+    "new_from_web": "2026-11-21T12:00:00+01:00",
+    "new_from_apple": null,
+    "existing_from": "2026-12-01T00:01:00+01:00",
+    "trial_days": 3
+   },
+   "now": "2026-11-21T11:00:00Z",
+   "created_at": "2026-11-21T11:00:00Z",
+   "platform": "web",
+   "plan_row": null,
+   "subscription": null,
+   "trial_used": false,
+   "had_subscription": false,
+   "test": false,
+   "expect": {
+    "access": "activate",
+    "enabled": true,
+    "active": false,
+    "source": null,
+    "plan": null,
+    "status": null,
+    "required": true,
+    "trial_eligible": true,
+    "legacy_offer": false,
+    "manage": null,
+    "expires_at": null,
+    "trial_until": null,
+    "will_renew": false
+   }
+  },
+  {
+   "name": "web aan, bestaand account vóór existing_from: gratis, oud aanbod",
+   "settings": {
+    "enabled": true,
+    "new_from_web": "2026-11-21T12:00:00+01:00",
+    "new_from_apple": null,
+    "existing_from": "2026-12-01T00:01:00+01:00",
+    "trial_days": 3
+   },
+   "now": "2026-11-25T10:00:00Z",
+   "created_at": "2026-01-10T10:00:00Z",
+   "platform": "web",
+   "plan_row": null,
+   "subscription": null,
+   "trial_used": false,
+   "had_subscription": false,
+   "test": false,
+   "expect": {
+    "access": "full",
+    "enabled": true,
+    "active": false,
+    "source": null,
+    "plan": null,
+    "status": null,
+    "required": false,
+    "trial_eligible": false,
+    "legacy_offer": true,
+    "manage": null,
+    "expires_at": null,
+    "trial_until": null,
+    "will_renew": false
+   }
+  },
+  {
+   "name": "web aan, bestaand account vóór existing_from op Android TV: oud aanbod",
+   "settings": {
+    "enabled": true,
+    "new_from_web": "2026-11-21T12:00:00+01:00",
+    "new_from_apple": null,
+    "existing_from": "2026-12-01T00:01:00+01:00",
+    "trial_days": 3
+   },
+   "now": "2026-11-30T22:59:00Z",
+   "created_at": "2026-01-10T10:00:00Z",
+   "platform": "androidtv",
+   "plan_row": null,
+   "subscription": null,
+   "trial_used": false,
+   "had_subscription": false,
+   "test": false,
+   "expect": {
+    "access": "full",
+    "enabled": true,
+    "active": false,
+    "source": null,
+    "plan": null,
+    "status": null,
+    "required": false,
+    "trial_eligible": false,
+    "legacy_offer": true,
+    "manage": null,
+    "expires_at": null,
+    "trial_until": null,
+    "will_renew": false
+   }
+  },
+  {
+   "name": "web aan, bestaand account na existing_from: kiezen zonder proef",
+   "settings": {
+    "enabled": true,
+    "new_from_web": "2026-11-21T12:00:00+01:00",
+    "new_from_apple": null,
+    "existing_from": "2026-12-01T00:01:00+01:00",
+    "trial_days": 3
+   },
+   "now": "2026-11-30T23:01:00Z",
+   "created_at": "2026-01-10T10:00:00Z",
+   "platform": "android",
+   "plan_row": null,
+   "subscription": null,
+   "trial_used": false,
+   "had_subscription": false,
+   "test": false,
+   "expect": {
+    "access": "activate",
+    "enabled": true,
+    "active": false,
+    "source": null,
+    "plan": null,
+    "status": null,
+    "required": true,
+    "trial_eligible": false,
+    "legacy_offer": false,
+    "manage": null,
+    "expires_at": null,
+    "trial_until": null,
+    "will_renew": false
+   }
+  },
+  {
+   "name": "web aan, bestaand account één seconde vóór existing_from",
+   "settings": {
+    "enabled": true,
+    "new_from_web": "2026-11-21T12:00:00+01:00",
+    "new_from_apple": null,
+    "existing_from": "2026-12-01T00:01:00+01:00",
+    "trial_days": 3
+   },
+   "now": "2026-11-30T23:00:59Z",
+   "created_at": "2026-01-10T10:00:00Z",
+   "platform": "android",
+   "plan_row": null,
+   "subscription": null,
+   "trial_used": false,
+   "had_subscription": false,
+   "test": false,
+   "expect": {
+    "access": "full",
+    "enabled": true,
+    "active": false,
+    "source": null,
+    "plan": null,
+    "status": null,
+    "required": false,
+    "trial_eligible": false,
+    "legacy_offer": true,
+    "manage": null,
+    "expires_at": null,
+    "trial_until": null,
+    "will_renew": false
+   }
+  },
+  {
+   "name": "web aan, Apple doet niet mee: nieuw account op iPhone gewoon gratis",
+   "settings": {
+    "enabled": true,
+    "new_from_web": "2026-11-21T12:00:00+01:00",
+    "new_from_apple": null,
+    "existing_from": "2026-12-01T00:01:00+01:00",
+    "trial_days": 3
+   },
+   "now": "2026-11-25T10:05:00Z",
+   "created_at": "2026-11-25T10:00:00Z",
+   "platform": "ios",
+   "plan_row": null,
+   "subscription": null,
+   "trial_used": false,
+   "had_subscription": false,
+   "test": false,
+   "expect": {
+    "access": "full",
+    "enabled": false,
+    "active": false,
+    "source": null,
+    "plan": null,
+    "status": null,
+    "required": false,
+    "trial_eligible": false,
+    "legacy_offer": false,
+    "manage": null,
+    "expires_at": null,
+    "trial_until": null,
+    "will_renew": false
+   }
+  },
+  {
+   "name": "web aan, Apple doet niet mee: na existing_from op iPhone niets",
+   "settings": {
+    "enabled": true,
+    "new_from_web": "2026-11-21T12:00:00+01:00",
+    "new_from_apple": null,
+    "existing_from": "2026-12-01T00:01:00+01:00",
+    "trial_days": 3
+   },
+   "now": "2026-12-05T10:00:00Z",
+   "created_at": "2026-01-10T10:00:00Z",
+   "platform": "ipados",
+   "plan_row": null,
+   "subscription": null,
+   "trial_used": false,
+   "had_subscription": false,
+   "test": false,
+   "expect": {
+    "access": "full",
+    "enabled": false,
+    "active": false,
+    "source": null,
+    "plan": null,
+    "status": null,
+    "required": false,
+    "trial_eligible": false,
+    "legacy_offer": false,
+    "manage": null,
+    "expires_at": null,
+    "trial_until": null,
+    "will_renew": false
+   }
+  },
+  {
+   "name": "Windows = web",
+   "settings": {
+    "enabled": true,
+    "new_from_web": "2026-11-21T12:00:00+01:00",
+    "new_from_apple": null,
+    "existing_from": "2026-12-01T00:01:00+01:00",
+    "trial_days": 3
+   },
+   "now": "2026-11-25T10:05:00Z",
+   "created_at": "2026-11-25T10:00:00Z",
+   "platform": "web",
+   "plan_row": null,
+   "subscription": null,
+   "trial_used": false,
+   "had_subscription": false,
+   "test": false,
+   "expect": {
+    "access": "activate",
+    "enabled": true,
+    "active": false,
+    "source": null,
+    "plan": null,
+    "status": null,
+    "required": true,
+    "trial_eligible": true,
+    "legacy_offer": false,
+    "manage": null,
+    "expires_at": null,
+    "trial_until": null,
+    "will_renew": false
+   }
+  },
+  {
+   "name": "onbekend platform = groep web (strenge kant)",
+   "settings": {
+    "enabled": true,
+    "new_from_web": "2026-11-21T12:00:00+01:00",
+    "new_from_apple": null,
+    "existing_from": "2026-12-01T00:01:00+01:00",
+    "trial_days": 3
+   },
+   "now": "2026-11-25T10:05:00Z",
+   "created_at": "2026-11-25T10:00:00Z",
+   "platform": null,
+   "plan_row": null,
+   "subscription": null,
+   "trial_used": false,
+   "had_subscription": false,
+   "test": false,
+   "expect": {
+    "access": "activate",
+    "enabled": true,
+    "active": false,
+    "source": null,
+    "plan": null,
+    "status": null,
+    "required": true,
+    "trial_eligible": true,
+    "legacy_offer": false,
+    "manage": null,
+    "expires_at": null,
+    "trial_until": null,
+    "will_renew": false
+   }
+  },
+  {
+   "name": "beide aan, Apple na new_from_apple: bestaand account (na existing_from) kiezen zonder proef",
+   "settings": {
+    "enabled": true,
+    "new_from_web": "2026-11-21T12:00:00+01:00",
+    "new_from_apple": "2026-12-10T12:00:00+01:00",
+    "existing_from": "2026-12-01T00:01:00+01:00",
+    "trial_days": 3
+   },
+   "now": "2026-12-11T10:00:00Z",
+   "created_at": "2026-01-10T10:00:00Z",
+   "platform": "tvos",
+   "plan_row": null,
+   "subscription": null,
+   "trial_used": false,
+   "had_subscription": false,
+   "test": false,
+   "expect": {
+    "access": "activate",
+    "enabled": true,
+    "active": false,
+    "source": null,
+    "plan": null,
+    "status": null,
+    "required": true,
+    "trial_eligible": false,
+    "legacy_offer": false,
+    "manage": null,
+    "expires_at": null,
+    "trial_until": null,
+    "will_renew": false
+   }
+  },
+  {
+   "name": "beide aan, account tussen new_from_web en new_from_apple is op Apple bestaand",
+   "settings": {
+    "enabled": true,
+    "new_from_web": "2026-11-21T12:00:00+01:00",
+    "new_from_apple": "2026-12-10T12:00:00+01:00",
+    "existing_from": "2026-12-01T00:01:00+01:00",
+    "trial_days": 3
+   },
+   "now": "2026-12-11T10:00:00Z",
+   "created_at": "2026-11-25T10:00:00Z",
+   "platform": "macos",
+   "plan_row": null,
+   "subscription": null,
+   "trial_used": false,
+   "had_subscription": false,
+   "test": false,
+   "expect": {
+    "access": "activate",
+    "enabled": true,
+    "active": false,
+    "source": null,
+    "plan": null,
+    "status": null,
+    "required": true,
+    "trial_eligible": false,
+    "legacy_offer": false,
+    "manage": null,
+    "expires_at": null,
+    "trial_until": null,
+    "will_renew": false
+   }
+  },
+  {
+   "name": "beide aan, nieuw Apple-account na new_from_apple: proef, geen oud aanbod op Apple",
+   "settings": {
+    "enabled": true,
+    "new_from_web": "2026-11-21T12:00:00+01:00",
+    "new_from_apple": "2026-12-10T12:00:00+01:00",
+    "existing_from": "2026-12-01T00:01:00+01:00",
+    "trial_days": 3
+   },
+   "now": "2026-12-11T10:00:00Z",
+   "created_at": "2026-12-11T09:00:00Z",
+   "platform": "ios",
+   "plan_row": null,
+   "subscription": null,
+   "trial_used": false,
+   "had_subscription": false,
+   "test": false,
+   "expect": {
+    "access": "activate",
+    "enabled": true,
+    "active": false,
+    "source": null,
+    "plan": null,
+    "status": null,
+    "required": true,
+    "trial_eligible": true,
+    "legacy_offer": false,
+    "manage": null,
+    "expires_at": null,
+    "trial_until": null,
+    "will_renew": false
+   }
+  },
+  {
+   "name": "proef al gebruikt: geen proef meer",
+   "settings": {
+    "enabled": true,
+    "new_from_web": "2026-11-21T12:00:00+01:00",
+    "new_from_apple": null,
+    "existing_from": "2026-12-01T00:01:00+01:00",
+    "trial_days": 3
+   },
+   "now": "2026-11-25T10:05:00Z",
+   "created_at": "2026-11-25T10:00:00Z",
+   "platform": "android",
+   "plan_row": null,
+   "subscription": null,
+   "trial_used": true,
+   "had_subscription": false,
+   "test": false,
+   "expect": {
+    "access": "activate",
+    "enabled": true,
+    "active": false,
+    "source": null,
+    "plan": null,
+    "status": null,
+    "required": true,
+    "trial_eligible": false,
+    "legacy_offer": false,
+    "manage": null,
+    "expires_at": null,
+    "trial_until": null,
+    "will_renew": false
+   }
+  },
+  {
+   "name": "ooit een abonnement gehad: geen proef",
+   "settings": {
+    "enabled": true,
+    "new_from_web": "2026-11-21T12:00:00+01:00",
+    "new_from_apple": null,
+    "existing_from": "2026-12-01T00:01:00+01:00",
+    "trial_days": 3
+   },
+   "now": "2026-12-20T10:00:00Z",
+   "created_at": "2026-11-25T10:00:00Z",
+   "platform": "android",
+   "plan_row": null,
+   "subscription": {
+    "provider": "stripe",
+    "plan": "month",
+    "status": "expired",
+    "expires_at": "2026-12-10T10:00:00Z",
+    "trial_until": null,
+    "will_renew": false,
+    "access_until": null
+   },
+   "trial_used": false,
+   "had_subscription": true,
+   "test": false,
+   "expect": {
+    "access": "activate",
+    "enabled": true,
+    "active": false,
+    "source": "stripe",
+    "plan": "month",
+    "status": "expired",
+    "required": true,
+    "trial_eligible": false,
+    "legacy_offer": false,
+    "manage": "stripe",
+    "expires_at": "2026-12-10T10:00:00Z",
+    "trial_until": null,
+    "will_renew": false
+   }
+  },
+  {
+   "name": "trial_days 0: geen proef",
+   "settings": {
+    "enabled": true,
+    "new_from_web": "2026-11-21T12:00:00+01:00",
+    "new_from_apple": null,
+    "existing_from": "2026-12-01T00:01:00+01:00",
+    "trial_days": 0
+   },
+   "now": "2026-11-25T10:05:00Z",
+   "created_at": "2026-11-25T10:00:00Z",
+   "platform": "android",
+   "plan_row": null,
+   "subscription": null,
+   "trial_used": false,
+   "had_subscription": false,
+   "test": false,
+   "expect": {
+    "access": "activate",
+    "enabled": true,
+    "active": false,
+    "source": null,
+    "plan": null,
+    "status": null,
+    "required": true,
+    "trial_eligible": false,
+    "legacy_offer": false,
+    "manage": null,
+    "expires_at": null,
+    "trial_until": null,
+    "will_renew": false
+   }
+  },
+  {
+   "name": "Stripe-proef loopt: actief",
+   "settings": {
+    "enabled": true,
+    "new_from_web": "2026-11-21T12:00:00+01:00",
+    "new_from_apple": null,
+    "existing_from": "2026-12-01T00:01:00+01:00",
+    "trial_days": 3
+   },
+   "now": "2026-11-26T10:00:00Z",
+   "created_at": "2026-11-25T10:00:00Z",
+   "platform": "web",
+   "plan_row": {
+    "plan": "lifetime",
+    "source": "subscription",
+    "premium_until": "2026-11-28T10:00:00Z"
+   },
+   "subscription": {
+    "provider": "stripe",
+    "plan": "year",
+    "status": "trialing",
+    "expires_at": "2026-11-28T10:00:00Z",
+    "trial_until": "2026-11-28T10:00:00Z",
+    "will_renew": true,
+    "access_until": "2026-11-28T10:00:00Z"
+   },
+   "trial_used": true,
+   "had_subscription": true,
+   "test": false,
+   "expect": {
+    "access": "full",
+    "enabled": true,
+    "active": true,
+    "source": "stripe",
+    "plan": "year",
+    "status": "trialing",
+    "required": true,
+    "trial_eligible": false,
+    "legacy_offer": false,
+    "manage": "stripe",
+    "expires_at": "2026-11-28T10:00:00Z",
+    "trial_until": "2026-11-28T10:00:00Z",
+    "will_renew": true
+   }
+  },
+  {
+   "name": "abonnement actief",
+   "settings": {
+    "enabled": true,
+    "new_from_web": "2026-11-21T12:00:00+01:00",
+    "new_from_apple": null,
+    "existing_from": "2026-12-01T00:01:00+01:00",
+    "trial_days": 3
+   },
+   "now": "2026-12-05T10:00:00Z",
+   "created_at": "2026-01-10T10:00:00Z",
+   "platform": "android",
+   "plan_row": {
+    "plan": "lifetime",
+    "source": "subscription",
+    "premium_until": "2027-06-01T11:00:00Z"
+   },
+   "subscription": {
+    "provider": "stripe",
+    "plan": "half",
+    "status": "active",
+    "expires_at": "2027-06-01T10:00:00Z",
+    "trial_until": null,
+    "will_renew": true,
+    "access_until": "2027-06-01T11:00:00Z"
+   },
+   "trial_used": false,
+   "had_subscription": true,
+   "test": false,
+   "expect": {
+    "access": "full",
+    "enabled": true,
+    "active": true,
+    "source": "stripe",
+    "plan": "half",
+    "status": "active",
+    "required": true,
+    "trial_eligible": false,
+    "legacy_offer": false,
+    "manage": "stripe",
+    "expires_at": "2027-06-01T10:00:00Z",
+    "trial_until": null,
+    "will_renew": true
+   }
+  },
+  {
+   "name": "opgezegd maar nog binnen de periode: actief, verlengt niet",
+   "settings": {
+    "enabled": true,
+    "new_from_web": "2026-11-21T12:00:00+01:00",
+    "new_from_apple": null,
+    "existing_from": "2026-12-01T00:01:00+01:00",
+    "trial_days": 3
+   },
+   "now": "2026-12-05T10:00:00Z",
+   "created_at": "2026-01-10T10:00:00Z",
+   "platform": "web",
+   "plan_row": {
+    "plan": "lifetime",
+    "source": "subscription",
+    "premium_until": "2026-12-20T11:00:00Z"
+   },
+   "subscription": {
+    "provider": "stripe",
+    "plan": "month",
+    "status": "canceled",
+    "expires_at": "2026-12-20T10:00:00Z",
+    "trial_until": null,
+    "will_renew": false,
+    "access_until": "2026-12-20T11:00:00Z"
+   },
+   "trial_used": false,
+   "had_subscription": true,
+   "test": false,
+   "expect": {
+    "access": "full",
+    "enabled": true,
+    "active": true,
+    "source": "stripe",
+    "plan": "month",
+    "status": "canceled",
+    "required": true,
+    "trial_eligible": false,
+    "legacy_offer": false,
+    "manage": "stripe",
+    "expires_at": "2026-12-20T10:00:00Z",
+    "trial_until": null,
+    "will_renew": false
+   }
+  },
+  {
+   "name": "verlopen spiegel (sweep nog niet gedraaid) telt als gratis",
+   "settings": {
+    "enabled": true,
+    "new_from_web": "2026-11-21T12:00:00+01:00",
+    "new_from_apple": null,
+    "existing_from": "2026-12-01T00:01:00+01:00",
+    "trial_days": 3
+   },
+   "now": "2026-12-21T10:00:00Z",
+   "created_at": "2026-01-10T10:00:00Z",
+   "platform": "web",
+   "plan_row": {
+    "plan": "lifetime",
+    "source": "subscription",
+    "premium_until": "2026-12-20T11:00:00Z"
+   },
+   "subscription": {
+    "provider": "stripe",
+    "plan": "month",
+    "status": "canceled",
+    "expires_at": "2026-12-20T10:00:00Z",
+    "trial_until": null,
+    "will_renew": false,
+    "access_until": "2026-12-20T11:00:00Z"
+   },
+   "trial_used": false,
+   "had_subscription": true,
+   "test": false,
+   "expect": {
+    "access": "activate",
+    "enabled": true,
+    "active": false,
+    "source": "stripe",
+    "plan": "month",
+    "status": "canceled",
+    "required": true,
+    "trial_eligible": false,
+    "legacy_offer": false,
+    "manage": "stripe",
+    "expires_at": "2026-12-20T10:00:00Z",
+    "trial_until": null,
+    "will_renew": false
+   }
+  },
+  {
+   "name": "past_due binnen grace: actief",
+   "settings": {
+    "enabled": true,
+    "new_from_web": "2026-11-21T12:00:00+01:00",
+    "new_from_apple": null,
+    "existing_from": "2026-12-01T00:01:00+01:00",
+    "trial_days": 3
+   },
+   "now": "2026-12-22T10:00:00Z",
+   "created_at": "2026-01-10T10:00:00Z",
+   "platform": "android",
+   "plan_row": {
+    "plan": "lifetime",
+    "source": "subscription",
+    "premium_until": "2026-12-23T10:00:00Z"
+   },
+   "subscription": {
+    "provider": "stripe",
+    "plan": "month",
+    "status": "past_due",
+    "expires_at": "2026-12-20T10:00:00Z",
+    "trial_until": null,
+    "will_renew": true,
+    "access_until": "2026-12-23T10:00:00Z"
+   },
+   "trial_used": false,
+   "had_subscription": true,
+   "test": false,
+   "expect": {
+    "access": "full",
+    "enabled": true,
+    "active": true,
+    "source": "stripe",
+    "plan": "month",
+    "status": "past_due",
+    "required": true,
+    "trial_eligible": false,
+    "legacy_offer": false,
+    "manage": "stripe",
+    "expires_at": "2026-12-20T10:00:00Z",
+    "trial_until": null,
+    "will_renew": true
+   }
+  },
+  {
+   "name": "Apple-abonnement op Android: actief, beheren bij Apple",
+   "settings": {
+    "enabled": true,
+    "new_from_web": "2026-11-21T12:00:00+01:00",
+    "new_from_apple": "2026-12-10T12:00:00+01:00",
+    "existing_from": "2026-12-01T00:01:00+01:00",
+    "trial_days": 3
+   },
+   "now": "2026-12-12T10:00:00Z",
+   "created_at": "2026-01-10T10:00:00Z",
+   "platform": "android",
+   "plan_row": {
+    "plan": "lifetime",
+    "source": "subscription",
+    "premium_until": "2027-12-11T11:00:00Z"
+   },
+   "subscription": {
+    "provider": "apple",
+    "plan": "year",
+    "status": "active",
+    "expires_at": "2027-12-11T10:00:00Z",
+    "trial_until": null,
+    "will_renew": true,
+    "access_until": "2027-12-11T11:00:00Z"
+   },
+   "trial_used": false,
+   "had_subscription": true,
+   "test": false,
+   "expect": {
+    "access": "full",
+    "enabled": true,
+    "active": true,
+    "source": "apple",
+    "plan": "year",
+    "status": "active",
+    "required": true,
+    "trial_eligible": false,
+    "legacy_offer": false,
+    "manage": "apple",
+    "expires_at": "2027-12-11T10:00:00Z",
+    "trial_until": null,
+    "will_renew": true
+   }
+  },
+  {
+   "name": "Lifetime-bescherming: legacy na existing_from",
+   "settings": {
+    "enabled": true,
+    "new_from_web": "2026-11-21T12:00:00+01:00",
+    "new_from_apple": "2026-12-10T12:00:00+01:00",
+    "existing_from": "2026-12-01T00:01:00+01:00",
+    "trial_days": 3
+   },
+   "now": "2026-12-12T10:00:00Z",
+   "created_at": "2026-01-10T10:00:00Z",
+   "platform": "ios",
+   "plan_row": {
+    "plan": "lifetime",
+    "source": "legacy"
+   },
+   "subscription": null,
+   "trial_used": false,
+   "had_subscription": false,
+   "test": false,
+   "expect": {
+    "access": "full",
+    "enabled": true,
+    "active": true,
+    "source": "legacy",
+    "plan": "lifetime",
+    "status": "lifetime",
+    "required": true,
+    "trial_eligible": false,
+    "legacy_offer": false,
+    "manage": null,
+    "expires_at": null,
+    "trial_until": null,
+    "will_renew": false
+   }
+  },
+  {
+   "name": "Lifetime-bescherming: admin",
+   "settings": {
+    "enabled": true,
+    "new_from_web": "2026-11-21T12:00:00+01:00",
+    "new_from_apple": null,
+    "existing_from": "2026-12-01T00:01:00+01:00",
+    "trial_days": 3
+   },
+   "now": "2026-12-12T10:00:00Z",
+   "created_at": "2026-01-10T10:00:00Z",
+   "platform": "web",
+   "plan_row": {
+    "plan": "lifetime",
+    "source": "admin"
+   },
+   "subscription": null,
+   "trial_used": false,
+   "had_subscription": false,
+   "test": false,
+   "expect": {
+    "access": "full",
+    "enabled": true,
+    "active": true,
+    "source": "admin",
+    "plan": "lifetime",
+    "status": "lifetime",
+    "required": true,
+    "trial_eligible": false,
+    "legacy_offer": false,
+    "manage": null,
+    "expires_at": null,
+    "trial_until": null,
+    "will_renew": false
+   }
+  },
+  {
+   "name": "Lifetime-bescherming: gekocht € 3,49 / € 4,99",
+   "settings": {
+    "enabled": true,
+    "new_from_web": "2026-11-21T12:00:00+01:00",
+    "new_from_apple": null,
+    "existing_from": "2026-12-01T00:01:00+01:00",
+    "trial_days": 3
+   },
+   "now": "2026-12-12T10:00:00Z",
+   "created_at": "2026-01-10T10:00:00Z",
+   "platform": "android",
+   "plan_row": {
+    "plan": "lifetime",
+    "source": "purchase"
+   },
+   "subscription": null,
+   "trial_used": false,
+   "had_subscription": false,
+   "test": false,
+   "expect": {
+    "access": "full",
+    "enabled": true,
+    "active": true,
+    "source": "lifetime",
+    "plan": "lifetime",
+    "status": "lifetime",
+    "required": true,
+    "trial_eligible": false,
+    "legacy_offer": false,
+    "manage": null,
+    "expires_at": null,
+    "trial_until": null,
+    "will_renew": false
+   }
+  },
+  {
+   "name": "Lifetime met daarnaast een (Apple-)abonnement: Lifetime-bron wint",
+   "settings": {
+    "enabled": true,
+    "new_from_web": "2026-11-21T12:00:00+01:00",
+    "new_from_apple": "2026-12-10T12:00:00+01:00",
+    "existing_from": "2026-12-01T00:01:00+01:00",
+    "trial_days": 3
+   },
+   "now": "2026-12-12T10:00:00Z",
+   "created_at": "2026-01-10T10:00:00Z",
+   "platform": "ios",
+   "plan_row": {
+    "plan": "lifetime",
+    "source": "legacy"
+   },
+   "subscription": {
+    "provider": "apple",
+    "plan": "year",
+    "status": "active",
+    "expires_at": "2027-12-11T10:00:00Z",
+    "trial_until": null,
+    "will_renew": true,
+    "access_until": "2027-12-11T11:00:00Z"
+   },
+   "trial_used": false,
+   "had_subscription": true,
+   "test": false,
+   "expect": {
+    "access": "full",
+    "enabled": true,
+    "active": true,
+    "source": "legacy",
+    "plan": "lifetime",
+    "status": "lifetime",
+    "required": true,
+    "trial_eligible": false,
+    "legacy_offer": false,
+    "manage": null,
+    "expires_at": null,
+    "trial_until": null,
+    "will_renew": false
+   }
+  },
+  {
+   "name": "testaccount met alles uit: beide groepen doen mee, als nieuw",
+   "settings": {
+    "enabled": false
+   },
+   "now": "2026-11-20T15:00:00Z",
+   "created_at": "2026-01-10T10:00:00Z",
+   "platform": "ios",
+   "plan_row": null,
+   "subscription": null,
+   "trial_used": false,
+   "had_subscription": false,
+   "test": true,
+   "expect": {
+    "access": "activate",
+    "enabled": true,
+    "active": false,
+    "source": null,
+    "plan": null,
+    "status": null,
+    "required": true,
+    "trial_eligible": true,
+    "legacy_offer": false,
+    "manage": null,
+    "expires_at": null,
+    "trial_until": null,
+    "will_renew": false
+   }
+  },
+  {
+   "name": "testaccount dat Lifetime is: blijft volledig",
+   "settings": {
+    "enabled": false
+   },
+   "now": "2026-11-20T15:00:00Z",
+   "created_at": "2026-01-10T10:00:00Z",
+   "platform": "web",
+   "plan_row": {
+    "plan": "lifetime",
+    "source": "admin"
+   },
+   "subscription": null,
+   "trial_used": false,
+   "had_subscription": false,
+   "test": true,
+   "expect": {
+    "access": "full",
+    "enabled": true,
+    "active": true,
+    "source": "admin",
+    "plan": "lifetime",
+    "status": "lifetime",
+    "required": true,
+    "trial_eligible": false,
+    "legacy_offer": false,
+    "manage": null,
+    "expires_at": null,
+    "trial_until": null,
+    "will_renew": false
+   }
+  },
+  {
+   "name": "eigen limieten zonder Lifetime (plan free) telt als gratis",
+   "settings": {
+    "enabled": true,
+    "new_from_web": "2026-11-21T12:00:00+01:00",
+    "new_from_apple": null,
+    "existing_from": "2026-12-01T00:01:00+01:00",
+    "trial_days": 3
+   },
+   "now": "2026-12-12T10:00:00Z",
+   "created_at": "2026-01-10T10:00:00Z",
+   "platform": "web",
+   "plan_row": {
+    "plan": "free",
+    "source": null
+   },
+   "subscription": null,
+   "trial_used": false,
+   "had_subscription": false,
+   "test": false,
+   "expect": {
+    "access": "activate",
+    "enabled": true,
+    "active": false,
+    "source": null,
+    "plan": null,
+    "status": null,
+    "required": true,
+    "trial_eligible": false,
+    "legacy_offer": false,
+    "manage": null,
+    "expires_at": null,
+    "trial_until": null,
+    "will_renew": false
+   }
+  }
+ ],
+ "settings": [
+  {
+   "name": "standaard",
+   "input": null,
+   "ok": true,
+   "expect": {
+    "enabled": false,
+    "new_from_web": null,
+    "new_from_apple": null,
+    "existing_from": "2026-12-01T00:01:00+01:00",
+    "trial_days": 3,
+    "show_prices_web": false,
+    "grace_days": 3,
+    "prices": {
+     "month": 499,
+     "half": 1999,
+     "year": 2999,
+     "lifetime": 4999
+    },
+    "test_users": []
+   }
+  },
+  {
+   "name": "aanzetten met web-datum",
+   "input": {
+    "enabled": true,
+    "new_from_web": "2026-11-21T12:00:00+01:00"
+   },
+   "ok": true
+  },
+  {
+   "name": "aanzetten zonder existing_from",
+   "input": {
+    "enabled": true,
+    "existing_from": null
+   },
+   "ok": false
+  },
+  {
+   "name": "enabled geen boolean",
+   "input": {
+    "enabled": "ja"
+   },
+   "ok": false
+  },
+  {
+   "name": "tijd ongeldig",
+   "input": {
+    "new_from_web": "morgen"
+   },
+   "ok": false
+  },
+  {
+   "name": "trial_days 15",
+   "input": {
+    "trial_days": 15
+   },
+   "ok": false
+  },
+  {
+   "name": "trial_days 0",
+   "input": {
+    "trial_days": 0
+   },
+   "ok": true
+  },
+  {
+   "name": "grace_days 17",
+   "input": {
+    "grace_days": 17
+   },
+   "ok": false
+  },
+  {
+   "name": "prijs te laag",
+   "input": {
+    "prices": {
+     "month": 50
+    }
+   },
+   "ok": false
+  },
+  {
+   "name": "lifetime niet hoger dan jaar",
+   "input": {
+    "prices": {
+     "lifetime": 2999
+    }
+   },
+   "ok": false
+  },
+  {
+   "name": "prijs geen geheel getal",
+   "input": {
+    "prices": {
+     "month": 4.99
+    }
+   },
+   "ok": false
+  },
+  {
+   "name": "stripe-price-id ongeldig",
+   "input": {
+    "stripe_prices": {
+     "test": {
+      "month": "prod_123"
+     }
+    }
+   },
+   "ok": false
+  },
+  {
+   "name": "stripe-price-id geldig",
+   "input": {
+    "stripe_prices": {
+     "test": {
+      "month": "price_1AbC"
+     }
+    }
+   },
+   "ok": true
+  },
+  {
+   "name": "portal-id ongeldig",
+   "input": {
+    "stripe_portal": {
+     "live": "abc"
+    }
+   },
+   "ok": false
+  },
+  {
+   "name": "elf testaccounts",
+   "input": {
+    "test_users": [
+     "00000000-0000-4000-8000-000000000000",
+     "00000000-0000-4000-8000-000000000001",
+     "00000000-0000-4000-8000-000000000002",
+     "00000000-0000-4000-8000-000000000003",
+     "00000000-0000-4000-8000-000000000004",
+     "00000000-0000-4000-8000-000000000005",
+     "00000000-0000-4000-8000-000000000006",
+     "00000000-0000-4000-8000-000000000007",
+     "00000000-0000-4000-8000-000000000008",
+     "00000000-0000-4000-8000-000000000009",
+     "00000000-0000-4000-8000-000000000010"
+    ]
+   },
+   "ok": false
+  },
+  {
+   "name": "onbekende sleutel wordt genegeerd",
+   "input": {
+    "foo": 1
+   },
+   "ok": true
+  }
+ ],
+ "stripe": [
+  {
+   "name": "trialing",
+   "sub": {
+    "status": "trialing",
+    "cancel_at_period_end": false,
+    "trial_end": 1764496800,
+    "items": {
+     "data": [
+      {
+       "current_period_end": 1764496800
+      }
+     ]
+    }
+   },
+   "expect": {
+    "status": "trialing",
+    "will_renew": true,
+    "expires_at": "2025-11-30T10:00:00.000Z",
+    "trial_until": "2025-11-30T10:00:00.000Z"
+   }
+  },
+  {
+   "name": "active",
+   "sub": {
+    "status": "active",
+    "cancel_at_period_end": false,
+    "trial_end": null,
+    "items": {
+     "data": [
+      {
+       "current_period_end": 1767175200
+      }
+     ]
+    }
+   },
+   "expect": {
+    "status": "active",
+    "will_renew": true,
+    "expires_at": "2025-12-31T10:00:00.000Z",
+    "trial_until": null
+   }
+  },
+  {
+   "name": "active maar opgezegd",
+   "sub": {
+    "status": "active",
+    "cancel_at_period_end": true,
+    "items": {
+     "data": [
+      {
+       "current_period_end": 1767175200
+      }
+     ]
+    }
+   },
+   "expect": {
+    "status": "canceled",
+    "will_renew": false,
+    "expires_at": "2025-12-31T10:00:00.000Z",
+    "trial_until": null
+   }
+  },
+  {
+   "name": "trialing maar opgezegd blijft proef",
+   "sub": {
+    "status": "trialing",
+    "cancel_at_period_end": true,
+    "trial_end": 1764496800,
+    "items": {
+     "data": [
+      {
+       "current_period_end": 1764496800
+      }
+     ]
+    }
+   },
+   "expect": {
+    "status": "trialing",
+    "will_renew": false,
+    "expires_at": "2025-11-30T10:00:00.000Z",
+    "trial_until": "2025-11-30T10:00:00.000Z"
+   }
+  },
+  {
+   "name": "oude API: current_period_end op het abonnement",
+   "sub": {
+    "status": "active",
+    "current_period_end": 1767175200
+   },
+   "expect": {
+    "status": "active",
+    "will_renew": true,
+    "expires_at": "2025-12-31T10:00:00.000Z",
+    "trial_until": null
+   }
+  },
+  {
+   "name": "past_due",
+   "sub": {
+    "status": "past_due",
+    "items": {
+     "data": [
+      {
+       "current_period_end": 1767175200
+      }
+     ]
+    }
+   },
+   "expect": {
+    "status": "past_due",
+    "will_renew": true,
+    "expires_at": "2025-12-31T10:00:00.000Z",
+    "trial_until": null
+   }
+  },
+  {
+   "name": "canceled",
+   "sub": {
+    "status": "canceled",
+    "items": {
+     "data": [
+      {
+       "current_period_end": 1767175200
+      }
+     ]
+    }
+   },
+   "expect": {
+    "status": "expired",
+    "will_renew": false,
+    "expires_at": "2025-12-31T10:00:00.000Z",
+    "trial_until": null
+   }
+  },
+  {
+   "name": "unpaid",
+   "sub": {
+    "status": "unpaid",
+    "items": {
+     "data": [
+      {
+       "current_period_end": 1767175200
+      }
+     ]
+    }
+   },
+   "expect": {
+    "status": "expired",
+    "will_renew": false,
+    "expires_at": "2025-12-31T10:00:00.000Z",
+    "trial_until": null
+   }
+  },
+  {
+   "name": "incomplete_expired",
+   "sub": {
+    "status": "incomplete_expired"
+   },
+   "expect": {
+    "status": "expired",
+    "will_renew": false,
+    "expires_at": null,
+    "trial_until": null
+   }
+  },
+  {
+   "name": "incomplete",
+   "sub": {
+    "status": "incomplete",
+    "items": {
+     "data": [
+      {
+       "current_period_end": 1767175200
+      }
+     ]
+    }
+   },
+   "expect": {
+    "status": "incomplete",
+    "will_renew": false,
+    "expires_at": "2025-12-31T10:00:00.000Z",
+    "trial_until": null
+   }
+  }
+ ],
+ "access_until": [
+  {
+   "name": "trialing = einde proef",
+   "sub": {
+    "status": "trialing",
+    "expires_at": "2026-11-28T10:00:00Z",
+    "trial_until": "2026-11-28T10:00:00Z"
+   },
+   "grace_days": 3,
+   "expect": "2026-11-28T10:00:00.000Z"
+  },
+  {
+   "name": "active = + 1 uur",
+   "sub": {
+    "status": "active",
+    "expires_at": "2026-12-28T10:00:00Z"
+   },
+   "grace_days": 3,
+   "expect": "2026-12-28T11:00:00.000Z"
+  },
+  {
+   "name": "canceled = + 1 uur",
+   "sub": {
+    "status": "canceled",
+    "expires_at": "2026-12-28T10:00:00Z"
+   },
+   "grace_days": 3,
+   "expect": "2026-12-28T11:00:00.000Z"
+  },
+  {
+   "name": "past_due = + grace_days",
+   "sub": {
+    "status": "past_due",
+    "expires_at": "2026-12-28T10:00:00Z"
+   },
+   "grace_days": 3,
+   "expect": "2026-12-31T10:00:00.000Z"
+  },
+  {
+   "name": "past_due met grace 0",
+   "sub": {
+    "status": "past_due",
+    "expires_at": "2026-12-28T10:00:00Z"
+   },
+   "grace_days": 0,
+   "expect": "2026-12-28T10:00:00.000Z"
+  },
+  {
+   "name": "Apple grace met eigen einde",
+   "sub": {
+    "status": "grace",
+    "expires_at": "2026-12-28T10:00:00Z",
+    "grace_until": "2027-01-11T10:00:00Z"
+   },
+   "grace_days": 3,
+   "expect": "2027-01-11T10:00:00.000Z"
+  },
+  {
+   "name": "expired",
+   "sub": {
+    "status": "expired",
+    "expires_at": "2026-12-28T10:00:00Z"
+   },
+   "grace_days": 3,
+   "expect": null
+  },
+  {
+   "name": "revoked",
+   "sub": {
+    "status": "revoked",
+    "expires_at": "2026-12-28T10:00:00Z"
+   },
+   "grace_days": 3,
+   "expect": null
+  },
+  {
+   "name": "incomplete",
+   "sub": {
+    "status": "incomplete",
+    "expires_at": "2026-12-28T10:00:00Z"
+   },
+   "grace_days": 3,
+   "expect": null
+  }
+ ],
+ "apple": [
+  {
+   "name": "jaar met proef",
+   "tx": {
+    "productId": "nl.lrvdlinden.bingr.premium.year",
+    "expiresDate": 1764496800000,
+    "offerType": 1,
+    "offerDiscountType": "FREE_TRIAL",
+    "price": 0
+   },
+   "expect": {
+    "kind": "subscription",
+    "plan": "year",
+    "status": "trialing",
+    "expires_at": "2025-11-30T10:00:00.000Z",
+    "trial": true
+   }
+  },
+  {
+   "name": "maand zonder proef",
+   "tx": {
+    "productId": "nl.lrvdlinden.bingr.premium.month",
+    "expiresDate": 1767175200000,
+    "price": 4990
+   },
+   "expect": {
+    "kind": "subscription",
+    "plan": "month",
+    "status": "active",
+    "expires_at": "2025-12-31T10:00:00.000Z",
+    "trial": false
+   }
+  },
+  {
+   "name": "halfjaar intro met prijs 0 zonder offerDiscountType",
+   "tx": {
+    "productId": "nl.lrvdlinden.bingr.premium.halfyear",
+    "expiresDate": 1764496800000,
+    "offerType": 1,
+    "price": 0
+   },
+   "expect": {
+    "kind": "subscription",
+    "plan": "half",
+    "status": "trialing",
+    "expires_at": "2025-11-30T10:00:00.000Z",
+    "trial": true
+   }
+  },
+  {
+   "name": "ingetrokken abonnement",
+   "tx": {
+    "productId": "nl.lrvdlinden.bingr.premium.year",
+    "expiresDate": 1767175200000,
+    "revocationDate": 1765000000000
+   },
+   "expect": {
+    "kind": "subscription",
+    "plan": "year",
+    "status": "revoked",
+    "expires_at": "2025-12-31T10:00:00.000Z",
+    "trial": false
+   }
+  },
+  {
+   "name": "Lifetime 49,99",
+   "tx": {
+    "productId": "nl.lrvdlinden.bingr.lifetime49",
+    "price": 49990,
+    "currency": "EUR"
+   },
+   "expect": {
+    "kind": "lifetime",
+    "plan": "lifetime49"
+   }
+  },
+  {
+   "name": "oude Lifetime blijft geldig",
+   "tx": {
+    "productId": "nl.lrvdlinden.bingr.lifetime",
+    "price": 4990,
+    "currency": "EUR"
+   },
+   "expect": {
+    "kind": "lifetime",
+    "plan": "lifetime"
+   }
+  },
+  {
+   "name": "onbekend product",
+   "tx": {
+    "productId": "nl.lrvdlinden.bingr.premium.week"
+   },
+   "expect": {
+    "kind": "error",
+    "error": "wrong_product"
+   }
+  }
+ ],
+ "apple_notify": [
+  {
+   "type": "SUBSCRIBED",
+   "subtype": "INITIAL_BUY",
+   "expect": "active"
+  },
+  {
+   "type": "DID_RENEW",
+   "subtype": null,
+   "expect": "active"
+  },
+  {
+   "type": "OFFER_REDEEMED",
+   "subtype": null,
+   "expect": "active"
+  },
+  {
+   "type": "DID_CHANGE_RENEWAL_PREF",
+   "subtype": null,
+   "expect": "active"
+  },
+  {
+   "type": "RENEWAL_EXTENDED",
+   "subtype": null,
+   "expect": "active"
+  },
+  {
+   "type": "DID_CHANGE_RENEWAL_STATUS",
+   "subtype": "AUTO_RENEW_DISABLED",
+   "renewal": {
+    "autoRenewStatus": 0
+   },
+   "expect": "canceled"
+  },
+  {
+   "type": "DID_CHANGE_RENEWAL_STATUS",
+   "subtype": "AUTO_RENEW_ENABLED",
+   "renewal": {
+    "autoRenewStatus": 1
+   },
+   "expect": "active"
+  },
+  {
+   "type": "DID_FAIL_TO_RENEW",
+   "subtype": "GRACE_PERIOD",
+   "renewal": {
+    "gracePeriodExpiresDate": 1767175200000
+   },
+   "expect": "grace"
+  },
+  {
+   "type": "DID_FAIL_TO_RENEW",
+   "subtype": null,
+   "expect": "past_due"
+  },
+  {
+   "type": "GRACE_PERIOD_EXPIRED",
+   "subtype": null,
+   "expect": "expired"
+  },
+  {
+   "type": "EXPIRED",
+   "subtype": "VOLUNTARY",
+   "expect": "expired"
+  },
+  {
+   "type": "REFUND",
+   "subtype": null,
+   "expect": "revoked"
+  },
+  {
+   "type": "REVOKE",
+   "subtype": null,
+   "expect": "revoked"
+  },
+  {
+   "type": "TEST",
+   "subtype": null,
+   "expect": "ignore"
+  },
+  {
+   "type": "CONSUMPTION_REQUEST",
+   "subtype": null,
+   "expect": "ignore"
+  }
+ ],
+ "mirror": [
+  {
+   "name": "geen rij + actief abonnement → spiegel",
+   "row": null,
+   "access_until": "2027-01-01T00:00:00Z",
+   "expect": {
+    "action": "upsert",
+    "plan": "lifetime",
+    "source": "subscription",
+    "premium_until": "2027-01-01T00:00:00Z"
+   }
+  },
+  {
+   "name": "gratis met eigen limieten + actief → spiegel, limieten blijven",
+   "row": {
+    "plan": "free",
+    "source": null,
+    "max_devices": 5
+   },
+   "access_until": "2027-01-01T00:00:00Z",
+   "expect": {
+    "action": "upsert",
+    "plan": "lifetime",
+    "source": "subscription",
+    "premium_until": "2027-01-01T00:00:00Z",
+    "max_devices": 5
+   }
+  },
+  {
+   "name": "spiegel verlengd",
+   "row": {
+    "plan": "lifetime",
+    "source": "subscription",
+    "premium_until": "2026-12-01T00:00:00Z"
+   },
+   "access_until": "2027-01-01T00:00:00Z",
+   "expect": {
+    "action": "upsert",
+    "plan": "lifetime",
+    "source": "subscription",
+    "premium_until": "2027-01-01T00:00:00Z"
+   }
+  },
+  {
+   "name": "spiegel zonder actief abonnement → weg",
+   "row": {
+    "plan": "lifetime",
+    "source": "subscription",
+    "premium_until": "2026-12-01T00:00:00Z"
+   },
+   "access_until": null,
+   "expect": {
+    "action": "delete"
+   }
+  },
+  {
+   "name": "spiegel met eigen limieten zonder actief abonnement → gratis",
+   "row": {
+    "plan": "lifetime",
+    "source": "subscription",
+    "max_streams": 2
+   },
+   "access_until": null,
+   "expect": {
+    "action": "update",
+    "plan": "free",
+    "source": null,
+    "premium_until": null
+   }
+  },
+  {
+   "name": "legacy blijft",
+   "row": {
+    "plan": "lifetime",
+    "source": "legacy"
+   },
+   "access_until": "2027-01-01T00:00:00Z",
+   "expect": {
+    "action": "keep"
+   }
+  },
+  {
+   "name": "admin blijft",
+   "row": {
+    "plan": "lifetime",
+    "source": "admin"
+   },
+   "access_until": null,
+   "expect": {
+    "action": "keep"
+   }
+  },
+  {
+   "name": "purchase blijft",
+   "row": {
+    "plan": "lifetime",
+    "source": "purchase"
+   },
+   "access_until": null,
+   "expect": {
+    "action": "keep"
+   }
+  },
+  {
+   "name": "geen rij en geen actief abonnement → niets",
+   "row": null,
+   "access_until": null,
+   "expect": {
+    "action": "keep"
+   }
+  }
+ ],
+ "client": [
+  {
+   "name": "uit: nooit blokkeren via premium",
+   "entitlements": {
+    "access": "full",
+    "premium": {
+     "enabled": false,
+     "active": false,
+     "source": null,
+     "plan": null,
+     "status": null,
+     "expires_at": null,
+     "trial_until": null,
+     "will_renew": false,
+     "required": false,
+     "trial_eligible": false,
+     "legacy_offer": false,
+     "manage": null,
+     "test": false
+    }
+   },
+   "now": "2026-12-05T10:00:00Z",
+   "offline": false,
+   "expect": {
+    "blocked": false,
+    "paywall": null,
+    "trial_badge": false,
+    "manage": null
+   }
+  },
+  {
+   "name": "oude server zonder premium",
+   "entitlements": {
+    "access": "full"
+   },
+   "now": "2026-12-05T10:00:00Z",
+   "offline": false,
+   "expect": {
+    "blocked": false,
+    "paywall": null,
+    "trial_badge": false,
+    "manage": null
+   }
+  },
+  {
+   "name": "oude server, access activate zonder premium = oud scherm",
+   "entitlements": {
+    "access": "activate"
+   },
+   "now": "2026-12-05T10:00:00Z",
+   "offline": false,
+   "expect": {
+    "blocked": true,
+    "paywall": "legacy",
+    "trial_badge": false,
+    "manage": null
+   }
+  },
+  {
+   "name": "nieuw account met proef",
+   "entitlements": {
+    "access": "activate",
+    "premium": {
+     "enabled": true,
+     "active": false,
+     "source": null,
+     "plan": null,
+     "status": null,
+     "expires_at": null,
+     "trial_until": null,
+     "will_renew": false,
+     "required": true,
+     "trial_eligible": true,
+     "legacy_offer": false,
+     "manage": null,
+     "test": false
+    }
+   },
+   "now": "2026-12-05T10:00:00Z",
+   "offline": false,
+   "expect": {
+    "blocked": true,
+    "paywall": "trial",
+    "trial_badge": true,
+    "manage": null
+   }
+  },
+  {
+   "name": "bestaand account zonder proef",
+   "entitlements": {
+    "access": "activate",
+    "premium": {
+     "enabled": true,
+     "active": false,
+     "source": null,
+     "plan": null,
+     "status": null,
+     "expires_at": null,
+     "trial_until": null,
+     "will_renew": false,
+     "required": true,
+     "trial_eligible": false,
+     "legacy_offer": false,
+     "manage": null,
+     "test": false
+    }
+   },
+   "now": "2026-12-05T10:00:00Z",
+   "offline": false,
+   "expect": {
+    "blocked": true,
+    "paywall": "plans",
+    "trial_badge": false,
+    "manage": null
+   }
+  },
+  {
+   "name": "actief Stripe",
+   "entitlements": {
+    "access": "full",
+    "premium": {
+     "enabled": true,
+     "active": true,
+     "source": "stripe",
+     "plan": "year",
+     "status": "active",
+     "expires_at": "2027-01-01T00:00:00Z",
+     "trial_until": null,
+     "will_renew": true,
+     "required": true,
+     "trial_eligible": false,
+     "legacy_offer": false,
+     "manage": "stripe",
+     "test": false
+    }
+   },
+   "now": "2026-12-05T10:00:00Z",
+   "offline": false,
+   "expect": {
+    "blocked": false,
+    "paywall": null,
+    "trial_badge": false,
+    "manage": "stripe"
+   }
+  },
+  {
+   "name": "actief Apple",
+   "entitlements": {
+    "access": "full",
+    "premium": {
+     "enabled": true,
+     "active": true,
+     "source": "apple",
+     "plan": "month",
+     "status": "active",
+     "expires_at": "2027-01-01T00:00:00Z",
+     "trial_until": null,
+     "will_renew": true,
+     "required": true,
+     "trial_eligible": false,
+     "legacy_offer": false,
+     "manage": "apple",
+     "test": false
+    }
+   },
+   "now": "2026-12-05T10:00:00Z",
+   "offline": false,
+   "expect": {
+    "blocked": false,
+    "paywall": null,
+    "trial_badge": false,
+    "manage": "apple"
+   }
+  },
+  {
+   "name": "offline, opgezegd en verlopen: blokkeren",
+   "entitlements": {
+    "access": "full",
+    "premium": {
+     "enabled": true,
+     "active": true,
+     "source": "stripe",
+     "plan": "month",
+     "status": "canceled",
+     "expires_at": "2026-12-01T00:00:00Z",
+     "trial_until": null,
+     "will_renew": false,
+     "required": true,
+     "trial_eligible": false,
+     "legacy_offer": false,
+     "manage": "stripe",
+     "test": false
+    }
+   },
+   "now": "2026-12-05T10:00:00Z",
+   "offline": true,
+   "expect": {
+    "blocked": true,
+    "paywall": "plans",
+    "trial_badge": false,
+    "manage": "stripe"
+   }
+  },
+  {
+   "name": "offline, verlengt automatisch: niet blokkeren",
+   "entitlements": {
+    "access": "full",
+    "premium": {
+     "enabled": true,
+     "active": true,
+     "source": "stripe",
+     "plan": "month",
+     "status": "active",
+     "expires_at": "2026-12-01T00:00:00Z",
+     "trial_until": null,
+     "will_renew": true,
+     "required": true,
+     "trial_eligible": false,
+     "legacy_offer": false,
+     "manage": "stripe",
+     "test": false
+    }
+   },
+   "now": "2026-12-05T10:00:00Z",
+   "offline": true,
+   "expect": {
+    "blocked": false,
+    "paywall": null,
+    "trial_badge": false,
+    "manage": "stripe"
+   }
+  },
+  {
+   "name": "offline, Lifetime: nooit blokkeren",
+   "entitlements": {
+    "access": "full",
+    "premium": {
+     "enabled": true,
+     "active": true,
+     "source": "legacy",
+     "plan": "lifetime",
+     "status": "lifetime",
+     "expires_at": null,
+     "trial_until": null,
+     "will_renew": false,
+     "required": true,
+     "trial_eligible": false,
+     "legacy_offer": false,
+     "manage": null,
+     "test": false
+    }
+   },
+   "now": "2026-12-05T10:00:00Z",
+   "offline": true,
+   "expect": {
+    "blocked": false,
+    "paywall": null,
+    "trial_badge": false,
+    "manage": null
+   }
+  },
+  {
+   "name": "online: server zegt full ondanks oude expires_at",
+   "entitlements": {
+    "access": "full",
+    "premium": {
+     "enabled": true,
+     "active": true,
+     "source": "stripe",
+     "plan": "month",
+     "status": "canceled",
+     "expires_at": "2026-12-01T00:00:00Z",
+     "trial_until": null,
+     "will_renew": false,
+     "required": true,
+     "trial_eligible": false,
+     "legacy_offer": false,
+     "manage": "stripe",
+     "test": false
+    }
+   },
+   "now": "2026-12-05T10:00:00Z",
+   "offline": false,
+   "expect": {
+    "blocked": false,
+    "paywall": null,
+    "trial_badge": false,
+    "manage": "stripe"
+   }
+  }
+ ]
+}

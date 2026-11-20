@@ -2744,3 +2744,183 @@ alleen in `secrets` van `put_sources`, die versleutelt; nooit in klare tekst eld
 | `profile.<id>` | `categorySort` | 12 |
 | bronnenlijst | `kind: "WebDAV"` | 16 |
 | server | functies `ratings`, `introdb`, tabel `ratings_cache`, secret `MDBLIST_API_KEY` | 9, 10 |
+
+## Build 181: Bingr Premium (versie 1.1.0)
+
+Bingr krijgt abonnementen naast Lifetime. **Alles staat standaard uit** (`app_settings.premium.enabled = false`): zolang dat zo is, is elk antwoord van de server precies zoals in build 180 (unittest), op één nieuw veld `premium` na dat oudere apps negeren. Léon zet het per platformgroep aan in het beheer. Dit contract gaat voor waar het afwijkt van "Build 167: alleen Lifetime" en "Build 168"; de rest blijft gelden. De vaste testgevallen staan in **`docs/build181_cases.json`** (server, Apple, Android en web gebruiken dezelfde gevallen).
+
+### 1. Plannen en producten
+
+| Plan (`plan`, overal deze sleutels; ook in `prices` en `products`) | Prijs (NL, incl. btw) | Proef | Apple (StoreKit 2) | Stripe (`lookup_key`) |
+|---|---|---|---|---|
+| `month` | € 4,99 / maand | 3 dagen | `nl.lrvdlinden.bingr.premium.month` (abonnement) | `bingr_premium_month_eur_499` |
+| `half` | € 19,99 / 6 maanden ("33% voordeliger") | 3 dagen | `nl.lrvdlinden.bingr.premium.halfyear` (abonnement) | `bingr_premium_half_eur_1999` |
+| `year` | € 29,99 / jaar (uitgelicht: "Meest gekozen · 50% voordeliger") | 3 dagen | `nl.lrvdlinden.bingr.premium.year` (abonnement) | `bingr_premium_year_eur_2999` |
+| `lifetime` | € 49,99 eenmalig | nee | `nl.lrvdlinden.bingr.lifetime49` (niet-verbruikbaar) | `bingr_premium_lifetime_eur_4999` |
+
+- De drie abonnementen zitten bij Apple in één abonnementsgroep **"Bingr Premium"** (elk met een introductieaanbod van 3 dagen gratis), bij Stripe in het product `bingr_premium` (recurring, EUR); Lifetime in het product `bingr_premium_lifetime` (one-time). Het voordeel-percentage is t.o.v. 12 × de maandprijs (19,99 × 2 = 39,98 vs 59,88 → 33 %; 29,99 vs 59,88 → 50 %).
+- **Bestaande Lifetime-product-id** `nl.lrvdlinden.bingr.lifetime` (€ 4,99) blijft geldig voor herstellen en `apple_verify`, en wordt niet van prijs veranderd. Een nieuw id voor € 49,99 is het veiligst: bestaande kopers houden exact hun transactie, de omzetrapporten blijven per prijs te lezen, en oudere Apple-apps (≤ 180) verkopen geen € 49,99-product onder de oude naam. Léon haalt het oude product uit de verkoop zodra 1.1.0 in de App Store staat (herstellen blijft werken).
+- Prijzen en Stripe-price-id's staan in `app_settings.premium` (hieronder); de apps nemen ze nooit hardcoded over, behalve als terugval voor de weergave. Apple toont altijd de prijs uit StoreKit (`Product.displayPrice`).
+- `trial_days` (standaard 3) geldt voor alle drie de abonnementen; Lifetime heeft nooit een proef.
+
+### 2. Instellingen (`app_settings.premium`, alleen service role)
+
+Standaard (schema, `on conflict do nothing`):
+
+```json
+{ "enabled": false, "new_from_web": null, "new_from_apple": null, "existing_from": "2026-12-01T00:01:00+01:00",
+  "trial_days": 3, "show_prices_web": false, "grace_days": 3,
+  "prices": { "month": 499, "half": 1999, "year": 2999, "lifetime": 4999 },
+  "stripe_prices": { "test": {}, "live": {} }, "stripe_portal": { "test": null, "live": null },
+  "test_users": [] }
+```
+
+| Sleutel | Betekenis |
+|---|---|
+| `enabled` | Hoofdschakelaar. `false` = alles zoals build 180. |
+| `new_from_web` | ISO-tijd of null. Vanaf dit moment doet de **groep web en Android** mee (`android`, `androidtv`, `web`; Windows = `web`): nieuwe accounts (aangemaakt op of na dit moment) moeten een plan kiezen, met proef. |
+| `new_from_apple` | Hetzelfde voor de **groep Apple** (`ios`, `ipados`, `tvos`, `macos`). Pas aanzetten na goedkeuring van build 181 en de producten. |
+| `existing_from` | Vanaf dit moment moeten ook **bestaande gratis accounts** van een groep die meedoet een plan kiezen, **zonder** proef. Standaard 1 december 2026 00:01 (Europe/Amsterdam). |
+| `trial_days` | 0–14, standaard 3. 0 = geen proef. |
+| `show_prices_web` | Prijsblok en nieuwe plannen op bingr.online (en /upgrade/) zichtbaar. Los van `enabled`, zodat de site al kan tonen vóór de apps. |
+| `grace_days` | 0–16, standaard 3. Na een mislukte verlenging (Stripe `past_due`) blijft Premium zo lang na `expires_at` actief. Apple gebruikt zijn eigen `gracePeriodExpiresDate`. |
+| `prices` | Centen per plan, voor weergave en voor `admin_premium_setup`. Elk 99–99999. |
+| `stripe_prices` | Per Stripe-modus de price-id's `{month, half, year, lifetime}` (`price_…`). Alleen gezet door `admin_premium_setup`. |
+| `stripe_portal` | Per Stripe-modus de id van de Customer Portal-configuratie (`bpc_…`), ook door `admin_premium_setup`. |
+| `test_users` | Max. 10 account-id's. Voor deze accounts doen **beide** groepen nu mee, alsof het account nieuw is (proef mag), ook als `enabled` false is. Zo ziet Léon het eerst zelf ("Test met mijn account" in het beheer). |
+
+- **Een groep doet mee** (`groupOn(g)`): (`enabled` én `new_from_<g>` gezet én nu ≥ `new_from_<g>`) of het account staat in `test_users`. `existing_from` werkt alleen binnen een groep die meedoet: staat `new_from_apple` nog op null, dan merken de Apple-apps op 1 december niets van Premium (daar geldt dan Lifetime-only van build 167, als dat aan staat).
+- Het beheer leest en schrijft met **`bingr_admin_premium_settings(p_premium jsonb)`** (null = alleen lezen; anders samenvoegen met de huidige waarde, `prices` en `stripe_prices` per sleutel). Controles: `enabled`/`show_prices_web` boolean, tijden null of ISO, `trial_days` 0–14, `grace_days` 0–16, `prices.*` geheel 99–99999 en `lifetime` > `year`, `stripe_prices.<modus>.<plan>` `^price_[A-Za-z0-9]+$`, `stripe_portal.<modus>` null of `^bpc_[A-Za-z0-9]+$`, `test_users` ≤ 10 bestaande account-id's, en aanzetten (`enabled` true) kan alleen met `existing_from`. Bij een fout: exception `bad_premium_settings` (SQLSTATE 22023), er verandert niets. Antwoord: de nieuwe waarde.
+- `device-auth` en `billing` houden de instellingen 60 seconden in het geheugen. Bij een databasefout gelden de standaardwaarden (uit) — behalve dat een actief abonnement altijd actief blijft (dat komt uit `account_plans`, niet uit de instellingen).
+
+### 3. Opslag (`supabase/schema.sql`)
+
+- **`account_plans`** (bestaand): `source` mag ook **`subscription`** zijn, en er komt een kolom **`premium_until timestamptz`**. Een actief abonnement wordt hier gespiegeld als `plan = 'lifetime'` (= het volledige niveau: limieten, functies, apparaten), `source = 'subscription'`, `premium_until` = tot wanneer toegang. Zo werken alle bestaande controles (limieten, functies, `bingr_enforce_free_devices`, statistieken, webspeler-proxy) zonder wijziging, ook in oudere apps.
+  - **Lifetime-bescherming:** de spiegel (`bingr_premium_mirror`) schrijft alleen als er geen rij is, de rij `plan = 'free'` heeft, of `source = 'subscription'`. Een rij met `source` `legacy`, `admin` of `purchase` (en elke andere Lifetime) verandert nooit door een abonnement, ook niet bij verlopen, opzeggen of terugbetalen. Omgekeerd mag een gekochte Lifetime (`grant`, `grantApple`, `bingr_billing_attach`) een `subscription`-rij overschrijven.
+  - Een `subscription`-rij met `premium_until` < nu telt overal als Gratis: de functies controleren dat zelf (`effectivePlan`), en de pg_cron-taak **`bingr-premium-sweep`** (elk uur, `bingr_premium_sweep()`) ruimt verlopen spiegels op (rij weg, of `plan = 'free'`, `source = null` als er eigen limieten zijn).
+- **`premium_subscriptions`** (nieuw, alleen service role, geen e-mailadressen): één rij per abonnement.
+  `id bigserial`, `user_id uuid null → auth.users on delete set null`, `provider text ('stripe'|'apple')`, `plan text ('month'|'half'|'year')`, `status text ('incomplete'|'trialing'|'active'|'past_due'|'grace'|'canceled'|'expired'|'revoked')`, `will_renew boolean`, `started_at`, `expires_at` (einde huidige periode of proef), `trial_until` (null zonder proef), `access_until` (berekend, zie §4), `canceled_at`, `mode text ('test'|'live')`, `stripe_subscription_id text unique`, `stripe_customer_id`, `stripe_price_id`, `apple_original_transaction_id text unique`, `apple_product_id`, `claim_token_hash text unique`, `claim_expires_at`, `claim_email_hash`, `claim_notified_at`, `claimed_at`, `user_deleted_at`, `created_at`, `updated_at`. Controle: bij `stripe` een `stripe_subscription_id`, bij `apple` een `apple_original_transaction_id`.
+- **`premium_trials`** (nieuw): `user_id uuid primary key → auth.users on delete cascade`, `provider`, `subscription_id → premium_subscriptions on delete set null`, `started_at`. Eén proef per account, ooit.
+- **`premium_payments`** (nieuw, omzet van Stripe-abonnementen): `id text primary key` (`in_…`), `subscription_id`, `user_id` (null na verwijderen), `plan`, `amount`, `currency`, `tax_amount`, `fee`, `net_amount`, `payment_intent`, `charge_id`, `billing_reason` (`subscription_create`|`subscription_cycle`|…), `mode`, `paid_at`, `refunded_amount int default 0`, `refunded_at`. Apple-omzet blijft uit de App Store Connect-rapporten komen (`apple_sales_daily`), daar zitten abonnementen al in.
+- **`billing_purchases.plan`** (nieuw, `'lifetime'` standaard, of `'lifetime49'`): welke Lifetime-prijs. `lifetime` = € 4,99 (oud, met of zonder code), `lifetime49` = Premium Lifetime € 49,99.
+- Functies (alleen service role): `bingr_premium_mirror(p_user uuid)` (spiegel bijwerken vanuit de beste actieve rij in `premium_subscriptions`: hoogste `access_until` > nu), `bingr_premium_sweep()` → `{expired}`, `bingr_admin_premium_settings(p_premium)`, `bingr_admin_premium_stats()`, `bingr_admin_premium_test(p_user uuid, p_on boolean)`, `bingr_premium_claim(p_user, p_token_hash)`, `bingr_premium_claim_email(p_user)`.
+- `bingr_billing_attach` overschrijft voortaan ook een `subscription`-rij. `bingr_lifetime_eligible` laat accounts met een `subscription`-rij weg (die zijn al Premium).
+
+### 4. Entitlement `premium` (device-auth `entitlements`, `heartbeat`, `config`; `billing` `claim`, `apple_verify`, `refresh`)
+
+Alle bestaande velden blijven. Er komt **altijd** een veld `premium` bij:
+
+```json
+"premium": {
+  "enabled": true, "active": true, "source": "stripe", "plan": "year", "status": "trialing",
+  "expires_at": "2026-12-04T10:00:00Z", "trial_until": "2026-12-04T10:00:00Z", "will_renew": true,
+  "required": true, "trial_eligible": false, "legacy_offer": false, "manage": "stripe", "test": false,
+  "prices": { "month": 499, "half": 1999, "year": 2999, "lifetime": 4999, "currency": "eur" },
+  "products": { "month": "nl.lrvdlinden.bingr.premium.month", "half": "nl.lrvdlinden.bingr.premium.halfyear",
+                "year": "nl.lrvdlinden.bingr.premium.year", "lifetime": "nl.lrvdlinden.bingr.lifetime49" }
+}
+```
+
+| Veld | Regel (`premiumView` in `_shared/premium.ts`) |
+|---|---|
+| `enabled` | `groupOn(groep van het platform)` voor dit account. False = de apps tonen niets nieuws (alles zoals nu). |
+| `active` | Lifetime (elke `source` behalve `subscription`), of een abonnement met `access_until` > nu. |
+| `source` | `legacy` / `admin` / `lifetime` (= `account_plans.source` `legacy` / `admin` / `purchase`), of `stripe` / `apple` voor een abonnement. Null = nooit Premium gehad. Een account met Lifetime én een abonnement: altijd de Lifetime-bron. |
+| `plan` | `lifetime` bij Lifetime, anders `month`/`half`/`year` van het (laatste) abonnement, of null. |
+| `status` | `lifetime`, of de status van het abonnement (`trialing`, `active`, `past_due`, `grace`, `canceled` = opgezegd maar nog actief tot `expires_at`, `expired`, `revoked`), of null. |
+| `expires_at` | Einde van de huidige periode (null bij Lifetime). |
+| `trial_until` | Einde van de proef als het abonnement nu in de proef zit, anders null. |
+| `will_renew` | Verlengt automatisch (false bij Lifetime, opgezegd of verlopen). |
+| `required` | Dit account moet op dit platform een plan hebben: groep doet mee én (account aangemaakt op of na `new_from_<g>`, of nu ≥ `existing_from`, of testaccount). |
+| `trial_eligible` | Proef mag: `trial_days` > 0, groep doet mee, account is **nieuw** (aangemaakt op of na `new_from_<g>`) of testaccount, nog nooit een proef (`premium_trials`), nooit een abonnement gehad, en niet `active`. Bestaande accounts nooit. |
+| `legacy_offer` | Mag nog Lifetime € 4,99 (met de 30%-code € 3,49) kopen zoals nu: niet `active`, niet nieuw onder de regel, nu < `existing_from`, en **niet** op een Apple-platform. |
+| `manage` | Waar het abonnement te beheren is: `apple` (`showManageSubscriptions`), `stripe` (`billing portal`), of null. |
+| `test` | Account staat in `test_users`. |
+| `prices` | Uit `app_settings.premium.prices`. Op Apple-platforms alleen ter info; Apple toont StoreKit-prijzen. |
+| `products` | Vaste Apple-product-id's. |
+
+- **`access`** (bestaand veld) blijft `"full"` of `"activate"`; er komt bewust **geen** nieuwe waarde (zoals `"paywall"`): oudere apps (≤ 180) kennen alleen `"activate"` en blokkeren daarmee al het afspelen met hun bestaande scherm; een onbekende waarde zouden ze als `"full"` behandelen. Nieuwe apps tonen bij `"activate"` met `premium.enabled` de paywall, anders het oude scherm. Doet de groep mee voor dit account, dan is `access = "activate"` precies als `required` en niet `active`; Lifetime-only (build 167/168) bepaalt `access` dan niet meer. Doet de groep niet mee: `access` zoals in build 168.
+- **`plan`** (bestaand veld, `free`|`lifetime`) blijft het **niveau**: een actief abonnement geeft `plan: "lifetime"` met de Lifetime-limieten en -functies (zo werken oudere apps en de server-controles). De apps tonen de naam uit `premium` ("Premium jaarlijks", "Lifetime"), nooit "Lifetime" voor een abonnement als `premium.source` `stripe`/`apple` is.
+- **`lifetime_only.code`** blijft zoals in build 167 (alleen voor bestaande gratis accounts, niet op Apple, tot `code_valid_until`).
+- **Oudere apps** (≤ 180): `access = "activate"` toont hun scherm "Activeer Lifetime"; Android en de webspeler openen daarmee bingr.online/upgrade/, waar de nieuwe plannen staan. `upgrade.price` blijft "€ 4,99" (= ook de maandprijs).
+
+### 5. Afdwingen
+
+- `stream_start`: **403** `{error:"activation_required", plan:"free", premium:true}` als `access` `"activate"` is (ook voor oudere apps). Bij een databasefout mag het afspelen door (zoals build 167).
+- Verlopen = afspelen geblokkeerd; servers, profielen, lijsten en instellingen blijven bewaard. Inloggen, sync, `config`, `entitlements`, support, export en `delete_account` blijven werken.
+- Een verlopen abonnement valt terug naar Gratis-limieten (de spiegel verdwijnt); `bingr_enforce_free_devices` geldt dan zoals voor elk gratis account.
+
+### 6. `billing` (Stripe en Apple)
+
+**`config`** (publiek) krijgt `premium` erbij, per platformgroep zoals build 168 (`body.platform`/`?platform=`, anders de User-Agent):
+
+```json
+"premium": { "enabled": true, "web": true, "apple": false, "required_new": true, "new_from": "2026-11-21T12:00:00+01:00", "existing_from": "2026-12-01T00:01:00+01:00",
+             "existing_after": false, "trial_days": 3, "show_prices_web": true, "stripe_ready": true,
+             "prices": { "month": 499, "half": 1999, "year": 2999, "lifetime": 4999, "currency": "eur" }, "products": { … } }
+```
+- `enabled` = de groep van deze aanvraag doet nu mee; `web` / `apple` = de groep web en Android / Apple doet nu mee (los van de aanvraag; `apple` = `enabled` én `new_from_apple` voorbij); `required_new` = nieuwe accounts in deze groep moeten een plan kiezen (= `enabled`); `existing_after` = nu ≥ `existing_from`; `stripe_ready` = er is een Stripe-sleutel én price-id's voor alle vier plannen in de huidige modus. Met `enabled` false: `{enabled:false, web:false, apple:false, required_new:false, new_from:null, existing_from:null, existing_after:false, trial_days:0, show_prices_web, stripe_ready, prices, products}` (`show_prices_web` en `prices` altijd, voor de website).
+- Ingelogd (`Authorization`): ook `view` = het `premium`-object van §4 voor dit account (platform `web`).
+
+**`checkout`** (POST) neemt `plan?` aan (`month`|`half`|`year`|`lifetime`):
+- **Zonder `plan`** (oude clients) = Lifetime € 4,99 zoals build 167 (met code), alleen als `legacy_offer` true is of de groep `web` niet meedoet; anders **400 `plan_required`**.
+- **`month`/`half`/`year`:** alleen als de groep `web` meedoet voor dit account (of testaccount), anders 409 `premium_off`. Al Lifetime → 409 `already_lifetime`; al een actief abonnement → 409 `already_premium` (`{manage}`), gebruik `portal`. Stripe Checkout `mode=subscription` met de price-id van `stripe_prices[modus][plan]`, `client_reference_id` en `metadata[user_id]`, `metadata[plan]`, `subscription_data[metadata][user_id|plan]`, `payment_method_collection=always`, en **alleen als `trial_eligible`** `subscription_data[trial_period_days]=trial_days` plus `subscription_data[trial_settings][end_behavior][missing_payment_method]=cancel`. Success-URL `https://bingr.online/upgrade/?status=success&session_id={CHECKOUT_SESSION_ID}`.
+- **`lifetime`:** Lifetime € 49,99 met `stripe_prices[modus].lifetime` (`mode=payment`, `metadata[plan]=lifetime49`). Een kortingscode geldt hier niet (`code` → 400 `code_invalid`, `reason: "not_for_plan"`). Heeft het account een actief Stripe-abonnement, dan zet de webhook dat na betaling op `cancel_at_period_end` (best effort).
+- Geen price-id voor de modus → 503 `premium_not_configured`. Idempotency-Key per account, plan, taal en minuut.
+- **Gast** (`guest: true`, zonder inloggen, alleen als de groep `web` publiek meedoet): ook met `plan`; abonnementen krijgen dan altijd de proef (er is nog geen account). Het claimtoken komt in `subscription_data[metadata][claim_token]` en de success-URL `/upgrade/klaar/?claim=…&session_id=…`, zoals build 167. Claimen (`billing claim`, of automatisch via het bevestigde e-mailadres) koppelt ook een gast-abonnement (`bingr_premium_claim`); het account krijgt dan een `premium_trials`-rij als er een proef liep. Is het account al Lifetime, dan 409 `already_lifetime` en blijft het abonnement ongekoppeld (het beheer toont het).
+- Waiver (`waiver: true`) blijft verplicht.
+
+**`portal`** (POST, ingelogd, `{return_url?}`) → `{url}`: Stripe Customer Portal (`billing_portal/sessions`, met de klant van het laatste Stripe-abonnement en `configuration` = `stripe_portal[modus]`). `return_url` alleen `https://bingr.online/…`, standaard `https://bingr.online/upgrade/`. 404 `no_customer` (nooit via Stripe betaald), 503 `premium_not_configured`.
+
+**`refresh`** (POST, ingelogd, `{platform?}`) → `{premium, entitlements}`: haalt de Stripe-abonnementen van dit account opnieuw op (vangnet na terugkeer van Checkout of de portal, als de webhook nog niet binnen is) en geeft de entitlements. Max. 20 per account per 10 min.
+
+**`status`** (bestaand): bij een sessie met `mode=subscription` ook vastleggen (vangnet) en `{paid, status, payment_status, plan, premium}` met `paid` = sessie `complete`.
+
+**`apple_verify`** (bestaand, `{signed_transaction, signed_renewal_info?, platform?}`):
+- Producten: `nl.lrvdlinden.bingr.lifetime` (oud) en `nl.lrvdlinden.bingr.lifetime49` → Lifetime zoals nu (`billing_purchases.plan` `lifetime` / `lifetime49`); de drie abonnementen → `premium_subscriptions` (provider `apple`, uniek op `originalTransactionId`). Andere producten: 400 `bad_transaction` `wrong_product`.
+- Abonnement: `expires_at` = `expiresDate`; proef als `offerDiscountType` = `FREE_TRIAL` (of `offerType` 1 met prijs 0) → `trial_until` = `expiresDate` en een `premium_trials`-rij; `will_renew` uit `signed_renewal_info` (`autoRenewStatus` 1), anders true; `revocationDate` → `revoked`. Een `originalTransactionId` hoort bij één account (eerste die claimt); staat de rij er al zonder account (notificatie kwam eerst), dan koppelt hij aan dit account.
+- Antwoord `{plan, premium, entitlements}` met `plan` = het Premium-plan van deze transactie: `month`, `half`, `year` of `lifetime` (beide Lifetime-producten geven `lifetime`; zelfde vorm als build 167). Fouten zoals build 167.
+- Apple bepaalt zelf of een Apple ID de introductieproef krijgt; de server kan een tweede proef op een ander Apple ID niet tegenhouden. De app toont "3 dagen gratis" alleen als `premium.trial_eligible` én StoreKit `isEligibleForIntroOffer` true zijn.
+
+**`admin_premium_setup`** (POST, header `x-lifetime-secret`, `{dry_run?}`): maakt in de modus van `STRIPE_SECRET_KEY` idempotent de producten `bingr_premium` en `bingr_premium_lifetime`, de vier prijzen (gezocht op `lookup_key`; een gewijzigde prijs in `prices` = een nieuwe prijs met een nieuwe `lookup_key`, `transfer_lookup_key` nooit) en een Customer Portal-configuratie (opzeggen aan het eind van de periode, betaalmethode en facturen; geen plan wisselen) aan, en schrijft de id's in `stripe_prices[modus]` en `stripe_portal[modus]`. Antwoord `{ok, mode, products, prices:{month,half,year,lifetime}, portal, created}` (alleen Stripe-id's). Fouten 503 `billing_unavailable`, 502 `stripe_error`.
+
+### 7. Webhooks
+
+**Stripe** (`stripe-webhook`), events erbij: `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.paid`, `invoice.payment_failed`. De workflow Backend werkt de `enabled_events` van het bestaande endpoint bij.
+- `checkout.session.completed` met `mode=subscription` → abonnement ophalen en vastleggen (account uit `metadata.user_id`, of gast met claimtoken: claimmail zoals build 167, tekst over Premium).
+- `customer.subscription.*` → `premium_subscriptions` bijwerken (`stripeSubStatus`): Stripe `trialing` → `trialing`; `active` → `active` (of `canceled` als `cancel_at_period_end`); `past_due` → `past_due`; `canceled`/`unpaid`/`incomplete_expired` → `expired`; `incomplete` → `incomplete`. `expires_at` = `current_period_end` (bij API-versie basil op `items.data[0]`), `trial_until` = `trial_end` als status `trialing`. Daarna `bingr_premium_mirror`.
+- **`access_until`** (`accessUntil`): `trialing` → `trial_until`; `active`/`canceled` → `expires_at` + 1 uur (marge voor een late verlenging); `past_due`/`grace` → `expires_at` + `grace_days` (Apple: `gracePeriodExpiresDate`); `incomplete`/`expired`/`revoked` → null.
+- `invoice.paid` → `premium_payments` (bedrag > 0; een proeffactuur van € 0 telt niet), daarna kosten zoals bij Lifetime. `invoice.payment_failed` → status `past_due` (vangnet; het `subscription.updated`-event volgt).
+- `charge.refunded` / `charge.dispute.created` voor een abonnementsbetaling → `premium_payments.refunded_amount`; het abonnement zelf loopt door tot Stripe het opzegt (dan `subscription.deleted`). Lifetime € 49,99 terugbetaald → terug naar Gratis zoals build 133.
+
+**Apple** (`apple-notify`), bestaande URL, voor de drie abonnementen:
+| Type | Gevolg |
+|---|---|
+| `SUBSCRIBED`, `DID_RENEW`, `OFFER_REDEEMED`, `DID_CHANGE_RENEWAL_PREF`, `RENEWAL_EXTENDED` | `active` (of `trialing` met proef), `expires_at`, `plan` uit `productId` |
+| `DID_CHANGE_RENEWAL_STATUS` | `will_renew` uit `autoRenewStatus` (`canceled` als false en nog niet verlopen) |
+| `DID_FAIL_TO_RENEW` | `grace` met `gracePeriodExpiresDate` (subtype `GRACE_PERIOD`), anders `past_due` |
+| `GRACE_PERIOD_EXPIRED`, `EXPIRED` | `expired` |
+| `REFUND`, `REVOKE` | abonnement `revoked`; Lifetime zoals build 167 |
+- Onbekende `originalTransactionId` → rij zonder account (wacht op `apple_verify`). Daarna altijd `bingr_premium_mirror`. Logs alleen type en resultaat.
+
+### 8. Beheer (functie `admin` in bingr-beheer)
+
+Acties: `premium_settings` (lezen/schrijven via `bingr_admin_premium_settings`), `premium_stats` (`bingr_admin_premium_stats`), `premium_setup` (`billing admin_premium_setup` met `x-lifetime-secret`, eerst `dry_run`), `premium_test` (`bingr_admin_premium_test`, `{user_id, on}`, → `test_users`). `bingr_admin_premium_stats()` geeft alleen totalen, per `provider` (`stripe`/`apple`) en per `plan`: `active`, `trialing`, `canceled` (opgezegd, nog actief), `past_due`, `expired_30d`, `trials_started`, `trials_converted`, `mrr_cents` (actieve, betaalde abonnementen: maand × 1, half ÷ 6, jaar ÷ 12, afgerond; proeven tellen niet), en `lifetime49` (aantal en bruto). De omzetpagina telt `premium_payments` mee (Stripe) en Apple-abonnementen uit `apple_sales_daily`. Het beheer zet ook een concept-mailing "Bingr Premium" voor bestaande gratis accounts klaar, niet versturen. Wijzigingen aan het beheer komen nooit in de changelog.
+
+### 9. Website en webspeler
+
+- **bingr.online:** het nieuwe prijsblok (schakelaar Maand / Halfjaar / Jaar, kaart Premium met badge "3 dagen gratis", jaar uitgelicht, kaart Lifetime € 49,99, wat je krijgt en op welke apparaten, knoppen App Store en bingr.online/upgrade) alleen als `billing config` `premium.show_prices_web` true is; anders de huidige tekst en tabel.
+- **/upgrade/:** met `show_prices_web` de vier plannen (checkout met `plan`), "Abonnement beheren" (`portal`) voor wie een Stripe-abonnement heeft, en voor een ingelogd account met `legacy_offer` nog de oude Lifetime € 4,99 met de code (tot `existing_from`).
+- **Webspeler** (`web/`): bij `access = "activate"` met `premium.enabled` het scherm "Kies een plan" (zelfde vier plannen, naar /upgrade/?plan=…, "Ik heb al betaald" = `refresh`), anders het bestaande scherm. In Instellingen: plan, verlengt op / verloopt op, "Abonnement beheren".
+
+### 10. Apple en Android (later, andere builds)
+
+- **Apple:** paywall "Kies je plan" (schakelaar maand/halfjaar/jaar + Lifetime-kaart, jaar uitgelicht, "3 dagen gratis" als beide eligible, Herstel aankopen, voorwaarden/privacy) achter `premium.enabled` + `required`; geen webprijzen, links of codes (`legacy_offer` en `lifetime_only.code` negeren). Na een aankoop `apple_verify`, `finish()` pas daarna. `appAccountToken` = account-id als er een account is (anders `pendingAccountToken`, build 167). Instellingen: plan, verlengt op, beheren via `showManageSubscriptions` (als `manage` = `apple`); bij `manage` = `stripe` alleen de tekst "Beheer je abonnement op het apparaat waar je het hebt afgesloten", geen link.
+- **Android / Android TV / Windows:** dezelfde paywall; afrekenen via `checkout` met `plan` (Android: Custom Tab; Android TV: QR-code naar `https://bingr.online/upgrade/?plan=<plan>`); na terugkeer `refresh`. "Abonnement beheren" = `portal`.
+- Client-logica (`premiumScreen`, gedeeld via `docs/build181_cases.json`, groep `client`): blokkeren als `access = "activate"`; paywall-variant `trial` als `trial_eligible`, anders `plans`; badge "3 dagen gratis" alleen bij `trial_eligible` (Apple: ook StoreKit); beheren volgens `manage`; offline met een bekend `premium.expires_at` in het verleden en geen `will_renew` → ook blokkeren tot de server weer antwoordt.
+
+### 11. Tests
+
+- Deno (blokkeert de deploy): `supabase/functions/_shared/premium_test.ts` op alle groepen van `docs/build181_cases.json` (`settings`, `access`, `stripe`, `apple`, `access_until`, `mirror`, `client`), plus `enabled` false = entitlements gelijk aan build 180 (op `premium` na), Stripe-parameters (proef alleen als eligible), webhook-beslissingen en Apple-notificaties.
+- SQL (blokkeert de deploy): `supabase/tests/premium_test.sql` in een tijdelijke Postgres: standaardwaarden, `bingr_admin_premium_settings` (geldig/ongeldig), Lifetime-bescherming van de spiegel (legacy/admin/purchase blijven, `subscription` wordt bijgewerkt en opgeruimd), sweep, één proef per account, claimen, statistieken en rechten.
+- Apple zelftest, Android-unittest en web (`tools/test`) gebruiken de groep `client` (en `access` waar ze zelf rekenen).
