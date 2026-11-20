@@ -4,6 +4,7 @@ import SwiftUI
 struct HomeLayoutView: View {
     @EnvironmentObject var store: CloudStore
     @State private var rows: [HomeLayout.Row] = []
+    @AppStorage("home.forYou") private var forYouOn = true
 
     var body: some View {
         let collections = store.activeCollections
@@ -22,6 +23,12 @@ struct HomeLayoutView: View {
                 #else
                 Text(L("Turn rows on or off and drag them into your own order. Applies to this profile."))
                 #endif
+            }
+            // build 179: rij "Voor jou" (duimen en kijkgeschiedenis), alleen op dit apparaat
+            Section {
+                Toggle(L("Show “For you”"), isOn: $forYouOn)
+            } footer: {
+                Text(L("Recommendations from what you watched and your thumbs up and down. Calculated on this device."))
             }
             Section {
                 Button(L("Restore default")) {

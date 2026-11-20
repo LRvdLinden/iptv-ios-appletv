@@ -206,6 +206,8 @@ final class SportCenter: ObservableObject {
 
 private enum SportFilter: Hashable {
     case all, mine, sport(String)
+    /// Build 179: standen per competitie (ESPN)
+    case standings
 }
 
 private struct SportDay: Identifiable {
@@ -228,6 +230,8 @@ struct SportView: View {
     @EnvironmentObject var playlists: PlaylistService
     @ObservedObject private var center = SportCenter.shared
     @ObservedObject private var store = CloudStore.shared
+    /// Build 179: live scores en standen (ESPN)
+    @ObservedObject private var scores = SportScores.shared
     @State private var filter: SportFilter = .all
     @State private var now = Date()
     @State private var sheet: SportGroup173?
@@ -237,36 +241,55 @@ struct SportView: View {
 
     private var filters: [SportFilter] {
         let present = Set(center.groups.map(\.match.sport))
-        return [.all, .mine] + Sport173.sports.filter { present.contains($0) }.map { SportFilter.sport($0) }
+        let base: [SportFilter] = [.all, .mine] + Sport173.sports.filter { present.contains($0) }.map { SportFilter.sport($0) }
+        return standingLeagues.isEmpty ? base : base + [.standings]
     }
+
+    /// Build 179: ESPN-competities van de wedstrijden in de gids en de favoriete competities
+    private var leagues: [String] { SportScores.leagues(center.groups, favorites: store.favoriteCompetitions) }
+    private var standingLeagues: [String] { leagues.filter(Sport179.hasStandings) }
 
     private func title(_ f: SportFilter) -> String {
         switch f {
         case .all: return L("All")
         case .mine: return L("My teams")
         case .sport(let s): return SportCenter.sportName(s)
+        case .standings: return L("Standings")
         }
     }
 
     private var visible: [SportGroup173] {
         let teams = Array(store.favoriteTeams), comps = Array(store.favoriteCompetitions)
+        let cal = Calendar.current
         return center.groups.filter { g in
-            guard g.end > now else { return false }
+            // build 179: afgelopen wedstrijden van vandaag blijven staan met de eindstand
+            guard g.end > now || (cal.isDateInToday(g.start) && scores.event(g)?.isFinished == true) else { return false }
             switch filter {
-            case .all: return true
+            case .all, .standings: return true
             case .mine: return Sport173.isFavorite(g.match, teams: teams, competitions: comps) || center.reminder(g) != nil
             case .sport(let s): return g.match.sport == s
             }
         }
     }
 
-    private var live: [SportGroup173] { visible.filter { $0.isLive(now) } }
+    private var live: [SportGroup173] { visible.filter { $0.isLive(now) && scores.event($0)?.isFinished != true } }
+
+    /// Build 179: wedstrijden van vandaag van gevolgde competities/teams uit ESPN die niet in de gids staan
+    private var notInGuide: [EspnEvent179] {
+        let teams = Array(store.favoriteTeams)
+        let all = scores.notInGuide(center.groups, now: now, teams: teams, competitions: store.favoriteCompetitions)
+        switch filter {
+        case .all, .mine: return all
+        case .sport(let s): return all.filter { SportEspnRow.sport($0.league) == s }
+        case .standings: return []
+        }
+    }
 
     private var days: [SportDay] {
         let cal = Calendar.current
         var order: [Date] = []
         var by: [Date: [SportGroup173]] = [:]
-        for g in visible where !g.isLive(now) {
+        for g in visible where !g.isLive(now) || scores.event(g)?.isFinished == true {
             let d = cal.startOfDay(for: g.start)
             if by[d] == nil { order.append(d) }
             by[d, default: []].append(g)
@@ -278,9 +301,11 @@ struct SportView: View {
         content
             .background(Color.black.ignoresSafeArea())
             .task(id: playlists.libraryVersion) { center.refresh(playlists) }
+            .task(id: leagues) { scores.refresh(leagues) }
             .onReceive(tick) { d in
                 now = d
                 center.refresh(playlists)
+                scores.refresh(leagues)   // build 179: hooguit elke 60 s per competitie
             }
             .onChange(of: store.favoriteTeams) { _, _ in center.refresh(playlists, force: true) }
             .onChange(of: store.favoriteCompetitions) { _, _ in center.refresh(playlists, force: true) }
@@ -310,13 +335,17 @@ struct SportView: View {
                         Text(L("Looking for matches…")).foregroundStyle(Theme.secondary)
                     }
                     .padding(.horizontal, Theme.edge).padding(.top, 30)
-                } else if center.groups.isEmpty {
+                } else if filter == .standings {
+                    ForEach(standingLeagues, id: \.self) { l in SportStandingsSection(league: l) }
+                    SportLogoNotice()
+                } else if center.groups.isEmpty && notInGuide.isEmpty {
                     empty(L("No matches found"), L("Matches come from the TV guide of your servers: sports channels and event categories."))
-                } else if visible.isEmpty {
+                } else if visible.isEmpty && notInGuide.isEmpty {
                     empty(L("No matches for this filter."), nil)
                 } else {
                     if !live.isEmpty { liveSection }
                     ForEach(days) { day in daySection(day) }
+                    if !notInGuide.isEmpty { notInGuideSection }
                     // build 178: club- en competitielogo's alleen ter herkenning
                     SportLogoNotice()
                 }
@@ -445,6 +474,32 @@ struct SportView: View {
         }
     }
 
+    // MARK: build 179: niet in je gids
+
+    private var notInGuideSection: some View {
+        VStack(alignment: .leading, spacing: tvScaled(8)) {
+            Text(L("Not in your guide")).font(.system(size: tvScaled(18), weight: .heavy))
+                .padding(.horizontal, Theme.edge).padding(.top, tvScaled(8))
+            Text(L("Matches today that none of your channels list in the TV guide."))
+                .font(.system(size: tvScaled(12))).foregroundStyle(Theme.secondary)
+                .padding(.horizontal, Theme.edge)
+            #if os(tvOS)
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: 16) {
+                    ForEach(notInGuide, id: \.self) { e in SportEspnRow(event: e).frame(width: 420) }
+                }
+                .padding(.horizontal, Theme.edge).padding(.vertical, 12)
+            }
+            .focusSection()
+            #else
+            VStack(spacing: 8) {
+                ForEach(notInGuide, id: \.self) { e in SportEspnRow(event: e) }
+            }
+            .padding(.horizontal, Theme.edge)
+            #endif
+        }
+    }
+
     private func watch(_ g: SportGroup173) {
         guard let c = center.channel(g) else { return }
         SportPlayback.play(c, app: app, playlists: playlists)
@@ -480,6 +535,7 @@ struct SportTeamBadge: View {
 private struct SportLiveCard: View {
     @EnvironmentObject var playlists: PlaylistService
     @ObservedObject private var preview = ChannelPreview.shared
+    @ObservedObject private var scores = SportScores.shared
     let group: SportGroup173
     let now: Date
     let preview0: Bool
@@ -510,6 +566,8 @@ private struct SportLiveCard: View {
                     } else {
                         ZStack {
                             LinearGradient(colors: [Color(hex: 0x134A2A), Color(hex: 0x0B2A17)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                            // build 179: in de kleuren van de teams
+                            SportTeamTint(match: group.match, opacity: 0.85)
                             if let c = channel { RemoteImage(url: c.logo, contentMode: .fit, placeholder: c.name).padding(tvScaled(28)) }
                         }
                         .aspectRatio(16 / 9, contentMode: .fit)
@@ -536,6 +594,10 @@ private struct SportLiveCard: View {
                         Text(group.match.title).font(.system(size: tvScaled(17), weight: .bold)).lineLimit(2)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         if group.match.isDuel { SportTeamBadge(name: group.match.away, match: group.match, size: tvScaled(34)) }
+                    }
+                    // build 179: tussenstand en minuut (ESPN)
+                    if let e = scores.event(group), e.scoreLine != nil {
+                        SportScoreBadge(event: e)
                     }
                     ProgressView(value: group.progress(now)).tint(Theme.alert)
                 }
@@ -569,6 +631,7 @@ private struct SportRow: View {
     @EnvironmentObject var playlists: PlaylistService
     @ObservedObject private var center = SportCenter.shared
     @ObservedObject private var store = CloudStore.shared
+    @ObservedObject private var scores = SportScores.shared
     let group: SportGroup173
     let onOpen: () -> Void
 
@@ -598,6 +661,7 @@ private struct SportRow: View {
                             Text(SportCenter.label(group.match)).font(.system(size: 12)).foregroundStyle(Theme.secondary).lineLimit(1)
                         }
                         Text(group.match.title).font(.system(size: 15, weight: .bold)).lineLimit(1)
+                        if let e = scores.event(group), e.scoreLine != nil { SportScoreBadge(event: e, size: 12) }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -617,7 +681,8 @@ private struct SportRow: View {
             .accessibilityLabel(on ? L("Turn off reminder") : L("Turn on reminder"))
         }
         .padding(.horizontal, 12).padding(.vertical, 10)
-        .background(Color(hex: 0x121212), in: RoundedRectangle(cornerRadius: 12))
+        // build 179: kaart in de kleuren van de teams (zacht, de tekst blijft leesbaar)
+        .background(SportCardBackground(match: group.match, opacity: 0.35, radius: 12))
     }
 }
 
@@ -627,6 +692,7 @@ private struct SportRow: View {
 private struct SportTVCard: View {
     @EnvironmentObject var playlists: PlaylistService
     @ObservedObject private var center = SportCenter.shared
+    @ObservedObject private var scores = SportScores.shared
     @ObservedObject private var store = CloudStore.shared
     let group: SportGroup173
     let now: Date
@@ -660,10 +726,11 @@ private struct SportTVCard: View {
                     }
                     Text(group.match.title).font(.system(size: 24, weight: .bold)).lineLimit(1)
                 }
+                if let e = scores.event(group), e.scoreLine != nil { SportScoreBadge(event: e, size: 20) }
             }
             .padding(.horizontal, 20).padding(.vertical, 18)
             .frame(width: 360, alignment: .leading)
-            .background(Color(hex: 0x121212), in: RoundedRectangle(cornerRadius: 14))
+            .background(SportCardBackground(match: group.match, opacity: 0.4, radius: 14))
         }
         .plainTVButton()
         .contextMenu {
@@ -681,6 +748,7 @@ struct SportMatchSheet: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var center = SportCenter.shared
     @ObservedObject private var store = CloudStore.shared
+    @ObservedObject private var scores = SportScores.shared
     let group: SportGroup173
     @State private var lead = SportCenter.defaultLead
 
@@ -706,6 +774,7 @@ struct SportMatchSheet: View {
                         Text(group.match.title).font(.system(size: tvScaled(20), weight: .heavy))
                         if group.match.isDuel { SportTeamBadge(name: group.match.away, match: group.match, size: tvScaled(40)) }
                     }
+                    if let e = scores.event(group), e.scoreLine != nil { SportScoreBadge(event: e, size: tvScaled(15)) }
                 }
                 if live {
                     Button {
@@ -772,6 +841,12 @@ struct SportMatchSheet: View {
                         .plainTVButton()
                         .disabled(!(l.start <= Date() && Date() < l.end))
                     }
+                }
+                // build 179: stand van de competitie (ESPN), de twee teams gemarkeerd
+                if let l = Sport179.espnLeague(competitionID: group.match.competitionID, sport: group.match.sport),
+                   Sport179.hasStandings(l), !group.match.competitionID.isEmpty {
+                    SportStandingsSection(league: l, highlight: group.match.isDuel ? [group.match.home, group.match.away] : [],
+                                          inset: false, limit: 10)
                 }
             }
             .padding(tvScaled(20))

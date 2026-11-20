@@ -230,6 +230,12 @@ final class PlaylistService: ObservableObject {
                     lib = try await PlexClient(session: session).library()
                 }
                 rec.end("fetch")
+            case .webdav:
+                // build 179: mappen doorbladeren (PROPFIND) en films/series herkennen uit de namen
+                say(L("Browsing folders…"))
+                guard let dav = WebDAVClient(source: s, password: password) else { throw HTTPError.badURL }
+                lib = try await dav.library()
+                rec.end("fetch")
             case .stremio:
                 say(L("Loading Stremio add-ons…"))
                 let addons = await Self.stremioAddons(s)
@@ -1514,6 +1520,9 @@ extension PlaylistService {
             return try await PlexClient(session: session).library()
         case .stremio:
             return await StremioClient(addons: await stremioAddons(s)).library()
+        case .webdav:
+            guard let dav = WebDAVClient(source: s, password: password) else { throw HTTPError.badURL }
+            return try await dav.library()
         }
     }
 

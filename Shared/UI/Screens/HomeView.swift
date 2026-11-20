@@ -20,6 +20,9 @@ struct HomeView: View {
     @State private var forYou: [DetailTarget] = []
     /// Build 140: zonder kijkgeschiedenis van dit profiel: populaire titels onder de kop "Populair"
     @State private var forYouPopular = false
+    /// Build 179: rij "Voor jou" uit te zetten (Instellingen > Startscherm, alleen dit apparaat) en de duimen
+    @AppStorage("home.forYou") private var forYouOn = true
+    @ObservedObject private var thumbs = Thumbs179.shared
     /// Build 140: Nieuw op Bingr: laatst toegevoegd aan de bibliotheek (alle servers), nieuwste eerst
     @State private var newOnBingr: [DetailTarget] = []
     @State private var category: CategoryTarget?
@@ -463,7 +466,7 @@ struct HomeView: View {
         case "upcoming": return !(discover[.upcoming] ?? []).isEmpty
         case "nowplaying": return !(discover[.cinema] ?? []).isEmpty   // build 152: Nu in de bioscoop
         case "streaming": return !newOnBingrItems.isEmpty   // build 140: Nieuw op Bingr uit je bibliotheek
-        case "foryou": return !forYou.isEmpty
+        case "foryou": return !forYou.isEmpty && forYouOn
         case "movies": return !index.popularMovies.isEmpty
         case "series": return !index.popularSeries.isEmpty
         default:
@@ -1035,13 +1038,15 @@ struct HomeView: View {
 
     @ViewBuilder private var forYouRow: some View {
         // altijd alfabetisch op titel, films en series door elkaar (zonder taallabel, hoofdletters en accenten)
-        let items = forYou.filter { t in
+        // build 179: "Voor jou" op volgorde van de score; alleen de terugval Populair blijft alfabetisch
+        let filtered = forYou.filter { t in
             switch (filter, t) {
             case (.movies, .series), (.series, .movie): return false
             default: return true
             }
-        }.sorted(by: Self.alphabetical)
-        if !items.isEmpty {
+        }
+        let items = forYouPopular ? filtered.sorted(by: Self.alphabetical) : filtered
+        if !items.isEmpty && forYouOn {
             let title = forYouPopular ? L("Popular") : L("For you")
             MediaRow(title: title, onSeeAll: { category = CategoryTarget(title: title, items: items) }) {
                 ForEach(items) { t in
@@ -1426,13 +1431,27 @@ struct HomeView: View {
         }
         for id in store.localWatched { if let m = idx.movieByID[id] { note(.movie(m), .distantPast) } }
         let seeds = ForYouSeeds.rank(watches, limit: 6).compactMap { seedTargets[$0] }
-        guard !seeds.isEmpty else { return (popularTitles(idx), true) }
+        // build 179: duimen. Zonder kijkgeschiedenis en zonder duim omhoog: Populair (zonder wat een duim omlaag kreeg)
+        let liked = thumbs.keys(1), disliked = thumbs.keys(-1)
+        let activeServer = pid.map { SourceSync.shared.serverID(for: $0) } ?? ""
+        func tkey(_ t: DetailTarget) -> String {
+            let server = t.sourceID.map { SourceSync.shared.serverID(for: $0) } ?? activeServer
+            switch t {
+            case .movie(let m): return Build179.thumbKey(tmdb: m.tmdbID, isShow: false, server: server, id: m.id)
+            case .series(let x): return Build179.thumbKey(tmdb: x.tmdbID, isShow: true, server: server, id: x.id)
+            }
+        }
+        guard !seeds.isEmpty || !liked.isEmpty else {
+            return (popularTitles(idx).filter { !disliked.contains(tkey($0)) }, true)
+        }
 
         var out: [DetailTarget] = []
         var seen = Set<String>()
         let seedIDs = Set(seeds.map(\.id))
         func add(_ t: DetailTarget) {
             guard !seen.contains(t.id), !seedIDs.contains(t.id), store.progress[t.id] == nil else { return }
+            let tk = tkey(t)
+            if disliked.contains(tk) || liked.contains(tk) { return }   // build 179: niets met een duim
             if filter == .movies, t.isSeries { return }
             if filter == .series, !t.isSeries { return }
             if case .movie(let m) = t, Playables.isWatched(movie: m, imdb: trakt.imdb(for: m)) { return }
@@ -1440,8 +1459,65 @@ struct HomeView: View {
             seen.insert(t.id); out.append(t)
         }
 
+        // build 179: de score van het contract (`forYou`): genres en cast van titels met een duim en bekeken titels,
+        // plus TMDB-aanbevelingen (3 × bij duim omhoog, 1 × bij bekeken). Wat daarna volgt vult de rij aan.
+        do {
+            let ages = AgeRatingService.shared.cache
+            var all: [DetailTarget] = (filter == .series ? [] : lib.movies.map { DetailTarget.movie($0) })
+                + (filter == .movies ? [] : lib.series.map { DetailTarget.series($0) })
+            for (sid, l) in others {
+                if filter != .series { all += l.movies.map { var m = $0; m.sourceID = m.sourceID ?? sid; return .movie(m) } }
+                if filter != .movies { all += l.series.map { var x = $0; x.sourceID = x.sourceID ?? sid; return .series(x) } }
+            }
+            var byKey: [String: DetailTarget] = [:]
+            var cands: [Build179.Candidate] = []
+            for t in all {
+                let k = tkey(t)
+                guard byKey[k] == nil else { continue }
+                byKey[k] = t
+                let title: String, year: Int?, rating: Double
+                switch t {
+                case .movie(let m): title = m.title; year = m.year; rating = m.rating ?? 0
+                case .series(let x): title = x.title; year = x.year; rating = x.rating ?? 0
+                }
+                let genres = (ages[AgeRatingService.key(title: title, year: year, isShow: t.isSeries)]?.genres ?? []).map(String.init)
+                cands.append(.init(key: k, title: title, genres: genres, cast: Taste179.shared.cast(k), rating: rating))
+            }
+            var watchedKeys = Set(seedTargets.values.map(tkey))
+            for c in cands {
+                guard let t = byKey[c.key] else { continue }
+                if store.progress[t.id] != nil { watchedKeys.insert(c.key); continue }
+                if case .movie(let m) = t, Playables.isWatched(movie: m, imdb: trakt.imdb(for: m)) { watchedKeys.insert(c.key) }
+                if case .series(let x) = t, Playables.watchedEpisodeCount(x, imdb: trakt.imdb(for: x)) > 0 { watchedKeys.insert(c.key) }
+            }
+            var recLiked: [String: Int] = [:], recWatched: [String: Int] = [:]
+            if useNetwork {
+                let otherMatcher = await AccountLibrary.shared.othersMatcher(others)
+                func related(_ seed: DetailTarget, into counts: inout [String: Int]) async {
+                    let ext = await relatedTitles(seed)
+                    var hits: [DetailTarget] = matcher.movies(ext, limit: 12).map { .movie($0) } + matcher.series(ext, limit: 12).map { .series($0) }
+                    if let om = otherMatcher { hits += om.movies(ext, limit: 6).map { .movie($0) } + om.series(ext, limit: 6).map { .series($0) } }
+                    for k in Set(hits.map(tkey)) { counts[k, default: 0] += 1 }
+                }
+                for k in liked.sorted().prefix(6) {
+                    guard let t = byKey[k] else { continue }
+                    await related(t, into: &recLiked)
+                    if Task.isCancelled { return (out, false) }
+                }
+                for seed in seeds.prefix(4) where !liked.contains(tkey(seed)) {
+                    await related(seed, into: &recWatched)
+                    if Task.isCancelled { return (out, false) }
+                }
+            }
+            let c2 = cands, w2 = watchedKeys.subtracting(liked).subtracting(disliked), rl = recLiked, rw = recWatched
+            let keys = await Task.detached(priority: .utility) {
+                Build179.forYou(c2, liked: liked, disliked: disliked, watched: w2, blocked: [], recLiked: rl, recWatched: rw)
+            }.value
+            for k in keys { if let t = byKey[k] { add(t) } }
+        }
+
         // 2. TMDB: aanbevelingen en vergelijkbare titels van wat dit profiel keek (eerst de open server, dan de andere)
-        if useNetwork {
+        if useNetwork && out.count < 30 {
             let otherMatcher = await AccountLibrary.shared.othersMatcher(others)
             for seed in seeds.prefix(4) {
                 let related = await relatedTitles(seed)
@@ -1500,7 +1576,7 @@ struct HomeView: View {
             matcher.movies(ext(rm), limit: 10).forEach { add(.movie($0)) }
             matcher.series(ext(rs), limit: 10).forEach { add(.series($0)) }
         }
-        if out.isEmpty { return (popularTitles(idx), true) }
+        if out.isEmpty { return (popularTitles(idx).filter { !disliked.contains(tkey($0)) }, true) }
         return (Array(out.prefix(30)), false)
     }
 

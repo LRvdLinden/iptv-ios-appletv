@@ -142,6 +142,13 @@ struct AddPlaylistView: View {
             section(L("Server")) { field(kind == .emby ? "http://192.168.1.10:8096/emby" : "http://192.168.1.10:8096", $server, url: true) }
             section(L("Username")) { field(L("username"), $username) }
             section(L("Password")) { field(L("password"), $password, secure: true) }
+        case .webdav:
+            // build 179: WebDAV (Nextcloud, NAS, …); het wachtwoord blijft in de sleutelhanger
+            section(L("WebDAV address")) { field("https://cloud.example.com/remote.php/dav/files/user/Video/", $server, url: true) }
+            section(L("Username")) { field(L("username"), $username) }
+            section(L("Password")) { field(L("password"), $password, secure: true) }
+            Text(L("Bingr browses the folders and recognises movies and series from folder and file names. No live TV and no downloads."))
+                .font(.system(size: tvScaled(12))).foregroundStyle(Theme.secondary).padding(.horizontal, 4)
         case .plex:
             plexLogin
         case .stremio:
@@ -276,6 +283,7 @@ struct AddPlaylistView: View {
         case .jellyfin, .emby: return server.urlValue != nil && !username.isEmpty
         case .plex: return plexToken != nil || (existing?.kind == .plex && Keychain.get(existing!.passwordKey) != nil)
         case .stremio: return true
+        case .webdav: return server.urlValue != nil
         }
     }
 
@@ -321,6 +329,11 @@ struct AddPlaylistView: View {
                         Keychain.setCodable(session, for: PlaylistService.sessionKey(p))
                         p.serverURL = session.serverURI
                     }
+                case .webdav:
+                    p.m3uURL = ""; p.epgURL = ""; p.macAddress = ""; p.preferHLS = false
+                    guard let dav = WebDAVClient(source: p, password: password) else { throw HTTPError.badURL }
+                    try await dav.check()
+                    Keychain.set(password.isEmpty ? nil : password, for: p.passwordKey)
                 case .stremio:
                     if !username.isEmpty && !password.isEmpty {
                         let key = try await StremioClient.login(email: username, password: password)

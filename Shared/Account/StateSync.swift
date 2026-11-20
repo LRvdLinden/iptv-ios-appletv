@@ -1646,9 +1646,11 @@ final class StateSync {
         let has176 = merge176(id, server: data, into: &mine)
         // build 179: sorteren per categorie (`categorySort`)
         let has179Sort = merge179Sort(id, server: data, into: &mine)
+        // build 179: duimen (`ratings`)
+        let has179 = merge179Thumbs(id, server: data, into: &mine)
         guard remote != nil else {
             let empty = sets.values.allSatisfy(\.isEmpty) && progress.isEmpty && history.isEmpty && pin == nil
-                && removed.values.allSatisfy(\.isEmpty) && prefsAt == nil && layoutOut == nil && !has176 && !has179Sort
+                && removed.values.allSatisfy(\.isEmpty) && prefsAt == nil && layoutOut == nil && !has176 && !has179 && !has179Sort
             return empty ? nil : mine
         }
         var theirSets: [String: [String: Double]] = [:]
@@ -1676,6 +1678,7 @@ final class StateSync {
             extras: data)
         Self.theirs176(data, into: &theirs)
         Self.theirs179Sort(data, into: &theirs)
+        Self.theirs179Thumbs(data, into: &theirs)
         // staan er verwijderingen alleen in de oude velden (iOS vóór build 60), upload dan ook zonder
         // verdere wijziging, zodat Android en Tizen ze in `removed` zien
         let legacyOnly = ["progress", "history"].contains { name in
@@ -1705,6 +1708,27 @@ final class StateSync {
             out["autoplayNext"] = ["value": w.value, "at": Self.iso(w.at)] as [String: Any]
         }
         return local != nil
+    }
+
+    // MARK: build 179: duimen in `profile.<id>.ratings` (docs/ACCOUNT.md → "Build 179", punt 11): per `key` de nieuwste
+    // `at`, weggehaald = waarde 0 (tombstone, 90 dagen), max. 2000.
+
+    /// Samenvoegen met de server, lokaal toepassen en in `out` zetten. Geeft true als er lokaal duimen zijn.
+    private func merge179Thumbs(_ id: UUID, server data: [String: Any], into out: inout [String: Any]) -> Bool {
+        let t = Thumbs179.shared
+        let local = t.all(id)
+        let server = Build179.thumbs(fromJSON: data["ratings"])
+        let merged = Build179.mergeThumbs(local, server, now: trustedNow())
+        if merged != local { t.setSynced(id, merged) }
+        if !merged.isEmpty || data["ratings"] != nil { out["ratings"] = Build179.thumbsJSON(merged) }
+        return !local.isEmpty
+    }
+
+    /// Wat de server had, in dezelfde vorm
+    private static func theirs179Thumbs(_ data: [String: Any], into out: inout [String: Any]) {
+        guard data["ratings"] != nil else { return }
+        let server = Build179.thumbs(fromJSON: data["ratings"])
+        out["ratings"] = Build179.thumbsJSON(Build179.mergeThumbs(server, [], now: Date().timeIntervalSince1970))
     }
 
     /// Wat de server had, in dezelfde vorm (om te zien of er geüpload moet worden)

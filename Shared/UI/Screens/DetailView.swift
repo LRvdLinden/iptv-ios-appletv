@@ -11,6 +11,10 @@ struct DetailView: View {
     @EnvironmentObject var trakt: TraktSync
     /// Build 176: ontgrendeld
     @ObservedObject private var p176 = Profile176.shared
+    /// Build 179: duim omhoog/omlaag (`profile.<id>.ratings`)
+    @ObservedObject private var thumbs = Thumbs179.shared
+    /// Build 179: beoordelingen van MDBList (via de server-functie `ratings`); nil = niet (meer) beschikbaar
+    @State private var moreRatings: [TitleDetails.Rating]?
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
 
@@ -174,7 +178,7 @@ struct DetailView: View {
                     .padding(.horizontal, Theme.edge)
 
                     if case .series(let s) = target { episodesSection(s) }
-                    if let r = d?.ratings, !r.isEmpty { ratingsSection(r) }
+                    if !allRatings.isEmpty { ratingsSection(allRatings) }
                     if let c = d?.cast, !c.isEmpty { castSection(c) }
                     if let rec = visibleRecommendations, !rec.isEmpty { recommendationsSection(rec) }
                     Color.clear.frame(height: 40)
@@ -251,6 +255,7 @@ struct DetailView: View {
         }
         .lockGate176()   // build 176
         .task(id: target.id) { await load() }
+        .task(id: "\(target.id)-\(d?.tmdbID ?? -1)-\(imdb ?? "")") { await loadMoreRatings() }
         .task(id: target.id) { await resolveCrossServer() }
         .crossServerPrompt($crossPrompt)
         .task(id: "\(target.id)-\(playlists.libraryVersion)") { await loadLanguageVersions() }
@@ -510,6 +515,16 @@ struct DetailView: View {
                     circleButton(isLockedTitle ? "lock.fill" : "lock") { toggleLock() }
                         .accessibilityLabel(isLockedTitle ? L("Unlock") : L("Lock with PIN"))
                 }
+                // build 179: duim omhoog/omlaag ("Voor jou")
+                if let k = thumbKey {
+                    let v = thumbs.value(k)
+                    circleButton(v == 1 ? "hand.thumbsup.fill" : "hand.thumbsup") { thumbs.toggle(k, 1) }
+                        .accessibilityLabel(L("I like this"))
+                        .accessibilityAddTraits(v == 1 ? .isSelected : [])
+                    circleButton(v == -1 ? "hand.thumbsdown.fill" : "hand.thumbsdown") { thumbs.toggle(k, -1) }
+                        .accessibilityLabel(L("Not for me"))
+                        .accessibilityAddTraits(v == -1 ? .isSelected : [])
+                }
                 if isMovie {
                     circleButton(isWatchedTitle ? "checkmark.circle.fill" : "checkmark.circle") { toggleWatchedMovie() }
                         .accessibilityLabel(isWatchedTitle ? L("Mark as unwatched") : L("Mark as watched"))   // build 97
@@ -657,6 +672,16 @@ struct DetailView: View {
             } else {
                 ShareLink(item: shareText, subject: Text(shareTitle), preview: SharePreview(shareTitle)) {
                     Label(L("Share"), systemImage: "square.and.arrow.up")
+                }
+            }
+            // build 179: duim omhoog/omlaag
+            if let k = thumbKey {
+                let v = thumbs.value(k)
+                Button { thumbs.toggle(k, 1) } label: {
+                    Label(L("I like this"), systemImage: v == 1 ? "hand.thumbsup.fill" : "hand.thumbsup")
+                }
+                Button { thumbs.toggle(k, -1) } label: {
+                    Label(L("Not for me"), systemImage: v == -1 ? "hand.thumbsdown.fill" : "hand.thumbsdown")
                 }
             }
             Button {
@@ -1088,6 +1113,37 @@ struct DetailView: View {
                 Watched154.setEpisode(e, series: s, imdb: imdb, !watched)   // build 154: ook de inhoudssleutels
                 Task { await trakt.setWatched(Playables.episode(e, of: s, imdb: imdb), !watched) }
             } label: { Label(watched ? L("Mark as unwatched") : L("Mark as watched"), systemImage: watched ? "eye.slash" : "checkmark.circle") }
+        }
+    }
+
+    // MARK: build 179: beoordelingen (MDBList) en duimen
+
+    /// Sleutel van de duim: TMDB-id, anders server + id (docs/ACCOUNT.md → "Build 179", punt 11)
+    private var thumbKey: String? {
+        if let t = d?.tmdbID, t > 0 { return Build179.thumbKey(tmdb: t, isShow: target.isSeries, server: "", id: "") }
+        guard !DiscoverItem.isExternal(target.id), let pid else { return nil }
+        return Build179.thumbKey(tmdb: nil, isShow: target.isSeries, server: SourceSync.shared.serverID(for: pid), id: target.id)
+    }
+
+    /// Eén rij: wat MDBList heeft (IMDb, RT, publiek, MC, Letterboxd, Trakt, TMDB), daarna wat er al was en ontbreekt.
+    private var allRatings: [TitleDetails.Rating] {
+        let base = d?.ratings ?? []
+        guard let more = moreRatings, !more.isEmpty else { return base }
+        let have = Set(more.map(\.source))
+        return more + base.filter { !have.contains($0.source) }
+    }
+
+    private func loadMoreRatings() async {
+        guard let d else { return }
+        // build 179: cast van deze titel bewaren voor "Voor jou"
+        if let k = thumbKey, !d.cast.isEmpty { Taste179.shared.note(key: k, cast: d.cast.map(\.name)) }
+        let tmdb = d.tmdbID
+        guard (tmdb ?? 0) > 0 || imdb != nil else { return }
+        guard let r = await Ratings179.shared.ratings(tmdb: tmdb, isShow: target.isSeries, imdb: imdb), !Task.isCancelled else { return }
+        moreRatings = r.compactMap { x in
+            Build179.ratingText(x.source, x.value).map {
+                TitleDetails.Rating(source: Build179.ratingName(x.source, audience: L("Audience")), value: $0)
+            }
         }
     }
 

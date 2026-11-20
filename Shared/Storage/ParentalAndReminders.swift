@@ -644,7 +644,9 @@ final class ReminderCenter: ObservableObject {
 
     /// Build 172: tweede regel van een sportmelding: "Eredivisie · Sport 1. Tik om live te kijken."
     func sportLine(_ r: ProgramReminder) -> String {
-        let parts = [r.competition ?? "", CategoryName.channel(r.channelName)].filter { !$0.isEmpty }
+        // build 179: de stand (ESPN) als die er is
+        let score = SportScores.shared.score(title: r.title, start: r.start, competition: r.competition) ?? ""
+        let parts = [score, r.competition ?? "", CategoryName.channel(r.channelName)].filter { !$0.isEmpty }
         return parts.joined(separator: " · ") + ". " + L("Tap to watch live.")
     }
 

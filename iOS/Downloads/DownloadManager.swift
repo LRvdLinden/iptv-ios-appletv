@@ -145,6 +145,7 @@ final class DownloadManager: ObservableObject {
     /// Kan deze titel gedownload worden? (geen live TV en geen smb://, ftp:// enz.)
     static func canDownload(_ item: PlayableItem) -> Bool {
         guard item.type == .movie || item.type == .episode else { return false }
+        if WebDAVAuth.isWebDAV(item.id) { return false }   // build 179: geen downloads van WebDAV
         if item.stalkerCmd != nil || item.stremio != nil { return true }
         guard let s = item.url?.scheme?.lowercased() else { return false }
         return s == "http" || s == "https"

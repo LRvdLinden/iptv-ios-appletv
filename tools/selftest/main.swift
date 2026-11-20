@@ -3324,6 +3324,135 @@ do {
     eq(stops.first?.when, 11, "nieuwste eerst")
 }
 
+// MARK: build 179, punten 7 en 8: ESPN-scores en teamkleuren (Shared/Sport/Build179Sport.swift)
+// De gedeelde gevallen komen uit docs/build179_cases.json (zelfde als web/js/build179.js en Build179Logic.kt).
+do {
+    let here = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+    let paths = [here.appendingPathComponent("docs/build179_cases.json"),
+                 URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+                    .deletingLastPathComponent().appendingPathComponent("docs/build179_cases.json")]
+    let caseData = paths.lazy.compactMap { try? Data(contentsOf: $0) }.first
+    check(caseData != nil, "179 sport: docs/build179_cases.json gevonden")
+    let C = caseData.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
+    func cases(_ k: String) -> [Any] { ((C[k] as? [String: Any])?["cases"] as? [Any]) ?? [] }
+    func optInt(_ v: Any?) -> Int? { v is NSNull ? nil : (v as? NSNumber)?.intValue }
+    check(cases("teamEq").count >= 10 && cases("espnLink").count >= 10 && cases("teamColor").count >= 10,
+          "179 sport: gevallen geladen")
+    for case let c as [Any] in cases("teamEq") {
+        eq(Sport179.teamEq(c[0] as? String ?? "", c[1] as? String ?? ""), (c[2] as? Bool) ?? false, "teamEq \(c[0]) ~ \(c[1])")
+    }
+    for case let c as [String: Any] in cases("espnLink") {
+        let g = c["guide"] as? [String: Any] ?? [:]
+        let events: [EspnEvent179] = ((c["events"] as? [[String: Any]]) ?? []).map { e in
+            func team(_ v: Any?) -> EspnTeam179 {
+                let names = (v as? [String]) ?? []
+                return EspnTeam179(id: "", names: names, abbreviation: "", score: nil, color: nil, alternateColor: nil, logo: nil)
+            }
+            return EspnEvent179(id: e["id"] as? String ?? "", league: "soccer/ned.1",
+                                start: Date(timeIntervalSince1970: (e["start"] as? NSNumber)?.doubleValue ?? 0),
+                                state: "pre", detail: "", clock: "", home: team(e["home"]), away: team(e["away"]))
+        }
+        let got = Sport179.match(home: g["home"] as? String ?? "", away: g["away"] as? String ?? "",
+                                 start: Date(timeIntervalSince1970: (g["start"] as? NSNumber)?.doubleValue ?? 0), in: events)
+        eq(got?.id, c["expect"] as? String, "espnLink \(g["home"] ?? "") - \(g["away"] ?? "")")
+    }
+    for case let c as [Any] in cases("scoreText") {
+        eq(Sport179.scoreText(state: c[0] as? String ?? "", home: optInt(c[1]), away: optInt(c[2]), clock: c[3] as? String),
+           c[4] as? String, "scoreText \(c)")
+    }
+    for case let c as [Any] in cases("teamColor") {
+        let cands = ((c[0] as? [Any]) ?? []).compactMap { Sport179.hex($0 as? String) }
+        let got = Sport179.teamColor(cands, fallback: Sport179.hex(c[1] as? String) ?? 0)
+        eq(Sport179.hexString(got), c[2] as? String ?? "", "teamColor \(c[0])")
+    }
+    for case let c as [Any] in cases("contrast") {
+        let v = Sport179.contrastWithWhite(Sport179.hex(c[0] as? String) ?? 0)
+        eq((v * 100).rounded() / 100, (c[1] as? NSNumber)?.doubleValue ?? -1, "contrast \(c[0])")
+    }
+    // ESPN-antwoorden lezen
+    let board = """
+    {"events":[{"id":"9","date":"2026-11-15T13:30Z","competitions":[{"date":"2026-11-15T13:30Z",
+     "status":{"displayClock":"67'","type":{"state":"in","shortDetail":"67'"}},
+     "competitors":[{"homeAway":"away","score":"1","team":{"id":"2","displayName":"AFC Ajax","abbreviation":"AJA","color":"d2122e"}},
+                    {"homeAway":"home","score":"2","team":{"id":"1","displayName":"PSV Eindhoven","shortDisplayName":"PSV","abbreviation":"PSV","color":"ED1C24","alternateColor":"zzz"}}]}]}]}
+    """
+    let ev = Sport179.parseScoreboard(Data(board.utf8), league: "soccer/ned.1")
+    eq(ev.count, 1, "scoreboard: één wedstrijd")
+    eq(ev.first?.home.displayName, "PSV Eindhoven", "scoreboard: thuisploeg")
+    eq(ev.first?.home.alternateColor, nil, "scoreboard: ongeldige kleur overgeslagen")
+    eq(ev.first.flatMap(Sport179.status), "2\u{2013}1 \u{00B7} 67'", "scoreboard: stand")
+    eq(ev.first?.start.timeIntervalSince1970, 1794749400, "scoreboard: datum zonder seconden")
+    let table = """
+    {"children":[{"name":"Eredivisie","standings":{"entries":[
+     {"team":{"displayName":"Ajax","abbreviation":"AJA"},"stats":[{"name":"rank","value":2},{"name":"points","value":30},{"name":"gamesPlayed","value":12}]},
+     {"team":{"displayName":"PSV","abbreviation":"PSV"},"stats":[{"name":"rank","value":1},{"name":"points","value":33},{"name":"gamesPlayed","value":12}]}]}}]}
+    """
+    let tables = Sport179.parseStandings(Data(table.utf8))
+    eq(tables.first?.rows.map(\.displayName) ?? [], ["PSV", "Ajax"], "stand op plaats")
+    eq(Sport179.rank("AFC Ajax", in: tables), 2, "plaats van Ajax")
+    eq(Sport179.espnLeague(competitionID: "eredivisie", sport: "football"), "soccer/ned.1", "eredivisie → ned.1")
+    eq(Sport179.espnLeague(competitionID: "", sport: "darts"), nil, "darts: geen scores")
+}
+
+// MARK: build 179, punten 9, 10, 11 en 16 (Shared/Account/Build179Media.swift)
+do {
+    let here = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+    let paths = [here.appendingPathComponent("docs/build179_cases.json"),
+                 URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+                    .deletingLastPathComponent().appendingPathComponent("docs/build179_cases.json")]
+    let caseData = paths.lazy.compactMap { try? Data(contentsOf: $0) }.first
+    let C = caseData.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
+    func cases(_ k: String) -> [Any] { ((C[k] as? [String: Any])?["cases"] as? [Any]) ?? [] }
+    check(cases("ratingText").count >= 8 && cases("forYou").count >= 4 && cases("webdavParse").count >= 12, "179 media: gevallen geladen")
+    for case let c as [Any] in cases("ratingText") {
+        eq(Build179.ratingText(c[0] as? String ?? "", (c[1] as? NSNumber)?.doubleValue), c[2] as? String, "ratingText \(c)")
+    }
+    for case let c as [String: Any] in cases("forYou") {
+        let titles: [Build179.Candidate] = ((c["titles"] as? [[String: Any]]) ?? []).map {
+            Build179.Candidate(key: $0["key"] as? String ?? "", title: $0["title"] as? String ?? "",
+                               genres: $0["genres"] as? [String] ?? [], cast: $0["cast"] as? [String] ?? [],
+                               rating: ($0["rating"] as? NSNumber)?.doubleValue ?? 0)
+        }
+        func set(_ k: String) -> Set<String> { Set((c[k] as? [String]) ?? []) }
+        func counts(_ k: String) -> [String: Int] { ((c[k] as? [String: Any]) ?? [:]).compactMapValues { ($0 as? NSNumber)?.intValue } }
+        let got = Build179.forYou(titles, liked: set("liked"), disliked: set("disliked"), watched: set("watched"),
+                                  blocked: set("blocked"), recLiked: counts("recLiked"), recWatched: counts("recWatched"))
+        eq(got, (c["expect"] as? [String]) ?? [], "forYou \(c["liked"] ?? "") \(c["watched"] ?? "")")
+    }
+    for case let c as [String: Any] in cases("webdavParse") {
+        let path = c["path"] as? String ?? ""
+        let w = c["expect"] as? [String: Any] ?? [:]
+        let got = Build179.webdavParse(path)
+        eq(got.kind, w["kind"] as? String ?? "", "webdav soort \(path)")
+        if got.kind != "other" {
+            eq(got.title, w["title"] as? String ?? "", "webdav titel \(path)")
+            eq(got.year, (w["year"] as? NSNumber)?.intValue, "webdav jaar \(path)")
+            eq(got.season, (w["season"] as? NSNumber)?.intValue, "webdav seizoen \(path)")
+            eq(got.episode, (w["episode"] as? NSNumber)?.intValue, "webdav aflevering \(path)")
+        }
+    }
+    // duimen samenvoegen: nieuwste at wint, gelijk = a, oude tombstones weg
+    let now = 1_800_000_000.0
+    let a = [Build179.Thumb(key: "tmdb:movie:1", value: 1, at: now - 10), Build179.Thumb(key: "tmdb:tv:2", value: 0, at: now - 100 * 86400)]
+    let b = [Build179.Thumb(key: "tmdb:movie:1", value: -1, at: now - 10), Build179.Thumb(key: "tmdb:movie:3", value: -1, at: now)]
+    eq(Build179.mergeThumbs(a, b, now: now), [Build179.Thumb(key: "tmdb:movie:1", value: 1, at: now - 10),
+                                              Build179.Thumb(key: "tmdb:movie:3", value: -1, at: now)], "duimen samenvoegen")
+    eq(Build179.thumbs(fromJSON: Build179.thumbsJSON(b)), b, "duimen JSON heen en terug")
+    eq(Build179.thumbKey(tmdb: 550, isShow: false, server: "X", id: "9"), "tmdb:movie:550", "duimsleutel tmdb")
+    eq(Build179.thumbKey(tmdb: nil, isShow: true, server: "ABC", id: "9"), "abc|series:9", "duimsleutel server")
+    // IntroDB-antwoord en overslaan
+    let seg = Build179.parseIntro(["ok": true, "intro": ["start": 60, "end": 120], "recap": ["start": 0, "end": 45],
+                                   "credits": ["start": 2500]])
+    eq(seg, Build179.Segments(introStart: 60, introEnd: 120, recapStart: 0, recapEnd: 45, creditsStart: 2500), "introdb lezen")
+    eq(Build179.parseIntro(["ok": false, "error": "not_found"]), nil, "introdb niet gevonden")
+    check(Build179.skip(at: 10, seg, userIntroStart: nil, userIntroEnd: 30)! == (45, true), "samenvatting overslaan")
+    check(Build179.skip(at: 70, seg, userIntroStart: nil, userIntroEnd: 30)! == (120, false), "intro overslaan (IntroDB)")
+    check(Build179.skip(at: 10, nil, userIntroStart: nil, userIntroEnd: 30)! == (30, false), "terugval eigen markering")
+    check(Build179.skip(at: 200, seg, userIntroStart: nil, userIntroEnd: 30) == nil, "niets overslaan")
+    let r = Build179.parseRatings(["ok": true, "ratings": [["source": "tmdb", "value": 8.4], ["source": "imdb", "value": 8.8],
+                                                            ["source": "x", "value": 1]]])
+    eq(r?.map { $0.source } ?? [], ["imdb", "tmdb"], "beoordelingen lezen en ordenen")
+}
 
 print("\(checks) controles, \(failures) fout")
 exit(failures == 0 ? 0 : 1)

@@ -1245,6 +1245,18 @@ final class AccountService: ObservableObject {
         return result as Data
     }
 
+    /// Build 179: een server-functie aanroepen als het ingelogde account (`ratings`, `introdb`). nil = niet ingelogd,
+    /// offline of een fout; het antwoord zelf (ook `ok: false`) komt terug als JSON.
+    func callFunction(_ name: String, _ body: [String: Any]) async -> (status: Int, json: [String: Any])? {
+        guard Secrets.accountsConfigured, isSignedIn else { return nil }
+        do {
+            let r = try await authorized { bearer in try await self.post("/functions/v1/" + name, body, bearer: bearer) }
+            return (r.status, r.json)
+        } catch {
+            return nil
+        }
+    }
+
     /// Aanvraag met een geldig access token; bij 401 één keer vernieuwen en opnieuw proberen.
     private func authorized(_ make: (String) async throws -> Response) async throws -> Response {
         let r = try await make(try await validAccessToken())

@@ -11,6 +11,8 @@ enum PlaylistKind: String, Codable, CaseIterable, Identifiable {
     case jellyfin = "Jellyfin"
     case emby = "Emby"
     case stremio = "Stremio"
+    /// Build 179: map met films en series op een WebDAV-server (geen live tv, geen downloads)
+    case webdav = "WebDAV"
     var id: String { rawValue }
 
     var title: String {
@@ -30,10 +32,11 @@ enum PlaylistKind: String, Codable, CaseIterable, Identifiable {
         case .jellyfin: return "drop"
         case .emby: return "e.square"
         case .stremio: return "puzzlepiece.extension"
+        case .webdav: return "externaldrive.connected.to.line.below"
         }
     }
     /// Bronnen die vooral films/series leveren (geen live TV)
-    var isMediaServer: Bool { [.plex, .jellyfin, .emby, .stremio].contains(self) }
+    var isMediaServer: Bool { [.plex, .jellyfin, .emby, .stremio, .webdav].contains(self) }
 }
 
 /// Avatar van een afspeellijst: een SF Symbol op een kleurverloop (Netflix-profielstijl).

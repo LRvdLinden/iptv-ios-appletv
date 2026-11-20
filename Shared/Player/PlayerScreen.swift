@@ -64,6 +64,8 @@ struct PlayerScreen: View {
     /// Voor welke zender/titel `alternatives` gezocht zijn
     @State private var altFor: String?
     @ObservedObject private var markers = IntroMarkers.shared
+    /// Build 179: tijden uit IntroDB voor de aflevering die speelt
+    @State private var introSegs: Build179.Segments?
     /// Build 59: dezelfde film/serie in andere talen (om naar te wisselen vanuit Audio & ondertitels)
     @State private var languageVersions: [LanguageVersion] = []
     @State private var versionsFor: String?
@@ -197,8 +199,8 @@ struct PlayerScreen: View {
             if let b = brightnessHUD { BrightnessHUD176(value: b).transition(.opacity) }
             #endif
 
-            if showSkipIntro, !tvBarHasPrimary, let end = marker?.introEnd {
-                skipIntroButton(end)
+            if showSkipIntro, !tvBarHasPrimary, let skip = skipTarget {
+                skipIntroButton(skip.end, recap: skip.recap)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                     .padding(.trailing, tvScaled(40))
                     .padding(.bottom, showControls ? tvScaled(130) : tvScaled(50))
@@ -373,11 +375,13 @@ struct PlayerScreen: View {
             } else { await start(item, askStartOver: true) }
         }
         .task { setupStillWatching() }
+        // build 179: tijden van intro, samenvatting en aftiteling uit IntroDB (per aflevering)
+        .task(id: player.item.id) { await loadIntroDB() }
         .lockGate176()
         // aftiteling gemarkeerd: na het aftellen automatisch de volgende aflevering
         .onChange(of: nextCountdown) { _, v in
             // build 176: automatisch volgende aflevering kan per profiel uit (de knop blijft)
-            if v == 0, marker?.creditsStart != nil, let n = nextUp, autoNext176 {
+            if v == 0, creditsStart != nil, let n = nextUp, autoNext176 {
                 // build 173: slaaptimer "na deze aflevering": niet door naar de volgende
                 if player.sleep == .endOfEpisode { player.setSleep(.off); sleepNow() } else { playNext(n) }
             }
@@ -701,10 +705,10 @@ struct PlayerScreen: View {
     @ViewBuilder
     private func nextEpisodeCard(_ n: PlayableItem, _ left: Int) -> some View {
         #if os(tvOS)
-        NextEpisodeCard(next: n, secondsLeft: left, autoplay: marker?.creditsStart != nil, counting: autoNext176,
+        NextEpisodeCard(next: n, secondsLeft: left, autoplay: creditsStart != nil, counting: autoNext176,
                         onPlay: { playNext(n) }, onDismiss: { creditsDismissed = true }, focus: $tvFocus)
         #else
-        NextEpisodeCard(next: n, secondsLeft: left, autoplay: marker?.creditsStart != nil, counting: autoNext176,
+        NextEpisodeCard(next: n, secondsLeft: left, autoplay: creditsStart != nil, counting: autoNext176,
                         onPlay: { playNext(n) }, onDismiss: { creditsDismissed = true })
         #endif
     }
@@ -885,7 +889,7 @@ struct PlayerScreen: View {
 
     private func primaryTitle(_ p: Player173.Primary) -> (String, String) {
         switch p {
-        case .skipIntro: return (L("Skip intro"), "forward.fill")
+        case .skipIntro: return (skipTarget?.recap == true ? L("Skip recap") : L("Skip intro"), "forward.fill")
         case .nextEpisode: return (L("Next episode"), "forward.end.fill")
         case .startOver: return (L("From the start"), "backward.end.fill")
         case .goLive: return (L("Back to live"), "dot.radiowaves.left.and.right")
@@ -894,7 +898,8 @@ struct PlayerScreen: View {
 
     private func runPrimary(_ p: Player173.Primary) {
         switch p {
-        case .skipIntro: if let end = marker?.introEnd { player.seek(toSeconds: end); flash(L("Intro skipped")) }
+        case .skipIntro:
+            if let skip = skipTarget { player.seek(toSeconds: skip.end); flash(skip.recap ? L("Recap skipped") : L("Intro skipped")) }
         case .nextEpisode: if let n = nextUp { playNext(n) }
         case .startOver: startOver173()
         case .goLive: player.goLive(); flash(L("LIVE"))
@@ -1490,16 +1495,37 @@ struct PlayerScreen: View {
     }
     private var marker: IntroMarker? { markers.marker(markerKey) }
 
-    private var showSkipIntro: Bool {
-        guard let m = marker, player.errorText == nil, !player.isLive, player.duration > 0 else { return false }
-        return m.inIntro(player.currentTime)
+    private var showSkipIntro: Bool { skipTarget != nil }
+
+    /// Build 179: wat de knop nu overslaat: de samenvatting of de intro (IntroDB eerst, anders de eigen markering)
+    private var skipTarget: (end: Double, recap: Bool)? {
+        guard player.item.type == .episode, player.errorText == nil, !player.isLive, player.duration > 0 else { return nil }
+        let m = marker
+        return Build179.skip(at: player.currentTime, introSegs, userIntroStart: m?.introStart, userIntroEnd: m?.introEnd)
+    }
+
+    /// Begin van de aftiteling: IntroDB, anders de eigen markering
+    private var creditsStart: Double? {
+        if let c = introSegs?.creditsStart, c > 0 { return c }
+        return marker?.creditsStart
+    }
+
+    /// Build 179: IntroDB voor deze aflevering (via de server-functie `introdb`, 30 dagen bewaard)
+    private func loadIntroDB() async {
+        introSegs = nil
+        let it = player.item
+        guard it.type == .episode, let season = it.season, let episode = it.episode else { return }
+        guard let tmdb = it.tmdbID ?? ContentLanguage.Facts.shared.tmdbID(it.seriesID ?? it.id), tmdb > 0 else { return }
+        let seg = await IntroDB179.shared.segments(tmdb: tmdb, imdb: it.imdbID, season: season, episode: episode)
+        guard !Task.isCancelled, player.item.id == it.id else { return }
+        introSegs = seg
     }
 
     /// Seconden tot de volgende aflevering start (nil = kaart niet tonen). Met een gemarkeerde aftiteling
     /// 10 seconden aftellen vanaf het begin ervan; anders (zoals eerder) de laatste 45 seconden tot het einde.
     private var nextCountdown: Int? {
         guard nextUp != nil, player.errorText == nil, !creditsDismissed, player.duration > 120 else { return nil }
-        if let c = marker?.creditsStart, c > 0, c < player.duration {
+        if let c = creditsStart, c > 0, c < player.duration {
             guard player.currentTime >= c else { return nil }
             return max(0, Int((10 - (player.currentTime - c)).rounded(.up)))
         }
@@ -1508,12 +1534,12 @@ struct PlayerScreen: View {
         return max(0, Int(left.rounded(.up)))
     }
 
-    private func skipIntroButton(_ end: Double) -> some View {
+    private func skipIntroButton(_ end: Double, recap: Bool = false) -> some View {
         Button {
             player.seek(toSeconds: end)
-            flash(L("Intro skipped"))
+            flash(recap ? L("Recap skipped") : L("Intro skipped"))
         } label: {
-            Label(L("Skip intro"), systemImage: "forward.fill")
+            Label(recap ? L("Skip recap") : L("Skip intro"), systemImage: "forward.fill")
                 .font(.system(size: tvScaled(16), weight: .bold))
                 .padding(.horizontal, tvScaled(20)).padding(.vertical, tvScaled(12))
                 .foregroundStyle(.black)

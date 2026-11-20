@@ -149,7 +149,8 @@ final class VLCEngine: PlaybackEngine {
 
     func load(_ url: URL, live: Bool, startFraction: Double?) {
         lastURL = url; lastLive = live
-        let media = VLCMedia(url: url)
+        // build 179: bestand op een WebDAV-bron: inloggegevens mee (Basic en Digest), alleen in het geheugen
+        let media = VLCMedia(url: WebDAVAuth.urlWithCredentials(url))
         // ondertitels: VLC tekent ze standaard erg groot (zeker op een tv)
         media.addOption(":sub-text-scale=\(SubtitleSize.current.vlcScale)")
         media.addOption(":freetype-rel-fontsize=\(SubtitleSize.current == .large ? 16 : SubtitleSize.current == .medium ? 18 : 20)")
@@ -452,7 +453,10 @@ final class AVEngine: PlaybackEngine {
     func load(_ url: URL, live: Bool, startFraction: Double?) {
         failed = false; ended = false; self.live = live
         observers.forEach { NotificationCenter.default.removeObserver($0) }
-        let asset = AVURLAsset(url: url, options: ["AVURLAssetHTTPHeaderFieldsKey": ["User-Agent": Secrets.userAgent]])
+        var headers = ["User-Agent": Secrets.userAgent]
+        // build 179: bestand op een WebDAV-bron: Basic-inlog mee
+        if let auth = WebDAVAuth.basicHeader(for: url) { headers["Authorization"] = auth }
+        let asset = AVURLAsset(url: url, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
         // vorige stream (zappen, nieuwe poging) eerst echt loslaten
         self.asset?.cancelLoading()
         self.asset = asset
