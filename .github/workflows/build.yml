@@ -242,6 +242,14 @@ jobs:
           xcodebuild -version
           swift --version
           xcodebuild -showsdks | grep -i ios || true
+          # welke Swift-versie hoort bij welke Xcode 27, en heeft die SDK ReservedRegion (iOS 27.1)?
+          for x in /Applications/Xcode_27.0.app /Applications/Xcode_27.1.app /Applications/Xcode_27.2.app; do
+            [ -d "$x" ] || continue
+            v="$("$x/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift" --version 2>/dev/null | head -1)"
+            i="$(ls "$x"/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS*.sdk/System/Library/Frameworks/SwiftUICore.framework/Modules/SwiftUICore.swiftmodule/arm64e-apple-ios.swiftinterface 2>/dev/null | head -1)"
+            r="$(grep -c 'struct ReservedRegion' "$i" 2>/dev/null || echo 0)"
+            echo "::notice title=$(basename "$x")::$v / ReservedRegion: $r"
+          done
 
       - name: API's voor iPhone Duo in de SDK
         run: |
