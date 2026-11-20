@@ -428,7 +428,7 @@ struct PlanRow: View {
                 HStack(spacing: 12) {
                     Label {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(L("Plan") + ": " + PlanText.name(plan)).foregroundStyle(Color.primary)
+                            Text(L("Plan") + ": " + (PremiumText.current(ent.premium) ?? PlanText.name(plan))).foregroundStyle(Color.primary)
                             Text(PlanText.limits(ent.limits)).font(.caption).foregroundStyle(Theme.secondary)
                         }
                     } icon: {

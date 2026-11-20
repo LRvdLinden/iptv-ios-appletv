@@ -245,6 +245,8 @@ final class AppState: ObservableObject {
         EntitlementsService.shared.start()
         // build 167: StoreKit 2 (Transaction.updates vanaf de start, onafgeronde aankopen na het inloggen)
         LifetimeStore.shared.start()
+        // build 181: Bingr Premium (abonnementen en Lifetime 49,99)
+        PremiumStore.shared.start()
         StateSync.shared.start()
         // build 128: één lijst over alle servers (opzoeken op andere servers, remap, catalogmeta); wacht tijdens afspelen
         CrossServer.shared.start(playlists: playlists, isPlaying: { [weak self] in self?.playing != nil })
@@ -596,7 +598,7 @@ struct RootView: View {
     private var showPushPrompt: Binding<Bool> {
         Binding(get: {
             guard app.stage == .main, app.playing == nil, !app.showMultiview, account.deviceLimit == nil,
-                  !ent.needsActivation else { return false }
+                  !ent.needsActivation, !ent.needsPremium else { return false }
             return push.showPrompt
         }, set: { _ in
             // alleen de knoppen sluiten het venster (answerPrompt); verdwijnt het omdat er iets gaat spelen,
@@ -613,6 +615,9 @@ struct RootView: View {
                 if account.isSignedIn && account.deviceLimit != nil && (app.stage == .picker || app.stage == .main) {
                     // limiet bereikt (sessie van vóór build 39): eerst een apparaat verwijderen, of Cancel = uitloggen
                     TooManyDevicesView().transition(.opacity)
+                } else if account.isSignedIn && ent.needsPremium && (app.stage == .picker || app.stage == .main) {
+                    // build 181: Bingr Premium, "Kies je plan" (afspelen geblokkeerd; gegevens blijven bewaard)
+                    PremiumPaywallView().transition(.opacity)
                 } else if account.isSignedIn && ent.needsActivation && (app.stage == .picker || app.stage == .main) {
                     // build 167: Bingr is alleen Lifetime; dit account is (nog) niet geactiveerd. Gegevens blijven bewaard.
                     ActivateLifetimeView().transition(.opacity)

@@ -41,7 +41,11 @@ final class LifetimeStore: ObservableObject {
     private static let publicConfigKey = "lifetime167.publicConfig"
 
     /// Welkomstscherm met eerst Koop Lifetime (na de overgang)
-    var buyFirst: Bool { Welcome167.buyFirst(publicConfig, now: Date()) }
+    /// build 181: niet als Premium voor Apple aan staat (dan eerst het account, daarna "Kies je plan")
+    var buyFirst: Bool { premiumPublic?.enabled != true && Welcome167.buyFirst(publicConfig, now: Date()) }
+    /// build 181: publieke `billing config` → `premium` (bewaard in de cache)
+    @Published private(set) var premiumPublic: PremiumPublic181?
+    private static let premiumPublicKey = "premium181.publicConfig"
 
     enum Message: String, Identifiable {
         case purchased, restored, nothingToRestore, pending, otherAccount, failed, unavailable
@@ -72,6 +76,9 @@ final class LifetimeStore: ObservableObject {
         if let d = UserDefaults.standard.data(forKey: Self.publicConfigKey) {
             publicConfig = try? JSONDecoder().decode(PublicConfig167.self, from: d)
         }
+        if let d = UserDefaults.standard.data(forKey: Self.premiumPublicKey) {
+            premiumPublic = try? JSONDecoder().decode(PremiumPublic181.self, from: d)
+        }
     }
 
     /// Publieke config ophalen (zonder inloggen). Zonder netwerk blijft de bewaarde stand staan.
@@ -79,6 +86,13 @@ final class LifetimeStore: ObservableObject {
         guard let j = await AccountService.shared.billingConfig() else { return }
         let c = PublicConfig167.parse(j)
         if c != publicConfig { publicConfig = c }
+        let pp = PremiumPublic181.parse(j)
+        if pp != premiumPublic { premiumPublic = pp }
+        if let pp, let d = try? JSONEncoder().encode(pp) {
+            UserDefaults.standard.set(d, forKey: Self.premiumPublicKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: Self.premiumPublicKey)
+        }
         if let c, let d = try? JSONEncoder().encode(c) {
             UserDefaults.standard.set(d, forKey: Self.publicConfigKey)
         } else {

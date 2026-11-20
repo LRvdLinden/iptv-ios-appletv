@@ -215,6 +215,8 @@ struct AppSettingsView: View {
                 // build 167: aankondiging "Bingr wordt Lifetime op <datum>", Koop Lifetime en Herstel aankopen (StoreKit)
                 LifetimeAnnouncementCard(buyButton: false)
                 LifetimePurchaseRows()
+                // build 181: Bingr Premium (plan, verlengt op, beheren)
+                PremiumStatusRows()
             } header: { Text(L("Subscription")) }
             AccountSettingsSection()
         } else {

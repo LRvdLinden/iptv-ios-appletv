@@ -114,11 +114,14 @@ final class EntitlementsService: ObservableObject {
         var lifetimeOnly: LifetimeOnly167? = nil
         /// build 167: koopknop (StoreKit) aan?
         var iap = IAP167(apple: false)
+        /// build 181: Bingr Premium (nil = oudere server of Premium staat uit)
+        var premium: Premium181? = nil
 
         init(plan: Plan, limits: Limits, features: Features, upgrade: Upgrade, plans: [String: Limits]? = nil,
-             access: Access167 = .full, lifetimeOnly: LifetimeOnly167? = nil, iap: IAP167 = IAP167(apple: false)) {
+             access: Access167 = .full, lifetimeOnly: LifetimeOnly167? = nil, iap: IAP167 = IAP167(apple: false),
+             premium: Premium181? = nil) {
             self.plan = plan; self.limits = limits; self.features = features; self.upgrade = upgrade; self.plans = plans
-            self.access = access; self.lifetimeOnly = lifetimeOnly; self.iap = iap
+            self.access = access; self.lifetimeOnly = lifetimeOnly; self.iap = iap; self.premium = premium
         }
 
         init(from decoder: Decoder) throws {
@@ -132,6 +135,7 @@ final class EntitlementsService: ObservableObject {
             access = (try? c.decodeIfPresent(Access167.self, forKey: .access)) ?? .full
             lifetimeOnly = try? c.decodeIfPresent(LifetimeOnly167.self, forKey: .lifetimeOnly)
             iap = (try? c.decodeIfPresent(IAP167.self, forKey: .iap)) ?? IAP167(apple: false)
+            premium = try? c.decodeIfPresent(Premium181.self, forKey: .premium)
         }
     }
 
@@ -142,6 +146,8 @@ final class EntitlementsService: ObservableObject {
 
     /// nil = (nog) onbekend: alles toegestaan.
     @Published private(set) var current: Entitlements?
+    /// build 181: de stand komt uit de cache en de server heeft deze sessie nog niet geantwoord (offline)
+    @Published private(set) var fromCache = false
 
     /// Accentkleuren toegestaan? Ook buiten de main actor leesbaar (`AccentChoice.current`), daarom in UserDefaults.
     nonisolated static let themesKey = "entitlements.themes"
@@ -170,8 +176,23 @@ final class EntitlementsService: ObservableObject {
                                 iap: c.iap, linkEUApple: c.upgrade.linkEUApple ?? false)
     }
 
-    /// build 167: alleen het scherm Activeer Lifetime
-    var needsActivation: Bool { LifetimeUI167.showActivate(lifetimeState) }
+    /// build 167: alleen het scherm Activeer Lifetime (build 181: niet als Premium aan staat, dan "Kies je plan")
+    var needsActivation: Bool { premiumScreen.paywall == .legacy && LifetimeUI167.showActivate(lifetimeState) }
+
+    /// build 181: Bingr Premium van dit account (nil = oudere server)
+    var premium: Premium181? { current?.premium }
+
+    /// build 181: `premiumScreen` (docs/build181_cases.json `client`). Nog onbekend = niet blokkeren.
+    var premiumScreen: PremiumUI181.Screen {
+        guard let c = current else { return PremiumUI181.Screen(blocked: false, paywall: nil, trialBadge: false, manage: nil) }
+        return PremiumUI181.screen(access: c.access, premium: c.premium, now: Date(), offline: fromCache)
+    }
+
+    /// build 181: schermvullend "Kies je plan" (afspelen geblokkeerd; gegevens blijven bewaard)
+    var needsPremium: Bool {
+        let s = premiumScreen
+        return s.blocked && (s.paywall == .trial || s.paywall == .plans)
+    }
 
     /// build 128: standaardlimieten van een abonnement (van de server, anders de bekende standaard) — voor de
     /// vergelijking Gratis/Lifetime; nooit de eigen limieten van dit account
@@ -225,6 +246,7 @@ final class EntitlementsService: ObservableObject {
                     self.task?.cancel(); self.task = nil
                     self.lastFetch = .distantPast
                     self.set(nil, store: false)
+                    self.fromCache = false
                 }
             }
             .store(in: &bag)
@@ -256,6 +278,7 @@ final class EntitlementsService: ObservableObject {
     func apply(_ j: [String: Any]) {
         guard let e = Self.parse(j) else { return }
         lastFetch = Date()
+        if fromCache { fromCache = false }
         set(e, store: true)
     }
 
@@ -275,8 +298,10 @@ final class EntitlementsService: ObservableObject {
     /// build 167: 403 `activation_required` van `stream_start`: meteen het scherm Activeer Lifetime (alleen in het
     /// geheugen; het volgende `entitlements`-antwoord is leidend) en opnieuw ophalen.
     func activationRequired() {
-        if var e = current, e.plan != .lifetime, e.access != .activate {
+        // build 181: ook voor een abonnement (niveau `lifetime`) als Premium aan staat
+        if var e = current, e.access != .activate, e.premium?.enabled == true || e.plan != .lifetime {
             e.access = .activate
+            if var p = e.premium, p.enabled { p.active = false; e.premium = p }
             set(e, store: false)
         }
         Task { await refresh(force: true) }
@@ -304,6 +329,7 @@ final class EntitlementsService: ObservableObject {
             return
         }
         set(e, store: false)
+        fromCache = true
     }
 
     // MARK: JSON
@@ -339,7 +365,7 @@ final class EntitlementsService: ObservableObject {
         // build 167: access, lifetime_only (zonder code) en iap
         return Entitlements(plan: plan, limits: limits, features: features, upgrade: upgrade, plans: plans,
                             access: Access167.parse(j["access"]), lifetimeOnly: LifetimeOnly167.parse(j["lifetime_only"]),
-                            iap: IAP167.parse(j["iap"]))
+                            iap: IAP167.parse(j["iap"]), premium: Premium181.parse(j["premium"]))
     }
 }
 

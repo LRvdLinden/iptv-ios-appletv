@@ -1028,10 +1028,37 @@ final class AccountService: ObservableObject {
         }
     }
 
+    /// build 181: Premium-transactie (abonnement of Lifetime 49,99) naar `billing` `apple_verify`, met de
+    /// `signed_renewal_info` als StoreKit die heeft. Antwoord `{plan, premium, entitlements}`.
+    func appleVerifyPremium(signedTransaction: String, signedRenewalInfo: String?) async -> PremiumVerify181.Outcome {
+        guard Secrets.accountsConfigured, isSignedIn else { return .failed }
+        var body: [String: Any] = ["action": "apple_verify", "signed_transaction": signedTransaction,
+                                   "platform": Self.entitlementsPlatform]
+        if let signedRenewalInfo { body["signed_renewal_info"] = signedRenewalInfo }
+        do {
+            let r = try await authorized { token in
+                try await self.post("/functions/v1/billing", body, bearer: token)
+            }
+            let o = PremiumVerify181.outcome(status: r.status, error: r.string("error"), plan: r.string("plan"))
+            if case .premium = o {
+                if let e = r.json["entitlements"] as? [String: Any] {
+                    EntitlementsService.shared.apply(e)
+                } else {
+                    await EntitlementsService.shared.refresh(force: true)
+                }
+            }
+            return o
+        } catch {
+            return .failed
+        }
+    }
+
     /// build 167 (aanvulling 1): publieke `billing config` (zonder inloggen), voor het welkomstscherm na de overgang.
     func billingConfig() async -> [String: Any]? {
         guard Secrets.accountsConfigured else { return nil }
-        guard let r = try? await post("/functions/v1/billing", ["action": "config"]), r.status == 200 else { return nil }
+        // build 181: met het platform, zodat `premium` voor de groep Apple geldt
+        guard let r = try? await post("/functions/v1/billing", ["action": "config", "platform": Self.entitlementsPlatform]),
+              r.status == 200 else { return nil }
         return r.json
     }
 

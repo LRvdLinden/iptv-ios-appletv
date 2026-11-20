@@ -21,6 +21,26 @@
       "productID": "nl.lrvdlinden.bingr.lifetime",
       "referenceName": "Bingr Lifetime",
       "type": "NonConsumable"
+    },
+    {
+      "displayPrice": "49.99",
+      "familyShareable": false,
+      "internalID": "B1810001-0000-4000-8000-000000000181",
+      "localizations": [
+        {
+          "description": "Bingr Premium for your account, forever. One-time purchase.",
+          "displayName": "Bingr Lifetime",
+          "locale": "en_US"
+        },
+        {
+          "description": "Bingr Premium voor je account, voor altijd. Eenmalige aankoop.",
+          "displayName": "Bingr Lifetime",
+          "locale": "nl"
+        }
+      ],
+      "productID": "nl.lrvdlinden.bingr.lifetime49",
+      "referenceName": "Bingr Lifetime (49,99)",
+      "type": "NonConsumable"
     }
   ],
   "settings": {
@@ -35,7 +55,108 @@
     "_storeKitErrors": [],
     "_timeRate": 0
   },
-  "subscriptionGroups": [],
+  "subscriptionGroups": [
+    {
+      "id": "B1810000-0000-4000-8000-000000000181",
+      "localizations": [],
+      "name": "Bingr Premium",
+      "subscriptions": [
+        {
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "29.99",
+          "familyShareable": false,
+          "groupNumber": 1,
+          "internalID": "B1810011-0000-4000-8000-000000000181",
+          "introductoryOffer": {
+            "internalID": "B1810021-0000-4000-8000-000000000181",
+            "paymentMode": "free",
+            "subscriptionPeriod": "P3D"
+          },
+          "localizations": [
+            {
+              "description": "All of Bingr, billed yearly.",
+              "displayName": "Bingr Premium",
+              "locale": "en_US"
+            },
+            {
+              "description": "Alles van Bingr, per jaar.",
+              "displayName": "Bingr Premium",
+              "locale": "nl"
+            }
+          ],
+          "productID": "nl.lrvdlinden.bingr.premium.year",
+          "recurringSubscriptionPeriod": "P1Y",
+          "referenceName": "Bingr Premium – jaar",
+          "subscriptionGroupID": "B1810000-0000-4000-8000-000000000181",
+          "type": "RecurringSubscription",
+          "winbackOffers": []
+        },
+        {
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "19.99",
+          "familyShareable": false,
+          "groupNumber": 2,
+          "internalID": "B1810012-0000-4000-8000-000000000181",
+          "introductoryOffer": {
+            "internalID": "B1810022-0000-4000-8000-000000000181",
+            "paymentMode": "free",
+            "subscriptionPeriod": "P3D"
+          },
+          "localizations": [
+            {
+              "description": "All of Bingr, billed every 6 months.",
+              "displayName": "Bingr Premium",
+              "locale": "en_US"
+            },
+            {
+              "description": "Alles van Bingr, per half jaar.",
+              "displayName": "Bingr Premium",
+              "locale": "nl"
+            }
+          ],
+          "productID": "nl.lrvdlinden.bingr.premium.halfyear",
+          "recurringSubscriptionPeriod": "P6M",
+          "referenceName": "Bingr Premium – halfjaar",
+          "subscriptionGroupID": "B1810000-0000-4000-8000-000000000181",
+          "type": "RecurringSubscription",
+          "winbackOffers": []
+        },
+        {
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "4.99",
+          "familyShareable": false,
+          "groupNumber": 3,
+          "internalID": "B1810013-0000-4000-8000-000000000181",
+          "introductoryOffer": {
+            "internalID": "B1810023-0000-4000-8000-000000000181",
+            "paymentMode": "free",
+            "subscriptionPeriod": "P3D"
+          },
+          "localizations": [
+            {
+              "description": "All of Bingr, billed monthly.",
+              "displayName": "Bingr Premium",
+              "locale": "en_US"
+            },
+            {
+              "description": "Alles van Bingr, per maand.",
+              "displayName": "Bingr Premium",
+              "locale": "nl"
+            }
+          ],
+          "productID": "nl.lrvdlinden.bingr.premium.month",
+          "recurringSubscriptionPeriod": "P1M",
+          "referenceName": "Bingr Premium – maand",
+          "subscriptionGroupID": "B1810000-0000-4000-8000-000000000181",
+          "type": "RecurringSubscription",
+          "winbackOffers": []
+        }
+      ]
+    }
+  ],
   "version": {
     "major": 4,
     "minor": 0

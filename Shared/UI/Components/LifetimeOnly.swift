@@ -18,8 +18,8 @@ enum LifetimeDate {
     }
 }
 
-/// Een brede knop zoals op de inlogschermen.
-private struct WideButton: View {
+/// Een brede knop zoals op de inlogschermen (build 181: ook in "Kies je plan").
+struct WideButton: View {
     let title: String
     let icon: String
     var prominent = false
@@ -204,7 +204,9 @@ struct LifetimeAnnouncementCard: View {
     @AppStorage("lifetime167.hidden") private var hidden = ""
 
     var body: some View {
-        if let a = LifetimeUI167.announcement(ent.lifetimeState, now: Date()), !(dismissible && hidden == key(a)) {
+        // build 181: met Premium aan geen aankondiging van de oude Lifetime
+        if ent.premium?.enabled != true,
+           let a = LifetimeUI167.announcement(ent.lifetimeState, now: Date()), !(dismissible && hidden == key(a)) {
             card(a)
                 .task { await store.prepare() }
                 .alert(item: store.binding(for: "card")) { m in
@@ -277,7 +279,8 @@ struct LifetimePurchaseRows: View {
     @ObservedObject private var store = LifetimeStore.shared
 
     var body: some View {
-        if LifetimeUI167.showRestore(ent.lifetimeState) {
+        // build 181: met Premium aan staan kopen en herstellen in `PremiumStatusRows` en "Kies je plan"
+        if ent.premium?.enabled != true, LifetimeUI167.showRestore(ent.lifetimeState) {
             if LifetimeUI167.showBuy(ent.lifetimeState, productLoaded: store.productLoaded) {
                 Button { Task { await store.purchase(origin: "settings") } } label: {
                     Label { Text(buyTitle(store)) } icon: { LifetimeBadge(size: tvScaled(22)) }

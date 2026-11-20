@@ -3504,5 +3504,88 @@ do {
 }
 
 
+// MARK: build 181: Bingr Premium (Shared/Account/Build181.swift; gedeelde gevallen uit docs/build181_cases.json)
+do {
+    let here = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+    let paths = [here.appendingPathComponent("docs/build181_cases.json"),
+                 URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+                    .deletingLastPathComponent().appendingPathComponent("docs/build181_cases.json")]
+    let caseData = paths.lazy.compactMap { try? Data(contentsOf: $0) }.first
+    check(caseData != nil, "build 181: docs/build181_cases.json gevonden")
+    let cases = caseData.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
+    // producten: zelfde id's als het contract
+    let products = cases["products"] as? [String: Any] ?? [:]
+    for plan in PremiumPlan181.allCases {
+        eq(plan.productID, products[plan.rawValue] as? String ?? "", "product-id \(plan.rawValue)")
+        eq(PremiumPlan181.from(productID: plan.productID), plan, "product-id → plan \(plan.rawValue)")
+    }
+    eq(PremiumPlan181.from(productID: products["lifetime_legacy"] as? String ?? ""), .lifetime, "oude Lifetime blijft Lifetime")
+    eq(PremiumPlan181.from(productID: "nl.lrvdlinden.bingr.premium.week"), nil, "onbekend product")
+    check(!PremiumVerify181.relevant(productID: "nl.lrvdlinden.bingr.lifetime", revoked: false), "oude Lifetime via LifetimeStore")
+    check(PremiumVerify181.relevant(productID: "nl.lrvdlinden.bingr.lifetime49", revoked: false), "Lifetime 49,99 via PremiumStore")
+    check(!PremiumVerify181.relevant(productID: "nl.lrvdlinden.bingr.premium.year", revoked: true), "ingetrokken niet")
+    // apple-gevallen: het plan uit het product-id
+    for c in cases["apple"] as? [[String: Any]] ?? [] {
+        let tx = c["tx"] as? [String: Any] ?? [:], ex = c["expect"] as? [String: Any] ?? [:]
+        let plan = PremiumPlan181.from(productID: tx["productId"] as? String ?? "")
+        switch ex["kind"] as? String {
+        case "subscription": eq(plan?.rawValue, ex["plan"] as? String, "apple: \(c["name"] ?? "")")
+        case "lifetime": eq(plan, .lifetime, "apple: \(c["name"] ?? "")")
+        default: eq(plan, nil, "apple: \(c["name"] ?? "")")
+        }
+    }
+    // client: premiumScreen
+    let client = cases["client"] as? [[String: Any]] ?? []
+    check(client.count >= 8, "build 181: client-gevallen")
+    for c in client {
+        let name = c["name"] as? String ?? "?"
+        let e = c["entitlements"] as? [String: Any] ?? [:], ex = c["expect"] as? [String: Any] ?? [:]
+        let now = ISODate167.parse(c["now"]) ?? Date()
+        let s = PremiumUI181.screen(access: Access167.parse(e["access"]), premium: Premium181.parse(e["premium"]),
+                                    now: now, offline: (c["offline"] as? Bool) ?? false)
+        eq(s.blocked, (ex["blocked"] as? Bool) ?? false, "\(name): blocked")
+        eq(s.paywall?.rawValue, ex["paywall"] as? String, "\(name): paywall")
+        eq(s.trialBadge, (ex["trial_badge"] as? Bool) ?? false, "\(name): badge")
+        eq(s.manage, ex["manage"] as? String, "\(name): manage")
+    }
+    // Apple: badge alleen als StoreKit ook eligible is
+    let newAcc = Premium181(enabled: true, required: true, trialEligible: true)
+    check(PremiumUI181.screen(access: .activate, premium: newAcc, now: Date(), offline: false, storeEligible: true).trialBadge, "badge met StoreKit")
+    check(!PremiumUI181.screen(access: .activate, premium: newAcc, now: Date(), offline: false, storeEligible: false).trialBadge, "geen badge zonder StoreKit")
+    check(PremiumUI181.showTrial(plan: .year, serverEligible: true, storeEligible: true), "proef op jaar")
+    check(!PremiumUI181.showTrial(plan: .lifetime, serverEligible: true, storeEligible: true), "Lifetime nooit proef")
+    check(!PremiumUI181.showTrial(plan: .month, serverEligible: false, storeEligible: true), "bestaand account geen proef")
+    // voordeel t.o.v. maandelijks (contract: 33 % en 50 %)
+    eq(PremiumUI181.savings(monthPrice: Decimal(string: "4.99"), price: Decimal(string: "19.99"), months: 6), 33, "halfjaar 33%")
+    eq(PremiumUI181.savings(monthPrice: Decimal(string: "4.99"), price: Decimal(string: "29.99"), months: 12), 50, "jaar 50%")
+    eq(PremiumUI181.savings(monthPrice: Decimal(string: "4.99"), price: Decimal(string: "4.99"), months: 1), nil, "maand geen voordeel")
+    eq(PremiumUI181.savings(monthPrice: nil, price: Decimal(string: "29.99"), months: 12), nil, "zonder maandprijs")
+    // status in Instellingen
+    let t0 = ISODate167.parse("2026-12-05T10:00:00Z")!
+    let exp = ISODate167.parse("2027-01-01T00:00:00Z")!
+    eq(PremiumUI181.status(Premium181(active: true, source: "apple", plan: .year, expiresAt: exp, willRenew: true), now: t0),
+       .renews(.year, on: exp), "verlengt")
+    eq(PremiumUI181.status(Premium181(active: true, source: "stripe", plan: .month, expiresAt: exp, willRenew: false), now: t0),
+       .ends(.month, on: exp), "opgezegd")
+    eq(PremiumUI181.status(Premium181(active: true, source: "apple", plan: .half, expiresAt: exp, trialUntil: exp, willRenew: true), now: t0),
+       .trial(.half, until: exp, renews: true), "proef")
+    eq(PremiumUI181.status(Premium181(active: true, source: "legacy", plan: .lifetime), now: t0), .lifetime, "Lifetime")
+    eq(PremiumUI181.status(Premium181(active: false, source: "apple", plan: .month, expiresAt: t0), now: t0), .none, "verlopen")
+    check(!PremiumUI181.showStatus(Premium181(enabled: false)), "uit: geen statusregels")
+    check(PremiumUI181.showStatus(Premium181(enabled: false, active: true, source: "apple", plan: .month)), "abonnement altijd zichtbaar")
+    // apple_verify
+    eq(PremiumVerify181.outcome(status: 200, error: nil, plan: "half"), .premium(.half), "verify half")
+    eq(PremiumVerify181.outcome(status: 200, error: nil, plan: "lifetime"), .premium(.lifetime), "verify lifetime")
+    eq(PremiumVerify181.outcome(status: 409, error: "owned_by_other_account", plan: nil), .otherAccount, "verify ander account")
+    eq(PremiumVerify181.outcome(status: 400, error: "bad_transaction", plan: nil), .unavailable, "verify oude functie")
+    eq(PremiumVerify181.outcome(status: nil, error: nil, plan: nil), .failed, "verify offline")
+    check(!PremiumVerify181.shouldFinish(.failed) && PremiumVerify181.shouldFinish(.premium(.month)), "finish na verwerken")
+    // publieke config
+    eq(PremiumPublic181.parse(["premium": ["enabled": true, "apple": true, "trial_days": 3]]), PremiumPublic181(enabled: true, trialDays: 3), "config aan")
+    eq(PremiumPublic181.parse(["premium": ["enabled": false, "apple": false, "trial_days": 0]]), PremiumPublic181(enabled: false, trialDays: 0), "config uit")
+    eq(PremiumPublic181.parse([:]), nil, "oudere server")
+}
+
+
 print("\(checks) controles, \(failures) fout")
 exit(failures == 0 ? 0 : 1)
