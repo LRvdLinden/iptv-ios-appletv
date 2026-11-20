@@ -4,21 +4,23 @@ import { entitlements, normalizePlan, normalizeUpgradeLink, type Platform, type 
 import {
   type CodeRow, euAppleLink, type LifetimeEntitlements, withLifetime, type IapSettings, type LifetimeSettings, normalizeIap, normalizeLifetime, normalizeCode,
 } from "./lifetime.ts";
+import { effectivePlanRow, normalizePremium, type PremiumSettings, premiumView } from "./premium.ts";
+import { premiumInfo } from "./premium_store.ts";
 
 // deno-lint-ignore no-explicit-any
 type Db = any;
 const fail = (where: string, e: { code?: string } | null) => new Error(`${where}: ${e?.code ?? "fout"}`);
 export const CODE_COLUMNS = "user_id,code,stripe_promotion_code_id,expires_at,redeemed_at";
 
-export type AllSettings = { lifetime: LifetimeSettings; iap: IapSettings; euApple: boolean; upgradeLink: unknown };
+export type AllSettings = { lifetime: LifetimeSettings; iap: IapSettings; euApple: boolean; upgradeLink: unknown; premium: PremiumSettings };
 /** De drie instellingen in één keer; bij een fout gooit hij (de aanroeper kiest: veilig terugvallen op "uit"). */
 export async function loadSettings(db: Db): Promise<AllSettings> {
-  const { data, error } = await db.from("app_settings").select("key,value").in("key", ["lifetime_only", "iap", "upgrade_link"]);
+  const { data, error } = await db.from("app_settings").select("key,value").in("key", ["lifetime_only", "iap", "upgrade_link", "premium"]);
   if (error) throw fail("app_settings", error);
   const m = new Map<string, unknown>(((data ?? []) as { key: string; value: unknown }[]).map((r) => [r.key, r.value]));
   return {
     lifetime: normalizeLifetime(m.get("lifetime_only")), iap: normalizeIap(m.get("iap")), euApple: euAppleLink(m.get("upgrade_link")),
-    upgradeLink: m.get("upgrade_link"),
+    upgradeLink: m.get("upgrade_link"), premium: normalizePremium(m.get("premium")),
   };
 }
 
@@ -64,17 +66,24 @@ export async function markRedeemed(db: Db, userId: string, promotionCode: string
  */
 export async function buildEntitlements(db: Db, userId: string, createdAt: string | null | undefined, platform: Platform | null,
   settings?: AllSettings, now = Date.now()): Promise<LifetimeEntitlements> {
-  const [planRes, s] = await Promise.all([
-    db.from("account_plans").select("plan,max_streams,max_devices").eq("user_id", userId).maybeSingle(),
+  const [planRes, s, info] = await Promise.all([
+    db.from("account_plans").select("plan,max_streams,max_devices,source,premium_until").eq("user_id", userId).maybeSingle(),
     settings ? Promise.resolve(settings) : loadSettings(db),
+    // build 181: abonnement en proef (bij een fout: geen abonnement bekend; de spiegel in account_plans geeft wel het niveau)
+    premiumInfo(db, userId).catch(() => ({ subscription: null, trialUsed: true, hadSubscription: true, customer: null })),
   ]);
   if (planRes.error) throw fail("account_plans", planRes.error);
-  const row = (planRes.data ?? null) as PlanRow;
+  // build 181: een verlopen abonnement (spiegel met premium_until voorbij) telt als Gratis
+  const row = effectivePlanRow((planRes.data ?? null) as PlanRow & { source?: unknown; premium_until?: unknown }, now);
   let code: CodeRow | null = null;
   if (s.lifetime.enabled && normalizePlan(row?.plan) !== "lifetime") {
     try { code = await codeOf(db, userId); } catch { code = null; } // zonder code is het antwoord nog steeds juist
   }
   return withLifetime(entitlements(row, normalizeUpgradeLink(s.upgradeLink), platform), {
     settings: s.lifetime, iap: s.iap, euApple: s.euApple, platform, createdAt, code, now,
+    premium: premiumView({
+      settings: s.premium, now, userId, createdAt, platform, planRow: row, subscription: info.subscription, trialUsed: info.trialUsed,
+      hadSubscription: info.hadSubscription,
+    }),
   });
 }

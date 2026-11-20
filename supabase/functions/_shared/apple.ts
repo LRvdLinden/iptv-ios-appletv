@@ -3,6 +3,7 @@
 // apple_jws.ts) en wat een App Store Server Notification V2 betekent. Contract in docs/ACCOUNT.md, "Build 167".
 // Logs: alleen het type en het resultaat, nooit transactie-id's van klanten, account-id's of bedragen per klant.
 import { isUuid } from "./billing.ts";
+import { APPLE_PREMIUM_PRODUCTS } from "./premium.ts";
 
 export const APPLE_BUNDLE_ID = "nl.lrvdlinden.bingr";
 export const APPLE_PRODUCT_ID = "nl.lrvdlinden.bingr.lifetime";
@@ -16,8 +17,12 @@ export type AppleTx = {
   amount: number | null; currency: string | null; purchasedAt: string | null;
   /** UUID waarmee gekocht is (account-id, of de pendingAccountToken van vóór het account); alleen ter info */
   appAccountToken?: string | null;
+  /** build 181: welke Lifetime (lifetime = oud product € 4,99, lifetime49 = Premium Lifetime) */
+  plan?: "lifetime" | "lifetime49";
 };
 export type TxCheck = { ok: true; tx: AppleTx } | { ok: false; error: "bad_transaction" | "wrong_app" | "wrong_product" | "revoked" };
+/** build 181: Lifetime-producten (oud en Premium Lifetime € 49,99); de abonnementen gaan via premium.ts appleProduct. */
+export const isLifetimeProduct = (id: unknown) => id === APPLE_PRODUCT_ID || id === APPLE_PREMIUM_PRODUCTS.lifetime;
 
 /** Production = live; Sandbox (en alles anders, zoals Xcode) = test. */
 export const appleEnvironment = (v: unknown): "live" | "test" => (v === "Production" ? "live" : "test");
@@ -42,7 +47,7 @@ export function checkTransaction(p: Record<string, any> | null | undefined): TxC
   if (!p || typeof p !== "object") return { ok: false, error: "bad_transaction" };
   if (!isAppleTxId(p.transactionId) || !isAppleTxId(p.originalTransactionId ?? p.transactionId)) return { ok: false, error: "bad_transaction" };
   if (p.bundleId !== APPLE_BUNDLE_ID) return { ok: false, error: "wrong_app" };
-  if (p.productId !== APPLE_PRODUCT_ID) return { ok: false, error: "wrong_product" };
+  if (!isLifetimeProduct(p.productId)) return { ok: false, error: "wrong_product" };
   if (p.revocationDate !== undefined && p.revocationDate !== null) return { ok: false, error: "revoked" };
   const { amount, currency } = priceOf(p);
   const token = typeof p.appAccountToken === "string" && isUuid(p.appAccountToken) ? p.appAccountToken.toLowerCase() : null;
@@ -51,6 +56,7 @@ export function checkTransaction(p: Record<string, any> | null | undefined): TxC
     tx: {
       transactionId: p.transactionId, originalTransactionId: p.originalTransactionId ?? p.transactionId,
       environment: appleEnvironment(p.environment), amount, currency, purchasedAt: isoMs(p.purchaseDate), appAccountToken: token,
+      plan: p.productId === APPLE_PRODUCT_ID ? "lifetime" : "lifetime49",
     },
   };
 }

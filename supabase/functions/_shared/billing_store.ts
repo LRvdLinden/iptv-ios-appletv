@@ -36,7 +36,7 @@ export async function grant(db: Db, p: Purchase, nowIso = new Date().toISOString
   }
   const row = {
     user_id: p.userId, stripe_session_id: p.sessionId, payment_intent: p.paymentIntent, amount: p.amount, currency: p.currency,
-    status: "paid", paid_at: paidAt, updated_at: nowIso, tax_amount: tax,
+    status: "paid", paid_at: paidAt, updated_at: nowIso, tax_amount: tax, plan: p.plan ?? "lifetime",
   };
   const { error: ue } = await db.from("billing_purchases").upsert(row, { onConflict: "stripe_session_id" });
   if (accountGone(ue)) {
@@ -59,7 +59,7 @@ export async function pending(db: Db, p: Purchase, nowIso = new Date().toISOStri
   if (prev) return;
   const { error } = await db.from("billing_purchases").insert({
     user_id: p.userId, stripe_session_id: p.sessionId, payment_intent: p.paymentIntent, amount: p.amount, currency: p.currency,
-    status: "pending", updated_at: nowIso,
+    status: "pending", updated_at: nowIso, plan: p.plan ?? "lifetime",
   });
   if (accountGone(error)) {
     const { error: e2 } = await db.from("billing_purchases").insert({

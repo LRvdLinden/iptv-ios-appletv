@@ -116,7 +116,7 @@ const ev = (type: string, object: unknown, id = "evt_1") => ({ id, object: "even
 Deno.test("events: betaald -> grant, onbetaald -> pending, mislukt -> failed", () => {
   const g = decide(ev("checkout.session.completed", session()));
   eq(g.kind, "grant");
-  if (g.kind === "grant") eq(g.purchase, { userId: UID, sessionId: "cs_test_a1", paymentIntent: "pi_123", amount: 499, currency: "eur", taxAmount: null });
+  if (g.kind === "grant") eq(g.purchase, { userId: UID, sessionId: "cs_test_a1", paymentIntent: "pi_123", amount: 499, currency: "eur", taxAmount: null, plan: "lifetime" });
   eq(decide(ev("checkout.session.completed", session({ payment_status: "unpaid" }))).kind, "pending");
   eq(decide(ev("checkout.session.async_payment_succeeded", session())).kind, "grant");
   eq(decide(ev("checkout.session.async_payment_succeeded", session({ payment_status: "unpaid" }))).kind, "ignore");

@@ -132,6 +132,11 @@ jobs:
         # proefperiode, kortingscodes, entitlements met enabled false precies zoals nu, Stripe-coupon/promotion codes, de webhook
         # voor een gebruikte code, gastaankoop en claimen, en de mails (NL/EN, geen Apple)
         run: deno test supabase/functions/_shared/apple_test.ts supabase/functions/_shared/lifetime_test.ts
+      - name: Unittests (build 181, Bingr Premium)
+        # blokkeert de deploy: de gedeelde gevallen van docs/build181_cases.json (toegang per platformgroep en tijdstip,
+        # proef één keer en alleen voor nieuwe accounts, Lifetime-bescherming, Stripe-status, Apple-producten en
+        # -notificaties, wat de apps tonen), enabled false = entitlements zoals build 180, Stripe-parameters en webhook-events
+        run: deno test --allow-read supabase/functions/_shared/premium_test.ts
       - name: Unittests (Apple-omzet, App Store Connect)
         # blokkeert de deploy: JWT ES256 (zelfgemaakte testsleutel, max. 20 min), URL van het dagrapport, gzip + TSV, het filter
         # op de in-app aankoop, samenvoegen (verkoop/terugbetaling), omrekenen naar EUR, 404 = geen fout; verzonnen regels
@@ -222,6 +227,13 @@ jobs:
         run: |
           for i in $(seq 1 20); do pg_isready -q && break; sleep 1; done
           sudo -u postgres bash supabase/tests/lifetime_test.sh
+      - name: Unittests (build 181, Bingr Premium - database)
+        # blokkeert de deploy: standaard uit, bingr_admin_premium_settings op de gedeelde gevallen, de spiegel in account_plans
+        # (Lifetime-bescherming: legacy/admin/purchase blijven), sweep, gekochte Lifetime over een abonnement, gast-abonnementen
+        # claimen (token, e-mail, trigger), één proef per account, statistieken zonder persoonsgegevens en de rechten
+        run: |
+          for i in $(seq 1 20); do pg_isready -q && break; sleep 1; done
+          sudo -u postgres bash supabase/tests/premium_test.sh
       - name: Unittests (Apple-omzet - database)
         # blokkeert de deploy: apple_sales_daily (een dag overschrijven, alles of niets), bijgewerkt t/m, omrekenen met vaste
         # koersen (zonder koers apart), series en bereiken voor de tab Omzet, website apart (web_*), gekoppelde aankopen,
@@ -1854,7 +1866,10 @@ jobs:
           TAX = (os.environ.get("STRIPE_TAX") or "").strip().lower() in ("1", "true", "yes", "on", "ja")
           URL = f"https://{REF}.supabase.co/functions/v1/stripe-webhook"
           EVENTS = ["checkout.session.completed", "checkout.session.async_payment_succeeded", "checkout.session.async_payment_failed",
-                    "charge.refunded", "charge.dispute.created", "charge.updated"]
+                    "charge.refunded", "charge.dispute.created", "charge.updated",
+                    # build 181: Bingr Premium (abonnementen)
+                    "customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted",
+                    "invoice.paid", "invoice.payment_failed"]
           API_VERSION = "2025-03-31.basil"
           def secrets_names():
               r = subprocess.run(["supabase", "secrets", "list", "--project-ref", REF], capture_output=True, text=True)
@@ -1940,7 +1955,31 @@ jobs:
           [ "$code" = 400 ] || { echo "::error::apple-notify met een ongeldige JWS gaf HTTP $code (verwacht 400)"; exit 1; }
           code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$F/billing" -H "Content-Type: application/json" -H "x-lifetime-secret: fout-geheim-0000000000000000" -d '{"action":"admin_codes_stats"}')
           [ "$code" = 403 ] || { echo "::error::billing admin_codes_stats met fout geheim gaf HTTP $code (verwacht 403)"; exit 1; }
-          echo "::notice::apple-notify (ongeldige JWS 400) en billing admin_* (fout geheim 403) werken"
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$F/billing" -H "Content-Type: application/json" -H "x-lifetime-secret: fout-geheim-0000000000000000" -d '{"action":"admin_premium_setup","dry_run":true}')
+          [ "$code" = 403 ] || { echo "::error::billing admin_premium_setup met fout geheim gaf HTTP $code (verwacht 403)"; exit 1; }
+          code=$(curl -s -o /tmp/pc.json -w '%{http_code}' -X POST "$F/billing" -H "Content-Type: application/json" -d '{"action":"config","platform":"web"}')
+          python3 -c 'import json,sys; d=json.load(open("/tmp/pc.json")); p=d.get("premium") or {}; sys.exit(0 if isinstance(p.get("enabled"), bool) and "prices" in p else 1)' \
+            || { echo "::error::billing config zonder premium-blok (HTTP $code)"; exit 1; }
+          echo "::notice::apple-notify (ongeldige JWS 400), billing admin_* (fout geheim 403) en config.premium werken"
+      - name: Build 181 - Premium-spiegel opruimen (pg_cron)
+        # elk uur: verlopen abonnementen (spiegel in account_plans met premium_until voorbij) terug naar Gratis; logt alleen of
+        # de taak er staat. De functies controleren premium_until ook zelf, dus een gemiste ronde geeft nooit te veel toegang.
+        if: steps.check.outputs.skip != '1'
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request, urllib.error
+          REF = os.environ["REF"]; MGMT = os.environ["SUPABASE_ACCESS_TOKEN"]
+          q = ("select cron.unschedule(jobid) from cron.job where jobname = 'bingr-premium-sweep';\n"
+               "select cron.schedule('bingr-premium-sweep', '7 * * * *', $cmd$ select public.bingr_premium_sweep(); $cmd$);\n"
+               "select count(*)::int n from cron.job where jobname = 'bingr-premium-sweep' and active;")
+          r = urllib.request.Request(f"https://api.supabase.com/v1/projects/{REF}/database/query", method="POST",
+              data=json.dumps({"query": q}).encode(), headers={"Authorization": f"Bearer {MGMT}", "Content-Type": "application/json"})
+          try:
+              with urllib.request.urlopen(r, timeout=30) as resp: rows = json.loads(resp.read() or b"[]"); code = resp.status
+          except urllib.error.HTTPError as e: rows, code = None, e.code
+          if code < 300 and isinstance(rows, list) and rows and rows[0].get("n") == 1: print("::notice::Planning bingr-premium-sweep ingesteld")
+          else: print(f"::warning::pg_cron niet beschikbaar (HTTP {code}): verlopen Premium-spiegels worden alleen door de functies genegeerd")
+          PY
       - name: Apple-omzet - App Store Connect, functie apple-sales en planning
         # Omzet: Apple (App Store Connect), docs/ACCOUNT.md. GitHub-secrets ISSUER_ID_APPSTORE_CONNECT, KEY_ID_APPSTORE_CONNECT,
         # VENDOR_APPSTORE_CONNECT en PRIVATE_KEY_APPSTORE_CONNECT (inhoud van de .p8) -> function-secrets ASC_ISSUER_ID,

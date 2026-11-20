@@ -5021,7 +5021,7 @@ begin
   insert into public.account_plans (user_id, plan, source, granted_by, note, updated_at)
   values (p_user, 'lifetime', 'purchase', p_by, left('Gekoppelde aankoop ' || coalesce(b.stripe_session_id, b.id::text), 500), now())
   on conflict (user_id) do update set plan = 'lifetime', source = 'purchase', granted_by = excluded.granted_by, note = excluded.note, updated_at = now()
-   where public.account_plans.plan <> 'lifetime' or public.account_plans.source = 'purchase';
+   where public.account_plans.plan <> 'lifetime' or public.account_plans.source in ('purchase', 'subscription');
   return true;
 end $$;
 revoke all on function public.bingr_billing_attach(bigint, uuid, text) from public, anon, authenticated, service_role;
@@ -5118,6 +5118,342 @@ revoke all on function public.bingr_admin_purchase_assign(bigint, uuid) from pub
 grant execute on function public.bingr_admin_unclaimed(int) to service_role;
 grant execute on function public.bingr_admin_purchase_assign(bigint, uuid) to service_role;
 -- <<< unittest lifetime
+
+-- ============================================================================================================
+-- Build 181: Bingr Premium (abonnementen naast Lifetime). Contract in docs/ACCOUNT.md, "Build 181: Bingr Premium";
+-- testgevallen in docs/build181_cases.json. Alles staat standaard uit (app_settings.premium.enabled = false).
+--   account_plans: source 'subscription' + premium_until = spiegel van een actief abonnement (plan 'lifetime' = het volledige
+--                  niveau). Lifetime-bescherming: een rij met source legacy/admin/purchase verandert nooit door een abonnement.
+--   premium_subscriptions: één rij per abonnement (Stripe of Apple); premium_trials: één proef per account, ooit;
+--   premium_payments: omzet van Stripe-abonnementen (Apple-omzet komt uit apple_sales_daily).
+-- Alles alleen service role; geen e-mailadressen (alleen een hash voor het koppelen van gast-abonnementen).
+-- >>> unittest premium
+alter table public.account_plans drop constraint if exists account_plans_source_check;
+alter table public.account_plans add constraint account_plans_source_check
+  check (source is null or source in ('legacy', 'admin', 'purchase', 'subscription'));
+alter table public.account_plans add column if not exists premium_until timestamptz;
+alter table public.billing_purchases add column if not exists plan text not null default 'lifetime';
+alter table public.billing_purchases drop constraint if exists billing_purchases_plan_check;
+alter table public.billing_purchases add constraint billing_purchases_plan_check check (plan in ('lifetime', 'lifetime49'));
+
+insert into public.app_settings (key, value) values
+  ('premium', '{"enabled": false, "new_from_web": null, "new_from_apple": null, "existing_from": "2026-12-01T00:01:00+01:00", "trial_days": 3, "show_prices_web": false, "grace_days": 3, "prices": {"month": 499, "half": 1999, "year": 2999, "lifetime": 4999}, "stripe_prices": {"test": {}, "live": {}}, "stripe_portal": {"test": null, "live": null}, "test_users": []}'::jsonb)
+on conflict (key) do nothing;
+
+create table if not exists public.premium_subscriptions (
+  id                            bigserial primary key,
+  user_id                       uuid references auth.users(id) on delete set null,
+  provider                      text not null check (provider in ('stripe', 'apple')),
+  plan                          text not null check (plan in ('month', 'half', 'year')),
+  status                        text not null check (status in ('incomplete', 'trialing', 'active', 'past_due', 'grace', 'canceled', 'expired', 'revoked')),
+  will_renew                    boolean not null default false,
+  started_at                    timestamptz,
+  expires_at                    timestamptz,
+  trial_until                   timestamptz,
+  access_until                  timestamptz,
+  canceled_at                   timestamptz,
+  mode                          text check (mode is null or mode in ('test', 'live')),
+  stripe_subscription_id        text unique check (stripe_subscription_id is null or stripe_subscription_id ~ '^sub_[A-Za-z0-9]+$'),
+  stripe_customer_id            text check (stripe_customer_id is null or stripe_customer_id ~ '^cus_[A-Za-z0-9]+$'),
+  stripe_price_id               text check (stripe_price_id is null or stripe_price_id ~ '^price_[A-Za-z0-9]+$'),
+  apple_original_transaction_id text unique check (apple_original_transaction_id is null or apple_original_transaction_id ~ '^[0-9]{1,32}$'),
+  apple_product_id              text check (apple_product_id is null or char_length(apple_product_id) <= 100),
+  claim_token_hash              text unique check (claim_token_hash is null or claim_token_hash ~ '^[0-9a-f]{64}$'),
+  claim_expires_at              timestamptz,
+  claim_email_hash              text check (claim_email_hash is null or claim_email_hash ~ '^[0-9a-f]{64}$'),
+  claim_notified_at             timestamptz,
+  claimed_at                    timestamptz,
+  user_deleted_at               timestamptz,
+  created_at                    timestamptz not null default now(),
+  updated_at                    timestamptz not null default now(),
+  constraint premium_subscriptions_ref check ((provider = 'stripe' and stripe_subscription_id is not null) or (provider = 'apple' and apple_original_transaction_id is not null))
+);
+alter table public.premium_subscriptions enable row level security;
+revoke all on public.premium_subscriptions from anon, authenticated;
+create index if not exists premium_subscriptions_user_idx on public.premium_subscriptions (user_id, access_until desc);
+create index if not exists premium_subscriptions_unclaimed_idx on public.premium_subscriptions (claim_email_hash) where user_id is null;
+
+create table if not exists public.premium_trials (
+  user_id         uuid primary key references auth.users(id) on delete cascade,
+  provider        text not null check (provider in ('stripe', 'apple')),
+  subscription_id bigint references public.premium_subscriptions(id) on delete set null,
+  started_at      timestamptz not null default now()
+);
+alter table public.premium_trials enable row level security;
+revoke all on public.premium_trials from anon, authenticated;
+
+create table if not exists public.premium_payments (
+  id              text primary key check (id ~ '^in_[A-Za-z0-9]+$'),
+  subscription_id bigint references public.premium_subscriptions(id) on delete set null,
+  user_id         uuid references auth.users(id) on delete set null,
+  plan            text check (plan is null or plan in ('month', 'half', 'year')),
+  amount          int not null check (amount >= 0),
+  currency        text not null default 'eur',
+  tax_amount      int,
+  fee             int,
+  net_amount      int,
+  payment_intent  text check (payment_intent is null or payment_intent ~ '^pi_[A-Za-z0-9]+$'),
+  charge_id       text,
+  billing_reason  text,
+  mode            text check (mode is null or mode in ('test', 'live')),
+  paid_at         timestamptz not null default now(),
+  refunded_amount int not null default 0,
+  refunded_at     timestamptz
+);
+alter table public.premium_payments enable row level security;
+revoke all on public.premium_payments from anon, authenticated;
+create index if not exists premium_payments_pi_idx on public.premium_payments (payment_intent);
+create index if not exists premium_payments_paid_idx on public.premium_payments (paid_at);
+
+-- Spiegel van het beste actieve abonnement in account_plans. Terug: upsert | delete | update | keep | no_user.
+create or replace function public.bingr_premium_mirror(p_user uuid) returns text
+language plpgsql security definer set search_path = public as $$
+declare u timestamptz; r record; has_row boolean;
+begin
+  if p_user is null then return 'no_user'; end if;
+  select max(access_until) into u from public.premium_subscriptions where user_id = p_user and access_until > now();
+  select * into r from public.account_plans where user_id = p_user for update;
+  has_row := found;
+  -- Lifetime-bescherming: legacy, admin, purchase (en elke andere Lifetime zonder abonnement) blijven altijd
+  if has_row and r.plan = 'lifetime' and r.source is distinct from 'subscription' then return 'keep'; end if;
+  if u is not null then
+    insert into public.account_plans (user_id, plan, source, granted_by, premium_until, note, updated_at)
+    values (p_user, 'lifetime', 'subscription', 'premium', u, 'Bingr Premium (abonnement)', now())
+    on conflict (user_id) do update set plan = 'lifetime', source = 'subscription', granted_by = 'premium', premium_until = excluded.premium_until,
+      note = excluded.note, updated_at = now()
+     where public.account_plans.plan <> 'lifetime' or public.account_plans.source = 'subscription';
+    return 'upsert';
+  end if;
+  if not has_row or r.source is distinct from 'subscription' then return 'keep'; end if;
+  if r.max_streams is null and r.max_devices is null then
+    delete from public.account_plans where user_id = p_user and source = 'subscription';
+    return 'delete';
+  end if;
+  update public.account_plans set plan = 'free', source = null, premium_until = null, granted_by = 'premium', updated_at = now()
+   where user_id = p_user and source = 'subscription';
+  return 'update';
+end $$;
+-- Verlopen spiegels opruimen (pg_cron bingr-premium-sweep, elk uur). Terug {expired: n}.
+create or replace function public.bingr_premium_sweep() returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare r record; n int := 0;
+begin
+  for r in select user_id from public.account_plans where source = 'subscription' and (premium_until is null or premium_until <= now()) loop
+    if public.bingr_premium_mirror(r.user_id) in ('delete', 'update') then n := n + 1; end if;
+  end loop;
+  return jsonb_build_object('expired', n);
+end $$;
+
+-- Instellingen lezen (null) en schrijven (beheer). Samenvoegen; prices/stripe_prices/stripe_portal per sleutel. Fout =
+-- exception 22023 'bad_premium_settings', dan verandert er niets. Onbekende sleutels worden genegeerd.
+create or replace function public.bingr_admin_premium_settings(p_premium jsonb default null) returns jsonb
+language plpgsql security definer set search_path = public, auth as $$
+declare cur jsonb; v jsonb; k text; m text; x jsonb; t timestamptz;
+  keys text[] := array['enabled', 'new_from_web', 'new_from_apple', 'existing_from', 'trial_days', 'show_prices_web', 'grace_days',
+                       'prices', 'stripe_prices', 'stripe_portal', 'test_users'];
+begin
+  select value into cur from public.app_settings where key = 'premium';
+  cur := coalesce(cur, '{}'::jsonb);
+  if p_premium is null then return cur; end if;
+  if jsonb_typeof(p_premium) <> 'object' then raise exception 'bad_premium_settings' using errcode = '22023'; end if;
+  v := cur;
+  foreach k in array keys loop
+    if not (p_premium ? k) then continue; end if;
+    x := p_premium -> k;
+    if k in ('prices', 'stripe_portal') then
+      if jsonb_typeof(x) <> 'object' then raise exception 'bad_premium_settings' using errcode = '22023'; end if;
+      v := jsonb_set(v, array[k], coalesce(v -> k, '{}'::jsonb) || x);
+    elsif k = 'stripe_prices' then
+      if jsonb_typeof(x) <> 'object' then raise exception 'bad_premium_settings' using errcode = '22023'; end if;
+      foreach m in array array['test', 'live'] loop
+        if x ? m then
+          if jsonb_typeof(x -> m) <> 'object' then raise exception 'bad_premium_settings' using errcode = '22023'; end if;
+          v := jsonb_set(v, array['stripe_prices', m], coalesce(v #> array['stripe_prices', m], '{}'::jsonb) || jsonb_strip_nulls(x -> m), true);
+        end if;
+      end loop;
+    else
+      v := jsonb_set(v, array[k], x, true);
+    end if;
+  end loop;
+  -- controles
+  if jsonb_typeof(v -> 'enabled') <> 'boolean' or jsonb_typeof(v -> 'show_prices_web') <> 'boolean' then raise exception 'bad_premium_settings' using errcode = '22023'; end if;
+  foreach k in array array['new_from_web', 'new_from_apple', 'existing_from'] loop
+    if jsonb_typeof(v -> k) not in ('null', 'string') then raise exception 'bad_premium_settings' using errcode = '22023'; end if;
+    if jsonb_typeof(v -> k) = 'string' then
+      begin t := (v ->> k)::timestamptz; exception when others then raise exception 'bad_premium_settings' using errcode = '22023'; end;
+      if char_length(v ->> k) > 40 then raise exception 'bad_premium_settings' using errcode = '22023'; end if;
+    end if;
+  end loop;
+  if (v -> 'enabled') = 'true'::jsonb and jsonb_typeof(v -> 'existing_from') <> 'string' then raise exception 'bad_premium_settings' using errcode = '22023'; end if;
+  if jsonb_typeof(v -> 'trial_days') <> 'number' or (v ->> 'trial_days') !~ '^[0-9]+$' or (v ->> 'trial_days')::int > 14 then raise exception 'bad_premium_settings' using errcode = '22023'; end if;
+  if jsonb_typeof(v -> 'grace_days') <> 'number' or (v ->> 'grace_days') !~ '^[0-9]+$' or (v ->> 'grace_days')::int > 16 then raise exception 'bad_premium_settings' using errcode = '22023'; end if;
+  foreach k in array array['month', 'half', 'year', 'lifetime'] loop
+    if jsonb_typeof(v #> array['prices', k]) <> 'number' or (v #>> array['prices', k]) !~ '^[0-9]+$'
+       or (v #>> array['prices', k])::int not between 99 and 99999 then raise exception 'bad_premium_settings' using errcode = '22023'; end if;
+  end loop;
+  if (v #>> '{prices,lifetime}')::int <= (v #>> '{prices,year}')::int then raise exception 'bad_premium_settings' using errcode = '22023'; end if;
+  foreach m in array array['test', 'live'] loop
+    for k, x in select * from jsonb_each(coalesce(v #> array['stripe_prices', m], '{}'::jsonb)) loop
+      if k not in ('month', 'half', 'year', 'lifetime') or jsonb_typeof(x) <> 'string' or (x #>> '{}') !~ '^price_[A-Za-z0-9]+$' then
+        raise exception 'bad_premium_settings' using errcode = '22023'; end if;
+    end loop;
+    x := v #> array['stripe_portal', m];
+    if x is not null and jsonb_typeof(x) <> 'null' and (jsonb_typeof(x) <> 'string' or (x #>> '{}') !~ '^bpc_[A-Za-z0-9]+$') then
+      raise exception 'bad_premium_settings' using errcode = '22023'; end if;
+  end loop;
+  if jsonb_typeof(v -> 'test_users') <> 'array' or jsonb_array_length(v -> 'test_users') > 10 then raise exception 'bad_premium_settings' using errcode = '22023'; end if;
+  for x in select * from jsonb_array_elements(v -> 'test_users') loop
+    if jsonb_typeof(x) <> 'string' or (x #>> '{}') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+       or not exists (select 1 from auth.users u where u.id = (x #>> '{}')::uuid) then raise exception 'bad_premium_settings' using errcode = '22023'; end if;
+  end loop;
+  insert into public.app_settings (key, value, updated_at) values ('premium', v, now())
+  on conflict (key) do update set value = excluded.value, updated_at = now();
+  return v;
+end $$;
+
+-- "Test met mijn account": account in test_users zetten of eruit halen. Terug de nieuwe test_users.
+create or replace function public.bingr_admin_premium_test(p_user uuid, p_on boolean) returns jsonb
+language plpgsql security definer set search_path = public, auth as $$
+declare cur jsonb; lst jsonb;
+begin
+  if p_user is null or not exists (select 1 from auth.users where id = p_user) then raise exception 'bad_premium_settings' using errcode = '22023'; end if;
+  select coalesce(value -> 'test_users', '[]'::jsonb) into cur from public.app_settings where key = 'premium';
+  select coalesce(jsonb_agg(e), '[]'::jsonb) into lst from jsonb_array_elements_text(coalesce(cur, '[]'::jsonb)) e where e::uuid <> p_user;
+  if p_on then lst := lst || to_jsonb(p_user::text); end if;
+  perform public.bingr_admin_premium_settings(jsonb_build_object('test_users', lst));
+  return lst;
+end $$;
+
+-- Gast-abonnement koppelen (intern): alleen een rij zonder account; daarna proef en spiegel. Al Lifetime = niet koppelen.
+create or replace function public.bingr_premium_attach(p_sub bigint, p_user uuid) returns text
+language plpgsql security definer set search_path = public as $$
+declare s record;
+begin
+  if exists (select 1 from public.account_plans p where p.user_id = p_user and p.plan = 'lifetime' and p.source is distinct from 'subscription') then
+    return 'already_lifetime';
+  end if;
+  update public.premium_subscriptions set user_id = p_user, claimed_at = now(), updated_at = now()
+   where id = p_sub and user_id is null and user_deleted_at is null returning id, provider, trial_until into s;
+  if not found then return 'invalid'; end if;
+  if s.trial_until is not null then
+    insert into public.premium_trials (user_id, provider, subscription_id) values (p_user, s.provider, s.id) on conflict (user_id) do nothing;
+  end if;
+  perform public.bingr_premium_mirror(p_user);
+  return 'claimed';
+end $$;
+-- Claimtoken (billing claim): {result: claimed | already_yours | owned_by_other_account | expired | invalid | already_lifetime}.
+create or replace function public.bingr_premium_claim(p_user uuid, p_token_hash text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare s record;
+begin
+  if p_user is null or coalesce(p_token_hash, '') !~ '^[0-9a-f]{64}$' then return jsonb_build_object('result', 'invalid'); end if;
+  select * into s from public.premium_subscriptions where claim_token_hash = p_token_hash for update;
+  if not found then return jsonb_build_object('result', 'invalid'); end if;
+  if s.user_id = p_user then return jsonb_build_object('result', 'already_yours'); end if;
+  if s.user_id is not null or s.user_deleted_at is not null then return jsonb_build_object('result', 'owned_by_other_account'); end if;
+  if s.claim_expires_at is null or s.claim_expires_at < now() then return jsonb_build_object('result', 'expired'); end if;
+  return jsonb_build_object('result', public.bingr_premium_attach(s.id, p_user));
+end $$;
+-- Alle ongeclaimde gast-abonnementen met het bevestigde e-mailadres van dit account koppelen. Terug {claimed: n}.
+create or replace function public.bingr_premium_claim_email(p_user uuid) returns jsonb
+language plpgsql security definer set search_path = public, auth as $$
+declare h text; r record; n int := 0;
+begin
+  select public.bingr_email_hash(u.email) into h from auth.users u
+   where u.id = p_user and u.email is not null and u.email_confirmed_at is not null and u.deleted_at is null;
+  if h is null then return jsonb_build_object('claimed', 0); end if;
+  for r in select id from public.premium_subscriptions where user_id is null and user_deleted_at is null and claim_email_hash = h order by id for update loop
+    if public.bingr_premium_attach(r.id, p_user) = 'claimed' then n := n + 1; end if;
+  end loop;
+  return jsonb_build_object('claimed', n);
+end $$;
+-- Vanuit de webhook: precies één bevestigd account met dit adres? Dan meteen koppelen.
+create or replace function public.bingr_premium_claim_hash(p_email_hash text) returns jsonb
+language plpgsql security definer set search_path = public, auth as $$
+declare ids uuid[];
+begin
+  if coalesce(p_email_hash, '') !~ '^[0-9a-f]{64}$' then return jsonb_build_object('claimed', 0); end if;
+  select array_agg(u.id) into ids from auth.users u
+   where u.email is not null and u.email_confirmed_at is not null and u.deleted_at is null and public.bingr_email_hash(u.email) = p_email_hash;
+  if coalesce(array_length(ids, 1), 0) <> 1 then return jsonb_build_object('claimed', 0); end if;
+  return public.bingr_premium_claim_email(ids[1]);
+end $$;
+
+-- Beheer: alleen totalen (geen accounts). Per provider en plan, MRR (proeven tellen niet), Lifetime € 49,99 en omzet.
+create or replace function public.bingr_admin_premium_stats() returns jsonb
+language sql stable security definer set search_path = public as $$
+  with s as (select * from public.premium_subscriptions where user_id is not null or claim_token_hash is not null),
+  live as (select * from s where access_until > now()),
+  pr as (select coalesce((value -> 'prices'), '{}'::jsonb) p from public.app_settings where key = 'premium')
+  select jsonb_build_object(
+    'settings_enabled', coalesce((select value -> 'enabled' from public.app_settings where key = 'premium'), 'false'::jsonb),
+    'active', (select count(*) from live where status in ('active', 'canceled', 'past_due', 'grace')),
+    'trialing', (select count(*) from live where status = 'trialing'),
+    'canceled', (select count(*) from live where status = 'canceled' or (status = 'trialing' and not will_renew)),
+    'past_due', (select count(*) from live where status in ('past_due', 'grace')),
+    'expired_30d', (select count(*) from s where status in ('expired', 'revoked') and updated_at > now() - interval '30 days'),
+    'trials_started', (select count(*) from public.premium_trials),
+    'trials_converted', (select count(*) from public.premium_trials t where exists (
+        select 1 from s where s.user_id = t.user_id and s.status in ('active', 'canceled', 'past_due', 'grace') and s.access_until > now())
+      or exists (select 1 from public.premium_payments p where p.user_id = t.user_id)),
+    'unclaimed', (select count(*) from public.premium_subscriptions where user_id is null and user_deleted_at is null and access_until > now()),
+    'mrr_cents', (select coalesce(round(sum(case l.plan when 'month' then (pr.p ->> 'month')::numeric when 'half' then (pr.p ->> 'half')::numeric / 6
+                                                       else (pr.p ->> 'year')::numeric / 12 end)), 0)::int
+                  from live l, pr where l.status in ('active', 'canceled', 'past_due', 'grace')),
+    'by', coalesce((select jsonb_agg(jsonb_build_object('provider', x.provider, 'plan', x.plan, 'active', x.a, 'trialing', x.t, 'canceled', x.c, 'mrr_cents', x.mrr) order by x.provider, x.plan)
+             from (select l.provider, l.plan,
+                          count(*) filter (where l.status in ('active', 'canceled', 'past_due', 'grace')) a,
+                          count(*) filter (where l.status = 'trialing') t,
+                          count(*) filter (where l.status = 'canceled') c,
+                          coalesce(round(sum(case when l.status = 'trialing' then 0 when l.plan = 'month' then (pr.p ->> 'month')::numeric
+                                                  when l.plan = 'half' then (pr.p ->> 'half')::numeric / 6 else (pr.p ->> 'year')::numeric / 12 end)), 0)::int mrr
+                     from live l, pr group by 1, 2) x), '[]'::jsonb),
+    'lifetime49', jsonb_build_object('count', (select count(*) from public.billing_purchases where plan = 'lifetime49' and status = 'paid'),
+                                     'gross', (select coalesce(sum(amount), 0) from public.billing_purchases where plan = 'lifetime49' and status = 'paid')),
+    'stripe_revenue', jsonb_build_object(
+      'live', (select jsonb_build_object('count', count(*), 'gross', coalesce(sum(amount), 0), 'refunded', coalesce(sum(refunded_amount), 0),
+                                          'fee', coalesce(sum(fee), 0), 'tax', coalesce(sum(tax_amount), 0)) from public.premium_payments where mode = 'live'),
+      'test', (select jsonb_build_object('count', count(*), 'gross', coalesce(sum(amount), 0), 'refunded', coalesce(sum(refunded_amount), 0),
+                                          'fee', coalesce(sum(fee), 0), 'tax', coalesce(sum(tax_amount), 0)) from public.premium_payments where mode = 'test')),
+    'monthly', coalesce((select jsonb_agg(jsonb_build_object('month', m.mon, 'mode', m.mode, 'count', m.n, 'gross', m.g, 'refunded', m.r) order by m.mon, m.mode)
+               from (select to_char(date_trunc('month', paid_at at time zone 'Europe/Amsterdam'), 'YYYY-MM') mon, mode, count(*) n,
+                            sum(amount) g, sum(refunded_amount) r
+                       from public.premium_payments where paid_at > now() - interval '13 months' group by 1, 2) m), '[]'::jsonb),
+    'test_users', (select coalesce(jsonb_array_length(value -> 'test_users'), 0) from public.app_settings where key = 'premium'))
+$$;
+
+revoke all on function public.bingr_premium_mirror(uuid) from public, anon, authenticated;
+revoke all on function public.bingr_premium_sweep() from public, anon, authenticated;
+revoke all on function public.bingr_admin_premium_settings(jsonb) from public, anon, authenticated;
+revoke all on function public.bingr_admin_premium_test(uuid, boolean) from public, anon, authenticated;
+revoke all on function public.bingr_premium_attach(bigint, uuid) from public, anon, authenticated, service_role;
+revoke all on function public.bingr_premium_claim(uuid, text) from public, anon, authenticated;
+revoke all on function public.bingr_premium_claim_email(uuid) from public, anon, authenticated;
+revoke all on function public.bingr_premium_claim_hash(text) from public, anon, authenticated;
+revoke all on function public.bingr_admin_premium_stats() from public, anon, authenticated;
+grant execute on function public.bingr_premium_mirror(uuid) to service_role;
+grant execute on function public.bingr_premium_sweep() to service_role;
+grant execute on function public.bingr_admin_premium_settings(jsonb) to service_role;
+grant execute on function public.bingr_admin_premium_test(uuid, boolean) to service_role;
+grant execute on function public.bingr_premium_claim(uuid, text) to service_role;
+grant execute on function public.bingr_premium_claim_email(uuid) to service_role;
+grant execute on function public.bingr_premium_claim_hash(text) to service_role;
+grant execute on function public.bingr_admin_premium_stats() to service_role;
+
+-- Bevestigen van het e-mailadres koppelt ook gast-abonnementen (naast de aankopen van build 167).
+create or replace function public.bingr_premium_claim_on_confirm() returns trigger
+language plpgsql security definer set search_path = public, auth as $$
+begin
+  if new.email_confirmed_at is not null and (tg_op = 'INSERT' or old.email_confirmed_at is null or old.email is distinct from new.email) then
+    begin perform public.bingr_premium_claim_email(new.id); exception when others then null; end;
+  end if;
+  return new;
+end $$;
+revoke all on function public.bingr_premium_claim_on_confirm() from public, anon, authenticated;
+drop trigger if exists bingr_premium_claim_on_confirm on auth.users;
+create trigger bingr_premium_claim_on_confirm after insert or update of email_confirmed_at, email on auth.users
+  for each row execute function public.bingr_premium_claim_on_confirm();
+-- <<< unittest premium
 
 -- ============================================================================================================
 -- Omzet: Apple-aankopen uit App Store Connect (Sales and Trends; functie apple-sales, docs/ACCOUNT.md "Omzet: Apple (App

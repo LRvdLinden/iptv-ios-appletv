@@ -34,7 +34,7 @@ export async function grantApple(db: Db, userId: string, tx: AppleTx, nowIso = n
   if (!prev) {
     const { error } = await db.from("billing_purchases").insert({
       user_id: uid, provider: "apple", apple_original_transaction_id: tx.originalTransactionId, apple_transaction_id: tx.transactionId,
-      environment: tx.environment, amount: tx.amount ?? 0, currency: tx.currency ?? "eur", status: "paid",
+      environment: tx.environment, amount: tx.amount ?? 0, currency: tx.currency ?? "eur", status: "paid", plan: tx.plan ?? "lifetime",
       paid_at: tx.purchasedAt ?? nowIso, updated_at: nowIso,
     });
     // tegelijk door een ander verzoek aangemaakt (uniek): opnieuw lezen en vergelijken, nooit overschrijven
@@ -47,7 +47,8 @@ export async function grantApple(db: Db, userId: string, tx: AppleTx, nowIso = n
   }
   const cur = await planOf(db, uid);
   if (cur?.plan === "lifetime" && cur.source === "purchase" && prev) return { ok: true, granted: false, already: true };
-  if (cur?.plan === "lifetime" && cur.source !== "purchase") return { ok: true, granted: false, already: true };
+  // build 181: een abonnement (spiegel, source subscription) wordt wél overschreven door een gekochte Lifetime
+  if (cur?.plan === "lifetime" && cur.source !== "purchase" && cur.source !== "subscription") return { ok: true, granted: false, already: true };
   const { error } = await db.from("account_plans").upsert(appleGrantRow(cur, uid, tx, nowIso), { onConflict: "user_id" });
   if (error) throw fail("account_plans", error);
   return { ok: true, granted: cur?.plan !== "lifetime", already: cur?.plan === "lifetime" };
