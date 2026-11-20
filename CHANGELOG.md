@@ -4,6 +4,62 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.0.8 · Build 180
+_20 november 2026_
+
+### iOS
+
+**Verbeterd**
+
+- Ondersteuning voor de iPhone Duo: tabbladen, tv-gids en rasters passen zich aan bij open- en dichtklappen, en half open staat het beeld boven de vouw en de bediening eronder
+
+### iOS en iPadOS
+
+**Verbeterd**
+
+- Kies je AirPlay, ook in de auto met CarPlay als die stilstaat, dan schakelt Bingr vanzelf naar de Apple-speler zodat het beeld meegaat
+
+## Versie 1.0.8 · Build 179
+_20 november 2026_
+
+### iOS en iPadOS
+
+**Nieuw**
+
+- Live tv op het vergrendelscherm en in het Dynamic Island: zender, wat er nu is en wat er daarna komt
+
+### iOS, iPadOS, tvOS, macOS en Website
+
+**Nieuw**
+
+- Zenders, films, series en de tv-gids verversen vanzelf, met een eigen termijn per apparaat
+- Zaplijst met categorieën en zoeken; op Apple TV te openen met een klik links
+- Sorteren per categorie (naam, jaar, toegevoegd, beoordeling), onthouden per profiel
+- Live scores en standen in Sport, ook wedstrijden die niet in je gids staan
+- Duim omhoog of omlaag en een betere rij Voor jou
+- WebDAV als bron voor films en series
+
+**Verbeterd**
+
+- Start een stream niet, dan probeert Bingr vanzelf de andere speler en onthoudt welke werkt
+- Diagnose toont waarom de laatste stream stopte
+- Titels die je aanbieder verwijderd heeft verdwijnen uit Verder kijken en Mijn lijst
+- Sportkaarten in de kleuren van de teams
+
+**Opgelost**
+
+- Live tv stopt niet meer na een halve of hele minuut: de speler verbindt vanzelf opnieuw en houdt nooit twee verbindingen tegelijk open
+
+### iOS, iPadOS, tvOS, macOS, Website en Server
+
+**Nieuw**
+
+- Meer beoordelingen op de detailpagina: IMDb, Rotten Tomatoes, Metacritic, Letterboxd, Trakt en TMDB
+
+**Verbeterd**
+
+- Intro en samenvatting overslaan met tijden per aflevering uit IntroDB
+
 ## Versie 1.0.8 · Build 178
 _15 november 2026_
 

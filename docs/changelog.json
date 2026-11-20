@@ -1,5 +1,301 @@
 [
  {
+  "build": 180,
+  "version": "1.0.8",
+  "date": "2026-11-20",
+  "items": [
+   {
+    "type": "improved",
+    "platforms": [
+     "ios"
+    ],
+    "nl": "Ondersteuning voor de iPhone Duo: tabbladen, tv-gids en rasters passen zich aan bij open- en dichtklappen, en half open staat het beeld boven de vouw en de bediening eronder",
+    "en": "iPhone Duo support: tabs, TV guide and grids adapt as you open and close it, and when half open the video sits above the fold with the controls below"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados"
+    ],
+    "nl": "Kies je AirPlay, ook in de auto met CarPlay als die stilstaat, dan schakelt Bingr vanzelf naar de Apple-speler zodat het beeld meegaat",
+    "en": "When you choose AirPlay, including CarPlay in a parked car, Bingr switches to the Apple player automatically so the video goes along"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "android",
+     "androidtv"
+    ],
+    "nl": "Zenders, films, series en de tv-gids verversen vanzelf, met een eigen termijn",
+    "en": "Channels, movies, series and the TV guide refresh automatically on your own schedule"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "android"
+    ],
+    "nl": "Live tv in de mediamelding met wat er nu is en wat er straks komt",
+    "en": "Live TV in the media notification with what's on now and next"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "android",
+     "androidtv"
+    ],
+    "nl": "Start een stream niet, dan probeert Bingr vanzelf een andere speler en onthoudt die",
+    "en": "If a stream won't start, Bingr tries another player automatically and remembers it"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "android",
+     "androidtv"
+    ],
+    "nl": "Live tv verbindt vanzelf opnieuw als de server de stream afsluit, nooit twee verbindingen tegelijk; Diagnose toont waarom de laatste stream stopte",
+    "en": "Live TV reconnects automatically when the server closes the stream, never two connections at once; Diagnostics shows why the last stream stopped"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "android",
+     "androidtv"
+    ],
+    "nl": "Crash bij het openen van Opties in de speler opgelost",
+    "en": "Fixed a crash when opening Options in the player"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "android",
+     "androidtv"
+    ],
+    "nl": "Zaplijst met categorieën en zoeken",
+    "en": "Zap list with categories and search"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "android",
+     "androidtv"
+    ],
+    "nl": "Live scores, standen en teamkleuren in Sport",
+    "en": "Live scores, standings and team colours in Sport"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "android",
+     "androidtv"
+    ],
+    "nl": "Meer beoordelingen op de detailpagina, en intro en samenvatting overslaan met tijden van IntroDB",
+    "en": "More ratings on the detail page, and skip intro and recap with times from IntroDB"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "android",
+     "androidtv"
+    ],
+    "nl": "Duim omhoog of omlaag en een rij Voor jou",
+    "en": "Thumbs up or down and a For you row"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "android",
+     "androidtv"
+    ],
+    "nl": "Sorteren per categorie, en titels die je aanbieder verwijderde worden opgeruimd",
+    "en": "Sort per category, and titles your provider removed are cleaned up"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "android",
+     "androidtv"
+    ],
+    "nl": "WebDAV als bron",
+    "en": "WebDAV as a source"
+   }
+  ]
+ },
+ {
+  "build": 179,
+  "version": "1.0.8",
+  "date": "2026-11-20",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "web"
+    ],
+    "nl": "Zenders, films, series en de tv-gids verversen vanzelf, met een eigen termijn per apparaat",
+    "en": "Channels, movies, series and the TV guide refresh automatically, on a schedule you set per device"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados"
+    ],
+    "nl": "Live tv op het vergrendelscherm en in het Dynamic Island: zender, wat er nu is en wat er daarna komt",
+    "en": "Live TV on the Lock Screen and in the Dynamic Island: channel, what's on now and what's next"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "web"
+    ],
+    "nl": "Start een stream niet, dan probeert Bingr vanzelf de andere speler en onthoudt welke werkt",
+    "en": "If a stream won't start, Bingr tries the other player automatically and remembers which one works"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "web"
+    ],
+    "nl": "Live tv stopt niet meer na een halve of hele minuut: de speler verbindt vanzelf opnieuw en houdt nooit twee verbindingen tegelijk open",
+    "en": "Live TV no longer stops after half a minute or a minute: the player reconnects automatically and never keeps two connections open at once"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "web"
+    ],
+    "nl": "Diagnose toont waarom de laatste stream stopte",
+    "en": "Diagnostics shows why the last stream stopped"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "web"
+    ],
+    "nl": "Zaplijst met categorieën en zoeken; op Apple TV te openen met een klik links",
+    "en": "Zap list with categories and search; on Apple TV, open it with a click left"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "web"
+    ],
+    "nl": "Sorteren per categorie (naam, jaar, toegevoegd, beoordeling), onthouden per profiel",
+    "en": "Sort each category (name, year, added, rating), remembered per profile"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "web"
+    ],
+    "nl": "Titels die je aanbieder verwijderd heeft verdwijnen uit Verder kijken en Mijn lijst",
+    "en": "Titles your provider removed disappear from Continue watching and My List"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "web"
+    ],
+    "nl": "Live scores en standen in Sport, ook wedstrijden die niet in je gids staan",
+    "en": "Live scores and standings in Sport, including matches that aren't in your guide"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "web"
+    ],
+    "nl": "Sportkaarten in de kleuren van de teams",
+    "en": "Sport cards in the colours of the teams"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "web",
+     "server"
+    ],
+    "nl": "Meer beoordelingen op de detailpagina: IMDb, Rotten Tomatoes, Metacritic, Letterboxd, Trakt en TMDB",
+    "en": "More ratings on the details page: IMDb, Rotten Tomatoes, Metacritic, Letterboxd, Trakt and TMDB"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "web",
+     "server"
+    ],
+    "nl": "Intro en samenvatting overslaan met tijden per aflevering uit IntroDB",
+    "en": "Skip intro and recap using per-episode times from IntroDB"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "web"
+    ],
+    "nl": "Duim omhoog of omlaag en een betere rij Voor jou",
+    "en": "Thumbs up or down and a better For you row"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "web"
+    ],
+    "nl": "WebDAV als bron voor films en series",
+    "en": "WebDAV as a source for movies and series"
+   }
+  ]
+ },
+ {
   "build": 178,
   "version": "1.0.8",
   "date": "2026-11-15",
