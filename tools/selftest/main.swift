@@ -3278,5 +3278,52 @@ do {
     eq(Build179.memoKey(server: "ABC", live: false, kind: "movie", id: "7"), "abc|movie:7", "179 sleutel film")
 }
 
+// MARK: build 179 (X2): stream stopt na ±27 s of ±1 minuut
+
+do {
+    // herverbinden: live met beeld vijf pogingen met oplopende wachttijd, zonder beeld twee, films één
+    eq(Stream179.retryDelay(attempt: 0, live: true, hadPicture: true), 0.5, "live eerste poging snel")
+    eq(Stream179.retryDelay(attempt: 4, live: true, hadPicture: true), 8, "live vijfde poging")
+    eq(Stream179.retryDelay(attempt: 5, live: true, hadPicture: true), nil, "live na vijf pogingen opgeven")
+    eq(Stream179.retryDelay(attempt: 1, live: true, hadPicture: false), 3, "live zonder beeld tweede poging")
+    eq(Stream179.retryDelay(attempt: 2, live: true, hadPicture: false), nil, "live zonder beeld na twee opgeven")
+    eq(Stream179.retryDelay(attempt: 0, live: false, hadPicture: true), 1.5, "film één poging")
+    eq(Stream179.retryDelay(attempt: 1, live: false, hadPicture: true), nil, "film na één opgeven")
+    eq(Stream179.retryDelay(attempt: -1, live: true, hadPicture: true), nil, "negatieve poging")
+    check(zip(Stream179.liveDelays, Stream179.liveDelays.dropFirst()).allSatisfy { $0 < $1 }, "wachttijden lopen op")
+    eq(Stream179.retryDelay(attempt: 1, live: true, hadPicture: true, outage: 10), 1.5, "storing 10 s: door")
+    eq(Stream179.retryDelay(attempt: 1, live: true, hadPicture: true, outage: 46), nil, "storing langer dan 45 s: opgeven")
+    // respijt na laden: oude status telt niet, een echte fout daarna wel
+    check(Stream179.terminalIsStale(sinceLoad: 0.5, leftTerminal: false), "oude status vlak na laden")
+    check(!Stream179.terminalIsStale(sinceLoad: 0.5, leftTerminal: true), "na openen is afgelopen echt")
+    check(!Stream179.terminalIsStale(sinceLoad: 4.5, leftTerminal: false), "na het respijt is afgelopen echt")
+    // één verbinding tegelijk
+    check(Stream179.mayOpen(closing: 0, waited: 0), "niets aan het sluiten: meteen openen")
+    check(!Stream179.mayOpen(closing: 1, waited: 0.2), "voorbeeld sluit nog: wachten")
+    check(!Stream179.mayOpen(closing: 2, waited: 2.4), "twee voorbeelden sluiten nog: wachten")
+    check(Stream179.mayOpen(closing: 1, waited: 2.5), "niet langer dan 2,5 s wachten")
+    // voorbeeld: kale MPEG-TS meteen met VLC
+    check(!Stream179.previewApple(scheme: "http", pathExtension: "ts"), ".ts met VLC")
+    check(!Stream179.previewApple(scheme: "https", pathExtension: "MKV"), ".mkv met VLC")
+    check(Stream179.previewApple(scheme: "http", pathExtension: "m3u8"), "HLS met Apple")
+    check(Stream179.previewApple(scheme: "HTTPS", pathExtension: ""), "zonder extensie eerst Apple")
+    check(!Stream179.previewApple(scheme: "rtsp", pathExtension: ""), "rtsp met VLC")
+    check(!Stream179.previewApple(scheme: nil, pathExtension: "m3u8"), "zonder schema met VLC")
+    // reden van de stop
+    eq(Stream179.reason(error: true, ended: true, live: true, stalledFor: 0), .error, "fout gaat voor")
+    eq(Stream179.reason(error: false, ended: true, live: true, stalledFor: 0), .serverClosed, "live afgelopen = server sloot")
+    eq(Stream179.reason(error: false, ended: true, live: false, stalledFor: 0), nil, "film afgelopen is geen storing")
+    eq(Stream179.reason(error: false, ended: false, live: true, stalledFor: 15.5), .timeout, "15 s geen beeld")
+    eq(Stream179.reason(error: false, ended: false, live: true, stalledFor: 14), nil, "14 s is nog geen time-out")
+    eq(Stream179.reason(error: false, ended: false, live: false, stalledFor: 60), nil, "film bufferen is geen time-out")
+    var stops: [Stream179.Stop] = []
+    for i in 0..<12 {
+        Stream179.push(&stops, Stream179.Stop(when: Double(i), reason: .serverClosed, after: 27, engine: "vlc", format: "ts", live: true))
+    }
+    eq(stops.count, 10, "hoogstens tien stops")
+    eq(stops.first?.when, 11, "nieuwste eerst")
+}
+
+
 print("\(checks) controles, \(failures) fout")
 exit(failures == 0 ? 0 : 1)

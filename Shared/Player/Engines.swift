@@ -254,7 +254,9 @@ final class VLCEngine: PlaybackEngine {
     func stop() {
         if silent || offMain {
             let p = player
-            Self.previewQueue.async { p.stop() }
+            // build 179 (X2): bijhouden dat dit voorbeeld nog aan het sluiten is; de speler opent pas daarna
+            PreviewTeardown179.shared.begin()
+            Self.previewQueue.async { p.stop(); PreviewTeardown179.shared.end() }
         } else {
             player.stop()
         }

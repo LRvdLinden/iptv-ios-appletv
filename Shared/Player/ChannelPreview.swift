@@ -309,7 +309,9 @@ final class ChannelPreview: ObservableObject {
             if gen == generation { ctrl.fail(L("No stream address available.")); showBlocked(c) }
             return
         }
-        ctrl.start(url: url, forceApple: url.scheme.map { ["http", "https"].contains($0.lowercased()) } ?? false)
+        // build 179 (X2): kale MPEG-TS e.d. meteen met VLC (de Apple-speler kan dat niet en opende eerst een eigen,
+        // mislukkende verbinding naar de aanbieder)
+        ctrl.start(url: url, forceApple: Stream179.previewApple(scheme: url.scheme, pathExtension: url.pathExtension))
         watchForStill(ctrl, channel: c, gen: gen)
     }
 

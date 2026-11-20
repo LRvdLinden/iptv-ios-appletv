@@ -794,7 +794,9 @@ struct PlayerScreen: View {
         switch kind {
         case .toggle: player.togglePlay()
         case .play: if !player.isPlaying { player.togglePlay() }
-        case .pause: if player.isPlaying { player.togglePlay() }
+        // build 179 (X2): een pauze-opdracht die niet van de afspeel/pauzeknop komt (Remote-app, tv via HDMI-CEC,
+        // systeem) vastleggen voor Diagnose
+        case .pause: if player.isPlaying { player.noteStop(.remotePause); player.togglePlay() }
         }
         userPoke()
     }
@@ -1109,6 +1111,12 @@ struct PlayerScreen: View {
         }
         // build 52: live → automatisch naar een back-upbron; anders de foutmelding met keuzes
         player.onGiveUp = { autoFailover() }
+        // build 179 (X2): MAC-portal: vóór het herverbinden een verse link (de oude is maar één keer geldig)
+        player.refreshURL = {
+            let cur = player.item
+            guard cur.stalkerCmd != nil, cur.type == .live else { return nil }
+            return await playlists.resolve(cur)
+        }
         // limiet van de IPTV-provider (alleen Xtream; bij M3U e.d. geeft dit nil)
         let src = providerSource(it)
         player.providerLimitCheck = { await ProviderLimit.failureMessage(src) }
@@ -1161,6 +1169,8 @@ struct PlayerScreen: View {
             languageVersions = []
             Task { await loadLanguageVersions(for: it) }
         }
+        // build 179 (X2): eerst het voorbeeld echt dicht (nooit twee verbindingen naar de aanbieder tegelijk)
+        await PreviewTeardown179.shared.settle()
         if it.stremio != nil {
             let found = await playlists.stremioStreams(it)
             // intussen gesloten of al naar een andere zender gezapt → niet meer starten
@@ -1463,6 +1473,7 @@ struct PlayerScreen: View {
         zapTask?.cancel()
         zapTarget = nil
         nextUp = nil
+        player.noteStop(.limit)   // build 179
         player.stop()
         panel = nil
         showControls = false

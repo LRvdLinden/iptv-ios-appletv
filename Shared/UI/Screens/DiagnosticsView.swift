@@ -290,6 +290,8 @@ final class DiagnosticsModel: ObservableObject {
         }
         // build 148: haperingen tijdens het afspelen
         r.append(Row(title: L("Playback"), value: DiagText.stalls(PlaybackLog.shared.entries)))
+        // build 179 (X2): waarom de laatste stream stopte of opnieuw moest verbinden
+        r.append(Row(title: L("Last stop"), value: StopLog179.shared.line(relative: Self.relative)))
         if let app = StartDiagnostics.footprintMB() {
             r.append(Row(title: L("Memory"), value: "\(app) MB / \(Int(ProcessInfo.processInfo.physicalMemory / 1_048_576)) MB"))
         }

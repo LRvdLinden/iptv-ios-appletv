@@ -101,6 +101,19 @@ final class PlayerController: ObservableObject {
     private var triedOtherEngine = false
     private var reloadPending = false
     private var stableTicks = 0
+    /// Build 179 (X2): elke (her)start, halt en stop krijgt een nieuw nummer; een uitgestelde herlaadpoging van daarvoor
+    /// vervalt dan (anders opende een stilgezet voorbeeld na `halt()` alsnog een verbinding die niemand meer sloot)
+    private var loadEpoch = 0
+    /// Build 179 (X2): moment van het laatste (her)laden, en of de speler sindsdien "afgelopen/fout" verlaten heeft
+    private var loadedAt = Date.distantPast
+    private var leftTerminal = false
+    /// Build 179 (X2): seconden beeld sinds het laatste (her)laden, en of deze titel/zender ooit beeld had
+    private var playedSinceLoad: Double = 0
+    private var hadPicture = false
+    /// Build 179 (X2): begin van de lopende storing (eerste herverbindpoging); nil = geen storing
+    private var outageSince: Date?
+    /// Build 179 (X2): een verse link ophalen vóór het herverbinden (MAC-portal: de link is maar één keer geldig)
+    var refreshURL: (@MainActor () async -> URL?)?
     /// Laatst bekende afspeelpositie (0...1) — na een fout verder op dezelfde plek
     private(set) var lastGoodPosition: Double = 0
     /// Afspelen lukt niet (ook niet na één stille nieuwe poging). `true` = afgehandeld (bijv. overgeschakeld
@@ -188,6 +201,7 @@ final class PlayerController: ObservableObject {
     func prepareNew() {
         timeshiftStart = nil; behindLive = 0; pausedAt = nil
         attempts = 0; reconnecting = false; errorText = nil; isBuffering = true
+        hadPicture = false; outageSince = nil   // build 179
         dismissed = false
         backgroundResume = nil; pauseWhenReady = false
         triedOtherEngine = false; reloadPending = false; lastGoodPosition = 0
@@ -210,6 +224,7 @@ final class PlayerController: ObservableObject {
     func resetRecovery() {
         attempts = 0; reconnecting = false; errorText = nil; isBuffering = true
         triedOtherEngine = false; reloadPending = false; stallSince = nil
+        outageSince = nil   // build 179
     }
 
     /// Andere speler (VLC ↔ Apple) op dezelfde positie.
@@ -237,6 +252,7 @@ final class PlayerController: ObservableObject {
         self.url = url
         errorText = nil; didScrobbleStart = false; stallSince = nil; reloadPending = false; stableTicks = 0
         tracksApplied = false; playingTicks = 0
+        markLoaded()   // build 179
         stallTracker = StallTracker()
         #if os(tvOS)
         displayTicks = 0; displayMatched = false
@@ -288,6 +304,19 @@ final class PlayerController: ObservableObject {
             guard self != nil else { t.invalidate(); return }
             Task { @MainActor [weak self] in self?.tick() }
         }
+    }
+
+    /// Build 179 (X2): er wordt (opnieuw) geladen: eerdere uitgestelde pogingen vervallen, het respijt begint opnieuw.
+    private func markLoaded() {
+        loadEpoch += 1
+        loadedAt = Date(); leftTerminal = false; playedSinceLoad = 0
+    }
+
+    /// Build 179 (X2): reden van een stop of onderbreking bewaren voor Diagnose (niet voor voorbeelden).
+    func noteStop(_ reason: Stream179.Reason) {
+        guard !isPreview, !silent else { return }
+        StopLog179.shared.note(reason, after: playedSinceLoad, engine: usingApple ? "apple" : "vlc",
+                               format: PlaybackLog.format(url), live: isLive)
     }
 
     /// Build 59: zo snel mogelijk merken dat het beeld er is (de gewone tick is maar elke halve seconde):
@@ -363,16 +392,23 @@ final class PlayerController: ObservableObject {
 
         // automatisch herverbinden: eerst de andere engine (Apple → VLC), dan één stille nieuwe poging,
         // daarna een back-upbron (live) of de foutmelding met keuzes (build 52)
-        if errorText == nil && !reloadPending {
+        // build 179 (X2): vlak na het (her)laden meldt de speler soms nog "afgelopen" of "fout" van de vorige stream
+        // (VLC, zeker als het laden buiten de hoofdthread gebeurt): dat is geen nieuwe storing
+        let terminal = st == .error || st == .ended
+        if !terminal && st != .idle { leftTerminal = true }
+        let stale = terminal && !usingApple && Stream179.terminalIsStale(sinceLoad: Date().timeIntervalSince(loadedAt), leftTerminal: leftTerminal)
+        if st == .playing { playedSinceLoad += 0.5; if !hadPicture && engine.isPlaying { hadPicture = true } }
+        if errorText == nil && !reloadPending && !stale {
             if st == .error || (isLive && st == .ended) {
+                if let r = Stream179.reason(error: st == .error, ended: st == .ended, live: isLive, stalledFor: 0) { noteStop(r) }
                 reconnect(reason: st == .error ? L("Stream lost") : nil)
             } else if isBuffering && isLive {
                 stableTicks = 0
                 if stallSince == nil { stallSince = Date() }
-                if let s = stallSince, Date().timeIntervalSince(s) > 15 { reconnect(reason: nil) }
+                if let s = stallSince, Date().timeIntervalSince(s) > 15 { noteStop(.timeout); reconnect(reason: nil) }
             } else if st == .playing {
                 stableTicks += 1
-                if stableTicks > 20 { attempts = 0 }   // 10 seconden stabiel aan het spelen
+                if Double(stableTicks) * 0.5 > Stream179.stableSeconds { attempts = 0; outageSince = nil }   // 10 seconden stabiel aan het spelen
                 stallSince = nil; reconnecting = false
             }
         }
@@ -501,9 +537,12 @@ final class PlayerController: ObservableObject {
         reloadPending = true; reconnecting = true; isBuffering = true
         stallSince = nil
         let toApple = next == "apple"
+        // X2: intussen stilgezet (`halt`, bijv. naar de achtergrond), gestopt of iets anders gestart: niet meer wisselen
+        loadEpoch += 1
+        let epoch = loadEpoch
         Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: 1_200_000_000)
-            guard let self else { return }
+            guard let self, epoch == self.loadEpoch else { return }
             self.reloadPending = false
             guard !self.stopped, self.url == url, self.errorText == nil else { return }
             self.start(url: url, forceApple: toApple)
@@ -539,23 +578,47 @@ final class PlayerController: ObservableObject {
             start(url: url, forceApple: false)
             return
         }
-        // één stille nieuwe poging
-        if attempts < 1 {
+        // stil opnieuw verbinden. Build 179 (X2): bij live meerdere pogingen met oplopende wachttijd (was één poging na
+        // 1,5 s): een stream die de server zelf sluit (bij sommige aanbieders steeds na een halve tot hele minuut) gaat
+        // zo vanzelf verder in plaats van te stoppen. Films en series: één poging, zoals het was.
+        let outage = outageSince.map { Date().timeIntervalSince($0) } ?? 0
+        if let delay = Stream179.retryDelay(attempt: attempts, live: isLive, hadPicture: hadPicture, outage: outage) {
+            if outageSince == nil { outageSince = Date() }
             attempts += 1
             reconnecting = true
             reloadPending = true
             stallSince = nil
             let resume = lastGoodPosition > 0.01 ? lastGoodPosition : item.resumeAt
-            Task { @MainActor in
-                try? await Task.sleep(nanoseconds: 1_500_000_000)
+            // VLC: de oude verbinding eerst echt sluiten; VLC probeert anders zelf nog te herverbinden terwijl wij wachten,
+            // en dan staan er even twee verbindingen naar de aanbieder open. (De Apple-speler laat de oude stream los bij
+            // het laden van de nieuwe; hem hier stoppen zou beeld-in-beeld beëindigen.)
+            if isLive, engine is VLCEngine { engine.stop() }
+            loadEpoch += 1
+            let epoch = loadEpoch
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                // intussen gestopt, stilgezet (`halt`) of iets anders gestart: deze poging vervalt
+                guard let self, epoch == self.loadEpoch else { return }
+                var target = url
+                // MAC-portal: de link is maar één keer geldig → een verse ophalen (niet tijdens terugkijken)
+                if self.isLive, self.timeshiftStart == nil, let refresh = self.refreshURL, let fresh = await refresh() {
+                    guard epoch == self.loadEpoch else { return }
+                    target = fresh
+                }
                 self.reloadPending = false
                 guard !self.stopped, self.url == url else { return }
+                if target != url {
+                    if self.liveURL == url { self.liveURL = target }
+                    self.url = target
+                }
                 if !self.isLive { self.item.resumeAt = resume }
                 self.airPlayWrapped = false
-                self.engine.load(url, live: self.isLive && self.timeshiftStart == nil, startFraction: self.isLive ? nil : resume)
+                self.markLoaded()
+                self.engine.load(target, live: self.isLive && self.timeshiftStart == nil, startFraction: self.isLive ? nil : resume)
             }
             return
         }
+        noteStop(.gaveUp)   // build 179
         reconnecting = false
         stallSince = nil
         sw179GaveUp()   // build 179
@@ -642,6 +705,8 @@ final class PlayerController: ObservableObject {
     private var keepEngine = false
     func halt() {
         timer?.invalidate(); timer = nil
+        // build 179 (X2): een herlaadpoging die nog gepland stond mag de stilgezette speler niet opnieuw openen
+        loadEpoch += 1; reloadPending = false; reconnecting = false
         keepEngine = true
         engine.stop()
         releaseAwake()
@@ -681,6 +746,7 @@ final class PlayerController: ObservableObject {
     func stop(keepDisplay: Bool = false) {
         guard !stopped else { return }
         stopped = true
+        loadEpoch += 1   // build 179
         startWatch?.cancel(); subtitleCheck?.cancel()
         backgroundResume = nil
         #if os(tvOS)
