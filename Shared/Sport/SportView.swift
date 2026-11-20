@@ -534,6 +534,10 @@ struct SportTeamBadge: View {
 
 private struct SportLiveCard: View {
     @EnvironmentObject var playlists: PlaylistService
+    #if os(iOS)
+    /// Build 179 (iPhone Duo): kaartbreedte per size class
+    @Environment(\.horizontalSizeClass) private var hSize
+    #endif
     @ObservedObject private var preview = ChannelPreview.shared
     @ObservedObject private var scores = SportScores.shared
     let group: SportGroup173
@@ -552,8 +556,10 @@ private struct SportLiveCard: View {
     private var width: CGFloat {
         #if os(tvOS)
         return 430
+        #elseif os(iOS)
+        return hSize == .compact ? 330 : 400
         #else
-        return PlayerSettings.isPhone ? 330 : 400
+        return 400
         #endif
     }
 

@@ -3454,5 +3454,55 @@ do {
     eq(r?.map { $0.source } ?? [], ["imdb", "tmdb"], "beoordelingen lezen en ordenen")
 }
 
+// MARK: build 179 (X3): iPhone Duo (Shared/UI/Build179Duo.swift)
+do {
+    // schermen in punten (@3x): binnen 626×890 (regulier), buiten 466×678 (compact)
+    eq(Duo179.points(Duo179.innerPixels.w), 626, "binnenscherm breedte")
+    eq(Duo179.points(Duo179.innerPixels.h), 890, "binnenscherm hoogte")
+    eq(Duo179.points(Duo179.outerPixels.w), 466, "buitenscherm breedte")
+    eq(Duo179.points(Duo179.outerPixels.h), 678, "buitenscherm hoogte")
+    // tabbladen: compact = iPhone (max. 5), regulier = iPad; zelfde volgorde
+    let compact = Duo179.tabs(compact: true, live: true, movies: true, series: true, sport: true, downloads: true, tv: false)
+    eq(compact, [0, 1, 2, 3, 8], "compact met Sport: 5 tabbladen")
+    check(compact.count <= 5, "compact nooit meer dan 5")
+    eq(Duo179.tabs(compact: true, live: true, movies: true, series: true, sport: false, downloads: true, tv: false),
+       [0, 1, 2, 3, 7], "compact zonder Sport: Categorieën")
+    let wide = Duo179.tabs(compact: false, live: true, movies: true, series: true, sport: true, downloads: true, tv: false)
+    eq(wide, [0, 1, 2, 3, 8, 7, 4, 6], "regulier: alles")
+    check(Array(wide.prefix(compact.count)) == compact, "zelfde volgorde op beide schermen")
+    eq(Duo179.tabs(compact: false, live: true, movies: true, series: true, sport: true, downloads: false, tv: true),
+       [0, 1, 2, 3, 8, 7, 4, 5], "Apple TV")
+    eq(Duo179.keepTab(2, available: compact), 2, "Films blijft bij dichtklappen")
+    eq(Duo179.keepTab(4, available: compact), 0, "Zoeken → Home bij dichtklappen")
+    // rasters: regulier altijd even, compact zoveel als past
+    for w in stride(from: 300.0, through: 1400, by: 7) {
+        let n = Duo179.columns(width: w, minItem: 150, spacing: 14, regular: true)
+        check(n % 2 == 0 && n >= 2, "even kolommen bij \(w)")
+    }
+    eq(Duo179.columns(width: 626 - 32, minItem: 150, spacing: 14, regular: true), 2, "binnenscherm portret: 3 past, 2 even")
+    eq(Duo179.columns(width: 890 - 32, minItem: 150, spacing: 14, regular: true), 4, "binnenscherm landschap: 5 past, 4 even")
+    eq(Duo179.columns(width: 466 - 32, minItem: 150, spacing: 14, regular: false), 2, "buitenscherm portret")
+    eq(Duo179.columns(width: 678 - 32, minItem: 150, spacing: 14, regular: false), 4, "buitenscherm landschap")
+    eq(Duo179.columns(width: 0, minItem: 150, spacing: 14, regular: false), 2, "nog geen breedte")
+    // tafelstand: horizontale vouw in het midden van het binnenscherm (landschap 890×626)
+    let fold = Duo179.Rect(x: 0, y: 303, w: 890, h: 20)
+    eq(Duo179.tabletop(container: 890, 626, fold: fold), Duo179.Tabletop(videoBottom: 323, controlsTop: 323), "tafelstand")
+    eq(Duo179.tabletop(container: 890, 626, fold: nil), nil, "plat: schermvullend")
+    eq(Duo179.tabletop(container: 626, 890, fold: Duo179.Rect(x: 303, y: 0, w: 20, h: 890)), nil, "boekstand: verticale vouw")
+    eq(Duo179.tabletop(container: 890, 626, fold: Duo179.Rect(x: 0, y: 500, w: 890, h: 10)), nil, "onderste helft te klein")
+    eq(Duo179.tabletop(container: 890, 626, fold: Duo179.Rect(x: 0, y: 313, w: 890, h: 0)), Duo179.Tabletop(videoBottom: 313, controlsTop: 313), "vouw zonder breedte")
+    // AirPlay-video: VLC → Apple, één keer per route
+    check(Duo179.switchForAirPlay(usingApple: false, airPlay: true, alreadyForThisRoute: false, preview: false, appleCanOpen: true), "VLC + AirPlay: wisselen")
+    check(!Duo179.switchForAirPlay(usingApple: true, airPlay: true, alreadyForThisRoute: false, preview: false, appleCanOpen: true), "al Apple")
+    check(!Duo179.switchForAirPlay(usingApple: false, airPlay: false, alreadyForThisRoute: false, preview: false, appleCanOpen: true), "geen AirPlay (ook CarPlay-audio)")
+    check(!Duo179.switchForAirPlay(usingApple: false, airPlay: true, alreadyForThisRoute: true, preview: false, appleCanOpen: true), "niet heen en weer")
+    check(!Duo179.switchForAirPlay(usingApple: false, airPlay: true, alreadyForThisRoute: false, preview: true, appleCanOpen: true), "geen voorbeeld")
+    check(!Duo179.switchForAirPlay(usingApple: false, airPlay: true, alreadyForThisRoute: false, preview: false, appleCanOpen: false), "rtsp blijft VLC")
+    check(Duo179.appleCanOpen(scheme: "HTTP", isFile: false), "http")
+    check(!Duo179.appleCanOpen(scheme: "rtmp", isFile: false), "rtmp")
+    check(Duo179.appleCanOpen(scheme: nil, isFile: true), "bestand")
+}
+
+
 print("\(checks) controles, \(failures) fout")
 exit(failures == 0 ? 0 : 1)

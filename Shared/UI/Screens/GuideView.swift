@@ -20,6 +20,10 @@ struct GuideGridView: View {
 
     @EnvironmentObject var app: AppState
     @EnvironmentObject var playlists: PlaylistService
+    #if os(iOS)
+    /// Build 179 (iPhone Duo): telefoon- of brede gids per size class (niet per apparaat)
+    @Environment(\.horizontalSizeClass) private var guideHSize
+    #endif
     @State private var now = Date()
     @State private var day = Calendar.current.startOfDay(for: Date())
     @State private var selectedID: String?
@@ -110,7 +114,7 @@ struct GuideGridView: View {
         #if os(tvOS)
         TVGuide(guide: self, channels: channels, day: $day, days: days, now: now)
         #elseif os(iOS)
-        if PlayerSettings.isPhone {
+        if guideHSize == .compact {
             PhoneGuide(guide: self, channels: channels, day: $day, days: days, now: now,
                        selected: selected, select: { pick($0) })
         } else {

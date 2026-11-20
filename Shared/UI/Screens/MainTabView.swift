@@ -12,6 +12,11 @@ struct MainTabView: View {
     @AppStorage("ui.showLive") private var showLive = true
     @AppStorage("ui.showMovies") private var showMovies = true
     @AppStorage("ui.showSeries") private var showSeries = true
+    #if os(iOS)
+    /// Build 179 (iPhone Duo): tabbladen per size class in plaats van per apparaat: compact = iPhone, buitenscherm van
+    /// de iPhone Duo en iPad in een smal venster; regulier = iPad en het binnenscherm van de iPhone Duo
+    @Environment(\.horizontalSizeClass) private var hSize
+    #endif
 
     @ViewBuilder private var myBingrTab: some View {
         #if os(iOS)
@@ -38,20 +43,12 @@ struct MainTabView: View {
         #if os(macOS)
         return true
         #else
-        return !isPhone
+        return !isPhoneIdiom
         #endif
     }
 
-    /// Build 171: ruimte onder de radiospeler (boven de tabbalk op iPhone/iPad; de Mac heeft de tabs bovenaan)
-    private static var miniPlayerBottom: CGFloat {
-        #if os(iOS)
-        return 58
-        #else
-        return 16
-        #endif
-    }
-
-    private static var isPhone: Bool {
+    /// Alleen voor de App Store-screenshots (niet voor de layout: die volgt de size class, build 179)
+    private static var isPhoneIdiom: Bool {
         #if os(iOS)
         UIDevice.current.userInterfaceIdiom == .phone
         #else
@@ -70,21 +67,34 @@ struct MainTabView: View {
     /// die op de iPhone geen tabblad zijn, of een opgeslagen starttabblad. De selectie valt daarom altijd terug op Home.
     private var availableTabs: Set<Int> {
         // build 172: Sport (8) naast Series; op de iPhone (max. 5 tabbladen) in plaats van Categorieën, dat via Home
-        // en Live TV bereikbaar blijft
-        var t: Set<Int> = [0]
-        if !Self.isPhone || !hasSport { t.insert(7) }
-        if hasSport { t.insert(8) }
-        if hasLive && showLive { t.insert(1) }
-        if showMovies { t.insert(2) }
-        if showSeries { t.insert(3) }
-        if !Self.isPhone { t.insert(4) }
+        // en Live TV bereikbaar blijft. Build 179: regels in Duo179.tabs (per size class).
+        Set(Duo179.tabs(compact: compactTabs, live: hasLive && showLive, movies: showMovies, series: showSeries,
+                        sport: hasSport, downloads: Self.hasDownloads, tv: Self.isTV))
+    }
+
+    /// Build 179: compacte breedte = de tabbladen van de iPhone (max. 5)
+    private var compactTabs: Bool {
         #if os(iOS)
-        if !Self.isPhone { t.insert(6) }
+        return hSize == .compact
+        #else
+        return false
         #endif
+    }
+
+    private static var hasDownloads: Bool {
+        #if os(iOS)
+        return true
+        #else
+        return false
+        #endif
+    }
+
+    private static var isTV: Bool {
         #if os(tvOS)
-        t.insert(5)
+        return true
+        #else
+        return false
         #endif
-        return t
     }
 
     /// Altijd een bestaand tabblad (anders Home)
@@ -128,18 +138,18 @@ struct MainTabView: View {
                 // Build 140: Categorieën (Live TV, Films, Series) naast Series, op de plek van Mijn Bingr. Mijn Bingr
                 // zit nu achter het profiel bovenin (Apple TV: de avatar aan het eind van de menubalk).
                 // Kinderprofiel: alleen kindercategorieën (de bibliotheek is al gefilterd).
-                if !Self.isPhone || !hasSport {
+                if !compactTabs || !hasSport {
                     BrowseCategoriesView(asTab: true).tag(7)
                         .tabItem { Label(L("Categories"), systemImage: "square.grid.2x2") }
                 }
                 // iPhone toont max. 5 tabbladen (anders "Meer"); zoeken zit daar al als vergrootglas op Home/Films/Series
-                if !Self.isPhone {
+                if !compactTabs {
                     SearchView().tag(4)
                         .tabItem { Label(L("Search"), systemImage: "magnifyingglass") }
                 }
                 #if os(iOS)
                 // iPad: Downloads als eigen tabblad (iPhone: in Mijn Bingr, want daar passen maar 5 tabbladen)
-                if !Self.isPhone {
+                if !compactTabs {
                     NavigationStack { DownloadsView() }.tag(6)
                         .tabItem { Label(L("Downloads"), systemImage: "arrow.down.circle") }
                 }
@@ -168,10 +178,10 @@ struct MainTabView: View {
 
             #if !os(tvOS)
             // build 171: radio blijft spelen terwijl je bladert (kleine speler boven de tabbalk)
+            // build 179: met de tabbalk aan de zijkant (iPhone Duo) niet meer boven de tabbalk, maar naast de zijbalk
             RadioMiniPlayer()
                 .frame(maxWidth: 560)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                .padding(.bottom, Self.miniPlayerBottom)
+                .modifier(MiniPlayerPlacement179())
             #endif
 
             if playlists.isLoading {
@@ -432,3 +442,57 @@ private struct LoadingOverlay: View {
         .onAppear { pulse = true }
     }
 }
+
+#if !os(tvOS)
+/// Build 171/179: plek van de radio-minispeler. Gewoon: onderin boven de tabbalk (iPhone/iPad; de Mac heeft de tabs
+/// bovenaan). iPhone Duo met de tabbalk/toolbar verticaal aan de zijkant (iOS 27.1-SDK): onderin, met ruimte aan de
+/// kant van de zijbalk.
+private struct MiniPlayerPlacement179: ViewModifier {
+    func body(content: Content) -> some View {
+        #if os(iOS) && compiler(>=6.4)
+        if #available(iOS 27.1, *) {
+            VerticalBarAware179(content: content)
+        } else {
+            plain(content)
+        }
+        #else
+        plain(content)
+        #endif
+    }
+
+    private func plain(_ content: Content) -> some View {
+        content
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+            .padding(.bottom, Self.bottom)
+    }
+
+    static var bottom: CGFloat {
+        #if os(iOS)
+        return 58
+        #else
+        return 16
+        #endif
+    }
+}
+
+#if os(iOS) && compiler(>=6.4)
+@available(iOS 27.1, *)
+private struct VerticalBarAware179: View {
+    let content: MiniPlayerPlacement179.Content
+    @Environment(\.toolbarVerticalEdge) private var edge
+
+    var body: some View {
+        if let edge {
+            content
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                .padding(.bottom, 12)
+                .padding(edge == .leading ? .leading : .trailing, 72)
+        } else {
+            content
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                .padding(.bottom, MiniPlayerPlacement179.bottom)
+        }
+    }
+}
+#endif
+#endif

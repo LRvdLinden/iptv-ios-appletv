@@ -89,7 +89,10 @@ enum AppDevice {
         let f = s.frame.size, k = s.backingScaleFactor
         return "\(Int(f.width * k))x\(Int(f.height * k))"
         #else
-        let b = UIScreen.main.nativeBounds.size
+        // build 179 (iPhone Duo): het scherm van de actieve scene (binnen- of buitenscherm), niet `UIScreen.main`
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        guard let screen = (scenes.first { $0.activationState == .foregroundActive } ?? scenes.first)?.screen else { return nil }
+        let b = screen.nativeBounds.size
         let w = Int(max(b.width, b.height)), h = Int(min(b.width, b.height))
         return "\(w)x\(h)"
         #endif

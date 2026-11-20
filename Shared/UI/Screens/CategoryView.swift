@@ -63,6 +63,17 @@ struct CategoryView: View {
 
     #if os(tvOS)
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 40, alignment: .top), count: 6)
+    #elseif os(iOS)
+    /// Build 179 (iPhone Duo): op reguliere breedte (binnenscherm, iPad) een even aantal kolommen, zodat de vouw
+    /// tussen twee kolommen valt; compact zoveel als past (zoals voorheen met `.adaptive(minimum: 150)`)
+    @Environment(\.horizontalSizeClass) private var hSize
+    @State private var gridWidth: CGFloat = 0
+    private var columns: [GridItem] {
+        guard gridWidth > 0 else { return [GridItem(.adaptive(minimum: 150, maximum: 220), spacing: 14, alignment: .top)] }
+        let n = Duo179.columns(width: Double(gridWidth - 2 * Theme.edge), minItem: 150, spacing: 14,
+                               regular: hSize == .regular)
+        return Array(repeating: GridItem(.flexible(maximum: 240), spacing: 14, alignment: .top), count: n)
+    }
     #else
     private let columns = [GridItem(.adaptive(minimum: 150, maximum: 220), spacing: 14, alignment: .top)]
     #endif
@@ -78,6 +89,9 @@ struct CategoryView: View {
                     }
                 }
                 .padding(.horizontal, Theme.edge)
+                #if os(iOS)
+                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { gridWidth = $0 }
+                #endif
                 .padding(.vertical, tvScaled(12))
             }
         }

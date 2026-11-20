@@ -102,6 +102,10 @@ struct PlayerScreen: View {
     @State private var sleepStopped = false
     @State private var catchupOK = false
     @State private var episodeSeries: Series?
+    #if os(iOS)
+    /// Build 179 (iPhone Duo): half open met de vouw horizontaal (tafelstand): beeld boven de vouw, bediening eronder
+    @State private var tabletop179: Duo179.Tabletop?
+    #endif
     @State private var episodeList: [Episode] = []
 
     /// Teruggekomen uit beeld-in-beeld: de bestaande speler overnemen.
@@ -116,7 +120,12 @@ struct PlayerScreen: View {
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            EngineView(controller: player, external: true).ignoresSafeArea().allowsHitTesting(false)
+            #if os(iOS)
+            FoldReader179(tabletop: $tabletop179)
+            #endif
+            EngineView(controller: player, external: true)
+                .padding(.bottom, videoBottom179)
+                .ignoresSafeArea().allowsHitTesting(false)
             #if os(iOS)
             if external.isConnected && PlayerSettings.externalDisplay {
                 VStack(spacing: 12) {
@@ -138,7 +147,7 @@ struct PlayerScreen: View {
                     .padding(.horizontal, 10).padding(.vertical, 4)
                     .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 6))
                     .frame(maxHeight: .infinity, alignment: .bottom)
-                    .padding(.bottom, showControls ? tvScaled(120) : tvScaled(40))
+                    .padding(.bottom, videoBottom179 > 0 ? videoBottom179 + 12 : (showControls ? tvScaled(120) : tvScaled(40)))
                     .allowsHitTesting(false)
             }
 
@@ -147,6 +156,7 @@ struct PlayerScreen: View {
                     ProgressView().tint(.white).scaleEffect(tvScaled(1.6))
                     if player.reconnecting { Text(L("Reconnecting…")).font(.system(size: tvScaled(13))).foregroundStyle(Theme.secondary) }
                 }
+                .padding(.bottom, videoBottom179)
             }
             if let e = player.errorText {
                 errorOverlay(e)
@@ -184,7 +194,7 @@ struct PlayerScreen: View {
                 .frame(width: 0, height: 0).allowsHitTesting(false).accessibilityHidden(true)
             #endif
             if showControls && streamLimit == nil && !still.isActive && !isLocked && !sleepStopped && !(panel?.isOverlay ?? false) {
-                controls.transition(.opacity)
+                controls.padding(.top, controlsTop179).transition(.opacity)
             }
 
             // build 173: panelen onderin over het beeld (pauzeren niet)
@@ -501,6 +511,23 @@ struct PlayerScreen: View {
         brightnessHUD = nil
     }
     #endif
+
+    /// Build 179 (iPhone Duo): ruimte onder het beeld en begin van de bediening in tafelstand (anders 0)
+    private var videoBottom179: CGFloat {
+        #if os(iOS)
+        return CGFloat(tabletop179?.videoBottom ?? 0)
+        #else
+        return 0
+        #endif
+    }
+
+    private var controlsTop179: CGFloat {
+        #if os(iOS)
+        return CGFloat(tabletop179?.controlsTop ?? 0)
+        #else
+        return 0
+        #endif
+    }
 
     private var controls: some View {
         ZStack {
@@ -1832,3 +1859,34 @@ struct InvisibleTVButtonStyle: ButtonStyle {
 }
 #endif
 
+
+#if os(iOS)
+/// Build 179 (iPhone Duo): leest de vouw (gereserveerd gebied `.division`, iOS 27.1) en geeft de tafelstand door.
+/// Met een oudere SDK of iOS: niets (schermvullend, zoals altijd).
+private struct FoldReader179: View {
+    @Binding var tabletop: Duo179.Tabletop?
+
+    var body: some View {
+        #if compiler(>=6.4)
+        if #available(iOS 27.1, *) {
+            Color.clear
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
+                .onGeometryChange(for: Duo179.Tabletop?.self) { proxy in
+                    let fold = proxy.reservedRegions(kind: .division).first { $0.isActive }.map {
+                        Duo179.Rect(x: Double($0.frame.minX), y: Double($0.frame.minY),
+                                    w: Double($0.frame.width), h: Double($0.frame.height))
+                    }
+                    return Duo179.tabletop(container: Double(proxy.size.width), Double(proxy.size.height), fold: fold)
+                } action: { t in
+                    withAnimation(.easeInOut(duration: 0.25)) { tabletop = t }
+                }
+        } else {
+            Color.clear.allowsHitTesting(false)
+        }
+        #else
+        Color.clear.allowsHitTesting(false)
+        #endif
+    }
+}
+#endif

@@ -82,6 +82,8 @@ final class PlayerController: ObservableObject {
     private var airPlayNeedsRewrap = false
     /// Deze speler deelt bestanden op de lokale server (bij stoppen weer weghalen)
     private var airPlayServing = false
+    /// Build 179: voor deze AirPlay-route al naar de Apple-speler gewisseld (niet heen en weer)
+    private var airPlay179Done = false
     private var tracksApplied = false
     private var watchedSeconds: Double = 0
     /// Build 164: tellen voor het stilstaande beeld van de tv-gids
@@ -339,6 +341,29 @@ final class PlayerController: ObservableObject {
         }
     }
 
+    #if os(iOS)
+    /// Build 179: AirPlay-video, ook naar CarPlay als de auto stilstaat (iOS 26). Wordt er een AirPlay-route actief
+    /// (Bedieningspaneel, de auto of de AirPlay-knop) terwijl VLC speelt, dan naar de Apple-speler op dezelfde positie:
+    /// alleen die stuurt video via AirPlay (`allowsExternalPlayback`). `start` sluit VLC eerst (geen tweede verbinding).
+    /// CarPlay-audio tijdens het rijden is geen AirPlay en wisselt niet. true = er is gewisseld.
+    private func checkAirPlayVideo179() -> Bool {
+        guard !isPreview, !silent, !stopped else { return false }
+        // met de Apple-speler alleen bijhouden of de route weer weg is (dan mag een volgende AirPlay-route weer wisselen)
+        if usingApple && !airPlay179Done { return false }
+        let air = AVAudioSession.sharedInstance().currentRoute.outputs.contains { $0.portType == .airPlay }
+        if !air { airPlay179Done = false; return false }
+        guard let url, errorText == nil,
+              Duo179.switchForAirPlay(usingApple: usingApple, airPlay: air, alreadyForThisRoute: airPlay179Done,
+                                      preview: isPreview || silent,
+                                      appleCanOpen: Duo179.appleCanOpen(scheme: url.scheme, isFile: url.isFileURL))
+        else { return false }
+        airPlay179Done = true
+        if !isPreview && !silent { PlaybackTiming.mark("AirPlay: VLC → Apple") }
+        switchToApple()
+        return true
+    }
+    #endif
+
     /// Wisselt naar de Apple-engine (voor AirPlay) op dezelfde positie.
     func switchToApple() {
         guard !usingApple, let url else { return }
@@ -351,6 +376,9 @@ final class PlayerController: ObservableObject {
     }
 
     private func tick() {
+        #if os(iOS)
+        if checkAirPlayVideo179() { return }
+        #endif
         let st = engine.state
         // build 148: haperingen (bufferen of opnieuw openen na het eerste beeld) vastleggen voor de diagnose
         if !isPreview && !silent {
