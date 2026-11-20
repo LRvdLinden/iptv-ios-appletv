@@ -110,7 +110,7 @@ Deno.test("transactie: app, product, ingetrokken, prijs, omgeving", () => {
   const c = checkTransaction(tx());
   ok(c.ok);
   if (c.ok) eq(c.tx, { transactionId: "2000000123456789", originalTransactionId: "2000000123456789", environment: "test", amount: 499, currency: "eur",
-    purchasedAt: new Date(NOW - 60_000).toISOString(), appAccountToken: UID });
+    purchasedAt: new Date(NOW - 60_000).toISOString(), appAccountToken: UID, plan: "lifetime" });
   eq(checkTransaction(tx({ bundleId: "nl.anders" })), { ok: false, error: "wrong_app" });
   eq(checkTransaction(tx({ productId: "nl.lrvdlinden.bingr.iets" })), { ok: false, error: "wrong_product" });
   eq(checkTransaction(tx({ revocationDate: NOW })), { ok: false, error: "revoked" });

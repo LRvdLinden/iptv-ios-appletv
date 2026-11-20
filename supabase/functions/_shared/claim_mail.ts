@@ -26,8 +26,12 @@ const T: Record<Lang, { subject: string; pre: string; eye: string; title: string
   },
 };
 
-export function renderClaimMail(lang: Lang, token: string, year?: number) {
-  const t = T[lang] ?? T.en, url = claimUrl(token);
+/** build 181: product "premium" (gast-abonnement) = dezelfde mail met Premium in plaats van Lifetime. */
+export function renderClaimMail(lang: Lang, token: string, year?: number, product: "lifetime" | "premium" = "lifetime") {
+  const base = T[lang] ?? T.en, url = claimUrl(token);
+  const t = product === "premium"
+    ? Object.fromEntries(Object.entries(base).map(([k, v]) => [k, v.replaceAll("Lifetime", "Premium").replace("hebt gekocht", "hebt afgesloten").replace("bought", "subscribed to").replace("aankoop", "abonnement").replace("buying", "subscribing to")])) as typeof base
+    : base;
   const content = [
     eyebrow(t.eye), redBar("12px 0 18px"), title(t.title, "0 0 14px"), para(t.body), `<div style="height:14px"></div>`, para(t.email),
     button(url, t.cta), copyLink(lang, url),
@@ -35,7 +39,7 @@ export function renderClaimMail(lang: Lang, token: string, year?: number) {
   ].join("\n");
   return {
     subject: t.subject,
-    html: layout({ lang, docTitle: t.subject, preheader: t.pre, label: "Lifetime", contentHtml: content, footerHtml: footerHtml({ lang, reasonHtml: esc(t.reason), year }) }),
+    html: layout({ lang, docTitle: t.subject, preheader: t.pre, label: product === "premium" ? "Premium" : "Lifetime", contentHtml: content, footerHtml: footerHtml({ lang, reasonHtml: esc(t.reason), year }) }),
     text: [t.title, "", t.body, "", t.email, "", `${t.cta}: ${url}`, "", t.later, "", footerText({ lang, reason: t.reason, year })].join("\n"),
   };
 }

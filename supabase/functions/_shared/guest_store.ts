@@ -24,7 +24,7 @@ export async function grantGuest(db: Db, p: GuestPurchase, nowMs = Date.now()): 
       user_id: null, provider: "stripe", stripe_session_id: p.sessionId, payment_intent: p.paymentIntent, amount: p.amount, currency: p.currency,
       status: "paid", paid_at: nowIso, updated_at: nowIso, tax_amount: p.taxAmount ?? undefined,
       claim_token_hash: await sha256Hex(p.claimToken), claim_expires_at: new Date(nowMs + CLAIM_DAYS * 86_400_000).toISOString(),
-      claim_email_hash: hash,
+      claim_email_hash: hash, plan: p.plan ?? "lifetime",
     });
     if (error && error.code !== "23505") throw fail("billing_purchases", error);
   } else if (prev.status !== "paid") {
@@ -58,5 +58,8 @@ export async function claimToken(db: Db, userId: string, token: string): Promise
 export async function claimByEmail(db: Db, userId: string): Promise<number> {
   const { data, error } = await db.rpc("bingr_billing_claim_email", { p_user: userId });
   if (error) throw fail("bingr_billing_claim_email", error);
-  return Number((data as { claimed?: number } | null)?.claimed ?? 0);
+  // build 181: ook gast-abonnementen (Premium) met dat adres
+  const { data: d2, error: e2 } = await db.rpc("bingr_premium_claim_email", { p_user: userId });
+  if (e2) console.error("bingr_premium_claim_email", e2.code ?? "fout");
+  return Number((data as { claimed?: number } | null)?.claimed ?? 0) + Number((d2 as { claimed?: number } | null)?.claimed ?? 0);
 }

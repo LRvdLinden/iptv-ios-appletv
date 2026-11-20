@@ -7,6 +7,7 @@
 //   app_settings.upgrade_link   = {…, apple_eu}      (EU External Purchase Link in de Apple-apps)
 // Zolang enabled false is (standaard) verandert er niets: access is altijd "full" en lifetime_only ontbreekt.
 import { APPLE_PRODUCT_ID } from "./apple.ts";
+import type { PremiumView } from "./premium.ts";
 import { type Entitlements, linkGroup, normalizePlan, normalizePlatform, type Platform, PRICE_CENTS } from "./plans.ts";
 
 export type LifetimeSettings = {
@@ -174,6 +175,8 @@ export type LifetimeEntitlements = Entitlements & {
   iap: { apple: boolean; product_id: string };
   upgrade: Entitlements["upgrade"] & { link_eu_apple: boolean };
   lifetime_only?: LifetimeView;
+  /** build 181: Bingr Premium (docs/ACCOUNT.md, "Build 181"); ontbreekt alleen bij aanroepers zonder premium-context */
+  premium?: PremiumView;
 };
 export type LifetimeContext = {
   settings: LifetimeSettings; iap: IapSettings; euApple: boolean; platform: Platform | null;
@@ -181,6 +184,8 @@ export type LifetimeContext = {
   /** eigen code van het account (of null), alleen nodig als enabled */
   code?: CodeRow | null;
   now?: number;
+  /** build 181: premiumView van dit account op dit platform (met access); doet de groep mee, dan bepaalt die access */
+  premium?: PremiumView & { access?: "full" | "activate" | null };
 };
 /**
  * Entitlements van build 167: het bestaande object (plans.ts) met access, iap en upgrade.link_eu_apple erbij, en
@@ -197,6 +202,11 @@ export function withLifetime(base: Entitlements, c: LifetimeContext): LifetimeEn
     iap: { apple: c.iap.apple, product_id: APPLE_PRODUCT_ID },
     upgrade: { ...base.upgrade, link_eu_apple: c.euApple },
   };
+  if (c.premium) {
+    const { access, ...view } = c.premium;
+    if (access) out.access = access;
+    out.premium = view;
+  }
   if (s.enabled) {
     const apple = c.platform ? linkGroup(c.platform) === "apple" : false;
     // build 168: een account onder "nieuwe accounts eerst kopen" heeft geen korting (die is voor bestaande accounts) en

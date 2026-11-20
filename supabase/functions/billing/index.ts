@@ -32,6 +32,18 @@
 //               (x5c tot Apple Root CA - G3, ES256, bundle/product, geen revocationDate); de originalTransactionId wordt
 //               gekoppeld aan het eerste account dat hem claimt. 400 bad_transaction (+reason), 409 owned_by_other_account,
 //               409 transaction_revoked, 429 rate_limited.
+// Build 181 (Bingr Premium, docs/ACCOUNT.md "Build 181" §6):
+//   config      + premium {enabled, web, apple, required_new, new_from, existing_from, existing_after, trial_days,
+//               show_prices_web, stripe_ready, prices, products}; ingelogd ook premium.view (premiumView, platform web)
+//   checkout    + plan? (month|half|year|lifetime). Zonder plan: oude Lifetime alleen met legacy_offer of als de groep web
+//               niet meedoet, anders 400 plan_required. 409 premium_off / already_lifetime / already_premium,
+//               503 premium_not_configured. Abonnement: proef alleen als trial_eligible. Gast (guest: true) ook met plan.
+//   portal      (POST, ingelogd, {return_url?, lang?}) -> {url}   Stripe Customer Portal; 404 no_customer
+//   refresh     (POST, ingelogd, {platform?}) -> {synced, premium, entitlements}   Stripe-abonnementen opnieuw ophalen
+//   status      + sessies met mode=subscription: {paid, status, payment_status, plan, premium}
+//   claim       + gast-abonnementen (claimtoken of e-mailadres)
+//   apple_verify+ de drie abonnementen en lifetime49 -> {plan: month|half|year|lifetime, premium, entitlements}
+//   admin_premium_setup {dry_run?} (x-lifetime-secret): Stripe-producten, -prijzen en Customer Portal aanmaken
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { BANNED_BODY, bannedUntilActive, isBanError } from "../_shared/ban.ts";
 import { clientIp } from "../_shared/ip.ts";
@@ -49,6 +61,10 @@ import { buildEntitlements, codeByText, codeOf, loadSettings, markRedeemed } fro
 import { claimByEmail, claimToken, grantGuest } from "../_shared/guest_store.ts";
 import { codesGenerate, codesStats } from "../_shared/lifetime_codes.ts";
 import { sameSecret } from "../newsletter/logic.ts";
+import { normalizePremium, publicPremium } from "../_shared/premium.ts";
+const normalizePremiumNull = () => normalizePremium(null);
+import { claimSubToken } from "../_shared/premium_store.ts";
+import { appleSubscription, isPremiumPlan, portal, premiumCheckout, premiumSetup, premiumState, refresh, syncStripeSub } from "./premium.ts";
 import { stripe, stripeError, StripeUnavailable } from "../_shared/stripe.ts";
 
 const env = (k: string) => Deno.env.get(k) ?? undefined;
@@ -132,7 +148,15 @@ Deno.serve(async (req) => {
           });
         }
       }
-      return json({ ...base, lifetime_only: lifetimeOnly, iap: { apple: !!s?.iap.apple, product_id: APPLE_PRODUCT_ID } });
+      // build 181: Premium (publiek; ingelogd ook de eigen toestand)
+      const premium: Record<string, unknown> = { ...publicPremium(s?.premium ?? normalizePremiumNull(), group, cfg.mode) };
+      if (s && (req.headers.get("Authorization") ?? "").split(".").length === 3) {
+        const u = await authed(req, json);
+        if (!(u instanceof Response)) {
+          try { premium.view = (await premiumState(admin, u, "web", s)).view; } catch (e) { console.error("billing config premium", e instanceof Error ? e.message.slice(0, 60) : "fout"); }
+        }
+      }
+      return json({ ...base, lifetime_only: lifetimeOnly, iap: { apple: !!s?.iap.apple, product_id: APPLE_PRODUCT_ID }, premium });
     }
     // build 167: beheer (functie admin in bingr-beheer), header x-lifetime-secret = LIFETIME_ADMIN_SECRET
     if (action === "admin_codes_generate" || action === "admin_codes_stats") {
@@ -141,7 +165,20 @@ Deno.serve(async (req) => {
       if (action === "admin_codes_stats") return json({ ok: true, ...(await codesStats(admin)) });
       return await codesGenerate(admin, body);
     }
-    if (!["checkout", "status", "purchases", "claim", "apple_verify"].includes(action)) return json({ error: "unknown_action" }, 400);
+    if (action === "admin_premium_setup") {
+      if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
+      if (!sameSecret(req.headers.get("x-lifetime-secret"), Deno.env.get("LIFETIME_ADMIN_SECRET"))) return json({ error: "forbidden" }, 403);
+      return await premiumSetup(admin, cfg, body, json);
+    }
+    if (!["checkout", "status", "purchases", "claim", "apple_verify", "portal", "refresh"].includes(action)) return json({ error: "unknown_action" }, 400);
+    // build 181: Premium-checkout als gast (met plan)
+    if (action === "checkout" && body.guest === true && isPremiumPlan(body.plan) && !(req.headers.get("Authorization") ?? "").includes(".")) {
+      if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
+      if (!cfg.secretKey) return json({ error: "billing_unavailable" }, 503);
+      if (body.waiver !== true) return json({ error: "waiver_required" }, 400);
+      if (await rateLimited(`billing:ip:${clientIp(req)}`, 30, 600)) return json({ error: "rate_limited" }, 429);
+      return await premiumCheckout(admin, cfg, body, null, json, newClaimToken);
+    }
 
     // build 167: gastaankoop (eerst betalen, dan het account)
     if (action === "checkout" && body.guest === true && !(req.headers.get("Authorization") ?? "").includes(".")) {
@@ -180,10 +217,29 @@ Deno.serve(async (req) => {
     if (user instanceof Response) return user;
     const uid = user.id.toLowerCase();
 
+    if (action === "portal" || action === "refresh") {
+      if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
+      if (await rateLimited(`billing:${action}:u:${uid}`, 20, 600)) return json({ error: "rate_limited" }, 429);
+      if (action === "portal") return cfg.secretKey ? await portal(admin, cfg, body, user, json) : json({ error: "billing_unavailable" }, 503);
+      return await refresh(admin, cfg, body, user, json);
+    }
+
     if (action === "checkout") {
       if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
+      // build 181: Premium (met plan), of zonder plan de oude Lifetime alleen als dat nog mag
+      if (body.plan !== undefined && body.plan !== null && body.plan !== "") {
+        if (!isPremiumPlan(body.plan)) return json({ error: "bad_plan" }, 400);
+        if (!cfg.secretKey) return json({ error: "billing_unavailable" }, 503);
+        if (body.waiver !== true) return json({ error: "waiver_required" }, 400);
+        if (await rateLimited(`billing:u:${uid}`, 10, 600) || await rateLimited(`billing:ip:${clientIp(req)}`, 30, 600)) return json({ error: "rate_limited" }, 429);
+        return await premiumCheckout(admin, cfg, body, user, json, newClaimToken);
+      }
+      try {
+        const st = await premiumState(admin, user, "web");
+        if (st.view.enabled && !st.view.legacy_offer) return json({ error: "plan_required" }, 400);
+      } catch (e) { console.error("billing checkout premium", e instanceof Error ? e.message.slice(0, 60) : "fout"); }
       const cur = await planOf(uid);
-      if (cur?.plan === "lifetime") return json({ error: "already_lifetime", source: cur.source ?? null }, 409);
+      if (cur?.plan === "lifetime" && cur.source !== "subscription") return json({ error: "already_lifetime", source: cur.source ?? null }, 409);
       if (!cfg.secretKey) { console.log("billing checkout: billing_unavailable"); return json({ error: "billing_unavailable" }, 503); }
       if (body.waiver !== true) return json({ error: "waiver_required" }, 400);
       if (await rateLimited(`billing:u:${uid}`, 10, 600) || await rateLimited(`billing:ip:${clientIp(req)}`, 30, 600)) {
@@ -226,6 +282,15 @@ Deno.serve(async (req) => {
       if (r.status === 404) return json({ error: "not_found" }, 404);
       if (!r.ok) { console.error("billing status stripe", stripeError(r)); return json({ error: "stripe_error" }, 502); }
       const s = r.body as Record<string, unknown>;
+      // build 181: abonnement (mode subscription): vastleggen als vangnet en de Premium-toestand geven
+      if (s.mode === "subscription") {
+        const ref = String(s.client_reference_id ?? (s.metadata as Record<string, unknown> | undefined)?.user_id ?? "").toLowerCase();
+        if (ref !== uid) return json({ error: "not_found" }, 404);
+        const subId = typeof s.subscription === "string" ? s.subscription : (s.subscription as { id?: string } | null)?.id;
+        if (subId && s.status === "complete") console.log("billing status premium", await syncStripeSub(admin, cfg.secretKey, await loadSettings(admin), subId, uid));
+        const st = await premiumState(admin, user, "web");
+        return json({ paid: s.status === "complete", status: s.status ?? null, payment_status: s.payment_status ?? null, plan: st.view.plan, premium: st.view });
+      }
       const p = purchaseFromSession(s);
       // alleen de eigen sessie (zelfde account-id); anders alsof hij niet bestaat
       if (!p || p.userId !== uid) return json({ error: "not_found" }, 404);
@@ -249,11 +314,18 @@ Deno.serve(async (req) => {
         // al Lifetime (bv. cadeau, beheer of eerder gekocht): niet nog een aankoop aan dit account hangen; de aankoop blijft
         // ongeclaimd (ander account, of terugbetalen via support / koppelen in het beheer)
         const cur = await planOf(uid);
-        if (cur?.plan === "lifetime") {
+        // build 181: een abonnement (spiegel) mag nog een gekochte Lifetime claimen
+        if (cur?.plan === "lifetime" && cur.source !== "subscription") {
           const mine = await admin.from("billing_purchases").select("id").eq("user_id", uid).eq("claim_token_hash", await sha256Hex(body.claim_token)).maybeSingle();
           if (!mine.data) return json({ error: "already_lifetime", source: cur.source ?? null }, 409);
         }
-        const c = await claimToken(admin, uid, body.claim_token);
+        let c = await claimToken(admin, uid, body.claim_token);
+        // build 181: geen Lifetime-aankoop met dit token: misschien een gast-abonnement (Premium)
+        if (c.result === "invalid") {
+          const r = await claimSubToken(admin, uid, body.claim_token);
+          if (r === "already_lifetime") return json({ error: "already_lifetime", source: cur?.source ?? null }, 409);
+          c = { ok: r === "claimed" || r === "already_yours", result: (["claimed", "already_yours", "expired", "owned_by_other_account"].includes(r) ? r : "invalid") as typeof c.result };
+        }
         result = c.result;
         if (c.result === "invalid") return json({ error: "claim_invalid" }, 400);
         if (c.result === "expired") return json({ error: "claim_expired" }, 400);
@@ -272,6 +344,9 @@ Deno.serve(async (req) => {
       if (await rateLimited(`billing:apple:u:${uid}`, 30, 600)) return json({ error: "rate_limited" }, 429);
       const v = await verifyAppleJws(body.signed_transaction);
       if (!v.ok) { console.log("billing apple_verify", v.error); return json({ error: "bad_transaction", reason: v.error }, 400); }
+      // build 181: abonnementen (Premium); Lifetime (oud en lifetime49) gaat verder zoals build 167
+      const premiumRes = await appleSubscription(admin, v.payload, body, user, json);
+      if (premiumRes) return premiumRes;
       const t = checkTransaction(v.payload);
       if (!t.ok) {
         console.log("billing apple_verify", t.error);
@@ -284,7 +359,7 @@ Deno.serve(async (req) => {
       }
       console.log("billing apple_verify", g.granted ? "granted" : "already", t.tx.environment);
       const ent = await buildEntitlements(admin, uid, user.created_at, normalizePlatform(body.platform) ?? "ios");
-      return json({ plan: ent.plan, entitlements: ent });
+      return json({ plan: ent.plan, premium: ent.premium, entitlements: ent });
     }
 
     // purchases (build 167: eerst ongeclaimde aankopen met het bevestigde e-mailadres koppelen, best effort)

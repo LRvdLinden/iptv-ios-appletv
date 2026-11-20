@@ -144,7 +144,7 @@ export type GuestPurchase = Omit<Purchase, "userId"> & { claimToken: string; ema
 /** Gastaankoop uit een Checkout Session (metadata.guest = "1", geldig claimtoken). */
 export function guestFromSession(s: Obj | null | undefined): GuestPurchase | null {
   if (!s || typeof s !== "object" || s.object !== "checkout.session" || s.mode !== "payment") return null;
-  if (s.metadata?.guest !== "1" || (s.metadata?.plan && s.metadata.plan !== "lifetime") || !isClaimToken(s.metadata?.claim_token)) return null;
+  if (s.metadata?.guest !== "1" || !lifetimePlanOf(s.metadata?.plan) || !isClaimToken(s.metadata?.claim_token)) return null;
   if (!isStripeId(s.id, "cs_")) return null;
   const pi = typeof s.payment_intent === "string" ? s.payment_intent : s.payment_intent?.id;
   const email = typeof s.customer_details?.email === "string" && s.customer_details.email.includes("@") ? s.customer_details.email : null;
@@ -153,7 +153,7 @@ export function guestFromSession(s: Obj | null | undefined): GuestPurchase | nul
     amount: Number.isInteger(s.amount_total) ? s.amount_total : PRICE_CENTS, currency: String(s.currency || PRICE_CURRENCY).toLowerCase(),
     taxAmount: s.automatic_tax?.enabled === true && Number.isInteger(s.total_details?.amount_tax) && s.total_details.amount_tax >= 0
       ? s.total_details.amount_tax : null,
-    claimToken: s.metadata.claim_token, email,
+    claimToken: s.metadata.claim_token, email, plan: lifetimePlanOf(s.metadata?.plan)!,
   };
 }
 
@@ -200,7 +200,11 @@ export async function signHeader(rawBody: string, secret: string, tSec: number):
 // deno-lint-ignore no-explicit-any
 type Obj = Record<string, any>;
 /** taxAmount: btw volgens Stripe Tax (total_details.amount_tax) als automatic_tax aan stond, anders null (onbekend). */
-export type Purchase = { userId: string; sessionId: string; paymentIntent: string | null; amount: number; currency: string; taxAmount: number | null };
+export type Purchase = { userId: string; sessionId: string; paymentIntent: string | null; amount: number; currency: string; taxAmount: number | null;
+  /** build 181: welke Lifetime (lifetime = € 4,99, lifetime49 = Premium Lifetime € 49,99); ontbreekt = lifetime */
+  plan?: "lifetime" | "lifetime49" };
+/** build 181: metadata.plan van een Lifetime-sessie (leeg = de oude Lifetime); anders null (geen Lifetime-sessie). */
+export const lifetimePlanOf = (v: unknown): "lifetime" | "lifetime49" | null => (v === undefined || v === null || v === "" || v === "lifetime" ? "lifetime" : v === "lifetime49" ? "lifetime49" : null);
 /** Terugbetaling of chargeback (bedrag en Stripe-kosten in centen, moment ISO). Alleen bedragen, geen gegevens van de klant. */
 export type RefundRow = { id: string; kind: "refund" | "dispute"; amount: number; fee: number; at: string };
 export type Decision =
@@ -219,7 +223,8 @@ export type Decision =
 export function purchaseFromSession(s: Obj | null | undefined): Purchase | null {
   if (!s || typeof s !== "object" || s.object !== "checkout.session" || s.mode !== "payment") return null;
   const userId = s.client_reference_id ?? s.metadata?.user_id;
-  if (!isUuid(userId) || (s.metadata?.plan && s.metadata.plan !== "lifetime")) return null;
+  const plan = lifetimePlanOf(s.metadata?.plan);
+  if (!isUuid(userId) || !plan) return null;
   if (!isStripeId(s.id, "cs_")) return null;
   const pi = typeof s.payment_intent === "string" ? s.payment_intent : s.payment_intent?.id;
   return {
@@ -227,6 +232,7 @@ export function purchaseFromSession(s: Obj | null | undefined): Purchase | null 
     amount: Number.isInteger(s.amount_total) ? s.amount_total : PRICE_CENTS, currency: String(s.currency || PRICE_CURRENCY).toLowerCase(),
     taxAmount: s.automatic_tax?.enabled === true && Number.isInteger(s.total_details?.amount_tax) && s.total_details.amount_tax >= 0
       ? s.total_details.amount_tax : null,
+    plan,
   };
 }
 export function decide(event: Obj | null | undefined): Decision {

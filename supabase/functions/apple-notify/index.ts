@@ -12,6 +12,46 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import { checkTransaction, decideNotification, notificationId } from "../_shared/apple.ts";
 import { verifyAppleJws } from "../_shared/apple_jws.ts";
 import { notifyDone, notifySeen, revokeApple } from "../_shared/apple_store.ts";
+import { APPLE_BUNDLE_ID, appleEnvironment, isAppleTxId } from "../_shared/apple.ts";
+import { appleNotifyStatus, appleProduct } from "../_shared/premium.ts";
+import { saveAppleSub } from "../_shared/premium_store.ts";
+import { loadSettings } from "../_shared/lifetime_store.ts";
+
+// Build 181 (Bingr Premium, docs/ACCOUNT.md "Build 181" §7): notificaties van de drie abonnementen werken
+// premium_subscriptions bij (status, expires_at, will_renew, grace) en daarna de spiegel in account_plans. Onbekende
+// originalTransactionId = rij zonder account (wacht op apple_verify). Geeft null als het geen abonnement is.
+// deno-lint-ignore no-explicit-any
+async function premiumNotify(p: Record<string, any>): Promise<string | null> {
+  const data = p?.data;
+  if (!data || data.bundleId !== APPLE_BUNDLE_ID || typeof data.signedTransactionInfo !== "string") return null;
+  const t = await verifyAppleJws(data.signedTransactionInfo);
+  if (!t.ok) return null;
+  const k = appleProduct(t.payload);
+  if (k.kind !== "subscription") return null;
+  const type = String(p.notificationType ?? "");
+  const st = appleNotifyStatus(type, typeof p.subtype === "string" ? p.subtype : null);
+  if (st === "ignore") return "premium_ignore";
+  let willRenew = true, grace: string | null = null;
+  if (typeof data.signedRenewalInfo === "string") {
+    const r = await verifyAppleJws(data.signedRenewalInfo);
+    if (r.ok) {
+      willRenew = Number(r.payload.autoRenewStatus) === 1;
+      const g = Number(r.payload.gracePeriodExpiresDate);
+      if (Number.isFinite(g) && g > 0) grace = new Date(g).toISOString();
+    }
+  }
+  let status = st;
+  if (st === "active") status = k.status === "revoked" ? "revoked" : k.status === "trialing" ? "trialing" : willRenew ? "active" : "canceled";
+  if (st === "canceled") willRenew = false;
+  const orig = t.payload.originalTransactionId ?? t.payload.transactionId;
+  if (!isAppleTxId(orig)) return "premium_bad_transaction";
+  const s = await loadSettings(admin);
+  const r = await saveAppleSub(admin, s.premium, {
+    originalTransactionId: String(orig), productId: String(t.payload.productId), plan: k.plan, status, expires_at: k.expires_at,
+    trial: k.trial, will_renew: willRenew, grace_until: grace, environment: appleEnvironment(t.payload.environment),
+  }, null);
+  return r.ok ? `premium_${status}_${r.userId ? r.mirror : "unlinked"}` : "premium_owned";
+}
 
 const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {
   auth: { autoRefreshToken: false, persistSession: false },
@@ -31,7 +71,9 @@ Deno.serve(async (req) => {
   try {
     if (id && await notifySeen(admin, id)) { console.log("apple-notify", d.type, "al verwerkt"); return json({ received: true, result: "duplicate" }); }
     let result: string;
-    if (d.kind === "test") result = "test";
+    const pr = d.kind === "test" ? null : await premiumNotify(v.payload);
+    if (pr) result = pr;
+    else if (d.kind === "test") result = "test";
     else if (d.kind === "ignore") result = `ignore_${d.reason}`;
     else {
       const t = await verifyAppleJws(d.signedTransaction);

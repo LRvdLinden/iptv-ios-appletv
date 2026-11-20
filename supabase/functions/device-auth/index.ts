@@ -84,6 +84,11 @@
 //                   Apple-platform). stream_start na cutover_at zonder Lifetime (en zonder lopende proefperiode) -> 403
 //                   {error:"activation_required", plan:"free"}. register_device koppelt ongeclaimde gastaankopen met het
 //                   bevestigde e-mailadres van het account.
+//   Build 181 (Bingr Premium, docs/ACCOUNT.md): entitlements/heartbeat/config krijgen altijd `premium` (actief, bron, plan,
+//                   verloopt, proef, required, trial_eligible, …). Doet de platformgroep van het account mee
+//                   (app_settings.premium), dan bepaalt premium access ("activate" = plan kiezen). Een gespiegeld abonnement
+//                   (account_plans source subscription) met premium_until voorbij telt als Gratis. stream_start -> 403
+//                   {error:"activation_required", plan:"free", premium:true}. register_device koppelt ook gast-abonnementen.
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { buildStats, DEFAULT_TZ, periodRange, todayIn, validTz } from "./stats.ts";
 import { cleanDeviceName, deviceKind, deviceTypeLabel } from "./naming.ts";
@@ -100,7 +105,9 @@ import { openRows, privateKey, sealedStream } from "./watch.ts";
 import {
   featureLocked, limitsFor, normalizePlan, normalizePlatform, PLAN_DEFAULTS, platformFromDevice, type PlanRow,
 } from "../_shared/plans.ts";
-import { accessFor, ACTIVATION_REQUIRED, normalizeIap, normalizeLifetime } from "../_shared/lifetime.ts";
+import { accessFor, ACTIVATION_REQUIRED, normalizeIap, normalizeLifetime, paidGroup } from "../_shared/lifetime.ts";
+import { effectivePlanRow, groupOn, isTestUser, normalizePremium, premiumView } from "../_shared/premium.ts";
+import { premiumInfo } from "../_shared/premium_store.ts";
 import { type AllSettings, buildEntitlements, loadSettings } from "../_shared/lifetime_store.ts";
 import { claimByEmail } from "../_shared/guest_store.ts";
 import {
@@ -151,13 +158,14 @@ function sessionIdFrom(req: Request): string | null {
 // security L3: fail closed naar de Gratis-limieten (een uitgelokte databasefout geeft nooit Lifetime). Er wordt nergens
 // iets gewist op grond van deze limieten: alleen nieuwe apparaten/streams/servers boven de grens worden geweigerd.
 async function planRow(userId: string, strict = false): Promise<PlanRow> {
-  const { data, error } = await admin.from("account_plans").select("plan,max_streams,max_devices").eq("user_id", userId).maybeSingle();
+  const { data, error } = await admin.from("account_plans").select("plan,max_streams,max_devices,source,premium_until").eq("user_id", userId).maybeSingle();
   if (error) {
     console.error("account_plans", error.message);
     if (strict) throw new Error(error.message);
     return { plan: "free" };
   }
-  return data ?? null;
+  // build 181: verlopen abonnement (spiegel) = Gratis
+  return effectivePlanRow(data ?? null);
 }
 // Instellingen (app_settings upgrade_link, lifetime_only en iap; build 167), 60 s in het geheugen. Bij een fout de
 // standaard (alles zoals vóór build 167: Lifetime-only uit, geen koopknop, geen EU-link) en niet in het geheugen.
@@ -170,22 +178,33 @@ async function appSettings(): Promise<AllSettings> {
     return value;
   } catch (e) {
     console.error("app_settings", e instanceof Error ? e.message : e);
-    return { lifetime: normalizeLifetime(null), iap: normalizeIap(null), euApple: false, upgradeLink: null };
+    return { lifetime: normalizeLifetime(null), iap: normalizeIap(null), euApple: false, upgradeLink: null, premium: normalizePremium(null) };
   }
 }
 // Build 167: mag dit account afspelen? Bij een databasefout: ja (een storing blokkeert nooit Lifetime-accounts; de
 // streamlimiet blijft gelden). Alleen "activate" na cutover_at voor een account dat niet Lifetime is.
 // Build 168: per platform (body.platform, anders het geregistreerde apparaat van body.device_id), zoals de entitlements;
 // onbekend = groep "other" (Android/web, de strenge kant: de Apple-apps registreren hun apparaat altijd met hun platform).
+// Build 181: doet de platformgroep mee voor Premium, dan beslist premiumView (plan nodig en niet actief = "activate").
 async function activationRequired(user: Authed, body: Record<string, unknown>): Promise<boolean> {
   const s = await appSettings();
-  if (!s.lifetime.enabled) return false;
+  const test = isTestUser(s.premium, user.id);
+  const premiumMaybe = s.premium.enabled || test;
+  if (!s.lifetime.enabled && !premiumMaybe) return false;
   const [{ data, error }, platform] = await Promise.all([
-    admin.from("account_plans").select("plan").eq("user_id", user.id).maybeSingle(),
+    admin.from("account_plans").select("plan,source,premium_until").eq("user_id", user.id).maybeSingle(),
     callerPlatform(user.id, body).catch(() => null),
   ]);
   if (error) { console.error("account_plans", error.message); return false; }
-  return accessFor(s.lifetime, data?.plan, user.created_at, Date.now(), platform).access === "activate";
+  const now = Date.now();
+  const row = effectivePlanRow(data ?? null, now);
+  if (premiumMaybe && groupOn(s.premium, paidGroup(platform), now, test)) {
+    const info = await premiumInfo(admin, user.id).catch(() => null);
+    if (!info) return false; // storing: afspelen mag door (de streamlimiet blijft gelden)
+    return premiumView({ settings: s.premium, now, userId: user.id, createdAt: user.created_at, platform, planRow: row, ...info, test }).access === "activate";
+  }
+  if (!s.lifetime.enabled) return false;
+  return accessFor(s.lifetime, row?.plan, user.created_at, now, platform).access === "activate";
 }
 // Platform van de aanvraag (body.platform), anders van het geregistreerde apparaat (body.device_id of het opgegeven platform).
 async function callerPlatform(userId: string, body: Record<string, unknown>, devicePlatform?: string | null) {
@@ -893,7 +912,7 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       const device_id = String(body.device_id ?? "").slice(0, 80);
       if (!device_id) return json({ error: "device_id_missing" }, 400);
       // build 167: na cutover_at kan een account dat niet Lifetime is niet meer afspelen (ook met een oudere app)
-      if (await activationRequired(user, body)) return json(ACTIVATION_REQUIRED, 403);
+      if (await activationRequired(user, body)) return json({ ...ACTIVATION_REQUIRED, premium: true }, 403);
       // streamlimiet van het abonnement (gratis 1, lifetime 3, of eigen limiet uit het beheer); Bingr-telling,
       // los van de limiet van de IPTV-provider (die controleren de apps zelf bij het afspelen)
       const row = await planRow(user.id), limit = limitsFor(row).streams;
