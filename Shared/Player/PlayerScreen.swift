@@ -1867,7 +1867,7 @@ private struct FoldReader179: View {
     @Binding var tabletop: Duo179.Tabletop?
 
     var body: some View {
-        #if compiler(>=6.4)
+        #if compiler(>=6.4) && canImport(SwiftUICore, _version: 8.0.85)
         if #available(iOS 27.1, *) {
             Color.clear
                 .ignoresSafeArea()

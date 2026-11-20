@@ -449,7 +449,7 @@ private struct LoadingOverlay: View {
 /// kant van de zijbalk.
 private struct MiniPlayerPlacement179: ViewModifier {
     func body(content: Content) -> some View {
-        #if os(iOS) && compiler(>=6.4)
+        #if os(iOS) && compiler(>=6.4) && canImport(SwiftUICore, _version: 8.0.85)
         if #available(iOS 27.1, *) {
             VerticalBarAware179(content: content)
         } else {
@@ -475,7 +475,7 @@ private struct MiniPlayerPlacement179: ViewModifier {
     }
 }
 
-#if os(iOS) && compiler(>=6.4)
+#if os(iOS) && compiler(>=6.4) && canImport(SwiftUICore, _version: 8.0.85)
 @available(iOS 27.1, *)
 private struct VerticalBarAware179: View {
     let content: MiniPlayerPlacement179.Content
