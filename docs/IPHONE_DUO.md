@@ -11,7 +11,7 @@ iPhone Duo* en *Strike a pose with adaptive layouts on iPhone Duo*, en de SwiftU
 - `ReservedRegion`, `GeometryProxy.reservedRegions(kind:options:)`, `ArrangementView`, `toolbarVerticalEdge`,
   `toolbarVerticalBehavior` en `onHingeChange` bestaan vanaf de **iOS 27.1-SDK** (`@available(anyAppleOS 27.1, *)`).
   Pas met Xcode 27.1 of nieuwer gebruikt de app het hele scherm en staan tabbalk en toolbars verticaal aan de zijkant.
-- De gewone CI (`compileren`) draait nog op Xcode 16; die code staat daarom achter `#if compiler(>=6.4)` en
+- De gewone CI (`compileren`) draait nog op Xcode 16; die code staat daarom achter `#if compiler(>=6.4) && canImport(SwiftUICore, _version: 8.0.85)` (SwiftUICore 8.0.85 = Xcode 27.1; Xcode 27.0 heeft 8.0.84 zonder `ReservedRegion`, Swift is in beide 6.4) en
   `if #available(iOS 27.1, *)`. De job `sdk27` in `build.yml` (alleen op verzoek: `inputs[sdk27]=true`) compileert iOS
   met de nieuwste Xcode 27 op de runner `xcode-27`, zodat die code ook echt gecontroleerd wordt.
 - **Léon: maak de TestFlight-build met Xcode 27.1 of nieuwer**, anders draait Bingr op de iPhone Duo in de
