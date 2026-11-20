@@ -21,6 +21,14 @@ verify_jwt = false
 [functions.title-meta]
 verify_jwt = false
 
+# build 179: ratings (MDBList) en introdb (TheIntroDB) valideren het access token zelf (401 met CORS, zodat de
+# preflight van de webspeler werkt), zoals push en billing
+[functions.ratings]
+verify_jwt = false
+
+[functions.introdb]
+verify_jwt = false
+
 # build 133: betalen (Stripe). billing valideert het token zelf (401 met CORS); de webhook krijgt geen JWT van Stripe
 [functions.billing]
 verify_jwt = false
