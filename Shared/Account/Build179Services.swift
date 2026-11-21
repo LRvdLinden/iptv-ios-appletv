@@ -112,6 +112,38 @@ final class IntroDB179 {
         else if (r.json["error"] as? String) == "not_found" { cache.set(key, nil) }
         return seg
     }
+
+    // Build 186: veel IPTV-series hebben geen TMDB-id van de server; zoek hem dan zelf op (IMDb-id, anders de
+    // opgeschoonde titel + jaar), zodat IntroDB ook voor die afleveringen tijden geeft. Per sessie onthouden.
+    private var showIDs: [String: Int?] = [:]
+    private struct Find: Decodable { struct R: Decodable { let id: Int }; let tv_results: [R]? }
+    private struct Search: Decodable { struct R: Decodable { let id: Int }; let results: [R]? }
+
+    func showTMDB(title: String, year: Int?, imdb: String?) async -> Int? {
+        let key = "\(imdb ?? "")|\(title.lowercased())|\(year ?? 0)"
+        if let known = showIDs[key] { return known }
+        guard Secrets.isSet(Secrets.tmdbAPIKey) else { return nil }
+        var id: Int?
+        if let imdb, imdb.hasPrefix("tt") {
+            let f: Find? = await TMDB.get("/find/\(imdb)", ["external_source": "imdb_id"])
+            id = f?.tv_results?.first?.id
+        }
+        if id == nil {
+            let p = TitleCleaner.parse(title)
+            let y = p.year ?? year
+            var q: [String: String] = ["query": p.title, "include_adult": "false"]
+            if let y { q["first_air_date_year"] = String(y) }
+            let s: Search? = await TMDB.get("/search/tv", q)
+            id = s?.results?.first?.id
+            if id == nil, y != nil {
+                q["first_air_date_year"] = nil
+                let s2: Search? = await TMDB.get("/search/tv", q)
+                id = s2?.results?.first?.id
+            }
+        }
+        showIDs[key] = id
+        return id
+    }
 }
 
 // MARK: - 11. Duimen

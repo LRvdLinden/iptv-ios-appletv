@@ -617,7 +617,8 @@ struct PlayerScreen: View {
                                 barButton("rectangle.stack", L("Episodes"), id: "episodes") { openEpisodes() }
                             }
                             if !stremioChoices.isEmpty { barButton("list.bullet", L("Sources")) { panel = .sources } }
-                            if player.item.type == .episode && markerKey != nil {
+                            // build 186: met tijden uit IntroDB is markeren niet nodig; dan alleen "Intro overslaan"
+                            if player.item.type == .episode && markerKey != nil && !introDBKnown {
                                 barButton("forward.frame", L("Mark intro here")) { panel = .intro }
                             }
                             if player.isLive {
@@ -1524,6 +1525,9 @@ struct PlayerScreen: View {
 
     private var showSkipIntro: Bool { skipTarget != nil }
 
+    /// Build 186: IntroDB heeft tijden voor de intro of samenvatting van deze aflevering
+    private var introDBKnown: Bool { introSegs?.introEnd != nil || introSegs?.recapEnd != nil }
+
     /// Build 179: wat de knop nu overslaat: de samenvatting of de intro (IntroDB eerst, anders de eigen markering)
     private var skipTarget: (end: Double, recap: Bool)? {
         guard player.item.type == .episode, player.errorText == nil, !player.isLive, player.duration > 0 else { return nil }
@@ -1542,8 +1546,14 @@ struct PlayerScreen: View {
         introSegs = nil
         let it = player.item
         guard it.type == .episode, let season = it.season, let episode = it.episode else { return }
-        guard let tmdb = it.tmdbID ?? ContentLanguage.Facts.shared.tmdbID(it.seriesID ?? it.id), tmdb > 0 else { return }
-        let seg = await IntroDB179.shared.segments(tmdb: tmdb, imdb: it.imdbID, season: season, episode: episode)
+        let series: Series? = playlists.library.series.first(where: { $0.id == it.seriesID })
+        var tmdb: Int? = it.tmdbID ?? ContentLanguage.Facts.shared.tmdbID(it.seriesID ?? it.id) ?? series?.tmdbID
+        if tmdb == nil || tmdb == 0, let s = series {
+            // build 186: zonder TMDB-id van de server zelf opzoeken
+            tmdb = await IntroDB179.shared.showTMDB(title: s.title, year: s.year, imdb: s.imdbID ?? it.imdbID)
+        }
+        guard let tmdb, tmdb > 0, !Task.isCancelled else { return }
+        let seg = await IntroDB179.shared.segments(tmdb: tmdb, imdb: series?.imdbID ?? it.imdbID, season: season, episode: episode)
         guard !Task.isCancelled, player.item.id == it.id else { return }
         introSegs = seg
     }
