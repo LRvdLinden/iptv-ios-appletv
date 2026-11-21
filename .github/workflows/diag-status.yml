@@ -1,5 +1,5 @@
 name: Diagnose status (tijdelijk)
-# Tijdelijk: openbare controle van Premium (billing config) en bingr.online. Geen sleutels, geen persoonsgegevens.
+# Tijdelijk: test of TheIntroDB (openbaar, geen sleutel) tijden geeft voor bekende series.
 on:
   push:
     branches: [symboliseren]
@@ -7,16 +7,13 @@ on:
 permissions:
   contents: read
 jobs:
-  premium:
+  introdb:
     runs-on: ubuntu-latest
     steps:
-      - name: Premium en website
+      - name: TheIntroDB
         run: |
-          sleep 240
-          K=sb_publishable_
-          B=https://vjewsncmsxmhmhnoxwqx.supabase.co/functions/v1/billing/config
-          for p in web android ios; do
-            echo "== $p"; curl -s -X POST "$B" -H 'content-type: application/json' -H "apikey: $(curl -s https://raw.githubusercontent.com/LRvdLinden/iptv-ios-appletv/main/Shared/Config/Secrets.swift | grep -o 'sb_publishable_[A-Za-z0-9_-]*' | head -1)" -d "{\"platform\":\"$p\"}" | python3 -c "import json,sys;d=json.load(sys.stdin);p=d.get('premium') or {};print({k:p.get(k) for k in ('enabled','web','apple','required_new','new_from','existing_from','trial_days','show_prices_web','stripe_ready','prices')})"
+          for q in "1396 1 2" "1399 1 1" "66732 1 1" "94997 1 1" "100088 1 1" "1668 1 1" "60625 1 1" "76479 1 1"; do
+            set -- $q
+            code=$(curl -s -o r.json -w '%{http_code}' "https://api.theintrodb.org/v4/media?tmdb_id=$1&season=$2&episode=$3")
+            echo "tmdb $1 S$2E$3 -> HTTP $code $(head -c 300 r.json)"
           done
-          echo "== bingr.online"; curl -s https://bingr.online/ | grep -o '1\.[01]\.[0-9] (build [0-9]*)' | head -1
-          curl -s https://bingr.online/assets/changelog.json | head -c 200; echo
