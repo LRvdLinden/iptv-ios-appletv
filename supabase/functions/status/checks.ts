@@ -176,21 +176,43 @@ export async function checkPush(ctx: Ctx): Promise<CheckResult> {
 }
 
 // ---- e-mail: verbinden met de SMTP-server en wachten op "220" (geen inloggen, geen mail) ----
+// Build 184: sinds 18-11 gaf deze controle telkens korte storingen (meldingen in het beheer) terwijl mail gewoon
+// werkte. Nu: netjes EHLO en QUIT (een kale verbinding die meteen weer sluit lijkt op een poortscan en wordt door
+// mailservers soms tijdelijk geblokkeerd), en bij een mislukte poging na 3 s nog één nieuwe poging vóór "storing".
+export const SMTP_RETRY_DELAY_MS = 3_000;
 async function checkSmtp(ctx: Ctx): Promise<CheckResult> {
   const host = ctx.env("BINGR_SMTP_HOST");
   if (!host) return { ok: true, skip: true, error: "niet ingesteld" };
   const port = Number(ctx.env("BINGR_SMTP_PORT") || 465);
+  const first = await smtpProbe(host, port).catch((e) => ({ ok: false, error: shortError(e) }) as CheckResult);
+  if (first.ok) return first;
+  await new Promise((r) => setTimeout(r, SMTP_RETRY_DELAY_MS));
+  const second = await smtpProbe(host, port).catch((e) => ({ ok: false, error: shortError(e) }) as CheckResult);
+  return second.ok ? { ...second, degraded: true, detail: "tweede poging" } : second;
+}
+
+async function smtpProbe(host: string, port: number): Promise<CheckResult> {
   const t = now();
   let conn: Deno.Conn | null = null;
+  const enc = new TextEncoder(), dec = new TextDecoder();
+  const readLine = async (c: Deno.Conn) => {
+    const buf = new Uint8Array(1024);
+    const n = await c.read(buf);
+    return dec.decode(buf.subarray(0, n ?? 0));
+  };
   try {
     return await withTimeout(async () => {
       conn = port === 465 ? await Deno.connectTls({ hostname: host, port }) : await Deno.connect({ hostname: host, port });
-      const buf = new Uint8Array(512);
-      const n = await conn.read(buf);
+      const c = conn as Deno.Conn;
+      const line = await readLine(c);
       const ms = since(t);
-      const line = new TextDecoder().decode(buf.subarray(0, n ?? 0));
-      try { await conn.write(new TextEncoder().encode("QUIT\r\n")); } catch { /* */ }
       if (!line.startsWith("220")) return { ok: false, ms, error: `onverwacht antwoord: ${line.slice(0, 40)}` };
+      try {
+        await c.write(enc.encode("EHLO status.bingr.online\r\n"));
+        await readLine(c);
+        await c.write(enc.encode("QUIT\r\n"));
+        await readLine(c);
+      } catch { /* afsluiten mag mislukken; de server antwoordde al met 220 */ }
       return { ok: true, ms, code: 220, degraded: slow(ms) };
     });
   } finally {
