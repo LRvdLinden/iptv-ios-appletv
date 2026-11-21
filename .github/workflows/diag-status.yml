@@ -1,5 +1,5 @@
 name: Diagnose status (tijdelijk)
-# Tijdelijk: test of TheIntroDB (openbaar, geen sleutel) tijden geeft voor bekende series.
+# Tijdelijk: alleen tellingen uit ratings_cache (introdb), geen inhoud of persoonsgegevens.
 on:
   push:
     branches: [symboliseren]
@@ -10,17 +10,10 @@ jobs:
   introdb:
     runs-on: ubuntu-latest
     steps:
-      - name: TheIntroDB
+      - name: IntroDB-cache tellen
+        env:
+          TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ secrets.SUPABASE_PROJECT_REF }}
         run: |
-          UA="Bingr/1.1 (+https://bingr.online; support@bingr.online)"
-          for ua in "$UA" "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15" "Deno/2.1.4"; do
-            code=$(curl -s -A "$ua" -o r.json -w '%{http_code}' "https://api.theintrodb.org/v4/media?tmdb_id=1396&season=1&episode=2")
-            echo "UA [${ua:0:20}] -> HTTP $code $(grep -o '<title>[^<]*' r.json | head -1) $(head -c 200 r.json | tr -d '\n' | grep -v DOCTYPE)"
-          done
-          curl -s -A "$UA" -o d.html -w 'docs HTTP %{http_code}\n' https://theintrodb.org/docs || true
-          grep -o -i 'api[ _-]\?key[^<]\{0,120\}' d.html | head -5 || true
-          for q in "1396 1 2" "1399 1 1" "66732 1 1" "94997 1 1" "100088 1 1" "1668 1 1" "60625 1 1" "76479 1 1"; do
-            set -- $q
-            code=$(curl -s -o r.json -w '%{http_code}' "https://api.theintrodb.org/v4/media?tmdb_id=$1&season=$2&episode=$3")
-            echo "tmdb $1 S$2E$3 -> HTTP $code $(head -c 300 r.json)"
-          done
+          q="select count(*) as totaal, count(*) filter (where body->'result' is not null and body->>'result' <> 'null') as gevonden, max(fetched_at) as laatste from ratings_cache where key like 'introdb:%'"
+          curl -s -X POST "https://api.supabase.com/v1/projects/$REF/database/query" -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' -d "$(python3 -c 'import json,sys;print(json.dumps({"query":sys.argv[1]}))' "$q")"; echo
