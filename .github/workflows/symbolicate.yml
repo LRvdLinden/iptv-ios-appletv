@@ -2,6 +2,9 @@ name: Symboliseren
 # Op verzoek: bouwt iOS (Release, generic, zonder signing) met Xcode 27 en vertaalt adressen uit een crashrapport
 # (offsets t.o.v. het Bingr-image) naar functies. Benadering: Léons eigen archief kan iets anders liggen.
 on:
+  push:
+    branches: [symboliseren]
+    paths: ['.github/symbolicate.txt']
   workflow_dispatch:
     inputs:
       offsets:
@@ -20,7 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 (v5.1.0)
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ inputs.ref || 'symboliseren' }}
       - name: Xcode-versie kiezen
         run: |
           sudo xcode-select -s "$(ls -d /Applications/Xcode_27*.app | sort -V | tail -1)"
@@ -39,6 +42,7 @@ jobs:
         env:
           OFFSETS: ${{ inputs.offsets }}
         run: |
+          [ -n "$OFFSETS" ] || OFFSETS="$(cat .github/symbolicate.txt)"
           D="$(find build/Build/Products -name 'Bingr.app.dSYM' -maxdepth 3 | head -1)"
           B="$D/Contents/Resources/DWARF/Bingr"
           ls -la "$B"
