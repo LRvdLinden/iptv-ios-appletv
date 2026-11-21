@@ -17,7 +17,7 @@ export const PREMIUM_PLANS: PremiumPlan[] = ["month", "half", "year", "lifetime"
 const APPLE = "nl.lrvdlinden.bingr.";
 /** Apple-product-id's van Premium (StoreKit 2). De oude Lifetime (€ 4,99) blijft geldig voor herstellen. */
 export const APPLE_PREMIUM_PRODUCTS: Record<PremiumPlan, string> = {
-  month: `${APPLE}premium.monthly`, half: `${APPLE}premium.sixmonths`, year: `${APPLE}premium.yearly`, lifetime: `${APPLE}lifetime4999`,
+  month: `bingr.premium.monthly`, half: `bingr.premium.sixmonths`, year: `bingr.premium.yearly`, lifetime: `bingr.lifetime4999`,
 };
 export const APPLE_LIFETIME_LEGACY = `${APPLE}lifetime`;
 export const DEFAULT_PRICES: Record<PremiumPlan, number> = { month: 499, half: 1999, year: 2999, lifetime: 4999 };

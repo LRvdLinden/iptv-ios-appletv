@@ -3522,8 +3522,8 @@ do {
     eq(PremiumPlan181.from(productID: products["lifetime_legacy"] as? String ?? ""), .lifetime, "oude Lifetime blijft Lifetime")
     eq(PremiumPlan181.from(productID: "nl.lrvdlinden.bingr.premium.week"), nil, "onbekend product")
     check(!PremiumVerify181.relevant(productID: "nl.lrvdlinden.bingr.lifetime", revoked: false), "oude Lifetime via LifetimeStore")
-    check(PremiumVerify181.relevant(productID: "nl.lrvdlinden.bingr.lifetime4999", revoked: false), "Lifetime 49,99 via PremiumStore")
-    check(!PremiumVerify181.relevant(productID: "nl.lrvdlinden.bingr.premium.yearly", revoked: true), "ingetrokken niet")
+    check(PremiumVerify181.relevant(productID: "bingr.lifetime4999", revoked: false), "Lifetime 49,99 via PremiumStore")
+    check(!PremiumVerify181.relevant(productID: "bingr.premium.yearly", revoked: true), "ingetrokken niet")
     // apple-gevallen: het plan uit het product-id
     for c in cases["apple"] as? [[String: Any]] ?? [] {
         let tx = c["tx"] as? [String: Any] ?? [:], ex = c["expect"] as? [String: Any] ?? [:]

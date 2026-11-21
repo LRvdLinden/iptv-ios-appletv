@@ -7,7 +7,7 @@ Het contract met de server staat in `docs/ACCOUNT.md` ("Build 181: Bingr Premium
 
 > **Build 183 (21-11-2026): nieuwe product-id's.** Bij de eerste producten (`premium.month`, `.halfyear`, `.year`,
 > `lifetime49`) stond *Family Sharing* aan; dat kan bij Apple niet meer uit. Die producten worden verwijderd (nog niet
-> ingediend) en vervangen door `premium.monthly`, `premium.sixmonths`, `premium.yearly` en `lifetime4999`, met
+> ingediend) en vervangen door `bingr.premium.monthly`, `bingr.premium.sixmonths`, `bingr.premium.yearly` en `bingr.lifetime4999` (zonder `nl.lrvdlinden.` ervoor), met
 > *Family Sharing* **uit**. De oude id's zijn bij Apple voorgoed bezet en worden nergens meer gebruikt. De interne
 > plannaam `lifetime49` (database, Stripe-metadata) blijft gelijk.
 
@@ -17,10 +17,10 @@ Het contract met de server staat in `docs/ACCOUNT.md` ("Build 181: Bingr Premium
 
   | Plan | Product-id | Type | Prijs (NL) | Proef |
   |---|---|---|---|---|
-  | Maandelijks | `nl.lrvdlinden.bingr.premium.monthly` | automatisch verlengend abonnement | € 4,99 / maand | 3 dagen gratis |
-  | Halfjaarlijks | `nl.lrvdlinden.bingr.premium.sixmonths` | automatisch verlengend abonnement | € 19,99 / 6 maanden | 3 dagen gratis |
-  | Jaarlijks | `nl.lrvdlinden.bingr.premium.yearly` | automatisch verlengend abonnement | € 29,99 / jaar | 3 dagen gratis |
-  | Lifetime | `nl.lrvdlinden.bingr.lifetime4999` | niet-verbruikbaar | € 49,99 eenmalig | geen |
+  | Maandelijks | `bingr.premium.monthly` | automatisch verlengend abonnement | € 4,99 / maand | 3 dagen gratis |
+  | Halfjaarlijks | `bingr.premium.sixmonths` | automatisch verlengend abonnement | € 19,99 / 6 maanden | 3 dagen gratis |
+  | Jaarlijks | `bingr.premium.yearly` | automatisch verlengend abonnement | € 29,99 / jaar | 3 dagen gratis |
+  | Lifetime | `bingr.lifetime4999` | niet-verbruikbaar | € 49,99 eenmalig | geen |
 
 - Kopen met `appAccountToken` = de account-id, daarna `jwsRepresentation` naar `billing` `apple_verify` en pas dan
   `transaction.finish()` (net als Lifetime in build 167). `Transaction.updates` en `Transaction.unfinished` lopen via
@@ -47,7 +47,7 @@ Het contract met de server staat in `docs/ACCOUNT.md` ("Build 181: Bingr Premium
 
 ## Waarom een nieuw Lifetime-product (`lifetime49`)
 
-Gekozen is een **nieuw** niet-verbruikbaar product `nl.lrvdlinden.bingr.lifetime4999`, en **niet** een prijswijziging
+Gekozen is een **nieuw** niet-verbruikbaar product `bingr.lifetime4999`, en **niet** een prijswijziging
 van het bestaande `nl.lrvdlinden.bingr.lifetime`:
 
 - Een prijswijziging in App Store Connect gaat op een vaste datum in voor iedereen, los van de schakelaars in het
@@ -65,9 +65,9 @@ van het bestaande `nl.lrvdlinden.bingr.lifetime`:
    - Lokalisatie van de groep (weergavenaam): NL `Bingr Premium`, EN `Bingr Premium`.
 3. **Drie abonnementen in die groep** (*Create* in de groep), elk:
    - Referentienaam en product-id:
-     - `Bingr Premium maand` → `nl.lrvdlinden.bingr.premium.monthly`, duur **1 maand**, prijs **€ 4,99**.
-     - `Bingr Premium halfjaar` → `nl.lrvdlinden.bingr.premium.sixmonths`, duur **6 maanden**, prijs **€ 19,99**.
-     - `Bingr Premium jaar` → `nl.lrvdlinden.bingr.premium.yearly`, duur **1 jaar**, prijs **€ 29,99**.
+     - `Bingr Premium maand` → `bingr.premium.monthly`, duur **1 maand**, prijs **€ 4,99**.
+     - `Bingr Premium halfjaar` → `bingr.premium.sixmonths`, duur **6 maanden**, prijs **€ 19,99**.
+     - `Bingr Premium jaar` → `bingr.premium.yearly`, duur **1 jaar**, prijs **€ 29,99**.
    - Prijs: kies Nederland als basisland met het bedrag hierboven en laat Apple de andere landen afleiden.
    - *Family Sharing*: uit (één account per abonnement, zoals Lifetime).
    - Lokalisaties (NL en EN), zie de teksten hieronder.
@@ -76,7 +76,7 @@ van het bestaande `nl.lrvdlinden.bingr.lifetime`:
 4. **Niveaus in de groep** (*Subscription Levels*, sleep in deze volgorde): 1 = jaar, 2 = halfjaar, 3 = maand.
    Dan is jaar een upgrade (gaat meteen in) en maand een downgrade (gaat in bij de volgende verlenging).
 5. **Lifetime € 49,99**: *In-App Purchases* > *Create*, type **Non-Consumable**, referentienaam
-   `Bingr Lifetime 49,99`, product-id `nl.lrvdlinden.bingr.lifetime4999`, prijs **€ 49,99**, *Family Sharing* uit,
+   `Bingr Lifetime 49,99`, product-id `bingr.lifetime4999`, prijs **€ 49,99**, *Family Sharing* uit,
    lokalisaties NL en EN (zie hieronder). Het oude `nl.lrvdlinden.bingr.lifetime` laten staan zoals het is.
 6. **App Store Server Notifications**: App > *App Information* > *App Store Server Notifications*: versie **2**,
    productie- en sandbox-URL zijn de bestaande `apple-notify`-URL (zoals voor Lifetime). Niets veranderen als dat
@@ -131,9 +131,9 @@ van het bestaande `nl.lrvdlinden.bingr.lifetime`:
 
 # Build 181: Bingr Premium in the Apple apps (EN)
 
-- Four StoreKit 2 products: `nl.lrvdlinden.bingr.premium.monthly` (€ 4.99 / month), `.halfyear` (€ 19.99 / 6 months)
+- Four StoreKit 2 products: `bingr.premium.monthly` (€ 4.99 / month), `.halfyear` (€ 19.99 / 6 months)
   and `.year` (€ 29.99 / year) in the subscription group *Bingr Premium*, each with a 3-day free introductory offer,
-  plus the non-consumable `nl.lrvdlinden.bingr.lifetime4999` (€ 49.99, no trial). The existing
+  plus the non-consumable `bingr.lifetime4999` (€ 49.99, no trial). The existing
   `nl.lrvdlinden.bingr.lifetime` stays as it is for existing buyers (restore keeps working); the server accepts both
   as Lifetime.
 - The paywall "Choose your plan" appears only when the server says this account needs Premium (switches

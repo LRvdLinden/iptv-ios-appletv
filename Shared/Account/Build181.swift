@@ -16,10 +16,10 @@ enum PremiumPlan181: String, Codable, CaseIterable, Equatable {
 
     var productID: String {
         switch self {
-        case .month: return "nl.lrvdlinden.bingr.premium.monthly"
-        case .half: return "nl.lrvdlinden.bingr.premium.sixmonths"
-        case .year: return "nl.lrvdlinden.bingr.premium.yearly"
-        case .lifetime: return "nl.lrvdlinden.bingr.lifetime4999"
+        case .month: return "bingr.premium.monthly"
+        case .half: return "bingr.premium.sixmonths"
+        case .year: return "bingr.premium.yearly"
+        case .lifetime: return "bingr.lifetime4999"
         }
     }
 

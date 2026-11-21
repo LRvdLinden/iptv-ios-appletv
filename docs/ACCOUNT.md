@@ -2753,10 +2753,10 @@ Bingr krijgt abonnementen naast Lifetime. **Alles staat standaard uit** (`app_se
 
 | Plan (`plan`, overal deze sleutels; ook in `prices` en `products`) | Prijs (NL, incl. btw) | Proef | Apple (StoreKit 2) | Stripe (`lookup_key`) |
 |---|---|---|---|---|
-| `month` | € 4,99 / maand | 3 dagen | `nl.lrvdlinden.bingr.premium.monthly` (abonnement) | `bingr_premium_month_eur_499` |
-| `half` | € 19,99 / 6 maanden ("33% voordeliger") | 3 dagen | `nl.lrvdlinden.bingr.premium.sixmonths` (abonnement) | `bingr_premium_half_eur_1999` |
-| `year` | € 29,99 / jaar (uitgelicht: "Meest gekozen · 50% voordeliger") | 3 dagen | `nl.lrvdlinden.bingr.premium.yearly` (abonnement) | `bingr_premium_year_eur_2999` |
-| `lifetime` | € 49,99 eenmalig | nee | `nl.lrvdlinden.bingr.lifetime4999` (niet-verbruikbaar) | `bingr_premium_lifetime_eur_4999` |
+| `month` | € 4,99 / maand | 3 dagen | `bingr.premium.monthly` (abonnement) | `bingr_premium_month_eur_499` |
+| `half` | € 19,99 / 6 maanden ("33% voordeliger") | 3 dagen | `bingr.premium.sixmonths` (abonnement) | `bingr_premium_half_eur_1999` |
+| `year` | € 29,99 / jaar (uitgelicht: "Meest gekozen · 50% voordeliger") | 3 dagen | `bingr.premium.yearly` (abonnement) | `bingr_premium_year_eur_2999` |
+| `lifetime` | € 49,99 eenmalig | nee | `bingr.lifetime4999` (niet-verbruikbaar) | `bingr_premium_lifetime_eur_4999` |
 
 - De drie abonnementen zitten bij Apple in één abonnementsgroep **"Bingr Premium"** (elk met een introductieaanbod van 3 dagen gratis), bij Stripe in het product `bingr_premium` (recurring, EUR); Lifetime in het product `bingr_premium_lifetime` (one-time). Het voordeel-percentage is t.o.v. 12 × de maandprijs (19,99 × 2 = 39,98 vs 59,88 → 33 %; 29,99 vs 59,88 → 50 %).
 - **Bestaande Lifetime-product-id** `nl.lrvdlinden.bingr.lifetime` (€ 4,99) blijft geldig voor herstellen en `apple_verify`, en wordt niet van prijs veranderd. Een nieuw id voor € 49,99 is het veiligst: bestaande kopers houden exact hun transactie, de omzetrapporten blijven per prijs te lezen, en oudere Apple-apps (≤ 180) verkopen geen € 49,99-product onder de oude naam. Léon haalt het oude product uit de verkoop zodra 1.1.0 in de App Store staat (herstellen blijft werken).
@@ -2816,8 +2816,8 @@ Alle bestaande velden blijven. Er komt **altijd** een veld `premium` bij:
   "expires_at": "2026-12-04T10:00:00Z", "trial_until": "2026-12-04T10:00:00Z", "will_renew": true,
   "required": true, "trial_eligible": false, "legacy_offer": false, "manage": "stripe", "test": false,
   "prices": { "month": 499, "half": 1999, "year": 2999, "lifetime": 4999, "currency": "eur" },
-  "products": { "month": "nl.lrvdlinden.bingr.premium.monthly", "half": "nl.lrvdlinden.bingr.premium.sixmonths",
-                "year": "nl.lrvdlinden.bingr.premium.yearly", "lifetime": "nl.lrvdlinden.bingr.lifetime4999" }
+  "products": { "month": "bingr.premium.monthly", "half": "bingr.premium.sixmonths",
+                "year": "bingr.premium.yearly", "lifetime": "bingr.lifetime4999" }
 }
 ```
 
@@ -2877,7 +2877,7 @@ Alle bestaande velden blijven. Er komt **altijd** een veld `premium` bij:
 **`status`** (bestaand): bij een sessie met `mode=subscription` ook vastleggen (vangnet) en `{paid, status, payment_status, plan, premium}` met `paid` = sessie `complete`.
 
 **`apple_verify`** (bestaand, `{signed_transaction, signed_renewal_info?, platform?}`):
-- Producten: `nl.lrvdlinden.bingr.lifetime` (oud) en `nl.lrvdlinden.bingr.lifetime4999` → Lifetime zoals nu (`billing_purchases.plan` `lifetime` / `lifetime49`); de drie abonnementen → `premium_subscriptions` (provider `apple`, uniek op `originalTransactionId`). Andere producten: 400 `bad_transaction` `wrong_product`.
+- Producten: `nl.lrvdlinden.bingr.lifetime` (oud) en `bingr.lifetime4999` → Lifetime zoals nu (`billing_purchases.plan` `lifetime` / `lifetime49`); de drie abonnementen → `premium_subscriptions` (provider `apple`, uniek op `originalTransactionId`). Andere producten: 400 `bad_transaction` `wrong_product`.
 - Abonnement: `expires_at` = `expiresDate`; proef als `offerDiscountType` = `FREE_TRIAL` (of `offerType` 1 met prijs 0) → `trial_until` = `expiresDate` en een `premium_trials`-rij; `will_renew` uit `signed_renewal_info` (`autoRenewStatus` 1), anders true; `revocationDate` → `revoked`. Een `originalTransactionId` hoort bij één account (eerste die claimt); staat de rij er al zonder account (notificatie kwam eerst), dan koppelt hij aan dit account.
 - Antwoord `{plan, premium, entitlements}` met `plan` = het Premium-plan van deze transactie: `month`, `half`, `year` of `lifetime` (beide Lifetime-producten geven `lifetime`; zelfde vorm als build 167). Fouten zoals build 167.
 - Apple bepaalt zelf of een Apple ID de introductieproef krijgt; de server kan een tweede proef op een ander Apple ID niet tegenhouden. De app toont "3 dagen gratis" alleen als `premium.trial_eligible` én StoreKit `isEligibleForIntroOffer` true zijn.
