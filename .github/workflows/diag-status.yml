@@ -16,7 +16,7 @@ jobs:
           K=sb_publishable_
           B=https://vjewsncmsxmhmhnoxwqx.supabase.co/functions/v1/billing/config
           for p in web android ios; do
-            echo "== $p"; curl -s -X POST "$B" -H 'content-type: application/json' -H "apikey: $(curl -s https://raw.githubusercontent.com/LRvdLinden/iptv-ios-appletv/main/Shared/Config/Supabase.swift | grep -o 'sb_publishable_[A-Za-z0-9_-]*' | head -1)" -d "{\"platform\":\"$p\"}" | python3 -c "import json,sys;d=json.load(sys.stdin);p=d.get('premium') or {};print({k:p.get(k) for k in ('enabled','web','apple','required_new','new_from','existing_from','trial_days','show_prices_web','stripe_ready','prices')})"
+            echo "== $p"; curl -s -X POST "$B" -H 'content-type: application/json' -H "apikey: $(curl -s https://raw.githubusercontent.com/LRvdLinden/iptv-ios-appletv/main/Shared/Config/Secrets.swift | grep -o 'sb_publishable_[A-Za-z0-9_-]*' | head -1)" -d "{\"platform\":\"$p\"}" | python3 -c "import json,sys;d=json.load(sys.stdin);p=d.get('premium') or {};print({k:p.get(k) for k in ('enabled','web','apple','required_new','new_from','existing_from','trial_days','show_prices_web','stripe_ready','prices')})"
           done
           echo "== bingr.online"; curl -s https://bingr.online/ | grep -o '1\.[01]\.[0-9] (build [0-9]*)' | head -1
           curl -s https://bingr.online/assets/changelog.json | head -c 200; echo
