@@ -1,5 +1,5 @@
 name: Diagnose status (tijdelijk)
-# Alleen openbare gegevens van de statusfunctie (zelfde als bingr.online/status); geen sleutels, geen adressen.
+# Tijdelijk: controleert het TLS-certificaat van de mailserver. Logt alleen de uitkomst, nooit de host of gegevens.
 on:
   push:
     branches: [symboliseren]
@@ -7,24 +7,40 @@ on:
 permissions:
   contents: read
 jobs:
-  status:
+  smtp:
     runs-on: ubuntu-latest
     steps:
-      - name: Openbare status van e-mail (SMTP)
+      - name: TLS van de mailserver
+        env:
+          S_HOST: ${{ secrets.BINGR_SMTP_HOST }}
+          S_PORT: ${{ secrets.BINGR_SMTP_PORT }}
         run: |
-          U=https://vjewsncmsxmhmhnoxwqx.supabase.co/functions/v1/status
-          curl -s "$U?action=public" > p.json
-          python3 - <<'PY'
-          import json
-          d=json.load(open('p.json'))
-          def walk(o,path=''):
-              if isinstance(o,dict):
-                  if any(str(v).lower() in ('smtp',) for v in o.values()) or 'smtp' in json.dumps(o).lower()[:400] and 'id' in o:
-                      print(path, json.dumps(o)[:800])
-                  for k,v in o.items(): walk(v,path+'.'+k)
-              elif isinstance(o,list):
-                  for i,v in enumerate(o): walk(v,path+f'[{i}]')
-          print('keys:', list(d.keys()) if isinstance(d,dict) else type(d))
-          walk(d)
+          python3 -I - <<'PY'
+          import os, socket, ssl, time, datetime
+          h = os.environ.get("S_HOST",""); p = int(os.environ.get("S_PORT") or 465)
+          if not h: print("::warning::geen host"); raise SystemExit
+          for i in range(5):
+              t=time.time()
+              try:
+                  ctx = ssl.create_default_context()
+                  with socket.create_connection((h, p), timeout=15) as s:
+                      with ctx.wrap_socket(s, server_hostname=h) as ss:
+                          c = ss.getpeercert(); banner = ss.recv(200).decode(errors="replace")[:3]
+                          na = datetime.datetime.strptime(c["notAfter"], "%b %d %H:%M:%S %Y %Z")
+                          days = (na - datetime.datetime.utcnow()).days
+                          print(f"poging {i+1}: OK, begroeting {banner}, certificaat nog {days} dagen geldig, {round((time.time()-t)*1000)} ms")
+              except ssl.SSLCertVerificationError as e:
+                  print(f"poging {i+1}: CERTIFICAATFOUT: {e.verify_message} (code {e.verify_code})")
+                  try:
+                      ctx2 = ssl.create_default_context(); ctx2.check_hostname=False; ctx2.verify_mode=ssl.CERT_NONE
+                      with socket.create_connection((h, p), timeout=15) as s:
+                          with ctx2.wrap_socket(s, server_hostname=h) as ss:
+                              der = ss.getpeercert(binary_form=True)
+                      import subprocess
+                      out = subprocess.run(["openssl","x509","-inform","DER","-noout","-enddate","-issuer"], input=der, capture_output=True).stdout.decode()
+                      print("  uitgever/einddatum:", " | ".join(l.split("=",1)[-1] if l.startswith("notAfter") else l for l in out.splitlines() if not "CN" in l or "issuer" in l)[:200])
+                  except Exception as e2: print("  (geen details)", type(e2).__name__)
+              except Exception as e:
+                  print(f"poging {i+1}: FOUT {type(e).__name__}: {str(e)[:80]}  ({round((time.time()-t)*1000)} ms)")
+              time.sleep(3)
           PY
-          curl -s "$U?action=history&page=1" | python3 -c "import json,sys;d=json.load(sys.stdin);s=json.dumps(d);i=s.lower().find('smtp');print(s[max(0,i-600):i+1500] if i>=0 else s[:1500])"
