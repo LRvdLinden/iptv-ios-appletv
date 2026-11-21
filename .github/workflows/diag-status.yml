@@ -19,7 +19,7 @@ jobs:
           curl -s -X POST "https://api.supabase.com/v1/projects/$REF/database/query" -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' -d "$(python3 -c 'import json,sys;print(json.dumps({"query":sys.argv[1]}))' "$q")"; echo
           sql="select event_message, count(*) as n from function_logs where event_message like '%introdb%' group by event_message order by n desc limit 10"
           start=$(date -u -d '-6 days' +%Y-%m-%dT%H:%M:%SZ); end=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          curl -s -G "https://api.supabase.com/v1/projects/$REF/analytics/endpoints/logs.all" -H "Authorization: Bearer $TOKEN" --data-urlencode "sql=$sql" --data-urlencode "iso_timestamp_start=$start" --data-urlencode "iso_timestamp_end=$end" | head -c 1500; echo
+          curl -s -G "https://api.supabase.com/v1/projects/$REF/analytics/endpoints/logs" -H "Authorization: Bearer $TOKEN" --data-urlencode "sql=$sql" --data-urlencode "iso_timestamp_start=$start" --data-urlencode "iso_timestamp_end=$end" | head -c 1500; echo
           sql2="select r.status_code as code, count(*) as n from function_edge_logs cross join unnest(metadata) as m cross join unnest(m.request) as q cross join unnest(m.response) as r where q.path like '%/introdb%' group by code order by n desc"
-          curl -s -G "https://api.supabase.com/v1/projects/$REF/analytics/endpoints/logs.all" -H "Authorization: Bearer $TOKEN" --data-urlencode "sql=$sql2" --data-urlencode "iso_timestamp_start=$start" --data-urlencode "iso_timestamp_end=$end" | head -c 1500; echo
+          curl -s -G "https://api.supabase.com/v1/projects/$REF/analytics/endpoints/logs" -H "Authorization: Bearer $TOKEN" --data-urlencode "sql=$sql2" --data-urlencode "iso_timestamp_start=$start" --data-urlencode "iso_timestamp_end=$end" | head -c 1500; echo
 
