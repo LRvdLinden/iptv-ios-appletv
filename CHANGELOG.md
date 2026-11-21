@@ -4,6 +4,27 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.1.1 · Build 186
+_21 november 2026_
+
+### iOS, iPadOS, tvOS, macOS, Android en Android TV
+
+**Verbeterd**
+
+- Intro markeren staat niet meer in de speler als de tijden van de intro of samenvatting al bekend zijn
+
+### iOS, iPadOS, tvOS, macOS, Android, Android TV en Website
+
+**Opgelost**
+
+- Intro overslaan en Samenvatting overslaan werken nu ook bij series waarvoor je IPTV-server geen TMDB-id meestuurt
+
+### Server
+
+**Verbeterd**
+
+- De server zoekt zelf de serie op bij TMDB om de tijden van intro, samenvatting en aftiteling te vinden
+
 ## Versie 1.1.0 · Build 185
 _21 november 2026_
 

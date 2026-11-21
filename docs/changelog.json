@@ -1,5 +1,47 @@
 [
  {
+  "build": 186,
+  "version": "1.1.1",
+  "date": "2026-11-21",
+  "items": [
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web"
+    ],
+    "nl": "Intro overslaan en Samenvatting overslaan werken nu ook bij series waarvoor je IPTV-server geen TMDB-id meestuurt",
+    "en": "Skip intro and Skip recap now also work for series your IPTV server sends without a TMDB ID"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv"
+    ],
+    "nl": "Intro markeren staat niet meer in de speler als de tijden van de intro of samenvatting al bekend zijn",
+    "en": "Mark intro no longer shows in the player when the intro or recap times are already known"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "server"
+    ],
+    "nl": "De server zoekt zelf de serie op bij TMDB om de tijden van intro, samenvatting en aftiteling te vinden",
+    "en": "The server now looks up the series on TMDB itself to find intro, recap and credits times"
+   }
+  ]
+ },
+ {
   "build": 185,
   "version": "1.1.0",
   "date": "2026-11-21",
