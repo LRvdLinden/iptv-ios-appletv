@@ -2,7 +2,7 @@
 // de webhook-beslissingen en "enabled false = zoals nu". Draaien: deno test --allow-read supabase/functions/_shared/premium_test.ts
 import { assert, assertEquals } from "jsr:@std/assert@1";
 import {
-  accessUntil, appleNotifyStatus, appleProduct, decidePremium, DEFAULT_PREMIUM, effectivePlanRow, lifetime49CheckoutParams, lookupKey,
+  accessUntil, appleLegacyBlocked, appleNotifyStatus, appleProduct, decidePremium, DEFAULT_PREMIUM, effectivePlanRow, lifetime49CheckoutParams, lookupKey,
   normalizePremium, paymentFromInvoice, portalReturnUrl, premiumScreen, premiumView, priceParams, publicPremium, stripeSubPlan,
   stripeSubStatus, subFromStripe, subscriptionCheckoutParams, type SubRow,
 } from "./premium.ts";
@@ -165,4 +165,18 @@ Deno.test("publieke config", () => {
   const on = publicPremium(s, "other", "test", Date.parse("2026-12-05T10:00:00Z"));
   assertEquals([on.enabled, on.web, on.apple, on.existing_after, on.trial_days, on.stripe_ready], [true, true, false, true, 3, true]);
   assertEquals(publicPremium(s, "apple", "live", Date.parse("2026-12-05T10:00:00Z")).enabled, false);
+});
+
+Deno.test("build 185: geen oude Lifetime in de Apple-apps voor nieuwe web/Android-accounts", () => {
+  const now = Date.parse("2026-11-21T12:00:00Z");
+  const on = { ...DEFAULT_PREMIUM, enabled: true, new_from_web: "2026-11-21T09:00:00Z", new_from_apple: null };
+  const nieuw = "2026-11-21T10:00:00Z", oud = "2026-11-01T10:00:00Z";
+  assertEquals(appleLegacyBlocked(on, "apple", nieuw, false, now), true);
+  assertEquals(appleLegacyBlocked(on, "apple", oud, false, now), false); // bestaand account: tot 1 december zoals nu
+  assertEquals(appleLegacyBlocked(on, "other", nieuw, false, now), false); // op web/Android geen StoreKit
+  assertEquals(appleLegacyBlocked(on, "apple", nieuw, true, now), false); // heeft al Lifetime
+  assertEquals(appleLegacyBlocked({ ...on, new_from_apple: "2026-11-21T11:00:00Z" }, "apple", nieuw, false, now), false); // Apple doet mee
+  assertEquals(appleLegacyBlocked({ ...on, enabled: false }, "apple", nieuw, false, now), false);
+  assertEquals(appleLegacyBlocked({ ...on, new_from_web: null }, "apple", nieuw, false, now), false);
+  assertEquals(appleLegacyBlocked(on, "apple", null, false, now), false);
 });

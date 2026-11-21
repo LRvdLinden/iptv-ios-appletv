@@ -186,6 +186,8 @@ export type LifetimeContext = {
   now?: number;
   /** build 181: premiumView van dit account op dit platform (met access); doet de groep mee, dan bepaalt die access */
   premium?: PremiumView & { access?: "full" | "activate" | null };
+  /** build 185: geen koopknop voor de oude Lifetime in de Apple-apps (zie appleLegacyBlocked) */
+  appleLegacyBlocked?: boolean;
 };
 /**
  * Entitlements van build 167: het bestaande object (plans.ts) met access, iap en upgrade.link_eu_apple erbij, en
@@ -199,7 +201,7 @@ export function withLifetime(base: Entitlements, c: LifetimeContext): LifetimeEn
   const out: LifetimeEntitlements = {
     ...base,
     access: a.access,
-    iap: { apple: c.iap.apple, product_id: APPLE_PRODUCT_ID },
+    iap: { apple: c.iap.apple && !c.appleLegacyBlocked, product_id: APPLE_PRODUCT_ID },
     upgrade: { ...base.upgrade, link_eu_apple: c.euApple },
   };
   if (c.premium) {

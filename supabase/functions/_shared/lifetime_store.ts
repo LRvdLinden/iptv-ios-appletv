@@ -2,9 +2,9 @@
 // lifetime_codes in supabase/schema.sql). Gedeeld door device-auth, billing en stripe-webhook. Fouten: alleen een code.
 import { entitlements, normalizePlan, normalizeUpgradeLink, type Platform, type PlanRow } from "./plans.ts";
 import {
-  type CodeRow, euAppleLink, type LifetimeEntitlements, withLifetime, type IapSettings, type LifetimeSettings, normalizeIap, normalizeLifetime, normalizeCode,
+  type CodeRow, euAppleLink, type LifetimeEntitlements, paidGroup, withLifetime, type IapSettings, type LifetimeSettings, normalizeIap, normalizeLifetime, normalizeCode,
 } from "./lifetime.ts";
-import { effectivePlanRow, normalizePremium, type PremiumSettings, premiumView } from "./premium.ts";
+import { appleLegacyBlocked, effectivePlanRow, normalizePremium, type PremiumSettings, premiumView } from "./premium.ts";
 import { premiumInfo } from "./premium_store.ts";
 
 // deno-lint-ignore no-explicit-any
@@ -81,6 +81,7 @@ export async function buildEntitlements(db: Db, userId: string, createdAt: strin
   }
   return withLifetime(entitlements(row, normalizeUpgradeLink(s.upgradeLink), platform), {
     settings: s.lifetime, iap: s.iap, euApple: s.euApple, platform, createdAt, code, now,
+    appleLegacyBlocked: appleLegacyBlocked(s.premium, paidGroup(platform), createdAt, normalizePlan(row?.plan) === "lifetime", now),
     premium: premiumView({
       settings: s.premium, now, userId, createdAt, platform, planRow: row, subscription: info.subscription, trialUsed: info.trialUsed,
       hadSubscription: info.hadSubscription,

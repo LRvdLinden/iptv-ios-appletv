@@ -116,6 +116,20 @@ export function effectivePlanRow<T extends PlanRowP>(row: T, now = Date.now()): 
   return Number.isFinite(t) && t > now ? row : { ...row, plan: "free" } as T;
 }
 
+/**
+ * Build 185: mag de Apple-app dit account nog de oude Lifetime (StoreKit, € 4,99) laten kopen? Nee als het account op of
+ * na `new_from_web` is aangemaakt terwijl Premium voor web en Android aan staat en de Apple-groep nog niet meedoet:
+ * anders kon een nieuw web- of Android-account Premium omzeilen met de goedkope oude Lifetime in de Apple-app.
+ * Zulke accounts kopen Premium op web of Android; dat geldt daarna ook in de Apple-apps (één account).
+ */
+export function appleLegacyBlocked(s: PremiumSettings, group: PaidGroup, createdAt: string | null | undefined,
+  isLifetime: boolean, now = Date.now()): boolean {
+  if (group !== "apple" || isLifetime || !s.enabled || !s.new_from_web) return false;
+  if (!groupOn(s, "other", now) || groupOn(s, "apple", now)) return false;
+  const c = createdAt ? Date.parse(createdAt) : NaN, f = Date.parse(s.new_from_web);
+  return Number.isFinite(c) && Number.isFinite(f) && c >= f;
+}
+
 export function premiumView(i: PremiumInput): PremiumView & { access: "full" | "activate" | null } {
   const s = i.settings, now = i.now ?? Date.now();
   const test = i.test ?? isTestUser(s, i.userId);
