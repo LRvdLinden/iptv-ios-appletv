@@ -106,36 +106,54 @@ struct DiscoverEntry: Identifiable, Hashable {
 final class DiscoverKnown: @unchecked Sendable {
     static let shared = DiscoverKnown()
     private struct Saved: Codable { var item: DiscoverItem; var seen: Date }
+    /// Build 182: het slot beschermt alleen het woordenboek in het geheugen. Lezen van schijf, coderen en wegschrijven
+    /// gebeuren buiten het slot (wegschrijven op een eigen wachtrij). In 1.1.0 (181) bleef de hoofdthread hier in
+    /// `item(_:)` op het slot wachten tijdens het tekenen van Home (Mijn lijst), terwijl een andere thread het slot
+    /// vasthield tijdens schijf- en UserDefaults-werk; iOS sloot de app af (watchdog 0x8BADF00D).
     private let lock = NSLock()
     private var items: [String: Saved]?
     private let key = "discover.known"
+    private let writer = DispatchQueue(label: "bingr.discover.known", qos: .utility)
+    private var pending: [String: Saved]?
 
     private func loaded() -> [String: Saved] {
-        if let items { return items }
+        if let cached = lock.withLock({ items }) { return cached }
+        // buiten het slot lezen; wie het eerst klaar is, wint
         let d = BigDefaults.shared.data(forKey: key).flatMap { try? JSONDecoder().decode([String: Saved].self, from: $0) } ?? [:]
-        items = d
-        return d
+        return lock.withLock {
+            if let items { return items }
+            items = d
+            return d
+        }
     }
 
-    func item(_ id: String) -> DiscoverItem? {
-        lock.lock(); defer { lock.unlock() }
-        return loaded()[id]?.item
-    }
+    func item(_ id: String) -> DiscoverItem? { loaded()[id]?.item }
 
     func contains(_ id: String) -> Bool { item(id) != nil }
 
     func remember(_ list: [DiscoverItem]) {
         guard !list.isEmpty else { return }
-        lock.lock(); defer { lock.unlock() }
-        var all = loaded()
+        _ = loaded()
         let now = Date()
-        for i in list { all[i.id] = Saved(item: i, seen: now) }
-        if all.count > 400 {
-            let keep = all.sorted { $0.value.seen > $1.value.seen }.prefix(400)
-            all = Dictionary(uniqueKeysWithValues: keep.map { ($0.key, $0.value) })
+        let schedule: Bool = lock.withLock {
+            var all = items ?? [:]
+            for i in list { all[i.id] = Saved(item: i, seen: now) }
+            if all.count > 400 {
+                let keep = all.sorted { $0.value.seen > $1.value.seen }.prefix(400)
+                all = Dictionary(uniqueKeysWithValues: keep.map { ($0.key, $0.value) })
+            }
+            items = all
+            let first = pending == nil
+            pending = all
+            return first
         }
-        items = all
-        if let d = try? JSONEncoder().encode(all) { BigDefaults.shared.set(d, forKey: key) }
+        guard schedule else { return }
+        writer.async { [weak self] in
+            guard let self else { return }
+            let snapshot: [String: Saved]? = self.lock.withLock { let p = self.pending; self.pending = nil; return p }
+            guard let snapshot, let d = try? JSONEncoder().encode(snapshot) else { return }
+            BigDefaults.shared.set(d, forKey: self.key)
+        }
     }
 
     /// Sleutel uit Mijn lijst ("<bron>|tmdb-movie-123") → de TMDB-titel, als die bekend is. Build 141: ongeacht de
