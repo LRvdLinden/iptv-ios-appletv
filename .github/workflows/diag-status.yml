@@ -1,5 +1,5 @@
 name: Diagnose status (tijdelijk)
-# Tijdelijk: controleert het TLS-certificaat van de mailserver. Logt alleen de uitkomst, nooit de host of gegevens.
+# Tijdelijk: openbare controle van Premium (billing config) en bingr.online. Geen sleutels, geen persoonsgegevens.
 on:
   push:
     branches: [symboliseren]
@@ -7,40 +7,16 @@ on:
 permissions:
   contents: read
 jobs:
-  smtp:
+  premium:
     runs-on: ubuntu-latest
     steps:
-      - name: TLS van de mailserver
-        env:
-          S_HOST: ${{ secrets.BINGR_SMTP_HOST }}
-          S_PORT: ${{ secrets.BINGR_SMTP_PORT }}
+      - name: Premium en website
         run: |
-          python3 -I - <<'PY'
-          import os, socket, ssl, time, datetime
-          h = os.environ.get("S_HOST",""); p = int(os.environ.get("S_PORT") or 465)
-          if not h: print("::warning::geen host"); raise SystemExit
-          for i in range(5):
-              t=time.time()
-              try:
-                  ctx = ssl.create_default_context()
-                  with socket.create_connection((h, p), timeout=15) as s:
-                      with ctx.wrap_socket(s, server_hostname=h) as ss:
-                          c = ss.getpeercert(); banner = ss.recv(200).decode(errors="replace")[:3]
-                          na = datetime.datetime.strptime(c["notAfter"], "%b %d %H:%M:%S %Y %Z")
-                          days = (na - datetime.datetime.utcnow()).days
-                          print(f"poging {i+1}: OK, begroeting {banner}, certificaat nog {days} dagen geldig, {round((time.time()-t)*1000)} ms")
-              except ssl.SSLCertVerificationError as e:
-                  print(f"poging {i+1}: CERTIFICAATFOUT: {e.verify_message} (code {e.verify_code})")
-                  try:
-                      ctx2 = ssl.create_default_context(); ctx2.check_hostname=False; ctx2.verify_mode=ssl.CERT_NONE
-                      with socket.create_connection((h, p), timeout=15) as s:
-                          with ctx2.wrap_socket(s, server_hostname=h) as ss:
-                              der = ss.getpeercert(binary_form=True)
-                      import subprocess
-                      out = subprocess.run(["openssl","x509","-inform","DER","-noout","-enddate","-issuer"], input=der, capture_output=True).stdout.decode()
-                      print("  uitgever/einddatum:", " | ".join(l.split("=",1)[-1] if l.startswith("notAfter") else l for l in out.splitlines() if not "CN" in l or "issuer" in l)[:200])
-                  except Exception as e2: print("  (geen details)", type(e2).__name__)
-              except Exception as e:
-                  print(f"poging {i+1}: FOUT {type(e).__name__}: {str(e)[:80]}  ({round((time.time()-t)*1000)} ms)")
-              time.sleep(3)
-          PY
+          sleep 240
+          K=sb_publishable_
+          B=https://vjewsncmsxmhmhnoxwqx.supabase.co/functions/v1/billing/config
+          for p in web android ios; do
+            echo "== $p"; curl -s -X POST "$B" -H 'content-type: application/json' -H "apikey: $(curl -s https://raw.githubusercontent.com/LRvdLinden/iptv-ios-appletv/main/Shared/Config/Supabase.swift | grep -o 'sb_publishable_[A-Za-z0-9_-]*' | head -1)" -d "{\"platform\":\"$p\"}" | python3 -c "import json,sys;d=json.load(sys.stdin);p=d.get('premium') or {};print({k:p.get(k) for k in ('enabled','web','apple','required_new','new_from','existing_from','trial_days','show_prices_web','stripe_ready','prices')})"
+          done
+          echo "== bingr.online"; curl -s https://bingr.online/ | grep -o '1\.[01]\.[0-9] (build [0-9]*)' | head -1
+          curl -s https://bingr.online/assets/changelog.json | head -c 200; echo
