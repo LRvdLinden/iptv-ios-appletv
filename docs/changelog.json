@@ -1,5 +1,20 @@
 [
  {
+  "build": 185,
+  "version": "1.1.0",
+  "date": "2026-11-21",
+  "items": [
+   {
+    "type": "improved",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Nieuwe accounts van de webspeler, Windows en Android kiezen Bingr Premium, ook als ze daarna de Apple-apps gebruiken",
+    "en": "New accounts from the web player, Windows and Android choose Bingr Premium, also when they then use the Apple apps"
+   }
+  ]
+ },
+ {
   "build": 184,
   "version": "1.1.0",
   "date": "2026-11-21",

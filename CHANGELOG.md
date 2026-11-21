@@ -4,6 +4,15 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.1.0 · Build 185
+_21 november 2026_
+
+### Server
+
+**Verbeterd**
+
+- Nieuwe accounts van de webspeler, Windows en Android kiezen Bingr Premium, ook als ze daarna de Apple-apps gebruiken
+
 ## Versie 1.1.0 · Build 184
 _21 november 2026_
 
