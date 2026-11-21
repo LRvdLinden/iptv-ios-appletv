@@ -38,7 +38,7 @@
           "locale": "nl"
         }
       ],
-      "productID": "nl.lrvdlinden.bingr.lifetime49",
+      "productID": "nl.lrvdlinden.bingr.lifetime4999",
       "referenceName": "Bingr Lifetime (49,99)",
       "type": "NonConsumable"
     }
@@ -85,7 +85,7 @@
               "locale": "nl"
             }
           ],
-          "productID": "nl.lrvdlinden.bingr.premium.year",
+          "productID": "nl.lrvdlinden.bingr.premium.yearly",
           "recurringSubscriptionPeriod": "P1Y",
           "referenceName": "Bingr Premium – jaar",
           "subscriptionGroupID": "B1810000-0000-4000-8000-000000000181",
@@ -116,7 +116,7 @@
               "locale": "nl"
             }
           ],
-          "productID": "nl.lrvdlinden.bingr.premium.halfyear",
+          "productID": "nl.lrvdlinden.bingr.premium.sixmonths",
           "recurringSubscriptionPeriod": "P6M",
           "referenceName": "Bingr Premium – halfjaar",
           "subscriptionGroupID": "B1810000-0000-4000-8000-000000000181",
@@ -147,7 +147,7 @@
               "locale": "nl"
             }
           ],
-          "productID": "nl.lrvdlinden.bingr.premium.month",
+          "productID": "nl.lrvdlinden.bingr.premium.monthly",
           "recurringSubscriptionPeriod": "P1M",
           "referenceName": "Bingr Premium – maand",
           "subscriptionGroupID": "B1810000-0000-4000-8000-000000000181",

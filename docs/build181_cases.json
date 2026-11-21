@@ -26,10 +26,10 @@
   "test_users": []
  },
  "products": {
-  "month": "nl.lrvdlinden.bingr.premium.month",
-  "half": "nl.lrvdlinden.bingr.premium.halfyear",
-  "year": "nl.lrvdlinden.bingr.premium.year",
-  "lifetime": "nl.lrvdlinden.bingr.lifetime49",
+  "month": "nl.lrvdlinden.bingr.premium.monthly",
+  "half": "nl.lrvdlinden.bingr.premium.sixmonths",
+  "year": "nl.lrvdlinden.bingr.premium.yearly",
+  "lifetime": "nl.lrvdlinden.bingr.lifetime4999",
   "lifetime_legacy": "nl.lrvdlinden.bingr.lifetime"
  },
  "access": [
@@ -1649,7 +1649,7 @@
   {
    "name": "jaar met proef",
    "tx": {
-    "productId": "nl.lrvdlinden.bingr.premium.year",
+    "productId": "nl.lrvdlinden.bingr.premium.yearly",
     "expiresDate": 1764496800000,
     "offerType": 1,
     "offerDiscountType": "FREE_TRIAL",
@@ -1666,7 +1666,7 @@
   {
    "name": "maand zonder proef",
    "tx": {
-    "productId": "nl.lrvdlinden.bingr.premium.month",
+    "productId": "nl.lrvdlinden.bingr.premium.monthly",
     "expiresDate": 1767175200000,
     "price": 4990
    },
@@ -1681,7 +1681,7 @@
   {
    "name": "halfjaar intro met prijs 0 zonder offerDiscountType",
    "tx": {
-    "productId": "nl.lrvdlinden.bingr.premium.halfyear",
+    "productId": "nl.lrvdlinden.bingr.premium.sixmonths",
     "expiresDate": 1764496800000,
     "offerType": 1,
     "price": 0
@@ -1697,7 +1697,7 @@
   {
    "name": "ingetrokken abonnement",
    "tx": {
-    "productId": "nl.lrvdlinden.bingr.premium.year",
+    "productId": "nl.lrvdlinden.bingr.premium.yearly",
     "expiresDate": 1767175200000,
     "revocationDate": 1765000000000
    },
@@ -1712,7 +1712,7 @@
   {
    "name": "Lifetime 49,99",
    "tx": {
-    "productId": "nl.lrvdlinden.bingr.lifetime49",
+    "productId": "nl.lrvdlinden.bingr.lifetime4999",
     "price": 49990,
     "currency": "EUR"
    },

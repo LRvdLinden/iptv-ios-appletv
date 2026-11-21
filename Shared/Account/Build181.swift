@@ -8,7 +8,7 @@ import Foundation
 // Apple-regels: geen webprijzen, geen codes, geen links of QR-codes naar het web. Prijzen alleen uit StoreKit.
 // Alles staat uit tot de server het aanzet (`app_settings.premium`: `new_from_apple`, `existing_from`).
 
-/// De vier plannen. `half` heet in StoreKit `halfyear`.
+/// De vier plannen. `half` heet in StoreKit `sixmonths` (build 183; `halfyear` blijft als plannaam gelezen).
 enum PremiumPlan181: String, Codable, CaseIterable, Equatable {
     case month, half, year, lifetime
 
@@ -16,10 +16,10 @@ enum PremiumPlan181: String, Codable, CaseIterable, Equatable {
 
     var productID: String {
         switch self {
-        case .month: return "nl.lrvdlinden.bingr.premium.month"
-        case .half: return "nl.lrvdlinden.bingr.premium.halfyear"
-        case .year: return "nl.lrvdlinden.bingr.premium.year"
-        case .lifetime: return "nl.lrvdlinden.bingr.lifetime49"
+        case .month: return "nl.lrvdlinden.bingr.premium.monthly"
+        case .half: return "nl.lrvdlinden.bingr.premium.sixmonths"
+        case .year: return "nl.lrvdlinden.bingr.premium.yearly"
+        case .lifetime: return "nl.lrvdlinden.bingr.lifetime4999"
         }
     }
 
