@@ -12,6 +12,13 @@ jobs:
     steps:
       - name: TheIntroDB
         run: |
+          UA="Bingr/1.1 (+https://bingr.online; support@bingr.online)"
+          for ua in "$UA" "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15" "Deno/2.1.4"; do
+            code=$(curl -s -A "$ua" -o r.json -w '%{http_code}' "https://api.theintrodb.org/v4/media?tmdb_id=1396&season=1&episode=2")
+            echo "UA [${ua:0:20}] -> HTTP $code $(grep -o '<title>[^<]*' r.json | head -1) $(head -c 200 r.json | tr -d '\n' | grep -v DOCTYPE)"
+          done
+          curl -s -A "$UA" -o d.html -w 'docs HTTP %{http_code}\n' https://theintrodb.org/docs || true
+          grep -o -i 'api[ _-]\?key[^<]\{0,120\}' d.html | head -5 || true
           for q in "1396 1 2" "1399 1 1" "66732 1 1" "94997 1 1" "100088 1 1" "1668 1 1" "60625 1 1" "76479 1 1"; do
             set -- $q
             code=$(curl -s -o r.json -w '%{http_code}' "https://api.theintrodb.org/v4/media?tmdb_id=$1&season=$2&episode=$3")
