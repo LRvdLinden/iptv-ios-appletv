@@ -4,9 +4,14 @@
 //   200 { ok: true, intro: {start,end}|null, recap: {start,end}|null, credits: {start}|null, cached }
 //   200 { ok: false, error: "not_found" | "unavailable" } · 400 bad_request · 401 not_signed_in · 405 · 429 rate_limited
 // Cache: tabel ratings_cache (sleutel introdb:<tmdb>:<seizoen>:<aflevering>), gevonden 30 dagen, niet gevonden 1 dag.
+// Build 186: zonder tmdb ook POST { title, year?, imdb?, season, episode }: de server zoekt het TMDB-id van de serie
+// (function-secret BINGR_TMDB_API_KEY, nooit in een antwoord of log) en bewaart het in ratings_cache onder
+// introdb-show:<genormaliseerde titel>:<jaar> (gevonden 30 dagen, niet gevonden 1 dag).
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { BANNED_BODY, bannedUntilActive, isBanError } from "../_shared/ban.ts";
-import { cacheKey, fresh, parseBody, PER_MINUTE, type Result, toResult, url } from "./logic.ts";
+import {
+  cacheKey, fresh, type Lookup, parseBody, PER_MINUTE, type Result, showId, showKey, showQueries, tmdbAuth, toResult, url, type Want,
+} from "./logic.ts";
 
 const env = (k: string) => Deno.env.get(k);
 const admin = createClient(env("SUPABASE_URL")!, env("SUPABASE_SERVICE_ROLE_KEY")!, {
@@ -37,6 +42,38 @@ async function limited(user: string): Promise<boolean> {
   return data === false;
 }
 
+const TMDB = "https://api.themoviedb.org/3";
+const TMDB_KEY = env("BINGR_TMDB_API_KEY") ?? "";
+
+/** TMDB-id van de serie: eerst uit de cache, anders /find (imdb), /search/tv met en zonder jaar. undefined = TMDB onbereikbaar. */
+async function resolveShow(l: Lookup): Promise<number | null | undefined> {
+  const key = showKey(l);
+  const { data: row } = await admin.from("ratings_cache").select("body,fetched_at").eq("key", key).maybeSingle();
+  const known = (row?.body as { tmdb?: number | null } | undefined)?.tmdb ?? null;
+  if (row && fresh(row.fetched_at, known !== null, Date.now())) return known;
+  const a = tmdbAuth(TMDB_KEY);
+  if (!a.header && !a.param) return row ? known : undefined;
+  let id: number | null = null;
+  try {
+    for (const [path, q] of showQueries(l)) {
+      const u = new URL(TMDB + path);
+      for (const [k, v] of Object.entries(q)) u.searchParams.set(k, v);
+      if (a.param) u.searchParams.set("api_key", a.param);
+      const r = await fetch(u, { headers: { Accept: "application/json", ...(a.header ? { Authorization: a.header } : {}) }, signal: AbortSignal.timeout(6000) });
+      if (r.status === 404) { await r.body?.cancel(); continue; }
+      if (!r.ok) { await r.body?.cancel(); throw new Error(`tmdb_${r.status}`); }
+      id = showId(await r.json());
+      if (id) break;
+    }
+  } catch (e) {
+    console.error("introdb tmdb", e instanceof Error ? e.message.slice(0, 40) : "fout");
+    return row ? known : undefined;
+  }
+  const { error } = await admin.from("ratings_cache").upsert({ key, body: { tmdb: id }, fetched_at: new Date().toISOString() });
+  if (error) console.error("introdb cache", error.message);
+  return id;
+}
+
 function answer(r: Result | null, cached: boolean): Response {
   return r ? json({ ok: true, ...r, cached }) : json({ ok: false, error: "not_found", cached });
 }
@@ -46,9 +83,16 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "method" }, 405);
   const user = await authed(req);
   if (user instanceof Response) return user;
-  const want = parseBody(await req.json().catch(() => null));
-  if (!want) return json({ error: "bad_request" }, 400);
+  const asked = parseBody(await req.json().catch(() => null));
+  if (!asked) return json({ error: "bad_request" }, 400);
   if (await limited(user.id)) return json({ error: "rate_limited" }, 429);
+  let want: Want;
+  if (asked.tmdb === null) {
+    const id = await resolveShow(asked);
+    if (id === undefined) return json({ ok: false, error: "unavailable" });
+    if (id === null) return answer(null, true);
+    want = { tmdb: id, imdb: asked.imdb, season: asked.season, episode: asked.episode };
+  } else want = asked;
   const key = cacheKey(want);
   const { data: row } = await admin.from("ratings_cache").select("body,fetched_at").eq("key", key).maybeSingle();
   const cachedResult = (row?.body as { result?: Result | null } | undefined)?.result ?? null;

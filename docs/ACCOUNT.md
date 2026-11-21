@@ -2666,6 +2666,13 @@ Server-functie **`introdb`** (zelfde aanroep als `ratings`; een eventuele sleute
 - Tijden in seconden vanaf het begin van de aflevering; `ok: false` (`unavailable`/`not_found`) = de bestaande detectie
   (build 52 intro-markeringen) gebruiken. Cache: server 30 dagen, app per aflevering 30 dagen (`not_found` 1 dag). De
   bestaande knoppen "Intro overslaan" / "Samenvatting overslaan" gebruiken deze tijden eerst.
+- Build 186: zonder `tmdb` ook `{ "title": "Breaking Bad", "year": 2008, "imdb": "tt0903747", "season": 1, "episode": 2 }`
+  (`title` = serietitel uit de bibliotheek, mag een ruwe IPTV-titel zijn; `year` en `imdb` optioneel; `title` of `imdb`
+  verplicht). De server zoekt dan het TMDB-id van de serie (TMDB `/find/{imdb}` → `tv_results`, anders `/search/tv`
+  met de opgeschoonde titel en het jaar, daarna zonder jaar; function-secret `BINGR_TMDB_API_KEY`) en bewaart het in
+  `ratings_cache` onder `introdb-show:<genormaliseerde titel>:<jaar>` (gevonden 30 dagen, niet gevonden 1 dag).
+  Daarna zoals hierboven. Geen geldige invoer = 400 `bad_request`. Heeft IntroDB tijden voor de intro of de samenvatting,
+  dan tonen de apps "Intro hier markeren" niet.
 
 ### 11. "Voor jou" met duim omhoog/omlaag (`profile.<id>.ratings`)
 
