@@ -1,5 +1,123 @@
 [
  {
+  "build": 184,
+  "version": "1.1.0",
+  "date": "2026-11-21",
+  "items": [
+   {
+    "type": "fixed",
+    "platforms": [
+     "server"
+    ],
+    "nl": "De statuscontrole van e-mail geeft geen onterechte storingen meer bij een korte hapering van de mailserver",
+    "en": "The email status check no longer reports false outages when the mail server briefly hiccups"
+   }
+  ]
+ },
+ {
+  "build": 183,
+  "version": "1.1.0",
+  "date": "2026-11-21",
+  "items": [
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "server"
+    ],
+    "nl": "Bingr Premium in de App Store: nieuwe abonnementen per Apple-account, zonder delen met het gezin",
+    "en": "Bingr Premium in the App Store: new subscriptions per Apple Account, without Family Sharing"
+   }
+  ]
+ },
+ {
+  "build": 182,
+  "version": "1.1.0",
+  "date": "2026-11-21",
+  "items": [
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "Home loopt niet meer vast bij Mijn lijst, waardoor de app soms werd afgesloten als hij naar de achtergrond ging",
+    "en": "Home no longer freezes on My List, which sometimes made the app close when it went to the background"
+   }
+  ]
+ },
+ {
+  "build": 181,
+  "version": "1.1.0",
+  "date": "2026-11-21",
+  "items": [
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web",
+     "server"
+    ],
+    "nl": "Bingr Premium: kies maandelijks, halfjaarlijks of jaarlijks, of één keer Lifetime. Nieuwe accounts proberen Premium 3 dagen gratis",
+    "en": "Bingr Premium: choose monthly, every 6 months or yearly, or Lifetime once. New accounts try Premium free for 3 days"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "Kies je plan en betaal met je Apple-account, met Herstel aankopen en je abonnement in Instellingen",
+    "en": "Choose your plan and pay with your Apple Account, with Restore Purchases and your subscription in Settings"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "android",
+     "androidtv",
+     "web"
+    ],
+    "nl": "Kies je plan en betaal veilig via Stripe; op Android TV met een QR-code. Abonnement beheren of opzeggen kan in Instellingen",
+    "en": "Choose your plan and pay securely with Stripe; on Android TV with a QR code. Manage or cancel your subscription in Settings"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Nieuw prijsblok op bingr.online en de nieuwe plannen op bingr.online/upgrade",
+    "en": "New pricing on bingr.online and the new plans on bingr.online/upgrade"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos",
+     "android",
+     "androidtv",
+     "web",
+     "server"
+    ],
+    "nl": "Wie Lifetime al heeft, houdt altijd volledige toegang. Je servers, profielen en instellingen blijven altijd bewaard",
+    "en": "If you already have Lifetime, you keep full access. Your servers, profiles and settings are always kept"
+   }
+  ]
+ },
+ {
   "build": 180,
   "version": "1.0.8",
   "date": "2026-11-20",

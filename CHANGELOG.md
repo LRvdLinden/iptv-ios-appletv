@@ -4,6 +4,64 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.1.0 · Build 184
+_21 november 2026_
+
+### Server
+
+**Opgelost**
+
+- De statuscontrole van e-mail geeft geen onterechte storingen meer bij een korte hapering van de mailserver
+
+## Versie 1.1.0 · Build 183
+_21 november 2026_
+
+### iOS, iPadOS, tvOS, macOS en Server
+
+**Verbeterd**
+
+- Bingr Premium in de App Store: nieuwe abonnementen per Apple-account, zonder delen met het gezin
+
+## Versie 1.1.0 · Build 182
+_21 november 2026_
+
+### iOS, iPadOS, tvOS en macOS
+
+**Opgelost**
+
+- Home loopt niet meer vast bij Mijn lijst, waardoor de app soms werd afgesloten als hij naar de achtergrond ging
+
+## Versie 1.1.0 · Build 181
+_21 november 2026_
+
+### iOS, iPadOS, tvOS en macOS
+
+**Nieuw**
+
+- Kies je plan en betaal met je Apple-account, met Herstel aankopen en je abonnement in Instellingen
+
+### iOS, iPadOS, tvOS, macOS, Android, Android TV, Website en Server
+
+**Nieuw**
+
+- Bingr Premium: kies maandelijks, halfjaarlijks of jaarlijks, of één keer Lifetime. Nieuwe accounts proberen Premium 3 dagen gratis
+
+**Verbeterd**
+
+- Wie Lifetime al heeft, houdt altijd volledige toegang. Je servers, profielen en instellingen blijven altijd bewaard
+
+### Android, Android TV en Website
+
+**Nieuw**
+
+- Kies je plan en betaal veilig via Stripe; op Android TV met een QR-code. Abonnement beheren of opzeggen kan in Instellingen
+
+### Website
+
+**Nieuw**
+
+- Nieuw prijsblok op bingr.online en de nieuwe plannen op bingr.online/upgrade
+
 ## Versie 1.0.8 · Build 180
 _20 november 2026_
 
