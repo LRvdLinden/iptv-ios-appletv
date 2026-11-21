@@ -1,0 +1,50 @@
+name: Symboliseren
+# Op verzoek: bouwt iOS (Release, generic, zonder signing) met Xcode 27 en vertaalt adressen uit een crashrapport
+# (offsets t.o.v. het Bingr-image) naar functies. Benadering: Léons eigen archief kan iets anders liggen.
+on:
+  workflow_dispatch:
+    inputs:
+      offsets:
+        description: "Offsets in het Bingr-image, gescheiden door spaties (bijv. 0x3ce7fc 0x4cc450)"
+        required: true
+      ref:
+        description: "Commit of branch"
+        required: false
+        default: main
+permissions:
+  contents: read
+jobs:
+  symboliseren:
+    runs-on: xcode-27
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 (v5.1.0)
+        with:
+          ref: ${{ inputs.ref }}
+      - name: Xcode-versie kiezen
+        run: |
+          sudo xcode-select -s "$(ls -d /Applications/Xcode_27*.app | sort -V | tail -1)"
+          xcodebuild -version
+      - name: Project genereren
+        run: |
+          command -v xcodegen >/dev/null || brew install xcodegen
+          xcodegen generate
+      - name: Build iOS Release met dSYM
+        run: |
+          set -o pipefail
+          xcodebuild build -project Bingr.xcodeproj -scheme Bingr -configuration Release -derivedDataPath build \
+            -destination 'generic/platform=iOS' COMPILER_INDEX_STORE_ENABLE=NO DEBUG_INFORMATION_FORMAT=dwarf-with-dsym \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO > release.log 2>&1 || { grep -E "error:" release.log | sort -u | head -40; exit 1; }
+      - name: Adressen vertalen
+        env:
+          OFFSETS: ${{ inputs.offsets }}
+        run: |
+          D="$(find build/Build/Products -name 'Bingr.app.dSYM' -maxdepth 3 | head -1)"
+          B="$D/Contents/Resources/DWARF/Bingr"
+          ls -la "$B"
+          for o in $OFFSETS; do
+            case "$o" in 0x[0-9a-fA-F]*) ;; *) continue;; esac
+            a=$(printf '0x%x' $((0x100000000 + o)))
+            echo "$o => $(xcrun atos -arch arm64 -o "$B" -l 0x100000000 -i "$a" | tr '\n' ' ')"
+          done | tee symbols.txt
+          while read -r l; do echo "::notice::$l"; done < symbols.txt
