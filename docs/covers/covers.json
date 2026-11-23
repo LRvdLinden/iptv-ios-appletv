@@ -1,75 +1,5 @@
 [
  {
-  "slug": "movie-the-odyssey",
-  "title": "The Odyssey",
-  "year": "2026",
-  "kind": "movie",
-  "source": "TMDB"
- },
- {
-  "slug": "tv-the-lord-of-the-rings-the-rings-of-power",
-  "title": "The Lord of the Rings: The Rings of Power",
-  "year": "2022",
-  "kind": "tv",
-  "source": "TMDB"
- },
- {
-  "slug": "movie-other-mommy",
-  "title": "Other Mommy",
-  "year": "2026",
-  "kind": "movie",
-  "source": "TMDB"
- },
- {
-  "slug": "tv-visionquest",
-  "title": "VisionQuest",
-  "year": "2026",
-  "kind": "tv",
-  "source": "TMDB"
- },
- {
-  "slug": "movie-avengers-doomsday",
-  "title": "Avengers: Doomsday",
-  "year": "2026",
-  "kind": "movie",
-  "source": "TMDB"
- },
- {
-  "slug": "tv-jimmy-kimmel-live",
-  "title": "Jimmy Kimmel Live!",
-  "year": "2003",
-  "kind": "tv",
-  "source": "TMDB"
- },
- {
-  "slug": "movie-resident-evil",
-  "title": "Resident Evil",
-  "year": "2026",
-  "kind": "movie",
-  "source": "TMDB"
- },
- {
-  "slug": "tv-12-12-12",
-  "title": "12 12 12",
-  "year": "2026",
-  "kind": "tv",
-  "source": "TMDB"
- },
- {
-  "slug": "movie-ebenezer",
-  "title": "Ebenezer",
-  "year": "2026",
-  "kind": "movie",
-  "source": "TMDB"
- },
- {
-  "slug": "tv-the-body",
-  "title": "The Body",
-  "year": "2026",
-  "kind": "tv",
-  "source": "TMDB"
- },
- {
   "slug": "movie-the-hunger-games-sunrise-on-the-reaping",
   "title": "The Hunger Games: Sunrise on the Reaping",
   "year": "2026",
@@ -84,8 +14,120 @@
   "source": "TMDB"
  },
  {
-  "slug": "movie-heart-of-the-beast",
-  "title": "Heart of the Beast",
+  "slug": "movie-the-odyssey",
+  "title": "The Odyssey",
+  "year": "2026",
+  "kind": "movie",
+  "source": "TMDB"
+ },
+ {
+  "slug": "tv-the-blue-road",
+  "title": "The Blue Road",
+  "year": "2026",
+  "kind": "tv",
+  "source": "TMDB"
+ },
+ {
+  "slug": "movie-avengers-doomsday",
+  "title": "Avengers: Doomsday",
+  "year": "2026",
+  "kind": "movie",
+  "source": "TMDB"
+ },
+ {
+  "slug": "tv-the-body",
+  "title": "The Body",
+  "year": "2026",
+  "kind": "tv",
+  "source": "TMDB"
+ },
+ {
+  "slug": "movie-steps",
+  "title": "Steps",
+  "year": "2026",
+  "kind": "movie",
+  "source": "TMDB"
+ },
+ {
+  "slug": "tv-the-lord-of-the-rings-the-rings-of-power",
+  "title": "The Lord of the Rings: The Rings of Power",
+  "year": "2022",
+  "kind": "tv",
+  "source": "TMDB"
+ },
+ {
+  "slug": "movie-spider-man-brand-new-day",
+  "title": "Spider-Man: Brand New Day",
+  "year": "2026",
+  "kind": "movie",
+  "source": "TMDB"
+ },
+ {
+  "slug": "tv-dig",
+  "title": "Dig",
+  "year": "2026",
+  "kind": "tv",
+  "source": "TMDB"
+ },
+ {
+  "slug": "movie-madden",
+  "title": "Madden",
+  "year": "2026",
+  "kind": "movie",
+  "source": "TMDB"
+ },
+ {
+  "slug": "tv-visionquest",
+  "title": "VisionQuest",
+  "year": "2026",
+  "kind": "tv",
+  "source": "TMDB"
+ },
+ {
+  "slug": "movie-guarding-stars",
+  "title": "Guarding Stars",
+  "year": "2026",
+  "kind": "movie",
+  "source": "TMDB"
+ },
+ {
+  "slug": "tv-percy-jackson-and-the-olympians",
+  "title": "Percy Jackson and the Olympians",
+  "year": "2023",
+  "kind": "tv",
+  "source": "TMDB"
+ },
+ {
+  "slug": "movie-the-beast",
+  "title": "The Beast",
+  "year": "2026",
+  "kind": "movie",
+  "source": "TMDB"
+ },
+ {
+  "slug": "tv-yellowjackets",
+  "title": "Yellowjackets",
+  "year": "2021",
+  "kind": "tv",
+  "source": "TMDB"
+ },
+ {
+  "slug": "movie-hexed",
+  "title": "Hexed",
+  "year": "2026",
+  "kind": "movie",
+  "source": "TMDB"
+ },
+ {
+  "slug": "tv-dexter-resurrection",
+  "title": "Dexter: Resurrection",
+  "year": "2025",
+  "kind": "tv",
+  "source": "TMDB"
+ },
+ {
+  "slug": "movie-clashing-through-the-snow",
+  "title": "Clashing Through the Snow",
   "year": "2026",
   "kind": "movie",
   "source": "TMDB"
@@ -105,76 +147,6 @@
   "source": "TMDB"
  },
  {
-  "slug": "tv-the-remarried-empress",
-  "title": "The Remarried Empress",
-  "year": "2026",
-  "kind": "tv",
-  "source": "TMDB"
- },
- {
-  "slug": "movie-model-citizen",
-  "title": "Model Citizen",
-  "year": "2026",
-  "kind": "movie",
-  "source": "TMDB"
- },
- {
-  "slug": "tv-campus-drivers",
-  "title": "Campus Drivers",
-  "year": "2026",
-  "kind": "tv",
-  "source": "TMDB"
- },
- {
-  "slug": "movie-the-beast",
-  "title": "The Beast",
-  "year": "2026",
-  "kind": "movie",
-  "source": "TMDB"
- },
- {
-  "slug": "tv-dexter-resurrection",
-  "title": "Dexter: Resurrection",
-  "year": "2025",
-  "kind": "tv",
-  "source": "TMDB"
- },
- {
-  "slug": "movie-spider-man-brand-new-day",
-  "title": "Spider-Man: Brand New Day",
-  "year": "2026",
-  "kind": "movie",
-  "source": "TMDB"
- },
- {
-  "slug": "tv-100-days-of-deception",
-  "title": "100 Days of Deception",
-  "year": "2026",
-  "kind": "tv",
-  "source": "TMDB"
- },
- {
-  "slug": "movie-never-surrender",
-  "title": "Never Surrender",
-  "year": "2026",
-  "kind": "movie",
-  "source": "TMDB"
- },
- {
-  "slug": "tv-black-clover",
-  "title": "Black Clover",
-  "year": "2017",
-  "kind": "tv",
-  "source": "TMDB"
- },
- {
-  "slug": "movie-primetime",
-  "title": "Primetime",
-  "year": "2026",
-  "kind": "movie",
-  "source": "TMDB"
- },
- {
   "slug": "tv-one-piece",
   "title": "One Piece",
   "year": "1999",
@@ -182,78 +154,120 @@
   "source": "TMDB"
  },
  {
-  "slug": "movie-ramayana-rise-of-a-legend",
-  "title": "Ramayana: Rise of a Legend",
+  "slug": "movie-dune-part-three",
+  "title": "Dune: Part Three",
   "year": "2026",
   "kind": "movie",
   "source": "TMDB"
  },
  {
-  "slug": "tv-the-gilded-age",
-  "title": "The Gilded Age",
-  "year": "2022",
+  "slug": "tv-the-altruists",
+  "title": "The Altruists",
+  "year": "2026",
   "kind": "tv",
   "source": "TMDB"
  },
  {
-  "slug": "movie-possible-love",
-  "title": "Possible Love",
+  "slug": "movie-perfect-liars",
+  "title": "Perfect Liars",
   "year": "2026",
   "kind": "movie",
   "source": "TMDB"
  },
  {
-  "slug": "tv-the-good-daughter",
-  "title": "The Good Daughter",
+  "slug": "tv-12-12-12",
+  "title": "12 12 12",
   "year": "2026",
   "kind": "tv",
   "source": "TMDB"
  },
  {
-  "slug": "movie-being-heumann",
-  "title": "Being Heumann",
+  "slug": "movie-the-social-reckoning",
+  "title": "The Social Reckoning",
   "year": "2026",
   "kind": "movie",
   "source": "TMDB"
  },
  {
-  "slug": "tv-the-institute",
-  "title": "The Institute",
-  "year": "2025",
+  "slug": "tv-the-remarried-empress",
+  "title": "The Remarried Empress",
+  "year": "2026",
   "kind": "tv",
   "source": "TMDB"
  },
  {
-  "slug": "movie-how-to-rob-a-bank",
-  "title": "How to Rob a Bank",
+  "slug": "movie-resident-evil",
+  "title": "Resident Evil",
   "year": "2026",
   "kind": "movie",
   "source": "TMDB"
  },
  {
-  "slug": "tv-jojo-s-bizarre-adventure",
-  "title": "JoJo's Bizarre Adventure",
-  "year": "2012",
+  "slug": "tv-love-in-disguise",
+  "title": "Love in Disguise",
+  "year": "2026",
   "kind": "tv",
   "source": "TMDB"
  },
  {
-  "slug": "movie-wildwood",
-  "title": "Wildwood",
+  "slug": "movie-other-mommy",
+  "title": "Other Mommy",
   "year": "2026",
   "kind": "movie",
   "source": "TMDB"
  },
  {
-  "slug": "tv-doctor-x-mafia-in-white",
-  "title": "Doctor X: Mafia in White",
+  "slug": "tv-the-substitute",
+  "title": "The Substitute",
   "year": "2026",
   "kind": "tv",
   "source": "TMDB"
  },
  {
-  "slug": "movie-wild-horse-nine",
-  "title": "Wild Horse Nine",
+  "slug": "movie-heart-of-the-beast",
+  "title": "Heart of the Beast",
+  "year": "2026",
+  "kind": "movie",
+  "source": "TMDB"
+ },
+ {
+  "slug": "tv-blade-runner-2099",
+  "title": "Blade Runner 2099",
+  "year": "2026",
+  "kind": "tv",
+  "source": "TMDB"
+ },
+ {
+  "slug": "movie-ebenezer",
+  "title": "Ebenezer",
+  "year": "2026",
+  "kind": "movie",
+  "source": "TMDB"
+ },
+ {
+  "slug": "tv-natural-high",
+  "title": "Natural High",
+  "year": "2023",
+  "kind": "tv",
+  "source": "TMDB"
+ },
+ {
+  "slug": "movie-i-play-rocky",
+  "title": "I Play Rocky",
+  "year": "2026",
+  "kind": "movie",
+  "source": "TMDB"
+ },
+ {
+  "slug": "tv-the-law-of-beasts",
+  "title": "The Law of Beasts",
+  "year": "2026",
+  "kind": "tv",
+  "source": "TMDB"
+ },
+ {
+  "slug": "movie-a-talent-for-murder",
+  "title": "A Talent for Murder",
   "year": "2026",
   "kind": "movie",
   "source": "TMDB"
@@ -266,43 +280,43 @@
   "source": "TMDB"
  },
  {
-  "slug": "movie-hexed",
-  "title": "Hexed",
+  "slug": "movie-focker-in-law",
+  "title": "Focker In-Law",
   "year": "2026",
   "kind": "movie",
   "source": "TMDB"
  },
  {
-  "slug": "tv-the-rules",
-  "title": "The Rules",
-  "year": "2026",
+  "slug": "tv-tulsa-king",
+  "title": "Tulsa King",
+  "year": "2022",
   "kind": "tv",
   "source": "TMDB"
  },
  {
-  "slug": "movie-the-christmas-switch",
-  "title": "The Christmas Switch",
+  "slug": "movie-ramayana-rise-of-a-legend",
+  "title": "Ramayana: Rise of a Legend",
   "year": "2026",
   "kind": "movie",
   "source": "TMDB"
  },
  {
-  "slug": "tv-the-silent-storm",
-  "title": "The Silent Storm",
-  "year": "2026",
+  "slug": "tv-black-clover",
+  "title": "Black Clover",
+  "year": "2017",
   "kind": "tv",
   "source": "TMDB"
  },
  {
-  "slug": "movie-fall-2-deadpoint",
-  "title": "Fall 2: Deadpoint",
+  "slug": "movie-the-last-temptation-of-becky",
+  "title": "The Last Temptation of Becky",
   "year": "2026",
   "kind": "movie",
   "source": "TMDB"
  },
  {
-  "slug": "tv-when-i-meet-the-moon",
-  "title": "When I Meet the Moon",
+  "slug": "tv-dragon-ball-super-beerus",
+  "title": "Dragon Ball Super: Beerus",
   "year": "2026",
   "kind": "tv",
   "source": "TMDB"
@@ -315,23 +329,9 @@
   "source": "TMDB"
  },
  {
-  "slug": "tv-the-empress",
-  "title": "The Empress",
-  "year": "2022",
-  "kind": "tv",
-  "source": "TMDB"
- },
- {
-  "slug": "movie-the-good-lawyer",
-  "title": "The Good Lawyer",
+  "slug": "tv-nocturne",
+  "title": "Nocturne",
   "year": "2026",
-  "kind": "movie",
-  "source": "TMDB"
- },
- {
-  "slug": "tv-the-apothecary-diaries",
-  "title": "The Apothecary Diaries",
-  "year": "2023",
   "kind": "tv",
   "source": "TMDB"
  }
