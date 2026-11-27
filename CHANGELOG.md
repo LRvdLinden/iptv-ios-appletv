@@ -4,6 +4,21 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.1.2 · Build 192
+_27 november 2026_
+
+### Website
+
+**Nieuw**
+
+- bingr.online/downloads start meteen de download van Bingr voor Android.
+
+### Server
+
+**Verbeterd**
+
+- Pushmelding van een nieuwe versie: tikken brengt je meteen bij de update. Op Android start de download van de nieuwe versie, op iPhone, iPad en Mac opent de App Store-pagina van Bingr.
+
 ## Versie 1.1.2 · Build 191
 _27 november 2026_
 

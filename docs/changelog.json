@@ -1,5 +1,28 @@
 [
   {
+    "build": 192,
+    "version": "1.1.2",
+    "date": "2026-11-27",
+    "items": [
+      {
+        "type": "improved",
+        "platforms": [
+          "server"
+        ],
+        "nl": "Pushmelding van een nieuwe versie: tikken brengt je meteen bij de update. Op Android start de download van de nieuwe versie, op iPhone, iPad en Mac opent de App Store-pagina van Bingr.",
+        "en": "New-version notification: tapping it takes you straight to the update. On Android the download of the new version starts, on iPhone, iPad and Mac the Bingr App Store page opens."
+      },
+      {
+        "type": "new",
+        "platforms": [
+          "web"
+        ],
+        "nl": "bingr.online/downloads start meteen de download van Bingr voor Android.",
+        "en": "bingr.online/downloads starts the download of Bingr for Android right away."
+      }
+    ]
+  },
+  {
     "build": 191,
     "version": "1.1.2",
     "date": "2026-11-27",
