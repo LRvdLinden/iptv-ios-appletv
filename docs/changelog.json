@@ -1,5 +1,36 @@
 [
  {
+  "build": 187,
+  "version": "1.1.1",
+  "date": "2026-11-27",
+  "items": [
+   {
+    "type": "fixed",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Een Apple-abonnement (Premium maandelijks, halfjaarlijks of jaarlijks) werd bij het afsluiten soms niet herkend, waardoor Premium niet werd geactiveerd; dat is opgelost. Wie het probeerde, krijgt Premium na het openen van de app of met Herstel aankopen alsnog",
+    "en": "An Apple subscription (Premium monthly, six-monthly or yearly) was sometimes not recognised when you subscribed, so Premium was not activated; this is fixed. If you tried, you get Premium after opening the app or with Restore Purchases"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Apple-abonnementen worden nu ook direct aan je Bingr-account gekoppeld via de melding van Apple zelf, zodat een aankoop nooit meer losstaat van je account",
+    "en": "Apple subscriptions are now also linked to your Bingr account straight from Apple's own notification, so a purchase is never detached from your account again"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "server"
+    ],
+    "nl": "Na een mislukte betaling met Stripe (na de proefperiode of bij een verlenging) liep de toegang tot Premium veel te lang door; die eindigt nu na de respijtperiode",
+    "en": "After a failed Stripe payment (after the trial or at renewal), Premium access ran on far too long; it now ends after the grace period"
+   }
+  ]
+ },
+ {
   "build": 186,
   "version": "1.1.1",
   "date": "2026-11-21",

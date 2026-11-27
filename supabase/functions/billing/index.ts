@@ -49,7 +49,7 @@ import { BANNED_BODY, bannedUntilActive, isBanError } from "../_shared/ban.ts";
 import { clientIp } from "../_shared/ip.ts";
 import {
   billingConfig, checkoutParams, guestCheckoutParams, guestFromSession, guestIdempotencyKey, idempotencyKey, isClaimToken, isStripeId,
-  newClaimToken, normalizeLang, purchaseFromSession, purchaseView, type PurchaseRow, sha256Hex,
+  MAX_BODY_CHARS, newClaimToken, normalizeLang, purchaseFromSession, purchaseView, type PurchaseRow, sha256Hex,
 } from "../_shared/billing.ts";
 import { grant } from "../_shared/billing_store.ts";
 import { normalizePlatform, PRICE_CENTS, PRICE_CURRENCY, PRODUCT_NAME } from "../_shared/plans.ts";
@@ -113,7 +113,9 @@ Deno.serve(async (req) => {
   let body: Record<string, unknown> = {};
   if (req.method === "POST") {
     const text = await req.text().catch(() => "");
-    if (text.length > 10_000) return json({ error: "too_large" }, 413);
+    // build 187: een Apple-abonnement stuurt twee JWS'en mee (transactie + verlengingsinfo, elk ~5.000 tekens met de certificaatketen);
+    // de oude grens van 10.000 tekens gaf bij elke abonnementsaankoop een 413. Zie MAX_BODY_CHARS in _shared/billing.ts.
+    if (text.length > MAX_BODY_CHARS) return json({ error: "too_large" }, 413);
     if (text.trim()) {
       try { const b = JSON.parse(text); if (b && typeof b === "object" && !Array.isArray(b)) body = b; else return json({ error: "bad_json" }, 400); }
       catch { return json({ error: "bad_json" }, 400); }
