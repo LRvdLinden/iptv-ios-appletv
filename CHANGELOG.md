@@ -4,6 +4,43 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.1.2 · Build 191
+_27 november 2026_
+
+### iOS en iPadOS
+
+**Verbeterd**
+
+- Detailpagina van een serie: de knop toont Downloaden met het aantal afleveringen van het gekozen seizoen
+
+### iOS, iPadOS, tvOS en macOS
+
+**Nieuw**
+
+- Pincode vergeten: vul het wachtwoord van je Bingr-account in en de pincode van dat profiel wordt verwijderd; kies daarna een nieuwe pincode in Instellingen. Voor het hoofdprofiel gaat het kinderslot dan ook uit, net als bij Pincode verwijderen. Zonder account blijft de uitleg met een link naar support
+
+### iOS, iPadOS, tvOS, macOS, Android en Android TV
+
+**Nieuw**
+
+- Detailpagina van een film of serie: tabbladen Afleveringen, Meer zoals dit en Trailers (alleen als er iets in staat), met een rode lijn boven het gekozen tabblad; op Apple TV met een witte focus
+
+**Verbeterd**
+
+- Kijk je nog?: je hebt nu 30 seconden om te antwoorden (was 60) voordat het afspelen stopt
+
+### iPadOS
+
+**Verbeterd**
+
+- Detailpagina op de iPad: Downloaden staat als brede donkergrijze knop onder Afspelen
+
+### iPadOS, tvOS en macOS
+
+**Verbeterd**
+
+- Detailpagina: een rij met symbool en tekst voor Mijn lijst, Beoordelen en Delen (Delen niet op Apple TV)
+
 ## Versie 1.1.2 · Build 190
 _27 november 2026_
 

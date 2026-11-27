@@ -2431,10 +2431,10 @@ do {
     eq(StillWatching171.hours(7), 3, "171: onbekende keuze = 3 uur")
     w.answered(now: 20000)
     check(!w.shouldAsk(now: 20001, hours: 2, enabled: true), "171: na Verder kijken opnieuw tellen")
-    eq(StillWatching171.secondsLeft(askedAt: 0, now: 0.5), 60, "171: 60 s")
-    eq(StillWatching171.secondsLeft(askedAt: 0, now: 75), 0, "171: niet negatief")
-    check(!StillWatching171.timedOut(askedAt: 0, now: 59.9), "171: nog niet verlopen")
-    check(StillWatching171.timedOut(askedAt: 0, now: 60), "171: na 60 s verlopen")
+    eq(StillWatching171.secondsLeft(askedAt: 0, now: 0.5), 30, "171: 30 s")
+    eq(StillWatching171.secondsLeft(askedAt: 0, now: 45), 0, "171: niet negatief")
+    check(!StillWatching171.timedOut(askedAt: 0, now: 29.9), "171: nog niet verlopen")
+    check(StillWatching171.timedOut(askedAt: 0, now: 30), "171: na 30 s verlopen")
 
     // 15/20. verbergen en blokkeren
     eq(ProfileHide171.channelKey(server: "ABCD-EF", item: "x12"), "abcd-ef|x12", "171: zendersleutel")
@@ -3617,6 +3617,26 @@ do {
     eq(PINBoxes189.shown(pin: "48", revealLast: true), ["\u{2022}", "8", "", ""], "build 189: laatste cijfer even zichtbaar")
     eq(PINBoxes189.shown(pin: "48", revealLast: false), ["\u{2022}", "\u{2022}", "", ""], "build 189: daarna alles gemaskeerd")
     eq(PINBoxes189.shown(pin: "4812", revealLast: true), ["\u{2022}", "\u{2022}", "\u{2022}", "2"], "build 189: vol")
+}
+
+
+// MARK: build 191: pincode vergeten en tabbladen (Shared/Account/Build191.swift)
+
+do {
+    eq(PINReset191.target(profile: 5 as Int?, main: 1), 5, "build 191: reset raakt het profiel van het scherm")
+    eq(PINReset191.target(profile: nil as Int?, main: 1), 1, "build 191: zonder profiel het hoofdprofiel")
+    check(PINReset191.available(signedIn: true, email: "a@b.nl"), "build 191: reset met account")
+    check(!PINReset191.available(signedIn: false, email: "a@b.nl"), "build 191: niet ingelogd = uitleg met support")
+    check(!PINReset191.available(signedIn: true, email: " "), "build 191: zonder e-mailadres geen reset")
+    check(!PINReset191.canSubmit(password: "", busy: false), "build 191: leeg wachtwoord")
+    check(!PINReset191.canSubmit(password: "x", busy: true), "build 191: bezig")
+    check(PINReset191.canSubmit(password: " x ", busy: false), "build 191: wachtwoord met spaties telt")
+    check(PINReset191.turnsOffParentalLock(isMain: true) && !PINReset191.turnsOffParentalLock(isMain: false), "build 191: kinderslot alleen bij hoofdprofiel uit")
+    eq(DetailTabs191.tabs(isSeries: true, hasEpisodes: true, hasSimilar: true, hasTrailers: true), [.episodes, .similar, .trailers], "build 191: serie alle tabs")
+    eq(DetailTabs191.tabs(isSeries: false, hasEpisodes: true, hasSimilar: true, hasTrailers: false), [.similar], "build 191: film zonder afleveringen")
+    eq(DetailTabs191.tabs(isSeries: false, hasEpisodes: false, hasSimilar: false, hasTrailers: false), [], "build 191: geen inhoud, geen tabs")
+    eq(DetailTabs191.selected(.trailers, in: [.similar]), .similar, "build 191: verdwenen tab = eerste")
+    eq(DetailTabs191.selected(.similar, in: [.similar, .trailers]), .similar, "build 191: gekozen tab blijft")
 }
 
 

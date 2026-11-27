@@ -175,7 +175,8 @@ struct SeriesDownloadMenu175: View {
                 }
             } label: {
                 if pill {
-                    DownloadPillLabel(title: menu.complete ? L("Downloaded") : L("Download"),
+                    // build 191: "Downloaden N afleveringen" (dit seizoen, wat nog niet binnen is) waar dat kan
+                    DownloadPillLabel(title: menu.complete ? L("Downloaded") : (menu.season > 1 ? L("Download %d episodes", menu.season) : L("Download")),
                                       icon: menu.complete ? "checkmark" : "arrow.down.to.line")
                 } else if asCircle {
                     circleLabel(menu.complete ? "checkmark.circle.fill" : "arrow.down.circle",

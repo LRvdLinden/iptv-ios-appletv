@@ -5,7 +5,7 @@ import AVFoundation
 
 /// Build 171: "Kijk je nog?" (zoals Netflix). Na 3 afleveringen achter elkaar die automatisch of met Volgende
 /// aflevering zijn gestart, of na 2/3/4 uur live of film zonder enige bediening: beeld gedimd met de vraag, en zonder
-/// antwoord binnen 60 s pauzeren en `stream_stop` (plek in de streamlimiet en de verbinding bij de aanbieder vrij).
+/// antwoord binnen 30 s pauzeren en `stream_stop` (plek in de streamlimiet en de verbinding bij de aanbieder vrij).
 /// De regels staan in `StillWatching171` (Shared/Account/Build171.swift, met zelftest).
 enum StillWatchingSettings {
     static let enabledKey = "player.stillWatching"
@@ -29,7 +29,7 @@ final class StillWatchingModel: ObservableObject {
     private var volumeObservation: NSKeyValueObservation?
     #endif
 
-    /// Geen antwoord binnen 60 s: de host pauzeert en meldt de stream af
+    /// Geen antwoord binnen 30 s: de host pauzeert en meldt de stream af
     var onTimeout: (() -> Void)?
     /// Afspelen na "Gepauzeerd": de host start opnieuw op dezelfde plek (live: weer live)
     var onResume: (() -> Void)?
@@ -113,7 +113,7 @@ final class StillWatchingModel: ObservableObject {
     }
 }
 
-/// Gedimd beeld met "Kijk je nog?" (Verder kijken / Stoppen), of na 60 s "Gepauzeerd".
+/// Gedimd beeld met "Kijk je nog?" (Verder kijken / Stoppen), of na 30 s "Gepauzeerd".
 struct StillWatchingOverlay: View {
     @ObservedObject var model: StillWatchingModel
     let onStop: () -> Void
@@ -180,7 +180,7 @@ struct StillWatchingSettingsSection: View {
                 }
             }
         } footer: {
-            Text(L("After 3 episodes in a row without any input, or after this time with live TV or a movie, Bingr asks if you're still watching. Without an answer playback pauses after 60 seconds, so your stream and the connection with your provider are released."))
+            Text(L("After 3 episodes in a row without any input, or after this time with live TV or a movie, Bingr asks if you're still watching. Without an answer playback pauses after 30 seconds, so your stream and the connection with your provider are released."))
         }
     }
 }

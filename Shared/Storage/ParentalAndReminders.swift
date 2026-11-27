@@ -173,6 +173,9 @@ final class ParentalControl: ObservableObject {
         return ok
     }
 
+    /// Build 191: na het verwijderen van de pincode met het accountwachtwoord: foute pogingen en wachttijd wissen.
+    func clearAttempts() { failures = 0; blockedUntil = nil; saveAttempts() }
+
     private func loadAttempts() {
         guard let s = Keychain.getLocalOnly(Self.attemptsKey) else { return }
         let parts = s.split(separator: "|")
@@ -426,10 +429,9 @@ struct PINPad: View {
                 .foregroundStyle(.white.opacity(0.85))
         }
         .plainTVButton()
-        .alert(L("Forgot your PIN?"), isPresented: $showForgot) {
-            Button(L("OK"), role: .cancel) {}
-        } message: {
-            Text(L("A PIN cannot be recovered in the app. Contact Bingr Support at support.bingr.online and we will help you further."))
+        // build 191: echte reset met het wachtwoord van het Bingr-account (zonder account: uitleg met support)
+        .sheet(isPresented: $showForgot) {
+            PINResetView191(profileID: profileID) { dismiss() }
         }
     }
 

@@ -17,7 +17,7 @@ struct StillWatching171: Equatable {
     /// Na zoveel afleveringen achter elkaar (automatisch of met Volgende aflevering gestart) zonder bediening
     static let askAfterEpisodes = 3
     /// Zo lang wacht de vraag op een antwoord; daarna pauzeren en de stream afmelden
-    static let answerSeconds: Double = 60
+    static let answerSeconds: Double = 30
     /// Keuzes voor live en films (uren zonder enige bediening)
     static let hourChoices = [2, 3, 4]
     static let defaultHours = 3

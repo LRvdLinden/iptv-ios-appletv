@@ -1,5 +1,84 @@
 [
   {
+    "build": 191,
+    "version": "1.1.2",
+    "date": "2026-11-27",
+    "items": [
+      {
+        "type": "new",
+        "platforms": [
+          "ios",
+          "ipados",
+          "tvos",
+          "macos"
+        ],
+        "nl": "Pincode vergeten: vul het wachtwoord van je Bingr-account in en de pincode van dat profiel wordt verwijderd; kies daarna een nieuwe pincode in Instellingen. Voor het hoofdprofiel gaat het kinderslot dan ook uit, net als bij Pincode verwijderen. Zonder account blijft de uitleg met een link naar support",
+        "en": "Forgot PIN: enter the password of your Bingr account and the PIN of that profile is removed; then choose a new PIN in Settings. For the main profile parental controls also turn off, just like Remove PIN. Without an account the explanation with a link to support stays"
+      },
+      {
+        "type": "improved",
+        "platforms": [
+          "ios",
+          "ipados",
+          "tvos",
+          "macos",
+          "android",
+          "androidtv"
+        ],
+        "nl": "Kijk je nog?: je hebt nu 30 seconden om te antwoorden (was 60) voordat het afspelen stopt",
+        "en": "Still watching?: you now have 30 seconds to answer (was 60) before playback stops"
+      },
+      {
+        "type": "new",
+        "platforms": [
+          "ios",
+          "ipados",
+          "tvos",
+          "macos",
+          "android",
+          "androidtv"
+        ],
+        "nl": "Detailpagina van een film of serie: tabbladen Afleveringen, Meer zoals dit en Trailers (alleen als er iets in staat), met een rode lijn boven het gekozen tabblad; op Apple TV met een witte focus",
+        "en": "Movie and series page: tabs Episodes, More like this and Trailers (only when there is something in them), with a red line above the selected tab; on Apple TV with a white focus"
+      },
+      {
+        "type": "improved",
+        "platforms": [
+          "android"
+        ],
+        "nl": "Detailpagina: de donkergrijze knop Downloaden onder Afspelen staat nu ook op tablets, bij een serie met het aantal afleveringen erbij",
+        "en": "Detail page: the dark grey Download button under Play is now on tablets too, and shows the number of episodes for a series"
+      },
+      {
+        "type": "improved",
+        "platforms": [
+          "ipados"
+        ],
+        "nl": "Detailpagina op de iPad: Downloaden staat als brede donkergrijze knop onder Afspelen",
+        "en": "Detail page on iPad: Download is a wide dark grey button below Play"
+      },
+      {
+        "type": "improved",
+        "platforms": [
+          "ios",
+          "ipados"
+        ],
+        "nl": "Detailpagina van een serie: de knop toont Downloaden met het aantal afleveringen van het gekozen seizoen",
+        "en": "Series detail page: the button shows Download with the number of episodes of the selected season"
+      },
+      {
+        "type": "improved",
+        "platforms": [
+          "ipados",
+          "tvos",
+          "macos"
+        ],
+        "nl": "Detailpagina: een rij met symbool en tekst voor Mijn lijst, Beoordelen en Delen (Delen niet op Apple TV)",
+        "en": "Detail page: a row with symbol and text for My List, Rate and Share (Share not on Apple TV)"
+      }
+    ]
+  },
+  {
     "build": 190,
     "version": "1.1.2",
     "date": "2026-11-27",

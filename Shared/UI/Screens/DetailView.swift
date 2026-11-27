@@ -23,6 +23,8 @@ struct DetailView: View {
     @State private var season = 1
     @State private var seasonInfo: [String: TitleDetails.EpisodeInfo] = [:]
     @State private var loading = true
+    /// build 191: gekozen tabblad (Afleveringen / Meer zoals dit / Trailers)
+    @State private var tab191: DetailTabs191.Tab?
     @State private var showTrailer = false
     @State private var showSources = false
     @State private var sources: [PlaylistService.OtherHit] = []
@@ -177,10 +179,9 @@ struct DetailView: View {
                     }
                     .padding(.horizontal, Theme.edge)
 
-                    if case .series(let s) = target { episodesSection(s) }
+                    tabsSection191   // build 191: Afleveringen · Meer zoals dit · Trailers
                     if !allRatings.isEmpty { ratingsSection(allRatings) }
                     if let c = d?.cast, !c.isEmpty { castSection(c) }
-                    if let rec = visibleRecommendations, !rec.isEmpty { recommendationsSection(rec) }
                     Color.clear.frame(height: 40)
                 }
                 // build 174: de pagina is nooit breder dan het scherm (een te brede knoppenrij of metaregel schoof eerst
@@ -491,9 +492,11 @@ struct DetailView: View {
     @ViewBuilder private var wideActions: some View {
         VStack(spacing: tvScaled(12)) {
             playButton
+            #if os(iOS)
+            downloadPill   // build 191: ook op de iPad een brede donkergrijze knop
+            #endif
+            wideActionRow191   // build 191: Mijn lijst · Beoordelen · Delen, met symbool en tekst
             HStack(spacing: tvScaled(12)) {
-                // build 141: alleen als de titel een bewaarbaar id heeft (aanbeveling: zodra het TMDB-id bekend is)
-                if listID != nil { myListButton }
                 if !DiscoverItem.isExternal(target.id) {   // build 111: TMDB-titels niet in collecties
                     circleButton(inAnyCollection ? "rectangle.stack.fill.badge.plus" : "rectangle.stack.badge.plus") {
                         collecting = .detail(target)
@@ -515,31 +518,10 @@ struct DetailView: View {
                     circleButton(isLockedTitle ? "lock.fill" : "lock") { toggleLock() }
                         .accessibilityLabel(isLockedTitle ? L("Unlock") : L("Lock with PIN"))
                 }
-                // build 179: duim omhoog/omlaag ("Voor jou")
-                if let k = thumbKey {
-                    let v = thumbs.value(k)
-                    circleButton(v == 1 ? "hand.thumbsup.fill" : "hand.thumbsup") { thumbs.toggle(k, 1) }
-                        .accessibilityLabel(L("I like this"))
-                        .accessibilityAddTraits(v == 1 ? .isSelected : [])
-                    circleButton(v == -1 ? "hand.thumbsdown.fill" : "hand.thumbsdown") { thumbs.toggle(k, -1) }
-                        .accessibilityLabel(L("Not for me"))
-                        .accessibilityAddTraits(v == -1 ? .isSelected : [])
-                }
                 if isMovie {
                     circleButton(isWatchedTitle ? "checkmark.circle.fill" : "checkmark.circle") { toggleWatchedMovie() }
                         .accessibilityLabel(isWatchedTitle ? L("Mark as unwatched") : L("Mark as watched"))   // build 97
                 }
-                #if os(iOS)
-                // offline kijken (build 52)
-                if case .movie(let m) = target, DownloadManager.canDownload(Playables.movie(m, imdb: imdb)) {
-                    DownloadButton(item: Playables.movie(m, imdb: imdb), poster: m.poster)
-                }
-                // build 175: serie downloaden (seizoen, volgende 3, hele serie) ook op de iPad
-                if case .series = target, !episodes.isEmpty { seriesOrMovieDownloadMenu(asCircle: true) }
-                #endif
-                #if !os(tvOS)
-                shareButton // geen deelknop (ook geen QR) op tv's, zie docs/ACCOUNT.md
-                #endif
                 Button { Task { await openSources() } } label: {
                     Label(L("Other sources"), systemImage: Theme.otherSourceIcon)
                         .font(.system(size: tvScaled(15), weight: .medium))
@@ -568,6 +550,151 @@ struct DetailView: View {
         }
         .frame(maxWidth: tvScaled(700))
         .frame(maxWidth: .infinity, alignment: alignLeadingOnTV)
+    }
+
+    // MARK: build 191: actierij met symbool en tekst, en tabbladen
+
+    /// Mijn lijst · Beoordelen · Delen (breed scherm: iPad, Mac, Apple TV). Wat niet kan, valt weg. Delen niet op tv's.
+    @ViewBuilder private var wideActionRow191: some View {
+        HStack(alignment: .top, spacing: tvScaled(10)) {
+            if listID != nil {
+                Button { toggleMyList() } label: {
+                    DetailActionLabel191(title: L("My List")) {
+                        PlusCheckGlyph(inList: inMyList, size: tvScaled(22)).foregroundStyle(inMyList ? Theme.red : .white)
+                    }
+                }
+                .plainTVButton()
+                .accessibilityLabel(inMyList ? L("In My List") : L("Add to My List"))
+                .accessibilityAddTraits(inMyList ? .isSelected : [])
+            }
+            if let k = thumbKey {
+                let v = thumbs.value(k)
+                Menu {
+                    Button { thumbs.toggle(k, 1) } label: {
+                        Label(L("I like this"), systemImage: v == 1 ? "hand.thumbsup.fill" : "hand.thumbsup")
+                    }
+                    Button { thumbs.toggle(k, -1) } label: {
+                        Label(L("Not for me"), systemImage: v == -1 ? "hand.thumbsdown.fill" : "hand.thumbsdown")
+                    }
+                } label: {
+                    DetailActionLabel191(title: L("Rate")) {
+                        Image(systemName: v == 1 ? "hand.thumbsup.fill" : (v == -1 ? "hand.thumbsdown.fill" : "hand.thumbsup"))
+                            .font(.system(size: tvScaled(21), weight: .semibold))
+                            .foregroundStyle(v == 0 ? Color.white : Theme.red)
+                    }
+                }
+                .plainTVButton()
+                .accessibilityLabel(L("Rate"))
+            }
+            #if !os(tvOS)
+            shareAction191   // geen deelknop (ook geen QR) op tv's, zie docs/ACCOUNT.md
+            #endif
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    #if !os(tvOS)
+    @ViewBuilder private var shareAction191: some View {
+        if let url = shareURL {
+            ShareLink(item: url, subject: Text(shareTitle), message: Text(shareText), preview: SharePreview(shareTitle)) {
+                DetailActionLabel191(title: L("Share")) {
+                    Image(systemName: "square.and.arrow.up").font(.system(size: 21, weight: .semibold)).foregroundStyle(.white)
+                }
+            }
+            .buttonStyle(.plain)
+        } else {
+            ShareLink(item: shareText, subject: Text(shareTitle), preview: SharePreview(shareTitle)) {
+                DetailActionLabel191(title: L("Share")) {
+                    Image(systemName: "square.and.arrow.up").font(.system(size: 21, weight: .semibold)).foregroundStyle(.white)
+                }
+            }
+            .buttonStyle(.plain)
+        }
+    }
+    #endif
+
+    /// Trailers van de titel: de hoofdtrailer en per seizoen een eigen trailer (zonder dubbelen).
+    private var trailerEntries191: [Trailer191Entry] {
+        var out: [Trailer191Entry] = []
+        if let t = d?.trailerYouTubeID { out.append(Trailer191Entry(id: t, label: L("Trailer"))) }
+        if !isMovie {
+            for n in seasons {
+                if let t = seasonTrailers[n], !out.contains(where: { $0.id == t }) {
+                    out.append(Trailer191Entry(id: t, label: L("Trailer season %d", n)))
+                }
+            }
+        }
+        return out
+    }
+
+    private var tabs191: [DetailTabs191.Tab] {
+        DetailTabs191.tabs(isSeries: !isMovie, hasEpisodes: !episodes.isEmpty,
+                           hasSimilar: !(visibleRecommendations ?? []).isEmpty, hasTrailers: !trailerEntries191.isEmpty)
+    }
+
+    private func tabTitle191(_ t: DetailTabs191.Tab) -> String {
+        switch t {
+        case .episodes: return L("Episodes")
+        case .similar: return L("More like this")
+        case .trailers: return L("Trailers")
+        }
+    }
+
+    /// Tabbladen onder de knoppen: alleen die met inhoud voor dit soort titel.
+    @ViewBuilder private var tabsSection191: some View {
+        let tabs = tabs191
+        if !tabs.isEmpty {
+            let current = DetailTabs191.selected(tab191, in: tabs)
+            VStack(alignment: .leading, spacing: tvScaled(16)) {
+                HStack(spacing: tvScaled(8)) {
+                    ForEach(tabs, id: \.rawValue) { t in
+                        Button { tab191 = t } label: { Text(tabTitle191(t)) }
+                            .buttonStyle(DetailTabStyle191(active: current == t))
+                            .accessibilityAddTraits(current == t ? .isSelected : [])
+                    }
+                }
+                .padding(.horizontal, Theme.edge)
+                #if os(tvOS)
+                .focusSection()
+                #endif
+                if current == .episodes, case .series(let s) = target {
+                    episodesSection(s)
+                } else if current == .similar, let rec = visibleRecommendations, !rec.isEmpty {
+                    recommendationsSection(rec)
+                } else if current == .trailers {
+                    trailersSection191
+                }
+            }
+        }
+    }
+
+    private var trailersSection191: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            LazyHStack(alignment: .top, spacing: tvScaled(14)) {
+                ForEach(trailerEntries191) { e in
+                    Button { openTrailer(e.id) } label: {
+                        VStack(alignment: .leading, spacing: 6) {
+                            RemoteImage(url: URL(string: "https://img.youtube.com/vi/\(e.id)/hqdefault.jpg"), placeholder: e.label)
+                                .frame(width: tvScaled(280), height: tvScaled(158)).clipped()
+                                .clipShape(RoundedRectangle(cornerRadius: tvScaled(12)))
+                                .overlay(Image(systemName: "play.circle.fill").font(.system(size: tvScaled(34)))
+                                    .foregroundStyle(.white.opacity(0.9)))
+                            Text(e.label).font(.system(size: tvScaled(14))).lineLimit(1)
+                                .frame(width: tvScaled(280), alignment: .leading)
+                        }
+                    }
+                    .cardButton()
+                    .accessibilityLabel(e.label)
+                }
+            }
+            .padding(.horizontal, Theme.edge)
+            #if os(tvOS)
+            .padding(.vertical, 30)
+            #endif
+        }
+        #if os(tvOS)
+        .scrollClipDisabled()
+        #endif
     }
 
     #if os(iOS)
