@@ -1,0 +1,93 @@
+name: Check betalingen (tijdelijk)
+# Tijdelijk en ALLEEN LEZEN: telt misgelopen betalingen (Apple en Stripe) en toont alleen aantallen als annotaties.
+# Geen e-mailadressen, account-id's of bedragen in het (openbare) log. Wijzigt niets.
+on:
+  push:
+    branches: [check-betalingen]
+    paths: ['.github/check-betalingen.txt']
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Tellen
+        env:
+          TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+        run: |
+          python3 - <<'PY'
+          import os, json, re, urllib.request, urllib.parse, datetime, time
+          API = f"https://api.supabase.com/v1/projects/{os.environ['REF']}"
+          H = {"Authorization": "Bearer " + os.environ["TOKEN"]}
+          def note(t, m): print(f"::notice title={t}::{m}")
+          def db(sql):
+              req = urllib.request.Request(API + "/database/query", data=json.dumps({"query": sql}).encode(), headers={**H, "content-type": "application/json"})
+              return json.load(urllib.request.urlopen(req, timeout=60))
+          def logs(sql, s, e):
+              for _ in range(5):
+                  time.sleep(12)
+                  u = f"{API}/analytics/endpoints/logs?" + urllib.parse.urlencode({"sql": sql, "iso_timestamp_start": s, "iso_timestamp_end": e})
+                  try: return json.load(urllib.request.urlopen(urllib.request.Request(u, headers=H), timeout=60))
+                  except Exception: time.sleep(20)
+              return {}
+          iso = lambda d: d.isoformat().replace("+00:00", "Z")
+          now = datetime.datetime.now(datetime.timezone.utc)
+          # 1. billing/apple-notify/stripe-webhook: statuscodes per dag (edge logs, 413 = het oude probleem)
+          per = {}
+          ids = set(); ids_after = set(); after_n = 0
+          FIX = datetime.datetime(2026, 11, 27, 8, 30, tzinfo=datetime.timezone.utc)   # build 187 live (09:16 lokaal + deploy)
+          for back in range(4, -1, -1):
+              day = (now - datetime.timedelta(days=back)).date()
+              s = datetime.datetime.combine(day, datetime.time(), datetime.timezone.utc); e = min(s + datetime.timedelta(days=1), now)
+              r = logs("SELECT log_attributes['request.url'] AS url, log_attributes['response.status_code'] AS code, log_attributes['request.sb.auth_user'] AS u, timestamp AS ts "
+                       "FROM logs WHERE source = 'function_edge_logs' AND (position(log_attributes['request.url'], '/functions/v1/billing') > 0 "
+                       "OR position(log_attributes['request.url'], '/functions/v1/apple-notify') > 0 OR position(log_attributes['request.url'], '/functions/v1/stripe-webhook') > 0)", iso(s), iso(e))
+              for x in r.get("result", []):
+                  fn = re.search(r"/functions/v1/([a-z-]+)", str(x.get("url") or ""))
+                  k = (str(day), fn.group(1) if fn else "?", str(x.get("code")))
+                  per[k] = per.get(k, 0) + 1
+                  if str(x.get("code")) == "413":
+                      u = str(x.get("u") or "")
+                      ts = x.get("ts"); t = datetime.datetime.fromtimestamp(int(ts) / 1e6, datetime.timezone.utc) if ts else None
+                      if re.fullmatch(r"[0-9a-f-]{36}", u):
+                          ids.add(u)
+                          if t and t >= FIX: ids_after.add(u)
+                      if t and t >= FIX: after_n += 1
+          bad = {k: v for k, v in per.items() if not k[2].startswith("2")}
+          note("foutcodes per dag/functie", json.dumps({f"{a} {b} {c}": v for (a, b, c), v in sorted(bad.items())}) or "geen")
+          note("413 na de fix (aantal verzoeken)", str(after_n))
+          inl = ",".join("'" + i + "'" for i in sorted(ids)) or "''"
+          r = db(f"select count(*) c from auth.users u where u.id::text in ({inl}) and not exists (select 1 from premium_subscriptions s where s.user_id = u.id) "
+                 f"and not exists (select 1 from account_plans p where p.user_id = u.id and p.plan <> 'free') and not exists (select 1 from billing_purchases b where b.user_id = u.id and b.status = 'paid')")
+          note("accounts met 413 (5 dagen) die nog geen Premium/Lifetime hebben", f"{r[0]['c']} van {len(ids)}")
+          inl2 = ",".join("'" + i + "'" for i in sorted(ids_after)) or "''"
+          r = db(f"select count(*) c from auth.users u where u.id::text in ({inl2}) and not exists (select 1 from premium_subscriptions s where s.user_id = u.id) "
+                 f"and not exists (select 1 from account_plans p where p.user_id = u.id and p.plan <> 'free') and not exists (select 1 from billing_purchases b where b.user_id = u.id and b.status = 'paid')")
+          note("accounts met 413 NA de fix zonder Premium/Lifetime", f"{r[0]['c']} van {len(ids_after)}")
+          # 2. Apple: verkopen (App Store Connect) tegen gekoppelde abonnementen per dag
+          r = db("select d::date as dag, coalesce((select sum(units) from apple_sales_daily a where a.date = d::date and a.kind = 'sale'),0) as verkocht, "
+                 "(select count(*) from premium_subscriptions s where s.provider = 'apple' and s.created_at::date = d::date) as nieuw_apple_abo, "
+                 "(select count(*) from billing_purchases b where b.provider = 'apple' and b.created_at::date = d::date) as apple_lifetime "
+                 "from generate_series(current_date - 7, current_date, interval '1 day') d order by 1")
+          note("Apple per dag (verkocht | nieuwe abo's | lifetime)", "; ".join(f"{x['dag'][5:]}: {x['verkocht']}|{x['nieuw_apple_abo']}|{x['apple_lifetime']}" for x in r))
+          r = db("select max(date) m, max(fetched_at) f from apple_sales_daily")
+          note("laatste Apple-verkoopdag / laatst opgehaald", f"{r[0]['m']} / {str(r[0]['f'])[:16]}")
+          r = db("select coalesce(result,'?') res, count(*) c from billing_apple_events where created_at > now() - interval '3 days' group by 1 order by 2 desc")
+          note("Apple-notificaties 3 dagen per resultaat", json.dumps({x['res']: x['c'] for x in r}))
+          r = db("select count(*) c from premium_subscriptions where provider = 'apple' and user_id is null and claimed_at is null and created_at > now() - interval '7 days'")
+          note("Apple-abonnementen 7 dagen nog niet aan een account gekoppeld", str(r[0]['c']))
+          # 3. Stripe
+          r = db("select status, count(*) c from billing_purchases where created_at > now() - interval '7 days' and (provider is null or provider <> 'apple') group by 1")
+          note("Stripe Lifetime 7 dagen per status", json.dumps({x['status']: x['c'] for x in r}))
+          r = db("select count(*) c from billing_purchases where status = 'pending' and created_at < now() - interval '1 hour' and created_at > now() - interval '7 days' and (provider is null or provider <> 'apple')")
+          note("Stripe Lifetime pending >1 uur (7 dagen)", str(r[0]['c']))
+          r = db("select status, count(*) c from premium_subscriptions where provider = 'stripe' and created_at > now() - interval '7 days' group by 1")
+          note("Stripe-abonnementen 7 dagen per status", json.dumps({x['status']: x['c'] for x in r}))
+          r = db("select count(*) c from premium_subscriptions where provider = 'stripe' and status = 'incomplete' and created_at < now() - interval '1 day' and created_at > now() - interval '7 days'")
+          note("Stripe-abonnementen incomplete >1 dag", str(r[0]['c']))
+          r = db("select count(*) c, coalesce(sum(case when user_id is null then 1 else 0 end),0) z from premium_payments where paid_at > now() - interval '7 days' and (mode is null or mode = 'live')")
+          note("Stripe abonnementsbetalingen 7 dagen (live) | zonder account", f"{r[0]['c']} | {r[0]['z']}")
+          r = db("select coalesce(result,'?') res, count(*) c from billing_events where created_at > now() - interval '3 days' group by 1 order by 2 desc")
+          note("Stripe-webhookresultaten 3 dagen", json.dumps({x['res']: x['c'] for x in r}))
+          PY
