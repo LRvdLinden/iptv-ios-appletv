@@ -17,23 +17,48 @@ jobs:
           REF: ${{ secrets.SUPABASE_PROJECT_REF }}
         run: |
           python3 - <<'PY'
-          import os, json, urllib.request
+          import os, json, re, urllib.request, urllib.parse, datetime, time
           API = f"https://api.supabase.com/v1/projects/{os.environ['REF']}"
           H = {"Authorization": "Bearer " + os.environ["TOKEN"]}
           def note(t, m): print(f"::notice title={t}::{m}")
           def db(sql):
               req = urllib.request.Request(API + "/database/query", data=json.dumps({"query": sql}).encode(), headers={**H, "content-type": "application/json"})
               return json.load(urllib.request.urlopen(req, timeout=60))
-          r = db("select status, count(*) c from premium_subscriptions where provider = 'stripe' and created_at > now() - interval '7 days' group by 1")
-          note("Stripe-abonnementen 7 dagen per status", json.dumps({x['status']: x['c'] for x in r}))
-          r = db("select count(*) c from premium_subscriptions where provider = 'stripe' and status = 'incomplete' and created_at < now() - interval '1 day' and created_at > now() - interval '7 days'")
-          note("Stripe-abonnementen incomplete >1 dag", str(r[0]['c']))
-          r = db("select count(*) c, coalesce(sum(case when user_id is null then 1 else 0 end),0) z from premium_payments where paid_at > now() - interval '7 days' and (mode is null or mode = 'live')")
-          note("Stripe abonnementsbetalingen 7 dagen (live) | zonder account", f"{r[0]['c']} | {r[0]['z']}")
-          r = db("select coalesce(result,'?') res, count(*) c from billing_events where created_at > now() - interval '3 days' group by 1 order by 2 desc")
-          note("Stripe-webhookresultaten 3 dagen", json.dumps({x['res']: x['c'] for x in r}))
-          r = db("select count(*) c from apple_sales_daily where date >= current_date - 7 and kind = 'refund'")
-          note("Apple refunds 7 dagen", str(r[0]['c']))
-          r = db("select count(*) c from premium_subscriptions where provider = 'apple' and user_id is null and created_at > now() - interval '7 days' and claim_notified_at is null")
-          note("Apple ongekoppeld en nog geen claim-mail", str(r[0]['c']))
+          def logs(sql, s, e):
+              for _ in range(5):
+                  time.sleep(12)
+                  u = f"{API}/analytics/endpoints/logs?" + urllib.parse.urlencode({"sql": sql, "iso_timestamp_start": s, "iso_timestamp_end": e})
+                  try: return json.load(urllib.request.urlopen(urllib.request.Request(u, headers=H), timeout=60))
+                  except Exception: time.sleep(20)
+              return {}
+          iso = lambda d: d.isoformat().replace("+00:00", "Z")
+          now = datetime.datetime.now(datetime.timezone.utc)
+          s = datetime.datetime(2026, 11, 27, 0, 0, tzinfo=datetime.timezone.utc)
+          r = logs("SELECT log_attributes['request.url'] AS url, log_attributes['request.method'] AS m, log_attributes['response.status_code'] AS code, timestamp AS ts "
+                   "FROM logs WHERE source = 'function_edge_logs' AND (position(log_attributes['request.url'], '/functions/v1/billing') > 0 "
+                   "OR position(log_attributes['request.url'], '/functions/v1/apple-notify') > 0 OR position(log_attributes['request.url'], '/functions/v1/stripe-webhook') > 0 OR position(log_attributes['request.url'], '/functions/v1/login') > 0)", iso(s), iso(now))
+          rows = []
+          for x in r.get("result", []):
+              c = str(x.get("code"))
+              if c.startswith("2"): continue
+              fn = re.search(r"/functions/v1/([a-z-]+)", str(x.get("url") or ""))
+              ts = x.get("ts"); t = (datetime.datetime.fromtimestamp(int(ts) / 1e6, datetime.timezone.utc) if str(ts).isdigit() else datetime.datetime.fromisoformat(str(ts)).replace(tzinfo=datetime.timezone.utc))
+              rows.append((t, fn.group(1) if fn else "?", c))
+          rows.sort()
+          # tijden in NL (UTC+1) als uur:minuut, gegroepeerd per uur
+          per = {}
+          for t, fn, c in rows:
+              k = f"{(t + datetime.timedelta(hours=1)).strftime('%H')}u {fn} {c}"
+              per[k] = per.get(k, 0) + 1
+          out = [f"{k}: {v}" for k, v in sorted(per.items())]
+          for i in range(0, len(out), 12): note(f"fouten vandaag (NL-uur) {i//12+1}", "; ".join(out[i:i+12]))
+          # Apple-abonnementen en aankopen van vandaag/gisteren: tijd, status, gekoppeld, claim-gegevens (geen id's)
+          r = db("select (created_at at time zone 'Europe/Amsterdam')::text as nl, status, plan, (user_id is not null) as gekoppeld, (claim_email_hash is not null) as heeft_claim_email, "
+                 "(claim_notified_at is not null) as claim_mail, (claimed_at is not null) as geclaimd, (trial_until is not null) as proef, mode "
+                 "from premium_subscriptions where provider = 'apple' and created_at > now() - interval '5 days' order by created_at")
+          for i, x in enumerate(r): note(f"Apple-abo {i+1}", json.dumps(x))
+          r = db("select (created_at at time zone 'Europe/Amsterdam')::text as nl, status, (user_id is not null) as gekoppeld from billing_purchases where provider = 'apple' and created_at > now() - interval '5 days' order by created_at")
+          note("Apple-lifetime recent", json.dumps(r))
+          r = db("select (created_at at time zone 'Europe/Amsterdam')::text as nl, type, result from billing_apple_events where created_at > now() - interval '2 days' order by created_at")
+          note("Apple-meldingen 2 dagen (NL-tijd, type, resultaat)", "; ".join(f"{x['nl'][5:16]} {x['type']} {x['result']}" for x in r)[:1500])
           PY
