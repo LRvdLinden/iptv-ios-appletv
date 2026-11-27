@@ -54,26 +54,17 @@ jobs:
                     f"and not exists (select 1 from account_plans p where p.user_id = u.id and p.plan <> 'free')") if ids else []
           to = sorted({r["email"] for r in rows if r.get("email")})
           print("te mailen (bestaand, bevestigd, nog geen Premium):", len(to))
-          body = """Hello,
-
-You recently tried to subscribe to Bingr Premium through the App Store. Unfortunately that did not work: because of an error on our side, your purchase was not recognised, so Premium was not activated. We sincerely apologise for the disruption.
-
-The error has now been fixed. Here is how to activate Premium:
-
-1. Update Bingr to the latest version in the App Store.
-2. Open Bingr and sign in with the same account you used for the purchase.
-3. Go to Settings and choose Restore Purchases (or open the Premium screen and choose Restore Purchases there).
-
-You do not have to pay again. Your Apple purchase is still valid; we are simply linking it to your account now.
-
-If it does not work, or your trial period has already ended, send us a message at support.bingr.online and we will sort it out together.
-
-Once again, our apologies for the inconvenience.
-
-Best regards,
-Léon
-Bingr
-"""
+          body = "\n".join([
+              "Hello,", "",
+              "You recently tried to subscribe to Bingr Premium through the App Store. Unfortunately that did not work: because of an error on our side, your purchase was not recognised, so Premium was not activated. We sincerely apologise for the disruption.", "",
+              "The error has now been fixed. Here is how to activate Premium:", "",
+              "1. Update Bingr to the latest version in the App Store.",
+              "2. Open Bingr and sign in with the same account you used for the purchase.",
+              "3. Go to Settings and choose Restore Purchases (or open the Premium screen and choose Restore Purchases there).", "",
+              "You do not have to pay again. Your Apple purchase is still valid; we are simply linking it to your account now.", "",
+              "If it does not work, or your trial period has already ended, send us a message at support.bingr.online and we will sort it out together.", "",
+              "Once again, our apologies for the inconvenience.", "",
+              "Best regards,", "L\u00e9on", "Bingr", ""])
           frm = os.environ["SMTP_FROM"]; name, addr = parseaddr(frm)
           port = int(os.environ.get("SMTP_PORT") or 465)
           ok = bad = 0
