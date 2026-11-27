@@ -491,7 +491,7 @@ async function processQueue(budgetMs: number, max: number) {
   if (!got) return { busy: true };
   const t0 = Date.now();
   let sent = 0, failed = 0;
-  const tx = transport();
+  const tx = transport("status");
   try {
     const { visible, names } = await publicNames();
     for (const it of items) {
@@ -567,7 +567,7 @@ async function alert(events: Event[]): Promise<boolean | string> {
   const to = env("BINGR_ALERT_EMAIL");
   if (!to || !smtpConfigured()) return false;
   const { subject, text, html } = alertMail(events);
-  const tx = transport();
+  const tx = transport("status");
   try {
     await tx.sendMail({ from: smtpFrom(), to, subject, text, html, headers: { "Auto-Submitted": "auto-generated", "X-Bingr-Mail": "status-alert" } });
     return true;
@@ -585,7 +585,7 @@ async function mailPreview(b: Record<string, unknown>) {
   const lang: Lang = b.lang === "en" ? "en" : "nl";
   const kind = b.kind === "alert" ? "alert" : "notice";
   const tag = lang === "en" ? "[Preview] " : "[Voorbeeld] ";
-  const tx = transport();
+  const tx = transport("status");
   try {
     if (kind === "alert") {
       const now = new Date().toISOString();
@@ -778,7 +778,7 @@ async function subscribe(b: Record<string, unknown>, ip: string) {
     }
   }
   const hi = await firstNames([email]);
-  const tx = transport();
+  const tx = transport("status");
   try { await sendTo(tx, email, renderConfirm(lang, token!, hi.get(email.toLowerCase()) ?? "")); }
   catch (e) { console.error("status confirm", e instanceof Error ? e.message : e); return { status: 502, body: { error: "mail_failed" } }; }
   finally { tx.close(); }

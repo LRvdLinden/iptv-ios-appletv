@@ -232,7 +232,7 @@ async function send(to: string, mail: { subject: string; html: string; text: str
   };
   if (messageId !== root) { headers["In-Reply-To"] = root; headers["References"] = root; }
   const base = { to, subject: mail.subject, html: mail.html, text: mail.text, headers, messageId };
-  const tx = transport();
+  const tx = transport("support");
   try {
     try {
       await tx.sendMail({ ...base, from: SUPPORT_FROM(), replyTo: opts.replyTo ?? addressOf(SUPPORT_FROM()) });

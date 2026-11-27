@@ -1,5 +1,5 @@
 // deno test --allow-env supabase/functions/_shared/mail_test.ts (mailtest-sleutel in mail.ts; workflow Backend)
-import { isMailtestAddress, mailErrorCode, mailtestOk, transportOptions, withName } from "./mail.ts";
+import { isMailtestAddress, mailErrorCode, mailLogRow, mailtestOk, transportOptions, withName } from "./mail.ts";
 function assertEquals(a: unknown, b: unknown) {
   const x = JSON.stringify(a), y = JSON.stringify(b);
   if (x !== y) throw new Error(`verwacht ${y}, kreeg ${x}`);
@@ -44,4 +44,25 @@ Deno.test("SMTP: één hergebruikte verbinding met begrensd tempo, foutcodes zon
   assertEquals(mailErrorCode({ responseCode: 550, response: "550 a@b.nl unknown" }), "smtp_550");
   assertEquals(mailErrorCode({ code: "EAUTH" }), "eauth");
   assertEquals(mailErrorCode(new Error("Recipient a@b.nl rejected")), "error");
+});
+
+// ---- verzendlogboek (mail_log) ----
+Deno.test("mailLogRow: ontvanger, onderwerp, bron en resultaat; nooit de inhoud", () => {
+  const r = mailLogRow("support", { to: "Klant <Klant@Example.COM>", subject: "Sorry", text: "geheim", html: "<p>geheim</p>" }, true)!;
+  assertEquals(r, { source: "support", to_addr: "klant@example.com", subject: "Sorry", ok: true, error: "" });
+  assertEquals(JSON.stringify(r).includes("geheim"), false);
+});
+Deno.test("mailLogRow: mislukte mail met foutcode, eerste ontvanger van een lijst", () => {
+  const r = mailLogRow("status", { to: ["a@b.nl", "c@d.nl"], subject: "x" }, false, "smtp_550")!;
+  assertEquals(r.to_addr, "a@b.nl"); assertEquals(r.ok, false); assertEquals(r.error, "smtp_550");
+  assertEquals(mailLogRow("status", { to: { address: "E@F.nl" }, subject: "x" }, true)!.to_addr, "e@f.nl");
+});
+Deno.test("mailLogRow: bulk, testadressen en lege ontvangers komen er niet in", () => {
+  assertEquals(mailLogRow("newsletter", { to: "a@b.nl", subject: "x" }, true), null);
+  assertEquals(mailLogRow("mailing", { to: "a@b.nl", subject: "x" }, true), null);
+  assertEquals(mailLogRow("status", { to: "support+ci-abc123@bingr.online", subject: "x" }, true), null);
+  assertEquals(mailLogRow("status", { subject: "x" }, true), null);
+});
+Deno.test("mailLogRow: lange onderwerpen worden afgekapt", () => {
+  assertEquals(String(mailLogRow("auth", { to: "a@b.nl", subject: "x".repeat(500) }, true)!.subject).length, 200);
 });

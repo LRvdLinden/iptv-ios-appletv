@@ -34,7 +34,7 @@ import { claimMailedSub, markPastDue, refundPayment, savePayment, savePaymentDet
 // of automatisch via het e-mailadres). Nooit het adres of het token loggen.
 async function sendClaimMail(to: string, lang: "nl" | "en", token: string, sessionId: string, premiumSub?: string): Promise<string> {
   if (!smtpConfigured()) return "no_smtp";
-  const mailer = transport();
+  const mailer = transport("stripe");
   try {
     const m = renderClaimMail(lang, token, undefined, premiumSub ? "premium" : "lifetime");
     await mailer.sendMail({ from: smtpFrom(), replyTo: "Bingr Support <support@bingr.online>", to, subject: m.subject, html: m.html, text: m.text,

@@ -159,7 +159,7 @@ const editionFor = (c: Content, lang: Lang): Edition => c?.[lang] ?? c?.nl ?? { 
 
 type Totals = { sent: number; failed: number; retry: number; errors: Record<string, number> };
 async function sendEdition(e: EditionRow, until: number, t: Totals): Promise<boolean> {
-  const mailer = transport();
+  const mailer = transport("newsletter");
   const year = new Date(e.created_at).getFullYear(), monthly = e.kind === "monthly";
   try {
     while (Date.now() < until) {
@@ -328,7 +328,7 @@ async function recapRound(ms: number, until: number, _rs: RecapSettings): Promis
   }
   t.due = due.length;
   if (!due.length) return t;
-  const mailer = transport(), cache: MetaCache = new Map(), year = new Date(ms).getFullYear();
+  const mailer = transport("newsletter"), cache: MetaCache = new Map(), year = new Date(ms).getFullYear();
   const tzOf = new Map(due.map((c) => [`${c.id}|${c.month}`, recapTz(c.tz, c.country)]));
   try {
     for (const month of [...new Set(due.map((c) => c.month))]) {
@@ -399,7 +399,7 @@ async function welcomeCron() {
   const t = { sent: 0, failed: 0, retry: 0, errors: {} as Record<string, number> };
   if (!items.length) return { ok: true, smtp: true, ...t };
   const sent: string[] = [], failed: string[] = [], codes: string[] = [], retry: string[] = [];
-  const mailer = transport();
+  const mailer = transport("newsletter");
   const year = new Date().getFullYear();
   let stop = false;
   try {
@@ -515,7 +515,7 @@ async function mailingCron() {
   const { data: used } = await admin.rpc("bingr_mailing_sent_last_hour");
   const budget = budgetOf(MAILING_PER_HOUR, typeof used === "number" ? used : MAILING_PER_HOUR, MAILING_BATCH);
   if (!budget) return { ok: true, smtp: true, mailing: m.id, sent: 0, failed: 0, retry: 0, done: false, budget, waiting: "hour_limit" };
-  const mailer = transport();
+  const mailer = transport("newsletter");
   const year = new Date().getFullYear();
   try {
     const r = await runMailing({
@@ -547,7 +547,7 @@ async function mailingCron() {
 
 /** Testmail naar één adres (nooit gelogd): "[Test] …", voorbeeldnaam, zelfde kopregels als de echte verzending. */
 async function mailingTest(to: string, content: MailingContent, audience: Audience, langs: Lang[]) {
-  const mailer = transport();
+  const mailer = transport("newsletter");
   try {
     for (const lang of langs) {
       const { headers, unsubscribeUrl } = await mailingHeaders(audience, NIL_USER, "mailing-test", "test");
@@ -746,7 +746,7 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       const own = !!recap;
       if (!recap) { recap = await sampleRecap(lang); name = SAMPLE_NAME; }
       const m = renderRecap({ lang, recap, name, unsubscribeUrl: `${SITE}/unsubscribe/?k=news`, preview: true, sample: !own });
-      const mailer = transport();
+      const mailer = transport("newsletter");
       try {
         const token = await unsubToken(NIL_USER, unsubSecret());
         await mailer.sendMail({
@@ -771,7 +771,7 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       if (!(await rateOk("news-preview", 10, 3600))) return json({ error: "rate_limited", retry_after: 3600 }, 429);
       const lang: Lang = body.lang === "en" ? "en" : "nl";
       const m = renderNewsletter({ lang, edition: editionFor(await currentContent(), lang), unsubscribeUrl: `${SITE}/unsubscribe/?k=news`, preview: true });
-      const mailer = transport();
+      const mailer = transport("newsletter");
       try {
         // zelfde kopregels als de echte verzending; het token hoort bij een niet-bestaand account, dus afmelden doet niets
         const token = await unsubToken("00000000-0000-0000-0000-000000000000", unsubSecret());
@@ -800,7 +800,7 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       const lang: Lang = body.lang === "en" ? "en" : "nl";
       const cur = await currentMonthly();
       const m = renderMonthly({ lang, edition: monthlyFor(cur.content, lang, cur.key), unsubscribeUrl: `${SITE}/unsubscribe/?k=news`, preview: true });
-      const mailer = transport();
+      const mailer = transport("newsletter");
       try {
         // zelfde kopregels als de echte verzending; het token hoort bij een niet-bestaand account, dus afmelden doet niets
         const token = await unsubToken(NIL_USER, unsubSecret());
@@ -827,7 +827,7 @@ async function handle(req: Request, body: Record<string, unknown>): Promise<Resp
       if (!(await rateOk("news-preview", 10, 3600))) return json({ error: "rate_limited", retry_after: 3600 }, 429);
       const lang: Lang = body.lang === "en" ? "en" : "nl";
       const m = renderWelcome({ lang, firstName: SAMPLE_NAME, unsubscribeUrl: `${SITE}/unsubscribe/?k=news`, newsletter: true, preview: true });
-      const mailer = transport();
+      const mailer = transport("newsletter");
       try {
         // zelfde kopregels als de echte welkomstmail (met de alinea over de nieuwsbrief); token van een niet-bestaand account
         const token = await unsubToken("00000000-0000-0000-0000-000000000000", unsubSecret());

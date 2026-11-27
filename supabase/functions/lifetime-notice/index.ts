@@ -55,7 +55,7 @@ async function sendBatch(kind: MailKind, body: Record<string, unknown>) {
   const t = { sent: 0, failed: 0, retry: 0, errors: {} as Record<string, number> };
   const sent: string[] = [], failed: string[] = [], codes: string[] = [], retry: string[] = [];
   if ((items ?? []).length) {
-    const mailer = transport(), year = new Date().getFullYear();
+    const mailer = transport("lifetime"), year = new Date().getFullYear();
     let stop = false;
     try {
       for (const u of items) {
@@ -110,7 +110,7 @@ async function mailAction(body: Record<string, unknown>): Promise<Response> {
   if (!smtpConfigured()) return json({ error: "smtp_not_configured" }, 503);
   const kind: MailKind = body.kind === "remind" ? "remind" : "notice";
   const langs: Lang[] = body.lang === "nl" || body.lang === "en" ? [body.lang] : ["nl", "en"];
-  const mailer = transport();
+  const mailer = transport("lifetime");
   try {
     for (const lang of langs) {
       const m = renderLifetimeMail({ kind, lang, code: SAMPLE_CODE, validUntil, cutoverAt: s.cutover_at, discountPct: s.discount_pct, firstName: "Alex", test: true });

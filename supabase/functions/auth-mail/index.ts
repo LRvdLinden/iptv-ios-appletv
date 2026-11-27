@@ -31,7 +31,7 @@ Deno.serve(async (req) => {
     return json(200, {});
   }
   if (!smtpConfigured()) { console.error("auth-mail: BINGR_SMTP_* ontbreken"); return fail(500, "Email is not configured."); }
-  const tx = transport();
+  const tx = transport("auth");
   try {
     for (const m of mails) {
       await tx.sendMail({

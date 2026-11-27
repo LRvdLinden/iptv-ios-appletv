@@ -377,6 +377,23 @@ create table if not exists public.admin_audit (
   created_at  timestamptz not null default now()
 );
 create index if not exists admin_audit_created_idx on public.admin_audit (created_at desc);
+
+-- Verzendlogboek (beheer, tab Verzonden): elke mail die de functies via _shared/mail.ts `transport(bron)` versturen, zonder inhoud.
+-- Alleen de service role leest en schrijft; 90 dagen bewaard (bingr_status_cleanup). Nieuwsbrief en mailings staan er niet in.
+create table if not exists public.mail_log (
+  id        bigserial primary key,
+  at        timestamptz not null default now(),
+  source    text not null default 'overig',
+  to_addr   text not null,
+  subject   text not null default '',
+  ok        boolean not null,
+  error     text not null default ''
+);
+create index if not exists mail_log_at_idx on public.mail_log (at desc);
+create index if not exists mail_log_to_idx on public.mail_log (to_addr);
+alter table public.mail_log enable row level security;
+revoke all on public.mail_log from anon, authenticated;
+
 alter table public.admin_audit enable row level security;
 revoke all on public.admin_audit from anon, authenticated;
 
@@ -1005,6 +1022,7 @@ language sql security definer set search_path = public as $$
   delete from public.status_checks where at < now() - interval '90 days';
   delete from public.status_daily where day < (now() at time zone 'Europe/Amsterdam')::date - 400;
   delete from public.status_incidents where ended_at is not null and ended_at < now() - interval '1 year';
+  delete from public.mail_log where at < now() - interval '90 days';
 $$;
 revoke all on function public.bingr_status_lock(text) from public, anon, authenticated;
 revoke all on function public.bingr_status_unlock() from public, anon, authenticated;

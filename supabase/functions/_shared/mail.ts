@@ -22,8 +22,47 @@ export function transportOptions(get: (k: string) => string = env) {
     connectionTimeout: 15000, greetingTimeout: 15000, socketTimeout: 30000,
   };
 }
-export function transport() {
-  return nodemailer.createTransport(transportOptions());
+/** Welke bronnen in het verzendlogboek komen (mail_log). Nieuwsbrief en mailings zijn bulk en hebben eigen tellers. */
+const NOT_LOGGED = new Set(["newsletter", "mailing"]);
+/** Eén rij voor mail_log (puur, getest in mail_test.ts): ontvanger, onderwerp, bron, gelukt of niet. Nooit de inhoud. */
+// deno-lint-ignore no-explicit-any
+export function mailLogRow(source: string, msg: any, ok: boolean, error = ""): Record<string, unknown> | null {
+  if (NOT_LOGGED.has(source)) return null;
+  const raw = Array.isArray(msg?.to) ? msg.to[0] : msg?.to;
+  const first = typeof raw === "string" ? raw : typeof raw?.address === "string" ? raw.address : "";
+  const m = first.match(/<([^<>]+)>\s*$/);
+  const to = (m ? m[1] : first.split(",")[0]).trim().toLowerCase().slice(0, 254);
+  if (!to || isMailtestAddress(to)) return null;
+  return { source: source.slice(0, 40), to_addr: to, subject: String(msg?.subject ?? "").slice(0, 200), ok, error: ok ? "" : error.slice(0, 40) };
+}
+/** Best effort: schrijft de rij via PostgREST (service role) en laat een mislukte log nooit een mail laten mislukken. */
+async function logMail(row: Record<string, unknown> | null) {
+  const url = env("SUPABASE_URL"), key = env("SUPABASE_SERVICE_ROLE_KEY");
+  if (!row || !url || !key) return;
+  try {
+    await fetch(`${url}/rest/v1/mail_log`, {
+      method: "POST", headers: { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json", Prefer: "return=minimal" },
+      body: JSON.stringify(row), signal: AbortSignal.timeout(3000),
+    });
+  } catch { /* geen log is beter dan een mislukte mail */ }
+}
+/** SMTP-transport. `source` (bijv. "support", "status", "auth") komt in het verzendlogboek van het beheer (tabel mail_log). */
+export function transport(source = "overig") {
+  const t = nodemailer.createTransport(transportOptions());
+  const send = t.sendMail.bind(t);
+  // deno-lint-ignore no-explicit-any
+  (t as any).sendMail = async (msg: any, ...rest: any[]) => {
+    try {
+      // deno-lint-ignore no-explicit-any
+      const r = await (send as any)(msg, ...rest);
+      await logMail(mailLogRow(source, msg, true));
+      return r;
+    } catch (e) {
+      await logMail(mailLogRow(source, msg, false, mailErrorCode(e)));
+      throw e;
+    }
+  };
+  return t;
 }
 /** Korte foutcode voor logs en tellers, nooit het adres of de servertekst: `smtp_550`, `eauth`, `etimedout` of `error`. */
 export function mailErrorCode(e: unknown): string {
