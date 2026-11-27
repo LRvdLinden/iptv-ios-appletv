@@ -1,5 +1,6 @@
 name: Diagnose status (tijdelijk)
-# Tijdelijk: welke velden leggen de edge-logs vast bij de geweigerde billing-verzoeken (alleen veldnamen en tellingen).
+# Tijdelijk: zoekt de accounts met een geweigerde abonnementsaankoop op en versleutelt de lijst met een openbare sleutel;
+# alleen de eigenaar van de privesleutel kan hem lezen. Er wordt niets leesbaars geprint.
 on:
   push:
     branches: [symboliseren]
@@ -7,23 +8,80 @@ on:
 permissions:
   contents: read
 jobs:
-  sleutels:
+  zoeken:
     runs-on: ubuntu-latest
     steps:
-      - name: Veldnamen
+      - name: Zoeken en versleutelen
         env:
           TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           REF: ${{ secrets.SUPABASE_PROJECT_REF }}
         run: |
+          cat > cert.pem <<'CERT'
+          -----BEGIN CERTIFICATE-----
+          MIIEFTCCAn2gAwIBAgIUY7v6E1p4lvQ0w0c/OpFEFBqnNrAwDQYJKoZIhvcNAQEL
+          BQAwGjEYMBYGA1UEAwwPYmluZ3ItdGlqZGVsaWprMB4XDTI2MTEyNzA5MDkyOVoX
+          DTI2MTIwNDA5MDkyOVowGjEYMBYGA1UEAwwPYmluZ3ItdGlqZGVsaWprMIIBojAN
+          BgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAtFu5lX9davEpleF4/5eUL9vFGKDx
+          5DryvMLeck0Bhf0qqji63OU94pvFB+WuokhbxUxnTrOHr8bmHoHWH1U1zGH1kbjZ
+          ECf0WkuXGjgorsyJQivHfIr3byOp+YwaaJ4w+7YCGTnTWUelXSc+B/cRUiqrCatM
+          KnGw04rr50OSDibNk426M+/DytkZiDSevHiIpuxXWIGh9cFj6Mfkg+bCp/a7u5gi
+          TXzr+KmnmPDnctlAWl6/Bc29s1cZ57OD/RwTL5O7Su1ej9Ty/KWrRmtnCqVjJ+Tk
+          OI9fZmJk2CsA7c2WbDTlQiyrVPundnpC1KtsddJchAEFKPZZ4o4+ABBaQft8XfZr
+          DahU/vcHARcavZcsnSlQlZCnDNGzCa47TgBPG5u1ahxckPsGaGMpOmSpQvzbiptU
+          qP/3CvuEKAVgCbjl6aKlfo0aqZpZsaBdJe82Du8EtvfMWehuKThQ0dQtO2dhMwAi
+          nnbS8AnlJ9ZITt/sdc1dTHTvrwT5lRjKmmIHAgMBAAGjUzBRMB0GA1UdDgQWBBRj
+          146E5G5stxqEPbp/3jJwMUJkejAfBgNVHSMEGDAWgBRj146E5G5stxqEPbp/3jJw
+          MUJkejAPBgNVHRMBAf8EBTADAQH/MA0GCSqGSIb3DQEBCwUAA4IBgQBC8nzxzPju
+          FVvmqcWEFcma9/rXUz+CPQv09L52RRkJjMM4HkJupDWOMB554GsnJPb5+TsZKd6S
+          mG1GogqMG42xv2tR+zGkNtL7cOi52cw8dA2ukliEmYKYARtoIiPAFeu5f4UaAvyK
+          kPr8vWD70azFY+rdoSprCKRWp9vr1csdF3eptHJqXw8baYps5U1sIl2jJdTiqG0h
+          04gWWlDVpAn6JeoMJqDBiELYNNdFtzQputWnYA+MI8ueoqHU1vfxiVJYHpUpyWd7
+          w7D/MAlQNaMx4RWqSvGfyEhB4cb0Kdu/A0gpEXo5LdWDtE9IZQkF+aZZDyIUAutN
+          zzmgk4cciwNNc4HyPbWJOtZyEwO0cwe+taIhQPgv7lcmBzwIqW6OgHgFLSnM94Ib
+          fU1Mhqm9noLZHUhB+NEp3SiOuJSPRw/1p+7CfikkuTwc2tks9CGVRAnIpq2e20iN
+          YMkY1F7utCk7YJpba4pcO+CRdyVZ/eEB5d+eXJsdlXaROAlAN4v5jnE=
+          -----END CERTIFICATE-----
+          CERT
           python3 - <<'PY'
-          import os, json, urllib.request, urllib.parse, datetime, time
+          import os, json, re, subprocess, urllib.request, urllib.parse, datetime, time
           API = f"https://api.supabase.com/v1/projects/{os.environ['REF']}"
+          H = {"Authorization": "Bearer " + os.environ["TOKEN"]}
           def q(sql, s, e):
-              u = f"{API}/analytics/endpoints/logs?" + urllib.parse.urlencode({"sql": sql, "iso_timestamp_start": s, "iso_timestamp_end": e})
-              try: return json.load(urllib.request.urlopen(urllib.request.Request(u, headers={"Authorization": "Bearer " + os.environ["TOKEN"]}), timeout=60))
-              except Exception as ex: return {"error": str(ex)[:150]}
+              for _ in range(4):
+                  time.sleep(15)
+                  u = f"{API}/analytics/endpoints/logs?" + urllib.parse.urlencode({"sql": sql, "iso_timestamp_start": s, "iso_timestamp_end": e})
+                  try: return json.load(urllib.request.urlopen(urllib.request.Request(u, headers=H), timeout=60))
+                  except Exception: time.sleep(20)
+              return {}
+          def db(sql):
+              req = urllib.request.Request(API + "/database/query", data=json.dumps({"query": sql}).encode(), headers={**H, "content-type": "application/json"})
+              return json.load(urllib.request.urlopen(req, timeout=60))
           now = datetime.datetime.now(datetime.timezone.utc)
-          s = (now - datetime.timedelta(hours=23)).isoformat().replace("+00:00", "Z"); e = now.isoformat().replace("+00:00", "Z")
-          r = q("SELECT k, count() AS n FROM logs ARRAY JOIN mapKeys(log_attributes) AS k WHERE source = 'function_edge_logs' AND position(log_attributes['request.url'], '/functions/v1/billing') > 0 AND log_attributes['response.status_code'] = '413' GROUP BY k ORDER BY k", s, e)
-          print([x["k"] + "=" + str(x["n"]) for x in r.get("result", [])] if "result" in r else r)
+          att = {}
+          for back in range(4, -1, -1):
+              day = (now - datetime.timedelta(days=back)).date()
+              s = datetime.datetime.combine(day, datetime.time(), datetime.timezone.utc); e = min(s + datetime.timedelta(days=1), now)
+              r = q("SELECT log_attributes['request.sb.auth_user'] AS u, count() AS n, min(timestamp) AS first, max(timestamp) AS last FROM logs WHERE source = 'function_edge_logs' AND position(log_attributes['request.url'], '/functions/v1/billing') > 0 AND log_attributes['response.status_code'] = '413' GROUP BY u",
+                    s.isoformat().replace("+00:00", "Z"), e.isoformat().replace("+00:00", "Z"))
+              for x in r.get("result", []):
+                  u = str(x.get("u") or "")
+                  a = att.setdefault(u, {"n": 0, "first": None, "last": None})
+                  a["n"] += int(x["n"]); a["first"] = min(filter(None, [a["first"], str(x["first"])])); a["last"] = max(filter(None, [a["last"], str(x["last"])]))
+          ids = [u for u in att if re.fullmatch(r"[0-9a-f-]{36}", u)]
+          lines = []
+          if ids:
+              inl = ",".join("'" + i + "'" for i in ids)
+              rows = db(f"select i.id::text id, u.email, u.email_confirmed_at is not null conf, u.created_at::date cr, "
+                        f"(select string_agg(distinct s.provider||':'||s.plan||':'||s.status, ',') from premium_subscriptions s where s.user_id::text = i.id) subs, "
+                        f"(select string_agg(distinct p.plan||':'||p.source, ',') from account_plans p where p.user_id::text = i.id) plans "
+                        f"from unnest(array[{inl}]::text[]) as i(id) left join auth.users u on u.id::text = i.id")
+              by = {r["id"]: r for r in rows}
+              for i in ids:
+                  r = by.get(i, {}); a = att[i]
+                  lines.append(f"{r.get('email') or 'ACCOUNT BESTAAT NIET MEER'} | pogingen {a['n']} | {a['first']} .. {a['last']} | abonnement: {r.get('subs') or '-'} | plan: {r.get('plans') or '-'}")
+          lines.append(f"zonder account/anoniem: {sum(v['n'] for k, v in att.items() if k not in ids)} verzoeken")
+          open("lijst.txt", "w").write("\n".join(lines) + "\n")
           PY
+          openssl cms -encrypt -aes256 -in lijst.txt -recip cert.pem -outform PEM -out lijst.pem
+          echo "-----LIJST-----"; cat lijst.pem; echo "-----EINDE-----"
+          shred -u lijst.txt
