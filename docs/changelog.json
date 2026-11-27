@@ -75,6 +75,22 @@
         ],
         "nl": "Detailpagina: een rij met symbool en tekst voor Mijn lijst, Beoordelen en Delen (Delen niet op Apple TV)",
         "en": "Detail page: a row with symbol and text for My List, Rate and Share (Share not on Apple TV)"
+      },
+      {
+        "type": "improved",
+        "platforms": [
+          "web"
+        ],
+        "nl": "Kijk je nog?: je hebt nu 30 seconden om te antwoorden (was 60) voordat de webspeler pauzeert en de stream vrijkomt.",
+        "en": "Are you still watching?: you now have 30 seconds to answer (was 60) before the web player pauses and frees the stream."
+      },
+      {
+        "type": "new",
+        "platforms": [
+          "web"
+        ],
+        "nl": "Detailpagina van een film of serie: tabbladen Afleveringen, Meer zoals dit en Trailers, alleen met inhoud. Het actieve tabblad heeft een rode streep erboven, de rest is grijs.",
+        "en": "Movie or series detail page: tabs Episodes, More like this and Trailers, shown only when there is content. The active tab has a red line above it, the rest are grey."
       }
     ]
   },

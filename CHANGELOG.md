@@ -41,6 +41,16 @@ _27 november 2026_
 
 - Detailpagina: een rij met symbool en tekst voor Mijn lijst, Beoordelen en Delen (Delen niet op Apple TV)
 
+### Website
+
+**Nieuw**
+
+- Detailpagina van een film of serie: tabbladen Afleveringen, Meer zoals dit en Trailers, alleen met inhoud. Het actieve tabblad heeft een rode streep erboven, de rest is grijs.
+
+**Verbeterd**
+
+- Kijk je nog?: je hebt nu 30 seconden om te antwoorden (was 60) voordat de webspeler pauzeert en de stream vrijkomt.
+
 ## Versie 1.1.2 · Build 190
 _27 november 2026_
 
