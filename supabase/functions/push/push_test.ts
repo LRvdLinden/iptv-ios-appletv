@@ -157,11 +157,15 @@ Deno.test("herinnering: tekst met profiel en tijd in de tijdzone van het apparaa
 // ---------- payloads ----------
 Deno.test("payloads per kanaal", () => {
   const n = renderNotice({ id: 42, kind: "release", payload: { version: "1.0.0", build: 105 } }, { platform: "ios", lang: "nl" });
-  eq(n.data, { kind: "release", msg_id: "42", url: "https://bingr.online/changelog/?p=ios#build-105", deeplink: "bingr://changelog?p=ios&b=105" });
+  eq(n.data, { kind: "release", msg_id: "42", url: "https://apps.apple.com/nl/app/bingr/id6821401598" });
+  eq(renderNotice({ id: 43, kind: "release", payload: { version: "1.0.0", build: 105 } }, { platform: "android", lang: "nl" }).data,
+    { kind: "release", msg_id: "43", url: "https://bingr.online/downloads" });
+  eq(renderNotice({ id: 44, kind: "release", payload: { version: "1.0.0", build: 105 } }, { platform: "web", lang: "nl" }).data,
+    { kind: "release", msg_id: "44", url: "https://bingr.online/changelog/?p=web#build-105", deeplink: "bingr://changelog?p=web&b=105" });
   const ap = apnsPayload(n) as Record<string, unknown> & ReturnType<typeof apnsPayload>;
   eq(ap.aps, { alert: { title: n.title, body: n.body }, sound: "default", "thread-id": "release" });
   eq(ap.data, n.data);
-  eq([ap.kind, ap.msg_id, ap.deeplink], ["release", "42", n.data.deeplink], "ook plat naast aps");
+  eq([ap.kind, ap.msg_id, ap.url], ["release", "42", n.data.url], "ook plat naast aps");
   const f = fcmMessage("tok", n, 600);
   ok(!("notification" in f.message), "FCM data-only");
   eq(f.message.data, { title: n.title, body: n.body, ...n.data });

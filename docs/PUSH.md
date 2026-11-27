@@ -53,8 +53,10 @@ Per kanaal (alle `data`-waarden zijn strings):
 - **Web Push**: versleuteld (aes128gcm) JSON `{title, body, data:{kind, url?, deeplink?, msg_id}}`.
 
 Tikken:
-- `release`: `bingr://changelog?p=<platform>&b=<build>`; app opent de changelog van precies die build (eigen scherm
-  als dat bestaat, anders de URL in de browser). Publieke URL: `https://bingr.online/changelog/?p=<platform>#build-<build>`.
+- `release` (build 192): geen deeplink, alleen `url`, zodat tikken direct bij de update uitkomt: Android
+  `https://bingr.online/downloads` (start de APK-download), iPhone/iPad/Mac de App Store-pagina van Bingr
+  (`https://apps.apple.com/nl/app/bingr/id6821401598`). Web blijft `bingr://changelog?p=web&b=<build>` met de changelog
+  als `url`. De apps openen bij `release` zonder deeplink de `url`.
 - `admin`: `data.url` als het beheer een link meegaf, anders de app openen.
 - `reminder`: `bingr://live?channel=<id>&profile=<profiel-id>` (zelfde als de lokale herinnering).
 - `support_reply` (build 146): `bingr://support/ticket?n=<nummer>`, extra `data.ticket` = het nummer; `url` =

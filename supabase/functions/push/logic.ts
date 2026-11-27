@@ -129,7 +129,13 @@ export function adminText(lang: unknown, m: { title_nl: string; body_nl: string;
 }
 
 // ---------- links ----------
-export function releaseLinks(platform: string, build: number) {
+// Releasemelding: tikken brengt je direct bij de update. Android: bingr.online/downloads (start de APK-download),
+// Apple: de App Store-pagina van Bingr. Geen deeplink, zodat de app de url opent (oude apps ook). Web: de changelog.
+export const APP_STORE_URL = "https://apps.apple.com/nl/app/bingr/id6821401598";
+export const ANDROID_DOWNLOAD_URL = `${SITE}/downloads`;
+export function releaseLinks(platform: string, build: number): { url: string; deeplink?: string } {
+  if (platform === "android") return { url: ANDROID_DOWNLOAD_URL };
+  if (GROUPS.apple.includes(platform)) return { url: APP_STORE_URL };
   return {
     url: `${SITE}/changelog/?p=${encodeURIComponent(platform)}#build-${build}`,
     deeplink: `bingr://changelog?p=${encodeURIComponent(platform)}&b=${build}`,
