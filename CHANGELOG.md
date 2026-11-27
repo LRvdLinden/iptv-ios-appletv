@@ -4,6 +4,31 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.1.2 · Build 190
+_27 november 2026_
+
+### iOS en iPadOS
+
+**Verbeterd**
+
+- Detailpagina van een film of serie op de telefoon: Downloaden staat als brede donkergrijze knop onder Afspelen
+
+### iOS, iPadOS en macOS
+
+**Verbeterd**
+
+- Intro markeren: de knoppen in dit scherm zijn niet meer rood maar wit
+
+**Opgelost**
+
+- Schakelaars staan weer in de rode kleur van de app aan (de groene schakelaars uit build 189 zijn teruggedraaid)
+
+### iOS, iPadOS, tvOS en macOS
+
+**Verbeterd**
+
+- Speler: de tijdbalk staat nu boven de knoppen en de knoppen staan eronder, ook op Apple TV. Op iPhone en iPad hebben de knoppen een tekst naast het symbool (Snelheid, Audio en ondertitels, Afleveringen, Volgende aflevering) in plaats van alleen een symbool
+
 ## Versie 1.1.2 · Build 189
 _27 november 2026_
 

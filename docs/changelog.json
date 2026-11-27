@@ -1,5 +1,52 @@
 [
  {
+  "build": 190,
+  "version": "1.1.2",
+  "date": "2026-11-27",
+  "items": [
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "Speler: de tijdbalk staat nu boven de knoppen en de knoppen staan eronder, ook op Apple TV. Op iPhone en iPad hebben de knoppen een tekst naast het symbool (Snelheid, Audio en ondertitels, Afleveringen, Volgende aflevering) in plaats van alleen een symbool",
+    "en": "Player: the timeline now sits above the buttons and the buttons are below it, on Apple TV too. On iPhone and iPad the buttons show a text next to the symbol (Speed, Audio & subtitles, Episodes, Next episode) instead of a symbol only"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "macos"
+    ],
+    "nl": "Intro markeren: de knoppen in dit scherm zijn niet meer rood maar wit",
+    "en": "Mark intro: the buttons on this screen are no longer red but white"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados"
+    ],
+    "nl": "Detailpagina van een film of serie op de telefoon: Downloaden staat als brede donkergrijze knop onder Afspelen",
+    "en": "Film or series detail page on the phone: Download is a wide dark grey button below Play"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "macos"
+    ],
+    "nl": "Schakelaars staan weer in de rode kleur van de app aan (de groene schakelaars uit build 189 zijn teruggedraaid)",
+    "en": "Switches are red again when on (the green switches from build 189 have been reverted)"
+   }
+  ]
+ },
+ {
   "build": 189,
   "version": "1.1.2",
   "date": "2026-11-27",

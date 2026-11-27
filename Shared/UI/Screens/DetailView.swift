@@ -595,6 +595,9 @@ struct DetailView: View {
     private var compactActions: some View {
         VStack(spacing: 16) {
             playButton
+            #if os(iOS)
+            downloadPill   // build 190
+            #endif
             HStack(alignment: .top, spacing: 0) {
                 ForEach(compactActionList, id: \.self) { a in
                     compactAction(a).frame(maxWidth: .infinity)
@@ -603,6 +606,27 @@ struct DetailView: View {
         }
         .frame(maxWidth: .infinity)
     }
+
+    #if os(iOS)
+    /// Build 190: Downloaden als donkergrijze pil onder Afspelen (alleen als de titel te downloaden is)
+    @ViewBuilder private var downloadPill: some View {
+        switch target {
+        case .movie(let m):
+            let it = Playables.movie(m, imdb: imdb)
+            if DownloadManager.canDownload(it) {
+                Menu { MovieDownloadMenu175(item: it, poster: m.poster) } label: {
+                    DownloadPillLabel(title: L("Download"), icon: "arrow.down.to.line")
+                }
+                .accessibilityLabel(L("Download"))
+            }
+        case .series(let s):
+            if !episodes.isEmpty {
+                SeriesDownloadMenu175(series: s, episodes: episodes, season: season, nextUp: nextEpisode, imdb: imdb,
+                                      pill: true, onConfirm: { downloadConfirm = $0 }, onMessage: { flash($0) })
+            }
+        }
+    }
+    #endif
 
     @ViewBuilder private func compactAction(_ a: Detail174.Action) -> some View {
         switch a {

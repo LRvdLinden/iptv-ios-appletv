@@ -597,9 +597,8 @@ struct PlayerScreen: View {
                 // build 173: tv zonder knoppen voor afspelen/pauze en terug (die zitten op de afstandsbediening); de
                 // knoppen bij elkaar linksonder boven een iets grotere tijdbalk, de belangrijkste knop het grootst
                 VStack(alignment: .leading, spacing: tvScaled(10)) {
-                    #if !os(tvOS)
+                    // build 190: de tijdbalk staat boven de knoppenrij (zoals Netflix), ook op Apple TV; de knoppen komen eronder
                     if player.isLive { liveInfo } else { timeline }
-                    #endif
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: tvScaled(26)) {
                             if let p = primary173, Self.showsPrimaryInBar(p) { primaryButton(p) }
@@ -612,9 +611,13 @@ struct PlayerScreen: View {
                                     barButton("backward.end.fill", L("From the start"), id: "startover") { startOver173() }
                                 }
                             }
+                            if !player.isLive {
+                                barButton("speedometer", "\(L("Speed")) (\(String(format: "%g", Double(player.rate)))x)", id: "rate") { panel = .rate }
+                            }
                             barButton("speaker.wave.2.bubble", L("Audio & subtitles"), id: "audiosubs") { panel = .audioSubs }
                             if player.item.type == .episode {
                                 barButton("rectangle.stack", L("Episodes"), id: "episodes") { openEpisodes() }
+                                if let n = nextUp { barButton("forward.end.fill", L("Next episode"), id: "nextbar") { playNext(n) } }
                             }
                             if !stremioChoices.isEmpty { barButton("list.bullet", L("Sources")) { panel = .sources } }
                             // build 186: met tijden uit IntroDB is markeren niet nodig; dan alleen "Intro overslaan"
@@ -648,9 +651,6 @@ struct PlayerScreen: View {
                     }
                     #if os(tvOS)
                     .focusSection()
-                    #endif
-                    #if os(tvOS)
-                    if player.isLive { liveInfo } else { timeline }
                     #endif
                 }
                 .padding(.horizontal, Theme.edge).padding(.bottom, tvScaled(18))
@@ -723,7 +723,9 @@ struct PlayerScreen: View {
         .focused($tvFocus, equals: .bar(id ?? label))
         #else
         Button { action(); userPoke() } label: {
-            Label(label, systemImage: icon).labelStyle(.iconOnly).font(.system(size: 20)).padding(6)
+            // build 190: symbool met tekst (Netflix-stijl), wit, zonder gekleurd vlak
+            Label(label, systemImage: icon).labelStyle(.titleAndIcon).font(.system(size: 14, weight: .semibold))
+                .lineLimit(1).fixedSize().padding(.horizontal, 6).padding(.vertical, 6)
         }
         .foregroundStyle(.white)
         #endif

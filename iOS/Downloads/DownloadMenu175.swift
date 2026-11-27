@@ -122,6 +122,8 @@ struct SeriesDownloadMenu175: View {
     let imdb: String?
     var asCircle = false
     var circleSize: CGFloat = 50
+    /// Build 190: brede donkergrijze pil onder Afspelen (telefoon) in plaats van een regel in Meer
+    var pill = false
     let onConfirm: (DownloadConfirm175) -> Void
     let onMessage: (String) -> Void
     @EnvironmentObject var playlists: PlaylistService
@@ -141,7 +143,10 @@ struct SeriesDownloadMenu175: View {
         let eps = model(items)
         let menu = Download175.seriesMenu(eps, season: season, nextUp: nextUp?.id)
         if !menu.available {
-            if asCircle {
+            if pill {
+                DownloadPillLabel(title: L("Download"), icon: "arrow.down.to.line").opacity(0.5)
+                    .accessibilityLabel(L("This stream can't be downloaded"))
+            } else if asCircle {
                 circle("arrow.down.circle", tint: .white.opacity(0.35))
                     .disabled(true)
                     .accessibilityLabel(L("This stream can't be downloaded"))
@@ -169,7 +174,10 @@ struct SeriesDownloadMenu175: View {
                     } label: { Label(L("Delete"), systemImage: "trash") }
                 }
             } label: {
-                if asCircle {
+                if pill {
+                    DownloadPillLabel(title: menu.complete ? L("Downloaded") : L("Download"),
+                                      icon: menu.complete ? "checkmark" : "arrow.down.to.line")
+                } else if asCircle {
                     circleLabel(menu.complete ? "checkmark.circle.fill" : "arrow.down.circle",
                                 tint: menu.complete ? Theme.green : .white)
                 } else if menu.complete {
@@ -214,5 +222,19 @@ struct SeriesDownloadMenu175: View {
 
     private func circle(_ name: String, tint: Color) -> some View {
         Button {} label: { circleLabel(name, tint: tint) }.buttonStyle(.plain)
+    }
+}
+
+/// Build 190: donkergrijze pil met witte tekst (tweede knop onder Afspelen, in de stijl van de streamingdiensten)
+struct DownloadPillLabel: View {
+    let title: String
+    let icon: String
+    var body: some View {
+        Label(title, systemImage: icon)
+            .font(.system(size: 16, weight: .bold))
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity).frame(height: 50)
+            .background(Color(hex: 0x2B2B2B), in: Capsule())
+            .contentShape(Capsule())
     }
 }

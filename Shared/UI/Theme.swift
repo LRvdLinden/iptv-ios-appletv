@@ -422,15 +422,3 @@ final class ImagePipeline: @unchecked Sendable {
         return CGImageSourceCreateThumbnailAtIndex(src, 0, opts)
     }
 }
-
-extension View {
-    /// Build 189: schakelaars staan aan in groen (iOS-standaard) in plaats van in de rode accentkleur; rood blijft voor
-    /// afspelen en waarschuwingen. Op Apple TV zijn het knoppen met Aan/Uit en blijft alles zoals het was.
-    @ViewBuilder func bingrSwitches() -> some View {
-        #if os(tvOS)
-        self
-        #else
-        self.toggleStyle(SwitchToggleStyle(tint: Color(hex: 0x34C759)))
-        #endif
-    }
-}

@@ -76,7 +76,6 @@ struct BingrApp: App {
                 .environment(\.layoutDirection, localizer.isRTL ? .rightToLeft : .leftToRight)
                 .preferredColorScheme(.dark)
                 .tint(Theme.red)
-                .bingrSwitches()   // build 189: schakelaars in groen
                 // build 120: links uit e-mails van Bingr (universele link https://bingr.online/titel/… en bingr://title)
                 .onOpenURL { PushService.shared.openLink($0) }
                 .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in

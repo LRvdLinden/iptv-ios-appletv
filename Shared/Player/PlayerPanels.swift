@@ -258,14 +258,14 @@ struct IntroMarkerPanel: View {
                 Section {
                     LabeledContent(L("Now"), value: PlayerController.format(now))
                     Button { markers.update(key) { $0.introStart = now } } label: {
-                        Label(L("Intro starts here"), systemImage: "arrow.right.to.line")
+                        Label(L("Intro starts here"), systemImage: "arrow.right.to.line").foregroundStyle(.primary)
                     }
                     Button {
                         markers.update(key) { m in
                             m.introEnd = now
                             if let s = m.introStart, s >= now { m.introStart = nil }
                         }
-                    } label: { Label(L("Intro ends here"), systemImage: "arrow.left.to.line") }
+                    } label: { Label(L("Intro ends here"), systemImage: "arrow.left.to.line").foregroundStyle(.primary) }
                     adjustRow(L("Intro starts at"), m.introStart) { v in markers.update(key) { $0.introStart = v } }
                     adjustRow(L("Intro ends at"), m.introEnd) { v in markers.update(key) { $0.introEnd = v } }
                     #if !os(tvOS)
@@ -283,7 +283,7 @@ struct IntroMarkerPanel: View {
                 }
                 Section {
                     Button { markers.update(key) { $0.creditsStart = now } } label: {
-                        Label(L("Credits start here"), systemImage: "text.alignleft")
+                        Label(L("Credits start here"), systemImage: "text.alignleft").foregroundStyle(.primary)
                     }
                     adjustRow(L("Credits start at"), m.creditsStart) { v in markers.update(key) { $0.creditsStart = v } }
                 } header: { Text(L("Credits")) } footer: {
