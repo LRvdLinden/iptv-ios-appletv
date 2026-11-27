@@ -1,5 +1,5 @@
 name: Diagnose status (tijdelijk)
-# Tijdelijk: sluit de storing op de statuspagina nadat de fix van build 187 live is gecontroleerd.
+# Tijdelijk: eindcontrole build 187 (functieversies, database, Stripe, statuspagina). Alleen statussen en tellingen.
 on:
   push:
     branches: [symboliseren]
@@ -7,15 +7,48 @@ on:
 permissions:
   contents: read
 jobs:
-  sluiten:
+  controle:
     runs-on: ubuntu-latest
     steps:
-      - name: Storing sluiten
+      - name: Controle
         env:
           TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          K: ${{ secrets.STRIPE_SECRET_KEY }}
+          URL: ${{ secrets.SUPABASE_URL }}
+          ANON: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
           dbq() { curl -s -X POST "https://api.supabase.com/v1/projects/$REF/database/query" -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' -d "$(python3 -c 'import json,sys;print(json.dumps({"query":sys.argv[1]}))' "$1")"; echo; }
-          dbq "with u as (update status_notices set status='resolved', resolved_at=now(), updated_at=now() where id=138 and status<>'resolved' returning id) insert into status_notice_updates (notice_id, status, body_nl, body_en, auto, at) select id, 'resolved', 'Opgelost: abonnementen via Apple worden weer herkend. Wie het probeerde, krijgt Premium na het openen van de app, of met Herstel aankopen in Instellingen. Onze excuses voor het ongemak.', 'Resolved: subscriptions through Apple are recognised again. If you tried to subscribe, you will get Premium after opening the app, or with Restore Purchases in Settings. We apologise for the inconvenience.', false, now() from u returning notice_id"
-          dbq "select id, status, resolved_at is not null as gesloten from status_notices where id=138"
-          dbq "select count(*) as open_meldingen from status_notices where status not in ('resolved','completed','cancelled')"
+          echo "== functies"
+          curl -s "https://api.supabase.com/v1/projects/$REF/functions" -H "Authorization: Bearer $TOKEN" | python3 -c "
+          import json,sys,datetime
+          for f in json.load(sys.stdin):
+              if f['slug'] in ('billing','apple-notify','stripe-webhook','status'):
+                  print(f['slug'], f.get('status'), 'v'+str(f.get('version')), datetime.datetime.utcfromtimestamp(f['updated_at']/1000).strftime('%Y-%m-%d %H:%M'))
+          "
+          echo "== abonnementen"
+          dbq "select provider, plan, status, (user_id is not null) gekoppeld, count(*) n, max(expires_at)::timestamp(0) exp, max(access_until)::timestamp(0) toegang from premium_subscriptions group by 1,2,3,4 order by 1,2,3"
+          echo "== open meldingen"
+          dbq "select count(*) n from status_notices where status not in ('resolved','completed','cancelled')"
+          dbq "select status, resolved_at is not null gesloten, (select count(*) from status_notice_updates u where u.notice_id=n.id) updates from status_notices n where id=138"
+          echo "== open monitorstoringen"
+          dbq "select count(*) n from status_incidents where ended_at is null"
+          echo "== account_plans"
+          dbq "select plan, source, count(*) n from account_plans group by 1,2 order by 1,2"
+          echo "== config premium (publiek)"
+          curl -s -X POST "$URL/functions/v1/billing" -H "apikey: $ANON" -H 'content-type: application/json' -d '{"action":"config","platform":"ios"}' | python3 -c "
+          import json,sys
+          d=json.load(sys.stdin); p=d.get('premium',{}); print({k:p.get(k) for k in ('enabled','apple','trial_days','products')}, 'iap', d.get('iap'))"
+          echo "== apple-notify ongeldige JWS"
+          curl -s -o /dev/null -w '%{http_code}\n' -X POST "$URL/functions/v1/apple-notify" -H 'content-type: application/json' -d '{"signedPayload":"a.b.c"}'
+          python3 - <<'PY'
+          import os, json, urllib.request, datetime
+          K = os.environ["K"]
+          def get(path):
+              return json.load(urllib.request.urlopen(urllib.request.Request("https://api.stripe.com/v1/" + path, headers={"Authorization": "Bearer " + K}), timeout=30))
+          d = lambda t: datetime.datetime.fromtimestamp(t, datetime.UTC).strftime("%Y-%m-%d %H:%M") if t else None
+          print("== stripe")
+          for s in get("subscriptions?status=all&limit=5&expand[]=data.latest_invoice")["data"]:
+              it = s["items"]["data"][0]; li = s.get("latest_invoice") or {}
+              print({"status": s["status"], "periode_start": d(it.get("current_period_start")), "periode_eind": d(it.get("current_period_end")), "inv": li.get("status"), "pogingen": li.get("attempt_count"), "volgende_poging": d(li.get("next_payment_attempt"))})
+          PY
