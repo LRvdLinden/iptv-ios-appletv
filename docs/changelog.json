@@ -43,6 +43,32 @@
     ],
     "nl": "Schakelaars staan weer in de rode kleur van de app aan (de groene schakelaars uit build 189 zijn teruggedraaid)",
     "en": "Switches are red again when on (the green switches from build 189 have been reverted)"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "android",
+     "androidtv"
+    ],
+    "nl": "Schakelaars in de instellingen hebben weer de accentkleur (rood) in plaats van groen",
+    "en": "Switches in settings use the accent colour (red) again instead of green"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "android",
+     "androidtv"
+    ],
+    "nl": "Speler: op Android TV staat de tijdbalk nu boven de knoppenrij, dus de knoppen staan eronder; op de telefoon staat onder elk symbool in de knoppenrij nu ook de tekst",
+    "en": "Player: on Android TV the timeline is now above the row of buttons, so the buttons are below it; on the phone every symbol in the button row now has its text underneath"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "android"
+    ],
+    "nl": "Detailpagina op de telefoon: onder de rode afspeelknop staat een donkergrijze knop Downloaden voor een film of serie, met dezelfde keuzes als onder Meer",
+    "en": "Detail page on the phone: below the red play button there is a dark grey Download button for a movie or series, with the same choices as under More"
    }
   ]
  },
