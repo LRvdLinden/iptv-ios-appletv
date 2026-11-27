@@ -13,7 +13,7 @@ import { checkTransaction, decideNotification, notificationId } from "../_shared
 import { verifyAppleJws } from "../_shared/apple_jws.ts";
 import { notifyDone, notifySeen, revokeApple } from "../_shared/apple_store.ts";
 import { APPLE_BUNDLE_ID, appleEnvironment, isAppleTxId } from "../_shared/apple.ts";
-import { appleNotifyStatus, appleProduct } from "../_shared/premium.ts";
+import { appleAccountToken, appleNotifyStatus, appleProduct } from "../_shared/premium.ts";
 import { saveAppleSub } from "../_shared/premium_store.ts";
 import { loadSettings } from "../_shared/lifetime_store.ts";
 
@@ -46,10 +46,18 @@ async function premiumNotify(p: Record<string, any>): Promise<string | null> {
   const orig = t.payload.originalTransactionId ?? t.payload.transactionId;
   if (!isAppleTxId(orig)) return "premium_bad_transaction";
   const s = await loadSettings(admin);
+  // build 187: de app geeft het account-id mee als appAccountToken; bestaat dat account, dan koppelen we het abonnement nu al
+  // (ook als de app de aankoop zelf niet kon doorgeven). Een onbekend of verwijderd account blijft een rij zonder account.
+  let linkTo: string | null = null;
+  const tok = appleAccountToken(t.payload);
+  if (tok) {
+    const { data: u, error: ue } = await admin.auth.admin.getUserById(tok);
+    if (!ue && u?.user?.id) linkTo = u.user.id;
+  }
   const r = await saveAppleSub(admin, s.premium, {
     originalTransactionId: String(orig), productId: String(t.payload.productId), plan: k.plan, status, expires_at: k.expires_at,
     trial: k.trial, will_renew: willRenew, grace_until: grace, environment: appleEnvironment(t.payload.environment),
-  }, null);
+  }, linkTo);
   return r.ok ? `premium_${status}_${r.userId ? r.mirror : "unlinked"}` : "premium_owned";
 }
 

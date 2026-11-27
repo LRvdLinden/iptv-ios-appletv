@@ -180,3 +180,40 @@ Deno.test("build 185: geen oude Lifetime in de Apple-apps voor nieuwe web/Androi
   assertEquals(appleLegacyBlocked({ ...on, new_from_web: null }, "apple", nieuw, false, now), false);
   assertEquals(appleLegacyBlocked(on, "apple", null, false, now), false);
 });
+
+// ---------------- build 187 ----------------
+import { appleAccountToken } from "./premium.ts";
+import { capGrace } from "./premium_store.ts";
+import { MAX_BODY_CHARS } from "./billing.ts";
+import { MAX_JWS } from "./apple_jws.ts";
+
+Deno.test("build 187: Stripe past_due telt vanaf het begin van de onbetaalde periode", () => {
+  // proef tot 24-11-2026 09:58, daarna een jaar (onbetaald): toegang tot 24-11-2026 + respijt, niet tot 2027
+  const r = stripeSubStatus({ status: "past_due", items: { data: [{ current_period_start: 1795600680, current_period_end: 1827136680 }] } });
+  assertEquals(r.status, "past_due");
+  assertEquals(r.expires_at, new Date(1795600680 * 1000).toISOString());
+  assertEquals(accessUntil({ status: r.status, expires_at: r.expires_at }, 3), new Date((1795600680 + 3 * 86400) * 1000).toISOString());
+  // actief blijft het einde van de periode
+  assertEquals(stripeSubStatus({ status: "active", items: { data: [{ current_period_start: 1795600680, current_period_end: 1827136680 }] } }).expires_at,
+    new Date(1827136680 * 1000).toISOString());
+});
+Deno.test("build 187: markPastDue geeft nooit meer dan de respijt vanaf nu", () => {
+  const now = "2026-11-27T08:00:00.000Z";
+  assertEquals(capGrace("2027-11-27T09:58:00.000Z", 3, now), "2026-11-30T08:00:00.000Z");
+  assertEquals(capGrace("2026-11-28T09:58:00.000Z", 3, now), "2026-11-28T09:58:00.000Z");
+  assertEquals(capGrace(null, 3, now), "2026-11-30T08:00:00.000Z");
+});
+Deno.test("build 187: appAccountToken uit een Apple-transactie", () => {
+  assertEquals(appleAccountToken({ appAccountToken: "9F1C2A4E-1B2C-4D3E-8F90-123456789ABC" }), "9f1c2a4e-1b2c-4d3e-8f90-123456789abc");
+  assertEquals(appleAccountToken({ appAccountToken: "geen-uuid" }), null);
+  assertEquals(appleAccountToken({}), null);
+  assertEquals(appleAccountToken(null), null);
+});
+Deno.test("build 187: billing accepteert twee grote Apple-JWS'en (transactie + verlengingsinfo)", () => {
+  // de oude grens was 10.000 tekens; een echte JWS is ~5.000 tekens, twee dus ~10.200 -> 413
+  const body = JSON.stringify({ action: "apple_verify", signed_transaction: "a".repeat(5200), signed_renewal_info: "b".repeat(5200) });
+  assertEquals(body.length > 10_000, true);
+  assertEquals(body.length <= MAX_BODY_CHARS, true);
+  // en ruim genoeg voor twee JWS'en op de maximale lengte
+  assertEquals(2 * MAX_JWS + 1_000 <= MAX_BODY_CHARS, true);
+});

@@ -123,13 +123,19 @@ export async function appleSubOf(db: Db, orig: string) {
   return data as (SubRow & { user_id: string | null }) | null;
 }
 
+/** build 187: na een mislukte betaling nooit meer toegang dan de respijt vanaf nu (de periode in de database kan al verlengd zijn). */
+export function capGrace(until: string | null, graceDays: number, nowIso: string): string | null {
+  const cap = Date.parse(nowIso) + graceDays * 86_400_000;
+  const u = until ? Date.parse(until) : NaN;
+  return Number.isFinite(u) && u <= cap ? until : new Date(cap).toISOString();
+}
 /** Status van een Stripe-abonnement zetten zonder het hele object (invoice.payment_failed: vangnet). */
 export async function markPastDue(db: Db, s: PremiumSettings, stripeSubId: string, nowIso = new Date().toISOString()) {
   const { data, error } = await db.from("premium_subscriptions").select("id,user_id,status,expires_at").eq("stripe_subscription_id", stripeSubId).maybeSingle();
   if (error) throw fail("premium_subscriptions", error);
   if (!data || !["active", "canceled"].includes(data.status)) return "skipped";
   const { error: ue } = await db.from("premium_subscriptions").update({
-    status: "past_due", access_until: accessUntil({ status: "past_due", expires_at: data.expires_at }, s.grace_days), updated_at: nowIso,
+    status: "past_due", access_until: capGrace(accessUntil({ status: "past_due", expires_at: data.expires_at }, s.grace_days), s.grace_days, nowIso), updated_at: nowIso,
   }).eq("id", data.id);
   if (ue) throw fail("premium_subscriptions", ue);
   return await mirror(db, data.user_id);

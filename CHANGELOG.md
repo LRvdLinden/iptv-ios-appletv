@@ -4,6 +4,20 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.1.1 · Build 187
+_27 november 2026_
+
+### Server
+
+**Verbeterd**
+
+- Apple-abonnementen worden nu ook direct aan je Bingr-account gekoppeld via de melding van Apple zelf, zodat een aankoop nooit meer losstaat van je account
+
+**Opgelost**
+
+- Een Apple-abonnement (Premium maandelijks, halfjaarlijks of jaarlijks) werd bij het afsluiten soms niet herkend, waardoor Premium niet werd geactiveerd; dat is opgelost. Wie het probeerde, krijgt Premium na het openen van de app of met Herstel aankopen alsnog
+- Na een mislukte betaling met Stripe (na de proefperiode of bij een verlenging) liep de toegang tot Premium veel te lang door; die eindigt nu na de respijtperiode
+
 ## Versie 1.1.1 · Build 186
 _21 november 2026_
 

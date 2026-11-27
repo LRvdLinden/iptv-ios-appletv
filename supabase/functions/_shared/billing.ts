@@ -13,6 +13,8 @@ export const SELLER = { name: "PixelForges", kvk: "70031576", vat: "NL001876986B
 export const STATEMENT_SUFFIX = "BINGR";
 // Stripe-belastingcode voor elektronisch geleverde diensten (alleen met automatic_tax)
 export const TAX_CODE = "txcd_10000000";
+/** Grootste verzoek (tekens) dat de functie billing accepteert: ruim boven twee Apple-JWS'en (elk maximaal 64 KB, zie MAX_JWS). */
+export const MAX_BODY_CHARS = 200_000;
 // Tolerantie van de Stripe-handtekening (seconden), zoals de officiële bibliotheken
 export const SIG_TOLERANCE_S = 300;
 export const WEBHOOK_EVENTS = [

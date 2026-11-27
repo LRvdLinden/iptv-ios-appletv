@@ -201,10 +201,20 @@ export function stripeSubStatus(sub: Obj): { status: SubStatus; will_renew: bool
   else if (st === "incomplete") status = "incomplete";
   else status = "expired"; // canceled, unpaid, incomplete_expired, paused en onbekend
   const live = status === "trialing" || status === "active" || status === "past_due";
+  // build 187: bij een mislukte betaling is de nieuwe periode al ingegaan (current_period_end ligt een heel jaar/maand
+  // later) maar niet betaald. De betaalde dekking eindigt dan aan het begin van die periode; daar komt de respijt bij.
+  const start = secIso(sub?.items?.data?.[0]?.current_period_start) ?? secIso(sub?.current_period_start);
+  const covered = status === "past_due" && start ? start : end;
   return {
-    status, will_renew: live && !cancel, expires_at: end,
+    status, will_renew: live && !cancel, expires_at: covered,
     trial_until: status === "trialing" ? (secIso(sub?.trial_end) ?? end) : null,
   };
+}
+/** Het account-id dat de Apple-app als appAccountToken bij de aankoop meegaf (uuid, kleine letters), anders null. */
+// deno-lint-ignore no-explicit-any
+export function appleAccountToken(p: Record<string, any> | null | undefined): string | null {
+  const t = p?.appAccountToken;
+  return typeof t === "string" && /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(t) ? t.toLowerCase() : null;
 }
 /** Plan van een Stripe-abonnement: metadata.plan, anders de price-id volgens de instellingen, anders de looptijd. */
 export function stripeSubPlan(sub: Obj, s: PremiumSettings): SubPlan | null {
