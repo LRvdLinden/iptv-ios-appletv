@@ -4,6 +4,15 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.1.1 · Build 188
+_27 november 2026_
+
+### iOS en iPadOS
+
+**Opgelost**
+
+- Downloaden werkt nu ook bij een provider die maar één verbinding toestaat: downloads wachten in een rij en lopen één tegelijk, in plaats van allemaal tegelijk te starten en elkaar af te breken. Ook na het opnieuw openen van de app starten ze één voor één
+
 ## Versie 1.1.1 · Build 187
 _27 november 2026_
 

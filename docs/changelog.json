@@ -1,5 +1,21 @@
 [
  {
+  "build": 188,
+  "version": "1.1.1",
+  "date": "2026-11-27",
+  "items": [
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados"
+    ],
+    "nl": "Downloaden werkt nu ook bij een provider die maar één verbinding toestaat: downloads wachten in een rij en lopen één tegelijk, in plaats van allemaal tegelijk te starten en elkaar af te breken. Ook na het opnieuw openen van de app starten ze één voor één",
+    "en": "Downloading now also works with a provider that allows only one connection: downloads wait in a queue and run one at a time instead of all starting at once and breaking each other off. They also restart one by one after reopening the app"
+   }
+  ]
+ },
+ {
   "build": 187,
   "version": "1.1.1",
   "date": "2026-11-27",

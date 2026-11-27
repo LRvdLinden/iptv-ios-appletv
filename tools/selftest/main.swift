@@ -3587,5 +3587,24 @@ do {
 }
 
 
+// MARK: build 188: downloadwachtrij (Shared/Account/Build188.swift)
+
+do {
+    let t0 = Date(timeIntervalSince1970: 1_000)
+    func w(_ id: String, _ s: Double) -> DownloadQueue188.Waiting { .init(id: id, since: t0.addingTimeInterval(s)) }
+    eq(DownloadQueue188.maxConcurrent, 1, "build 188: standaard één download tegelijk")
+    eq(DownloadQueue188.nextToStart(running: 0, waiting: [w("a", 1), w("b", 2)]), ["a"], "build 188: één start, de eerste in de rij")
+    eq(DownloadQueue188.nextToStart(running: 1, waiting: [w("a", 1), w("b", 2)]), [], "build 188: plek bezet, niets starten")
+    eq(DownloadQueue188.nextToStart(running: 3, waiting: [w("a", 1)]), [], "build 188: meer lopend dan de limiet (oude downloads), niets starten")
+    eq(DownloadQueue188.nextToStart(running: 0, waiting: []), [], "build 188: lege rij")
+    eq(DownloadQueue188.nextToStart(running: 0, waiting: [w("b", 5), w("a", 1), w("c", 3)]), ["a"], "build 188: volgorde op binnenkomst, niet op lijstplek")
+    eq(DownloadQueue188.nextToStart(running: 0, waiting: [w("a", 1), w("b", 1)]), ["a"], "build 188: gelijk moment, lijstvolgorde")
+    // nieuwe poging na een fout gaat achteraan: a faalt op t=10, b en c wachten sinds 2 en 3
+    eq(DownloadQueue188.nextToStart(running: 0, waiting: [w("a", 10), w("b", 2), w("c", 3)]), ["b"], "build 188: nieuwe poging gaat achteraan")
+    eq(DownloadQueue188.nextToStart(running: 1, waiting: [w("b", 2), w("c", 3)], limit: 2), ["b"], "build 188: limiet 2, één plek vrij")
+    eq(DownloadQueue188.nextToStart(running: 0, waiting: [w("b", 2), w("c", 3)], limit: 0), ["b"], "build 188: limiet minimaal 1")
+}
+
+
 print("\(checks) controles, \(failures) fout")
 exit(failures == 0 ? 0 : 1)

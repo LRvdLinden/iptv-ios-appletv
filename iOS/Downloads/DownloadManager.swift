@@ -37,6 +37,8 @@ struct DownloadItem: Codable, Identifiable, Hashable {
     var error: String?
     var retries: Int = 0
     var createdAt = Date()
+    /// Build 188: moment waarop de download in de wachtrij kwam (nieuwe poging na een fout: opnieuw achteraan)
+    var queuedAt: Date?
 
     var isActive: Bool { status == .queued || status == .downloading }
 }
@@ -46,6 +48,8 @@ struct DownloadItem: Codable, Identifiable, Hashable {
 /// - Directe bestanden (Xtream/M3U-VOD, Plex/Jellyfin/Emby) via een achtergrond-`URLSession`: gaat door als de
 ///   app op de achtergrond staat, en hervat na een onderbreking met *resume data* (tot 5 nieuwe pogingen).
 /// - HLS (.m3u8) via `AVAssetDownloadURLSession`.
+/// - Build 188: downloads wachten in een rij en lopen standaard één tegelijk (`DownloadQueue188`), want veel providers
+///   staan maar één verbinding toe.
 /// - Voortgang als Live Activity (toegangsscherm/Dynamic Island) en een melding als een download klaar is.
 @MainActor
 final class DownloadManager: ObservableObject {
@@ -63,6 +67,10 @@ final class DownloadManager: ObservableObject {
     private var fileSession: URLSession!
     private var hlsSession: AVAssetDownloadURLSession!
     private var started = false
+    /// Build 188: pas als de lopende taken van de sessies zijn teruggevonden mag de wachtrij starten
+    private var ready = false
+    /// Build 188: downloads die na een fout even wachten voordat ze weer meedoen
+    private var holdOff: Set<String> = []
     /// Systeem: klaar met de achtergrondgebeurtenissen van een sessie
     var backgroundCompletion: [String: () -> Void] = [:]
     private var fileTasks: [String: URLSessionDownloadTask] = [:]
@@ -92,7 +100,7 @@ final class DownloadManager: ObservableObject {
         fc.sessionSendsLaunchEvents = true
         fc.isDiscretionary = false
         fc.allowsCellularAccess = true          // per verzoek bepaald (instelling "Mobiele data")
-        fc.httpMaximumConnectionsPerHost = 2
+        fc.httpMaximumConnectionsPerHost = 1   // build 188: één verbinding per server
         fileSession = URLSession(configuration: fc, delegate: delegate, delegateQueue: nil)
         let hc = URLSessionConfiguration.background(withIdentifier: Self.hlsSessionID)
         hc.sessionSendsLaunchEvents = true
@@ -112,12 +120,35 @@ final class DownloadManager: ObservableObject {
         }
     }
 
-    /// Downloads die liepen maar geen taak meer hebben (app afgesloten): opnieuw starten, met resume data.
+    /// Downloads die liepen maar geen taak meer hebben (app afgesloten): terug in de wachtrij (build 188: ze starten
+    /// één voor één, met resume data), taken die nog lopen blijven lopen.
     private func resumeOrphans() {
-        for d in items where d.isActive {
-            if fileTasks[d.id] == nil && hlsTasks[d.id] == nil { begin(d.id) }
+        for i in items.indices where items[i].isActive {
+            let id = items[i].id
+            if fileTasks[id] != nil || hlsTasks[id] != nil {
+                if hlsTasks[id]?.state != .suspended { items[i].status = .downloading }
+            } else {
+                items[i].status = .queued
+                if items[i].queuedAt == nil { items[i].queuedAt = items[i].createdAt }
+            }
         }
+        ready = true
+        save(force: true)
+        pump()
         updateActivity(force: true)
+    }
+
+    /// Build 188: start de volgende wachtende download(s) als er een plek vrij is.
+    private func pump() {
+        guard started else { start(); return }
+        guard ready else { return }
+        let running = items.filter { $0.status == .downloading }.count
+        let waiting = items.filter { d in
+            guard d.status == .queued, !holdOff.contains(d.id) else { return false }
+            if let t = hlsTasks[d.id] { return t.state == .suspended }
+            return fileTasks[d.id] == nil
+        }.map { DownloadQueue188.Waiting(id: $0.id, since: $0.queuedAt ?? $0.createdAt) }
+        for id in DownloadQueue188.nextToStart(running: running, waiting: waiting) { begin(id) }
     }
 
     // MARK: lijst
@@ -168,10 +199,10 @@ final class DownloadManager: ObservableObject {
                              seriesID: item.seriesID, seriesTitle: seriesTitle, season: item.season, episode: item.episode,
                              imdbID: item.imdbID, posterURL: poster ?? item.artwork, posterFile: nil,
                              sourceID: item.sourceID ?? playlists.source?.id, profileID: CloudStore.shared.activeProfileID,
-                             remoteURL: url, isHLS: hls, fileName: nil, status: .queued)
+                             remoteURL: url, isHLS: hls, fileName: nil, status: .queued, queuedAt: Date())
         items.append(d)
         save(force: true)
-        begin(id)
+        pump()   // build 188: wachtrij, niet meteen starten
         Task { await fetchPoster(id) }
         Task { _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) }
     }
@@ -181,6 +212,14 @@ final class DownloadManager: ObservableObject {
         guard let i = items.firstIndex(where: { $0.id == id }) else { return }
         let d = items[i]
         let cellular = UserDefaults.standard.bool(forKey: Self.cellularKey)
+        // build 188: een gepauzeerde HLS-download die weer aan de beurt is, hervat zijn eigen taak
+        if d.isHLS, let t = hlsTasks[id], t.state == .suspended {
+            items[i].status = .downloading
+            items[i].error = nil
+            t.resume()
+            save(force: true); updateActivity(force: true)
+            return
+        }
         if d.isHLS {
             let asset = AVURLAsset(url: d.remoteURL, options: [
                 "AVURLAssetHTTPHeaderFieldsKey": ["User-Agent": Secrets.userAgent],
@@ -223,21 +262,24 @@ final class DownloadManager: ObservableObject {
                 if let data { try? data.write(to: Self.resumeDataURL(id)) }
             })
         }
+        holdOff.remove(id)
         save(force: true)
         updateActivity(force: true)
+        pump()   // build 188: de plek is vrij
     }
 
+    /// Build 188: hervatten zet de download (opnieuw achteraan) in de wachtrij; `pump` start hem als hij aan de beurt is.
     func resume(_ id: String) {
         guard let i = items.firstIndex(where: { $0.id == id }), items[i].status == .paused || items[i].status == .failed else { return }
         items[i].retries = 0
-        if let t = hlsTasks[id], t.state == .suspended {
-            items[i].status = .downloading
-            t.resume()
-            save(force: true); updateActivity(force: true)
-            return
-        }
-        hlsTasks[id] = nil
-        begin(id)
+        items[i].status = .queued
+        items[i].error = nil
+        items[i].queuedAt = Date()
+        if hlsTasks[id]?.state != .suspended { hlsTasks[id] = nil }
+        holdOff.remove(id)
+        save(force: true)
+        updateActivity(force: true)
+        pump()
     }
 
     func delete(_ id: String) {
@@ -249,8 +291,10 @@ final class DownloadManager: ObservableObject {
         if let p = d.posterFile { try? FileManager.default.removeItem(at: Self.folder.appendingPathComponent(p)) }
         try? FileManager.default.removeItem(at: Self.resumeDataURL(id))
         save(force: true)
+        holdOff.remove(id)
         recalcUsage()
         updateActivity(force: true)
+        pump()
     }
 
     // MARK: afspelen
@@ -381,8 +425,7 @@ final class DownloadManager: ObservableObject {
 
     func progress(_ id: String, written: Int64, expected: Int64) {
         guard let i = items.firstIndex(where: { $0.id == id }) else { return }
-        if items[i].status == .queued { items[i].status = .downloading }
-        guard items[i].status == .downloading else { return }
+        guard items[i].status == .downloading else { return }   // build 188: een wachtende download krijgt geen voortgang
         items[i].bytesWritten = written
         items[i].bytesExpected = max(expected, 0)
         if expected > 0 { items[i].progress = min(1, Double(written) / Double(expected)) }
@@ -391,8 +434,7 @@ final class DownloadManager: ObservableObject {
     }
 
     func hlsProgress(_ id: String, fraction: Double) {
-        guard let i = items.firstIndex(where: { $0.id == id }), items[i].isActive else { return }
-        items[i].status = .downloading
+        guard let i = items.firstIndex(where: { $0.id == id }), items[i].status == .downloading else { return }
         items[i].progress = min(1, max(0, fraction))
         save()
         updateActivity()
@@ -409,6 +451,7 @@ final class DownloadManager: ObservableObject {
                                                  : Self.folder.appendingPathComponent(f)
                 try? FileManager.default.removeItem(at: url)
             }
+            pump()
             return
         }
         guard let fileName else { failed(id, error: error ?? L("Download failed."), resumeData: nil); return }
@@ -421,6 +464,7 @@ final class DownloadManager: ObservableObject {
         recalcUsage()
         updateActivity(force: true, finishedTitle: Self.displayTitle(items[i]))
         notifyDone(items[i])
+        pump()   // build 188: de volgende in de rij
     }
 
     /// Fout tijdens het downloaden: met resume data automatisch opnieuw proberen (oplopende wachttijd).
@@ -431,20 +475,23 @@ final class DownloadManager: ObservableObject {
         if let resumeData { try? resumeData.write(to: Self.resumeDataURL(id)) }
         items[i].retries += 1
         if items[i].retries <= Self.maxRetries {
+            // build 188: de plek komt vrij en de download gaat na de wachttijd achteraan in de rij
             items[i].status = .queued
             items[i].error = error
+            items[i].queuedAt = Date()
+            holdOff.insert(id)
             save(force: true)
             let wait = UInt64(min(pow(2.0, Double(items[i].retries)), 60) * 1_000_000_000)
             Task { @MainActor in
                 try? await Task.sleep(nanoseconds: wait)
-                guard let d = self.items.first(where: { $0.id == id }), d.status == .queued,
-                      self.fileTasks[id] == nil, self.hlsTasks[id] == nil else { return }
-                self.begin(id)
+                self.holdOff.remove(id)
+                self.pump()
             }
         } else {
             fail(id, error)
         }
         updateActivity(force: true)
+        pump()
     }
 
     private func fail(_ id: String, _ error: String) {
@@ -454,6 +501,7 @@ final class DownloadManager: ObservableObject {
         save(force: true)
         updateActivity(force: true)
         notifyFailure(Self.displayTitle(items[i]), error)
+        pump()
     }
 
     func backgroundEventsDone(_ identifier: String) {
