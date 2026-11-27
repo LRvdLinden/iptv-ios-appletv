@@ -1,6 +1,5 @@
 name: Diagnose status (tijdelijk)
-# Tijdelijk: laat Stripe één melding sturen voor het abonnement met een mislukte betaling (alleen een metadata-sleutel erbij),
-# zodat de database de gecorrigeerde toegangsduur van build 187 overneemt. Daarna controle.
+# Tijdelijk: welke velden leggen de edge-logs vast bij de geweigerde billing-verzoeken (alleen veldnamen en tellingen).
 on:
   push:
     branches: [symboliseren]
@@ -8,29 +7,23 @@ on:
 permissions:
   contents: read
 jobs:
-  controle:
+  sleutels:
     runs-on: ubuntu-latest
     steps:
-      - name: Herberekenen en controleren
+      - name: Veldnamen
         env:
           TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           REF: ${{ secrets.SUPABASE_PROJECT_REF }}
-          K: ${{ secrets.STRIPE_SECRET_KEY }}
         run: |
-          dbq() { curl -s -X POST "https://api.supabase.com/v1/projects/$REF/database/query" -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' -d "$(python3 -c 'import json,sys;print(json.dumps({"query":sys.argv[1]}))' "$1")"; echo; }
           python3 - <<'PY'
-          import os, json, urllib.request, urllib.parse
-          K = os.environ["K"]
-          def call(method, path, data=None):
-              req = urllib.request.Request("https://api.stripe.com/v1/" + path, method=method, headers={"Authorization": "Bearer " + K},
-                                           data=urllib.parse.urlencode(data).encode() if data else None)
-              return json.load(urllib.request.urlopen(req, timeout=30))
-          subs = [s for s in call("GET", "subscriptions?status=past_due&limit=5")["data"]]
-          print("past_due abonnementen:", len(subs))
-          for s in subs:
-              r = call("POST", "subscriptions/" + s["id"], {"metadata[bingr_resync]": "2026-11-27"})
-              print("bijgewerkt:", r["status"])
+          import os, json, urllib.request, urllib.parse, datetime, time
+          API = f"https://api.supabase.com/v1/projects/{os.environ['REF']}"
+          def q(sql, s, e):
+              u = f"{API}/analytics/endpoints/logs?" + urllib.parse.urlencode({"sql": sql, "iso_timestamp_start": s, "iso_timestamp_end": e})
+              try: return json.load(urllib.request.urlopen(urllib.request.Request(u, headers={"Authorization": "Bearer " + os.environ["TOKEN"]}), timeout=60))
+              except Exception as ex: return {"error": str(ex)[:150]}
+          now = datetime.datetime.now(datetime.timezone.utc)
+          s = (now - datetime.timedelta(hours=23)).isoformat().replace("+00:00", "Z"); e = now.isoformat().replace("+00:00", "Z")
+          r = q("SELECT k, count() AS n FROM logs ARRAY JOIN mapKeys(log_attributes) AS k WHERE source = 'function_edge_logs' AND position(log_attributes['request.url'], '/functions/v1/billing') > 0 AND log_attributes['response.status_code'] = '413' GROUP BY k ORDER BY k", s, e)
+          print([x["k"] + "=" + str(x["n"]) for x in r.get("result", [])] if "result" in r else r)
           PY
-          sleep 25
-          dbq "select provider, plan, status, expires_at::timestamp(0) exp, access_until::timestamp(0) toegang from premium_subscriptions where provider='stripe'"
-          dbq "select plan, source, expires_at::timestamp(0) exp from account_plans where source='subscription'"
