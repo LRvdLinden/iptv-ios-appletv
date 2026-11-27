@@ -18,19 +18,21 @@ jobs:
           python3 - <<'PY'
           import os, json, urllib.request, urllib.parse, datetime
           API = f"https://api.supabase.com/v1/projects/{os.environ['REF']}"
+          import time
           def q(sql, s, e):
+              time.sleep(15)
               u = f"{API}/analytics/endpoints/logs?" + urllib.parse.urlencode({"sql": sql, "iso_timestamp_start": s, "iso_timestamp_end": e})
               try:
                   return json.load(urllib.request.urlopen(urllib.request.Request(u, headers={"Authorization": "Bearer " + os.environ["TOKEN"]}), timeout=60))
               except Exception as ex:
                   return {"error": str(ex)[:150]}
           now = datetime.datetime.now(datetime.timezone.utc)
-          for back in range(6, -1, -1):
+          for back in range(3, -1, -1):
               day = (now - datetime.timedelta(days=back)).date()
               s = datetime.datetime.combine(day, datetime.time(), datetime.timezone.utc)
               e = min(s + datetime.timedelta(days=1), now)
               f = lambda t: t.isoformat().replace("+00:00", "Z")
-              for fn in ("billing", "apple-notify", "stripe-webhook"):
+              for fn in ("billing", "apple-notify"):
                   r = q(f"SELECT log_attributes['request.method'] AS m, log_attributes['response.status_code'] AS sc, count() AS n FROM logs WHERE source = 'function_edge_logs' AND position(log_attributes['request.url'], '/functions/v1/{fn}') > 0 GROUP BY m, sc ORDER BY m, sc", f(s), f(e))
                   print(day, fn, r.get("result", r.get("error")))
               r = q("SELECT event_message AS msg, count() AS n FROM logs WHERE source = 'function_logs' AND (event_message LIKE 'billing apple_verify%' OR event_message LIKE 'apple-notify%' OR event_message LIKE 'stripe-webhook%' OR event_message LIKE 'billing %') GROUP BY msg ORDER BY n DESC LIMIT 25", f(s), f(e))
