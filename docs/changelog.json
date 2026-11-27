@@ -43,6 +43,38 @@
     ],
     "nl": "Schakelaars staan weer in de rode kleur van de app aan (de groene schakelaars uit build 189 zijn teruggedraaid)",
     "en": "Switches are red again when on (the green switches from build 189 have been reverted)"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Webspeler: het pincodescherm heeft vier losse vakjes waarin het laatst ingetoetste cijfer even zichtbaar is, en \"Pincode vergeten?\": je Bingr-wachtwoord intypen haalt de pincode weg",
+    "en": "Web player: the PIN screen has four separate boxes that briefly show the last digit, and \"Forgot PIN?\": entering your Bingr password removes the PIN"
+   },
+   {
+    "type": "new",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Webspeler: Snelheid (0,5× tot 2×) in de speler, en Afleveringen en Audio en ondertiteling staan als knop met symbool en tekst, net als in de apps",
+    "en": "Web player: Speed (0.5× to 2×) in the player, and Episodes and Audio & subtitles are buttons with a symbol and text, like in the apps"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Webspeler: dubbele namen in de lijst met audio en ondertiteling krijgen een nummer (Polish, Polish (2))",
+    "en": "Web player: duplicate names in the audio and subtitles list are numbered (Polish, Polish (2))"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "web"
+    ],
+    "nl": "Webspeler: op de detailpagina blijft Afspelen rood en staan de overige acties als donkergrijze pillen",
+    "en": "Web player: on the detail page Play stays red and the other actions are dark grey pills"
    }
   ]
  },

@@ -29,6 +29,21 @@ _27 november 2026_
 
 - Speler: de tijdbalk staat nu boven de knoppen en de knoppen staan eronder, ook op Apple TV. Op iPhone en iPad hebben de knoppen een tekst naast het symbool (Snelheid, Audio en ondertitels, Afleveringen, Volgende aflevering) in plaats van alleen een symbool
 
+### Website
+
+**Nieuw**
+
+- Webspeler: Snelheid (0,5× tot 2×) in de speler, en Afleveringen en Audio en ondertiteling staan als knop met symbool en tekst, net als in de apps
+
+**Verbeterd**
+
+- Webspeler: het pincodescherm heeft vier losse vakjes waarin het laatst ingetoetste cijfer even zichtbaar is, en "Pincode vergeten?": je Bingr-wachtwoord intypen haalt de pincode weg
+- Webspeler: op de detailpagina blijft Afspelen rood en staan de overige acties als donkergrijze pillen
+
+**Opgelost**
+
+- Webspeler: dubbele namen in de lijst met audio en ondertiteling krijgen een nummer (Polish, Polish (2))
+
 ## Versie 1.1.2 · Build 189
 _27 november 2026_
 
