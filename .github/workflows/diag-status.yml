@@ -1,6 +1,6 @@
 name: Diagnose status (tijdelijk)
-# Tijdelijk: zoekt de accounts met een geweigerde abonnementsaankoop op en versleutelt de lijst met een openbare sleutel;
-# alleen de eigenaar van de privesleutel kan hem lezen. Er wordt niets leesbaars geprint.
+# Tijdelijk: stuurt de excusemail naar accounts met een geweigerde abonnementsaankoop (build 187). Adressen worden hier
+# opgezocht en nooit geprint; alleen aantallen komen in het log.
 on:
   push:
     branches: [symboliseren]
@@ -8,42 +8,23 @@ on:
 permissions:
   contents: read
 jobs:
-  zoeken:
+  mailen:
     runs-on: ubuntu-latest
     steps:
-      - name: Zoeken en versleutelen
+      - name: Accounts zoeken en mailen
         env:
           TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SMTP_HOST: ${{ secrets.BINGR_SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.BINGR_SMTP_PORT }}
+          SMTP_USER: ${{ secrets.BINGR_SMTP_USER }}
+          SMTP_PASS: ${{ secrets.BINGR_SMTP_PASSWORD }}
+          SMTP_FROM: ${{ secrets.BINGR_SMTP_FROM }}
         run: |
-          cat > cert.pem <<'CERT'
-          -----BEGIN CERTIFICATE-----
-          MIIEFTCCAn2gAwIBAgIUY7v6E1p4lvQ0w0c/OpFEFBqnNrAwDQYJKoZIhvcNAQEL
-          BQAwGjEYMBYGA1UEAwwPYmluZ3ItdGlqZGVsaWprMB4XDTI2MTEyNzA5MDkyOVoX
-          DTI2MTIwNDA5MDkyOVowGjEYMBYGA1UEAwwPYmluZ3ItdGlqZGVsaWprMIIBojAN
-          BgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAtFu5lX9davEpleF4/5eUL9vFGKDx
-          5DryvMLeck0Bhf0qqji63OU94pvFB+WuokhbxUxnTrOHr8bmHoHWH1U1zGH1kbjZ
-          ECf0WkuXGjgorsyJQivHfIr3byOp+YwaaJ4w+7YCGTnTWUelXSc+B/cRUiqrCatM
-          KnGw04rr50OSDibNk426M+/DytkZiDSevHiIpuxXWIGh9cFj6Mfkg+bCp/a7u5gi
-          TXzr+KmnmPDnctlAWl6/Bc29s1cZ57OD/RwTL5O7Su1ej9Ty/KWrRmtnCqVjJ+Tk
-          OI9fZmJk2CsA7c2WbDTlQiyrVPundnpC1KtsddJchAEFKPZZ4o4+ABBaQft8XfZr
-          DahU/vcHARcavZcsnSlQlZCnDNGzCa47TgBPG5u1ahxckPsGaGMpOmSpQvzbiptU
-          qP/3CvuEKAVgCbjl6aKlfo0aqZpZsaBdJe82Du8EtvfMWehuKThQ0dQtO2dhMwAi
-          nnbS8AnlJ9ZITt/sdc1dTHTvrwT5lRjKmmIHAgMBAAGjUzBRMB0GA1UdDgQWBBRj
-          146E5G5stxqEPbp/3jJwMUJkejAfBgNVHSMEGDAWgBRj146E5G5stxqEPbp/3jJw
-          MUJkejAPBgNVHRMBAf8EBTADAQH/MA0GCSqGSIb3DQEBCwUAA4IBgQBC8nzxzPju
-          FVvmqcWEFcma9/rXUz+CPQv09L52RRkJjMM4HkJupDWOMB554GsnJPb5+TsZKd6S
-          mG1GogqMG42xv2tR+zGkNtL7cOi52cw8dA2ukliEmYKYARtoIiPAFeu5f4UaAvyK
-          kPr8vWD70azFY+rdoSprCKRWp9vr1csdF3eptHJqXw8baYps5U1sIl2jJdTiqG0h
-          04gWWlDVpAn6JeoMJqDBiELYNNdFtzQputWnYA+MI8ueoqHU1vfxiVJYHpUpyWd7
-          w7D/MAlQNaMx4RWqSvGfyEhB4cb0Kdu/A0gpEXo5LdWDtE9IZQkF+aZZDyIUAutN
-          zzmgk4cciwNNc4HyPbWJOtZyEwO0cwe+taIhQPgv7lcmBzwIqW6OgHgFLSnM94Ib
-          fU1Mhqm9noLZHUhB+NEp3SiOuJSPRw/1p+7CfikkuTwc2tks9CGVRAnIpq2e20iN
-          YMkY1F7utCk7YJpba4pcO+CRdyVZ/eEB5d+eXJsdlXaROAlAN4v5jnE=
-          -----END CERTIFICATE-----
-          CERT
           python3 - <<'PY'
-          import os, json, re, subprocess, urllib.request, urllib.parse, datetime, time
+          import os, json, re, smtplib, ssl, urllib.request, urllib.parse, datetime, time
+          from email.message import EmailMessage
+          from email.utils import formataddr, parseaddr, make_msgid, formatdate
           API = f"https://api.supabase.com/v1/projects/{os.environ['REF']}"
           H = {"Authorization": "Bearer " + os.environ["TOKEN"]}
           def q(sql, s, e):
@@ -57,31 +38,61 @@ jobs:
               req = urllib.request.Request(API + "/database/query", data=json.dumps({"query": sql}).encode(), headers={**H, "content-type": "application/json"})
               return json.load(urllib.request.urlopen(req, timeout=60))
           now = datetime.datetime.now(datetime.timezone.utc)
-          att = {}
+          ids = set()
           for back in range(4, -1, -1):
               day = (now - datetime.timedelta(days=back)).date()
               s = datetime.datetime.combine(day, datetime.time(), datetime.timezone.utc); e = min(s + datetime.timedelta(days=1), now)
-              r = q("SELECT log_attributes['request.sb.auth_user'] AS u, count() AS n, min(timestamp) AS first, max(timestamp) AS last FROM logs WHERE source = 'function_edge_logs' AND position(log_attributes['request.url'], '/functions/v1/billing') > 0 AND log_attributes['response.status_code'] = '413' GROUP BY u",
+              r = q("SELECT log_attributes['request.sb.auth_user'] AS u FROM logs WHERE source = 'function_edge_logs' AND position(log_attributes['request.url'], '/functions/v1/billing') > 0 AND log_attributes['response.status_code'] = '413' GROUP BY u",
                     s.isoformat().replace("+00:00", "Z"), e.isoformat().replace("+00:00", "Z"))
               for x in r.get("result", []):
                   u = str(x.get("u") or "")
-                  a = att.setdefault(u, {"n": 0, "first": None, "last": None})
-                  a["n"] += int(x["n"]); a["first"] = min(filter(None, [a["first"], str(x["first"])])); a["last"] = max(filter(None, [a["last"], str(x["last"])]))
-          ids = [u for u in att if re.fullmatch(r"[0-9a-f-]{36}", u)]
-          lines = []
-          if ids:
-              inl = ",".join("'" + i + "'" for i in ids)
-              rows = db(f"select i.id::text id, u.email, u.email_confirmed_at is not null conf, u.created_at::date cr, "
-                        f"(select string_agg(distinct s.provider||':'||s.plan||':'||s.status, ',') from premium_subscriptions s where s.user_id::text = i.id) subs, "
-                        f"(select string_agg(distinct p.plan||':'||p.source, ',') from account_plans p where p.user_id::text = i.id) plans "
-                        f"from unnest(array[{inl}]::text[]) as i(id) left join auth.users u on u.id::text = i.id")
-              by = {r["id"]: r for r in rows}
-              for i in ids:
-                  r = by.get(i, {}); a = att[i]
-                  lines.append(f"{r.get('email') or 'ACCOUNT BESTAAT NIET MEER'} | pogingen {a['n']} | {a['first']} .. {a['last']} | abonnement: {r.get('subs') or '-'} | plan: {r.get('plans') or '-'}")
-          lines.append(f"zonder account/anoniem: {sum(v['n'] for k, v in att.items() if k not in ids)} verzoeken")
-          open("lijst.txt", "w").write("\n".join(lines) + "\n")
+                  if re.fullmatch(r"[0-9a-f-]{36}", u): ids.add(u)
+          print("accounts in de logs:", len(ids))
+          inl = ",".join("'" + i + "'" for i in sorted(ids))
+          rows = db(f"select u.email from auth.users u where u.id::text in ({inl}) and u.email_confirmed_at is not null "
+                    f"and not exists (select 1 from premium_subscriptions s where s.user_id = u.id) "
+                    f"and not exists (select 1 from account_plans p where p.user_id = u.id and p.plan <> 'free')") if ids else []
+          to = sorted({r["email"] for r in rows if r.get("email")})
+          print("te mailen (bestaand, bevestigd, nog geen Premium):", len(to))
+          body = """Hello,
+
+You recently tried to subscribe to Bingr Premium through the App Store. Unfortunately that did not work: because of an error on our side, your purchase was not recognised, so Premium was not activated. We sincerely apologise for the disruption.
+
+The error has now been fixed. Here is how to activate Premium:
+
+1. Update Bingr to the latest version in the App Store.
+2. Open Bingr and sign in with the same account you used for the purchase.
+3. Go to Settings and choose Restore Purchases (or open the Premium screen and choose Restore Purchases there).
+
+You do not have to pay again. Your Apple purchase is still valid; we are simply linking it to your account now.
+
+If it does not work, or your trial period has already ended, send us a message at support.bingr.online and we will sort it out together.
+
+Once again, our apologies for the inconvenience.
+
+Best regards,
+Léon
+Bingr
+"""
+          frm = os.environ["SMTP_FROM"]; name, addr = parseaddr(frm)
+          port = int(os.environ.get("SMTP_PORT") or 465)
+          ok = bad = 0
+          for rcpt in to:
+              m = EmailMessage()
+              m["From"] = formataddr(("Bingr", addr or frm)); m["To"] = rcpt
+              m["Subject"] = "Sorry: your Bingr Premium purchase is now fixed"
+              m["Date"] = formatdate(localtime=False); m["Message-ID"] = make_msgid(domain=(addr.split("@")[-1] if "@" in addr else "bingr.online"))
+              m.set_content(body)
+              try:
+                  ctx = ssl.create_default_context()
+                  if port in (587, 25):
+                      with smtplib.SMTP(os.environ["SMTP_HOST"], port, timeout=40) as sm:
+                          sm.starttls(context=ctx); sm.login(os.environ["SMTP_USER"], os.environ["SMTP_PASS"]); sm.send_message(m)
+                  else:
+                      with smtplib.SMTP_SSL(os.environ["SMTP_HOST"], port, timeout=40, context=ctx) as sm:
+                          sm.login(os.environ["SMTP_USER"], os.environ["SMTP_PASS"]); sm.send_message(m)
+                  ok += 1
+              except Exception as ex:
+                  bad += 1; print("mislukt:", type(ex).__name__)
+          print(f"verstuurd: {ok}, mislukt: {bad}")
           PY
-          openssl cms -encrypt -aes256 -in lijst.txt -recip cert.pem -outform PEM -out lijst.pem
-          echo "-----LIJST-----"; cat lijst.pem; echo "-----EINDE-----"
-          shred -u lijst.txt
