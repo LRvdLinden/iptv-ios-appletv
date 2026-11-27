@@ -1,5 +1,5 @@
 name: Diagnose status (tijdelijk)
-# Tijdelijk: draait de servertests van een branch (build-187) voordat die naar main gaat.
+# Tijdelijk: welke storingen staan open (alleen titels/statussen van de openbare statuspagina).
 on:
   push:
     branches: [symboliseren]
@@ -7,19 +7,20 @@ on:
 permissions:
   contents: read
 jobs:
-  tests:
+  storing:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: build-187
-      - uses: denoland/setup-deno@v2
-        with:
-          deno-version: v2.x
-      - name: Tests
+      - name: Open storingen
+        env:
+          TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ secrets.SUPABASE_PROJECT_REF }}
         run: |
-          deno test --allow-read supabase/functions/_shared/premium_test.ts
-          deno test supabase/functions/_shared/apple_test.ts supabase/functions/_shared/lifetime_test.ts supabase/functions/_shared/billing_test.ts
-      - name: Typecheck
-        run: |
-          deno check supabase/functions/billing/index.ts supabase/functions/apple-notify/index.ts supabase/functions/stripe-webhook/index.ts
+          dbq() { curl -s -X POST "https://api.supabase.com/v1/projects/$REF/database/query" -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' -d "$(python3 -c 'import json,sys;print(json.dumps({"query":sys.argv[1]}))' "$1")"; echo; }
+          echo "== notices"
+          dbq "select id, kind, status, impact, auto, auto_resolve, edited, started_at, title_nl from status_notices where status not in ('resolved','completed','cancelled') order by id"
+          echo "== componenten"
+          dbq "select c.notice_id, c.monitor_id, c.impact from status_notice_components c join status_notices n on n.id=c.notice_id where n.status not in ('resolved','completed','cancelled')"
+          echo "== open monitor-storingen"
+          dbq "select id, monitor_id, started_at, ended_at from status_incidents where ended_at is null"
+          echo "== laatste monitorstand"
+          dbq "select * from status_monitors limit 0" || true
