@@ -1,5 +1,44 @@
 [
  {
+  "build": 189,
+  "version": "1.1.2",
+  "date": "2026-11-27",
+  "items": [
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "Nieuw pincodescherm: je ziet de ronde profielfoto bovenaan, de pincode vul je in vier losse vakjes in (het laatste cijfer is even zichtbaar) en er is een link Pincode vergeten? Op iPhone, iPad en Mac zijn de cijfertoetsen groter en rustiger; op Apple TV heeft de toets waar je op staat een duidelijke witte markering",
+    "en": "New PIN screen: the round profile picture is shown at the top, you enter the PIN in four separate boxes (the last digit stays visible for a moment) and there is a Forgot PIN? link. On iPhone, iPad and Mac the number keys are larger and calmer; on Apple TV the key you are on has a clear white highlight"
+   },
+   {
+    "type": "fixed",
+    "platforms": [
+     "ios",
+     "ipados",
+     "tvos",
+     "macos"
+    ],
+    "nl": "Audio en ondertitels in de speler: een lange lijst met sporen liep op de Apple TV buiten beeld en was niet te kiezen. De lijst scrolt nu en blijft met de Siri Remote te kiezen. Sporen met dezelfde naam krijgen een nummer, zodat je ze uit elkaar houdt",
+    "en": "Audio and subtitles in the player: a long list of tracks ran off the screen on Apple TV and could not be selected. The list now scrolls and can be selected with the Siri Remote. Tracks with the same name get a number so you can tell them apart"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "ios",
+     "ipados",
+     "macos"
+    ],
+    "nl": "Schakelaars die aan staan zijn nu groen in plaats van rood. Rood blijft voor afspelen en waarschuwingen",
+    "en": "Switches that are on are now green instead of red. Red stays for play buttons and warnings"
+   }
+  ]
+ },
+ {
   "build": 188,
   "version": "1.1.1",
   "date": "2026-11-27",

@@ -1405,7 +1405,11 @@
   "one-time": "مرة واحدة",
   "per 6 months": "كل 6 أشهر",
   "per month": "شهريًا",
-  "per year": "سنويًا"
+  "per year": "سنويًا",
+  "PIN, %d of 4 digits entered": "رمز PIN، تم إدخال %d من 4 أرقام",
+  "Forgot PIN?": "نسيت رمز PIN؟",
+  "Forgot your PIN?": "نسيت رمز PIN؟",
+  "A PIN cannot be recovered in the app. Contact Bingr Support at support.bingr.online and we will help you further.": "لا يمكن استعادة رمز PIN داخل التطبيق. تواصل مع دعم Bingr عبر support.bingr.online وسنساعدك."
  },
  "de": {
   "%@ after %@ s (%@, %@)": "%@ nach %@ s (%@, %@)",
@@ -2813,7 +2817,11 @@
   "one-time": "einmalig",
   "per 6 months": "pro 6 Monate",
   "per month": "pro Monat",
-  "per year": "pro Jahr"
+  "per year": "pro Jahr",
+  "PIN, %d of 4 digits entered": "PIN, %d von 4 Ziffern eingegeben",
+  "Forgot PIN?": "PIN vergessen?",
+  "Forgot your PIN?": "PIN vergessen?",
+  "A PIN cannot be recovered in the app. Contact Bingr Support at support.bingr.online and we will help you further.": "Eine PIN kann in der App nicht wiederhergestellt werden. Wende dich an den Bingr-Support unter support.bingr.online, dann helfen wir dir weiter."
  },
  "es": {
   "%@ after %@ s (%@, %@)": "%@ tras %@ s (%@, %@)",
@@ -4221,7 +4229,11 @@
   "one-time": "pago único",
   "per 6 months": "cada 6 meses",
   "per month": "al mes",
-  "per year": "al año"
+  "per year": "al año",
+  "PIN, %d of 4 digits entered": "PIN, %d de 4 dígitos introducidos",
+  "Forgot PIN?": "¿Olvidaste tu PIN?",
+  "Forgot your PIN?": "¿Olvidaste tu PIN?",
+  "A PIN cannot be recovered in the app. Contact Bingr Support at support.bingr.online and we will help you further.": "Un PIN no se puede recuperar en la app. Contacta con el soporte de Bingr en support.bingr.online y te ayudaremos."
  },
  "fr": {
   "%@ after %@ s (%@, %@)": "%@ après %@ s (%@, %@)",
@@ -5629,7 +5641,11 @@
   "one-time": "paiement unique",
   "per 6 months": "par 6 mois",
   "per month": "par mois",
-  "per year": "par an"
+  "per year": "par an",
+  "PIN, %d of 4 digits entered": "Code PIN, %d chiffres sur 4 saisis",
+  "Forgot PIN?": "Code PIN oublié ?",
+  "Forgot your PIN?": "Code PIN oublié ?",
+  "A PIN cannot be recovered in the app. Contact Bingr Support at support.bingr.online and we will help you further.": "Un code PIN ne peut pas être récupéré dans l'app. Contactez le support Bingr sur support.bingr.online et nous vous aiderons."
  },
  "it": {
   "%@ after %@ s (%@, %@)": "%@ dopo %@ s (%@, %@)",
@@ -7037,7 +7053,11 @@
   "one-time": "una tantum",
   "per 6 months": "ogni 6 mesi",
   "per month": "al mese",
-  "per year": "all’anno"
+  "per year": "all’anno",
+  "PIN, %d of 4 digits entered": "PIN, %d cifre su 4 inserite",
+  "Forgot PIN?": "PIN dimenticato?",
+  "Forgot your PIN?": "PIN dimenticato?",
+  "A PIN cannot be recovered in the app. Contact Bingr Support at support.bingr.online and we will help you further.": "Un PIN non può essere recuperato nell'app. Contatta il supporto Bingr su support.bingr.online e ti aiuteremo."
  },
  "nl": {
   "%@ after %@ s (%@, %@)": "%@ na %@ s (%@, %@)",
@@ -8445,7 +8465,11 @@
   "one-time": "eenmalig",
   "per 6 months": "per half jaar",
   "per month": "per maand",
-  "per year": "per jaar"
+  "per year": "per jaar",
+  "PIN, %d of 4 digits entered": "Pincode, %d van 4 cijfers ingevoerd",
+  "Forgot PIN?": "Pincode vergeten?",
+  "Forgot your PIN?": "Pincode vergeten?",
+  "A PIN cannot be recovered in the app. Contact Bingr Support at support.bingr.online and we will help you further.": "Een pincode kun je in de app niet terughalen. Neem contact op met Bingr Support via support.bingr.online, dan helpen we je verder."
  },
  "pl": {
   "%@ after %@ s (%@, %@)": "%@ po %@ s (%@, %@)",
@@ -9853,7 +9877,11 @@
   "one-time": "jednorazowo",
   "per 6 months": "co 6 miesięcy",
   "per month": "miesięcznie",
-  "per year": "rocznie"
+  "per year": "rocznie",
+  "PIN, %d of 4 digits entered": "PIN, wpisano %d z 4 cyfr",
+  "Forgot PIN?": "Nie pamiętasz PIN-u?",
+  "Forgot your PIN?": "Nie pamiętasz PIN-u?",
+  "A PIN cannot be recovered in the app. Contact Bingr Support at support.bingr.online and we will help you further.": "PIN-u nie można odzyskać w aplikacji. Skontaktuj się z pomocą Bingr pod adresem support.bingr.online, a pomożemy ci dalej."
  },
  "pt": {
   "%@ after %@ s (%@, %@)": "%@ após %@ s (%@, %@)",
@@ -11261,7 +11289,11 @@
   "one-time": "pagamento único",
   "per 6 months": "a cada 6 meses",
   "per month": "por mês",
-  "per year": "por ano"
+  "per year": "por ano",
+  "PIN, %d of 4 digits entered": "PIN, %d de 4 dígitos introduzidos",
+  "Forgot PIN?": "Esqueceu-se do PIN?",
+  "Forgot your PIN?": "Esqueceu-se do PIN?",
+  "A PIN cannot be recovered in the app. Contact Bingr Support at support.bingr.online and we will help you further.": "Um PIN não pode ser recuperado na app. Contacte o suporte do Bingr em support.bingr.online e ajudamos."
  },
  "tr": {
   "%@ after %@ s (%@, %@)": "%@, %@ sn sonra (%@, %@)",
@@ -12669,7 +12701,11 @@
   "one-time": "tek seferlik",
   "per 6 months": "6 ayda bir",
   "per month": "aylık",
-  "per year": "yıllık"
+  "per year": "yıllık",
+  "PIN, %d of 4 digits entered": "PIN, 4 haneden %d girildi",
+  "Forgot PIN?": "PIN'i mi unuttun?",
+  "Forgot your PIN?": "PIN'i mi unuttun?",
+  "A PIN cannot be recovered in the app. Contact Bingr Support at support.bingr.online and we will help you further.": "PIN uygulamada geri alınamaz. support.bingr.online adresinden Bingr Destek ile iletişime geç, sana yardımcı olalım."
  },
  "zh-Hans": {
   "%@ after %@ s (%@, %@)": "%@，%@ 秒后（%@，%@）",
@@ -14077,6 +14113,10 @@
   "one-time": "一次性",
   "per 6 months": "每 6 个月",
   "per month": "每月",
-  "per year": "每年"
+  "per year": "每年",
+  "PIN, %d of 4 digits entered": "PIN 码，已输入 4 位中的 %d 位",
+  "Forgot PIN?": "忘记 PIN 码？",
+  "Forgot your PIN?": "忘记 PIN 码？",
+  "A PIN cannot be recovered in the app. Contact Bingr Support at support.bingr.online and we will help you further.": "PIN 码无法在应用内找回。请通过 support.bingr.online 联系 Bingr 支持，我们会进一步帮助你。"
  }
 }

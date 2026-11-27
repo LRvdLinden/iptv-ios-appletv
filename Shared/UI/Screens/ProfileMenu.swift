@@ -71,7 +71,7 @@ struct ProfileMenuButton<MenuLabel: View>: View {
         menu
             .accessibilityLabel(L("Profile menu"))
             .sheet(item: $pinFor) { p in
-                PINPad(title: L("PIN for %@", p.name)) { pin in
+                PINPad(title: L("PIN for %@", p.name), profileID: p.id) { pin in
                     guard ParentalControl.shared.verify(pin, profile: p.id) else { return false }
                     Task { @MainActor in try? await Task.sleep(nanoseconds: 80_000_000); app.open(profile: p) }
                     return true

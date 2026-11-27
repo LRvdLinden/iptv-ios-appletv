@@ -4,6 +4,25 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.1.2 · Build 189
+_27 november 2026_
+
+### iOS, iPadOS en macOS
+
+**Verbeterd**
+
+- Schakelaars die aan staan zijn nu groen in plaats van rood. Rood blijft voor afspelen en waarschuwingen
+
+### iOS, iPadOS, tvOS en macOS
+
+**Verbeterd**
+
+- Nieuw pincodescherm: je ziet de ronde profielfoto bovenaan, de pincode vul je in vier losse vakjes in (het laatste cijfer is even zichtbaar) en er is een link Pincode vergeten? Op iPhone, iPad en Mac zijn de cijfertoetsen groter en rustiger; op Apple TV heeft de toets waar je op staat een duidelijke witte markering
+
+**Opgelost**
+
+- Audio en ondertitels in de speler: een lange lijst met sporen liep op de Apple TV buiten beeld en was niet te kiezen. De lijst scrolt nu en blijft met de Siri Remote te kiezen. Sporen met dezelfde naam krijgen een nummer, zodat je ze uit elkaar houdt
+
 ## Versie 1.1.1 · Build 188
 _27 november 2026_
 

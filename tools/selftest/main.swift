@@ -3606,5 +3606,19 @@ do {
 }
 
 
+// MARK: build 189: sporennamen en pincodevakjes (Shared/Account/Build189.swift)
+
+do {
+    eq(TrackTitles189.unique(["Polish", "Dutch", "Polish", "Polish"]), ["Polish", "Dutch", "Polish (2)", "Polish (3)"], "build 189: gelijke sporen genummerd")
+    eq(TrackTitles189.unique(["A", "B"]), ["A", "B"], "build 189: unieke namen blijven")
+    eq(TrackTitles189.unique([]), [], "build 189: lege lijst")
+    eq(TrackTitles189.unique(["x", "x"]).count, 2, "build 189: geen spoor verloren")
+    eq(PINBoxes189.shown(pin: "", revealLast: true), ["", "", "", ""], "build 189: lege vakjes")
+    eq(PINBoxes189.shown(pin: "48", revealLast: true), ["\u{2022}", "8", "", ""], "build 189: laatste cijfer even zichtbaar")
+    eq(PINBoxes189.shown(pin: "48", revealLast: false), ["\u{2022}", "\u{2022}", "", ""], "build 189: daarna alles gemaskeerd")
+    eq(PINBoxes189.shown(pin: "4812", revealLast: true), ["\u{2022}", "\u{2022}", "\u{2022}", "2"], "build 189: vol")
+}
+
+
 print("\(checks) controles, \(failures) fout")
 exit(failures == 0 ? 0 : 1)

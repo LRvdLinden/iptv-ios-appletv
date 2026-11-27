@@ -145,21 +145,21 @@ struct AppSettingsView: View {
                 case .change:
                     PINSetupView(profileID: prof.id, requireCurrent: true)
                 case .lockOff:
-                    PINPad(title: L("Enter PIN to turn off")) { pin in
+                    PINPad(title: L("Enter PIN to turn off"), profileID: prof.id) { pin in
                         guard parental.verify(pin, profile: prof.id) else { return false }
                         store.updateParental { $0.enabled = false }
                         return true
                     }
                 case .autoLockOff:
-                    PINPad(title: L("Enter PIN to turn off")) { pin in
+                    PINPad(title: L("Enter PIN to turn off"), profileID: prof.id) { pin in
                         guard parental.verify(pin, profile: prof.id) else { return false }
                         store.updateParental { $0.autoLockAdult = false }
                         return true
                     }
                 case .unlock:
-                    PINPad(title: L("Enter PIN")) { parental.verify($0, profile: prof.id) }
+                    PINPad(title: L("Enter PIN"), profileID: prof.id) { parental.verify($0, profile: prof.id) }
                 case .disable:
-                    PINPad(title: L("Enter PIN to turn off")) { pin in
+                    PINPad(title: L("Enter PIN to turn off"), profileID: prof.id) { pin in
                         guard parental.verify(pin, profile: prof.id) else { return false }
                         parental.setPIN(nil, profile: prof.id)
                         if store.isMain(prof) { store.updateParental { $0.enabled = false } }
@@ -752,7 +752,7 @@ struct PINSetupView: View {
 
     var body: some View {
         if requireCurrent && !verified {
-            PINPad(title: L("Enter your current PIN")) { pin in
+            PINPad(title: L("Enter your current PIN"), profileID: profileID) { pin in
                 let ok: Bool
                 if let id = profileID ?? store.activeProfileID ?? store.mainProfileID {
                     ok = ParentalControl.shared.verify(pin, profile: id)
@@ -764,10 +764,10 @@ struct PINSetupView: View {
             }
             .id("current")
         } else if step == 0 {
-            PINPad(title: L("Choose a 4-digit PIN"), limited: false) { pin in first = pin; step = 1; return false }
+            PINPad(title: L("Choose a 4-digit PIN"), limited: false, profileID: profileID) { pin in first = pin; step = 1; return false }
                 .id("a")
         } else {
-            PINPad(title: L("Enter the PIN again"), limited: false) { pin in
+            PINPad(title: L("Enter the PIN again"), limited: false, profileID: profileID) { pin in
                 guard pin == first else { step = 0; return false }
                 if let id = profileID ?? store.activeProfileID ?? store.mainProfileID {
                     ParentalControl.shared.setPIN(pin, profile: id)

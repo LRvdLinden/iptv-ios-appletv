@@ -76,13 +76,14 @@ struct AudioSubsPanel173: View {
         BottomPanel173(title: L("Audio & subtitles"), onClose: onClose) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: tvScaled(26)) {
-                    column(L("Audio")) {
+                    column(L("Audio"), rows: player.audioTracks.count + versions.count) {
                         let tracks = player.audioTracks
                         if tracks.isEmpty {
                             Text(L("No alternative audio tracks")).font(.system(size: tvScaled(13))).foregroundStyle(Theme.secondary)
                         }
-                        ForEach(tracks) { t in
-                            PanelChoice173(title: TracksPanel.flagged(t), selected: t.id == player.currentAudio) { player.selectAudio(t) }
+                        let audioTitles = TrackTitles189.unique(tracks.map { TracksPanel.flagged($0) })
+                        ForEach(Array(tracks.enumerated()), id: \.element.id) { i, t in
+                            PanelChoice173(title: audioTitles[i], selected: t.id == player.currentAudio) { player.selectAudio(t) }
                         }
                         if !player.isLive {
                             ForEach(versions) { v in
@@ -90,15 +91,17 @@ struct AudioSubsPanel173: View {
                             }
                         }
                     }
-                    column(L("Subtitles")) {
+                    column(L("Subtitles"), rows: player.subtitleTracks.count + 3) {
                         PanelChoice173(title: L("Off"), selected: player.currentSubtitle == nil && !player.hasExternalSubtitle) {
                             player.selectSubtitle(nil)
                         }
                         if let ext = player.externalSubtitleName, player.hasExternalSubtitle {
                             PanelChoice173(title: "OpenSubtitles · \(ext)", selected: true) {}
                         }
-                        ForEach(player.subtitleTracks) { t in
-                            PanelChoice173(title: TracksPanel.flagged(t), selected: t.id == player.currentSubtitle && !player.hasExternalSubtitle) {
+                        let subs = player.subtitleTracks
+                        let subTitles = TrackTitles189.unique(subs.map { TracksPanel.flagged($0) })
+                        ForEach(Array(subs.enumerated()), id: \.element.id) { i, t in
+                            PanelChoice173(title: subTitles[i], selected: t.id == player.currentSubtitle && !player.hasExternalSubtitle) {
                                 player.selectSubtitle(t)
                             }
                         }
@@ -134,11 +137,23 @@ struct AudioSubsPanel173: View {
         }
     }
 
-    private func column<C: View>(_ title: String, @ViewBuilder _ content: () -> C) -> some View {
+    /// `rows` = aantal keuzeregels; vanaf `Self.scrollFrom` scrolt de kolom in een beperkte hoogte (korte kolommen houden hun eigen hoogte)
+    private static let scrollFrom = 6
+
+    private func column<C: View>(_ title: String, rows: Int = 0, @ViewBuilder _ content: () -> C) -> some View {
         VStack(alignment: .leading, spacing: tvScaled(2)) {
             Text(title.uppercased()).font(.system(size: tvScaled(11), weight: .heavy)).tracking(0.8).foregroundStyle(Theme.secondary)
                 .padding(.horizontal, tvScaled(10)).padding(.bottom, tvScaled(4))
-            content()
+            // build 189: een lange lijst (tientallen ondertitelsporen) loopt niet meer uit beeld: de kolom scrolt
+            // in een beperkte hoogte en blijft met de Siri Remote of de vinger te kiezen
+            if rows > Self.scrollFrom {
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: tvScaled(2)) { content() }
+                }
+                .frame(height: tvScaled(190))
+            } else {
+                content()
+            }
         }
         #if os(tvOS)
         .focusSection()

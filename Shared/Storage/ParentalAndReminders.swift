@@ -346,11 +346,16 @@ struct PINPad: View {
     let title: String
     /// build 141: false bij het kiezen van een nieuwe pincode (daar geldt geen wachttijd)
     var limited = true
+    /// build 189: het profiel waar de pincode bij hoort (voor de ronde foto bovenaan); standaard het actieve profiel
+    var profileID: UUID? = nil
     let onDone: (String) -> Bool
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var parental = ParentalControl.shared
     @State private var pin = ""
     @State private var shake = false
+    /// build 189: het laatst getypte cijfer is even zichtbaar in het vakje
+    @State private var revealLast = false
+    @State private var showForgot = false
     /// build 146: de pincode wordt gecontroleerd (hash afleiden)
     @State private var checking = false
 
@@ -390,14 +395,52 @@ struct PINPad: View {
         }
     }
 
+    /// build 189: ronde profielfoto bovenaan (het profiel waar de pincode bij hoort, anders het actieve profiel)
+    @ViewBuilder private func avatar(_ size: CGFloat) -> some View {
+        PINAvatar189(profileID: profileID, size: size)
+    }
+
+    /// build 189: vier losse vakjes; het laatst getypte cijfer blijft even zichtbaar, de rest is een punt
+    private func boxes(width: CGFloat, height: CGFloat, font: CGFloat, spacing: CGFloat) -> some View {
+        let shown = PINBoxes189.shown(pin: pin, revealLast: revealLast)
+        return HStack(spacing: spacing) {
+            ForEach(0..<4, id: \.self) { i in
+                Text(shown[i])
+                    .font(.system(size: font, weight: .semibold))
+                    .frame(width: width, height: height)
+                    .overlay(RoundedRectangle(cornerRadius: 8)
+                        .stroke(i == pin.count ? Color.white : Color.white.opacity(i < pin.count ? 0.7 : 0.3), lineWidth: 2))
+            }
+        }
+        .offset(x: shake ? -10 : 0)
+        .animation(.default.repeatCount(3, autoreverses: true).speed(4), value: shake)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(L("PIN, %d of 4 digits entered", pin.count))
+    }
+
+    private var forgot: some View {
+        Button { showForgot = true } label: {
+            Text(L("Forgot PIN?"))
+                .font(.system(size: tvScaled(13)))
+                .underline()
+                .foregroundStyle(.white.opacity(0.85))
+        }
+        .plainTVButton()
+        .alert(L("Forgot your PIN?"), isPresented: $showForgot) {
+            Button(L("OK"), role: .cancel) {}
+        } message: {
+            Text(L("A PIN cannot be recovered in the app. Contact Bingr Support at support.bingr.online and we will help you further."))
+        }
+    }
+
     @ViewBuilder private var pad: some View {
         #if os(tvOS)
-        // Apple TV: compact, één rij cijfers (zoals op tv gebruikelijk) — past op elk scherm, ook met overscan
-        VStack(spacing: 34) {
-            Image(systemName: "lock.fill").font(.system(size: 44)).foregroundStyle(Theme.red)
+        // Apple TV (build 189): ronde profielfoto, vier vakjes en één rustige rij cijfers met een duidelijke witte focus
+        VStack(spacing: 30) {
+            avatar(150)
             Text(title).font(.system(size: 34, weight: .bold)).multilineTextAlignment(.center)
                 .lineLimit(2).minimumScaleFactor(0.7).frame(maxWidth: 1100)
-            dots(size: 22, spacing: 22)
+            boxes(width: 76, height: 88, font: 40, spacing: 18)
             waitNotice
             checkingNotice
             HStack(spacing: 14) {
@@ -408,37 +451,44 @@ struct PINPad: View {
                         }
                         .font(.system(size: 34, weight: .semibold))
                         .frame(width: 84, height: 84)
-                        .background(Theme.elevated, in: Circle())
                     }
-                    .plainTVButton()
+                    .buttonStyle(PINKeyStyle189())
                 }
             }
             .focusSection()
-            Button(L("Cancel")) { dismiss() }
+            HStack(spacing: 40) {
+                forgot
+                Button(L("Cancel")) { dismiss() }
+            }
         }
         .padding(.vertical, 50).padding(.horizontal, 60)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(hex: 0x141414).ignoresSafeArea())
         #else
         ScrollView {
-            VStack(spacing: 22) {
-                Image(systemName: "lock.fill").font(.system(size: 36)).foregroundStyle(Theme.red)
+            VStack(spacing: 20) {
+                avatar(84)
                 Text(title).font(.system(size: 20, weight: .bold)).multilineTextAlignment(.center)
-                dots(size: 16, spacing: 14)
+                boxes(width: 48, height: 58, font: 26, spacing: 12)
                 waitNotice
                 checkingNotice
-                LazyVGrid(columns: Array(repeating: GridItem(.fixed(70), spacing: 14), count: 3), spacing: 14) {
+                forgot
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
                     ForEach(["1","2","3","4","5","6","7","8","9","","0","⌫"], id: \.self) { k in
-                        if k.isEmpty { Color.clear.frame(height: 70) } else {
+                        if k.isEmpty { Color.clear.frame(height: 56) } else {
                             Button { tap(k) } label: {
-                                Text(k).font(.system(size: 26, weight: .semibold))
-                                    .frame(width: 70, height: 70)
-                                    .background(Theme.elevated, in: Circle())
+                                Group {
+                                    if k == "⌫" { Image(systemName: "delete.left") } else { Text(k) }
+                                }
+                                .font(.system(size: 26, weight: .medium))
+                                .frame(maxWidth: .infinity).frame(height: 56)
+                                .background(Theme.elevated, in: RoundedRectangle(cornerRadius: 9))
                             }
                             .plainTVButton()
                         }
                     }
                 }
+                .frame(maxWidth: 360)
                 Button(L("Cancel")) { dismiss() }.foregroundStyle(Theme.secondary)
             }
             .padding(Theme.edge)
@@ -449,17 +499,6 @@ struct PINPad: View {
         #endif
     }
 
-    private func dots(size: CGFloat, spacing: CGFloat) -> some View {
-        HStack(spacing: spacing) {
-            ForEach(0..<4, id: \.self) { i in
-                Circle().fill(i < pin.count ? Color.white : Color.white.opacity(0.2))
-                    .frame(width: size, height: size)
-            }
-        }
-        .offset(x: shake ? -10 : 0)
-        .animation(.default.repeatCount(3, autoreverses: true).speed(4), value: shake)
-    }
-
     private func tap(_ k: String) {
         guard !checking else { return }
         if k == "⌫" { if !pin.isEmpty { pin.removeLast() }; return }
@@ -467,6 +506,12 @@ struct PINPad: View {
         // build 141: tijdens de wachttijd geen invoer
         if limited, parental.waitRemaining > 0 { shake.toggle(); pin = ""; return }
         pin += k
+        revealLast = true
+        let typed = pin.count
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 800_000_000)
+            if pin.count == typed { revealLast = false }
+        }
         if pin.count == 4 {
             // build 146: de hash (PBKDF2) eerst buiten de hoofdthread afleiden, dan pas controleren
             let entered = pin
@@ -482,6 +527,50 @@ struct PINPad: View {
         }
     }
 }
+
+/// Build 189: ronde profielfoto (of het getekende figuurtje) boven het pincodescherm.
+struct PINAvatar189: View {
+    var profileID: UUID?
+    let size: CGFloat
+    @ObservedObject private var store = CloudStore.shared
+    var body: some View {
+        let p = store.profiles.first { $0.id == profileID } ?? store.activeProfile
+        Group {
+            if let p {
+                ZStack {
+                    Circle().fill(p.avatar.gradient)
+                    if let d = store.photos[p.id], let img = UIImage(data: d) {
+                        Color.clear.overlay(Image(uiImage: img).resizable().scaledToFill()).clipShape(Circle())
+                    } else {
+                        AvatarGlyph(avatar: p.avatar, size: size * 0.45).clipShape(Circle())
+                    }
+                }
+            } else {
+                Circle().fill(Theme.elevated).overlay(Image(systemName: "lock.fill").foregroundStyle(.white.opacity(0.8)))
+            }
+        }
+        .frame(width: size, height: size)
+        .accessibilityHidden(true)
+    }
+}
+
+#if os(tvOS)
+/// Build 189: cijfertoets op Apple TV: rustig donker rondje, bij focus wit met zwart cijfer en iets groter.
+struct PINKeyStyle189: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View { Key(configuration: configuration) }
+    private struct Key: View {
+        let configuration: ButtonStyleConfiguration
+        @Environment(\.isFocused) private var focused
+        var body: some View {
+            configuration.label
+                .foregroundStyle(focused ? Color.black : Color.white)
+                .background(Circle().fill(focused ? Color.white : Theme.elevated))
+                .scaleEffect(focused ? 1.18 : 1)
+                .animation(.easeOut(duration: 0.12), value: focused)
+        }
+    }
+}
+#endif
 
 /// Herinneringen voor programma's: melding op iPhone/iPad, banner in de app op Apple TV.
 /// Per profiel: elk profiel zet, ziet en verwijdert alleen zijn eigen herinneringen (`CloudStore.reminderID`), maar
