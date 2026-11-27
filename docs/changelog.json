@@ -35,6 +35,33 @@
     ],
     "nl": "Schakelaars die aan staan zijn nu groen in plaats van rood. Rood blijft voor afspelen en waarschuwingen",
     "en": "Switches that are on are now green instead of red. Red stays for play buttons and warnings"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "android",
+     "androidtv"
+    ],
+    "nl": "Nieuw pincodescherm: je ziet de ronde profielfoto bovenaan, de pincode vul je in vier losse vakjes in (het laatste cijfer is even zichtbaar) en er is een link Pincode vergeten? voor wie is ingelogd: met het wachtwoord van je Bingr-account verwijder je de pincode en kies je daarna zelf een nieuwe. Op de telefoon zijn de cijfertoetsen rustiger; op Android TV heeft de toets waar je op staat een duidelijke witte markering",
+    "en": "New PIN screen: the round profile picture is shown at the top, you enter the PIN in four separate boxes (the last digit stays visible for a moment) and there is a Forgot PIN? link for signed-in users: with the password of your Bingr account you remove the PIN and then choose a new one yourself. On the phone the number keys are calmer; on Android TV the key you are on has a clear white highlight"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "android",
+     "androidtv"
+    ],
+    "nl": "Audio en ondertitels in de speler: sporen met dezelfde naam krijgen een nummer, zodat je ze uit elkaar houdt",
+    "en": "Audio and subtitles in the player: tracks with the same name get a number so you can tell them apart"
+   },
+   {
+    "type": "improved",
+    "platforms": [
+     "android",
+     "androidtv"
+    ],
+    "nl": "Schakelaars die aan staan zijn nu groen in plaats van rood. Rood blijft voor afspelen en waarschuwingen",
+    "en": "Switches that are on are now green instead of red. Red stays for play buttons and warnings"
    }
   ]
  },
