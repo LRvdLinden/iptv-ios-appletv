@@ -49,7 +49,7 @@ jobs:
                   per[k] = per.get(k, 0) + 1
                   if str(x.get("code")) == "413":
                       u = str(x.get("u") or "")
-                      ts = x.get("ts"); t = datetime.datetime.fromtimestamp(int(ts) / 1e6, datetime.timezone.utc) if ts else None
+                      ts = x.get("ts"); t = (datetime.datetime.fromtimestamp(int(ts) / 1e6, datetime.timezone.utc) if str(ts).isdigit() else datetime.datetime.fromisoformat(str(ts)).replace(tzinfo=datetime.timezone.utc)) if ts else None
                       if re.fullmatch(r"[0-9a-f-]{36}", u):
                           ids.add(u)
                           if t and t >= FIX: ids_after.add(u)
