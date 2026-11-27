@@ -1,5 +1,5 @@
 name: Diagnose status (tijdelijk)
-# Tijdelijk: alleen tellingen, statussen en datums over Premium (geen id's, e-mailadressen of bedragen per persoon).
+# Tijdelijk: alleen tellingen van statuscodes en logregels (geen id's of persoonsgegevens).
 on:
   push:
     branches: [symboliseren]
@@ -7,83 +7,32 @@ on:
 permissions:
   contents: read
 jobs:
-  premium:
+  logs:
     runs-on: ubuntu-latest
     steps:
-      - name: Database en logs
+      - name: Edge-logs Premium
         env:
-          TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          TOKEN: ${{ secrets.SUPABASE_LOGS_TOKEN || secrets.SUPABASE_ACCESS_TOKEN }}
           REF: ${{ secrets.SUPABASE_PROJECT_REF }}
-        run: |
-          dbq() { curl -s -X POST "https://api.supabase.com/v1/projects/$REF/database/query" -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' -d "$(python3 -c 'import json,sys;print(json.dumps({"query":sys.argv[1]}))' "$1")"; echo; }
-          echo "== abonnementen per aanbieder/status"
-          dbq "select provider, plan, status, mode, (user_id is not null) as gekoppeld, count(*) n, min(started_at)::date eerste, min(expires_at)::date exp_min, max(expires_at)::date exp_max, max(access_until)::date toegang_max, bool_or(will_renew) verlengt from premium_subscriptions group by 1,2,3,4,5 order by 1,2,3"
-          echo "== betalingen"
-          dbq "select billing_reason, count(*) n, min(paid_at)::date van, max(paid_at)::date tot from premium_payments group by 1"
-          echo "== plannen per bron"
-          dbq "select plan, source, count(*) n from account_plans group by 1,2 order by 1,2"
-          echo "== trials"
-          dbq "select provider, count(*) n from premium_trials group by 1" || true
-          start=$(date -u -d '-5 days' +%Y-%m-%dT%H:%M:%SZ); end=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          echo "== billing POST statuscodes per dag"
-          sql="select timestamp_trunc(timestamp, day) as dag, r.status_code as code, count(*) as n from function_edge_logs cross join unnest(metadata) as m cross join unnest(m.request) as q cross join unnest(m.response) as r where q.path like '%/billing%' and q.method = 'POST' group by dag, code order by dag, code"
-          curl -s -G "https://api.supabase.com/v1/projects/$REF/analytics/endpoints/logs" -H "Authorization: Bearer $TOKEN" --data-urlencode "sql=$sql" --data-urlencode "iso_timestamp_start=$start" --data-urlencode "iso_timestamp_end=$end" | head -c 3000; echo
-          echo "== apple-notify statuscodes"
-          sql="select r.status_code as code, count(*) as n from function_edge_logs cross join unnest(metadata) as m cross join unnest(m.request) as q cross join unnest(m.response) as r where q.path like '%/apple-notify%' group by code order by n desc"
-          curl -s -G "https://api.supabase.com/v1/projects/$REF/analytics/endpoints/logs" -H "Authorization: Bearer $TOKEN" --data-urlencode "sql=$sql" --data-urlencode "iso_timestamp_start=$start" --data-urlencode "iso_timestamp_end=$end" | head -c 1500; echo
-          echo "== apple-notify resultaten (alleen type/resultaat)"
-          sql="select event_message, count(*) as n from function_logs where event_message like 'apple-notify%' group by event_message order by n desc limit 15"
-          curl -s -G "https://api.supabase.com/v1/projects/$REF/analytics/endpoints/logs" -H "Authorization: Bearer $TOKEN" --data-urlencode "sql=$sql" --data-urlencode "iso_timestamp_start=$start" --data-urlencode "iso_timestamp_end=$end" | head -c 2500; echo
-          echo "== billing apple_verify logregels"
-          sql="select event_message, count(*) as n from function_logs where event_message like 'billing apple_verify%' group by event_message order by n desc limit 15"
-          curl -s -G "https://api.supabase.com/v1/projects/$REF/analytics/endpoints/logs" -H "Authorization: Bearer $TOKEN" --data-urlencode "sql=$sql" --data-urlencode "iso_timestamp_start=$start" --data-urlencode "iso_timestamp_end=$end" | head -c 2500; echo
-  stripe:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Stripe (alleen lezen)
-        env:
-          K: ${{ secrets.STRIPE_SECRET_KEY }}
         run: |
           python3 - <<'PY'
           import os, json, urllib.request, urllib.parse, datetime
-          K = os.environ["K"]
-          def get(path, **q):
-              req = urllib.request.Request("https://api.stripe.com/v1/" + path + ("?" + urllib.parse.urlencode(q, doseq=True) if q else ""), headers={"Authorization": "Bearer " + K})
+          API = f"https://api.supabase.com/v1/projects/{os.environ['REF']}"
+          def q(sql, s, e):
+              u = f"{API}/analytics/endpoints/logs?" + urllib.parse.urlencode({"sql": sql, "iso_timestamp_start": s, "iso_timestamp_end": e})
               try:
-                  return json.load(urllib.request.urlopen(req, timeout=30))
-              except Exception as e:
-                  return {"error": str(e)[:120]}
-          d = lambda t: datetime.datetime.utcfromtimestamp(t).strftime("%Y-%m-%d %H:%M") if t else None
-          print("sleutel:", "live" if K.startswith(("sk_live", "rk_live")) else "test")
-          subs = get("subscriptions", status="all", limit=20, **{"expand[]": ["data.latest_invoice"]})
-          print("== abonnementen", len(subs.get("data", [])), subs.get("error", ""))
-          for s in subs.get("data", []):
-              it = s["items"]["data"][0]
-              li = s.get("latest_invoice") or {}
-              print({"status": s["status"], "interval": it["price"]["recurring"]["interval"], "bedrag": it["price"]["unit_amount"], "start": d(s["start_date"]), "trial_end": d(s.get("trial_end")),
-                     "periode_start": d(it.get("current_period_start") or s.get("current_period_start")), "periode_eind": d(it.get("current_period_end") or s.get("current_period_end")),
-                     "cancel_at_period_end": s["cancel_at_period_end"], "inv_status": li.get("status"), "inv_reason": li.get("billing_reason"), "inv_bedrag": li.get("amount_due"),
-                     "inv_pogingen": li.get("attempt_count"), "inv_betaald": li.get("amount_paid"), "betaalmethode": bool(s.get("default_payment_method") or (s.get("customer") and True)), "collection": s.get("collection_method")})
-          inv = get("invoices", limit=20)
-          print("== facturen", len(inv.get("data", [])), inv.get("error", ""))
-          for i in inv.get("data", []):
-              print({"status": i["status"], "reden": i["billing_reason"], "due": i["amount_due"], "betaald": i["amount_paid"], "pogingen": i["attempt_count"], "datum": d(i["created"]), "belasting": i.get("tax")})
-          ch = get("checkout/sessions", limit=30)
-          from collections import Counter
-          print("== checkout-sessies", Counter((c["mode"], c["status"], c["payment_status"]) for c in ch.get("data", [])), ch.get("error", ""))
-          pi = get("payment_intents", limit=30)
-          print("== payment_intents", Counter((p["status"], (p.get("last_payment_error") or {}).get("code")) for p in pi.get("data", [])), pi.get("error", ""))
-          w = get("webhook_endpoints", limit=20)
-          print("== webhooks")
-          for e in w.get("data", []):
-              print({"status": e["status"], "pad": e["url"].split("/functions/")[-1], "events": sorted(e["enabled_events"])})
-          pr = get("products", limit=20, active="true")
-          print("== producten", [(p["name"], p["id"]) for p in pr.get("data", [])], pr.get("error", ""))
-          pz = get("prices", limit=20, active="true")
-          for p in pz.get("data", []):
-              print({"id_prefix": p["id"][:10], "lookup": p.get("lookup_key"), "bedrag": p["unit_amount"], "valuta": p["currency"], "interval": (p.get("recurring") or {}).get("interval"), "count": (p.get("recurring") or {}).get("interval_count"), "tax": p.get("tax_behavior")})
-          bp = get("billing_portal/configurations", limit=5)
-          print("== portal", [(c["is_default"], c["active"], c["features"]["subscription_cancel"]["enabled"], c["features"]["payment_method_update"]["enabled"]) for c in bp.get("data", [])], bp.get("error", ""))
-          tx = get("tax/settings")
-          print("== belasting", tx.get("status"), tx.get("error", ""), tx.get("defaults"))
+                  return json.load(urllib.request.urlopen(urllib.request.Request(u, headers={"Authorization": "Bearer " + os.environ["TOKEN"]}), timeout=60))
+              except Exception as ex:
+                  return {"error": str(ex)[:150]}
+          now = datetime.datetime.now(datetime.timezone.utc)
+          for back in range(6, -1, -1):
+              day = (now - datetime.timedelta(days=back)).date()
+              s = datetime.datetime.combine(day, datetime.time(), datetime.timezone.utc)
+              e = min(s + datetime.timedelta(days=1), now)
+              f = lambda t: t.isoformat().replace("+00:00", "Z")
+              for fn in ("billing", "apple-notify", "stripe-webhook"):
+                  r = q(f"SELECT log_attributes['request.method'] AS m, log_attributes['response.status_code'] AS sc, count() AS n FROM logs WHERE source = 'function_edge_logs' AND position(log_attributes['request.url'], '/functions/v1/{fn}') > 0 GROUP BY m, sc ORDER BY m, sc", f(s), f(e))
+                  print(day, fn, r.get("result", r.get("error")))
+              r = q("SELECT event_message AS msg, count() AS n FROM logs WHERE source = 'function_logs' AND (event_message LIKE 'billing apple_verify%' OR event_message LIKE 'apple-notify%' OR event_message LIKE 'stripe-webhook%' OR event_message LIKE 'billing %') GROUP BY msg ORDER BY n DESC LIMIT 25", f(s), f(e))
+              print(day, "logregels", r.get("result", r.get("error")))
           PY
