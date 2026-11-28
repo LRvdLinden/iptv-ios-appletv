@@ -4,7 +4,7 @@
 import {
   billingConfig, CANCEL_URL, checkoutParams, decide, detailsFromCharge, detailsFromPaymentIntent, disputeRow, formatAmount, formEncode,
   grantRow, idempotencyKey, parseSignature, purchaseFromSession, purchaseView, refundFallback, refundRows, revokeAction, signHeader,
-  SUCCESS_URL, verifySignature, WEBHOOK_EVENTS,
+  SUCCESS_URL, verifySignature, WEBHOOK_EVENTS, guestSubFromSession,
 } from "./billing.ts";
 import { eventDone, eventSeen, failed, grant, needsDetails, pending, recordRefunds, revoke, saveDetails } from "./billing_store.ts";
 import { PRICE_CENTS } from "./plans.ts";
@@ -190,7 +190,7 @@ Deno.test("omzet: terugbetalingen uit de Stripe-lijst, zonder sleutel per charge
 Deno.test("grant: Lifetime, bron purchase, eigen limieten blijven, geen persoonsgegevens in de notitie", () => {
   const p = { userId: UID, sessionId: "cs_test_a1", paymentIntent: "pi_123", amount: 499, currency: "eur", taxAmount: null };
   const r = grantRow({ plan: "free", max_streams: 4, max_devices: null }, p, "T");
-  eq(r, { user_id: UID, plan: "lifetime", source: "purchase", granted_by: "stripe", updated_at: "T", max_streams: 4, max_devices: null, note: "Stripe cs_test_a1 / pi_123" });
+  eq(r, { user_id: UID, plan: "lifetime", source: "purchase", granted_by: "stripe", updated_at: "T", max_streams: 4, max_devices: null, note: "Stripe cs_test_a1 / pi_123", premium_until: null });
   eq(grantRow(null, { ...p, paymentIntent: null }, "T").note, "Stripe cs_test_a1 / -");
 });
 Deno.test("revoke: alleen gekochte Lifetime terug naar Gratis", () => {
@@ -361,4 +361,20 @@ Deno.test("database: omzet - terugbetalingen idempotent, rij per charge vervalt 
   await recordRefunds(db, "pi_123", [{ id: "dp_1", kind: "dispute", amount: 499, fee: 1500, at: "T5" }]);
   eq(db.t.billing_refunds.length, 3, "chargeback blijft naast de refunds staan");
   eq((await revoke(db, "pi_123", "refunded", "T6")).downgraded, true);
+});
+
+Deno.test("build 193: status van een gast-abonnement alleen met het claimtoken van die sessie", () => {
+  const TOK = "a".repeat(43);
+  const ses = (o: Record<string, unknown> = {}) => ({
+    object: "checkout.session", id: "cs_live_sub1", mode: "subscription", status: "complete", payment_status: "paid",
+    metadata: { guest: "1", claim_token: TOK, plan: "year" }, customer_details: { email: "koper@example.invalid" }, ...o,
+  });
+  eq(guestSubFromSession(ses(), TOK), { paid: true, email: "koper@example.invalid" });
+  eq(guestSubFromSession(ses({ payment_status: "no_payment_required" }), TOK), { paid: true, email: "koper@example.invalid" }, "proefperiode");
+  eq(guestSubFromSession(ses({ status: "open", payment_status: "unpaid" }), TOK)?.paid, false);
+  eq(guestSubFromSession(ses(), "b".repeat(43)), null, "ander token: niets");
+  eq(guestSubFromSession(ses(), undefined), null);
+  eq(guestSubFromSession(ses({ mode: "payment" }), TOK), null, "eenmalige aankoop gaat via guestFromSession");
+  eq(guestSubFromSession(ses({ metadata: { claim_token: TOK } }), TOK), null, "geen gastsessie");
+  eq(guestSubFromSession(null, TOK), null);
 });

@@ -159,6 +159,18 @@ export function guestFromSession(s: Obj | null | undefined): GuestPurchase | nul
   };
 }
 
+/**
+ * Build 193: een gast-ABONNEMENT (Checkout mode=subscription, metadata.guest = "1") voor de statusvraag zonder inloggen.
+ * Alleen met het claimtoken van precies die sessie; anders null. paid = betaald, of een proefperiode zonder betaling
+ * (payment_status no_payment_required). Het abonnement zelf legt de webhook vast; hier wordt niets toegekend.
+ */
+export function guestSubFromSession(s: Obj | null | undefined, claimToken: unknown): { paid: boolean; email: string | null } | null {
+  if (!s || typeof s !== "object" || s.object !== "checkout.session" || s.mode !== "subscription") return null;
+  if (s.metadata?.guest !== "1" || !isClaimToken(s.metadata?.claim_token) || !isClaimToken(claimToken) || s.metadata.claim_token !== claimToken) return null;
+  const email = typeof s.customer_details?.email === "string" && s.customer_details.email.includes("@") ? s.customer_details.email : null;
+  return { paid: s.status === "complete" && (s.payment_status === "paid" || s.payment_status === "no_payment_required"), email };
+}
+
 // ---------------- Stripe-handtekening (Stripe-Signature: t=…,v1=…) ----------------
 export function parseSignature(header: string | null | undefined): { t: number; v1: string[] } | null {
   if (!header || header.length > 2000) return null;
@@ -341,6 +353,8 @@ export function grantRow(cur: PlanRowFull, p: Purchase, nowIso: string) {
     user_id: p.userId, plan: "lifetime", source: "purchase", granted_by: "stripe", updated_at: nowIso,
     max_streams: cur?.max_streams ?? null, max_devices: cur?.max_devices ?? null,
     note: `Stripe ${shortId(p.sessionId)} / ${shortId(p.paymentIntent)}`,
+    // build 193: een echte aankoop is altijd blijvend (ook over een tijdelijke sandbox-Lifetime heen)
+    premium_until: null,
   };
 }
 /**

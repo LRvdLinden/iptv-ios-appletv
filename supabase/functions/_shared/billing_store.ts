@@ -7,8 +7,8 @@ import { type ChargeDetails, grantRow, type PlanRowFull, type Purchase, type Ref
 type Db = any;
 const fail = (where: string, e: { code?: string } | null) => new Error(`${where}: ${e?.code ?? "fout"}`);
 
-async function planOf(db: Db, userId: string): Promise<PlanRowFull> {
-  const { data, error } = await db.from("account_plans").select("plan,max_streams,max_devices,source").eq("user_id", userId).maybeSingle();
+async function planOf(db: Db, userId: string): Promise<(NonNullable<PlanRowFull> & { premium_until?: string | null }) | null> {
+  const { data, error } = await db.from("account_plans").select("plan,max_streams,max_devices,source,premium_until").eq("user_id", userId).maybeSingle();
   if (error) throw fail("account_plans", error);
   return data ?? null;
 }
@@ -46,10 +46,13 @@ export async function grant(db: Db, p: Purchase, nowIso = new Date().toISOString
   }
   if (ue) throw fail("billing_purchases", ue);
   const cur = await planOf(db, p.userId);
-  if (cur?.plan === "lifetime" && cur.source === "purchase" && prev?.status === "paid") return { granted: false, already: true };
+  // build 193: een tijdelijke sandbox-Lifetime (gekocht, met premium_until) is geen echte Lifetime: de betaalde aankoop maakt hem blijvend
+  const temporary = cur?.plan === "lifetime" && cur.source === "purchase" && cur.premium_until !== null && cur.premium_until !== undefined;
+  if (cur?.plan === "lifetime" && cur.source === "purchase" && prev?.status === "paid" && !temporary) return { granted: false, already: true };
   const { error } = await db.from("account_plans").upsert(grantRow(cur, p, nowIso), { onConflict: "user_id" });
   if (error) throw fail("account_plans", error);
-  return { granted: cur?.plan !== "lifetime", already: cur?.plan === "lifetime" };
+  const had = cur?.plan === "lifetime" && !temporary;
+  return { granted: !had, already: had };
 }
 
 /** Afgerond maar nog niet betaald (vertraagde betaalmethode). Een al betaalde aankoop blijft betaald. */

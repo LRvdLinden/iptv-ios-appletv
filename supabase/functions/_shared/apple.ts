@@ -88,11 +88,60 @@ export function notificationId(p: Record<string, unknown> | null | undefined): s
   return typeof v === "string" && /^[0-9a-f-]{36}$/i.test(v) ? v.toLowerCase() : null;
 }
 
-/** Rij voor account_plans na een Apple-aankoop: Lifetime, bron purchase, door apple; eigen limieten blijven. */
-export function appleGrantRow(cur: { max_streams?: number | null; max_devices?: number | null } | null, userId: string, tx: AppleTx, nowIso: string) {
+// ---------------- build 193: sandbox-aankopen ----------------
+/** Zo lang geeft een sandbox-Lifetime toegang aan een account dat geen testaccount is (genoeg voor App Review). */
+export const SANDBOX_DAYS = 3;
+/**
+ * Einde van de tijdelijke toegang: SANDBOX_DAYS na de EERSTE sandbox-aankoop van het account (eenmalig; opnieuw kopen of
+ * herstellen verlengt niets). Zonder bruikbaar moment: vanaf nu.
+ */
+export function sandboxUntil(firstSandboxAt: string | null | undefined, nowIso: string): string {
+  const f = firstSandboxAt ? Date.parse(firstSandboxAt) : NaN, n = Date.parse(nowIso);
+  const start = Number.isFinite(f) && f <= n ? f : n;
+  return new Date(start + SANDBOX_DAYS * 86_400_000).toISOString();
+}
+export type SandboxPlanRow = { plan?: unknown; source?: unknown; premium_until?: unknown } | null | undefined;
+/** Lifetime die echt geldt (een verlopen tijdelijke sandbox-Lifetime of abonnementsspiegel telt niet). */
+function lifetimeNow(cur: SandboxPlanRow, now: number): boolean {
+  if (cur?.plan !== "lifetime") return false;
+  if (cur.source !== "subscription" && cur.source !== "purchase") return true;
+  if (cur.source === "purchase" && (cur.premium_until === null || cur.premium_until === undefined)) return true;
+  const t = typeof cur.premium_until === "string" ? Date.parse(cur.premium_until) : NaN;
+  return Number.isFinite(t) && t > now;
+}
+export type SandboxDecision =
+  /** gewoon doorgaan zoals een echte aankoop (Production, of een testaccount in de sandbox): blijvende Lifetime */
+  | { kind: "permanent" }
+  /** tijdelijke toegang tot `until` (alleen als het account nu niets heeft) */
+  | { kind: "temporary"; until: string }
+  /** niets veranderen: het account heeft al toegang (echte Lifetime, abonnement of de lopende tijdelijke toegang) */
+  | { kind: "keep" }
+  /** de tijdelijke toegang van dit account is op: geen toegang meer via de sandbox */
+  | { kind: "expired"; until: string };
+/**
+ * Wat een Lifetime-aankoop betekent voor de toegang. Production en testaccounts (app_settings.premium.test_users):
+ * blijvend, zoals altijd. Elke andere sandbox-aankoop (TestFlight, App Review): hooguit SANDBOX_DAYS tijdelijke toegang,
+ * gerekend vanaf de eerste sandbox-aankoop van het account, en nooit over bestaande toegang heen.
+ */
+export function sandboxDecision(i: { environment: "live" | "test"; testUser: boolean; cur: SandboxPlanRow; firstSandboxAt: string | null; nowIso: string }): SandboxDecision {
+  if (i.environment !== "test" || i.testUser) return { kind: "permanent" };
+  const now = Date.parse(i.nowIso);
+  if (lifetimeNow(i.cur, now)) return { kind: "keep" };
+  const until = sandboxUntil(i.firstSandboxAt, i.nowIso);
+  return Date.parse(until) > now ? { kind: "temporary", until } : { kind: "expired", until };
+}
+
+/**
+ * Rij voor account_plans na een Apple-aankoop: Lifetime, bron purchase, door apple; eigen limieten blijven.
+ * build 193: `until` = einde van een tijdelijke sandbox-Lifetime (premium_until); null = blijvend. De vlag sandbox en
+ * sandbox_at zet de database zelf (trigger bingr_account_plans_sandbox, op de notitie "Apple sandbox …").
+ */
+export function appleGrantRow(cur: { max_streams?: number | null; max_devices?: number | null } | null, userId: string, tx: AppleTx, nowIso: string,
+  until: string | null = null) {
   return {
     user_id: userId, plan: "lifetime", source: "purchase", granted_by: "apple", updated_at: nowIso,
     max_streams: cur?.max_streams ?? null, max_devices: cur?.max_devices ?? null,
     note: `Apple ${tx.environment === "test" ? "sandbox " : ""}${tx.originalTransactionId.slice(0, 32)}`,
+    premium_until: tx.environment === "test" ? until : null,
   };
 }

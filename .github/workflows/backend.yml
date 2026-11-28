@@ -125,7 +125,7 @@ jobs:
       - name: Unittests (betalen)
         # build 133, blokkeert de deploy: Stripe-handtekening (HMAC-SHA256, 5 min), Checkout-opbouw, events -> Lifetime /
         # terugbetaling / chargeback, idempotentie (nep-database)
-        run: deno test supabase/functions/_shared/billing_test.ts
+        run: deno test supabase/functions/_shared/billing_test.ts supabase/functions/_shared/funnel_test.ts
       - name: Unittests (build 167, alleen Lifetime)
         # blokkeert de deploy: JWS van Apple (x5c-keten tot de vertrouwde root met een zelfgemaakte test-CA, ES256, vervalsingen,
         # tijden), StoreKit-transacties en notificaties, Apple-aankopen in de nep-database (wie het eerst claimt), toegang en

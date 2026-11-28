@@ -2931,3 +2931,40 @@ Acties: `premium_settings` (lezen/schrijven via `bingr_admin_premium_settings`),
 - Deno (blokkeert de deploy): `supabase/functions/_shared/premium_test.ts` op alle groepen van `docs/build181_cases.json` (`settings`, `access`, `stripe`, `apple`, `access_until`, `mirror`, `client`), plus `enabled` false = entitlements gelijk aan build 180 (op `premium` na), Stripe-parameters (proef alleen als eligible), webhook-beslissingen en Apple-notificaties.
 - SQL (blokkeert de deploy): `supabase/tests/premium_test.sql` in een tijdelijke Postgres: standaardwaarden, `bingr_admin_premium_settings` (geldig/ongeldig), Lifetime-bescherming van de spiegel (legacy/admin/purchase blijven, `subscription` wordt bijgewerkt en opgeruimd), sweep, één proef per account, claimen, statistieken en rechten.
 - Apple zelftest, Android-unittest en web (`tools/test`) gebruiken de groep `client` (en `access` waar ze zelf rekenen).
+
+## Build 193: sandbox-aankopen en de betaaltrechter (versie 1.1.2)
+
+### 1. Sandbox-aankopen (Apple)
+
+Een aankoop in de Apple-sandbox (TestFlight, App Review; `environment` ≠ `Production`) is geen betaling. Tot build 193 gaf een sandbox-Lifetime elk account blijvend Lifetime. Nu:
+
+- **Testaccounts** (`app_settings.premium.test_users`, te beheren in het beheer met `premium_test`): een sandbox-Lifetime is blijvend, zoals voorheen.
+- **Elk ander account:** `billing apple_verify` geeft bij een sandbox-Lifetime alleen **tijdelijke toegang van 3 dagen**, gerekend vanaf de **eerste** sandbox-aankoop van dat account (`billing_purchases`, `provider = apple`, `environment = test`). Eenmalig: herstellen, opnieuw kopen of een andere sandbox-Apple ID verlengt niets. Bestaande toegang (echte Lifetime, Lifetime uit het beheer, een lopend abonnement) wordt nooit vervangen door tijdelijke toegang. Na afloop is het account weer zonder plan. Het antwoord van `apple_verify` heeft in deze gevallen ook `sandbox: "temporary" | "expired"` en `sandbox_until` (ISO); apps hoeven daar niets mee te doen, de entitlements kloppen al.
+- **Een echte aankoop** (Apple `Production` of Stripe) of Lifetime uit het beheer maakt een tijdelijke sandbox-Lifetime blijvend; een echt abonnement gaat eroverheen.
+- **Sandbox-abonnementen** (`premium_subscriptions.mode = test`) blijven werken zoals ze deden (ze verlopen vanzelf) en worden alleen gemerkt.
+
+Opslag: een tijdelijke sandbox-Lifetime is een rij in `account_plans` met `plan = lifetime`, `source = purchase` én `premium_until` (einde). `effectivePlanRow` (gedeeld door device-auth, billing en web-proxy) telt zo'n rij na `premium_until` als geen plan; `bingr_premium_sweep` (elk uur) zet hem daarna op `free`. Een gewone aankoop heeft nooit `premium_until`. `account_plans.sandbox` (boolean) en `sandbox_at` merken een account waarvan de toegang uit de sandbox komt; de trigger `bingr_account_plans_sandbox` zet de vlag (rij "gekocht bij Apple" met notitie `Apple sandbox …`) en haalt hem en `premium_until` weg bij elke andere aankoop, gift of beheerwijziging. De sandbox-Lifetimes van vóór build 193 zijn alleen gemerkt (blijvend, zonder `premium_until`); intrekken gebeurt in het beheer.
+
+Beheer: `bingr_admin_users` kent het filter `sandbox`, geeft per account `sandbox` (boolean) en `sandbox_until`, en bovenaan `sandbox_total`. `bingr_admin_sandbox_stats()` → `{lifetime_accounts, active_7d, temporary}` (alleen aantallen; testaccounts tellen niet mee in `lifetime_accounts`).
+
+### 2. Betaaltrechter
+
+`POST /functions/v1/billing` met `{action: "funnel", step, platform, build, product?, error?}`, **zonder inloggen** (header `apikey` zoals altijd):
+
+- `step`: `paywall_shown` | `purchase_started` | `purchase_ok` | `purchase_failed` | `purchase_cancelled` | `restore_started` | `restore_ok` | `restore_failed`
+- `platform`: `ios` | `ipados` | `tvos` | `macos` | `android` | `androidtv` | `web` | `windows`; `build`: geheel getal (1 t/m 999999)
+- `product` (optioneel): `month` | `half` | `year` | `lifetime`
+- `error` (optioneel, alleen bij `purchase_failed` / `restore_failed`): korte code `^[a-z0-9_]{1,40}$` (bv. `network_error`, `http_413`, `waiver_required`). Nooit vrije tekst: wat niet aan de vorm voldoet, telt zonder code.
+
+Antwoord altijd `200 {ok: true}`; bij ongeldige invoer `200 {ok: false}`. Nooit een 4xx of 5xx waar een app op kan stuklopen; apps sturen de melding los van het kopen en negeren het antwoord. Best effort begrensd (120 per IP per 10 minuten; daarboven wordt niet geteld, het antwoord blijft `{ok: true}`).
+
+Opslag: alleen dagtellingen in `billing_funnel_daily (day, platform, step, product, error, n)` via `bingr_funnel_hit` (dag in UTC; `product` en `error` zijn `''` als ze ontbreken; hooguit 60 verschillende foutcodes per dag, de rest telt als `other`; na 400 dagen weg). Geen account-id, apparaat-id of IP-adres. `build` wordt alleen gecontroleerd, niet opgeslagen.
+
+### 3. Status van een gast-abonnement
+
+`billing status` zonder inloggen (`{session_id, claim_token}`) werkt nu ook voor een gast-**abonnement** (Checkout `mode = subscription`): `{paid, status, payment_status, email}`, alleen met het claimtoken van precies die sessie (anders `404 not_found`). `paid` is ook waar bij een proefperiode zonder betaling. Het abonnement zelf legt de webhook vast.
+
+### 4. Tests
+
+- Deno (blokkeert de deploy): `apple_test.ts` (einde van de tijdelijke toegang, de beslissing, de databasestappen: 3 dagen, niet te verlengen, testaccount, echte aankoop over tijdelijk), `funnel_test.ts` (alleen geldige meldingen, nooit vrije tekst), `billing_test.ts` (gast-abonnement), `premium_test.ts`.
+- SQL (blokkeert de deploy): `supabase/tests/premium_test.sql`: de trigger, de spiegel en de sweep voor tijdelijke sandbox-Lifetimes, de tellingen, de trechter (optellen, ongeldig, grens op foutcodes) en de rechten.

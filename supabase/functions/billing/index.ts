@@ -44,11 +44,17 @@
 //   claim       + gast-abonnementen (claimtoken of e-mailadres)
 //   apple_verify+ de drie abonnementen en lifetime49 -> {plan: month|half|year|lifetime, premium, entitlements}
 //   admin_premium_setup {dry_run?} (x-lifetime-secret): Stripe-producten, -prijzen en Customer Portal aanmaken
+// Build 193 (docs/ACCOUNT.md, "Build 193"):
+//   apple_verify+ een Lifetime uit de Apple-sandbox (TestFlight, App Review) is alleen voor een testaccount
+//               (app_settings.premium.test_users) blijvend. Elk ander account krijgt eenmalig 3 dagen toegang, gerekend vanaf
+//               zijn eerste sandbox-aankoop; het antwoord heeft dan ook sandbox: "temporary"|"expired" en sandbox_until.
+//   funnel      (POST, zonder inloggen, {step, platform, build, product?, error?}) -> altijd 200 {ok:true} (ongeldig:
+//               {ok:false}); anonieme dagtelling van de betaalstappen (_shared/funnel.ts, tabel billing_funnel_daily)
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { BANNED_BODY, bannedUntilActive, isBanError } from "../_shared/ban.ts";
 import { clientIp } from "../_shared/ip.ts";
 import {
-  billingConfig, checkoutParams, guestCheckoutParams, guestFromSession, guestIdempotencyKey, idempotencyKey, isClaimToken, isStripeId,
+  billingConfig, checkoutParams, guestCheckoutParams, guestFromSession, guestSubFromSession, guestIdempotencyKey, idempotencyKey, isClaimToken, isStripeId,
   MAX_BODY_CHARS, newClaimToken, normalizeLang, purchaseFromSession, purchaseView, type PurchaseRow, sha256Hex,
 } from "../_shared/billing.ts";
 import { grant } from "../_shared/billing_store.ts";
@@ -61,7 +67,8 @@ import { buildEntitlements, codeByText, codeOf, loadSettings, markRedeemed } fro
 import { claimByEmail, claimToken, grantGuest } from "../_shared/guest_store.ts";
 import { codesGenerate, codesStats } from "../_shared/lifetime_codes.ts";
 import { sameSecret } from "../newsletter/logic.ts";
-import { normalizePremium, publicPremium } from "../_shared/premium.ts";
+import { funnelEvent } from "../_shared/funnel.ts";
+import { effectivePlanRow, isTestUser, normalizePremium, publicPremium } from "../_shared/premium.ts";
 const normalizePremiumNull = () => normalizePremium(null);
 import { claimSubToken } from "../_shared/premium_store.ts";
 import { appleSubscription, isPremiumPlan, portal, premiumCheckout, premiumSetup, premiumState, refresh, syncStripeSub } from "./premium.ts";
@@ -98,9 +105,10 @@ async function rateLimited(key: string, max: number, windowS: number): Promise<b
   return data === false;
 }
 async function planOf(userId: string) {
-  const { data, error } = await admin.from("account_plans").select("plan,source").eq("user_id", userId).maybeSingle();
+  const { data, error } = await admin.from("account_plans").select("plan,source,premium_until").eq("user_id", userId).maybeSingle();
   if (error) throw new Error(`account_plans: ${error.code ?? "fout"}`);
-  return data as { plan?: string; source?: string } | null;
+  // build 193: een verlopen (tijdelijke sandbox-)Lifetime telt niet als "al Lifetime"
+  return effectivePlanRow(data as { plan?: string; source?: string; premium_until?: string | null } | null);
 }
 
 Deno.serve(async (req) => {
@@ -172,6 +180,17 @@ Deno.serve(async (req) => {
       if (!sameSecret(req.headers.get("x-lifetime-secret"), Deno.env.get("LIFETIME_ADMIN_SECRET"))) return json({ error: "forbidden" }, 403);
       return await premiumSetup(admin, cfg, body, json);
     }
+    // build 193: betaaltrechter (zonder inloggen; alleen dagtellingen). Altijd 200: een app mag hier nooit op stuklopen.
+    if (action === "funnel") {
+      try {
+        const ev = req.method === "POST" ? funnelEvent(body) : null;
+        if (!ev) return json({ ok: false });
+        if (await rateLimited(`billing:funnel:ip:${clientIp(req)}`, 120, 600)) return json({ ok: true });
+        const { error } = await admin.rpc("bingr_funnel_hit", { p_platform: ev.platform, p_step: ev.step, p_product: ev.product, p_error: ev.error });
+        if (error) console.error("billing funnel", error.code ?? "fout");
+      } catch (e) { console.error("billing funnel", e instanceof Error ? e.message.slice(0, 60) : "fout"); }
+      return json({ ok: true });
+    }
     if (!["checkout", "status", "purchases", "claim", "apple_verify", "portal", "refresh"].includes(action)) return json({ error: "unknown_action" }, 400);
     // build 181: Premium-checkout als gast (met plan)
     if (action === "checkout" && body.guest === true && isPremiumPlan(body.plan) && !(req.headers.get("Authorization") ?? "").includes(".")) {
@@ -210,6 +229,9 @@ Deno.serve(async (req) => {
       if (r.status === 404) return json({ error: "not_found" }, 404);
       if (!r.ok) { console.error("billing status stripe", stripeError(r)); return json({ error: "stripe_error" }, 502); }
       const g = guestFromSession(r.body);
+      // build 193: ook een gast-abonnement (Premium) is zo op te vragen, zodat /upgrade/klaar/ het e-mailadres kan invullen
+      const gs = g ? null : guestSubFromSession(r.body, body.claim_token);
+      if (gs) return json({ paid: gs.paid, status: r.body.status ?? null, payment_status: r.body.payment_status ?? null, email: gs.email });
       if (!g || g.claimToken !== body.claim_token) return json({ error: "not_found" }, 404);
       const paid = r.body.payment_status === "paid";
       if (paid) await grantGuest(admin, g); // vangnet als de webhook nog niet binnen is (idempotent)
@@ -354,14 +376,20 @@ Deno.serve(async (req) => {
         console.log("billing apple_verify", t.error);
         return t.error === "revoked" ? json({ error: "transaction_revoked" }, 409) : json({ error: "bad_transaction", reason: t.error }, 400);
       }
-      const g = await grantApple(admin, uid, t.tx);
+      // build 193: sandbox (TestFlight, App Review) geeft alleen een testaccount blijvend Lifetime; anders 3 dagen, eenmalig
+      let testUser = false;
+      if (t.tx.environment === "test") {
+        try { testUser = isTestUser((await loadSettings(admin)).premium, uid); }
+        catch (e) { console.error("billing apple_verify settings", e instanceof Error ? e.message.slice(0, 60) : "fout"); }
+      }
+      const g = await grantApple(admin, uid, t.tx, new Date().toISOString(), { testUser });
       if (!g.ok) {
         console.log("billing apple_verify", g.error);
         return g.error === "revoked" ? json({ error: "transaction_revoked" }, 409) : json({ error: "owned_by_other_account" }, 409);
       }
-      console.log("billing apple_verify", g.granted ? "granted" : "already", t.tx.environment);
+      console.log("billing apple_verify", g.granted ? "granted" : "already", t.tx.environment, g.sandbox ?? (testUser ? "test_user" : ""));
       const ent = await buildEntitlements(admin, uid, user.created_at, normalizePlatform(body.platform) ?? "ios");
-      return json({ plan: ent.plan, premium: ent.premium, entitlements: ent });
+      return json({ plan: ent.plan, premium: ent.premium, entitlements: ent, ...(g.sandbox ? { sandbox: g.sandbox, sandbox_until: g.sandbox_until } : {}) });
     }
 
     // purchases (build 167: eerst ongeclaimde aankopen met het bevestigde e-mailadres koppelen, best effort)

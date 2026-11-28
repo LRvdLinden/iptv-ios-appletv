@@ -4,7 +4,9 @@
 // nooit echte transacties. De echte Apple-certificaten (openbaar) worden alleen als keten gecontroleerd.
 import { APPLE_ROOT_CA_G3_B64, APPLE_ROOT_CA_G3_SHA256 } from "./apple_root.ts";
 import { b64decode, b64urlEncode, derSigToRaw, OID_APPLE_INTERMEDIATE, OID_APPLE_LEAF, parseCert, signedBy, verifyAppleJws } from "./apple_jws.ts";
-import { APPLE_BUNDLE_ID, APPLE_PRODUCT_ID, appleEnvironment, checkTransaction, decideNotification, notificationId, priceOf } from "./apple.ts";
+import { APPLE_BUNDLE_ID, APPLE_PRODUCT_ID, appleEnvironment, appleGrantRow, checkTransaction, decideNotification, notificationId, priceOf, SANDBOX_DAYS, sandboxDecision, sandboxUntil } from "./apple.ts";
+import { effectivePlanRow } from "./premium.ts";
+import { grant } from "./billing_store.ts";
 import { grantApple, notifyDone, notifySeen, revokeApple } from "./apple_store.ts";
 import { fakeDb } from "./testdb.ts";
 import {
@@ -163,11 +165,11 @@ const appleTx = (o: Record<string, unknown> = {}) => {
 Deno.test("database: Apple-aankoop -> Lifetime (apple), idempotent, eigen limieten blijven", async () => {
   const db = fakeDb(UNIQUE);
   db.tab("account_plans").push({ user_id: UID, plan: "free", max_streams: 4, max_devices: null, source: null });
-  eq(await grantApple(db, UID, appleTx()), { ok: true, granted: true, already: false });
-  eq(await grantApple(db, UID, appleTx()), { ok: true, granted: false, already: true }, "tweede keer");
+  eq(await grantApple(db, UID, appleTx({ environment: "Production" })), { ok: true, granted: true, already: false });
+  eq(await grantApple(db, UID, appleTx({ environment: "Production" })), { ok: true, granted: false, already: true }, "tweede keer");
   eq(db.tab("billing_purchases").length, 1);
   const p = db.tab("billing_purchases")[0];
-  eq([p.provider, p.environment, p.amount, p.currency, p.status, p.user_id], ["apple", "test", 499, "eur", "paid", UID]);
+  eq([p.provider, p.environment, p.amount, p.currency, p.status, p.user_id], ["apple", "live", 499, "eur", "paid", UID]);
   const plan = db.tab("account_plans")[0];
   eq([plan.plan, plan.source, plan.granted_by, plan.max_streams], ["lifetime", "purchase", "apple", 4]);
 });
@@ -218,4 +220,101 @@ Deno.test("database: REFUND -> Gratis, rij in billing_refunds (apl_), idempotent
   eq(await notifySeen(db, "7b2c3d4e-5f60-4a1b-8c2d-3e4f5a6b7c8d"), false);
   await notifyDone(db, "7b2c3d4e-5f60-4a1b-8c2d-3e4f5a6b7c8d", "REFUND", "refunded_free");
   eq(await notifySeen(db, "7b2c3d4e-5f60-4a1b-8c2d-3e4f5a6b7c8d"), true);
+});
+
+// ---------------- build 193: sandbox-aankopen ----------------
+const ISO = (ms: number) => new Date(ms).toISOString();
+const DAYMS = 86_400_000;
+Deno.test("sandbox: einde = 3 dagen na de eerste sandbox-aankoop, eenmalig", () => {
+  eq(SANDBOX_DAYS, 3);
+  eq(sandboxUntil(ISO(NOW - DAYMS), ISO(NOW)), ISO(NOW + 2 * DAYMS));
+  eq(sandboxUntil(null, ISO(NOW)), ISO(NOW + 3 * DAYMS), "nog geen aankoop: vanaf nu");
+  eq(sandboxUntil(ISO(NOW + DAYMS), ISO(NOW)), ISO(NOW + 3 * DAYMS), "een moment in de toekomst telt niet");
+  eq(sandboxUntil("onzin", ISO(NOW)), ISO(NOW + 3 * DAYMS));
+});
+Deno.test("sandbox: beslissing (echt, testaccount, tijdelijk, behouden, op)", () => {
+  const base = { cur: null, firstSandboxAt: null, nowIso: ISO(NOW) };
+  eq(sandboxDecision({ ...base, environment: "live", testUser: false }), { kind: "permanent" }, "Production");
+  eq(sandboxDecision({ ...base, environment: "test", testUser: true }), { kind: "permanent" }, "testaccount");
+  eq(sandboxDecision({ ...base, environment: "test", testUser: false }), { kind: "temporary", until: ISO(NOW + 3 * DAYMS) });
+  eq(sandboxDecision({ ...base, environment: "test", testUser: false, firstSandboxAt: ISO(NOW - 4 * DAYMS) }), { kind: "expired", until: ISO(NOW - DAYMS) });
+  // bestaande toegang wordt nooit vervangen door tijdelijke toegang
+  for (const cur of [{ plan: "lifetime", source: "admin" }, { plan: "lifetime", source: "legacy" }, { plan: "lifetime", source: "purchase", premium_until: null },
+    { plan: "lifetime", source: "subscription", premium_until: ISO(NOW + DAYMS) }, { plan: "lifetime", source: "purchase", premium_until: ISO(NOW + DAYMS) }]) {
+    eq(sandboxDecision({ ...base, environment: "test", testUser: false, cur }), { kind: "keep" }, JSON.stringify(cur));
+  }
+  // verlopen spiegel of verlopen tijdelijke Lifetime = niets: dan beslist de eerste sandbox-aankoop
+  eq(sandboxDecision({ ...base, environment: "test", testUser: false, cur: { plan: "lifetime", source: "subscription", premium_until: ISO(NOW - 1) } }).kind, "temporary");
+  eq(sandboxDecision({ ...base, environment: "test", testUser: false, cur: { plan: "lifetime", source: "purchase", premium_until: ISO(NOW - 1) }, firstSandboxAt: ISO(NOW - 3 * DAYMS - 1) }).kind, "expired");
+});
+Deno.test("sandbox: rij voor account_plans en het niveau dat geldt", () => {
+  const sand = appleTx(), live = appleTx({ environment: "Production" });
+  eq(appleGrantRow(null, UID, sand, "T", "U").premium_until, "U");
+  eq(appleGrantRow(null, UID, sand, "T").premium_until, null, "testaccount: blijvend");
+  eq(appleGrantRow(null, UID, live, "T", "U").premium_until, null, "een echte aankoop is nooit tijdelijk");
+  ok(appleGrantRow(null, UID, sand, "T").note.startsWith("Apple sandbox "), "notitie merkt de sandbox (trigger in de database)");
+  ok(!appleGrantRow(null, UID, live, "T").note.includes("sandbox"));
+  eq(effectivePlanRow({ plan: "lifetime", source: "purchase", premium_until: ISO(NOW + 1) }, NOW)?.plan, "lifetime", "tijdelijk, loopt nog");
+  eq(effectivePlanRow({ plan: "lifetime", source: "purchase", premium_until: ISO(NOW - 1) }, NOW)?.plan, "free", "tijdelijk, voorbij");
+  eq(effectivePlanRow({ plan: "lifetime", source: "purchase", premium_until: null }, NOW)?.plan, "lifetime", "gewone aankoop: altijd");
+  eq(effectivePlanRow({ plan: "lifetime", source: "purchase" }, NOW)?.plan, "lifetime");
+  eq(effectivePlanRow({ plan: "lifetime", source: "admin", premium_until: ISO(NOW - 1) }, NOW)?.plan, "lifetime", "beheer: altijd");
+  eq(effectivePlanRow({ plan: "lifetime", source: "subscription", premium_until: null }, NOW)?.plan, "free", "spiegel zonder einde = Gratis (zoals build 181)");
+});
+Deno.test("database: sandbox-aankoop -> 3 dagen, opnieuw kopen of herstellen verlengt niet, daarna niets meer", async () => {
+  const db = fakeDb(UNIQUE);
+  const t0 = ISO(NOW), until = ISO(NOW + 3 * DAYMS);
+  eq(await grantApple(db, UID, appleTx(), t0), { ok: true, granted: true, already: false, sandbox: "temporary", sandbox_until: until });
+  const plan = db.tab("account_plans")[0];
+  eq([plan.plan, plan.source, plan.granted_by, plan.premium_until], ["lifetime", "purchase", "apple", until]);
+  eq(db.tab("billing_purchases")[0].environment, "test");
+  // herstellen (zelfde transactie) een dag later: niets verandert
+  eq(await grantApple(db, UID, appleTx(), ISO(NOW + DAYMS)), { ok: true, granted: false, already: true, sandbox: "temporary", sandbox_until: until });
+  // opnieuw kopen met een andere sandbox-Apple ID: geen verlenging
+  eq(await grantApple(db, UID, appleTx({ transactionId: "2000000999", originalTransactionId: "2000000999" }), ISO(NOW + 2 * DAYMS)),
+    { ok: true, granted: false, already: true, sandbox: "temporary", sandbox_until: until });
+  eq(db.tab("account_plans")[0].premium_until, until);
+  // na 3 dagen (de database heeft de rij op Gratis gezet, of nog niet): geen toegang meer via de sandbox
+  eq(await grantApple(db, UID, appleTx(), ISO(NOW + 3 * DAYMS + 1)), { ok: true, granted: false, already: false, sandbox: "expired", sandbox_until: until });
+  eq(db.tab("account_plans")[0].premium_until, until, "niet verlengd");
+  Object.assign(db.tab("account_plans")[0], { plan: "free", source: null, premium_until: null });
+  eq(await grantApple(db, UID, appleTx({ transactionId: "2000000777", originalTransactionId: "2000000777" }), ISO(NOW + 30 * DAYMS)),
+    { ok: true, granted: false, already: false, sandbox: "expired", sandbox_until: until }, "ook later en met een nieuwe sandbox-aankoop");
+  eq(db.tab("account_plans")[0].plan, "free");
+});
+Deno.test("database: testaccount in de sandbox -> blijvend; een tijdelijke Lifetime wordt blijvend", async () => {
+  const db = fakeDb(UNIQUE);
+  eq(await grantApple(db, UID, appleTx(), ISO(NOW), { testUser: true }), { ok: true, granted: true, already: false });
+  eq(db.tab("account_plans")[0].premium_until, null);
+  // eerst gewoon account (tijdelijk), daarna als testaccount aangewezen en hersteld
+  eq((await grantApple(db, UID2, appleTx({ transactionId: "2000000555", originalTransactionId: "2000000555" }), ISO(NOW))).ok, true);
+  ok(db.tab("account_plans").find((r) => r.user_id === UID2)!.premium_until, "tijdelijk");
+  eq(await grantApple(db, UID2, appleTx({ transactionId: "2000000555", originalTransactionId: "2000000555" }), ISO(NOW + 10 * DAYMS), { testUser: true }),
+    { ok: true, granted: true, already: false });
+  eq(db.tab("account_plans").find((r) => r.user_id === UID2)!.premium_until, null, "blijvend");
+});
+Deno.test("database: sandbox raakt bestaande toegang niet; een echte aankoop maakt een tijdelijke Lifetime blijvend", async () => {
+  const db = fakeDb(UNIQUE);
+  // een gemerkte sandbox-Lifetime van vóór build 193 (blijvend, zonder premium_until) blijft
+  db.tab("account_plans").push({ user_id: UID, plan: "lifetime", source: "purchase", granted_by: "apple", note: "Apple sandbox 1", premium_until: null });
+  eq(await grantApple(db, UID, appleTx(), ISO(NOW)), { ok: true, granted: false, already: true });
+  eq(db.tab("account_plans")[0].premium_until, null);
+  // een abonnement (spiegel) blijft een abonnement
+  db.tab("account_plans").push({ user_id: UID2, plan: "lifetime", source: "subscription", premium_until: ISO(NOW + 20 * DAYMS) });
+  eq(await grantApple(db, UID2, appleTx({ transactionId: "2000000444", originalTransactionId: "2000000444" }), ISO(NOW)), { ok: true, granted: false, already: true });
+  eq(db.tab("account_plans")[1].source, "subscription");
+  // tijdelijk, daarna echt gekocht bij Apple (Production): blijvend, ook als het verzoek herhaald wordt
+  const db2 = fakeDb(UNIQUE);
+  await grantApple(db2, UID, appleTx(), ISO(NOW));
+  const real = appleTx({ environment: "Production", transactionId: "100000001", originalTransactionId: "100000001" });
+  eq(await grantApple(db2, UID, real, ISO(NOW + DAYMS)), { ok: true, granted: true, already: false });
+  eq([db2.tab("account_plans")[0].premium_until, db2.tab("account_plans")[0].note], [null, "Apple 100000001"]);
+  eq(await grantApple(db2, UID, real, ISO(NOW + DAYMS)), { ok: true, granted: false, already: true }, "herhaald");
+  // tijdelijk, daarna betaald via Stripe: blijvend
+  const db3 = fakeDb({ ...UNIQUE, billing_purchases: [...(UNIQUE.billing_purchases ?? []), "stripe_session_id"] });
+  await grantApple(db3, UID, appleTx(), ISO(NOW));
+  const paid = { userId: UID, sessionId: "cs_live_1", paymentIntent: "pi_1", amount: 4999, currency: "eur" };
+  eq(await grant(db3, paid as Parameters<typeof grant>[1], ISO(NOW + DAYMS)), { granted: true, already: false });
+  eq([db3.tab("account_plans")[0].premium_until, db3.tab("account_plans")[0].granted_by], [null, "stripe"]);
+  eq(await grant(db3, paid as Parameters<typeof grant>[1], ISO(NOW + DAYMS)), { granted: false, already: true }, "herhaald event");
 });
