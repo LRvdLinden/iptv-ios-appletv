@@ -24,23 +24,22 @@ jobs:
           def db(sql):
               req = urllib.request.Request(API + "/database/query", data=json.dumps({"query": sql}).encode(), headers={**H, "content-type": "application/json"})
               return json.load(urllib.request.urlopen(req, timeout=60))
-          # Geen adressen of apparaatnamen: alleen een hash-prefix, het soort domein en de platforms.
           k = "left(encode(sha256(convert_to(lower(u.email),'UTF8')),'hex'),6)"
-          dom = "case when u.email ilike '%@apple.com' then 'apple.com' when u.email ilike '%@privaterelay.appleid.com' then 'verberg-mijn-email' when u.email ilike '%@icloud.com' or u.email ilike '%@me.com' then 'icloud' else 'overig' end"
-          r = db(f"select {k} as h, {dom} as domein, (u.created_at at time zone 'Europe/Amsterdam')::text as aangemaakt, (u.last_sign_in_at at time zone 'Europe/Amsterdam')::text as laatst_ingelogd, "
-                 "(select string_agg(d.platform || ' (laatst ' || to_char(d.last_seen_at at time zone 'Europe/Amsterdam','DD-MM HH24:MI') || ')', ', ') from account_devices d where d.user_id = u.id) as apparaten, "
-                 "(select count(*) from account_devices d where d.user_id = u.id) as n_apparaten "
-                 "from auth.users u where exists (select 1 from billing_purchases b join account_plans p on p.user_id = b.user_id where b.user_id = u.id and p.note ilike 'Apple sandbox%') "
-                 "or exists (select 1 from premium_subscriptions s where s.user_id = u.id and s.mode = 'test') order by u.created_at")
-          for i, x in enumerate(r): note(f"Sandbox-account {i+1}", json.dumps(x))
+          r = db("select count(*) n from account_plans p where p.note ilike 'Apple sandbox%'")
+          note("Accounts met sandbox-Lifetime nu", str(r[0]['n']))
+          r = db("select to_char(b.created_at at time zone 'Europe/Amsterdam','YYYY-MM-DD') as dag, count(*) n, string_agg(b.amount::text || coalesce(b.currency,''), ',') as bedragen "
+                 "from billing_purchases b join account_plans p on p.user_id = b.user_id where b.provider = 'apple' and p.note ilike 'Apple sandbox%' group by 1 order by 1")
+          note("Sandbox-Lifetime-aankopen per dag", "; ".join(f"{x['dag'][5:]}: {x['n']} ({x['bedragen']})" for x in r))
+          r = db("select count(*) n, count(*) filter (where s.user_id is not null) gekoppeld, count(*) filter (where s.status in ('trialing','active','grace')) actief from premium_subscriptions s where s.mode = 'test' and s.provider = 'apple'")
+          note("Apple-abonnementen in testmodus (totaal|gekoppeld|actief)", f"{r[0]['n']}|{r[0]['gekoppeld']}|{r[0]['actief']}")
+          r = db("select count(*) n from billing_purchases b where b.provider = 'apple' and b.status = 'paid' and not exists (select 1 from account_plans p where p.user_id = b.user_id and p.note ilike 'Apple sandbox%')")
+          note("Echte Apple-Lifetime-aankopen (niet sandbox)", str(r[0]['n']))
           r = db(f"select count(*) n from auth.users u where {k} = 'deb835'")
           note("Testaccount gevonden (hash deb835)", str(r[0]['n']))
           r = db(f"select p.plan, p.source, left(coalesce(p.note,''),14) as notitie, (p.created_at at time zone 'Europe/Amsterdam')::text as sinds, "
                  "(select string_agg(s.provider || ':' || s.status || ':' || coalesce(s.mode,'?'), ',') from premium_subscriptions s where s.user_id = u.id) as abos "
                  f"from auth.users u left join account_plans p on p.user_id = u.id where {k} = 'deb835'")
           note("Testaccount plan", json.dumps(r))
-          r = db("select count(*) n from account_plans p where p.note ilike 'Apple sandbox%'")
-          note("Totaal accounts met sandbox-Lifetime (ooit)", str(r[0]['n']))
-          r = db("select count(*) n from premium_subscriptions s where s.mode = 'test' and s.provider = 'apple'")
-          note("Totaal Apple-abonnementen in testmodus (ooit)", str(r[0]['n']))
+          r = db("select count(distinct d.user_id) n from account_devices d join account_plans p on p.user_id = d.user_id where p.note ilike 'Apple sandbox%' and d.last_seen_at > now() - interval '7 days'")
+          note("Sandbox-accounts actief in 7 dagen", str(r[0]['n']))
           PY
