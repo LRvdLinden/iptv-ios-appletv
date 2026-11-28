@@ -3640,5 +3640,56 @@ do {
 }
 
 
+// MARK: build 193: betaaltrechter (Shared/Account/Build193.swift)
+
+do {
+    eq(Funnel193.Step.allCases.map(\.rawValue), ["paywall_shown", "purchase_started", "purchase_ok", "purchase_failed", "purchase_cancelled", "restore_started", "restore_ok", "restore_failed"], "build 193: stappen volgens het contract")
+    eq(Funnel193.clean("Server 413!"), "server_413", "build 193: foutcode opgeschoond")
+    eq(Funnel193.clean("  __A--b  "), "a_b", "build 193: geen _ aan begin of eind")
+    eq(Funnel193.clean("€€"), nil as String?, "build 193: niets bruikbaars = geen code")
+    eq(Funnel193.clean(nil), nil as String?, "build 193: geen fout")
+    eq(Funnel193.clean(String(repeating: "x", count: 90))?.count, 40, "build 193: hooguit 40 tekens")
+    check((Funnel193.clean("jan@voorbeeld.nl 2000001272420027") ?? "").range(of: "@") == nil, "build 193: nooit een @ in de code")
+    let b = Funnel193.body(step: .purchaseFailed, platform: "ios", build: 193, product: "year", error: "Server 413")
+    eq(b?["action"] as? String, "funnel", "build 193: actie")
+    eq(b?["step"] as? String, "purchase_failed", "build 193: stap")
+    eq(b?["platform"] as? String, "ios", "build 193: platform")
+    eq(b?["build"] as? Int, 193, "build 193: build")
+    eq(b?["product"] as? String, "year", "build 193: product")
+    eq(b?["error"] as? String, "server_413", "build 193: fout")
+    eq(b?.count, 6, "build 193: geen andere velden")
+    let shown = Funnel193.body(step: .paywallShown, platform: "tvos", build: 193, product: "weekly", error: "x")
+    eq(shown?.count, 4, "build 193: onbekend product en fout bij een gewone stap vervallen")
+    eq(Funnel193.body(step: .purchaseFailed, platform: "macos", build: 193)?["error"] as? String, "unknown", "build 193: fout zonder code = unknown")
+    check(Funnel193.body(step: .paywallShown, platform: "android", build: 193) == nil, "build 193: alleen Apple-platforms")
+    check(Funnel193.body(step: .paywallShown, platform: "ios", build: nil) == nil, "build 193: zonder build niets")
+    eq(Funnel193.verifyError(status: nil, error: nil), "network", "build 193: geen antwoord")
+    eq(Funnel193.verifyError(status: 413, error: nil), "server_413", "build 193: 413")
+    eq(Funnel193.verifyError(status: 409, error: "owned_by_other_account"), "other_account", "build 193: ander account")
+    eq(Funnel193.verifyError(status: 400, error: "bad_transaction"), "server_bad_transaction", "build 193: 400 met code")
+    eq(Funnel193.verifyError(status: 400, error: nil), "server_400", "build 193: 400 zonder code")
+    eq(Funnel193.verifyError(status: 500, error: "server_error"), "server_error", "build 193: 500")
+    eq(Funnel193.verifyError(status: 503, error: nil), "server_503", "build 193: 503")
+    eq(Funnel193.verifyError(status: 200, error: nil), "not_entitled", "build 193: 200 zonder plan")
+    eq(Funnel193.code(.unverified), "storekit_unverified", "build 193: niet geverifieerd")
+    eq(Funnel193.code(.pending), "pending", "build 193: wacht op goedkeuring")
+    for f in [Funnel193.StoreFailure.unverified, .pending, .notSignedIn, .noProduct, .unavailable, .network, .notAllowed, .notAvailableInStorefront, .invalidOffer, .system, .unknown] {
+        eq(Funnel193.clean(Funnel193.code(f)), Funnel193.code(f), "build 193: code \(f) is al schoon")
+    }
+    eq(Funnel193.restore(.restored).step, .restoreOK, "build 193: hersteld")
+    eq(Funnel193.restore(.nothing).error, "nothing_found", "build 193: niets gevonden")
+    eq(Funnel193.restore(.signInFirst).error, "not_signed_in", "build 193: eerst inloggen")
+    eq(Funnel193.restore(.createAccount).error, "needs_account", "build 193: eerst een account")
+    eq(Funnel193.restore(.failed("Server 413")).error, "server_413", "build 193: herstel met serverfout")
+    eq(Funnel193.restore(.otherAccount).step, .restoreFailed, "build 193: ander account is een fout")
+    var d = Funnel193.Dedupe()
+    check(d.shouldSend("premium", now: 100), "build 193: eerste keer")
+    check(!d.shouldSend("premium", now: 105), "build 193: zelfde scherm kort erna niet opnieuw")
+    check(d.shouldSend("activate", now: 105), "build 193: ander scherm wel")
+    check(d.shouldSend("premium", now: 125), "build 193: later weer wel")
+    check(d.shouldSend("premium", now: 50), "build 193: klok terug = gewoon sturen")
+}
+
+
 print("\(checks) controles, \(failures) fout")
 exit(failures == 0 ? 0 : 1)

@@ -4,6 +4,15 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.1.2 · Build 193
+_28 november 2026_
+
+### iOS, iPadOS, tvOS en macOS
+
+**Verbeterd**
+
+- Betaalscherm: fouten bij kopen of herstellen worden anoniem geteld (alleen de stap en een korte foutcode, geen account of aankoopgegevens), zodat problemen sneller zichtbaar zijn.
+
 ## Versie 1.1.2 · Build 192
 _27 november 2026_
 

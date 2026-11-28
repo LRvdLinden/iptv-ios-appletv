@@ -47,6 +47,8 @@ final class PremiumStore: ObservableObject {
     private var updates: Task<Void, Never>?
     private var bag = Set<AnyCancellable>()
     private var loading = false
+    /// build 193: ging de laatste aankoop of het laatste herstel van de gebruiker naar de server? (foutcode van de trechter)
+    private var askedServer = false
 
     private init() {}
 
@@ -118,10 +120,19 @@ final class PremiumStore: ObservableObject {
 
     func purchase(_ plan: PremiumPlan181, origin: String) async {
         guard !busy else { return }
-        guard EntitlementsService.shared.premium?.enabled == true else { show(.unavailable, origin); return }
+        // build 193: de betaaltrechter (alleen stap, soort product en een korte foutcode)
+        let funnel = PurchaseFunnel193.shared
+        let kind = plan.rawValue
+        funnel.send(.purchaseStarted, product: kind)
+        guard EntitlementsService.shared.premium?.enabled == true else {
+            funnel.failed(.unavailable, purchase: kind)
+            show(.unavailable, origin)
+            return
+        }
         if products[plan] == nil { await prepare() }
         guard let product = products[plan],
               let token = AppleVerify167.appAccountToken(AccountService.shared.accountID) else {
+            funnel.failed(products[plan] == nil ? .noProduct : .notSignedIn, purchase: kind)
             show(.unavailable, origin)
             return
         }
@@ -131,17 +142,35 @@ final class PremiumStore: ObservableObject {
             switch try await product.purchase(options: [.appAccountToken(token)]) {
             case .success(let v):
                 let o = await handle(v, userInitiated: true)
+                if case .premium = o {
+                    funnel.send(.purchaseOK, product: kind)
+                } else {
+                    funnel.send(.purchaseFailed, product: kind, error: funnelError(o, v))
+                }
                 show(Self.message(for: o, purchased: true), origin)
             case .pending:
+                funnel.failed(.pending, purchase: kind)
                 show(.pending, origin)
             case .userCancelled:
-                break
+                funnel.send(.purchaseCancelled, product: kind)
             @unknown default:
-                break
+                funnel.failed(.unknown, purchase: kind)
             }
         } catch {
+            funnel.failed(PurchaseFunnel193.storeFailure(error), purchase: kind)
             show(.failed, origin)
         }
+    }
+
+    /// build 193: foutcode voor de betaaltrechter als een aankoop niet op het account kwam.
+    private func funnelError(_ o: PremiumVerify181.Outcome, _ v: VerificationResult<StoreKit.Transaction>) -> String {
+        if case .unverified = v { return Funnel193.code(.unverified) }
+        if o == .otherAccount { return "other_account" }
+        guard askedServer else {
+            return Funnel193.code(AccountService.shared.isSignedIn ? .unknown : .notSignedIn)
+        }
+        let last = AccountService.shared.lastAppleVerify
+        return Funnel193.verifyError(status: last.status, error: last.error)
     }
 
     /// Herstel aankopen: `AppStore.sync()` en alle huidige Premium-aankopen naar de server. De oude Lifetime gaat
@@ -150,14 +179,17 @@ final class PremiumStore: ObservableObject {
         guard !busy else { return }
         busy = true
         defer { busy = false }
+        let funnel = PurchaseFunnel193.shared   // build 193
+        funnel.send(.restoreStarted)
         do {
             try await AppStore.sync()
         } catch StoreKitError.userCancelled {
+            funnel.restore(.failed("cancelled"))
             return
         } catch {
             // zonder sync (bijv. offline) toch de bekende aankopen proberen
         }
-        guard AccountService.shared.isSignedIn else { show(.otherAccount, origin); return }
+        guard AccountService.shared.isSignedIn else { funnel.restore(.signInFirst); show(.otherAccount, origin); return }
         var best: PremiumVerify181.Outcome?
         var oldLifetime = false
         for await v in StoreKit.Transaction.currentEntitlements {
@@ -174,11 +206,22 @@ final class PremiumStore: ObservableObject {
             if case .premium = o { best = o } else if best == nil { best = o }
         }
         await EntitlementsService.shared.refresh(force: true)
-        if oldLifetime { show(.restored, origin); return }
+        if oldLifetime { funnel.restore(.restored); show(.restored, origin); return }
         if let best {
+            switch best {
+            case .premium: funnel.restore(.restored)
+            case .otherAccount: funnel.restore(.otherAccount)
+            case .unavailable: funnel.restore(.unavailable)
+            case .failed:
+                let last = AccountService.shared.lastAppleVerify
+                funnel.restore(.failed(askedServer ? Funnel193.verifyError(status: last.status, error: last.error)
+                                                   : Funnel193.code(.unknown)))
+            }
             show(Self.message(for: best, purchased: false), origin)
         } else {
-            show(EntitlementsService.shared.premium?.active == true ? .restored : .nothingToRestore, origin)
+            let active = EntitlementsService.shared.premium?.active == true
+            funnel.restore(active ? .restored : .nothing)
+            show(active ? .restored : .nothingToRestore, origin)
         }
     }
 
@@ -204,6 +247,7 @@ final class PremiumStore: ObservableObject {
     /// (`apple-notify`), dus alleen opnieuw ophalen.
     @discardableResult
     private func handle(_ v: VerificationResult<StoreKit.Transaction>, userInitiated: Bool) async -> PremiumVerify181.Outcome {
+        if userInitiated { askedServer = false }
         guard case .verified(let t) = v, PremiumPlan181.productIDs.contains(t.productID) else { return .failed }
         if t.revocationDate != nil {
             await t.finish()
@@ -212,6 +256,7 @@ final class PremiumStore: ObservableObject {
         }
         guard AccountService.shared.isSignedIn else { return .failed }   // blijft staan tot er iemand ingelogd is
         let renewal = await renewalInfo(for: t)
+        if userInitiated { askedServer = true }
         let o = await AccountService.shared.appleVerifyPremium(signedTransaction: v.jwsRepresentation,
                                                                signedRenewalInfo: renewal)
         if PremiumVerify181.shouldFinish(o) { await t.finish() }

@@ -78,6 +78,7 @@ struct ActivateLifetimeView: View {
             }
         }
         .task {
+            PurchaseFunnel193.shared.paywallShown("activate")   // build 193
             await store.prepare()
             await ent.refreshUnlessRecent(60)
         }
@@ -353,7 +354,10 @@ struct BuyFirstWelcomeView: View {
             .padding(.bottom, tvScaled(32))
             .frame(maxWidth: .infinity)
         }
-        .task { await store.prepare() }
+        .task {
+            PurchaseFunnel193.shared.paywallShown("welcome")   // build 193
+            await store.prepare()
+        }
         .alert(item: store.binding(for: "welcome")) { m in
             Alert(title: Text(m.text), dismissButton: .default(Text(L("OK"))))
         }

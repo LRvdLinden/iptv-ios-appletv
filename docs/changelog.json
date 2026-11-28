@@ -1,5 +1,23 @@
 [
   {
+    "build": 193,
+    "version": "1.1.2",
+    "date": "2026-11-28",
+    "items": [
+      {
+        "type": "improved",
+        "platforms": [
+          "ios",
+          "ipados",
+          "tvos",
+          "macos"
+        ],
+        "nl": "Betaalscherm: fouten bij kopen of herstellen worden anoniem geteld (alleen de stap en een korte foutcode, geen account of aankoopgegevens), zodat problemen sneller zichtbaar zijn.",
+        "en": "Purchase screen: errors while buying or restoring are counted anonymously (only the step and a short error code, no account or purchase details), so problems show up sooner."
+      }
+    ]
+  },
+  {
     "build": 192,
     "version": "1.1.2",
     "date": "2026-11-27",
