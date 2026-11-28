@@ -725,6 +725,9 @@ begin
     'lifetime_total', (select count(*) from public.account_plans p join auth.users u on u.id = p.user_id where p.plan = 'lifetime'),
     'free_total', (select count(*) from auth.users u where not exists (select 1 from public.account_plans p where p.user_id = u.id and p.plan = 'lifetime')),
     'sandbox_total', (select count(*) from auth.users u where public.bingr_admin_user_match(u.id, 'sandbox')),
+    -- build 194: aantal accounts per `access` (zie bingr_admin_access)
+    'access_totals', coalesce((select jsonb_object_agg(t.a, t.n) from (select public.bingr_admin_access(u.id) ->> 'access' as a, count(*) as n
+      from auth.users u group by 1) t), '{}'::jsonb),
     'items', coalesce((select jsonb_agg(row_to_json(x)::jsonb order by x.created_at desc) from (
       select u.id, u.email, u.created_at, u.last_sign_in_at, u.email_confirmed_at is not null as confirmed,
         nullif(btrim(u.raw_user_meta_data->>'first_name'), '') as first_name, nullif(btrim(u.raw_user_meta_data->>'last_name'), '') as last_name,
@@ -740,8 +743,11 @@ begin
           from public.account_plans p where p.user_id = u.id), jsonb_build_object('plan', 'free'))
           || coalesce(public.bingr_admin_purchase(u.id), '{}'::jsonb)) as plan,
         public.bingr_admin_user_match(u.id, 'sandbox') as sandbox,
-        (select p.premium_until from public.account_plans p where p.user_id = u.id and p.sandbox and p.source = 'purchase') as sandbox_until
-      from auth.users u where public.bingr_admin_user_search(u.email, u.raw_user_meta_data, q, pat) and public.bingr_admin_user_match(u.id, f)
+        (select p.premium_until from public.account_plans p where p.user_id = u.id and p.sandbox and p.source = 'purchase') as sandbox_until,
+        ac.j ->> 'access' as access, (ac.j ->> 'access_trial')::boolean as access_trial, ac.j ->> 'access_provider' as access_provider,
+        (ac.j ->> 'access_until')::timestamptz as access_until, (ac.j ->> 'access_test')::boolean as access_test, ac.j ->> 'access_extra' as access_extra
+      from auth.users u cross join lateral public.bingr_admin_access(u.id) as ac(j)
+      where public.bingr_admin_user_search(u.email, u.raw_user_meta_data, q, pat) and public.bingr_admin_user_match(u.id, f)
       order by u.created_at desc limit least(greatest(p_limit, 1), 100) offset greatest(p_offset, 0)) x), '[]'::jsonb)
   );
 end $$;
@@ -750,9 +756,10 @@ grant execute on function public.bingr_admin_users(text, int, int, text) to serv
 
 create or replace function public.bingr_admin_user(p_id uuid) returns jsonb
 language plpgsql security definer set search_path = public, auth as $$
-declare u record;
+declare u record; acc jsonb;
 begin
   perform public.bingr_blocks_expire();
+  acc := public.bingr_admin_access(p_id);
   select id, email, created_at, last_sign_in_at, email_confirmed_at, banned_until, raw_user_meta_data->>'lang' as lang,
     nullif(btrim(raw_user_meta_data->>'first_name'), '') as first_name, nullif(btrim(raw_user_meta_data->>'last_name'), '') as last_name
     into u from auth.users where id = p_id;
@@ -775,6 +782,9 @@ begin
     -- build 193: toegang uit de Apple-sandbox (zie account_plans.sandbox); sandbox_until = einde van een tijdelijke sandbox-Lifetime
     'sandbox', public.bingr_admin_user_match(u.id, 'sandbox'),
     'sandbox_until', (select p.premium_until from public.account_plans p where p.user_id = u.id and p.sandbox and p.source = 'purchase'),
+    -- build 194: wat het account precies heeft (zie bingr_admin_access)
+    'access', acc ->> 'access', 'access_trial', (acc ->> 'access_trial')::boolean, 'access_provider', acc ->> 'access_provider',
+    'access_until', (acc ->> 'access_until')::timestamptz, 'access_test', (acc ->> 'access_test')::boolean, 'access_extra', acc ->> 'access_extra',
     -- build 133: aankopen van dit account (Stripe), nieuwste eerst; zonder Stripe-id's of betaalgegevens
     'purchases', coalesce((select jsonb_agg(jsonb_build_object('created_at', b.created_at, 'paid_at', b.paid_at, 'amount', b.amount,
         'currency', b.currency, 'status', b.status, 'refunded_at', b.refunded_at, 'provider', b.provider, 'claimed_at', b.claimed_at) order by b.created_at desc)
@@ -4159,6 +4169,33 @@ end $$;
 revoke all on function public.bingr_admin_user_match(uuid, text) from public, anon, authenticated;
 grant execute on function public.bingr_admin_user_match(uuid, text) to service_role;
 
+-- Build 194: filter op wat een account precies heeft: 'access:<code>' (zie bingr_admin_access), of 'access:subscription'
+-- voor elk lopend Premium-abonnement (maand, halfjaar of jaar). Zelfde als hierboven; deze definitie vervangt de vorige.
+create or replace function public.bingr_admin_user_match(p_user uuid, p_filter text) returns boolean
+language plpgsql stable security definer set search_path = public, auth as $$
+declare f text := coalesce(p_filter, ''); a text;
+begin
+  if f like 'access:%' then
+    a := public.bingr_admin_access(p_user) ->> 'access';
+    if f = 'access:subscription' then return a in ('monthly', 'half_year', 'yearly', 'subscription'); end if;
+    return a = substr(f, 8);
+  end if;
+  if f like 'country:%' then
+    if f = 'country:?' then return not exists (select 1 from public.account_country c where c.user_id = p_user); end if;
+    return exists (select 1 from public.account_country c where c.user_id = p_user and c.country = substr(f, 9, 2));
+  end if;
+  return case f
+    when 'blocked' then exists (select 1 from public.account_blocks b where b.user_id = p_user and b.lifted_at is null)
+    when 'lifetime' then exists (select 1 from public.account_plans p where p.user_id = p_user and p.plan = 'lifetime')
+    when 'free' then not exists (select 1 from public.account_plans p where p.user_id = p_user and p.plan = 'lifetime')
+    when 'custom' then exists (select 1 from public.account_plans p where p.user_id = p_user and (p.max_streams is not null or p.max_devices is not null))
+    when 'sandbox' then exists (select 1 from public.account_plans p where p.user_id = p_user and p.sandbox and p.plan = 'lifetime'
+                                 and (p.source is distinct from 'purchase' or p.premium_until is null or p.premium_until > now()))
+    else true end;
+end $$;
+revoke all on function public.bingr_admin_user_match(uuid, text) from public, anon, authenticated;
+grant execute on function public.bingr_admin_user_match(uuid, text) to service_role;
+
 -- 3. Kijkt nu (tegel op het overzicht): wie kijkt er nu, met account, profiel, apparaat, platform, titel en soort.
 --    Zelfde grens als stats.watching_now (ping in de laatste 90 s). Titels en profielnamen kunnen versleuteld zijn
 --    (`enc1:…`, build 146); de functie admin ontsleutelt ze in het geheugen en maskeert het e-mailadres. Max. 500 rijen.
@@ -5553,6 +5590,56 @@ begin
 end $$;
 revoke all on function public.bingr_admin_sandbox_stats() from public, anon, authenticated;
 grant execute on function public.bingr_admin_sandbox_stats() to service_role;
+
+-- Build 194 (beheer): wat een account precies heeft, voor de kolom Abonnement bij Gebruikers. Alleen beheer (service role).
+--   access: free | legacy_lifetime (source legacy: cadeau bij de invoering) | lifetime (gekocht, source purchase) |
+--           gifted_lifetime (uit het beheer of cadeau: source admin, of Lifetime zonder bron) | monthly | half_year | yearly
+--           (lopend Premium-abonnement) | subscription (Premium zonder te vinden abonnement, bijv. vlak voor de spiegel)
+--   access_trial: de proefperiode loopt nog; access_provider: stripe | apple | null; access_until: einde van Premium of van
+--   een tijdelijke (sandbox-)Lifetime; access_test: het abonnement is een testabonnement; access_extra: een lopend abonnement
+--   naast Lifetime (Lifetime wint). Een lopend abonnement = status trialing/active/grace/past_due met access_until in de toekomst.
+create or replace function public.bingr_admin_access(p_user uuid) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare p record; s record; has_p boolean; has_s boolean; code text; sub_code text; prov text; trial boolean := false; until_ timestamptz;
+begin
+  select * into p from public.account_plans where user_id = p_user;
+  has_p := found;
+  select * into s from public.premium_subscriptions
+   where user_id = p_user and status in ('trialing', 'active', 'grace', 'past_due') and access_until > now()
+   order by (mode is distinct from 'test') desc, access_until desc limit 1;
+  has_s := found;
+  if has_s then
+    sub_code := case s.plan when 'month' then 'monthly' when 'half' then 'half_year' when 'year' then 'yearly' end;
+  end if;
+  if has_p and p.plan = 'lifetime' then
+    if p.source = 'subscription' then
+      code := coalesce(sub_code, 'subscription');
+    elsif p.source = 'legacy' then code := 'legacy_lifetime';
+    elsif p.source = 'purchase' then code := 'lifetime';
+    else code := 'gifted_lifetime';
+    end if;
+  elsif has_s then
+    code := sub_code;
+  else
+    code := 'free';
+  end if;
+  if code in ('monthly', 'half_year', 'yearly', 'subscription') then
+    if has_s then
+      prov := s.provider; until_ := s.access_until; trial := s.status = 'trialing' or coalesce(s.trial_until > now(), false);
+    else
+      until_ := p.premium_until;
+    end if;
+  elsif code = 'lifetime' then
+    select b.provider into prov from public.billing_purchases b
+     where b.user_id = p_user and b.status in ('paid', 'refunded', 'disputed') order by coalesce(b.paid_at, b.created_at) desc limit 1;
+    until_ := p.premium_until;
+  end if;
+  return jsonb_build_object('access', code, 'access_trial', trial, 'access_provider', prov, 'access_until', until_,
+    'access_test', coalesce(has_s and s.mode = 'test' and code in ('monthly', 'half_year', 'yearly', 'subscription'), false),
+    'access_extra', case when code in ('legacy_lifetime', 'lifetime', 'gifted_lifetime') then sub_code end);
+end $$;
+revoke all on function public.bingr_admin_access(uuid) from public, anon, authenticated;
+grant execute on function public.bingr_admin_access(uuid) to service_role;
 
 -- Build 193: betaaltrechter. Anonieme dagtelling van de betaalstappen die de apps en de website melden (functie billing,
 -- actie funnel; _shared/funnel.ts controleert de waarden). Geen account, apparaat of IP-adres; alleen de service role.
