@@ -24,16 +24,23 @@ jobs:
           def db(sql):
               req = urllib.request.Request(API + "/database/query", data=json.dumps({"query": sql}).encode(), headers={**H, "content-type": "application/json"})
               return json.load(urllib.request.urlopen(req, timeout=60))
-          # Alleen een korte hash-prefix van het adres (6 tekens), nooit het adres zelf.
+          # Geen adressen of apparaatnamen: alleen een hash-prefix, het soort domein en de platforms.
           k = "left(encode(sha256(convert_to(lower(u.email),'UTF8')),'hex'),6)"
-          r = db(f"select {k} as h, (u.created_at at time zone 'Europe/Amsterdam')::text as aangemaakt, (p.created_at at time zone 'Europe/Amsterdam')::text as plan_sinds, p.source, "
-                 "left(coalesce(p.note,''),14) as notitie, "
-                 "(select string_agg(coalesce(b.provider,'stripe') || ':' || b.status || ':' || b.amount, ',') from billing_purchases b where b.user_id = u.id) as aankopen, "
-                 "(select string_agg(s.provider || ':' || s.status || ':' || s.plan || ':' || coalesce(s.mode,'?'), ',') from premium_subscriptions s where s.user_id = u.id) as abos "
-                 "from account_plans p join auth.users u on u.id = p.user_id where p.plan = 'lifetime' and p.created_at > now() - interval '8 days' order by p.created_at")
-          for i, x in enumerate(r): note(f"Lifetime 8 dagen {i+1}", json.dumps(x))
-          r = db("select (b.created_at at time zone 'Europe/Amsterdam')::text as nl, coalesce(b.provider,'stripe') as provider, b.status, b.amount, (b.user_id is not null) as gekoppeld, "
-                 "(select left(coalesce(p.note,''),14) from account_plans p where p.user_id = b.user_id) as notitie "
-                 "from billing_purchases b where b.created_at > now() - interval '8 days' order by b.created_at")
-          note("Aankopen 8 dagen", json.dumps(r))
+          dom = "case when u.email ilike '%@apple.com' then 'apple.com' when u.email ilike '%@privaterelay.appleid.com' then 'verberg-mijn-email' when u.email ilike '%@icloud.com' or u.email ilike '%@me.com' then 'icloud' else 'overig' end"
+          r = db(f"select {k} as h, {dom} as domein, (u.created_at at time zone 'Europe/Amsterdam')::text as aangemaakt, (u.last_sign_in_at at time zone 'Europe/Amsterdam')::text as laatst_ingelogd, "
+                 "(select string_agg(d.platform || ' (laatst ' || to_char(d.last_seen_at at time zone 'Europe/Amsterdam','DD-MM HH24:MI') || ')', ', ') from account_devices d where d.user_id = u.id) as apparaten, "
+                 "(select count(*) from account_devices d where d.user_id = u.id) as n_apparaten "
+                 "from auth.users u where exists (select 1 from billing_purchases b join account_plans p on p.user_id = b.user_id where b.user_id = u.id and p.note ilike 'Apple sandbox%') "
+                 "or exists (select 1 from premium_subscriptions s where s.user_id = u.id and s.mode = 'test') order by u.created_at")
+          for i, x in enumerate(r): note(f"Sandbox-account {i+1}", json.dumps(x))
+          r = db(f"select count(*) n from auth.users u where {k} = 'deb835'")
+          note("Testaccount gevonden (hash deb835)", str(r[0]['n']))
+          r = db(f"select p.plan, p.source, left(coalesce(p.note,''),14) as notitie, (p.created_at at time zone 'Europe/Amsterdam')::text as sinds, "
+                 "(select string_agg(s.provider || ':' || s.status || ':' || coalesce(s.mode,'?'), ',') from premium_subscriptions s where s.user_id = u.id) as abos "
+                 f"from auth.users u left join account_plans p on p.user_id = u.id where {k} = 'deb835'")
+          note("Testaccount plan", json.dumps(r))
+          r = db("select count(*) n from account_plans p where p.note ilike 'Apple sandbox%'")
+          note("Totaal accounts met sandbox-Lifetime (ooit)", str(r[0]['n']))
+          r = db("select count(*) n from premium_subscriptions s where s.mode = 'test' and s.provider = 'apple'")
+          note("Totaal Apple-abonnementen in testmodus (ooit)", str(r[0]['n']))
           PY
