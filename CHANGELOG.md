@@ -7,7 +7,7 @@ Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**
 ## Versie 1.1.2 · Build 194
 _28 november 2026_
 
-### iOS, iPadOS, tvOS en macOS
+### iOS, iPadOS, tvOS, macOS, Android en Android TV
 
 **Nieuw**
 
