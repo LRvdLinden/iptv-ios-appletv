@@ -772,6 +772,9 @@ begin
         'note', p.note, 'granted_by', p.granted_by, 'created_at', p.created_at, 'updated_at', p.updated_at)
       from public.account_plans p where p.user_id = u.id), jsonb_build_object('plan', 'free'))
       || coalesce(public.bingr_admin_purchase(u.id), '{}'::jsonb),
+    -- build 193: toegang uit de Apple-sandbox (zie account_plans.sandbox); sandbox_until = einde van een tijdelijke sandbox-Lifetime
+    'sandbox', public.bingr_admin_user_match(u.id, 'sandbox'),
+    'sandbox_until', (select p.premium_until from public.account_plans p where p.user_id = u.id and p.sandbox and p.source = 'purchase'),
     -- build 133: aankopen van dit account (Stripe), nieuwste eerst; zonder Stripe-id's of betaalgegevens
     'purchases', coalesce((select jsonb_agg(jsonb_build_object('created_at', b.created_at, 'paid_at', b.paid_at, 'amount', b.amount,
         'currency', b.currency, 'status', b.status, 'refunded_at', b.refunded_at, 'provider', b.provider, 'claimed_at', b.claimed_at) order by b.created_at desc)
