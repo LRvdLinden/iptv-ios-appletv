@@ -180,6 +180,46 @@ update public.account_plans set plan = 'lifetime', source = 'admin', granted_by 
 select pg_temp.ok((select not sandbox and premium_until is null from public.account_plans where user_id = '00000000-0000-4000-8000-0000000000a3'), 'beheer: blijvend, geen sandbox');
 update public.account_plans set source = 'purchase', granted_by = 'stripe', note = 'Stripe cs_x / pi_x' where user_id = '00000000-0000-4000-8000-0000000000a1';
 select pg_temp.ok((select not sandbox and premium_until is null from public.account_plans where user_id = '00000000-0000-4000-8000-0000000000a1'), 'Stripe-aankoop: geen sandbox');
+-- ---------------- build 194: wat een account precies heeft (bingr_admin_access) ----------------
+delete from public.premium_subscriptions; delete from public.account_plans; delete from public.billing_purchases;
+select pg_temp.ok(public.bingr_admin_access('00000000-0000-4000-8000-0000000000a1') ->> 'access' = 'free', 'access: geen rij = free');
+insert into public.account_plans (user_id, plan, source, granted_by, note) values
+  ('00000000-0000-4000-8000-0000000000a1', 'lifetime', 'legacy', 'systeem', 'Bestaand account'),
+  ('00000000-0000-4000-8000-0000000000a2', 'lifetime', 'admin', 'beheer', 'cadeau'),
+  ('00000000-0000-4000-8000-0000000000a3', 'lifetime', 'purchase', 'stripe', 'Stripe cs_x');
+select pg_temp.ok(public.bingr_admin_access('00000000-0000-4000-8000-0000000000a1') ->> 'access' = 'legacy_lifetime', 'access: legacy');
+select pg_temp.ok(public.bingr_admin_access('00000000-0000-4000-8000-0000000000a2') ->> 'access' = 'gifted_lifetime', 'access: gratis gegeven');
+select pg_temp.ok(public.bingr_admin_access('00000000-0000-4000-8000-0000000000a3') ->> 'access' = 'lifetime', 'access: gekocht');
+insert into public.billing_purchases (user_id, stripe_session_id, amount, status, provider, paid_at)
+values ('00000000-0000-4000-8000-0000000000a3', 'cs_acc1', 3999, 'paid', 'stripe', now());
+select pg_temp.ok(public.bingr_admin_access('00000000-0000-4000-8000-0000000000a3') ->> 'access_provider' = 'stripe', 'access: aanbieder van de aankoop');
+-- Lifetime wint van een lopend abonnement, dat staat er als access_extra bij
+insert into public.premium_subscriptions (user_id, provider, plan, status, stripe_subscription_id, access_until, expires_at, mode)
+values ('00000000-0000-4000-8000-0000000000a1', 'stripe', 'year', 'active', 'sub_acc1', now() + interval '30 days', now() + interval '30 days', 'live');
+select pg_temp.ok(public.bingr_admin_access('00000000-0000-4000-8000-0000000000a1') ->> 'access' = 'legacy_lifetime'
+  and public.bingr_admin_access('00000000-0000-4000-8000-0000000000a1') ->> 'access_extra' = 'yearly', 'access: Lifetime wint, abonnement erbij');
+-- abonnementen via de spiegel: maand, halfjaar, jaar, proef, test
+delete from public.premium_subscriptions; delete from public.account_plans;
+insert into public.premium_subscriptions (user_id, provider, plan, status, stripe_subscription_id, apple_original_transaction_id, access_until, expires_at, trial_until, mode) values
+  ('00000000-0000-4000-8000-0000000000a1', 'stripe', 'month', 'active', 'sub_m1', null, now() + interval '20 days', now() + interval '20 days', null, 'live'),
+  ('00000000-0000-4000-8000-0000000000a2', 'apple', 'half', 'trialing', null, '3000001', now() + interval '3 days', now() + interval '3 days', now() + interval '3 days', 'live'),
+  ('00000000-0000-4000-8000-0000000000a3', 'apple', 'year', 'active', null, '3000002', now() + interval '300 days', now() + interval '300 days', null, 'test');
+select public.bingr_premium_mirror('00000000-0000-4000-8000-0000000000a1');
+select public.bingr_premium_mirror('00000000-0000-4000-8000-0000000000a2');
+select public.bingr_premium_mirror('00000000-0000-4000-8000-0000000000a3');
+select pg_temp.ok(public.bingr_admin_access('00000000-0000-4000-8000-0000000000a1') @> '{"access": "monthly", "access_provider": "stripe", "access_trial": false, "access_test": false}'::jsonb, 'access: maand (Stripe)');
+select pg_temp.ok(public.bingr_admin_access('00000000-0000-4000-8000-0000000000a2') @> '{"access": "half_year", "access_provider": "apple", "access_trial": true}'::jsonb, 'access: halfjaar, proef (Apple)');
+select pg_temp.ok(public.bingr_admin_access('00000000-0000-4000-8000-0000000000a3') @> '{"access": "yearly", "access_test": true}'::jsonb, 'access: jaar, testabonnement');
+-- zonder spiegel (vlak na de betaling) staat het abonnement er toch al
+delete from public.account_plans;
+select pg_temp.ok(public.bingr_admin_access('00000000-0000-4000-8000-0000000000a1') ->> 'access' = 'monthly', 'access: abonnement zonder spiegelrij');
+-- afgelopen of opgezegd abonnement telt niet
+update public.premium_subscriptions set access_until = now() - interval '1 minute';
+select pg_temp.ok(public.bingr_admin_access('00000000-0000-4000-8000-0000000000a1') ->> 'access' = 'free', 'access: afgelopen = free');
+update public.premium_subscriptions set access_until = now() + interval '20 days';
+select pg_temp.ok(not public.bingr_admin_access('00000000-0000-4000-8000-0000000000a1')::text ~ '@', 'access: geen persoonsgegevens');
+select pg_temp.ok(not has_function_privilege('authenticated', 'public.bingr_admin_access(uuid)', 'execute')
+  and has_function_privilege('service_role', 'public.bingr_admin_access(uuid)', 'execute'), 'access: alleen service role');
 -- ---------------- build 193: betaaltrechter ----------------
 select pg_temp.ok(public.bingr_funnel_hit('ios', 'paywall_shown') and public.bingr_funnel_hit('ios', 'paywall_shown') and public.bingr_funnel_hit('web', 'purchase_failed', 'year', 'http_500'), 'trechter: tellen');
 select pg_temp.ok((select n from public.billing_funnel_daily where platform = 'ios' and step = 'paywall_shown') = 2, 'trechter: zelfde stap telt op');
