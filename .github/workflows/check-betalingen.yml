@@ -24,22 +24,36 @@ jobs:
           def db(sql):
               req = urllib.request.Request(API + "/database/query", data=json.dumps({"query": sql}).encode(), headers={**H, "content-type": "application/json"})
               return json.load(urllib.request.urlopen(req, timeout=60))
-          k = "left(encode(sha256(convert_to(lower(u.email),'UTF8')),'hex'),6)"
-          r = db("select count(*) n from account_plans p where p.note ilike 'Apple sandbox%'")
-          note("Accounts met sandbox-Lifetime nu", str(r[0]['n']))
-          r = db("select to_char(b.created_at at time zone 'Europe/Amsterdam','YYYY-MM-DD') as dag, count(*) n, string_agg(b.amount::text || coalesce(b.currency,''), ',') as bedragen "
-                 "from billing_purchases b join account_plans p on p.user_id = b.user_id where b.provider = 'apple' and p.note ilike 'Apple sandbox%' group by 1 order by 1")
-          note("Sandbox-Lifetime-aankopen per dag", "; ".join(f"{x['dag'][5:]}: {x['n']} ({x['bedragen']})" for x in r))
-          r = db("select count(*) n, count(*) filter (where s.user_id is not null) gekoppeld, count(*) filter (where s.status in ('trialing','active','grace')) actief from premium_subscriptions s where s.mode = 'test' and s.provider = 'apple'")
-          note("Apple-abonnementen in testmodus (totaal|gekoppeld|actief)", f"{r[0]['n']}|{r[0]['gekoppeld']}|{r[0]['actief']}")
-          r = db("select count(*) n from billing_purchases b where b.provider = 'apple' and b.status = 'paid' and not exists (select 1 from account_plans p where p.user_id = b.user_id and p.note ilike 'Apple sandbox%')")
-          note("Echte Apple-Lifetime-aankopen (niet sandbox)", str(r[0]['n']))
-          r = db(f"select count(*) n from auth.users u where {k} = 'deb835'")
-          note("Testaccount gevonden (hash deb835)", str(r[0]['n']))
-          r = db(f"select p.plan, p.source, left(coalesce(p.note,''),14) as notitie, (p.created_at at time zone 'Europe/Amsterdam')::text as sinds, "
-                 "(select string_agg(s.provider || ':' || s.status || ':' || coalesce(s.mode,'?'), ',') from premium_subscriptions s where s.user_id = u.id) as abos "
-                 f"from auth.users u left join account_plans p on p.user_id = u.id where {k} = 'deb835'")
-          note("Testaccount plan", json.dumps(r))
-          r = db("select count(distinct d.user_id) n from account_devices d join account_plans p on p.user_id = d.user_id where p.note ilike 'Apple sandbox%' and d.last_seen_at > now() - interval '7 days'")
-          note("Sandbox-accounts actief in 7 dagen", str(r[0]['n']))
+          st = db("select key, value from app_settings where key in ('premium','lifetime_only','iap')")
+          S = {x['key']: (x['value'] if isinstance(x['value'], dict) else json.loads(x['value'])) for x in st}
+          pr, lo = S.get('premium', {}), S.get('lifetime_only', {})
+          note("Instellingen premium", json.dumps({k: pr.get(k) for k in ('enabled','new_from_web','new_from_apple','existing_from','trial_days')} | {"test_users": len(pr.get('test_users') or [])}))
+          note("Instellingen lifetime_only", json.dumps({k: lo.get(k) for k in ('enabled','cutover_at','new_paid_from','new_paid_from_apple','trial_days')} | {"iap": S.get('iap')}))
+          for label, since in (("web/Android", pr.get('new_from_web') or lo.get('new_paid_from')), ("Apple", pr.get('new_from_apple') or lo.get('new_paid_from_apple'))):
+              if not since: note(f"Sinds {label}", "geen datum"); continue
+              q = f"""
+              with n as (select u.id, u.created_at,
+                  exists(select 1 from billing_purchases b where b.user_id = u.id and b.status = 'paid') as lt,
+                  exists(select 1 from account_plans p where p.user_id = u.id and p.plan = 'lifetime' and p.note ilike 'Apple sandbox%') as sandbox,
+                  exists(select 1 from account_plans p where p.user_id = u.id and p.plan = 'lifetime' and p.source in ('admin','legacy')) as gratis,
+                  exists(select 1 from premium_subscriptions s where s.user_id = u.id and s.status in ('trialing','active','grace','past_due')) as abo,
+                  (select string_agg(distinct d.platform, '+') from account_devices d where d.user_id = u.id) as plat,
+                  (select max(d.last_seen_at) from account_devices d where d.user_id = u.id) as seen,
+                  (select count(*) from account_streams a where a.user_id = u.id) as streams_nu
+                from auth.users u where u.created_at >= '{since}'::timestamptz)
+              select count(*) totaal, count(*) filter (where lt and not sandbox) betaald_lifetime, count(*) filter (where sandbox) sandbox_lifetime,
+                count(*) filter (where gratis) gratis_gekregen, count(*) filter (where abo) abonnement,
+                count(*) filter (where not lt and not abo and not gratis) zonder_iets,
+                count(*) filter (where not lt and not abo and not gratis and seen > created_at + interval '6 hours') zonder_iets_later_nog_actief,
+                count(*) filter (where not lt and not abo and not gratis and seen > now() - interval '2 days') zonder_iets_actief_2d,
+                count(*) filter (where not lt and not abo and not gratis and streams_nu > 0) zonder_iets_kijkt_nu
+              from n"""
+              note(f"Accounts sinds {label} ({since[:16]})", json.dumps(db(q)[0]))
+              q2 = f"""select coalesce((select string_agg(distinct d.platform, '+') from account_devices d where d.user_id = u.id), 'geen apparaat') as plat, count(*) n
+                from auth.users u where u.created_at >= '{since}'::timestamptz
+                and not exists(select 1 from billing_purchases b where b.user_id = u.id and b.status = 'paid')
+                and not exists(select 1 from premium_subscriptions s where s.user_id = u.id and s.status in ('trialing','active','grace','past_due'))
+                and not exists(select 1 from account_plans p where p.user_id = u.id and p.plan = 'lifetime')
+                group by 1 order by 2 desc"""
+              note(f"Zonder plan sinds {label}: per platform", json.dumps({x['plat']: x['n'] for x in db(q2)}))
           PY
