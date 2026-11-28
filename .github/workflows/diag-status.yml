@@ -1,5 +1,7 @@
 name: Diagnose status (tijdelijk)
-# Tijdelijk: zet de al verstuurde excusemails (build 187) achteraf in mail_log. Verstuurt niets; adressen nooit in het log.
+# Tijdelijk: stuurt de excusemail (build 187) naar accounts die tussen 24 en 27 november een 413 kregen bij billing, nog geen
+# Premium of Lifetime hebben en de mail nog NIET kregen (mail_log). Adressen worden hier opgezocht en nooit geprint; alleen
+# aantallen komen in het log. Elke verstuurde mail komt meteen in mail_log, zodat niemand hem twee keer krijgt.
 on:
   push:
     branches: [symboliseren]
@@ -10,7 +12,7 @@ jobs:
   mailen:
     runs-on: ubuntu-latest
     steps:
-      - name: Accounts zoeken en vastleggen
+      - name: Accounts zoeken en mailen
         env:
           TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           REF: ${{ secrets.SUPABASE_PROJECT_REF }}
@@ -26,35 +28,79 @@ jobs:
           from email.utils import formataddr, parseaddr, make_msgid, formatdate
           API = f"https://api.supabase.com/v1/projects/{os.environ['REF']}"
           H = {"Authorization": "Bearer " + os.environ["TOKEN"]}
+          SUBJECT = "Sorry: your Bingr Premium purchase is now fixed"
+          def note(t, m): print(f"::notice title={t}::{m}")
           def q(sql, s, e):
-              for _ in range(4):
-                  time.sleep(15)
+              for _ in range(5):
+                  time.sleep(12)
                   u = f"{API}/analytics/endpoints/logs?" + urllib.parse.urlencode({"sql": sql, "iso_timestamp_start": s, "iso_timestamp_end": e})
                   try: return json.load(urllib.request.urlopen(urllib.request.Request(u, headers=H), timeout=60))
                   except Exception: time.sleep(20)
-              return {}
+              return None
           def db(sql):
               req = urllib.request.Request(API + "/database/query", data=json.dumps({"query": sql}).encode(), headers={**H, "content-type": "application/json"})
               return json.load(urllib.request.urlopen(req, timeout=60))
-          now = datetime.datetime.now(datetime.timezone.utc)
-          ids = set()
-          for back in range(4, -1, -1):
-              day = (now - datetime.timedelta(days=back)).date()
-              s = datetime.datetime.combine(day, datetime.time(), datetime.timezone.utc); e = min(s + datetime.timedelta(days=1), now)
+          ids = set(); days_ok = 0
+          for d in (24, 25, 26, 27):
+              s = datetime.datetime(2026, 11, d, tzinfo=datetime.timezone.utc); e = s + datetime.timedelta(days=1)
               r = q("SELECT log_attributes['request.sb.auth_user'] AS u FROM logs WHERE source = 'function_edge_logs' AND position(log_attributes['request.url'], '/functions/v1/billing') > 0 AND log_attributes['response.status_code'] = '413' GROUP BY u",
                     s.isoformat().replace("+00:00", "Z"), e.isoformat().replace("+00:00", "Z"))
+              if r is None or "result" not in r: continue
+              days_ok += 1
               for x in r.get("result", []):
                   u = str(x.get("u") or "")
                   if re.fullmatch(r"[0-9a-f-]{36}", u): ids.add(u)
-          print("accounts in de logs:", len(ids))
+          note("dagen met logs gelezen (van 4)", str(days_ok))
+          note("accounts met een 413 (24-27 nov)", str(len(ids)))
           inl = ",".join("'" + i + "'" for i in sorted(ids))
-          rows = db(f"select u.email from auth.users u where u.id::text in ({inl}) and u.email_confirmed_at is not null "
-                    f"and not exists (select 1 from premium_subscriptions s where s.user_id = u.id) "
-                    f"and not exists (select 1 from account_plans p where p.user_id = u.id and p.plan <> 'free')") if ids else []
-          to = sorted({r["email"] for r in rows if r.get("email")})
-          print("te mailen (bestaand, bevestigd, nog geen Premium):", len(to))
-          vals = ",".join("('beheer','" + a.replace("'", "''").lower() + "','Sorry: your Bingr Premium purchase is now fixed',true,'','2026-11-27T09:13:56Z')" for a in to)
-          if to:
-              db("insert into public.mail_log (source,to_addr,subject,ok,error,at) values " + vals)
-          print("vastgelegd:", len(to))
+          base = (f"from auth.users u where u.id::text in ({inl}) and u.email_confirmed_at is not null "
+                  "and not exists (select 1 from premium_subscriptions s where s.user_id = u.id) "
+                  "and not exists (select 1 from account_plans p where p.user_id = u.id and p.plan <> 'free') "
+                  "and not exists (select 1 from billing_purchases b where b.user_id = u.id and b.status = 'paid')")
+          already = f"exists (select 1 from public.mail_log m where lower(m.to_addr) = lower(u.email) and m.subject = '{SUBJECT}' and m.ok)"
+          if ids:
+              note("zonder Premium of Lifetime", str(db("select count(*) c " + base)[0]["c"]))
+              note("daarvan al gemaild (mail_log)", str(db("select count(*) c " + base + " and " + already)[0]["c"]))
+              rows = db("select u.email " + base + " and not " + already)
+          else:
+              rows = []
+          to = sorted({r["email"].lower() for r in rows if r.get("email")})
+          note("nu te mailen", str(len(to)))
+          body = "\n".join([
+              "Hello,", "",
+              "You recently tried to subscribe to Bingr Premium through the App Store. Unfortunately that did not work: because of an error on our side, your purchase was not recognised, so Premium was not activated. We sincerely apologise for the disruption.", "",
+              "The error has now been fixed. Here is how to activate Premium:", "",
+              "1. Update Bingr to the latest version in the App Store.",
+              "2. Open Bingr and sign in with the same account you used for the purchase.",
+              "3. Go to Settings and choose Restore Purchases (or open the Premium screen and choose Restore Purchases there).", "",
+              "You do not have to pay again. Your Apple purchase is still valid; we are simply linking it to your account now.", "",
+              "If it does not work, or your trial period has already ended, send us a message at support.bingr.online and we will sort it out together.", "",
+              "Once again, our apologies for the inconvenience.", "",
+              "Best regards,", "L\u00e9on", "Bingr", ""])
+          frm = os.environ["SMTP_FROM"]; name, addr = parseaddr(frm)
+          port = int(os.environ.get("SMTP_PORT") or 465)
+          ok = bad = 0
+          for rcpt in to:
+              # vlak voor het versturen nog eens kijken (nooit dubbel)
+              esc = rcpt.replace("'", "''")
+              if db(f"select count(*) c from public.mail_log where lower(to_addr) = '{esc}' and subject = '{SUBJECT}' and ok")[0]["c"]: continue
+              m = EmailMessage()
+              m["From"] = formataddr(("Bingr", addr or frm)); m["To"] = rcpt
+              m["Subject"] = SUBJECT
+              m["Date"] = formatdate(localtime=False); m["Message-ID"] = make_msgid(domain=(addr.split("@")[-1] if "@" in addr else "bingr.online"))
+              m.set_content(body)
+              err = ""
+              try:
+                  ctx = ssl.create_default_context()
+                  if port in (587, 25):
+                      with smtplib.SMTP(os.environ["SMTP_HOST"], port, timeout=40) as sm:
+                          sm.starttls(context=ctx); sm.login(os.environ["SMTP_USER"], os.environ["SMTP_PASS"]); sm.send_message(m)
+                  else:
+                      with smtplib.SMTP_SSL(os.environ["SMTP_HOST"], port, timeout=40, context=ctx) as sm:
+                          sm.login(os.environ["SMTP_USER"], os.environ["SMTP_PASS"]); sm.send_message(m)
+                  ok += 1
+              except Exception as ex:
+                  bad += 1; err = type(ex).__name__[:40]
+              db(f"insert into public.mail_log (source,to_addr,subject,ok,error) values ('beheer','{esc}','{SUBJECT}',{'true' if not err else 'false'},'{err}')")
+          note("verstuurd", str(ok)); note("mislukt", str(bad))
           PY
