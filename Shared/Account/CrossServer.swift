@@ -395,6 +395,24 @@ final class CrossServer: ObservableObject {
         }
     }
 
+    /// Build 194: zenders met terugkijken van de andere servers voor de categorie Terugkijken in Live TV. Alleen de
+    /// bewaarde catalogi (nooit ophalen of de laadindicator), met de zichtbaarheid van het actieve profiel op die server
+    /// (verborgen categorieën, kinderslot); elke zender krijgt zijn server als `sourceID`.
+    func catchupChannelsOfOtherServers() async -> [Channel] {
+        guard let pl = playlists, !Screenshots.isActive else { return [] }
+        let activeID = pl.source?.id
+        var out: [Channel] = []
+        for src in CloudStore.shared.playlists where src.id != activeID {
+            guard let (lib, _) = await catalog(src, fetch: false) else { continue }
+            let ctx = pl.context(for: src)
+            let sid = src.id
+            out += await Task.detached(priority: .utility) { () -> [Channel] in
+                PlaylistService.apply(lib, ctx).channels.filter { $0.catchupDays > 0 }.map { var c = $0; c.sourceID = sid; return c }
+            }.value
+        }
+        return out
+    }
+
     /// Catalogus van een server: de open bron uit het geheugen, anders de cache, anders (mag `fetch`) ophalen.
     /// Build 130: een oude cache (> 6 uur) van een niet-actieve server wordt meteen gebruikt en daarna stil op de
     /// achtergrond ververst (`queueStale`, sinds build 145 niet meer); nooit met de laadindicator, die hoort alleen bij

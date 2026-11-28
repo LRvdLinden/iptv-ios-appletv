@@ -3691,5 +3691,27 @@ do {
 }
 
 
+// MARK: Build 194: categorie Terugkijken in Live TV
+do {
+    struct Ch { let id: String; let name: String; let days: Int }
+    func sel(_ a: [Ch], _ o: [Ch] = []) -> [String] {
+        Build194.select(active: a, others: o, days: { $0.days }, id: { $0.id }, identity: { $0.name.lowercased() }).map(\.id)
+    }
+    eq(sel([Ch(id: "1", name: "NPO 1", days: 3), Ch(id: "2", name: "RTL 4 UHD", days: 0), Ch(id: "3", name: "RTL 4", days: 5)]), ["1", "3"], "build 194: alleen zenders met terugkijken")
+    eq(sel([Ch(id: "1", name: "NPO 1", days: 0)]), [], "build 194: geen terugkijken = lege lijst")
+    eq(sel([Ch(id: "1", name: "NPO 1", days: 3), Ch(id: "1", name: "NPO 1 kopie", days: 3)]), ["1"], "build 194: dubbele id één keer")
+    eq(sel([Ch(id: "a", name: "NPO 1", days: 3)], [Ch(id: "b", name: "NPO 1", days: 5), Ch(id: "c", name: "NPO 2", days: 5)]), ["a", "c"], "build 194: dezelfde zender op twee servers één keer, de open server eerst")
+    eq(sel([Ch(id: "a", name: "NPO 1", days: 0)], [Ch(id: "b", name: "NPO 1", days: 5)]), ["b"], "build 194: open server heeft geen terugkijken, de andere wel")
+    eq(sel([Ch(id: "z", name: "Z", days: 1), Ch(id: "a", name: "A", days: 1)]), ["z", "a"], "build 194: volgorde van de lijst blijft")
+    eq(sel([]), [], "build 194: lege bibliotheek")
+    check(Build194.showsCategory(activeHasCatchup: true, otherCount: 0), "build 194: categorie bij terugkijken op de open server")
+    check(Build194.showsCategory(activeHasCatchup: false, otherCount: 2), "build 194: categorie bij terugkijken op een andere server")
+    check(!Build194.showsCategory(activeHasCatchup: false, otherCount: 0), "build 194: geen categorie zonder terugkijken")
+    eq(Build194.validSelection("⏪", catchupKey: "⏪", shows: false, allKey: "*"), "*", "build 194: weg = terug naar Alle zenders")
+    eq(Build194.validSelection("⏪", catchupKey: "⏪", shows: true, allKey: "*"), "⏪", "build 194: blijft gekozen")
+    eq(Build194.validSelection("Sport", catchupKey: "⏪", shows: false, allKey: "*"), "Sport", "build 194: andere groep blijft")
+}
+
+
 print("\(checks) controles, \(failures) fout")
 exit(failures == 0 ? 0 : 1)
