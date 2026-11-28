@@ -25,7 +25,9 @@
           "ios",
           "ipados",
           "tvos",
-          "macos"
+          "macos",
+          "web",
+          "windows"
         ],
         "nl": "Terugkijken uit de gids: je kunt nu spoelen (balk slepen, 10 seconden terug of vooruit, naar een tijdstip), ook bij zenders waarvan de server geen duur meegeeft",
         "en": "Catch-up from the guide: you can now seek (drag the bar, 10 seconds back or forward, jump to a time), also on channels where the server gives no duration"
