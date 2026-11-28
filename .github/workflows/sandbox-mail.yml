@@ -1,0 +1,68 @@
+name: Sandbox-mail (tijdelijk)
+# Tijdelijk: stuurt de uitleg-mail naar de accounts waarvan de sandbox-Lifetime is ingetrokken. Adressen worden alleen in de
+# database opgezocht en nooit geprint; alleen aantallen in het log. Elke mail komt meteen in mail_log: nooit dubbel.
+on:
+  push:
+    branches: [sandbox-intrekken]
+    paths: ['.github/sandbox-mail.txt']
+permissions:
+  contents: read
+jobs:
+  mailen:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Accounts zoeken en mailen
+        env:
+          TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SMTP_HOST: ${{ secrets.BINGR_SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.BINGR_SMTP_PORT }}
+          SMTP_USER: ${{ secrets.BINGR_SMTP_USER }}
+          SMTP_PASS: ${{ secrets.BINGR_SMTP_PASSWORD }}
+          SMTP_FROM: ${{ secrets.BINGR_SMTP_FROM }}
+        run: |
+          python3 - <<'PY'
+          import os, json, smtplib, ssl, urllib.request
+          from email.message import EmailMessage
+          from email.utils import formataddr, parseaddr, make_msgid, formatdate
+          API = f"https://api.supabase.com/v1/projects/{os.environ['REF']}"
+          H = {"Authorization": "Bearer " + os.environ["TOKEN"]}
+          SUBJECT = "Your Bingr Lifetime from the test version has ended"
+          def note(t, m): print(f"::notice title={t}::{m}")
+          def db(sql):
+              req = urllib.request.Request(API + "/database/query", data=json.dumps({"query": sql}).encode(), headers={**H, "content-type": "application/json"})
+              return json.load(urllib.request.urlopen(req, timeout=60))
+          base = ("from public.account_plans p join auth.users u on u.id = p.user_id where p.plan = 'free' "
+                  "and p.note = 'Apple sandbox ingetrokken 2026-11-28' and u.email is not null")
+          note("ingetrokken (alle)", str(db("select count(*) c " + base)[0]["c"]))
+          note("met bevestigd adres", str(db("select count(*) c " + base + " and u.email_confirmed_at is not null")[0]["c"]))
+          rows = db("select u.email " + base)
+          to = sorted({r["email"].lower() for r in rows if r.get("email")})
+          note("nu te mailen", str(len(to)))
+          body = 'Hello,\n\nYou were using Bingr with a test purchase (TestFlight or an Apple test environment). Because of a mistake on our side, such a test purchase gave permanent Lifetime access until now. That was not intended: a test purchase is not a real payment.\n\nWe have fixed this, so your account is back on Free. Your data, servers and settings have not changed and are kept.\n\nWould you like to keep Premium or Lifetime? You can buy it in the app or at bingr.online/upgrade. Questions, or do you think this is wrong? Just reply to this email or open a ticket at support.bingr.online.\n\nSorry for the inconvenience, and thanks for testing.\n\nLéon\nBingr\n'
+          frm = os.environ["SMTP_FROM"]; name, addr = parseaddr(frm)
+          port = int(os.environ.get("SMTP_PORT") or 465)
+          ok = bad = 0
+          for rcpt in to:
+              esc = rcpt.replace("'", "''")
+              if db(f"select count(*) c from public.mail_log where lower(to_addr) = '{esc}' and subject = '{SUBJECT}' and ok")[0]["c"]: continue
+              m = EmailMessage()
+              m["From"] = formataddr(("Bingr", addr or frm)); m["To"] = rcpt; m["Reply-To"] = "Bingr Support <support@bingr.online>"
+              m["Subject"] = SUBJECT
+              m["Date"] = formatdate(localtime=False); m["Message-ID"] = make_msgid(domain=(addr.split("@")[-1] if "@" in addr else "bingr.online"))
+              m.set_content(body)
+              err = ""
+              try:
+                  ctx = ssl.create_default_context()
+                  if port in (587, 25):
+                      with smtplib.SMTP(os.environ["SMTP_HOST"], port, timeout=40) as sm:
+                          sm.starttls(context=ctx); sm.login(os.environ["SMTP_USER"], os.environ["SMTP_PASS"]); sm.send_message(m)
+                  else:
+                      with smtplib.SMTP_SSL(os.environ["SMTP_HOST"], port, timeout=40, context=ctx) as sm:
+                          sm.login(os.environ["SMTP_USER"], os.environ["SMTP_PASS"]); sm.send_message(m)
+                  ok += 1
+              except Exception as ex:
+                  bad += 1; err = type(ex).__name__[:40]
+              db(f"insert into public.mail_log (source,to_addr,subject,ok,error) values ('beheer','{esc}','{SUBJECT}',{'true' if not err else 'false'},'{err}')")
+          note("verstuurd", str(ok)); note("mislukt", str(bad))
+          PY
