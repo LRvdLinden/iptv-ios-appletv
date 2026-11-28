@@ -1,0 +1,200 @@
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    builtin-precompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/netinet_in-D1URQZJ0SHSLW11GV2WO06SC9.scan
+
+PrecompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/_Builtin_stdatomic-AAXGB5O147IKZRIBAD263Y46Q.scan
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    builtin-precompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/_Builtin_stdatomic-AAXGB5O147IKZRIBAD263Y46Q.scan
+
+PrecompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/_tgmath-449AYHPPCUM1IJTYGF1FKAZ8M.scan
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    builtin-precompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/_tgmath-449AYHPPCUM1IJTYGF1FKAZ8M.scan
+
+PrecompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/_useconds_t-8SRTIHQL5A8KO8IP9NAV3376Z.scan
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    builtin-precompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/_useconds_t-8SRTIHQL5A8KO8IP9NAV3376Z.scan
+
+PrecompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/_Builtin_tgmath-BEIRDOWM13Z4FG7XMXOY2FH8E.scan
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    builtin-precompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/_Builtin_tgmath-BEIRDOWM13Z4FG7XMXOY2FH8E.scan
+
+PrecompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/sys_types-DL7VH8WXBQ5799ACUUZDG1AOV.scan
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    builtin-precompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/sys_types-DL7VH8WXBQ5799ACUUZDG1AOV.scan
+
+PrecompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/_strings-DF5FMPJ5CYSJJCYVZZX8X4W3Q.scan
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    builtin-precompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/_strings-DF5FMPJ5CYSJJCYVZZX8X4W3Q.scan
+
+PrecompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/_time-AJEHO84PXK9U6Y9O0P5TPOII3.scan
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    builtin-precompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/_time-AJEHO84PXK9U6Y9O0P5TPOII3.scan
+
+PrecompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/_string-9592MSNK8UZ6N58SGUZREOF5I.scan
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    builtin-precompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/_string-9592MSNK8UZ6N58SGUZREOF5I.scan
+
+PrecompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/_signal-9FZDZB1HQVG0T0GTKXK1YNJPA.scan
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    builtin-precompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/_signal-9FZDZB1HQVG0T0GTKXK1YNJPA.scan
+
+PrecompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/gethostuuid-CIP33F0IO2OWXFTXEAK1IS15.scan
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    builtin-precompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/gethostuuid-CIP33F0IO2OWXFTXEAK1IS15.scan
+
+PrecompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/sys_select-3Y38JBLVEM84OM0AQSBZLNPMM.scan
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    builtin-precompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/sys_select-3Y38JBLVEM84OM0AQSBZLNPMM.scan
+
+PrecompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/nl_types-UFM71OTG24E4DTODPN2QYLNQ.scan
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    builtin-precompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/nl_types-UFM71OTG24E4DTODPN2QYLNQ.scan
+
+PrecompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/runetype-EEJFDPR10J6DOIZJIA6D0Q7W4.scan
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    builtin-precompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/runetype-EEJFDPR10J6DOIZJIA6D0Q7W4.scan
+
+PrecompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/sys_resource-AJN0ZOJLCVU664G060RGNTFD.scan
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    builtin-precompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/sys_resource-AJN0ZOJLCVU664G060RGNTFD.scan
+
+PrecompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/_ctype-8VRW4L3GUB61ESE4YIU5E77S5.scan
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    builtin-precompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/_ctype-8VRW4L3GUB61ESE4YIU5E77S5.scan
+
+PrecompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/sys_wait-4PGGE63TTU0UYB00JJI5BLG4U.scan
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    builtin-precompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/sys_wait-4PGGE63TTU0UYB00JJI5BLG4U.scan
+
+PrecompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/__wctype-51JZ7E4D4L7NHNCGALJVINJBT.scan
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    builtin-precompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/__wctype-51JZ7E4D4L7NHNCGALJVINJBT.scan
+
+PrecompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/pthread-EA19DVB8YVX6QYHRSMDXQEER2.scan
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    builtin-precompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/pthread-EA19DVB8YVX6QYHRSMDXQEER2.scan
+
+PrecompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/_wctype-7VU56K2YGTXHMU0G6ILJA6X48.scan
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    builtin-precompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/_wctype-7VU56K2YGTXHMU0G6ILJA6X48.scan
+
+PrecompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/_inttypes-FUCPUXJ9396RH2A4PBZ2SIKD.scan
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    builtin-precompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/_inttypes-FUCPUXJ9396RH2A4PBZ2SIKD.scan
+
+PrecompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/alloca-6BJGEL73BCOJLG9IVYMDIJMD9.scan
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    builtin-precompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/alloca-6BJGEL73BCOJLG9IVYMDIJMD9.scan
+
+PrecompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/_Builtin_inttypes-8IC9VPVM2KS8BCPMDC59OX2CL.scan
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    builtin-precompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/_Builtin_inttypes-8IC9VPVM2KS8BCPMDC59OX2CL.scan
+
+PrecompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/_stdlib-283MV7EQWW17OVLR8I6AAHHTJ.scan
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    builtin-precompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/_stdlib-283MV7EQWW17OVLR8I6AAHHTJ.scan
+
+PrecompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/_assert-4AEY0PZWZ7M28VVR4FQSO5KZP.scan
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    builtin-precompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/_assert-4AEY0PZWZ7M28VVR4FQSO5KZP.scan
+
+PrecompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/_stdio-3FJBT44B6EIGYY9LTDMUXADEP.scan
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    builtin-precompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/_stdio-3FJBT44B6EIGYY9LTDMUXADEP.scan
+
+PrecompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/unistd-72T6AJWQKV85EYWM2RZF21RM3.scan
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    builtin-precompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/unistd-72T6AJWQKV85EYWM2RZF21RM3.scan
+
+PrecompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/_wchar-EVIP9WERPWRLMNW3PSSF97WK2.scan
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    builtin-precompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/_wchar-EVIP9WERPWRLMNW3PSSF97WK2.scan
+
+PrecompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/Darwin-3ZPA4LRI8SX9J7YG4M8FYN3DE.scan
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    builtin-precompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/Darwin-3ZPA4LRI8SX9J7YG4M8FYN3DE.scan
+
+PrecompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/ObjectiveC-2QFA485JNSP7L02GE9G0870VF.scan
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    builtin-precompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/ObjectiveC-2QFA485JNSP7L02GE9G0870VF.scan
+
+PrecompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/os_object-BPPC7QSK9DQYPCG34MG3H4615.scan
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    builtin-precompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/os_object-BPPC7QSK9DQYPCG34MG3H4615.scan
+
+PrecompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/os_workgroup-480N0O27PT77B0PORZE78Y03Y.scan
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    builtin-precompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/os_workgroup-480N0O27PT77B0PORZE78Y03Y.scan
+
+PrecompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/Dispatch-APT37IAYOS42NO7UEHNKPZNCF.scan
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    builtin-precompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/Dispatch-APT37IAYOS42NO7UEHNKPZNCF.scan
+
+PrecompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/CoreFoundation-2A4E424MJKWM0HBDA9YWYBBQI.scan
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    builtin-precompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/CoreFoundation-2A4E424MJKWM0HBDA9YWYBBQI.scan
+
+PrecompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/CFNetwork-6OVDK2GMNUVKGF2ISPKO1Q82V.scan
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    builtin-precompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/CFNetwork-6OVDK2GMNUVKGF2ISPKO1Q82V.scan
+
+PrecompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/Security-9RYBSYWKMCEYM9Y8ZWKUNKF1.scan
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    builtin-precompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/Security-9RYBSYWKMCEYM9Y8ZWKUNKF1.scan
+
+PrecompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/Foundation-C4ST89YEMYTSISI5X6JAS659B.scan
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    builtin-precompileModule /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/ExplicitPrecompiledModules/Foundation-C4ST89YEMYTSISI5X6JAS659B.scan
+
+CompileC /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/Objects-normal/arm64/BingrObjC.o /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/ObjC/BingrObjC.m normal arm64 objective-c com.apple.compilers.llvm.clang.1_0.compiler (in target 'BingrTV' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    
+    Using response file: /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/Objects-normal/arm64/e6072d4f65d7061329687fe24e3d63a7-common-args.resp
+    
+    /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -x objective-c -ivfsstatcache /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/SDKStatCaches.noindex/appletvos18.5-22L572-ad3d6c69466c977a8acd494204ad2e24.sdkstatcache -fmessage-length\=0 -fdiagnostics-show-note-include-stack -fmacro-backtrace-limit\=0 -fno-color-diagnostics -fmodules-prune-interval\=86400 -fmodules-prune-after\=345600 -fbuild-session-file\=/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/ModuleCache.noindex/Session.modulevalidation -fmodules-validate-once-per-build-session -Wnon-modular-include-in-framework-module -Werror\=non-modular-include-in-framework-module -Wno-trigraphs -Wno-missing-field-initializers -Wno-missing-prototypes -Werror\=return-type -Wdocumentation -Wunreachable-code -Wquoted-include-in-framework-header -Wno-implicit-atomic-properties -Werror\=deprecated-objc-isa-usage -Wno-objc-interface-ivars -Werror\=objc-root-class -Wno-arc-repeated-use-of-weak -Wimplicit-retain-self -Wduplicate-method-match -Wno-missing-braces -Wparentheses -Wswitch -Wunused-function -Wno-unused-label -Wno-unused-parameter -Wunused-variable -Wunused-value -Wempty-body -Wuninitialized -Wconditional-uninitialized -Wno-unknown-pragmas -Wno-shadow -Wno-four-char-constants -Wno-conversion -Wconstant-conversion -Wint-conversion -Wbool-conversion -Wenum-conversion -Wno-float-conversion -Wnon-literal-null-conversion -Wobjc-literal-conversion -Wshorten-64-to-32 -Wpointer-sign -Wno-newline-eof -Wno-selector -Wno-strict-selector-match -Wundeclared-selector -Wdeprecated-implementations -Wno-implicit-fallthrough -fstrict-aliasing -Wprotocol -Wdeprecated-declarations -Wno-sign-conversion -Winfinite-recursion -Wcomma -Wblock-capture-autoreleasing -Wstrict-prototypes -Wno-semicolon-before-method-body -Wunguarded-availability @/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/Objects-normal/arm64/e6072d4f65d7061329687fe24e3d63a7-common-args.resp -MMD -MT dependencies -MF /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/Objects-normal/arm64/BingrObjC.d --serialize-diagnostics /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/Objects-normal/arm64/BingrObjC.dia -c /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/ObjC/BingrObjC.m -o /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/Objects-normal/arm64/BingrObjC.o
+
+SwiftDriverJobDiscovery normal arm64 Compiling ProfileMenu.swift, ProfileSync.swift, PurchaseFunnel193.swift, PushService.swift, Radio.swift, ReviewPrompt.swift, RichSources.swift, ScreenshotMode.swift, SearchView.swift, Secrets.swift, SettingsView.swift, SmokeMode.swift, SourceCheckView.swift, SourceSync.swift, SplashView.swift, SportLogos.swift, SportLogos178.swift, SportScores179.swift, SportView.swift, StalkerClient.swift, StartDiagnostics.swift, StateSync.swift, StatsView.swift (in target 'BingrTV' from project 'Bingr')
+
+SwiftDriverJobDiscovery normal arm64 Compiling ContinueCovers.swift, ContinueWatching.swift, CrashReporter.swift, CrossServer.swift, CrossServerUI.swift, Detail174Views.swift, Detail191Views.swift, DetailView.swift, DetailsService.swift, DevicesView.swift, Diagnostics147.swift, Diagnostics148.swift, DiagnosticsView.swift, Discover.swift, DiscoverCategories.swift, EPGSearch176.swift, Engines.swift, Entitlements.swift, ExternalDisplay.swift, GuideStills.swift, GuideView.swift, HTTP.swift, HeroBanner.swift (in target 'BingrTV' from project 'Bingr')
+
+SwiftDriver\ Compilation BingrTV normal arm64 com.apple.xcode.tools.swift.compiler (in target 'BingrTV' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    builtin-Swift-Compilation -- /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name BingrTV -Onone -enforce-exclusivity\=checked @/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/Objects-normal/arm64/BingrTV.SwiftFileList -DDEBUG -enable-bare-slash-regex -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode_16.4.app/Contents/Developer/Platforms/AppleTVOS.platform/Developer/SDKs/AppleTVOS18.5.sdk -target arm64-apple-tvos17.0 -g -module-cache-path /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/ModuleCache.noindex -Xfrontend -serialize-debugging-options -enable-testing -swift-version 5 -I /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos -F /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/PackageFrameworks -F /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos -c -j3 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/SDKStatCaches.noindex/appletvos18.5-22L572-ad3d6c69466c977a8acd494204ad2e24.sdkstatcache -output-file-map /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/Objects-normal/arm64/BingrTV-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/Objects-normal/arm64/BingrTV.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/ModuleCache.noindex/Session.modulevalidation -Xcc -I/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/Objects-normal/arm64/BingrTV_const_extract_protocols.json -Xcc -iquote -Xcc /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/BingrTV-generated-files.hmap -Xcc -I/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/BingrTV-own-target-headers.hmap -Xcc -I/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/BingrTV-all-non-framework-target-headers.hmap -Xcc -ivfsoverlay -Xcc /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/Bingr-e9aa12de2840a7ff066ec418bf627a38-VFS-appletvos/all-product-headers.yaml -Xcc -iquote -Xcc /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/BingrTV-project-headers.hmap -Xcc -I/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/include -Xcc -I/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/DerivedSources-normal/arm64 -Xcc -I/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/DerivedSources/arm64 -Xcc -I/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/DerivedSources -Xcc -DDEBUG\=1 -emit-objc-header -emit-objc-header-path /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/Objects-normal/arm64/BingrTV-Swift.h -import-objc-header /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/ObjC/Bingr-Bridging-Header.h -pch-output-dir /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/PrecompiledHeaders -working-directory /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv -experimental-emit-module-separately -disable-cmo
+
+Ld /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/BingrTV.app/BingrTV.debug.dylib normal (in target 'BingrTV' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -Xlinker -reproducible -target arm64-apple-tvos17.0 -dynamiclib -isysroot /Applications/Xcode_16.4.app/Contents/Developer/Platforms/AppleTVOS.platform/Developer/SDKs/AppleTVOS18.5.sdk -O0 -L/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/EagerLinkingTBDs/Debug-appletvos -L/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos -F/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/EagerLinkingTBDs/Debug-appletvos -F/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/PackageFrameworks -F/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos -filelist /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/Objects-normal/arm64/BingrTV.LinkFileList -install_name @rpath/BingrTV.debug.dylib -Xlinker -rpath -Xlinker /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/PackageFrameworks -Xlinker -rpath -Xlinker @executable_path/Frameworks -dead_strip -Xlinker -object_path_lto -Xlinker /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/Objects-normal/arm64/BingrTV_lto.o -rdynamic -Xlinker -no_deduplicate -Xlinker -dependency_info -Xlinker /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/Objects-normal/arm64/BingrTV_dependency_info.dat -fobjc-arc -fobjc-link-runtime -L/Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/appletvos -L/usr/lib/swift -Xlinker -add_ast_path -Xlinker /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/Objects-normal/arm64/BingrTV.swiftmodule -Wl,-no_warn_duplicate_libraries -liconv -lc++ -lxml2 -lz -lbz2 -framework CoreText -framework AVFoundation -framework AudioToolbox -framework OpenGLES -framework VideoToolbox -framework CoreMedia -Xlinker -alias -Xlinker _main -Xlinker ___debug_main_executable_dylib_entry_point -framework TVVLCKit -o /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/BingrTV.app/BingrTV.debug.dylib -Xlinker -add_ast_path -Xlinker /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/vlckit-spm.build/Debug-appletvos/VLCKitSPM.build/Objects-normal/arm64/VLCKitSPM.swiftmodule
+
+ConstructStubExecutorLinkFileList /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/BingrTV-ExecutorLinkFileList-normal-arm64.txt (in target 'BingrTV' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    construct-stub-executor-link-file-list /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/BingrTV.app/BingrTV.debug.dylib /Applications/Xcode_16.4.app/Contents/Developer/Platforms/AppleTVOS.platform/Developer/usr/lib/libPreviewsJITStubExecutor_no_swift_entry_point.a /Applications/Xcode_16.4.app/Contents/Developer/Platforms/AppleTVOS.platform/Developer/usr/lib/libPreviewsJITStubExecutor.a --output /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/BingrTV-ExecutorLinkFileList-normal-arm64.txt
+note: Using stub executor library with Swift entry point. (in target 'BingrTV' from project 'Bingr')
+
+Ld /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/BingrTV.app/BingrTV normal (in target 'BingrTV' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -Xlinker -reproducible -target arm64-apple-tvos17.0 -isysroot /Applications/Xcode_16.4.app/Contents/Developer/Platforms/AppleTVOS.platform/Developer/SDKs/AppleTVOS18.5.sdk -O0 -L/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos -F/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/PackageFrameworks -F/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos -Xlinker -rpath -Xlinker @executable_path -Xlinker -rpath -Xlinker /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/PackageFrameworks -Xlinker -rpath -Xlinker @executable_path/Frameworks -rdynamic -Xlinker -no_deduplicate -e ___debug_blank_executor_main -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __debug_dylib -Xlinker /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/BingrTV-DebugDylibPath-normal-arm64.txt -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __debug_instlnm -Xlinker /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/BingrTV-DebugDylibInstallName-normal-arm64.txt -Xlinker -filelist -Xlinker /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/BingrTV-ExecutorLinkFileList-normal-arm64.txt /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/BingrTV.app/BingrTV.debug.dylib -o /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/BingrTV.app/BingrTV
+
+ExtractAppIntentsMetadata (in target 'BingrTV' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/appintentsmetadataprocessor --toolchain-dir /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --module-name BingrTV --sdk-root /Applications/Xcode_16.4.app/Contents/Developer/Platforms/AppleTVOS.platform/Developer/SDKs/AppleTVOS18.5.sdk --xcode-version 16F6 --platform-family tvOS --deployment-target 17.0 --bundle-identifier nl.lrvdlinden.bingr --output /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/BingrTV.app --target-triple arm64-apple-tvos17.0 --binary-file /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/BingrTV.app/BingrTV --dependency-file /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/Objects-normal/arm64/BingrTV_dependency_info.dat --stringsdata-file /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/Objects-normal/arm64/ExtractedAppShortcutsMetadata.stringsdata --source-file-list /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/Objects-normal/arm64/BingrTV.SwiftFileList --metadata-file-list /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/BingrTV.DependencyMetadataFileList --static-metadata-file-list /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/BingrTV.DependencyStaticMetadataFileList --swift-const-vals-list /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/Objects-normal/arm64/BingrTV.SwiftConstValuesFileList --compile-time-extraction --deployment-aware-processing --validate-assistant-intents --no-app-shortcuts-localization
+2026-11-28 19:13:42.183 appintentsmetadataprocessor[12019:35488] Starting appintentsmetadataprocessor export
+2026-11-28 19:13:42.186 appintentsmetadataprocessor[12019:35488] warning: Metadata extraction skipped. No AppIntents.framework dependency found.
+
+CopySwiftLibs /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/BingrTV.app (in target 'BingrTV' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    builtin-swiftStdLibTool --copy --verbose --scan-executable /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/BingrTV.app/BingrTV.debug.dylib --scan-folder /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/BingrTV.app/Frameworks --scan-folder /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/BingrTV.app/PlugIns --scan-folder /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/BingrTV.app/SystemExtensions --scan-folder /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/BingrTV.app/Extensions --platform appletvos --toolchain /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --destination /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/BingrTV.app/Frameworks --strip-bitcode --strip-bitcode-tool /Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/bitcode_strip --emit-dependency-info /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Intermediates.noindex/Bingr.build/Debug-appletvos/BingrTV.build/SwiftStdLibToolInputDependencies.dep --filter-for-swift-os
+Ignoring --strip-bitcode because --sign was not passed
+
+RegisterExecutionPolicyException /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/BingrTV.app (in target 'BingrTV' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    builtin-RegisterExecutionPolicyException /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/BingrTV.app
+
+Validate /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/BingrTV.app (in target 'BingrTV' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    builtin-validationUtility /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/BingrTV.app -infoplist-subpath Info.plist
+
+Touch /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/BingrTV.app (in target 'BingrTV' from project 'Bingr')
+    cd /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv
+    /usr/bin/touch -c /Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/build/Build/Products/Debug-appletvos/BingrTV.app
+
+** BUILD SUCCEEDED **
+

@@ -1,0 +1,33 @@
+commit: 7e9163001e33dcc25cf8af22d7cfa08739dfa55c
+ios: success
+tvos: success
+macos: success
+selftest: success
+
+=== selftest ===
+build 148: testlijsten [13, 4, 3] MB
+build 148: movie 37000: 377 ms in 25 stappen, langste stap 54 ms
+build 148: live 12000: 94 ms in 8 stappen, langste stap 12 ms
+build 148: series 9000: 67 ms in 6 stappen, langste stap 15 ms
+build 148: geheugen tijdens inlezen: in één keer +29 MB, in stukken +14 MB; totaal in stukken 540 ms
+build 149: 100k tijdstempels lezen 4 ms (oud, opmaker per item, geschat 36542 ms); 100k schrijven 48 ms
+build 149: bewaren 123k/30k/12k (20 MB): in één keer +69 MB in 1195 ms, in stukken +0 MB in 934 ms
+build 149: 120k titels vouwen+filteren: overbrugd 1200 ms, native 1329 ms; CatalogNorm.title 120k (geschat) 4706 ms
+build 149: zoeken in 123k titels (vooraf berekende sleutels): 480 ms, 59264 treffers
+build 150: 2000 categorienamen opschonen 111 ms
+build 151: 123k/30k/12k, 80% verborgen: vóór piek +78 MB, vast +77 MB (1637 ms); na piek +75 MB, vast +23 MB (1553 ms), index 15.3 MB als JSON
+build 153: 20000 zendernamen opschonen 736 ms
+172: 5.000 groepen in 165 ms
+sport: 50.000 programma's in 10198 ms (33333 wedstrijden)
+4061 controles, 0 fout
+
+=== iOS errors ===
+/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/Player/Radio.swift:465:27: warning: 'stringValue' was deprecated in iOS 16.0: Use load(.stringValue) instead
+/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/Storage/Keychain.swift:161:14: warning: instance method 'lock' is unavailable from asynchronous contexts; Use async-safe scoped locking instead; this is an error in the Swift 6 language mode
+/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/Storage/Keychain.swift:161:57: warning: instance method 'unlock' is unavailable from asynchronous contexts; Use async-safe scoped locking instead; this is an error in the Swift 6 language mode
+/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/Storage/Keychain.swift:176:131: warning: instance method 'unlock' is unavailable from asynchronous contexts; Use async-safe scoped locking instead; this is an error in the Swift 6 language mode
+/Users/runner/work/iptv-ios-appletv/iptv-ios-appletv/Shared/Storage/Keychain.swift:176:14: warning: instance method 'lock' is unavailable from asynchronous contexts; Use async-safe scoped locking instead; this is an error in the Swift 6 language mode
+
+=== tvOS errors ===
+
+=== macOS errors ===
