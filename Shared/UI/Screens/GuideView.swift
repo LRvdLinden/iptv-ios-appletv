@@ -154,8 +154,7 @@ struct GuideGridView: View {
     func openProgram(_ c: Channel, _ p: EPGProgram) {
         if case .past(replay: true) = GuideArchive178.state(p, c, Date()), let u = playlists.catchupURL(c, p) {
             preview.stop()
-            app.play(PlayableItem(id: "\(c.id)-cu-\(Int(p.start.timeIntervalSince1970))", title: p.title,
-                                  subtitle: c.name, url: u, type: .movie, artwork: c.logo))
+            app.play(PlayableItem.replay(channel: c, program: p, url: u))
             return
         }
         onProgram(c, p)
@@ -165,8 +164,7 @@ struct GuideGridView: View {
     func fromStart(_ c: Channel, _ p: EPGProgram) -> (() -> Void)? {
         guard c.catchupDays > 0, let u = playlists.catchupURL(c, p) else { return nil }
         return {
-            app.play(PlayableItem(id: "\(c.id)-cu-\(Int(p.start.timeIntervalSince1970))", title: p.title,
-                                  subtitle: c.name, url: u, type: .movie, artwork: c.logo))
+            app.play(PlayableItem.replay(channel: c, program: p, url: u))
         }
     }
 
@@ -1048,8 +1046,7 @@ struct ProgramSheet: View {
                 } else if canCatchup, let u = playlists.catchupURL(channel, program) {
                     NetflixButton(title: L("Watch from the start"), icon: "clock.arrow.circlepath", kind: .play) {
                         dismiss()
-                        app.play(PlayableItem(id: "\(channel.id)-cu-\(Int(program.start.timeIntervalSince1970))", title: program.title,
-                                              subtitle: channel.name, url: u, type: .movie, artwork: channel.logo))
+                        app.play(PlayableItem.replay(channel: channel, program: program, url: u))
                     }
                 } else if program.start > Date() {
                     let on = store.hasReminder(reminderID)
@@ -1063,8 +1060,7 @@ struct ProgramSheet: View {
                 if program.isNow, channel.catchupDays > 0, let u = playlists.catchupURL(channel, program) {
                     NetflixButton(title: L("From the start"), icon: "backward.end.fill", kind: .secondary) {
                         dismiss()
-                        app.play(PlayableItem(id: "\(channel.id)-cu-\(Int(program.start.timeIntervalSince1970))", title: program.title,
-                                              subtitle: channel.name, url: u, type: .movie, artwork: channel.logo))
+                        app.play(PlayableItem.replay(channel: channel, program: program, url: u))
                     }
                 }
             }

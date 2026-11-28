@@ -3691,5 +3691,92 @@ do {
 }
 
 
+// MARK: Build 194: categorie Terugkijken in Live TV
+do {
+    struct Ch { let id: String; let name: String; let days: Int }
+    func sel(_ a: [Ch], _ o: [Ch] = []) -> [String] {
+        Build194.select(active: a, others: o, days: { $0.days }, id: { $0.id }, identity: { $0.name.lowercased() }).map(\.id)
+    }
+    eq(sel([Ch(id: "1", name: "NPO 1", days: 3), Ch(id: "2", name: "RTL 4 UHD", days: 0), Ch(id: "3", name: "RTL 4", days: 5)]), ["1", "3"], "build 194: alleen zenders met terugkijken")
+    eq(sel([Ch(id: "1", name: "NPO 1", days: 0)]), [], "build 194: geen terugkijken = lege lijst")
+    eq(sel([Ch(id: "1", name: "NPO 1", days: 3), Ch(id: "1", name: "NPO 1 kopie", days: 3)]), ["1"], "build 194: dubbele id één keer")
+    eq(sel([Ch(id: "a", name: "NPO 1", days: 3)], [Ch(id: "b", name: "NPO 1", days: 5), Ch(id: "c", name: "NPO 2", days: 5)]), ["a", "c"], "build 194: dezelfde zender op twee servers één keer, de open server eerst")
+    eq(sel([Ch(id: "a", name: "NPO 1", days: 0)], [Ch(id: "b", name: "NPO 1", days: 5)]), ["b"], "build 194: open server heeft geen terugkijken, de andere wel")
+    eq(sel([Ch(id: "z", name: "Z", days: 1), Ch(id: "a", name: "A", days: 1)]), ["z", "a"], "build 194: volgorde van de lijst blijft")
+    eq(sel([]), [], "build 194: lege bibliotheek")
+    check(Build194.showsCategory(activeHasCatchup: true, otherCount: 0), "build 194: categorie bij terugkijken op de open server")
+    check(Build194.showsCategory(activeHasCatchup: false, otherCount: 2), "build 194: categorie bij terugkijken op een andere server")
+    check(!Build194.showsCategory(activeHasCatchup: false, otherCount: 0), "build 194: geen categorie zonder terugkijken")
+    eq(Build194.validSelection("⏪", catchupKey: "⏪", shows: false, allKey: "*"), "*", "build 194: weg = terug naar Alle zenders")
+    eq(Build194.validSelection("⏪", catchupKey: "⏪", shows: true, allKey: "*"), "⏪", "build 194: blijft gekozen")
+    eq(Build194.validSelection("Sport", catchupKey: "⏪", shows: false, allKey: "*"), "Sport", "build 194: andere groep blijft")
+}
+
+
+// MARK: Build 194: spoelen bij terugkijken uit de gids
+do {
+    let st = 1_000_000.0, en = st + 3600   // programma van een uur
+    let past = en + 600, running = st + 1200
+    eq(Replay194.duration(start: st, end: en), 3600, "build 194 spoelen: duur uit het programma")
+    eq(Replay194.duration(start: en, end: st), 0, "build 194 spoelen: negatieve duur = 0")
+    eq(Replay194.limit(start: st, end: en, now: past), 3600, "build 194 spoelen: afgelopen programma tot het einde")
+    eq(Replay194.limit(start: st, end: en, now: running), 1197, "build 194 spoelen: lopend programma niet in de toekomst")
+    eq(Replay194.limit(start: st, end: en, now: st - 100), 0, "build 194 spoelen: nog niet begonnen = 0")
+    eq(Replay194.target(current: 100, delta: 10, limit: 3600), 110, "build 194 spoelen: +10 s")
+    eq(Replay194.target(current: 5, delta: -10, limit: 3600), 0, "build 194 spoelen: niet voor het begin")
+    eq(Replay194.target(current: 3595, delta: 30, limit: 3600), 3600, "build 194 spoelen: niet voorbij de grens")
+    eq(Replay194.target(current: 1190, delta: 60, limit: 1197), 1197, "build 194 spoelen: lopend programma begrensd")
+    eq(Replay194.target(fraction: 0.5, duration: 3600, limit: 3600), 1800, "build 194 spoelen: balk op de helft")
+    eq(Replay194.target(fraction: 1.5, duration: 3600, limit: 3600), 3600, "build 194 spoelen: balk voorbij 1 wordt 1")
+    eq(Replay194.target(fraction: -1, duration: 3600, limit: 3600), 0, "build 194 spoelen: balk onder 0 wordt 0")
+    eq(Replay194.target(fraction: 0.9, duration: 3600, limit: 1197), 1197, "build 194 spoelen: balk begrensd bij een lopend programma")
+    check(Replay194.finishes(raw: 3598, start: st, end: en, now: past), "build 194 spoelen: voorbij het einde = afronden")
+    check(!Replay194.finishes(raw: 3000, start: st, end: en, now: past), "build 194 spoelen: midden in = niet afronden")
+    check(!Replay194.finishes(raw: 3598, start: st, end: en, now: running), "build 194 spoelen: lopend programma rondt niet af")
+    check(!Replay194.finishes(raw: 100, start: en, end: st, now: past), "build 194 spoelen: lege duur rondt niet af")
+    eq(Replay194.streamStart(programStart: st, offset: 600), st + 600, "build 194 spoelen: stream begint bij start + offset")
+    eq(Replay194.streamStart(programStart: st, offset: -5), st, "build 194 spoelen: negatieve offset = begin")
+    let d1 = Replay194.display(base: 600, engineTime: 30, duration: 3600)
+    eq(d1.time, 630, "build 194 spoelen: tijd = begin stream + tijd in de stream")
+    eq(d1.fraction, 630.0 / 3600.0, "build 194 spoelen: positie als deel van het programma")
+    eq(Replay194.display(base: 3590, engineTime: 100, duration: 3600).fraction, 1, "build 194 spoelen: positie nooit boven 1")
+    eq(Replay194.display(base: 0, engineTime: -3, duration: 3600).time, 0, "build 194 spoelen: tijd nooit onder 0")
+    eq(Replay194.display(base: 0, engineTime: 10, duration: 0).fraction, 0, "build 194 spoelen: zonder duur positie 0")
+}
+
+
+// MARK: Build 194: tweeling-koppeling (terugkijken via een gelijke zender op dezelfde server)
+do {
+    typealias T = Build194.TwinInput
+    func tw(_ x: [T]) -> [String: String] { Dictionary(Build194.twins(x).map { ($0.id, $0.twin) }, uniquingKeysWith: { a, _ in a }) }
+    // naam normaliseren
+    eq(Build194.normalizedName("RTL 4 UHD"), "rtl4", "build 194: UHD weg")
+    eq(Build194.normalizedName("NL: RTL 4 HD [Catch-up]"), "nlrtl4", "build 194: tag catch-up weg, prefix blijft")
+    eq(Build194.normalizedName("RTL 4 (Terugkijken) FHD"), "rtl4", "build 194: haakjes met terugkijken weg")
+    eq(Build194.normalizedName("RTL 4 | Replay"), "rtl4", "build 194: deel na | met replay weg")
+    eq(Build194.normalizedName("Één HD"), "een", "build 194: accenten weg")
+    eq(Build194.normalizedName("Discovery [Sport]"), "discoverysport", "build 194: andere tag blijft")
+    eq(Build194.normalizedName("NPO 1 4K HEVC"), "npo1", "build 194: 4k en hevc weg")
+    // gids-id
+    eq(tw([T(id: "a", name: "RTL 4 UHD", epg: "RTL4.nl", days: 0, server: "s"), T(id: "b", name: "RTL 4", epg: " rtl4.NL ", days: 3, server: "s")]), ["a": "b"], "build 194: match op gids-id (hoofdletters/spaties)")
+    eq(tw([T(id: "a", name: "RTL 4 UHD", epg: "RTL4.nl", days: 0, server: "s"), T(id: "b", name: "RTL 4", epg: "RTL4.nl", days: 3, server: "s"), T(id: "c", name: "RTL 4 Extra", epg: "RTL4.nl", days: 3, server: "s")]), [:], "build 194: twee kandidaten met hetzelfde gids-id = geen match")
+    eq(tw([T(id: "a", name: "RTL 4", epg: "x", days: 0, server: "s"), T(id: "b", name: "RTL 4", epg: "y", days: 3, server: "s"), T(id: "c", name: "RTL 4 [Catch-up]", epg: "x", days: 3, server: "s"), T(id: "d", name: "RTL 4 HD", epg: "x", days: 2, server: "s")]), [:], "build 194: gids-id met twee kandidaten valt niet door naar de naam")
+    // naam
+    eq(tw([T(id: "a", name: "RTL 4 UHD", epg: nil, days: 0, server: "s"), T(id: "b", name: "RTL 4 [Catch-up]", epg: nil, days: 3, server: "s")]), ["a": "b"], "build 194: match op naam")
+    eq(tw([T(id: "a", name: "RTL 4 UHD", epg: "geen", days: 0, server: "s"), T(id: "b", name: "RTL 4 HD", epg: "ander", days: 3, server: "s")]), ["a": "b"], "build 194: ander gids-id zonder kandidaat = op naam")
+    eq(tw([T(id: "a", name: "RTL 4 UHD", epg: nil, days: 0, server: "s"), T(id: "b", name: "RTL 4 HD", epg: nil, days: 3, server: "s"), T(id: "c", name: "RTL 4 FHD", epg: nil, days: 5, server: "s")]), [:], "build 194: twee kandidaten met dezelfde naam = geen match")
+    eq(tw([T(id: "a", name: "HD", epg: nil, days: 0, server: "s"), T(id: "b", name: "SD", epg: nil, days: 3, server: "s")]), [:], "build 194: lege naam = geen match")
+    eq(tw([T(id: "a", name: "A1", epg: nil, days: 0, server: "s"), T(id: "b", name: "A1 HD", epg: nil, days: 3, server: "s")]), [:], "build 194: naam korter dan 3 tekens = geen match")
+    eq(tw([T(id: "a", name: "RTL 4", epg: nil, days: 0, server: "s1"), T(id: "b", name: "RTL 4", epg: nil, days: 3, server: "s2")]), [:], "build 194: andere server = geen match")
+    eq(tw([T(id: "a", name: "RTL 4", epg: "x", days: 0, server: "s1"), T(id: "b", name: "RTL 4", epg: "x", days: 3, server: "s2")]), [:], "build 194: andere server met zelfde gids-id = geen match")
+    eq(tw([T(id: "a", name: "RTL 4", epg: nil, days: 2, server: "s"), T(id: "b", name: "RTL 4 HD", epg: nil, days: 3, server: "s")]), [:], "build 194: zender met eigen terugkijken gebruikt zichzelf")
+    eq(tw([T(id: "a", name: "RTL 4 UHD", epg: nil, days: 0, server: "s"), T(id: "b", name: "RTL 4 FHD", epg: nil, days: 0, server: "s"), T(id: "t", name: "RTL 4", epg: nil, days: 3, server: "s")]), ["a": "t", "b": "t"], "build 194: twee zenders delen één tweeling")
+    eq(tw([T(id: "a", name: "RTL 4", epg: nil, days: 0, server: "s"), T(id: "a", name: "RTL 4", epg: nil, days: 3, server: "s")]), [:], "build 194: dubbel id telt één keer")
+    eq(tw([]), [:], "build 194: leeg")
+    eq(tw([T(id: "a", name: "RTL 4", epg: nil, days: 0, server: "s")]), [:], "build 194: geen kandidaten")
+    eq(tw([T(id: "a", name: "RTL 5", epg: nil, days: 0, server: "s"), T(id: "b", name: "RTL 4", epg: nil, days: 3, server: "s")]), [:], "build 194: andere zender (RTL 5 vs RTL 4)")
+}
+
+
 print("\(checks) controles, \(failures) fout")
 exit(failures == 0 ? 0 : 1)

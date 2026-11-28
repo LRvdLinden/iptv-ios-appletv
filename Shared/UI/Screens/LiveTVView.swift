@@ -37,6 +37,9 @@ struct LiveTVView: View {
     @State private var guideNoticeClosed = false
     /// Build 166 (Apple TV): de categoriekeuze van de gids open
     @State private var pickingGroup = false
+    /// Build 194: zijn er zenders met terugkijken (open server of een andere) en die van de andere servers
+    @State private var hasCatchup = false
+    @State private var catchupForeign: [Channel] = []
 
     enum Mode: String { case list, grid }
     /// Build 165: altijd de gids als start (behalve het screenshot "live", dat de lijst laat zien)
@@ -44,12 +47,14 @@ struct LiveTVView: View {
     struct ProgramTarget: Identifiable { var id: String { channel.id + p.id }; let channel: Channel; let p: EPGProgram }
 
     static let favKey = "★", recentKey = "◷", allKey = "*", eventsKey = "⚡", collectionPrefix = "▤"
+    /// Build 194: alle zenders waarvan je kunt terugkijken (over alle servers)
+    static let catchupKey = "⏪"
     private var lib: Library { playlists.library }
     private var pid: UUID { playlists.source?.id ?? UUID() }
 
     private var groups: [String] {
         // uniek: een groep die toevallig zo heet als een vaste sleutel gaf een dubbele id in de ForEach
-        orderedUnique([Self.allKey, Self.favKey, Self.recentKey] + (events.isEmpty ? [] : [Self.eventsKey])
+        orderedUnique([Self.allKey, Self.favKey, Self.recentKey] + (hasCatchup ? [Self.catchupKey] : []) + (events.isEmpty ? [] : [Self.eventsKey])
             + channelCollections.map { Self.collectionPrefix + $0.id } + channelGroups)
     }
 
@@ -74,6 +79,7 @@ struct LiveTVView: View {
         case Self.recentKey: return "◷ " + L("Recent")
         case Self.allKey: return L("All channels")
         case Self.eventsKey: return "⚡ " + L("Events")
+        case Self.catchupKey: return "⏪ " + L("Catch-up")
         default:
             if let c = collection(for: g) { return "▤ " + c.name }
             return g
@@ -129,6 +135,8 @@ struct LiveTVView: View {
                 .compactMap { cross.channel(forKey: $0) }
         case Self.recentKey:
             return store.recentChannels.filter(other).compactMap { cross.channel(forKey: $0) }
+        case Self.catchupKey:
+            return catchupForeign   // build 194: zenders met terugkijken van andere servers
         default:
             // build 129: zenders van andere servers in een collectie (handmatig en slim)
             guard let c = collection(for: group) else { return [] }
@@ -174,12 +182,13 @@ struct LiveTVView: View {
             let chans = await CollectionCache.shared.channels(c, lib: l, version: key.version, source: key.source)
             result = await Task.detached(priority: .userInitiated) { uniqueByID(chans) }.value
         } else {
-            enum Pick { case favorites(Set<String>), recent([String]), group(String), all, none }
+            enum Pick { case favorites(Set<String>), recent([String]), group(String), all, catchup, none }
             let pick: Pick
             switch key.group {
             case Self.favKey: pick = .favorites(key.favorites)
             case Self.recentKey: pick = .recent(key.recent)
             case Self.allKey: pick = .all
+            case Self.catchupKey: pick = .catchup
             case Self.eventsKey: pick = .none   // staat al klaar (zie `visibleChannels`)
             default: pick = .group(key.group)
             }
@@ -192,6 +201,7 @@ struct LiveTVView: View {
                     return uniqueByID(recent.compactMap { byID[$0] })
                 case .group(let g): return uniqueByID(l.channels.filter { $0.group == g })
                 case .all: return uniqueByID(l.channels)
+                case .catchup: return uniqueByID(l.channels.filter { $0.catchupDays > 0 })
                 case .none: return []
                 }
             }.value
@@ -204,6 +214,10 @@ struct LiveTVView: View {
                 let byKey = Dictionary((result.map { (pid.uuidString + "|" + $0.id, $0) } + key.foreign.map { (($0.sourceID ?? pid).uuidString + "|" + $0.id, $0) })
                                         .map { (CatalogKey.normalize($0.0), $0.1) }, uniquingKeysWith: { a, _ in a })
                 result2 = store.recentChannels.compactMap { byKey[CatalogKey.normalize($0)] }
+            } else if key.group == Self.catchupKey {
+                // build 194: terugkijken van alle servers: de open server eerst, dezelfde zender op twee servers één keer
+                result2 = Build194.select(active: result, others: key.foreign, days: { $0.catchupDays }, id: { $0.id },
+                                          identity: { CrossServer.identity($0) })
             } else {
                 result2 = result + key.foreign
             }
@@ -278,6 +292,14 @@ struct LiveTVView: View {
             if groups != channelGroups { channelGroups = groups }
             events = found
             if group == Self.eventsKey && found.isEmpty { group = Self.allKey }
+            // build 194: Terugkijken alleen in de keuze als er zenders met terugkijken zijn (open server of een andere)
+            let activeHas = await Task.detached(priority: .utility) { chans.contains { $0.catchupDays > 0 } }.value
+            let other = await cross.catchupChannelsOfOtherServers()
+            guard !Task.isCancelled else { return }
+            if other != catchupForeign { catchupForeign = other }
+            let shows = Build194.showsCategory(activeHasCatchup: activeHas, otherCount: other.count)
+            if shows != hasCatchup { hasCatchup = shows }
+            group = Build194.validSelection(group, catchupKey: Self.catchupKey, shows: shows, allKey: Self.allKey)
             groupsVersion = v
         }
         .task(id: listKey) { await rebuildList(listKey) }
@@ -382,7 +404,7 @@ struct LiveTVView: View {
     /// Naam in de categoriekeuze: vaste lijsten zoals in de zijkolom, categorieën van de server opgeschoond
     private func pickerTitle(_ g: String) -> String {
         switch g {
-        case Self.favKey, Self.recentKey, Self.allKey, Self.eventsKey: return title(g)
+        case Self.favKey, Self.recentKey, Self.allKey, Self.eventsKey, Self.catchupKey: return title(g)
         default:
             if collection(for: g) != nil { return title(g) }
             let c = CategoryName.clean(g)
@@ -545,7 +567,7 @@ struct LiveTVView: View {
 
     private func play(_ c: Channel) {
         // build 128: een zender van een andere server: via die server; nog niet gevonden → zoeken, anders de melding
-        let list: CrossServer.ListKind = group == Self.recentKey ? .recentChannels
+        let list: CrossServer.ListKind = group == Self.recentKey || group == Self.catchupKey ? .recentChannels
             : (collection(for: group).map { CrossServer.ListKind.collection($0.id) } ?? .favorites)
         CrossServerOpen.channel(c, list: list, onChannel: { x in
             store.pushRecentChannel(x.sourceID ?? pid, x.id)

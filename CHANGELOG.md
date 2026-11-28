@@ -4,6 +4,19 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.1.3 · Build 194
+_28 november 2026_
+
+### Alle apps en de website
+
+**Nieuw**
+
+- Live TV heeft nu een eigen categorie Terugkijken met alle zenders waarvan je kunt terugkijken. Heeft een zender zelf geen terugkijken, maar een gelijke zender op dezelfde server wel, dan kijk je via die zender terug (klokje en Vanaf het begin kijken in alle categorieën).
+
+**Opgelost**
+
+- Terugkijken uit de gids: je kunt nu spoelen (balk slepen, 10 seconden terug of vooruit, naar een tijdstip), ook bij zenders waarvan de server geen duur meegeeft
+
 ## Versie 1.1.2 · Build 193
 _28 november 2026_
 

@@ -248,6 +248,7 @@ final class PlaylistService: ObservableObject {
             // build 145: gestopt (wissel van profiel of server, time-out): niets half bijgewerkts wegschrijven
             try Task.checkCancellation()
             if let fetchStatus { FetchLog.shared.note(s.id, fetchStatus) } else { FetchLog.shared.noteLibrary(s.id, lib) }
+            lib = lib.linkingCatchupTwins()   // build 194: terugkijken via een gelijke zender
             CatchupLog178.note(s.id, lib.channels)   // build 178
             if source?.id == s.id {
                 // build 148: filteren (indexeren) op de achtergrond, op de hoofdthread alleen het eindresultaat
@@ -535,7 +536,8 @@ final class PlaylistService: ObservableObject {
     /// Build 148: nieuwe ongefilterde lijst. De oude wordt buiten de hoofdthread vrijgegeven (tienduizenden titels en
     /// de gids opruimen kostte seconden op de hoofdthread); het filteren loopt op de achtergrond (`Task`).
     @discardableResult
-    private func setRaw(_ lib: Library) -> Task<ApplyTiming, Never>? {
+    private func setRaw(_ rawLib: Library) -> Task<ApplyTiming, Never>? {
+        let lib = rawLib.linkingCatchupTwins()   // build 194 (ook voor een bewaarde catalogus van vóór build 194)
         if !lib.isEmptyLibrary { StartDiagnostics.shared.mark("catalog") }   // build 143
         if let id = source?.id, !lib.channels.isEmpty { CatchupLog178.note(id, lib.channels) }   // build 178
         return MainTasks.shared.run("apply") {
@@ -1118,8 +1120,9 @@ final class PlaylistService: ObservableObject {
 
     /// Build 178: terugkijk-URL voor een zender van deze server: Xtream (tijdzone van de server) of M3U (catchup-type en
     /// -source, of een Xtream-achtige stream-URL). Met de terugkijk-correctie van de zender (build 51).
-    private static func catchupURL(_ s: PlaylistSource, _ ch: Channel, start: Date, end: Date) -> URL? {
-        let shift = TimeInterval((s.catchupOffsets?[ch.id] ?? 0) * 60)
+    private static func catchupURL(_ s: PlaylistSource, _ original: Channel, start: Date, end: Date) -> URL? {
+        let shift = TimeInterval((s.catchupOffsets?[original.id] ?? 0) * 60)
+        let ch = original.catchupTarget   // build 194: heeft de zender zelf geen terugkijken, dan via zijn tweeling
         let from = start.addingTimeInterval(shift), to = end.addingTimeInterval(shift)
         switch s.kind {
         case .xtream:
@@ -1142,9 +1145,10 @@ final class PlaylistService: ObservableObject {
     func archiveEPG(_ c: Channel) async -> [EPGProgram] {
         let sid = c.sourceID ?? source?.id
         guard let sid, let s = sid == source?.id ? source : self.source(for: sid), s.kind == .xtream else { return [] }
-        let key = sid.uuidString + "|" + c.id
+        let target = c.catchupTarget   // build 194: het archief van de tweeling (gids-id en naam blijven van deze zender)
+        let key = sid.uuidString + "|" + target.id
         if let hit = archiveCache[key], Date().timeIntervalSince(hit.at) < 1200 { return hit.programs }
-        let list = await XtreamClient(source: s, password: Keychain.get(s.passwordKey) ?? "").archiveEPG(channel: c)
+        let list = await XtreamClient(source: s, password: Keychain.get(s.passwordKey) ?? "").archiveEPG(channel: target)
         if archiveCache.count > 300 { archiveCache.removeAll() }
         archiveCache[key] = (Date(), list)
         return list
@@ -1537,7 +1541,7 @@ extension PlaylistService {
     nonisolated static func readAnyCatalog(_ s: PlaylistSource) -> (Library, Date)? {
         for url in catalogFiles(s) {
             guard let d = try? Data(contentsOf: url.0), let lib = try? JSONDecoder().decode(Library.self, from: d) else { continue }
-            return (lib, url.1)
+            return (lib.linkingCatchupTwins(), url.1)   // build 194
         }
         return nil
     }
@@ -1594,14 +1598,14 @@ enum CatchupLog178 {
     static func note(_ server: UUID, _ channels: [Channel]) {
         let s = Build178.summary(channels.map(\.catchupDays))
         var all = UserDefaults.standard.dictionary(forKey: key) as? [String: [Int]] ?? [:]
-        let v = [s.channels, s.days]
+        let v = [s.channels, s.days, channels.reduce(0) { $0 + ($1.catchupVia != nil ? 1 : 0) }]   // build 194: + via tweeling
         guard all[server.uuidString] != v else { return }
         all[server.uuidString] = v
         UserDefaults.standard.set(all, forKey: key)
     }
 
-    static func get(_ server: UUID) -> (channels: Int, days: Int)? {
-        guard let v = (UserDefaults.standard.dictionary(forKey: key) as? [String: [Int]])?[server.uuidString], v.count == 2 else { return nil }
-        return (v[0], v[1])
+    static func get(_ server: UUID) -> (channels: Int, days: Int, twins: Int)? {
+        guard let v = (UserDefaults.standard.dictionary(forKey: key) as? [String: [Int]])?[server.uuidString], v.count >= 2 else { return nil }
+        return (v[0], v[1], v.count > 2 ? v[2] : 0)
     }
 }
