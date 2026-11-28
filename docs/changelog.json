@@ -31,6 +31,30 @@
         ],
         "nl": "Betalen op bingr.online en in de webspeler: de site meldt anoniem of het betaalscherm is getoond en of een aankoop is gestart, gelukt, mislukt of geannuleerd (alleen de stap en een korte foutcode, geen persoonsgegevens). Zo zien we sneller waar afrekenen misgaat.",
         "en": "Paying on bingr.online and in the web player: the site reports anonymously whether the payment screen was shown and whether a purchase was started, completed, failed or cancelled (only the step and a short error code, no personal data). This helps us spot checkout problems sooner."
+      },
+      {
+        "type": "fixed",
+        "platforms": [
+          "server"
+        ],
+        "nl": "Een testaankoop van Lifetime in de Apple-testomgeving (TestFlight) geeft geen blijvend Lifetime meer. Zo'n aankoop geeft nog eenmalig 3 dagen toegang; alleen aangewezen testaccounts houden volledige toegang. Echte aankopen veranderen niet.",
+        "en": "A test purchase of Lifetime in Apple's test environment (TestFlight) no longer gives permanent Lifetime. Such a purchase gives 3 days of access once; only designated test accounts keep full access. Real purchases are unchanged."
+      },
+      {
+        "type": "new",
+        "platforms": [
+          "server"
+        ],
+        "nl": "Betaalstappen worden anoniem geteld: betaalscherm getoond, aankoop gestart, gelukt, mislukt of afgebroken, en herstellen. Alleen aantallen per dag en platform, zonder account, apparaat of IP-adres.",
+        "en": "Payment steps are counted anonymously: paywall shown, purchase started, succeeded, failed or cancelled, and restore. Only counts per day and platform, with no account, device or IP address."
+      },
+      {
+        "type": "fixed",
+        "platforms": [
+          "server"
+        ],
+        "nl": "Na het afsluiten van een abonnement zonder account vult de pagina bingr.online/upgrade/klaar het e-mailadres weer vooraf in.",
+        "en": "After taking out a subscription without an account, the page bingr.online/upgrade/klaar pre-fills the email address again."
       }
     ]
   },
