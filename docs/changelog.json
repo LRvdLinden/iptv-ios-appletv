@@ -14,6 +14,15 @@
         ],
         "nl": "Betaalscherm: fouten bij kopen of herstellen worden anoniem geteld (alleen de stap en een korte foutcode, geen account of aankoopgegevens), zodat problemen sneller zichtbaar zijn.",
         "en": "Purchase screen: errors while buying or restoring are counted anonymously (only the step and a short error code, no account or purchase details), so problems show up sooner."
+      },
+      {
+        "type": "improved",
+        "platforms": [
+          "android",
+          "androidtv"
+        ],
+        "nl": "Betalen: de app meldt anoniem of het betaalscherm is getoond en of een aankoop is gestart, gelukt, mislukt of afgebroken. Zo zien we sneller waar het betalen misgaat. Er gaan geen account- of betaalgegevens mee.",
+        "en": "Payments: the app anonymously reports whether the payment screen was shown and whether a purchase was started, completed, failed or cancelled, so payment problems are found sooner. No account or payment details are sent."
       }
     ]
   },
