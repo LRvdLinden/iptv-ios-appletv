@@ -26,6 +26,8 @@
           "ipados",
           "tvos",
           "macos",
+          "android",
+          "androidtv",
           "web",
           "windows"
         ],

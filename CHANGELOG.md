@@ -13,8 +13,6 @@ _28 november 2026_
 
 - Live TV heeft nu een eigen categorie Terugkijken met alle zenders waarvan je kunt terugkijken. Heeft een zender zelf geen terugkijken, maar een gelijke zender op dezelfde server wel, dan kijk je via die zender terug (klokje en Vanaf het begin kijken in alle categorieën).
 
-### iOS, iPadOS, tvOS, macOS, Windows en Website
-
 **Opgelost**
 
 - Terugkijken uit de gids: je kunt nu spoelen (balk slepen, 10 seconden terug of vooruit, naar een tijdstip), ook bij zenders waarvan de server geen duur meegeeft
