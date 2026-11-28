@@ -41,6 +41,10 @@ jobs:
             count(*) filter (where p.user_id::text in (select jsonb_array_elements_text(coalesce((select value::jsonb->'test_users' from public.app_settings where key = 'premium'), '[]'::jsonb)))) in_testlijst,
             count(*) filter (where p.source = 'purchase') bron_aankoop
             {base}""")[0]))
+          note("Aankopen", json.dumps(db(f"""select b.provider, b.status, count(*) n, count(distinct p.user_id) accounts, min(b.amount) amin, max(b.amount) amax
+            from public.account_plans p join public.billing_purchases b on b.user_id = p.user_id where p.plan='lifetime' and p.sandbox group by 1,2""")))
+          note("Testaccount", json.dumps(db("""select count(*) n, bool_or(p.sandbox) sandbox, bool_or(p.plan='lifetime') lifetime, count(*) filter (where p.plan='lifetime' and p.sandbox) in18
+            from auth.users u left join public.account_plans p on p.user_id = u.id where u.email ilike '%lrvdlinden%'""")))
           note("Komt in aanmerking", json.dumps(db(f"select count(*) n from ({sel}) x")[0]))
           if mode == "apply":
               r = db(f"""update public.account_plans set plan = 'free', premium_until = null, note = 'Apple sandbox ingetrokken 2026-11-28', source = 'admin'
