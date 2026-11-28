@@ -1,0 +1,87 @@
+name: Check webcheckout (tijdelijk)
+# Tijdelijk en ALLEEN LEZEN: instellingen van Premium voor web (zonder sleutels of id's) en aantallen aanroepen van
+# billing per actie en statuscode. Geen e-mailadressen, account-id's of bedragen in het (openbare) log. Wijzigt niets.
+on:
+  push:
+    branches: [check-web-193]
+    paths: ['.github/check-web-193.txt']
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Instellingen
+        env:
+          TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+        run: |
+          python3 - <<'PY'
+          import os, json, urllib.request
+          API = f"https://api.supabase.com/v1/projects/{os.environ['REF']}"
+          H = {"Authorization": "Bearer " + os.environ["TOKEN"]}
+          def note(t, m): print(f"::notice title={t}::{m}")
+          def db(sql):
+              req = urllib.request.Request(API + "/database/query", data=json.dumps({"query": sql}).encode(), headers={**H, "content-type": "application/json"})
+              return json.load(urllib.request.urlopen(req, timeout=60))
+          st = db("select key, value from app_settings where key in ('premium','lifetime_only','iap','upgrade_link')")
+          S = {x['key']: (x['value'] if isinstance(x['value'], dict) else json.loads(x['value'])) for x in st}
+          pr = S.get('premium', {})
+          sp = pr.get('stripe_prices') or {}
+          note("premium", json.dumps({k: pr.get(k) for k in ('enabled','new_from_web','new_from_apple','existing_from','trial_days','show_prices_web','grace_days','prices')}))
+          note("stripe_prices aanwezig", json.dumps({m: sorted((sp.get(m) or {}).keys()) for m in ('test','live')}))
+          note("stripe_portal aanwezig", json.dumps({m: bool((pr.get('stripe_portal') or {}).get(m)) for m in ('test','live')}))
+          lo = S.get('lifetime_only', {})
+          note("lifetime_only", json.dumps({k: lo.get(k) for k in ('enabled','announce_at','cutover_at','new_paid_from','new_paid_from_apple','trial_days')}))
+          ul = S.get('upgrade_link', {})
+          note("upgrade_link", json.dumps(ul if isinstance(ul, dict) else {}))
+          r = db("select coalesce(provider,'stripe') p, status, count(*) n, max(created_at)::date laatste from billing_purchases group by 1,2 order by 1,2")
+          note("billing_purchases ooit", json.dumps(r, default=str))
+          r = db("select provider, coalesce(mode,'?') mode, status, count(*) n, max(created_at)::date laatste from premium_subscriptions group by 1,2,3 order by 1,2,3")
+          note("premium_subscriptions ooit", json.dumps(r, default=str))
+          r = db("select (created_at at time zone 'Europe/Amsterdam')::date dag, type, coalesce(result,'?') res, count(*) n from billing_events where created_at > now() - interval '14 days' group by 1,2,3 order by 1")
+          note("Stripe-events 14 dagen", json.dumps(r, default=str)[:1800])
+          PY
+      - name: Aanroepen
+        env:
+          TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+        run: |
+          python3 - <<'PY'
+          import os, json, re, urllib.request, urllib.parse, datetime, time
+          API = f"https://api.supabase.com/v1/projects/{os.environ['REF']}"
+          H = {"Authorization": "Bearer " + os.environ["TOKEN"]}
+          def note(t, m): print(f"::notice title={t}::{m}")
+          def logs(sql, s, e):
+              for _ in range(5):
+                  time.sleep(12)
+                  u = f"{API}/analytics/endpoints/logs?" + urllib.parse.urlencode({"sql": sql, "iso_timestamp_start": s, "iso_timestamp_end": e})
+                  try: return json.load(urllib.request.urlopen(urllib.request.Request(u, headers=H), timeout=60))
+                  except Exception: time.sleep(20)
+              return {}
+          iso = lambda d: d.isoformat().replace("+00:00", "Z")
+          now = datetime.datetime.now(datetime.timezone.utc)
+          per = {}
+          for back in range(6, -1, -1):
+              day = (now - datetime.timedelta(days=back)).date()
+              s = datetime.datetime.combine(day, datetime.time(), datetime.timezone.utc); e = min(s + datetime.timedelta(days=1), now)
+              r = logs("SELECT log_attributes['request.url'] AS url, log_attributes['request.method'] AS m, log_attributes['response.status_code'] AS code, "
+                       "log_attributes['request.headers.origin'] AS origin, log_attributes['request.headers.referer'] AS ref "
+                       "FROM logs WHERE source = 'function_edge_logs' AND position(log_attributes['request.url'], '/functions/v1/billing') > 0 "
+                       "AND log_attributes['request.method'] <> 'OPTIONS'", iso(s), iso(e))
+              for x in r.get("result", []):
+                  m = re.search(r"/functions/v1/billing(?:/([a-z_]+))?", str(x.get("url") or ""))
+                  act = (m.group(1) if m and m.group(1) else "(body)")
+                  src = str(x.get("origin") or x.get("ref") or "")
+                  where = "site" if "bingr.online" in src else ("app" if not src or src == "None" else "anders")
+                  k = f"{act} {x.get('code')} {where}"
+                  d = per.setdefault(str(day)[5:], {})
+                  d[k] = d.get(k, 0) + 1
+          tot = {}
+          for d in per.values():
+              for k, v in d.items(): tot[k] = tot.get(k, 0) + v
+          note("billing 7 dagen: actie status bron", json.dumps(dict(sorted(tot.items()))))
+          for day in sorted(per):
+              ck = {k: v for k, v in per[day].items() if k.startswith(("checkout", "status", "claim", "config"))}
+              note(f"billing {day}", json.dumps(dict(sorted(ck.items()))))
+          PY
