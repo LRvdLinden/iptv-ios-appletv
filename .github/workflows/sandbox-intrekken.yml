@@ -1,0 +1,40 @@
+name: Sandbox intrekken (tijdelijk)
+# Tijdelijk: trekt blijvende Apple-sandbox-Lifetimes in (behalve testaccounts). Toont alleen aantallen, geen e-mailadressen of id's.
+on:
+  push:
+    branches: [sandbox-intrekken]
+    paths: ['.github/sandbox-intrekken.txt']
+permissions:
+  contents: read
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 (v5.1.0)
+      - name: Intrekken
+        env:
+          TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+        run: |
+          python3 - <<'PY'
+          import os, json, urllib.request
+          mode = open('.github/sandbox-intrekken.txt').read().strip()
+          API = f"https://api.supabase.com/v1/projects/{os.environ['REF']}"
+          H = {"Authorization": "Bearer " + os.environ["TOKEN"]}
+          def note(t, m): print(f"::notice title={t}::{m}")
+          def db(sql):
+              req = urllib.request.Request(API + "/database/query", data=json.dumps({"query": sql}).encode(), headers={**H, "content-type": "application/json"})
+              return json.load(urllib.request.urlopen(req, timeout=60))
+          sel = """select p.user_id from public.account_plans p join auth.users u on u.id = p.user_id
+            where p.plan = 'lifetime' and p.sandbox and p.premium_until is null
+            and lower(u.email) <> 'lrvdlinden@live.nl'
+            and not exists (select 1 from public.billing_purchases b where b.user_id = p.user_id and b.status = 'paid')
+            and not exists (select 1 from public.premium_subscriptions s where s.user_id = p.user_id and s.mode = 'live' and s.status in ('trialing','active','grace','past_due'))
+            and p.user_id::text not in (select jsonb_array_elements_text(coalesce((select value::jsonb->'test_users' from public.app_settings where key = 'premium'), '[]'::jsonb)))"""
+          note("Totaal sandbox-Lifetime", json.dumps(db("select count(*) n, count(*) filter (where premium_until is null) blijvend from public.account_plans where plan='lifetime' and sandbox")[0]))
+          note("Komt in aanmerking", json.dumps(db(f"select count(*) n from ({sel}) x")[0]))
+          if mode == "apply":
+              r = db(f"""update public.account_plans set plan = 'free', premium_until = null, note = 'Apple sandbox ingetrokken 2026-11-28', source = 'admin'
+                where user_id in ({sel}) returning user_id""")
+              note("Ingetrokken", str(len(r)))
+          PY
