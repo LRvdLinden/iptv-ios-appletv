@@ -109,9 +109,14 @@ export function lifetimeSource(row: PlanRowP): "legacy" | "admin" | "lifetime" |
 /**
  * Het niveau dat echt geldt: een gespiegeld abonnement (source subscription) met premium_until voorbij telt als Gratis,
  * ook als bingr_premium_sweep nog niet gedraaid heeft. Lifetime (legacy/admin/purchase) blijft altijd Lifetime.
+ * Build 193: een gekochte Lifetime MET premium_until is een tijdelijke sandbox-Lifetime (Apple-sandbox, geen testaccount);
+ * die telt na premium_until ook als Gratis. Een gewone aankoop heeft nooit premium_until (de database bewaakt dat).
  */
 export function effectivePlanRow<T extends PlanRowP>(row: T, now = Date.now()): T {
-  if (!row || row.source !== "subscription" || row.plan !== "lifetime") return row;
+  if (!row || row.plan !== "lifetime") return row;
+  if (row.source === "purchase") {
+    if (row.premium_until === null || row.premium_until === undefined) return row;
+  } else if (row.source !== "subscription") return row;
   const t = ms(typeof row.premium_until === "string" ? row.premium_until : null);
   return Number.isFinite(t) && t > now ? row : { ...row, plan: "free" } as T;
 }

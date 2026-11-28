@@ -71,6 +71,10 @@ final class LifetimeStore: ObservableObject {
     private var updates: Task<Void, Never>?
     private var bag = Set<AnyCancellable>()
     private var loading = false
+    /// build 193: ging de laatste aankoop of het laatste herstel van de gebruiker naar de server? (foutcode van de trechter)
+    private var askedServer = false
+    /// build 193: in deze sessie zonder account gekocht; `purchase_ok` zodra een account de aankoop claimt
+    private var awaitingClaim = false
 
     private init() {
         if let d = UserDefaults.standard.data(forKey: Self.publicConfigKey) {
@@ -172,13 +176,18 @@ final class LifetimeStore: ObservableObject {
 
     func purchase(origin: String) async {
         guard !busy else { return }
-        guard iapOn else { show(.unavailable, origin); return }
+        // build 193: de betaaltrechter (alleen stap, soort product en een korte foutcode)
+        let funnel = PurchaseFunnel193.shared
+        let kind = "lifetime"
+        funnel.send(.purchaseStarted, product: kind)
+        guard iapOn else { funnel.failed(.unavailable, purchase: kind); show(.unavailable, origin); return }
         if product == nil { await prepare() }
         // ingelogd: de account-id; zonder account (aanvulling 1): een bewaarde willekeurige token
         let signedIn = AccountService.shared.isSignedIn
         guard let product,
               let pick = Welcome167.purchaseToken(userID: signedIn ? (AccountService.shared.accountID ?? "") : nil,
                                                   pending: Keychain.getLocalOnly(Self.pendingTokenKey), make: { UUID() }) else {
+            funnel.failed(product == nil ? .noProduct : .notSignedIn, purchase: kind)
             show(.unavailable, origin)
             return
         }
@@ -192,24 +201,45 @@ final class LifetimeStore: ObservableObject {
                 guard signedIn else {
                     // niet afronden: StoreKit houdt de transactie vast tot een account hem claimt
                     if case .verified = v {
+                        // build 193: betaald, maar nog van geen account; `purchase_ok` volgt als een account hem claimt
+                        awaitingClaim = true
                         unclaimedPurchase = true   // AuthView toont meteen Account maken (met de melding)
                     } else {
+                        funnel.failed(.unverified, purchase: kind)
                         show(.failed, origin)
                     }
                     return
                 }
                 let o = await handle(v, userInitiated: true)
+                if o == .lifetime {
+                    funnel.send(.purchaseOK, product: kind)
+                } else {
+                    funnel.send(.purchaseFailed, product: kind, error: funnelError(o, v))
+                }
                 show(o == .lifetime ? .purchased : Self.message(for: o), origin)
             case .pending:
+                funnel.failed(.pending, purchase: kind)
                 show(.pending, origin)
             case .userCancelled:
-                break
+                funnel.send(.purchaseCancelled, product: kind)
             @unknown default:
-                break
+                funnel.failed(.unknown, purchase: kind)
             }
         } catch {
+            funnel.failed(PurchaseFunnel193.storeFailure(error), purchase: kind)
             show(.failed, origin)
         }
+    }
+
+    /// build 193: foutcode voor de betaaltrechter als een aankoop niet op het account kwam.
+    private func funnelError(_ o: AppleVerify167.Outcome, _ v: VerificationResult<StoreKit.Transaction>) -> String {
+        if case .unverified = v { return Funnel193.code(.unverified) }
+        if o == .otherAccount { return "other_account" }
+        guard askedServer else {
+            return Funnel193.code(AccountService.shared.isSignedIn ? .unknown : .notSignedIn)
+        }
+        let last = AccountService.shared.lastAppleVerify
+        return Funnel193.verifyError(status: last.status, error: last.error)
     }
 
     /// Herstel aankopen: `AppStore.sync()` en alle huidige aankopen van ons product naar de server.
@@ -217,9 +247,12 @@ final class LifetimeStore: ObservableObject {
         guard !busy else { return }
         busy = true
         defer { busy = false }
+        let funnel = PurchaseFunnel193.shared   // build 193
+        funnel.send(.restoreStarted)
         do {
             try await AppStore.sync()
         } catch StoreKitError.userCancelled {
+            funnel.restore(.failed("cancelled"))
             return
         } catch {
             // zonder sync (bijv. offline) toch de bekende aankopen proberen
@@ -235,9 +268,15 @@ final class LifetimeStore: ObservableObject {
             }
             if !open, !unfinished.isEmpty { found = true; open = true }   // Ask to Buy e.d.: wel onafgerond
             switch Welcome167.restoreSignedOut(found: found, unfinished: open) {
-            case .createAccount: unclaimedPurchase = true   // AuthView toont meteen Account maken
-            case .signIn: show(.otherAccount, origin)
-            case .nothing: show(.nothingToRestore, origin)
+            case .createAccount:
+                funnel.restore(.createAccount)
+                unclaimedPurchase = true   // AuthView toont meteen Account maken
+            case .signIn:
+                funnel.restore(.signInFirst)
+                show(.otherAccount, origin)
+            case .nothing:
+                funnel.restore(.nothing)
+                show(.nothingToRestore, origin)
             }
             return
         }
@@ -250,9 +289,20 @@ final class LifetimeStore: ObservableObject {
         }
         await EntitlementsService.shared.refresh(force: true)
         if let best {
+            switch best {
+            case .lifetime: funnel.restore(.restored)
+            case .otherAccount: funnel.restore(.otherAccount)
+            case .unavailable: funnel.restore(.unavailable)
+            case .failed:
+                let last = AccountService.shared.lastAppleVerify
+                funnel.restore(.failed(askedServer ? Funnel193.verifyError(status: last.status, error: last.error)
+                                                   : Funnel193.code(.unknown)))
+            }
             show(best == .lifetime ? .restored : Self.message(for: best), origin)
         } else {
-            show(EntitlementsService.shared.lifetimeState.isLifetime ? .restored : .nothingToRestore, origin)
+            let has = EntitlementsService.shared.lifetimeState.isLifetime
+            funnel.restore(has ? .restored : .nothing)
+            show(has ? .restored : .nothingToRestore, origin)
         }
     }
 
@@ -271,7 +321,12 @@ final class LifetimeStore: ObservableObject {
     /// nog geen Lifetime heeft ook de huidige aankopen stil naar `apple_verify` (aanvulling 1, punt 4).
     private func claimAll() async {
         for await v in StoreKit.Transaction.unfinished {
-            await handle(v, userInitiated: false)
+            let o = await handle(v, userInitiated: false)
+            // build 193: de aankoop van vóór het account is nu gekoppeld
+            if awaitingClaim, o == .lifetime {
+                awaitingClaim = false
+                PurchaseFunnel193.shared.send(.purchaseOK, product: "lifetime")
+            }
         }
         let stillOpen = await hasUnfinished()
         if !stillOpen { unclaimedPurchase = false }
@@ -308,6 +363,7 @@ final class LifetimeStore: ObservableObject {
     /// (`apple-notify`), dus alleen opnieuw ophalen.
     @discardableResult
     private func handle(_ v: VerificationResult<StoreKit.Transaction>, userInitiated: Bool) async -> AppleVerify167.Outcome {
+        if userInitiated { askedServer = false }
         guard case .verified(let t) = v, t.productID == IAP167.productID else { return .failed }
         if t.revocationDate != nil {
             await t.finish()
@@ -315,6 +371,7 @@ final class LifetimeStore: ObservableObject {
             return .failed
         }
         guard AccountService.shared.isSignedIn else { return .failed }   // blijft staan tot er iemand ingelogd is
+        if userInitiated { askedServer = true }
         let o = await AccountService.shared.appleVerify(signedTransaction: v.jwsRepresentation)
         if AppleVerify167.shouldFinish(o) {
             await t.finish()

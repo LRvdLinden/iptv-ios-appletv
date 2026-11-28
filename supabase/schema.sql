@@ -682,7 +682,8 @@ grant execute on function public.bingr_admin_stats() to service_role;
 
 -- Gebruikers (hoofdaccounts), nieuwste eerst, zoeken op begin van het e-mailadres, de voornaam, de achternaam of
 -- "voornaam achternaam" (user_metadata first_name / last_name; beheer). De functie admin maskeert de e-mail.
--- p_filter: '' = alle, 'blocked' = alleen geblokkeerde accounts, 'free' / 'lifetime' = abonnement, 'custom' = eigen limieten.
+-- p_filter: '' = alle, 'blocked' = alleen geblokkeerde accounts, 'free' / 'lifetime' = abonnement, 'custom' = eigen limieten,
+-- 'sandbox' (build 193) = toegang uit de Apple-sandbox. Per account ook `sandbox` (boolean) en bovenaan `sandbox_total`.
 drop function if exists public.bingr_admin_users(text, int, int);
 -- Filter van de gebruikerslijst (beheer). account_plans staat onderaan dit bestand (plpgsql controleert dat pas bij het uitvoeren).
 create or replace function public.bingr_admin_user_match(p_user uuid, p_filter text) returns boolean
@@ -693,6 +694,9 @@ begin
     when 'lifetime' then exists (select 1 from public.account_plans p where p.user_id = p_user and p.plan = 'lifetime')
     when 'free' then not exists (select 1 from public.account_plans p where p.user_id = p_user and p.plan = 'lifetime')
     when 'custom' then exists (select 1 from public.account_plans p where p.user_id = p_user and (p.max_streams is not null or p.max_devices is not null))
+    -- build 193: toegang uit de Apple-sandbox (gemerkte Lifetime of testabonnement die nu geldt)
+    when 'sandbox' then exists (select 1 from public.account_plans p where p.user_id = p_user and p.sandbox and p.plan = 'lifetime'
+                                 and (p.source is distinct from 'purchase' or p.premium_until is null or p.premium_until > now()))
     else true end;
 end $$;
 revoke all on function public.bingr_admin_user_match(uuid, text) from public, anon, authenticated;
@@ -720,6 +724,7 @@ begin
     'blocked_total', (select count(distinct user_id) from public.account_blocks where lifted_at is null),
     'lifetime_total', (select count(*) from public.account_plans p join auth.users u on u.id = p.user_id where p.plan = 'lifetime'),
     'free_total', (select count(*) from auth.users u where not exists (select 1 from public.account_plans p where p.user_id = u.id and p.plan = 'lifetime')),
+    'sandbox_total', (select count(*) from auth.users u where public.bingr_admin_user_match(u.id, 'sandbox')),
     'items', coalesce((select jsonb_agg(row_to_json(x)::jsonb order by x.created_at desc) from (
       select u.id, u.email, u.created_at, u.last_sign_in_at, u.email_confirmed_at is not null as confirmed,
         nullif(btrim(u.raw_user_meta_data->>'first_name'), '') as first_name, nullif(btrim(u.raw_user_meta_data->>'last_name'), '') as last_name,
@@ -733,7 +738,9 @@ begin
           where b.user_id = u.id and b.lifted_at is null order by b.created_at desc limit 1) as blocked,
         (coalesce((select jsonb_build_object('plan', p.plan, 'max_streams', p.max_streams, 'max_devices', p.max_devices, 'source', p.source)
           from public.account_plans p where p.user_id = u.id), jsonb_build_object('plan', 'free'))
-          || coalesce(public.bingr_admin_purchase(u.id), '{}'::jsonb)) as plan
+          || coalesce(public.bingr_admin_purchase(u.id), '{}'::jsonb)) as plan,
+        public.bingr_admin_user_match(u.id, 'sandbox') as sandbox,
+        (select p.premium_until from public.account_plans p where p.user_id = u.id and p.sandbox and p.source = 'purchase') as sandbox_until
       from auth.users u where public.bingr_admin_user_search(u.email, u.raw_user_meta_data, q, pat) and public.bingr_admin_user_match(u.id, f)
       order by u.created_at desc limit least(greatest(p_limit, 1), 100) offset greatest(p_offset, 0)) x), '[]'::jsonb)
   );
@@ -765,6 +772,9 @@ begin
         'note', p.note, 'granted_by', p.granted_by, 'created_at', p.created_at, 'updated_at', p.updated_at)
       from public.account_plans p where p.user_id = u.id), jsonb_build_object('plan', 'free'))
       || coalesce(public.bingr_admin_purchase(u.id), '{}'::jsonb),
+    -- build 193: toegang uit de Apple-sandbox (zie account_plans.sandbox); sandbox_until = einde van een tijdelijke sandbox-Lifetime
+    'sandbox', public.bingr_admin_user_match(u.id, 'sandbox'),
+    'sandbox_until', (select p.premium_until from public.account_plans p where p.user_id = u.id and p.sandbox and p.source = 'purchase'),
     -- build 133: aankopen van dit account (Stripe), nieuwste eerst; zonder Stripe-id's of betaalgegevens
     'purchases', coalesce((select jsonb_agg(jsonb_build_object('created_at', b.created_at, 'paid_at', b.paid_at, 'amount', b.amount,
         'currency', b.currency, 'status', b.status, 'refunded_at', b.refunded_at, 'provider', b.provider, 'claimed_at', b.claimed_at) order by b.created_at desc)
@@ -4141,6 +4151,9 @@ begin
     when 'lifetime' then exists (select 1 from public.account_plans p where p.user_id = p_user and p.plan = 'lifetime')
     when 'free' then not exists (select 1 from public.account_plans p where p.user_id = p_user and p.plan = 'lifetime')
     when 'custom' then exists (select 1 from public.account_plans p where p.user_id = p_user and (p.max_streams is not null or p.max_devices is not null))
+    -- build 193: toegang uit de Apple-sandbox (gemerkte Lifetime of testabonnement die nu geldt)
+    when 'sandbox' then exists (select 1 from public.account_plans p where p.user_id = p_user and p.sandbox and p.plan = 'lifetime'
+                                 and (p.source is distinct from 'purchase' or p.premium_until is null or p.premium_until > now()))
     else true end;
 end $$;
 revoke all on function public.bingr_admin_user_match(uuid, text) from public, anon, authenticated;
@@ -5223,27 +5236,81 @@ revoke all on public.premium_payments from anon, authenticated;
 create index if not exists premium_payments_pi_idx on public.premium_payments (payment_intent);
 create index if not exists premium_payments_paid_idx on public.premium_payments (paid_at);
 
+-- Build 193: sandbox. Een Apple-aankoop in de sandbox (TestFlight, App Review) is geen betaling. account_plans.sandbox
+-- merkt een account waarvan de toegang uit de sandbox komt (voor het filter en de teller in het beheer); sandbox_at = sinds
+-- wanneer. Een gekochte Lifetime MET premium_until is een TIJDELIJKE sandbox-Lifetime (3 dagen vanaf de eerste
+-- sandbox-aankoop van het account, functie billing); zonder premium_until is hij blijvend (testaccounts, en de aankopen
+-- van vóór build 193, die alleen gemerkt zijn). De trigger bewaakt dat: alleen een rij "gekocht bij Apple, notitie Apple
+-- sandbox …" kan premium_until houden en krijgt de vlag; elke andere aankoop, gift of beheerwijziging is blijvend en
+-- zonder vlag. Bij een abonnement zet de spiegel de vlag (alleen een abonnement in testmodus actief).
+alter table public.account_plans add column if not exists sandbox boolean not null default false;
+alter table public.account_plans add column if not exists sandbox_at timestamptz;
+create index if not exists account_plans_sandbox_idx on public.account_plans (user_id) where sandbox;
+create or replace function public.bingr_account_plans_sandbox() returns trigger
+language plpgsql as $$
+begin
+  if new.plan = 'lifetime' and new.source = 'purchase' then
+    if new.granted_by = 'apple' and new.note like 'Apple sandbox%' then
+      new.sandbox := true;
+    else
+      new.sandbox := false;
+      new.premium_until := null;
+    end if;
+  elsif new.plan = 'lifetime' and (new.source is null or new.source in ('legacy', 'admin')) then
+    -- Lifetime uit het beheer of cadeau: nooit tijdelijk, nooit sandbox
+    new.sandbox := false;
+    new.premium_until := null;
+  end if;
+  if new.sandbox and new.sandbox_at is null then new.sandbox_at := now(); end if;
+  return new;
+end $$;
+drop trigger if exists bingr_account_plans_sandbox on public.account_plans;
+create trigger bingr_account_plans_sandbox before insert or update on public.account_plans
+  for each row execute function public.bingr_account_plans_sandbox();
+-- Eenmalig merken (herhaalbaar): bestaande sandbox-Lifetimes en accounts met alleen een testabonnement. Niets wordt
+-- ingetrokken of tijdelijk gemaakt; dat doet het beheer.
+update public.account_plans p set sandbox = true, sandbox_at = coalesce(p.sandbox_at, p.created_at)
+ where not p.sandbox and p.plan = 'lifetime' and p.source = 'purchase' and p.granted_by = 'apple' and p.note like 'Apple sandbox%';
+update public.account_plans p set sandbox = true, sandbox_at = coalesce(p.sandbox_at, p.created_at)
+ where not p.sandbox and p.plan = 'lifetime' and p.source = 'subscription'
+   and exists (select 1 from public.premium_subscriptions s where s.user_id = p.user_id and s.mode = 'test' and s.access_until > now())
+   and not exists (select 1 from public.premium_subscriptions s where s.user_id = p.user_id and s.mode is distinct from 'test' and s.access_until > now());
+
 -- Spiegel van het beste actieve abonnement in account_plans. Terug: upsert | delete | update | keep | no_user.
+-- Build 193: een tijdelijke sandbox-Lifetime (gekocht, met premium_until) is geen beschermde Lifetime: een abonnement gaat
+-- eroverheen, en na premium_until wordt de rij Gratis (de vlag sandbox blijft staan, de rij wordt dan niet gewist).
 create or replace function public.bingr_premium_mirror(p_user uuid) returns text
 language plpgsql security definer set search_path = public as $$
-declare u timestamptz; r record; has_row boolean;
+declare u timestamptz; r record; has_row boolean; temp boolean; sb boolean;
 begin
   if p_user is null then return 'no_user'; end if;
   select max(access_until) into u from public.premium_subscriptions where user_id = p_user and access_until > now();
   select * into r from public.account_plans where user_id = p_user for update;
   has_row := found;
+  temp := has_row and r.plan = 'lifetime' and r.source = 'purchase' and r.premium_until is not null;
   -- Lifetime-bescherming: legacy, admin, purchase (en elke andere Lifetime zonder abonnement) blijven altijd
-  if has_row and r.plan = 'lifetime' and r.source is distinct from 'subscription' then return 'keep'; end if;
+  if has_row and r.plan = 'lifetime' and r.source is distinct from 'subscription' and not temp then return 'keep'; end if;
   if u is not null then
-    insert into public.account_plans (user_id, plan, source, granted_by, premium_until, note, updated_at)
-    values (p_user, 'lifetime', 'subscription', 'premium', u, 'Bingr Premium (abonnement)', now())
+    -- sandbox = er loopt alleen een abonnement in testmodus (geen echt abonnement)
+    sb := exists (select 1 from public.premium_subscriptions where user_id = p_user and access_until > now() and mode = 'test')
+      and not exists (select 1 from public.premium_subscriptions where user_id = p_user and access_until > now() and mode is distinct from 'test');
+    insert into public.account_plans (user_id, plan, source, granted_by, premium_until, note, updated_at, sandbox, sandbox_at)
+    values (p_user, 'lifetime', 'subscription', 'premium', u, 'Bingr Premium (abonnement)', now(), sb, case when sb then now() end)
     on conflict (user_id) do update set plan = 'lifetime', source = 'subscription', granted_by = 'premium', premium_until = excluded.premium_until,
-      note = excluded.note, updated_at = now()
-     where public.account_plans.plan <> 'lifetime' or public.account_plans.source = 'subscription';
+      note = excluded.note, updated_at = now(), sandbox = excluded.sandbox,
+      sandbox_at = case when excluded.sandbox then coalesce(public.account_plans.sandbox_at, now()) else public.account_plans.sandbox_at end
+     where public.account_plans.plan <> 'lifetime' or public.account_plans.source = 'subscription'
+        or (public.account_plans.source = 'purchase' and public.account_plans.premium_until is not null);
     return 'upsert';
   end if;
+  if temp then
+    if r.premium_until > now() then return 'keep'; end if;
+    update public.account_plans set plan = 'free', source = null, premium_until = null, updated_at = now()
+     where user_id = p_user and source = 'purchase' and premium_until is not null;
+    return 'update';
+  end if;
   if not has_row or r.source is distinct from 'subscription' then return 'keep'; end if;
-  if r.max_streams is null and r.max_devices is null then
+  if r.max_streams is null and r.max_devices is null and not r.sandbox then
     delete from public.account_plans where user_id = p_user and source = 'subscription';
     return 'delete';
   end if;
@@ -5252,11 +5319,14 @@ begin
   return 'update';
 end $$;
 -- Verlopen spiegels opruimen (pg_cron bingr-premium-sweep, elk uur). Terug {expired: n}.
+-- Build 193: ook verlopen tijdelijke sandbox-Lifetimes (gekocht, premium_until voorbij).
 create or replace function public.bingr_premium_sweep() returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare r record; n int := 0;
 begin
-  for r in select user_id from public.account_plans where source = 'subscription' and (premium_until is null or premium_until <= now()) loop
+  for r in select user_id from public.account_plans
+            where (source = 'subscription' and (premium_until is null or premium_until <= now()))
+               or (source = 'purchase' and plan = 'lifetime' and premium_until is not null and premium_until <= now()) loop
     if public.bingr_premium_mirror(r.user_id) in ('delete', 'update') then n := n + 1; end if;
   end loop;
   return jsonb_build_object('expired', n);
@@ -5347,7 +5417,9 @@ create or replace function public.bingr_premium_attach(p_sub bigint, p_user uuid
 language plpgsql security definer set search_path = public as $$
 declare s record;
 begin
-  if exists (select 1 from public.account_plans p where p.user_id = p_user and p.plan = 'lifetime' and p.source is distinct from 'subscription') then
+  -- build 193: een tijdelijke sandbox-Lifetime (gekocht, met premium_until) houdt een echt abonnement niet tegen
+  if exists (select 1 from public.account_plans p where p.user_id = p_user and p.plan = 'lifetime' and p.source is distinct from 'subscription'
+              and not (p.source = 'purchase' and p.premium_until is not null)) then
     return 'already_lifetime';
   end if;
   update public.premium_subscriptions set user_id = p_user, claimed_at = now(), updated_at = now()
@@ -5457,6 +5529,67 @@ grant execute on function public.bingr_premium_claim(uuid, text) to service_role
 grant execute on function public.bingr_premium_claim_email(uuid) to service_role;
 grant execute on function public.bingr_premium_claim_hash(text) to service_role;
 grant execute on function public.bingr_admin_premium_stats() to service_role;
+
+-- Build 193: tellingen voor de tab Betalingen in het beheer (alleen aantallen). lifetime_accounts = blijvende
+-- sandbox-Lifetimes van accounts die geen testaccount zijn (premium.test_users); temporary = lopende tijdelijke
+-- sandbox-Lifetimes; active_7d = lifetime_accounts met een apparaat dat de laatste 7 dagen gezien is.
+create or replace function public.bingr_admin_sandbox_stats() returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare t jsonb; n int := 0; a int := 0; tmp int := 0;
+begin
+  select coalesce(value -> 'test_users', '[]'::jsonb) into t from public.app_settings where key = 'premium';
+  t := coalesce(t, '[]'::jsonb);
+  select count(*) into n from public.account_plans p
+   where p.sandbox and p.plan = 'lifetime' and p.source = 'purchase' and p.premium_until is null and not (t ? p.user_id::text);
+  select count(*) into tmp from public.account_plans p
+   where p.sandbox and p.plan = 'lifetime' and p.source = 'purchase' and p.premium_until > now();
+  if to_regclass('public.account_devices') is not null then
+    execute $q$select count(*) from public.account_plans p
+      where p.sandbox and p.plan = 'lifetime' and p.source = 'purchase' and p.premium_until is null and not ($1 ? p.user_id::text)
+        and exists (select 1 from public.account_devices d where d.user_id = p.user_id and d.last_seen_at > now() - interval '7 days')$q$
+      into a using t;
+  end if;
+  return jsonb_build_object('lifetime_accounts', n, 'active_7d', a, 'temporary', tmp);
+end $$;
+revoke all on function public.bingr_admin_sandbox_stats() from public, anon, authenticated;
+grant execute on function public.bingr_admin_sandbox_stats() to service_role;
+
+-- Build 193: betaaltrechter. Anonieme dagtelling van de betaalstappen die de apps en de website melden (functie billing,
+-- actie funnel; _shared/funnel.ts controleert de waarden). Geen account, apparaat of IP-adres; alleen de service role.
+-- product en error zijn '' als ze ontbreken (deel van de sleutel). Na 400 dagen weg.
+create table if not exists public.billing_funnel_daily (
+  day      date not null,
+  platform text not null check (platform in ('ios', 'ipados', 'tvos', 'macos', 'android', 'androidtv', 'web', 'windows')),
+  step     text not null check (step in ('paywall_shown', 'purchase_started', 'purchase_ok', 'purchase_failed', 'purchase_cancelled',
+                                         'restore_started', 'restore_ok', 'restore_failed')),
+  product  text not null default '' check (product in ('', 'month', 'half', 'year', 'lifetime')),
+  error    text not null default '' check (error ~ '^[a-z0-9_]{0,40}$'),
+  n        bigint not null default 0 check (n >= 0),
+  primary key (day, platform, step, product, error)
+);
+alter table public.billing_funnel_daily enable row level security;
+revoke all on public.billing_funnel_daily from anon, authenticated;
+-- Eén stap tellen (dag in UTC). Hooguit 60 verschillende foutcodes per dag: daarna telt een nieuwe code als 'other', zodat
+-- niemand de tabel kan vullen met verzonnen codes. Ongeldige waarden: niets (false).
+create or replace function public.bingr_funnel_hit(p_platform text, p_step text, p_product text default '', p_error text default '') returns boolean
+language plpgsql security definer set search_path = public as $$
+declare d date := (now() at time zone 'utc')::date; e text := coalesce(p_error, ''); pr text := coalesce(p_product, '');
+begin
+  if p_platform is null or p_step is null or e !~ '^[a-z0-9_]{0,40}$' then return false; end if;
+  if e <> '' and not exists (select 1 from public.billing_funnel_daily where day = d and error = e)
+     and (select count(distinct error) from public.billing_funnel_daily where day = d and error <> '') >= 60 then
+    e := 'other';
+  end if;
+  begin
+    insert into public.billing_funnel_daily (day, platform, step, product, error, n) values (d, p_platform, p_step, pr, e, 1)
+    on conflict (day, platform, step, product, error) do update set n = public.billing_funnel_daily.n + 1;
+  exception when check_violation then return false;
+  end;
+  if random() < 0.01 then delete from public.billing_funnel_daily where day < d - 400; end if;
+  return true;
+end $$;
+revoke all on function public.bingr_funnel_hit(text, text, text, text) from public, anon, authenticated;
+grant execute on function public.bingr_funnel_hit(text, text, text, text) to service_role;
 
 -- Bevestigen van het e-mailadres koppelt ook gast-abonnementen (naast de aankopen van build 167).
 create or replace function public.bingr_premium_claim_on_confirm() returns trigger

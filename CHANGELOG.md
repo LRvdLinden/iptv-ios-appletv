@@ -4,6 +4,32 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.1.2 · Build 193
+_28 november 2026_
+
+### iOS, iPadOS, tvOS en macOS
+
+**Verbeterd**
+
+- Betaalscherm: fouten bij kopen of herstellen worden anoniem geteld (alleen de stap en een korte foutcode, geen account of aankoopgegevens), zodat problemen sneller zichtbaar zijn.
+
+### Website
+
+**Verbeterd**
+
+- Betalen op bingr.online en in de webspeler: de site meldt anoniem of het betaalscherm is getoond en of een aankoop is gestart, gelukt, mislukt of geannuleerd (alleen de stap en een korte foutcode, geen persoonsgegevens). Zo zien we sneller waar afrekenen misgaat.
+
+### Server
+
+**Nieuw**
+
+- Betaalstappen worden anoniem geteld: betaalscherm getoond, aankoop gestart, gelukt, mislukt of afgebroken, en herstellen. Alleen aantallen per dag en platform, zonder account, apparaat of IP-adres.
+
+**Opgelost**
+
+- Een testaankoop van Lifetime in de Apple-testomgeving (TestFlight) geeft geen blijvend Lifetime meer. Zo'n aankoop geeft nog eenmalig 3 dagen toegang; alleen aangewezen testaccounts houden volledige toegang. Echte aankopen veranderen niet.
+- Na het afsluiten van een abonnement zonder account vult de pagina bingr.online/upgrade/klaar het e-mailadres weer vooraf in.
+
 ## Versie 1.1.2 · Build 192
 _27 november 2026_
 

@@ -94,6 +94,7 @@ struct PremiumPaywallView: View {
             }
         }
         .task {
+            PurchaseFunnel193.shared.paywallShown("premium")   // build 193
             await ent.refreshUnlessRecent(60)
             await store.prepare()
         }

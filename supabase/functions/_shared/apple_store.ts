@@ -1,15 +1,16 @@
 // Build 167: database-stappen voor Apple-aankopen (functie billing `apple_verify` en functie apple-notify). Tabellen
 // billing_purchases (provider 'apple', apple_original_transaction_id uniek), billing_refunds, account_plans en
 // billing_apple_events in supabase/schema.sql. Alles idempotent; fouten bevatten alleen een code.
-import { appleGrantRow, type AppleTx } from "./apple.ts";
+import { appleGrantRow, type AppleTx, sandboxDecision } from "./apple.ts";
 import { revokeAction, type PlanRowFull } from "./billing.ts";
 
 // deno-lint-ignore no-explicit-any
 type Db = any;
 const fail = (where: string, e: { code?: string } | null) => new Error(`${where}: ${e?.code ?? "fout"}`);
 
-async function planOf(db: Db, userId: string): Promise<PlanRowFull> {
-  const { data, error } = await db.from("account_plans").select("plan,max_streams,max_devices,source").eq("user_id", userId).maybeSingle();
+type PlanRowS = (NonNullable<PlanRowFull> & { premium_until?: string | null }) | null;
+async function planOf(db: Db, userId: string): Promise<PlanRowS> {
+  const { data, error } = await db.from("account_plans").select("plan,max_streams,max_devices,source,premium_until").eq("user_id", userId).maybeSingle();
   if (error) throw fail("account_plans", error);
   return data ?? null;
 }
@@ -20,22 +21,35 @@ async function byOriginal(db: Db, orig: string) {
   return data as { id: number; user_id: string | null; status: string; amount: number } | null;
 }
 
+/** build 193: moment van de eerste sandbox-aankoop (Apple) van dit account; null = nog geen. */
+async function firstSandboxAt(db: Db, userId: string): Promise<string | null> {
+  const { data, error } = await db.from("billing_purchases").select("created_at,paid_at").eq("user_id", userId).eq("provider", "apple")
+    .eq("environment", "test");
+  if (error) throw fail("billing_purchases", error);
+  let min: number | null = null;
+  for (const r of (data ?? []) as { created_at?: string | null; paid_at?: string | null }[]) {
+    const t = Date.parse(String(r.created_at ?? r.paid_at ?? ""));
+    if (Number.isFinite(t) && (min === null || t < min)) min = t;
+  }
+  return min === null ? null : new Date(min).toISOString();
+}
+
 export type AppleGrant =
-  | { ok: true; granted: boolean; already: boolean }
+  | { ok: true; granted: boolean; already: boolean; sandbox?: "temporary" | "expired"; sandbox_until?: string }
   | { ok: false; error: "owned_by_other_account" | "revoked" };
 
 /**
  * Apple-aankoop vastleggen en Lifetime geven. Een transactie hoort bij precies één account: staat hij al bij een ander
  * (of verwijderd) account, dan owned_by_other_account; een terugbetaalde aankoop wordt niet opnieuw actief.
  */
-export async function grantApple(db: Db, userId: string, tx: AppleTx, nowIso = new Date().toISOString()): Promise<AppleGrant> {
+export async function grantApple(db: Db, userId: string, tx: AppleTx, nowIso = new Date().toISOString(), opts: { testUser?: boolean } = {}): Promise<AppleGrant> {
   const uid = userId.toLowerCase();
   let prev = await byOriginal(db, tx.originalTransactionId);
   if (!prev) {
     const { error } = await db.from("billing_purchases").insert({
       user_id: uid, provider: "apple", apple_original_transaction_id: tx.originalTransactionId, apple_transaction_id: tx.transactionId,
       environment: tx.environment, amount: tx.amount ?? 0, currency: tx.currency ?? "eur", status: "paid", plan: tx.plan ?? "lifetime",
-      paid_at: tx.purchasedAt ?? nowIso, updated_at: nowIso,
+      paid_at: tx.purchasedAt ?? nowIso, created_at: nowIso, updated_at: nowIso,
     });
     // tegelijk door een ander verzoek aangemaakt (uniek): opnieuw lezen en vergelijken, nooit overschrijven
     if (error && error.code !== "23505") throw fail("billing_purchases", error);
@@ -46,12 +60,26 @@ export async function grantApple(db: Db, userId: string, tx: AppleTx, nowIso = n
     if (prev.status === "refunded" || prev.status === "disputed") return { ok: false, error: "revoked" };
   }
   const cur = await planOf(db, uid);
-  if (cur?.plan === "lifetime" && cur.source === "purchase" && prev) return { ok: true, granted: false, already: true };
+  // build 193: sandbox-aankoop van een account dat geen testaccount is = hooguit tijdelijke toegang
+  const d = sandboxDecision({
+    environment: tx.environment, testUser: !!opts.testUser, cur,
+    firstSandboxAt: tx.environment === "test" && !opts.testUser ? await firstSandboxAt(db, uid) : null, nowIso,
+  });
+  if (d.kind === "expired") return { ok: true, granted: false, already: false, sandbox: "expired", sandbox_until: d.until };
+  if (d.kind === "keep") {
+    const temp = cur?.source === "purchase" && typeof cur.premium_until === "string";
+    return temp ? { ok: true, granted: false, already: true, sandbox: "temporary", sandbox_until: cur!.premium_until! } : { ok: true, granted: false, already: true };
+  }
+  // een lopende tijdelijke sandbox-Lifetime is geen "al Lifetime": een echte aankoop (of een testaccount) maakt hem blijvend
+  const temporaryNow = cur?.plan === "lifetime" && cur.source === "purchase" && cur.premium_until !== null && cur.premium_until !== undefined;
+  if (cur?.plan === "lifetime" && cur.source === "purchase" && prev && !temporaryNow) return { ok: true, granted: false, already: true };
   // build 181: een abonnement (spiegel, source subscription) wordt wél overschreven door een gekochte Lifetime
   if (cur?.plan === "lifetime" && cur.source !== "purchase" && cur.source !== "subscription") return { ok: true, granted: false, already: true };
-  const { error } = await db.from("account_plans").upsert(appleGrantRow(cur, uid, tx, nowIso), { onConflict: "user_id" });
+  const until = d.kind === "temporary" ? d.until : null;
+  const { error } = await db.from("account_plans").upsert(appleGrantRow(cur, uid, tx, nowIso, until), { onConflict: "user_id" });
   if (error) throw fail("account_plans", error);
-  return { ok: true, granted: cur?.plan !== "lifetime", already: cur?.plan === "lifetime" };
+  const had = cur?.plan === "lifetime" && !temporaryNow;
+  return until ? { ok: true, granted: !had, already: had, sandbox: "temporary", sandbox_until: until } : { ok: true, granted: !had, already: had };
 }
 
 /**

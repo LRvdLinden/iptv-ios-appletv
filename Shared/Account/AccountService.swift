@@ -1005,15 +1005,21 @@ final class AccountService: ObservableObject {
         }
     }
 
+    /// build 193: status en foutcode van het laatste `apple_verify`-antwoord (nil = geen antwoord), alleen voor de
+    /// foutcode van de betaaltrechter (`Funnel193.verifyError`).
+    private(set) var lastAppleVerify: (status: Int?, error: String?) = (nil, nil)
+
     /// build 167: een StoreKit 2-transactie (`Transaction.jwsRepresentation`) laten controleren en op dit account
     /// zetten (`billing` `apple_verify`). Bij succes het nieuwe abonnement meteen overnemen.
     func appleVerify(signedTransaction: String) async -> AppleVerify167.Outcome {
         guard Secrets.accountsConfigured, isSignedIn else { return .failed }
+        lastAppleVerify = (nil, nil)
         do {
             let r = try await authorized { token in
                 try await self.post("/functions/v1/billing", ["action": "apple_verify", "signed_transaction": signedTransaction],
                                     bearer: token)
             }
+            lastAppleVerify = (r.status, r.string("error"))
             let o = AppleVerify167.outcome(status: r.status, error: r.string("error"), plan: r.string("plan"))
             if o == .lifetime {
                 if let e = r.json["entitlements"] as? [String: Any] {
@@ -1035,10 +1041,12 @@ final class AccountService: ObservableObject {
         var body: [String: Any] = ["action": "apple_verify", "signed_transaction": signedTransaction,
                                    "platform": Self.entitlementsPlatform]
         if let signedRenewalInfo { body["signed_renewal_info"] = signedRenewalInfo }
+        lastAppleVerify = (nil, nil)
         do {
             let r = try await authorized { token in
                 try await self.post("/functions/v1/billing", body, bearer: token)
             }
+            lastAppleVerify = (r.status, r.string("error"))
             let o = PremiumVerify181.outcome(status: r.status, error: r.string("error"), plan: r.string("plan"))
             if case .premium = o {
                 if let e = r.json["entitlements"] as? [String: Any] {

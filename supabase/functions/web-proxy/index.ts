@@ -339,9 +339,12 @@ const planCache = new Map<string, { plan: "free" | "lifetime"; until: number }>(
 async function planOf(userId: string): Promise<"free" | "lifetime"> {
   const hit = planCache.get(userId);
   if (hit && hit.until > Date.now()) return hit.plan;
-  const { data, error } = await admin.from("account_plans").select("plan").eq("user_id", userId).maybeSingle();
+  const { data, error } = await admin.from("account_plans").select("plan,source,premium_until").eq("user_id", userId).maybeSingle();
   if (error) console.error("web-proxy account_plans", error.message);
-  const plan = !error && data?.plan === "lifetime" ? "lifetime" : "free";
+  // build 193: een verlopen abonnementsspiegel of tijdelijke sandbox-Lifetime telt als Gratis
+  const temporary = data?.source === "subscription" || (data?.source === "purchase" && data?.premium_until !== null && data?.premium_until !== undefined);
+  const live = !temporary || (typeof data?.premium_until === "string" && Date.parse(data.premium_until) > Date.now());
+  const plan = !error && data?.plan === "lifetime" && live ? "lifetime" : "free";
   if (planCache.size > 5000) planCache.clear();
   planCache.set(userId, { plan, until: Date.now() + (error ? 30_000 : 300_000) });
   return plan;

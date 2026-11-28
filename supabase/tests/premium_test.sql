@@ -135,6 +135,64 @@ select pg_temp.ok((public.bingr_admin_premium_stats() ->> 'trials_converted')::i
 select pg_temp.ok((public.bingr_admin_premium_stats() #>> '{lifetime49,count}')::int = 1, 'stats: Lifetime 49');
 select pg_temp.ok(public.bingr_admin_premium_stats()::text !~ '@example', 'stats zonder e-mailadressen');
 
+-- ---------------- build 193: sandbox ----------------
+delete from public.premium_subscriptions; delete from public.account_plans; delete from public.billing_purchases;
+-- de trigger: alleen "gekocht bij Apple, notitie Apple sandbox" is sandbox en mag tijdelijk zijn
+insert into public.account_plans (user_id, plan, source, granted_by, note, premium_until) values
+  ('00000000-0000-4000-8000-0000000000a1', 'lifetime', 'purchase', 'apple', 'Apple sandbox 2000001', null),
+  ('00000000-0000-4000-8000-0000000000a2', 'lifetime', 'purchase', 'apple', 'Apple sandbox 2000002', now() + interval '2 days'),
+  ('00000000-0000-4000-8000-0000000000a3', 'lifetime', 'purchase', 'apple', 'Apple 100001', now() + interval '2 days');
+select pg_temp.ok((select sandbox and sandbox_at is not null and premium_until is null from public.account_plans where user_id = '00000000-0000-4000-8000-0000000000a1'), 'sandbox blijvend: gemerkt');
+select pg_temp.ok((select sandbox and premium_until is not null from public.account_plans where user_id = '00000000-0000-4000-8000-0000000000a2'), 'sandbox tijdelijk: gemerkt, einde blijft');
+select pg_temp.ok((select not sandbox and premium_until is null from public.account_plans where user_id = '00000000-0000-4000-8000-0000000000a3'), 'echte Apple-aankoop: nooit tijdelijk, geen vlag');
+select pg_temp.ok(public.bingr_admin_sandbox_stats() = '{"lifetime_accounts": 1, "active_7d": 0, "temporary": 1}'::jsonb, 'sandbox-tellingen');
+-- testaccount telt niet mee als sandbox-Lifetime
+select public.bingr_admin_premium_test('00000000-0000-4000-8000-0000000000a1', true);
+select pg_temp.ok((public.bingr_admin_sandbox_stats() ->> 'lifetime_accounts')::int = 0, 'testaccount telt niet');
+select public.bingr_admin_premium_test('00000000-0000-4000-8000-0000000000a1', false);
+-- lopende tijdelijke Lifetime: de spiegel laat hem staan; de sweep ook
+select pg_temp.ok(public.bingr_premium_mirror('00000000-0000-4000-8000-0000000000a2') = 'keep', 'tijdelijk loopt nog: blijft');
+select pg_temp.ok(public.bingr_premium_sweep() = '{"expired": 0}'::jsonb, 'sweep: niets verlopen');
+-- voorbij: Gratis, de vlag blijft (de rij wordt niet gewist), en het filter toont hem niet meer
+update public.account_plans set premium_until = now() - interval '1 minute' where user_id = '00000000-0000-4000-8000-0000000000a2';
+select pg_temp.ok(public.bingr_premium_sweep() = '{"expired": 1}'::jsonb, 'sweep: tijdelijke sandbox-Lifetime verlopen');
+select pg_temp.ok((select plan = 'free' and source is null and premium_until is null and sandbox from public.account_plans where user_id = '00000000-0000-4000-8000-0000000000a2'), 'na 3 dagen Gratis, vlag blijft');
+select pg_temp.ok((select plan = 'lifetime' and sandbox from public.account_plans where user_id = '00000000-0000-4000-8000-0000000000a1'), 'blijvende sandbox-Lifetime ongemoeid (alleen gemerkt)');
+-- een echt abonnement gaat over een tijdelijke sandbox-Lifetime heen (en is geen sandbox); een blijvende Lifetime blijft beschermd
+update public.account_plans set plan = 'lifetime', source = 'purchase', granted_by = 'apple', note = 'Apple sandbox 2000002', premium_until = now() + interval '1 day'
+ where user_id = '00000000-0000-4000-8000-0000000000a2';
+insert into public.premium_subscriptions (user_id, provider, plan, status, stripe_subscription_id, access_until, expires_at, mode)
+values ('00000000-0000-4000-8000-0000000000a2', 'stripe', 'month', 'active', 'sub_s1', now() + interval '20 days', now() + interval '19 days', 'live');
+select pg_temp.ok(public.bingr_premium_mirror('00000000-0000-4000-8000-0000000000a2') = 'upsert', 'abonnement over tijdelijke sandbox');
+select pg_temp.ok((select source = 'subscription' and not sandbox and premium_until > now() + interval '19 days' from public.account_plans where user_id = '00000000-0000-4000-8000-0000000000a2'), 'spiegel, geen sandbox meer');
+select pg_temp.ok(public.bingr_premium_mirror('00000000-0000-4000-8000-0000000000a1') = 'keep', 'blijvende Lifetime beschermd');
+-- alleen een testabonnement = sandbox (gemerkt door de spiegel); na afloop Gratis met de vlag (rij blijft)
+delete from public.premium_subscriptions;
+insert into public.premium_subscriptions (user_id, provider, plan, status, apple_original_transaction_id, access_until, expires_at, mode)
+values ('00000000-0000-4000-8000-0000000000a3', 'apple', 'year', 'trialing', '2000009', now() + interval '3 days', now() + interval '3 days', 'test');
+delete from public.account_plans where user_id = '00000000-0000-4000-8000-0000000000a3';
+select pg_temp.ok(public.bingr_premium_mirror('00000000-0000-4000-8000-0000000000a3') = 'upsert', 'testabonnement gespiegeld');
+select pg_temp.ok((select sandbox and source = 'subscription' from public.account_plans where user_id = '00000000-0000-4000-8000-0000000000a3'), 'testabonnement = sandbox');
+update public.premium_subscriptions set access_until = now() - interval '1 minute';
+select pg_temp.ok(public.bingr_premium_mirror('00000000-0000-4000-8000-0000000000a3') = 'update', 'testabonnement voorbij: Gratis (rij blijft)');
+-- beheer geeft Lifetime, of een echte aankoop: blijvend en geen sandbox
+update public.account_plans set plan = 'lifetime', source = 'admin', granted_by = 'beheer', premium_until = now() + interval '1 day' where user_id = '00000000-0000-4000-8000-0000000000a3';
+select pg_temp.ok((select not sandbox and premium_until is null from public.account_plans where user_id = '00000000-0000-4000-8000-0000000000a3'), 'beheer: blijvend, geen sandbox');
+update public.account_plans set source = 'purchase', granted_by = 'stripe', note = 'Stripe cs_x / pi_x' where user_id = '00000000-0000-4000-8000-0000000000a1';
+select pg_temp.ok((select not sandbox and premium_until is null from public.account_plans where user_id = '00000000-0000-4000-8000-0000000000a1'), 'Stripe-aankoop: geen sandbox');
+-- ---------------- build 193: betaaltrechter ----------------
+select pg_temp.ok(public.bingr_funnel_hit('ios', 'paywall_shown') and public.bingr_funnel_hit('ios', 'paywall_shown') and public.bingr_funnel_hit('web', 'purchase_failed', 'year', 'http_500'), 'trechter: tellen');
+select pg_temp.ok((select n from public.billing_funnel_daily where platform = 'ios' and step = 'paywall_shown') = 2, 'trechter: zelfde stap telt op');
+select pg_temp.ok((select count(*) from public.billing_funnel_daily) = 2 and (select product || '/' || error from public.billing_funnel_daily where platform = 'web') = 'year/http_500', 'trechter: rij per product en foutcode');
+select pg_temp.ok(not public.bingr_funnel_hit('tizen', 'paywall_shown') and not public.bingr_funnel_hit('ios', 'iets') and not public.bingr_funnel_hit('ios', 'purchase_failed', 'week')
+  and not public.bingr_funnel_hit('ios', 'purchase_failed', '', 'Vrije tekst') and not public.bingr_funnel_hit(null, 'paywall_shown'), 'trechter: ongeldig telt niet');
+select pg_temp.ok((select count(*) from public.billing_funnel_daily) = 2, 'trechter: niets bijgekomen');
+do $$ begin for i in 1..70 loop perform public.bingr_funnel_hit('android', 'purchase_failed', '', 'code_' || i); end loop; end $$;
+select pg_temp.ok((select count(distinct error) from public.billing_funnel_daily where error <> '') = 61 and (select n from public.billing_funnel_daily where error = 'other') = 11, 'trechter: hooguit 60 foutcodes per dag, de rest als other');
+select pg_temp.ok(not has_table_privilege('authenticated', 'public.billing_funnel_daily', 'select') and not has_table_privilege('anon', 'public.billing_funnel_daily', 'insert'), 'trechter: tabel alleen service role');
+select pg_temp.ok(not has_function_privilege('anon', 'public.bingr_funnel_hit(text, text, text, text)', 'execute') and has_function_privilege('service_role', 'public.bingr_funnel_hit(text, text, text, text)', 'execute'), 'trechter: functie alleen service role');
+select pg_temp.ok(not has_function_privilege('authenticated', 'public.bingr_admin_sandbox_stats()', 'execute'), 'sandbox-tellingen alleen service role');
+
 -- rechten: alleen service role
 select pg_temp.ok(not has_function_privilege('authenticated', 'public.bingr_admin_premium_settings(jsonb)', 'execute'), 'settings niet voor authenticated');
 select pg_temp.ok(not has_function_privilege('anon', 'public.bingr_premium_mirror(uuid)', 'execute'), 'mirror niet voor anon');
