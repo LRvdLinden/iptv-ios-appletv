@@ -32,6 +32,15 @@ jobs:
             and not exists (select 1 from public.premium_subscriptions s where s.user_id = p.user_id and s.mode = 'live' and s.status in ('trialing','active','grace','past_due'))
             and p.user_id::text not in (select jsonb_array_elements_text(coalesce((select value::jsonb->'test_users' from public.app_settings where key = 'premium'), '[]'::jsonb)))"""
           note("Totaal sandbox-Lifetime", json.dumps(db("select count(*) n, count(*) filter (where premium_until is null) blijvend from public.account_plans where plan='lifetime' and sandbox")[0]))
+          base = "from public.account_plans p join auth.users u on u.id = p.user_id where p.plan='lifetime' and p.sandbox"
+          note("Uitsplitsing", json.dumps(db(f"""select count(*) n,
+            count(*) filter (where p.premium_until is null) blijvend,
+            count(*) filter (where lower(u.email) = 'lrvdlinden@live.nl') testaccount,
+            count(*) filter (where exists (select 1 from public.billing_purchases b where b.user_id = p.user_id and b.status = 'paid')) echt_betaald,
+            count(*) filter (where exists (select 1 from public.premium_subscriptions s where s.user_id = p.user_id and s.mode = 'live' and s.status in ('trialing','active','grace','past_due'))) echt_abo,
+            count(*) filter (where p.user_id::text in (select jsonb_array_elements_text(coalesce((select value::jsonb->'test_users' from public.app_settings where key = 'premium'), '[]'::jsonb)))) in_testlijst,
+            count(*) filter (where p.source = 'purchase') bron_aankoop
+            {base}""")[0]))
           note("Komt in aanmerking", json.dumps(db(f"select count(*) n from ({sel}) x")[0]))
           if mode == "apply":
               r = db(f"""update public.account_plans set plan = 'free', premium_until = null, note = 'Apple sandbox ingetrokken 2026-11-28', source = 'admin'
