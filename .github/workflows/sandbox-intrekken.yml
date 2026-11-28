@@ -26,9 +26,8 @@ jobs:
               req = urllib.request.Request(API + "/database/query", data=json.dumps({"query": sql}).encode(), headers={**H, "content-type": "application/json"})
               return json.load(urllib.request.urlopen(req, timeout=60))
           sel = """select p.user_id from public.account_plans p join auth.users u on u.id = p.user_id
-            where p.plan = 'lifetime' and p.sandbox and p.premium_until is null
+            where p.plan = 'lifetime' and p.sandbox
             and lower(u.email) <> 'lrvdlinden@live.nl'
-            and not exists (select 1 from public.billing_purchases b where b.user_id = p.user_id and b.status = 'paid')
             and not exists (select 1 from public.premium_subscriptions s where s.user_id = p.user_id and s.mode = 'live' and s.status in ('trialing','active','grace','past_due'))
             and p.user_id::text not in (select jsonb_array_elements_text(coalesce((select value::jsonb->'test_users' from public.app_settings where key = 'premium'), '[]'::jsonb)))"""
           note("Totaal sandbox-Lifetime", json.dumps(db("select count(*) n, count(*) filter (where premium_until is null) blijvend from public.account_plans where plan='lifetime' and sandbox")[0]))
