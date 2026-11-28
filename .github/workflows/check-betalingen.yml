@@ -24,21 +24,16 @@ jobs:
           def db(sql):
               req = urllib.request.Request(API + "/database/query", data=json.dumps({"query": sql}).encode(), headers={**H, "content-type": "application/json"})
               return json.load(urllib.request.urlopen(req, timeout=60))
-          r = db("select (created_at at time zone 'Europe/Amsterdam')::date as dag, count(*) nieuw, count(*) filter (where email_confirmed_at is not null) bevestigd "
-                 "from auth.users where created_at > now() - interval '10 days' group by 1 order by 1")
-          note("Nieuwe accounts per dag (nieuw|bevestigd)", "; ".join(f"{x['dag'][5:]}: {x['nieuw']}|{x['bevestigd']}" for x in r))
-          r = db("select (p.created_at at time zone 'Europe/Amsterdam')::date as dag, p.plan, coalesce(p.source,'-') src, "
-                 "(p.granted_by is not null) heeft_granted_by, (u.created_at > now() - interval '10 days') nieuw_account, count(*) n "
-                 "from account_plans p join auth.users u on u.id = p.user_id where p.created_at > now() - interval '5 days' and p.plan = 'lifetime' group by 1,2,3,4,5 order by 1")
-          note("Nieuwe lifetime-rijen (5 dagen) per bron", json.dumps(r))
-          r = db("select u.created_at at time zone 'Europe/Amsterdam' as aangemaakt, p.created_at at time zone 'Europe/Amsterdam' as plan_sinds, p.plan, p.source, "
-                 "p.granted_by is not null as gb, left(coalesce(p.note,''),60) as notitie, "
-                 "exists(select 1 from billing_purchases b where b.user_id = u.id and b.status = 'paid') as betaald_lifetime, "
-                 "exists(select 1 from premium_subscriptions s where s.user_id = u.id) as heeft_abo "
-                 "from account_plans p join auth.users u on u.id = p.user_id where p.plan = 'lifetime' and p.created_at > now() - interval '3 days' order by p.created_at")
-          for i, x in enumerate(r): note(f"Lifetime laatste 3 dagen {i+1}", json.dumps(x, default=str))
-          r = db("select count(*) filter (where p.plan is null or p.plan = 'free') zonder_plan, count(*) filter (where p.plan = 'lifetime') met_lifetime, "
-                 "count(*) filter (where exists(select 1 from premium_subscriptions s where s.user_id = u.id)) met_abo "
-                 "from auth.users u left join account_plans p on p.user_id = u.id where u.created_at > now() - interval '3 days'")
-          note("Accounts van de laatste 3 dagen", json.dumps(r))
+          # Alleen een korte hash-prefix van het adres (6 tekens), nooit het adres zelf.
+          k = "left(encode(sha256(convert_to(lower(u.email),'UTF8')),'hex'),6)"
+          r = db(f"select {k} as h, (u.created_at at time zone 'Europe/Amsterdam')::text as aangemaakt, (p.created_at at time zone 'Europe/Amsterdam')::text as plan_sinds, p.source, "
+                 "left(coalesce(p.note,''),14) as notitie, "
+                 "(select string_agg(coalesce(b.provider,'stripe') || ':' || b.status || ':' || b.amount, ',') from billing_purchases b where b.user_id = u.id) as aankopen, "
+                 "(select string_agg(s.provider || ':' || s.status || ':' || s.plan || ':' || coalesce(s.mode,'?'), ',') from premium_subscriptions s where s.user_id = u.id) as abos "
+                 "from account_plans p join auth.users u on u.id = p.user_id where p.plan = 'lifetime' and p.created_at > now() - interval '8 days' order by p.created_at")
+          for i, x in enumerate(r): note(f"Lifetime 8 dagen {i+1}", json.dumps(x))
+          r = db("select (b.created_at at time zone 'Europe/Amsterdam')::text as nl, coalesce(b.provider,'stripe') as provider, b.status, b.amount, (b.user_id is not null) as gekoppeld, "
+                 "(select left(coalesce(p.note,''),14) from account_plans p where p.user_id = b.user_id) as notitie "
+                 "from billing_purchases b where b.created_at > now() - interval '8 days' order by b.created_at")
+          note("Aankopen 8 dagen", json.dumps(r))
           PY
