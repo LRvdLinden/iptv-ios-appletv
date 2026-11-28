@@ -17,48 +17,28 @@ jobs:
           REF: ${{ secrets.SUPABASE_PROJECT_REF }}
         run: |
           python3 - <<'PY'
-          import os, json, re, urllib.request, urllib.parse, datetime, time
+          import os, json, urllib.request
           API = f"https://api.supabase.com/v1/projects/{os.environ['REF']}"
           H = {"Authorization": "Bearer " + os.environ["TOKEN"]}
           def note(t, m): print(f"::notice title={t}::{m}")
           def db(sql):
               req = urllib.request.Request(API + "/database/query", data=json.dumps({"query": sql}).encode(), headers={**H, "content-type": "application/json"})
               return json.load(urllib.request.urlopen(req, timeout=60))
-          def logs(sql, s, e):
-              for _ in range(5):
-                  time.sleep(12)
-                  u = f"{API}/analytics/endpoints/logs?" + urllib.parse.urlencode({"sql": sql, "iso_timestamp_start": s, "iso_timestamp_end": e})
-                  try: return json.load(urllib.request.urlopen(urllib.request.Request(u, headers=H), timeout=60))
-                  except Exception: time.sleep(20)
-              return {}
-          iso = lambda d: d.isoformat().replace("+00:00", "Z")
-          now = datetime.datetime.now(datetime.timezone.utc)
-          s = datetime.datetime(2026, 11, 27, 0, 0, tzinfo=datetime.timezone.utc)
-          r = logs("SELECT log_attributes['request.url'] AS url, log_attributes['request.method'] AS m, log_attributes['response.status_code'] AS code, timestamp AS ts "
-                   "FROM logs WHERE source = 'function_edge_logs' AND (position(log_attributes['request.url'], '/functions/v1/billing') > 0 "
-                   "OR position(log_attributes['request.url'], '/functions/v1/apple-notify') > 0 OR position(log_attributes['request.url'], '/functions/v1/stripe-webhook') > 0 OR position(log_attributes['request.url'], '/functions/v1/login') > 0)", iso(s), iso(now))
-          rows = []
-          for x in r.get("result", []):
-              c = str(x.get("code"))
-              if c.startswith("2"): continue
-              fn = re.search(r"/functions/v1/([a-z-]+)", str(x.get("url") or ""))
-              ts = x.get("ts"); t = (datetime.datetime.fromtimestamp(int(ts) / 1e6, datetime.timezone.utc) if str(ts).isdigit() else datetime.datetime.fromisoformat(str(ts)).replace(tzinfo=datetime.timezone.utc))
-              rows.append((t, fn.group(1) if fn else "?", c))
-          rows.sort()
-          # tijden in NL (UTC+1) als uur:minuut, gegroepeerd per uur
-          per = {}
-          for t, fn, c in rows:
-              k = f"{(t + datetime.timedelta(hours=1)).strftime('%H')}u {fn} {c}"
-              per[k] = per.get(k, 0) + 1
-          out = [f"{k}: {v}" for k, v in sorted(per.items())]
-          for i in range(0, len(out), 12): note(f"fouten vandaag (NL-uur) {i//12+1}", "; ".join(out[i:i+12]))
-          # Apple-abonnementen en aankopen van vandaag/gisteren: tijd, status, gekoppeld, claim-gegevens (geen id's)
-          r = db("select (created_at at time zone 'Europe/Amsterdam')::text as nl, status, plan, (user_id is not null) as gekoppeld, (claim_email_hash is not null) as heeft_claim_email, "
-                 "(claim_notified_at is not null) as claim_mail, (claimed_at is not null) as geclaimd, (trial_until is not null) as proef, mode "
-                 "from premium_subscriptions where provider = 'apple' and created_at > now() - interval '5 days' order by created_at")
-          for i, x in enumerate(r): note(f"Apple-abo {i+1}", json.dumps(x))
-          r = db("select (created_at at time zone 'Europe/Amsterdam')::text as nl, status, (user_id is not null) as gekoppeld from billing_purchases where provider = 'apple' and created_at > now() - interval '5 days' order by created_at")
-          note("Apple-lifetime recent", json.dumps(r))
-          r = db("select (created_at at time zone 'Europe/Amsterdam')::text as nl, type, result from billing_apple_events where created_at > now() - interval '2 days' order by created_at")
-          note("Apple-meldingen 2 dagen (NL-tijd, type, resultaat)", "; ".join(f"{x['nl'][5:16]} {x['type']} {x['result']}" for x in r)[:1500])
+          r = db("select (created_at at time zone 'Europe/Amsterdam')::date as dag, count(*) nieuw, count(*) filter (where email_confirmed_at is not null) bevestigd "
+                 "from auth.users where created_at > now() - interval '10 days' group by 1 order by 1")
+          note("Nieuwe accounts per dag (nieuw|bevestigd)", "; ".join(f"{x['dag'][5:]}: {x['nieuw']}|{x['bevestigd']}" for x in r))
+          r = db("select (p.created_at at time zone 'Europe/Amsterdam')::date as dag, p.plan, coalesce(p.source,'-') src, "
+                 "(p.granted_by is not null) heeft_granted_by, (u.created_at > now() - interval '10 days') nieuw_account, count(*) n "
+                 "from account_plans p join auth.users u on u.id = p.user_id where p.created_at > now() - interval '5 days' and p.plan = 'lifetime' group by 1,2,3,4,5 order by 1")
+          note("Nieuwe lifetime-rijen (5 dagen) per bron", json.dumps(r))
+          r = db("select u.created_at at time zone 'Europe/Amsterdam' as aangemaakt, p.created_at at time zone 'Europe/Amsterdam' as plan_sinds, p.plan, p.source, "
+                 "p.granted_by is not null as gb, left(coalesce(p.note,''),60) as notitie, "
+                 "exists(select 1 from billing_purchases b where b.user_id = u.id and b.status = 'paid') as betaald_lifetime, "
+                 "exists(select 1 from premium_subscriptions s where s.user_id = u.id) as heeft_abo "
+                 "from account_plans p join auth.users u on u.id = p.user_id where p.plan = 'lifetime' and p.created_at > now() - interval '3 days' order by p.created_at")
+          for i, x in enumerate(r): note(f"Lifetime laatste 3 dagen {i+1}", json.dumps(x, default=str))
+          r = db("select count(*) filter (where p.plan is null or p.plan = 'free') zonder_plan, count(*) filter (where p.plan = 'lifetime') met_lifetime, "
+                 "count(*) filter (where exists(select 1 from premium_subscriptions s where s.user_id = u.id)) met_abo "
+                 "from auth.users u left join account_plans p on p.user_id = u.id where u.created_at > now() - interval '3 days'")
+          note("Accounts van de laatste 3 dagen", json.dumps(r))
           PY
