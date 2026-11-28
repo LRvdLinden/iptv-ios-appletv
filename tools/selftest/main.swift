@@ -3713,6 +3713,38 @@ do {
 }
 
 
+// MARK: Build 194: spoelen bij terugkijken uit de gids
+do {
+    let st = 1_000_000.0, en = st + 3600   // programma van een uur
+    let past = en + 600, running = st + 1200
+    eq(Replay194.duration(start: st, end: en), 3600, "build 194 spoelen: duur uit het programma")
+    eq(Replay194.duration(start: en, end: st), 0, "build 194 spoelen: negatieve duur = 0")
+    eq(Replay194.limit(start: st, end: en, now: past), 3600, "build 194 spoelen: afgelopen programma tot het einde")
+    eq(Replay194.limit(start: st, end: en, now: running), 1197, "build 194 spoelen: lopend programma niet in de toekomst")
+    eq(Replay194.limit(start: st, end: en, now: st - 100), 0, "build 194 spoelen: nog niet begonnen = 0")
+    eq(Replay194.target(current: 100, delta: 10, limit: 3600), 110, "build 194 spoelen: +10 s")
+    eq(Replay194.target(current: 5, delta: -10, limit: 3600), 0, "build 194 spoelen: niet voor het begin")
+    eq(Replay194.target(current: 3595, delta: 30, limit: 3600), 3600, "build 194 spoelen: niet voorbij de grens")
+    eq(Replay194.target(current: 1190, delta: 60, limit: 1197), 1197, "build 194 spoelen: lopend programma begrensd")
+    eq(Replay194.target(fraction: 0.5, duration: 3600, limit: 3600), 1800, "build 194 spoelen: balk op de helft")
+    eq(Replay194.target(fraction: 1.5, duration: 3600, limit: 3600), 3600, "build 194 spoelen: balk voorbij 1 wordt 1")
+    eq(Replay194.target(fraction: -1, duration: 3600, limit: 3600), 0, "build 194 spoelen: balk onder 0 wordt 0")
+    eq(Replay194.target(fraction: 0.9, duration: 3600, limit: 1197), 1197, "build 194 spoelen: balk begrensd bij een lopend programma")
+    check(Replay194.finishes(raw: 3598, start: st, end: en, now: past), "build 194 spoelen: voorbij het einde = afronden")
+    check(!Replay194.finishes(raw: 3000, start: st, end: en, now: past), "build 194 spoelen: midden in = niet afronden")
+    check(!Replay194.finishes(raw: 3598, start: st, end: en, now: running), "build 194 spoelen: lopend programma rondt niet af")
+    check(!Replay194.finishes(raw: 100, start: en, end: st, now: past), "build 194 spoelen: lege duur rondt niet af")
+    eq(Replay194.streamStart(programStart: st, offset: 600), st + 600, "build 194 spoelen: stream begint bij start + offset")
+    eq(Replay194.streamStart(programStart: st, offset: -5), st, "build 194 spoelen: negatieve offset = begin")
+    let d1 = Replay194.display(base: 600, engineTime: 30, duration: 3600)
+    eq(d1.time, 630, "build 194 spoelen: tijd = begin stream + tijd in de stream")
+    eq(d1.fraction, 630.0 / 3600.0, "build 194 spoelen: positie als deel van het programma")
+    eq(Replay194.display(base: 3590, engineTime: 100, duration: 3600).fraction, 1, "build 194 spoelen: positie nooit boven 1")
+    eq(Replay194.display(base: 0, engineTime: -3, duration: 3600).time, 0, "build 194 spoelen: tijd nooit onder 0")
+    eq(Replay194.display(base: 0, engineTime: 10, duration: 0).fraction, 0, "build 194 spoelen: zonder duur positie 0")
+}
+
+
 // MARK: Build 194: tweeling-koppeling (terugkijken via een gelijke zender op dezelfde server)
 do {
     typealias T = Build194.TwinInput

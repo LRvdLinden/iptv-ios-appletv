@@ -49,6 +49,24 @@ final class PlayerController: ObservableObject {
     /// Echte afspeel-URL (na Stalker/Stremio-resolutie)
     private(set) var url: URL?
     var catchupProvider: (@MainActor (Date, Date) -> URL?)?
+    /// Build 194: terugkijken uit de gids: nieuwe URL vanaf een ander punt van het programma (spoelen)
+    var replayProvider: (@MainActor (Date, Date) -> URL?)?
+    /// Build 194: seconden vanaf het begin van het programma waar de huidige stream begint
+    private var replayBase: Double = 0
+    /// Build 194: gekozen doel tijdens het opnieuw laden (zodat de balk niet terugspringt) en wanneer dat begon
+    private var replayPending: Double?
+    private var replayPendingAt = Date.distantPast
+    private var replaySeekTask: Task<Void, Never>?
+    /// Build 194: speelt dit een terugkijkprogramma uit de gids (met bekende begin- en eindtijd)?
+    var isReplay: Bool { item.replayStart != nil && item.replayEnd != nil && item.type != .live }
+    private var replayLength: Double {
+        guard let a = item.replayStart, let b = item.replayEnd else { return 0 }
+        return Replay194.duration(start: a.timeIntervalSince1970, end: b.timeIntervalSince1970)
+    }
+    private var replayLimit: Double {
+        guard let a = item.replayStart, let b = item.replayEnd else { return 0 }
+        return Replay194.limit(start: a.timeIntervalSince1970, end: b.timeIntervalSince1970, now: Date().timeIntervalSince1970)
+    }
     var onFinished: (@MainActor () -> Void)?
     /// Multiview-tegels: geen voortgang/scrobble
     var isPreview = false
@@ -214,6 +232,7 @@ final class PlayerController: ObservableObject {
         airPlayWrapTries = 0
         // build 59: niets van de vorige titel gebruiken om te hervatten (duur) of voor ondertitels
         duration = 0; position = 0; currentTime = 0
+        replayBase = 0; replayPending = nil; replaySeekTask?.cancel(); replaySeekTask = nil   // build 194
         subtitleCheck?.cancel(); subtitleCheck = nil
         // build 60: ook geen ondertitelspoor van de vorige titel, en opnieuw beginnen ("Opnieuw" na een fout) haalt
         // de automatische ondertitels opnieuw op (de ingeladen ondertitels zijn hierboven gewist)
@@ -241,6 +260,7 @@ final class PlayerController: ObservableObject {
 
     /// Spoelen naar een tijdstip in seconden (intro overslaan).
     func seek(toSeconds t: Double) {
+        if isReplay { replaySeek(to: t); return }   // build 194
         guard !isLive, duration > 0 else { return }
         engine.seek(toFraction: min(max(t / duration, 0), 1))
     }
@@ -292,11 +312,11 @@ final class PlayerController: ObservableObject {
             // build 177: voorbeeld (ook in de tv-gids): VLC stopt en opent streams buiten de hoofdthread
             if isPreview { v.offMain = true }
             var secs: Double?
-            if !isLive, item.resumeAt > 0.01 { secs = duration > 0 ? item.resumeAt * duration : item.resumeSeconds }
+            if !isLive, !isReplay, item.resumeAt > 0.01 { secs = duration > 0 ? item.resumeAt * duration : item.resumeSeconds }
             v.startSeconds = secs
         }
         if !isPreview && !silent { PlaybackTiming.mark("engine.load (\(apple ? "Apple" : "VLC"))") }
-        engine.load(url, live: isLive && timeshiftStart == nil, startFraction: isLive ? nil : item.resumeAt)
+        engine.load(url, live: isLive && timeshiftStart == nil, startFraction: (isLive || isReplay) ? nil : item.resumeAt)
         watchFirstFrame()
         // andere engine (bijv. VLC → Apple voor AirPlay): ingeladen ondertitels meenemen (build 57)
         if switching, let f = externalSubtitleFile { applyExternalSubtitle(f) }
@@ -393,6 +413,18 @@ final class PlayerController: ObservableObject {
         if isPlaying != playingNow { isPlaying = playingNow }
         let buffering = st == .buffering || st == .opening
         if isBuffering != buffering { isBuffering = buffering }
+        if isReplay {
+            // build 194: duur en positie van het programma, niet van de (duurloze) stream
+            let len = replayLength
+            if duration != len { duration = len }
+            var shown = Replay194.display(base: replayBase, engineTime: engine.time, duration: len)
+            if let p = replayPending {
+                if st == .playing && Date().timeIntervalSince(replayPendingAt) > 1.5 { replayPending = nil }
+                else { shown = Replay194.display(base: p, engineTime: 0, duration: len) }
+            }
+            if currentTime != shown.time { currentTime = shown.time }
+            if position != shown.fraction { position = shown.fraction }
+        } else {
         let d = engine.duration
         if duration != d { duration = d }
         let t0 = engine.time
@@ -400,6 +432,7 @@ final class PlayerController: ObservableObject {
         let pos = engine.position
         if position != pos { position = pos }
         if st == .playing && position > 0.005 && !isLive { lastGoodPosition = position }
+        }
         if let av = engine as? AVEngine, isLive, timeshiftStart == nil {
             let b = av.behindLive > 8 ? av.behindLive : 0
             if behindLive != b { behindLive = b }
@@ -595,14 +628,14 @@ final class PlayerController: ObservableObject {
             airPlayWrapped = false; airPlaySelectPending = 0; airPlayWrapTries = 2
             notice = L("Subtitles from OpenSubtitles aren't shown via AirPlay.")
             if let f = externalSubtitleFile { applyExternalSubtitle(f) }
-            engine.load(url, live: isLive && timeshiftStart == nil, startFraction: isLive ? nil : lastGoodPosition)
+            engine.load(url, live: isLive && timeshiftStart == nil, startFraction: (isLive || isReplay) ? nil : lastGoodPosition)
             return
         }
         #endif
         // Apple-engine faalt → eerst VLC proberen (kan meer formaten aan)
         if usingApple && !triedOtherEngine && engine.state == .error && !url.isFileURL {
             triedOtherEngine = true
-            if !isLive { item.resumeAt = lastGoodPosition > 0.01 ? lastGoodPosition : item.resumeAt }
+            if !isLive && !isReplay { item.resumeAt = lastGoodPosition > 0.01 ? lastGoodPosition : item.resumeAt }
             start(url: url, forceApple: false)
             return
         }
@@ -639,10 +672,10 @@ final class PlayerController: ObservableObject {
                     if self.liveURL == url { self.liveURL = target }
                     self.url = target
                 }
-                if !self.isLive { self.item.resumeAt = resume }
+                if !self.isLive && !self.isReplay { self.item.resumeAt = resume }
                 self.airPlayWrapped = false
                 self.markLoaded()
-                self.engine.load(target, live: self.isLive && self.timeshiftStart == nil, startFraction: self.isLive ? nil : resume)
+                self.engine.load(target, live: self.isLive && self.timeshiftStart == nil, startFraction: (self.isLive || self.isReplay) ? nil : resume)
             }
             return
         }
@@ -699,6 +732,7 @@ final class PlayerController: ObservableObject {
 
     /// Spoelen. Bij live: binnen het HLS-venster, of via catch-up (timeshift).
     func seek(by seconds: Double) {
+        if isReplay { replaySeek(to: (replayPending ?? currentTime) + seconds); return }   // build 194
         if !isLive {
             let before = currentTime
             engine.jump(seconds)
@@ -726,7 +760,35 @@ final class PlayerController: ObservableObject {
     /// De gewone live-URL (om na timeshift terug te keren)
     var liveURL: URL?
 
-    func seek(to fraction: Double) { guard !isLive else { return }; engine.seek(toFraction: fraction) }
+    func seek(to fraction: Double) {
+        if isReplay { replaySeek(to: Replay194.target(fraction: fraction, duration: replayLength, limit: replayLimit)); return }   // build 194
+        guard !isLive else { return }; engine.seek(toFraction: fraction)
+    }
+
+    /// Build 194: spoelen in een terugkijkprogramma. De stream heeft geen bruikbare duur: de lengte komt uit het
+    /// programma en de URL wordt opnieuw opgebouwd vanaf het gekozen punt. Achter elkaar drukken telt op (kort wachten).
+    private func replaySeek(to raw: Double) {
+        guard let a = item.replayStart, let b = item.replayEnd else { return }
+        let now = Date().timeIntervalSince1970
+        if Replay194.finishes(raw: raw, start: a.timeIntervalSince1970, end: b.timeIntervalSince1970, now: now) {
+            replaySeekTask?.cancel(); finish(); return
+        }
+        let t = Replay194.target(current: raw, delta: 0, limit: replayLimit)
+        replayPending = t; replayPendingAt = Date()
+        isBuffering = true
+        let len = replayLength
+        if len > 0 { currentTime = t; position = min(max(t / len, 0), 1) }
+        replaySeekTask?.cancel()
+        replaySeekTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            guard let self, !Task.isCancelled, !self.stopped, let provider = self.replayProvider else { return }
+            let from = Date(timeIntervalSince1970: Replay194.streamStart(programStart: a.timeIntervalSince1970, offset: t))
+            guard let u = provider(from, b) else { self.replayPending = nil; return }
+            self.replayBase = t
+            self.pausedAt = nil
+            self.start(url: u)
+        }
+    }
 
     /// Zendervoorbeeld: alleen het beeld stoppen (snel scrollen, andere groep). De engine blijft bestaan voor de
     /// volgende zender, zodat er niet steeds een nieuwe speler opgebouwd en afgebroken wordt.

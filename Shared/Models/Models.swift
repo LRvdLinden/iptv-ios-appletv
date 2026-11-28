@@ -361,6 +361,21 @@ struct PlayableItem: Identifiable, Hashable {
     var tmdbID: Int? = nil
     /// Build 154: jaar van de film of serie (inhoudssleutels en zoeken op Trakt)
     var year: Int? = nil
+    /// Build 194: terugkijken uit de gids: begin en einde van het programma, zender en server (om te kunnen spoelen)
+    var replayStart: Date? = nil
+    var replayEnd: Date? = nil
+    var replayChannelID: String? = nil
+    var replaySourceID: UUID? = nil
+}
+
+extension PlayableItem {
+    /// Build 194: terugkijkitem uit de gids ("<zender>-cu-<start>") dat gespoeld kan worden
+    static func replay(channel c: Channel, program p: EPGProgram, url: URL) -> PlayableItem {
+        var it = PlayableItem(id: "\(c.id)-cu-\(Int(p.start.timeIntervalSince1970))", title: p.title,
+                              subtitle: c.name, url: url, type: .movie, artwork: c.logo)
+        it.replayStart = p.start; it.replayEnd = p.end; it.replayChannelID = c.id; it.replaySourceID = c.sourceID
+        return it
+    }
 }
 
 // MARK: - Metadata -----------------------------------------------------------

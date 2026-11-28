@@ -1195,6 +1195,14 @@ struct PlayerScreen: View {
         } else {
             player.catchupProvider = nil
         }
+        // build 194: terugkijken uit de gids: spoelen bouwt de terugkijk-URL opnieuw op vanaf het gekozen punt
+        if it.replayStart != nil, let cid = it.replayChannelID {
+            let pl = playlists
+            let sid = it.replaySourceID
+            player.replayProvider = { from, to in pl.catchupURL(channelID: cid, start: from, end: to, sourceID: sid) }
+        } else {
+            player.replayProvider = nil
+        }
         // build 173: terugkijken mogelijk (knop Vanaf het begin), vorige zender bijhouden
         catchupOK = player.hasCatchup
         if it.type == .live, let cid = it.channelID { prevChannel.tuned(cid) }

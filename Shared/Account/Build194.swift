@@ -100,3 +100,42 @@ enum Build194 {
         return out
     }
 }
+
+/// Build 194: spoelen bij terugkijken uit de gids. De stream van de server (timeshift) is meestal een ruwe TS-stream
+/// zonder bekende duur; de speler gebruikt daarom de lengte van het programma en bouwt bij spoelen de terugkijk-URL
+/// opnieuw op vanaf het gekozen punt. Alle getallen zijn seconden vanaf het begin van het programma.
+enum Replay194 {
+    /// Lengte van het programma
+    static func duration(start: Double, end: Double) -> Double { max(0, end - start) }
+
+    /// Tot waar je mag spoelen: niet voorbij het einde en niet in de toekomst (een programma dat nog loopt)
+    static func limit(start: Double, end: Double, now: Double) -> Double {
+        max(0, min(duration(start: start, end: end), now - start - 3))
+    }
+
+    /// Spoelen voorbij het einde van een afgelopen programma = afronden
+    static func finishes(raw: Double, start: Double, end: Double, now: Double) -> Bool {
+        let d = duration(start: start, end: end)
+        return d > 0 && now >= end && raw >= d - 3
+    }
+
+    /// Doel na een sprong van `delta` seconden vanaf de huidige of de al gekozen positie
+    static func target(current: Double, delta: Double, limit: Double) -> Double {
+        min(max(current + delta, 0), max(0, limit))
+    }
+
+    /// Doel bij slepen op de balk (0...1)
+    static func target(fraction: Double, duration: Double, limit: Double) -> Double {
+        min(min(max(fraction, 0), 1) * duration, max(0, limit))
+    }
+
+    /// Begintijd (seconden sinds 1970) voor de nieuwe terugkijk-URL
+    static func streamStart(programStart: Double, offset: Double) -> Double { programStart + max(0, offset) }
+
+    /// Wat de speler toont: tijd en positie (0...1) uit het begin van de stream en de tijd in de stream zelf
+    static func display(base: Double, engineTime: Double, duration: Double) -> (time: Double, fraction: Double) {
+        let t = max(0, base + max(0, engineTime))
+        guard duration > 0 else { return (t, 0) }
+        return (min(t, duration), min(max(t / duration, 0), 1))
+    }
+}
