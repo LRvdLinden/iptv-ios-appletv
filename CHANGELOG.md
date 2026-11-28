@@ -4,6 +4,15 @@ Alle versies van Bingr voor iPhone, iPad, Apple TV en Mac, plus de website en de
 
 Per build, ingedeeld per apparaatsoort: **Nieuw**, **Verbeterd** en **Opgelost**.
 
+## Versie 1.1.2 · Build 194
+_28 november 2026_
+
+### iOS, iPadOS, tvOS en macOS
+
+**Nieuw**
+
+- Live TV heeft nu een eigen categorie Terugkijken met alle zenders waarvan je kunt terugkijken.
+
 ## Versie 1.1.2 · Build 193
 _28 november 2026_
 

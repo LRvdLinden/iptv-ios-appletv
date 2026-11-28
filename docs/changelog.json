@@ -1,5 +1,23 @@
 [
   {
+    "build": 194,
+    "version": "1.1.2",
+    "date": "2026-11-28",
+    "items": [
+      {
+        "type": "new",
+        "platforms": [
+          "ios",
+          "ipados",
+          "tvos",
+          "macos"
+        ],
+        "nl": "Live TV heeft nu een eigen categorie Terugkijken met alle zenders waarvan je kunt terugkijken.",
+        "en": "Live TV now has its own Catch-up category with all channels you can watch back."
+      }
+    ]
+  },
+  {
     "build": 193,
     "version": "1.1.2",
     "date": "2026-11-28",
