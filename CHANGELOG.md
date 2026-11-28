@@ -13,6 +13,12 @@ _28 november 2026_
 
 - Betaalscherm: fouten bij kopen of herstellen worden anoniem geteld (alleen de stap en een korte foutcode, geen account of aankoopgegevens), zodat problemen sneller zichtbaar zijn.
 
+### Website
+
+**Verbeterd**
+
+- Betalen op bingr.online en in de webspeler: de site meldt anoniem of het betaalscherm is getoond en of een aankoop is gestart, gelukt, mislukt of geannuleerd (alleen de stap en een korte foutcode, geen persoonsgegevens). Zo zien we sneller waar afrekenen misgaat.
+
 ## Versie 1.1.2 · Build 192
 _27 november 2026_
 

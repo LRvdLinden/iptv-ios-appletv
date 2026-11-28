@@ -23,6 +23,14 @@
         ],
         "nl": "Betalen: de app meldt anoniem of het betaalscherm is getoond en of een aankoop is gestart, gelukt, mislukt of afgebroken. Zo zien we sneller waar het betalen misgaat. Er gaan geen account- of betaalgegevens mee.",
         "en": "Payments: the app anonymously reports whether the payment screen was shown and whether a purchase was started, completed, failed or cancelled, so payment problems are found sooner. No account or payment details are sent."
+      },
+      {
+        "type": "improved",
+        "platforms": [
+          "web"
+        ],
+        "nl": "Betalen op bingr.online en in de webspeler: de site meldt anoniem of het betaalscherm is getoond en of een aankoop is gestart, gelukt, mislukt of geannuleerd (alleen de stap en een korte foutcode, geen persoonsgegevens). Zo zien we sneller waar afrekenen misgaat.",
+        "en": "Paying on bingr.online and in the web player: the site reports anonymously whether the payment screen was shown and whether a purchase was started, completed, failed or cancelled (only the step and a short error code, no personal data). This helps us spot checkout problems sooner."
       }
     ]
   },
