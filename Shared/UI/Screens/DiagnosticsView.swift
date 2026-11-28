@@ -262,6 +262,8 @@ final class DiagnosticsModel: ObservableObject {
                 r.append(Row(title: "  " + L("Catch-up"),
                              value: c.channels == 0 ? L("No channels with catch-up")
                                  : L("%d channels, up to %d days", c.channels, c.days)))
+                // build 194: zenders die zelf geen terugkijken hebben maar via een gelijke zender wel
+                if c.twins > 0 { r.append(Row(title: "  " + L("Catch-up via twin channel"), value: L("%d channels", c.twins))) }
             }
         }
         r.append(Row(title: L("Load servers on open"), value: mode.title))

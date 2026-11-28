@@ -154,6 +154,20 @@ struct Channel: Identifiable, Hashable, Codable {
     /// Build 178: M3U-terugkijken: catchup-type (kleine letters) en catchup-source (sjabloon); nil = niet opgegeven
     var catchupType: String? = nil
     var catchupSource: String? = nil
+    /// Build 194: heeft deze zender zelf geen terugkijken maar een gelijke zender op dezelfde server wel (tweeling), dan
+    /// staan hier het id en de stream van die zender; live kijken blijft op deze zender, `catchupDays` is die van de tweeling
+    var catchupVia: String? = nil
+    var catchupViaStream: URL? = nil
+
+    /// Build 194: de zender waarmee je terugkijkt (de tweeling, of de zender zelf): id en stream van de tweeling,
+    /// de rest (gids-id, naam) van deze zender
+    var catchupTarget: Channel {
+        guard let v = catchupVia else { return self }
+        var c = self
+        c.id = v
+        if let s = catchupViaStream { c.streamURL = s }
+        return c
+    }
 }
 
 struct Movie: Identifiable, Hashable, Codable {

@@ -3713,5 +3713,38 @@ do {
 }
 
 
+// MARK: Build 194: tweeling-koppeling (terugkijken via een gelijke zender op dezelfde server)
+do {
+    typealias T = Build194.TwinInput
+    func tw(_ x: [T]) -> [String: String] { Dictionary(Build194.twins(x).map { ($0.id, $0.twin) }, uniquingKeysWith: { a, _ in a }) }
+    // naam normaliseren
+    eq(Build194.normalizedName("RTL 4 UHD"), "rtl4", "build 194: UHD weg")
+    eq(Build194.normalizedName("NL: RTL 4 HD [Catch-up]"), "nlrtl4", "build 194: tag catch-up weg, prefix blijft")
+    eq(Build194.normalizedName("RTL 4 (Terugkijken) FHD"), "rtl4", "build 194: haakjes met terugkijken weg")
+    eq(Build194.normalizedName("RTL 4 | Replay"), "rtl4", "build 194: deel na | met replay weg")
+    eq(Build194.normalizedName("Één HD"), "een", "build 194: accenten weg")
+    eq(Build194.normalizedName("Discovery [Sport]"), "discoverysport", "build 194: andere tag blijft")
+    eq(Build194.normalizedName("NPO 1 4K HEVC"), "npo1", "build 194: 4k en hevc weg")
+    // gids-id
+    eq(tw([T(id: "a", name: "RTL 4 UHD", epg: "RTL4.nl", days: 0, server: "s"), T(id: "b", name: "RTL 4", epg: " rtl4.NL ", days: 3, server: "s")]), ["a": "b"], "build 194: match op gids-id (hoofdletters/spaties)")
+    eq(tw([T(id: "a", name: "RTL 4 UHD", epg: "RTL4.nl", days: 0, server: "s"), T(id: "b", name: "RTL 4", epg: "RTL4.nl", days: 3, server: "s"), T(id: "c", name: "RTL 4 Extra", epg: "RTL4.nl", days: 3, server: "s")]), [:], "build 194: twee kandidaten met hetzelfde gids-id = geen match")
+    eq(tw([T(id: "a", name: "RTL 4", epg: "x", days: 0, server: "s"), T(id: "b", name: "RTL 4", epg: "y", days: 3, server: "s"), T(id: "c", name: "RTL 4 [Catch-up]", epg: "x", days: 3, server: "s"), T(id: "d", name: "RTL 4 HD", epg: "x", days: 2, server: "s")]), [:], "build 194: gids-id met twee kandidaten valt niet door naar de naam")
+    // naam
+    eq(tw([T(id: "a", name: "RTL 4 UHD", epg: nil, days: 0, server: "s"), T(id: "b", name: "RTL 4 [Catch-up]", epg: nil, days: 3, server: "s")]), ["a": "b"], "build 194: match op naam")
+    eq(tw([T(id: "a", name: "RTL 4 UHD", epg: "geen", days: 0, server: "s"), T(id: "b", name: "RTL 4 HD", epg: "ander", days: 3, server: "s")]), ["a": "b"], "build 194: ander gids-id zonder kandidaat = op naam")
+    eq(tw([T(id: "a", name: "RTL 4 UHD", epg: nil, days: 0, server: "s"), T(id: "b", name: "RTL 4 HD", epg: nil, days: 3, server: "s"), T(id: "c", name: "RTL 4 FHD", epg: nil, days: 5, server: "s")]), [:], "build 194: twee kandidaten met dezelfde naam = geen match")
+    eq(tw([T(id: "a", name: "HD", epg: nil, days: 0, server: "s"), T(id: "b", name: "SD", epg: nil, days: 3, server: "s")]), [:], "build 194: lege naam = geen match")
+    eq(tw([T(id: "a", name: "A1", epg: nil, days: 0, server: "s"), T(id: "b", name: "A1 HD", epg: nil, days: 3, server: "s")]), [:], "build 194: naam korter dan 3 tekens = geen match")
+    eq(tw([T(id: "a", name: "RTL 4", epg: nil, days: 0, server: "s1"), T(id: "b", name: "RTL 4", epg: nil, days: 3, server: "s2")]), [:], "build 194: andere server = geen match")
+    eq(tw([T(id: "a", name: "RTL 4", epg: "x", days: 0, server: "s1"), T(id: "b", name: "RTL 4", epg: "x", days: 3, server: "s2")]), [:], "build 194: andere server met zelfde gids-id = geen match")
+    eq(tw([T(id: "a", name: "RTL 4", epg: nil, days: 2, server: "s"), T(id: "b", name: "RTL 4 HD", epg: nil, days: 3, server: "s")]), [:], "build 194: zender met eigen terugkijken gebruikt zichzelf")
+    eq(tw([T(id: "a", name: "RTL 4 UHD", epg: nil, days: 0, server: "s"), T(id: "b", name: "RTL 4 FHD", epg: nil, days: 0, server: "s"), T(id: "t", name: "RTL 4", epg: nil, days: 3, server: "s")]), ["a": "t", "b": "t"], "build 194: twee zenders delen één tweeling")
+    eq(tw([T(id: "a", name: "RTL 4", epg: nil, days: 0, server: "s"), T(id: "a", name: "RTL 4", epg: nil, days: 3, server: "s")]), [:], "build 194: dubbel id telt één keer")
+    eq(tw([]), [:], "build 194: leeg")
+    eq(tw([T(id: "a", name: "RTL 4", epg: nil, days: 0, server: "s")]), [:], "build 194: geen kandidaten")
+    eq(tw([T(id: "a", name: "RTL 5", epg: nil, days: 0, server: "s"), T(id: "b", name: "RTL 4", epg: nil, days: 3, server: "s")]), [:], "build 194: andere zender (RTL 5 vs RTL 4)")
+}
+
+
 print("\(checks) controles, \(failures) fout")
 exit(failures == 0 ? 0 : 1)

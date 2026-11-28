@@ -11,7 +11,7 @@ _28 november 2026_
 
 **Nieuw**
 
-- Live TV heeft nu een eigen categorie Terugkijken met alle zenders waarvan je kunt terugkijken.
+- Live TV heeft nu een eigen categorie Terugkijken met alle zenders waarvan je kunt terugkijken. Heeft een zender zelf geen terugkijken, maar een gelijke zender op dezelfde server wel, dan kijk je via die zender terug (klokje en Vanaf het begin kijken in alle categorieën).
 
 ## Versie 1.1.2 · Build 193
 _28 november 2026_
