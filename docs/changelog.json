@@ -1,5 +1,21 @@
 [
   {
+    "build": 193,
+    "version": "1.1.2",
+    "date": "2026-11-28",
+    "items": [
+      {
+        "type": "improved",
+        "platforms": [
+          "android",
+          "androidtv"
+        ],
+        "nl": "Betalen: de app meldt anoniem of het betaalscherm is getoond en of een aankoop is gestart, gelukt, mislukt of afgebroken. Zo zien we sneller waar het betalen misgaat. Er gaan geen account- of betaalgegevens mee.",
+        "en": "Payments: the app anonymously reports whether the payment screen was shown and whether a purchase was started, completed, failed or cancelled, so payment problems are found sooner. No account or payment details are sent."
+      }
+    ]
+  },
+  {
     "build": 192,
     "version": "1.1.2",
     "date": "2026-11-27",
